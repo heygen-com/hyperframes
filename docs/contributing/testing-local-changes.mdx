@@ -71,6 +71,14 @@ npx ./hyperframes-<version>.tgz --help
 
 Run the archive against an isolated project as well as the command you changed.
 
+A `hyperframes preview` started through `npx` keeps its server running when the
+`npx` process is stopped. Stop the server by the process listening on its port,
+or the next run talks to the old one:
+
+```bash
+kill "$(lsof -ti tcp:<port> -sTCP:LISTEN)"
+```
+
 ## What to verify
 
 Test the user-visible outcome, not only the exit code:

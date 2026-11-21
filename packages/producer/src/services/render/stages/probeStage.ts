@@ -36,6 +36,7 @@ import {
   type CompositionLengthSource,
   type EngineConfig,
   type SubTimelineWaitMemo,
+  type StaticDedupMemo,
   closeCaptureSession,
   compositionRequiresWebGpu,
   createCaptureSession,
@@ -55,6 +56,7 @@ import {
   shiftRateLane,
   sourceTimeAt,
   timeAtSourceTime,
+  terminalText,
 } from "@hyperframes/core";
 import { parseHostVariableValues, readDeclaredDefaults } from "@hyperframes/core/compiler";
 import { extractMediaSrcMutations } from "@hyperframes/parsers";
@@ -72,22 +74,30 @@ import {
   type FileServerHandle,
   VIRTUAL_TIME_SHIM,
 } from "../../fileServer.js";
+import { hasClosedMediaTag } from "../../htmlTagScans.js";
+import { servedPath } from "../../servedPath.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
   BROWSER_MEDIA_EPSILON,
+  noteStaticDedupActivity,
   projectBrowserEndToCompositionTimeline,
   resolveBrowserMediaEnd,
   writeCompiledArtifacts,
   type CompositionMetadata,
 } from "../shared.js";
-import type { RenderJob } from "../../renderOrchestrator.js";
+import type { RenderConfig, RenderJob } from "../../renderOrchestrator.js";
 import { isActionableProbeFailure } from "./probeFailures.js";
-import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
-import { resolveCaptureImageFormat, resolveCaptureJpegQuality } from "../captureImageFormat.js";
+import {
+  dropMediaOutsideProject,
+  preflightCompositionAssetMediaTypes,
+} from "../../assetMediaType.js";
+import { resolveCaptureSurface } from "../captureImageFormat.js";
+import { computeCompositionObservabilityHash } from "../observability.js";
 
 export interface ProbeStageInput {
   projectDir: string;
   workDir: string;
+  measuresShownBoxes?: boolean;
   recordReferenceBackground?: CaptureOptions["recordReferenceBackground"];
   job: RenderJob;
   cfg: EngineConfig;
@@ -109,6 +119,7 @@ export interface ProbeStageInput {
   needsAlpha: boolean;
   deviceScaleFactor: number;
   subTimelineWaitMemo: SubTimelineWaitMemo;
+  staticDedupMemo?: StaticDedupMemo;
 }
 
 const FRAME_BOUNDARY_EPSILON = 1e-3;
@@ -122,6 +133,7 @@ function durationToFrameCount(duration: number, fps: number): number {
 }
 
 export interface ProbeStageResult {
+  strictVariablesChecked: boolean | undefined;
   /** May be reassigned from `recompileWithResolutions`. */
   compiled: CompiledComposition;
   /** Created when `needsBrowser` was true; `null` otherwise. */
@@ -175,35 +187,82 @@ export function hasAutoStartVideos(html: string): boolean {
   return document.querySelector("video[data-hf-auto-start]") !== null;
 }
 
+type VariablesByComp = Record<string, Record<string, unknown>>;
+
+/** Ancestor steps one variable-media scan may take before it gives the conservative answer. */
+const MAX_VARIABLE_SCOPE_STEPS = 1_000_000;
+
+interface VariableScopeScan {
+  readonly ids: Map<Element, ReadonlySet<string>>;
+  steps: number;
+}
+
+function variableIdsOn(scan: VariableScopeScan, element: Element): ReadonlySet<string> {
+  let ids = scan.ids.get(element);
+  if (!ids) {
+    ids = new Set([
+      ...Object.keys(parseHostVariableValues(element)),
+      ...Object.keys(readDeclaredDefaults(element)),
+    ]);
+    scan.ids.set(element, ids);
+  }
+  return ids;
+}
+
+/** The compiled table of the element's composition scope; null once the scan is out of steps. */
+function scopedVariablesFor(
+  scan: VariableScopeScan,
+  element: Element,
+  variablesByComp: VariablesByComp,
+): Record<string, unknown> | undefined | null {
+  for (let node: Element | null = element; node; node = node.parentElement) {
+    if (++scan.steps > MAX_VARIABLE_SCOPE_STEPS) return null;
+    if (!node.hasAttribute("data-composition-id")) continue;
+    const compId = node.getAttribute("data-composition-id")?.trim() ?? "";
+    return compId && Object.hasOwn(variablesByComp, compId) ? variablesByComp[compId] : undefined;
+  }
+  return undefined;
+}
+
+/** True when the variable has a value, or when the scan ran out of steps and cannot rule one out. */
 function variableHasValue(
+  scan: VariableScopeScan,
   element: Element,
   variableId: string,
   variables: Record<string, unknown> | undefined,
+  variablesByComp: VariablesByComp,
 ): boolean {
   if (variables && Object.hasOwn(variables, variableId)) return true;
+  const scoped = scopedVariablesFor(scan, element, variablesByComp);
+  if (scoped === null) return true;
+  if (scoped) return Object.hasOwn(scoped, variableId);
   for (let scope = element.parentElement; scope; scope = scope.parentElement) {
-    if (Object.hasOwn(parseHostVariableValues(scope), variableId)) return true;
-    if (Object.hasOwn(readDeclaredDefaults(scope), variableId)) return true;
+    if (++scan.steps > MAX_VARIABLE_SCOPE_STEPS) return true;
+    if (variableIdsOn(scan, scope).has(variableId)) return true;
   }
-  return Object.hasOwn(readDeclaredDefaults(element.ownerDocument.documentElement), variableId);
+  return variableIdsOn(scan, element.ownerDocument.documentElement).has(variableId);
 }
 
 /**
  * Variable-bound sources are resolved by the browser runtime, not the static compiler. Probe them whenever the
- * element's variable has a value (the render's, its mount's `data-variable-values`, a declared default).
+ * element's variable has a value (the render's, its scope's compiled table entry, its mount's, a declared default).
  */
 export function hasVariableBoundMedia(
   html: string,
   variables: Record<string, unknown> | undefined,
+  variablesByComp: VariablesByComp = {},
 ): boolean {
   const { document } = parseHTML(html);
+  const scan: VariableScopeScan = { ids: new Map(), steps: 0 };
   return Array.from(
     document.querySelectorAll(
       "img[data-var-src], audio[data-var-src], video[data-var-src], source[data-var-src]",
     ),
   ).some((element) => {
     const variableId = element.getAttribute("data-var-src")?.trim();
-    return Boolean(variableId && variableHasValue(element, variableId, variables));
+    return Boolean(
+      variableId && variableHasValue(scan, element, variableId, variables, variablesByComp),
+    );
   });
 }
 
@@ -265,13 +324,76 @@ function reconcileBrowserMediaEnd(
   return existingEnd <= 0 ? projectedEnd : Math.min(existingEnd, projectedEnd);
 }
 
+/** Characters a static selector check may examine before the browser probe decides instead. */
+const MAX_MEDIA_SELECTOR_WORK = 1_000_000;
+const ATTRIBUTE_SELECTOR =
+  /\[\s*[\w-]+\s*(?:[~|^$*]?=\s*(?:"[^"\\]*"|'[^'\\]*'|[\w-]+)\s*(?:[is]\s*)?)?\]/g;
+const COMPOUND_SELECTORS = /^[\w\s#.*>,@-]+$/;
+
+/**
+ * The selector list with each attribute test as `@` and whitespace collapsed, when every part costs
+ * at most one check per ancestor: tags, ids, classes and attributes, joined by `>` and at most one
+ * descendant combinator. Null for anything else, such as pseudo-classes, sibling combinators or escapes.
+ */
+function cheapSelectorShape(selector: string): string | null {
+  const shape = selector.replace(ATTRIBUTE_SELECTOR, "@").trim();
+  if (!COMPOUND_SELECTORS.test(shape)) return null;
+  const collapsed = shape.replace(/\s+/g, " ").replace(/ ?([>,]) ?/g, "$1");
+  const parts = collapsed.split(",");
+  return parts.every((part) => part !== "" && part.split(" ").length <= 2) ? collapsed : null;
+}
+
+type ManagedMedia = { element: Element; depth: number; chainAttributeChars: number };
+
+const attributeChars = (element: Element): number =>
+  Array.from(element.attributes).reduce((sum, a) => sum + a.name.length + a.value.length + 1, 0);
+
+/** With `measure`, each entry also sums the attribute text of the element and its ancestors. */
+function managedMediaElements(document: Document, measure: boolean): ManagedMedia[] {
+  const managed: ManagedMedia[] = [];
+  type Pending = { element: Element; inMedia: boolean; depth: number; above: number };
+  const pending: Pending[] = Array.from(document.children, (element) => ({
+    element,
+    inMedia: false,
+    depth: 0,
+    above: 0,
+  }));
+  for (let next = pending.pop(); next; next = pending.pop()) {
+    const { element, depth } = next;
+    const chainAttributeChars = measure ? next.above + attributeChars(element) : 0;
+    const name = element.tagName.toLowerCase();
+    const isMedia = name === "video" || name === "audio";
+    if (isMedia || (next.inMedia && name === "source")) {
+      managed.push({ element, depth, chainAttributeChars });
+    }
+    for (const child of Array.from(element.children)) {
+      const inMedia = next.inMedia || isMedia;
+      pending.push({ element: child, inMedia, depth: depth + 1, above: chainAttributeChars });
+    }
+  }
+  return managed;
+}
+
+/** A match compiles the selector, tests each ancestor, and reads attributes once per simple test. */
+function selectorCheckCost(selector: string, measured: readonly ManagedMedia[]): number {
+  const shape = cheapSelectorShape(selector);
+  if (shape === null) return Infinity;
+  const tests = (shape.match(/[.#@]/g)?.length ?? 0) + shape.split(/[ >,]/).length;
+  let cost = 0;
+  for (const media of measured) {
+    cost += selector.length * (media.depth + 1) + tests * media.chainAttributeChars;
+    if (cost > MAX_MEDIA_SELECTOR_WORK) return cost;
+  }
+  return cost;
+}
+
 /**
  * Runtime-created media does not exist when the static compiler scans the HTML.
  * Launch a browser probe so discoverMediaFromBrowser can reconcile it before
  * extraction, even when the root duration is already known. External script
  * sources have no inline text to inspect and remain a known heuristic gap.
  */
-function hasRuntimeMediaChanges(html: string): boolean {
+export function hasRuntimeMediaChanges(html: string): boolean {
   const { document } = parseHTML(html);
   const scriptBodies = [...document.querySelectorAll("script")].map(
     (script) => script.textContent ?? "",
@@ -280,46 +402,57 @@ function hasRuntimeMediaChanges(html: string): boolean {
     (script) =>
       /\bcreateElement\s*\(\s*["'`](?:video|audio)["'`]\s*\)/i.test(script) ||
       /\bnew\s+(?:Audio|Video)\s*\(/i.test(script) ||
-      /<(?:video|audio)\b[^>]*>/i.test(script),
+      hasClosedMediaTag(script),
   );
   if (insertedMedia) return true;
 
-  const isManagedMedia = (element: Element): boolean => {
-    const name = element.tagName.toLowerCase();
-    if (name === "video" || name === "audio") return true;
-    return name === "source" && element.closest("video, audio") !== null;
-  };
+  const managed = managedMediaElements(document, false);
+  if (managed.length === 0) return false;
+  const managedIds = new Set(managed.map((m) => m.element.getAttribute("id")).filter(Boolean));
+  const selectors = new Set<string>();
+  let work = 0;
+  let measured: ManagedMedia[] | undefined;
   for (const script of scriptBodies) {
     for (const mutation of extractMediaSrcMutations(script)) {
-      try {
-        const id = /^#[A-Za-z_][\w-]*$/.test(mutation.selector) ? mutation.selector.slice(1) : null;
-        const idTarget = id ? document.getElementById(id) : null;
-        const targets = id
-          ? idTarget
-            ? [idTarget]
-            : []
-          : [...document.querySelectorAll(mutation.selector)];
-        if (targets.some(isManagedMedia)) return true;
-      } catch {
-        // Invalid selectors are diagnosed by lint and cannot prove a media target here.
+      const id = /^#[A-Za-z_][\w-]*$/.test(mutation.selector) ? mutation.selector.slice(1) : null;
+      if (id) {
+        if (managedIds.has(id)) return true;
+        continue;
       }
+      if (selectors.has(mutation.selector)) continue;
+      selectors.add(mutation.selector);
+      measured ??= managedMediaElements(document, true);
+      work += selectorCheckCost(mutation.selector, measured);
+      if (work > MAX_MEDIA_SELECTOR_WORK) return true;
+    }
+  }
+  for (const selector of selectors) {
+    try {
+      if (managed.some((media) => media.element.matches(selector))) return true;
+    } catch {
+      // A selector the matcher rejects throws in the page too, so it cannot target media.
     }
   }
   return false;
 }
 
+/** A strict render with variables to check needs the loaded page; with none there is nothing to read. */
+function checksVariablesInBrowser(config: RenderConfig): boolean {
+  return config.strictVariables === true && Object.keys(config.variables ?? {}).length > 0;
+}
+
+/** Reported `strictVariables`: undefined if not asked; true if checked or nothing needed checking; else false. */
+export function strictVariablesAttestation(
+  config: RenderConfig,
+  probeSession: CaptureSession | null,
+): boolean | undefined {
+  if (config.strictVariables !== true) return undefined;
+  return !checksVariablesInBrowser(config) || probeSession?.strictVariablesChecked === true;
+}
+
 /**
- * Does this render need a browser probe at all?
- *
- * Extracted as a pure predicate because whether a probe runs decides whether
- * a LIVE DOM element count is available downstream, and the short-comp
- * inversion band fails closed without one (see
- * `resolveCompositionElementCount` / `resolveDeShortBand`). Notably NONE of
- * these conditions fire for a known-duration, media-free composition that
- * builds thousands of `div`/`span` nodes in its own init script —
- * `hasRuntimeMediaChanges` matches only media creation/source changes — so
- * that shape is measured statically and must never reach the band's `applied`
- * cohort (review finding, R4).
+ * Does this render need a browser probe at all? A pure predicate, because a probe decides whether a LIVE DOM element
+ * count exists downstream, and the short-comp inversion band fails closed without one.
  */
 export function probeRequiresBrowser(args: {
   durationSeconds: number;
@@ -328,8 +461,10 @@ export function probeRequiresBrowser(args: {
   hasScriptedAudio: boolean;
   hasVariableMedia: boolean;
   hasInsertedMedia: boolean;
+  requiresVariablesCheck?: boolean;
 }): boolean {
   return (
+    args.requiresVariablesCheck === true ||
     args.durationSeconds <= 0 ||
     args.unresolvedCompositionCount > 0 ||
     args.hasAutoStart ||
@@ -370,6 +505,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     needsAlpha,
     deviceScaleFactor,
     subTimelineWaitMemo,
+    staticDedupMemo,
   } = input;
   let { compiled } = input;
 
@@ -389,10 +525,15 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     compiled.html,
     composition.audios.length,
   );
-  const hasVariableMedia = hasVariableBoundMedia(compiled.html, job.config.variables);
+  const hasVariableMedia = hasVariableBoundMedia(
+    compiled.html,
+    job.config.variables,
+    compiled.variablesByComp,
+  );
   const hasInsertedMedia = hasRuntimeMediaChanges(compiled.html);
   const needsBrowser =
     cfg.videoLayerPassthrough ||
+    input.measuresShownBoxes === true ||
     probeRequiresBrowser({
       durationSeconds: composition.duration,
       unresolvedCompositionCount: compiled.unresolvedCompositions.length,
@@ -400,6 +541,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       hasScriptedAudio,
       hasVariableMedia,
       hasInsertedMedia,
+      requiresVariablesCheck: checksVariablesInBrowser(job.config),
     });
 
   try {
@@ -412,6 +554,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       if (hasScriptedAudio) reasons.push("scripted audio volume");
       if (hasInsertedMedia) reasons.push("runtime-created or source-mutated media");
       if (hasVariableMedia) reasons.push("variable-bound media source(s)");
+      if (input.measuresShownBoxes) reasons.push("video(s) larger than the canvas");
 
       log.info("Launching browser for composition probe...", {
         reasons,
@@ -423,30 +566,36 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         port: 0,
         preHeadScripts: [VIRTUAL_TIME_SHIM],
         fps: job.config.fps,
+        allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+        includeOutsideScripts: job.config.includeOutsideScripts,
       });
       assertNotAborted();
 
-      // Motion blur averages the sub-frame samples pixel by pixel, so the frames have to be
-      // captured losslessly even when the output container wants no alpha. This is the one
-      // place a render picks its capture format; the encoder reads the result rather than
-      // re-deriving it, so the two cannot disagree about what is on disk.
+      // Motion blur and 4:4:4 output need lossless frames even when the output container
+      // wants no alpha. This is the one place a render picks its capture format; the encoder
+      // reads the result rather than re-deriving it, so the two cannot disagree about what
+      // is on disk.
       const motionBlur = job.config.motionBlur;
-      const captureFormat = resolveCaptureImageFormat({ needsAlpha, motionBlur });
       const captureOpts: CaptureOptions = {
         recordReferenceBackground: input.recordReferenceBackground,
         width,
         height,
         fps: job.config.fps,
-        format: captureFormat,
-        transparent: needsAlpha,
-        quality:
-          captureFormat === "png" ? undefined : resolveCaptureJpegQuality(job.config.quality),
+        ...resolveCaptureSurface(
+          { needsAlpha, motionBlur, chromaSubsampling: job.config.chromaSubsampling },
+          job.config.quality,
+        ),
         variables: job.config.variables,
+        strictVariables: job.config.strictVariables,
         deviceScaleFactor,
         motionBlur,
         pageMotionBlur: job.config.pageMotionBlur,
         requiresWebGpu: compositionRequiresWebGpu(compiled.html),
         subTimelineWaitMemo,
+        staticDedupMemo,
+        compositionHash: computeCompositionObservabilityHash(compiled.html),
+        deferStaticDedup: true,
+        onStaticDedupActivity: () => noteStaticDedupActivity(job),
       };
 
       const PROBE_MAX_ATTEMPTS = 2;
@@ -604,6 +753,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             resolutions,
             projectDir,
             join(workDir, "downloads"),
+            job.config.allowOutsideProjectAssets ? undefined : projectDir,
+            { includeScripts: job.config.includeOutsideScripts },
           );
           assertNotAborted();
           // Update composition metadata with re-parsed media
@@ -642,7 +793,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               // Reconcile to browser/runtime media metadata (runtime src can differ from static HTML).
               const existing = composition.videos.find((v) => v.id === el.id);
               if (existing) {
-                const sourceChanged = existing.src !== src;
+                const sourceChanged = servedPath(existing.src) !== servedPath(src);
                 if (sourceChanged) {
                   existing.src = src;
                 }
@@ -692,7 +843,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             if (existingAudioIds.has(el.id)) {
               const existing = composition.audios.find((a) => a.id === el.id);
               if (existing) {
-                const sourceChanged = existing.src !== src;
+                const sourceChanged = servedPath(existing.src) !== servedPath(src);
                 if (sourceChanged) {
                   existing.src = src;
                 }
@@ -816,6 +967,13 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       }
     }
 
+    dropMediaOutsideProject({
+      projectDir,
+      workDir,
+      composition,
+      log,
+      allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+    });
     await preflightCompositionAssetMediaTypes({
       projectDir,
       compiledDir: join(workDir, "compiled"),
@@ -908,12 +1066,13 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         failures: failedRequests.slice(0, 10),
       });
       for (const line of failedRequests.slice(0, 5)) {
-        console.warn(`[Render] Asset load failure: ${line}`);
+        console.warn(`[Render] Asset load failure: ${terminalText(line)}`);
       }
     }
   }
 
   return {
+    strictVariablesChecked: strictVariablesAttestation(job.config, probeSession),
     compiled,
     fileServer,
     probeSession,

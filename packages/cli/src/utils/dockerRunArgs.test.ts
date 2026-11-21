@@ -26,6 +26,7 @@ const FIXED_INPUT = {
   // flip between linux/amd64 and linux/arm64 depending on the host running
   // the test).
   platform: "linux/amd64",
+  hostEnv: {},
 };
 
 describe("buildDockerRunArgs", () => {
@@ -68,12 +69,46 @@ describe("buildDockerRunArgs", () => {
     `);
   });
 
+  it("forwards the host's render-network restriction into the container only when it is set", () => {
+    const envArgs = (hostEnv: Record<string, string | undefined>) => {
+      const args = buildDockerRunArgs({ ...FIXED_INPUT, hostEnv, options: BASE });
+      const beforeImage = args.slice(0, args.indexOf(FIXED_INPUT.imageTag));
+      return beforeImage.filter((_, i) => beforeImage[i - 1] === "-e");
+    };
+    expect(
+      envArgs({
+        PRODUCER_RESTRICT_PAGE_NETWORK: "Yes",
+        PRODUCER_NON_PUBLIC_CIDRS: "192.160.0.0/16,fd00::/8",
+      }),
+    ).toEqual([
+      "PRODUCER_RESTRICT_PAGE_NETWORK=Yes",
+      "PRODUCER_NON_PUBLIC_CIDRS=192.160.0.0/16,fd00::/8",
+    ]);
+    expect(envArgs({ PRODUCER_RESTRICT_PAGE_NETWORK: "maybe" })).toEqual([
+      "PRODUCER_RESTRICT_PAGE_NETWORK=maybe",
+    ]);
+    expect(envArgs({})).toEqual([]);
+    expect(envArgs({ PRODUCER_RESTRICT_PAGE_NETWORK: " ", PRODUCER_NON_PUBLIC_CIDRS: "" })).toEqual(
+      [],
+    );
+  });
+
   it("tells the container its output reaches a terminal only when the host's stdout is one", () => {
     const flags = (hostStdoutIsTty?: boolean) =>
       buildDockerRunArgs({ ...FIXED_INPUT, hostStdoutIsTty, options: BASE }).slice(0, 4);
     expect(flags(true)).toEqual(["run", "--rm", "-e", "HYPERFRAMES_STDOUT_IS_TTY=1"]);
     expect(flags(false)).toEqual(["run", "--rm", "--platform", "linux/amd64"]);
     expect(flags(undefined)).toEqual(["run", "--rm", "--platform", "linux/amd64"]);
+  });
+
+  it("forwards --chroma-subsampling only for 4:4:4, keeping the default argv unchanged", () => {
+    const args = (chromaSubsampling?: "420" | "444") =>
+      buildDockerRunArgs({ ...FIXED_INPUT, options: { ...BASE, chromaSubsampling } });
+    const at = args("444").indexOf("--chroma-subsampling");
+    expect(at).toBeGreaterThan(-1);
+    expect(args("444")[at + 1]).toBe("444");
+    expect(args("420")).toEqual(args(undefined));
+    expect(args("420")).not.toContain("--chroma-subsampling");
   });
 
   it("omits --workers when auto sizing should happen inside the container", () => {
@@ -493,6 +528,19 @@ describe("buildDockerRunArgs", () => {
   it("omits --no-page-side-compositing when pageSideCompositing is not explicitly false", () => {
     const args = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
     expect(args).not.toContain("--no-page-side-compositing");
+  });
+
+  it("passes the host's refusal of outside files into the container", () => {
+    const refused = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, refuseOutsideFiles: true },
+    });
+    expect(refused.indexOf("--refuse-outside-files")).toBeGreaterThan(
+      refused.indexOf(FIXED_INPUT.imageTag),
+    );
+    expect(
+      buildDockerRunArgs({ ...FIXED_INPUT, options: { ...BASE, refuseOutsideFiles: false } }),
+    ).toEqual(buildDockerRunArgs({ ...FIXED_INPUT, options: BASE }));
   });
 
   // Regression for #1193: an arm64 host (Apple Silicon) was being pinned to

@@ -1,5 +1,5 @@
 import { RULER_H, CLIP_Y, TRACK_H, type TimelineRowGeometry } from "./timelineLayout";
-import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
+import { rectsOverlap, type MarqueeSelectionMode, type Rect } from "../../utils/marqueeGeometry";
 import { queryTimelineClipIndex, type TimelineClipIndex } from "../lib/timelineClipIndex";
 import type { TimelineElement } from "../store/playerStore";
 
@@ -84,10 +84,10 @@ export function getTimelineClipRect(
 }
 
 export interface MarqueeSelectionResult {
-  /** Every clip id the marquee currently covers (plus the additive base). */
+  /** The marquee's hits, unioned with or removed from the base selection. */
   ids: Set<string>;
   /** The last marquee-hit clip in element order — the primary selection.
-   *  Null when the marquee covers nothing new (caller keeps its current primary). */
+   *  Null when the marquee selects nothing new (caller keeps its current primary). */
   primaryId: string | null;
 }
 
@@ -125,9 +125,16 @@ export function getMarqueeClipCandidates(input: {
   return candidates;
 }
 
+/** The primary after a subtract: the pre-drag primary if it survived, else any survivor. */
+export function survivingPrimary(ids: Set<string>, basePrimary: string | null): string | null {
+  if (basePrimary && ids.has(basePrimary)) return basePrimary;
+  for (const id of ids) return id;
+  return null;
+}
+
 /**
  * Live marquee selection: every clip whose rendered rect intersects the marquee.
- * `baseSelection` (shift/cmd-additive) is unioned in but never affects primaryId.
+ * `baseSelection` gains the hits in `add` mode and loses them in `subtract` mode.
  */
 export function computeMarqueeSelection(input: {
   clips: MarqueeClipInput[];
@@ -136,12 +143,17 @@ export function computeMarqueeSelection(input: {
   contentOrigin: number;
   marquee: Rect;
   baseSelection?: Iterable<string>;
+  mode?: MarqueeSelectionMode;
 }): MarqueeSelectionResult {
+  const subtract = input.mode === "subtract";
   const ids = new Set<string>(input.baseSelection ?? []);
   let primaryId: string | null = null;
   for (const clip of input.clips) {
     const rect = getTimelineClipRect(clip, input.rowGeometry, input.pps, input.contentOrigin);
-    if (rect && rectsOverlap(rect, input.marquee)) {
+    if (!rect || !rectsOverlap(rect, input.marquee)) continue;
+    if (subtract) {
+      ids.delete(clip.id);
+    } else {
       ids.add(clip.id);
       primaryId = clip.id;
     }

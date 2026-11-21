@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
+import { mediaIdPathSegment } from "@hyperframes/engine";
 import { planFileSha256, recomputePlanHashFromPlanDir } from "../render/stages/freezePlan.js";
 import { canonicalJsonStringify, sha256Hex } from "../render/stages/planHash.js";
 import { chunkAudioSlicePath } from "./chunkAudio.js";
@@ -776,13 +777,13 @@ describe("Plan v2 manifest", () => {
     });
   }
 
-  it("rejects an extracted video identifier that escapes the video-frame root", () => {
+  it("reads an extracted video identifier with parent segments only inside the video-frame root", () => {
     const root = tempPath("hf-plan-v2-unsafe-video-id-");
     const v1 = createV1Plan(root, { video: true, videoId: "../escape" });
+    const frameRoot = join(v1, "video-frames", mediaIdPathSegment("../escape"));
 
-    expect(() => createPlanV2FromV1(v1, join(root, "v2"))).toThrow(
-      'unsafe extracted video id: "../escape"',
-    );
+    expect(() => createPlanV2FromV1(v1, join(root, "v2"))).toThrow(frameRoot);
+    expect(existsSync(join(v1, "escape"))).toBe(false);
   });
 
   it("falls back to the full source frame pack when video metadata is absent", () => {
@@ -1004,35 +1005,39 @@ describe("Plan v2 artifact publisher", () => {
     });
   });
 
-  it("falls back to an atomic copy when hard-linking is unavailable", async () => {
-    const root = tempPath("hf-plan-v2-publisher-copy-");
-    const v1 = createV1Plan(root);
-    const destination = join(root, "v2");
-    const publisher = new LocalPlanV2ArtifactPublisher(destination, {
-      linkFile() {
-        throw Object.assign(new Error("cross-device link"), { code: "EXDEV" });
-      },
-    });
-    const manifest = await publishPlanV2FromV1(v1, publisher);
-    const artifact = manifest.artifacts.find(
-      (candidate) => candidate.path === "compiled/asset.txt",
-    );
-    if (artifact === undefined) throw new Error("test fixture is missing compiled/asset.txt");
-    const sourcePath = join(v1, artifact.path);
-    const blobPath = join(
-      destination,
-      "artifacts",
-      "sha256",
-      artifact.sha256.slice(0, 2),
-      artifact.sha256,
-    );
+  // fails without the fix: EISDIR (Windows on a Google Drive folder) failed the publish instead of copying.
+  it.each(["EXDEV", "EISDIR", "ENOSYS", "EOPNOTSUPP"])(
+    "falls back to an atomic copy when hard-linking fails with %s",
+    async (code) => {
+      const root = tempPath("hf-plan-v2-publisher-copy-");
+      const v1 = createV1Plan(root);
+      const destination = join(root, "v2");
+      const publisher = new LocalPlanV2ArtifactPublisher(destination, {
+        linkFile() {
+          throw Object.assign(new Error("hard links are not supported"), { code });
+        },
+      });
+      const manifest = await publishPlanV2FromV1(v1, publisher);
+      const artifact = manifest.artifacts.find(
+        (candidate) => candidate.path === "compiled/asset.txt",
+      );
+      if (artifact === undefined) throw new Error("test fixture is missing compiled/asset.txt");
+      const sourcePath = join(v1, artifact.path);
+      const blobPath = join(
+        destination,
+        "artifacts",
+        "sha256",
+        artifact.sha256.slice(0, 2),
+        artifact.sha256,
+      );
 
-    expect(readFileSync(blobPath)).toEqual(readFileSync(sourcePath));
-    expect({ dev: statSync(blobPath).dev, ino: statSync(blobPath).ino }).not.toEqual({
-      dev: statSync(sourcePath).dev,
-      ino: statSync(sourcePath).ino,
-    });
-  });
+      expect(readFileSync(blobPath)).toEqual(readFileSync(sourcePath));
+      expect({ dev: statSync(blobPath).dev, ino: statSync(blobPath).ino }).not.toEqual({
+        dev: statSync(sourcePath).dev,
+        ino: statSync(sourcePath).ino,
+      });
+    },
+  );
 
   it("produces byte-identical local CAS output through both publication paths", async () => {
     const root = tempPath("hf-plan-v2-publisher-parity-");

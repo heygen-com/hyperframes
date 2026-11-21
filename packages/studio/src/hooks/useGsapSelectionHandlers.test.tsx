@@ -182,3 +182,20 @@ describe("useGsapSelectionHandlers retime settlement", () => {
     withSelection.unmount();
   });
 });
+
+describe("useGsapSelectionHandlers on an opaque frame's selection", () => {
+  it("reads a moved element's offset mark off the description, not the tag-only stand-in", async () => {
+    const selection = {
+      ...makeSelection(),
+      handle: "0123456789abcdef:1",
+      dataAttributes: { "hf-studio-path-offset": "" },
+    } as DomEditSelection;
+    const handleDomManualEditsReset = vi.fn().mockResolvedValue(undefined);
+    const rendered = renderHandlers(
+      makeParams({ domEditSelection: selection, handleDomManualEditsReset }),
+    );
+    await act(() => rendered.handlers().handleGsapAddAnimation("to"));
+    expect(handleDomManualEditsReset).toHaveBeenCalledWith(selection);
+    rendered.unmount();
+  });
+});

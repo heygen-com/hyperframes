@@ -1,4 +1,4 @@
-import { cpus, totalmem } from "os";
+import { availableParallelism, totalmem } from "os";
 import { getHeapStatistics } from "v8";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import {
@@ -8,6 +8,7 @@ import {
   distributeFrames,
   expectedFramesForTask,
   flagSilentWorkerExits,
+  formatPoolFailure,
   formatWorkerFailure,
   isFfmpegInfrastructureFailure,
   isPoolFatalWorkerFailure,
@@ -132,7 +133,12 @@ describe("calculateOptimalWorkers", () => {
 
 vi.mock("os", async (importOriginal) => {
   const os = await importOriginal<typeof import("os")>();
-  return { ...os, default: os, cpus: vi.fn(os.cpus), totalmem: vi.fn(os.totalmem) };
+  return {
+    ...os,
+    default: os,
+    availableParallelism: vi.fn(os.availableParallelism),
+    totalmem: vi.fn(os.totalmem),
+  };
 });
 vi.mock("v8", async (importOriginal) => {
   const v8 = await importOriginal<typeof import("v8")>();
@@ -141,16 +147,14 @@ vi.mock("v8", async (importOriginal) => {
 
 describe("computeWorkerSizing", () => {
   afterEach(() => {
-    vi.mocked(cpus).mockRestore();
+    vi.mocked(availableParallelism).mockRestore();
     vi.mocked(totalmem).mockRestore();
     vi.mocked(getHeapStatistics).mockRestore();
   });
 
   // The field case: a 24GB 14-core Mac, Node's default ~4GB heap, a long 1080x1920 project.
   it("never auto-picks more workers than the V8 heap can feed", () => {
-    vi.mocked(cpus).mockReturnValue(
-      Array.from({ length: 14 }, () => ({}) as ReturnType<typeof cpus>[number]),
-    );
+    vi.mocked(availableParallelism).mockReturnValue(14);
     vi.mocked(totalmem).mockReturnValue(24 * 1024 ** 3);
     vi.mocked(getHeapStatistics).mockReturnValue({
       heap_size_limit: 2096 * 1024 ** 2,
@@ -168,9 +172,7 @@ describe("computeWorkerSizing", () => {
   });
 
   it("keeps the desktop app's 4,192 MB heap at the old per-worker figure (#5149)", () => {
-    vi.mocked(cpus).mockReturnValue(
-      Array.from({ length: 14 }, () => ({}) as ReturnType<typeof cpus>[number]),
-    );
+    vi.mocked(availableParallelism).mockReturnValue(14);
     vi.mocked(totalmem).mockReturnValue(24 * 1024 ** 3);
     vi.mocked(getHeapStatistics).mockReturnValue({
       heap_size_limit: 4192 * 1024 ** 2,
@@ -197,9 +199,7 @@ describe("computeWorkerSizing", () => {
   });
 
   it("sizes Apple-GPU disk capture by its own heap and core budget", () => {
-    vi.mocked(cpus).mockReturnValue(
-      Array.from({ length: 14 }, () => ({}) as ReturnType<typeof cpus>[number]),
-    );
+    vi.mocked(availableParallelism).mockReturnValue(14);
     vi.mocked(totalmem).mockReturnValue(24 * 1024 ** 3);
     vi.mocked(getHeapStatistics).mockReturnValue({
       heap_size_limit: 4192 * 1024 ** 2,
@@ -285,6 +285,35 @@ describe("worker failure diagnostics", () => {
       "[Browser:HTTP404] GET https://cdn.example.com/missing.png resource=image Not Found",
       "[FrameCapture:ERROR] page.goto failed mode=screenshot timeoutMs=60000 elapsedMs=60001 url=http://127.0.0.1:4173/index.html error=timeout",
     ]);
+  });
+
+  it("names the worker that failed and counts the peers it stopped", () => {
+    const worker = (workerId: number, failure: CaptureFailure): WorkerResult => ({
+      workerId,
+      framesCaptured: 0,
+      startFrame: 0,
+      endFrame: 30,
+      durationMs: 10,
+      error: failure.message,
+      failure,
+    });
+    const stopped = (workerId: number) =>
+      worker(
+        workerId,
+        new CaptureFailure({ kind: "cancelled", message: "Parallel worker cancelled" }),
+      );
+    const cause = worker(3, new CaptureFailure({ kind: "io", message: "disk is full" }));
+
+    expect(formatPoolFailure([stopped(0), stopped(1), cause, stopped(4)])).toBe(
+      "Worker 3: disk is full (3 other workers were stopped after this failure)",
+    );
+    expect(formatPoolFailure([cause, stopped(4)])).toBe(
+      "Worker 3: disk is full (1 other worker was stopped after this failure)",
+    );
+    expect(formatPoolFailure([cause])).toBe("Worker 3: disk is full");
+    expect(formatPoolFailure([stopped(0), stopped(1)])).toBe(
+      "Worker 0: Parallel worker cancelled; Worker 1: Parallel worker cancelled",
+    );
   });
 
   it("adds compact diagnostics to the worker failure message", () => {

@@ -1,7 +1,7 @@
 import {
   DEFAULT_CONFIG,
+  assertPublicHttpsUrl,
   buildZeroDurationDiagnostic,
-  isTransientBrowserError,
   downloadToTemp,
   evaluateHfDiagnostic,
   extractMediaMetadata,
@@ -10,6 +10,9 @@ import {
   isHdrColorSpace,
   sdrCanvasColourFilters,
 } from "@hyperframes/engine";
+import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { projectFolder } from "../utils/projectRecords.js";
+import { screenshotOnceMore } from "../utils/screenshotOnceMore.js";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import type { Page } from "puppeteer-core";
 import { reportArtifacts } from "../utils/toolContext.js";
@@ -44,15 +47,16 @@ import {
 import { defineCommand } from "../utils/defineCommand.js";
 import {
   existsSync,
+  lstatSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   mkdirSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { createStagingDir, replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { sumOf } from "../measure/media.js";
 import { resolve, join, relative, isAbsolute, basename, posix } from "node:path";
 import {
@@ -70,16 +74,24 @@ import {
 } from "../capture/captureCompositionFrame.js";
 import {
   firstFrameColourArgs,
+  exportClipWindow,
   hdrToSdrToneMapFilter,
-  isClipVisibleAt,
+  keyframeTransferArgs,
+  parseKeyframeTransfers,
+  type ToneMapFrameColour,
+  isClipOnScreenAt,
   isInClipWindow,
+  parseFpsWithDefault,
   MEDIA_RENDER_ID_ATTR,
   parseFirstFrameColour,
+  readsKeyframeTransfers,
   readElementRateSpec,
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
+  terminalText,
 } from "@hyperframes/core";
+import { parseHTML } from "linkedom";
 import { resolveProject } from "../utils/project.js";
 import {
   definitiveEntryMismatchComposition,
@@ -87,6 +99,7 @@ import {
   lintProject,
 } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
+import { geminiKeyName, noteProjectProviderKey } from "../utils/dotEnv.js";
 import { normalizeErrorMessage, atStep } from "../utils/errorMessage.js";
 import { describeSharpLoadFailure } from "../utils/sharpLoadFailure.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
@@ -102,6 +115,7 @@ import {
   localVideos,
   probeHeldVideo,
   projectLocalFile,
+  projectVideoFile,
   type HeldVideoProbe,
 } from "./snapshotHeldVideos.js";
 import type { Example } from "./_examples.js";
@@ -246,15 +260,18 @@ export function resolveSnapshotVideoFrameTime(input: {
   relativeTime: number;
   sourceDuration: number;
   compositionDuration: number;
+  fps?: number;
 }): number | null {
   const { globalTime, clipStart, clipDuration, sourceDuration, compositionDuration } = input;
+  const fps = input.fps ?? 30;
   const clipEnd = clipStart + clipDuration;
-  if (!isClipVisibleAt(globalTime, clipStart, clipEnd, compositionDuration)) return null;
+  if (!isClipOnScreenAt(globalTime, clipStart, clipEnd, fps, compositionDuration)) return null;
+  const onFrames = exportClipWindow(clipStart, clipEnd, fps);
   const relativeTime =
     globalTime < clipStart ? Math.max(0, input.relativeTime) : input.relativeTime;
   if (relativeTime < 0) return null;
   const pastSource = sourceDuration > 0 && relativeTime >= sourceDuration;
-  if (isInClipWindow(globalTime, clipStart, clipEnd) && !pastSource) return relativeTime;
+  if (isInClipWindow(globalTime, onFrames.start, onFrames.end) && !pastSource) return relativeTime;
 
   const sourceEnd = sourceDuration > 0 ? sourceDuration : relativeTime;
   return Math.max(0, Math.min(relativeTime, sourceEnd - 1 / 30));
@@ -308,6 +325,7 @@ export function activeVideoAt(
   candidate: SnapshotVideoCandidate,
   time: number,
   compositionDuration: number,
+  fps: number,
 ) {
   const start = resolveSnapshotVideoClipStart(candidate);
   const playbackRate = resolveSnapshotVideoRateSpec(candidate);
@@ -333,6 +351,7 @@ export function activeVideoAt(
     relativeTime: relTime,
     sourceDuration: candidate.srcDuration,
     compositionDuration,
+    fps,
   });
   return frameTime === null
     ? null
@@ -353,17 +372,6 @@ interface SnapshotCompositePage {
     quality: number;
     clip: { x: number; y: number; width: number; height: number };
   }): Promise<Uint8Array>;
-}
-
-export async function screenshotOnceMore<T>(shoot: () => Promise<T>): Promise<T> {
-  try {
-    return await shoot();
-  } catch (err) {
-    if (!isTransientBrowserError(err)) throw err;
-    return shoot().catch(() => {
-      throw err;
-    });
-  }
 }
 
 /** Recapture canvas composites once the decoded video overlays have been injected. */
@@ -405,7 +413,11 @@ export function containingSourceFrameIndex(timestamps: readonly number[], time: 
   return index;
 }
 
-class FrameExtractError extends Error {}
+class FrameExtractError extends Error {
+  constructor(message: string) {
+    super(terminalText(message));
+  }
+}
 
 const lastLine = (text: string) => text.trim().split("\n").at(-1) ?? "";
 
@@ -419,14 +431,38 @@ const processStderr = (error: unknown) =>
     ? error.stderr
     : "";
 
-const REMOTE_VIDEO_DIR = join(tmpdir(), "hyperframes-snapshot-media");
+/** `parent`'s folder for remote clips kept across runs, or a fresh one when that folder is not this user's alone. */
+export function privateMediaDir(parent: string): string {
+  const dir = join(parent, `hyperframes-snapshot-media-${process.getuid?.() ?? "u"}`);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(dir);
+  const ours =
+    stat.isDirectory() &&
+    (process.platform === "win32" ||
+      (stat.uid === process.getuid?.() && (stat.mode & 0o077) === 0));
+  if (ours) return dir;
+  const staging = createStagingDir(parent, "hyperframes-snapshot-media-");
+  process.once("exit", () => rmSync(staging, { recursive: true, force: true }));
+  return staging;
+}
 
-/** A local copy of a remote clip, since an FFmpeg built without network protocols (the Desktop app's) reads no URL. */
-export async function remoteVideoInput(url: string, download = downloadToTemp): Promise<string> {
+let remoteVideoDir: string | undefined;
+
+/** A local copy of a remote clip, or null: FFmpeg never gets the URL, since it would follow redirects unchecked. */
+export async function remoteVideoInput(
+  url: string,
+  download = downloadToTemp,
+): Promise<string | null> {
   try {
-    return await download(url, REMOTE_VIDEO_DIR, FFMPEG_EXTRACT_TIMEOUT_MS);
+    assertPublicHttpsUrl(url);
   } catch {
-    return url;
+    return null;
+  }
+  try {
+    remoteVideoDir ??= privateMediaDir(tmpdir());
+    return await download(url, remoteVideoDir, FFMPEG_EXTRACT_TIMEOUT_MS);
+  } catch {
+    return null;
   }
 }
 
@@ -461,7 +497,8 @@ export async function probeContainingSourceFrameSeek(
       const { stdout } = await runCancellableProcess(
         ffprobe,
         [
-          ...["-v", "error", "-select_streams", "v:0", "-read_intervals", readIntervals],
+          ...["-v", "error", ...mediaInputFormatArgs(ffprobe, videoPath)],
+          ...["-select_streams", "v:0", "-read_intervals", readIntervals],
           ...["-show_entries", entries, "-of", "json", "--", videoPath],
         ],
         { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 32 * 1024 * 1024 },
@@ -585,7 +622,14 @@ async function probeSeekLanding(
     const { stdout } = await runCancellableProcess(
       ffmpeg,
       [
-        ...["-v", "error", "-copyts", "-noaccurate_seek", "-ss", String(seek), "-i", videoPath],
+        ...[
+          "-v",
+          "error",
+          "-copyts",
+          "-noaccurate_seek",
+          ...mediaInputFormatArgs(ffmpeg, videoPath),
+        ],
+        ...["-ss", String(seek), "-i", videoPath],
         ...["-map", "0:v:0", "-c", "copy", "-frames:v", "1", "-f", "framecrc", "-"],
       ],
       { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 1024 * 1024 },
@@ -631,18 +675,29 @@ async function videoColour(ffmpegPath: string, videoPath: string) {
     metadata && isHdrColorSpace(metadata.colorSpace)
       ? hdrToSdrToneMapFilter(
           metadata.colorSpace ?? {},
-          parseFirstFrameColour(
-            (
-              await runFfmpegOnce(
-                ffmpegPath,
-                firstFrameColourArgs(videoPath),
-                FFMPEG_EXTRACT_TIMEOUT_MS,
-              )
-            ).stderr,
-          ),
+          await frameColour(ffmpegPath, videoPath, metadata.videoCodec),
         )
       : null;
   return { metadata, toneMap };
+}
+
+async function frameColour(
+  ffmpegPath: string,
+  videoPath: string,
+  codec: string,
+): Promise<ToneMapFrameColour> {
+  const read = (args: string[]) =>
+    runFfmpegOnce(
+      ffmpegPath,
+      [...mediaInputFormatArgs(ffmpegPath, videoPath), ...args],
+      FFMPEG_EXTRACT_TIMEOUT_MS,
+    );
+  const probe = await read(firstFrameColourArgs(videoPath));
+  const first = parseFirstFrameColour(probe.stderr);
+  if (probe.code !== 0 || !readsKeyframeTransfers(first)) return first;
+  const keyframes = await read(keyframeTransferArgs(videoPath, codec));
+  const keyframeTransfers = keyframes.code === 0 ? parseKeyframeTransfers(keyframes.stderr) : [];
+  return { ...first, keyframeTransfers };
 }
 
 function frameFilters(
@@ -688,7 +743,7 @@ export async function extractVideoFrameToBuffer(
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
       if (seek.seek !== undefined) args.push("-ss", String(seek.seek));
-      args.push("-i", videoPath, "-map", "0:v:0");
+      args.push(...mediaInputFormatArgs(ffmpegPath, videoPath), "-i", videoPath, "-map", "0:v:0");
       const filters = frameFilters(seek.select, displayedPixels, metadata, toneMapFilter);
       if (filters.length > 0) args.push("-vf", filters.join(","));
       args.push("-frames:v", "1", "-q:v", "2", "-y", outPath);
@@ -749,7 +804,14 @@ export async function decodeFramesInOnePass(
       const filters = [selectFirstFrameAfterEach(byTime.map(([offset]) => offset)), ...rest];
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
-      args.push("-ss", String(start), "-i", videoPath, "-map", "0:v:0", "-vf", filters.join(","));
+      args.push(
+        ...mediaInputFormatArgs(ffmpegPath, videoPath),
+        "-ss",
+        String(start),
+        "-i",
+        videoPath,
+      );
+      args.push("-map", "0:v:0", "-vf", filters.join(","));
       args.push("-fps_mode", "passthrough", "-frames:v", String(byTime.length));
       args.push("-q:v", "2", "-y", join(tmp, "%d.png"));
       return args;
@@ -794,7 +856,7 @@ export async function frameOrWarn(
   } catch (error) {
     if (!(error instanceof FrameExtractError)) throw error;
     warnings.push(error.message);
-    console.warn(`   ${c.warn("⚠")} ${error.message}`);
+    console.warn(`   ${c.warn("⚠")} ${terminalText(error.message)}`);
     return null;
   }
 }
@@ -902,6 +964,12 @@ export function computeSnapshotTimes(
   return { times: times.map(round), appendedTail: false };
 }
 
+function compositionFps(html: string): number {
+  const root = parseHTML(html).document.querySelector("[data-composition-id]");
+  const declared = parseFpsWithDefault(root?.getAttribute("data-fps") ?? undefined);
+  return declared.ok ? declared.value.num / declared.value.den : 30;
+}
+
 export function serveCapturePage(projectDir: string, html: string, proxy: boolean | undefined) {
   return serveStaticProjectHtml(projectDir, html, undefined, [], proxy === true);
 }
@@ -969,17 +1037,18 @@ export async function captureSnapshots(
     : null;
   if (swallowed) {
     warnings.push(swallowed);
-    console.warn(`   ${c.warn("⚠")} ${swallowed}`);
+    console.warn(`   ${c.warn("⚠")} ${terminalText(swallowed)}`);
   }
   const server = await serveCapturePage(projectDir, html, opts.autoProxy);
+  const fps = compositionFps(html);
   const heldVideoIds = localVideoRenderIds(html);
   const heldProbes = new Map<string, Promise<HeldVideoProbe>>();
-  const heldHints = await heldVideoHints(projectDir, localVideos(html), heldProbes);
 
   const savedPaths: string[] = [];
   let pairSheetFailure: string | null = null;
 
   try {
+    const heldHints = await heldVideoHints(projectDir, localVideos(html), heldProbes);
     const {
       browser: chromeBrowser,
       page,
@@ -1032,7 +1101,7 @@ export async function captureSnapshots(
         if (fontReport.unused.length > 0) parts.push(`${fontReport.unused.length} unused`);
         log(`\n   ${c.dim("Fonts:")} ${parts.join(", ")}`);
         if (fontReport.errored.length > 0) {
-          log(`   ${c.error("Fonts FAILED:")} ${fontReport.errored.join(", ")}`);
+          log(`   ${c.error("Fonts FAILED:")} ${terminalText(fontReport.errored.join(", "))}`);
         }
       }
 
@@ -1100,11 +1169,11 @@ export async function captureSnapshots(
             });
       if (range)
         log(
-          `   Sampling ${positions.length} frames within ${range[0]}–${range[1]}s${opts.composition ? ` (composition ${opts.composition})` : ""}`,
+          `   Sampling ${positions.length} frames within ${range[0]}–${range[1]}s${opts.composition ? ` (composition ${terminalText(opts.composition)})` : ""}`,
         );
       if (review)
         log(
-          `   Review: ${review.beats.length} beat(s) and ${review.seams.length} seam(s) within ${review.window[0]}–${review.window[1]}s${opts.composition ? ` (composition ${opts.composition})` : ""}`,
+          `   Review: ${review.beats.length} beat(s) and ${review.seams.length} seam(s) within ${review.window[0]}–${review.window[1]}s${opts.composition ? ` (composition ${terminalText(opts.composition)})` : ""}`,
         );
       if (appendedTail) {
         log(
@@ -1120,10 +1189,13 @@ export async function captureSnapshots(
           : null;
 
       const snapshotDir = opts.outputDir ?? artifactDirectory(projectDir, "snapshots");
-      mkdirSync(snapshotDir, { recursive: true });
+      if (!projectFolder(projectDir, snapshotDir))
+        throw new Error(
+          `${snapshotDir} is reached through a link or a file; remove it and run again`,
+        );
       if (!opts.keep) replaced.push(...clearEarlierStills(snapshotDir));
       if (replaced.length > 0) {
-        log(`   ${c.warn("⚠")} ${clearedNote(replaced.length, snapshotDir)}`);
+        log(`   ${c.warn("⚠")} ${terminalText(clearedNote(replaced.length, snapshotDir))}`);
       }
 
       // Chrome-headless ignores programmatic <video>.currentTime writes, so
@@ -1165,11 +1237,31 @@ export async function captureSnapshots(
         );
       }
       const alphaDecoderCache = new Map<string, Promise<boolean>>();
-      const remoteCopies = new Map<string, Promise<string>>();
-      const localCopy = (href: string): Promise<string> => {
-        const copy = remoteCopies.get(href) ?? remoteVideoInput(href);
+      const remoteCopies = new Map<string, Promise<string | null>>();
+      const leaveOutUnreadable = (href: string) => (path: string | null) => {
+        if (!path) warnings.push(`Remote video from ${new URL(href).host} could not be downloaded`);
+        return path;
+      };
+      const localCopy = (href: string): Promise<string | null> => {
+        const copy =
+          remoteCopies.get(href) ?? remoteVideoInput(href).then(leaveOutUnreadable(href));
         remoteCopies.set(href, copy);
         return copy;
+      };
+      const projectVideos = new Map<string, ReturnType<typeof projectVideoFile>>();
+      const checkedProjectVideo = (src: string): ReturnType<typeof projectVideoFile> => {
+        const known = projectVideos.get(src);
+        if (known) return known;
+        const checked = projectVideoFile(projectDir, src).then((project) => {
+          if (project?.refused) {
+            const message = `${relative(projectDir, project.file)} is not media: a document, a pipe or device, or a playlist naming files outside its folder`;
+            warnings.push(message);
+            console.warn(`   ${c.warn("⚠")} ${terminalText(message)}`);
+          }
+          return project;
+        });
+        projectVideos.set(src, checked);
+        return checked;
       };
       const shouldUseVp9AlphaDecoder = (filePath: string): Promise<boolean> => {
         if (!extractMediaMetadata) return Promise.resolve(false);
@@ -1271,7 +1363,7 @@ export async function captureSnapshots(
           );
           let unreadable = 0;
           const active = candidates.flatMap((candidate) => {
-            const video = activeVideoAt(candidate, time, duration);
+            const video = activeVideoAt(candidate, time, duration, fps);
             if (!video) return [];
             if (!candidate.id || !candidate.src) {
               unreadable += 1;
@@ -1285,20 +1377,24 @@ export async function captureSnapshots(
             active,
             VIDEO_FRAME_EXTRACT_CONCURRENCY,
             async (v) => {
-              // Prefer the project-local file; remote http(s) clips go to FFmpeg directly,
+              // Prefer the project-local file; remote http(s) clips go to FFmpeg as a downloaded copy,
               // since headless Chrome can't seek them and they would render blank.
               let ffmpegInput: string | null = null;
               let inputIsLocal = false;
-              const projectFile = projectLocalFile(projectDir, v.src);
-              if (projectFile) {
-                ffmpegInput = projectFile;
+              const project = await checkedProjectVideo(v.src);
+              if (project?.refused) {
+                unreadVideoFrames += 1;
+                return null;
+              }
+              if (project) {
+                ffmpegInput = project.file;
                 inputIsLocal = true;
               } else {
                 try {
                   const url = new URL(v.src);
                   if (url.protocol === "http:" || url.protocol === "https:") {
                     ffmpegInput = await localCopy(url.href);
-                    inputIsLocal = ffmpegInput !== url.href;
+                    inputIsLocal = true;
                   }
                 } catch {
                   /* unresolvable src (e.g. blob:, data:) — skip */
@@ -1315,7 +1411,7 @@ export async function captureSnapshots(
                   (opts.zoom ? (opts.zoomScale ?? DEFAULT_ZOOM_SCALE) : v.devicePixelRatio),
               );
               const wantAt = (t: number): FrameWant | null => {
-                const shown = activeVideoAt(v, t, duration);
+                const shown = activeVideoAt(v, t, duration, fps);
                 if (!shown) return null;
                 const holdLastFrame =
                   shown.srcDuration > 0 && shown.relTime >= shown.srcDuration - 1;
@@ -1470,7 +1566,7 @@ export async function captureSnapshots(
                 pairSheetFailure = describeSharpLoadFailure(err);
                 if (!pairSheetFailure) throw err;
                 console.error(
-                  `   ${c.warn("⚠")} Reference pair sheets skipped: ${pairSheetFailure}`,
+                  `   ${c.warn("⚠")} Reference pair sheets skipped: ${terminalText(pairSheetFailure)}`,
                 );
               }
             }
@@ -1564,7 +1660,7 @@ function warnUnsettledImages(images: UnsettledImages, time: number, warnings: st
     if (sources.length === 0) continue;
     const message = `${sources.length} image(s) ${what} at ${time}s, so the frame may be missing them: ${sources.join(", ")}`;
     warnings.push(message);
-    console.warn(`   ${c.warn("⚠")} ${message}`);
+    console.warn(`   ${c.warn("⚠")} ${terminalText(message)}`);
   }
 }
 
@@ -1583,7 +1679,9 @@ export async function selfClosedMediaWarning(source: string): Promise<string | n
 }
 
 function warnSnapshotsNotRecorded(error: unknown): undefined {
-  console.warn(`   ${c.warn("⚠")} Snapshots were not recorded: ${normalizeErrorMessage(error)}`);
+  console.warn(
+    `   ${c.warn("⚠")} Snapshots were not recorded: ${terminalText(normalizeErrorMessage(error))}`,
+  );
   return undefined;
 }
 
@@ -1608,8 +1706,8 @@ async function recordSnapshotArtifacts(
   ).catch(warnSnapshotsNotRecorded);
   const record = records?.[0];
   if (!record) return false;
-  log(`   Revision: ${record.revision ?? "none"} (${record.attribution})`);
-  log(`   State: ${join(projectDir, ".hyperframes", "video-state.json")}`);
+  log(`   Revision: ${terminalText(`${record.revision ?? "none"} (${record.attribution})`)}`);
+  log(`   State: ${terminalText(join(projectDir, ".hyperframes", "video-state.json"))}`);
   return true;
 }
 
@@ -1681,19 +1779,21 @@ function printReview(
   log: (message: string) => void,
 ): void {
   const beats = review.plan.beats.map(
-    (beat) => `${formatSnapshotTimestamp(beat.time)} ${beat.label}`,
+    (beat) => `${formatSnapshotTimestamp(beat.time)} ${terminalText(beat.label)}`,
   );
-  log(`   Beat sheet (settled frame per scene): ${sheets.beats.join(", ") || "none"}`);
+  log(
+    `   Beat sheet (settled frame per scene): ${terminalText(sheets.beats.join(", ")) || "none"}`,
+  );
   log(`     ${c.dim(beats.join(" · "))}`);
   review.plan.seams.forEach((seam, index) => {
-    const sides = `${seam.from ?? "start"} -> ${seam.to ?? "end"}`;
-    const strip = sheets.seams[index] ?? "not written";
+    const sides = terminalText(`${seam.from ?? "start"} -> ${seam.to ?? "end"}`);
+    const strip = terminalText(sheets.seams[index] ?? "not written");
     log(`   Seam ${index + 1} at ${formatSnapshotTimestamp(seam.time)} (${sides}): ${strip}`);
   });
   log(
-    `   Phone sheet (beats at ${REVIEW_PHONE_WIDTH} px wide): ${sheets.phone.join(", ") || "none"}`,
+    `   Phone sheet (beats at ${REVIEW_PHONE_WIDTH} px wide): ${terminalText(sheets.phone.join(", ")) || "none"}`,
   );
-  for (const note of review.plan.notes) log(`   ${c.dim(note)}`);
+  for (const note of review.plan.notes) log(`   ${c.dim(terminalText(note))}`);
 }
 
 export default defineCommand({
@@ -1715,7 +1815,7 @@ export default defineCommand({
     },
     frames: {
       type: "string",
-      description: "Number of evenly-spaced frames to capture (default: 5)",
+      description: "Number of evenly-spaced frames to capture",
       default: "5",
     },
     at: {
@@ -1735,7 +1835,7 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: `Ms to wait for the composition to become render-ready, and for each still's seek to settle, up to 170 s (default: ${RENDER_READY_TIMEOUT_MS})`,
+      description: `Ms to wait for the composition to become render-ready, and for each still's seek to settle, up to 170 s`,
       default: String(RENDER_READY_TIMEOUT_MS),
     },
     angle: {
@@ -1746,7 +1846,7 @@ export default defineCommand({
     end: {
       type: "boolean",
       description:
-        "Always include a readable end-of-timeline frame (default: true). Pass --no-end to capture only your exact --at times.",
+        "Always include a readable end-of-timeline frame. Pass --no-end to capture only your exact --at times.",
       default: true,
     },
     keep: {
@@ -1762,7 +1862,7 @@ export default defineCommand({
     },
     "zoom-scale": {
       type: "string",
-      description: "Device-scale-factor density for --zoom crops (default: 3)",
+      description: "Device-scale-factor density for --zoom crops",
       default: "3",
     },
     against: {
@@ -1836,7 +1936,7 @@ export default defineCommand({
       log(c.error("  Aborting snapshot because the default index.html entry is blank."));
       if (candidate && posix.basename(candidate) === "index.html") {
         const candidateDir = posix.dirname(candidate);
-        const target = `<project>/${candidateDir}`;
+        const target = terminalText(`<project>/${candidateDir}`);
         log(
           c.dim(
             `  Move or mount the authored file, or snapshot its directory directly: hyperframes snapshot ${target}. Only use the directory form when its assets are self-contained under that directory; otherwise mount it from the project root.`,
@@ -1845,7 +1945,7 @@ export default defineCommand({
       } else if (candidate) {
         log(
           c.dim(
-            `  Move or mount ${candidate} as a project index.html before snapshotting; snapshot accepts project directories, not individual HTML files.`,
+            `  Move or mount ${terminalText(candidate)} as a project index.html before snapshotting; snapshot accepts project directories, not individual HTML files.`,
           ),
         );
       }
@@ -1864,7 +1964,7 @@ export default defineCommand({
     const zoomScale = parseZoomScale(args["zoom-scale"]);
     const against = args.against ? resolve(String(args.against)) : undefined;
     if (against && !existsSync(against))
-      fail(`${c.error("✗")} --against video not found: ${against}`);
+      fail(`${c.error("✗")} --against video not found: ${terminalText(against)}`);
 
     const label = reviewMode
       ? "review frames (beats, seams, phone)"
@@ -1875,7 +1975,9 @@ export default defineCommand({
       camera && (camera.yaw !== 0 || camera.pitch !== 0)
         ? ` ${c.dim(`(angle yaw ${camera.yaw}° pitch ${camera.pitch}°)`)}`
         : "";
-    log(`${c.accent("◆")}  Capturing ${label} from ${c.accent(project.name)}${angleLabel}`);
+    log(
+      `${c.accent("◆")}  Capturing ${label} from ${c.accent(terminalText(project.name))}${angleLabel}`,
+    );
 
     let managedSnapshotDir: string | undefined;
     let exitCode = 0;
@@ -1916,19 +2018,19 @@ export default defineCommand({
         const short = onDisk.missing.length > 0;
         const mark = short ? c.error("✗") : c.success("◇");
         const count = short ? `${paths.length} of ${captured.paths.length}` : String(paths.length);
-        log(`\n${mark}  ${count} snapshots saved to ${snapshotDir}`);
+        log(`\n${mark}  ${count} snapshots saved to ${terminalText(snapshotDir)}`);
         for (const p of paths) {
-          log(`   ${p}`);
+          log(`   ${terminalText(p)}`);
         }
         if (short) {
-          const gone = onDisk.missing.map((path) => `\n   missing: ${path}`).join("");
+          const gone = onDisk.missing.map((path) => `\n   missing: ${terminalText(path)}`).join("");
           fail(
-            `${c.error("✗")} Only ${paths.length} of ${captured.paths.length} snapshots are on disk in ${snapshotDir}.${gone}`,
+            `${c.error("✗")} Only ${paths.length} of ${captured.paths.length} snapshots are on disk in ${terminalText(snapshotDir)}.${gone}`,
           );
         }
         if (captured.unreadVideoFrames > 0) {
           fail(
-            `${c.error("✗")} ${captured.unreadVideoFrames} video frame(s) could not be read, so those videos are black or stale in the snapshots saved to ${snapshotDir}.`,
+            `${c.error("✗")} ${captured.unreadVideoFrames} video frame(s) could not be read, so those videos are black or stale in the snapshots saved to ${terminalText(snapshotDir)}.`,
           );
         }
         if (against) {
@@ -1964,12 +2066,12 @@ export default defineCommand({
           reportArtifacts("snapshot", "contact-sheet", contactSheets);
           if (!captured.review) {
             for (const sheet of contactSheets) {
-              log(`   ${resolve(sheet)} (grid view for AI review)`);
+              log(`   ${terminalText(resolve(sheet))} (grid view for AI review)`);
             }
           }
         } catch (err) {
           console.warn(
-            `   ${c.warn("⚠")} Contact sheet skipped: ${describeSharpLoadFailure(err) ?? normalizeErrorMessage(err)}. Individual snapshot PNGs are still available.`,
+            `   ${c.warn("⚠")} Contact sheet skipped: ${terminalText(describeSharpLoadFailure(err) ?? normalizeErrorMessage(err))}. Individual snapshot PNGs are still available.`,
           );
         }
 
@@ -1982,6 +2084,10 @@ export default defineCommand({
             if (!geminiKey) {
               log(`   ${c.dim("--describe: GEMINI_API_KEY or GOOGLE_API_KEY not set, skipping")}`);
             } else if (paths.length > 0) {
+              await noteProjectProviderKey(
+                geminiKeyName(),
+                "frames go to that key's Gemini account",
+              );
               log(`   ${c.dim("Describing frames with Gemini vision...")}`);
               const { GoogleGenAI } = await loadOptionalPackage("@google/genai", "--describe");
               const ai = new GoogleGenAI({ apiKey: geminiKey });
@@ -2061,13 +2167,13 @@ export default defineCommand({
               }
 
               const descPath = join(snapshotDir, "descriptions.md");
-              writeFileSync(descPath, descriptions.join("\n"));
+              replaceFileAtomically(descPath, descriptions.join("\n"));
               describedPath = descPath;
               log(`   ${c.dim("descriptions.md")} (Gemini frame analysis)`);
             }
           } catch (descErr) {
             const msg = normalizeErrorMessage(descErr);
-            log(`   ${c.dim(`--describe failed: ${msg}`)}`);
+            log(`   ${c.dim(`--describe failed: ${terminalText(msg)}`)}`);
           }
         }
         if (asJson) {
@@ -2085,7 +2191,7 @@ export default defineCommand({
       if (err instanceof CliRuntimeError && err.result.presented) throw err;
       const msg = failureMessage(err);
       if (asJson) console.log(JSON.stringify(withMeta(jsonFailure("runtime_error", msg)), null, 2));
-      else console.error(`\n${c.error("✗")} Snapshot failed: ${msg}`);
+      else console.error(`\n${c.error("✗")} Snapshot failed: ${terminalText(msg)}`);
       failCommand();
     } finally {
       if (managedSnapshotDir)

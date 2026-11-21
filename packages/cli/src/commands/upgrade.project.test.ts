@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -90,6 +98,37 @@ describe("upgradeProjectPins", () => {
     expect(readFileSync(fullCpu, "utf8")).toContain("hyperframes@0.7.55");
     expect(readFileSync(publish, "utf8")).toContain("hyperframes@0.7.55");
   });
+
+  // fails without the fix: the rewritten wrapper came back 0644, so `./render.sh` no longer ran.
+  it.skipIf(process.platform === "win32")("keeps an executable wrapper executable", async () => {
+    const d = project({});
+    const wrapper = join(d, "render.sh");
+    writeFileSync(wrapper, "npx --yes hyperframes@0.7.48 render\n");
+    chmodSync(wrapper, 0o755);
+
+    await upgradeProjectPins(d, { json: false, check: false });
+
+    expect(readFileSync(wrapper, "utf8")).toContain("hyperframes@0.7.55");
+    expect(statSync(wrapper).mode & 0o777).toBe(0o755);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "leaves the target of a package.json.tmp link untouched",
+    async () => {
+      const d = project({ render: "npx --yes hyperframes@0.7.48 render" });
+      const outside = mkdtempSync(join(tmpdir(), "hf-proj-outside-"));
+      dirs.push(outside);
+      const target = join(outside, "keep.txt");
+      writeFileSync(target, "original");
+      symlinkSync(target, join(d, "package.json.tmp"));
+
+      await upgradeProjectPins(d, { json: false, check: false });
+
+      expect(readFileSync(target, "utf8")).toBe("original");
+      const pkg = JSON.parse(readFileSync(join(d, "package.json"), "utf-8"));
+      expect(pkg.scripts.render).toBe("npx --yes hyperframes@0.7.55 render");
+    },
+  );
 
   it("--check reports without writing", async () => {
     const d = project({ render: "npx --yes hyperframes@0.7.48 render" });

@@ -56,16 +56,40 @@
       "types": "./dist/safePath.d.ts",
       "environments": ["bun", "node"]
     },
+    "./safe-areas": {
+      "source": "./src/safeAreas.ts",
+      "runtime": "./dist/safeAreas.js",
+      "types": "./dist/safeAreas.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./browser-marker": {
       "source": "./src/browserMarker.ts",
       "runtime": "./dist/browserMarker.js",
       "types": "./dist/browserMarker.d.ts",
       "environments": ["bun", "node"]
     },
+    "./chrome-env": {
+      "source": "./src/chromeEnv.ts",
+      "runtime": "./dist/chromeEnv.js",
+      "types": "./dist/chromeEnv.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./chrome-sandbox": {
+      "source": "./src/chromeSandbox.ts",
+      "runtime": "./dist/chromeSandbox.js",
+      "types": "./dist/chromeSandbox.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./atomic-file": {
       "source": "./src/atomicFile.ts",
       "runtime": "./dist/atomicFile.js",
       "types": "./dist/atomicFile.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./preview-proof": {
+      "source": "./src/previewProof.ts",
+      "runtime": "./dist/previewProof.js",
+      "types": "./dist/previewProof.d.ts",
       "environments": ["bun", "node"]
     },
     "./cache-dir": {
@@ -84,6 +108,18 @@
       "source": "./src/envProxy.ts",
       "runtime": "./dist/envProxy.js",
       "types": "./dist/envProxy.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./missing-path": {
+      "source": "./src/missingPath.ts",
+      "runtime": "./dist/missingPath.js",
+      "types": "./dist/missingPath.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./terminal-text": {
+      "source": "./src/terminalText.ts",
+      "runtime": "./dist/terminalText.js",
+      "types": "./dist/terminalText.d.ts",
       "environments": ["bun", "node"]
     },
     "./rename-retry": {
@@ -126,6 +162,18 @@
       "source": "./src/compositionContract.ts",
       "runtime": "./dist/compositionContract.js",
       "types": "./dist/compositionContract.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./key-combo": {
+      "source": "./src/keyCombo.ts",
+      "runtime": "./dist/keyCombo.js",
+      "types": "./dist/keyCombo.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./typing-target": {
+      "source": "./src/typingTarget.ts",
+      "runtime": "./dist/typingTarget.js",
+      "types": "./dist/typingTarget.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./studio-preview-mark": {
@@ -416,6 +464,36 @@
       "types": "./dist/runtime/protocol.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/editing-port": {
+      "source": "./src/runtime/editingPort.ts",
+      "runtime": "./dist/runtime/editingPort.js",
+      "types": "./dist/runtime/editingPort.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/patch-tween": {
+      "source": "./src/runtime/editing/patchTween.ts",
+      "runtime": "./dist/runtime/editing/patchTween.js",
+      "types": "./dist/runtime/editing/patchTween.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/soft-reload": {
+      "source": "./src/runtime/editing/softReload.ts",
+      "runtime": "./dist/runtime/editing/softReload.js",
+      "types": "./dist/runtime/editing/softReload.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/scenes": {
+      "source": "./src/runtime/editing/scenes.ts",
+      "runtime": "./dist/runtime/editing/scenes.js",
+      "types": "./dist/runtime/editing/scenes.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/live-retime": {
+      "source": "./src/runtime/editing/liveRetime.ts",
+      "runtime": "./dist/runtime/editing/liveRetime.js",
+      "types": "./dist/runtime/editing/liveRetime.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/clip-window": {
       "source": "./src/runtime/clipWindow.ts",
       "runtime": "./dist/runtime/clipWindow.js",
@@ -457,6 +535,12 @@
       "runtime": "./dist/runtime/levelTap.js",
       "types": "./dist/runtime/levelTap.d.ts",
       "environments": ["browser", "bun", "node"]
+    },
+    "./compiler/composition-size-limit": {
+      "source": "./src/compiler/compositionSizeLimit.ts",
+      "runtime": "./dist/compiler/compositionSizeLimit.js",
+      "types": "./dist/compiler/compositionSizeLimit.d.ts",
+      "environments": ["bun", "node"]
     },
     "./compiler/html-document": {
       "source": "./src/compiler/htmlDocument.ts",

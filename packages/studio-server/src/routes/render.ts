@@ -14,8 +14,11 @@ import { Readable } from "node:stream";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
 import { formatRenderOutputTimestamp, parseFps, fpsToNumber } from "@hyperframes/core";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { RENDER_VARIABLES_FILE } from "@hyperframes/core/project-folders";
 import {
   folderGone,
+  isLinkFreeWithinProject,
   isPrivateProjectFile,
   mkdirWithinProject,
   resolveWithinProject,
@@ -58,6 +61,7 @@ function contentDispositionHeader(disposition: "inline" | "attachment", filename
 export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // Scoped job store — not shared across createStudioApi() calls
   const renderJobs = new Map<string, RenderJobState>();
+  const CANCEL_SETTLE_MS = 45_000;
 
   const nextFreeRenderJobId = (baseId: string, ext: string, rendersDir: string): string => {
     let jobId = baseId;
@@ -216,6 +220,23 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     return c.json({ jobId, status: "rendering" });
   });
 
+  api.put("/projects/:id/render-variables", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+    const values: unknown = await c.req.json().catch(() => undefined);
+    if (!isVariablesPayload(values)) return c.json({ error: VARIABLES_PAYLOAD_ERROR }, 400);
+    if (folderGone(project.dir)) return projectDirMissing(c);
+    // The variable ids are the composition's, so a write through a link could put chosen JSON in package.json. A link
+    // on the way is refused; a link in the file's place is replaced by the rename, not written through.
+    const path = join(project.dir, RENDER_VARIABLES_FILE);
+    if (!isLinkFreeWithinProject(project.dir, dirname(path))) {
+      return c.json({ error: "forbidden", why: "link" }, 403);
+    }
+    mkdirWithinProject(project.dir, dirname(path));
+    replaceFileAtomically(path, JSON.stringify(values, null, 2) + "\n", 0o644);
+    return c.json({ path: RENDER_VARIABLES_FILE });
+  });
+
   // SSE progress stream
   api.get("/render/:jobId/progress", (c) => {
     const { jobId } = c.req.param();
@@ -246,13 +267,19 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
 
   // Cancel an in-flight render. Marks the job cancelled immediately (so the
   // SSE stream terminates) and invokes the adapter's abort hook when present.
-  api.post("/render/:jobId/cancel", (c) => {
+  api.post("/render/:jobId/cancel", async (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
     if (!job) return c.json({ error: "not found" }, 404);
     if (job.status === "rendering") {
       job.status = "cancelled";
-      job.cancel?.();
+      let giveUp: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise((done) => (giveUp = setTimeout(done, CANCEL_SETTLE_MS)));
+      try {
+        await Promise.race([job.cancel?.(), late]);
+      } finally {
+        clearTimeout(giveUp);
+      }
     }
     return c.json({ status: job.status });
   });

@@ -45,6 +45,18 @@ const HTML = "<html><body>hi</body></html>";
 const CSS = "body { color: red; }";
 
 describe("deploySite", () => {
+  it("names expectedBucketOwner as the bucket's owner on every request", async () => {
+    const s3 = new FakeS3();
+    await deploySite({
+      projectDir,
+      bucketName: "test-bucket",
+      expectedBucketOwner: "123456789012",
+      s3: asS3Client(s3),
+    });
+    expect(s3.ops.length).toBeGreaterThan(0);
+    expect(s3.ops.filter((op) => op.owner !== "123456789012")).toEqual([]);
+  });
+
   it("uploads each file once under its content hash, then the site manifest", async () => {
     const s3 = new FakeS3();
     const result = await deploySite({
@@ -190,7 +202,7 @@ describe("deploySite", () => {
     expect(after.siteId).toBe(before.siteId);
   });
 
-  it("ships a symlinked project and its symlinked files and folders as content", async () => {
+  it("ships a symlinked project, and its files linked in from outside only when included", async () => {
     mkdirSync(join(scratch, "media"));
     writeFileSync(join(scratch, "media", "clip.txt"), "clip");
     writeFileSync(join(scratch, "logo.txt"), "logo");
@@ -198,12 +210,23 @@ describe("deploySite", () => {
     symlinkSync(join(scratch, "logo.txt"), join(projectDir, "logo.txt"));
     symlinkSync(projectDir, join(scratch, "fx"));
     const s3 = new FakeS3();
-    const result = await deploySite({
+    const notices: string[] = [];
+    const leftOut = await deploySite({
       projectDir: join(scratch, "fx"),
       bucketName: "test-bucket",
+      onNotice: (line) => notices.push(line),
       s3: asS3Client(s3),
     });
-    expect(sitePaths(s3, result.siteId)).toEqual([
+    expect(sitePaths(s3, leftOut.siteId)).toEqual(["assets/style.css", "index.html"]);
+    expect(notices.join("\n")).toContain("outside the project: logo.txt, media.");
+
+    const included = await deploySite({
+      projectDir: join(scratch, "fx"),
+      bucketName: "test-bucket",
+      includeOutsideFiles: true,
+      s3: asS3Client(s3),
+    });
+    expect(sitePaths(s3, included.siteId)).toEqual([
       "assets/style.css",
       "index.html",
       "logo.txt",

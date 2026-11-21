@@ -135,7 +135,7 @@ export function resolveVideoCoverageThreshold(
 
 /**
  * Count frames in a clip's authored `[start,end)` window. CFR extraction
- * rounds to the nearest output-frame boundary and VFR extraction rounds up,
+ * fills every output slot the window covers and VFR extraction rounds up,
  * as `extractionFrameCountForDuration` does. Missing entries
  * retain the fail-closed `ceil` default. Positive sub-frame clips emit one.
  */
@@ -143,7 +143,7 @@ export function expectedFramesForClip(
   start: number,
   end: number,
   fps: FpsInput,
-  rounding: "ceil" | "nearest" = "ceil",
+  rounding: "ceil" | "slots" = "ceil",
 ): number {
   const fpsValue = fpsToNumber(toFps(fps));
   if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(fpsValue)) return 0;
@@ -171,7 +171,7 @@ function expectedFramesForVideo(
   entry: ExtractedFrames | undefined,
   fps: FpsInput,
 ): number {
-  const rounding = entry && !entry.metadata.isVFR ? "nearest" : "ceil";
+  const rounding = entry && !entry.metadata.isVFR ? "slots" : "ceil";
   const slotSourceDuration = sourceTimeAt(
     normalizeRateSpec(video.playbackRate),
     Math.max(0, video.end - video.start),
@@ -205,11 +205,15 @@ export function computeVideoFrameCoverage(
   for (const video of videos) {
     const entry = byId.get(video.id);
     const expectedFrames = expectedFramesForVideo(video, entry, fps);
-    // framePaths is a Map — `size` is the number of distinct captured frames
-    // delivered to the runtime injector, which is the load-bearing count
-    // (some extractors report a total that includes cache-hit-skipped frames
-    // via a stale `totalFrames`, so we trust the delivered-path count).
-    const capturedFrames = entry ? entry.framePaths.size : 0;
+    // framePaths is a Map — `size` is the number of distinct captured frames delivered to the
+    // runtime injector (some extractors report a stale `totalFrames` that includes cache-hit-skipped
+    // frames, so we trust the delivered-path count).
+    // A deferred video has none yet by design; its `totalFrames` is exact.
+    const capturedFrames = entry
+      ? entry.deferredRange
+        ? entry.totalFrames
+        : entry.framePaths.size
+      : 0;
     const ratio = expectedFrames === 0 ? 1 : capturedFrames / expectedFrames;
     reports.push({
       videoId: video.id,

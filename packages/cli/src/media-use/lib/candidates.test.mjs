@@ -153,3 +153,19 @@ test("formatCandidates shows reuse handles by scope; empty message", () => {
   assert.match(out, /--reuse ffffffffffffffff/);
   assert.match(formatCandidates([], {}), /no reuse candidates/);
 });
+
+test("formatCandidates prints control characters from the manifest as visible escapes", () => {
+  const text = formatCandidates([
+    {
+      scope: "project",
+      id: "bgm_001",
+      path: ".media/audio/bgm/\x1b[2Kbgm_001.wav",
+      description: "calm piano\x1b]52;c;aGk=\x07",
+      score: 1,
+    },
+  ]);
+  assert.ok(text.includes("calm piano\\x1b]52;c;aGk=\\x07"), text);
+  assert.ok(text.includes(".media/audio/bgm/\\x1b[2Kbgm_001.wav"), text);
+  for (const raw of ["\x07", "\x1b"])
+    assert.ok(!text.includes(raw), "no raw control character is left");
+});

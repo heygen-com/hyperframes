@@ -1,6 +1,10 @@
 import { DEFAULT_IMAGE_TIMELINE_DURATION_SECONDS } from "@hyperframes/parsers/media-duration";
 import { describe, it, expect, afterEach } from "vitest";
-import { collectRuntimeTimelinePayload, runtimeElementWindow } from "./timeline";
+import {
+  collectRuntimeTimelinePayload,
+  isRuntimeElementVisibleAt,
+  runtimeElementWindow,
+} from "./timeline";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 
 type TimelineTestWindow = Window & {
@@ -130,6 +134,31 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips[0].duration).toBe(3);
     expect(result.clips[0].track).toBe(0);
     expect(result.clips[0].kind).toBe("element");
+  });
+
+  it("sends a plain text layer's words and look, capped, and no text for any other layer", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+    const title = document.createElement("h1");
+    title.id = "title";
+    title.setAttribute("data-start", "0");
+    title.setAttribute("data-duration", "5");
+    title.style.color = "rgb(255, 255, 255)";
+    title.textContent = `  Hello\n   ${"x".repeat(500)} `;
+    const card = document.createElement("div");
+    card.id = "card";
+    card.setAttribute("data-start", "0");
+    card.setAttribute("data-duration", "5");
+    card.innerHTML = "<img src='a.png'> Caption";
+    root.append(title, card);
+
+    const [titleClip, cardClip] = collectRuntimeTimelinePayload(defaultParams).clips;
+
+    expect(titleClip.text?.value).toBe(`Hello ${"x".repeat(194)}`);
+    expect(titleClip.text?.color).toBe("rgb(255, 255, 255)");
+    expect(cardClip.text).toBeNull();
   });
 
   it("parses inline z-index for timeline clips", () => {
@@ -1132,5 +1161,32 @@ describe("runtimeElementWindow", () => {
       start: 0,
       end: 2,
     });
+  });
+});
+
+describe("isRuntimeElementVisibleAt", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  // fails without the fix: snapshot and preview read the authored seconds, so a title held across two clips whose
+  // second start sits a hair past 100 s went blank at exactly 100 s, the frame render shows it on.
+  it("puts a clip edge a hair off a frame on that frame for preview and snapshot, as render does", () => {
+    document.body.innerHTML = `<div id="main" data-composition-id="main" data-start="0" data-duration="110">
+      <div id="held" data-start="90" data-duration="10"></div>
+      <div id="rest" data-start="100.00002" data-duration="10"></div></div>`;
+    const shownAt = (currentTime: number) =>
+      ["held", "rest"].filter((id) =>
+        isRuntimeElementVisibleAt(document.getElementById(id)!, {
+          currentTime,
+          compositionDuration: 110,
+          canonicalFps: 30,
+          timelineRegistry: {},
+          resolver: createRuntimeStartTimeResolver({}),
+        }),
+      );
+    expect(shownAt(99.875)).toEqual(["held"]);
+    expect(shownAt(100)).toEqual(["rest"]);
+    expect(shownAt(100.125)).toEqual(["rest"]);
   });
 });

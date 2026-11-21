@@ -5,7 +5,7 @@
  * Auto-detects optimal worker count based on CPU/memory.
  */
 
-import { cpus, freemem } from "os";
+import { freemem } from "os";
 import { existsSync, mkdirSync, readdirSync } from "fs";
 import { copyFile, readFile } from "fs/promises";
 import { renameWithRetryAsync } from "@hyperframes/core/rename-retry";
@@ -27,11 +27,19 @@ import {
   type BeforeCaptureHook,
 } from "./frameCapture.js";
 import { psnrDb, resolveDeVerifyMinDb } from "../utils/psnr.js";
+// Hard ceiling on `--workers N`: past it, CDP dispatch through Node's event loop and OS scheduling noise
+// outweigh more parallelism. Raised 10 -> 24 in hf#732 so 32-96+ core hosts can use their cores.
+import { ABSOLUTE_MAX_WORKERS } from "../utils/workerLimits.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { assertSwiftShader } from "../utils/assertSwiftShader.js";
 import { readWebGlVendorInfoFromCanvas } from "../utils/readWebGlVendorInfoFromCanvas.js";
 import { resolveHeadlessShellPath } from "./browserManager.js";
-import { getCgroupCpuLimit, getSystemTotalMb } from "./systemMemory.js";
+import {
+  getCgroupCpuLimit,
+  getSystemTotalMb,
+  hostCpuCount,
+  usableCpuCount,
+} from "./systemMemory.js";
 import {
   CaptureFailure,
   classifyCaptureFailure,
@@ -162,12 +170,6 @@ const APPLE_DISK_CORES_PER_WORKER = 1.75;
 const APPLE_DISK_MAX_WORKERS = 8;
 const MIN_WORKERS = 1;
 const MAX_WORKER_DIAGNOSTIC_LINES = 8;
-// Hard ceiling on explicit `--workers N` requests. Above this, the cost of
-// CDP-protocol dispatch through Node's main event loop and OS scheduling
-// noise overwhelms any further parallelism. Bumped from 10 → 24 in hf#732
-// follow-up so high-core hosts (32-96+ cores) can actually surface the
-// hardware to renders that are CPU-bound on DOM capture.
-const ABSOLUTE_MAX_WORKERS = 24;
 // `auto` concurrency picks this many workers as the upper bound. Bumped
 // from a hardcoded 6 → CPU-scaled value (floor(cpuCount/8), floor at 6,
 // ceiling at 16) in hf#732 follow-up. Rationale: the prior fixed cap of 6
@@ -177,7 +179,7 @@ const ABSOLUTE_MAX_WORKERS = 24;
 // worker's SwiftShader compositor + the shader-blend thread pool, both of
 // which are themselves CPU-heavy.
 function defaultSafeMaxWorkers(): number {
-  return Math.max(6, Math.min(16, Math.floor(cpus().length / 8)));
+  return Math.max(6, Math.min(16, Math.floor(usableCpuCount() / 8)));
 }
 const MIN_FRAMES_PER_WORKER = 30;
 
@@ -274,6 +276,14 @@ export function formatWorkerFailure(result: WorkerResult): string {
   return `${base}; diagnostics: ${diagnostics}`;
 }
 
+export function formatPoolFailure(errors: WorkerResult[]): string {
+  const causes = errors.filter((result) => result.failure?.kind !== "cancelled");
+  const stopped = errors.length - causes.length;
+  if (causes.length === 0 || stopped === 0) return errors.map(formatWorkerFailure).join("; ");
+  const peers = stopped === 1 ? "1 other worker was" : `${stopped} other workers were`;
+  return `${causes.map(formatWorkerFailure).join("; ")} (${peers} stopped after this failure)`;
+}
+
 /** Which constraint produced the final auto-sized worker count. */
 export type WorkerSizingBound =
   | "explicit"
@@ -324,7 +334,7 @@ export function computeWorkerSizing(
   requested?: number,
   config?: WorkerSizingConfig,
 ): WorkerSizing {
-  const cpuCount = cpus().length;
+  const cpuCount = usableCpuCount();
   // Use total memory instead of free memory — macOS reports misleadingly low
   // freemem() because it aggressively caches files in "inactive" memory that
   // is immediately reclaimable.
@@ -814,8 +824,22 @@ async function psnrForDiskSample(
   workerId: number,
   idx: number,
 ): Promise<number | null> {
+  const skipSample = (err: unknown): null => {
+    console.warn(
+      `[Parallel] drawElement disk self-verify sample skipped (worker ${workerId}, ` +
+        `frame ${idx}): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  };
+  // Read apart from the compare: a frame file's ENOENT says nothing about ffmpeg.
+  let frame: Buffer;
   try {
-    return await psnrDb(await readFile(framePath), truth);
+    frame = await readFile(framePath);
+  } catch (err) {
+    return skipSample(err);
+  }
+  try {
+    return await psnrDb(frame, truth);
   } catch (err) {
     if (isFfmpegInfrastructureFailure(err)) {
       const detail = err instanceof Error ? err.message : String(err);
@@ -828,11 +852,7 @@ async function psnrForDiskSample(
         { cause: err },
       );
     }
-    console.warn(
-      `[Parallel] drawElement disk self-verify sample skipped (worker ${workerId}, ` +
-        `frame ${idx}): ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
+    return skipSample(err);
   }
 }
 
@@ -923,7 +943,7 @@ async function executeWorkerTask(
     const launch = createCaptureSession(
       serverUrl,
       task.outputDir,
-      captureOptions,
+      { ...captureOptions, staticDedupFrameRange: { start: task.startFrame, end: task.endFrame } },
       createBeforeCaptureHook(),
       workerConfig,
     );
@@ -1230,7 +1250,7 @@ export async function executeParallelCapture(
 
   const errors = results.filter((r) => r.failure || r.error);
   if (errors.length > 0) {
-    const errorMessages = errors.map(formatWorkerFailure).join("; ");
+    const errorMessages = formatPoolFailure(errors);
     const representative =
       failureHandler.firstFatalFailure() ?? errors.find((result) => result.failure)?.failure;
     const workerDiagnostics = errors.flatMap((result) => result.failure?.workerDiagnostics ?? []);
@@ -1287,7 +1307,7 @@ export function getSystemResources(): {
   recommendedWorkers: number;
 } {
   return {
-    cpuCores: cpus().length,
+    cpuCores: hostCpuCount(),
     totalMemoryMB: getSystemTotalMb(),
     freeMemoryMB: Math.round(freemem() / (1024 * 1024)),
     recommendedWorkers: calculateOptimalWorkers(1000),

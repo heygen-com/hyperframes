@@ -49,10 +49,11 @@ async function loadTelemetryCommand(options?: {
 async function runSubcommand(
   command: Awaited<ReturnType<typeof loadTelemetryCommand>>["command"],
   subcommand: string,
+  json = false,
 ): Promise<void> {
   await command.run?.({
-    args: { subcommand },
-    rawArgs: [subcommand],
+    args: { subcommand, json },
+    rawArgs: json ? [subcommand, "--json"] : [subcommand],
     cmd: command,
   } as never);
 }
@@ -60,12 +61,13 @@ async function runSubcommand(
 async function runWithCapturedOutput(
   command: Awaited<ReturnType<typeof loadTelemetryCommand>>["command"],
   subcommand: string,
+  json = false,
 ): Promise<string> {
   const lines: string[] = [];
   vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
     lines.push(args.map(String).join(" "));
   });
-  await runSubcommand(command, subcommand);
+  await runSubcommand(command, subcommand, json);
   return lines.join("\n");
 }
 
@@ -89,6 +91,39 @@ describe("telemetry command", () => {
     expect(writeConfigWithResult).toHaveBeenCalledWith(
       expect.objectContaining({ telemetryEnabled: false }),
     );
+  });
+
+  it.each([
+    { configEnabled: true, enabled: true, source: "config" },
+    { configEnabled: false, enabled: false, source: "config" },
+    { env: "HYPERFRAMES_NO_TELEMETRY", enabled: false, source: "HYPERFRAMES_NO_TELEMETRY" },
+    { env: "DO_NOT_TRACK", enabled: false, source: "DO_NOT_TRACK" },
+    { devMode: true, enabled: false, source: "dev_mode" },
+    { apiKey: "disabled", enabled: false, source: "telemetry_disabled_build" },
+  ])("reports JSON status from $source with enabled=$enabled", async (options) => {
+    if (options.env) process.env[options.env] = "1";
+    const { command, writeConfigWithResult } = await loadTelemetryCommand(options);
+
+    const output = await runWithCapturedOutput(command, "status", true);
+
+    expect(JSON.parse(output)).toEqual({
+      enabled: options.enabled,
+      source: options.source,
+      configPath: "/test/.hyperframes/config.json",
+      statePath: "/test/.local/state/hyperframes/install-state.json",
+      commandCount: 7,
+    });
+    expect(writeConfigWithResult).not.toHaveBeenCalled();
+  });
+
+  it.each(["enable", "disable", ""])("rejects JSON for telemetry %s", async (subcommand) => {
+    const { command, writeConfigWithResult } = await loadTelemetryCommand();
+
+    await expect(runSubcommand(command, subcommand, true)).rejects.toMatchObject({
+      name: "CliUsageError",
+      message: "--json is only supported for telemetry status",
+    });
+    expect(writeConfigWithResult).not.toHaveBeenCalled();
   });
 
   it("fails instead of claiming success when the preference cannot be persisted", async () => {
@@ -145,5 +180,45 @@ describe("telemetry command", () => {
     const output = await runWithCapturedOutput(command, "status");
     expect(output).toContain("disabled");
     expect(output).toContain("telemetry_disabled_build");
+  });
+});
+
+describe("telemetry lines for people", () => {
+  const ESC = String.fromCharCode(27);
+  const ODD = `od${ESC}[2Jd\x07`;
+  const SHOWN = "od\\x1b[2Jd\\x07";
+
+  afterEach(() => {
+    vi.doUnmock("../telemetry/config.js");
+    vi.doUnmock("../utils/env.js");
+    vi.restoreAllMocks();
+    vi.resetModules();
+  });
+
+  function capture(): string[] {
+    const said: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      said.push(args.map(String).join(" "));
+    });
+    return said;
+  }
+
+  // fails without the fix: the word is repeated as it was typed.
+  it("shows control characters in an unknown subcommand as text", async () => {
+    const { command } = await loadTelemetryCommand();
+    const said = capture();
+    await expect(runSubcommand(command, ODD)).rejects.toThrow();
+    expect(said.join("\n")).toContain(SHOWN);
+    expect(said.join("\n")).not.toContain("\x07");
+  });
+
+  // fails without the fix: the reason the file could not be written is printed as it arrived.
+  it("shows control characters in a failed save as text", async () => {
+    const { command, writeConfigWithResult } = await loadTelemetryCommand();
+    writeConfigWithResult.mockReturnValue({ ok: false, error: `EACCES ${ODD}` } as never);
+    const said = capture();
+    await expect(runSubcommand(command, "disable")).rejects.toThrow();
+    expect(said.join("\n")).toContain(`EACCES ${SHOWN}`);
+    expect(said.join("\n")).not.toContain("\x07");
   });
 });

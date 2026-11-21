@@ -7,6 +7,7 @@ import {
   findTagByTarget,
   readAttributeByTarget,
   readTagSnippetByTarget,
+  servedSource,
   type PatchOperation,
 } from "../utils/sourcePatcher";
 import {
@@ -23,8 +24,10 @@ import {
 } from "../player/lib/timelineElementHelpers";
 import { resolveTimelinePlaybackRate } from "../player/components/timelineGroupEditing";
 import {
+  editContextTarget,
   saveProjectFilesWithHistory,
   writeProjectFilesWithHistoryInQueue,
+  type EditContextTarget,
   type RecordEditInput,
 } from "../utils/studioFileHistory";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
@@ -140,6 +143,12 @@ export function buildPatchTarget(element: {
   return null;
 }
 export type PatchTarget = NonNullable<ReturnType<typeof buildPatchTarget>>;
+
+/** A clip's entry in the history: how to find the element again, and the name the clip wears on the timeline. */
+function timelineEditTarget(path: string, element: TimelineElement): EditContextTarget | null {
+  const patchTarget = buildPatchTarget(element);
+  return patchTarget && editContextTarget(path, { ...patchTarget, label: element.label });
+}
 // The runtime re-reads data-start/data-duration from the DOM on each sync tick
 // (packages/core/src/runtime/init.ts:1324-1368), so attribute mutations here are
 // picked up automatically on the next frame without a rebind call.
@@ -150,7 +159,18 @@ export function findTimelineElementInIframe(
 ): Element | null {
   try {
     const doc = iframe?.contentDocument;
-    if (!doc) return null;
+    return doc ? findTimelineElementInDocument(doc, element, activeCompositionPath) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function findTimelineElementInDocument(
+  doc: Document,
+  element: TimelineElement,
+  activeCompositionPath: string | null,
+): Element | null {
+  try {
     if (element.kind === "composition" && element.compositionSrc) {
       return findElementForTimelineElement(doc, element, {
         activeCompositionPath,
@@ -354,6 +374,7 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
   await saveProjectFilesWithHistory({
     projectId: input.projectId,
     label: input.label,
+    targets: [editContextTarget(targetPath, { ...patchTarget, label: input.element.label })],
     coalesceKey: input.coalesceKey,
     coalesceMs: input.coalesceMs,
     files: {
@@ -411,6 +432,7 @@ export function patchTimelineChangesInSource(
   for (const { element, buildPatches } of changes) {
     const target = buildPatchTarget(element);
     if (!target) throw new Error(`Timeline element ${element.id} is missing a patchable target`);
+    current = servedSource(current, target);
     // Resolve first: a member already at its target values patches to the same string, a missing one must throw.
     if (!findTagByTarget(current, target)) {
       throw new Error(
@@ -457,6 +479,10 @@ export async function persistTimelineBatchEdit(
   await saveProjectFilesWithHistory({
     projectId: input.projectId,
     label: input.label,
+    targets: input.changes.flatMap((change) => {
+      const path = change.element.sourceFile || input.activeCompPath || "index.html";
+      return timelineEditTarget(path, change.element) ?? [];
+    }),
     coalesceKey: input.coalesceKey,
     coalesceMs: input.coalesceMs,
     files: Object.fromEntries([...changesByPath.keys()].map((path) => [path, buildFile(path)])),

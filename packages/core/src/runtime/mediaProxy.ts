@@ -1,3 +1,4 @@
+import { wallClearInterval, wallSetInterval, wallSetTimeout } from "./wallClock";
 import { postRuntimeMessage } from "./bridge";
 import { swallow } from "./diagnostics";
 import {
@@ -9,7 +10,24 @@ import {
 import { findInjectedRenderFrame } from "./renderFrameSibling";
 import type { RuntimeJson } from "./types";
 import { isVideoElement } from "./domRealm";
-import { heldPosters, swappedElements } from "./proxySrc";
+import {
+  currentSrcValue,
+  deriveCodecMapKey,
+  lookupCodecMapEntry,
+  sourceFactsOf,
+  sourceFactsOfSrc,
+} from "./mediaSourceLookup";
+import { naturalVideoSize } from "../mediaDisplaySize";
+import { escapeCssString } from "./editingElement";
+import {
+  heldForCopy,
+  heldPosters,
+  inPointOf,
+  recordOpenedAtInPoint,
+  swappedElements,
+  unproxiedSrc,
+} from "./proxySrc";
+import { giveBackWhenDue, stopMediaDownload } from "./preloadMedia";
 import { restartPlaybackHealth } from "./playbackHealth";
 import { failedCopyElements, noteCopy, setCopyReportingLevel } from "./previewCopies";
 import { waitForServedProxy } from "./proxyWait";
@@ -17,6 +35,7 @@ import { registerSeekCompletion } from "./adapters/seek-dispatch";
 import {
   formatPreviewProxyBox,
   isHeavyForPreview,
+  isOversizedForPreview,
   isPreviewQuality,
   PREVIEW_QUALITY_LEVELS,
   PREVIEW_PROXY_BOX_PARAM,
@@ -28,7 +47,9 @@ import {
   type PreviewProxyBox,
   type PreviewQuality,
   type PreviewSourceFacts,
+  wantsLighterCopy,
 } from "../previewProxyBox";
+import { capturePageIn, PREVIEW_FILE_SIZE_ATTR } from "../studioPreviewMark";
 
 /**
  * One entry per project-root-relative asset pathname, injected by the
@@ -50,7 +71,6 @@ export type MediaCodecMapEntry = {
 declare global {
   interface Window {
     __HF_MEDIA_CODEC_MAP__?: Record<string, MediaCodecMapEntry>;
-    __HF_MEDIA_SOURCE_FACTS__?: Record<string, PreviewSourceFacts>;
   }
 }
 
@@ -76,13 +96,8 @@ const unavailableDiagnosedElements = new WeakSet<HTMLMediaElement>();
 // keep that src, so nothing that reads it (timeline, player mirror) loads a copy still being made.
 const proxyRequested = new WeakMap<HTMLMediaElement, string | null>();
 
-function currentSrcValue(el: HTMLMediaElement): string {
-  return el.currentSrc || el.src;
-}
-
-// Below 1, heavy files get lighter copies at the shown box times this level; 1 is the preview as it always was.
+// Below 1, heavy files get lighter copies at the shown box times this level; at 1, files oversized for their box.
 let previewQuality: PreviewQuality = 1;
-const lightElements = new WeakSet<HTMLMediaElement>();
 // Elements whose next ask for a copy tells the server to forget its failure first.
 const retryNext = new WeakSet<HTMLMediaElement>();
 
@@ -110,14 +125,14 @@ function shownScale(): Promise<number | null> {
   if (displayScale !== null) return Promise.resolve(displayScale);
   return Promise.race([
     displayScaleKnown.then(() => displayScale),
-    new Promise<null>((give) => setTimeout(() => give(null), DISPLAY_SCALE_WAIT_MS)),
+    new Promise<null>((give) => wallSetTimeout(() => give(null), DISPLAY_SCALE_WAIT_MS)),
   ]);
 }
 
 /** The video's box in device pixels, at least the stage so a later zoom or a clip still hidden fits. */
 function shownBox(el: HTMLMediaElement, scale: number): PreviewProxyBox | null {
-  // object-fit: none shows the source at its own size.
-  if (getComputedStyle(el).objectFit === "none") return null;
+  // These show the file at its own size when it fits, so a smaller copy would show smaller.
+  if (["none", "scale-down"].includes(getComputedStyle(el).objectFit)) return null;
   const rect = el.getBoundingClientRect();
   const stage = document.documentElement;
   const pixels = scale * (window.devicePixelRatio || 1);
@@ -141,12 +156,6 @@ function codecEntryOf(el: HTMLMediaElement): MediaCodecMapEntry | null {
   return map && key !== null ? lookupCodecMapEntry(key, map) : null;
 }
 
-function sourceFactsOf(el: HTMLMediaElement): PreviewSourceFacts | null {
-  const facts = window.__HF_MEDIA_SOURCE_FACTS__;
-  const key = deriveCodecMapKey(el);
-  return facts && key !== null ? lookupCodecMapEntry(key, facts) : null;
-}
-
 // fallow-ignore-next-line complexity
 function keepSized(el: HTMLMediaElement, scale: number): void {
   const copy = boxedElements.get(el);
@@ -159,7 +168,7 @@ function keepSized(el: HTMLMediaElement, scale: number): void {
   const lowered = previewQuality < 1;
   const needed = shown && lowered ? scalePreviewProxyBox(shown, previewQuality) : shown;
   if (lowered && !needed) return;
-  if (needed && lowered && copy.light && lightCopyNoLongerNeeded(el, needed)) {
+  if (needed && copy.light && lightCopyNoLongerNeeded(el, needed)) {
     return restoreOriginal(el);
   }
   if (boxCovers(copy.box, needed, lowered)) return dropUnneededCopy(el);
@@ -172,7 +181,7 @@ function dropUnneededCopy(el: HTMLMediaElement): void {
 
 function lightCopyNoLongerNeeded(el: HTMLMediaElement, needed: PreviewProxyBox): boolean {
   const facts = sourceFactsOf(el);
-  return facts !== null && !isHeavyForPreview(facts, needed);
+  return facts !== null && !wantsLighterCopy(facts, needed, previewQuality);
 }
 
 function boxCovers(current: PreviewProxyBox, needed: PreviewProxyBox | null, exact: boolean) {
@@ -218,7 +227,6 @@ function restoreOriginal(el: HTMLMediaElement): void {
   for (const state of [boxedElements, pendingUpgrades, proxyRequested, swappedElements]) {
     state.delete(el);
   }
-  lightElements.delete(el);
   evictMediaSyncState(el);
   restartPlaybackHealth();
   if (original === null) {
@@ -294,8 +302,87 @@ function loadProxy(
   evictMediaSyncState(el);
   restartPlaybackHealth();
   holdShownFrame(el);
+  keepFileSize(el, href, originalSrc);
   el.src = href;
   el.load();
+}
+
+// Each size this page pinned, keyed by mark and copy address, so a video given any other file is sized as before.
+// ponytail: rules are never removed; at most one per copy and size this page asked for.
+let copySizes: HTMLStyleElement | null = null;
+const sizeRules = new Set<string>();
+const pinnedSizes = new WeakMap<HTMLMediaElement, { href: string; mark: string }>();
+// Read before a hold or a still lays the box out instead of the file.
+const sizedBeforeCopy = new WeakMap<HTMLMediaElement, boolean>();
+const isCopyAddress = (src: string | null) => /[?&]hf-proxy=/.test(src ?? "");
+
+/** While a smaller copy plays, a video the film leaves unsized keeps the size its file gave it. */
+function keepFileSize(el: HTMLMediaElement, href: string, originalSrc: string): void {
+  const decided = sizedBeforeCopy.get(el);
+  sizedBeforeCopy.delete(el);
+  const size =
+    isVideoElement(el) && (decided ?? sizedByItsFile(el)) ? fileSizeOf(el, originalSrc) : null;
+  if (!size) {
+    pinnedSizes.delete(el);
+    el.removeAttribute(PREVIEW_FILE_SIZE_ATTR);
+    return;
+  }
+  const mark = `${size.width}x${size.height}`;
+  pinnedSizes.set(el, { href, mark });
+  el.setAttribute(PREVIEW_FILE_SIZE_ATTR, mark);
+  const rule =
+    `:where(video[${PREVIEW_FILE_SIZE_ATTR}="${mark}"][src="${escapeCssString(href)}"]) ` +
+    `{ width: ${size.width}px; height: ${size.height}px; flex-shrink: 0; }`;
+  if (sizeRules.has(rule)) return;
+  sizeRules.add(rule);
+  copySizes ??= document.createElement("style");
+  copySizes.textContent += `${rule}\n`;
+  if (!copySizes.isConnected) document.head.appendChild(copySizes);
+}
+
+/** The film leaves the video's size to its file: its content box is the file's own size (300x150 with none). */
+function sizedByItsFile(el: HTMLVideoElement): boolean {
+  if (pinnedSizes.get(el)?.href === el.getAttribute("src")) return true;
+  if (el.getClientRects().length === 0) return false;
+  const style = getComputedStyle(el);
+  const px = (value: string) => parseFloat(value) || 0;
+  const width = el.clientWidth - px(style.paddingLeft) - px(style.paddingRight);
+  const height = el.clientHeight - px(style.paddingTop) - px(style.paddingBottom);
+  const [own, ownHeight] = el.videoWidth ? [el.videoWidth, el.videoHeight] : [300, 150];
+  return Math.abs(width - own) < 1 && Math.abs(height - ownHeight) < 1;
+}
+
+/** The video's box at its file's size: the original's decoded size when it has one, else its facts. */
+function fileSizeOf(
+  el: HTMLVideoElement,
+  originalSrc: string,
+): { width: number; height: number } | null {
+  const pinned = pinnedSizes.get(el);
+  if (pinned?.href === el.getAttribute("src")) {
+    const [width = 0, height = 0] = pinned.mark.split("x").map(Number);
+    return { width, height };
+  }
+  if (!isCopyAddress(el.getAttribute("src")) && el.videoWidth > 0) {
+    return withBoxEdges(el, { width: el.videoWidth, height: el.videoHeight });
+  }
+  const facts = sourceFactsOfSrc(originalSrc);
+  return facts && withBoxEdges(el, naturalVideoSize(facts));
+}
+
+/** A border-box video's size with its padding and border added, so its content box stays `size`. */
+function withBoxEdges(el: HTMLVideoElement, size: { width: number; height: number }) {
+  const style = getComputedStyle(el);
+  if (style.boxSizing !== "border-box") return size;
+  const px = (...values: string[]) =>
+    values.reduce((sum, value) => sum + (parseFloat(value) || 0), 0);
+  return {
+    width:
+      size.width +
+      px(style.paddingLeft, style.paddingRight, style.borderLeftWidth, style.borderRightWidth),
+    height:
+      size.height +
+      px(style.paddingTop, style.paddingBottom, style.borderTopWidth, style.borderBottomWidth),
+  };
 }
 
 /**
@@ -311,89 +398,6 @@ function loadProxy(
 export function isRenderMode(el: HTMLMediaElement): boolean {
   if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) return true;
   return isVideoElement(el) && !!findInjectedRenderFrame(el);
-}
-
-/**
- * Resolve an element's codec-map key: the served-root-relative,
- * percent-decoded, query-string-stripped URL pathname (per the server
- * contract KTD). Returns null when there's no usable src, or the src is
- * cross-origin — the server can't have scanned (or proxy) a file it doesn't
- * host, so there is never a map entry to look up.
- */
-export function deriveCodecMapKey(el: HTMLMediaElement): string | null {
-  const raw = currentSrcValue(el);
-  if (!raw) return null;
-  let url: URL;
-  try {
-    url = new URL(raw, document.baseURI);
-  } catch {
-    return null;
-  }
-  if (url.origin !== window.location.origin) return null;
-  try {
-    return decodeURIComponent(url.pathname);
-  } catch {
-    return url.pathname;
-  }
-}
-
-/**
- * The composition is served under a route prefix on some surfaces —
- * studio-server's preview route injects `<base href="/api/projects/:id/preview/">`
- * (packages/studio-server/src/routes/preview.ts) so every relative asset
- * resolves through that prefix — while the codec map (per the server
- * contract) is keyed by project-root-relative pathnames with no prefix.
- * `play` and the CLI's static project server serve from the root with no
- * such prefix, where an exact match already succeeds. So: try exact first
- * (covers unprefixed servers), then fall back to the longest map key that
- * is a suffix of the pathname. No separate segment-boundary check is
- * needed: every key is contractually root-relative and leading-slash
- * (`"/assets/x.mp4"`, never `"assets/x.mp4"`), so a suffix match's boundary
- * is always that leading `/` itself — `pathname.endsWith(key)` can't match
- * a partial segment (e.g. key `"/foo.mp4"` can never match a pathname
- * ending in `"/notfoo.mp4"`, since that would require the literal substring
- * `"/foo.mp4"` to appear where the last `/` already fell a segment later).
- */
-function lookupLongestExactSuffix<T>(pathname: string, map: Record<string, T>): T | null {
-  let bestKey: string | null = null;
-  for (const key of Object.keys(map)) {
-    if (!pathname.endsWith(key)) continue;
-    if (bestKey === null || key.length > bestKey.length) bestKey = key;
-  }
-  return bestKey ? (map[bestKey] ?? null) : null;
-}
-
-function lookupNormalizedSuffix<T>(pathname: string, map: Record<string, T>): T | null {
-  // Case-insensitive filesystems and Unicode-normalizing filesystems can
-  // serve an authored URL whose spelling differs from the canonical path
-  // ffprobe returned (Clip.mp4 vs clip.mp4, NFC vs NFD). Exact matching stays
-  // authoritative; this normalized fallback is used only when it finds one
-  // unambiguous longest suffix, so case-sensitive projects containing both
-  // spellings never select the wrong asset.
-  const normalizedPathname = pathname.normalize("NFC").toLowerCase();
-  let normalizedBestLength = -1;
-  let normalizedBest: T | null = null;
-  let ambiguous = false;
-  for (const [key, entry] of Object.entries(map)) {
-    const normalizedKey = key.normalize("NFC").toLowerCase();
-    if (!normalizedPathname.endsWith(normalizedKey)) continue;
-    if (normalizedKey.length > normalizedBestLength) {
-      normalizedBestLength = normalizedKey.length;
-      normalizedBest = entry;
-      ambiguous = false;
-    } else if (normalizedKey.length === normalizedBestLength) {
-      ambiguous = true;
-    }
-  }
-  return ambiguous ? null : normalizedBest;
-}
-
-function lookupCodecMapEntry<T>(pathname: string, map: Record<string, T>): T | null {
-  return (
-    map[pathname] ??
-    lookupLongestExactSuffix(pathname, map) ??
-    lookupNormalizedSuffix(pathname, map)
-  );
 }
 
 const stills = new WeakSet<HTMLMediaElement>();
@@ -472,6 +476,40 @@ function emitUnavailableDiagnostic(
   console.info(`[hyperframes] ${DIAGNOSTIC_UNAVAILABLE_CODE}: "${asset}" (${reason}): ${note}`);
 }
 
+/** Holds `el` with no src while its copy is made (readers still see its file); false with no src to hold. */
+function holdForCopy(el: HTMLMediaElement): boolean {
+  const authored = unproxiedSrc(el);
+  if (authored === null) return false;
+  heldForCopy.set(el, inPointOf(el));
+  recordOpenedAtInPoint(el, authored, null);
+  stopMediaDownload(el);
+  holdFrameCaptures(
+    new Promise((landed) => {
+      el.addEventListener("loadeddata", landed, { once: true });
+      el.addEventListener("error", landed, { once: true });
+    }),
+  );
+  return true;
+}
+
+/** Without a copy (`giveBack` set), a clip held until due stays held; any other gets its src back as the runtime's. */
+function endCopyHold(el: HTMLMediaElement, giveBack: string | null): void {
+  if (!heldForCopy.has(el)) return;
+  const before = heldForCopy.get(el);
+  heldForCopy.delete(el);
+  if (giveBack === null || el.getAttribute("src") !== null) return;
+  const src = before ? before.written : giveBack;
+  recordOpenedAtInPoint(el, before?.authored ?? giveBack, src, before?.holdsWhenIdle);
+  if (src !== null) el.setAttribute("src", src);
+}
+
+function holdFrameCaptures(until: Promise<unknown>): void {
+  registerSeekCompletion(
+    Promise.race([until, new Promise((cap) => wallSetTimeout(cap, HOLD_CAP_MS))]),
+    "video-frame",
+  );
+}
+
 type CopyJob = {
   originalSrc: string;
   originalAttr: string | null;
@@ -487,10 +525,12 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
   // Asked once the shown size is known, so the copy is made at that size and only once.
   const shown = scale === null ? null : shownBox(el, scale);
   const box = shown && level < 1 ? scalePreviewProxyBox(shown, level) : shown;
-  if (lightFacts && !(box && isHeavyForPreview(lightFacts, box))) {
+  if (lightFacts && !(box && wantsLighterCopy(lightFacts, box, level))) {
     if (proxyRequested.get(el) === originalAttr) proxyRequested.delete(el);
     return;
   }
+  if (isVideoElement(el)) sizedBeforeCopy.set(el, sizedByItsFile(el));
+  const held = lightFacts && box && isOversizedForPreview(lightFacts, box) && holdForCopy(el);
   const proxiedSrc = appendProxyParam(
     originalSrc,
     variant,
@@ -506,9 +546,12 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     (fraction) => noteCopy(el, "making", fraction, light),
     () => isActiveAtPlayhead(el),
     false,
-    light ? undefined : () => showStill(el, originalSrc, variant, box),
+    light && !held ? undefined : () => showStill(el, originalSrc, variant, box),
   );
-  if (!live()) {
+  const wanted = live();
+  if (!served || !wanted) sizedBeforeCopy.delete(el);
+  if (held) endCopyHold(el, served && wanted ? null : originalAttr);
+  if (!wanted) {
     dropStill(el);
     if (proxyRequested.get(el) === originalAttr) proxyRequested.delete(el);
     if (lightFacts && el.isConnected && el.getAttribute("src") === originalAttr) {
@@ -517,13 +560,13 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     return;
   }
   if (!served) {
+    dropStill(el);
     noteCopy(el, "failed", null, light);
     emitUnavailableDiagnostic(el, "proxy_playback_failed", originalSrc);
     return;
   }
   noteCopy(el, "ready", null, light);
-  swappedElements.set(el, originalAttr);
-  if (lightFacts) lightElements.add(el);
+  swappedElements.set(el, held ? originalAttr : unproxiedSrc(el));
   loadProxy(el, proxiedSrc, originalSrc, variant, box, lightFacts !== undefined);
   // The shown size may have grown while this copy was being made.
   if (displayScale !== null) keepSized(el, displayScale);
@@ -550,6 +593,7 @@ export function swapToProxy(
   lightFacts?: PreviewSourceFacts,
 ): void {
   if (swappedElements.has(el)) return;
+  giveBackWhenDue(el);
   if (proxyRequested.has(el) && proxyRequested.get(el) === el.getAttribute("src")) return;
   const originalSrc = currentSrcValue(el);
   const variant = copyVariant(entry);
@@ -566,16 +610,14 @@ export function swapToProxy(
   // A lighter copy waits for no level but its own; a copy the file cannot play without finishes at any level.
   const live = () =>
     el.isConnected &&
-    el.getAttribute("src") === originalAttr &&
+    (el.getAttribute("src") === originalAttr ||
+      (heldForCopy.has(el) && el.getAttribute("src") === null)) &&
     (!lightFacts || previewQuality === level);
   const job: CopyJob = { originalSrc, originalAttr, variant, lightFacts, level, live };
   const swap = shownScale().then((scale) => makeCopy(el, job, scale));
   if (lightFacts) return;
   // A frame capture holds for the copy as it held for a loading video before, up to the same cap.
-  registerSeekCompletion(
-    Promise.race([swap, new Promise((cap) => setTimeout(cap, HOLD_CAP_MS))]),
-    "video-frame",
-  );
+  holdFrameCaptures(swap);
   const codecName = entry?.codecName ?? null;
   const details: Record<string, RuntimeJson> = {
     asset: originalSrc,
@@ -612,23 +654,22 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
   const canPlay = entry?.representativeMime ? el.canPlayType(entry.representativeMime) : "";
   const playable = canPlay === "probably" || canPlay === "maybe";
   if (entry?.browserHostile && !playable) swapToProxy(el, entry, "proactive");
-  else if (previewQuality < 1) lightenIfHeavy(el, entry);
+  else lightenIfHeavy(el, entry);
 }
 
 function lightenIfHeavy(el: HTMLMediaElement, entry: MediaCodecMapEntry | null): void {
-  if (swappedElements.has(el) || proxyRequested.has(el)) return;
+  if (capturePageIn(document) || swappedElements.has(el) || proxyRequested.has(el)) return;
   const facts = sourceFactsOf(el);
   if (facts) swapToProxy(el, entry, "light", facts);
 }
 
 function applyPreviewQuality(el: HTMLMediaElement): void {
   if (isRenderMode(el) || !isVideoElement(el)) return;
-  if (previewQuality === 1 && lightElements.has(el)) return restoreOriginal(el);
   if (boxedElements.has(el) && displayScale !== null) return keepSized(el, displayScale);
-  if (previewQuality < 1) lightenIfHeavy(el, codecEntryOf(el));
+  lightenIfHeavy(el, codecEntryOf(el));
 }
 
-/** The host's preview quality: below 1, heavy videos play lighter copies sized to the shown box times the level. */
+/** The host's preview quality: below 1, heavy videos play lighter copies at the shown box times the level. */
 export function setPreviewQuality(level: number): void {
   if (!isPreviewQuality(level) || level === previewQuality) return;
   previewQuality = level;
@@ -686,7 +727,7 @@ export function setCopiesAhead(
   isBusy: () => boolean,
   isShown: (el: HTMLMediaElement) => boolean = isActiveAtPlayhead,
 ): void {
-  if (copiesAheadTimer !== null) clearInterval(copiesAheadTimer);
+  if (copiesAheadTimer !== null) wallClearInterval(copiesAheadTimer);
   copiesAheadTimer = null;
   if (!on) return;
   const live = () => copiesAheadTimer !== null && !isBusy();
@@ -700,7 +741,7 @@ export function setCopiesAhead(
       if (served || live()) copiesAheadDone.add(href);
     });
   };
-  copiesAheadTimer = setInterval(check, COPY_AHEAD_CHECK_MS);
+  copiesAheadTimer = wallSetInterval(check, COPY_AHEAD_CHECK_MS);
   check();
 }
 
@@ -760,24 +801,7 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
   if (!isVideoElement(el)) return;
   if (el.videoWidth !== 0) return;
-  const src = currentSrcValue(el);
-  if (swappedElements.has(el)) {
-    emitUnavailableDiagnostic(el, "proxy_playback_failed", src);
-    return;
-  }
-  const map = window.__HF_MEDIA_CODEC_MAP__;
-  if (!map) return;
-  const key = deriveCodecMapKey(el);
-  if (key === null) {
-    emitUnavailableDiagnostic(el, "cross_origin", src);
-    return;
-  }
-  const entry = lookupCodecMapEntry(key, map);
-  if (entry && !entry.browserHostile) {
-    emitUnavailableDiagnostic(el, "browser_safe_codec", src);
-    return;
-  }
-  swapToProxy(el, entry, "reactive");
+  swapOrDiagnose(el, "reactive");
 }
 
 /**
@@ -791,6 +815,10 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
 export function handleErrorForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
   if (!isVideoElement(el)) return;
+  swapOrDiagnose(el, "tertiary");
+}
+
+function swapOrDiagnose(el: HTMLMediaElement, trigger: ProxyTrigger): void {
   const src = currentSrcValue(el);
   if (swappedElements.has(el)) {
     emitUnavailableDiagnostic(el, "proxy_playback_failed", src);
@@ -808,5 +836,5 @@ export function handleErrorForProxy(el: HTMLMediaElement): void {
     emitUnavailableDiagnostic(el, "browser_safe_codec", src);
     return;
   }
-  swapToProxy(el, entry, "tertiary");
+  swapToProxy(el, entry, trigger);
 }

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "path-traced-3d",
+  "type": "hyperframes:example",
+  "title": "Path-Traced 3D",
+  "description": "Three.js scene with a fast raster preview and an opt-in path-traced export",
+  "tags": ["3d", "three-js", "path-tracing", "webgl"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "files": [
+    {
+      "path": "assets/render.js",
+      "target": "assets/render.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/scene.js",
+      "target": "assets/scene.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/vendor/README.md",
+      "target": "assets/vendor/README.md",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/vendor/three-gpu-pathtracer.LICENSE.txt",
+      "target": "assets/vendor/three-gpu-pathtracer.LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/vendor/three-mesh-bvh.LICENSE.txt",
+      "target": "assets/vendor/three-mesh-bvh.LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/vendor/three-path-tracer.min.js",
+      "target": "assets/vendor/three-path-tracer.min.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/vendor/three.LICENSE.txt",
+      "target": "assets/vendor/three.LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "index.html",
+      "target": "index.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

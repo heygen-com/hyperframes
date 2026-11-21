@@ -1,9 +1,9 @@
 import { stampHfIdsInPlace } from "@hyperframes/parsers/hf-ids";
 import { createHash } from "node:crypto";
-import { closeSync, constants, fstatSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
-import { isInHiddenOrVendorDir, mkdirWithinProject, walkDir } from "./safePath.js";
+import { isInHiddenOrVendorDir, mkdirOwnedWithinProject, walkDir } from "./safePath.js";
 
 export const isCompositionSource = (html: string): boolean => /data-composition-id\s*=/.test(html);
 
@@ -48,8 +48,8 @@ function readStampRecord(recordPath: string): Record<string, string> {
 
 function writeStampRecord(projectDir: string, recordPath: string, next: Record<string, string>) {
   try {
-    mkdirWithinProject(projectDir, dirname(recordPath));
-    writeFileSync(recordPath, JSON.stringify(next));
+    mkdirOwnedWithinProject(projectDir, dirname(recordPath));
+    replaceFileAtomically(recordPath, JSON.stringify(next));
   } catch {
     // read-only project: the next start parses again
   }

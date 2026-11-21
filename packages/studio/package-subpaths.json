@@ -19,6 +19,12 @@
       "types": "./dist/player.d.ts",
       "environments": ["browser"]
     },
+    "./keys": {
+      "source": "./src/keys.ts",
+      "runtime": "./dist/keys.js",
+      "types": "./dist/keys.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./tailwind-preset": {
       "source": "./src/styles/tailwind-preset.ts",
       "runtime": "./dist/styles/tailwind-preset.js",

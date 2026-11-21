@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Original-source preview regression</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+        background: #000;
+      }
+      #film {
+        position: relative;
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+      }
+      video {
+        position: absolute;
+        inset: 0;
+        width: 640px;
+        height: 360px;
+      }
+      #foreground {
+        z-index: 2;
+      }
+      .label {
+        position: absolute;
+        bottom: 16px;
+        right: 20px;
+        z-index: 3;
+        padding: 8px;
+        background: #111;
+        color: #fff;
+        font: 20px/24px monospace;
+        box-sizing: border-box;
+        width: 232px;
+      }
+      .clock-bits {
+        display: flex;
+        gap: 8px;
+        height: 24px;
+        margin-top: 4px;
+      }
+      .clock-bits i {
+        flex: 0 0 24px;
+        height: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="film"
+      data-composition-id="preview-film"
+      data-width="640"
+      data-height="360"
+      data-duration="12"
+      data-fps="30"
+      data-layout-allow-overlap
+    >
+      <video
+        id="background-a"
+        class="clip"
+        src="assets/background-a.mp4"
+        muted
+        playsinline
+        preload="metadata"
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+      ></video>
+      <video
+        id="background-b"
+        class="clip"
+        src="assets/background-b.mp4"
+        muted
+        playsinline
+        preload="metadata"
+        data-start="6"
+        data-duration="6"
+        data-track-index="0"
+      ></video>
+      <video
+        id="foreground"
+        class="clip"
+        src="assets/foreground.webm"
+        muted
+        playsinline
+        preload="metadata"
+        data-start="0"
+        data-duration="12"
+        data-track-index="1"
+      ></video>
+      <div id="label-a" class="clip label" data-start="0" data-duration="6" data-track-index="2">
+        A · <span class="clock">0.000</span>
+        <span class="clock-bits" data-scene="0" aria-hidden="true"></span>
+      </div>
+      <div id="label-b" class="clip label" data-start="6" data-duration="6" data-track-index="2">
+        B · <span class="clock">0.000</span>
+        <span class="clock-bits" data-scene="1" aria-hidden="true"></span>
+      </div>
+    </div>
+    <script>
+      const clock = { time: 0 };
+      const strips = [...document.querySelectorAll(".clock-bits")];
+      for (const strip of strips)
+        for (let i = 0; i < 7; i++) strip.append(document.createElement("i"));
+      const paintClock = () => {
+        for (const label of document.querySelectorAll(".clock"))
+          label.textContent = clock.time.toFixed(3);
+        const second = Math.floor(clock.time);
+        for (const strip of strips) {
+          const bits = [
+            1,
+            0,
+            Number(strip.dataset.scene),
+            ...Array.from({ length: 4 }, (_, i) => (second >> i) & 1),
+          ];
+          [...strip.children].forEach(
+            (cell, i) => (cell.style.background = bits[i] ? "#fff" : "#000"),
+          );
+        }
+      };
+      const timeline = gsap.timeline({ paused: true });
+      timeline.to(clock, { time: 12, duration: 12, ease: "none", onUpdate: paintClock });
+      paintClock();
+      window.__timelines = { "preview-film": timeline };
+    </script>
+  </body>
+</html>

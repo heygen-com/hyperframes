@@ -1,6 +1,7 @@
 import type { ReferenceBackgroundResult } from "@hyperframes/producer";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { recordRenderSuccess, registerRenderOutput } from "@hyperframes/studio-server/history";
+import { resolveGsapVendorDir } from "../server/gsapVendor.js";
 import { failCommand, requestCliExit, scheduleCliExit } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -15,6 +16,7 @@ import { seedProjectAuthoringSkill } from "../utils/projectConfig.js";
 import { deliveryFlagArgs } from "../utils/deliveryFlags.js";
 import type { CatalogUsage } from "../utils/catalogUsage.js";
 import { presentRenderPlan } from "./render/present.js";
+import { acquireRenderSlot } from "./render/renderSlot.js";
 import { executeRenderPlan, renderLintContinuationHint, runRenderLint } from "./render/execute.js";
 // Test-only seams retained at the command boundary for render behavior tests.
 export { resolveBrowserGpuForCli, renderLintContinuationHint, runRenderLint };
@@ -70,6 +72,7 @@ import { freemem, tmpdir } from "node:os";
 import { resolve, dirname, join, basename } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { loadProducer } from "../utils/producer.js";
+import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { c } from "../ui/colors.js";
 import { desktopHint } from "../utils/desktopApp.js";
 import {
@@ -82,6 +85,7 @@ import {
 } from "../ui/format.js";
 import { warnIfWebmAlphaDropped } from "../utils/webmAlphaCheck.js";
 import { renderFailureDiagnostic } from "../ui/renderDiagnostic.js";
+import { sourceFailureHint } from "./render/sourceFailureHint.js";
 import { missingPathKind } from "../telemetry/missingPathKind.js";
 import { renderProgress, renderMachineProgress } from "../ui/progress.js";
 import {
@@ -92,6 +96,7 @@ import {
   type RenderEnvironmentTelemetryPayload,
 } from "../telemetry/events.js";
 import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
+import { renderMotionBlurTelemetryPayload } from "../telemetry/renderMotionBlur.js";
 import {
   readConfigFresh,
   releaseDeParallelRouterLatch,
@@ -117,7 +122,11 @@ import {
   isRouterOff,
 } from "./render/deRouterBreaker.js";
 import { isDevMode } from "../utils/env.js";
-import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
+import {
+  buildDockerRunArgs,
+  resolveDockerPlatform,
+  type DockerRenderOptions,
+} from "../utils/dockerRunArgs.js";
 import { createStderrTail, DockerRenderExitError } from "../utils/dockerStderrTail.js";
 import type { BrowserInstallFacts } from "../browser/installFacts.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
@@ -145,9 +154,11 @@ import {
   runPostRenderStepAsync,
 } from "../utils/render-success-state.js";
 import type { ProducerLogger, RenderJob, RenderPerfSummary } from "@hyperframes/producer";
+import { recordFailure } from "../utils/jsonError.js";
 import {
   EXTRACT_CACHE_DIR_DISABLED_ALIASES,
   sandboxDeniedRemediation,
+  type PageMotionBlurSummary,
   type ProresProfile,
   type VideoFrameFormat,
 } from "@hyperframes/engine";
@@ -155,6 +166,8 @@ import {
   checkOutputResolutionCompatibility,
   suggestMatchingPreset,
   fpsToNumber,
+  terminalLines,
+  terminalText,
   type CanvasResolution,
   type OutputResolutionIssueKind,
   type Fps,
@@ -233,7 +246,7 @@ export default defineCommand({
     "video-frame-format": {
       type: "string",
       description:
-        "Source video frame extraction format: auto, jpg, png (default: auto). " +
+        "Source video frame extraction format: auto, jpg, png. " +
         "Use png for UI recordings, screen captures, and color-sensitive source videos; " +
         "alpha-capable sources always extract as PNG.",
       default: "auto",
@@ -291,6 +304,14 @@ export default defineCommand({
       description:
         "libvpx-vp9 -cpu-used value for WebM encodes (-8 to 8). Higher is faster with a larger quality/size tradeoff. Env: PRODUCER_VP9_CPU_USED.",
     },
+    "chroma-subsampling": {
+      type: "string",
+      description:
+        "MP4 chroma: 420 (default) or 444. 444 keeps full-resolution colour for thin coloured " +
+        "text and UI (yuv444p, lossless PNG capture, slower). Software encoder and SDR MP4 only; " +
+        "many players cannot decode 4:4:4.",
+      default: "420",
+    },
     gpu: { type: "boolean", description: "Use GPU encoding", default: false },
     "browser-gpu": {
       type: "boolean",
@@ -319,10 +340,34 @@ export default defineCommand({
         "Allow output with structured capture-readiness warnings (default). Use --no-best-effort to fail on missing or unready media.",
       default: true,
     },
+    wait: {
+      type: "boolean",
+      description:
+        "Wait while another render of this user account runs, then start (default): renders side by " +
+        "side starve each other. Use --no-wait to fail at once instead. Env: HYPERFRAMES_RENDER_LOCK=off " +
+        "lets renders run side by side; HYPERFRAMES_RENDER_LOCK_DIR set to one folder in every account " +
+        "shares the slot across user accounts.",
+      default: true,
+    },
     strict: {
       type: "boolean",
       description: "Fail render on lint errors",
       default: false,
+    },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Also run .js and .mjs scripts the project references from outside its folder. Without it they are left out " +
+        "with a warning; images, video, audio, fonts and CSS outside the folder are always included.",
+      default: false,
+    },
+    "refuse-outside-files": {
+      type: "boolean",
+      description:
+        "Leave out every file the project references from outside its folder. A --docker render passes it " +
+        "into the container when the received-files rule refuses those files on the host.",
+      default: false,
+      hidden: true,
     },
     "strict-all": {
       type: "boolean",
@@ -373,7 +418,7 @@ export default defineCommand({
     resolution: {
       type: "string",
       description:
-        "Output resolution preset: landscape (1920x1080), portrait (1080x1920), landscape-4k (3840x2160), portrait-4k (2160x3840), square (1080x1080), square-4k (2160x2160). Aliases: 1080p, 4k, uhd, 1080p-square, square-1080p, 4k-square. The composition is unchanged — Chrome renders at higher DPR (deviceScaleFactor) so the captured screenshot lands at the requested dimensions. Aspect ratio must match the composition; the scale must be an integer multiple. Not yet supported with --hdr.",
+        "Output resolution preset: landscape (1920x1080), portrait (1080x1920), landscape-4k (3840x2160), portrait-4k (2160x3840), square (1080x1080), square-4k (2160x2160), landscape-1440p (2560x1440), portrait-1440p (1440x2560), square-1440p (1440x1440). Aliases: 1080p, 4k, uhd, 1440p, qhd, 1080p-square, square-1080p, 4k-square, 1440p-portrait, 1440p-square. The composition is unchanged — Chrome renders at higher DPR (deviceScaleFactor) so the captured screenshot lands at the requested dimensions. Aspect ratio must match the composition; upscaling requires an integer multiple. Not yet supported with --hdr.",
     },
     "page-side-compositing": {
       type: "boolean",
@@ -418,14 +463,14 @@ export default defineCommand({
       description:
         "Segmented capture only (HF_SEGMENTED_CAPTURE=true): reuse segments a " +
         "previous run of the same composition and settings already finished, " +
-        "recorded in renders/.hf-segments/<hash>/segments.json. Each reused " +
+        "recorded in the local HyperFrames cache. Each reused " +
         "segment is re-validated before it is skipped.",
       default: false,
     },
     "keep-segments": {
       type: "boolean",
       description:
-        "Segmented capture only: keep renders/.hf-segments/<hash> after a " +
+        "Segmented capture only: keep locally cached segments after a " +
         "successful render instead of deleting it.",
       default: false,
     },
@@ -479,6 +524,7 @@ export default defineCommand({
           renderDocker,
           renderLocal,
           checkResolution: checkRenderResolutionPreflight,
+          acquireRenderSlot,
         },
         cancellation,
       );
@@ -487,6 +533,7 @@ export default defineCommand({
         const reason = cancellation.signal.reason;
         const message = reason instanceof Error ? reason.message : String(reason);
         process.stderr.write(`Render cancelled: ${message}\n`);
+        recordFailure(`Render cancelled: ${message}`);
         requestCliExit(1);
       }
       throw error;
@@ -497,6 +544,7 @@ export default defineCommand({
 });
 
 export interface SingleRenderResult extends Partial<ReferenceBackgroundResult> {
+  motionBlur?: PageMotionBlurSummary;
   durationMs?: number;
   renderTimeMs: number;
   outcome?: "completed" | "completed_with_warnings";
@@ -548,6 +596,8 @@ export interface RenderOptions {
   maxBitrate?: string;
   bufferSize?: string;
   videoFrameFormat?: VideoFrameFormat;
+  /** "444" opts an SDR MP4 render into full-resolution chroma. Absent means 4:2:0. */
+  chromaSubsampling?: "420" | "444";
   pageMotionBlur?: "off";
   quiet: boolean;
   debug?: boolean;
@@ -556,10 +606,18 @@ export interface RenderOptions {
   /** Segmented capture: keep the segment directory after success. */
   keepSegments?: boolean;
   bestEffort?: boolean;
+  /** --include-outside-files: run scripts the project references from outside its folder. */
+  includeOutsideScripts?: boolean;
+  /**
+   * True brings in no file from outside the project folder (--refuse-outside-files). False means
+   * the caller already applied the received-files rule and it allows them. Absent, the render applies it.
+   */
+  refuseOutsideFiles?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
   entryFile?: string;
   exitAfterComplete?: boolean;
+  embedded?: boolean;
   /** Output resolution preset; see `resolveDeviceScaleFactor` for constraints. */
   outputResolution?: CanvasResolution;
   /** Whether the resolution names a tier without fixing an orientation. */
@@ -728,7 +786,7 @@ function ensureDockerImage(version: string, platform: string, quiet: boolean): s
     return tag;
   }
 
-  if (!quiet) console.log(c.dim(`  Building Docker image: ${tag} (${platform})...`));
+  if (!quiet) console.log(c.dim(`  Building Docker image: ${tag} (${terminalText(platform)})...`));
 
   const dockerfilePath = resolveDockerfilePath();
 
@@ -821,14 +879,65 @@ function resolveDockerHostPlatform(options: RenderOptions): string {
 
 async function registerRenderOutputOrWarn(projectDir: string, outputPath: string): Promise<void> {
   await registerRenderOutput(projectDir, outputPath).catch((error: unknown) =>
-    console.warn(`Render output was not registered: ${normalizeErrorMessage(error)}`),
+    console.warn(
+      `Render output was not registered: ${terminalLines(normalizeErrorMessage(error))}`,
+    ),
   );
 }
 
-// Inherited minor finding (CRAP 37.1, cyclomatic 11). This PR only added
-// `pageNavigationTimeoutMs` to the options forwarded to `buildDockerRunArgs`.
+function outsideAssetsAllowedOrWarn(projectDir: string, entryFile: string | undefined): boolean {
+  return outsideAssetsAllowed(projectDir, entryFile, (line) => console.warn(c.warn(`  ${line}`)));
+}
+
+/**
+ * The render options passed into the container. The received-files rule is
+ * decided here on the host, because the container mounts only the project and
+ * cannot see a record in a folder above it. A container CLI without
+ * --refuse-outside-files rejects it as an unknown flag and does not render.
+ */
+export function dockerRenderOptions(
+  projectDir: string,
+  options: RenderOptions,
+): DockerRenderOptions {
+  return {
+    fps: options.fps,
+    quality: options.quality,
+    format: options.format,
+    gifLoop: options.gifLoop,
+    hlsSegmentSeconds: options.hlsSegmentSeconds,
+    workers: options.workers,
+    gpu: options.gpu,
+    browserGpu: options.browserGpuMode === "hardware",
+    hdrMode: options.hdrMode,
+    crf: options.crf,
+    vp9CpuUsed: options.vp9CpuUsed,
+    videoBitrate: options.videoBitrate,
+    keyframeIntervalSeconds: options.keyframeIntervalSeconds,
+    range: options.range,
+    proresProfile: options.proresProfile,
+    maxBitrate: options.maxBitrate,
+    bufferSize: options.bufferSize,
+    videoFrameFormat: options.videoFrameFormat,
+    chromaSubsampling: options.chromaSubsampling,
+    pageMotionBlur: options.pageMotionBlur,
+    quiet: options.quiet,
+    variables: options.variables,
+    entryFile: options.entryFile,
+    outputResolution: options.outputResolutionRaw ?? options.outputResolution,
+    pageSideCompositing: options.pageSideCompositing,
+    debug: options.debug,
+    bestEffort: options.bestEffort,
+    experimentalFastCapture: options.experimentalFastCapture,
+    pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
+    protocolTimeoutMs: options.protocolTimeout,
+    playerReadyTimeoutMs: options.playerReadyTimeout,
+    refuseOutsideFiles:
+      options.refuseOutsideFiles ?? !outsideAssetsAllowedOrWarn(projectDir, options.entryFile),
+  };
+}
+
 // fallow-ignore-next-line complexity
-async function renderDocker(
+export async function renderDocker(
   projectDir: string,
   outputPath: string,
   options: RenderOptions,
@@ -865,38 +974,7 @@ async function renderDocker(
     outputFilename,
     platform,
     hostStdoutIsTty: process.stdout.isTTY === true,
-    options: {
-      fps: options.fps,
-      quality: options.quality,
-      format: options.format,
-      gifLoop: options.gifLoop,
-      hlsSegmentSeconds: options.hlsSegmentSeconds,
-      workers: options.workers,
-      gpu: options.gpu,
-      browserGpu: options.browserGpuMode === "hardware",
-      hdrMode: options.hdrMode,
-      crf: options.crf,
-      vp9CpuUsed: options.vp9CpuUsed,
-      videoBitrate: options.videoBitrate,
-      keyframeIntervalSeconds: options.keyframeIntervalSeconds,
-      range: options.range,
-      proresProfile: options.proresProfile,
-      maxBitrate: options.maxBitrate,
-      bufferSize: options.bufferSize,
-      videoFrameFormat: options.videoFrameFormat,
-      pageMotionBlur: options.pageMotionBlur,
-      quiet: options.quiet,
-      variables: options.variables,
-      entryFile: options.entryFile,
-      outputResolution: options.outputResolutionRaw ?? options.outputResolution,
-      pageSideCompositing: options.pageSideCompositing,
-      debug: options.debug,
-      bestEffort: options.bestEffort,
-      experimentalFastCapture: options.experimentalFastCapture,
-      pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
-      protocolTimeoutMs: options.protocolTimeout,
-      playerReadyTimeoutMs: options.playerReadyTimeout,
-    },
+    options: dockerRenderOptions(projectDir, options),
   });
 
   if (!options.quiet) {
@@ -932,7 +1010,7 @@ async function renderDocker(
   // AND committed the artifact. Mirror renderLocal's post-success guarantee
   // so any late throw here (telemetry flush, feedback prompt) cannot flip
   // the exit code.
-  markRenderSucceeded();
+  if (!options.embedded) markRenderSucceeded();
   await runPostRenderStepAsync("recordRenderSuccess", () =>
     recordRenderSuccess(projectDir, outputPath, "completed", capture).then(() => {}),
   );
@@ -974,7 +1052,7 @@ async function renderDocker(
   runPostRenderStep("warnIfWebmAlphaDropped", () =>
     warnIfWebmAlphaDropped(outputPath, options.format, options.quiet),
   );
-  if (options.exitAfterComplete) scheduleCliExit();
+  if (options.exitAfterComplete && !options.embedded) scheduleCliExit();
   return { renderTimeMs: elapsed };
 }
 
@@ -1041,13 +1119,13 @@ async function executeLocalRender(
     for (const check of failedChecks) {
       errorBox(check.title ?? `${check.name} check failed`, check.detail, check.hint);
     }
-    failCommand();
+    failCommand(1, undefined, failedChecks.at(-1)?.code);
   }
   if (!options.quiet) {
     for (const outcome of preflight.outcomes) {
       if (outcome.level === "warn") {
-        console.warn(c.warn(`  ${outcome.name}: ${outcome.detail}`));
-        if (outcome.hint) console.warn(c.dim(`  ${outcome.hint}`));
+        console.warn(c.warn(`  ${outcome.name}: ${terminalLines(String(outcome.detail))}`));
+        if (outcome.hint) console.warn(c.dim(`  ${terminalLines(outcome.hint)}`));
       }
     }
   }
@@ -1092,7 +1170,9 @@ async function executeLocalRender(
       // authoritative FFmpeg error instead of failing here with a bare stack.
       if (!options.quiet) {
         const detail = error instanceof Error ? error.message : String(error);
-        console.warn(c.warn(`  Unable to probe H.264 encoder capabilities: ${detail}`));
+        console.warn(
+          c.warn(`  Unable to probe H.264 encoder capabilities: ${terminalLines(detail)}`),
+        );
       }
     }
     if (encoderMode === "gpu" && isHls) {
@@ -1116,7 +1196,16 @@ async function executeLocalRender(
 
   cancellation.checkAncestors();
   cancellation.signal.throwIfAborted();
+  const gsapVendorDir = resolveGsapVendorDir();
+  if (gsapVendorDir && !process.env.HYPERFRAMES_GSAP_VENDOR_DIR) {
+    process.env.HYPERFRAMES_GSAP_VENDOR_DIR = gsapVendorDir;
+  }
   const producer = await loadProducer();
+  const allowOutsideProjectAssets =
+    options.refuseOutsideFiles === undefined
+      ? outsideAssetsAllowedOrWarn(projectDir, options.entryFile)
+      : !options.refuseOutsideFiles;
+  const includeOutsideScripts = options.includeOutsideScripts === true;
   const deParallelRouterActive =
     options.manageDeParallelRouterBreaker === true
       ? applyDeParallelRouterCircuitBreaker(options.quiet)
@@ -1170,6 +1259,7 @@ async function executeLocalRender(
       maxBitrate: options.maxBitrate,
       bufferSize: options.bufferSize,
       videoFrameFormat: options.videoFrameFormat,
+      chromaSubsampling: options.chromaSubsampling,
       pageMotionBlur: options.pageMotionBlur,
       variables: options.variables,
       entryFile: options.entryFile,
@@ -1195,9 +1285,17 @@ async function executeLocalRender(
       startTime,
       cpu,
       signal: cancellation.signal,
+      allowOutsideProjectAssets,
+      includeOutsideScripts,
     });
   }
-  const job = producer.createRenderJob(producer.renderConfigFromRequest(request, { logger }));
+  const job = producer.createRenderJob(
+    producer.renderConfigFromRequest(request, {
+      logger,
+      allowOutsideProjectAssets,
+      includeOutsideScripts,
+    }),
+  );
 
   const onProgress = options.quiet
     ? undefined
@@ -1238,7 +1336,7 @@ async function executeLocalRender(
   // point on, ANY thrown teardown error must not be allowed to override
   // the exit code. Field signal ts=1784169760 / ts=1784171150 / ts=1784172467
   // (win32/x64, CLI 0.7.58): valid MP4 on disk, exited 1 with no error print.
-  markRenderSucceeded();
+  if (!options.embedded) markRenderSucceeded();
   await runPostRenderStepAsync("recordRenderSuccess", () =>
     recordRenderSuccess(
       projectDir,
@@ -1253,7 +1351,7 @@ async function executeLocalRender(
   const cpuUsage = cpu.stop();
   if (job.outcome === "completed_with_warnings") {
     for (const warning of job.warnings) {
-      console.warn(c.warn(`  [${warning.code}] ${warning.message}`));
+      console.warn(c.warn(`  [${warning.code}] ${terminalLines(warning.message)}`));
     }
   }
   const audioLowered = audioLoweredWarning(job.audioLoweredDb);
@@ -1284,7 +1382,7 @@ async function executeLocalRender(
       }),
     );
   }
-  if (options.exitAfterComplete) scheduleCliExit();
+  if (options.exitAfterComplete && !options.embedded) scheduleCliExit();
   const durationMs = job.perfSummary
     ? Math.round(job.perfSummary.compositionDurationSeconds * 1000)
     : undefined;
@@ -1292,6 +1390,7 @@ async function executeLocalRender(
     job.outcome === "completed_with_warnings" ? "completed_with_warnings" : "completed";
   return {
     ...producer.referenceBackgroundResult(job[producer.REFERENCE_BACKGROUND_FIELD]),
+    motionBlur: job.perfSummary?.motionBlur,
     renderTimeMs: elapsed,
     durationMs,
     outcome,
@@ -1313,6 +1412,8 @@ async function renderRange(input: {
   startTime: number;
   cpu: RenderCpuSampler;
   signal: AbortSignal;
+  allowOutsideProjectAssets: boolean;
+  includeOutsideScripts: boolean;
 }): Promise<SingleRenderResult> {
   const { producer, options } = input;
   let framesEncoded = 0;
@@ -1327,13 +1428,17 @@ async function renderRange(input: {
       config,
       input.range,
       input.outputPath,
+      {
+        allowOutsideProjectAssets: input.allowOutsideProjectAssets,
+        includeOutsideScripts: input.includeOutsideScripts,
+      },
     );
     framesEncoded = spanResult.framesEncoded;
     reference = producer.referenceBackgroundResult(spanResult[producer.REFERENCE_BACKGROUND_FIELD]);
   } catch (error: unknown) {
     handleRenderError(error, options, input.startTime, input.cpu, false, "");
   }
-  markRenderSucceeded();
+  if (!options.embedded) markRenderSucceeded();
   const elapsed = Date.now() - input.startTime;
   input.cpu.stop();
   printRenderComplete({
@@ -1344,7 +1449,7 @@ async function renderRange(input: {
     quiet: options.quiet,
     format: options.format,
   });
-  if (options.exitAfterComplete) scheduleCliExit();
+  if (options.exitAfterComplete && !options.embedded) scheduleCliExit();
   return {
     renderTimeMs: elapsed,
     ...reference,
@@ -1842,7 +1947,7 @@ const KNOWN_STAGE_CODES: Readonly<Record<string, string>> = {
 };
 
 // Live counts in a progress label ("Capturing frame 120/600 (6 workers)") would make a code per render.
-const STAGE_COUNTS = /\([^)]*\)|\d+\/\d+/g;
+const STAGE_COUNTS = /\([^)]*\)|\d+\/\d+|\d+ of \d+/g;
 
 export function normalizeStageCode(stage: string): string {
   const base = stage.replace(STAGE_COUNTS, "").trim();
@@ -1911,6 +2016,7 @@ function handleRenderError(
     errorName: error instanceof Error ? error.name : "unknown",
     failedStageCode: normalizeStageCode(failedStage || "pipeline"),
     missingPathKind: missingPathKind(error),
+    missingPath: job?.errorDetails?.missingPath,
     ...renderJobObservabilityTelemetryPayload(job),
     ...getMemorySnapshot(),
     ...cpu.stop(),
@@ -1921,12 +2027,13 @@ function handleRenderError(
   if (options.throwOnError) {
     throw new Error(message);
   }
+  const shown = message.split(/\r?\n/).map(terminalText).join("\n");
   const launch = chromeLaunchFailure(message);
   if (launch) {
-    errorBox(launch.title, message, launch.remediation);
+    errorBox(launch.title, shown, launch.remediation);
     failCommand();
   }
-  errorBox("Render failed", message, hint);
+  errorBox("Render failed", shown, sourceFailureHint(error) ?? hint);
   failCommand();
 }
 
@@ -1980,6 +2087,7 @@ function trackRenderMetrics(
     catalogUsage: options.catalogUsage,
     ...renderOutputShapeTelemetryPayload(options),
     ...renderEnvironmentTelemetryPayload(options),
+    ...renderMotionBlurTelemetryPayload(perf?.motionBlur),
     chromeBrowserRssPeakMb: perf?.chromeMemory?.browserRssPeakMb,
     chromeRendererRssPeakMb: perf?.chromeMemory?.rendererRssPeakMb,
     chromeRssLastMb: perf?.chromeMemory?.rssLastMb,
@@ -1988,6 +2096,7 @@ function trackRenderMetrics(
     staticDedupEnabled: perf?.staticDedup?.enabled,
     staticDedupArmed: perf?.staticDedup?.armed,
     staticDedupSkipReason: perf?.staticDedup?.skipReason,
+    staticDedupIneligibleCause: perf?.staticDedup?.ineligibleCause,
     staticDedupPredictedFrames: perf?.staticDedup?.predictedFrames,
     staticDedupReusedFrames: perf?.staticDedup?.reusedFrames,
     beginFrameNoDamageFrames: perf?.beginFrameReuse?.noDamageFrames,
@@ -2124,11 +2233,11 @@ function printRenderComplete(input: {
     playlistDirectory: input.format === "hls",
   });
   console.log("");
-  console.log(c.success("\u25C7") + "  " + c.accent(outputPath));
+  console.log(c.success("\u25C7") + "  " + c.accent(terminalText(outputPath)));
   console.log("   " + c.bold(fileSize) + c.dim(" \u00B7 " + detail));
   if (perf) printRenderPipeline(perf, input.requestedGpuMode);
   const hint = input.desktopHint ? desktopHint(input.projectDir) : null;
-  if (hint) console.log("   " + c.dim(hint));
+  if (hint) console.log("   " + c.dim(terminalText(hint)));
 }
 
 function printRenderPipeline(

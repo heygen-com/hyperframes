@@ -8,7 +8,7 @@ HeyGen returns word timestamps in the same response as the audio. Use the
 bundled REST helper (the `hyperframes tts` command is Kokoro-only):
 
 ```bash
-node skills/media-use/audio/scripts/heygen-tts.mjs \
+node <SKILL_DIR>/audio/scripts/heygen-tts.mjs \
   script.txt --output narration.wav --words narration.words.json
 ```
 

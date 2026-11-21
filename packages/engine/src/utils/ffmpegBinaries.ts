@@ -1,17 +1,23 @@
 import { existsSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV, findFfBinary } from "@hyperframes/parsers/ff-binaries";
 
 export { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV };
 
-// The engine hands spawn a bare binary name as the last resort so the spawn
-// error names what the user must install; a configured-but-missing override
-// is surfaced separately by assertConfiguredFfmpegBinariesExist below.
+// With no trusted copy, an absolute path in HyperFrames' own install that is never created: spawning it
+// fails with ENOENT as a missing binary always has, so callers degrade as before, and the OS never
+// searches PATH or the working directory for the bare name. The folder name carries the install hint.
+function notFound(name: "ffmpeg" | "ffprobe", setting: string): string {
+  return join(dirname(fileURLToPath(import.meta.url)), `${name}-not-found-set-${setting}`, name);
+}
+
 export function getFfmpegBinary(): string {
-  return findFfBinary("ffmpeg") ?? "ffmpeg";
+  return findFfBinary("ffmpeg") ?? notFound("ffmpeg", FFMPEG_PATH_ENV);
 }
 
 export function getFfprobeBinary(): string {
-  return findFfBinary("ffprobe") ?? "ffprobe";
+  return findFfBinary("ffprobe") ?? notFound("ffprobe", FFPROBE_PATH_ENV);
 }
 
 export function assertConfiguredFfmpegBinariesExist(): void {

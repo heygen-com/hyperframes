@@ -43,6 +43,10 @@ async function patchAvailableAt(entry: string) {
     VERSION: "0.8.231",
   }));
   vi.doMock("./env.js", () => ({ isDevMode: () => false }));
+  vi.doMock("./runningCli.js", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("./runningCli.js")>()),
+    registeredAsRunning: () => true,
+  }));
   vi.doMock("./attendedTerminal.js", async (importOriginal) => ({
     ...(await importOriginal<typeof import("./attendedTerminal.js")>()),
     isUnattended: () => false,
@@ -60,7 +64,12 @@ async function patchAvailableAt(entry: string) {
   }));
 
   process.argv = [process.argv[0] ?? "node", entry];
-  for (const name of ["CI", "HYPERFRAMES_NO_AUTO_INSTALL", "HYPERFRAMES_NO_UPDATE_CHECK"]) {
+  for (const name of [
+    "CI",
+    "npm_lifecycle_event",
+    "HYPERFRAMES_NO_AUTO_INSTALL",
+    "HYPERFRAMES_NO_UPDATE_CHECK",
+  ]) {
     delete process.env[name];
   }
   Object.defineProperty(process.stderr, "isTTY", { value: true, configurable: true });

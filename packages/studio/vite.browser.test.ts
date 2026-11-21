@@ -2,7 +2,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { join } from "node:path";
 
 const browserMocks = vi.hoisted(() => {
+  const cdp = { send: vi.fn(async (_method: string) => undefined), on: vi.fn() };
   const page = {
+    createCDPSession: vi.fn(async () => cdp),
     setViewport: vi.fn(async () => {}),
     goto: vi.fn(async () => {}),
     evaluate: vi.fn(async () => undefined),
@@ -15,7 +17,7 @@ const browserMocks = vi.hoisted(() => {
   const sharedBrowser = { connected: true as boolean, newPage };
   const launch = vi.fn(async () => sharedBrowser);
   const versionProbe = vi.fn(() => "150.0.0.0");
-  return { launch, newPage, page, sharedBrowser, versionProbe };
+  return { cdp, launch, newPage, page, sharedBrowser, versionProbe };
 });
 
 vi.mock("puppeteer-core", () => ({ default: { launch: browserMocks.launch } }));
@@ -24,6 +26,7 @@ vi.mock("node:child_process", async (original) => ({
   execFileSync: browserMocks.versionProbe,
 }));
 
+import { thumbnailSeekReadyInBrowser } from "@hyperframes/studio-server";
 import { findSystemChrome, generateThumbnail, type GenerateThumbnailOptions } from "./vite.browser";
 
 const originalBrowserPath = process.env["HYPERFRAMES_BROWSER_PATH"];
@@ -63,6 +66,7 @@ describe("generateThumbnail", () => {
     browserMocks.newPage.mockClear();
     browserMocks.versionProbe.mockClear();
     for (const mock of Object.values(browserMocks.page)) mock.mockClear();
+    browserMocks.cdp.send.mockClear();
   });
 
   afterEach(() => {
@@ -103,6 +107,31 @@ describe("generateThumbnail", () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("150.0.0.0"), "page failed again");
     expect(browserMocks.versionProbe).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+
+  it("grants the capture page's loads on its own session before it navigates", async () => {
+    const previewUrl = "http://127.0.0.1:5190/api/projects/demo/preview?hf-capture=1";
+    await expect(generateThumbnail({ ...options(), previewUrl })).resolves.toEqual(
+      Buffer.from("thumbnail"),
+    );
+    const enable = browserMocks.cdp.send.mock.calls.findIndex(
+      ([method]) => method === "Fetch.enable",
+    );
+    expect(enable).toBeGreaterThanOrEqual(0);
+    expect(browserMocks.cdp.send.mock.invocationCallOrder[enable]).toBeLessThan(
+      browserMocks.page.goto.mock.invocationCallOrder[0]!,
+    );
+    expect(browserMocks.page.goto).toHaveBeenCalledWith(previewUrl, expect.anything());
+  });
+
+  it("holds a thumbnail's shot on the thumbnail readiness rule", async () => {
+    await expect(generateThumbnail(options())).resolves.toEqual(Buffer.from("thumbnail"));
+
+    const { waitForFunction, screenshot } = browserMocks.page;
+    expect(waitForFunction).toHaveBeenCalledWith(thumbnailSeekReadyInBrowser, { timeout: 5000 });
+    expect(waitForFunction.mock.invocationCallOrder[0]).toBeLessThan(
+      screenshot.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it("captures at the route-provided physical output size", async () => {

@@ -1,17 +1,13 @@
 import { createHash } from "node:crypto";
-import {
-  createReadStream,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
+import { createReadStream, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { basename, dirname, extname, join, relative } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { createStagingDir, replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { loudness, type AnalysisQuality, type Span } from "@hyperframes/core/audio-analysis";
 import { loadTranscript } from "../../whisper/normalize.js";
+import { readPlainFile } from "../../utils/projectRecords.js";
 import { runFile } from "../analysis/providers/shared.js";
+import { isPlainFile, makeRealFolder } from "../cacheFolder.js";
 import { describeAccess, describeStems } from "./describe.js";
 import { findEffects, type EffectSource } from "./effects.js";
 import { formatRead } from "./format.js";
@@ -28,7 +24,14 @@ import {
   spanDb,
 } from "./signal.js";
 import { DRUM_STEM, VOICE_STEM, cachedStems, fetchStems, stemsAccess } from "./stems.js";
-import { READ_VERSION, type AudibleStem, type Music, type ReadAudio, type Voice } from "./types.js";
+import {
+  READ_VERSION,
+  type AudibleStem,
+  type Layer,
+  type Music,
+  type ReadAudio,
+  type Voice,
+} from "./types.js";
 import { voiceFromActivity, voiceFromWords, type TimedWord } from "./voice.js";
 
 export interface ReadOptions {
@@ -37,6 +40,7 @@ export interface ReadOptions {
   /** A transcript of the recording; `<file>.transcript.json` next to it is used when absent. */
   transcript?: string;
   quality?: AnalysisQuality;
+  layer?: Layer;
 }
 
 export interface ReadResult {
@@ -66,18 +70,22 @@ function wordsOf(transcript: string): TimedWord[] {
 const fingerprint = (path: string | null) =>
   path ? createHash("sha256").update(readFileSync(path)).digest("hex").slice(0, 16) : "none";
 
-function writeAtomic(path: string, content: string) {
-  const temporary = `${path}.${process.pid}.tmp`;
-  writeFileSync(temporary, content);
-  renameSync(temporary, path);
-}
-
 const CACHE_REVISION = 1;
+const MAX_ENTRY_BYTES = 256 * 1024 * 1024;
 
 interface CacheEntry {
   revision: number;
   analysis: ReadAudio;
   transcriptKey: string;
+}
+
+function cachedEntry(jsonPath: string, textPath: string): CacheEntry | null {
+  if (!isPlainFile(jsonPath) || !isPlainFile(textPath)) return null;
+  try {
+    return JSON.parse(readPlainFile(jsonPath, MAX_ENTRY_BYTES)) as CacheEntry;
+  } catch {
+    return null;
+  }
 }
 
 async function stemsFor(
@@ -122,14 +130,16 @@ const VOICE_FREE = "no-vocals.wav";
 
 /** Stems summed at full quality into one file next to them, made once. */
 async function mixedFile(paths: string[], out: string, warnings: string[]) {
-  if (existsSync(out)) return out;
+  if (isPlainFile(out)) return out;
   const ffmpeg = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpeg) {
     warnings.push(`no ${basename(out)}: ffmpeg is required; run: npx hyperframes doctor`);
     return null;
   }
-  const temporary = `${out}.${process.pid}.tmp.wav`;
+  let stage: string | undefined;
   try {
+    stage = createStagingDir(dirname(out), ".hf-mix-");
+    const temporary = join(stage, VOICE_FREE);
     await runFile(
       ffmpeg,
       [
@@ -145,6 +155,8 @@ async function mixedFile(paths: string[], out: string, warnings: string[]) {
   } catch (error) {
     warnings.push(`no ${basename(out)}: ${error instanceof Error ? error.message : error}`);
     return null;
+  } finally {
+    if (stage) rmSync(stage, { recursive: true, force: true });
   }
 }
 
@@ -379,6 +391,46 @@ async function analyze(
   return { ...about, voice, effects, music: null, ambience: null, warnings };
 }
 
+async function analyzeLayer(
+  path: string,
+  file: string,
+  sha: string,
+  transcript: string | null,
+  layer: Layer,
+): Promise<ReadAudio> {
+  const samples = await decodeMono(path);
+  const about = {
+    ...base(file, sha, round(samples.length / READ_RATE, 3), null, transcript),
+    layer,
+  };
+  const none = { voice: null, effects: null, music: null, ambience: null, warnings: [] };
+  if (layer === "music") {
+    const { music, ambience } = musicOf({ music: samples }, null, samples);
+    return { ...about, ...none, music, ambience, bpm: tempoOf(music) };
+  }
+  if (layer === "sfx") {
+    const effects = findEffects({
+      sources: [{ samples }],
+      sampleRate: READ_RATE,
+      mix: samples,
+      music: null,
+      beats: [],
+      speech: [],
+    });
+    return { ...about, ...none, effects };
+  }
+  const words = transcript ? wordsOf(transcript) : [];
+  const pitch = pitchTrack(await decodeMono(path, PITCH_RATE));
+  const levelOf = (span: Span) => spanDb(samples, READ_RATE, span.start, span.end);
+  const voice = words.length
+    ? voiceFromWords(words, pitch, levelOf)
+    : voiceFromActivity(samples, READ_RATE, pitch, levelOf);
+  const warnings = words.length
+    ? []
+    : [`no transcript: voice lines carry no words; ${transcribeHint(file)}`];
+  return { ...about, ...none, voice, warnings };
+}
+
 function base(
   file: string,
   sha: string,
@@ -408,23 +460,26 @@ export async function readAudio(
   options: ReadOptions,
 ): Promise<ReadResult> {
   const quality = options.quality ?? "local";
+  const { layer } = options;
   const sha = await sha256(path);
   const transcript = transcriptFor(path, options.transcript);
   const transcriptKey = fingerprint(transcript);
   const stem = `${basename(file, extname(file)).replace(/[^\w.-]/g, "_")}-${sha.slice(0, 12)}`;
-  mkdirSync(options.cacheDir, { recursive: true });
-  const jsonPath = join(options.cacheDir, `${stem}.json`);
-  const textPath = join(options.cacheDir, `${stem}.txt`);
-  const stemDir = join(options.cacheDir, "stems", sha.slice(0, 12));
-  if (existsSync(jsonPath) && existsSync(textPath)) {
-    const entry = JSON.parse(readFileSync(jsonPath, "utf8")) as CacheEntry;
+  const cacheDir = makeRealFolder(options.cacheDir, 2);
+  const jsonPath = join(cacheDir, `${stem}.json`);
+  const textPath = join(cacheDir, `${stem}.txt`);
+  const stemDir = join(cacheDir, "stems", sha.slice(0, 12));
+  const entry = cachedEntry(jsonPath, textPath);
+  if (entry) {
     const stemsNowPossible =
+      !layer &&
       entry.analysis.separation === "mix" &&
       quality === "best" &&
       (cachedStems(stemDir) !== null || typeof (await stemsAccess()) !== "string");
     if (
       (entry.analysis.separation !== "stems" || cachedStems(stemDir) !== null) &&
       entry.analysis.version === READ_VERSION &&
+      entry.analysis.layer === layer &&
       entry.revision === CACHE_REVISION &&
       entry.transcriptKey === transcriptKey &&
       !stemsNowPossible &&
@@ -437,11 +492,13 @@ export async function readAudio(
     )
       return { analysis: entry.analysis, textPath, jsonPath, cached: true };
   }
-  const analysis = await analyze(path, file, sha, transcript, stemDir, quality, options.cacheDir);
-  writeAtomic(
+  const analysis = layer
+    ? await analyzeLayer(path, file, sha, transcript, layer)
+    : await analyze(path, file, sha, transcript, stemDir, quality, cacheDir);
+  replaceFileAtomically(
     jsonPath,
     JSON.stringify({ revision: CACHE_REVISION, analysis, transcriptKey } satisfies CacheEntry),
   );
-  writeAtomic(textPath, formatRead(analysis));
+  replaceFileAtomically(textPath, formatRead(analysis));
   return { analysis, textPath, jsonPath, cached: false };
 }

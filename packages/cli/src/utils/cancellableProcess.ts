@@ -210,17 +210,19 @@ function tsxLoaderFromCliInstall(): string {
 }
 
 export async function runRenderSetupWorker<T>(
-  mode: "browser" | "browser-install" | "lint" | "orphan-cleanup",
+  mode: "browser" | "browser-install" | "lint" | "lint-html" | "orphan-cleanup",
   input: unknown,
-  options: CancellableProcessOptions,
+  { execArgv: nodeFlags = [], ...options }: CancellableProcessOptions & { execArgv?: string[] },
 ): Promise<T> {
   const sourceMode = import.meta.url.endsWith(".ts");
   const workerUrl = new URL(
     sourceMode ? "../renderSetupWorker.ts" : "./renderSetupWorker.js",
     import.meta.url,
   );
-  const execArgv =
-    sourceMode && !process.versions.bun ? ["--import", tsxLoaderFromCliInstall()] : [];
+  const execArgv = [
+    ...nodeFlags,
+    ...(sourceMode && !process.versions.bun ? ["--import", tsxLoaderFromCliInstall()] : []),
+  ];
   let result: CancellableProcessResult;
   try {
     result = await runCancellableProcess(

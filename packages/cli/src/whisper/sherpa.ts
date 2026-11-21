@@ -1,15 +1,16 @@
 import { execFile, spawn, type ExecFileException } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, renameSync, rmSync, statSync } from "node:fs";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
-import { join } from "node:path";
+import { terminalText } from "@hyperframes/core";
+import { ensurePrivateCacheDir, hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { downloadToFile } from "../cloud/download.js";
 import { verifies, type ModelFile } from "./modelFile.js";
 import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import {
-  CACHE_DIR,
+  OPTIONAL_CACHE_DIR,
   PINNED_PACKAGES,
   pinnedPackageBesideCli,
   installedPackagePath,
@@ -39,7 +40,7 @@ const RUNTIME = "sherpa-onnx-node";
 const RUNTIME_VERSION = PINNED_PACKAGES[RUNTIME];
 /** Per platform and arch, like the native package inside, so Rosetta never shadows arm64. */
 export const SHERPA_RUNTIME_DIR = join(
-  CACHE_DIR,
+  OPTIONAL_CACHE_DIR,
   `${RUNTIME}@${RUNTIME_VERSION}-${process.platform}-${process.arch}`,
 );
 
@@ -207,7 +208,7 @@ async function selectRuntime(
     const error = await runtimeLoadError(path, timeoutMs, signal);
     if (error === null) return { status: "ready", path };
     console.error(
-      `Parakeet runtime at ${path.replace(/\s+/g, " ")} did not load: ${error.replace(/\s+/g, " ")}`,
+      `Parakeet runtime at ${terminalText(path.replace(/\s+/g, " "))} did not load: ${terminalText(error.replace(/\s+/g, " "))}`,
     );
   }
   return cachedRuntime(dir, timeoutMs, signal);
@@ -243,6 +244,7 @@ export async function installSherpaRuntime({
 } = {}): Promise<{ installed: boolean; runtimePath: string }> {
   const present = await selectRuntime(dir, cliUrl, 60_000, signal);
   if (present.status === "ready") return { installed: false, runtimePath: present.path };
+  ensurePrivateCacheDir(dirname(dir), dirname(dir));
   // install() keeps any dir holding the runtime manifest, so a broken one goes first.
   rmSync(dir, { recursive: true, force: true });
   const native = sherpaPlatformPackage();

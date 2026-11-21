@@ -11,11 +11,16 @@ import {
   getNextPreviewZoomPercent,
   getPreviewWheelZoomPercent,
   ownsPreviewPanTarget,
+  parsePreviewZoomInput,
   PREVIEW_PAN_OVERSCROLL_PX,
   PREVIEW_PAN_SURFACE_SELECTOR,
+  PREVIEW_PIXEL_GRID_MIN_ZOOM_PERCENT,
+  resolvePreviewPixelGrid,
+  resolvePreviewTypedZoom,
   resolvePreviewVisibleRegion,
   resolvePreviewWheelPan,
   resolvePreviewWheelZoom,
+  showsPreviewPixelGrid,
   toDomPrecision,
 } from "./previewZoom";
 
@@ -41,6 +46,99 @@ describe("clampPreviewZoomPercent", () => {
   it("clamps to supported preview zoom bounds", () => {
     expect(clampPreviewZoomPercent(1)).toBe(MIN_PREVIEW_ZOOM_PERCENT);
     expect(clampPreviewZoomPercent(5000)).toBe(MAX_PREVIEW_ZOOM_PERCENT);
+  });
+});
+
+describe("parsePreviewZoomInput", () => {
+  it("reads a plain number or a percentage, with surrounding spaces", () => {
+    expect(parsePreviewZoomInput("250")).toBe(250);
+    expect(parsePreviewZoomInput(" 250 % ")).toBe(250);
+    expect(parsePreviewZoomInput("137.5%")).toBe(137.5);
+  });
+
+  it("clamps to the preview zoom bounds", () => {
+    expect(parsePreviewZoomInput("5")).toBe(MIN_PREVIEW_ZOOM_PERCENT);
+    expect(parsePreviewZoomInput("0")).toBe(MIN_PREVIEW_ZOOM_PERCENT);
+    expect(parsePreviewZoomInput("99999")).toBe(MAX_PREVIEW_ZOOM_PERCENT);
+  });
+
+  it("rejects anything that is not a percentage", () => {
+    for (const text of ["", "  ", "%", "abc", "-50", "1e3", "12px", "1,000", "50%%"]) {
+      expect(parsePreviewZoomInput(text)).toBeNull();
+    }
+  });
+});
+
+describe("showsPreviewPixelGrid", () => {
+  it("shows the grid only above 800%, which the zoom limit can reach", () => {
+    expect(PREVIEW_PIXEL_GRID_MIN_ZOOM_PERCENT).toBe(800);
+    expect(MAX_PREVIEW_ZOOM_PERCENT).toBeGreaterThan(PREVIEW_PIXEL_GRID_MIN_ZOOM_PERCENT);
+    expect(showsPreviewPixelGrid(100)).toBe(false);
+    expect(showsPreviewPixelGrid(800)).toBe(false);
+    expect(showsPreviewPixelGrid(801)).toBe(true);
+    expect(showsPreviewPixelGrid(MAX_PREVIEW_ZOOM_PERCENT)).toBe(true);
+  });
+});
+
+describe("resolvePreviewPixelGrid", () => {
+  const layout = {
+    rect: { width: 1000, height: 600 },
+    stage: { width: 960, height: 540 },
+    width: 1920,
+  };
+
+  it("covers the scaled, centred and panned stage with one cell per composition pixel", () => {
+    const box = resolvePreviewPixelGrid({
+      state: { zoomPercent: 1000, panX: 30, panY: -20 },
+      ...layout,
+    });
+    expect(box).toEqual({
+      left: (1000 - 9600) / 2 + 30,
+      top: (600 - 5400) / 2 - 20,
+      width: 9600,
+      height: 5400,
+      cellPx: 5,
+    });
+  });
+
+  it("draws nothing at or below the threshold or before the composition size is known", () => {
+    const state = { zoomPercent: 800, panX: 0, panY: 0 };
+    expect(resolvePreviewPixelGrid({ state, ...layout })).toBeNull();
+    expect(
+      resolvePreviewPixelGrid({ state: { ...state, zoomPercent: 1000 }, ...layout, width: 0 }),
+    ).toBeNull();
+  });
+});
+
+describe("resolvePreviewTypedZoom", () => {
+  const viewport = { viewportWidth: 1000, viewportHeight: 600 };
+
+  it("keeps the point at the centre of the view in place", () => {
+    const next = resolvePreviewTypedZoom({
+      state: { zoomPercent: 200, panX: 100, panY: -50 },
+      zoomPercent: 400,
+      ...viewport,
+    });
+    expect(next).toEqual({ zoomPercent: 400, panX: 200, panY: -100 });
+  });
+
+  it("clamps the zoom to its bounds", () => {
+    const state = { zoomPercent: 200, panX: 0, panY: 0 };
+    expect(resolvePreviewTypedZoom({ state, zoomPercent: 10, ...viewport }).zoomPercent).toBe(
+      MIN_PREVIEW_ZOOM_PERCENT,
+    );
+    expect(resolvePreviewTypedZoom({ state, zoomPercent: 99999, ...viewport }).zoomPercent).toBe(
+      MAX_PREVIEW_ZOOM_PERCENT,
+    );
+  });
+
+  it("clamps a pan that would leave the frame out of view", () => {
+    const next = resolvePreviewTypedZoom({
+      state: { zoomPercent: 400, panX: 1500, panY: 0 },
+      zoomPercent: 200,
+      ...viewport,
+    });
+    expect(next.panX).toBe((1000 * 2 - 1000) / 2 + PREVIEW_PAN_OVERSCROLL_PX);
   });
 });
 

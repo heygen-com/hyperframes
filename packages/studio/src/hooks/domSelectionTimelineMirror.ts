@@ -6,6 +6,7 @@ import { logSelect } from "../utils/selectDebug";
 
 interface TimelineMirrorDeps {
   timelineElements: TimelineElement[];
+  activeCompPath: string | null;
   getTimelineSelectionSet: () => ReadonlySet<string>;
   setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
   setTimelineSelectionSet: (ids: Set<string>) => void;
@@ -32,6 +33,7 @@ export function announceTimelineSelection(
 ): void {
   const {
     timelineElements,
+    activeCompPath,
     getTimelineSelectionSet,
     setSelectedTimelineElementId,
     setTimelineSelectionSet,
@@ -42,7 +44,7 @@ export function announceTimelineSelection(
     return;
   }
   const timelineIdFor = (selection: DomEditSelection) =>
-    findMatchingTimelineElementId(selection, timelineElements) ??
+    findMatchingTimelineElementId(selection, timelineElements, activeCompPath || "index.html") ??
     findTimelineIdByAncestor(
       selection.element,
       timelineElements,

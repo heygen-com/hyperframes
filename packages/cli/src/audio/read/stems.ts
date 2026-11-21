@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { statSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { setTimeout as sleep } from "node:timers/promises";
 import { downloadToFile } from "../../cloud/download.js";
 import { HyperframesCloudClient } from "../../cloud/_gen/client.js";
@@ -15,6 +16,8 @@ import {
   type ServiceAccess,
 } from "../analysis/providers/shared.js";
 import { probeAudio } from "../analysis/decode.js";
+import { readPlainFile } from "../../utils/projectRecords.js";
+import { isPlainFile, isPlainName, isRealFolder, makeRealFolder } from "../cacheFolder.js";
 
 /**
  * Upload 192 kb/s stereo MP3 through the service origin's direct-upload routes, then POST
@@ -36,6 +39,7 @@ const TIMEOUT_ENV = "HYPERFRAMES_AUDIO_STEMS_TIMEOUT_MS";
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 const RETRY_MS = 5000;
 const DONE = "stems.json";
+const MAX_DONE_BYTES = 64 * 1024;
 const STEM_NAMES = ["vocals", "drums", "bass", "guitar", "piano", "other"] as const;
 
 export const VOICE_STEM = "vocals";
@@ -49,14 +53,28 @@ export const stemsAccess = () =>
     DEFAULT_TIMEOUT_MS,
   );
 
-/** Stems already fetched into `dir`, by name; null when there are none yet. */
+function namedStems(text: string): Record<string, string> | null {
+  let names: unknown;
+  try {
+    names = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof names !== "object" || names === null) return null;
+  const files = names as Record<string, unknown>;
+  return STEM_NAMES.every((name) => isPlainName(files[name]))
+    ? Object.fromEntries(STEM_NAMES.map((name) => [name, files[name] as string]))
+    : null;
+}
+
+/** Stems already fetched into `dir`, by name; null when there are none yet or a link stands in for any of it. */
 export function cachedStems(dir: string): Record<string, string> | null {
   const done = join(dir, DONE);
-  if (!existsSync(done)) return null;
-  const names = JSON.parse(readFileSync(done, "utf8")) as Record<string, string>;
-  if (!STEM_NAMES.every((name) => typeof names[name] === "string")) return null;
+  if (!isRealFolder(dir, 2) || !isPlainFile(done)) return null;
+  const names = namedStems(readPlainFile(done, MAX_DONE_BYTES));
+  if (!names) return null;
   const paths = Object.fromEntries(STEM_NAMES.map((name) => [name, join(dir, names[name]!)]));
-  return Object.values(paths).every((p) => existsSync(p)) ? paths : null;
+  return Object.values(paths).every(isPlainFile) ? paths : null;
 }
 
 class StillRunning extends Error {}
@@ -165,16 +183,16 @@ export async function fetchStems(
       throw new Error(
         `the stems service returned an incomplete separation: missing ${missing.join(", ")}`,
       );
-    mkdirSync(dir, { recursive: true });
+    makeRealFolder(dir, 2);
     const names: Record<string, string> = {};
     for (const name of STEM_NAMES) {
       const stem = stems.find((candidate) => candidate.name === name);
       if (!stem) continue;
       const file = `${name}.audio`;
-      await downloadToFile(stem.url, join(dir, file), { signal });
+      await downloadToFile(stem.url, join(dir, file), { signal, replaceLink: true });
       names[name] = file;
     }
-    writeFileSync(join(dir, DONE), JSON.stringify(names));
+    replaceFileAtomically(join(dir, DONE), JSON.stringify(names));
     return cachedStems(dir)!;
   } finally {
     await rm(scratch, { recursive: true, force: true });

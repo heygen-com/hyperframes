@@ -81,7 +81,7 @@ function runAsAgent(args: string[], { ci = true } = {}): Promise<Run> {
         HOME: home,
         USERPROFILE: home,
         ...(ci ? { CI: "1" } : {}),
-        CLAUDECODE: "1",
+        CLAUDE_CODE_CHILD_SESSION: "1",
       },
     });
     let stdout = "";
@@ -231,8 +231,14 @@ describe("agent-mode contract", () => {
       ["snapshot --frames -3", "--frames must be a positive integer"],
       ["compare a.html", "need 2+ paths"],
       ["compare a.html b.html --cols 0", "--cols must be"],
+      ["compare a.html b.html --timeout abc", "--timeout must be a positive integer"],
+      ["compare a.html b.html --timeout -1", "--timeout must be a positive integer"],
       ["grade-compare --for frame.png", "Exactly one of --grades or --luts"],
+      ["catalog --type widget", 'Invalid --type: "widget". Use "block" or "component".'],
+      ["catalog --type=", 'Invalid --type: "". Use "block" or "component".'],
       ["check --range 5,1", "Invalid --range"],
+      ["check --samples ten", "Invalid --samples"],
+      ["check --tolerance=-1", "Invalid --tolerance"],
       ["normalize-audio --target music --tolerance=-1", "--tolerance must be"],
       ["media-treatment --capabilities --all --capability x", "--all or --capability"],
     ])("`%s` exits 2 with a usage_error envelope", async (args, message) => {
@@ -291,7 +297,6 @@ describe("agent-mode contract", () => {
     ["find crossfade", "Did you mean 'hyperframes catalog'?"],
     ["list", "Did you mean 'hyperframes catalog'?"],
     ["browse", "Did you mean 'hyperframes catalog'?"],
-    ["registry", "Did you mean 'hyperframes catalog'?"],
   ])(
     "unknown command `%s` suggests the closest one, usage on stderr, exit 2",
     async (args, hint) => {
@@ -302,6 +307,17 @@ describe("agent-mode contract", () => {
       expect(run.stderr).toContain(hint);
     },
   );
+
+  it("`registry search` runs catalog, unlisted", async () => {
+    const [alias, catalog] = await Promise.all([
+      runAsAgent(["registry", "search", "--help"]),
+      runAsAgent(["catalog", "--help"]),
+    ]);
+    expectQuiet(alias);
+    expect(alias.code).toBe(0);
+    expect(alias.stdout).toBe(catalog.stdout);
+    expect((await runAsAgent(["--help"])).stdout).not.toMatch(/^\s+registry\b/m);
+  });
 
   it.each([["lint"], ["check"], ["info"], ["validate"], ["layout"], ["inspect"]])(
     "%s --json in an empty directory names the real failure, and no notice",
@@ -353,7 +369,9 @@ describe("agent-mode contract", () => {
     expect(run.code, run.stderr).toBe(1);
     expectJsonFailure(run, "runtime_error");
     const { message } = JSON.parse(run.stdout).error as { message: string };
-    expect(message).toMatch(/Aborting render due to lint issues in --strict mode: [1-9]\d* error/);
+    expect(message).toMatch(/Cannot render: [1-9]\d* error/);
+    expect(message).toContain("root_missing_dimensions");
+    expect(message).toContain("Run hyperframes lint for details.");
     expect(run.stderr).toContain(message);
   });
 
@@ -362,6 +380,22 @@ describe("agent-mode contract", () => {
     expect(run.code).toBe(2);
     expectJsonFailure(run, "unknown_command");
     expect(JSON.parse(run.stdout).error.hint).toBe("Did you mean 'hyperframes render'?");
+  });
+
+  it("an unknown command answers in a few lines, never the full help", async () => {
+    const captions = await runAsAgent(["captions"]);
+    const typo = await runAsAgent(["rendr"]);
+    expect(captions.code).toBe(2);
+    expect(captions.stderr).toContain("Unknown command: captions");
+    expect(captions.stderr).toContain(
+      "Run 'hyperframes transcribe', then read ../hyperframes/references/captions.md",
+    );
+    expect(typo.code).toBe(2);
+    expect(typo.stderr).toContain("Did you mean 'hyperframes render'?");
+    for (const run of [captions, typo]) {
+      expect(run.stderr).toContain("Run 'hyperframes --help' to list every command.");
+      expect(run.stderr.split("\n").length).toBeLessThan(8);
+    }
   });
 
   it("an unknown flag suggests the flag it most likely means", async () => {
@@ -380,6 +414,16 @@ describe("agent-mode contract", () => {
       expect(run.stderr).toContain("--yes");
     },
   );
+
+  // Updating is the person's decision: the hint states that and names no step for the agent.
+  it("update without --yes refuses to prompt, exits 2, and leaves updating to the person", async () => {
+    const run = await runAsAgent(["update"]);
+    expectQuiet(run);
+    expect(run.code, run.stderr).toBe(2);
+    expect(run.stdout).toBe("");
+    expect(run.stderr).toContain("Updating is the person's call; `update --check` only reports.");
+    expect(run.stderr).not.toContain("--yes");
+  });
 
   it("only the prompt wrapper loads @clack/prompts, statically or dynamically", () => {
     const offenders = (readdirSync(srcDir, { recursive: true }) as string[]).filter(

@@ -287,13 +287,12 @@ function decodeCssEscape(hex: string | undefined, char: string | undefined): str
   return invalid ? "�" : String.fromCodePoint(cp);
 }
 
-// A browser reads `\75 rl(` as `url(`, so every check runs on escape-decoded, lowercased text.
-// Comments stay in: CSS never lets one join a function name or `@import`, only split tokens.
+// A browser folds CR LF, CR and FF to one newline, then reads `\75 rl(` as `url(`, so every check
+// runs on that decoded, lowercased text. Comments stay in: CSS never lets one join a function name.
 function canonicalCss(text: string): string {
   return text
-    .replace(/\\([0-9a-f]{1,6})[ \t\n\r\f]?|\\([\s\S])/gi, (_, hex, char) =>
-      decodeCssEscape(hex, char),
-    )
+    .replace(/\r\n?|\f/g, "\n")
+    .replace(/\\([0-9a-f]{1,6})[ \t\n]?|\\([\s\S])/gi, (_, hex, char) => decodeCssEscape(hex, char))
     .toLowerCase();
 }
 

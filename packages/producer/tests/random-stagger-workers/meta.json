@@ -1,0 +1,13 @@
+{
+  "name": "random-stagger-workers",
+  "description": "Regression test for Math.random during render. A 100-cell grid fades out with a GSAP stagger from \"random\", whose order GSAP draws from Math.random when the page loads. Rendered with 2 workers, both workers and every re-render must draw the same order, so the film matches the golden frame for frame.",
+  "tags": ["regression", "parallel", "render-compat"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 2
+  }
+}

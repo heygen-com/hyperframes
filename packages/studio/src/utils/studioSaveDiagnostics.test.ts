@@ -7,11 +7,55 @@ import {
   StudioFileConflictError,
   StudioSaveHttpError,
   StudioSaveNetworkError,
+  createStudioSaveHttpError,
+  heldFileWordsOf,
   buildStudioSaveFailureProperties,
   getStudioSaveStatusCode,
   retryStudioSave,
   trackStudioEditBlocked,
 } from "./studioSaveDiagnostics";
+
+describe("a file the server says is held or protected", () => {
+  // fails without the fix: the person read 'Failed to read ... (423): {"error":"file in use",...}' or no status at all.
+  it.each([
+    [423, "busy", "index.html is open in another program. Close it there, then try again."],
+    [
+      403,
+      "permission",
+      "index.html can't be changed: it is read-only or protected. Check its permissions, then try again.",
+    ],
+  ])("tells a %i %s in words naming the file, not the folder", async (status, why, words) => {
+    const response = new Response(JSON.stringify({ error: "x", why }), { status });
+    const error = await createStudioSaveHttpError(response, "Failed to save a/b/index.html", {
+      path: "a/b/index.html",
+    });
+    expect(error.message).toBe(words);
+    expect(error.statusCode).toBe(status);
+  });
+
+  it("reads a refused answer's words from a copy, leaving its body for the caller", async () => {
+    const response = new Response(JSON.stringify({ error: "x", why: "busy" }), { status: 423 });
+    expect(await heldFileWordsOf(response, "a/index.html")).toBe(
+      "index.html is open in another program. Close it there, then try again.",
+    );
+    expect(await response.json()).toEqual({ error: "x", why: "busy" });
+    expect(await heldFileWordsOf(new Response("boom", { status: 500 }), "index.html")).toBeNull();
+  });
+
+  it("keeps the status and body for any other answer, and without a path", async () => {
+    const other = await createStudioSaveHttpError(
+      new Response("boom", { status: 500 }),
+      "Failed to save index.html",
+      { path: "index.html" },
+    );
+    expect(other.message).toBe("Failed to save index.html (500): boom");
+    const noPath = await createStudioSaveHttpError(
+      new Response(JSON.stringify({ why: "busy" }), { status: 423 }),
+      "Failed to save index.html",
+    );
+    expect(noPath.message).toMatch(/^Failed to save index.html \(423\)/);
+  });
+});
 
 describe("studio save diagnostics", () => {
   it("preserves conflict versions and both sides for explicit recovery UI", () => {
@@ -31,7 +75,7 @@ describe("studio save diagnostics", () => {
     });
   });
 
-  it("builds save_failure properties with stable diagnostics", () => {
+  it("builds save_failure properties as fixed codes, never the error's words", () => {
     const error = new StudioSaveHttpError("Failed to save index.html (503)", 503);
 
     expect(
@@ -44,7 +88,9 @@ describe("studio save diagnostics", () => {
       }),
     ).toEqual({
       source: "code_editor",
-      error_message: "Failed to save index.html (503)",
+      error_class: "StudioSaveHttpError",
+      error_key: "http",
+      server_why: "other",
       status_code: 503,
       file_path: "index.html",
       mutation_type: "put",
@@ -54,6 +100,21 @@ describe("studio save diagnostics", () => {
       target_selector: undefined,
       target_source_file: undefined,
     });
+  });
+
+  it("names the server's fixed refusal and keeps its words out", async () => {
+    const response = new Response(
+      JSON.stringify({ error: "forbidden path: compositions/x.html", why: "protected_path" }),
+      { status: 403 },
+    );
+    const error = await createStudioSaveHttpError(response, "Failed to save compositions/x.html");
+    const properties = buildStudioSaveFailureProperties({ source: "dom_edit", error });
+    expect(properties).toMatchObject({
+      error_key: "http",
+      server_why: "protected_path",
+      status_code: 403,
+    });
+    expect(JSON.stringify(properties)).not.toContain("compositions/x.html");
   });
 
   it("emits expected direct-edit refusals on edit_blocked", () => {
@@ -68,7 +129,8 @@ describe("studio save diagnostics", () => {
 
     expect(trackStudioEvent).toHaveBeenCalledWith("edit_blocked", {
       source: "gsap_commit",
-      error_message: error.message,
+      error_class: "Error",
+      error_key: "unknown",
       status_code: null,
       file_path: "index.html",
       mutation_type: "drag",

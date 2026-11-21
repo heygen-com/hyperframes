@@ -11,7 +11,7 @@ import { hideTimedClipsUntilFirstPass, keepInlineHideRulesForOlderShaders } from
 import { fitTextFontSize } from "../text/fitTextFontSize";
 import { pretext } from "../text/pretext";
 import { assetUrl } from "./assetUrl";
-import { getVariables } from "./getVariables";
+import { getDeclaredVariableSources, getVariables } from "./getVariables";
 import { clearRuntimeData, registerRuntimeDataHandler, setRuntimeData } from "./runtimeData";
 import { runScriptsAfterFonts } from "./afterFonts";
 import { AFTER_FONTS_SCRIPTS } from "../compiler/scriptRuns";
@@ -19,6 +19,8 @@ import { hasFrameSources, registerFrameSource } from "./frameSources";
 import { createFilmBridge } from "./filmBridge";
 import { trackAcceleratedCanvases } from "./captureMotionBlur";
 import { parkFarScenesAtBoot } from "./sceneWindow";
+import { installPausedVideoCallbacks } from "./pausedVideoCallbacks";
+import { corsForSealedMedia } from "./sealedMediaCors";
 
 type HyperframeWindow = Window & {
   __hyperframeRuntimeBootstrapped?: boolean;
@@ -26,6 +28,7 @@ type HyperframeWindow = Window & {
     assetUrl: typeof assetUrl;
     fitTextFontSize: typeof fitTextFontSize;
     getVariables: typeof getVariables;
+    getDeclaredVariableSources: typeof getDeclaredVariableSources;
     pretext: typeof pretext;
     registerRuntimeDataHandler: typeof registerRuntimeDataHandler;
     setRuntimeData: typeof setRuntimeData;
@@ -44,6 +47,8 @@ type HyperframeWindow = Window & {
 // at script evaluation time, while the document is still parsing.
 installAuthoredOpacityCapture();
 installAuthoredMediaCapture();
+corsForSealedMedia();
+installPausedVideoCallbacks();
 installFlatGsapTransforms();
 trackAcceleratedCanvases();
 window.__hfHasFrameSources = hasFrameSources;
@@ -58,6 +63,7 @@ deferMediaUntilDue();
   assetUrl,
   fitTextFontSize,
   getVariables,
+  getDeclaredVariableSources,
   pretext,
   registerRuntimeDataHandler,
   setRuntimeData,

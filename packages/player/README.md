@@ -28,7 +28,9 @@ If you need a classic `<script>` tag instead of ESM, use the explicit global bui
 
 The player loads the composition in a sandboxed iframe, auto-detects its dimensions and duration, and scales it responsively to fit the container.
 
-Add or remove `controls` at any time. When shown, the controls reflect the current playback state, position and speed.
+Add or remove `controls` at any time. When shown, the controls reflect the current playback state, position and speed. Clicking or dragging the scrubber keeps a playing film playing from the new spot, as a `<video>`'s own controls do, and leaves a paused film paused.
+
+The fullscreen button fills the screen with the whole player, controls included. It appears only where the page can go fullscreen, so not on iPhone Safari and not inside a cross-origin iframe without `allow="fullscreen"`. It follows every exit, including Esc. Set `disable-fullscreen` to hide it. A refused request fires the browser's `fullscreenerror` on the player.
 
 ### With a framework
 
@@ -53,6 +55,8 @@ Set `type` to a video type and the player plays `src` in a `<video playsinline>`
 ></hyperframes-player>
 ```
 
+Removing or emptying `src` unloads the video and pauses it at 0:00.
+
 ### Poster image
 
 Show a static image before playback starts:
@@ -74,7 +78,7 @@ Show a static image before playback starts:
 | `audio-src`             | string                          | —             | Audio URL for parent-frame playback (mobile)                                |
 | `width`                 | number                          | 1920          | Composition width in pixels (aspect ratio)                                  |
 | `height`                | number                          | 1080          | Composition height in pixels (aspect ratio)                                 |
-| `controls`              | boolean                         | false         | Show play/pause, scrubber, and time display                                 |
+| `controls`              | boolean                         | false         | Show play/pause, scrubber, time, volume, speed, and fullscreen controls     |
 | `muted`                 | boolean                         | false         | Mute audio playback                                                         |
 | `audio-locked`          | boolean                         | false         | Force-mute and hide the volume controls so the viewer cannot turn sound on  |
 | `poster`                | string                          | —             | Image URL shown before playback starts                                      |
@@ -86,6 +90,7 @@ Show a static image before playback starts:
 | `assets-loading-ui`     | `player \| none`                | `player`      | `none` never shows the loading-assets card; asset events still fire         |
 | `low-power-idle`        | boolean                         | false         | While paused, check in once a second, not every 80 ms (many-player pages)   |
 | `disable-click-to-play` | boolean                         | false         | A click on the player no longer plays or pauses (host overlays own clicks)  |
+| `disable-fullscreen`    | boolean                         | false         | Hide the fullscreen button; `requestFullscreen()` still works               |
 | `no-load-timeout`       | boolean                         | false         | Slow loads never fail at 8 s; the page owns the deadline. Errors still fail |
 | `range-start`           | number                          | —             | Film second where playback starts, loops back to and parks when paused      |
 | `range-end`             | number                          | —             | Film second the range ends before: it stops or loops on the frame before it |
@@ -142,16 +147,18 @@ const player = document.querySelector("hyperframes-player");
 // Playback
 player.play();
 player.pause();
-player.seek(2.5); // jump to 2.5 seconds
+player.seek(2.5); // jump to 2.5 seconds and pause there
+player.seek(2.5, { keepPlaying: true }); // jump, and keep playing if it was playing
 
 // Properties
-player.currentTime; // number (read/write)
+player.currentTime; // number (read/write); setting it jumps and pauses, like seek()
 player.duration; // number (read-only)
 player.paused; // boolean (read-only)
 player.ready; // boolean (read-only)
 player.compositionWidth; // number (read-only), the composition's width
 player.compositionHeight; // number (read-only), the composition's height
 player.disableClickToPlay; // boolean (read/write)
+player.disableFullscreen; // boolean (read/write)
 player.playbackRate; // number (read/write)
 player.muted; // boolean (read/write)
 player.audioLocked; // boolean (read/write) — force-mute + hide volume controls
@@ -272,6 +279,55 @@ player.addEventListener("ready", (e) => {
 player.addEventListener("ended", () => {
   console.log("Done!");
 });
+```
+
+## Custom icons and loading mark
+
+Put an element with a `slot` attribute inside the player to replace a control glyph or the loading mark. Anything you leave out keeps the default.
+
+| Slot                | Shown when                                                  | Default size |
+| ------------------- | ----------------------------------------------------------- | ------------ |
+| `play-icon`         | Paused                                                      | 24 px        |
+| `pause-icon`        | Playing                                                     | 24 px        |
+| `volume-high-icon`  | Unmuted, volume 0.5 or higher                               | 20 px        |
+| `volume-low-icon`   | Unmuted, volume below 0.5                                   | 20 px        |
+| `volume-muted-icon` | Muted                                                       | 20 px        |
+| `loading-mark`      | Preparing shader transitions, loading assets, and buffering | 78 px        |
+
+```html
+<hyperframes-player src="./my-composition/index.html" controls>
+  <svg
+    slot="play-icon"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path d="M8 5v14l11-7z" />
+  </svg>
+  <svg
+    slot="pause-icon"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
+  </svg>
+  <img slot="loading-mark" src="./brand-mark.svg" width="78" height="78" alt="" />
+</hyperframes-player>
+```
+
+Glyphs take the control bar's color through `currentColor`, and you set their size. Put `slot` on the `<svg>` or `<img>` itself, as a direct child of the player; a wrapper element needs `display: contents` to keep the glyph centered. A custom mark replaces the HyperFrames light sweep and glow, so add your own CSS animation if you want motion.
+
+Until the element is defined, its children show as plain content. Hide them:
+
+```css
+hyperframes-player:not(:defined) > [slot] {
+  display: none;
+}
 ```
 
 ## Sizing

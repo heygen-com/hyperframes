@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { parseHTML } from "linkedom";
-import { renameWithRetry, runFfmpeg, runFfprobe } from "@hyperframes/engine";
+import { renameWithRetry, runFfmpeg, runFfprobe, urlInputArgs } from "@hyperframes/engine";
 import { readHeifPrimaryRotation } from "./heifRotation.js";
 import { withMediaProbeSlot } from "../utils/mediaProbeConcurrency.js";
 import {
@@ -81,6 +81,7 @@ export interface PrepareHeifImageInputsOptions {
   sourceAssets?: Map<string, string>;
   timeoutMs?: number;
   transcode?: (input: HeifTranscodeRequest) => Promise<void>;
+  allowOutsideFiles?: boolean;
   /** Leaves an image whose conversion failed as authored and reports it, instead of throwing. */
   onFailure?: (error: HeifImageConversionError | HeifToolUnavailableError) => void;
 }
@@ -195,6 +196,7 @@ export async function convertHeifToJpeg(request: HeifTranscodeRequest): Promise<
       "-hide_banner",
       "-loglevel",
       "error",
+      ...urlInputArgs(request.inputPath),
       "-i",
       request.inputPath,
       ...mapArgs,

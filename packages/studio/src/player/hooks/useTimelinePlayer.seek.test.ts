@@ -87,6 +87,7 @@ describe("useTimelinePlayer seek hydration", () => {
       window.dispatchEvent(
         new MessageEvent("message", {
           source: iframeWindow,
+          origin: window.location.origin,
           data: {
             source: "hf-preview",
             type: "timeline",
@@ -164,6 +165,7 @@ describe("useTimelinePlayer seek hydration", () => {
       window.dispatchEvent(
         new MessageEvent("message", {
           source: iframeWindow as unknown as Window,
+          origin: window.location.origin,
           data: { source: "hf-preview", type: "state", protocolVersion: 999 },
         }),
       );
@@ -174,6 +176,7 @@ describe("useTimelinePlayer seek hydration", () => {
       window.dispatchEvent(
         new MessageEvent("message", {
           source: iframeWindow as unknown as Window,
+          origin: window.location.origin,
           data: { source: "hf-preview", type: "state" },
         }),
       );

@@ -22,10 +22,10 @@ import type { DesignTokens } from "./types.js";
 import type { IconCandidate } from "./faviconRanker.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
 import sharp from "sharp";
-import { publicRequest } from "./publicNetwork.js";
+import { publicRequest } from "@hyperframes/engine/public-network";
 import { loadSharp } from "../utils/optionalPackages.js";
 
-vi.mock("./publicNetwork.js", () => ({ publicRequest: vi.fn() }));
+vi.mock("@hyperframes/engine/public-network", () => ({ publicRequest: vi.fn() }));
 vi.mock("../utils/optionalPackages.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../utils/optionalPackages.js")>();
   return { ...actual, loadSharp: vi.fn(actual.loadSharp) };

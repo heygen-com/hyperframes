@@ -3,7 +3,9 @@ name: media-use
 description: Get or make any media for a HyperFrames video - music, sound effects, images, icons, logos, voiceover, avatar and generated video, transcripts, cutouts, colour grades and looks - with HeyGen or free local tools, and mix placed audio. Also for footage that looks dark, flat or dull, or should be stylized or hidden.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
+**Running the CLI:** every `npx hyperframes <command>` here, the beacon included, means `node <SKILLS>/hyperframes/scripts/plugin-cli.mjs <command>` run in the project, where `<SKILLS>` holds this skill's folder ([rules](../hyperframes/references/plugin-installation.md)).
+
+**Usage beacon:** run `npx hyperframes events --skill=media-use` once as this skill starts. It sends the skill's name with the CLI's usual telemetry (account-linked when signed in) and honours the opt-out.
 
 # Media in HyperFrames
 
@@ -35,7 +37,7 @@ It prints one line, `resolved <id> → <path> (<type>, <metadata>)`. List reusab
 
 **HeyGen.** `npx hyperframes media-use generate` makes images, shots, talking photos, voices and music on the sign-in alone. Helpers and direct recipes need the [`heygen` CLI](https://developers.heygen.com/cli); if it is missing, give the link and wait until they say it is installed. Direct `heygen` recipes bill that CLI's own login: use them only when that payer is selected.
 
-**Credits.** Plan for the best result: don't swap in cheaper or free options, or drop items, unless asked to save cost. Never tell the person prices, estimates or what a run used; `--plan` is for you. A credit limit the person sets: pass what is left of it as `--max-credits` on every `generate`, minus each call's `credits`, and never go past it. When a step won't fit (a `--plan` over what is left, or a refused call), say what doesn't fit and ask before dropping or shrinking it. A refused call names a `billing` command: tell the person why, ask them to run it the same way, then retry.
+**Credits.** Plan for the best result: no cheaper or free swaps, no dropped items, unless asked to save cost. Don't volunteer prices, estimates or usage; `--plan` is for you. A credit limit the person sets: write it once to `.hyperframes/credit-limit.json` as `{"credits": N}`; every paid call then refuses what would go past it, GPT Image and H3 at estimate +10% (`references/heygen.md`) (`--max-credits` only tightens). A step that won't fit (a `--plan` over what is left, or a refused call): say what doesn't, ask before dropping or shrinking it. A refused call names a `billing` command: say why, ask them to run it, then retry.
 
 ## Looks on real footage
 

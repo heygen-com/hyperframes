@@ -41,6 +41,9 @@ pre-commit:
     - name: cli-process-ownership
       glob: "packages/cli/src/**/*.ts"
       run: bun run check:cli-process-ownership
+    - name: studio-server-sync-fs
+      glob: "packages/studio-server/src/{routes,history}/**/*.ts"
+      run: bun run check:studio-server-sync-fs
     - name: largefiles
       # Rejects staged binaries over the limit that are not LFS pointers; see
       # the script header. CI runs the same script with --range.
@@ -50,6 +53,8 @@ pre-commit:
       # `git ls-files` observes the staged index, so staged removals pass and
       # an accidental force-add fails before the commit is created.
       run: bun run check:tracked-artifacts
+    - name: committed-keys
+      run: bun run check:committed-keys
     - name: filesize
       # Scoped to packages/studio — the 600 LOC limit is a studio architecture
       # standard enforced as part of the App.tsx decomposition work. Player and

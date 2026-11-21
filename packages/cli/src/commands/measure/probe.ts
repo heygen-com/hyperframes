@@ -9,9 +9,10 @@ import {
   runFfmpeg,
   type VideoInfo,
 } from "../../measure/media.js";
+import { toneMapReferenceNits } from "@hyperframes/core";
 import { execFileSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { makeOutputFolder } from "../../utils/outputFolder.js";
 
 export const examples: Example[] = [
   [
@@ -54,10 +55,10 @@ function normalize(info: VideoInfo, out: string): { path: string; fps: string } 
         "install an ffmpeg built with libzimg, e.g. brew install ffmpeg",
       );
     filters.push(
-      "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv",
+      `zscale=t=linear:npl=${toneMapReferenceNits(info.transfer ? [info.transfer] : [])},format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv`,
     );
   }
-  mkdirSync(dirname(out), { recursive: true });
+  makeOutputFolder(dirname(out));
   runFfmpeg([
     ...["-y", "-i", info.path, "-vf", [...filters, "format=yuv420p"].join(",")],
     ...["-c:v", "libx264", "-crf", "12", "-preset", "medium", "-c:a", "aac", "-b:a", "192k", out],

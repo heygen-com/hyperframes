@@ -101,7 +101,7 @@ export interface StudioAgentToolsDeps
     TransformToolDeps,
     AnimationToolDeps {
   /** Read Studio's current state. Called per tool invocation, never cached. */
-  getSnapshot: () => StudioLookSnapshot;
+  getSnapshot: () => StudioLookSnapshot | Promise<StudioLookSnapshot>;
 }
 
 /**
@@ -117,9 +117,8 @@ export function buildStudioTools(depsRef: {
   /**
    * `execute` for a tool whose handler takes the caller's abort signal.
    *
-   * The spec shape is `execute(input, { signal })`, but `@mcp-b/global` (5.0.1
-   * through 5.1.0; the polyfill chunk is byte-identical across them) invokes a
-   * registered `execute` with the input ALONE, both from its in-page
+   * The spec shape is `execute(input, { signal })`, but `@mcp-b/global` before
+   * 6.0 invoked a registered `execute` with the input ALONE, both from its in-page
    * `BrowserMcpServer` wrapper and from the descriptor it mirrors into a native
    * `document.modelContext`. A handler that destructures its second argument
    * throws before it runs, so every write tool failed with "Cannot destructure
@@ -154,7 +153,7 @@ export function buildStudioTools(depsRef: {
       },
       execute: (input): Promise<ToolResult<StudioLook>> =>
         runToolBody("studio_look", async () =>
-          buildStudioLook(depsRef.current.getSnapshot(), input as StudioLookInput),
+          buildStudioLook(await depsRef.current.getSnapshot(), input as StudioLookInput),
         ),
     },
     {

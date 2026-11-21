@@ -1,12 +1,13 @@
 import {
   copyFileSync,
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
@@ -16,6 +17,7 @@ import {
   normalizeHfColorGrading,
   parseCubeLut,
   serializeHfColorGrading,
+  terminalText,
 } from "@hyperframes/core";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { defineCommand } from "../utils/defineCommand.js";
@@ -31,6 +33,7 @@ import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { failCaught } from "../utils/jsonError.js";
 import { CliUsageError } from "../utils/commandResult.js";
+import { parseTimeoutMs } from "../utils/timeoutArg.js";
 
 const COMPOSITION_ID = "grade-compare";
 const COMPOSITION_DURATION = "1";
@@ -40,6 +43,7 @@ const MAX_COLUMNS = 4;
 const GRID_PADDING = 16;
 const LABEL_HEIGHT = 32;
 const FFMPEG_EXTRACT_TIMEOUT_MS = 30_000;
+const DEFAULT_RENDER_READY_TIMEOUT_MS = 5_000;
 
 export interface GradeCompareCell {
   label: string;
@@ -145,7 +149,9 @@ export function warnInactiveGradingCells(cells: readonly GradeCompareCell[]): vo
     const normalized = normalizeHfColorGrading(cell.grading);
     if (!isHfColorGradingActive(normalized)) {
       console.error(
-        c.warn(`Warning: grading for "${cell.label}" is inactive/no-op — it will render ungraded`),
+        c.warn(
+          `Warning: grading for "${terminalText(cell.label)}" is inactive/no-op — it will render ungraded`,
+        ),
       );
     }
   }
@@ -289,7 +295,7 @@ export function parseGradeCompareArgs(args: {
       ? { kind: "grades", path: resolveFromBase(projectDir, gradesArg) }
       : { kind: "luts", value: lutsArg ?? "" },
     json: args.json === true,
-    timeoutMs: Number.parseInt(readOptionalString(args.timeout) ?? "", 10) || 5000,
+    timeoutMs: parseTimeoutMs(args.timeout, DEFAULT_RENDER_READY_TIMEOUT_MS),
   };
 }
 
@@ -612,7 +618,8 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: "Render-ready timeout in ms before capture (default: 5000)",
+      description:
+        "Render-ready timeout before capture: a number of ms, or a duration such as 30s (default: 5000)",
     },
     baseline: {
       type: "boolean",
@@ -650,7 +657,7 @@ export default defineCommand({
 
       if (!parsed.json) {
         console.log(
-          `${c.accent("◆")}  Rendering ${cells.length} grade candidates from ${c.accent(basename(parsed.framePath))}`,
+          `${c.accent("◆")}  Rendering ${cells.length} grade candidates from ${c.accent(terminalText(basename(parsed.framePath)))}`,
         );
       }
 
@@ -670,8 +677,8 @@ export default defineCommand({
         prepared.tempDir,
         parsed.timeoutMs,
       );
-      mkdirSync(dirname(parsed.outPath), { recursive: true });
-      copyFileSync(tempSheet, parsed.outPath);
+      makeOutputFolder(dirname(parsed.outPath));
+      replaceFileAtomically(parsed.outPath, readFileSync(tempSheet));
       trackCompareSheet({
         command: "grade-compare",
         cells: prepared.cells.length,
@@ -684,7 +691,7 @@ export default defineCommand({
       if (parsed.json) {
         printJson(buildGradeCompareSuccessPayload(sheet, prepared.cells.length, capResult));
       } else {
-        console.log(`\n${c.success("◇")}  Grade comparison saved to ${sheet}`);
+        console.log(`\n${c.success("◇")}  Grade comparison saved to ${terminalText(sheet)}`);
       }
     } catch (err) {
       failCaught(

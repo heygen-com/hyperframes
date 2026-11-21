@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { failCommand, failUsage } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync } from "node:fs";
@@ -15,7 +16,7 @@ import {
 import { DEFAULT_QUALITY, QUALITIES, isQuality } from "../background-removal/pipeline.js";
 import type { Example } from "./_examples.js";
 import { RemoveBackgroundError, removeBackground } from "../api/removeBackground.js";
-import { failureMessage, jsonFailure } from "../utils/jsonError.js";
+import { failureMessage, jsonFailure, printFailureLine } from "../utils/jsonError.js";
 import { diag } from "../ui/diagnostics.js";
 import type { RemoveBackgroundProgress } from "../api/removeBackground.js";
 
@@ -81,7 +82,7 @@ export default defineCommand({
     },
     quality: {
       type: "string",
-      description: `Encoder quality preset for .webm output: ${QUALITIES.join(", ")} (default: ${DEFAULT_QUALITY}). Higher quality = closer color match when overlaying on the source mp4, larger file. Ignored for .mov / .png.`,
+      description: `Encoder quality preset for .webm output: ${QUALITIES.join(", ")}. Higher quality = closer color match when overlaying on the source mp4, larger file. Ignored for .mov / .png.`,
       default: DEFAULT_QUALITY,
     },
     info: {
@@ -112,14 +113,14 @@ export default defineCommand({
       failUsage();
     }
     if (!isDevice(args.device)) {
-      console.error(
-        c.error(`Invalid --device '${String(args.device)}'. Use: ${DEVICES.join(", ")}.`),
+      printFailureLine((show) =>
+        c.error(`Invalid --device '${show(String(args.device))}'. Use: ${DEVICES.join(", ")}.`),
       );
       failUsage();
     }
     if (!isQuality(args.quality)) {
-      console.error(
-        c.error(`Invalid --quality '${String(args.quality)}'. Use: ${QUALITIES.join(", ")}.`),
+      printFailureLine((show) =>
+        c.error(`Invalid --quality '${show(String(args.quality))}'. Use: ${QUALITIES.join(", ")}.`),
       );
       failUsage();
     }
@@ -135,9 +136,9 @@ export default defineCommand({
         device: args.device,
         quality: args.quality,
         onProgress: (event) => {
-          if (args.json) return streamProgress(event);
+          if (args.json) return streamProgressToStderr(event);
           if (event.kind === "info") {
-            spin?.message(event.message);
+            spin?.message(terminalText(event.message));
           } else if (event.kind === "metadata") {
             const dims = `${event.width}×${event.height}`;
             const frames = event.frameCount ? ` · ${event.frameCount} frames` : "";
@@ -171,8 +172,8 @@ export default defineCommand({
           ? (result.framesProcessed / result.durationSeconds).toFixed(1)
           : "n/a";
         const outputs = result.backgroundOutputPath
-          ? `${c.accent(result.outputPath)} + ${c.accent(result.backgroundOutputPath)}`
-          : c.accent(result.outputPath);
+          ? `${c.accent(terminalText(result.outputPath))} + ${c.accent(terminalText(result.backgroundOutputPath))}`
+          : c.accent(terminalText(result.outputPath));
         spin?.stop(
           c.success(
             `Removed background from ${c.accent(String(result.framesProcessed))} frames in ${result.durationSeconds.toFixed(1)}s (${fpsThroughput} fps, ${c.accent(result.provider)}) → ${outputs}`,
@@ -184,20 +185,21 @@ export default defineCommand({
       if (args.json) {
         console.log(JSON.stringify(jsonFailure("runtime_error", message)));
       } else {
-        spin?.stop(c.error(`Background removal failed: ${message}`));
+        spin?.stop(c.error(`Background removal failed: ${terminalLines(message)}`));
       }
       failCommand(1, pipelineError(err));
     }
   },
 });
 
-/** Frame lines in `--json`: about one per 5% of the clip, or every 25 frames when the length is unknown. */
-const UNKNOWN_TOTAL_STEP = 25;
+const FRAME_LINES_PER_CLIP = 20;
+const FRAME_LINE_EVERY_WHEN_LENGTH_UNKNOWN = 25;
 
-/** `--json` keeps stdout to the one result line, so progress goes to stderr as one JSON object per line. */
-function streamProgress(event: RemoveBackgroundProgress): void {
+function streamProgressToStderr(event: RemoveBackgroundProgress): void {
   if (event.kind === "frame") {
-    const step = event.total ? Math.ceil(event.total / 20) : UNKNOWN_TOTAL_STEP;
+    const step = event.total
+      ? Math.ceil(event.total / FRAME_LINES_PER_CLIP)
+      : FRAME_LINE_EVERY_WHEN_LENGTH_UNKNOWN;
     const last = event.total > 0 && event.index === event.total;
     if (event.index !== 1 && !last && event.index % step !== 0) return;
   }
@@ -235,7 +237,7 @@ async function showInfo(json: boolean): Promise<void> {
   console.log(
     `  ${c.dim("Weights cached:")}    ${cached ? c.success("yes") : c.dim("no (will download on first run)")}`,
   );
-  console.log(`  ${c.dim("Cache path:")}        ${modelPath()}`);
+  console.log(`  ${c.dim("Cache path:")}        ${terminalText(modelPath())}`);
   console.log("");
   console.log(`  ${c.dim("Available providers:")} ${providers.join(", ")}`);
   console.log(`  ${c.dim("Auto-selected:")}      ${c.accent(auto.label)}`);

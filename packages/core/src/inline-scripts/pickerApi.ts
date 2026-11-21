@@ -7,6 +7,7 @@ export type HyperframePickerBoundingBox = {
 
 export type HyperframePickerElementInfo = {
   id: string | null;
+  className?: string | null;
   tagName: string;
   selector: string;
   label: string;

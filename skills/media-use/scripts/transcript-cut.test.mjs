@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -338,4 +338,42 @@ test("a kept range starting on a 30 fps frame keeps that frame", { skip: !HAS_FF
     ).trim(),
   );
   assert.equal(frames, 88, `expected 88 frames, got ${frames}`);
+});
+
+// fails without the fix: ffmpeg encoded through a link at `<out>.part<ext>`, onto a file outside.
+test("the cut is never encoded through a link beside --out", { skip: !HAS_FFMPEG }, (t) => {
+  const { dir, cleanup } = fixture();
+  t.after(cleanup);
+  const source = join(dir, "source.wav");
+  execFileSync("ffmpeg", [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=duration=1",
+    source,
+  ]);
+  const transcriptPath = join(dir, "transcript.json");
+  writeFileSync(transcriptPath, JSON.stringify({ words: [{ text: "tone", start: 0, end: 1 }] }));
+  const outside = join(dir, "outside.txt");
+  writeFileSync(outside, "keep me");
+  const output = join(dir, "out.wav");
+  symlinkSync(outside, `${output}.part.wav`);
+  const result = run([
+    "--input",
+    source,
+    "--transcript",
+    transcriptPath,
+    "--keep",
+    "0.1-0.6",
+    "--out",
+    output,
+    "--json",
+  ]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(readFileSync(outside, "utf8"), "keep me");
+  assert.ok(lstatSync(output).isFile());
 });

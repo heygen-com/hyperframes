@@ -254,6 +254,37 @@ describe("capture command — vision control", () => {
   });
 
   it.each([
+    ["1s", 1_000],
+    ["2m", 120_000],
+    ["45000", 45_000],
+    [undefined, 120_000],
+  ])("passes --timeout %s into capture as %i ms", async (timeout, expectedMs) => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await captureCommand.run!({
+      args: { url: "https://example.com", output: "/tmp/hf-timeout", timeout, json: true },
+    } as never);
+    expect(captureWebsiteMock).toHaveBeenCalledWith(
+      expect.objectContaining({ timeout: expectedMs }),
+      undefined,
+    );
+  });
+
+  it("warns and keeps the default page-load timeout when --timeout is not a duration", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await captureCommand.run!({
+      args: { url: "https://example.com", output: "/tmp/hf-timeout", timeout: "abc", json: true },
+    } as never);
+    expect(captureWebsiteMock).toHaveBeenCalledWith(
+      expect.objectContaining({ timeout: 120_000 }),
+      undefined,
+    );
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('--timeout "abc" is not a duration'),
+    );
+  });
+
+  it.each([
     [true, 0],
     [false, 1],
   ])("asks to end the process once its result is out (ok %s)", async (ok, exitCode) => {
@@ -423,4 +454,78 @@ describe("capture command — vision control", () => {
       }
     },
   );
+});
+
+describe("capture command: what it prints", () => {
+  afterEach(() => {
+    captureWebsiteMock.mockClear();
+    vi.restoreAllMocks();
+  });
+
+  const printed = (spy: { mock: { calls: unknown[][] } }): string =>
+    spy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+
+  // fails without the fix: the address was printed as given
+  it("shows control characters in a refused address as text", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      captureCommand.run!({ args: { url: "not a url\u0007\u001b[2J" } } as never),
+    ).rejects.toBeInstanceOf(CliUsageError);
+
+    expect(printed(error)).toBe("Invalid URL: not a url\\x07\\x1b[2J");
+  });
+
+  // fails without the fix: the address and the output folder were printed as given
+  it("shows control characters in the address and output folder of a finished run as text", async () => {
+    vi.useFakeTimers();
+    registerRootExitRequester(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    captureWebsiteMock.mockResolvedValueOnce({
+      ok: true,
+      projectDir: "/tmp/capture",
+      url: "https://example.com",
+      title: "Example",
+      extracted: {},
+      screenshots: [],
+      tokens: { sections: [], fonts: [] },
+      assets: [],
+      dropped: {},
+      warnings: ["Kept the existing a\n  ⚠ b.md"],
+    } as never);
+
+    try {
+      await captureCommand.run!({
+        args: { url: "https://example.com/a\u0007b", output: "/tmp/hf-capture\u001b[2Jout" },
+      } as never);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const text = printed(log);
+    expect(text).toContain("Capturing https://example.com/a\\x07b");
+    // The folder is printed as a full path, whose root and separators differ by platform.
+    expect(text).toMatch(/Captured Example → \S*hf-capture\\x1b\[2Jout/);
+    expect(text).toContain("⚠ Kept the existing a\\x0a  ⚠ b.md");
+    expect(text).not.toContain("\u0007");
+    expect(text).not.toContain("\u001b[2J");
+  });
+
+  // fails without the fix: a line break in the reason started a line of its own
+  it("keeps the reason a capture failed on one line", async () => {
+    vi.useFakeTimers();
+    registerRootExitRequester(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    captureWebsiteMock.mockRejectedValueOnce(new Error("no route\n  ✓ Captured"));
+    const output = mkdtempSync(join(tmpdir(), "hf-capture-failed-"));
+    try {
+      await captureCommand.run!({ args: { url: "https://example.com", output } } as never);
+    } catch {
+      /* the run reports its failure by throwing too */
+    } finally {
+      vi.useRealTimers();
+      rmSync(output, { recursive: true, force: true });
+    }
+    expect(printed(error)).toContain("Capture failed: no route\\x0a  ✓ Captured");
+  });
 });

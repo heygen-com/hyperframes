@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 
+import { readFileSync } from "node:fs";
 import React, { act, useRef } from "react";
 import type { Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +9,14 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { useAppHotkeys } from "./useAppHotkeys";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { APP_HOTKEY_ACTIONS } from "./appHotkeysDispatch";
+import { PLAYBACK_ACTIONS } from "../player/hooks/usePlaybackKeyboard";
+import { DEFAULT_STUDIO_KEYS } from "../player/components/studioShortcuts";
+import {
+  detachedFakeIframe,
+  serveEditingRequests,
+} from "../player/hooks/timelinePlayerTestHarness";
+import { previewRequest } from "../player/lib/previewChannel";
 
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
@@ -166,5 +175,130 @@ describe("preview iframe hotkey forwarding", () => {
     // happy-dom removes a listener whatever its capture flag; a browser does not, so pin the flag.
     expect(add).toHaveBeenCalled();
     expect(remove.mock.calls).toEqual(add.mock.calls);
+  });
+
+  describe("a sealed preview", () => {
+    const closers: Array<() => void> = [];
+    afterEach(() => closers.splice(0).forEach((close) => close()));
+
+    // A frame whose document refuses Studio, reached only over the editing port it hands out per connect.
+    function sealedFrame(focus = { inPreview: true }) {
+      const frame: Record<string, unknown> = {};
+      const iframe = detachedFakeIframe(frame);
+      const hasFocus = vi.spyOn(document, "hasFocus").mockImplementation(() => focus.inPreview);
+      Object.defineProperty(document, "activeElement", {
+        configurable: true,
+        get: () => (focus.inPreview ? iframe : document.body),
+      });
+      closers.push(() => {
+        hasFocus.mockRestore();
+        delete (document as { activeElement?: unknown }).activeElement;
+      });
+      Object.defineProperty(iframe, "contentDocument", { value: null });
+      Object.defineProperty(frame, "document", {
+        get: () => {
+          throw new DOMException("blocked", "SecurityError");
+        },
+      });
+      const watched: string[][] = [];
+      const ports: MessagePort[] = [];
+      closers.push(
+        serveEditingRequests(
+          frame,
+          (kind, params) => {
+            if (kind === "max-z-index") return { zIndex: 7 };
+            if (kind !== "watch-keys") return null;
+            watched.push((params as { combos: string[] }).combos);
+            return { watching: watched.at(-1)!.length };
+          },
+          (port) => ports.push(port),
+        ),
+      );
+      const keyDown = (key: string, code: string) =>
+        ports.at(-1)!.postMessage({
+          v: 1,
+          event: "key",
+          key: {
+            type: "keydown",
+            key,
+            code,
+            altKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            shiftKey: false,
+            repeat: false,
+          },
+        });
+      return { iframe, watched, ports, keyDown, hasFocus };
+    }
+
+    it("leaves Studio's own reads of the preview answered while it forwards keys", async () => {
+      root = mountReactHarness(<Harness />);
+      const { iframe, watched } = sealedFrame();
+      let read: Promise<unknown> | undefined;
+      act(() => {
+        sync?.(iframe);
+        read = previewRequest(iframe, "max-z-index", {}, 1_000);
+      });
+      await vi.waitFor(() => expect(watched).toHaveLength(1));
+      await expect(read).resolves.toEqual({ zIndex: 7 });
+    });
+
+    it("deletes the selection on a Delete pressed inside the preview", async () => {
+      root = mountReactHarness(<Harness />);
+      const { iframe, watched, keyDown } = sealedFrame();
+      act(() => sync?.(iframe));
+      await vi.waitFor(() => expect(watched).toHaveLength(1));
+      expect(new Set(watched[0])).toEqual(
+        new Set(APP_HOTKEY_ACTIONS.map((action) => DEFAULT_STUDIO_KEYS[action])),
+      );
+      keyDown("Delete", "Delete");
+      await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(1));
+    });
+
+    it("ignores a key the preview reports while the person is not in the preview", async () => {
+      root = mountReactHarness(<Harness />);
+      const focus = { inPreview: false };
+      const { iframe, watched, keyDown, hasFocus } = sealedFrame(focus);
+      act(() => sync?.(iframe));
+      await vi.waitFor(() => expect(watched).toHaveLength(1));
+      keyDown("Delete", "Delete");
+      await vi.waitFor(() => expect(hasFocus).toHaveBeenCalledTimes(1));
+      focus.inPreview = true;
+      keyDown("Delete", "Delete");
+      await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(1));
+      expect(hasFocus).toHaveBeenCalledTimes(2);
+    });
+
+    it("stops watching on the preview's next load, from a new port", async () => {
+      root = mountReactHarness(<Harness />);
+      const { iframe, watched, ports } = sealedFrame();
+      act(() => sync?.(iframe));
+      await vi.waitFor(() => expect(watched).toHaveLength(1));
+      act(() => sync?.(iframe));
+      await vi.waitFor(() => expect(watched).toHaveLength(3));
+      expect(watched.slice(1)).toContainEqual([]);
+      expect(ports).toHaveLength(2);
+    });
+
+    it("watches every action the app's key dispatchers answer, so none is dead in a sealed preview", () => {
+      const read = (file: string) => readFileSync(new URL(file, import.meta.url), "utf8");
+      const answered = new Set([
+        ...[...read("./appHotkeysDispatch.ts").matchAll(/matchesKey\(\w+, "(\w+)"\)/g)].map(
+          (m) => m[1],
+        ),
+        ...[...read("./linkShortcuts.ts").matchAll(/\["(\w+)", "\w+"\]/g)].map((m) => m[1]),
+      ]);
+      expect(answered.size).toBeGreaterThan(20);
+      expect(new Set(APP_HOTKEY_ACTIONS)).toEqual(answered);
+    });
+
+    it("watches no key the playback keys also watch, so the frame forwards each press once", () => {
+      const app = new Set(APP_HOTKEY_ACTIONS.map((action) => DEFAULT_STUDIO_KEYS[action]));
+      const shared = PLAYBACK_ACTIONS.map((action) => DEFAULT_STUDIO_KEYS[action]).filter((combo) =>
+        app.has(combo),
+      );
+      expect(shared).toEqual([]);
+    });
   });
 });

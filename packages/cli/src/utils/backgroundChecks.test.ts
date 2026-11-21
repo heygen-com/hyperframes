@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
-import { basename } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,7 +27,7 @@ const { launchBackgroundChecks } = await import("./backgroundChecks.js");
 /** The checks handed to the child, or null when none was spawned. */
 function spawnedChecks(): string[] | null {
   const call = spawn.mock.calls[0] as unknown as [string, string[]] | undefined;
-  return call ? call[1].slice(1) : null;
+  return call ? call[1].slice(2) : null;
 }
 
 /** tsup entry name -> source file, as the package build declares them. */
@@ -70,6 +71,20 @@ describe("launchBackgroundChecks", () => {
     expect(child.on).toHaveBeenCalledWith("error", expect.any(Function));
   });
 
+  it("starts the child in the CLI's own folder and names the project folder only as its argument", () => {
+    const configDir = join(mkdtempSync(join(tmpdir(), "bg-checks-")), "config");
+    vi.stubEnv("HYPERFRAMES_CONFIG_DIR", configDir);
+    try {
+      launchBackgroundChecks();
+      const [, args, opts] = spawn.mock.calls[0] as unknown as [string, string[], { cwd?: string }];
+      expect(opts.cwd).toBe(configDir);
+      expect(existsSync(configDir)).toBe(true);
+      expect(args[1]).toBe(process.cwd());
+    } finally {
+      rmSync(join(configDir, ".."), { recursive: true, force: true });
+    }
+  });
+
   it("spawns the file the package build emits", () => {
     launchBackgroundChecks();
     const worker = (spawn.mock.calls[0] as unknown as [string, string[]])[1][0]!;
@@ -90,6 +105,23 @@ describe("launchBackgroundChecks", () => {
     expect(spawn).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(2 * 60 * 1000);
+    launchBackgroundChecks();
+    expect(spawnedChecks()).toEqual(["update", "skills"]);
+  });
+
+  it("refreshes both caches once they are 3 hours old, and leaves 1-hour-old ones alone", () => {
+    const at = (hours: number) => new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    const caches = (hours: number) => ({
+      lastUpdateCheck: at(hours),
+      latestVersion: "1.0.0",
+      lastSkillsCheck: at(hours),
+      skillsCheckedVersion: "0.0.0-dev",
+    });
+    disk.config = caches(1);
+    launchBackgroundChecks();
+    expect(spawn).not.toHaveBeenCalled();
+
+    disk.config = caches(3);
     launchBackgroundChecks();
     expect(spawnedChecks()).toEqual(["update", "skills"]);
   });

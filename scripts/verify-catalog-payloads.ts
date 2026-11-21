@@ -96,7 +96,36 @@ export function withoutWebgpuAbsence(webgpu: boolean, failures: string[]): strin
 
 /** What still counts as a failure for one item once the environment's own noise is set aside. */
 export function remainingFailures(kindDir: string, item: string, failures: string[]): string[] {
-  return withoutAbortedMedia(withoutWebgpuAbsence(declaresWebgpu(kindDir, item), failures));
+  return withoutMissingCaptionOverrides(
+    withoutAbortedMedia(withoutWebgpuAbsence(declaresWebgpu(kindDir, item), failures)),
+  );
+}
+
+const CAPTION_OVERRIDES_MISS = [
+  /^404 GET (\S+)$/,
+  /^request failed: (\S+) \(net::ERR_ABORTED\)$/,
+  /^console\.error: Failed to load resource: the server responded with a status of 404 \(Not Found\) \((\S+)\)$/,
+];
+
+function isCaptionOverridesUrl(url: string): boolean {
+  try {
+    return new URL(url).pathname === "/caption-overrides.json";
+  } catch {
+    return false;
+  }
+}
+
+/** The runtime asks for an optional caption-overrides.json on any page with a .caption-group and
+ * reads a 404 as "no overrides"; the docs host has none. `hyperframes validate` passes the same
+ * miss (shouldIgnoreHttpError). Any other status, or an invalid file, still counts. */
+export function withoutMissingCaptionOverrides(failures: string[]): string[] {
+  return failures.filter(
+    (failure) =>
+      !CAPTION_OVERRIDES_MISS.some((pattern) => {
+        const url = pattern.exec(failure)?.[1];
+        return url !== undefined && isCaptionOverridesUrl(url);
+      }),
+  );
 }
 
 export type Payload = { kind: "live"; html: string } | { kind: "marker"; reason: string };

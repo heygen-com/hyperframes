@@ -2,8 +2,8 @@
  * HyperFrames credentials are isolated from the HeyGen CLI and between environments.
  */
 
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { hyperframesConfigDir } from "../utils/configDir.js";
 import { oauthEnvironment } from "./config.js";
 
 /**
@@ -12,7 +12,7 @@ import { oauthEnvironment } from "./config.js";
 export const CREDENTIAL_FILENAME = "credentials";
 
 export function configDir(): string {
-  const root = process.env["HYPERFRAMES_CONFIG_DIR"] || join(homedir(), ".hyperframes");
+  const root = hyperframesConfigDir();
   return oauthEnvironment() === "dev" ? join(root, "dev") : root;
 }
 

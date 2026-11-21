@@ -14,7 +14,7 @@ import { createProbeGate } from "../timeline/describeProject.js";
 import { findingAtRoot } from "./checkFindings.js";
 import { loadProducer } from "./producer.js";
 import type { CheckFinding } from "./checkTypes.js";
-import { mediaPath, type ProjectMedia } from "./projectMedia.js";
+import { isRemoteMediaSrc, mediaPath, type ProjectMedia } from "./projectMedia.js";
 
 export interface AudioCheckDependencies {
   /** Render's own media-type rule for a mixed clip; `null` when the file does not probe. */
@@ -67,6 +67,7 @@ async function silentPart(
       sampleRate: probed.sampleRate,
       channels: probed.channels,
       duration: probed.durationSeconds,
+      misstatedByteRate: probed.misstatedByteRate,
     },
     { mono: true, sampleRate: SILENCE_SAMPLE_RATE },
   );
@@ -131,7 +132,7 @@ export async function inspectAudio(
   return findings.flat();
 }
 
-/** Render adds an unmuted video's own sound when its file has an audio stream. */
+/** Render adds an unmuted video's own sound when its file has an audio stream; a remote video is not probed, so it may. */
 async function videoSoundsAutoDetected(
   projectDir: string,
   media: ProjectMedia,
@@ -139,8 +140,9 @@ async function videoSoundsAutoDetected(
 ): Promise<boolean> {
   for (const video of media.videos) {
     if (!video.hasAudio) continue;
-    if (await dependencies.videoHasAudio(mediaPath(video.src, projectDir)).catch(() => false))
-      return true;
+    if (isRemoteMediaSrc(video.src)) return true;
+    const path = mediaPath(video.src, projectDir);
+    if (path && (await dependencies.videoHasAudio(path).catch(() => false))) return true;
   }
   return false;
 }
@@ -154,8 +156,8 @@ async function inspectClip(
   dependencies: AudioCheckDependencies,
 ): Promise<CheckFinding[]> {
   const path = mediaPath(clip.src, projectDir);
-  // ponytail: remote sources are not fetched; missing local files are lint's audio_src_not_found.
-  if (path === clip.src || !existsSync(path)) return [];
+  // ponytail: mediaPath is null for a remote source; missing local files are lint's audio_src_not_found.
+  if (path === null || path === clip.src || !existsSync(path)) return [];
   const problem = await clipProblem(path, clip, dependencies);
   if (!problem) return [];
   const id = clip.type === "video" ? clip.id.replace(/-audio$/, "") : clip.id;

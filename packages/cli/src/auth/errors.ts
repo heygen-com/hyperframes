@@ -37,7 +37,7 @@ export class AuthError extends Error {
 export const ErrNotConfigured = () =>
   new AuthError(
     "NOT_CONFIGURED",
-    "No HeyGen credentials found",
+    "No HeyGen credentials found.",
     "Run `hyperframes auth login` to sign in.",
   );
 

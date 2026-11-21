@@ -14,7 +14,9 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
@@ -66,22 +68,8 @@ export function findParakeet(): string | undefined {
   for (const path of candidates) {
     if (existsSync(path) && isRunnable(path)) return path;
   }
-  try {
-    const which = process.platform === "win32" ? "where" : "which";
-    const out = execFileSync(which, ["parakeet-mlx"], {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 5000,
-    });
-    const first = out
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .find(Boolean);
-    if (first && existsSync(first)) return first;
-  } catch {
-    // not on PATH
-  }
-  return undefined;
+  const onPath = findTrustedExecutable("parakeet-mlx");
+  return onPath && existsSync(onPath) ? onPath : undefined;
 }
 
 interface ParakeetToken {
@@ -338,7 +326,7 @@ export async function transcribeWithParakeet(
 export function writeParakeetTranscript(dir: string, words: Word[]): RunnerResult {
   mkdirSync(dir, { recursive: true });
   const transcriptPath = join(dir, TRANSCRIPT_FILE);
-  writeFileSync(transcriptPath, JSON.stringify(words, null, 2));
+  replaceFileAtomically(transcriptPath, JSON.stringify(words, null, 2));
   const durationSeconds = words.length > 0 ? words[words.length - 1]!.end : 0;
   return {
     model: PARAKEET_MODEL_LABEL,

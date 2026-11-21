@@ -697,6 +697,28 @@ describe("applyMediaTreatmentToHtml", () => {
     }
   });
 
+  // fails without the fix: the selector is repeated as it was typed.
+  it("shows control characters in the selector of a preview as text", async () => {
+    const esc = String.fromCharCode(27);
+    const project = mkdtempSync(join(tmpdir(), "hf-media-odd-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    writeFileSync(join(project, "index.html"), VIDEO);
+    const selector = `#hero:not([title="od${esc}[2Jd\x07"])`;
+    const grading = '{"preset":"warm-daylight","intensity":0.8}';
+    try {
+      await runCommand(mediaTreatmentCommand, {
+        rawArgs: ["--project", project, "--selector", selector, "--grading", grading, "--dry-run"],
+      });
+      const printed = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(printed).toContain('#hero:not([title="od\\x1b[2Jd\\x07"])');
+      expect(printed).not.toContain(`${esc}[2J`);
+      expect(printed).not.toContain("\x07");
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it("takes --grading from a file, and tells a quote-stripped value to use one", async () => {
     const project = mkdtempSync(join(tmpdir(), "hf-media-grading-file-"));
     writeFileSync(join(project, "index.html"), VIDEO);
@@ -789,6 +811,101 @@ describe("applyMediaTreatmentToHtml", () => {
       expect(
         gradingsOf(readFileSync(join(project, "compositions", "intro.html"), "utf8")),
       ).not.toEqual([null]);
+      expect(readFileSync(join(project, "index.html"), "utf8")).toBe(root);
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("previews and grades a clip in a nested template scene without changing its parents", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-media-nested-scene-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const root = '<div data-composition-src="compositions/outer.html"></div>';
+    const outer = '<template><div data-composition-src="compositions/inner.html"></div></template>';
+    const inner = '<template><video id="hero" src="hero.mp4"></video></template>';
+    mkdirSync(join(project, "compositions"));
+    writeFileSync(join(project, "index.html"), root);
+    writeFileSync(join(project, "compositions/outer.html"), outer);
+    writeFileSync(join(project, "compositions/inner.html"), inner);
+    const args = [
+      "--project",
+      project,
+      "--selector",
+      "#hero",
+      "--grading",
+      '{"preset":"warm-daylight"}',
+      "--json",
+    ];
+    try {
+      await runCommand(mediaTreatmentCommand, { rawArgs: [...args, "--dry-run"] });
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: true,
+        file: "compositions/inner.html",
+        dryRun: true,
+        changed: true,
+      });
+      expect(readFileSync(join(project, "compositions/inner.html"), "utf8")).toBe(inner);
+
+      await runCommand(mediaTreatmentCommand, { rawArgs: [...args, "--apply"] });
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: true,
+        file: "compositions/inner.html",
+        changed: true,
+      });
+      expect(readFileSync(join(project, "compositions/inner.html"), "utf8")).toContain(
+        "data-color-grading=",
+      );
+      expect(readFileSync(join(project, "index.html"), "utf8")).toBe(root);
+      expect(readFileSync(join(project, "compositions/outer.html"), "utf8")).toBe(outer);
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("requires --file for a selector shared by the root and a nested template scene", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-media-nested-ambiguous-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const root =
+      '<video id="hero" src="root.mp4"></video><div data-composition-src="outer.html"></div>';
+    const outer = '<template><div data-composition-src="inner.html"></div></template>';
+    const inner = '<template><video id="hero" src="inner.mp4"></video></template>';
+    for (const [file, html] of Object.entries({
+      "index.html": root,
+      "outer.html": outer,
+      "inner.html": inner,
+    })) {
+      writeFileSync(join(project, file), html);
+    }
+    const args = [
+      "--project",
+      project,
+      "--selector",
+      "#hero",
+      "--grading",
+      '{"preset":"warm-daylight"}',
+      "--apply",
+      "--json",
+    ];
+    try {
+      await expect(runCommand(mediaTreatmentCommand, { rawArgs: args })).rejects.toThrow(
+        CliRuntimeError,
+      );
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: false,
+        error: { message: expect.stringContaining("index.html, inner.html; pass --file") },
+      });
+      expect(readFileSync(join(project, "index.html"), "utf8")).toBe(root);
+      expect(readFileSync(join(project, "outer.html"), "utf8")).toBe(outer);
+      expect(readFileSync(join(project, "inner.html"), "utf8")).toBe(inner);
+
+      await runCommand(mediaTreatmentCommand, { rawArgs: [...args, "--file", "inner.html"] });
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: true,
+        file: "inner.html",
+      });
+      expect(readFileSync(join(project, "inner.html"), "utf8")).toContain("data-color-grading=");
       expect(readFileSync(join(project, "index.html"), "utf8")).toBe(root);
     } finally {
       log.mockRestore();

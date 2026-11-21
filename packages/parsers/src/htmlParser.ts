@@ -14,10 +14,10 @@ import type {
 import { validateCompositionGsap } from "./gsapSerialize";
 import { parseCompositionVariables } from "./compositionVariables.js";
 import { walkCompositionDescendants } from "./hfIds.js";
+import { firstTemplateContent } from "./subCompositionValidity.js";
 import { assignHfIds } from "./hfIdAssignment.js";
-import { parseGsapScriptAcornForWrite } from "./gsapParserAcorn.js";
 import { queryByAttr } from "./utils/cssSelector.js";
-import { removeAnimationFromScript } from "./gsapWriterAcorn.js";
+import { removeAnimationsForSelectors } from "./gsapWriterAcorn.js";
 import { readClipTiming, writeClipTiming } from "./compositionContract.js";
 
 const MEDIA_TYPES = new Set<string>(["video", "image", "audio"]);
@@ -752,21 +752,10 @@ export function removeElementWithGsapCascade(doc: Document, element: Element): v
   if (removedSelectors.size === 0) return;
 
   for (const script of findScriptElementsDeep(doc)) {
-    let current = script.textContent ?? "";
+    const current = script.textContent ?? "";
     if (!current.includes("gsap") && !current.includes("ScrollTrigger")) continue;
-    // Writer ids are positional: reparse after each removal so later tweens
-    // cannot be skipped after an earlier deletion renumbers them.
-    for (;;) {
-      const parsed = parseGsapScriptAcornForWrite(current);
-      const match = parsed?.located.find((located) =>
-        removedSelectors.has(located.animation.targetSelector),
-      );
-      if (!match) break;
-      const updated = removeAnimationFromScript(current, match.id);
-      if (updated === current) break;
-      current = updated;
-    }
-    if (current !== script.textContent) script.textContent = current;
+    const updated = removeAnimationsForSelectors(current, removedSelectors);
+    if (updated !== current) script.textContent = updated;
   }
 }
 
@@ -805,9 +794,7 @@ export function extractCompositionMetadata(html: string): CompositionMetadata {
 
   // Declarations live on <html> or on the composition root (inside its <template> when
   // templated); like the runtime, read both and let the root's win on a shared id.
-  const root = (doc.querySelector("template")?.content ?? doc).querySelector(
-    "[data-composition-id]",
-  );
+  const root = (firstTemplateContent(doc) ?? doc).querySelector("[data-composition-id]");
   const variables = [
     ...new Map(
       [

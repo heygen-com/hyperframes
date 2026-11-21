@@ -4,6 +4,7 @@ import type {
   RuntimeTimelineScene,
   RuntimeTimelineLike,
 } from "./types";
+import { unproxiedSrc } from "./proxySrc";
 import { stableClipId } from "./clipTree";
 import { findRootCompositionElement, parseCompositionDimension } from "./compositionDimension";
 import {
@@ -22,12 +23,12 @@ import {
 } from "./playbackRate";
 import { resolveCssStackingContextId } from "./stackingContext";
 import { createRuntimeStartTimeResolver } from "./startResolver";
-import { isClipVisibleAt } from "./clipWindow";
-import { exportClipWindow } from "../inline-scripts/parityContract";
+import { isClipOnScreenAt } from "./clipWindow";
 import { isSceneLikeCompositionId } from "../slideshow/index.js";
 import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
 import { runtimeProtocolMetadata } from "./protocol.js";
 import { isElementNode, isMediaElement } from "./domRealm";
+import { readSentTextLayer } from "./editingElement";
 import { LOOP_INFLATED_TIMELINE_SECONDS } from "./compositionLength";
 import { cutToHostSlots } from "../mediaTiming";
 
@@ -79,21 +80,17 @@ export function isRuntimeElementVisibleAt(
     currentTime: number;
     compositionDuration: number;
     canonicalFps: number;
-    exportRenderSeek: boolean;
     timelineRegistry: Record<string, RuntimeTimelineLike | undefined>;
     resolver: ReturnType<typeof createRuntimeStartTimeResolver>;
   },
 ): boolean {
   const span = runtimeElementWindow(rawNode, options);
   if (!span) return false;
-  // Export seeks snap to frame boundaries; interactive visibility uses authored seconds.
-  const clipWindow = options.exportRenderSeek
-    ? exportClipWindow(span.start, span.end, options.canonicalFps)
-    : span;
-  return isClipVisibleAt(
+  return isClipOnScreenAt(
     options.currentTime,
-    clipWindow.start,
-    clipWindow.end,
+    span.start,
+    span.end,
+    options.canonicalFps,
     options.compositionDuration,
   );
 }
@@ -171,13 +168,13 @@ function toAbsoluteAssetUrl(rawValue: string | null | undefined): string | null 
 }
 
 function resolveNodeAssetUrl(node: Element): string | null {
-  const src = node.getAttribute("src") ?? node.getAttribute("data-src");
+  const src = unproxiedSrc(node) ?? node.getAttribute("data-src");
   if (src) return toAbsoluteAssetUrl(src);
   const compositionSrc = node.getAttribute("data-composition-src");
   if (compositionSrc) return toAbsoluteAssetUrl(compositionSrc);
   const mediaDescendant = node.querySelector("img[src], video[src], audio[src], source[src]");
   if (!mediaDescendant) return null;
-  return toAbsoluteAssetUrl(mediaDescendant.getAttribute("src"));
+  return toAbsoluteAssetUrl(unproxiedSrc(mediaDescendant));
 }
 
 function getFirstClassToken(node: Element): string | null {
@@ -506,6 +503,7 @@ export function collectRuntimeTimelinePayload(params: {
       timelineLabel: node.getAttribute("data-timeline-label"),
       timelineGroup: node.getAttribute("data-timeline-group"),
       timelinePriority: parseNum(node.getAttribute("data-timeline-priority")),
+      text: readSentTextLayer(node),
     };
   };
   const addClip = (clip: RuntimeTimelineClip) => {
@@ -636,6 +634,7 @@ export function collectRuntimeTimelinePayload(params: {
             timelineLabel: el.getAttribute("data-timeline-label"),
             timelineGroup: el.getAttribute("data-timeline-group"),
             timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
+            text: readSentTextLayer(el),
           });
           gsapClipIds.add(el.id);
         }
@@ -693,6 +692,7 @@ export function collectRuntimeTimelinePayload(params: {
         timelineLabel: el.getAttribute("data-timeline-label"),
         timelineGroup: el.getAttribute("data-timeline-group"),
         timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
+        text: readSentTextLayer(el),
       });
       gsapClipIds.add(el.id);
     }

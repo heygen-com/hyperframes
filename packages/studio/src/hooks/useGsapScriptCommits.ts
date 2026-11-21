@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useRef } from "react";
 import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mutation";
-import { readProjectFileContent as readSharedProjectFileContent } from "../utils/studioFileHistory";
+import {
+  editContextTarget,
+  readProjectFileContent as readSharedProjectFileContent,
+} from "../utils/studioFileHistory";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import {
@@ -22,6 +25,9 @@ import {
 import type { CutoverDeps } from "../utils/sdkCutover";
 import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
 import { patchRuntimeTweenInPlace } from "./gsapRuntimePatch";
+import { lastTweenPatch } from "@hyperframes/core/runtime/patch-tween";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
+import { patchSealedPreview } from "./sealedTweenPatch";
 import { createKeyedSerializer } from "./serializeByKey";
 import {
   GsapMutationHttpError,
@@ -215,6 +221,7 @@ function softReloadOrEscalate(
   origin: "preview_sync" | "sdk_refresh",
   authoredHtml?: string,
   nestedFiles?: Map<string, string> | null,
+  previousHtml?: string,
 ): void {
   // Seek the rebuilt timeline to the studio's own authoritative scrub position,
   // not the iframe's raw `__player.getTime()` — see the comment in
@@ -224,6 +231,7 @@ function softReloadOrEscalate(
     onAsyncFailure: reloadPreview,
     currentTimeOverride: currentTime,
     authoredHtml,
+    previousHtml,
     nestedFiles,
   });
   if (result === "applied") return;
@@ -255,25 +263,8 @@ export function applyPreviewSync(
   const writtenWithoutPatch = patches.length === 0;
   let needsFallback = options.previewFallbackLatch?.pending === true || writtenWithoutPatch;
   if (patches.length > 0) {
-    const deferSeek = options.deferPreviewSync === true;
-    const missed = patches.find(
-      (patch, index) =>
-        !patchRuntimeTweenInPlace(
-          iframe,
-          patch.selector,
-          patch.change,
-          undefined,
-          deferSeek || index < patches.length - 1,
-        ),
-    );
-    if (missed) {
-      // The instant path couldn't patch in place — record the fallback so we can
-      // track how often the fast path misses before the soft/full reload below.
-      trackStudioEvent("gsap_instant_patch_fallback", { selector: missed.selector });
-      needsFallback = true;
-    }
-    // Patched in place — elements are already correct on screen; no reload needed
-    // unless an earlier deferred batch left one member unpatched.
+    if (!patchInstantly(iframe, patches, options, reloadPreview)) needsFallback = true;
+    // Patched in place: no reload unless an earlier deferred batch left one member unpatched.
     if (!needsFallback) return;
   }
   // Written, but the caller has more writes to make and will render after the last.
@@ -297,10 +288,45 @@ export function applyPreviewSync(
       "preview_sync",
       result.after ?? undefined,
       nestedFiles,
+      result.before,
     );
   } else {
     reloadPreview();
   }
+}
+
+/** A sealed preview patches itself (and reloads on its own if it must); a reachable one is patched here. */
+function patchInstantly(
+  iframe: HTMLIFrameElement | null,
+  patches: NonNullable<CommitMutationOptions["instantPatches"]>,
+  options: CommitMutationOptions,
+  reloadPreview: () => void,
+): boolean {
+  if (!iframe || !previewFrameOpaque(iframe))
+    return patchReachablePreview(iframe, patches, options.deferPreviewSync === true);
+  patchSealedPreview(iframe, patches, !options.deferPreviewSync, reloadPreview);
+  return true;
+}
+
+/** Patches a reachable preview's tweens in place, rendering once; `false` when one could not land. */
+function patchReachablePreview(
+  iframe: HTMLIFrameElement | null,
+  patches: NonNullable<CommitMutationOptions["instantPatches"]>,
+  deferSeek: boolean,
+): boolean {
+  const renderAt = lastTweenPatch(patches);
+  const missed = patches.find(
+    (patch, index) =>
+      !patchRuntimeTweenInPlace(
+        iframe,
+        patch.selector,
+        patch.change,
+        undefined,
+        deferSeek || index !== renderAt,
+      ),
+  );
+  if (missed) trackStudioEvent("gsap_instant_patch_fallback", { selector: missed.selector });
+  return missed === undefined;
 }
 
 function instantPatchesFor(
@@ -323,12 +349,13 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
   // the same animationId so their POSTs can't interleave. Held in a ref so the
   // chain survives re-renders.
   const serializerRef = useRef(createKeyedSerializer());
-  const recordMutationEdit = useCallback(async (targetPath: string, result: MutationResult, options: CommitMutationOptions) => {
+  const recordMutationEdit = useCallback(async (targetPath: string, selection: DomEditSelection, result: MutationResult, options: CommitMutationOptions) => {
     if (result.before == null || result.after == null) return;
     await editHistory.recordEdit({
       label: options.label,
       coalesceKey: options.coalesceKey,
       coalesceMs: options.coalesceMs,
+      targets: [editContextTarget(targetPath, selection)],
       files: { [targetPath]: { before: result.before, after: result.after } },
     });
   }, [editHistory]);
@@ -348,7 +375,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       }
       return;
     }
-    await recordMutationEdit(targetPath, result, options);
+    await recordMutationEdit(targetPath, selection, result, options);
     const nestedFiles = await settleNestedReads(
       result.scriptText
         ? readNestedFiles(previewIframeRef.current, result.scriptText, (path) =>

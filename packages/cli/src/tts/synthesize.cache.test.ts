@@ -9,9 +9,16 @@ vi.mock("node:os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:os")>()),
   homedir: () => paths.home,
 }));
+const ownedByAnotherAccount = vi.hoisted(() => new Set<string>());
 vi.mock("node:fs", async (importOriginal) => {
   const original = await importOriginal<typeof fs>();
-  return { ...original, existsSync: vi.fn(original.existsSync) };
+  const lstatSync = ((path: string, options?: object) => {
+    const stat = original.lstatSync(path, options as never);
+    return stat && ownedByAnotherAccount.has(path)
+      ? Object.assign(stat, { uid: process.getuid!() + 1 })
+      : stat;
+  }) as typeof fs.lstatSync;
+  return { ...original, existsSync: vi.fn(original.existsSync), lstatSync };
 });
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
 vi.mock("./python.js", async (importOriginal) => ({
@@ -50,9 +57,24 @@ describe("synthesis script cache", () => {
   });
 
   afterEach(() => {
+    ownedByAnotherAccount.clear();
     expect(fs.readdirSync(cacheDir).filter((name) => name.startsWith(".hf-create-"))).toEqual([]);
     fs.rmSync(paths.home, { recursive: true, force: true });
   });
+
+  it.skipIf(!process.getuid)(
+    "neither writes nor runs a script in a tts folder another account owns",
+    async () => {
+      ownedByAnotherAccount.add(cacheDir);
+      const { synthesize } = await import("./synthesize.js");
+      await expect(synthesize("Hello", outputPath)).rejects.toThrow(
+        `${cacheDir} can be changed by another user account`,
+      );
+      expect(fs.existsSync(scriptPath)).toBe(false);
+      const ran = vi.mocked(execFileSync).mock.calls.flatMap(([, args]) => args ?? []);
+      expect(ran).not.toContain(scriptPath);
+    },
+  );
 
   it("runs the synthesis process in the environment the packages imported under", async () => {
     vi.mocked(execFileSync).mockImplementation((_cmd, args, options) => {

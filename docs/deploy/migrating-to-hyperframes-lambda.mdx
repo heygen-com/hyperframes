@@ -98,7 +98,7 @@ rendering with the actual composition before choosing a path.
 
 ### State files are local by default
 
-`hyperframes lambda deploy` writes `<cwd>/.hyperframes/lambda-stack-<name>.json` so subsequent verbs don't re-derive the bucket / state-machine ARN. Two worktrees produce two distinct state files. If you need a shared default location across CI workers, symlink the directory or pass `--stack-name` explicitly on every call.
+`hyperframes lambda deploy` writes `<cwd>/.hyperframes/lambda-stack-<name>.json` so subsequent verbs don't re-derive the bucket / state-machine ARN. Two worktrees produce two distinct state files. CI workers that share a stack run `deploy` once and copy the file into each checkout, or pass `--stack-name` explicitly on every call. The CLI refuses a state file, or a `.hyperframes` folder, that is a symlink.
 
 ### IAM policy is print-then-narrow
 

@@ -67,8 +67,31 @@ describe("motionBlurDrafts", () => {
     expect(motionBlurDrafts(filter("accelerated-canvas", 0))[0]?.code).toBe(
       "motion_blur_no_movers",
     );
-    expect(motionBlurDrafts(filter("translation-only"))).toEqual([]);
     expect(motionBlurDrafts(filter("tier-attribute"))).toEqual([]);
+  });
+
+  it("reports nothing when auto draws with the filter tier, wherever the check browser runs", () => {
+    const auto: MotionBlurProbe = {
+      state: "on",
+      tier: "filter",
+      reason: 'auto draws with the filter tier; data-motion-blur-tier="capture" streaks turns',
+      reasonCode: "tier-auto",
+      movers: 3,
+    };
+    expect(motionBlurDrafts(auto)).toEqual([]);
+  });
+
+  it("still informs when capture was forced and the check browser cannot run it", () => {
+    const forced: MotionBlurProbe = {
+      state: "on",
+      tier: "filter",
+      reason: "html-in-canvas (drawElementImage) is unavailable in this browser",
+      reasonCode: "unsupported-browser",
+      movers: 3,
+    };
+    expect(motionBlurDrafts(forced)).toMatchObject([
+      { code: "motion_blur_unverified", severity: "info" },
+    ]);
   });
 
   it("only informs, once, when the browser cannot run html-in-canvas", () => {

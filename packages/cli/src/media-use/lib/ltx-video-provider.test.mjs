@@ -1,8 +1,13 @@
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
-import { dirname } from "node:path";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { homedir, tmpdir } from "node:os";
 import { ltxVideoGenerate } from "./ltx-video-provider.mjs";
+
+const scratch = mkdtempSync(join(tmpdir(), "ltx-provider-test-"));
+process.env.TMPDIR = process.env.TEMP = process.env.TMP = scratch;
+after(() => rmSync(scratch, { recursive: true, force: true }));
 
 const fittingSpecs = { availableRamMB: 20000, gpu: { present: true } };
 
@@ -89,8 +94,8 @@ test("successful generation returns the generated MP4 result", async () => {
 
   assert.ok(result);
   assert.equal(calls.length, 2);
-  assert.equal(dirname(result.localPath), tmpdir());
-  assert.match(result.localPath, /media-use-ltx-\d+-\d+\.mp4$/);
+  assert.equal(dirname(dirname(result.localPath)), tmpdir());
+  assert.match(result.localPath, /media-use-ltx-[^/\\]+[/\\]output\.mp4$/);
   assert.deepEqual(result, {
     localPath: result.localPath,
     ext: ".mp4",
@@ -101,6 +106,21 @@ test("successful generation returns the generated MP4 result", async () => {
       provenance: { prompt: intent },
     },
   });
+});
+
+// fails without the fix: the runner started in the project, and it reads a model id such as
+// dgrauet/ltx-2.3-mlx-q4 as a folder when the working directory has one.
+test("the runner starts in the home folder, so a project folder named like the model is never read", async () => {
+  const calls = [];
+  await ltxVideoGenerate(
+    "waves",
+    { specs: fittingSpecs },
+    (...call) => calls.push(call),
+    () => true,
+  );
+  const [, argv, opts] = calls[1];
+  assert.match(argv.join(" "), /--model dgrauet\//);
+  assert.equal(opts.cwd, homedir());
 });
 
 test("generate failure returns null instead of throwing", async (t) => {
@@ -278,6 +298,7 @@ test("every tier failing discards every partial, one per attempt", async (t) => 
   assert.equal(result, null);
   assert.equal(attempted.length, 2, "both tiers attempted");
   assert.deepEqual(unlinked, attempted, "nothing is left behind on the all-fail path");
+  for (const path of attempted) assert.equal(existsSync(dirname(path)), false, path);
 });
 
 test("a successful generation is never discarded", async () => {
@@ -313,4 +334,32 @@ test("an unremovable partial does not mask the generate failure", async (t) => {
 
   // cleanup is best-effort: a partial we cannot delete must not become the error
   assert.equal(result, null);
+});
+
+test("a failed generate prints the runner's output with control characters escaped", async (t) => {
+  const errors = [];
+  t.mock.method(console, "error", (message) => errors.push(message));
+  let calls = 0;
+  const fakeExec = () => {
+    calls += 1;
+    if (calls === 2) {
+      const error = new Error("generation failed");
+      error.stderr = "bad prompt \x1b]0;title\x07\r\nstorm \rclouds";
+      throw error;
+    }
+  };
+
+  const result = await ltxVideoGenerate(
+    "storm clouds",
+    { specs: fittingSpecs },
+    fakeExec,
+    () => true,
+  );
+
+  assert.equal(result, null);
+  assert.equal(errors.length, 1);
+  assert.match(
+    errors[0],
+    /^media-use: local video gen \(\S+\) failed: bad prompt \\x1b\]0;title\\x07\nstorm \\x0dclouds$/,
+  );
 });

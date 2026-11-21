@@ -1,4 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -301,6 +308,39 @@ describe("describeStems", () => {
     expect(fetch).toHaveBeenCalledTimes(3);
     expect(warnings).toEqual([]);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "neither reads nor writes a cached answer through a link",
+    async () => {
+      vi.stubEnv("HEYGEN_API_KEY", "signed-in");
+      const fetch = mockMessages();
+      const warnings: string[] = [];
+      await describeAudio(warnings);
+      const outside = mkdtempSync(join(tmpdir(), "hf-describe-outside-"));
+      try {
+        const secret = join(outside, "secret.txt");
+        writeFileSync(secret, "outside words");
+        const answers = join(dir, "describe");
+        for (const name of readdirSync(answers)) {
+          rmSync(join(answers, name));
+          symlinkSync(secret, join(answers, name));
+        }
+        const again = await describeAudio(warnings);
+        expect(fetch).toHaveBeenCalledTimes(6);
+        expect(JSON.stringify(again)).not.toContain("outside words");
+        expect(readFileSync(secret, "utf8")).toBe("outside words");
+
+        rmSync(answers, { recursive: true });
+        symlinkSync(outside, answers);
+        const linked: string[] = [];
+        expect((await describeAudio(linked)).description).toBeNull();
+        expect(linked).toEqual([expect.stringMatching(/is a link or a file, not a folder/)]);
+        expect(readdirSync(outside)).toEqual(["secret.txt"]);
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("does not describe silent stems", async () => {
     const fetch = vi.spyOn(globalThis, "fetch");

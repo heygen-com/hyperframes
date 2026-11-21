@@ -26,13 +26,13 @@ npm install -g hyperframes
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Start a project          | [`init`](#init), [`add`](#add), [`catalog`](#catalog)                                                                                                                                                                            |
 | Bring in source material | [`capture`](#capture), [`media-use`](#media-use), [`transcribe`](#transcribe), [`tts`](#tts), [`remove-background`](#remove-background), [`media-treatment`](#media-treatment), [`beats`](#beats), [`audio`](#audio), [`normalize-audio`](#normalize-audio), [`models`](#models) |
-| Look at it, or share it  | [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish), [`open`](#open-and-catch-up), [`catch-up`](#open-and-catch-up)                                                        |
+| Look at it, or share it  | [`share`](#share), [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish), [`open`](#open-and-catch-up), [`catch-up`](#open-and-catch-up)                                                        |
 | Find problems            | [`lint`](#lint), [`check`](#check), [`snapshot`](#snapshot), [`keyframes`](#keyframes), [`compare`](#compare-and-grade-compare), [`grade-compare`](#compare-and-grade-compare)                                                   |
 | Rebuild a video          | [`reverse`](#reverse), [`measure`](#measure), [`diff`](#diff)                                                                                                                                                                     |
 | Edit from the terminal   | [`timeline`](#timeline), [`history`](#history)                                                                                                                                                                                   |
 | Make a file              | [`render`](#render), [`benchmark`](#benchmark)                                                                                                                                                                                   |
 | Render somewhere else    | [`cloud`](#hyperframes-cloud), [`lambda`](#hyperframes-lambda), [`cloudrun`](#hyperframes-cloudrun)                                                                                                                              |
-| Fix your setup           | [`doctor`](#doctor), [`browser`](#browser), [`upgrade`](#upgrade), [`docs`](#docs), [`info`](#info-and-compositions), [`compositions`](#info-and-compositions), [`clean`](#clean)                                                                   |
+| Fix your setup           | [`doctor`](#doctor), [`browser`](#browser), [`update`](#update), [`upgrade`](#upgrade), [`docs`](#docs), [`info`](#info-and-compositions), [`compositions`](#info-and-compositions), [`clean`](#clean)                                                                   |
 | Connect other tools      | [`auth`](#hyperframes-auth), [`billing`](#billing), [`templates`](#templates), [`skills`](#skills), [`usage`](#usage), [`figma`](#figma-and-events), [`events`](#figma-and-events), [`telemetry`](#telemetry), [`feedback`](#feedback)                                                                            |
 
 `validate`, `inspect`, and `layout` still work but are
@@ -47,6 +47,14 @@ default to the current directory: `npx hyperframes check ./my-video`. A few
 take it as a flag instead — `add`, `transcribe`, `feedback`, `skills`, `history`, and
 the `timeline` edit commands use `--dir`.
 
+**Control characters in a few printed lines.** `figma component` (the
+`imported component` line), `usage` (the reason on a `Usage unknown` line),
+`measure hands` (its notices) and `compare` and `keyframes` (the notice
+about files left out) print control characters in a repeated value as visible
+text such as `\x1b` and `\x07`, and keep the value on its line, with a line break
+shown as `\x0a`. [`capture`](#capture) does the same for its warnings and failure
+reason. `--json` output is not changed by this.
+
 **`--json` for agents and scripts.** Most commands accept it, and the ones
 that do not reject it with exit 2. The payload is wrapped with a `_meta` field
 so a script can spot an outdated CLI from any command's output, without a
@@ -59,15 +67,42 @@ second call:
   "_meta": {
     "version": "0.1.4",
     "latestVersion": "0.1.5",
-    "updateAvailable": true
+    "updateAvailable": true,
+    "checkedAt": "2026-11-03T08:00:00.000Z",
+    "skillsOutdated": 2,
+    "skillsMissing": 0,
+    "updateNotice": "For the user: HyperFrames CLI 0.1.5 is available (this run is 0.1.4), and 2 installed HyperFrames skills are out of date. To update both, run: hyperframes update"
   }
 }
 ```
 
-The version numbers come from a cache refreshed at most once a day, in a
+The version numbers come from a cache refreshed at most every two hours, in a
 background process, and never under CI or `HYPERFRAMES_NO_UPDATE_CHECK=1`.
-`--json` never makes a network request of its own. Deprecated commands add
-`_meta.deprecated: true`.
+`checkedAt` says when npm answered. A cached latest older than the running CLI
+is left out and rechecked on the next run. `skillsOutdated` counts the installed
+HyperFrames skills that are behind this CLI's release, and `skillsMissing` the
+core skills that are not installed, from the same background check; both are
+absent until that check has run for this version, once it is more than a day old
+(as when `HYPERFRAMES_NO_UPDATE_CHECK=1` stops the checks), and under
+`HYPERFRAMES_SKIP_SKILLS=1`. `--json` never makes a network request of its own.
+Deprecated commands add `_meta.deprecated: true`.
+
+`updateNotice` is one sentence for the agent to pass on to the person when the
+CLI or the skills are behind: what is newer and the command that updates it.
+The person decides whether to run it. The command moves the install that is
+running:
+
+| Install | CLI behind | Skills behind too, or only them |
+| --- | --- | --- |
+| npm, pnpm, bun or Homebrew global | the manager's command (`npm install -g hyperframes@0.9.8`, `brew upgrade hyperframes`, …) | `hyperframes update` (the global CLI's own; `npx hyperframes` would run a project's copy or a fresh one) |
+| project `node_modules` | the project's manager, by lockfile: `npm install`, `pnpm add`, `bun add` or `yarn add hyperframes@0.9.8` | that, then `npx hyperframes update`; skills only: `npx hyperframes update` |
+| `npx` | `npx hyperframes@latest update` (npx's cache may hold the old CLI) | the same; skills only: `npx hyperframes update` |
+
+The skills half is left out when no skill is behind or under
+`HYPERFRAMES_SKIP_SKILLS=1`. The notice appears at most once a day per project,
+while the numeric fields stay on every result. It is never added under CI,
+`HYPERFRAMES_NO_UPDATE_CHECK=1`, or an agent plugin (`HYPERFRAMES_PLUGIN_VERSION`),
+and the output of `update`, `upgrade` and `skills` leaves it out.
 
 A failure under `--json` always prints one JSON object on stdout, with a
 machine-readable `code` and, when there is a next step, a `hint`:
@@ -77,8 +112,8 @@ machine-readable `code` and, when there is a next step, a `hint`:
   "ok": false,
   "error": {
     "code": "unknown_flag",
-    "message": "Unknown flag: --out",
-    "hint": "Did you mean --output? Run 'hyperframes render --help' to see its flags."
+    "message": "Unknown flag: --search",
+    "hint": "Did you mean --query? Its flags: --type, --tag, --json, --human-friendly, --query, --yes, --on-device. Run 'hyperframes catalog --help' for what each does."
   }
 }
 ```
@@ -86,15 +121,28 @@ machine-readable `code` and, when there is a next step, a `hint`:
 Some commands add their own fields next to `error`, such as `findings` from
 `lint` or `reason` and `fix` from a refused `timeline` edit.
 
+A failure with no code of its own is `runtime_error`, or `usage_error` for a bad
+command line. These causes have their own, so a script can branch without reading
+`message`:
+
+| `code` | Cause |
+| --- | --- |
+| `chrome_not_found` | `render` found no Chrome to use, or could not install one |
+| `ffmpeg_not_found` | `render` found no FFmpeg |
+| `ffprobe_not_found` | `render` found no FFprobe |
+| `render_locked` | `render --no-wait` while another render holds this account's slot |
+| `node_version_unsupported` | The CLI was started on a Node.js older than 22 |
+
 **The project `.env`.** The `.env` in the current directory sets only the CLI's own
 settings: `HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`, `ELEVENLABS_API_KEY`, `FIGMA_TOKEN`, and the
 vision keys, models, Vertex settings and timeout, and the telemetry opt-outs `HYPERFRAMES_NO_TELEMETRY` and `DO_NOT_TRACK`. A variable already in your environment wins. Any
-other key in the file is ignored, and one line on stderr names them.
+other key in the file is ignored, and one line on stderr names them. A HeyGen key from the `.env` is used only
+when no login or API key is saved (see [`auth`](#hyperframes-auth)).
 
 **Flags, not prompts.** A missing required flag fails immediately with a usage
-example rather than waiting for input. Two commands are interactive on a TTY:
+example rather than waiting for input. These commands can ask questions on a TTY:
 `init` prompts for a project name and example unless you pass
-`--non-interactive`, and `catalog --human-friendly` opens a picker. Nothing else
+`--non-interactive`, `catalog --human-friendly` opens a picker, and `share` asks for a first-share audience and, in a folder that came from someone else, confirms the existing review it would change. Nothing else
 prompts, apart from confirmations you can skip with `--yes` or `--no-confirm`.
 
 **Unattended runs never prompt.** A run is unattended when stdin or stdout is not
@@ -102,6 +150,22 @@ a terminal, under CI, inside a coding agent, or with `HYPERFRAMES_AGENT=1`.
 There, a command that would ask for confirmation, such as `publish` or `upgrade`,
 exits 2 instead and names the flag to pass (`--yes`), and spinners print only
 their final line, on stderr.
+
+**`npx` installs before the CLI runs.** The guarantee above starts once the CLI
+is running, and `npx` keeps it: with no terminal, npm skips its
+`Ok to proceed?` prompt, prints a warning, and installs. What `npx` adds is the
+install itself. An unversioned `npx hyperframes` asks the registry for the
+latest release on every run and installs it when it is new there, so two jobs
+that start together can collide in npm's cache (`_cacache` for the fetch,
+`_npx` for the install: `EEXIST` or `ENOTEMPTY`; a retry succeeds), and a new
+release silently changes
+what the same command renders. In scripts and CI, run the `npm run` scripts a
+scaffolded project ships (`npm run render` is `npx --yes hyperframes@X.Y.Z`,
+pinned to the version that created the project), or pin the same way yourself.
+An installed binary (`npm i hyperframes@X.Y.Z`, then
+`node_modules/.bin/hyperframes`, or a global install) skips the fetch
+entirely. Check the render's dimensions and duration with `ffprobe` before
+anything downstream consumes it.
 
 **Exit codes.** `0` means the command succeeded, `1` means it ran and failed, and
 `2` means the command line itself is wrong: an unknown command or flag, or a
@@ -127,7 +191,8 @@ notice; `HYPERFRAMES_NO_AUTO_INSTALL=1` turns off only the install.
 **Skills notice.** When installed HyperFrames skills are out of date or missing,
 a command ends with one line on stderr naming `npx hyperframes skills update`.
 It shows at most once a day per project. In an unattended run it shows only when
-a core skill is missing. `HYPERFRAMES_SKIP_SKILLS=1` turns it off. No notice
+a core skill is missing; outdated skills reach agents as `_meta.skillsOutdated`
+and `_meta.updateNotice` instead. `HYPERFRAMES_SKIP_SKILLS=1` turns it off. No notice
 follows a usage error.
 
 ## Create a project
@@ -150,7 +215,7 @@ npx hyperframes init my-video --tailwind
 | Flag                | Description                                                                                                                                                                                                                                                                          |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `--example, -e`     | Example to scaffold. Default is the centered blank. See [Examples](/examples) for the full list.                                                                                                                                                                                     |
-| `--resolution`      | Canvas preset: `landscape` (1920×1080), `portrait` (1080×1920), `landscape-4k` (3840×2160), `portrait-4k` (2160×3840), `square` (1080×1080), `square-4k` (2160×2160). Aliases: `1080p`, `4k`, `uhd`, `1080p-square`, `square-1080p`, `4k-square`. Default: keep template dimensions. |
+| `--resolution`      | Canvas preset: `landscape` (1920×1080), `portrait` (1080×1920), `landscape-4k` (3840×2160), `portrait-4k` (2160×3840), `square` (1080×1080), `square-4k` (2160×2160), `landscape-1440p` (2560×1440), `portrait-1440p` (1440×2560), `square-1440p` (1440×1440). Aliases: `1080p`, `4k`, `uhd`, `1440p`, `qhd`, `1080p-square`, `square-1080p`, `4k-square`, `1440p-portrait`, `1440p-square`. Default: keep template dimensions. |
 | `--video, -v`       | Path to a video file (MP4, WebM, MOV)                                                                                                                                                                                                                                                |
 | `--audio, -a`       | Path to an audio file (MP3, WAV, M4A)                                                                                                                                                                                                                                                |
 | `--tailwind`        | Add Tailwind CSS browser-runtime support to the scaffolded HTML                                                                                                                                                                                                                      |
@@ -335,7 +400,7 @@ thin with counts on it was cut short.
 | Flag                | Description                                                                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--output, -o`      | Output directory. Default `./capture`, then `./capture-2/`, `./capture-3/`, … if that name is taken.                                               |
-| `--timeout`         | Page load timeout in ms (default 120000)                                                                                                          |
+| `--timeout`         | Page load timeout in ms, or a duration such as `30s` or `2m` (default 120000)                                                                     |
 | `--capture-budget`  | Budget in ms for everything after the page loads (default 120000). Cooperative — it stops new work, but cannot interrupt work already running.     |
 | `--skip-assets`     | Do not download images and SVGs                                                                                                                   |
 | `--skip-vision`     | Do not run AI image captioning                                                                                                                    |
@@ -353,6 +418,10 @@ the `/hyperframes` skill uses it when a real product has to appear on screen. Dy
 partial results, so read `dropped`, the warnings, and the contact sheets before
 you build.
 
+Each warning, and the reason on a `Capture failed:` line, is printed on one
+line: a line break inside the text is shown as `\x0a` instead of starting a new
+terminal line. `--json` output is unchanged and carries the full text.
+
 Downloaded fonts are saved under `assets/fonts/`, and their CSS references point
 to those local files. Distinct URLs such as `demo.woff2?v=1` and
 `demo.woff2?v=10` keep separate files. A failed font download leaves its original
@@ -362,6 +431,13 @@ For AI image descriptions, set `GEMINI_API_KEY` in a `.env` file
 (~$0.001/image), or `OPENROUTER_API_KEY` to route any vision model through
 [OpenRouter](https://openrouter.ai) — it wins if both are set, and
 `HYPERFRAMES_OPENROUTER_MODEL` overrides the model.
+
+A received project's `.env` (one its received-files record lists) never
+replaces a vision or Gemini credential you set in your shell or your own
+project's `.env`: its competing keys are ignored, with a note naming the file.
+Keys in your own or a cloned project's `.env` are used as set. When capture or `snapshot --describe` uses
+a vision key from a project's `.env`, a note naming the file prints before the
+first request.
 
 #### Local HTML files
 
@@ -592,7 +668,7 @@ npx hyperframes media-treatment --selector '#hero' --clear
 | `--capability <id>`    | Inspect one family, control, effect, preset, or palette               |
 | `--all`                | Print the exhaustive capability catalog                               |
 | `--project <dir>`      | Project directory (default: current directory)                        |
-| `--file <path>`        | Composition file (default `index.html`)                               |
+| `--file <path>`        | Composition file; omit to find the selector across mounted scenes      |
 | `--selector <css>`     | CSS selector; every matched `<img>`, `<video>` or `<canvas>` gets the patch |
 | `--selector-index <n>` | Zero-based match index to patch only one of several matches           |
 | `--grading <json>`     | Validated colour-grading patch                                        |
@@ -601,6 +677,11 @@ npx hyperframes media-treatment --selector '#hero' --clear
 | `--clear`              | Remove colour grading from the target                                 |
 | `--dry-run`            | Validate and report without writing                                   |
 | `--json`               | Agent-readable JSON                                                   |
+
+Without `--file`, the command searches `index.html` and every scene it mounts,
+including scenes nested inside another scene's `<template>`. It edits the file
+that contains the matching clip. If the selector matches in more than one file,
+pass `--file` to choose one.
 
 `--dry-run` accepts `--grading` without `--apply` and writes nothing. JSON includes `count`, `attribute`, the exact normalized `value` that apply would write (or `null` to remove it), and `lint`, the color-grading lint verdict and findings for the proposed HTML. When the selector matches several elements, each gets the patch merged into its own current grading, and JSON lists them under `targets` (each with its own `value`) instead of a single `value`; run `--clear` first for an identical look. Matches come from the main document or, when it has none, from the first `<template>` that has any, the same scope rule as Studio's source edits.
 
@@ -628,6 +709,10 @@ npx hyperframes media-use resolve --type bgm --reuse 06e052c0
 # Bring in a file you already have
 npx hyperframes media-use resolve --type image --from ./photo.jpg
 
+# The voice clones and avatar looks on the account that makes the film
+npx hyperframes media-use voices
+npx hyperframes media-use avatars --limit 10
+
 # Check the setup, and see what has been used
 npx hyperframes media-use doctor
 npx hyperframes media-use stats --days 7
@@ -644,6 +729,8 @@ file yourself.
 | `candidates` | List assets already in the project and the global cache for `--type`, best match for `--intent` first. Downloads nothing and changes nothing. Same as `resolve --candidates` |
 | `adopt`      | Record the files already in `assets/` so later requests find them, with duration and size read by `ffprobe`                                                               |
 | `analyze`    | Measure an image or video and print suggested exposure and color corrections, saving nothing. Needs `--type grade --for <file>`                                           |
+| `voices`     | List the voice clones on the HyperFrames account you are signed in with, for `--voice` in `generate`. Never lists the separate `heygen` CLI's account |
+| `avatars`    | List the avatar looks on the HyperFrames account you are signed in with, as `{avatars: [{avatar_id, name, avatar_type, group_id, gender, status, default_voice_id, preview_image_url}]}`, for `--avatar` in `generate --type avatar`. `--limit` (default 20). Never lists the separate `heygen` CLI's account |
 | `doctor`     | Check ffmpeg, ffprobe, Node.js, the bundled sound library, and the `heygen` CLI (installed, v0.3.0 or newer, signed in). Changes nothing                                  |
 | `stats`      | Count requests, misses, and reuse from the project's `.media/` and the global `~/.media/`                                                                                 |
 
@@ -744,8 +831,8 @@ into the audio; `strength` (0–1) is relative loudness. Beats you add, move, or
 delete in Studio save back to the same file.
 
 A track without a steady beat (ambient, rubato, too short) gets no beat file:
-the command fails and writes nothing rather than inventing a grid. Results
-match Studio's to within a frame or two — Studio decodes in the browser, often
+the command answers an empty result (`count: 0`, exit 0) and writes nothing rather
+than inventing a grid. Results match Studio's to within a frame or two — Studio decodes in the browser, often
 at a different sample rate, which can shift a beat slightly.
 
 ### `audio`
@@ -850,6 +937,12 @@ npx hyperframes audio refs/episode.mp4 --read --range 60,70   # only what overla
 Sentences come from a transcript: `--transcript <file>`, or
 `<recording>.transcript.json` beside the recording. Without one, voice lines
 carry no words.
+
+A file you know holds one layer is read whole with `--layer music|sfx|voice`:
+no stems are fetched and nothing leaves the machine, whatever `--quality` says.
+`music` reads the file as the music bed (sections, tempo, levels), `voice` reads
+words and pauses from it, `sfx` finds its effects. The JSON result records the
+declared `layer`; without the flag the read is unchanged.
 
 Effects and music are read from stems. At `--quality best` the
 recording is separated into vocals, drums, bass, guitar, piano and other by
@@ -971,10 +1064,15 @@ npx hyperframes normalize-audio --reference target-audio --target user-audio --j
 ```
 
 `--reference` and `--target` are `<audio>` element ids, with or without `#`.
+The command finds them in `index.html` and its mounted scenes, including scenes
+nested inside another scene's `<template>`. An id declared in more than one file
+is rejected; `--write` changes only the file that contains the target clip.
+
 The reference stays unchanged; the command accounts for both clips' current
 `data-volume` and writes the target's absolute matched gain. It measures
-`data-media-start` and `data-duration`, rejects remote or out-of-project sources,
-and refuses a result that exceeds Studio's +12 dB ceiling or would clip. Dry-run
+`data-media-start` and `data-duration` and rejects remote or out-of-project sources.
+Where a full match would pass Studio's +12 dB ceiling or -1.5 dBTP, it applies the
+most that fits and says how far under the reference that leaves the target. Dry-run
 is deliberate: inspect the measurement before passing `--write`. Use
 `--tolerance <LU>` to change the default 0.5 LU no-op threshold.
 
@@ -1024,9 +1122,21 @@ sub-compositions refresh live. Preview and render share the same runtime.
 
 The server picks one of three modes by itself: **embedded** (the default for
 `npx` — Studio bundled in the CLI, no extra dependencies), **local studio**
-(Vite with full HMR, when `@hyperframes/studio` is in your `node_modules`), or
-**monorepo** (the studio dev server, when you run from the source repo).
+(Vite with full HMR, from a `@hyperframes/studio` source checkout), or
+**monorepo** (the studio dev server, when you run from the source repo). Local
+studio mode runs only when the project resolves to the same Studio checkout as
+the CLI itself, or when you set `HYPERFRAMES_LOCAL_STUDIO=1`; a Studio in the
+project's own `node_modules` is not used otherwise.
 `--background` works with the embedded server only.
+
+The preview server answers only the host names it serves. To open it through
+a tunnel, Codespaces or a reverse proxy, name that host in
+`HYPERFRAMES_PREVIEW_ALLOWED_HOSTS` (comma separated). A refused request
+answers 403 with the host named and this variable as the fix:
+
+```bash
+HYPERFRAMES_PREVIEW_ALLOWED_HOSTS=demo.tunnels.example hyperframes preview
+```
 
 The CLI ships GSAP, CustomEase, and MotionPathPlugin, so the GSAP scripts
 Studio adds to previews load from the preview server itself, not from jsDelivr.
@@ -1061,7 +1171,31 @@ npx hyperframes present [dir] --port 3004
 editor, just playback. Same flags, `--port` defaults to 3003, plus `--proxy` /
 `--no-proxy`.
 
+Both listen on every network interface, so a phone or another computer on your
+network can open them at this machine's LAN address or `.local` name. They
+answer `localhost`, loopback addresses, and this machine's own addresses and
+names. Any other host name, such as a tunnel, Codespaces or a reverse proxy,
+gets a 403 until you name it in `HYPERFRAMES_PREVIEW_ALLOWED_HOSTS`, the same
+setting `preview` uses:
+
+```bash
+HYPERFRAMES_PREVIEW_ALLOWED_HOSTS=demo.tunnels.example hyperframes present
+```
+
+Any path they have no page for, and any address carrying a `code` or `state`
+parameter, gets a plain-text `Not found` that cannot be framed or scripted, so a
+sign-in that returns to their port leaves nothing the project's own script can read.
+
 ### `publish`
+
+For new video reviews, use [`share`](#share). Legacy source publishing stays
+available with a notice for 60 days from an announced notice release. That
+release date has not been scheduled. After the window, new `publish` runs guide
+you to `share`, where you choose a new audience; old flags are never silently
+translated. Existing published URLs and legacy updates remain supported under
+a separate retirement plan. After the window, sign in with `hyperframes auth login`
+to update an existing publication; signed-out and API-key publishing cannot
+preserve its ownership. Legacy server handling of missing update targets is unchanged.
 
 Upload the project and get back a stable `hyperframes.studio` URL.
 
@@ -1079,6 +1213,7 @@ npx hyperframes publish --space <space-id>
 | `--update <url-or-id>`   | Update an existing project in place. Requires sign-in.             |
 | `--space <space-id>`     | Publish into a shared team space. Requires sign-in.                |
 | `--proxy` / `--no-proxy` | Bake H.264 proxies for browser-hostile codecs, or skip them        |
+| `--include-outside-files` | Upload files from outside the project folder without asking. Otherwise they need your approval, and `--yes` leaves them out |
 
 `publish` zips the project, uploads it, and prints a URL that resolves to stored
 content — so it keeps working after the CLI exits. No local server stays alive,
@@ -1111,8 +1246,18 @@ npx hyperframes open --json     # for agents
 When it runs under Claude Code, Codex, or Grok, the app's chat picks up that
 conversation. When it cannot open the app, for example because the app is not
 installed, `open` exits 1 and prints a download link. With `--json`, the result
-names the `reason` and the `downloadUrl`. The hand-off works on macOS only for
-now: on Windows and Linux, `open` always exits 1 with the download link.
+names the `reason` and the `downloadUrl`. The hand-off works on macOS, Windows
+and Linux.
+
+The app can't edit a project while a preview of it is running, because the
+preview holds the project's edit history. So `open` first stops the project's
+`preview --background` server and says so. It leaves any other preview running,
+such as one started in a terminal, and prints the `preview --stop` command
+instead. With `--json`, the `preview` field reports `none`, `stopped` or
+`left-running`. A `left-running` preview carries its `stopCommand`. That is
+`null` when the folder's name can't be printed safely for every Windows shell,
+and `stopCommandFromProject` then holds the command to run from inside the
+project folder.
 
 `catch-up` is the other half of that hand-off. Run it when the person is back
 from the desktop app, before you change anything: it lists what they asked and
@@ -1158,7 +1303,14 @@ npx hyperframes lint [dir] --json
 Errors (`✗`) must be fixed before rendering — a missing adapter library, invalid
 attributes. Warnings (`⚠`) are likely problems. Info (`ℹ`) notices are hidden
 unless you pass `--verbose`, which keeps output clean for agents and CI.
+`--lint-verbose`, which `render`, `preview` and `publish` use for the same wish, works here and on `check` too.
 `--json` adds `errorCount`, `warningCount`, `infoCount`, and a `findings` array.
+
+Only the compositions the project uses are linted: `index.html` and every file it mounts through
+`data-composition-src`, followed through the files they mount. A file under `compositions/` that
+nothing mounts (an installed block you have not placed yet) is left out, and one line says how
+many were; `--include-unmounted` lints them too. `--json` lists them in `unmountedCompositions`.
+`check` lints the same way and takes the same flag.
 
 The linter catches missing attributes, missing adapter libraries (GSAP, Lottie,
 Three.js), and structural problems. [Troubleshooting](/help)
@@ -1177,7 +1329,9 @@ npx hyperframes check [dir] --at 1.5,4,7.25
 npx hyperframes check [dir] --strict       # warnings fail too
 ```
 
-`check` runs the linter first and skips the browser entirely on a lint error.
+`check` runs the linter first. A lint error fails the check but does not stop
+it: the browser checks still run and both are reported, unless the lint error
+leaves no composition to load (a root with no `data-composition-id`).
 Then it loads the bundled composition once and sweeps a single seek grid,
 running every audit at every sample: runtime console errors and failed requests,
 layout defects (overflow, clipping, held overlaps, occlusion, coordinate-frame
@@ -1189,8 +1343,12 @@ a source with no audio track or that cannot be read as audio (error: render
 stops), a clip that starts past the end of its file, a clip whose played part is
 silent (warnings), and a film with no sound at all (info).
 
-When the browser never ran (lint errors, a linter crash, or a browser launch
-failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast`
+`check` opens no remote media. A remote `src` is not probed for audio or HDR: a
+remote `<video>` the render may hear counts as sound, and `hdr.remoteNotInspected`
+lists the remote videos and images whose HDR colour space was not read.
+
+When the browser never ran (no composition to load, a linter crash, or a
+browser launch failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast`
 sections are empty, not clean.
 
 Scoped checks add `scope` to the JSON report with the requested range and
@@ -1202,6 +1360,7 @@ cover every finding from the full check.
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `--json`                                     | One aggregated envelope. Every finding carries a selector, `data-*` identity, source file, bbox, and sample time.           |
 | `--snapshots`                                | Save the five audited frames under `.hyperframes/artifacts/snapshots/`, plus a `finding-NN-<code>.png` crop per finding      |
+| `--include-unmounted`                        | Also lint `compositions/` files that `index.html` never mounts (left out by default, with one line saying how many)          |
 | `--samples`                                  | Midpoint samples across the duration (default 9)                                                                            |
 | `--at`                                       | Explicit timestamps in seconds, comma-separated                                                                             |
 | `--at-transitions`                           | Also sample every tween start and end, to catch transient overlaps at transition seams                                       |
@@ -1211,10 +1370,14 @@ cover every finding from the full check.
 | `--max-issues`                               | Findings to print or return after static collapse (default 80)                                                              |
 | `--collapse-static` / `--no-collapse-static` | Fold a repeated static finding into one row (default: on)                                                                    |
 | `--tolerance`                                | Allowed overflow in px before reporting (default 2)                                                                         |
-| `--timeout`                                  | Render-ready budget in ms; also raises page navigation above its 10s floor (default 3000)                                   |
+| `--timeout`                                  | Render-ready budget in ms; also raises page navigation above its 10s floor (default 45000, as snapshot and render)                                   |
+| `--budget <ms\|90s\|8m>`                      | Stop the whole check this long after it starts (at least 30s) and report what it found, with `check_budget_reached` naming the phase it was in. For hosts with their own time limit. |
+| `--no-cache`                                  | Run the check even when the project files, flags, CLI and browser are unchanged since the last pass. Without it, an unchanged project returns that pass in about a second, marked as cached; remote scripts and assets are not fetched again for that. A failure is never cached, and a project with `node_modules` or a linked directory is never replayed. |
 | `--no-contrast`                              | Skip the WCAG pass while iterating                                                                                         |
+| `--no-craft`                                 | Skip the craft pass (dead stretches, unread lines, silent film), the longest part of a full check. The report marks it skipped. Use it for a render preflight; keep it on for the full check before a release. |
 | `--strict`                                   | Exit non-zero on warnings too (default: errors only)                                                                        |
 | `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate. Flags a text element's DOM box that overlaps the fractional band. Optional `severity` and `seek`.         |
+| `--safe-zone <tiktok\|reels\|shorts\|standard\|off>` | Warn when text, captions included, leaves a safe area: a platform's on 9:16 compositions (default: all three), or `standard` title-safe margins (10% from each edge) on any frame. Never fails `--strict` |
 | `--frame-check`                              | Opt-in out-of-frame detection for `img`, `svg`, `video`, and `canvas`                                                       |
 | `--layout`                                   | Layout knobs, currently `proseCoverageFloor=0.05` (0–1, default 0.15)                                                       |
 | `--browser-gpu` / `--no-browser-gpu`         | Hardware GPU capture, or deterministic SwiftShader (default: auto-detect)                                                   |
@@ -1222,12 +1385,17 @@ cover every finding from the full check.
 | `--prepare-media`                            | Only make the browser-playable video copies, then exit: no browser, no report. `--json` lists each file as `ready`, `cached` or `failed`; exit 1 if any failed |
 
 A video Chrome cannot decode (HEVC, ProRes) is copied once, and the first check waits
-for it. A source longer than 22 seconds is copied in 15-second pieces that are kept, so a
+for it for up to 2 minutes; past that, check stops with a `media_copies_unfinished` finding that names
+each unfinished file and its progress. Run `--prepare-media` (no time limit) to finish them. When every use of a long video in the composition has a known `data-duration` (on the video or the element that times it, no `loop`), check copies only that stretch from the start of the file, rounded up to whole 15-second pieces, instead of the whole file. A source longer than 22 seconds is copied in 15-second pieces that are kept, so a
 copy that is stopped continues from its finished pieces on the next run. While it works, the
 check prints each copy's progress to stderr every 10 seconds (stdout stays clean for `--json`),
-and ends a copy only when it makes no progress for 3 minutes (`HYPERFRAMES_PROXY_STALL_MS`).
+and ends a copy that makes no progress for 3 minutes (`HYPERFRAMES_PROXY_STALL_MS`).
 For a long project, run `hyperframes check --prepare-media` first, then the check itself finds
 every copy ready.
+
+A Chrome that is not ready 3 minutes after the check begins to start it ends the check with a runtime
+finding that says Chrome did not start and how long each step took. On a first run Chrome may still be
+downloading: run `hyperframes browser ensure` once, then run check again.
 
 `--caption-zone` and `--frame-check` refuse a ranged check when none of their
 configured seek samples falls inside `--range`; a requested gate never silently
@@ -1247,6 +1415,25 @@ rotated, skewed or 3D-transformed video, or a frame that reads back fully
 transparent. A fully transparent frame is treated as unread on purpose, since a
 failed draw looks the same; mark text that sits under a cutout before its subject
 enters with `data-layout-allow-occlusion`.
+
+Text painted in front of an opaque `<video>` is judged against the faces in the
+frame that video shows at the sample. `text_over_face` is an info finding when
+the words cover 5% or more of a face; `coveredFraction` is the share of the face
+covered and `faceRect` is the face in canvas pixels. It is never more than info,
+so it never fails `--strict`: the detector can take texture for a face. The
+faces are found in the video file itself, with the detector
+[`measure face`](#measure) uses, so only a video served from the project is
+looked at. That detector's first use downloads OpenCV; when the download has not
+answered within 30 seconds the check goes on without this pass and `faceCheck`
+says why. A rotated video and a frame not yet
+decoded are skipped, a transparent cutout between the text and the take is looked
+through, and text behind a cutout stays `text_occluded`'s to judge. Mark an
+intended overlap with `data-layout-allow-on-face` on the text or an ancestor.
+`layout.faceCheck` in the JSON says whether the pass looked, so no finding reads
+apart from no look: `{ "ran": true, "candidates": 3, "faces": 2 }` counts the
+text-over-video samples examined and the distinct video frames a face was found
+in (`unreadVideos` is added when some files could not be read), and
+`{ "ran": false, "reason": "..." }` says why it could not.
 
 `canvas_covered` is an error when an opaque element spanning the canvas sits above
 every other visible clip (shape, image, video or text) for most of the film, so the
@@ -1308,7 +1495,7 @@ whole-composition `keepsMoving` assertion sets its own limit.
 #### Audio findings
 
 The `audio` section checks the clips the render mixes. It runs even when lint
-stops the browser pass, and remote sources are not fetched.
+stops the browser pass, and remote sources are not probed.
 
 | Code                           | Severity | Triggers when                                                                                                | Fix                                                                                          |
 | ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
@@ -1326,6 +1513,10 @@ The check runs alongside the browser pass, up to four files at a time. A clip
 longer than 3 s is first sampled at three 1-second spots and decoded in full
 only if all three are silent.
 
+Overlap is judged on the text a viewer can see: a part of a text block that an
+overflow clip, a `clip-path` or a gradient `mask-image` (on the text or an ancestor)
+keeps from painting does not count.
+
 #### Mark intentional layout choices
 
 When the audit is wrong because the layout is deliberate, say so in the HTML and
@@ -1341,6 +1532,16 @@ For deliberate lower-third copy under `--caption-zone`, use
 `data-layout-allow-caption-zone`. It silences `caption_zone_collision` and
 nothing else — overflow, overlap, occlusion, and contrast still apply. Put it on
 the narrowest wrapper that owns the band copy.
+
+On a 9:16 composition, check samples every text block and caption line against the
+areas TikTok, Instagram Reels and YouTube Shorts leave clear of their buttons and
+captions. Each block that leaves one is an `outside_safe_zone` warning naming the
+platforms and the edges it crosses, at the first time it is seen. The areas are
+reference guides from each platform's vertical ad specs: TikTok 720x1280 with a
+stepped right edge, Reels with the bottom 35%, top 14% and 6% sides excluded, Shorts
+1080x1920 excluding 48px left, 192px right, 288px top and 672px bottom. `--safe-zone standard` checks the title-safe margins instead, 10% in from each
+edge, on any aspect ratio. Mark text that may sit outside them with
+`data-layout-allow-safe-zone`.
 
 #### Verify motion, not just layout
 
@@ -1463,6 +1664,13 @@ npx hyperframes keyframes [dir] --selector "#card" --shot card-motion.png
 Use `--ghost` for motion that happens *inside* a canvas, where the marker onion
 has nothing to draw.
 
+With a single `.html` file, `--shot` serves only the files that file's markup,
+stylesheets and sub-compositions name in its own folder, and only the types a
+composition loads. A scene that its project's `index.html` mounts is served from
+the project instead. Files the page builds names for in script are not served,
+and the command prints a line naming any file it left out. Pass the project
+folder to keep everything.
+
 ### `compare` and `grade-compare`
 
 `compare` renders two or more independent variants into one labelled PNG.
@@ -1477,8 +1685,14 @@ npx hyperframes compare ./variant-a ./variant-b --labels "A,B"
 | `--labels`  | Comma-separated labels, one per input path         |
 | `--out`     | Output path (default `./compare.png`)              |
 | `--cols`    | Grid columns (default: a sqrt heuristic, max 4)    |
-| `--timeout` | Render-ready timeout per variant (default 5000 ms) |
+| `--timeout` | Render-ready timeout per variant in ms; must be a positive integer (default 5000) |
 | `--json`    | Machine-readable results                           |
+
+A variant can also be a single `.html` file. Then only the files its markup,
+stylesheets and sub-compositions name in its own folder are served, and only the
+types a composition loads. Files the page builds names for in script are not
+served, and the command prints a line naming any file it left out. Pass a
+project folder to keep everything.
 
 `grade-compare` does the same for colour: candidate grades or LUTs applied to
 one reference frame.
@@ -1495,7 +1709,7 @@ npx hyperframes grade-compare --for frame.png --luts warm.cube,cool.cube
 | `--project`                    | Base directory for relative paths                        |
 | `--out`                        | Output PNG (default `<project>/grade-compare.png`)       |
 | `--baseline` / `--no-baseline` | Include the ungraded frame as an `original` cell (on)    |
-| `--timeout`                    | Render-ready timeout (default 5000 ms)                   |
+| `--timeout`                    | Render-ready timeout in ms, or a duration such as `30s` (default 5000 ms) |
 | `--json`                       | Machine-readable results                                 |
 
 ### Deprecated: `validate`, `inspect`, and `layout`
@@ -1525,7 +1739,9 @@ with a `reverse` field: whether you are signed in, the plan (`free`, `pro`, or
 purchase to this run (both `null` when HeyGen says no plan can be bought right now). It stops the
 run only when HeyGen blocks it for a Free account: it then exits non-zero with that command, or,
 without one, says a plan can't be purchased right now. Signed out, offline, or on a server without
-the route, it skips the session and still probes.
+the route, it skips the session and still probes; `--dir` is still created with a
+`hyperframes.json` naming the skill. `init` accepts that folder with the video already in it when
+it is the `--video` it was given.
 
 ```bash
 npx hyperframes reverse start ref.mp4 --dir my-rebuild
@@ -1559,7 +1775,12 @@ npx hyperframes measure face ref.mp4 --start 1 --end 2.5
 | `energy`     | How much two clips move, and whether at the same moments                                |
 | `look`       | Brightness, contrast, saturation and warmth, alone or against another video             |
 | `face`       | The face's size and position over a window                                              |
+| `hands`      | Where a hand's palm, index fingertip or pinch is in each frame of a stretch             |
 | `sync`       | The lag between mouth motion and the voice                                              |
+
+In `cuts`, a shot that returns to an earlier camera setup after at least one other shot (a wide take, a close-up
+cut into it, the wide take again) carries `continues`: the index in `shots` of the shot it resumes, so one take can
+feed both. A shot that resumes nothing has no `continues`.
 
 ### `diff`
 
@@ -1580,6 +1801,7 @@ npx hyperframes diff original.mp4 renders/final.mp4 --segments segments.md --sbs
 | `--offset`                                | Compare the original at t with yours at t + offset seconds           |
 | `--segments`                              | A verdict per `## S01 · a–b s` segment of a file                     |
 | `--drawn`                                 | Score one drawn element's box `x,y,w,h[,a-b]` by itself (repeatable) |
+| `--hide`                                  | Score a project's layer (a CSS selector) by what it adds             |
 | `--min-mean` / `--min-p05` / `--min-cell` | The SSIM bars to pass                                                |
 | `--sbs`                                   | Also write an original-beside-yours video                            |
 | `--out`                                   | Folder for the sheet and log (default `.hyperframes/diff/<yours>`)   |
@@ -1593,6 +1815,17 @@ says when frames were left out. `frames.tsv` keeps the original's time in `t`;
 yours' time is t + offset. The sound keeps its own offset measurement, the
 duration is reported as not measured, and the JSON result echoes `offset`. An
 offset that leaves no overlap is refused with a fix.
+
+`--hide ".cap"` captures a project folder a second time with that layer hidden.
+Where the two captures differ is the layer's footprint, and over it each moment
+scores `benefit = 1 − MAE(original, with) / MAE(original, without)`: 1 matches the
+original, 0 is no better than leaving the layer out, and below 0 is worse. Each
+moment also fits where the original's copy of the layer sits and how large it is
+(±40 px, 80–120%) and says it as an instruction, such as `move down 10 px, make it
+15% smaller`. The benefit is relative to how well the backdrop matches, so compare
+moments within one run. Where leaving the layer out already matches the original
+(footage that carries the original's own captions), the moment is not scored. The
+result's `layer` reports the moments; it does not change `pass`.
 
 ## Edit from the command line
 
@@ -1718,6 +1951,11 @@ lists the newer entries. Run it again with `--just-this` to put back only that
 entry's files over the newer edits, or `--back-to-before` to go back to before
 it, undoing the newer entries too.
 
+`undo` and `restore` put back only files that Studio itself may write. Package
+and lock files, tool and agent configuration, scripts that `package.json` runs,
+and hidden or private files keep their current content. Change those in your
+editor.
+
 ## Render to a file
 
 ### `render`
@@ -1750,7 +1988,7 @@ The flags that come up most:
 | `--format`          | `mp4`                         | `mp4`, `webm`, `mov`, `gif`, `png-sequence`, or `hls`. WebM and MOV carry transparency; `png-sequence` writes RGBA frames to a directory; `hls` writes a VOD playlist directory. |
 | `--fps, -f`         | root `data-fps`, otherwise 30 | 1–240, or an ffmpeg rational like `30000/1001` for 29.97                                                                                            |
 | `--quality, -q`     | `looks`                       | `draft`, `looks` (CRF 16, default), `delivery` (= `high`), `standard`, or `high`. MOV always uses the fixed alpha-preserving ProRes 4444 profile. |
-| `--resolution`      | the composition's size        | Supersample to a preset via Chrome's `deviceScaleFactor`. Aspect ratio must match and the scale must be a whole multiple. Not with `--hdr`. See [4K rendering](/guides/4k-rendering). |
+| `--resolution`      | the composition's size        | Render to a preset via Chrome's `deviceScaleFactor`, including `landscape-1440p`, `portrait-1440p`, `square-1440p` (aliases `1440p`, `qhd`). Aspect ratio must match; upscaling requires an integer multiple. 720p→1440p and 4K→1440p work; 1080p→1440p is refused. Not with `--hdr`. See [4K rendering](/guides/4k-rendering). |
 | `--docker`          | off                           | Render inside Docker for [deterministic output](/concepts/determinism)                                                                             |
 | `--variables`       | —                             | JSON object merged over the composition's `data-composition-variables` defaults                                                                    |
 | `--variables-file`  | —                             | Read those overrides from a JSON file instead                                                                                                     |
@@ -1768,6 +2006,7 @@ Quality and file size:
 | `--max-bitrate`        | uncapped        | MP4 only. Peak video bitrate cap, e.g. `8M`, held alongside the `--crf` or `--quality` target rather than replacing it. |
 | `--buffer-size`        | 2 × `--max-bitrate` | MP4 only. Buffer the cap is measured over, e.g. `16M`. Needs `--max-bitrate`. |
 | `--vp9-cpu-used`       | encoder default | libvpx-vp9 speed/quality trade-off for WebM, -8 to 8. Env: `PRODUCER_VP9_CPU_USED`.                       |
+| `--chroma-subsampling` | `420`           | MP4 chroma: `420` or `444`. `444` keeps full-resolution colour for thin coloured text and UI (yuv444p, lossless PNG capture, slower). SDR MP4 with the software encoder only; rejected with `--gpu`, `--hdr` and other formats. Many players cannot decode 4:4:4. See [4:4:4 masters](/guides/rendering#444-masters). |
 | `--gif-loop`           | `0`             | GIF loop count, `0` for forever. Range 0–65535, `--format gif` only.                                     |
 | `--hls-segment-seconds`| `4`             | HLS target segment length in whole seconds, 1–60. `--format hls` only. Also fixes the encoder GOP so every segment starts on a keyframe. |
 | `--video-frame-format` | `auto`          | How source video frames are extracted: `auto`, `jpg`, `png`. Use `png` for UI recordings, screen captures, and other colour-sensitive footage. |
@@ -1788,16 +2027,84 @@ How it uses the machine, and when it gives up:
 | `--frames-cache-dir`                                     | `<tmpdir>/hyperframes-extract-cache-<uid>` | Where extracted source frames cache. `off`, `none`, `false`, or `0` disables it. `doctor` reports the live value.   |
 | `--max-concurrent-renders`                               | `2`                                        | Concurrent jobs on the Producer server, 1–10                                                                       |
 | `--best-effort` / `--no-best-effort`                     | on                                         | Finish with capture-readiness warnings, or fail when media is missing or unready                                   |
+| `--wait` / `--no-wait`                                   | on                                         | One local render at a time per user account: wait while another runs, or fail at once. Env: `HYPERFRAMES_RENDER_LOCK=off` renders side by side. |
 | `--strict` / `--strict-all`                              | off                                        | Fail on lint errors, or on errors and warnings                                                                     |
 | `--strict-variables`                                     | off                                        | Fail rather than warn on an undeclared or mistyped variable key                                                    |
+| `--include-outside-files`                                | off                                        | Also run `.js` and `.mjs` scripts the project references from outside its folder. See the note below.            |
+| `--refuse-outside-files`                                 | off                                        | Leave out every file the project references from outside its folder. See the note below.                          |
 | `--batch-concurrency` / `--batch-fail-fast`              | `1` / off                                  | Batch rows at once, and whether the first failure stops the rest                                                   |
 | `--debug`                                                | off                                        | Keep intermediates and write diagnostics under the Producer `.debug` directory                                     |
 | `--quiet`                                                | off                                        | Less output                                                                                                        |
 | `--skill`                                                | —                                          | Record which authoring workflow started this render, in usage telemetry                                            |
 
+A local render brings in images, video, audio, fonts and CSS that the project
+references from outside its folder. It leaves out scripts from outside the
+folder, warning with each one's name, because a script runs in the render's
+browser and can read and send anything the render can reach. Move a script you
+trust into the project, or pass `--include-outside-files` to run it where it is.
+A composition that needs the left-out script stops with a script-load error.
+
+A received-files record lists the files in a folder that came from someone
+else. When a record in the project, or in a folder above it, lists anything but
+media, fonts and images, the render leaves out every file from outside the
+project folder and warns with each one's name. When you delete a listed file in
+Studio that is not media, a font or an image by its first bytes, its line stays,
+and so does the old line of such a file you rename to a media name. Whatever is
+later written in its place still counts as received, and the warning says the
+file is gone. To clear it, take the line out of the received-files record that
+lists it, which is the project's `.hyperframes/received-files.json` or one in a
+folder above or inside the project.
+A `--docker` render makes this check on your machine, where the folders above the project are visible, and passes
+`--refuse-outside-files` into the container, so it leaves out the same files a
+local render would.
+
+Renders started side by side starve each other of CPU and GPU until frames stop
+landing, so a second local or `--docker` render from the same user account waits
+for the first and says which render it is waiting for (pid and project). The
+slot is a lock file in that account's HyperFrames cache folder, so renders by
+different user accounts do not queue behind each other; set
+`HYPERFRAMES_RENDER_LOCK_DIR` to the same folder in each account to give them
+one slot. That folder holds lock records only: the first render creates it
+writable by every account but sticky, so no account can delete or replace
+another's records. A record that names a live process of another account
+counts as a running render, so an account in the group can hold the slot by
+naming a process that never ends; `HYPERFRAMES_RENDER_LOCK=off` renders without
+the slot. Do not share `HYPERFRAMES_CACHE_DIR` between accounts: it holds the
+browser, packages and helpers each account runs. HyperFrames never
+runs a cached one that another account can write: it installs its own copy,
+under `~/.cache/hyperframes` when another account can write the cache folder
+itself (a shared folder such as `/tmp` included), and stops with an error rather
+than install into a folder inside it that another account owns. A render whose process died frees its slot on its own. `--workers` is
+unaffected: it sets the parallelism inside the one render that runs.
+
 Low-memory detection reads **host** RAM, not cgroup or container limits, so
 containerised callers — including `--docker` — should set
 `PRODUCER_LOW_MEMORY_MODE` explicitly.
+
+`--docker` runs the render container on Docker's default network, which can
+reach your machine, your local network and the internet. It does not restrict
+what the rendered page loads unless you ask it to. When you set
+`PRODUCER_RESTRICT_PAGE_NETWORK` or `PRODUCER_NON_PUBLIC_CIDRS` in the shell
+that runs `hyperframes render --docker`, the CLI passes them into the container,
+so the render there refuses the same addresses a local render would. See
+[the producer docs](/packages/producer) for what the restriction allows.
+
+Render Chrome keeps its sandbox on macOS, on Windows, and on Linux for a
+non-root user outside a container. It runs without one as root, in Docker,
+Podman or Kubernetes, on AWS Lambda and Cloud Run, and where Linux restricts
+unprivileged user namespaces (Ubuntu 23.10 and later). If a sandboxed Linux
+launch still fails, the render prints a warning and continues without the
+sandbox. Set `HYPERFRAMES_CHROME_SANDBOX=0` to always run without it, or `1` to
+require it: with `1`, a launch Chrome refuses fails instead of falling back.
+
+Chrome starts with only the environment variables it uses: the system path,
+home and temp dirs, locale and time zone, display and session bus, fonts,
+`LD_LIBRARY_PATH`, GPU driver settings (Mesa, Vulkan, NVIDIA), proxies and CA
+bundles, and the Windows and macOS system variables. Other variables, such as
+cloud credentials and API keys, stay with the CLI. If your Chrome needs a
+variable that is not passed through, list its name in
+`HYPERFRAMES_CHROME_ENV_PASSTHROUGH`, separated by commas, for example
+`HYPERFRAMES_CHROME_ENV_PASSTHROUGH=KRB5CCNAME,RADV_PERFTEST`.
 
 #### When a render times out
 
@@ -1867,15 +2174,46 @@ against a single-encoder streaming render, and buys three things:
   segments a previous attempt finished, after re-validating each one; a
   resumed render is byte-identical to an uninterrupted one.
 
-Segments live in `renders/.hf-segments/<hash>/`, where the hash covers
-everything that determines segment bytes, so changing the composition, fps,
-resolution, quality or segment size starts a fresh set instead of splicing
-mismatched encodes. The directory is deleted after a successful render unless
-`--keep-segments`, and deliberately kept after a failure, because that is what
-`--resume` reads next time.
+Segments live in the local HyperFrames cache under `segments/<project-key>/<plan-hash>/`.
+Run `--resume` from the same project location with the same render settings.
+Moving a project, changing its settings, or upgrading from a version that stored
+segments in the project starts a fresh capture. A failed render keeps its
+checkpoints. A successful render removes them unless you pass `--keep-segments`.
+After a successful render with the new version, you can delete the old
+`renders/.hf-segments/` directory to reclaim disk space. If you set
+`HYPERFRAMES_CACHE_DIR`, choose a private directory outside the project.
+Segmented and multi-chunk joins require FFmpeg 5.0 or later for per-file
+options in concat lists. If FFmpeg reports an unknown `option` directive,
+update the binary used for rendering.
+
+`--resume` reuses only segments you finished on this machine. Their record is
+signed with a key derived from your per-user preview token, a private file in
+your home folder (`~/.local/state/hyperframes/auth`, or
+`%LOCALAPPDATA%\hyperframes` on Windows), so a `.hf-segments` folder copied
+from another machine or received inside a project is captured again. If that
+token cannot be read or created, for example in a read-only home folder,
+`--resume` warns and captures every segment again. Each reused segment must
+also match the size and SHA-256 recorded when it finished. Segments recorded by
+an older HyperFrames version are captured again once.
 
 mp4 and mov only; png-sequence, gif, webm, HDR and shader-transition renders
 keep their existing routes.
+
+By default every frame of every source video is extracted before capture
+starts. With `HF_VIDEO_FRAME_WINDOW=true`, each segment instead extracts only
+the source frames it shows and deletes them when it closes. Things to know
+before switching it on:
+
+- Segment files are deleted as soon as they are joined, unless `--keep-segments`
+  is set. A failure after the join therefore recaptures everything on `--resume`.
+- Only mp4 and mov renders that segment honour the flag. Motion blur, variable
+  frame rate sources and HDR-transformed sources stay fully extracted. The
+  render log says when the flag was declined and how many videos stayed fully
+  extracted.
+- Source-frame disk use is bounded by roughly workers x `HF_SEGMENT_FRAMES`
+  frames, and only for videos that can be windowed.
+- A windowed render skips the extraction cache, so a re-export gets no
+  warm-cache speedup.
 
 | Environment variable           | Default    | Effect                                                                                   |
 | ------------------------------ | ---------- | ------------------------------------------------------------------------------------------ |
@@ -1883,6 +2221,7 @@ keep their existing routes.
 | `HF_SEGMENTED_MIN_SECONDS`     | off        | Segment renders at least this long. Unset means duration never routes on its own          |
 | `HF_SEGMENT_FRAMES`            | `3000`     | Frames per segment (~100 s at 30 fps); minimum 30                                        |
 | `HF_SEGMENT_BROWSER_RECYCLE`   | `3`        | Restart the browser every N segments; `0` keeps one session for the whole render          |
+| `HF_VIDEO_FRAME_WINDOW`        | unset      | `true` extracts each segment's source frames when it starts and deletes them when it closes |
 
 #### Render the same composition with different content
 
@@ -1957,7 +2296,10 @@ default 3); `--json` prints the results as JSON.
 ## Keep the environment healthy
 
 HyperFrames keeps what it downloads and builds (the headless browser, models, optional packages, fonts and project
-history) under `~/.cache/hyperframes`. Set `HYPERFRAMES_CACHE_DIR` to an absolute path to keep it somewhere else.
+history) under `~/.cache/hyperframes`. Set `HYPERFRAMES_CACHE_DIR` to an absolute path to keep it somewhere else;
+background preview records, the registry's manifest cache, the local search model and catalog, and the records of
+what an app already showed then move there too, so a sandbox that only lets the CLI write inside your project can
+run them.
 
 ### `doctor`
 
@@ -1972,6 +2314,7 @@ npx hyperframes doctor --json
 hyperframes doctor
 
   ✓ Version          0.1.4 (latest)
+  ✓ CLI binary       npm global install · /usr/local/lib/node_modules/hyperframes/dist/cli.js
   ✓ Node.js          v22.x (linux x64)
   ✓ FFmpeg            7.x
   ✓ FFprobe           7.x
@@ -1982,7 +2325,9 @@ hyperframes doctor
   ◇  All checks passed
 ```
 
-It reports CLI version, Node.js, CPU, memory, disk, the extracted-frame cache,
+It reports CLI version, which binary is running and from where (a global npm,
+pnpm, bun or Homebrew install, a project's `node_modules`, `npx`, or an agent
+plugin) with its path, Node.js, CPU, memory, disk, the extracted-frame cache,
 the archive extractor, `/dev/shm` on Linux, environment, whisper-cpp, local TTS
 and BGM models, FFmpeg, FFprobe, Chrome, and Docker.
 
@@ -2032,6 +2377,67 @@ files, the browser download and models are never touched.
 duration, element counts by type, track count, and total size.
 `npx hyperframes compositions` lists every composition in the project with its
 ID, duration, resolution, and element count. Both take `--json`.
+`npx hyperframes info --media --json` adds `heard`: every clip the render mixes, scenes included, on the film's clock,
+each with `src`, `start`, `end` (where it stops, or where its media runs out if sooner; `0` runs to the media's end),
+`mediaStart`, `playbackRate`, `volume` and `type`. A remote clip is not probed, so it keeps the end it was given.
+
+### `update`
+
+```bash
+npx hyperframes update --check          # report the CLI and the skills, install nothing
+npx hyperframes update --check --json   # the same, for agents
+npx hyperframes update --yes            # update both without prompting
+```
+
+`update` asks npm for the latest CLI (past the two-hour cache) and checks the
+installed skills against the manifest at this CLI's release tag, in one call.
+`--check` only reports. Without it, `update` upgrades the CLI the way
+`upgrade --yes` does (an `npx` run gets `npx hyperframes@latest` to run instead,
+and a project-local run the project manager's command, such as
+`npm install hyperframes@0.9.8`) and then runs `skills update` at the release
+tag of the CLI that is now installed. Homebrew installs whatever its formula
+has, which can trail npm, so `update` reads the installed version back and
+reports `unchanged` when the formula has not moved. Without `--yes` or
+`--check`, an unattended run and any `--json` run exit 2, with the hint
+"Updating is the person's call; `update --check` only reports." Under an agent
+plugin, `update --check` reports, and `update` itself exits 1 with
+`plugin_managed`: the plugin manager updates it. `HYPERFRAMES_SKIP_SKILLS=1`
+leaves the skills alone. When npm does not answer, the human report says
+"npm registry not reached" instead of calling the CLI the latest.
+`--check --json` returns:
+
+```json
+{
+  "cli": {
+    "current": "0.9.5",
+    "latest": "0.9.8",
+    "updateAvailable": true,
+    "checkedAt": "2026-11-03T08:00:00.000Z",
+    "install": { "channel": "npm", "path": "/usr/local/lib/node_modules/hyperframes/dist/cli.js" },
+    "command": "npm install -g hyperframes@0.9.8"
+  },
+  "skills": {
+    "status": "checked",
+    "ref": "v0.9.5",
+    "location": "/Users/me/.claude/skills",
+    "updateAvailable": true,
+    "outdated": 2,
+    "missing": 0,
+    "command": "hyperframes update"
+  },
+  "_meta": {
+    "version": "0.9.5",
+    "latestVersion": "0.9.8",
+    "updateAvailable": true,
+    "checkedAt": "2026-11-03T08:00:00.000Z",
+    "skillsOutdated": 2,
+    "skillsMissing": 0
+  }
+}
+```
+
+`cli.checkedAt` is `null` when npm did not answer. `install.channel` is one of
+`npm`, `pnpm`, `bun`, `brew`, `npx`, `project`, `workspace`, `plugin` or `unknown`.
 
 ### `upgrade`
 
@@ -2048,6 +2454,10 @@ prompting, `--yes, -y` upgrades a detected global install (otherwise it prints
 the right `npx` command; an unattended run without `--yes` or `--check` exits 2),
 and `--project [dir]` rewrites
 `hyperframes@<version>` script pins in a project's `package.json`.
+Foreground and background CLI updates run the global package manager from your home directory.
+Run global CLI updates directly from your shell. An npm, pnpm, or Bun package script can pass project settings to its children, so the CLI skips self-installation in that context.
+On POSIX systems, the home directory must belong to the effective user and allow writes only by its owner. If `sudo` retains a different user's home, the update reports the ownership mismatch. A skipped background install reports its reason on stderr.
+
 `--check --json` returns:
 
 ```json
@@ -2126,13 +2536,23 @@ telemetry disabled it prints
 npx hyperframes telemetry enable
 npx hyperframes telemetry disable
 npx hyperframes telemetry status
+npx hyperframes telemetry status --json
 ```
+
+Use `telemetry status --json` to check telemetry from an agent or script. It
+returns `enabled`, `source`, `configPath`, `statePath`, and `commandCount`.
+`enabled` reflects the effective state after environment
+and build overrides, and `source` names the setting or override that determines it.
+`--json` is supported only by `status`.
 
 Telemetry collects command names, render performance, render checkpoint and
 error names, aggregate browser diagnostic counts, browser initialization
 duration and tween count, aggregate video-extraction workload counts (extracted
-frames, VFR preflights), example choices, the names of registry items `add` or
-Studio installs and which of the two installed them, and system info — including a coarse
+frames, VFR preflights), aggregate counts of what a motion-blur render's composition holds
+(movers, videos, iframes, canvases, custom elements, and similar), example choices, the names of registry items `add` or
+Studio installs and which of the two installed them, the names of the HyperFrames skills installed (and which are out of
+date) as of the last background skills check, which skill ran `reverse start` or `templates pull` (with the
+HeyGen session id of a recorded reverse run, so a retry counts once), and system info — including a coarse
 environment fingerprint: OS, kernel string, CPU and memory shape, sandbox
 runtime such as gVisor or Docker, and the _name_ of a coding agent driving the
 CLI when one is detected (`claude_code`, `codex`, `cursor`). That name is
@@ -2142,6 +2562,14 @@ values are never collected, except short self-identifying names: `AGENT`,
 `AI_AGENT` and `TERM_PROGRAM` (filtered to short slugs), and `HYPERFRAMES_CLIENT`,
 the `<app>/<version>/<channel>` tag an app that launches the CLI sets, sent as
 `client` so reports from that app can be told apart.
+
+Local Studio sharing also records upgrade clicks (project limit or sharing permissions),
+audience selections, editable-source toggles, and sharing action/navigation intent.
+These events contain fixed categories and booleans, never share URLs, project paths,
+or invitee addresses. The local Studio's and `hyperframes share`'s Upgrade to Pro links add
+`?entry=local_studio_share` or `?from=cli&entry=cli_share`, so the pricing page can tell which
+link a visit came from. A click records intent, not a successful permission change or purchase.
+They follow the same telemetry opt-outs.
 
 Nothing personally identifying is collected until you sign in. **Signed-in usage
 is not anonymous.** When you run `hyperframes auth login`, your usage is linked
@@ -2275,19 +2703,27 @@ allowance or estimate what the next video will cost.
 
 ### `billing`
 
-Opens the HyperFrames plans or credits page in the browser, then waits until the
+Opens the HyperFrames plans page (`subscribe`) or the page to buy add-on credits, which are
+used separately from your plan's monthly credits (`add-credits`), in the browser, then waits until the
 account shows the change, so an agent's run carries on by itself. The page is on
 the web app at hyperframes.studio. `HYPERFRAMES_PLANS_URL` and
 `HYPERFRAMES_CREDITS_URL` point it at another page.
 
+With no action it shows your plan and, on a paid plan, the page where you manage or cancel it
+(hyperframes.studio/billing, `HYPERFRAMES_BILLING_URL` points it elsewhere). `--manage` opens that page;
+when no one is at the terminal it prints the link instead.
+
 ```bash
+npx hyperframes billing
+npx hyperframes billing --manage
 npx hyperframes billing subscribe
-npx hyperframes billing top-up --needed 180
+npx hyperframes billing add-credits --needed 180
 ```
 
 | Flag        | Description                                                                |
 | ----------- | -------------------------------------------------------------------------- |
-| `--needed`  | Credits the waiting step needs; `top-up` waits until the balance covers it |
+| `--manage`  | Open the page to manage or cancel your plan                                |
+| `--needed`  | Credits the waiting step needs; `add-credits` waits until the balance covers it |
 | `--feature` | The feature that sent the person here, so a purchase is credited to it |
 | `--session` | The run to credit the purchase to, with `--feature` |
 | `--tool`    | The step that is waiting, shown on the page                                |
@@ -2328,9 +2764,13 @@ First match wins:
 
 1. `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved)
 2. Your `hyperframes auth login` session in `~/.hyperframes/credentials`. An expired session is refreshed first.
-3. `HEYGEN_API_KEY`
+3. `HEYGEN_API_KEY` set in your environment
 4. `HYPERFRAMES_API_KEY` (a HyperFrames alias for the same thing)
 5. An API key saved with `hyperframes auth login --api-key`
+6. A `HEYGEN_API_KEY` or `HYPERFRAMES_API_KEY` from the project `.env`, only when nothing is saved
+
+A project `.env` key never replaces an expired session or a saved key. When the CLI
+uses one, it prints a line on stderr that names the `.env` file.
 
 A signed-in session wins over an API key in the environment. The environment key
 is used instead when HeyGen refuses to refresh the session, or when `HEYGEN_API_URL` or
@@ -2397,11 +2837,11 @@ hyperframes auth logout --yes            # no prompt
 
 | Variable              | Description                                      |
 | --------------------- | ------------------------------------------------ |
-| `HEYGEN_API_KEY`      | API key, used when no session is signed in. Wins over a key saved with `--api-key`. |
+| `HEYGEN_API_KEY`      | API key, used when no session is signed in. Wins over a key saved with `--api-key`. A project `.env` key is used only when nothing is saved. |
 | `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`.                      |
 | `HEYGEN_ACCESS_TOKEN` | OAuth token from a host app; used first, never refreshed. |
 | `HEYGEN_API_URL`      | API base URL (default `https://api.heygen.com`). |
-| `HYPERFRAMES_CONFIG_DIR` | Credentials root (default `~/.hyperframes`). |
+| `HYPERFRAMES_CONFIG_DIR` | Settings root: credentials, telemetry and update settings, project links (default `~/.hyperframes`). |
 | `HYPERFRAMES_ENV` | `prod` (default) or `dev`; `dev` uses a separate credential directory. Hosts and the OAuth client id come from `HEYGEN_API_URL` and `HYPERFRAMES_OAUTH_*`. |
 | `HYPERFRAMES_OAUTH_CLIENT_ID` | Override the selected public OAuth client. |
 
@@ -2430,13 +2870,22 @@ video to disk.
 
 The zip excludes root `renders` and `snapshots`, `.git`, `node_modules`, `dist`,
 `.next`, `coverage`, dotfiles, and anything your `.hyperframesignore` rules
-match. Those rules use gitignore syntax and apply to `hyperframes publish` too.
+match. Those rules use gitignore syntax and apply to `hyperframes publish` too, and
+the project lint behind `lint`, `check`, `snapshot` and `render` does not read compositions they match.
 Keep them narrow — a dynamically selected asset may have no static reference to
 protect it.
+Env files (`.env`, `.env.*`, `.envrc`, at any depth) and Studio's private records
+under `.hyperframes/` are always left out, even when a rule re-includes them, and
+each one is reported as left out with the reason `private`. A `.hyperframes/`
+folder in a subfolder, such as a project copied into `compositions/`, is private
+as a whole: everything in it is left out, assets stored there included, and
+Studio, preview and render do not serve it either. Keep media a composition
+loads outside `.hyperframes/`.
 
-Media files of 5 MB or more that the project names by path go up as HeyGen
-assets before zipping, and the zip's copy of each HTML, CSS, script and JSON
-file points at the asset URL instead; your project files are not changed.
+When the zip would be over the upload limit, media no page, script or variable
+names is left out first, then the largest media files the project names by path
+go up as HeyGen assets, just enough for the rest to fit, and the zip's copy of each HTML, CSS,
+script and JSON file points at the asset URL instead; your project files are not changed.
 Asset URLs are public and unsigned: anyone who has one can fetch the
 media. Uploads are cached by content, so a re-render uploads only what changed.
 Media the asset API does not take as is is converted on your machine first,
@@ -2457,6 +2906,81 @@ first to see which media would upload and the compressed size, without
 authenticating, uploading, or starting anything. If you are over, add only
 paths you have verified are unneeded to `.hyperframesignore`.
 
+A file outside the project folder that a composition points at is copied into
+the zip only if it is an image, video, audio, font or CSS file, judged by its
+extension. A `.ts` or `.mts` file counts as video only when its first bytes are
+an MPEG transport stream, so TypeScript source is not copied. Any other outside
+file (a script, a Lottie `.json`, a `.pdf`, a file with no extension), one in a
+private location (env files, Git data, hidden, system
+and app-data folders), and one reached from a file that came in with an
+imported project are left out, with a warning naming each. A reference to another
+computer's network share or to a Windows device path (`\\server\share\clip.mp4`,
+`\\?\…`, `\\.\…`) is left out the same way, and the command never opens it, because on
+Windows even checking such a path sends that computer your sign-in. A file on the
+same share as the project is copied like any other. To include such a
+file, move it into the project folder. Under `--json`, the result lists those
+as `left_out`, each with the `file` that points at it, the `reference` as
+written, its `path` from the project folder, the `reason` (`blocklisted`,
+`received`, `file_type`, `private`, `network_share` or `not_approved`) and `levels_up`, how many folders above the project
+it is. A full run also prints each as a `{"event":"left_out",…}`
+line on stderr, so a wrapper can ask with `--dry-run --json` before uploading
+and still hear about each one during the run.
+
+Which files came in with an imported project is kept in the project's
+`.hyperframes/received-files.json`. A project without that file is read as
+having received nothing, which suits projects you made yourself. An app that
+imports projects for you can tell the CLI more by pointing
+`HYPERFRAMES_RECEIVED_STATE_FILE` at a JSON file it keeps:
+
+```json
+{
+  "projects": [
+    { "path": "/Users/me/projects/shared", "dev": "16777230", "ino": "4521", "received": "expected" },
+    { "path": "/Users/me/projects/draft", "received": "all" }
+  ]
+}
+```
+
+- `"expected"`: the project must carry the record. If it is missing, every file
+  counts as received, and the CLI does not start a new record in its place.
+- `"all"`: every file in the project counts as received, whatever its record
+  lists.
+- `dev` and `ino` are optional. When given, they also match the project folder
+  after it is renamed or moved on the same disk.
+- The state applies to the project, its subfolders, and any folder that holds it.
+- If the variable is set but the file is missing or cannot be parsed, every file
+  counts as received.
+- The app can keep its own copy of an `"expected"` project's record in
+  `received-records/<sha256 of path>.json` beside the state file, as
+  `{ "project": "<path>", "files": [...] }` with `path` exactly as the state file
+  names it. A file that copy lists still counts as received while something is at
+  its path, even if the project's record no longer lists it. For a project found
+  only by `dev` and `ino`, the copy's `"identity"` must be
+  `"<dev>:<ino>:<birth time in ns>"` of the project folder; a copy with another
+  identity counts every file as received. A copy that names another project,
+  has `"files": null` or `"doubted": true`, or is a link, larger than 16 MB or
+  unreadable also counts every file as received.
+- A file the copy lists that is no longer at its path is not added back. When
+  the app restores lost entries to a project's record, it uses the same rule, so
+  a received file that is renamed after its record entry is removed is judged by
+  the project's record alone.
+
+A file from outside the project folder that would be copied (each file a
+composition points at, and each project file that is a link to a file outside
+the project) is uploaded only when you approve it. Run in a terminal, the
+command lists those files and asks, defaulting to no. A yes is remembered for
+that project in `~/.hyperframes/outside-files.json`, never in the project. Under
+`--json` or `--dry-run`, or when nobody can answer, they are left out with the
+`not_approved` reason and a warning naming each one. `--include-outside-files`
+uploads them without asking; `hyperframes publish` and `hyperframes feedback
+--file-issue` take the same flag and ask the same way unless given `--yes`.
+
+Before uploading, the command names every outside file it carries. Under
+`--json`, the result lists them as `outside_files`, with the same `file`,
+`reference`, `path` and `levels_up` fields, and each is printed as a
+`{"event":"outside_file",…}` line on stderr. For a project link, `file` and
+`reference` are the link's own path.
+
 Render parameters mirror local `hyperframes render` where they overlap:
 
 | Flag                   | Default                     | Description                                                                                                                                     |
@@ -2465,7 +2989,7 @@ Render parameters mirror local `hyperframes render` where they overlap:
 | `--quality`            | `standard`                  | `draft`, `standard`, or `high`                                                                                                                  |
 | `--format`             | `mp4`                       | `mp4`, `webm`, or `mov`                                                                                                                         |
 | `--resolution`         | `1080p`                     | `1080p` or `4k`. 4k bills at 1.5×.                                                                       |
-| `--aspect-ratio`       | auto                        | `16:9`, `9:16`, or `1:1`. Auto-detected from a local project's `data-width` and `data-height`, so you rarely need it. The renderer cannot reshape a composition — a value that disagrees with the authored ratio is an error. With `--asset-id` or `--url` the server defaults to `16:9`. |
+| `--aspect-ratio`       | auto                        | Any `W:H`, auto-detected from a local project's `data-width` and `data-height`, so you rarely need it. At `1080p` the output keeps the composition's own size, whatever its ratio (a 1920×960 composition renders 1920×960). `4k` scales only `16:9`, `9:16` and `1:1` compositions and refuses any other ratio before upload. The renderer cannot reshape a composition — a value that disagrees with the authored ratio is an error. |
 | `--composition` / `-c` | `index.html`                | Entry HTML file inside the zip                                                                                                                   |
 | `--variables`          | —                           | Inline JSON overriding `data-composition-variables`                                                                                              |
 | `--variables-file`     | —                           | Read those overrides from a JSON file                                                                                                            |
@@ -2473,6 +2997,7 @@ Render parameters mirror local `hyperframes render` where they overlap:
 | `--title`              | —                           | Free-text label echoed back in detail responses                                                                                                  |
 | `--output` / `-o`      | `renders/<render_id>.<ext>` | Where the downloaded video lands                                                                                                                 |
 | `--dry-run`            | off                         | Build and inspect the zip without authenticating, uploading, or rendering                                                                        |
+| `--include-outside-files` | off                      | Upload files from outside the project folder without asking. Otherwise only approved ones go                                                     |
 
 Lifecycle and control:
 
@@ -2590,8 +3115,8 @@ deploy:
 | `--profile`       | `AWS_PROFILE`                        | AWS profile name                                         |
 | `--concurrency`   | none                                 | Lambda reserved concurrency. Without it, a new stack reserves none and each render runs up to 90% of the account's unreserved concurrency; a redeploy keeps the stack's current reservation; `none` removes it |
 | `--memory`        | `10240`                              | Lambda memory in MB                                      |
-| `--chrome-source` | `sparticuz`                          | `sparticuz` or `chrome-headless-shell`                   |
-| `--video-arch`    | `arm64`                              | `arm64` runs the plan and the chunks on an arm64 container-image function, pushed to an ECR repository named `<stack>-video`; audio and assemble stay on x86. Needs `sparticuz`. `x86_64` runs everything on the x86 function |
+| `--chrome-source` | `sparticuz`                          | `sparticuz`. `chrome-headless-shell` is refused: it does not fit a ZIP function, and the arm64 video image already runs it |
+| `--video-arch`    | `arm64`                              | `arm64` runs the plan and the chunks on an arm64 container-image function, pushed to an ECR repository named `<stack>-video`; audio and assemble stay on x86. The image runs its own `chrome-headless-shell`. `x86_64` runs everything on the x86 function |
 | `--skip-build`    | off                                  | Reuse the existing `handler.zip`                         |
 | `--no-warm`       | warm                                 | Skip the one warm-up call to the video function after deploy, which loads its container image so the first render is not the one that waits for it |
 
@@ -2601,6 +3126,7 @@ And these drive `render` and `render-batch`:
 | ----------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `--width`, `--height`   | required                            | Render dimensions in pixels                                                                                       |
 | `--site-id`             | content hash                        | Reuse an uploaded site instead of uploading again                                                                  |
+| `--include-outside-files` | off                               | Upload the files a link brings in from outside the project folder. Without it they are left out and named         |
 | `--fps`                 | `30`                                | `24`, `25`, `30`, or `60`                                                                                         |
 | `--format`              | `mp4`                               | `mp4`, `mov`, `webm`, or `png-sequence`                                                                           |
 | `--codec`               | `h264`                              | `h264` or `h265`, MP4 only                                                                                        |
@@ -2652,6 +3178,10 @@ hyperframes lambda sites create ./my-project
 
 hyperframes lambda render ./my-project --site-id=abc1234deadbeef0 --width 1920 --height 1080
 ```
+
+A file or folder that a symlink brings in from outside the project is left out
+of the upload, and a notice names each one. Pass `--include-outside-files` (or
+`includeOutsideFiles: true` to the SDK's `deploySite`) to upload them too.
 
 ### `lambda render <projectDir>`
 
@@ -2856,3 +3386,97 @@ Anything you leave out gets the default, so the file only needs your overrides.
     The capture engine. Use directly for custom frame capture pipelines.
   </Card>
 </CardGroup>
+
+
+## share
+
+Share a rendered MP4 for review, with the same project identity, access controls,
+comments and version history as HyperFrames Desktop. Sign in with
+`hyperframes auth login` first; API keys cannot own review projects.
+
+```bash
+hyperframes share --public         # Video only; anyone with the link
+hyperframes share --public --include-source # Also upload editable project files
+hyperframes share --status --json  # Read status; never upload local edits
+hyperframes share --update         # Render and upload the current project
+hyperframes share --manage         # Open web sharing settings
+```
+
+Sharing uploads video only by default. `--include-source` explicitly includes portable project files, including unused and Git-ignored files; review your folder and `.hyperframesignore` first. `--video-only` remains available and cannot be combined with `--include-source`. Source inclusion must be chosen for each upload, including `--update`; `--yes` does not consent to source upload.
+
+
+The first share requires an explicit audience: `--public`, `--team`,
+`--invite-only`, or `--private`. In an attended terminal, `share` asks you to
+choose. `--yes` suppresses questions but does not choose an audience. Available
+audiences follow your workspace plan. `--space <id>` selects the owning workspace
+on first share; later runs preserve it.
+
+Free workspaces retain up to **five shared projects**, across CLI and Desktop.
+Adding versions uses the same project. Turning off its link does not free a slot;
+remove a project in web management or upgrade when the workspace is full.
+The server enforces the limit even when clients create projects simultaneously.
+
+Running `share` again returns the existing link without uploading edits. An explicit
+audience flag (for example, `share --public`) changes an existing share’s audience
+without uploading a version, just like Studio’s audience selector. Without an
+audience flag, access stays unchanged. Use
+`--update` to publish a new rendered version. If nothing changed, the command says
+“Already up to date” (`upToDate: true` in JSON). A successful new version
+sets `updated: true`; Studio confirms “Shared version updated.” Status reads
+omit `upToDate` because they do not render or compare all inputs. The previous ready version remains
+visible while an update processes. Interrupted first uploads can resume when
+the source is unchanged; if it changed, explicitly use `--update`. If the
+project's review or audience changes while rendering, check the current share
+with `--status` before retrying.
+
+A folder that came from someone else can carry a review record that names their
+existing review. When the project's received-files record, or one above or inside
+it, marks the folder as received, `share` confirms that review before it changes
+who can open it, its link or its versions. This covers an audience flag,
+`--update`, and a share that would add a version or finish setting up the link. In an attended terminal it shows
+the review's title, id and link and asks first; declining changes nothing. An
+unattended run (`--yes`, `--json`, CI or no terminal) is refused with
+`review_confirmation_required` unless `--review <review-id>` names that same
+review; a `--review` that names another review is refused with `review_mismatch`.
+A folder whose received-files records cannot all be read counts as received.
+Reading the existing link, a first share with no existing review, and folders
+not marked as received are unchanged. To share a received folder as a new review
+instead, remove the review record in its `.hyperframes` folder.
+
+Completed renders accumulate in `.hyperframes/share-renders/`. To reclaim that
+space, wait for uploads to finish and close any running share commands, then
+remove that directory and `.hyperframes/share-render.json`. The next share or
+update that needs a render will rebuild the cache.
+
+`--wait-seconds <1–1800>` controls how long the command waits for video
+processing (default 300). A processing result is accepted, not playback-ready:
+check `ready` and `state` in JSON before distributing a URL. `url` is only
+returned for a ready share. Run `--status` to check again. Exit codes are 0
+for an accepted/read operation, 1 for failure, and 2 for invalid arguments.
+A successful local render does not finish sharing: upload failures still return
+a failure exit code. A failed processing or screening attempt stays failed across
+CLI runs: `--status --json` returns `ok: false`, `state: "failed"`, an error,
+and exit code 1. `previousUrl` keeps the earlier ready version available after a
+failed update; `url` remains null. Use `--update` to explicitly retry with the
+current project. Signing into a different account while a share is running
+stops that operation; start it again after sign-in.
+
+When another account owns the review, JSON errors use the fixed code
+`owner_signed_out` with the owner email in `error.owner`. The human-readable
+message also identifies the account to sign into.
+
+The standard production CLI includes exact trusted storage origins for review
+videos and editable project sources; no upload configuration is required.
+Development environments, custom API/OAuth endpoints or clients, and custom
+storage setups must set `HYPERFRAMES_REVIEW_UPLOAD_ORIGINS` to the
+comma-separated HTTPS origins provided by their deployment. Use exact origins
+without paths or wildcards. This setting replaces the production defaults;
+setting it to an empty string disables uploads. Defaults apply only with the
+production environment and standard production API, OAuth token endpoint, and
+OAuth client. Storage URLs outside the selected origins are rejected.
+
+Existing `/p/...` publications remain separate and reachable. Sharing does not
+convert a legacy publication or change its URL, visibility or ownership.
+
+Share renders keep warnings and failures visible. Routine compiler, browser-launch,
+and runtime-FPS diagnostics require `HF_DEBUG_RENDER=1`.

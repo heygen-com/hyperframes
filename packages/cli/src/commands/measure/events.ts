@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { join } from "node:path";
 import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
@@ -98,8 +98,8 @@ export default defineCommand({
       type: "string",
       description: "Split the frame into COLSxROWS cells, e.g. 6x10 (default with --map: 4x4)",
     },
-    start: { type: "string", description: "First second (default 0)" },
-    end: { type: "string", description: "Last second (default: the end)" },
+    start: { type: "string", alias: ["from"], description: "First second (default 0)" },
+    end: { type: "string", alias: ["to"], description: "Last second (default: the end)" },
     thr: {
       type: "string",
       description: "Mean grey-level change of an appear or a cut (default 5)",
@@ -155,7 +155,7 @@ export default defineCommand({
       const edges = [start, ...cuts, end];
       const windows = lookWindows(found.events, info.fps, sound?.onsets.map((o) => o.t) ?? []);
       const file = join(dir, `${name}-map.json`);
-      writeFileSync(
+      replaceFileAtomically(
         file,
         JSON.stringify({ ...head, events: found.events, sound, windows }, null, 1),
       );

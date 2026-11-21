@@ -46,17 +46,17 @@ function audio(id: string, duration: number, readyState: { value: number; buffer
   return el;
 }
 
-function playPodcast(voiceStart = 0, voiceTag = "audio", extraHtml = "") {
+function playPodcast(voiceStart = 0, voiceTag = "audio", extraHtml = "", voiceDuration = 4) {
   resetRuntimeFixtureDom();
   document.body.innerHTML =
     '<div data-composition-id="main" data-root="true" data-duration="10">' +
     '<audio id="music" data-start="0" data-duration="10" src="/music.m4a"></audio>' +
-    `<${voiceTag} id="voice" data-track-index="0" data-start="${voiceStart}" data-duration="4" src="/voice.m4a"></${voiceTag}>` +
+    `<${voiceTag} id="voice" data-track-index="0" data-start="${voiceStart}" data-duration="${voiceDuration}" src="/voice.m4a"></${voiceTag}>` +
     extraHtml +
     "</div>";
   const voiceReady: { value: number; bufferedTo?: number } = { value: 1 };
   const music = audio("music", 10, { value: 4 });
-  const voice = audio("voice", 4, voiceReady);
+  const voice = audio("voice", voiceDuration, voiceReady);
   window.__timelines = { main: createMockTimeline(10) };
 
   let now = 0;
@@ -99,6 +99,57 @@ it("a track not ready pauses everything with Buffering, and resumes when it can 
   expect(music.paused).toBe(false);
   expect(voice.paused).toBe(false);
   expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
+it("a clip that gets no data for 8 s stops holding the film, which plays on without it", () => {
+  const { music, states, playFor } = playPodcast(0, "video");
+
+  playFor(7);
+  expect(window.__player!.getTime()).toBeLessThan(0.1);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+
+  playFor(2);
+  expect(window.__player!.getTime()).toBeGreaterThan(0.5);
+  expect(music.paused).toBe(false);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+
+  // Seeking the stuck clip to keep up with the film brings no data, so it must not hold the film again.
+  const resumedStates = states.length;
+  playFor(10);
+  expect(window.__player!.getTime()).toBeGreaterThan(9);
+  expect(states.slice(resumedStates).some((s) => s.buffering)).toBe(false);
+});
+
+it("a stuck clip stops holding the film when ticks come a second apart, as in a hidden tab", () => {
+  const { states, step } = playPodcast(0, "video");
+
+  for (let s = 0; s < 10; s++) step(1100);
+  step(1000 / 60);
+
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
+it("a clip that starves again after playing is waited for again", () => {
+  const { voiceReady, states, playFor } = playPodcast(0, "video", "", 30);
+  playFor(9);
+  voiceReady.value = 4;
+  playFor(2);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+
+  voiceReady.value = 1;
+  playFor(1);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+});
+
+it("a clip still downloading keeps holding the film past 8 s", () => {
+  const { voiceReady, states, playFor } = playPodcast(0, "video");
+
+  for (let s = 0; s < 10; s++) {
+    voiceReady.bufferedTo = (s + 1) * 0.05;
+    playFor(1);
+  }
+  expect(window.__player!.getTime()).toBeLessThan(0.1);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
 });
 
 it("the music plays on while a video shows a still across a copy swap", () => {
@@ -228,7 +279,7 @@ it("a hold for data does not reload a later clip", () => {
 });
 
 it("a film held for data reads as choppy, so the app can lower it", () => {
-  const reports: Array<{ choppy: boolean; waitingShare: number }> = [];
+  const reports: Array<{ choppy: boolean; waitingShare: number; heldBy: unknown }> = [];
   const { voiceReady, playFor } = playPodcast(0, "video");
   voiceReady.value = 4;
   playFor(0.5);
@@ -239,12 +290,13 @@ it("a film held for data reads as choppy, so the app can lower it", () => {
   for (const [message] of post.mock.calls) {
     const m = message as {
       type?: string;
-      health: { choppy: boolean; waitingShare: number } | null;
+      health: { choppy: boolean; waitingShare: number; heldBy: unknown } | null;
     };
     if (m?.type === "preview-health" && m.health) reports.push(m.health);
   }
   expect(reports.at(-1)?.choppy).toBe(true);
   expect(reports.at(-1)?.waitingShare).toBeGreaterThan(0.9);
+  expect(reports.at(-1)?.heldBy).toMatchObject({ kind: "video", readyState: 1 });
 });
 
 it("a video far behind the film lands on it when it starves", () => {
@@ -280,6 +332,25 @@ it("a pause while buffering stays paused once the track is ready", () => {
   expect(window.__player!.getTime()).toBeLessThan(0.1);
   expect(music.paused).toBe(true);
   expect(states.at(-1)).toEqual({ isPlaying: false, buffering: false });
+});
+
+// A Studio preview reloading a far scene re-seeks with keepPlaying. When that lands while the film is held
+// for data, the hold must survive it and the film plays on.
+it("a seek that keeps playing during a hold for data plays on once the track is ready", () => {
+  const mark = document.createElement("meta");
+  mark.name = STUDIO_PREVIEW_MARK_META;
+  document.head.append(mark);
+  const { voiceReady, states, playFor } = playPodcast(0, "video");
+
+  playFor(0.5);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+  window.__player!.seek(0, { keepPlaying: true });
+  voiceReady.value = 4;
+  playFor(1);
+
+  mark.remove();
+  expect(window.__player!.getTime()).toBeGreaterThan(0.5);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
 });
 
 afterEach(() => {

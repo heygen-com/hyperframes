@@ -15,7 +15,13 @@ import {
 } from "../lib/playbackShortcuts";
 import { canvasNudgeKeysClaimed } from "../../utils/canvasNudgeGate";
 import { usePlayerStore } from "../store/playerStore";
-import { matchesKey, type StudioKeyAction } from "../components/studioShortcuts";
+import {
+  getStudioKey,
+  matchesKey,
+  subscribeStudioKeys,
+  type StudioKeyAction,
+} from "../components/studioShortcuts";
+import { previewEditingClient, previewFrameOpaque } from "../lib/previewChannel";
 import { resolveCanvasNudgeDelta } from "../../components/editor/domEditNudge";
 import { stepFrameTime } from "../lib/time";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
@@ -30,7 +36,7 @@ interface UsePlaybackKeyboardParams {
   play: () => void;
   playBackward: (rate: number) => void;
   pause: () => void;
-  seek: (time: number, options?: { keepPlaying?: boolean }) => void;
+  seek: (time: number, options?: { keepPlaying?: boolean; settled?: boolean }) => void;
 }
 
 const FRAME_STEPS = {
@@ -39,7 +45,7 @@ const FRAME_STEPS = {
   frameBackTen: -10,
   frameForwardTen: 10,
 } as const;
-const PLAYBACK_ACTIONS = [
+export const PLAYBACK_ACTIONS = [
   "playPause",
   ...(Object.keys(FRAME_STEPS) as Array<keyof typeof FRAME_STEPS>),
   "mute",
@@ -65,6 +71,28 @@ function ignoresPlaybackKey(e: KeyboardEvent): boolean {
     isCaptionEditMode: captionState.isEditMode,
     selectedCaptionSegmentCount: captionState.selectedSegmentIds.size,
   });
+}
+
+type KeyHandlerRef = React.RefObject<(e: KeyboardEvent) => void>;
+
+function forwardSealedFrameKeys(
+  iframe: HTMLIFrameElement,
+  keyDown: KeyHandlerRef,
+  keyUp: KeyHandlerRef,
+): () => void {
+  const client = previewEditingClient(iframe);
+  const watch = (combos: string[]) => void client.request("watch-keys", { combos }).catch(() => {});
+  const watchPlayback = () => watch(PLAYBACK_ACTIONS.map(getStudioKey));
+  watchPlayback();
+  const stopRebinds = subscribeStudioKeys(watchPlayback);
+  const stopKeys = client.onKey((key) =>
+    (key.type === "keydown" ? keyDown : keyUp).current(new KeyboardEvent(key.type, key)),
+  );
+  return () => {
+    stopRebinds();
+    stopKeys();
+    watch([]);
+  };
 }
 
 function handleWorkAreaKey(
@@ -112,6 +140,7 @@ export function usePlaybackKeyboard({
       const currentTime = adapter?.getTime() ?? usePlayerStore.getState().currentTime;
       seek(
         stepFrameTime(currentTime, deltaFrames, useLinkedClipPreferences.getState().compositionFps),
+        { settled: true },
       );
     },
     [getAdapter, seek],
@@ -197,6 +226,15 @@ export function usePlaybackKeyboard({
   const attachIframeShortcutListeners = useCallback(() => {
     iframeShortcutCleanupRef.current?.();
     iframeShortcutCleanupRef.current = null;
+    const iframe = iframeRef.current;
+    if (iframe && previewFrameOpaque(iframe)) {
+      iframeShortcutCleanupRef.current = forwardSealedFrameKeys(
+        iframe,
+        playbackKeyDownRef,
+        playbackKeyUpRef,
+      );
+      return;
+    }
 
     let iframeWin: Window | null = null;
     let iframeDoc: Document | null = null;

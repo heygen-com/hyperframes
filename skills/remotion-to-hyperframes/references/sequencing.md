@@ -97,8 +97,8 @@ gets one readable row per scene and the lint has no nested structure to flag.
 ```
 
 Convert frames to seconds: `from/fps`, `durationInFrames/fps`. Pick a
-`data-track-index` per parallel rendering layer (background = 0,
-overlays = 1, audio = 2, etc.). Sequential scenes can share an index.
+`data-track-index` per parallel layer (background = 0, overlays = 1,
+audio = 2, etc.). Sequential scenes share an index.
 Inside the sub-composition, time is local: a tween that started at `F/fps`
 in the root starts at `0` here. Asset paths are relative to the
 sub-composition file (`../assets/x.png`).
@@ -247,5 +247,5 @@ simultaneously, use distinct `data-track-index` values:
 <audio data-track-index="2" ...></audio>
 ```
 
-The runtime picks track ordering from the index. See [media.md](media.md)
+The index is a Studio lane only; paint order is CSS `z-index`. See [media.md](media.md)
 for media-specific track conventions.
