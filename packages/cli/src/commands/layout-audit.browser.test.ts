@@ -3995,6 +3995,57 @@ function installConnectorGeometry(translate: CtmTranslate, root: ParentNode = do
   }
 }
 
+describe("layout-audit.browser craft sampling", () => {
+  function craftParts(): Array<{ text: string; blockText: string }> {
+    const sample = (
+      window as unknown as {
+        __hyperframesCraftSample: () => { parts: Array<{ text: string; blockText: string }> };
+      }
+    ).__hyperframesCraftSample;
+    return sample().parts.map(({ text, blockText }) => ({ text, blockText }));
+  }
+
+  // fails without the fix: the outer line read "설계자 코드는 코덱스", so the nested line was reported twice.
+  it("keeps a nested line's words out of the line around it", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="card">설계자 <div id="sub">코드는 코덱스</div></div>
+      </div>`;
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      card: rect({ left: 40, top: 40, width: 400, height: 160 }),
+      sub: rect({ left: 40, top: 120, width: 400, height: 80 }),
+      text: rect({ left: 40, top: 40, width: 300, height: 72 }),
+    });
+    installAuditScript();
+
+    expect(craftParts()).toEqual([
+      { text: "설계자", blockText: "설계자" },
+      { text: "코드는 코덱스", blockText: "코드는 코덱스" },
+    ]);
+  });
+
+  it("still reads inline word spans as one line", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <p id="cap"><span id="w1">만오천 원</span> <span id="w2">정도</span> 받은 것 같아요</p>
+      </div>`;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        cap: rect({ left: 40, top: 200, width: 500, height: 120 }),
+        text: rect({ left: 40, top: 200, width: 400, height: 60 }),
+      },
+      { w1: { display: "inline" }, w2: { display: "inline" } },
+    );
+    installAuditScript();
+
+    expect(new Set(craftParts().map((part) => part.blockText))).toEqual(
+      new Set(["만오천 원 정도 받은 것 같아요"]),
+    );
+  });
+});
+
 function installAuditScript(): void {
   window.eval(script);
 }
