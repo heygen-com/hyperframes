@@ -206,6 +206,7 @@ type Seen = {
   currentSrc: string;
   loads: number;
   ours: number;
+  resets: number;
   failedWithCors: string[];
 };
 
@@ -232,15 +233,19 @@ async function installDriver(frame: Frame) {
       );
     const load = HTMLMediaElement.prototype.load;
     HTMLMediaElement.prototype.load = function (this: HTMLMediaElement) {
-      if (this.dataset.table && handling.has(this))
+      if (this.dataset.table && handling.has(this)) {
         this.dataset.ours = String(Number(this.dataset.ours ?? 0) + 1);
+        if (!this.hasAttribute("crossorigin")) this.dataset.dropped = "1";
+      }
       return load.call(this);
     };
     window.addEventListener(
       "loadeddata",
       (event) => {
         const video = event.target as HTMLVideoElement;
-        if (video.dataset?.table) handled(video);
+        if (!video.dataset?.table) return;
+        handled(video);
+        delete video.dataset.dropped;
       },
       true,
     );
@@ -252,6 +257,12 @@ async function installDriver(frame: Frame) {
         if (!video) return;
         handled(video);
         touch(video);
+        // A drop of CORS whose load fails too: the runtime forgets that source, so its budget starts over.
+        const exhausted = target === video || video.networkState === 3;
+        if (exhausted && video.dataset.dropped && !video.hasAttribute("crossorigin")) {
+          delete video.dataset.dropped;
+          video.dataset.resets = String(Number(video.dataset.resets ?? 0) + 1);
+        }
         const src = target === video ? video.currentSrc : (target as HTMLSourceElement).src;
         if (video.hasAttribute("crossorigin") && src)
           state.get(video.dataset.table!)!.failed.add(src);
@@ -338,6 +349,7 @@ async function installDriver(frame: Frame) {
             currentSrc: video.currentSrc,
             loads: Number(video.dataset.loads ?? 0),
             ours: Number(video.dataset.ours ?? 0),
+            resets: Number(video.dataset.resets ?? 0),
             failedWithCors: [...failed],
           };
         },
@@ -434,6 +446,11 @@ async function judge(sequences: Sequence[], frame: Frame) {
           budget.set(id, (budget.get(id) ?? 0) + 2 * selections);
         if (seen.ours > selections)
           problems.push(`${where}: ${seen.ours} loads of ours for ${selections} other selections`);
+        const most = 2 * everListed.get(el)!.size * (seen.resets + 1);
+        if (seen.ours > most)
+          problems.push(
+            `${where}: ${seen.ours} loads of ours, at most ${most} (${seen.resets} resets)`,
+          );
         const value = authored.get(el);
         if (value !== undefined) {
           if (seen.crossOrigin !== value)

@@ -113,16 +113,16 @@ function wasDown(media: HTMLMediaElement, home: string): void {
   }
 }
 
-function ranOut(event: Event, home: string): void {
-  const target = event.target as Node | null;
-  if (target?.nodeType !== 1) return;
-  const media = mediaOf(target as Element);
-  if (!media || authored.has(media)) return;
-  const armed = media.hasAttribute("crossorigin");
-  const src = target === media ? media.currentSrc : (target as HTMLSourceElement).src;
-  if (armed && src) setOf(refused, media).add(src);
-  if (!exhausted(media, target as Element)) return;
-  if (!armed) return void (retrying.has(media) && wasDown(media, home));
+// The source that failed: a source element's own, or the element's src when it has one, else what it chose.
+function noteFailure(media: HTMLMediaElement, el: Element, home: string): void {
+  if (!media.hasAttribute("crossorigin")) return;
+  const own = media.getAttribute("src");
+  const src =
+    el !== media ? (el as HTMLSourceElement).src : own ? resolved(own, home) : media.currentSrc;
+  if (src) setOf(refused, media).add(src);
+}
+
+function retryWithout(media: HTMLMediaElement, home: string): void {
   const tried = setOf(retriedWithout, media);
   const retry = listedUrls(media, home).filter(
     (url) => refused.get(media)?.has(url) && !tried.has(url),
@@ -132,6 +132,16 @@ function ranOut(event: Event, home: string): void {
   retrying.add(media);
   write(media, null);
   media.load();
+}
+
+function ranOut(event: Event, home: string): void {
+  const el = event.target as Element | null;
+  const media = el?.nodeType === 1 ? mediaOf(el) : null;
+  if (!el || !media || authored.has(media)) return;
+  noteFailure(media, el, home);
+  if (!exhausted(media, el)) return;
+  if (media.hasAttribute("crossorigin")) retryWithout(media, home);
+  else if (retrying.has(media)) wasDown(media, home);
 }
 
 function firstFrame(event: Event, home: string): void {
@@ -147,6 +157,17 @@ function firstFrame(event: Event, home: string): void {
   tried.add(chosen);
   write(media, "anonymous");
   media.load();
+}
+
+// Chrome tries an exhausted element's sources again on a crossorigin write; only an insertion resumes it.
+const resumes = (media: HTMLMediaElement, record: MutationRecord) =>
+  record.addedNodes.length > 0 || media.networkState !== HTMLMediaElement.NETWORK_NO_SOURCE;
+
+function changed(record: MutationRecord, home: string): void {
+  const target = record.target as Element;
+  if (record.type === "attributes") return visit(target, home);
+  if (isMedia(target) && resumes(target, record)) sync(target, home);
+  record.addedNodes.forEach((node) => visit(node, home));
 }
 
 function visit(node: Node, home: string): void {
@@ -173,18 +194,7 @@ export function corsForSealedMedia(): MutationObserver | null {
       if (record.attributeName === "crossorigin" && isMedia(record.target as Element))
         crossOriginChanged(record.target as HTMLMediaElement);
     }
-    for (const record of records) {
-      if (record.attributeName === "crossorigin") continue;
-      const target = record.target as Element;
-      if (record.type === "attributes") visit(target, home);
-      // Chrome tries an exhausted element's sources again on a crossorigin write; only an insertion resumes it.
-      else if (
-        isMedia(target) &&
-        (record.addedNodes.length || target.networkState !== HTMLMediaElement.NETWORK_NO_SOURCE)
-      )
-        sync(target, home);
-      if (record.type === "childList") record.addedNodes.forEach((node) => visit(node, home));
-    }
+    for (const record of records) if (record.attributeName !== "crossorigin") changed(record, home);
   });
   // Observing first: the writes the first scan makes are counted against their own records.
   observer.observe(document.documentElement, {
