@@ -535,7 +535,11 @@ export async function tryGsapResizeIntercept(
       { commitMutation, fetchAnimations: fetchFallbackAnimations },
       "Resize animation",
     );
-    return { status: "persisted", ownsDragOffset: await finalizeScaleResizeCommit() };
+    return {
+      status: "persisted",
+      ownsDragOffset: await finalizeScaleResizeCommit(),
+      ...(resizeGroup === "scale" && { savedAsScale: true }),
+    };
   }
 
   const callbacks = { commitMutation, fetchAnimations: fetchFallbackAnimations, stamp };
@@ -555,7 +559,11 @@ export async function tryGsapResizeIntercept(
     backfill: resizeBackfill,
   });
   if (written.status !== "persisted") return written;
-  return { status: "persisted", ownsDragOffset: await finalizeScaleResizeCommit() };
+  return {
+    status: "persisted",
+    ownsDragOffset: await finalizeScaleResizeCommit(),
+    savedAsScale: true,
+  };
 }
 
 // ── Rotation intercept ────────────────────────────────────────────────────
