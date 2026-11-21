@@ -8,28 +8,21 @@ on:
 
 jobs:
   probe:
-    name: "kill probe ${{ matrix.copy }}"
+    name: "watchdog at ${{ matrix.sha }}"
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        copy: [1, 2]
+        sha: [6913c2637989, 1bc2d4959ae]
     steps:
-      - name: Disable Windows Defender real-time monitoring
-        shell: pwsh
-        continue-on-error: true
-        run: Set-MpPreference -DisableRealtimeMonitoring $true
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          lfs: true
-      - name: Install FFmpeg
-        uses: ./.github/actions/install-ffmpeg-windows
-      - name: Set FFMPEG_BIN for bun install
+          ref: fix/windows-watchdog-own-chrome
+          fetch-depth: 0
+      - name: Check out the commit under test
         shell: pwsh
-        run: |
-          $path = (Get-Command ffmpeg.exe).Source
-          "FFMPEG_BIN=$path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        run: git checkout ${{ matrix.sha }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -42,25 +35,7 @@ jobs:
         run: |
           bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
           bun run --cwd packages/core build
-      - uses: ./.github/actions/opencv-test-cache
-      - name: Prepare browser for process tests
+      - name: Watchdog and preview lifecycle tests
         shell: pwsh
-        run: node --import tsx packages/cli/scripts/prepare-process-test-browser.mjs
-      - name: Run engine-cli-2 twice with every kill logged
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          $hook = ([System.Uri](Resolve-Path .github/probe/kill-log.mjs).Path).AbsoluteUri
-          for ($i = 1; $i -le 2; $i++) {
-            $env:HF_KILL_LOG_DIR = "$env:RUNNER_TEMP\killlog-$i"
-            $env:NODE_OPTIONS = "--import=$hook"
-            Write-Host "=== run $i"
-            ./scripts/ci/run-with-deadline.ps1 -Minutes 16 -Command 'bun run --filter @hyperframes/engine --filter @hyperframes/cli test -- --maxWorkers=2 --shard=2/2' 2>&1 | Select-String "Worker exited|Test Files|Tests  |Errors" | Out-String | Write-Host
-            Write-Host "exit $LASTEXITCODE"
-          }
-      - name: Report kills
-        if: always()
-        shell: pwsh
-        run: |
-          $env:NODE_OPTIONS = ""
-          for ($i = 1; $i -le 2; $i++) { Write-Host "=== run $i"; node .github/probe/kill-report.mjs "$env:RUNNER_TEMP\killlog-$i" }
+        working-directory: packages/cli
+        run: bunx vitest run src/browser/windowsChromeWatchdog.test.ts src/commands/previewLifecycle.test.ts --maxWorkers=2 --reporter=verbose
