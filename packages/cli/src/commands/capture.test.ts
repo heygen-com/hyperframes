@@ -491,7 +491,7 @@ describe("capture command: what it prints", () => {
       tokens: { sections: [], fonts: [] },
       assets: [],
       dropped: {},
-      warnings: [] as string[],
+      warnings: ["Kept the existing a\n  ⚠ b.md"],
     } as never);
 
     try {
@@ -506,7 +506,26 @@ describe("capture command: what it prints", () => {
     expect(text).toContain("Capturing https://example.com/a\\x07b");
     // The folder is printed as a full path, whose root and separators differ by platform.
     expect(text).toMatch(/Captured Example → \S*hf-capture\\x1b\[2Jout/);
+    expect(text).toContain("⚠ Kept the existing a\\x0a  ⚠ b.md");
     expect(text).not.toContain("\u0007");
     expect(text).not.toContain("\u001b[2J");
+  });
+
+  // fails without the fix: a line break in the reason started a line of its own
+  it("keeps the reason a capture failed on one line", async () => {
+    vi.useFakeTimers();
+    registerRootExitRequester(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    captureWebsiteMock.mockRejectedValueOnce(new Error("no route\n  ✓ Captured"));
+    const output = mkdtempSync(join(tmpdir(), "hf-capture-failed-"));
+    try {
+      await captureCommand.run!({ args: { url: "https://example.com", output } } as never);
+    } catch {
+      /* the run reports its failure by throwing too */
+    } finally {
+      vi.useRealTimers();
+      rmSync(output, { recursive: true, force: true });
+    }
+    expect(printed(error)).toContain("Capture failed: no route\\x0a  ✓ Captured");
   });
 });
