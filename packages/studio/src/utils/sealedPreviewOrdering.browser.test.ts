@@ -391,10 +391,15 @@ describe("sealed preview after late answers in any order", () => {
     });
   };
   const base = Number(process.env.HF_ORDERING_SEED_BASE ?? 0);
-  const seeds = Array.from(
+  // Seeds that found a round-9 class without the fix, run every time: 312 and 320 a write of saved state never
+  // answered, then covered by a script-only run; 2101, 3037 and 3657 a two-script file's newer timing undo overwritten.
+  const PINNED = [312, 320, 2101, 3037, 3657];
+  const listed = process.env.HF_ORDERING_SEED_LIST?.split(",").map(Number);
+  const range = Array.from(
     { length: Number(process.env.HF_ORDERING_SEEDS ?? 40) },
     (_, i) => base + i + 1,
   );
+  const seeds = listed ?? [...new Set([...PINNED, ...range])];
   // Odd seeds play a file with two GSAP scripts, so no save has a single script to re-run.
   it.each(seeds)("generated sequence %i", async (seed) => {
     const steps = generated(seed);
