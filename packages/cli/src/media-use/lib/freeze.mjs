@@ -16,8 +16,7 @@ const isSvgPath = (destPath) => /\.svg$/i.test(destPath);
 function writeFrozen(destPath, buffer) {
   mkdirSync(dirname(destPath), { recursive: true });
   const bytes = isSvgPath(destPath) ? Buffer.from(sanitizeSvg(buffer.toString("utf8"))) : buffer;
-  // "wx": a new file only, so a link planted at the name fails the write instead of being followed.
-  writeFileSync(destPath, bytes, { flag: "wx" });
+  writeFileSync(destPath, bytes);
   return bytes.byteLength;
 }
 

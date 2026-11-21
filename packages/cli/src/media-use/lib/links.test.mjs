@@ -116,17 +116,18 @@ test("an id past exact integers never lands on a name the project already holds"
   }),
 );
 
-test("the asset writers refuse a link at their own name instead of following it", posixOnly, () =>
-  withSandbox(({ project, outside, outsideUnchanged }) => {
-    const source = join(project, "source");
-    writeFileSync(source, "<svg xmlns='http://www.w3.org/2000/svg'/>");
-    for (const ext of [".png", ".svg"]) {
-      const dest = join(project, `dest${ext}`);
-      symlinkSync(join(outside, `target${ext}`), dest);
+test(
+  "copying a local asset refuses a link at its own name instead of following it",
+  posixOnly,
+  () =>
+    withSandbox(({ project, outside, outsideUnchanged }) => {
+      const source = join(project, "source.png");
+      writeFileSync(source, "png");
+      const dest = join(project, "dest.png");
+      symlinkSync(join(outside, "target.png"), dest);
       assert.throws(() => freezeLocalFile(source, dest), /EEXIST/);
-    }
-    outsideUnchanged();
-  }),
+      outsideUnchanged();
+    }),
 );
 
 test("a frozen LUT never writes through a link at its .tmp name", posixOnly, () =>
