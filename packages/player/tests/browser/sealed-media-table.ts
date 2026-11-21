@@ -32,7 +32,7 @@ type Step =
   | { do: "remove"; el: number; index: number }
   | { do: "reverse" | "reload"; el: number }
   | { do: "author"; el: number; value: string; duringRetry?: boolean; replace?: Source }
-  | { do: "play"; el: number; rate: number }
+  | { do: "play"; el: number; rate: number; pauseOnReject?: true }
   | { do: "interrupt"; el: number; action: Interrupt; source?: Source }
   | { do: "recover"; el: number; source: Source };
 // Interrupt: done by the composition right after the runtime's next load of that element, or at the round's end.
@@ -93,7 +93,13 @@ function generated(seed: number): Sequence {
         const sources = Array.from({ length: 1 + Math.floor(random() * 3) }, () => pick(pool));
         lists[el] = [...new Map(sources.map((s) => [s.id, s])).values()];
         steps.push({ do: "create", el, sources: lists[el] });
-        if (random() < 0.5) steps.push({ do: "play", el, rate: pick([1, 1.5]) });
+        if (random() < 0.5)
+          steps.push({
+            do: "play",
+            el,
+            rate: pick([1, 1.5]),
+            ...(random() < 0.5 ? { pauseOnReject: true as const } : {}),
+          });
         continue;
       }
       const list = lists[el];
@@ -353,7 +359,9 @@ type Seen = {
   savedRate?: string;
   restartGap?: string;
   restartRate?: string;
-  seekGap?: string;
+  seekAt?: string;
+  seekPaused?: string;
+  extraSeeks?: string;
   interrupted?: string;
   play?: string;
   pixels: string;
@@ -462,11 +470,14 @@ async function installDriver(frame: Frame) {
               data.restartRate = String(video.playbackRate);
             }
           });
-          // Every seek ends in seeked, also one on a playing video, which fires no new playing.
+          // Where the composition's seek settles, and any seek after it.
           video.addEventListener("seeked", () => {
             const data = video.dataset;
+            if (data.seekAt !== undefined)
+              data.extraSeeks = String(Number(data.extraSeeks ?? 0) + 1);
             if (!data.seekTo) return;
-            data.seekGap = String(Math.abs(video.currentTime - Number(data.seekTo)));
+            data.seekAt = String(video.currentTime);
+            data.seekPaused = String(video.paused);
             delete data.seekTo;
           });
           for (const name of ["loadstart", "loadeddata", "emptied", "stalled"])
@@ -490,6 +501,7 @@ async function installDriver(frame: Frame) {
             duringRetry?: boolean;
             rate?: number;
             action?: string;
+            pauseOnReject?: boolean;
           },
         ) {
           const { video } = state.get(key)!;
@@ -505,7 +517,10 @@ async function installDriver(frame: Frame) {
               video.dataset.play = "pending";
               video.play().then(
                 () => (video.dataset.play = "resolved"),
-                (error: Error) => (video.dataset.play = `rejected ${error.name}`),
+                (error: Error) => {
+                  video.dataset.play = `rejected ${error.name}`;
+                  if (step.pauseOnReject) video.pause();
+                },
               );
             });
           }
@@ -569,7 +584,9 @@ async function installDriver(frame: Frame) {
             savedRate: data.savedRate,
             restartGap: data.restartGap,
             restartRate: data.restartRate,
-            seekGap: data.seekGap,
+            seekAt: data.seekAt,
+            seekPaused: data.seekPaused,
+            extraSeeks: data.extraSeeks,
             interrupted: data.interrupted,
             play: data.play,
             pixels,
@@ -640,7 +657,12 @@ const describe = (sequence: Sequence) =>
       steps
         .map((step) => {
           const listed = "sources" in step ? step.sources : "source" in step ? [step.source] : [];
-          const what = step.do === "interrupt" ? ` ${step.action}` : "";
+          const what =
+            step.do === "interrupt"
+              ? ` ${step.action}`
+              : step.do === "play"
+                ? ` ${step.rate}${step.pauseOnReject ? " pausing-on-reject" : ""}`
+                : "";
           return `${step.do}${step.el}${what}${listed.map((x) => ` ${x.kind}`).join("")}`;
         })
         .join(", "),
@@ -762,13 +784,21 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
         problems.push(`${where}: plays after the composition paused it`);
       if (action === "rate" && seen.rate !== 2)
         problems.push(`${where}: rate ${seen.rate}, set to 2`);
-      const missed = (reading: Reading) => !(Number(reading.seekGap ?? 1) <= FRAME);
-      if (action === "seek" && missed(plain))
+      const settled = ({ seekAt, seekPaused, extraSeeks }: Reading) => ({
+        seekAt,
+        seekPaused,
+        extraSeeks,
+      });
+      const apart = Math.abs(Number(seen.seekAt) - Number(plain.seekAt));
+      if (
+        action === "seek" &&
+        (!(apart <= FRAME) ||
+          seen.seekPaused !== plain.seekPaused ||
+          seen.extraSeeks !== plain.extraSeeks)
+      )
         problems.push(
-          `${where}: the film without the helper missed the seek too, ${plain.seekGap}`,
+          `${where}: after the composition's seek ${JSON.stringify(settled(seen))}, without the helper ${JSON.stringify(settled(plain))}`,
         );
-      else if (action === "seek" && missed(seen))
-        problems.push(`${where}: landed ${seen.seekGap} s off the composition's seek`);
       if (seen.savedRate !== undefined && !action && !variable && movesPlain) {
         if (!(Number(seen.restartGap ?? 1) <= FRAME))
           problems.push(`${where}: after our load it resumed ${seen.restartGap ?? "never"} s off`);
