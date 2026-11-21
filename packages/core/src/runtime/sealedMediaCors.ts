@@ -21,12 +21,9 @@ const resolved = (src: string, home: string) => {
   }
 };
 
-// Per element, never shared: a source refused CORS here; this element reloaded once without CORS, or with, for it.
+// Per element, never shared: a source that refused CORS here, and one that failed both ways, its host down.
 const refused = new WeakMap<HTMLMediaElement, Set<string>>();
-const retriedWithout = new WeakMap<HTMLMediaElement, Set<string>>();
-const rearmedFor = new WeakMap<HTMLMediaElement, Set<string>>();
-const retrying = new WeakSet<HTMLMediaElement>();
-const lastPlayed = new WeakMap<HTMLMediaElement, string>();
+const down = new WeakMap<HTMLMediaElement, Set<string>>();
 const warned = new WeakMap<HTMLMediaElement, Set<string>>();
 const seen = new WeakSet<HTMLMediaElement>();
 // A crossorigin change we did not write, even to our own value, makes the attribute the composition's for good.
@@ -39,17 +36,26 @@ function setOf(map: WeakMap<HTMLMediaElement, Set<string>>, media: HTMLMediaElem
   return set;
 }
 
-function listedUrls(media: HTMLMediaElement, home: string): string[] {
-  const sources = media.hasAttribute("src") ? [media] : [...media.querySelectorAll("source")];
-  return sources.flatMap((el) => {
+const has = (map: WeakMap<HTMLMediaElement, Set<string>>, media: HTMLMediaElement, url: string) =>
+  map.get(media)?.has(url) ?? false;
+
+function selectable(media: HTMLMediaElement, home: string): string[] {
+  const own = media.getAttribute("src");
+  if (media.hasAttribute("src")) return own ? [resolved(own, home)] : [];
+  return [...media.querySelectorAll("source")].flatMap((el) => {
     const src = el.getAttribute("src");
-    return src ? [resolved(src, home)] : [];
+    const type = el.getAttribute("type");
+    const query = el.getAttribute("media");
+    if (!src || (type && !media.canPlayType(type)) || (query && !matchMedia(query).matches))
+      return [];
+    return [resolved(src, home)];
   });
 }
 
-// As unsealed Studio reads pixels: only the preview's own host, and only a source that has not refused CORS here.
-const wantsCors = (media: HTMLMediaElement, url: string | undefined, home: string) =>
-  Boolean(url) && originOf(url!, home) === originOf(home, home) && !refused.get(media)?.has(url!);
+const isHome = (url: string, home: string) => originOf(url, home) === originOf(home, home);
+// As unsealed Studio reads pixels: only the preview's own host; a list naming another host stays as written.
+const allHome = (urls: string[], home: string) =>
+  urls.length > 0 && urls.every((url) => isHome(url, home));
 
 function write(media: HTMLMediaElement, value: string | null): void {
   pendingWrites.set(media, (pendingWrites.get(media) ?? 0) + 1);
@@ -67,20 +73,23 @@ function setCors(media: HTMLMediaElement, want: boolean): void {
   if (want !== media.hasAttribute("crossorigin")) write(media, want ? "anonymous" : null);
 }
 
-// The guess for what the browser picks: what played last, else the first source that has not refused CORS here.
-function guess(media: HTMLMediaElement, home: string): string | undefined {
-  const urls = listedUrls(media, home);
-  const played = lastPlayed.get(media);
-  if (played && urls.includes(played)) return played;
-  return urls.find((url) => !refused.get(media)?.has(url)) ?? urls[0];
-}
-
 function sync(media: HTMLMediaElement, home: string): void {
   if (!seen.has(media)) {
     seen.add(media);
     if (media.hasAttribute("crossorigin")) authored.add(media);
   }
-  if (!authored.has(media)) setCors(media, wantsCors(media, guess(media, home), home));
+  if (authored.has(media)) return;
+  const urls = selectable(media, home);
+  setCors(media, allHome(urls, home) && !has(refused, media, urls[0]!));
+}
+
+// load() resets the playhead, rate and play state; set in the same task, a later change by the composition wins.
+function reload(media: HTMLMediaElement): void {
+  const { currentTime, playbackRate, paused } = media;
+  media.load();
+  if (currentTime) media.currentTime = currentTime;
+  media.playbackRate = playbackRate;
+  if (!paused) void media.play().catch(() => undefined);
 }
 
 function mediaOf(el: Element): HTMLMediaElement | null {
@@ -99,64 +108,43 @@ function warnOnce(media: HTMLMediaElement, url: string): void {
   );
 }
 
-// The browser's own word that it has nothing left to try: the element's error, or a source's with no source left.
-const exhausted = (media: HTMLMediaElement, el: Element) =>
-  el === media || media.networkState === HTMLMediaElement.NETWORK_NO_SOURCE;
-
-// Down both ways, not refusing: forget it. No write: Chrome retries an exhausted element's sources on that change.
-function wasDown(media: HTMLMediaElement, home: string): void {
-  retrying.delete(media);
-  for (const url of listedUrls(media, home)) {
-    refused.get(media)?.delete(url);
-    retriedWithout.get(media)?.delete(url);
-    rearmedFor.get(media)?.delete(url);
-  }
-}
-
-// The source that failed: a source element's own, or the element's src when it has one, else what it chose.
-function noteFailure(media: HTMLMediaElement, el: Element, home: string): void {
-  if (!media.hasAttribute("crossorigin")) return;
+function failedUrl(media: HTMLMediaElement, el: Element, home: string): string {
   const own = media.getAttribute("src");
-  const src =
-    el !== media ? (el as HTMLSourceElement).src : own ? resolved(own, home) : media.currentSrc;
-  if (src) setOf(refused, media).add(src);
+  return el !== media
+    ? (el as HTMLSourceElement).src
+    : own
+      ? resolved(own, home)
+      : media.currentSrc;
 }
 
-function retryWithout(media: HTMLMediaElement, home: string): void {
-  const tried = setOf(retriedWithout, media);
-  const retry = listedUrls(media, home).filter(
-    (url) => refused.get(media)?.has(url) && !tried.has(url),
-  );
-  if (!retry.length) return;
-  retry.forEach((url) => tried.add(url));
-  retrying.add(media);
-  write(media, null);
-  media.load();
-}
-
-function ranOut(event: Event, home: string): void {
+// Refused with CORS: drop it at once, so the browser picks as it would without us. Failed without too: host down.
+function failed(event: Event, home: string): void {
   const el = event.target as Element | null;
   const media = el?.nodeType === 1 ? mediaOf(el) : null;
   if (!el || !media || authored.has(media)) return;
-  noteFailure(media, el, home);
-  if (!exhausted(media, el)) return;
-  if (media.hasAttribute("crossorigin")) retryWithout(media, home);
-  else if (retrying.has(media)) wasDown(media, home);
+  const url = failedUrl(media, el, home);
+  if (!url || !selectable(media, home).includes(url)) return;
+  if (!media.hasAttribute("crossorigin")) {
+    if (setOf(refused, media).delete(url)) setOf(down, media).add(url);
+    return;
+  }
+  if (has(refused, media, url) || has(down, media, url)) return;
+  setOf(refused, media).add(url);
+  write(media, null);
+  reload(media);
 }
 
+// Played without CORS from our own host and never refused here: opt back in, so a source that can serve it does.
 function firstFrame(event: Event, home: string): void {
   const media = event.target as HTMLMediaElement;
   if (!isMedia(media) || authored.has(media)) return;
-  retrying.delete(media);
   const chosen = media.currentSrc;
-  lastPlayed.set(media, chosen);
-  const armed = media.hasAttribute("crossorigin");
-  if (!armed && refused.get(media)?.has(chosen)) warnOnce(media, chosen);
-  const tried = setOf(rearmedFor, media);
-  if (armed || tried.has(chosen) || !wantsCors(media, chosen, home)) return;
-  tried.add(chosen);
+  down.get(media)?.delete(chosen);
+  if (media.hasAttribute("crossorigin")) return;
+  if (has(refused, media, chosen)) return warnOnce(media, chosen);
+  if (!allHome(selectable(media, home), home)) return;
   write(media, "anonymous");
-  media.load();
+  reload(media);
 }
 
 // Chrome tries an exhausted element's sources again on a crossorigin write; only an insertion resumes it.
@@ -180,7 +168,7 @@ function visit(node: Node, home: string): void {
 
 let home = "";
 // One function each, so a second start adds no second listener.
-const onError = (event: Event) => ranOut(event, home);
+const onError = (event: Event) => failed(event, home);
 const onFirstFrame = (event: Event) => firstFrame(event, home);
 
 /** In a sealed document, opts the preview server's own media into CORS as it parses or changes src, before it loads;
