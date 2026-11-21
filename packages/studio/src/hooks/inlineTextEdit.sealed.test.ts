@@ -208,6 +208,7 @@ function textCommits(
   iframe: HTMLIFrameElement,
   current: DomEditSelection | null,
   persist: PersistDomEditOperations,
+  lookups: Array<Promise<void>> = [],
 ) {
   let commits!: ReturnType<typeof useDomEditTextCommits>;
   mount(() => {
@@ -218,8 +219,10 @@ function textCommits(
       domEditSelection: current,
       applyDomSelection: vi.fn(),
       refreshDomEditSelectionFromPreview: vi.fn(),
-      buildDomSelectionFromTarget: (target, options) =>
-        resolveFoundSelection(iframe, target, { ...OPTIONS, ...options }),
+      buildDomSelectionFromTarget: async (target, options) => {
+        await lookups.shift();
+        return resolveFoundSelection(iframe, target, { ...OPTIONS, ...options });
+      },
       persistDomEditOperations: persist,
       resolveImportedFontAsset: () => null,
       readOnlyPreview: false,
@@ -228,6 +231,81 @@ function textCommits(
   return (element: HTMLElement, html: string) =>
     act(() => commits.handleDomRichTextCommit({ element, html, previousHtml: ORIGINAL }));
 }
+
+/** What the file ends up holding: a write the commit pipeline still wants, in order. */
+function fileWrites() {
+  const saved: string[] = [];
+  const persist = vi.fn<PersistDomEditOperations>(async (selection, operations, options) => {
+    if (options?.shouldSave?.() === false) return;
+    saved.push(`${selection.id}=${String(operations[0]!.value)}`);
+  });
+  return { saved, persist };
+}
+
+function held() {
+  let release!: () => void;
+  const lookup = new Promise<void>((resolve) => (release = resolve));
+  return { lookup, release };
+}
+
+it("drops an older save of a heading that resumes after a newer save of it", async () => {
+  const { iframe, selection } = await sealedTitle();
+  const { saved, persist } = fileWrites();
+  const first = held();
+  const commit = textCommits(iframe, selection, persist, [first.lookup]);
+  const older = commit(selection.element, "First");
+  await commit(selection.element, "Second");
+  first.release();
+  await older;
+  expect(saved).toEqual(["title=Second"]);
+});
+
+it("saves both headings when one heading's lookup is slow and the other saves first", async () => {
+  const { iframe, selection } = await sealedTitle();
+  const other = await select(iframe, "other");
+  const { saved, persist } = fileWrites();
+  const first = held();
+  const commit = textCommits(iframe, selection, persist, [first.lookup]);
+  const slow = commit(selection.element, "First");
+  await commit(other.element, "Other");
+  first.release();
+  await slow;
+  expect(saved.sort()).toEqual(["other=Other", "title=First"]);
+});
+
+it("keeps the newer save of a heading across a frame reload", async () => {
+  const { iframe, selection } = await sealedTitle();
+  const { saved, persist } = fileWrites();
+  const first = held();
+  const commit = textCommits(iframe, selection, persist, [first.lookup]);
+  const older = commit(selection.element, "First");
+  // The reloaded frame: a new document agent and new handles over the same heading of the file.
+  const { iframe: reloaded } = sealedFrame();
+  const again = await select(reloaded, "title");
+  expect(again.element).not.toBe(selection.element);
+  await commit(again.element, "Second");
+  first.release();
+  await older;
+  expect(saved).toEqual(["title=Second"]);
+});
+
+it("shows a save whose redraw the frame refused once the newer edit open on it is cancelled", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  const { controls } = inlineEditor();
+  const { persist } = fileWrites();
+  const first = held();
+  const commit = textCommits(iframe, selection, persist, [first.lookup]);
+  const saving = commit(selection.element, "First");
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.hasAttribute("contenteditable")).toBe(true));
+  first.release();
+  await saving;
+  await settled(iframe, selection);
+  expect(title.innerHTML).toBe(ORIGINAL);
+  act(() => controls().cancel());
+  await vi.waitFor(() => expect(title.innerHTML).toBe("First"));
+  act(unmounts.pop()!);
+});
 
 it("wakes the selection box as the frame's text grows, and stops watching when the edit ends", async () => {
   const ports: MessagePort[] = [];
