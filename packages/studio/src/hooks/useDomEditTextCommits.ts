@@ -190,8 +190,7 @@ export function useDomEditTextCommits({
   const latestSelectionRef = useRef(domEditSelection);
   latestSelectionRef.current = domEditSelection;
   const domTextCommitVersionRef = useRef(new Map<string, symbol>());
-  const richTextBegunRef = useRef(0);
-  const richTextClaimsRef = useRef(new Map<string, number>());
+  const richTextOrderRef = useRef({ begun: 0, claims: new Map<string, number>() });
   const domStyleCommitVersionRef = useRef(new Map<string, symbol>());
 
   const {
@@ -322,7 +321,8 @@ export function useDomEditTextCommits({
    */
   const handleDomRichTextCommit = useCallback(
     async ({ element, html, previousHtml }: InlineTextEditCommit) => {
-      const begun = ++richTextBegunRef.current;
+      const order = richTextOrderRef.current;
+      const begun = ++order.begun;
       const sealed = previewStandIn(element);
       const putBack = () => {
         if (sealed) {
@@ -343,7 +343,7 @@ export function useDomEditTextCommits({
         : await liveInlineTextSelection(element, doc, buildDomSelectionFromTarget);
       if (typeof selection === "string") return refuse(selection);
       const targetKey = getDomEditTargetKey(selection);
-      const inOrder = claimDomEditCommitInOrder(richTextClaimsRef.current, targetKey, begun);
+      const inOrder = claimDomEditCommitInOrder(order.claims, targetKey, begun);
       if (!inOrder) return;
       const latestOfKind = bumpDomEditCommitMapVersion(domTextCommitVersionRef.current, targetKey);
       const isLatestTextCommit = () => inOrder() && latestOfKind();
