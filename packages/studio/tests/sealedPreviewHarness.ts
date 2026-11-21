@@ -50,12 +50,14 @@ export function holdReplies() {
     __swallow: Set<string>;
     __swallowed: Array<{ kind: string; answer: (result: unknown) => void }>;
     __posted: number;
+    __refusals: number;
   };
   w.__hold = false;
   w.__held = [];
   w.__swallow = new Set();
   w.__swallowed = [];
   w.__posted = 0;
+  w.__refusals = 0;
   const own = Object.getOwnPropertyDescriptor(MessagePort.prototype, "onmessage")!;
   // A request of a swallowed kind never reaches the frame; the test answers it as the frame would.
   const post = MessagePort.prototype.postMessage;
@@ -82,13 +84,19 @@ export function holdReplies() {
       return own.get!.call(this);
     },
     set(handler: ((event: MessageEvent) => void) | null) {
+      // Counts each refusal Studio receives that leaves it nothing to recover in place.
+      const deliver = (data: { result?: { result?: unknown; applied?: unknown } }) => {
+        const result = data?.result;
+        if (result?.result === "cannot-soft-reload" || result?.applied === false) w.__refusals++;
+        handler?.call(this, new MessageEvent("message", { data }));
+      };
       own.set!.call(this, (event: MessageEvent) => {
         const reply = typeof event.data?.id === "number";
-        if (!reply || !w.__hold) return handler?.call(this, event);
-        w.__held.push((result) => {
-          const data = result === undefined ? event.data : { ...event.data, result };
-          handler?.call(this, new MessageEvent("message", { data }));
-        });
+        if (!reply) return handler?.call(this, event);
+        if (!w.__hold) return deliver(event.data);
+        w.__held.push((result) =>
+          deliver(result === undefined ? event.data : { ...event.data, result }),
+        );
       });
     },
   });

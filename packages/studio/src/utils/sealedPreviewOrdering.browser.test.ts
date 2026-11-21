@@ -28,8 +28,9 @@ interface Saved {
   x: number;
   start: number;
   label: string;
+  title: string;
 }
-const FIRST: Saved = { gen: 0, x: 10, start: 0, label: "a" };
+const FIRST: Saved = { gen: 0, x: 10, start: 0, label: "a", title: "a" };
 
 const script = (s: Saved) => `(function () {
     window.__timelines = window.__timelines || {};
@@ -42,7 +43,7 @@ const script = (s: Saved) => `(function () {
 const root = (s: Saved) =>
   `<div id="root" data-hf-id="root" data-composition-id="main" data-start="0" data-duration="4" data-width="1920" data-height="1080">` +
   `<div id="target" data-hf-id="target" class="clip box" data-start="${s.start}" data-duration="4" data-track-index="1" style="left: 100px; top: 100px"></div>` +
-  `<div id="c" data-hf-id="c" class="clip box" data-start="0" data-duration="4" data-track-index="2" data-label="${s.label}" style="left: 0px; top: 500px"></div>` +
+  `<div id="c" data-hf-id="c" class="clip box" data-start="0" data-duration="4" data-track-index="2" data-label="${s.label}" title="${s.title}" style="left: 0px; top: 500px"></div>` +
   `</div>`;
 /** The saved file as Studio reads it; every element carries the `data-hf-id` Studio's server gives it. */
 const file = (s: Saved) => `<html><body>${root(s)}<script>${script(s)}</script></body></html>`;
@@ -53,18 +54,20 @@ const page = (s: Saved) =>
     #root { position: relative; width: 100%; height: 100% } .box { position: absolute; width: 200px; height: 200px }</style>
   </head><body>${root(s)}<script>${GSAP}</script><script>${script(s)}</script><script>${RUNTIME}</script></body></html>`;
 
-type Save = "run" | "patch" | "retime" | "undoAttr" | "undoBoth";
+// A label is restore-safe and applies in place; a title is not (restoreAttributes.ts), so the frame refuses it.
+type Save = "run" | "patch" | "retime" | "undoLabel" | "undoTitle" | "undoBoth";
 type Step =
   | { save: Save; refused: boolean }
-  | { answer: "any" | "soft-reload" | "patch-tweens" | "restore-attributes" }
+  | { answer: "any" | "oldest" | "newest" | "soft-reload" | "patch-tweens" | "restore-attributes" }
   | { reloadFrame: true };
 
 const next: Record<Save, (s: Saved, n: number) => Saved> = {
   run: (s) => ({ ...s, gen: s.gen + 1 }),
   patch: (s, n) => ({ ...s, x: 20 + n }),
   retime: (s) => ({ ...s, start: 1 - s.start }),
-  undoAttr: (s) => ({ ...s, label: s.label === "a" ? "b" : "a" }),
-  undoBoth: (s) => ({ ...s, gen: s.gen + 1, label: s.label === "a" ? "b" : "a" }),
+  undoLabel: (s) => ({ ...s, label: s.label === "a" ? "b" : "a" }),
+  undoTitle: (s) => ({ ...s, title: s.title === "a" ? "b" : "a" }),
+  undoBoth: (s) => ({ ...s, gen: s.gen + 1, title: s.title === "a" ? "b" : "a" }),
 };
 
 /** The refusal a frame that never took the request would send, by request kind. */
@@ -105,7 +108,7 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved) {
           w.__reload,
         );
       }
-      if (kind === "undoAttr" || kind === "undoBoth") {
+      if (kind === "undoLabel" || kind === "undoTitle" || kind === "undoBoth") {
         const files = { "index.html": { previous: prev, restored: saved } };
         studio.applyUndoRestoreToPreview(iframe, null, files, 2, w.__reload);
       }
@@ -163,12 +166,10 @@ function answer(studioPage: Page, pick: number, kind: string | null) {
         __held: Array<() => void>;
         __swallowed: Array<{ kind: string; answer: (result: unknown) => void }>;
       };
-      const refuse = (entry: { kind: string; answer: (result: unknown) => void }) => {
-        const counts = ((window as unknown as { __refused?: Record<string, number> }).__refused ??=
-          {});
-        counts[entry.kind] = (counts[entry.kind] ?? 0) + 1;
+      const refuse = (entry: { kind: string; answer: (result: unknown) => void }) =>
         entry.answer(refusals[entry.kind]);
-      };
+      if (wanted === "oldest") return w.__held.shift()?.();
+      if (wanted === "newest") return w.__held.pop()?.();
       const refusedAt = wanted ? w.__swallowed.findIndex((entry) => entry.kind === wanted) : -1;
       if (refusedAt >= 0) return refuse(w.__swallowed.splice(refusedAt, 1)[0]!);
       const all = w.__held.length + w.__swallowed.length;
@@ -203,7 +204,7 @@ async function drain(studioPage: Page, frame: Frame, random: () => number) {
   }
 }
 
-/** What a viewer sees at 2 s: the script that ran, the clip timing, the label, and the tween's values. */
+/** What a viewer sees at 2 s: the script that ran, the clip timing, the label and title, and the tween's values. */
 async function seen(frame: Frame, studioPage: Page, iframeIndex: number) {
   await studioPage.evaluate((i) => {
     document
@@ -228,6 +229,7 @@ async function seen(frame: Frame, studioPage: Page, iframeIndex: number) {
       ran: (window as unknown as { __ran: { main: string } }).__ran.main,
       start: target.getAttribute("data-start"),
       label: document.getElementById("c")!.getAttribute("data-label"),
+      title: document.getElementById("c")!.getAttribute("title"),
       x: Math.round(m.m41),
       y: Math.round(m.m42),
     };
@@ -285,12 +287,8 @@ async function play(steps: Step[], seed = 1) {
   await drain(studioPage, frame, random);
   const shown = await seen(frame, studioPage, 0);
   const { reloads, reloadRefusals } = await studioPage.evaluate(() => {
-    const w = window as unknown as { __reloads: number; __refused?: Record<string, number> };
-    const refused = w.__refused ?? {};
-    return {
-      reloads: w.__reloads,
-      reloadRefusals: (refused["soft-reload"] ?? 0) + (refused["restore-attributes"] ?? 0),
-    };
+    const w = window as unknown as { __reloads: number; __refusals: number };
+    return { reloads: w.__reloads, reloadRefusals: w.__refusals };
   });
   await studioPage.close();
   const fresh = await freshLoad(saved);
@@ -300,12 +298,12 @@ async function play(steps: Step[], seed = 1) {
 // The three sequences a reviewer probed by hand, as written in the review; each is red without the fix.
 const SEEDS: Array<[string, Step[]]> = [
   [
-    "a refused undo of a script and a label, then a newer script-only run",
+    "an undo of a script and a title the frame refuses, held past a newer script-only run",
     [
-      { save: "undoBoth", refused: true },
+      { save: "undoBoth", refused: false },
       { save: "run", refused: false },
-      { answer: "any" },
-      { answer: "soft-reload" },
+      { answer: "newest" },
+      { answer: "oldest" },
     ],
   ],
   [
@@ -320,7 +318,7 @@ const SEEDS: Array<[string, Step[]]> = [
     "a refused patch, then a static undo, then the patch's refusal",
     [
       { save: "patch", refused: true },
-      { save: "undoAttr", refused: false },
+      { save: "undoLabel", refused: false },
       { answer: "any" },
       { answer: "patch-tweens" },
     ],
@@ -328,13 +326,15 @@ const SEEDS: Array<[string, Step[]]> = [
 ];
 
 describe("sealed preview after late answers in any order", () => {
-  it.each(SEEDS)("%s", async (_name, steps) => {
+  it.each(SEEDS)("%s", async (name, steps) => {
     const { shown, fresh, reloads, reloadRefusals } = await play(steps);
     expect(shown).toEqual(fresh);
     if (reloadRefusals === 0) expect(reloads).toBe(0);
+    // The frame cannot set a title in place, so the refused undo recovers only by reloading.
+    if (name.includes("title")) expect(reloads).toBeGreaterThan(0);
   });
 
-  const SAVES: Save[] = ["run", "patch", "retime", "undoAttr", "undoBoth"];
+  const SAVES: Save[] = ["run", "patch", "retime", "undoLabel", "undoTitle", "undoBoth"];
   const generated = (seed: number): Step[] => {
     let state = seed;
     const random = () => (state = (state * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
