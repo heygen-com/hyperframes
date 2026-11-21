@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // fails without the fix: all but "still recovers an older script run after an unrelated successful patch" and
 // "does not let a re-run sent while a patch's write was in flight cover the patch", which guard the coverage rule.
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const channel = vi.hoisted(() => ({
   request: vi.fn(),
@@ -162,4 +162,53 @@ it("re-runs a refused patch's recovery with the timing of a live retime saved af
   await settled();
   const rerun = held.find(({ kind }) => kind === "soft-reload")!.params as { timing: unknown[] };
   expect(rerun.timing).toContainEqual(["hf:a", [["data-start", "1"]]]);
+});
+
+// fails without the fix: the older retime went out and put its file's clip timing over the newer file's.
+describe("an older live retime whose preview sync goes out after a newer file's", () => {
+  const retimed = (d: number) =>
+    `window.__timelines["main"] = gsap.timeline().to("#a", { x: 10, duration: ${d} }, 0);`;
+  const file = (start: number, d: number, b = 0) =>
+    page(
+      `<div id="a" data-hf-id="a" data-start="${start}"></div><div data-hf-id="b" data-start="${b}"></div>` +
+        `<script>${retimed(d)}</script>`,
+    );
+  const kinds = () => held.map(({ kind }) => kind);
+
+  it("is not sent, and re-runs the newer file in place", async () => {
+    const reload = vi.fn();
+    applySoftReload(iframe, retimed(3), {
+      currentTimeOverride: 1,
+      authoredHtml: file(1, 3),
+      previousHtml: file(1, 2),
+      version: 5,
+    });
+    await settled();
+    await moveLiveTweens(iframe, retimed(2), 1, reload, {
+      before: file(0, 1),
+      after: file(1, 2),
+      revision: 4,
+    });
+    await settled();
+    expect(kinds()).toEqual(["soft-reload", "soft-reload"]);
+    const recovery = held[1]!.params as { script: string; timing: unknown[] };
+    expect(recovery.script).toBe(retimed(3));
+    expect(recovery.timing).toContainEqual(["hf:a", [["data-start", "1"]]]);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("is not sent after a newer undo of another clip, and reloads the saved file", async () => {
+    const reload = vi.fn();
+    const undo = { "index.html": { previous: file(1, 2, 0), restored: file(1, 2, 1) } };
+    applyUndoRestoreToPreview(iframe, null, undo, 1, vi.fn(), undefined, 5);
+    await settled();
+    await moveLiveTweens(iframe, retimed(2), 1, reload, {
+      before: file(0, 1),
+      after: file(1, 2),
+      revision: 4,
+    });
+    await settled();
+    expect(kinds()).toEqual(["restore-attributes"]);
+    expect(reload).toHaveBeenCalledOnce();
+  });
 });
