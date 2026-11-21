@@ -541,6 +541,85 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     );
   });
 
+  it("serves a light copy for a browser-safe clip that is heavy for its box", async () => {
+    const projectDir = mk();
+    writeFileSync(join(projectDir, "clip.mp4"), "original-h264-bytes");
+    const proxyPath = join(projectDir, "proxy.mp4");
+    writeFileSync(proxyPath, "light-h264-bytes");
+    mocks.resolveProxy.mockResolvedValue(proxyPath);
+    mocks.probeAssetCodec.mockResolvedValueOnce({
+      codecName: "h264",
+      hasAlpha: false,
+      browserHostile: false,
+      representativeMime: null,
+    });
+    // Mirrors the real gate: a browser-safe clip is eligible only for a
+    // lighter copy of a box it is heavy for.
+    mocks.decideMediaProxyEligibility.mockImplementation((...args: unknown[]) => {
+      const [facts, lightBox] = args as [
+        { browserHostile: boolean },
+        { width: number; height: number } | undefined,
+      ];
+      if (facts.browserHostile || lightBox) return { eligible: true };
+      return { eligible: false, reason: "browser_safe_codec" };
+    });
+    server = await serveStaticProjectHtml(projectDir, "<html></html>");
+
+    const res = await fetch(
+      `${server.url}clip.mp4?hf-proxy=auto&hf-proxy-box=2048x1218&hf-proxy-light=1`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("light-h264-bytes");
+    expect(mocks.decideMediaProxyEligibility).toHaveBeenCalledWith(
+      expect.objectContaining({ codecName: "h264" }),
+      { width: 2048, height: 1218 },
+    );
+  });
+
+  it("answers 422 for a box-only request on a browser-safe clip, as the Studio preview does", async () => {
+    const projectDir = mk();
+    writeFileSync(join(projectDir, "clip.mp4"), "original-h264-bytes");
+    const proxyPath = join(projectDir, "proxy.mp4");
+    writeFileSync(proxyPath, "light-h264-bytes");
+    mocks.resolveProxy.mockResolvedValue(proxyPath);
+    mocks.probeAssetCodec.mockResolvedValueOnce({
+      codecName: "h264",
+      hasAlpha: false,
+      browserHostile: false,
+      representativeMime: null,
+    });
+    mocks.decideMediaProxyEligibility.mockImplementation((...args: unknown[]) => {
+      const [facts, lightBox] = args as [
+        { browserHostile: boolean },
+        { width: number; height: number } | undefined,
+      ];
+      if (facts.browserHostile || lightBox) return { eligible: true };
+      return { eligible: false, reason: "browser_safe_codec" };
+    });
+    server = await serveStaticProjectHtml(projectDir, "<html></html>");
+
+    const res = await fetch(`${server.url}clip.mp4?hf-proxy=auto&hf-proxy-box=2048x1218`);
+
+    expect(res.status).toBe(422);
+    expect(await res.text()).toContain("browser_safe_codec");
+    expect(mocks.decideMediaProxyEligibility).toHaveBeenCalledWith(
+      expect.objectContaining({ codecName: "h264" }),
+      undefined,
+    );
+  });
+
+  it("answers 404 for a light request without a box, as the Studio preview does", async () => {
+    const projectDir = mk();
+    writeFileSync(join(projectDir, "clip.mp4"), "original-h264-bytes");
+    server = await serveStaticProjectHtml(projectDir, "<html></html>");
+
+    const res = await fetch(`${server.url}clip.mp4?hf-proxy=auto&hf-proxy-light=1`);
+
+    expect(res.status).toBe(404);
+    expect(mocks.resolveProxy).not.toHaveBeenCalled();
+  });
+
   it.each(["clip.mp4?hf-proxy=h264&hf-proxy-box=1000x1000", "clip.mp4?hf-proxy-box=2048x1448"])(
     "answers 404 without a copy for %s, as the Studio preview does",
     async (path) => {
