@@ -19,6 +19,8 @@ npx hyperframes transcribe openai-response.json
 2. **Known non-English** → `--model small --language <iso-code>` (no `.en` suffix)
 3. **Unknown language** → `--model small` (whisper auto-detects)
 
+The script takes the same code: `node transcribe.mjs --input audio.wav --language <iso-code>` forwards it to the CLI.
+
 **The CLI's default whisper model is `small.en`** — do not rely on it; always pass `--model` to make the choice explicit. `--language` also filters out non-target-language segments from mixed-language audio.
 
 ## Model Sizes
