@@ -662,6 +662,13 @@ function judge(sequences: Sequence[], sealed: Readings, control: Readings) {
         );
       if (sequence.upgradesAtMost !== undefined && seen.upgrades > sequence.upgradesAtMost)
         problems.push(`${where}: ${seen.upgrades} upgrades, at most ${sequence.upgradesAtMost}`);
+      // An authored crossorigin is the composition's, and an opaque origin loads it differently by design.
+      const value = authored.get(el);
+      if (value !== undefined) {
+        if (seen.crossOrigin !== value)
+          problems.push(`${where}: the composition's ${value} became ${seen.crossOrigin}`);
+        continue;
+      }
       // A host failing some requests may play after the runtime's extra request and not without it.
       const variable = [...kinds.values()].some((kind) => kind === "flaky" || kind === "outage");
       if (!variable) {
@@ -686,12 +693,6 @@ function judge(sequences: Sequence[], sealed: Readings, control: Readings) {
           problems.push(`${where}: after our load it resumed ${seen.restartGap ?? "never"} s off`);
         else if (seen.restartRate !== seen.savedRate)
           problems.push(`${where}: rate ${seen.restartRate} after our load, was ${seen.savedRate}`);
-      }
-      const value = authored.get(el);
-      if (value !== undefined) {
-        if (seen.crossOrigin !== value)
-          problems.push(`${where}: the composition's ${value} became ${seen.crossOrigin}`);
-        continue;
       }
       const canPlay =
         list.some((s) => PLAYABLE.has(s.kind)) || Boolean(sequence.keepsCors?.includes(el));
