@@ -580,10 +580,7 @@ class Engine {
       ),
     );
     if (!log) return this.firstOpen();
-    const dropped = dropUnrecordedPaths(log, this.options.ignores);
-    this.log = log;
-    // Pruning keeps only what this log names, so the log on disk must not name more.
-    if (dropped) this.persistLog();
+    this.takeLog(log);
     await this.reclaimUncopied();
     if (!this.log.keepsLedger) await this.takeInUnnamedLedger();
     const cache = this.readStatCache();
@@ -599,6 +596,13 @@ class Engine {
     // What changed while the project was closed is one outside entry, or the closed window's.
     this.reopenClosedWindow();
     await this.settleAll();
+  }
+
+  /** Pruning keeps only what this log names, so the log on disk must not name more than the one in memory. */
+  takeLog(log: HistoryLog): void {
+    const dropped = dropUnrecordedPaths(log, this.options.ignores);
+    this.log = log;
+    if (dropped) this.persistLog();
   }
 
   /** Copies an older version took of files that are no longer copied; text and small files are never touched. */
