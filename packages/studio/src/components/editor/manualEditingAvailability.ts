@@ -90,7 +90,7 @@ export const STUDIO_API_SAME_ORIGIN_CREDENTIALS = resolveStudioBooleanEnvFlag(
 export const STUDIO_OPAQUE_PREVIEW_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   ["VITE_STUDIO_OPAQUE_PREVIEW_ENABLED"],
-  false,
+  true,
 );
 
 import { resolveEnabledSdkFamilies } from "../../utils/sdkCutoverPolicy";

@@ -20,32 +20,52 @@ const evidence = {};
 const check = (ok, what) => ok || failures.push(what);
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 
+// A sealed frame is reached as a frame, never through contentDocument, which Studio's page cannot read.
+const previewIframe = async (page) =>
+  (
+    await page.waitForFunction(
+      () => document.querySelector("hyperframes-player")?.shadowRoot?.querySelector("iframe"),
+      { timeout: 60_000 },
+    )
+  ).asElement();
+const previewFrame = async (page) => (await previewIframe(page)).contentFrame();
+
+/** The preview's box on Studio's screen, and the player's scale from the film's pixels to it. */
+async function framePlacement(page) {
+  const box = await (await previewIframe(page)).evaluate((f) => f.getBoundingClientRect().toJSON());
+  const innerWidth = await (await previewFrame(page)).evaluate(() => window.innerWidth);
+  return { box, scale: box.width / innerWidth };
+}
+
 /** The drawn caret's box on screen, and the box the preview's own selection maps to there. */
 async function read(page) {
   // A selection change is told to listeners a task later.
   await pause(150);
-  const seen = await page.evaluate(() => {
-    const frame = document.querySelector("hyperframes-player").shadowRoot.querySelector("iframe");
-    const doc = frame.contentDocument;
-    const selection = doc.getSelection();
+  const inFrame = await (
+    await previewFrame(page)
+  ).evaluate(() => {
+    const selection = document.getSelection();
     const rects = selection.rangeCount ? [...selection.getRangeAt(0).getClientRects()] : [];
-    const caret = document.querySelector("[data-inline-text-caret]");
     return {
-      editing: doc.querySelector("[contenteditable]") !== null,
+      editing: document.querySelector("[contenteditable]") !== null,
       collapsed: selection.isCollapsed,
-      box: frame.getBoundingClientRect().toJSON(),
-      scale: frame.getBoundingClientRect().width / frame.contentWindow.innerWidth,
       at: rects.at(-1)?.toJSON() ?? null,
-      drawn: caret && {
-        box: caret.getBoundingClientRect().toJSON(),
-        animation: getComputedStyle(caret).animationName,
-      },
     };
   });
-  const { box, scale, at, drawn } = seen;
+  const drawn = await page.evaluate(() => {
+    const caret = document.querySelector("[data-inline-text-caret]");
+    return (
+      caret && {
+        box: caret.getBoundingClientRect().toJSON(),
+        animation: getComputedStyle(caret).animationName,
+      }
+    );
+  });
+  const { box, scale } = await framePlacement(page);
+  const { at } = inFrame;
   return {
-    editing: seen.editing,
-    collapsed: seen.collapsed,
+    editing: inFrame.editing,
+    collapsed: inFrame.collapsed,
     caret: drawn && {
       left: drawn.box.left,
       top: drawn.box.top,
@@ -62,33 +82,33 @@ async function read(page) {
 }
 
 /** The character before the caret, on Studio's screen: its right edge is where a line's end stands. */
-const charBefore = (page) =>
-  page.evaluate(() => {
-    const frame = document.querySelector("hyperframes-player").shadowRoot.querySelector("iframe");
-    const box = frame.getBoundingClientRect();
-    const scale = box.width / frame.contentWindow.innerWidth;
-    const { anchorNode, anchorOffset } = frame.contentDocument.getSelection();
-    const range = frame.contentDocument.createRange();
+const charBefore = async (page) => {
+  const rect = await (
+    await previewFrame(page)
+  ).evaluate(() => {
+    const { anchorNode, anchorOffset } = document.getSelection();
+    const range = document.createRange();
     range.setStart(anchorNode, anchorOffset - 1);
     range.setEnd(anchorNode, anchorOffset);
-    const rect = [...range.getClientRects()][0];
-    return { right: box.left + rect.right * scale, top: box.top + rect.top * scale };
+    return [...range.getClientRects()][0].toJSON();
   });
+  const { box, scale } = await framePlacement(page);
+  return { right: box.left + rect.right * scale, top: box.top + rect.top * scale };
+};
 
 /** Where an element of the composition stands on Studio's screen. */
-const onScreen = (page, selector) =>
-  page.evaluate((selector) => {
-    const frame = document.querySelector("hyperframes-player").shadowRoot.querySelector("iframe");
-    const box = frame.getBoundingClientRect();
-    const scale = box.width / frame.contentWindow.innerWidth;
-    const rect = frame.contentDocument.querySelector(selector).getBoundingClientRect();
-    return {
-      x: box.left + rect.left * scale,
-      y: box.top + rect.top * scale,
-      w: rect.width * scale,
-      h: rect.height * scale,
-    };
-  }, selector);
+const onScreen = async (page, selector) => {
+  const rect = await (
+    await previewFrame(page)
+  ).evaluate((sel) => document.querySelector(sel).getBoundingClientRect().toJSON(), selector);
+  const { box, scale } = await framePlacement(page);
+  return {
+    x: box.left + rect.left * scale,
+    y: box.top + rect.top * scale,
+    w: rect.width * scale,
+    h: rect.height * scale,
+  };
+};
 
 // One press selects the element and Enter opens its text with the caret at the end: Studio's dependable way in, where
 // a double press has to survive the canvas' gesture machinery.
@@ -145,14 +165,11 @@ try {
   await page.setViewport({ width: 1440, height: 900 });
   await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "no-preference" }]);
   await page.goto(STUDIO_URL, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector("hyperframes-player")
-        ?.shadowRoot?.querySelector("iframe")
-        ?.contentDocument?.querySelector("#body"),
-    { timeout: 60_000 },
-  );
+  await (
+    await previewFrame(page)
+  ).waitForFunction(() => document.querySelector("#body"), {
+    timeout: 60_000,
+  });
   await pause(1000);
 
   await openEdit(page, "#title");
@@ -273,8 +290,11 @@ try {
     // What the preview showed without this change: the browser's own caret, the drawn one hidden.
     await page.evaluate(() => {
       document.querySelector("[data-inline-text-caret]").style.visibility = "hidden";
-      const frame = document.querySelector("hyperframes-player").shadowRoot.querySelector("iframe");
-      frame.contentDocument.querySelector("#title").style.caretColor = "";
+    });
+    await (
+      await previewFrame(page)
+    ).evaluate(() => {
+      document.querySelector("#title").style.caretColor = "";
     });
     await page.screenshot({ path: join(EVIDENCE_DIR, "before-caret.png"), clip });
     await page.screenshot({ path: join(EVIDENCE_DIR, "inline-text-caret-title.png") });

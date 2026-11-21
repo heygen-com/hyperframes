@@ -22,28 +22,40 @@ try {
   await page.goto(STUDIO_URL, { waitUntil: "domcontentloaded" });
   // Ready when Play is enabled and the preview's A-roll has a frame to paint.
   await page.waitForSelector('button[aria-label="Play"]:not([disabled])', { timeout: 60_000 });
-  const iframe = await page.waitForFunction(
-    () => document.querySelector("hyperframes-player")?.shadowRoot?.querySelector("iframe"),
-    { timeout: 60_000 },
-  );
-  await page.waitForFunction(
-    (frame) => frame.contentDocument.getElementById("aroll")?.readyState >= 2,
-    { timeout: 60_000, polling: 50 },
-    iframe,
-  );
+  // Looked up on every read: Studio can swap the preview's iframe. A sealed frame is reached as a frame, never through
+  // contentDocument, which Studio's page cannot read.
+  const previewIframe = async () =>
+    (
+      await page.waitForFunction(
+        () => document.querySelector("hyperframes-player")?.shadowRoot?.querySelector("iframe"),
+        { timeout: 60_000 },
+      )
+    ).asElement();
+  const previewFrame = async () => (await previewIframe()).contentFrame();
+  await (
+    await previewFrame()
+  ).waitForFunction(() => document.getElementById("aroll")?.readyState >= 2, {
+    timeout: 60_000,
+    polling: 50,
+  });
 
   // Playhead, the element on top at the frame's centre, and the plate's own state, in the preview.
-  const readPreview = () =>
-    page.evaluate(() => {
-      const frame = document.querySelector("hyperframes-player").shadowRoot.querySelector("iframe");
-      const doc = frame.contentDocument;
-      const player = frame.contentWindow.__player;
+  const readPreview = async () => {
+    const box = await (
+      await previewIframe()
+    ).evaluate((frame) => {
+      const rect = frame.getBoundingClientRect();
+      return [rect.x, rect.y, rect.width, rect.height].map(Math.round).join(",");
+    });
+    const inFrame = await (
+      await previewFrame()
+    ).evaluate(() => {
+      const doc = document;
+      const player = window.__player;
       const film = doc.getElementById("film").getBoundingClientRect();
       const plate = doc.getElementById("plate");
       const video = doc.getElementById("aroll");
-      const box = frame.getBoundingClientRect();
       return {
-        box: [box.x, box.y, box.width, box.height].map(Math.round).join(","),
         time: player.getTime(),
         playing: player.isPlaying(),
         topId: doc.elementFromPoint(film.x + film.width / 2, film.y + film.height * 0.45)?.id,
@@ -52,6 +64,8 @@ try {
         videoReady: video.readyState >= 2 && !video.seeking,
       };
     });
+    return { box, ...inFrame };
+  };
   // Mean chroma (max-min channel) and luma of the frame's centre: the A-roll is colour bars, the plate
   // near black. Studio can re-fit the preview just after a pause, so a shot across that reflow is retaken.
   const shoot = async (name) => {
@@ -62,7 +76,7 @@ try {
     do {
       attempts++;
       before = await readPreview();
-      png = await iframe.screenshot({ encoding: "base64" });
+      png = await (await previewIframe()).screenshot({ encoding: "base64" });
       after = await readPreview();
     } while (before.box !== after.box && attempts < 5);
     if (OUT_DIR) writeFileSync(`${OUT_DIR}/${name}.png`, Buffer.from(png, "base64"));
@@ -101,13 +115,10 @@ try {
       );
   };
   const outsidePlate = (t) => t < PLATE_START_S || t >= PLATE_END_S;
-  const playheadIn = (from, to) =>
-    page.waitForFunction(
+  const playheadIn = async (from, to) =>
+    (await previewFrame()).waitForFunction(
       (lo, hi) => {
-        const frame = document
-          .querySelector("hyperframes-player")
-          .shadowRoot.querySelector("iframe");
-        const player = frame.contentWindow.__player;
+        const player = window.__player;
         const t = player.getTime();
         return player.isPlaying() && t >= lo && t < hi;
       },
@@ -149,11 +160,12 @@ try {
   evidence.step = "paused after the plate";
   await playheadIn(PLATE_END_S + 0.2, 10);
   await page.click('button[aria-label="Pause"]');
-  await page.waitForFunction(
+  await (
+    await previewFrame()
+  ).waitForFunction(
     () => {
-      const frame = document.querySelector("hyperframes-player").shadowRoot.querySelector("iframe");
-      const video = frame.contentDocument.getElementById("aroll");
-      return !frame.contentWindow.__player.isPlaying() && video.readyState >= 2 && !video.seeking;
+      const video = document.getElementById("aroll");
+      return !window.__player.isPlaying() && video.readyState >= 2 && !video.seeking;
     },
     { timeout: 10_000, polling: "raf" },
   );
