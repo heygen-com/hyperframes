@@ -3,10 +3,15 @@
 // must equal a fresh load of the saved file, with a full reload only after a refusal nothing can recover in place.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import type { Browser, Frame, Page } from "puppeteer-core";
+import type { Browser, Page } from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { closeTestChrome, launchTestChrome } from "../../tests/chromeTestUtils";
-import { buildStudioBundle, openPreview, type Studio } from "../../tests/sealedPreviewHarness";
+import { buildStudioBundle, type Studio } from "../../tests/sealedPreviewHarness";
+import {
+  playSequence,
+  type SequenceFixture,
+  type SequenceStep,
+} from "../../tests/sealedPreviewSequence";
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 60_000 });
 const require = createRequire(import.meta.url);
@@ -56,10 +61,7 @@ const page = (s: Saved) =>
 
 // A label is restore-safe and applies in place; a title is not (restoreAttributes.ts), so the frame refuses it.
 type Save = "run" | "patch" | "retime" | "undoLabel" | "undoTitle" | "undoBoth";
-type Step =
-  | { save: Save; refused: boolean }
-  | { answer: "any" | "oldest" | "newest" | "soft-reload" | "patch-tweens" | "restore-attributes" }
-  | { reloadFrame: true };
+type Step = SequenceStep<Save>;
 
 const next: Record<Save, (s: Saved, n: number) => Saved> = {
   run: (s) => ({ ...s, gen: s.gen + 1 }),
@@ -68,13 +70,6 @@ const next: Record<Save, (s: Saved, n: number) => Saved> = {
   undoLabel: (s) => ({ ...s, label: s.label === "a" ? "b" : "a" }),
   undoTitle: (s) => ({ ...s, title: s.title === "a" ? "b" : "a" }),
   undoBoth: (s) => ({ ...s, gen: s.gen + 1, title: s.title === "a" ? "b" : "a" }),
-};
-
-/** The refusal a frame that never took the request would send, by request kind. */
-const REFUSAL: Record<string, unknown> = {
-  "soft-reload": { result: "cannot-soft-reload" },
-  "patch-tweens": { patched: false },
-  "restore-attributes": { applied: false, reran: false },
 };
 
 /** Sends `save` the way Studio does after writing the file from `before` to `after`. */
@@ -121,179 +116,28 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved) {
   );
 }
 
-/** Studio's page: every reply held until answered; a full reload loads the newest saved file and is counted. */
-async function openStudio() {
-  const preview = await openPreview(browser, studioBundle, page(FIRST), "sealed");
-  await preview.release(200);
-  await preview.page.evaluate((first) => {
-    const w = window as unknown as {
-      __hold: boolean;
-      __saved: string;
-      __reloads: number;
-      __reload: () => void;
-    };
-    w.__hold = true;
-    w.__saved = first;
-    w.__reloads = 0;
-    w.__reload = () => {
-      w.__reloads++;
-      document.querySelector("iframe")!.srcdoc = w.__saved;
-    };
-  }, page(FIRST));
-  return preview;
-}
-
-type Pending = { kind: string; refused: boolean };
-
-const pending = (studioPage: Page) =>
-  studioPage.evaluate(() => {
-    const w = window as unknown as {
-      __held: unknown[];
-      __heldKinds?: string[];
-      __swallowed: Array<{ kind: string }>;
-    };
-    return [
-      ...w.__held.map(() => ({ kind: "reply", refused: false })),
-      ...w.__swallowed.map(({ kind }) => ({ kind, refused: true })),
-    ] as Pending[];
-  });
-
-/** Answers one pending request: a held reply as the frame sent it, or a refused one with its refusal. */
-function answer(studioPage: Page, pick: number, kind: string | null) {
-  return studioPage.evaluate(
-    (at, wanted, refusals) => {
-      const w = window as unknown as {
-        __held: Array<() => void>;
-        __swallowed: Array<{ kind: string; answer: (result: unknown) => void }>;
+const FIXTURE: SequenceFixture<Saved, Save> = {
+  first: FIRST,
+  page,
+  next,
+  send,
+  at: 2,
+  /** What a viewer sees: the script that ran, the clip timing, the label and title, and the tween's values. */
+  read: (frame) =>
+    frame.evaluate(() => {
+      const target = document.getElementById("target")!;
+      const m = new DOMMatrix(getComputedStyle(target).transform);
+      return {
+        ran: (window as unknown as { __ran: { main: string } }).__ran.main,
+        start: target.getAttribute("data-start"),
+        label: document.getElementById("c")!.getAttribute("data-label"),
+        title: document.getElementById("c")!.getAttribute("title"),
+        x: Math.round(m.m41),
+        y: Math.round(m.m42),
       };
-      const refuse = (entry: { kind: string; answer: (result: unknown) => void }) =>
-        entry.answer(refusals[entry.kind]);
-      if (wanted === "oldest") return w.__held.shift()?.();
-      if (wanted === "newest") return w.__held.pop()?.();
-      const refusedAt = wanted ? w.__swallowed.findIndex((entry) => entry.kind === wanted) : -1;
-      if (refusedAt >= 0) return refuse(w.__swallowed.splice(refusedAt, 1)[0]!);
-      const all = w.__held.length + w.__swallowed.length;
-      if (all === 0) return;
-      const i = at % all;
-      if (i < w.__held.length) return w.__held.splice(i, 1)[0]!();
-      refuse(w.__swallowed.splice(i - w.__held.length, 1)[0]!);
-    },
-    pick,
-    kind,
-    REFUSAL,
-  );
-}
-
-const ready = (frame: Frame) =>
-  frame.waitForFunction(() => "__player" in window && "__timelines" in window);
-
-/** Answers everything still pending, new recoveries included, until nothing is left and the frame is loaded. */
-async function drain(studioPage: Page, frame: Frame, random: () => number) {
-  await studioPage.evaluate(() => {
-    (window as unknown as { __swallow: Set<string> }).__swallow = new Set();
-  });
-  for (let quiet = 0; quiet < 3; ) {
-    await ready(frame);
-    await frame.evaluate(() => new Promise((done) => requestAnimationFrame(() => done(null))));
-    const left = await pending(studioPage);
-    if (left.length === 0) quiet++;
-    else {
-      quiet = 0;
-      await answer(studioPage, Math.floor(random() * 1000), null);
-    }
-  }
-}
-
-/** What a viewer sees at 2 s: the script that ran, the clip timing, the label and title, and the tween's values. */
-async function seen(frame: Frame, studioPage: Page, iframeIndex: number) {
-  await studioPage.evaluate((i) => {
-    document
-      .querySelectorAll("iframe")
-      [i]!.contentWindow!.postMessage(
-        { source: "hf-parent", type: "control", action: "seek", timeSeconds: 2 },
-        "*",
-      );
-  }, iframeIndex);
-  await frame.waitForFunction(
-    () =>
-      Math.abs((window as unknown as { __player: { getTime(): number } }).__player.getTime() - 2) <
-      0.01,
-  );
-  await frame.evaluate(
-    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
-  );
-  return frame.evaluate(() => {
-    const target = document.getElementById("target")!;
-    const m = new DOMMatrix(getComputedStyle(target).transform);
-    return {
-      ran: (window as unknown as { __ran: { main: string } }).__ran.main,
-      start: target.getAttribute("data-start"),
-      label: document.getElementById("c")!.getAttribute("data-label"),
-      title: document.getElementById("c")!.getAttribute("title"),
-      x: Math.round(m.m41),
-      y: Math.round(m.m42),
-    };
-  });
-}
-
-/** A fresh load of `saved` in a page of its own. */
-async function freshLoad(saved: Saved) {
-  const fresh = await openPreview(browser, studioBundle, page(saved), "sealed");
-  await ready(fresh.frame);
-  const shown = await seen(fresh.frame, fresh.page, 0);
-  await fresh.page.close();
-  return shown;
-}
-
-/** Plays `steps`, settles every reply, and compares the preview with a fresh load of the saved file. */
-async function play(steps: Step[], seed = 1) {
-  let state = seed;
-  const random = () => (state = (state * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
-  const preview = await openStudio();
-  const { page: studioPage, frame } = preview;
-  let saved = FIRST;
-  for (const [n, step] of steps.entries()) {
-    if ("save" in step) {
-      const after = next[step.save](saved, n);
-      await studioPage.evaluate((refused) => {
-        const kinds = ["soft-reload", "patch-tweens", "restore-attributes"];
-        (window as unknown as { __swallow: Set<string> }).__swallow = new Set(refused ? kinds : []);
-      }, step.refused);
-      const posted = () =>
-        studioPage.evaluate(() => (window as unknown as { __posted: number }).__posted);
-      const before = await posted();
-      await send(studioPage, step.save, saved, after);
-      // Studio posts the request a tick later; its fate holds until it has gone out.
-      await studioPage.waitForFunction(
-        (n) => (window as unknown as { __posted: number }).__posted > n,
-        {},
-        before,
-      );
-      await studioPage.evaluate(() => {
-        (window as unknown as { __swallow: Set<string> }).__swallow = new Set();
-      });
-      saved = after;
-    } else if ("reloadFrame" in step) {
-      await studioPage.evaluate(() => {
-        const w = window as unknown as { __saved: string };
-        document.querySelector("iframe")!.srcdoc = w.__saved;
-      });
-      await ready(frame);
-    } else {
-      const kind = step.answer === "any" ? null : step.answer;
-      await answer(studioPage, Math.floor(random() * 1000), kind);
-    }
-  }
-  await drain(studioPage, frame, random);
-  const shown = await seen(frame, studioPage, 0);
-  const { reloads, reloadRefusals } = await studioPage.evaluate(() => {
-    const w = window as unknown as { __reloads: number; __refusals: number };
-    return { reloads: w.__reloads, reloadRefusals: w.__refusals };
-  });
-  await studioPage.close();
-  const fresh = await freshLoad(saved);
-  return { shown, fresh, reloads, reloadRefusals };
-}
+    }),
+};
+const play = (steps: Step[], seed = 1) => playSequence(browser, studioBundle, FIXTURE, steps, seed);
 
 // The three sequences a reviewer probed by hand, as written in the review; each is red without the fix.
 const SEEDS: Array<[string, Step[]]> = [
