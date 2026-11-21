@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { failCommand, failUsage } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync } from "node:fs";
@@ -111,13 +112,17 @@ export default defineCommand({
     }
     if (!isDevice(args.device)) {
       console.error(
-        c.error(`Invalid --device '${String(args.device)}'. Use: ${DEVICES.join(", ")}.`),
+        c.error(
+          `Invalid --device '${terminalText(String(args.device))}'. Use: ${DEVICES.join(", ")}.`,
+        ),
       );
       failUsage();
     }
     if (!isQuality(args.quality)) {
       console.error(
-        c.error(`Invalid --quality '${String(args.quality)}'. Use: ${QUALITIES.join(", ")}.`),
+        c.error(
+          `Invalid --quality '${terminalText(String(args.quality))}'. Use: ${QUALITIES.join(", ")}.`,
+        ),
       );
       failUsage();
     }
@@ -134,7 +139,7 @@ export default defineCommand({
         quality: args.quality,
         onProgress: (event) => {
           if (event.kind === "info") {
-            spin?.message(event.message);
+            spin?.message(terminalText(event.message));
           } else if (event.kind === "metadata") {
             const dims = `${event.width}×${event.height}`;
             const frames = event.frameCount ? ` · ${event.frameCount} frames` : "";
@@ -168,8 +173,8 @@ export default defineCommand({
           ? (result.framesProcessed / result.durationSeconds).toFixed(1)
           : "n/a";
         const outputs = result.backgroundOutputPath
-          ? `${c.accent(result.outputPath)} + ${c.accent(result.backgroundOutputPath)}`
-          : c.accent(result.outputPath);
+          ? `${c.accent(terminalText(result.outputPath))} + ${c.accent(terminalText(result.backgroundOutputPath))}`
+          : c.accent(terminalText(result.outputPath));
         spin?.stop(
           c.success(
             `Removed background from ${c.accent(String(result.framesProcessed))} frames in ${result.durationSeconds.toFixed(1)}s (${fpsThroughput} fps, ${c.accent(result.provider)}) → ${outputs}`,
@@ -181,7 +186,7 @@ export default defineCommand({
       if (args.json) {
         console.log(JSON.stringify(jsonFailure("runtime_error", message)));
       } else {
-        spin?.stop(c.error(`Background removal failed: ${message}`));
+        spin?.stop(c.error(`Background removal failed: ${terminalLines(message)}`));
       }
       failCommand(1, pipelineError(err));
     }
@@ -219,7 +224,7 @@ async function showInfo(json: boolean): Promise<void> {
   console.log(
     `  ${c.dim("Weights cached:")}    ${cached ? c.success("yes") : c.dim("no (will download on first run)")}`,
   );
-  console.log(`  ${c.dim("Cache path:")}        ${modelPath()}`);
+  console.log(`  ${c.dim("Cache path:")}        ${terminalText(modelPath())}`);
   console.log("");
   console.log(`  ${c.dim("Available providers:")} ${providers.join(", ")}`);
   console.log(`  ${c.dim("Auto-selected:")}      ${c.accent(auto.label)}`);
