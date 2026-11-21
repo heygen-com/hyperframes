@@ -28,7 +28,7 @@ import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from "fs";
 import { join, dirname, resolve, basename, relative, sep } from "path";
 import { parseHTML } from "linkedom";
-import { bundledScript } from "./bundledScripts.js";
+import { bundledGsapStandIn, bundledScript } from "./bundledScripts.js";
 import {
   inlineScriptBlocks,
   remoteSrcUrls,
@@ -1659,6 +1659,9 @@ export async function inlineExternalScripts(
   });
   const remote = new Set(externalScripts.filter((_, i) => !local[i]).map(({ src }) => src));
   assertRemoteFetchCount("scripts", remote.size);
+  const pinned = new Set(
+    externalScripts.filter(({ el }) => el.getAttribute("integrity")).map(({ src }) => src),
+  );
 
   const mirror = operatorGsapMirror();
   const limit = createConcurrencyLimit(MAX_CONCURRENT_SCRIPT_FETCHES);
@@ -1683,7 +1686,17 @@ export async function inlineExternalScripts(
     if (!bytes) {
       bytes = limit(async () => {
         fetchSignal.throwIfAborted();
-        const downloaded = await downloadScript(src, mirror, fetchSignal);
+        const downloaded = await downloadScript(src, mirror, fetchSignal).catch(
+          (error: unknown) => {
+            // GSAP keeps its API within a major version, so a blocked CDN's 3.x file runs as the host's 3.x.
+            const standIn = pinned.has(src) || fetchSignal.aborted ? null : bundledGsapStandIn(src);
+            if (!standIn) throw error;
+            defaultLogger.warn(
+              `[Compiler] Could not download ${src} (${error}); using the host's own GSAP instead.`,
+            );
+            return standIn;
+          },
+        );
         charge(downloaded.byteLength);
         return downloaded;
       }, fetchSignal);
