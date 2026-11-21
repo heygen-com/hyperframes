@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, readdir, realpath, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import {
   type Dirent,
@@ -241,16 +241,14 @@ const FIRST_COPY_FILE_MS = 10_000;
 
 async function orAfter<T, L>(work: Promise<T>, ms: number, late: L): Promise<T | L> {
   let timer: NodeJS.Timeout | undefined;
-  const missed = new Promise<L>((owed) => {
-    timer = setTimeout(() => owed(late), ms);
-    timer.unref?.();
-  });
+  const missed = new Promise<L>((owed) => (timer = setTimeout(() => owed(late), ms)));
   try {
     return await Promise.race([work, missed]);
   } finally {
     clearTimeout(timer);
   }
 }
+const hashNoVersionHas = () => createHash("sha256").update(randomUUID()).digest("hex");
 const ADOPT_RETRY_AT_MOST_MS = 30_000;
 
 /** Owed until a whole copy is recorded, the file is gone or history closes; retryNow waits for a fresh try. */
@@ -506,6 +504,7 @@ class Engine {
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
   adopting = new Map<string, Adoption>();
+  stepWentAheadOf = new Map<string, "since-this-open" | "before-reopen">();
   reading = new Map<string, Promise<unknown>>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
@@ -636,7 +635,8 @@ class Engine {
       const cached = cache.get(path);
       this.tracked.set(path, { hash, stat: cached?.hash === hash ? cached.stat : "" });
     }
-    const left = this.readAdopting();
+    const left = this.readPaths("adopting.json");
+    this.markWentAheadBeforeReopen(left);
     const unadopted = (file: { path: string }) =>
       left.has(file.path) && !this.tracked.has(file.path);
     this.adoptMediaInBackground((await this.historyFiles()).filter(unadopted), this.now());
@@ -759,7 +759,28 @@ class Engine {
   }
 
   async untilFirstCopiesLandOrStall(): Promise<void> {
-    await Promise.all([...this.adopting.values()].map((adoption) => adoption.stepMayBegin));
+    await Promise.all(
+      [...this.adopting].map(async ([path, adoption]) => {
+        if (!(await adoption.stepMayBegin) || this.stepWentAheadOf.has(path)) return;
+        this.stepWentAheadOf.set(path, "since-this-open");
+        this.saveAdopting();
+      }),
+    );
+  }
+
+  markWentAheadBeforeReopen(adopting: Set<string>): void {
+    for (const path of this.readPaths("went-ahead.json"))
+      if (adopting.has(path)) this.stepWentAheadOf.set(path, "before-reopen");
+  }
+
+  async unchangedSinceListed(file: ListedFile, sweptAt: number): Promise<boolean> {
+    const listed = statKey(file, sweptAt);
+    if (listed === "") return false;
+    try {
+      return statKey(await stat(join(this.dir, file.path)), this.now()) === listed;
+    } catch {
+      return false;
+    }
   }
 
   adoptMediaInBackground(
@@ -784,10 +805,15 @@ class Engine {
   }
 
   saveAdopting(): void {
-    const file = join(this.home, "adopting.json");
-    if (!this.adopting.size) return rmSync(file, { force: true });
+    this.savePaths("adopting.json", [...this.adopting.keys()]);
+    this.savePaths("went-ahead.json", [...this.stepWentAheadOf.keys()]);
+  }
+
+  savePaths(name: string, paths: string[]): void {
+    const file = join(this.home, name);
+    if (!paths.length) return rmSync(file, { force: true });
     mkdirSync(this.home, { recursive: true });
-    replaceFileAtomically(file, JSON.stringify([...this.adopting.keys()]), 0o644);
+    replaceFileAtomically(file, JSON.stringify(paths), 0o644);
   }
 
   /** A file still changing stays named until a whole copy of it lands; the next open retries it. */
@@ -844,10 +870,16 @@ class Engine {
       const fromOpen = typeof first === "object";
       const read = () => this.storeIfPresent(file.path, true);
       const copied = fromOpen ? first : await (owedFromOpen ? inFirstCopySlot(read) : read());
+      const wentAhead = this.stepWentAheadOf.get(file.path);
+      const trusted =
+        wentAhead === undefined ||
+        (wentAhead === "since-this-open" && (await this.unchangedSinceListed(file, sweptAt)));
       const record = this.queue(async () => {
         // Still named for the next open until recorded, so a failed record is never logged as added.
-        if ((await this.recordAdopted(file, sweptAt, copied)) === "changing") return "changing";
+        if ((await this.recordAdopted(file, sweptAt, copied, trusted)) === "changing")
+          return "changing";
         this.adopting.delete(file.path);
+        this.stepWentAheadOf.delete(file.path);
         this.saveAdopting();
         // The sweeps since open passed this file by: one more takes in any edit since the bytes were read.
         if (fromOpen) this.sweepIn(0);
@@ -860,21 +892,31 @@ class Engine {
     }
   }
 
-  async recordAdopted(file: ListedFile, sweptAt: number, first: Copied): Promise<Copied> {
+  async recordAdopted(
+    file: ListedFile,
+    sweptAt: number,
+    first: Copied,
+    trusted: boolean,
+  ): Promise<Copied> {
     if (typeof first === "string" || this.whereFolder() !== "here") return first;
     // Bytes gone from the store are read again on the next try, outside the history queue.
     if (!first.referenced && !this.blobs.has(first.hash)) return "changing";
     const copied = first;
     const { hash } = copied;
     const change = { path: file.path, before: null, after: hash };
-    const found = this.overwrittenBy(change, undefined, new Set());
-    const start = found && this.blobs.has(found) ? found : hash;
+    const start = this.adoptedStart(change, trusted);
     this.tracked.set(file.path, { hash, stat: statKey(file, sweptAt) });
     this.log.baseline.set(file.path, start);
     if (start !== hash) addChange(this.outsideGroup(), file.path, start, hash);
     this.persistLog(baselineRecord(this.log));
     this.saveStatCache();
     return copied;
+  }
+
+  adoptedStart(change: HistoryFileChange & { after: string }, trusted: boolean): string {
+    const found = this.overwrittenBy(change, undefined, new Set());
+    if (found && this.blobs.has(found)) return found;
+    return trusted ? change.after : hashNoVersionHas();
   }
 
   manifest(): Manifest {
@@ -890,11 +932,9 @@ class Engine {
     }
   }
 
-  readAdopting(): Set<string> {
+  readPaths(name: string): Set<string> {
     try {
-      return new Set(
-        JSON.parse(readFileSync(join(this.home, "adopting.json"), "utf-8")) as string[],
-      );
+      return new Set(JSON.parse(readFileSync(join(this.home, name), "utf-8")) as string[]);
     } catch {
       return new Set();
     }
