@@ -80,7 +80,7 @@ const BODY = "\u0000\u0001asset-bytes";
 let server: Server;
 
 function serveRoute(req: IncomingMessage, res: ServerResponse): void {
-  const url = `https://${req.headers.host}${req.url}`;
+  const url = `https://${req.headers.host ?? req.headers[":authority"]}${req.url}`;
   received.push({ url, headers: req.headers, httpVersion: req.httpVersion });
   const found = routes[url];
   if (found === "drop") return void req.socket.destroy();
