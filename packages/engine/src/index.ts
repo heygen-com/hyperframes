@@ -104,6 +104,7 @@ export {
   resolveHeadlessShellPath,
   resolveBrowserGpuMode,
   buildChromeArgs,
+  DISABLE_FRAME_RATE_LIMIT_FLAG,
   compositionRequiresWebGpu,
   assertWebGpuAdapterAvailable,
   usesSoftwareWebGpu,

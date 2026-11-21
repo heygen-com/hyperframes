@@ -35,13 +35,19 @@ export function resolveCaptureJpegQuality(quality: EngineConfig["quality"]): num
  * capture, so the probe and the main capture options both spread this.
  */
 export function resolveCaptureSurface(
-  input: Parameters<typeof resolveCaptureImageFormat>[0],
+  input: Parameters<typeof resolveCaptureImageFormat>[0] & { videoCount: number },
   quality: EngineConfig["quality"],
-): { format: "jpeg" | "png"; quality: number | undefined; transparent: boolean } {
+): {
+  format: "jpeg" | "png";
+  quality: number | undefined;
+  transparent: boolean;
+  injectsVideoFrames: boolean;
+} {
   const format = resolveCaptureImageFormat(input);
   return {
     format,
     quality: format === "png" ? undefined : resolveCaptureJpegQuality(quality),
     transparent: input.needsAlpha,
+    injectsVideoFrames: input.videoCount > 0,
   };
 }

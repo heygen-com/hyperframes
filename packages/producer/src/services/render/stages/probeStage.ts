@@ -582,7 +582,12 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         height,
         fps: job.config.fps,
         ...resolveCaptureSurface(
-          { needsAlpha, motionBlur, chromaSubsampling: job.config.chromaSubsampling },
+          {
+            needsAlpha,
+            motionBlur,
+            chromaSubsampling: job.config.chromaSubsampling,
+            videoCount: composition.videos.length,
+          },
           job.config.quality,
         ),
         variables: job.config.variables,

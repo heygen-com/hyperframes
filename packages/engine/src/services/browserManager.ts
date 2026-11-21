@@ -1128,6 +1128,7 @@ export interface BuildChromeArgsOptions {
   platform?: NodeJS.Platform;
   /** The composition declares `data-requires-webgpu`; forces the WebGPU flag even in "software" mode. */
   requiresWebGpu?: boolean;
+  injectsVideoFrames?: boolean;
   sandbox?: boolean;
 }
 
@@ -1153,6 +1154,14 @@ export function usesSoftwareWebGpu(
     !(config.disableGpu ?? DEFAULT_CONFIG.disableGpu) &&
     (config.browserGpuMode ?? DEFAULT_CONFIG.browserGpuMode) === "software"
   );
+}
+
+export const DISABLE_FRAME_RATE_LIMIT_FLAG = "--disable-frame-rate-limit";
+
+function frameRateLimitArgs(platform: NodeJS.Platform, injectsVideoFrames?: boolean): string[] {
+  return platform === "darwin" && injectsVideoFrames === false
+    ? [DISABLE_FRAME_RATE_LIMIT_FLAG]
+    : [];
 }
 
 export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuConfig): string[] {
@@ -1257,7 +1266,10 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
       "--enable-surface-synchronization",
     );
   } else {
-    chromeArgs.push(WHOLE_TILE_RASTER_FLAG);
+    chromeArgs.push(
+      WHOLE_TILE_RASTER_FLAG,
+      ...frameRateLimitArgs(platform, options.injectsVideoFrames),
+    );
   }
 
   if (gpuDisabled) {

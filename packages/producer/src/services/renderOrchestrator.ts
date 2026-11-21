@@ -1,5 +1,9 @@
 import type { ExpectedOutputDimensions } from "./render/outputDimensions.js";
-import { audioFailureDiagnostics, cpuBudget } from "@hyperframes/engine";
+import {
+  DISABLE_FRAME_RATE_LIMIT_FLAG,
+  audioFailureDiagnostics,
+  cpuBudget,
+} from "@hyperframes/engine";
 // fallow-ignore-file unused-type circular-dependency code-duplication complexity
 /**
  * Render Orchestrator Service
@@ -3008,6 +3012,17 @@ export function resolveCaptureForceScreenshotForPageSideCompositing(args: {
   return args.usePageSideCompositing ? true : args.forceScreenshot;
 }
 
+/** Parallel capture opens its own browsers. A probe launched without the frame-rate limit, before the film's
+ * script-inserted video was found, would capture that video slower. */
+export function shouldCloseProbeBeforeCapture(
+  probe: { browserLease?: { fingerprint: { args: readonly string[] } } },
+  workerCount: number,
+  injectsVideoFrames: boolean,
+): boolean {
+  const unlimited = probe.browserLease?.fingerprint.args.includes(DISABLE_FRAME_RATE_LIMIT_FLAG);
+  return workerCount > 1 || (injectsVideoFrames && unlimited === true);
+}
+
 export function shouldDiscardProbeSessionForPageSideCompositing(args: {
   hasProbeSession: boolean;
   usePageSideCompositing: boolean;
@@ -3876,6 +3891,7 @@ async function executeRenderPipeline(input: {
         needsAlpha,
         motionBlur: job.config.motionBlur,
         chromaSubsampling: job.config.chromaSubsampling,
+        videoCount: composition.videos.length,
       },
       job.config.quality,
     );
@@ -4662,7 +4678,10 @@ async function executeRenderPipeline(input: {
       updateCaptureObservability({ captureParallelStream: "eligible_off" });
     }
 
-    if (workerCount > 1 && probeSession) {
+    if (
+      probeSession &&
+      shouldCloseProbeBeforeCapture(probeSession, workerCount, captureSurface.injectsVideoFrames)
+    ) {
       lastBrowserConsole = probeSession.browserConsoleBuffer;
       await closeCaptureSession(probeSession);
       probeSession = null;

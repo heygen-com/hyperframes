@@ -50,23 +50,37 @@ describe("resolveCaptureImageFormat", () => {
 });
 
 describe("resolveCaptureSurface", () => {
-  const base = { needsAlpha: false, motionBlur: undefined };
+  const base = { needsAlpha: false, motionBlur: undefined, videoCount: 0 };
 
   it("keeps the ordinary render on opaque JPEG at the resolved quality", () => {
     expect(resolveCaptureSurface(base, "standard")).toEqual({
       format: "jpeg",
       quality: 100,
       transparent: false,
+      injectsVideoFrames: false,
     });
     expect(resolveCaptureSurface(base, "draft")).toEqual({
       format: "jpeg",
       quality: 80,
       transparent: false,
+      injectsVideoFrames: false,
     });
   });
 
+  it("tells every session of a render with video that frames will be injected", () => {
+    for (const videoCount of [1, 2])
+      expect(resolveCaptureSurface({ ...base, videoCount }, "standard").injectsVideoFrames).toBe(
+        true,
+      );
+  });
+
   it("captures 4:4:4 and motion blur as opaque PNG so the page background stays", () => {
-    const opaquePng = { format: "png", quality: undefined, transparent: false };
+    const opaquePng = {
+      format: "png",
+      quality: undefined,
+      transparent: false,
+      injectsVideoFrames: false,
+    };
     expect(resolveCaptureSurface({ ...base, chromaSubsampling: "444" }, "draft")).toEqual(
       opaquePng,
     );
@@ -74,7 +88,12 @@ describe("resolveCaptureSurface", () => {
   });
 
   it("captures alpha output as transparent PNG", () => {
-    const transparentPng = { format: "png", quality: undefined, transparent: true };
+    const transparentPng = {
+      format: "png",
+      quality: undefined,
+      transparent: true,
+      injectsVideoFrames: false,
+    };
     expect(resolveCaptureSurface({ ...base, needsAlpha: true }, "standard")).toEqual(
       transparentPng,
     );
