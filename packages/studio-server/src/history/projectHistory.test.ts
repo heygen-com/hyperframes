@@ -602,7 +602,7 @@ describe("openProjectHistory", () => {
     },
   );
 
-  // fails without the fix: an undo wrote through a folder link into a path the host's ignores option names.
+  // fails without the fix: Undo stopped on the folder link instead of skipping the file the host ignores.
   it("never writes an ignored file through a folder that now links to it", async () => {
     const { history, write, read, projectDir, historyRoot } = await project({
       "pages/a.html": "v1",
@@ -618,6 +618,39 @@ describe("openProjectHistory", () => {
     });
     await again.step("back", you);
     expect(read("private/a.html")).toBe("host");
+  });
+
+  // fails without the fix: with no ignores option, Undo through a folder now linked to a hidden one said nothing.
+  it("still refuses an undo through a folder link when the host passes no ignores option", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "pages/a.html": "v1" });
+    write("pages/a.html", "v2");
+    await history.claim(you, "Edited", ["pages/a.html"]);
+    await history.close();
+    renameSync(join(projectDir, "pages"), join(projectDir, ".hold"));
+    symlinkSync(".hold", join(projectDir, "pages"), "dir");
+    const again = await open(projectDir, historyRoot);
+    expect(await again.step("back", you)).toMatchObject({ ok: false });
+  });
+
+  // fails without the fix: an older undo's kept file stayed in both views, and Redo still offered it.
+  it("an ignores option drops an older undo's kept file from both views and from Redo", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "a" });
+    write("assets/song.mp3", "mp3");
+    await history.claim(you, "Uploaded", ["assets/song.mp3"]);
+    write(
+      "compositions/scene.html",
+      '<template><audio src="../assets/song.mp3"></audio></template>',
+    );
+    await history.claim(agent, "Music in a scene", ["compositions/scene.html"]);
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect(history.next("forward", you)?.label).toBe("Undid: Uploaded");
+    await history.close();
+    const ignores = (path: string) => path === "assets/song.mp3";
+    const again = await open(projectDir, historyRoot, { ignores });
+    const reader = readProjectHistory({ projectDir, historyRoot, ignores });
+    expect(JSON.stringify(again.list())).not.toContain("song.mp3");
+    expect(JSON.stringify(reader.list())).not.toContain("song.mp3");
+    expect(again.next("forward", you)).toBeNull();
   });
 
   it("records a write nobody announced as one outside entry, and undo puts the bytes back as a new entry", async () => {
