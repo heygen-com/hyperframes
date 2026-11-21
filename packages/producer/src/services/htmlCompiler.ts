@@ -644,8 +644,17 @@ class AssetDownloads {
   private readonly reserved = new Set<string>();
   private running = 0;
   private readonly queued: (() => void)[] = [];
+  private readonly ended = new AbortController();
+  readonly signal: AbortSignal;
 
-  constructor(readonly signal?: AbortSignal) {}
+  constructor(cancel?: AbortSignal) {
+    this.signal = cancel ? AbortSignal.any([cancel, this.ended.signal]) : this.ended.signal;
+  }
+
+  /** Stops every download still running or queued: the compile that owns them has returned. */
+  end(): void {
+    this.ended.abort(new Error("The compile that started this download has ended"));
+  }
 
   /** Throws before any of `urls` downloads when they would take the compile past the cap. */
   reserve(urls: Iterable<string>): void {
@@ -866,6 +875,8 @@ async function compileHtmlFile(
 
   const unresolvedCompositions = unresolved.filter((el) => el.tagName === "div");
 
+  // Every remote source of this file counts against the cap before any of them downloads.
+  run?.assets.reserve(mediaUnresolved.map((el) => el.src!).filter(isHttpUrl));
   // Phase 1: Resolve missing durations (parallel ffprobe)
   const resolvedResults = await Promise.all(
     mediaUnresolved.map((el) =>
@@ -897,26 +908,26 @@ async function compileHtmlFile(
   // Explicit video slots may outlive their source and hold the final frame.
   const preResolved = extractResolvedMedia(compiledHtml);
   const hiddenVideoIds = collectHiddenVideoIds(compiledHtml);
+  const clampable = preResolved.filter((el) => !!el.src && !el.loop && !hiddenVideoIds.has(el.id));
+  run?.assets.reserve(clampable.map((el) => el.src!).filter(isHttpUrl));
   const clampResults = await Promise.all(
-    preResolved
-      .filter((el) => !!el.src && !el.loop && !hiddenVideoIds.has(el.id))
-      .map(async (el) => {
-        const { duration: maxDuration } = await resolveMediaDuration(
-          el.src!,
-          el.mediaStart,
-          el.playbackRate,
-          projectDir,
-          baseDir,
-          downloadDir,
-          el.tagName,
-          el.id,
-          log,
-          undefined,
-          run,
-          assetRoot,
-        );
-        return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
-      }),
+    clampable.map(async (el) => {
+      const { duration: maxDuration } = await resolveMediaDuration(
+        el.src!,
+        el.mediaStart,
+        el.playbackRate,
+        projectDir,
+        baseDir,
+        downloadDir,
+        el.tagName,
+        el.id,
+        log,
+        undefined,
+        run,
+        assetRoot,
+      );
+      return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
+    }),
   );
   const clampList: ResolvedDuration[] = [];
   for (const r of clampResults) {
@@ -2563,12 +2574,27 @@ const entryFileName = (projectDir: string, htmlPath: string) =>
  * Compile an HTML composition project into a single self-contained HTML string
  * with all media metadata resolved.
  */
-// fallow-ignore-next-line complexity
 export async function compileForRender(
   projectDir: string,
   htmlPath: string,
   downloadDir: string,
   options: CompileForRenderOptions = {},
+): Promise<CompiledComposition> {
+  const assets = new AssetDownloads(options.abortSignal);
+  try {
+    return await compileWithAssets(projectDir, htmlPath, downloadDir, options, assets);
+  } finally {
+    assets.end();
+  }
+}
+
+// fallow-ignore-next-line complexity
+async function compileWithAssets(
+  projectDir: string,
+  htmlPath: string,
+  downloadDir: string,
+  options: CompileForRenderOptions,
+  assets: AssetDownloads,
 ): Promise<CompiledComposition> {
   const assetRoot = options.allowOutsideProjectAssets ? undefined : projectDir;
   const outsideFiles: OutsideFilePolicy = { includeScripts: options.includeOutsideScripts };
@@ -2607,7 +2633,7 @@ export async function compileForRender(
   // start.
   assertSubCompositionsUsable(rawHtml, projectDir, assetRoot, outsideFiles);
 
-  const run: CompileRun = { probes: new Map(), assets: new AssetDownloads(options.abortSignal) };
+  const run: CompileRun = { probes: new Map(), assets };
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
     rawHtml,
     projectDir,
