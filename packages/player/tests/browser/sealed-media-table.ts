@@ -578,9 +578,13 @@ async function installDriver(frame: Frame) {
         async advancing(key: string) {
           const { video } = state.get(key)!;
           if (video.paused || video.readyState < 2) return false;
+          // Moving within a second: one short sample on a busy page catches a buffering pause.
           const at = video.currentTime;
-          await new Promise((resolve) => setTimeout(resolve, 300));
-          return video.currentTime !== at;
+          for (let waited = 0; waited < 1000; waited += 100) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            if (video.currentTime !== at) return true;
+          }
+          return false;
         },
         keys: () => [...state.keys()],
         settled: () =>
