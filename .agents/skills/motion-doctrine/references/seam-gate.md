@@ -64,7 +64,10 @@ Lives at the project root. One row per seam; this is the vector ledger as data.
 }
 ```
 
-- `cut` — seconds on the master clock, the frame the incoming side ignites.
+- `cut` — seconds on the master clock, the frame the incoming side ignites. Keep it on
+  the frame grid (a multiple of 1/fps, with the ledger `fps` matching the composition):
+  the player floors every seek to a frame, so an off-grid cut is measured around the
+  nearest frame and reported as `cut-grid`.
 - `type` — `"cut"` (default; full vector checks), `"match-cut"` / `"morph"`
   (carrier-continuity + overlap only; motion may start AT the boundary).
 - `axis` — `"x"`, `"y"`, or `"z"` (z = scale). `dir` — sign of motion:
@@ -88,9 +91,17 @@ Lives at the project root. One row per seam; this is the vector ledger as data.
 | `zero-overlap`                       | rule 6 — one side visible per frame, never both                |
 | `z-sign-scan`                        | rule 7 — incoming scene's own entrances don't fight the Z sign |
 | `carrier-*`                          | rules 3/4 — carrier rect continuity, ancestor scale included   |
+| `cut-grid` (WARN)                    | `cut` sits between frames; checks ran around the nearest frame |
 
 Velocities are measured on `getBoundingClientRect` (center for x/y, width-ratio for z),
 so ancestor wrapper transforms are automatically included.
+
+`speed-match` compares **average** velocities over whole frames, not the instantaneous
+velocity at the cut: exit from cut−0.1s to cut−1f, entry from cut+1f to cut+0.1s. The two
+windows mirror each other, so a mirrored ease pair (same ease family, distance and
+duration) reads ≈1.0. The stamped defaults (x/y `power3.in` 12% · 0.34s →
+`power4.out` 10% · 0.42s; z 0.21s → `expo.out` 0.5s) read ≈0.8 on x/y and ≈1.1 on z.
+Lengthening an entry lowers its ratio.
 
 `__player.seek()` resolves asynchronously, so the gate awaits each seek before it reads. If every
 seam fails the same way (`exit-visible op 0.00`, `exit-moving 0 px/s`) and `probe` finds no movers,
