@@ -430,6 +430,20 @@ describe("an agent step that began while a file's first copy was pending", () =>
       expect(read("parts/p1.js")).toBe("// agent\n");
     });
 
+  it("keeps every pending file on the list through a crash during the reopen's rewrite of it", async () => {
+    const { dir, file, historyRoot, opts } = project();
+    writeFileSync(file("parts/p2.js"), "// before 2\n");
+    const stuck = [file("parts/p1.js"), file("parts/p2.js")].join(",");
+    await stepThenDie(dir, historyRoot, stuck, "close");
+    await stepThenDie(dir, historyRoot, stuck, "reopen-list");
+    const list = JSON.parse(readFileSync(join(homeIn(historyRoot), "went-ahead.json"), "utf8"));
+    expect([...list.pending].sort()).toEqual(["parts/p1.js", "parts/p2.js"]);
+    const history = await open(opts);
+    await landed(historyRoot);
+    for (const path of ["parts/p1.js", "parts/p2.js"])
+      expect(history.peek(START)![path]).not.toBe(sha256("// agent\n"));
+  });
+
   it("refuses its whole undo when the step deleted the pending file", async () => {
     const { file, read, historyRoot, opts } = project();
     const release = stallRead(file("parts/p1.js"));
@@ -529,6 +543,30 @@ describe("an agent step that began while a file's first copy was pending", () =>
       }
       expect(read("parts/p1.js")).toBe(saved);
     });
+
+  it("keeps the original from a Studio save's receipt heard before the first read, filed after a step", async () => {
+    const { file, read, historyRoot, opts } = project();
+    const { release } = holdFiling(Buffer.from("// saved\n"));
+    const reading = stallRead(file("parts/p1.js"));
+    const history = await open(opts);
+    writeFileSync(file("parts/p1.js"), "// saved\n");
+    recordFileWriteReceipt(file("parts/p1.js"), {
+      path: "parts/p1.js",
+      version: fileContentVersion("// saved\n"),
+      writeToken: "studio",
+      overwrote: "// before\n",
+    });
+    const claimed = history.claim(you, "Edit", ["parts/p1.js"]);
+    reading();
+    await step(history, () => writeFileSync(file("index.html"), "<html>agent</html>"), [
+      file("index.html"),
+    ]);
+    await claimed;
+    release();
+    await landed(historyRoot);
+    expect(history.peek(START)!["parts/p1.js"]).toBe(sha256("// before\n"));
+    expect(read("parts/p1.js")).toBe("// saved\n");
+  });
 
   it("answers a Studio claim on the pending file within the deadline", async () => {
     const { file, opts } = project();

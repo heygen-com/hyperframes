@@ -235,7 +235,14 @@ interface WrittenAt {
 }
 
 type Copied =
-  | { hash: string; referenced?: true; release?: () => void; readAfterStep?: true }
+  | {
+      hash: string;
+      referenced?: true;
+      release?: () => void;
+      readAfterStep?: true;
+      /** Save receipts heard by the moment of the read: after hash to the hash it replaced. */
+      heardAtRead?: Map<string, string>;
+    }
   | "gone"
   | "changing";
 type Provenance = "no-step" | "read-before" | "unknown";
@@ -849,9 +856,11 @@ class Engine {
         this.startUnseen(path, this.log.baseline.get(path) ?? hashNoVersionHas());
         continue;
       }
-      this.markWentAhead([path]);
+      this.wentAhead.add(path);
       this.wentAheadBeforeReopen.add(path);
     }
+    // One write of the whole rebuilt list: a crash midway must not drop the files after the first.
+    this.nameAtStart([...this.wentAhead]);
     this.saveWentAhead();
   }
 
@@ -1007,7 +1016,7 @@ class Engine {
     }
     // Bytes gone from the store are read again on the next try, outside the history queue.
     if (!first.referenced && !this.blobs.has(first.hash)) return "changing";
-    const start = this.adoptedStart(file.path, first.hash, provenance);
+    const start = this.adoptedStart(file.path, first, provenance);
     if (provenance === "no-step") this.startSeen(file, sweptAt, start, first.hash);
     else this.startUnseen(file.path, start);
     return first;
@@ -1030,10 +1039,21 @@ class Engine {
     this.sweepIn(0);
   }
 
-  adoptedStart(path: string, hash: string, provenance: Provenance): string {
+  adoptedStart(
+    path: string,
+    { hash, heardAtRead }: { hash: string; heardAtRead?: Map<string, string> },
+    provenance: Provenance,
+  ): string {
+    if (provenance === "unknown") return hashNoVersionHas();
     // A save's receipt after a step went ahead may name the step's bytes as the ones it replaced.
-    if (provenance !== "no-step") return provenance === "unknown" ? hashNoVersionHas() : hash;
-    const found = this.overwrittenBy({ path, before: null, after: hash }, undefined, new Set());
+    const heard =
+      provenance === "read-before" ? (heardAtRead ?? new Map()) : this.overwritten.get(path);
+    const found = this.overwrittenBy(
+      { path, before: null, after: hash },
+      undefined,
+      new Set(),
+      heard,
+    );
     return found && this.blobs.has(found) ? found : hash;
   }
 
@@ -1164,16 +1184,20 @@ class Engine {
       const abs = join(this.dir, path);
       const { size } = await stat(abs);
       let readAfterStep: true | undefined;
-      const read = () => (readAfterStep = this.wentAhead.has(path) || undefined);
+      let heardAtRead: Map<string, string> | undefined;
+      const read = () => {
+        readAfterStep = this.wentAhead.has(path) || undefined;
+        heardAtRead = new Map(this.overwritten.get(path));
+      };
       if (isUncopied(path, size)) {
         const hash = await this.blobs.reference(abs);
         read();
-        return { hash, referenced: true, readAfterStep };
+        return { hash, referenced: true, readAfterStep, heardAtRead };
       }
       const hash = await this.blobs.put(abs, pin, read);
       if (hash === null) return "changing";
       const release = pin ? { release: () => this.blobs.unpin(hash) } : {};
-      return { hash, ...release, readAfterStep };
+      return { hash, ...release, readAfterStep, heardAtRead };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return "gone";
       throw error;
@@ -1325,13 +1349,18 @@ class Engine {
   }
 
   /** Walks the server's writes back from `change.after` to the stored bytes they replaced. */
-  overwrittenBy(change: HistoryFileChange, told: string | undefined, seen: Set<string>) {
+  overwrittenBy(
+    change: HistoryFileChange,
+    told: string | undefined,
+    seen: Set<string>,
+    heard = this.overwritten.get(change.path),
+  ) {
     let found: string | undefined;
     for (let hash = change.after; hash; ) {
       // A loop (X, Y, back to X) says nothing about what was there first: the client's word stands.
       if (seen.has(hash)) return undefined;
       seen.add(hash);
-      const replaced = this.overwritten.get(change.path)?.get(hash);
+      const replaced = heard?.get(hash);
       if (replaced === undefined) break;
       found = hash = replaced;
       if (hash === change.before || hash === told) return hash;
