@@ -270,11 +270,27 @@ describe("a received folder whose record names an existing review", () => {
     expect(mocks.run).not.toHaveBeenCalled();
   });
 
-  it("returns the existing link without asking when nothing would change", async () => {
+  it("returns the existing link without asking, held to the review it read", async () => {
+    mocks.status
+      .mockResolvedValueOnce(linked)
+      .mockResolvedValue({ ...linked, reviewId: "rev_other" });
     vi.spyOn(console, "log").mockImplementation(() => {});
     await runCommand(command, { rawArgs: ["--json"] });
+    expect(mocks.confirm).not.toHaveBeenCalled();
     expect(mocks.run).toHaveBeenCalledWith(
-      expect.not.objectContaining({ confirmedReview: expect.anything() }),
+      expect.objectContaining({ confirmedReview: "rev_theirs" }),
+    );
+  });
+
+  it("holds a first share to a new review when the record names none at the read", async () => {
+    mocks.status
+      .mockResolvedValueOnce({ ...linked, reviewId: null, share: null, ready: false, url: null })
+      .mockResolvedValue(linked);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, { rawArgs: ["--public", "--json"] });
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.run).toHaveBeenCalledWith(
+      expect.objectContaining({ audience: "public", confirmedReview: null }),
     );
   });
 

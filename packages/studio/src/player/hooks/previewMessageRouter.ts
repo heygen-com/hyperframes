@@ -86,53 +86,69 @@ function enrichDue(lastTimelineMessage: number, enriched: { at: number }): boole
   return true;
 }
 
-/** Asks the runtime for its clip manifest, one request at a time, while the store has no elements. */
+interface Recovery {
+  asking: boolean;
+  heard: WeakSet<HTMLIFrameElement>;
+}
+
+const timelineOwed = (iframe: HTMLIFrameElement | null, recovery: Recovery) =>
+  usePlayerStore.getState().elements.length === 0 ||
+  (iframe !== null && !recovery.heard.has(iframe));
+
+function takeManifest(
+  deps: PreviewMessageRouterDeps,
+  iframe: HTMLIFrameElement,
+  recovery: Recovery,
+  manifest: ClipManifestMessage,
+): void {
+  recovery.heard.add(iframe);
+  if (manifest.clips.length > 0) deps.processTimelineMessageRef.current(manifest);
+}
+
+/** Asks the runtime for its clip manifest, one request at a time, while the frame still owes it. */
 function recoverClipManifest(
   deps: PreviewMessageRouterDeps,
   iframe: HTMLIFrameElement,
-  recovery: { asking: boolean },
+  recovery: Recovery,
 ): void {
   if (recovery.asking) return;
   recovery.asking = true;
   previewClipManifest(iframe)
     .then((manifest) => {
       const stillWanted =
-        usePlayerStore.getState().elements.length === 0 &&
+        timelineOwed(iframe, recovery) &&
         deps.iframeRef.current === iframe &&
         !hasTimelinePerformanceFixtureLease();
-      if (manifest && manifest.clips.length > 0 && stillWanted)
-        deps.processTimelineMessageRef.current(manifest);
+      if (manifest && stillWanted) takeManifest(deps, iframe, recovery, manifest);
     })
     .catch(() => {})
     .finally(() => (recovery.asking = false));
 }
 
-function recoverEmptyTimeline(
+/** A reloaded frame posts its clip list while hidden, before it is the frame this router hears: read it once live. */
+function recoverTimeline(
   deps: PreviewMessageRouterDeps,
   iframe: HTMLIFrameElement | null,
-  recovery: { asking: boolean },
+  recovery: Recovery,
 ): void {
   if (iframe && previewFrameOpaque(iframe)) return recoverClipManifest(deps, iframe, recovery);
   const manifest = (iframe?.contentWindow as IframeWindow | null)?.__clipManifest;
-  if (manifest && manifest.clips.length > 0) {
-    deps.processTimelineMessageRef.current(manifest);
-  }
+  if (iframe && manifest) takeManifest(deps, iframe, recovery, manifest);
 }
 
 /**
- * A `state` tick doubles as a recovery hook: if the store still has no
- * elements, read the manifest straight off the iframe, and if no `timeline`
+ * A `state` tick doubles as a recovery hook: if the live frame still owes its
+ * clip list (timelineOwed), read its manifest, and if no `timeline`
  * message has arrived recently, re-run enrichment (at most every 500 ms: it queries the whole document).
  */
 function handleStateMessage(
   deps: PreviewMessageRouterDeps,
   iframe: HTMLIFrameElement | null,
   playingHoldsClipListPosts: boolean,
-  enriched: { at: number; asking: boolean },
+  enriched: Recovery & { at: number },
 ): void {
   try {
-    if (usePlayerStore.getState().elements.length === 0)
-      recoverEmptyTimeline(deps, iframe, enriched);
+    if (timelineOwed(iframe, enriched)) recoverTimeline(deps, iframe, enriched);
     if (!playingHoldsClipListPosts && enrichDue(deps.lastTimelineMessageRef.current, enriched)) {
       deps.enrichMissingCompositionsRef.current();
     }
@@ -148,8 +164,10 @@ function handleTimelineMessage(
   deps: PreviewMessageRouterDeps,
   iframe: HTMLIFrameElement | null,
   data: ClipManifestMessage,
+  recovery: Recovery,
 ): void {
   deps.lastTimelineMessageRef.current = Date.now();
+  if (iframe) recovery.heard.add(iframe);
   deps.processTimelineMessageRef.current(data);
   deps.enrichMissingCompositionsRef.current();
   if (usePlayerStore.getState().elements.length > 0) return;
@@ -188,7 +206,7 @@ function applyStoreReport(data: PreviewMessage): boolean {
 export function createPreviewMessageHandler(
   deps: PreviewMessageRouterDeps,
 ): (e: MessageEvent) => void {
-  const enriched = { at: 0, asking: false };
+  const enriched = { at: 0, asking: false, heard: new WeakSet<HTMLIFrameElement>() };
   return (e: MessageEvent) => {
     const iframe = deps.iframeRef.current;
     const data = acceptedPreviewMessage(e, iframe);
@@ -202,7 +220,7 @@ export function createPreviewMessageHandler(
       return;
     }
     if (data.type === "timeline" && Array.isArray(data.clips)) {
-      handleTimelineMessage(deps, iframe, data as unknown as ClipManifestMessage);
+      handleTimelineMessage(deps, iframe, data as unknown as ClipManifestMessage, enriched);
     }
   };
 }
