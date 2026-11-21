@@ -38,6 +38,7 @@ export interface PrepareAnimatedGifInputsOptions {
   cacheDir?: string;
   sourceAssets?: Map<string, string>;
   timeoutMs?: number;
+  signal?: AbortSignal;
   transcode?: (input: AnimatedGifTranscodeRequest) => Promise<void>;
   allowOutsideFiles?: boolean;
 }
@@ -47,6 +48,7 @@ export interface AnimatedGifTranscodeRequest {
   outputPath: string;
   args: string[];
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface PrepareAnimatedGifInputsResult {
@@ -258,10 +260,17 @@ export function buildAnimatedGifTranscodeArgs(input: {
   return args;
 }
 
+function abortError(): Error {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
+}
+
 async function runAnimatedGifTranscode(request: AnimatedGifTranscodeRequest): Promise<void> {
   const timeout = request.timeoutMs ?? 300_000;
-  const result = await runFfmpeg(request.args, { timeout });
+  const result = await runFfmpeg(request.args, { timeout, signal: request.signal });
   if (result.success) return;
+  if (request.signal?.aborted) throw abortError();
   if (result.failureReason === "external_interruption") {
     throw encoderFailureError("Animated GIF transcode failed", {
       error: `exit ${result.exitCode}: ${result.stderr.slice(-500)}`,
@@ -284,6 +293,7 @@ async function ensurePreparedWebm(input: {
   loopIterations: number;
   padSeconds: number;
   timeoutMs?: number;
+  signal?: AbortSignal;
   transcode?: (request: AnimatedGifTranscodeRequest) => Promise<void>;
 }): Promise<void> {
   if (!existsSync(dirname(input.cachePath))) {
@@ -308,6 +318,7 @@ async function ensurePreparedWebm(input: {
         outputPath: tmpPath,
         args,
         timeoutMs: input.timeoutMs,
+        signal: input.signal,
       });
       if (!isUsableFile(tmpPath)) {
         throw new Error("Animated GIF transcode produced an empty output");
@@ -428,6 +439,7 @@ export async function prepareAnimatedGifInputs(
       loopIterations,
       padSeconds,
       timeoutMs: options.timeoutMs,
+      signal: options.signal,
       transcode: options.transcode,
     });
 

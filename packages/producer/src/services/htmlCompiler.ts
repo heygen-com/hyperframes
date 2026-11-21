@@ -2794,6 +2794,7 @@ async function compileWithAssets(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: remoteImageAssets,
     timeoutMs: options.ffmpegProcessTimeout,
+    signal: options.abortSignal,
     allowOutsideFiles: assetRoot === undefined,
   });
   if (preparedHeifImages.length > 0) {
@@ -2811,6 +2812,7 @@ async function compileWithAssets(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: gifSourceAssets,
     timeoutMs: options.ffmpegProcessTimeout,
+    signal: options.abortSignal,
     allowOutsideFiles: assetRoot === undefined,
   });
   if (preparedGifs.length > 0) {

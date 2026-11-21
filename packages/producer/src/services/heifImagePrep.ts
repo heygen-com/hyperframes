@@ -63,6 +63,12 @@ export class HeifToolUnavailableError extends Error {
   }
 }
 
+function abortError(): Error {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
+}
+
 const TOOL_FAILURE_RE =
   /(?:ffmpeg|ffprobe) not found|ENOENT|Option not found|Unrecognized option|Unknown decoder|Decoder \S+ not found/i;
 
@@ -70,6 +76,7 @@ export interface HeifTranscodeRequest {
   inputPath: string;
   outputPath: string;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface PrepareHeifImageInputsOptions {
@@ -80,6 +87,7 @@ export interface PrepareHeifImageInputsOptions {
   cacheDir?: string;
   sourceAssets?: Map<string, string>;
   timeoutMs?: number;
+  signal?: AbortSignal;
   transcode?: (input: HeifTranscodeRequest) => Promise<void>;
   allowOutsideFiles?: boolean;
   /** Leaves an image whose conversion failed as authored and reports it, instead of throwing. */
@@ -209,9 +217,10 @@ export async function convertHeifToJpeg(request: HeifTranscodeRequest): Promise<
       "-y",
       request.outputPath,
     ],
-    { timeout: request.timeoutMs ?? DEFAULT_TIMEOUT_MS },
+    { timeout: request.timeoutMs ?? DEFAULT_TIMEOUT_MS, signal: request.signal },
   );
   if (!result.success) {
+    if (request.signal?.aborted) throw abortError();
     throw (
       result.error ?? new Error(`ffmpeg exited ${result.exitCode}: ${result.stderr.slice(-300)}`)
     );
@@ -278,6 +287,7 @@ async function ensurePreparedJpeg(
         inputPath,
         outputPath: tmpPath,
         timeoutMs: options.timeoutMs,
+        signal: options.signal,
       });
       if (!isUsableFile(tmpPath)) throw new Error("conversion produced an empty file");
       renameWithRetry(tmpPath, cachePath);
