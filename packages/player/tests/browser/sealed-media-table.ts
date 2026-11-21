@@ -399,7 +399,8 @@ async function installDriver(frame: Frame) {
           video.dataset.table = key;
           video.muted = true;
           video.loop = true;
-          video.preload = "auto";
+          // The runtime binds new media with preload auto and a load() of its own, at a time of its choosing.
+          video.preload = "metadata";
           video.addEventListener("playing", () => {
             const data = video.dataset;
             if (data.watch) {
@@ -436,9 +437,16 @@ async function installDriver(frame: Frame) {
         ) {
           const { video } = state.get(key)!;
           if (step.do === "play") {
-            video.playbackRate = step.rate!;
-            void video.play().catch(() => undefined);
-            return;
+            // After the runtime's binding load, which would otherwise cancel this play() in either film.
+            const since = performance.now();
+            return new Promise<void>((resolve) => {
+              const ready = () => video.preload === "auto" || performance.now() - since > 3000;
+              const check = () => (ready() ? resolve() : setTimeout(check, 10));
+              check();
+            }).then(() => {
+              video.playbackRate = step.rate!;
+              void video.play().catch(() => undefined);
+            });
           }
           if (step.do === "interrupt") {
             pending.set(video, { action: step.action!, src: step.src });
@@ -517,7 +525,7 @@ async function installDriver(frame: Frame) {
 
 type Table = {
   create: (key: string, sources: SourceAttrs[]) => void;
-  edit: (key: string, step: object) => void;
+  edit: (key: string, step: object) => unknown;
   settled: () => boolean;
   flush: () => boolean;
   keys: () => string[];
