@@ -13,12 +13,13 @@ import {
   scriptsRegistering,
   timelineKeys,
 } from "./gsapSoftReload";
-import { PREVIEW_REJECTED, previewAnswer, previewFrameOpaque } from "../player/lib/previewChannel";
+import { PREVIEW_REJECTED, PREVIEW_STALE, previewFrameOpaque } from "../player/lib/previewChannel";
 import { usePlayerStore } from "../player/store/playerStore";
 import { savedTiming } from "./authoredSource";
 import {
   SAVED_STATE_DEADLINE_MS,
   newestPreviewWrite,
+  sendPreviewWrite,
   takePreviewTicket,
   ticketNeedsRecovery,
   type PreviewTicket,
@@ -194,8 +195,12 @@ async function moveSealedLiveTweens(
     time: currentTime,
     timing: savedTiming(files.after),
   };
-  const answer = await previewAnswer(iframe, "live-retime", params, SAVED_STATE_DEADLINE_MS);
-  const result = sealedRetimeResult(answer === PREVIEW_REJECTED ? null : answer);
+  const answer = await sendPreviewWrite(ticket, "live-retime", params, SAVED_STATE_DEADLINE_MS);
+  // Stale: the frame shows a newer file, which recovers in place like a refusal.
+  const result =
+    answer === PREVIEW_STALE
+      ? "unchanged"
+      : sealedRetimeResult(answer === PREVIEW_REJECTED ? null : answer);
   if (result === "moved" || !ticketNeedsRecovery(ticket)) return true;
   return recoverRetime(iframe, ticket, result === "failed", files.after, reloadPreview);
 }

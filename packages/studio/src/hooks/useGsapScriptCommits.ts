@@ -322,7 +322,7 @@ function patchInstantly(
     attributes: false,
     timing: false,
   });
-  patchSealedPreview(iframe, patches, !options.deferPreviewSync, () => {
+  patchSealedPreview(ticket, patches, !options.deferPreviewSync, () => {
     if (ticketNeedsRecovery(ticket)) show(newestPreviewWrite(ticket));
   });
   return true;

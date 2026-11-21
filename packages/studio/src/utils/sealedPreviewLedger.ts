@@ -1,6 +1,10 @@
 // Which late answers from a sealed preview may still act: one record per preview load.
-import type { EditingPortClient } from "@hyperframes/core/runtime/editing-port";
-import { previewEditingClient } from "../player/lib/previewChannel";
+import type {
+  EditingParams,
+  EditingPortClient,
+  EditingRequestKind,
+} from "@hyperframes/core/runtime/editing-port";
+import { previewAnswer, previewEditingClient } from "../player/lib/previewChannel";
 import { studioFileRevision } from "./studioFileVersion";
 import { timelineKeys } from "@hyperframes/core/runtime/soft-reload";
 
@@ -24,6 +28,8 @@ export interface PreviewSend {
   attributes: boolean;
   /** Clip timing: covered only by a newer re-run that carried the saved timing too. */
   timing: boolean;
+  /** A script re-run: it owns its timelines from its send. */
+  rerun?: boolean;
   version?: number;
 }
 
@@ -46,6 +52,8 @@ interface Ledger {
   timedReruns: Map<string, Owner>;
   writes: Map<string, { seq: number; version: number; write: PreviewWrite }>;
   newestVersion: number;
+  /** The newest saved file version sent to this load. */
+  sentVersion: number;
 }
 
 const ledgers = new WeakMap<EditingPortClient, Ledger>();
@@ -61,6 +69,7 @@ function ledgerOf(load: EditingPortClient): Ledger {
         timedReruns: new Map(),
         writes: new Map(),
         newestVersion: 0,
+        sentVersion: 0,
       }),
     );
   return ledger;
@@ -100,8 +109,24 @@ export function confirmPreviewRerun(ticket: PreviewTicket): void {
   for (const owners of ticket.sent.timing ? [reruns, timedReruns] : [reruns])
     for (const key of ticket.keys) {
       const current = owners.get(key);
-      if (!current || current.seq < ticket.seq) owners.set(key, owner);
+      if (!current || newer(owner, current)) owners.set(key, owner);
     }
+}
+
+/** Every sealed write's one send: once the frame can take it, a write older than a file already sent there is not. */
+export function sendPreviewWrite<K extends EditingRequestKind>(
+  ticket: PreviewTicket,
+  kind: K,
+  params: EditingParams<K>,
+  timeoutMs?: number,
+) {
+  return previewAnswer(ticket.iframe, kind, params, timeoutMs, () => {
+    const ledger = ledgerOf(ticket.load);
+    if (ticket.version < ledger.sentVersion) return false;
+    ledger.sentVersion = ticket.version;
+    if (ticket.sent.rerun) confirmPreviewRerun(ticket);
+    return true;
+  });
 }
 
 /** An answer from a load that has since been replaced must not touch its replacement. */
@@ -118,7 +143,11 @@ function ticketCovered(ticket: PreviewTicket): boolean {
     ticket.keys.length > 0 &&
     ticket.keys.every((key) => {
       const owner = owners.get(key);
-      return owner !== undefined && owner.seq > ticket.seq && owner.version >= ticket.version;
+      if (!owner) return false;
+      return (
+        owner.version > ticket.version ||
+        (owner.seq > ticket.seq && owner.version >= ticket.version)
+      );
     })
   );
 }

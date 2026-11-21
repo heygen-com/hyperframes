@@ -1,9 +1,9 @@
 // Sends an undo's restore to a sealed preview; a restore the frame does not apply reloads it.
 import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
-import { previewRequest } from "../player/lib/previewChannel";
 import {
   SAVED_STATE_DEADLINE_MS,
   confirmPreviewRerun,
+  sendPreviewWrite,
   takePreviewTicket,
   ticketLoadLive,
   type PreviewWrite,
@@ -42,10 +42,11 @@ export function sendSealedRestore(
     version,
   });
   const params = { ...restore, time: currentTime };
-  void previewRequest(iframe, "restore-attributes", params, SAVED_STATE_DEADLINE_MS).then(
-    (reply) => {
+  void sendPreviewWrite(ticket, "restore-attributes", params, SAVED_STATE_DEADLINE_MS).then(
+    (answer) => {
       if (!ticketLoadLive(ticket)) return;
-      // Refused: its attributes are not on screen, and a newer re-run does not set them.
+      const reply = typeof answer === "object" ? answer : null;
+      // Refused or stale: its attributes are not on screen, and a newer re-run does not set them.
       if (!reply?.applied) return reloadPreview();
       if (reply.reran === true) confirmPreviewRerun(ticket);
       onShownInPlace?.();

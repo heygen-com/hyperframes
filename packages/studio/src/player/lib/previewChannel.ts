@@ -86,6 +86,7 @@ async function agentConnected(client: EditingPortClient): Promise<boolean> {
 }
 
 export const PREVIEW_REJECTED = Symbol("preview-rejected");
+export const PREVIEW_STALE = Symbol("preview-stale");
 
 /** previewRequest's reply, keeping an error answer (PREVIEW_REJECTED) apart from no reply (null: no port, timeout). */
 export async function previewAnswer<K extends EditingRequestKind>(
@@ -93,9 +94,11 @@ export async function previewAnswer<K extends EditingRequestKind>(
   kind: K,
   params: EditingParams<K>,
   timeoutMs?: number,
-): Promise<EditingResult<K> | typeof PREVIEW_REJECTED | null> {
+  admit?: () => boolean,
+): Promise<EditingResult<K> | typeof PREVIEW_REJECTED | typeof PREVIEW_STALE | null> {
   const client = previewEditingClient(iframe);
   if (!(await agentConnected(client))) return null;
+  if (admit && !admit()) return PREVIEW_STALE;
   return client.request(kind, params, { timeoutMs }).catch((err: unknown) => {
     const noReply =
       err instanceof EditingPortError && (err.code === "timeout" || err.code === "disposed");
@@ -110,7 +113,7 @@ export async function previewRequest<K extends EditingRequestKind>(
   timeoutMs?: number,
 ): Promise<EditingResult<K> | null> {
   const answer = await previewAnswer(iframe, kind, params, timeoutMs);
-  return answer === PREVIEW_REJECTED ? null : answer;
+  return answer === PREVIEW_REJECTED || answer === PREVIEW_STALE ? null : answer;
 }
 
 export async function previewSeekPainted(iframe: HTMLIFrameElement, timeoutMs?: number) {

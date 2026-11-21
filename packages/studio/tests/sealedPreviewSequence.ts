@@ -362,7 +362,13 @@ export async function playSequence<Saved, Save extends string>(
       const olderRevision = await fixture.mark(studioPage);
       const newerRevision = await fixture.mark(studioPage);
       await sendSave(studioPage, fixture, newer, "frame", [middle, after], newerRevision);
+      const reloads = () =>
+        studioPage.evaluate(() => (window as unknown as { __reloads: number }).__reloads);
+      const before = await reloads();
       await sendSave(studioPage, fixture, older, "frame", [saved, middle], olderRevision);
+      // Studio does not send the older write over the newer file; a reload there is that refusal.
+      if ((await reloads()) > before)
+        await studioPage.evaluate(() => (window as unknown as { __refusals: number }).__refusals++);
       saved = after;
     } else if ("pastDeadline" in step) {
       await passDeadlines(studioPage, false);

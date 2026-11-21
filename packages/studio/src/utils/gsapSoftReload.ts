@@ -16,10 +16,10 @@ import {
 import { authoredStyles, findAuthoredElement, savedTiming } from "./authoredSource";
 import { fileDocs, standaloneSets } from "./softReloadTargets";
 import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
-import { PREVIEW_REJECTED, previewAnswer, previewFrameOpaque } from "../player/lib/previewChannel";
+import { PREVIEW_REJECTED, PREVIEW_STALE, previewFrameOpaque } from "../player/lib/previewChannel";
 import {
   SAVED_STATE_DEADLINE_MS,
-  confirmPreviewRerun,
+  sendPreviewWrite,
   takePreviewTicket,
   ticketNeedsRecovery,
 } from "./sealedPreviewLedger";
@@ -225,15 +225,17 @@ function softReloadSealed(
     snapshot: { scriptText, authoredHtml, previousHtml, nestedFiles, timingEdit, version },
     attributes: restore.length > 0,
     timing: timingEdit === true,
+    rerun: true,
   });
-  confirmPreviewRerun(ticket);
   const savedState = ticket.sent.attributes || ticket.sent.timing;
   const deadline = savedState ? SAVED_STATE_DEADLINE_MS : undefined;
   const params = { ...rerun, time: currentTimeOverride, restore };
-  void previewAnswer(iframe, "soft-reload", params, deadline).then((answer) => {
-    // No answer, a refusal and a rejection all leave the change unproven on screen.
+  void sendPreviewWrite(ticket, "soft-reload", params, deadline).then((answer) => {
+    // No answer, a refusal, a rejection and a stale write all leave the change unproven on screen.
     const result =
-      answer === PREVIEW_REJECTED ? "cannot-soft-reload" : sealedSoftReloadResult(answer);
+      answer === PREVIEW_REJECTED || answer === PREVIEW_STALE
+        ? "cannot-soft-reload"
+        : sealedSoftReloadResult(answer);
     if (!ticketNeedsRecovery(ticket)) return;
     if (result === "cannot-soft-reload") onAsyncFailure?.();
     else if (result !== "superseded") onShownInPlace?.();
