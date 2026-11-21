@@ -324,6 +324,23 @@ describe("warnInactiveGradingCells", () => {
   });
 });
 
+describe("warnInactiveGradingCells output", () => {
+  // fails without the fix: the label is printed as the grades file had it.
+  it("shows control characters in a label as text", () => {
+    const esc = String.fromCharCode(27);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      warnInactiveGradingCells([{ label: `od${esc}[2Jd\x07`, grading: { lut: 12345 } }]);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Warning: grading for "od\\x1b[2Jd\\x07" is inactive/no-op'),
+      );
+      expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining("\x07"));
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+});
+
 describe("capCandidateCells", () => {
   it("truncates over-cap candidates and exposes truncation metadata for JSON output", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});

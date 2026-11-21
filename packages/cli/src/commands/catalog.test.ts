@@ -329,6 +329,43 @@ describe("catalog on a terminal", () => {
   });
 });
 
+describe("catalog lines that repeat outside text", () => {
+  const ODD = `od${String.fromCharCode(27)}[2Jd\x07`;
+  const SHOWN = "od\\x1b[2Jd\\x07";
+
+  // fails without the fix: an item's name is printed as the registry sent it.
+  it("shows control characters in an item name as text", async () => {
+    state.registry = [block(`count-${ODD}`)];
+
+    const output = await runCatalog({});
+
+    expect(output).toContain(`count-${SHOWN}`);
+    expect(output).not.toContain("\x07");
+  });
+
+  // fails without the fix: the query is repeated as it was typed.
+  it("shows control characters in a query that matched nothing as text", async () => {
+    state.ranking = [];
+    state.modelStatus = "declined";
+
+    const { err } = await runForExit({ query: `quantum ${ODD}` });
+
+    expect(err).toContain(`No items match query "quantum ${SHOWN}".`);
+    expect(err).not.toContain("\x07");
+  });
+
+  // fails without the fix: the query is repeated as it was typed.
+  it("shows control characters in a query with no searchable words as text", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const { err } = await runForExit({ query: "実写\x07写真" });
+
+    expect(err).toContain('No searchable words in query "実写\\x07写真".');
+    expect(err).not.toContain("\x07");
+  });
+});
+
 describe("catalog --json meaning search", () => {
   it("reports the registry moves meaning search cannot see", async () => {
     // Published after the user's artifact was fetched: in the registry, absent
@@ -683,6 +720,25 @@ describe("catalog meaning search, on a terminal", () => {
     expect(output).toContain("None of these do it?");
     expect(output).toContain("--tier words");
   });
+
+  // fails without the fix: the command was printed with the query rewritten, so pasting it reported other text.
+  it.each([
+    ["some results", "count\nup"],
+    ["no result", "zzqx\nyyqx"],
+  ])(
+    "explains the gap report in words when the query cannot be shown as typed: %s",
+    async (_n, query) => {
+      state.modelStatus = "declined";
+      state.ranking = null;
+
+      const output = await runCatalog({ query });
+
+      expect(output).toContain(
+        "Run hyperframes feedback with your query as --search-miss, the move you needed as --wanted, and --tier words.",
+      );
+      expect(output).not.toContain('--search-miss "');
+    },
+  );
 
   it("offers the gap report on the on-device tier too", async () => {
     const output = await runCatalog({ query: "make a number count up" });

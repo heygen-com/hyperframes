@@ -11,13 +11,20 @@ export const examples: Example[] = [
 ];
 
 import * as clack from "../ui/prompts.js";
-import { realpath, terminalText, type ItemType, type RegistryItem } from "@hyperframes/core";
+import {
+  realpath,
+  terminalLines,
+  terminalText,
+  type ItemType,
+  type RegistryItem,
+} from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { loadAllItems } from "../registry/resolver.js";
 import { readRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { relative, resolve } from "node:path";
 import { CliUsageError, finishCommand } from "../utils/commandResult.js";
+import { printFailureLine } from "../utils/jsonError.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
 import { runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
@@ -66,7 +73,7 @@ async function prepareOnDeviceTier(opts: {
   const warnings: string[] = [];
   const warn = (message: string): void => {
     warnings.push(message);
-    console.error(message);
+    console.error(terminalLines(message));
   };
 
   const status = opts.status;
@@ -233,7 +240,7 @@ export default defineCommand({
     // Asked for the whole manifest on purpose: its item list defines coverage,
     // and its artifact revision is the one owner of vector freshness.
     const manifest = await readRegistryManifest(config.registry).catch((error: unknown) => {
-      console.error(terminalText(error instanceof Error ? error.message : String(error)));
+      printFailureLine((show) => show(error instanceof Error ? error.message : String(error)));
       return finishCommand(1);
     });
     const entries = manifest.items;
@@ -313,7 +320,7 @@ export default defineCommand({
           : null;
       if (tierHint) {
         warnings.push(tierHint);
-        console.error(tierHint);
+        console.error(terminalLines(tierHint));
       }
       // An empty result is exactly when the tier matters most: nothing found on
       // the weakest tier means something different from nothing found on the
@@ -353,7 +360,9 @@ export default defineCommand({
           args.tag ? `tag "${args.tag}"` : null,
         ].filter(Boolean);
         if (unsearchable) {
-          console.error(c.error(`No searchable words in query "${query}".`));
+          printFailureLine((show) =>
+            c.error(`No searchable words in query "${show(String(query))}".`),
+          );
           console.error("");
           console.error(
             c.warn(
@@ -364,13 +373,13 @@ export default defineCommand({
             ),
           );
         } else {
-          console.log(`No items match ${criteria.join(" and ")}.`);
+          console.log(`No items match ${terminalText(criteria.join(" and "))}.`);
           // Zero results is the unambiguous case: no tier judgement to make and
           // nothing to install, so name the gap channel outright.
           if (query) {
             console.log("");
             console.log(c.dim("  Nothing in the catalog does this? Report the gap:"));
-            console.log(c.dim(`  ${searchMissCommand(query, tierToken(searched))}`));
+            console.log(c.dim(`  ${searchMissHint(query, tierToken(searched))}`));
           }
         }
       }
@@ -449,7 +458,7 @@ export default defineCommand({
         // reads as the tool arguing with itself.
         if (warnings.length === 0) {
           const hint = localModelHint(json, effectiveStatus);
-          if (hint) console.error(hint);
+          if (hint) console.error(terminalLines(hint));
           await offerLocalModel(matching.length, json, config.registry, artifactRevision);
         }
       }
@@ -462,9 +471,7 @@ export default defineCommand({
         // in. Every catalog gap reported to date came from the word tier. The
         // tier rides along in the command so a vocabulary miss stays
         // distinguishable from a meaning miss when the reports are read.
-        console.log(
-          c.dim(`  None of these do it? ${searchMissCommand(query, tierToken(searched))}`),
-        );
+        console.log(c.dim(`  None of these do it? ${searchMissHint(query, tierToken(searched))}`));
       }
     }
 
@@ -495,7 +502,9 @@ export default defineCommand({
         console.warn(c.warn(`Warning: ${terminalText(warning)}`));
       }
       console.log("");
-      console.log(`${c.success("✓")} Installed ${c.accent(result.name)} (${result.type})`);
+      console.log(
+        `${c.success("✓")} Installed ${c.accent(terminalText(result.name))} (${terminalText(result.type)})`,
+      );
       const root = realpath(dir);
       for (const file of result.written) {
         console.log(`  ${c.dim(terminalText(relative(root, file)))}`);
@@ -519,7 +528,7 @@ export default defineCommand({
       const type = item.type.replace("hyperframes:", "");
       const tags = item.tags?.length ? c.dim(` [${terminalText(item.tags.join(", "))}]`) : "";
       console.log(
-        `${c.cyan(item.name.padEnd(NAME_COL))}${type.padEnd(TYPE_COL)}${terminalText(item.description)}${tags}`,
+        `${c.cyan(terminalText(item.name).padEnd(NAME_COL))}${terminalText(type).padEnd(TYPE_COL)}${terminalText(item.description)}${tags}`,
       );
     }
 
@@ -657,7 +666,7 @@ async function applySearch<
       // not run is indistinguishable from one that ran badly.
       const warning = `on-device search did not run: ${error instanceof Error ? error.message : "unknown error"}`;
       warnings.push(warning);
-      console.error(warning);
+      console.error(terminalLines(warning));
     }
   }
 
@@ -712,6 +721,12 @@ export function searchMissCommand(query: string, tier: "on-device" | "words"): s
     `npx hyperframes feedback --search-miss "${quoted}" ` +
     `--wanted "<the move you needed>" --tier ${tier}`
   );
+}
+
+function searchMissHint(query: string, tier: "on-device" | "words"): string {
+  const command = searchMissCommand(query, tier);
+  if (terminalText(command) === command) return command;
+  return `Run hyperframes feedback with your query as --search-miss, the move you needed as --wanted, and --tier ${tier}.`;
 }
 
 type LocalMode = "local-model" | "words";
