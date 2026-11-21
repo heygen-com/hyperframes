@@ -583,6 +583,33 @@ describe("core runtime browser contract", () => {
     30_000,
   );
 
+  it.each([
+    ["a render", ""],
+    ["a preview", PREVIEW_HEAD],
+  ])(
+    "keeps a later scene's id-selected visibility:visible !important layer hidden until it starts in %s",
+    async (_, head) => {
+      // A sub-composition's `#ground { visibility: visible !important }`, as rescoped under its root,
+      // outweighs any attribute-only selector and once painted over every earlier scene.
+      const filmPage = await openFilm(
+        `<style>[data-composition-id="late"] #ground { background: rgb(255, 0, 0); visibility: visible !important; }</style>
+       <div data-composition-id="late" class="clip" data-start="2" data-duration="1" style="position:absolute;inset:0">
+         <div id="ground" style="position:absolute;inset:0"></div>
+       </div>`,
+        head,
+      );
+      try {
+        await filmPage.evaluate(() => window.__player!.renderSeek!(1));
+        expect(await redPixels(filmPage)).toBe(0);
+        await filmPage.evaluate(() => window.__player!.renderSeek!(2.5));
+        expect(await redPixels(filmPage)).toBe(320 * 180);
+      } finally {
+        await filmPage.close();
+      }
+    },
+    30_000,
+  );
+
   it("keeps a root with no data-duration on screen after its GSAP timeline ends", async () => {
     const filmPage = await browser.newPage();
     try {
