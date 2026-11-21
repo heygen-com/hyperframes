@@ -1,4 +1,7 @@
 // @vitest-environment node
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { catchHeldRename, renameWithRetry, renameWithRetryAsync } from "./renameWithRetry.js";
 
@@ -39,6 +42,24 @@ describe("renameWithRetry", () => {
       /ENOENT/,
     );
     expect(missing.calls()).toBe(1);
+  });
+
+  it("gives up at once on win32 when the target is a folder that already exists, which no wait clears", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "hf-rename-onto-folder-"));
+    try {
+      const rename = failing("EPERM", 99);
+      expect(() => renameWithRetry("a", folder, { platform: "win32", rename: rename.fn })).toThrow(
+        /EPERM/,
+      );
+      expect(rename.calls()).toBe(1);
+      const later = failing("EPERM", 99);
+      await expect(
+        renameWithRetryAsync("a", folder, { platform: "win32", rename: async () => later.fn() }),
+      ).rejects.toThrow(/EPERM/);
+      expect(later.calls()).toBe(1);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
   });
 
   it("async twin retries EPERM on win32", async () => {
