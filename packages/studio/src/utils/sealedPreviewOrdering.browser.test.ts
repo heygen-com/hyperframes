@@ -307,7 +307,7 @@ const SEEDS: Array<[string, Step[]]> = [
     ],
   ],
   [
-    "a refused patch, then a refused retime, then the patch's refusal",
+    "a patch refusal held while a retime to data-start 1 saves, then the patch recovers",
     [
       { save: "patch", refused: true },
       { save: "retime", refused: true },

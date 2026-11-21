@@ -72,9 +72,13 @@ function holdReplies() {
       return post.call(this, data, ...rest);
     w.__swallowed.push({
       kind: request.kind!,
+      // Arrives now, at the step that answers it, never back in the held queue.
       answer: (result) => {
         const data = { v: request.v, id: request.id, ok: true, result };
+        const hold = w.__hold;
+        w.__hold = false;
         own.get!.call(this)?.call(this, new MessageEvent("message", { data }));
+        w.__hold = hold;
       },
     });
   };
