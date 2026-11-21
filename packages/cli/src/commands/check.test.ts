@@ -2990,9 +2990,7 @@ describe("check pipeline", () => {
       expect(aborted.aborted).toBe(false);
       await vi.advanceTimersByTimeAsync(110_000);
       const report = await pending;
-      const failure = report.runtime.findings.find(
-        (finding) => finding.code === "check_runtime_failure",
-      );
+      const failure = report.runtime.findings.find((finding) => finding.code === "check_deadline");
       expect(failure?.message).toContain("no progress for 410 s");
     } finally {
       vi.useRealTimers();
