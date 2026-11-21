@@ -27,9 +27,9 @@ interface Saved {
   gen: number;
   x: number;
   start: number;
-  title: string;
+  label: string;
 }
-const FIRST: Saved = { gen: 0, x: 10, start: 0, title: "a" };
+const FIRST: Saved = { gen: 0, x: 10, start: 0, label: "a" };
 
 const script = (s: Saved) => `(function () {
     window.__timelines = window.__timelines || {};
@@ -42,7 +42,7 @@ const script = (s: Saved) => `(function () {
 const root = (s: Saved) =>
   `<div id="root" data-composition-id="main" data-start="0" data-duration="4" data-width="1920" data-height="1080">` +
   `<div id="target" data-hf-id="target" class="clip box" data-start="${s.start}" data-duration="4" data-track-index="1" style="left: 100px; top: 100px"></div>` +
-  `<div id="c" data-hf-id="c" class="clip box" data-start="0" data-duration="4" data-track-index="2" title="${s.title}" style="left: 0px; top: 500px"></div>` +
+  `<div id="c" data-hf-id="c" class="clip box" data-start="0" data-duration="4" data-track-index="2" data-label="${s.label}" style="left: 0px; top: 500px"></div>` +
   `</div>`;
 /** The saved file as Studio reads it. */
 const file = (s: Saved) => `<html><body>${root(s)}<script>${script(s)}</script></body></html>`;
@@ -63,8 +63,8 @@ const next: Record<Save, (s: Saved, n: number) => Saved> = {
   run: (s) => ({ ...s, gen: s.gen + 1 }),
   patch: (s, n) => ({ ...s, x: 20 + n }),
   retime: (s) => ({ ...s, start: 1 - s.start }),
-  undoAttr: (s) => ({ ...s, title: s.title === "a" ? "b" : "a" }),
-  undoBoth: (s) => ({ ...s, gen: s.gen + 1, title: s.title === "a" ? "b" : "a" }),
+  undoAttr: (s) => ({ ...s, label: s.label === "a" ? "b" : "a" }),
+  undoBoth: (s) => ({ ...s, gen: s.gen + 1, label: s.label === "a" ? "b" : "a" }),
 };
 
 /** The refusal a frame that never took the request would send, by request kind. */
@@ -203,7 +203,7 @@ async function drain(studioPage: Page, frame: Frame, random: () => number) {
   }
 }
 
-/** What a viewer sees at 2 s: the script that ran, the clip timing, the title, and the tween's values. */
+/** What a viewer sees at 2 s: the script that ran, the clip timing, the label, and the tween's values. */
 async function seen(frame: Frame, studioPage: Page, iframeIndex: number) {
   await studioPage.evaluate((i) => {
     document
@@ -227,7 +227,7 @@ async function seen(frame: Frame, studioPage: Page, iframeIndex: number) {
     return {
       ran: (window as unknown as { __ran: { main: string } }).__ran.main,
       start: target.getAttribute("data-start"),
-      title: document.getElementById("c")!.getAttribute("title"),
+      label: document.getElementById("c")!.getAttribute("data-label"),
       x: Math.round(m.m41),
       y: Math.round(m.m42),
     };
@@ -257,7 +257,16 @@ async function play(steps: Step[], seed = 1) {
         const kinds = ["soft-reload", "patch-tweens", "restore-attributes"];
         (window as unknown as { __swallow: Set<string> }).__swallow = new Set(refused ? kinds : []);
       }, step.refused);
+      const posted = () =>
+        studioPage.evaluate(() => (window as unknown as { __posted: number }).__posted);
+      const before = await posted();
       await send(studioPage, step.save, saved, after);
+      // Studio posts the request a tick later; its fate holds until it has gone out.
+      await studioPage.waitForFunction(
+        (n) => (window as unknown as { __posted: number }).__posted > n,
+        {},
+        before,
+      );
       await studioPage.evaluate(() => {
         (window as unknown as { __swallow: Set<string> }).__swallow = new Set();
       });
@@ -291,7 +300,7 @@ async function play(steps: Step[], seed = 1) {
 // The three sequences a reviewer probed by hand, as written in the review; each is red without the fix.
 const SEEDS: Array<[string, Step[]]> = [
   [
-    "a refused undo of a script and a title, then a newer script-only run",
+    "a refused undo of a script and a label, then a newer script-only run",
     [
       { save: "undoBoth", refused: true },
       { save: "run", refused: false },

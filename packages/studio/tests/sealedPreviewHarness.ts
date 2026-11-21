@@ -49,11 +49,13 @@ export function holdReplies() {
     __held: Array<(result?: unknown) => void>;
     __swallow: Set<string>;
     __swallowed: Array<{ kind: string; answer: (result: unknown) => void }>;
+    __posted: number;
   };
   w.__hold = false;
   w.__held = [];
   w.__swallow = new Set();
   w.__swallowed = [];
+  w.__posted = 0;
   const own = Object.getOwnPropertyDescriptor(MessagePort.prototype, "onmessage")!;
   // A request of a swallowed kind never reaches the frame; the test answers it as the frame would.
   const post = MessagePort.prototype.postMessage;
@@ -63,6 +65,7 @@ export function holdReplies() {
     ...rest: never[]
   ) {
     const request = data as { v?: unknown; id?: unknown; kind?: string } | null;
+    if (typeof request?.id === "number") w.__posted++;
     if (typeof request?.id !== "number" || !w.__swallow.has(request.kind ?? ""))
       return post.call(this, data, ...rest);
     w.__swallowed.push({
