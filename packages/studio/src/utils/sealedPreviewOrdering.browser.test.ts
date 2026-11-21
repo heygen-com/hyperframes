@@ -75,12 +75,11 @@ const next: Record<Save, (s: Saved, n: number) => Saved> = {
 /** Sends `save` the way Studio does after writing the file from `before` to `after`. */
 function send(studioPage: Page, save: Save, before: Saved, after: Saved) {
   return studioPage.evaluate(
-    (kind, prev, saved, savedPage, x) => {
+    (kind, prev, saved, savedPage, x, text) => {
       const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
       const w = window as unknown as { __saved: string; __reload: () => void };
       w.__saved = savedPage;
       const iframe = document.querySelector("iframe")!;
-      const text = saved.match(/<script>([\s\S]*)<\/script>/)![1]!;
       const rerun = { currentTimeOverride: 2, authoredHtml: saved, previousHtml: prev };
       if (kind === "run")
         studio.applySoftReload(iframe, text, { ...rerun, onAsyncFailure: w.__reload });
@@ -113,6 +112,7 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved) {
     file(after),
     page(after),
     after.x,
+    script(after),
   );
 }
 
