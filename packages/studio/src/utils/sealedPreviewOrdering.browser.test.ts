@@ -256,9 +256,14 @@ describe("sealed preview after late answers in any order", () => {
     });
   };
   const base = Number(process.env.HF_ORDERING_SEED_BASE ?? 0);
-  it.each(
-    Array.from({ length: Number(process.env.HF_ORDERING_SEEDS ?? 40) }, (_, i) => base + i + 1),
-  )("generated sequence %i", async (seed) => {
+  // Seeds that found a class without the fix, run every time: 50 a recovery dropping saved timing; 80 and 261
+  // a recovery rewinding a newer scrub; 312, 147 and 377 a port rejection taken for a missing reply.
+  const PINNED = [50, 80, 261, 312, 147, 377];
+  const random = Array.from(
+    { length: Number(process.env.HF_ORDERING_SEEDS ?? 40) },
+    (_, i) => base + i + 1,
+  ).filter((seed) => !PINNED.includes(seed));
+  it.each([...PINNED, ...random])("generated sequence %i", async (seed) => {
     const steps = generated(seed);
     const { shown, fresh, reloads, reloadRefusals, playhead } = await play(steps, seed);
     expect({ steps, state: shown }).toEqual({ steps, state: fresh });
