@@ -1,0 +1,22 @@
+{
+  "skills": [
+    {
+      "name": "hyperframes",
+      "description": "Tạo video Kinetic Typography chuyển động chữ nghệ thuật dài 8 giây dựa trên đoạn văn bản nhập vào.",
+      "command": "bun run skills/render.js --text \"{{prompt}}\" --output shared-data/hyperframes-layer.mp4",
+      "output_path": "shared-data/hyperframes-layer.mp4"
+    },
+    {
+      "name": "remotion",
+      "description": "Kết xuất video đồ họa chuyển động bằng Remotion dựa trên kịch bản.",
+      "command": "cd .agents/remotion-app && bun install --frozen-lockfile && bun run build --text \"{{prompt}}\" --output ../../shared-data/remotion-layer.mp4",
+      "output_path": "shared-data/remotion-layer.mp4"
+    },
+    {
+      "name": "combine-video",
+      "description": "Kết hợp video chữ của HyperFrames làm lớp nền/lớp phủ bên trong khung đồ họa của Remotion.",
+      "command": "cd .agents/remotion-app && bun install --frozen-lockfile && bun run build --bg-video ../../shared-data/hyperframes-layer.mp4 --output ../../shared-data/final-combined-video.mp4",
+      "output_path": "shared-data/final-combined-video.mp4"
+    }
+  ]
+}

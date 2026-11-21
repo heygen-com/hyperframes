@@ -201,3 +201,6 @@ chrome/
 # Python bytecode from running skill scripts
 __pycache__/
 *.pyc
+
+# Tracked lightweight companion app
+!.agents/remotion-app/
