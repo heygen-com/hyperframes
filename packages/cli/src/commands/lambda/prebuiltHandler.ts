@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { downloadFile } from "../../utils/download.js";
+import { terminalLines } from "@hyperframes/core";
 import { isMissingPackageError } from "../../utils/missingPackage.js";
 import { VERSION } from "../../version.js";
 import {
@@ -39,7 +40,7 @@ export const defaultDeps: StageDeps = {
   loadAdapter: () => import("@hyperframes/aws-lambda/sdk"),
   download: downloadFile,
   cacheDir: HANDLER_CACHE_DIR,
-  log: (line) => console.log(line),
+  log: (line) => console.log(terminalLines(line)),
 };
 
 /** The one message for "no checkout and no pinned handler": everything the user needs to fix it. */
