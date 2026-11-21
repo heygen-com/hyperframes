@@ -120,10 +120,31 @@ function keptMarkup(outcome: { html: string | null; previous: string | null }) {
 
 const PREVIEW_DID_NOT_ANSWER = "the preview did not answer";
 
-function frameGone(open: InlineTextEditSession, onLost?: (reason: string) => void) {
+function frameGone(open: InlineTextEditSession, keep: boolean, onLost?: (reason: string) => void) {
   const { sealed, original } = open;
   if (sealed && original) void editPreviewElement(sealed.iframe, sealed.handle, { html: original });
-  onLost?.(PREVIEW_DID_NOT_ANSWER);
+  if (keep) onLost?.(PREVIEW_DID_NOT_ANSWER);
+}
+
+function takeDraft(open: InlineTextEditSession): string {
+  const html = open.element.innerHTML;
+  // A removed element's save is refused; it must not come back showing the draft.
+  if (!open.element.isConnected) open.element.innerHTML = open.original;
+  return html;
+}
+
+function settleWhileOpen(
+  session: InlineTextEditSession | null,
+  openRef: { current: InlineTextEditSession | null },
+  save: { current: () => unknown },
+) {
+  if (!session) return undefined;
+  const settle = () => openRef.current === session && save.current();
+  const stop = settleOnDrain(settle);
+  return () => {
+    stop();
+    void settle();
+  };
 }
 
 function endWithOriginal(sealed: NonNullable<InlineTextEditSession["sealed"]>): void {
@@ -161,13 +182,12 @@ export function useInlineTextEdit({
     setSession(null);
     if (open.sealed) return open;
     endStudioManualEditGesture(open.element, open.gesture);
-    // An element removed from the document mid-session is not an error, it is
-    // just nothing left to clean up.
+    // Cleaned even when removed mid-session: a parked scene's element comes back.
+    open.element.removeAttribute("contenteditable");
+    // Restored rather than cleared: the composition may have authored one.
+    open.element.style.outline = open.outline;
+    open.element.style.outlineOffset = open.outlineOffset;
     if (open.element.isConnected) {
-      open.element.removeAttribute("contenteditable");
-      // Restored rather than cleared: the composition may have authored one.
-      open.element.style.outline = open.outline;
-      open.element.style.outlineOffset = open.outlineOffset;
       // Drop the highlight too. Removing contenteditable and blurring leaves a
       // selection made inside the element painted on screen, so a word picked
       // with a double press stayed grey after the click that closed the edit.
@@ -246,8 +266,7 @@ export function useInlineTextEdit({
       const ended = previewTextEdit(sealed.iframe, params).then((reply) => {
         stopListening();
         const outcome = reply?.applied ? reply : endedFirst;
-        if (!outcome && reply === null) return frameGone(open, keep ? onLost : undefined);
-        if (!outcome) return;
+        if (!outcome) return reply === null && frameGone(open, keep, onLost);
         const kept = keptMarkup(outcome);
         if (!kept) return;
         if (keep) return onCommit({ element: open.element, ...kept });
@@ -271,7 +290,7 @@ export function useInlineTextEdit({
     // Sanitised here, in the element, so the preview shows exactly what will be
     // saved rather than something the server will quietly cut down.
     sanitizeRichTextChildren(open.element);
-    const html = open.element.innerHTML;
+    const html = takeDraft(open);
     // Counted and pending before the edit closes, so a reload waits for the save, not the mark.
     let settle: (saving: unknown) => void = () => {};
     const saving = trackStudioPendingEdit(new Promise((resolve) => (settle = resolve)));
@@ -293,7 +312,7 @@ export function useInlineTextEdit({
       teardown();
       return void endSealed(open, false);
     }
-    if (open.element.isConnected) open.element.innerHTML = open.original;
+    open.element.innerHTML = open.original;
     teardown();
   }, [teardown, endSealed]);
 
@@ -357,16 +376,11 @@ export function useInlineTextEdit({
     };
   }, [session, commit]);
 
-  // Unmount keeps the typed words, as blur does. Read through a ref so a new
-  // onCommit never closes the session mid-edit.
+  // A drain or an unmount keeps the typed words, as blur does. Read through a ref
+  // so a new onCommit never closes the session mid-edit.
   const saveRef = useRef(save);
   saveRef.current = save;
-  useEffect(() => () => void saveRef.current(), []);
-  useEffect(
-    () =>
-      session ? settleOnDrain(() => openRef.current === session && saveRef.current()) : undefined,
-    [session],
-  );
+  useEffect(() => settleWhileOpen(session, openRef, saveRef), [session]);
 
   return { session, start, commit, cancel };
 }
