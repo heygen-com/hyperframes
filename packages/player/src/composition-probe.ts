@@ -44,6 +44,7 @@ export interface ProbeCallbacks {
   onRuntimeInjected?: () => void;
   resolveRuntimeUrl?: () => string;
   hostOwnsDeadline?: () => boolean;
+  sealed?: () => boolean;
 }
 
 /**
@@ -117,7 +118,6 @@ export class CompositionProbe {
     this._failure = null;
     this._runtimeInjected = false;
     let attempts = 0;
-    let sealed = false;
 
     this._interval = setInterval(() => {
       attempts++;
@@ -125,8 +125,7 @@ export class CompositionProbe {
       try {
         outcome = this._poll(attempts);
       } catch (error) {
-        if (error instanceof DOMException && error.name === "SecurityError") sealed = true;
-        else {
+        if (!(error instanceof DOMException && error.name === "SecurityError")) {
           outcome = {
             kind: "error",
             message: error instanceof Error ? error.message : String(error),
@@ -134,7 +133,7 @@ export class CompositionProbe {
         }
       }
       const deadline = outcome === null;
-      outcome ??= this._deadlineOutcome(attempts, sealed);
+      outcome ??= this._deadlineOutcome(attempts);
       if (outcome) {
         this.stop();
         if (outcome.kind === "error") {
@@ -145,8 +144,9 @@ export class CompositionProbe {
     }, 200);
   }
 
-  private _deadlineOutcome(attempts: number, sealed: boolean): ProbeOutcome {
+  private _deadlineOutcome(attempts: number): ProbeOutcome {
     if (attempts < 40 || this._callbacks.hostOwnsDeadline?.()) return null;
+    const sealed = this._callbacks.sealed?.() === true;
     return { kind: "error", message: sealed ? SEALED_TIMELINE_NOT_FOUND : TIMELINE_NOT_FOUND };
   }
 
