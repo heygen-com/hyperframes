@@ -27,6 +27,7 @@ import {
   type BeforeCaptureHook,
 } from "./frameCapture.js";
 import { psnrDb, resolveDeVerifyMinDb } from "../utils/psnr.js";
+import { ABSOLUTE_MAX_WORKERS } from "../utils/workerLimits.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { assertSwiftShader } from "../utils/assertSwiftShader.js";
 import { readWebGlVendorInfoFromCanvas } from "../utils/readWebGlVendorInfoFromCanvas.js";
@@ -167,12 +168,6 @@ const APPLE_DISK_CORES_PER_WORKER = 1.75;
 const APPLE_DISK_MAX_WORKERS = 8;
 const MIN_WORKERS = 1;
 const MAX_WORKER_DIAGNOSTIC_LINES = 8;
-// Hard ceiling on explicit `--workers N` requests. Above this, the cost of
-// CDP-protocol dispatch through Node's main event loop and OS scheduling
-// noise overwhelms any further parallelism. Bumped from 10 → 24 in hf#732
-// follow-up so high-core hosts (32-96+ cores) can actually surface the
-// hardware to renders that are CPU-bound on DOM capture.
-const ABSOLUTE_MAX_WORKERS = 24;
 // `auto` concurrency picks this many workers as the upper bound. Bumped
 // from a hardcoded 6 → CPU-scaled value (floor(cpuCount/8), floor at 6,
 // ceiling at 16) in hf#732 follow-up. Rationale: the prior fixed cap of 6
