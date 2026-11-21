@@ -20,8 +20,8 @@ function processWith(
   iframe: HTMLIFrameElement,
   adapter: PlaybackAdapter | null = null,
   isCurrent?: () => boolean,
+  sync = vi.fn<(els: TimelineElement[], duration?: number) => void>(),
 ) {
-  const sync = vi.fn<(els: TimelineElement[], duration?: number) => void>();
   let callbacks: ReturnType<typeof useTimelineSyncCallbacks> | undefined;
   const iframeRef: { current: HTMLIFrameElement | null } = { current: iframe };
   function Harness() {
@@ -219,6 +219,88 @@ it("gives a sealed composition with no authored length the preview's duration", 
   const { sync, initialize } = processWith(sealedPreviewFrame().iframe, adapterOf(4));
 
   initialize();
+
+  await vi.waitFor(() => expect(rootRow(sync)).toEqual(["scene5@0+4"]));
+});
+
+/** Studio's end of the port, holding the frame's replies until released, newest first: an older read lands last. */
+function heldReplies() {
+  const queue: MessageEvent[] = [];
+  let holding = false;
+  let deliver: ((event: MessageEvent) => void) | null = null;
+  const wrap = (port: MessagePort) =>
+    ({
+      postMessage: (data: unknown) => port.postMessage(data),
+      start: () => port.start(),
+      close: () => port.close(),
+      get onmessage() {
+        return port.onmessage;
+      },
+      set onmessage(listener: ((event: MessageEvent) => void) | null) {
+        deliver = listener;
+        port.onmessage = listener && ((event) => (holding ? queue.push(event) : listener(event)));
+      },
+    }) as unknown as MessagePort;
+  const releaseNewestFirst = () => {
+    holding = false;
+    for (const event of queue.splice(0).reverse()) deliver?.(event);
+  };
+  return { wrap, hold: () => (holding = true), held: () => queue.length, releaseNewestFirst };
+}
+
+// fails without the fix: an empty clip list was dropped while the timeline held rows, so a deleted clip stayed.
+it("replaces the timeline's rows when a sealed load's own clip list is empty", async () => {
+  document.body.innerHTML = rootOnly;
+  (window as unknown as { __clipManifest: unknown }).__clipManifest = {
+    clips: [],
+    durationInFrames: 0,
+  };
+  onTestFinished(() => delete (window as unknown as { __clipManifest?: unknown }).__clipManifest);
+  usePlayerStore
+    .getState()
+    .setElements([{ id: "deleted", start: 0, duration: 2 } as TimelineElement]);
+  const { sync, initialize } = processWith(sealedPreviewFrame().iframe, adapterOf(5));
+
+  initialize();
+
+  await vi.waitFor(() => expect(rootRow(sync)).toEqual(["scene5@0+5"]));
+});
+
+// fails without the fix: the shadow's and the live hook's reads were ordered apart, so the older one landed last.
+it("keeps a newer clip list over a promotion's read that answers after it", async () => {
+  document.body.innerHTML = `<div data-composition-id="main">
+    <div id="old" data-start="0" data-duration="2"></div><div id="fresh" data-start="0" data-duration="2"></div>
+  </div>`;
+  (window as unknown as { __clipManifest: unknown }).__clipManifest = {
+    clips: [{ ...boxClip, id: "old" }],
+    durationInFrames: 60,
+  };
+  onTestFinished(() => delete (window as unknown as { __clipManifest?: unknown }).__clipManifest);
+  const replies = heldReplies();
+  const frame = sealedPreviewFrame({ wrapHandedOverPort: replies.wrap }).iframe;
+  await previewDocumentCopy(frame);
+  const sync = vi.fn<(els: TimelineElement[], duration?: number) => void>();
+  const shadow = processWith(frame, adapterOf(2), () => true, sync);
+  const live = processWith(frame, adapterOf(2), undefined, sync);
+
+  replies.hold();
+  shadow.initialize();
+  live.process({ clips: [{ ...boxClip, id: "fresh" }], durationInFrames: 60 });
+  // The promotion's clip list, copy and tree, then the live message's copy and tree.
+  await vi.waitFor(() => expect(replies.held()).toBe(5));
+  replies.releaseNewestFirst();
+  await vi.waitFor(() => expect(sync).toHaveBeenCalled());
+  await previewDocumentCopy(frame);
+
+  expect(rootRow(sync)).toEqual(["fresh@0+2"]);
+});
+
+// fails without the fix: the row took the preview's 4 s, then the empty list's default total clamped it to 1 s.
+it("keeps a sealed root row at the preview's length over an empty list's default total", async () => {
+  document.body.innerHTML = rootOnly.replace(' data-duration="5"', "");
+  const { sync, process } = processWith(sealedPreviewFrame().iframe, adapterOf(4));
+
+  process({ clips: [], durationInFrames: 30 });
 
   await vi.waitFor(() => expect(rootRow(sync)).toEqual(["scene5@0+4"]));
 });

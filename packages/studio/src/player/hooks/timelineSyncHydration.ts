@@ -434,17 +434,17 @@ function normalizePreviewDom(doc: Document | null, iframeWin: IframeWindow | nul
 function applyRuntimeClipManifest(input: HydrateTimelineFromPreviewInput): void {
   const { iframe, adapter } = input;
   if (iframe && previewFrameOpaque(iframe)) {
-    // An empty clip list still goes through, so its document copy can stand up the fallback row.
+    // The frame's own clip list decides, empty included; with none posted yet, only an empty timeline falls back.
     const manifest = previewClipManifest(iframe).then((found) =>
-      found?.clips.length || usePlayerStore.getState().elements.length === 0
-        ? (found ?? { clips: [], durationInFrames: 0 })
-        : null,
+      found || usePlayerStore.getState().elements.length > 0
+        ? found
+        : { clips: [], durationInFrames: 0 },
     );
     input.readSealedTimeline(iframe, manifest, adapter.getDuration());
     return;
   }
   const manifest = (iframe?.contentWindow as IframeWindow | null)?.__clipManifest;
-  if (manifest && manifest.clips.length > 0) input.processTimelineMessage(manifest);
+  if (manifest) input.processTimelineMessage(manifest);
 }
 
 export function hydrateTimelineFromPreview(input: HydrateTimelineFromPreviewInput): void {
