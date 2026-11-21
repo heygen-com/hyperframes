@@ -205,6 +205,7 @@ const component = (name: string): { name: string; type: string } => ({
 });
 
 interface Envelope {
+  query: string;
   tier: string;
   dropped: number;
   unindexed: number;
@@ -540,7 +541,9 @@ describe("catalog --json meaning search", () => {
   it("on Windows, hands back how to report the gap, not a line that would run the query", async () => {
     const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
     Object.defineProperty(process, "platform", { value: "win32" });
-    onTestFinished(() => Object.defineProperty(process, "platform", platform));
+    onTestFinished(() => {
+      Object.defineProperty(process, "platform", platform);
+    });
 
     const envelope = await runEnvelope({ query: "count up $(calc)" });
 
@@ -733,7 +736,7 @@ describe("searchMissReport", () => {
       "npx hyperframes feedback --search-miss 'a \"quoted\" $VAR `sub` \\ thing!' " +
         '--wanted "<the move you needed>" --tier words',
     );
-    expect(searchMissReport("o'neil", "words", "darwin")).toContain("--search-miss 'o'\\''neil'");
+    expect(searchMissReport("o'neil", "words", "darwin")).toContain(`--search-miss "o'neil"`);
   });
 });
 
