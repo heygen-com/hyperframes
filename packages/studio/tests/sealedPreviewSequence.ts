@@ -343,6 +343,34 @@ async function freshLoad<Saved, Save extends string>(
 }
 
 /** Plays `steps`, settles every reply, and compares the preview with a fresh load of the saved file. */
+/** Two saves whose responses come back newest first: the newer's sync goes out, then the older's. */
+async function playReversed<Saved, Save extends string>(
+  studioPage: Page,
+  frame: Frame,
+  fixture: SequenceFixture<Saved, Save>,
+  step: { reversed: [Save, Save]; reload?: true },
+  [saved, n]: [Saved, number],
+) {
+  const [older, newer] = step.reversed;
+  const middle = fixture.next[older](saved, n);
+  const after = fixture.next[newer](middle, n);
+  const olderRevision = await fixture.mark(studioPage);
+  const newerRevision = await fixture.mark(studioPage);
+  await sendSave(studioPage, fixture, newer, "frame", [middle, after], newerRevision);
+  // The frame loads the newer saved file before the older sync goes out.
+  if (step.reload) {
+    await studioPage.evaluate(() => (window as unknown as { __load: () => void }).__load());
+    await loaded(studioPage, frame);
+  }
+  const reloads = () =>
+    studioPage.evaluate(() => (window as unknown as { __reloads: number }).__reloads);
+  const before = await reloads();
+  await sendSave(studioPage, fixture, older, "frame", [saved, middle], olderRevision);
+  // Studio does not send the older write over the newer file; a reload there is that refusal.
+  if ((await reloads()) > before)
+    await studioPage.evaluate(() => (window as unknown as { __refusals: number }).__refusals++);
+}
+
 export async function playSequence<Saved, Save extends string>(
   browser: Browser,
   bundle: string,
@@ -362,25 +390,8 @@ export async function playSequence<Saved, Save extends string>(
       await sendSave(studioPage, fixture, step.save, step.fate, [saved, after], revision);
       saved = after;
     } else if ("reversed" in step) {
-      const [older, newer] = step.reversed;
-      const middle = fixture.next[older](saved, n);
-      const after = fixture.next[newer](middle, n);
-      const olderRevision = await fixture.mark(studioPage);
-      const newerRevision = await fixture.mark(studioPage);
-      await sendSave(studioPage, fixture, newer, "frame", [middle, after], newerRevision);
-      // The frame loads the newer saved file before the older sync goes out.
-      if (step.reload) {
-        await studioPage.evaluate(() => (window as unknown as { __load: () => void }).__load());
-        await loaded(studioPage, frame);
-      }
-      const reloads = () =>
-        studioPage.evaluate(() => (window as unknown as { __reloads: number }).__reloads);
-      const before = await reloads();
-      await sendSave(studioPage, fixture, older, "frame", [saved, middle], olderRevision);
-      // Studio does not send the older write over the newer file; a reload there is that refusal.
-      if ((await reloads()) > before)
-        await studioPage.evaluate(() => (window as unknown as { __refusals: number }).__refusals++);
-      saved = after;
+      await playReversed(studioPage, frame, fixture, step, [saved, n]);
+      saved = fixture.next[step.reversed[1]](fixture.next[step.reversed[0]](saved, n), n);
     } else if ("pastDeadline" in step) {
       await passDeadlines(studioPage, false);
     } else if ("scrub" in step) {
