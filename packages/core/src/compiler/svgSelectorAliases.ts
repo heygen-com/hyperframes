@@ -29,9 +29,13 @@ interface SortedKeys {
 interface AliasIndex {
   everyRecordedId: Set<string>;
   renamedIdAlternatives: Map<string, string>;
-  byName: Map<string, AttributeAliases>;
-  byLocalName: Map<string, AttributeAliases>;
+  unprefixed: Map<string, AttributeAliases>;
+  anyNamespace: Map<string, AttributeAliases>;
+  inNamespace: Map<string, AttributeAliases>;
 }
+
+const namespacedKey = (localName: string, uri: string | null) =>
+  JSON.stringify([lower(localName), uri]);
 
 // A scope's alias list is read once and then only passed around, so its index is built once per list.
 const aliasIndexes = new WeakMap<readonly SvgReferenceAlias[], AliasIndex>();
@@ -42,13 +46,14 @@ function aliasIndex(references: readonly SvgReferenceAlias[]): AliasIndex {
   index = {
     everyRecordedId: new Set(),
     renamedIdAlternatives: new Map(),
-    byName: new Map(),
-    byLocalName: new Map(),
+    unprefixed: new Map(),
+    anyNamespace: new Map(),
+    inNamespace: new Map(),
   };
   const ids = new Map<string, Set<string>>();
-  const add = (map: Map<string, AttributeAliases>, name: string, alias: SvgReferenceAlias) => {
-    let entry = map.get(lower(name));
-    if (!entry) map.set(lower(name), (entry = { all: [], lookups: new Map() }));
+  const add = (map: Map<string, AttributeAliases>, key: string, alias: SvgReferenceAlias) => {
+    let entry = map.get(key);
+    if (!entry) map.set(key, (entry = { all: [], lookups: new Map() }));
     entry.all.push(alias);
   };
   // Every element that references one symbol records the same alias; one copy is enough.
@@ -65,8 +70,10 @@ function aliasIndex(references: readonly SvgReferenceAlias[]): AliasIndex {
     ]);
     if (seen.has(key)) continue;
     seen.add(key);
-    add(index.byName, alias.name, alias);
-    add(index.byLocalName, alias.localName, alias);
+    const { namespaceURI } = alias;
+    if (namespaceURI === null) add(index.unprefixed, lower(alias.name), alias);
+    add(index.anyNamespace, lower(alias.localName), alias);
+    add(index.inNamespace, namespacedKey(alias.localName, namespaceURI), alias);
     if (alias.name !== "id") continue;
     let targets = ids.get(alias.before);
     if (!targets)
@@ -183,13 +190,18 @@ function aliasesFor(
   chargeScan?: (chars: number) => void,
 ) {
   const { name, namespace } = parsed;
-  const forName = (namespace.kind === "none" ? index.byName : index.byLocalName).get(lower(name));
-  if (!forName) return [];
-  const uri = namespace.kind === "named" ? namespaces!.get(namespace.prefix) : null;
-  return positionsFor(forName, parsed, chargeScan)
+  let forName: AttributeAliases | undefined;
+  if (namespace.kind === "none") forName = index.unprefixed.get(lower(name));
+  else if (namespace.kind === "any") forName = index.anyNamespace.get(lower(name));
+  else {
+    const uri = namespaces!.get(namespace.prefix);
+    if (uri !== undefined) forName = index.inNamespace.get(namespacedKey(name, uri));
+  }
+  const entry = forName;
+  if (!entry) return [];
+  return positionsFor(entry, parsed, chargeScan)
     .sort((a, b) => a - b)
-    .map((at) => forName.all[at]!)
-    .filter((alias) => namespace.kind === "any" || alias.namespaceURI === uri);
+    .map((at) => entry.all[at]!);
 }
 
 /**
