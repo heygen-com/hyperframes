@@ -10,7 +10,7 @@ import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/e
 import type { CommitDomEditPatchBatches } from "./domEditCommitTypes";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { DomEditPersistUnsafeValueError } from "./domEditPersistFailure";
-import { useDomEditPersist, type RecordEditInput } from "./useDomEditPersist";
+import { useDomEditPersist, type UseDomEditPersistParams } from "./useDomEditPersist";
 import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
 import { useDomEditTextCommits, type UseDomEditTextCommitsParams } from "./useDomEditTextCommits";
 import { useDomGeometryCommits } from "./useDomGeometryCommits";
@@ -25,13 +25,15 @@ import type { CutoverResult } from "../utils/sdkCutover";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import { encodeUrlPath } from "@hyperframes/parsers";
 
-export interface UseDomEditCommitsParams {
-  activeCompPath: string | null;
-  previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
-  showToast: (message: string, tone?: "error" | "info") => void;
-  queueDomEditSave: <T>(save: () => Promise<T>) => Promise<T>;
-  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
-  editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
+export interface UseDomEditCommitsParams extends Pick<
+  UseDomEditPersistParams,
+  | "activeCompPath"
+  | "previewIframeRef"
+  | "showToast"
+  | "queueDomEditSave"
+  | "writeProjectFile"
+  | "editHistory"
+> {
   fileTree: string[];
   importedFontAssetsRef: React.MutableRefObject<ImportedFontAsset[]>;
   projectId: string | null;

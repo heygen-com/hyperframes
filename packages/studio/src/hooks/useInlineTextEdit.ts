@@ -113,6 +113,15 @@ function clearSelectionWithin(element: HTMLElement): void {
 }
 
 /** Ends the frame's session with its original back, as a refused or failed reply must. */
+function keptMarkup(outcome: { html: string | null; previous: string | null }) {
+  if (outcome.html === null || outcome.previous === null) return null;
+  return { html: outcome.html, previousHtml: outcome.previous };
+}
+
+function putOriginalBack({ sealed, original }: InlineTextEditSession) {
+  if (sealed && original) void editPreviewElement(sealed.iframe, sealed.handle, { html: original });
+}
+
 function endWithOriginal(sealed: NonNullable<InlineTextEditSession["sealed"]>): void {
   void previewTextEdit(sealed.iframe, { handle: sealed.handle, action: "end", keep: false });
 }
@@ -230,17 +239,12 @@ export function useInlineTextEdit({
       const ended = previewTextEdit(sealed.iframe, params).then((reply) => {
         stopListening();
         const outcome = reply?.applied ? reply : endedFirst;
-        if (!outcome && reply === null && open.original)
-          return void editPreviewElement(sealed.iframe, sealed.handle, { html: open.original });
-        if (!outcome || outcome.html === null || outcome.previous === null) return;
-        if (keep)
-          return onCommit({
-            element: open.element,
-            html: outcome.html,
-            previousHtml: outcome.previous,
-          });
+        if (!outcome) return reply === null && putOriginalBack(open);
+        const kept = keptMarkup(outcome);
+        if (!kept) return;
+        if (keep) return onCommit({ element: open.element, ...kept });
         if (outcome === endedFirst) {
-          const back = { html: outcome.previous, expect: outcome.html };
+          const back = { html: kept.previousHtml, expect: kept.html };
           void editPreviewElement(sealed.iframe, sealed.handle, back);
         }
       });

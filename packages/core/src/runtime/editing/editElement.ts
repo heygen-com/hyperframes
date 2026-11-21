@@ -60,6 +60,13 @@ const EDIT_KEYS = new Set([
   "attributes,expect,handle,html,styles",
 ]);
 
+const isOptionalMarkup = (value: unknown): value is string | undefined =>
+  value === undefined || (typeof value === "string" && value.length <= MAX_EDIT_VALUE);
+const markupFieldsOk = (html: unknown, expect: unknown) =>
+  isOptionalMarkup(html) &&
+  isOptionalMarkup(expect) &&
+  (expect === undefined || html !== undefined);
+
 export function parseEditElement(params: unknown): EditElementParams | null {
   if (Object.prototype.toString.call(params) !== "[object Object]") return null;
   const record = params as Record<string, unknown>;
@@ -67,16 +74,14 @@ export function parseEditElement(params: unknown): EditElementParams | null {
   if (!EDIT_KEYS.has(keys)) return null;
   const { handle, html, expect } = record;
   if (typeof handle !== "string" || !EDITING_ELEMENT_HANDLE.test(handle)) return null;
-  if (html !== undefined && (typeof html !== "string" || html.length > MAX_EDIT_VALUE)) return null;
-  if (expect !== undefined && (html === undefined || typeof expect !== "string")) return null;
-  if (typeof expect === "string" && expect.length > MAX_EDIT_VALUE) return null;
+  if (!markupFieldsOk(html, expect)) return null;
   const styles = entries<StyleEditEntry>(record.styles, styleEntry);
   const attributes = entries<ElementEditEntry>(record.attributes, attributeEntry);
   if (!styles || !attributes) return null;
-  if (html === undefined) return { handle, styles, attributes };
-  return expect === undefined
-    ? { handle, styles, attributes, html }
-    : { handle, styles, attributes, html, expect };
+  const parsed: EditElementParams = { handle, styles, attributes };
+  if (html !== undefined) parsed.html = html as string;
+  if (expect !== undefined) parsed.expect = expect as string;
+  return parsed;
 }
 
 const NOT_APPLIED: EditElementResult = { applied: false, styles: [], attributes: [] };
