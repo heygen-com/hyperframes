@@ -17,6 +17,8 @@ import { DEFAULT_QUALITY, QUALITIES, isQuality } from "../background-removal/pip
 import type { Example } from "./_examples.js";
 import { RemoveBackgroundError, removeBackground } from "../api/removeBackground.js";
 import { failureMessage, jsonFailure, printFailureLine } from "../utils/jsonError.js";
+import { diag } from "../ui/diagnostics.js";
+import type { RemoveBackgroundProgress } from "../api/removeBackground.js";
 
 export const examples: Example[] = [
   [
@@ -134,6 +136,7 @@ export default defineCommand({
         device: args.device,
         quality: args.quality,
         onProgress: (event) => {
+          if (args.json) return streamProgressToStderr(event);
           if (event.kind === "info") {
             spin?.message(terminalText(event.message));
           } else if (event.kind === "metadata") {
@@ -188,6 +191,20 @@ export default defineCommand({
     }
   },
 });
+
+const FRAME_LINES_PER_CLIP = 20;
+const FRAME_LINE_EVERY_WHEN_LENGTH_UNKNOWN = 25;
+
+function streamProgressToStderr(event: RemoveBackgroundProgress): void {
+  if (event.kind === "frame") {
+    const step = event.total
+      ? Math.ceil(event.total / FRAME_LINES_PER_CLIP)
+      : FRAME_LINE_EVERY_WHEN_LENGTH_UNKNOWN;
+    const last = event.total > 0 && event.index === event.total;
+    if (event.index !== 1 && !last && event.index % step !== 0) return;
+  }
+  diag.notice(JSON.stringify({ type: "progress", ...event }));
+}
 
 /** The pipeline's own error, which the command reported before the API wrapped it. */
 function pipelineError(err: unknown): unknown {
