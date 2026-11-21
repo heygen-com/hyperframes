@@ -56,6 +56,134 @@ async function play(cors: boolean) {
   return { videos, pixels, warnings };
 }
 
+type CaseResult = { crossOrigin: string | null; playing: boolean; pixels: string; loads: number };
+
+/**
+ * One sealed film, each case a video the test adds to it: the frame's own CORS decision per media element, read back
+ * from the frame. A CORS host's file, the same file from a path with no CORS headers, a missing file.
+ */
+async function mediaCases() {
+  const page = await browser.newPage();
+  const warnings: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "warn") warnings.push(message.text());
+  });
+  await page.goto(`${server.origin}/host.html?fixture=10-video-grid&sealed=1`, {
+    waitUntil: "domcontentloaded",
+  });
+  await page.waitForFunction(() => window.__playerReady || window.__playerError, {
+    timeout: 60_000,
+  });
+  const frame = page.frames().find((candidate) => candidate.url().includes("/10-video-grid/"));
+  assert.ok(frame, "the film's frame must load");
+  const add = (name: string, html: string, then = "") =>
+    frame.evaluate(
+      (caseName, markup, script) => {
+        const holder = document.createElement("div");
+        holder.innerHTML = markup.replace(
+          "<video",
+          `<video data-case="${caseName}" muted preload="auto"`,
+        );
+        const video = holder.querySelector("video")!;
+        const loads = { count: 0 };
+        const load = video.load.bind(video);
+        video.load = () => (loads.count++, load());
+        (video as unknown as { loads: typeof loads }).loads = loads;
+        document.body.append(video);
+        if (script) new Function("video", script)(video);
+      },
+      name,
+      html,
+      then,
+    );
+  const read = (name: string) =>
+    frame
+      .waitForFunction(
+        (caseName) => {
+          const video = document.querySelector<HTMLVideoElement>(`[data-case="${caseName}"]`)!;
+          return video.readyState >= 2 || video.networkState === 3 || video.error ? true : null;
+        },
+        { timeout: 30_000 },
+        name,
+      )
+      .then(() =>
+        frame.evaluate((caseName): CaseResult => {
+          const video = document.querySelector<HTMLVideoElement>(`[data-case="${caseName}"]`)!;
+          let pixels = "none";
+          if (video.readyState >= 2) {
+            const context = document.createElement("canvas").getContext("2d")!;
+            context.drawImage(video, 0, 0, 1, 1);
+            try {
+              context.getImageData(0, 0, 1, 1);
+              pixels = "readable";
+            } catch {
+              pixels = "refused";
+            }
+          }
+          const loads = (video as unknown as { loads: { count: number } }).loads.count;
+          return {
+            crossOrigin: video.getAttribute("crossorigin"),
+            playing: video.readyState >= 2,
+            pixels,
+            loads,
+          };
+        }, name),
+      );
+  const base = "/fixtures/10-video-grid/sample.mp4";
+  const plain = "/fixtures-no-cors/10-video-grid/sample.mp4";
+  await add("refused", `<video src="${plain}"></video>`);
+  const refused = await read("refused");
+  await frame.waitForFunction(() => {
+    const video = document.querySelector<HTMLVideoElement>('[data-case="refused"]')!;
+    return video.readyState >= 2;
+  });
+  await add("healthy", `<video src="${base}?case=healthy"></video>`);
+  await add("sibling", `<video><source src="${base}?case=sibling"><source src="${plain}"></video>`);
+  await add("explicit", `<video src="${base}?case=explicit"><source src="${plain}"></video>`);
+  await add(
+    "unsupported",
+    `<video><source src="${plain}?case=unsupported" type="video/mp4"><source src="${base}" type="video/x-nope"></video>`,
+  );
+  await add("missing", `<video src="/fixtures/10-video-grid/missing.mp4"></video>`);
+  const results = {
+    refused,
+    healthy: await read("healthy"),
+    sibling: await read("sibling"),
+    explicit: await read("explicit"),
+    unsupported: await read("unsupported"),
+    missing: await read("missing"),
+  };
+  for (const [name, value] of [
+    ["credentials", "use-credentials"],
+    ["same", "anonymous"],
+  ]) {
+    await add(name, `<video src="${base}?case=${name}"></video>`);
+    await read(name);
+    await frame.evaluate(
+      (caseName, mode, url) => {
+        const video = document.querySelector<HTMLVideoElement>(`[data-case="${caseName}"]`)!;
+        video.setAttribute("crossorigin", mode);
+        return new Promise<void>((resolve) =>
+          setTimeout(() => {
+            video.src = url;
+            setTimeout(resolve);
+          }),
+        );
+      },
+      name,
+      value,
+      plain,
+    );
+  }
+  const authored = await frame.evaluate(() =>
+    ["credentials", "same"].map((caseName) =>
+      document.querySelector(`[data-case="${caseName}"]`)!.getAttribute("crossorigin"),
+    ),
+  );
+  await page.close();
+  return { results, authored, warnings };
+}
+
 try {
   const plain = await play(false);
   assert.equal(
@@ -82,6 +210,40 @@ try {
     [],
   );
   console.log("[sealed-media] a host without CORS plays; a CORS host keeps pixel access");
+
+  const { results, authored, warnings } = await mediaCases();
+  assert.equal(results.refused.crossOrigin, null, "a source that refused CORS plays without it");
+  const readable = (name: keyof typeof results) =>
+    assert.deepEqual(
+      [results[name].crossOrigin, results[name].pixels],
+      ["anonymous", "readable"],
+      `${name}: ${JSON.stringify(results[name])}`,
+    );
+  readable("healthy");
+  readable("sibling");
+  readable("explicit");
+  assert.ok(
+    results.unsupported.playing && results.unsupported.crossOrigin === null,
+    `a non-CORS source before one the browser cannot play is retried without CORS: ${JSON.stringify(results.unsupported)}`,
+  );
+  assert.deepEqual(
+    [results.missing.playing, results.missing.loads],
+    [false, 1],
+    `a source that fails with and without CORS is tried again once: ${JSON.stringify(results.missing)}`,
+  );
+  assert.equal(
+    warnings.filter((w) => w.includes("missing.mp4")).length,
+    1,
+    "the failed URL is named once",
+  );
+  assert.deepEqual(
+    authored,
+    ["use-credentials", "anonymous"],
+    "a crossorigin the composition set is the composition's, also when it is the same value",
+  );
+  console.log(
+    "[sealed-media] each media element decides its own CORS, and an author's attribute wins",
+  );
 } finally {
   await browser.close();
   await server.stop();

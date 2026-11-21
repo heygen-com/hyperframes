@@ -60,6 +60,24 @@ try {
   );
   assert.match(sealedError, /without sandbox-origin/, "a sealed timeout must name the trusted way");
 
+  const elsewhere = await browser.newPage();
+  await elsewhere.goto(`${server.origin}/host.html?fixture=direct-timeline`, {
+    waitUntil: "domcontentloaded",
+  });
+  await elsewhere.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
+  await elsewhere.evaluate(
+    (url) => {
+      document.querySelector("hyperframes-player")!.setAttribute("src", url);
+    },
+    `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
+  );
+  await elsewhere.waitForFunction(() => window.__playerError !== undefined, { timeout: 15_000 });
+  assert.doesNotMatch(
+    String(await elsewhere.evaluate(() => window.__playerError)),
+    /sandbox-origin/,
+    "a default player with a composition on another origin is not told it is sealed",
+  );
+
   const trusted = await browser.newPage();
   await trusted.goto(`${server.origin}/host.html?fixture=direct-timeline`, {
     waitUntil: "domcontentloaded",
