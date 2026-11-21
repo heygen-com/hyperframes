@@ -484,7 +484,7 @@ A HyperFrames video composition. Plain HTML + GSAP; rendered to MP4 by the `hype
 
 ## Requirements
 
-- **Node.js 22+** -- [nodejs.org](https://nodejs.org/)
+- **Node.js 22.19+** -- [nodejs.org](https://nodejs.org/)
 - **FFmpeg** -- `brew install ffmpeg` (macOS) or `sudo apt install ffmpeg` (Debian/Ubuntu) or [ffmpeg.org/download](https://ffmpeg.org/download.html) (Windows)
 
 Verify: `npx hyperframes doctor`
