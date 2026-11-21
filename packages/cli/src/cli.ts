@@ -610,7 +610,7 @@ async function unknownCommandError(requested: ResolvedCommandUsage): Promise<Cli
   const names = Object.keys(subCommands ?? {});
   const hint = unknownCommandHint(word, requested.path, names);
   console.error(`Unknown command: ${terminalText(word)}`);
-  if (hint) console.error(terminalLines(hint));
+  if (hint) console.error(terminalText(hint));
   console.error(`Run '${group} --help' to list every command.`);
   return new CliUsageError(`Unknown command: ${word}`, {
     presented: true,
@@ -711,7 +711,7 @@ async function executeCli(): Promise<void> {
       if (!typed || !error.result.presented) {
         console.error(terminalLines(error instanceof Error ? error.message : String(error)));
       }
-      if (usage && error.hint) console.error(terminalLines(error.hint));
+      if (usage && error.hint) console.error(terminalText(error.hint));
     }
   } finally {
     const pending = consumeCommandResult();

@@ -33,10 +33,11 @@ function runCli(args: string[]): Promise<Run> {
 }
 
 it("shows control characters in an unknown command word as visible text", async () => {
-  const [word, file, json] = await Promise.all([
+  const [word, file, json, lines] = await Promise.all([
     runCli(["ren\u001b[2Jdr\u202e"]),
     runCli(["cloud", "a\u001b[2Jb.html"]),
     runCli(["cloud", "a\u001b[2Jb.html", "--json"]),
+    runCli(["cloud", "a\nError: b.html"]),
   ]);
   expect(word.stderr).toContain("Unknown command: ren\\x1b[2Jdr\\u202e\n");
   expect(file.stderr).toContain("'a\\x1b[2Jb.html' ");
@@ -46,4 +47,7 @@ it("shows control characters in an unknown command word as visible text", async 
     expect(run.stderr).not.toContain("\u202e");
   }
   expect(JSON.parse(json.stdout).error.hint).not.toContain("\\x1b");
+  expect(lines.stderr).toContain("Unknown command: a\\x0aError: b.html\n");
+  expect(lines.stderr).toContain("'a\\x0aError: b.html' ");
+  expect(lines.stderr.split("\n").filter((line) => line.startsWith("Error:"))).toEqual([]);
 }, 60_000);
