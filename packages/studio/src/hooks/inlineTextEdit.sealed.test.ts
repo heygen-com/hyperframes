@@ -53,10 +53,10 @@ async function select(iframe: HTMLIFrameElement, id: string) {
 async function sealedTitle(ports: MessagePort[] = []) {
   document.body.innerHTML = `<h1 id="title">${ORIGINAL}</h1><p id="other">x</p>`;
   const title = document.getElementById("title")!;
-  const { iframe } = sealedFrame({
+  const { iframe, reload } = sealedFrame({
     wrapHandedOverPort: (port) => (ports.push(port), port),
   });
-  return { title, iframe, selection: await select(iframe, "title") };
+  return { title, iframe, reload, selection: await select(iframe, "title") };
 }
 
 function mount(render: () => void) {
@@ -274,14 +274,13 @@ it("saves both headings when one heading's lookup is slow and the other saves fi
 });
 
 it("keeps the newer save of a heading across a frame reload", async () => {
-  const { iframe, selection } = await sealedTitle();
+  const { iframe, reload, selection } = await sealedTitle();
   const { saved, persist } = fileWrites();
   const first = held();
   const commit = textCommits(iframe, selection, persist, [first.lookup]);
   const older = commit(selection.element, "First");
-  // The reloaded frame: a new document agent and new handles over the same heading of the file.
-  const { iframe: reloaded } = sealedFrame();
-  const again = await select(reloaded, "title");
+  reload();
+  const again = await select(iframe, "title");
   expect(again.element).not.toBe(selection.element);
   await commit(again.element, "Second");
   first.release();
