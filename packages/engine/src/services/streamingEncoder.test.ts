@@ -1296,17 +1296,22 @@ describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)(
       }
     };
     const tiny = { width: 64, height: 16 };
+    const REAL_ENCODE_TIMEOUT_MS = 30_000;
 
     it.each([
       ["captured frames", {}],
       ["raw RGB frames", { rawInputFormat: "rgb48le" as const }],
-    ])("tags BT.709 on %s, so an encoder that reads only them tags the stream", (_, extra) => {
-      const args = buildStreamingArgs({ ...baseSdr, ...tiny, ...extra }, "o.mp4");
+    ])(
+      "tags BT.709 on %s, so an encoder that reads only them tags the stream",
+      (_, extra) => {
+        const args = buildStreamingArgs({ ...baseSdr, ...tiny, ...extra }, "o.mp4");
 
-      expect(streamTagsThrough(args, ["-c:v", "libx264", "-preset", "ultrafast"])).toBe(
-        "bt709,bt709,bt709",
-      );
-    });
+        expect(streamTagsThrough(args, ["-c:v", "libx264", "-preset", "ultrafast"])).toBe(
+          "bt709,bt709,bt709",
+        );
+      },
+      REAL_ENCODE_TIMEOUT_MS,
+    );
 
     it.each([
       [baseHdrPq, "smpte2084", null],
@@ -1327,6 +1332,7 @@ describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)(
 
         expect(streamTagsThrough(args, x265)).toBe(`bt2020nc,${trc},bt2020`);
       },
+      REAL_ENCODE_TIMEOUT_MS,
     );
   },
 );
