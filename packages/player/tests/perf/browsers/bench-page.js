@@ -20,6 +20,19 @@ export async function bench(cfg) {
   const win = iframe.contentWindow;
   const runtime = win.__player;
   const videos = () => Array.from(iframe.contentDocument.querySelectorAll("video"));
+  // probe 3b: one full-size draw of one video while idle, before playback.
+  let warmMs = -1;
+  {
+    const v = videos().find((x) => x.readyState >= 2);
+    if (v) {
+      const c = iframe.contentDocument.createElement("canvas");
+      c.width = v.videoWidth;
+      c.height = v.videoHeight;
+      const w0 = now();
+      c.getContext("2d").drawImage(v, 0, 0);
+      warmMs = now() - w0;
+    }
+  }
   const shown = (v) => {
     const s = win.getComputedStyle(v);
     return s.display !== "none" && s.visibility !== "hidden" && Number(s.opacity) > 0;
@@ -176,7 +189,7 @@ export async function bench(cfg) {
     const t0 = now();
     host.seek(target);
     const syncMs = now() - t0;
-    const probeSums = {};
+    const probeSums = seeks.length === 0 ? { warm: { n: 1, ms: warmMs, max: warmMs } } : {};
     for (const [name, ms] of win.__hfProbe) {
       const key = name.replace(/\(rs\d+p?\)/, (m) => m);
       const s = (probeSums[key] ??= { n: 0, ms: 0, max: 0 });
