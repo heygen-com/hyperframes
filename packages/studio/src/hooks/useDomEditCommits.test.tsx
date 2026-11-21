@@ -1442,6 +1442,13 @@ describe("useDomEditCommits style persist handling", () => {
     );
   });
 
+  it("separates a field added from the panel from the text before it with one space", async () => {
+    await expectPersistedTextStructureEdit(
+      (hook) => hook.handleDomAddTextField("first"),
+      (markup) => expect(markup).toMatch(/>First<\/span> <span[^>]*>New text<\/span><span/),
+    );
+  });
+
   it("persists a removed child text field as the element's new markup", async () => {
     await expectPersistedTextStructureEdit(
       (hook) => hook.handleDomRemoveTextField("first"),

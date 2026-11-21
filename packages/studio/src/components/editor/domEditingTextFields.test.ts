@@ -6,7 +6,11 @@ import {
 } from "@hyperframes/core/studio-preview-mark";
 import { patchElementInHtml } from "@hyperframes/studio-server/source-mutation";
 import { serializeDomEditTextFields, type DomEditTextField } from "./domEditing";
-import { buildDefaultDomEditTextField, collectDomEditTextFields } from "./domEditingLayers";
+import {
+  buildDefaultDomEditTextField,
+  collectDomEditTextFields,
+  spacedAfter,
+} from "./domEditingLayers";
 import { planDomTextCommit } from "../../hooks/domEditTextCommitPlan";
 
 describe("serializeDomEditTextFields — mixed content", () => {
@@ -114,5 +118,24 @@ describe("text fields — spaces between child elements", () => {
     expect(written(`${SPANS} <span>Three</span>`, (fields) => [fields[0]!, fields[2]!])).toBe(
       "<span>One</span> <span>Three</span>",
     );
+  });
+});
+
+describe("text fields — the space before a field added from the panel", () => {
+  const field = (value: string, source: DomEditTextField["source"] = "child") => ({
+    ...buildDefaultDomEditTextField(),
+    value,
+    source,
+  });
+
+  it.each([
+    ["text that ends in a word", field("world"), field("again"), " "],
+    ["mixed text that ends in a word", field("Hello", "text-node"), field("again"), " "],
+    ["text that already ends in a space", field("world "), field("again"), undefined],
+    ["new text that starts with punctuation", field("world"), field(", again"), undefined],
+    ["no text before it", undefined, field("again"), undefined],
+    ["empty text before it", field(""), field("again"), undefined],
+  ])("after %s", (_, previous, added, space) => {
+    expect(spacedAfter(previous, added).spaceBefore).toBe(space);
   });
 });
