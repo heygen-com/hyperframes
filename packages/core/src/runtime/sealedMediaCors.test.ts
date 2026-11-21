@@ -305,7 +305,8 @@ describe("corsForSealedMedia", () => {
     });
     const play = vi.spyOn(video, "play").mockResolvedValue(undefined);
     video.querySelector("source")!.dispatchEvent(new Event("error"));
-    expect([video.currentTime, video.playbackRate, play.mock.calls.length]).toEqual([2, 1.5, 1]);
+    expect(video.currentTime).toBeCloseTo(2, 4);
+    expect([video.playbackRate, play.mock.calls.length]).toEqual([1.5, 1]);
   });
   it("keeps a crossorigin the composition sets on media that was there when it started", async () => {
     vi.stubGlobal("origin", "null");

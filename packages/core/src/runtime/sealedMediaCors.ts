@@ -1,3 +1,5 @@
+import { mediaElementTime } from "./mediaClock";
+
 // A sealed preview's document has an opaque origin, so its own server's media is cross-origin to it. Without
 // `crossorigin` the browser loads that media in no-cors mode: WebGL and canvases refuse its frames, Web Audio treats it
 // as foreign. The preview server answers CORS loads from an opaque origin, so its own media opts in; other hosts don't.
@@ -87,7 +89,7 @@ function sync(media: HTMLMediaElement, home: string): void {
 function reload(media: HTMLMediaElement): void {
   const { currentTime, playbackRate, paused } = media;
   media.load();
-  if (currentTime) media.currentTime = currentTime;
+  if (currentTime) media.currentTime = mediaElementTime(currentTime);
   media.playbackRate = playbackRate;
   if (!paused) void media.play().catch(() => undefined);
 }
@@ -118,16 +120,23 @@ function failedUrl(media: HTMLMediaElement, el: Element, home: string): string {
 }
 
 // Refused with CORS: drop it at once, so the browser picks as it would without us. Failed without too: host down.
-function failed(event: Event, home: string): void {
+function failure(event: Event, home: string): { media: HTMLMediaElement; url: string } | null {
   const el = event.target as Element | null;
   const media = el?.nodeType === 1 ? mediaOf(el) : null;
-  if (!el || !media || authored.has(media)) return;
+  if (!el || !media || authored.has(media)) return null;
   const url = failedUrl(media, el, home);
-  if (!url || !selectable(media, home).includes(url)) return;
-  if (!media.hasAttribute("crossorigin")) {
-    if (setOf(refused, media).delete(url)) setOf(down, media).add(url);
-    return;
-  }
+  return url && selectable(media, home).includes(url) ? { media, url } : null;
+}
+
+function wasDown(media: HTMLMediaElement, url: string): void {
+  if (setOf(refused, media).delete(url)) setOf(down, media).add(url);
+}
+
+function failed(event: Event, home: string): void {
+  const found = failure(event, home);
+  if (!found) return;
+  const { media, url } = found;
+  if (!media.hasAttribute("crossorigin")) return wasDown(media, url);
   if (has(down, media, url)) return;
   setOf(refused, media).add(url);
   write(media, null);
