@@ -120,10 +120,25 @@ function keptMarkup(outcome: { html: string | null; previous: string | null }) {
 
 const PREVIEW_DID_NOT_ANSWER = "the preview did not answer";
 
+// The newest session per element: an older one that settles late must not write over it.
+const latestEdit = new WeakMap<HTMLElement, InlineTextEditSession>();
+
 function frameGone(open: InlineTextEditSession, keep: boolean, onLost?: (reason: string) => void) {
   const { sealed, original } = open;
-  if (sealed && original) void editPreviewElement(sealed.iframe, sealed.handle, { html: original });
+  const newest = latestEdit.get(open.element) === open;
+  if (sealed && original && newest)
+    void editPreviewElement(sealed.iframe, sealed.handle, { html: original });
   if (keep) onLost?.(PREVIEW_DID_NOT_ANSWER);
+}
+
+/** Ends a live session when its element leaves its document, focused or not. */
+function endWhenRemoved(element: HTMLElement, end: () => void): () => void {
+  const observer = new MutationObserver(() => {
+    if (!element.isConnected) end();
+  });
+  observer.observe(element.ownerDocument, { childList: true, subtree: true });
+  if (!element.isConnected) queueMicrotask(end);
+  return () => observer.disconnect();
 }
 
 function takeDraft(open: InlineTextEditSession): string {
@@ -204,6 +219,7 @@ export function useInlineTextEdit({
       if (sealed) {
         const open = { element, original: "", outline: "", outlineOffset: "", sealed };
         openRef.current = open;
+        latestEdit.set(element, open);
         setSession(open);
         onPause?.();
         sealed.iframe.focus();
@@ -233,6 +249,7 @@ export function useInlineTextEdit({
       element.style.outline = EDITING_OUTLINE;
       element.style.outlineOffset = "2px";
       openRef.current = open;
+      latestEdit.set(element, open);
       setSession(open);
       onPause?.();
 
@@ -367,10 +384,12 @@ export function useInlineTextEdit({
     // everywhere else. Dropping `plaintext-only` means paste and drop would otherwise
     // put a whole web page's markup straight in; what arrives is the words.
     const releasePlainText = takePlainTextOnly(element);
+    const stopWatching = endWhenRemoved(element, commit);
     element.addEventListener("keydown", onKeyDown);
     element.addEventListener("blur", onBlur);
     return () => {
       releasePlainText();
+      stopWatching();
       element.removeEventListener("keydown", onKeyDown);
       element.removeEventListener("blur", onBlur);
     };

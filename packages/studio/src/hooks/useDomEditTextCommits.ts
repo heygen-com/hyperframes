@@ -348,7 +348,12 @@ export function useDomEditTextCommits({
       await runDomEditCommit({
         capture: () => {},
         apply: () => {
-          if (sealed) return;
+          // A frame showing the original (a re-added node) is set to the saved text; any other markup is left.
+          if (sealed)
+            return void editPreviewElement(sealed.iframe, sealed.handle, {
+              html,
+              expect: previousHtml,
+            });
           // Idempotent: the caret put this there. Assigned anyway so a commit
           // raised from anywhere but the element itself still lands.
           element.innerHTML = html;
