@@ -862,7 +862,7 @@ async function addThenType(markup: string, after: string, typed: string): Promis
     await act(async () => {
       await rendered.hook.handleDomTextCommitForSelection(at(reloaded), typed, added!);
     });
-    return file.replace(/ data-hf-text-key="[^"]*"/g, "");
+    return file.replace(/ data-hf-[a-z-]+="[^"]*"/g, "").replace(/^<div>|<\/div>$/g, "");
   } finally {
     rendered.cleanup();
   }
@@ -1492,10 +1492,9 @@ describe("useDomEditCommits style persist handling", () => {
     ],
   ])("spaces a field %s from the text it ends up with", async (_, markup, typed, start) => {
     const saved = await addThenType(markup, "child:0:span", typed);
-    expect(saved.startsWith(start)).toBe(true);
+    expect(saved.slice(0, start.length)).toBe(start);
     expect(saved).toContain(`>${typed}</span>`);
-    if (markup.includes("world"))
-      expect(saved).toMatch(/again<\/span> <span>world<\/span><\/div>$/);
+    if (markup.includes("world")) expect(saved).toMatch(/again<\/span> <span>world<\/span>$/);
   });
 
   it("persists a removed child text field as the element's new markup", async () => {
