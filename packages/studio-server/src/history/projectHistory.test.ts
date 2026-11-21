@@ -350,11 +350,12 @@ describe("openProjectHistory", () => {
       { "index.html": "A", "clip.bin": Buffer.alloc(2 * 1024 ** 2, 7) },
       { budgetBytes: 1, quietMs: 30 },
     );
-    // The edit's prune takes the first copy; storing it again then fails.
+    // Studio's edit, whose prune takes the first copy; storing it again then fails. A step would wait for the copy.
     mediaCopy.fails = (copy) => copy === 2;
     mediaCopy.stored = () => {
       mediaCopy.stored = null;
-      return change(history, you, "Color", () => write("index.html", "B"));
+      write("index.html", "B");
+      return history.claim(you, "Color", ["index.html"]);
     };
     await vi.waitFor(() => expect(mediaCopy.copies).toHaveLength(2), { timeout: 10_000 });
     await history.flush();
@@ -428,10 +429,11 @@ describe("openProjectHistory", () => {
       { "index.html": "A", "clip.bin": clip },
       { budgetBytes: 1, quietMs: 30 },
     );
-    // The copy is stored; an edit commits and prunes before history records the copy.
+    // The copy is stored; Studio's edit commits and prunes before history records it. A step would wait for it.
     mediaCopy.stored = () => {
       mediaCopy.stored = null;
-      return change(history, you, "Color", () => write("index.html", "B"));
+      write("index.html", "B");
+      return history.claim(you, "Color", ["index.html"]);
     };
     release();
     await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.bin"]), {
