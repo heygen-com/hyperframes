@@ -118,8 +118,12 @@ export function replaceFile(path, content) {
     writeFileSync(temp, content, { flag: "wx" });
     renameRidingWindowsHolds(temp, path);
   } catch (error) {
-    // EEXIST: the random name belongs to another writer, so it is left alone.
-    if (error?.code !== "EEXIST") rmSync(temp, { force: true });
+    // EEXIST: the random name belongs to another writer, so it is left alone. A failed cleanup must not hide `error`.
+    if (error?.code !== "EEXIST") {
+      try {
+        rmSync(temp, { force: true });
+      } catch {}
+    }
     throw error;
   }
 }
