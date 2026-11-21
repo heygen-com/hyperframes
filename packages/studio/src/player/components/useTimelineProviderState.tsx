@@ -6,7 +6,7 @@ import { useTimelinePlayhead } from "./useTimelinePlayhead";
 import { useTimelineZoom } from "./useTimelineZoom";
 import { useTimelineAssetDrop } from "./timelineDragDrop";
 import { type KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
-import { useTimelineClipDrag } from "./useTimelineClipDrag";
+import { useTimelineClipDrag, type ClipDropOptions } from "./useTimelineClipDrag";
 import type { ClipContextMenuState, TimelineContextValue } from "./TimelineProvider";
 import { buildTimelineShellMeta } from "./timelineShellMeta";
 import { useTimelineDragPreviewState } from "./useTimelineDragPreviewState";
@@ -43,7 +43,6 @@ import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { useTimelineLaneMoveRefresh } from "./useTimelineLaneMoveRefresh";
 import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
-import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 import {
   refuseWhenReadOnly,
   useAbandonEditsOnReadOnly,
@@ -82,7 +81,8 @@ export function useTimelineProviderState({
   previewIframeRef,
   onZIndexReorder,
   insertOnClipDrop,
-}: TimelineProps = {}): TimelineContextValue {
+  onDropRefused,
+}: TimelineProps & ClipDropOptions = {}): TimelineContextValue {
   const {
     onMoveElement,
     onMoveElements,
@@ -106,7 +106,6 @@ export function useTimelineProviderState({
   });
   const theme = useMemo(() => ({ ...defaultTimelineTheme, ...themeOverrides }), [themeOverrides]);
   const editContext = useTimelineEditContextOptional();
-  const notice = useStudioShellContextOptional()?.showToast ?? editContext.onNotice;
   const readOnlyPress = useTimelineReadOnlyPress();
   const oneShotEdits = refuseWhenReadOnly(readOnlyPress, {
     onBlockedEditAttempt,
@@ -233,7 +232,7 @@ export function useTimelineProviderState({
     refreshAfterLaneMove,
     sessionEpoch,
     insertOnClipDrop,
-    onDropRefused: notice && (() => notice("Clips on the same track can't overlap.", "info")),
+    onDropRefused,
   });
   const assetDrop = useTimelineAssetDrop({
     scrollRef,

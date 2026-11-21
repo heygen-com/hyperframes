@@ -64,7 +64,7 @@ export type {
 const EMPTY_BEAT_TIMES: number[] = [];
 
 /* ── Hook ───────────────────────────────────────────────────────── */
-interface UseTimelineClipDragInput {
+interface UseTimelineClipDragInput extends ClipDropOptions {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   ppsRef: React.RefObject<number>;
   durationRef: React.RefObject<number>;
@@ -95,8 +95,6 @@ interface UseTimelineClipDragInput {
   onStackingPatches?: (patches: StackingPatch[]) => Promise<unknown> | void;
   refreshAfterLaneMove?: () => void;
   sessionEpoch?: number;
-  insertOnClipDrop?: boolean;
-  onDropRefused?: DragCommitDeps["onDropRefused"];
 }
 
 export function useTimelineClipDrag({
@@ -595,3 +593,5 @@ export function useTimelineClipDrag({
     stopClipDragAutoScroll,
   };
 }
+
+export type ClipDropOptions = Pick<DragCommitDeps, "insertOnClipDrop" | "onDropRefused">;

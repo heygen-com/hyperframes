@@ -7,13 +7,9 @@ import { isMainTrackElement } from "./timelineZones";
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
 
-/**
- * Where everything goes when a main-track clip dropped at `aimStart` overlaps other main-track
- * clips: it goes in before the first clip whose middle lies after its left edge, that clip and the
- * ones after it move right by its length, and the gap it left closes. Linked partners follow.
- * Null when the drop overlaps no clip or a clip that would move is locked; empty when nothing
- * moves.
- */
+// A main-track clip dropped over others goes before the first one whose middle is past its left
+// edge; that one and the rest move right by its length, and its old gap closes. Null: no overlap
+// or a locked clip would move; empty: nothing moves.
 export function resolveMainTrackInsert(
   elements: readonly TimelineElement[],
   dragged: TimelineElement,
