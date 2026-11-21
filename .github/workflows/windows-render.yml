@@ -23,7 +23,7 @@ jobs:
       - name: Check out the commit under test
         shell: pwsh
         run: |
-          git checkout 98bee3a4f7c
+          git checkout a72e7a8cf04
           if ("${{ matrix.code }}" -eq "main") { git checkout origin/main -- packages/core/src/renameWithRetry.ts }
           git status --short
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
