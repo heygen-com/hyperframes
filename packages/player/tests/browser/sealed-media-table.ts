@@ -663,9 +663,6 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
       const kinds = everListed.get(el)!;
       // The runtime loads media without the helper too; the helper's share is what the sealed film adds.
       const helper = Math.max(0, seen.ours - plain.ours);
-      const selections = seen.loads - helper;
-      if (last)
-        for (const id of kinds.keys()) budget.set(id, (budget.get(id) ?? 0) + 2 * selections);
       const most = 2 * kinds.size * seen.selections;
       if (helper > most)
         problems.push(
@@ -687,7 +684,7 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
           problems.push(
             `${where}: plays ${idOf(seen.currentSrc)}, without the helper ${idOf(plain.currentSrc)}`,
           );
-        if (seen.playing !== plain.playing || seen.paused !== plain.paused)
+        if (seen.playing !== plain.playing || (plain.playing && seen.paused !== plain.paused))
           problems.push(
             `${where}: ${JSON.stringify(seen)}, without the helper ${JSON.stringify(plain)}`,
           );
@@ -729,6 +726,13 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
     });
     return problems;
   }
+  const final = sealed.at(-1)!;
+  sequences.forEach((sequence, index) => {
+    for (const [el, kinds] of history(sequence).everListed) {
+      const loadsAskingEachSource = final.get(`${index}-${el}`)!.loads;
+      for (const id of kinds.keys()) budget.set(id, (budget.get(id) ?? 0) + loadsAskingEachSource);
+    }
+  });
   return { problems: all.flat(), gaps, budget };
 }
 

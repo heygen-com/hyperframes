@@ -128,7 +128,7 @@ function failed(event: Event, home: string): void {
     if (setOf(refused, media).delete(url)) setOf(down, media).add(url);
     return;
   }
-  if (has(refused, media, url) || has(down, media, url)) return;
+  if (has(down, media, url)) return;
   setOf(refused, media).add(url);
   write(media, null);
   reload(media);
