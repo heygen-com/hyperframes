@@ -1,14 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CompositionProbe } from "./composition-probe.js";
+import { CompositionProbe, SEALED_TIMELINE_NOT_FOUND } from "./composition-probe.js";
+import type { ProbeCallbacks } from "./composition-probe.js";
 
-function mount(markup: string, globals: Record<string, unknown> = {}) {
+function mount(
+  markup: string,
+  globals: Record<string, unknown> = {},
+  callbacks: Partial<ProbeCallbacks> = {},
+) {
   const iframe = document.createElement("iframe");
   document.body.appendChild(iframe);
   iframe.contentDocument!.body.innerHTML = markup;
   Object.assign(iframe.contentWindow!, globals);
   const onReady = vi.fn();
   const onError = vi.fn();
-  const probe = new CompositionProbe(iframe, { onReady, onError });
+  const probe = new CompositionProbe(iframe, { onReady, onError, ...callbacks });
   probe.start();
   return { iframe, probe, onReady, onError };
 }
@@ -122,6 +127,32 @@ describe("composition probe readiness", () => {
     expect(onReady).not.toHaveBeenCalled();
     vi.advanceTimersByTime(8000);
     expect(onError).toHaveBeenCalledOnce();
+  });
+  const unreadable = (sealed: boolean) => {
+    const { iframe, onError } = mount(
+      '<div data-composition-id="main"></div>',
+      {},
+      { sealed: () => sealed },
+    );
+    Object.defineProperty(iframe, "contentWindow", {
+      get: () => {
+        throw new DOMException("Blocked a frame with origin", "SecurityError");
+      },
+    });
+    vi.advanceTimersByTime(8000);
+    return onError;
+  };
+
+  it("names the runtime script and sandbox-origin when a sealed frame never shows a timeline", () => {
+    expect(unreadable(true)).toHaveBeenCalledExactlyOnceWith(SEALED_TIMELINE_NOT_FOUND);
+    expect(SEALED_TIMELINE_NOT_FOUND).toContain("without sandbox-origin");
+    expect(SEALED_TIMELINE_NOT_FOUND).toContain("runtime script");
+  });
+
+  it("gives an unsealed player whose composition is on another origin the plain timeout", () => {
+    expect(unreadable(false)).toHaveBeenCalledExactlyOnceWith(
+      "Composition timeline not found after 8s",
+    );
   });
   it("does not invent duration for an unresolved document", () => {
     const { onReady, onError } = mount('<div data-composition-id="main"></div>');

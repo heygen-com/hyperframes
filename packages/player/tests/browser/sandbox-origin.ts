@@ -47,6 +47,58 @@ try {
     true,
     "removing the policy must reload into the documented trusted mode",
   );
+  const direct = await browser.newPage();
+  await direct.goto(`${server.origin}/host.html?fixture=direct-timeline&sealed=1`, {
+    waitUntil: "domcontentloaded",
+  });
+  await direct.waitForFunction(() => window.__playerError !== undefined, { timeout: 15_000 });
+  const sealedError = String(await direct.evaluate(() => window.__playerError));
+  assert.match(
+    sealedError,
+    /include the runtime script/,
+    "a sealed timeout must name the runtime script",
+  );
+  assert.match(sealedError, /without sandbox-origin/, "a sealed timeout must name the trusted way");
+
+  const elsewhere = await browser.newPage();
+  await elsewhere.goto(`${server.origin}/host.html?fixture=direct-timeline`, {
+    waitUntil: "domcontentloaded",
+  });
+  await elsewhere.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
+  await elsewhere.evaluate(
+    (url) => {
+      document.querySelector("hyperframes-player")!.setAttribute("src", url);
+    },
+    `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
+  );
+  await elsewhere.waitForFunction(() => window.__playerError !== undefined, { timeout: 15_000 });
+  assert.doesNotMatch(
+    String(await elsewhere.evaluate(() => window.__playerError)),
+    /sandbox-origin/,
+    "a default player with a composition on another origin is not told it is sealed",
+  );
+
+  const trusted = await browser.newPage();
+  await trusted.goto(`${server.origin}/host.html?fixture=direct-timeline`, {
+    waitUntil: "domcontentloaded",
+  });
+  await trusted.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
+  assert.equal(
+    await trusted.evaluate(() => window.__playerDuration),
+    5,
+    "a default player must still add the runtime to a composition that has none",
+  );
+
+  const bundled = await browser.newPage();
+  await bundled.goto(`${server.origin}/host.html?fixture=direct-timeline-runtime&sealed=1`, {
+    waitUntil: "domcontentloaded",
+  });
+  await bundled.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
+  assert.equal(
+    await bundled.evaluate(() => window.__playerDuration),
+    5,
+    "a sealed player must play a composition that brings the runtime script",
+  );
 } finally {
   await browser.close();
   await server.stop();
