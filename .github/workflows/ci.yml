@@ -583,6 +583,24 @@ jobs:
       - uses: ./.github/actions/setup-test-workspace
       - run: bun run --cwd packages/studio test
 
+  sealed-parity:
+    name: Sealed parity
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: true
+      - uses: ./.github/actions/setup-test-workspace
+      - run: node --test scripts/ci/sealed-parity.test.mjs
+      - run: node scripts/ci/sealed-parity.mjs check
+      - run: node scripts/ci/sealed-parity.mjs run unsealed "$RUNNER_TEMP/unsealed.json"
+      - run: node scripts/ci/sealed-parity.mjs run sealed "$RUNNER_TEMP/sealed.json"
+      - run: node scripts/ci/sealed-parity.mjs compare "$RUNNER_TEMP/unsealed.json" "$RUNNER_TEMP/sealed.json" "$RUNNER_TEMP/parity.json"
+      - run: node scripts/ci/sealed-parity.mjs gate "$RUNNER_TEMP/parity.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
   test-runtime:
     name: Test (runtime)
     needs: changes
