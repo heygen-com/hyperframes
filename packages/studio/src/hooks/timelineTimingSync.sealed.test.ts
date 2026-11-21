@@ -8,6 +8,7 @@ vi.mock("../player/lib/previewChannel", async (importOriginal) => ({
   previewFrameOpaque: () => true,
   previewEditingClient: () => PREVIEW_LOAD,
   previewRequest,
+  previewAnswer: previewRequest,
 }));
 
 import { finishTimelineTimingFallback } from "./timelineTimingSync";

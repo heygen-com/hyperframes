@@ -9,6 +9,7 @@ vi.mock("../player/lib/previewChannel", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../player/lib/previewChannel")>()),
   previewFrameOpaque: () => true,
   previewRequest,
+  previewAnswer: previewRequest,
 }));
 vi.mock("./gsapRuntimePatch", () => ({ patchRuntimeTweenInPlace }));
 
