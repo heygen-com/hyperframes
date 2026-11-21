@@ -60,6 +60,10 @@ function optedOut(el: Element, scene: Element): boolean {
   return false;
 }
 
+function optedOutSelf(el: Element): boolean {
+  return el.getAttribute("data-motion-blur") === "self";
+}
+
 function in3d(el: Element, scene: Element): boolean {
   for (let n: Element | null = el; n && n !== scene; n = n.parentElement) {
     const cs = getComputedStyle(n);
@@ -246,7 +250,12 @@ export function discoverMovers({
   }
 
   const candidates = all.filter(
-    (el) => fast.has(el) && !threeD.has(el) && !seeThrough.has(el) && !optedOut(el, scene),
+    (el) =>
+      fast.has(el) &&
+      !threeD.has(el) &&
+      !seeThrough.has(el) &&
+      !optedOut(el, scene) &&
+      !optedOutSelf(el),
   );
   const movers = candidates.filter((el) => !candidates.some((o) => o !== el && o.contains(el)));
   return { movers, dynamic, pads };
