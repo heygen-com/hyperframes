@@ -568,6 +568,76 @@ describe("an agent step that began while a file's first copy was pending", () =>
     expect(read("parts/p1.js")).toBe("// saved\n");
   });
 
+  it("keeps the original as the start when a save writes it back over a later change, with no step", async () => {
+    const { file, historyRoot, opts } = project();
+    const { release, reached } = holdFiling(Buffer.from("// before\n"));
+    const history = await open(opts);
+    await reached;
+    writeFileSync(file("parts/p1.js"), "// B\n");
+    writeFileSync(file("parts/p1.js"), "// before\n");
+    recordFileWriteReceipt(file("parts/p1.js"), {
+      path: "parts/p1.js",
+      version: fileContentVersion("// before\n"),
+      writeToken: "studio",
+      overwrote: "// B\n",
+    });
+    release();
+    await landed(historyRoot);
+    expect(history.peek(START)!["parts/p1.js"]).toBe(sha256("// before\n"));
+  });
+
+  it("keeps a copy read before a step as the start, though its file closed after the step began", async () => {
+    const { file, historyRoot, opts } = project();
+    let releaseClose = () => {};
+    const closeHeld = new Promise<void>((resolve) => (releaseClose = resolve));
+    closes.push(async () => releaseClose());
+    let held = false;
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      const handle = await realOpen(...args);
+      if (String(args[0]) !== file("parts/p1.js") || held) return handle;
+      held = true;
+      const close = handle.close.bind(handle);
+      handle.close = async () => {
+        await closeHeld;
+        return close();
+      };
+      return handle;
+    });
+    const history = await open(opts);
+    await step(history, () => writeFileSync(file("parts/p1.js"), "// agent\n"), [
+      file("parts/p1.js"),
+    ]);
+    releaseClose();
+    await landed(historyRoot);
+    expect(history.peek(START)!["parts/p1.js"]).toBe(sha256("// before\n"));
+  });
+
+  it("keeps the original an early save's receipt names through a prune before the copy is filed", async () => {
+    const { file, historyRoot, opts } = project();
+    const reading = stallRead(file("parts/p1.js"));
+    const { release, reached } = holdFiling(Buffer.from("// B\n"));
+    // Over budget only by the original and the person's replaced index until the copy lands.
+    const history = await open({ ...opts, budgetBytes: 32, quietMs: 30 });
+    const receipt = (bytes: string, overwrote: string) =>
+      recordFileWriteReceipt(file("parts/p1.js"), {
+        path: "parts/p1.js",
+        version: fileContentVersion(bytes),
+        writeToken: "studio",
+        overwrote,
+      });
+    writeFileSync(file("parts/p1.js"), "// B\n");
+    receipt("// B\n", "// before\n");
+    reading();
+    await reached;
+    // A later receipt that starts a new chain: the live receipts no longer name the original.
+    receipt("// C\n", "// unrelated\n");
+    writeFileSync(file("index.html"), "<html>person</html>");
+    await history.claim(you, "Edit", ["index.html"]);
+    release();
+    await landed(historyRoot);
+    expect(history.peek(START)!["parts/p1.js"]).toBe(sha256("// before\n"));
+  });
+
   it("answers a Studio claim on the pending file within the deadline", async () => {
     const { file, opts } = project();
     stallRead(file("parts/p1.js"));

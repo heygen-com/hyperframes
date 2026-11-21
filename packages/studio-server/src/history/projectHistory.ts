@@ -555,6 +555,8 @@ class Engine {
   wentAhead = new Set<string>();
   wentAheadBeforeReopen = new Set<string>();
   reading = new Map<string, Promise<unknown>>();
+  /** Bytes a save replaced in a file history holds no copy of yet: its pending first copy may start there. */
+  heardBeforeCopy = new Map<string, Set<string>>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
   stopHearing: (() => void) | undefined;
@@ -749,6 +751,8 @@ class Engine {
         path,
         chainBackFrom(this.overwritten.get(path), replaced).set(after, replaced),
       );
+      if (!this.tracked.has(path))
+        this.heardBeforeCopy.set(path, (this.heardBeforeCopy.get(path) ?? new Set()).add(replaced));
       this.queue(async () => {
         if (!this.blobs.has(replaced) && !isUncopied(path, bytes.length))
           await this.storeBytes(bytes);
@@ -829,6 +833,7 @@ class Engine {
         late.set(file.path, copies[i]!.work);
       } else if (result.value !== "gone") {
         this.tracked.set(file.path, { hash: result.value.hash, stat: this.statKey(file, sweptAt) });
+        this.heardBeforeCopy.delete(file.path);
         result.value.release?.();
       }
     });
@@ -859,7 +864,6 @@ class Engine {
       this.wentAhead.add(path);
       this.wentAheadBeforeReopen.add(path);
     }
-    // One write of the whole rebuilt list: a crash midway must not drop the files after the first.
     this.nameAtStart([...this.wentAhead]);
     this.saveWentAhead();
   }
@@ -989,6 +993,7 @@ class Engine {
         if ((await this.recordAdopted(file, sweptAt, copied, provenance)) === "changing")
           return "changing";
         this.adopting.delete(file.path);
+        this.heardBeforeCopy.delete(file.path);
         this.wentAhead.delete(file.path);
         this.saveWentAhead();
         this.saveAdopting();
@@ -1045,9 +1050,7 @@ class Engine {
     provenance: Provenance,
   ): string {
     if (provenance === "unknown") return hashNoVersionHas();
-    // A save's receipt after a step went ahead may name the step's bytes as the ones it replaced.
-    const heard =
-      provenance === "read-before" ? (heardAtRead ?? new Map()) : this.overwritten.get(path);
+    const heard = heardAtRead ?? new Map<string, string>();
     const found = this.overwrittenBy(
       { path, before: null, after: hash },
       undefined,
@@ -1503,6 +1506,7 @@ class Engine {
           ...referencedHashes(this.log, this.manifest()),
           ...this.pendingHashes(),
           ...[...this.overwritten.values()].flatMap((byAfter) => [...byAfter.values()]),
+          ...[...this.heardBeforeCopy.values()].flatMap((replaced) => [...replaced]),
         ]),
       );
       if (this.historyBytes() <= budget || !foldOldest(this.log)) break;

@@ -17,9 +17,9 @@ vi.mock("./blobStore", async (importOriginal) => {
     ...real,
     openBlobStore: async (dir: string) => {
       const store = await real.openBlobStore(dir);
-      const put = async (path: string) => {
+      const put: typeof store.put = async (path, ...rest) => {
         const left = changing.get(basename(path)) ?? 0;
-        if (left === 0) return store.put(path);
+        if (left === 0) return store.put(path, ...rest);
         changing.set(basename(path), left - 1);
         return null;
       };

@@ -77,13 +77,17 @@ export async function hashFile(path: string): Promise<string> {
 
 async function readIfSmall(
   path: string,
+  onRead: () => void,
 ): Promise<{ bytes: Buffer; mode: number; moved: boolean } | null> {
   const handle = await open(path, "r");
   try {
     const before = await handle.stat();
     if (before.size > READ_ONCE_AT_MOST_BYTES) return null;
     const bytes = await handle.readFile();
-    return { bytes, mode: before.mode, moved: !unchanged(before, await handle.stat()) };
+    const moved = !unchanged(before, await handle.stat());
+    // At the read itself, not after the close, which a slow drive can hold.
+    if (!moved) onRead();
+    return { bytes, mode: before.mode, moved };
   } finally {
     await handle.close();
   }
@@ -257,12 +261,9 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     pinned: boolean,
     onRead: () => void,
   ): Promise<string | null> => {
-    const small = await readIfSmall(absPath);
+    const small = await readIfSmall(absPath, onRead);
     if (small?.moved) return null;
-    if (small) {
-      onRead();
-      return putBytes(small.bytes, small.mode, pinned);
-    }
+    if (small) return putBytes(small.bytes, small.mode, pinned);
     // Hash the copy, not the source, so a write racing the copy can never file bytes under the wrong hash.
     const temp = join(dir, `incoming-${randomUUID()}`);
     // Recreated if removed while open, so a missing folder is never mistaken for a deleted project file.
