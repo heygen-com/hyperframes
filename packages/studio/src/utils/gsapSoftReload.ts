@@ -179,7 +179,12 @@ const outgoingScripts = (doc: ParentNode, scriptText: string): string[] =>
     (script) => script.textContent ?? "",
   );
 
-const SOFT_RELOAD_RESULTS = new Set<unknown>(["applied", "verify-failed", "cannot-soft-reload"]);
+const SOFT_RELOAD_RESULTS = new Set<unknown>([
+  "applied",
+  "verify-failed",
+  "cannot-soft-reload",
+  "superseded",
+]);
 
 /** The frame's reply is data: anything but exactly `{ result }` with a known result counts as a refusal. */
 function sealedSoftReloadResult(reply: unknown): SoftReloadResult {
@@ -230,8 +235,9 @@ function softReloadSealed(
     time: currentTimeOverride,
     restore,
   }).then((reply) => {
-    if (sealedSoftReloadResult(reply) === "cannot-soft-reload") onAsyncFailure?.();
-    else onShownInPlace?.();
+    const result = sealedSoftReloadResult(reply);
+    if (result === "cannot-soft-reload") onAsyncFailure?.();
+    else if (result !== "superseded") onShownInPlace?.();
   });
   return "applied";
 }
@@ -263,7 +269,7 @@ export function applySoftReload(
   });
   if (typeof result === "string") return result;
   void result.then((settled) => {
-    if (settled !== "applied") options.onAsyncFailure?.();
+    if (settled !== "applied" && settled !== "superseded") options.onAsyncFailure?.();
   });
   return "applied";
 }

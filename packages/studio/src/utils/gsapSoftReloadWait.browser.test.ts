@@ -1,15 +1,13 @@
 // Real Chrome: a preview Studio cannot script (a sandboxed frame), or a same-origin one, running the real runtime,
 // with the MotionPath plugin request held so a re-run has to wait for it.
-import { mkdtempSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser, Frame, HTTPRequest, Page } from "puppeteer-core";
 import { build } from "esbuild";
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { closeTestChrome, emptyNodeBuiltins, launchTestChrome } from "../../tests/chromeTestUtils";
-import { writeFixture } from "../../tests/e2e/edit-accuracy/grid.mjs";
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 const require = createRequire(import.meta.url);
@@ -39,27 +37,47 @@ beforeAll(async () => {
 
 afterAll(() => closeTestChrome(browser));
 
-/** The bench's tween fixture as a Studio preview page, with GSAP and the runtime inline. */
-function previewHtml(): { html: string; script: string } {
-  const dir = join(mkdtempSync(join(tmpdir(), "soft-wait-")), "case");
-  const spec = {
-    gesture: "move",
-    nesting: "root",
-    zoom: 100,
-    gsap: "tween",
-    placement: "px",
-    rotation: 0,
-  };
-  writeFixture({ ...spec, time: 1 }, dir);
-  const file = readFileSync(join(dir, "index.html"), "utf8");
+const C_ATTRIBUTES = (left: number) => [
+  ["id", "c"],
+  ["data-hf-id", "c"],
+  ["class", "clip box"],
+  ["data-start", "0"],
+  ["data-duration", "4"],
+  ["data-track-index", "3"],
+  ["style", `left: ${left}px; top: 500px`],
+];
+const restoreC = (left: number) => [
+  { file: null, elements: [{ key: "hf:c", attributes: C_ATTRIBUTES(left) }] },
+];
+
+/** A timeline script for `key`: "main" moves #target to `x`, "other" moves #b. */
+function timeline(key: "main" | "other", name: string, x: number, motion = false): string {
+  const target = key === "main" ? "#target" : "#b";
+  return `(function () {
+    window.__timelines = window.__timelines || {};
+    var tl = gsap.timeline({ paused: true });
+    tl.to("${target}", { x: ${x}, duration: 4, ease: "none" }, 0);
+    window.__timelines["${key}"] = tl;
+    window.__ran = Object.assign(window.__ran || {}, { ${key}: "${name}" });
+  })();${motion ? "\n// motionPath: held until the plugin loads" : ""}`;
+}
+
+/** A Studio preview page with two timelines, "main" and "other", GSAP and the runtime inline. */
+function previewHtml(): string {
   const gsap = readFileSync(require.resolve("gsap/dist/gsap.min.js"), "utf8");
   const runtime = readFileSync(require.resolve("@hyperframes/core/runtime"), "utf8");
-  const script = /<script>([\s\S]*?)<\/script>/.exec(file)![1]!;
-  const html = file
-    .replace("<head>", `<head>${STUDIO_MARK}`)
-    .replace(/<script src="[^"]*gsap\.min\.js"><\/script>/, () => `<script>${gsap}</script>`)
-    .replace("</body>", () => `<script>${runtime}</script></body>`);
-  return { html, script };
+  const box = (id: string, track: number, style: string) =>
+    `<div id="${id}" class="clip box" data-start="0" data-duration="4" data-track-index="${track}" style="${style}"></div>`;
+  return `<!doctype html><html><head><meta charset="UTF-8" />${STUDIO_MARK}
+    <style>html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden }
+      #root { position: relative; width: 100%; height: 100% } .box { position: absolute; width: 200px; height: 200px }</style>
+    </head><body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="4" data-width="1920" data-height="1080">
+      ${box("target", 1, "left: 100px; top: 100px")}${box("b", 2, "left: 600px; top: 100px")}
+      <div id="c" data-hf-id="c" class="clip box" data-start="0" data-duration="4" data-track-index="3" style="left: 0px; top: 500px"></div>
+    </div>
+    <script>${gsap}</script><script>${timeline("main", "file", 120)}</script><script>${timeline("other", "file", 120)}</script>
+    <script>${runtime}</script></body></html>`;
 }
 
 /** Opens the preview in Studio's page; the plugin request waits until `release` is called. */
@@ -76,12 +94,16 @@ async function openPreview(mode: string) {
     if (holding) held.push(request);
     else void serve();
   });
-  const release = async () => {
+  const release = async (status: 200 | 404) => {
     holding = false;
     for (const request of held.splice(0))
-      await request.respond({ status: 200, contentType: "text/javascript", body: plugin });
+      await request.respond({
+        status,
+        contentType: "text/javascript",
+        body: status === 200 ? plugin : "",
+      });
   };
-  const { html, script } = previewHtml();
+  const html = previewHtml();
   await page.setContent("<!doctype html><html><body></body></html>");
   await page.evaluate(studioBundle);
   await page.evaluate(
@@ -118,17 +140,18 @@ async function openPreview(mode: string) {
     }, to);
     await expect.poll(time).toBeCloseTo(to, 2);
   };
-  return { page, frame, script, held, release, seek, time };
+  return { page, frame, held, release, seek, time };
 }
 
 type Studio = typeof import("./gsapSoftReload") & {
   previewRequest: typeof import("../player/lib/previewChannel").previewRequest;
 };
+type Preview = Awaited<ReturnType<typeof openPreview>>;
 
-/** Studio's re-run of `script` at `time`; resolves with how it ended. */
-function rerun(page: Page, script: string, time: number) {
+/** Studio's re-run of `script` at `time`; resolves "reload" when Studio falls back to a full reload. */
+function rerun(page: Page, script: string, time: number, restore: unknown[] = []) {
   return page.evaluate(
-    (text, at) =>
+    (text, at, scopes) =>
       new Promise<string>((resolve) => {
         const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
         const iframe = document.querySelector("iframe")!;
@@ -137,56 +160,124 @@ function rerun(page: Page, script: string, time: number) {
           currentTimeOverride: at,
           authoredHtml: html,
           previousHtml: html,
-          onShownInPlace: () => resolve("in place"),
+          restore: scopes as never,
           onAsyncFailure: () => resolve("reload"),
         });
         if (result !== "applied") resolve(result);
-        else if (!studio.previewRequest || iframe.contentDocument) resolve("in place");
       }),
     script,
     time,
+    restore,
   );
 }
 
-const withMotionPath = (script: string) => `${script}\n// motionPath: held until the plugin loads`;
+/** Waits until every answer the frame owes Studio has reached it. */
+async function settled({ page, frame }: Preview, sealed: boolean) {
+  await frame.waitForFunction(
+    () => !(window as { __hfMotionPathPluginLoading?: boolean }).__hfMotionPathPluginLoading,
+  );
+  if (sealed)
+    await page.evaluate(async () => {
+      const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+      await studio.previewRequest(document.querySelector("iframe")!, "runtime-snapshot", {});
+    });
+}
 
-// fails without the fix: the re-run's finish seeked back to the time it was sent at.
-it("ends a sealed re-run that waited for the plugin where the player was scrubbed away and back to", async () => {
-  const { page, script, held, release, seek, time } = await openPreview("sealed");
-  await seek(4);
-  const done = rerun(page, withMotionPath(script), 2);
-  await expect.poll(() => held.length).toBeGreaterThan(0);
-  await seek(3);
-  await seek(4);
-  await release();
-  expect(await done).toBe("in place");
-  expect(await time()).toBeCloseTo(4, 2);
-  await page.close();
-});
+type Step = "scrub" | "same" | "other" | "attr" | "edit" | "move" | "ok" | "fail";
 
-// fails without the fix: the older deferred script ran after the newer edit and put its tween back.
-it("keeps a newer sealed edit made while an older re-run waited for the plugin", async () => {
-  const { page, frame, script, held, release, seek } = await openPreview("sealed");
-  const older = rerun(page, withMotionPath(script.replace("x: 120", "x: 60")), 0);
-  await expect.poll(() => held.length).toBeGreaterThan(0);
-  expect(await rerun(page, script.replace("x: 120", "x: 200"), 0)).toBe("in place");
-  await release();
-  expect(await older).toBe("in place");
-  await seek(4);
-  const x = () =>
+/** Plays `steps` against an older "main" re-run waiting for the plugin, sent at 2 s with the player at 4 s. */
+async function play(mode: string, steps: Step[]) {
+  const sealed = mode === "sealed";
+  const preview = await openPreview(mode);
+  const { page, frame, held, release, seek, time } = preview;
+  const inFrame = <T>(fn: () => T) => frame.evaluate(fn);
+  const setC = (left: number) =>
     frame.evaluate(
-      () => new DOMMatrix(getComputedStyle(document.getElementById("target")!).transform).m41,
+      (l) => document.getElementById("c")!.setAttribute("style", `left: ${l}px; top: 500px`),
+      left,
     );
-  await expect.poll(x).toBeCloseTo(200, 0);
+  await seek(4);
+  if (!sealed) await setC(1);
+  const older = rerun(page, timeline("main", "older", 60, true), 2, sealed ? restoreC(1) : []);
+  await expect.poll(() => held.length).toBeGreaterThan(0);
+  for (const step of steps) {
+    if (step === "scrub") for (const t of [3, 4]) await seek(t);
+    if (step === "same") await rerun(page, timeline("main", "newer", 200), 4);
+    if (step === "other") await rerun(page, timeline("other", "newer", 200), 4);
+    if (step === "attr" && sealed)
+      await page.evaluate(
+        (scopes) =>
+          (window as unknown as { hfStudio: Studio }).hfStudio.previewRequest(
+            document.querySelector("iframe")!,
+            "restore-attributes",
+            { scopes: scopes as never, scripted: true, time: 4 },
+          ),
+        restoreC(2),
+      );
+    if (step === "attr" && !sealed) await setC(2);
+    if (step === "edit")
+      await inFrame(() => document.getElementById("target")!.style.setProperty("color", "red"));
+    if (step === "move")
+      await inFrame(() =>
+        document.getElementById("target")!.style.setProperty("transform", "translateX(300px)"),
+      );
+    if (step === "ok" || step === "fail") await release(step === "ok" ? 200 : 404);
+    if (step === "ok" || step === "fail") await settled(preview, sealed);
+  }
+  const answer = await Promise.race([older, Promise.resolve("kept")]);
+  const state = await inFrame(() => {
+    const target = document.getElementById("target")!;
+    return {
+      ran: (window as unknown as { __ran: Record<string, string> }).__ran,
+      left: document.getElementById("c")!.style.left,
+      color: target.style.color,
+      x: Math.round(new DOMMatrix(getComputedStyle(target).transform).m41),
+    };
+  });
+  const outcome = { answer, ...state, at: Math.round((await time()) * 100) / 100 };
   await page.close();
+  return outcome;
+}
+
+// fails without the fix (core as at 5822316a): scrub,ok ends at 2; same,ok and same,fail lose the newer edit
+// or reload; other,fail reloads with main's timeline killed; attr,ok puts the older left back.
+const ROWS: [string, Step[], Record<string, unknown>][] = [
+  ["ok", ["ok"], { answer: "kept", ran: { main: "older", other: "file" }, at: 2, x: 30 }],
+  ["scrub,ok", ["scrub", "ok"], { answer: "kept", ran: { main: "older" }, at: 4, x: 60 }],
+  ["ok,scrub", ["ok", "scrub"], { answer: "kept", ran: { main: "older" }, at: 4, x: 60 }],
+  ["same,ok", ["same", "ok"], { answer: "kept", ran: { main: "newer" }, x: 200 }],
+  ["same,fail", ["same", "fail"], { answer: "kept", ran: { main: "newer" }, x: 200 }],
+  ["ok,same", ["ok", "same"], { answer: "kept", ran: { main: "newer" }, x: 200 }],
+  ["fail,same", ["fail", "same"], { answer: "reload", ran: { main: "newer" } }],
+  ["other,ok", ["other", "ok"], { answer: "kept", ran: { main: "older", other: "newer" } }],
+  [
+    "other,fail",
+    ["other", "fail"],
+    { answer: "reload", ran: { main: "file", other: "newer" }, x: 120 },
+  ],
+  ["ok,other", ["ok", "other"], { answer: "kept", ran: { main: "older", other: "newer" } }],
+  ["attr,ok", ["attr", "ok"], { answer: "kept", left: "2px" }],
+  ["ok,attr", ["ok", "attr"], { answer: "kept", left: "2px" }],
+  ["edit,ok", ["edit", "ok"], { answer: "kept", color: "red", x: 30 }],
+  ["ok,edit", ["ok", "edit"], { answer: "kept", color: "red", x: 30 }],
+  ["move,ok", ["move", "ok"], { answer: "kept", x: 30 }],
+  ["ok,move", ["ok", "move"], { answer: "kept", x: 300 }],
+];
+
+describe.each(MODES)("a re-run waiting for the MotionPath plugin, %s", (mode) => {
+  it.each(ROWS)("%s", async (name, steps, expected) => {
+    const outcome = await play(mode, steps);
+    console.info(`[soft-wait] ${mode} ${name} ${JSON.stringify(outcome)}`);
+    expect(outcome).toMatchObject(expected);
+  });
 });
 
 // Parity: a same-origin preview gets the plugin on load (NLEContext), and a sealed one when Studio connects.
 it.each(MODES)(
   "the first motion-path re-run after load finds the plugin loaded (%s)",
   async (mode) => {
-    const { page, frame, script, release } = await openPreview(mode);
-    await release();
+    const { page, frame, release } = await openPreview(mode);
+    await release(200);
     await page.evaluate(async () => {
       const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
       const iframe = document.querySelector("iframe")!;
@@ -194,7 +285,7 @@ it.each(MODES)(
       await studio.previewRequest(iframe, "runtime-snapshot", {});
     });
     await frame.waitForFunction(() => "MotionPathPlugin" in window, { timeout: 5_000 });
-    expect(await rerun(page, withMotionPath(script), 1)).toBe("in place");
+    expect(await rerun(page, timeline("main", "older", 60, true), 1)).toBe("applied");
     await page.close();
   },
 );

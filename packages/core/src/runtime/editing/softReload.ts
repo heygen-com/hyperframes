@@ -36,7 +36,7 @@ export type SoftReloadWindow = Window & {
   // Set while a MotionPathPlugin script is fetched, so overlapping reloads queue no second one.
   __hfMotionPathPluginLoading?: boolean;
   __hfPlayerSeeks?: number;
-  __hfSoftReloads?: number;
+  __hfTimelineGenerations?: Map<string, number>;
   gsap?: {
     version?: string;
     registerPlugin?: (...plugins: unknown[]) => unknown;
@@ -50,7 +50,8 @@ export type StandaloneSet = { selector: string; props: string[] };
 
 // "applied": ran, or runs once the MotionPath plugin loads. "verify-failed": ran, its timeline keys
 // read empty for now, the live state is right. "cannot-soft-reload": only a full reload fixes it.
-export type SoftReloadResult = "applied" | "verify-failed" | "cannot-soft-reload";
+// "superseded": a newer soft reload replaced one of its timelines while it waited, so it changed nothing.
+export type SoftReloadResult = "applied" | "verify-failed" | "cannot-soft-reload" | "superseded";
 
 export interface SoftReloadInput {
   script: string;
@@ -464,7 +465,6 @@ function readAuthoredStyles(
 
 // Re-runs the script in place of the live one registering the same `__timelines` keys, tearing down
 // only those timelines. A promise only while it waits for the MotionPath plugin.
-/** Counted on every player seek, so a re-run that waited sees a scrub even when it came back to the same time. */
 export function countPlayerSeek(win: SoftReloadWindow = window as SoftReloadWindow): void {
   win.__hfPlayerSeeks = (win.__hfPlayerSeeks ?? 0) + 1;
 }
@@ -491,12 +491,13 @@ function runScript(win: SoftReloadWindow, doc: Document, script: string): boolea
   return doc.body.querySelectorAll("*").length > before;
 }
 
-/** A soft reload's start: a later one supersedes it, and a seek since moves where it finishes. */
-function markReload(win: SoftReloadWindow) {
-  const reload = (win.__hfSoftReloads = (win.__hfSoftReloads ?? 0) + 1);
+function startRun(win: SoftReloadWindow, keys: string[]) {
+  const generations = (win.__hfTimelineGenerations ??= new Map());
+  const numbered = keys.map((key) => [key, (generations.get(key) ?? 0) + 1] as const);
+  for (const [key, n] of numbered) generations.set(key, n);
   const seeks = win.__hfPlayerSeeks ?? 0;
   return {
-    superseded: () => win.__hfSoftReloads !== reload,
+    current: () => numbered.every(([key, n]) => generations.get(key) === n),
     timeAfter: (sent: number) =>
       (win.__hfPlayerSeeks ?? 0) !== seeks ? (win.__player?.getTime?.() ?? sent) : sent,
   };
@@ -512,7 +513,6 @@ export function softReloadFrame(
   if (!scope) return "cannot-soft-reload";
   const { targetKeys, staleScripts } = scope;
   const currentTime = input.time ?? win.__player?.getTime?.() ?? 0;
-  let mark!: ReturnType<typeof markReload>;
 
   const targets = collectResetTargets(win, doc, targetKeys, input.sets);
   const ownFile = compositionFile(doc, targetKeys);
@@ -520,35 +520,44 @@ export function softReloadFrame(
   if (!authored) return "cannot-soft-reload";
   const timing = input.timing ? planSavedTiming(doc, ownFile, input.timing) : [];
   if (timing === null) return "cannot-soft-reload";
-
-  let deferred: ((result: SoftReloadResult) => void) | null = null;
-  let pending: Promise<SoftReloadResult> | null = null;
-  let builtDom = false;
-
-  const executeScript = () => {
-    if (pending && mark.superseded()) return deferred?.("applied");
-    for (const stale of staleScripts) stale.remove();
-    builtDom = runScript(win, doc, script);
-    finalizeSoftReload(win, pending ? mark.timeAfter(currentTime) : currentTime);
-    deferred?.(builtDom ? "cannot-soft-reload" : "applied");
+  // The file's own state lands now, in the order requests arrive; only the timeline swap may wait.
+  if (
+    !runSuppressed(win, () => {
+      if (input.restorePlan) applyRestorePlan(input.restorePlan);
+      applyTimingPlan(timing);
+    })
+  )
+    return "cannot-soft-reload";
+  const run = startRun(win, targetKeys);
+  const swap = (time: number): boolean => {
+    let builtDom = false;
+    const ran = runSuppressed(win, () => {
+      killTimelines(win, targetKeys);
+      resetTargetStyles(win, targets, authored);
+      forgetLiveSets(targets);
+      for (const stale of staleScripts) stale.remove();
+      builtDom = runScript(win, doc, script);
+      finalizeSoftReload(win, time);
+    });
+    return ran && !builtDom;
   };
 
-  const doReload = () => {
-    mark = markReload(win);
-    if (input.restorePlan) applyRestorePlan(input.restorePlan);
-    applyTimingPlan(timing);
-    killTimelines(win, targetKeys);
-    resetTargetStyles(win, targets, authored);
-    forgetLiveSets(targets);
-    const needsMotionPath = /motionPath\s*[:{]/.test(script);
-    if (!needsMotionPath || win.MotionPathPlugin || !win.gsap) return executeScript();
-    pending = new Promise<SoftReloadResult>((resolve) => (deferred = resolve));
-    whenMotionPathLoaded(win, doc, executeScript, () => deferred?.("cannot-soft-reload"));
-  };
-
-  if (!runSuppressed(win, doReload) || builtDom) return "cannot-soft-reload";
-  if (pending) return pending;
-  return verifyTimelinesPopulated(win, targetKeys) ? "applied" : "verify-failed";
+  const needsMotionPath = /motionPath\s*[:{]/.test(script);
+  if (!needsMotionPath || win.MotionPathPlugin || !win.gsap) {
+    if (!swap(currentTime)) return "cannot-soft-reload";
+    return verifyTimelinesPopulated(win, targetKeys) ? "applied" : "verify-failed";
+  }
+  return new Promise<SoftReloadResult>((settle) =>
+    whenMotionPathLoaded(
+      win,
+      doc,
+      () => {
+        if (!run.current()) return settle("superseded");
+        settle(swap(run.timeAfter(currentTime)) ? "applied" : "cannot-soft-reload");
+      },
+      () => settle(run.current() ? "cannot-soft-reload" : "superseded"),
+    ),
+  );
 }
 
 export const MAX_SOFT_RELOAD_SCRIPT = 1_000_000;

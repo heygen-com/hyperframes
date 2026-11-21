@@ -55,7 +55,7 @@ afterEach(() => {
     "MotionPathPlugin",
     "__hfMotionPathPluginLoading",
     "__hfPlayerSeeks",
-    "__hfSoftReloads",
+    "__hfTimelineGenerations",
   ])
     delete win[key];
   document.head.innerHTML = "";
@@ -121,47 +121,126 @@ describe("soft-reload", () => {
   });
 });
 
+// Every order of the events a re-run waiting for the MotionPath plugin can meet. The older run re-runs
+// "main" and restores #a; the other events are a scrub, newer runs on "main" or "other", an attribute
+// restore of #a, and the plugin loading or failing.
 describe("a re-run that waits for the MotionPath plugin", () => {
-  const MOTION = `${SCRIPT} var path = { motionPath: {} };`;
-  const loadPlugin = () => {
-    win.MotionPathPlugin = {};
-    document.head.querySelector<HTMLScriptElement>("script[src]")!.onload!(new Event("load"));
+  const run = (key: string, name: string, motion = false) =>
+    `var __timelines = {}; __timelines["${key}"] = 1; document.body.dataset.${key} = "${name}";` +
+    (motion ? " var p = { motionPath: {} };" : "");
+  const restoreA = (left: number) => [
+    {
+      file: null,
+      elements: [
+        {
+          key: "hf:a",
+          attributes: [
+            ["data-hf-id", "a"],
+            ["style", `left: ${left}px`],
+          ],
+        },
+      ],
+    },
+  ];
+  type Step = "scrub" | "same" | "other" | "attr" | "edit" | "ok" | "fail";
+  type Outcome = {
+    answer: string;
+    main?: string;
+    other?: string;
+    left: string;
+    color: string;
+    at: number;
   };
-  function playerAt(time: number) {
-    const seeks = preview(`<div data-composition-id="main"><div id="a"></div></div>`);
-    let now = time;
-    const seek = (t: number) => {
-      countPlayerSeek(win);
-      seeks.push((now = t));
+
+  function page() {
+    document.body.innerHTML =
+      `<div data-composition-id="main"><div id="a" data-hf-id="a" style="left: 0px"></div></div>` +
+      `<div data-composition-id="other"></div>` +
+      `<script>${run("main", "file")}</script><script>${run("other", "file")}</script>`;
+    delete document.body.dataset.main;
+    delete document.body.dataset.other;
+    const kills: string[] = [];
+    const timeline = (key: string) => ({ kill: () => kills.push(key), clear: () => {} });
+    win.gsap = { timeline: () => ({}), set: () => {} };
+    win.__timelines = { main: timeline("main"), other: timeline("other") };
+    win.__hfForceTimelineRebind = () => {};
+    const seeks: number[] = [];
+    let now = 4;
+    win.__player = { seek: (t: number) => seeks.push((now = t)), getTime: () => now };
+    const append = document.body.appendChild.bind(document.body);
+    document.body.appendChild = <T extends Node>(node: T): T => {
+      for (const [, key] of (node.textContent ?? "").matchAll(/__timelines\["(\w+)"\]/g))
+        (win.__timelines as Record<string, object>)[key!] = timeline(key!);
+      const added = append(node);
+      if (node.nodeName === "SCRIPT") new Function(node.textContent ?? "")();
+      return added;
     };
-    win.__player = { seek, getTime: () => now };
-    return { seeks, seek };
+    return { seeks, kills };
   }
 
-  // fails without the fix: its finish seeked back to the time it was sent at, rewinding a newer scrub.
-  it.each([
-    ["to a new time", [4]],
-    ["away and back to where it started", [5, 4]],
-  ])("ends where the player was scrubbed %s while it waited", async (_name, scrubs) => {
-    const { seeks, seek } = playerAt(4);
-    const done = softReload(params({ script: MOTION, time: 2 }));
-    for (const t of scrubs) seek(t);
-    loadPlugin();
-    expect(await done).toEqual({ result: "applied" });
-    expect(seeks.at(-1)).toBe(4);
-  });
+  async function play(steps: Step[]): Promise<Outcome> {
+    const { seeks } = page();
+    const older = softReload(
+      params({ script: run("main", "older", true), time: 2, restore: restoreA(1) }),
+    );
+    const plugin = () => document.head.querySelector<HTMLScriptElement>("script[src]")!;
+    for (const step of steps) {
+      if (step === "scrub")
+        for (const t of [3, 4]) {
+          countPlayerSeek(win);
+          (win.__player as { seek(t: number): void }).seek(t);
+        }
+      if (step === "same")
+        expect(await softReload(params({ script: run("main", "newer") }))).toEqual({
+          result: "applied",
+        });
+      if (step === "other")
+        expect(await softReload(params({ script: run("other", "newer") }))).toEqual({
+          result: "applied",
+        });
+      if (step === "attr")
+        await restoreAttributesOrRerun({ scopes: restoreA(2), scripted: false, time: 4 });
+      if (step === "ok") {
+        win.MotionPathPlugin = {};
+        plugin().onload!(new Event("load"));
+      }
+      if (step === "edit") document.getElementById("a")!.style.setProperty("color", "red");
+      if (step === "fail") plugin().onerror!(new Event("error"));
+      await Promise.resolve();
+    }
+    const { dataset } = document.body;
+    return {
+      answer: (await older).result,
+      main: dataset.main,
+      other: dataset.other,
+      left: document.getElementById("a")!.style.left,
+      color: document.getElementById("a")!.style.color,
+      at: seeks.at(-1) ?? NaN,
+    };
+  }
 
-  // fails without the fix: the older script ran after the newer one and replaced its timeline.
-  it("leaves the script of a newer soft reload that ran while it waited", async () => {
-    playerAt(1.5);
-    const ran = () => document.body.dataset.ran;
-    const older = softReload(params({ script: `${MOTION} document.body.dataset.ran = "older";` }));
-    const newer = `${SCRIPT} document.body.dataset.ran = "newer";`;
-    expect(await softReload(params({ script: newer }))).toEqual({ result: "applied" });
-    loadPlugin();
-    expect(await older).toEqual({ result: "applied" });
-    expect(ran()).toBe("newer");
-    delete document.body.dataset.ran;
+  // fails without the fix: rows "scrub,ok", "same,ok", "same,fail", "other,ok", "other,fail" and "attr,ok".
+  it.each<[string, Step[], Partial<Outcome>]>([
+    ["ok", ["ok"], { answer: "applied", main: "older", left: "1px", at: 2 }],
+    ["scrub,ok", ["scrub", "ok"], { answer: "applied", main: "older", at: 4 }],
+    ["ok,scrub", ["ok", "scrub"], { answer: "applied", main: "older", at: 4 }],
+    ["same,ok", ["same", "ok"], { answer: "superseded", main: "newer", left: "1px" }],
+    ["same,fail", ["same", "fail"], { answer: "superseded", main: "newer" }],
+    ["ok,same", ["ok", "same"], { answer: "applied", main: "newer" }],
+    ["fail,same", ["fail", "same"], { answer: "cannot-soft-reload", main: "newer" }],
+    ["other,ok", ["other", "ok"], { answer: "applied", main: "older", other: "newer" }],
+    [
+      "other,fail",
+      ["other", "fail"],
+      { answer: "cannot-soft-reload", main: undefined, other: "newer", left: "1px" },
+    ],
+    ["ok,other", ["ok", "other"], { answer: "applied", main: "older", other: "newer" }],
+    ["attr,ok", ["attr", "ok"], { answer: "applied", main: "older", left: "2px" }],
+    ["ok,attr", ["ok", "attr"], { answer: "applied", main: "older", left: "2px" }],
+    ["edit,ok", ["edit", "ok"], { answer: "applied", main: "older", color: "red" }],
+    ["ok,edit", ["ok", "edit"], { answer: "applied", main: "older", color: "red" }],
+  ])("%s", async (_name, steps, expected) => {
+    expect(await play(steps)).toMatchObject(expected);
   });
 });
 
