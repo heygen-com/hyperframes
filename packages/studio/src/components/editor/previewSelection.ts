@@ -75,6 +75,7 @@ import {
 } from "./manualEditsTypes";
 import { rememberFrameTranslate, TRANSLATE_PX_PROPERTIES, translatePx } from "./plainTranslate";
 import { rememberFrameClipPath } from "./domEditOverlayCrop";
+import { previewTextFields } from "./previewTextFields";
 
 let inertDocument: Document | undefined;
 const inert = () => (inertDocument ??= document.implementation.createHTMLDocument(""));
@@ -349,8 +350,7 @@ const compositionSourceOf = (element: PreviewElement) =>
   attr(element, "data-composition-src") ?? attr(element, "data-composition-file") ?? undefined;
 
 /**
- * `resolveDomEditSelection` for a frame element Studio has a description of. Text fields are left
- * empty: they are read for text edits, which write through the frame's document.
+ * `resolveDomEditSelection` for a frame element Studio has a description of.
  */
 export async function resolvePreviewSelection(
   iframe: HTMLIFrameElement,
@@ -433,7 +433,7 @@ export async function resolvePreviewSelection(
     dataAttributes: getDataAttributes(probe),
     inlineStyles,
     computedStyles,
-    textFields: [],
+    textFields: await previewTextFields(iframe, current),
     capabilities,
     existsInSource,
   };
@@ -485,6 +485,11 @@ export async function findOpaqueTimelineElement(
 }
 
 export const standInHandle = (element: Element) => standInHandles.get(element);
+
+export function gestureDocumentOf(iframe: HTMLIFrameElement | null): Document | null {
+  if (!iframe) return null;
+  return previewFrameOpaque(iframe) ? inert() : iframe.contentDocument;
+}
 
 export function elementWithin(container: HTMLElement, element: HTMLElement): boolean {
   const handle = standInHandles.get(container);

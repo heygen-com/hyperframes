@@ -54,26 +54,37 @@ async function sealedCard(transform: string, painted: number[]) {
   return standInFor(iframe, (await describePreviewElements(iframe, [handle]))![0]!);
 }
 
-/** Drags the right crop edge by `dx, dy` screen px and lets go, all before the frame answers. */
-async function cropRightOn(standIn: HTMLElement, painted: number[], dx: number, dy: number) {
-  const onStyleCommit = vi.fn();
-  const [left, top, width, height] = painted;
+type Shown = { left: number; top: number; width: number; height: number; angle?: number };
+
+/** Studio's crop handles on the stand-in, over the oriented box the frame's geometry gives the selection. */
+function cropHandles(standIn: HTMLElement, onStyleCommit = vi.fn()) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  act(() =>
-    root.render(
-      createElement(DomEditCropHandles, {
-        selection: {
-          element: standIn,
-          id: "card",
-          selector: "#card",
-        } as unknown as DomEditSelection,
-        overlayRect: { left, top, width, height, editScaleX: 1, editScaleY: 1 },
-        onStyleCommit,
-      }),
-    ),
-  );
+  const show = (shown: Shown) =>
+    act(() =>
+      root.render(
+        createElement(DomEditCropHandles, {
+          selection: {
+            element: standIn,
+            id: "card",
+            selector: "#card",
+          } as unknown as DomEditSelection,
+          overlayRect: { ...shown, editScaleX: 1, editScaleY: 1 },
+          onStyleCommit,
+        }),
+      ),
+    );
+  const turn = () =>
+    document.querySelector<HTMLElement>("[data-dom-edit-crop-frame]")!.style.transform;
+  return { root, show, turn };
+}
+
+/** Drags the right crop edge by `dx, dy` screen px and lets go, all before the frame answers. */
+async function cropRightOn(standIn: HTMLElement, shown: Shown, dx: number, dy: number) {
+  const onStyleCommit = vi.fn();
+  const { root, show } = cropHandles(standIn, onStyleCommit);
+  show(shown);
   const edge = document.querySelector<HTMLElement>('[aria-label="Crop right"]')!;
   const send = (type: string, x: number, y: number, buttons: number) =>
     edge.dispatchEvent(
@@ -93,7 +104,8 @@ async function cropRightOn(standIn: HTMLElement, painted: number[], dx: number, 
 it("crops a sealed card GSAP draws at twice its size by its own px, as an unsealed crop does", async () => {
   const painted = [0, 0, 400, 200];
   const standIn = await sealedCard("matrix(2, 0, 0, 2, 0, 0)", painted);
-  expect(await cropRightOn(standIn, painted, -20, 0)).toEqual([
+  const shown = { left: 0, top: 0, width: 400, height: 200 };
+  expect(await cropRightOn(standIn, shown, -20, 0)).toEqual([
     "clip-path",
     "inset(0px 10px 0px 0px)",
   ]);
@@ -102,8 +114,40 @@ it("crops a sealed card GSAP draws at twice its size by its own px, as an unseal
 it("crops a sealed card turned a quarter along its own width, as an unsealed crop does", async () => {
   const painted = [0, 0, 100, 200];
   const standIn = await sealedCard("matrix(0, 1, -1, 0, 0, 0)", painted);
-  expect(await cropRightOn(standIn, painted, 0, -20)).toEqual([
+  const shown = { left: -50, top: 50, width: 200, height: 100, angle: 90 };
+  expect(await cropRightOn(standIn, shown, 0, -20)).toEqual([
     "clip-path",
     "inset(0px 20px 0px 0px)",
   ]);
+});
+
+// fails without the fix: before a press, a sealed crop frame was drawn on the stand-in, which has no turn.
+it("draws a sealed turned card's crop frame turned before any press", async () => {
+  const standIn = await sealedCard("rotate(30deg)", [0, 0, 223, 187]);
+  const { root, show, turn } = cropHandles(standIn);
+
+  show({ left: 12, top: 44, width: 200, height: 100, angle: 30 });
+
+  expect(turn()).toBe("rotate(30deg)");
+  act(() => root.unmount());
+});
+
+// fails without the fix: the turn measured at a press was held until the selection changed.
+it("redraws a sealed crop frame at the turn the card has after a scrub, once a press measured it", async () => {
+  const standIn = await sealedCard("rotate(30deg)", [0, 0, 223, 187]);
+  const { root, show, turn } = cropHandles(standIn);
+  show({ left: 12, top: 44, width: 200, height: 100, angle: 30 });
+  const edge = document.querySelector<HTMLElement>('[aria-label="Crop right"]')!;
+  const send = (type: string, buttons: number) =>
+    edge.dispatchEvent(
+      new PointerEvent(type, { bubbles: true, pointerId: 7, buttons, clientX: 200, clientY: 100 }),
+    );
+  act(() => send("pointerdown", 1));
+  act(() => send("pointerup", 0));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  show({ left: 12, top: 44, width: 200, height: 100, angle: 50 });
+
+  expect(turn()).toBe("rotate(50deg)");
+  act(() => root.unmount());
 });

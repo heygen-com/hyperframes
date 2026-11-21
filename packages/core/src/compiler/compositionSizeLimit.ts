@@ -1,4 +1,5 @@
 import { statSync } from "node:fs";
+import { terminalText } from "../terminalText";
 
 /**
  * The largest entry or sub-composition HTML file a render compiles. Compiling and probing a page
@@ -10,6 +11,8 @@ export const MAX_COMPOSITION_HTML_BYTES = 16 * 1024 * 1024;
 const COMPOSITION_TOO_LARGE = "COMPOSITION_TOO_LARGE" as const;
 
 const megabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+const quotedForTerminalAndLogs = (file: string) => `"${terminalText(file)}"`;
 
 /**
  * What one render may inline across every sub-composition mount. Each file is checked on its own
@@ -42,9 +45,13 @@ class CompositionTooLargeError extends Error {
   }
 }
 
+export function isCompositionTooLargeError(error: unknown): error is Error {
+  return error instanceof Error && "code" in error && error.code === COMPOSITION_TOO_LARGE;
+}
+
 const fileTooLarge = (file: string, bytes: number) =>
   new CompositionTooLargeError(
-    `Composition file "${file}" is ${megabytes(bytes)}, over the ` +
+    `Composition file ${quotedForTerminalAndLogs(file)} is ${megabytes(bytes)}, over the ` +
       `${megabytes(MAX_COMPOSITION_HTML_BYTES)} limit for one composition HTML file. ` +
       "Keep large data such as images, fonts and JSON in separate asset files and reference " +
       "them by path instead of inlining them.",
@@ -55,6 +62,7 @@ const limitText = `One render generates at most ${megabytes(MAX_EXPANDED_COMPOSI
 
 export const REMOTE_SCRIPTS = "remote scripts";
 export const REMOTE_STYLESHEETS = "remote stylesheets";
+export const ENTRY_PAGE = "the entry page";
 
 function generatedTooLarge(file: string, bytes: number): string {
   if (file === "composition variables") {
@@ -76,7 +84,7 @@ function generatedTooLarge(file: string, bytes: number): string {
     );
   }
   return (
-    `Scripts, styles and rebased asset paths generated for compositions, ending at "${file}", add up to ` +
+    `Scripts, styles and rebased asset paths generated for compositions, ending at ${quotedForTerminalAndLogs(file)}, add up to ` +
     `${megabytes(bytes)}. One render generates at most ` +
     `${megabytes(MAX_EXPANDED_COMPOSITION_BYTES)} for its mounts. Merge small inline scripts ` +
     "and style rules, keep data-composition-id values short, or mount scenes fewer times."
@@ -94,7 +102,9 @@ export class CompositionExpansionBudget {
     this.elements += count;
     if (this.elements <= MAX_EXPANDED_ELEMENTS) return;
     throw new CompositionTooLargeError(
-      `Sub-composition mounts, ending at "${file}", add up to ${this.elements} elements. ` +
+      (file === ENTRY_PAGE
+        ? `The entry page holds ${this.elements} elements. `
+        : `Sub-composition mounts, ending at ${quotedForTerminalAndLogs(file)}, add up to ${this.elements} elements. `) +
         `One render inlines at most ${MAX_EXPANDED_ELEMENTS} elements. Mount large or repeated scenes fewer times.`,
       {
         bytes: this.bytes,
@@ -134,7 +144,7 @@ export class CompositionExpansionBudget {
       return;
     }
     throw new CompositionTooLargeError(
-      `Sub-composition mounts, ending at "${file}", add up to ${megabytes(this.bytes)} ` +
+      `Sub-composition mounts, ending at ${quotedForTerminalAndLogs(file)}, add up to ${megabytes(this.bytes)} ` +
         `across ${this.mounts} mounts. One render inlines at most ` +
         `${megabytes(MAX_EXPANDED_COMPOSITION_BYTES)} of composition HTML in at most ` +
         `${MAX_COMPOSITION_MOUNTS} mounts. Mount large or repeated scenes fewer times.`,

@@ -1,6 +1,7 @@
 import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
-import { existsSync, readFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, statSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { join, dirname, resolve } from "node:path";
 import {
   analyzeMusicFromSignal,
@@ -170,7 +171,7 @@ export default defineCommand({
     if (!isSafePath(project.dir, outPath))
       fail(`Beat file path resolves outside the project: ${rel}`);
     mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, serializeBeats(result.beatTimes, result.beatStrengths, rel));
+    replaceFileAtomically(outPath, serializeBeats(result.beatTimes, result.beatStrengths, rel));
     report(`beats/${rel}.json`, result, Boolean(args.json));
   },
 });

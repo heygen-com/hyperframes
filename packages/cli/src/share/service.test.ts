@@ -235,6 +235,15 @@ describe("share operation consent and identity", () => {
     for (const change of [mocks.render, mocks.create, mocks.setAccess, mocks.add])
       expect(change).not.toHaveBeenCalled();
   });
+  it("refuses a link read held to another review before changing anything", async () => {
+    mocks.status.mockResolvedValue(shared);
+
+    await expect(
+      createShareService("/project").run({ action: "share", confirmedReview: "another" }),
+    ).rejects.toMatchObject({ reason: "review_binding_changed" });
+    for (const change of [mocks.render, mocks.create, mocks.setAccess, mocks.add])
+      expect(change).not.toHaveBeenCalled();
+  });
   it("retries an unfinished first share in its saved workspace", async () => {
     mocks.record.mockResolvedValue({ spaceId: "saved", projectId: "project" });
     mocks.spaces.mockResolvedValue([

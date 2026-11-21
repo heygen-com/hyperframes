@@ -209,6 +209,7 @@ describe("installEditingAgent", () => {
           "swap-scenes",
           "live-retime",
           "assets-unloaded",
+          "text-edit",
         ],
       },
     });
