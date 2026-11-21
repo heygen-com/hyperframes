@@ -154,6 +154,15 @@ const SEEDS: Fixed[] = [
     "an applied older retime re-run after a newer data-start undo of another clip",
     [{ reversed: ["retime", "undoStart"] }, { answer: "any" }, { answer: "any" }],
   ],
+  // The reviewer's round-12 probes: the same, with the frame loading the newer saved file between the two syncs.
+  [
+    "an applied older live retime after a newer data-start undo and a load of the newer file",
+    [{ reversed: ["liveRetime", "undoStart"], reload: true }, { answer: "any" }, { answer: "any" }],
+  ],
+  [
+    "an applied older retime re-run after a newer data-start undo and a load of the newer file",
+    [{ reversed: ["retime", "undoStart"], reload: true }, { answer: "any" }, { answer: "any" }],
+  ],
   // The round-10 generator's seeds that found reversed save responses, kept as it generated them: 52 an older
   // script left on screen, 148 a newer patch's value lost.
   ...(

@@ -11,7 +11,7 @@ export type SequenceStep<Save extends string> =
   | { answer: "any" | "oldest" | "newest" | string }
   | { scrub: number }
   /** Two saves whose responses come back newest first, so the older one's preview sync goes out last. */
-  | { reversed: [Save, Save] }
+  | { reversed: [Save, Save]; reload?: true }
   /** The oldest request deadline still pending passes; a reply after it arrives too late. */
   | { pastDeadline: true }
   | { reloadFrame: true };
@@ -362,6 +362,11 @@ export async function playSequence<Saved, Save extends string>(
       const olderRevision = await fixture.mark(studioPage);
       const newerRevision = await fixture.mark(studioPage);
       await sendSave(studioPage, fixture, newer, "frame", [middle, after], newerRevision);
+      // The frame loads the newer saved file before the older sync goes out.
+      if (step.reload) {
+        await studioPage.evaluate(() => (window as unknown as { __load: () => void }).__load());
+        await loaded(studioPage, frame);
+      }
       const reloads = () =>
         studioPage.evaluate(() => (window as unknown as { __reloads: number }).__reloads);
       const before = await reloads();

@@ -238,6 +238,7 @@ const generated = (seed: number): Step[] => {
           pick<Save>(["liveRetime", "retime"]),
           pick<Save>(["run", "patch", "undoLabel", "undoStart"]),
         ],
+        ...(random() < 0.3 ? { reload: true as const } : {}),
       };
     if (roll < 0.5) return { answer: "any" };
     return { save: pick(SAVES), fate: pick(FATES) };
