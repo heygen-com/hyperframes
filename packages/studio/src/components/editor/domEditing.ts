@@ -26,7 +26,6 @@ export {
 // Layers, text fields, capabilities, selection, patch ops
 export {
   buildDefaultDomEditTextField,
-  spacedAfter,
   buildDomEditPatchTarget,
   buildDomEditRichTextPatchOperation,
   buildDomEditStylePatchOperation,

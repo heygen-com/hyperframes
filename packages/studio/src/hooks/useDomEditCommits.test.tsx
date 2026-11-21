@@ -4,7 +4,13 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MutableRefObject } from "react";
-import type { DomEditSelection, DomEditTextField } from "../components/editor/domEditing";
+import { patchElementInHtml } from "@hyperframes/studio-server/source-mutation";
+import {
+  collectDomEditTextFields,
+  type DomEditSelection,
+  type DomEditTextField,
+} from "../components/editor/domEditing";
+import type { PatchOperation, PatchTarget } from "../utils/sourcePatcher";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import { usePlayerStore } from "../player";
 import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
@@ -829,6 +835,42 @@ function renderStyleCommitWithFetch(fetchHandler: FetchHandler) {
  * could ever save — so this asserts the opposite of what it used to: one
  * `rich-text` operation carrying the element's new markup, and no complaint.
  */
+// Add a field after `after` from the panel, then type its first value, through the real source patcher.
+async function addThenType(markup: string, after: string, typed: string): Promise<string> {
+  let file = `<div data-hf-id="hf-card">${markup}</div>`;
+  const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const url = requestUrl(input);
+    if (url.includes("/api/projects/p1/files/")) return jsonResponse({ content: file });
+    if (!url.includes("/file-mutations/patch-element/"))
+      throw new Error(`Unexpected fetch: ${url}`);
+    const body = JSON.parse(String(init?.body)) as {
+      target: PatchTarget;
+      operations: PatchOperation[];
+    };
+    file = patchElementInHtml(file, body.target, body.operations).html;
+    return jsonResponse({ ok: true, changed: true, matched: true, content: file });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const { iframe, element } = createPreviewElement(file);
+  const at = (el: HTMLElement) => createSelection(el, { textFields: collectDomEditTextFields(el) });
+  const rendered = renderDomEditCommits(at(element), iframe);
+  try {
+    let added: string | null = null;
+    await act(async () => {
+      added = await rendered.hook.handleDomAddTextField(after);
+    });
+    const doc = iframe.contentDocument!;
+    doc.body.innerHTML = file;
+    const reloaded = doc.querySelector<HTMLElement>('[data-hf-id="hf-card"]')!;
+    await act(async () => {
+      await rendered.hook.handleDomTextCommitForSelection(at(reloaded), typed, added!);
+    });
+    return file.replace(/ data-hf-text-key="[^"]*"/g, "");
+  } finally {
+    rendered.cleanup();
+  }
+}
+
 async function expectPersistedTextStructureEdit(
   commit: (hook: ReturnType<typeof useDomEditCommits>) => Promise<unknown>,
   expectedMarkup: (markup: string) => void,
@@ -1442,11 +1484,21 @@ describe("useDomEditCommits style persist handling", () => {
     );
   });
 
-  it("separates a field added from the panel from the text before it with one space", async () => {
-    await expectPersistedTextStructureEdit(
-      (hook) => hook.handleDomAddTextField("first"),
-      (markup) => expect(markup).toMatch(/>First<\/span> <span[^>]*>New text<\/span><span/),
-    );
+  it.each([
+    ["appended after a word", "<span>Hello</span>", "again", "<span>Hello</span> <span"],
+    ["typed starting with punctuation", "<span>Hello</span>", ", again", "<span>Hello</span><span"],
+    [
+      "inserted between two words",
+      "<span>Hello </span><span>world</span>",
+      "again",
+      "<span>Hello </span><span",
+    ],
+  ])("spaces a field %s from the text it ends up with", async (_, markup, typed, start) => {
+    const saved = await addThenType(markup, "child:0:span", typed);
+    expect(saved.startsWith(start)).toBe(true);
+    expect(saved).toContain(`>${typed}</span>`);
+    if (markup.includes("world"))
+      expect(saved).toMatch(/again<\/span> <span>world<\/span><\/div>$/);
   });
 
   it("persists a removed child text field as the element's new markup", async () => {

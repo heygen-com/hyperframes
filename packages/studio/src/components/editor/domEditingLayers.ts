@@ -155,15 +155,6 @@ export function escapeHtmlText(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export function spacedAfter(
-  previous: DomEditTextField | undefined,
-  field: DomEditTextField,
-): DomEditTextField {
-  const joins =
-    Boolean(previous?.value) && !/\s$/.test(previous!.value) && !/^\p{P}/u.test(field.value);
-  return joins ? { ...field, spaceBefore: " " } : field;
-}
-
 export function buildDefaultDomEditTextField(base?: Partial<DomEditTextField>): DomEditTextField {
   return {
     key: `child:new:${Date.now()}`,

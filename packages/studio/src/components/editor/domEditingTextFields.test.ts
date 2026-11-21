@@ -6,12 +6,8 @@ import {
 } from "@hyperframes/core/studio-preview-mark";
 import { patchElementInHtml } from "@hyperframes/studio-server/source-mutation";
 import { serializeDomEditTextFields, type DomEditTextField } from "./domEditing";
-import {
-  buildDefaultDomEditTextField,
-  collectDomEditTextFields,
-  spacedAfter,
-} from "./domEditingLayers";
-import { planDomTextCommit } from "../../hooks/domEditTextCommitPlan";
+import { buildDefaultDomEditTextField, collectDomEditTextFields } from "./domEditingLayers";
+import { planDomTextCommit, spacedAround } from "../../hooks/domEditTextCommitPlan";
 
 describe("serializeDomEditTextFields — mixed content", () => {
   it("round-trips text-node + child element fields", () => {
@@ -121,21 +117,43 @@ describe("text fields — spaces between child elements", () => {
   });
 });
 
-describe("text fields — the space before a field added from the panel", () => {
-  const field = (value: string, source: DomEditTextField["source"] = "child") => ({
+describe("text fields — the spaces around a field added from the panel", () => {
+  const field = (key: string, value: string, spaceBefore?: string): DomEditTextField => ({
     ...buildDefaultDomEditTextField(),
+    key,
     value,
-    source,
+    ...(spaceBefore === undefined ? {} : { spaceBefore }),
   });
+  const spaces = (fields: DomEditTextField[]) =>
+    spacedAround(fields, "new").map((entry) => entry.spaceBefore ?? "");
 
   it.each([
-    ["text that ends in a word", field("world"), field("again"), " "],
-    ["mixed text that ends in a word", field("Hello", "text-node"), field("again"), " "],
-    ["text that already ends in a space", field("world "), field("again"), undefined],
-    ["new text that starts with punctuation", field("world"), field(", again"), undefined],
-    ["no text before it", undefined, field("again"), undefined],
-    ["empty text before it", field(""), field("again"), undefined],
-  ])("after %s", (_, previous, added, space) => {
-    expect(spacedAfter(previous, added).spaceBefore).toBe(space);
+    ["after a word", [field("a", "Hello"), field("new", "again")], ["", " "]],
+    ["after text ending in a space", [field("a", "Hello "), field("new", "again")], ["", ""]],
+    ["starting with punctuation", [field("a", "Hello"), field("new", ", again")], ["", ""]],
+    ["with no text before it", [field("new", "again"), field("b", "world", " ")], ["", " "]],
+    ["after empty text", [field("a", ""), field("new", "again")], ["", ""]],
+    [
+      "between two words",
+      [field("a", "Hello "), field("new", "again"), field("b", "world")],
+      ["", "", " "],
+    ],
+    [
+      "before punctuation",
+      [field("a", "Hello"), field("new", "world"), field("b", "!")],
+      ["", " ", ""],
+    ],
+    [
+      "ending in a space",
+      [field("a", "Hello "), field("new", "again "), field("b", "world")],
+      ["", "", ""],
+    ],
+    [
+      "between authored spaces",
+      [field("a", "One"), field("new", "new", " "), field("b", "Two", " ")],
+      ["", " ", " "],
+    ],
+  ])("%s", (_, fields, expected) => {
+    expect(spaces(fields)).toEqual(expected);
   });
 });

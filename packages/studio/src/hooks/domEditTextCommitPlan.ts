@@ -22,6 +22,20 @@ export function buildNextDomTextFields(
   return textFields.map((field) => (field.key === fieldKey ? { ...field, value } : field));
 }
 
+const joinsWords = (before: string, after: string) =>
+  /\S$/.test(before) && /^[^\s\p{P}]/u.test(after);
+
+export function spacedAround(fields: DomEditTextField[], key: string): DomEditTextField[] {
+  const at = fields.findIndex((field) => field.key === key);
+  return fields.map((field, index) => {
+    const before = fields[index - 1];
+    const beside = at >= 0 && (index === at || index === at + 1);
+    return beside && before && !field.spaceBefore && joinsWords(before.value, field.value)
+      ? { ...field, spaceBefore: " " }
+      : field;
+  });
+}
+
 export function planDomTextCommit(
   originalTextFields: DomEditTextField[],
   nextTextFields: DomEditTextField[],
