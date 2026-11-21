@@ -6,8 +6,8 @@ import { launchBrowser } from "../perf/runner.js";
 import { startServer } from "../perf/server.js";
 
 /**
- * Seeded sequences of media edits in a sealed film, each media element checked on its own: it plays when one of its
- * sources can; the source it plays keeps CORS unless that source failed with CORS on that element; no loop of loads.
+ * Seeded sequences of media edits, each run three times: in the sealed film with the runtime, in a sealed frame
+ * without it (the control for source choice and playback), and in a same-origin frame (the control for pixels).
  */
 
 type Kind =
@@ -19,6 +19,7 @@ type Kind =
   | "foreignCors"
   | "foreignNocors"
   | "foreignUnsupported"
+  | "foreignMissing"
   | "unmatched"
   | "down"
   | "outage";
@@ -28,8 +29,12 @@ type Step =
   | { do: "prepend" | "append"; el: number; source: Source }
   | { do: "remove"; el: number; index: number }
   | { do: "reverse" | "reload"; el: number }
-  | { do: "author"; el: number; value: string; duringRetry?: boolean; replace?: Source };
-type Sequence = { name: string; rounds: Step[][]; keepsCors?: number[] };
+  | { do: "author"; el: number; value: string; duringRetry?: boolean; replace?: Source }
+  | { do: "play"; el: number; rate: number }
+  | { do: "interrupt"; el: number; action: Interrupt; source?: Source };
+// Done by the composition right after the runtime's next load of that element, or at the round's end without one.
+type Interrupt = "pause" | "seek" | "rate" | "source" | "author";
+type Sequence = { name: string; rounds: Step[][]; keepsCors?: number[]; upgradesAtMost?: number };
 
 const KINDS: Kind[] = [
   "cors",
@@ -40,12 +45,21 @@ const KINDS: Kind[] = [
   "foreignCors",
   "foreignNocors",
   "foreignUnsupported",
+  "foreignMissing",
   "unmatched",
   "down",
 ];
 const PLAYABLE = new Set<Kind>(["cors", "nocors", "foreignCors", "foreignNocors"]);
 // A host that fails some requests plays only if a later selection asks it again, as in unsealed Studio.
 const MAY_PLAY = new Set<Kind>([...PLAYABLE, "flaky", "outage"]);
+const SENDS_CORS = new Set<Kind>(["cors", "foreignCors", "flaky", "outage"]);
+const NOT_SELECTABLE = new Set<Kind>(["unsupported", "foreignUnsupported", "unmatched"]);
+const foreign = (kind: Kind) => kind.startsWith("foreign");
+// The accepted gap: a list whose selectable sources name another host is left as authored, so own media is not read.
+const mixed = (list: Source[]) => {
+  const selectable = list.filter((source) => !NOT_SELECTABLE.has(source.kind));
+  return selectable.some((x) => foreign(x.kind)) && selectable.some((x) => !foreign(x.kind));
+};
 
 function mulberry32(seed: number) {
   return () => {
@@ -71,6 +85,7 @@ function generated(seed: number): Sequence {
         const sources = Array.from({ length: 1 + Math.floor(random() * 3) }, () => pick(pool));
         lists[el] = [...new Map(sources.map((s) => [s.id, s])).values()];
         steps.push({ do: "create", el, sources: lists[el] });
+        if (random() < 0.5) steps.push({ do: "play", el, rate: pick([1, 1.5]) });
         continue;
       }
       const action = pick(["prepend", "append", "remove", "reverse", "reload", "author", "none"]);
@@ -163,6 +178,76 @@ const FIXED: Sequence[] = [
       [{ do: "author", el: 0, value: "use-credentials", replace: own("f8-b", "nocors") }],
     ],
   },
+  {
+    name: "an outside MP4 without CORS prepended to a playing own source, then load()",
+    rounds: [
+      [
+        { do: "create", el: 0, sources: [own("r7a-a", "cors")] },
+        { do: "play", el: 0, rate: 1 },
+      ],
+      [{ do: "prepend", el: 0, source: own("r7a-b", "foreignNocors") }],
+    ],
+  },
+  {
+    name: "an unavailable outside source before a playable own one, played",
+    rounds: [
+      [
+        { do: "create", el: 0, sources: [own("r7b-a", "foreignMissing"), own("r7b-b", "cors")] },
+        { do: "play", el: 0, rate: 1.5 },
+      ],
+    ],
+  },
+  {
+    name: "an own URL played again after the element played an outside clip",
+    rounds: [
+      [
+        { do: "create", el: 0, sources: [own("r7c-a", "foreignMissing"), own("r7c-b", "cors")] },
+        { do: "play", el: 0, rate: 1 },
+      ],
+      [{ do: "prepend", el: 0, source: own("r7c-c", "foreignNocors") }],
+      [{ do: "remove", el: 0, index: 0 }],
+    ],
+  },
+  {
+    name: "an own source without CORS prepended to a playing own CORS source, then load()",
+    rounds: [
+      [
+        { do: "create", el: 0, sources: [own("r7d-a", "cors")] },
+        { do: "play", el: 0, rate: 1 },
+      ],
+      [{ do: "prepend", el: 0, source: own("r7d-b", "nocors") }],
+    ],
+  },
+  {
+    name: "a host down for good before a source without CORS: one upgrade, refused, none after",
+    rounds: [[{ do: "create", el: 0, sources: [own("r7e-a", "down"), own("r7e-b", "nocors")] }]],
+    upgradesAtMost: 1,
+  },
+  {
+    name: "a host down for good before a playing CORS source: playback goes on after the upgrade",
+    rounds: [
+      [
+        { do: "create", el: 0, sources: [own("r7f-a", "down"), own("r7f-b", "cors")] },
+        { do: "play", el: 0, rate: 1.5 },
+      ],
+    ],
+  },
+  ...(["pause", "seek", "rate", "source", "author"] as const).map(
+    (action): Sequence => ({
+      name: `a ${action} by the composition during the runtime's load wins`,
+      rounds: [
+        [
+          {
+            do: "create",
+            el: 0,
+            sources: [own(`r7${action}-a`, "down"), own(`r7${action}-b`, "cors")],
+          },
+          { do: "play", el: 0, rate: 1.5 },
+          { do: "interrupt", el: 0, action, source: own(`r7${action}-c`, "cors") },
+        ],
+      ],
+    }),
+  ),
 ];
 
 const server = startServer();
@@ -170,8 +255,9 @@ const foreignOrigin = server.origin.replace("127.0.0.1", "localhost");
 
 type SourceAttrs = { src: string; type?: string; media?: string };
 
-function urlFor(source: Source): SourceAttrs {
-  const query = `?id=${source.id}&no-store`;
+// Each run asks for its own URLs, so the server's per-URL failures and request counts stay apart.
+function urlFor(source: Source, run: string): SourceAttrs {
+  const query = `?id=${run}.${source.id}&no-store`;
   const path = (dir: string) => `${dir}/10-video-grid/sample.mp4${query}`;
   switch (source.kind) {
     case "cors":
@@ -190,6 +276,8 @@ function urlFor(source: Source): SourceAttrs {
       return { src: `${foreignOrigin}${path("/fixtures-no-cors")}` };
     case "foreignUnsupported":
       return { src: `${foreignOrigin}${path("/fixtures")}`, type: "video/x-nope" };
+    case "foreignMissing":
+      return { src: `${foreignOrigin}/fixtures/10-video-grid/missing.mp4${query}` };
     case "unmatched":
       return { src: `${server.origin}${path("/fixtures")}`, media: "(max-width: 1px)" };
     case "down":
@@ -202,6 +290,14 @@ function urlFor(source: Source): SourceAttrs {
 type Seen = {
   crossOrigin: string | null;
   playing: boolean;
+  paused: boolean;
+  rate: number;
+  upgrades: number;
+  savedRate?: string;
+  restartGap?: string;
+  restartRate?: string;
+  seekGap?: string;
+  interrupted?: string;
   pixels: string;
   currentSrc: string;
   loads: number;
@@ -231,11 +327,44 @@ async function installDriver(frame: Frame) {
         },
         true,
       );
+    const sourceEl = (src: { src: string; type?: string; media?: string }) => {
+      const el = document.createElement("source");
+      el.src = src.src;
+      if (src.type) el.type = src.type;
+      if (src.media) el.media = src.media;
+      return el;
+    };
+    const pending = new Map<HTMLMediaElement, { action: string; src?: { src: string } }>();
+    const interrupt = (video: HTMLMediaElement) => {
+      const step = pending.get(video);
+      if (!step) return;
+      pending.delete(video);
+      video.dataset.interrupted = step.action;
+      if (step.action === "pause") video.pause();
+      else if (step.action === "seek") {
+        video.dataset.seekTo = "0.5";
+        video.currentTime = 0.5;
+      } else if (step.action === "rate") video.playbackRate = 2;
+      else if (step.action === "author") video.setAttribute("crossorigin", "anonymous");
+      else {
+        video.prepend(sourceEl(step.src!));
+        video.load();
+      }
+    };
     const load = HTMLMediaElement.prototype.load;
     HTMLMediaElement.prototype.load = function (this: HTMLMediaElement) {
       if (this.dataset.table && handling.has(this)) {
-        this.dataset.ours = String(Number(this.dataset.ours ?? 0) + 1);
-        if (!this.hasAttribute("crossorigin")) this.dataset.dropped = "1";
+        const data = this.dataset;
+        data.ours = String(Number(data.ours ?? 0) + 1);
+        if (!this.hasAttribute("crossorigin")) data.dropped = "1";
+        else data.upgrades = String(Number(data.upgrades ?? 0) + 1);
+        delete data.restartGap;
+        if (!this.paused) {
+          data.savedTime = String(this.currentTime);
+          data.savedRate = String(this.playbackRate);
+          data.watch = "1";
+        }
+        if (pending.has(this)) setTimeout(() => interrupt(this));
       }
       return load.call(this);
     };
@@ -274,20 +403,26 @@ async function installDriver(frame: Frame) {
       },
       true,
     );
-    const sourceEl = (src: { src: string; type?: string; media?: string }) => {
-      const el = document.createElement("source");
-      el.src = src.src;
-      if (src.type) el.type = src.type;
-      if (src.media) el.media = src.media;
-      return el;
-    };
     Object.assign(window, {
       __table: {
         create(key: string, sources: Array<{ src: string; type?: string; media?: string }>) {
           const video = document.createElement("video");
           video.dataset.table = key;
           video.muted = true;
+          video.loop = true;
           video.preload = "auto";
+          video.addEventListener("playing", () => {
+            const data = video.dataset;
+            if (data.watch) {
+              delete data.watch;
+              data.restartGap = String(Math.abs(video.currentTime - Number(data.savedTime)));
+              data.restartRate = String(video.playbackRate);
+            }
+            if (data.seekTo) {
+              data.seekGap = String(Math.abs(video.currentTime - Number(data.seekTo)));
+              delete data.seekTo;
+            }
+          });
           for (const name of ["loadstart", "loadeddata", "emptied", "stalled"])
             video.addEventListener(name, () => touch(video));
           video.addEventListener(
@@ -306,9 +441,20 @@ async function installDriver(frame: Frame) {
             index?: number;
             value?: string;
             duringRetry?: boolean;
+            rate?: number;
+            action?: string;
           },
         ) {
           const { video } = state.get(key)!;
+          if (step.do === "play") {
+            video.playbackRate = step.rate!;
+            void video.play().catch(() => undefined);
+            return;
+          }
+          if (step.do === "interrupt") {
+            pending.set(video, { action: step.action!, src: step.src });
+            return;
+          }
           if (step.do === "prepend") video.prepend(sourceEl(step.src!));
           else if (step.do === "append") video.append(sourceEl(step.src!));
           else if (step.do === "remove") video.querySelectorAll("source")[step.index!]!.remove();
@@ -322,6 +468,18 @@ async function installDriver(frame: Frame) {
             video.setAttribute("crossorigin", step.value!);
           }
           video.load();
+        },
+        flush() {
+          const any = pending.size > 0;
+          for (const video of [...pending.keys()]) interrupt(video);
+          return any;
+        },
+        async advancing(key: string) {
+          const { video } = state.get(key)!;
+          if (video.paused || video.readyState < 2) return false;
+          const at = video.currentTime;
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          return video.currentTime !== at;
         },
         settled: () =>
           [...state.values()].every(
@@ -342,9 +500,18 @@ async function installDriver(frame: Frame) {
               pixels = "refused";
             }
           }
+          const data = video.dataset;
           return {
             crossOrigin: video.getAttribute("crossorigin"),
             playing: video.readyState >= 2,
+            paused: video.paused,
+            rate: video.playbackRate,
+            upgrades: Number(data.upgrades ?? 0),
+            savedRate: data.savedRate,
+            restartGap: data.restartGap,
+            restartRate: data.restartRate,
+            seekGap: data.seekGap,
+            interrupted: data.interrupted,
             pixels,
             currentSrc: video.currentSrc,
             loads: Number(video.dataset.loads ?? 0),
@@ -362,6 +529,8 @@ type Table = {
   create: (key: string, sources: SourceAttrs[]) => void;
   edit: (key: string, step: object) => void;
   settled: () => boolean;
+  flush: () => boolean;
+  advancing: (key: string) => Promise<boolean>;
   read: (key: string) => Seen;
 };
 declare global {
@@ -370,7 +539,7 @@ declare global {
   }
 }
 
-async function runAll(frame: Frame, sequences: Sequence[]) {
+async function runAll(frame: Frame, sequences: Sequence[], run: string) {
   const rounds = Math.max(...sequences.map((s) => s.rounds.length));
   for (let round = 0; round < rounds; round++) {
     for (const [index, sequence] of sequences.entries()) {
@@ -380,19 +549,22 @@ async function runAll(frame: Frame, sequences: Sequence[]) {
           await frame.evaluate(
             (k, s) => window.__table.create(k, s),
             key,
-            step.sources.map(urlFor),
+            step.sources.map((source) => urlFor(source, run)),
           );
         else {
           const listed =
             "source" in step ? step.source : step.do === "author" ? step.replace : undefined;
-          const src = listed && urlFor(listed);
+          const src = listed && urlFor(listed, run);
           await frame.evaluate((k, s) => window.__table.edit(k, s), key, { ...step, src });
         }
       }
     }
-    await frame
-      .waitForFunction(() => window.__table.settled(), { timeout: 20_000, polling: 100 })
-      .catch(() => undefined);
+    const settle = () =>
+      frame
+        .waitForFunction(() => window.__table.settled(), { timeout: 20_000, polling: 100 })
+        .catch(() => undefined);
+    await settle();
+    if (await frame.evaluate(() => window.__table.flush())) await settle();
   }
 }
 
@@ -402,55 +574,110 @@ const describe = (sequence: Sequence) =>
       steps
         .map((step) => {
           const listed = "sources" in step ? step.sources : "source" in step ? [step.source] : [];
-          return `${step.do}${step.el}${listed.map((x) => ` ${x.kind}`).join("")}`;
+          const what = step.do === "interrupt" ? ` ${step.action}` : "";
+          return `${step.do}${step.el}${what}${listed.map((x) => ` ${x.kind}`).join("")}`;
         })
         .join(", "),
     )
     .join(" | ");
 
-/**
- * Per element: plays iff a listed source can; CORS kept unless that source failed with it here; at most one load of
- * ours per selection made by anyone else. Per source: at most two requests per selection of an element listing it.
- */
-async function judge(sequences: Sequence[], frame: Frame) {
+type Runs = { sealed: Frame; plain: Frame; open: Frame };
+const idOf = (src: string) => (src ? new URL(src).searchParams.get("id")!.slice(2) : "");
+// One frame at 30 fps, with room for the timer that reads it.
+const FRAME = 1 / 30 + 0.01;
+
+function history(sequence: Sequence) {
+  const lists = new Map<number, Source[]>();
+  const everListed = new Map<number, Map<string, Kind>>();
+  const authored = new Map<number, string>();
+  for (const steps of sequence.rounds)
+    for (const step of steps) {
+      const list = lists.get(step.el) ?? [];
+      if (step.do === "create") lists.set(step.el, [...step.sources]);
+      else if (step.do === "prepend") lists.set(step.el, [step.source, ...list]);
+      else if (step.do === "append") lists.set(step.el, [...list, step.source]);
+      else if (step.do === "remove")
+        lists.set(
+          step.el,
+          list.filter((_, i) => i !== step.index),
+        );
+      else if (step.do === "reverse") lists.set(step.el, [...list].reverse());
+      else if (step.do === "author") authored.set(step.el, step.value);
+      else if (step.do === "interrupt" && step.action === "author")
+        authored.set(step.el, "anonymous");
+      else if (step.do === "interrupt" && step.action === "source")
+        lists.set(step.el, [step.source!, ...list]);
+      if (step.do === "author" && step.replace) lists.set(step.el, [step.replace]);
+      const kinds = everListed.get(step.el) ?? new Map<string, Kind>();
+      for (const source of lists.get(step.el)!) kinds.set(source.id, source.kind);
+      everListed.set(step.el, kinds);
+    }
+  return { lists, everListed, authored };
+}
+
+// Per element, against the frame without the runtime: the same source, playing state and moving playhead; after
+// a load of ours while playing, it resumes where it was at the same rate. Pixels readable wherever the same-origin
+// frame reads them from a source that sends CORS, except the known gap.
+async function judge(sequences: Sequence[], runs: Runs) {
   const budget = new Map<string, number>();
+  const gaps: string[] = [];
   const all = await Promise.all(
     sequences.map(async (sequence, index) => {
-      const lists = new Map<number, Source[]>();
-      const everListed = new Map<number, Set<string>>();
-      const authored = new Map<number, string>();
-      for (const steps of sequence.rounds)
-        for (const step of steps) {
-          const list = lists.get(step.el) ?? [];
-          if (step.do === "create") lists.set(step.el, [...step.sources]);
-          else if (step.do === "prepend") lists.set(step.el, [step.source, ...list]);
-          else if (step.do === "append") lists.set(step.el, [...list, step.source]);
-          else if (step.do === "remove")
-            lists.set(
-              step.el,
-              list.filter((_, i) => i !== step.index),
-            );
-          else if (step.do === "reverse") lists.set(step.el, [...list].reverse());
-          if (step.do === "author") authored.set(step.el, step.value);
-          if (step.do === "author" && step.replace) lists.set(step.el, [step.replace]);
-          const ids = everListed.get(step.el) ?? new Set();
-          for (const source of lists.get(step.el)!) ids.add(source.id);
-          everListed.set(step.el, ids);
-        }
+      const { lists, everListed, authored } = history(sequence);
       const problems: string[] = [];
       for (const [el, list] of lists) {
-        const seen = await frame.evaluate((k) => window.__table.read(k), `${index}-${el}`);
+        const key = `${index}-${el}`;
+        const [seen, plain, open, moves, movesPlain] = await Promise.all([
+          runs.sealed.evaluate((k) => window.__table.read(k), key),
+          runs.plain.evaluate((k) => window.__table.read(k), key),
+          runs.open.evaluate((k) => window.__table.read(k), key),
+          runs.sealed.evaluate((k) => window.__table.advancing(k), key),
+          runs.plain.evaluate((k) => window.__table.advancing(k), key),
+        ]);
         const where = `${sequence.name} (${describe(sequence)}), element ${el}`;
+        const kinds = everListed.get(el)!;
         const selections = seen.loads - seen.ours;
-        for (const id of everListed.get(el)!)
-          budget.set(id, (budget.get(id) ?? 0) + 2 * selections);
+        for (const id of kinds.keys()) budget.set(id, (budget.get(id) ?? 0) + 2 * selections);
         if (seen.ours > selections)
           problems.push(`${where}: ${seen.ours} loads of ours for ${selections} other selections`);
-        const most = 2 * everListed.get(el)!.size * (seen.resets + 1);
+        const most = 2 * kinds.size * (seen.resets + 1);
         if (seen.ours > most)
           problems.push(
             `${where}: ${seen.ours} loads of ours, at most ${most} (${seen.resets} resets)`,
           );
+        if (sequence.upgradesAtMost !== undefined && seen.upgrades > sequence.upgradesAtMost)
+          problems.push(`${where}: ${seen.upgrades} upgrades, at most ${sequence.upgradesAtMost}`);
+        // A host failing some requests may play after the runtime's extra request and not without it.
+        const variable = [...kinds.values()].some((kind) => kind === "flaky" || kind === "outage");
+        if (!variable) {
+          if (idOf(seen.currentSrc) !== idOf(plain.currentSrc))
+            problems.push(
+              `${where}: plays ${idOf(seen.currentSrc)}, without the runtime ${idOf(plain.currentSrc)}`,
+            );
+          if (seen.playing !== plain.playing || seen.paused !== plain.paused)
+            problems.push(
+              `${where}: ${JSON.stringify(seen)}, without the runtime ${JSON.stringify(plain)}`,
+            );
+          if (movesPlain && !moves)
+            problems.push(`${where}: the playhead stopped ${JSON.stringify(seen)}`);
+        }
+        const action = seen.interrupted;
+        if (action === "pause" && !seen.paused)
+          problems.push(`${where}: plays after the composition paused it`);
+        if (action === "rate" && seen.rate !== 2)
+          problems.push(`${where}: rate ${seen.rate}, set to 2`);
+        if (action === "seek" && !(Number(seen.seekGap ?? 1) <= FRAME))
+          problems.push(`${where}: resumed ${seen.seekGap} s off the composition's seek`);
+        if (seen.savedRate !== undefined && !action && !variable) {
+          if (!(Number(seen.restartGap ?? 1) <= FRAME))
+            problems.push(
+              `${where}: after our load it resumed ${seen.restartGap ?? "never"} s off`,
+            );
+          else if (seen.restartRate !== seen.savedRate)
+            problems.push(
+              `${where}: rate ${seen.restartRate} after our load, was ${seen.savedRate}`,
+            );
+        }
         const value = authored.get(el);
         if (value !== undefined) {
           if (seen.crossOrigin !== value)
@@ -463,19 +690,31 @@ async function judge(sequences: Sequence[], frame: Frame) {
         if (seen.playing ? !mayPlay : canPlay)
           problems.push(`${where}: ${canPlay ? "does not play" : "plays"} ${JSON.stringify(seen)}`);
         if (!seen.playing) continue;
-        // As in unsealed Studio, only the preview's own host is read with CORS; another host plays as authored.
-        if (new URL(seen.currentSrc).origin !== server.origin) continue;
-        const keepsCors =
-          sequence.keepsCors?.includes(el) || !seen.failedWithCors.includes(seen.currentSrc);
-        if (keepsCors && (seen.crossOrigin !== "anonymous" || seen.pixels !== "readable"))
-          problems.push(
-            `${where}: plays ${seen.currentSrc.split("?")[1]} without CORS ${JSON.stringify(seen)}`,
-          );
+        const kind = kinds.get(idOf(seen.currentSrc))!;
+        const readable =
+          open.pixels === "readable" &&
+          SENDS_CORS.has(kind) &&
+          (sequence.keepsCors?.includes(el) || !seen.failedWithCors.includes(seen.currentSrc));
+        if (!readable || seen.pixels === "readable") continue;
+        const line = `${where}: plays ${idOf(seen.currentSrc)} unreadable ${JSON.stringify(seen)}`;
+        if (mixed(list) && !foreign(kind)) gaps.push(line);
+        else problems.push(line);
       }
       return problems;
     }),
   );
-  return { problems: all.flat(), budget };
+  return { problems: all.flat(), gaps, budget };
+}
+
+async function frameNamed(page: import("puppeteer-core").Page, name: string) {
+  for (;;) {
+    const frame = page.frames().find((candidate) => candidate.name() === name);
+    if (frame) {
+      await frame.waitForFunction(() => document.readyState === "complete");
+      return frame;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
 }
 
 const browser = await launchBrowser();
@@ -487,27 +726,47 @@ try {
   await page.waitForFunction(() => window.__playerReady || window.__playerError, {
     timeout: 60_000,
   });
-  const frame = page.frames().find((candidate) => candidate.url().includes("/10-video-grid/"));
-  assert.ok(frame, "the film's frame must load");
-  await installDriver(frame);
+  const sealed = page.frames().find((candidate) => candidate.url().includes("/10-video-grid/"));
+  assert.ok(sealed, "the film's frame must load");
+  await page.evaluate(() => {
+    for (const name of ["plain", "open"]) {
+      const frame = document.createElement("iframe");
+      frame.name = name;
+      if (name === "plain") frame.sandbox.add("allow-scripts");
+      frame.srcdoc = "<!doctype html><body></body>";
+      document.body.append(frame);
+    }
+  });
+  const runs: Runs = {
+    sealed,
+    plain: await frameNamed(page, "plain"),
+    open: await frameNamed(page, "open"),
+  };
+  for (const frame of Object.values(runs)) await installDriver(frame);
   const seeds = Number(process.env.SEALED_MEDIA_SEEDS ?? 40);
   const sequences = [...FIXED, ...Array.from({ length: seeds }, (_, seed) => generated(seed + 1))];
-  await runAll(frame, sequences);
-  const { problems, budget } = await judge(sequences, frame);
+  await Promise.all([
+    runAll(runs.sealed, sequences, "s"),
+    runAll(runs.plain, sequences, "p"),
+    runAll(runs.open, sequences, "o"),
+  ]);
+  const { problems, gaps, budget } = await judge(sequences, runs);
   const requests = new Map<string, number>();
   for (const url of server.requested) {
     const id = new URL(url).searchParams.get("id");
-    if (id) requests.set(id, (requests.get(id) ?? 0) + 1);
+    if (id?.startsWith("s.")) requests.set(id.slice(2), (requests.get(id.slice(2)) ?? 0) + 1);
   }
   for (const [id, asked] of requests) {
     const most = budget.get(id) ?? 0;
     if (asked > most) problems.push(`source ${id}: ${asked} requests, at most ${most} expected`);
   }
+  console.log(
+    `[sealed-media-table] ${gaps.length} known gaps: own media in a list naming another host`,
+  );
+  for (const gap of gaps) console.log(`  gap: ${gap}`);
   console.log(`[sealed-media-table] ${sequences.length} sequences, ${problems.length} problems`);
   assert.deepEqual(problems, [], problems.join("\n"));
-  console.log(
-    "[sealed-media-table] every element plays when it can and keeps CORS unless it failed with it",
-  );
+  console.log("[sealed-media-table] every element matches the frames without the runtime");
 } finally {
   await browser.close();
   await server.stop();
