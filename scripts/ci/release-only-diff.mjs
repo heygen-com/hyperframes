@@ -84,48 +84,54 @@ function allowsBreaking(from, to) {
   return true;
 }
 
+/** The problem when an unreverted breaking change since the last release rides a bump below the one it needs. */
+function breakingBumpProblems(from, version, commits) {
+  const breaking = inEffect(commits).find(({ subject }) => BREAKING_SUBJECT.test(subject));
+  if (!breaking || !from || allowsBreaking(from, version)) return [];
+  return [
+    `v${version} is too small a bump for a breaking change: ` +
+      `${breaking.sha.slice(0, 9)} ${breaking.subject}. ` +
+      `Release it as v${breakingVersionAfter(from)}, or revert the change first.`,
+  ];
+}
+
+function notesProblems(version, notes, commits) {
+  if (notes === null) return [`releases/v${version}.md is missing`];
+  const problems = [];
+  if (UNREVIEWED.some((marker) => notes.includes(marker)))
+    problems.push(`releases/v${version}.md still has the generated TODO or style note`);
+  const unlisted = unlistedCommits(commits, notes);
+  if (unlisted.length)
+    problems.push(
+      `releases/v${version}.md misses ${unlisted.length} commit(s) merged since the notes were drafted: ` +
+        unlisted.map(({ sha, subject }) => `${sha.slice(0, 9)} ${subject}`).join("; ") +
+        ". Link each in the notes, or rebase on main and rerun `bun run release:prepare` if main moved.",
+    );
+  return problems;
+}
+
+function changelogProblems(version, changelog) {
+  if (changelog === null || !changelog.includes(`label="HyperFrames v${version}"`))
+    return [`${CHANGELOG} has no entry for v${version}`];
+  if (UNREVIEWED.some((marker) => changelog.includes(marker)))
+    return [`${CHANGELOG} still has the generated TODO or style note`];
+  return [];
+}
+
 /** Problems with a release that is otherwise only versions and notes; empty when it is consistent. */
 export function verifyRelease({ versions, previous = new Set() }, after, commits = []) {
-  const problems = [];
   const distinct = new Set(versions.values());
-  if (distinct.size !== 1) {
-    problems.push(
-      `manifests move to different versions: ${[...distinct].join(", ") || "none changed"}`,
-    );
-    return problems;
-  }
+  if (distinct.size !== 1)
+    return [`manifests move to different versions: ${[...distinct].join(", ") || "none changed"}`];
+  if (previous.size > 1)
+    return [`manifests move from different versions: ${[...previous].join(", ")}`];
   const [version] = distinct;
-  if (previous.size > 1) {
-    problems.push(`manifests move from different versions: ${[...previous].join(", ")}`);
-    return problems;
-  }
-  const breaking = inEffect(commits).find(({ subject }) => BREAKING_SUBJECT.test(subject));
   const [from] = previous;
-  if (breaking && from && !allowsBreaking(from, version))
-    problems.push(
-      `v${version} is too small a bump for a breaking change: ` +
-        `${breaking.sha.slice(0, 9)} ${breaking.subject}. ` +
-        `Release it as v${breakingVersionAfter(from)}, or revert the change first.`,
-    );
-  const notes = after(`releases/v${version}.md`);
-  if (notes === null) problems.push(`releases/v${version}.md is missing`);
-  else {
-    if (UNREVIEWED.some((marker) => notes.includes(marker)))
-      problems.push(`releases/v${version}.md still has the generated TODO or style note`);
-    const unlisted = unlistedCommits(commits, notes);
-    if (unlisted.length)
-      problems.push(
-        `releases/v${version}.md misses ${unlisted.length} commit(s) merged since the notes were drafted: ` +
-          unlisted.map(({ sha, subject }) => `${sha.slice(0, 9)} ${subject}`).join("; ") +
-          ". Link each in the notes, or rebase on main and rerun `bun run release:prepare` if main moved.",
-      );
-  }
-  const changelog = after(CHANGELOG);
-  if (changelog === null || !changelog.includes(`label="HyperFrames v${version}"`))
-    problems.push(`${CHANGELOG} has no entry for v${version}`);
-  else if (UNREVIEWED.some((marker) => changelog.includes(marker)))
-    problems.push(`${CHANGELOG} still has the generated TODO or style note`);
-  return problems;
+  return [
+    ...breakingBumpProblems(from, version, commits),
+    ...notesProblems(version, after(`releases/v${version}.md`), commits),
+    ...changelogProblems(version, after(CHANGELOG)),
+  ];
 }
 
 const git = (...args) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 1 << 26 });
