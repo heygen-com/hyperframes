@@ -223,8 +223,9 @@ function softReloadSealed(
     time: currentTimeOverride,
     restore,
   }).then((reply) => {
-    if (!ticketNeedsRecovery(ticket)) return;
     const result = sealedSoftReloadResult(reply);
+    // No answer is not a refusal: the frame takes requests in order, and wrote this one's attributes at its start.
+    if (!ticketNeedsRecovery(ticket, reply !== null && result === "cannot-soft-reload")) return;
     if (result === "cannot-soft-reload") onAsyncFailure?.();
     else if (result !== "superseded" && !ticketCovered(ticket)) onShownInPlace?.();
   });

@@ -18,7 +18,7 @@ export interface PreviewSend {
   snapshot: PreviewWrite | null;
   /** It re-runs its timelines, so it owns them from its send. */
   rerun: boolean;
-  /** It carries restored attributes, which no later script-only re-run sends again. */
+  /** It carries restored attributes: refused by the frame, no later script-only re-run sends them again. */
   attributes: boolean;
 }
 
@@ -80,10 +80,10 @@ export function ticketLoadLive(ticket: PreviewTicket): boolean {
 }
 
 /** A later re-run read at this version or newer carries this write's change and owns its recovery. */
-export function ticketCovered(ticket: PreviewTicket): boolean {
+export function ticketCovered(ticket: PreviewTicket, refused = false): boolean {
   const { reruns } = ledgerOf(ticket.load);
   return (
-    !ticket.sent.attributes &&
+    !(refused && ticket.sent.attributes) &&
     ticket.keys.length > 0 &&
     ticket.keys.every((key) => {
       const owner = reruns.get(key);
@@ -104,6 +104,6 @@ export function newestPreviewWrite(ticket: PreviewTicket): PreviewWrite | null {
 }
 
 /** A late failure acts only for the live load and only when no later re-run carries its change. */
-export function ticketNeedsRecovery(ticket: PreviewTicket): boolean {
-  return ticketLoadLive(ticket) && !ticketCovered(ticket);
+export function ticketNeedsRecovery(ticket: PreviewTicket, refused = false): boolean {
+  return ticketLoadLive(ticket) && !ticketCovered(ticket, refused);
 }

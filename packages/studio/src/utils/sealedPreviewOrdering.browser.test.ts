@@ -163,17 +163,19 @@ function answer(studioPage: Page, pick: number, kind: string | null) {
         __held: Array<() => void>;
         __swallowed: Array<{ kind: string; answer: (result: unknown) => void }>;
       };
+      const refuse = (entry: { kind: string; answer: (result: unknown) => void }) => {
+        const counts = ((window as unknown as { __refused?: Record<string, number> }).__refused ??=
+          {});
+        counts[entry.kind] = (counts[entry.kind] ?? 0) + 1;
+        entry.answer(refusals[entry.kind]);
+      };
       const refusedAt = wanted ? w.__swallowed.findIndex((entry) => entry.kind === wanted) : -1;
-      if (refusedAt >= 0) {
-        const [entry] = w.__swallowed.splice(refusedAt, 1);
-        return entry!.answer(refusals[entry!.kind]);
-      }
+      if (refusedAt >= 0) return refuse(w.__swallowed.splice(refusedAt, 1)[0]!);
       const all = w.__held.length + w.__swallowed.length;
       if (all === 0) return;
       const i = at % all;
       if (i < w.__held.length) return w.__held.splice(i, 1)[0]!();
-      const [entry] = w.__swallowed.splice(i - w.__held.length, 1);
-      entry!.answer(refusals[entry!.kind]);
+      refuse(w.__swallowed.splice(i - w.__held.length, 1)[0]!);
     },
     pick,
     kind,
@@ -248,7 +250,6 @@ async function play(steps: Step[], seed = 1) {
   const preview = await openStudio();
   const { page: studioPage, frame } = preview;
   let saved = FIRST;
-  let reloadRefusals = 0;
   for (const [n, step] of steps.entries()) {
     if ("save" in step) {
       const after = next[step.save](saved, n);
@@ -257,6 +258,9 @@ async function play(steps: Step[], seed = 1) {
         (window as unknown as { __swallow: Set<string> }).__swallow = new Set(refused ? kinds : []);
       }, step.refused);
       await send(studioPage, step.save, saved, after);
+      await studioPage.evaluate(() => {
+        (window as unknown as { __swallow: Set<string> }).__swallow = new Set();
+      });
       saved = after;
     } else if ("reloadFrame" in step) {
       await studioPage.evaluate(() => {
@@ -266,15 +270,19 @@ async function play(steps: Step[], seed = 1) {
       await ready(frame);
     } else {
       const kind = step.answer === "any" ? null : step.answer;
-      if (kind === "soft-reload" || kind === "restore-attributes") reloadRefusals++;
       await answer(studioPage, Math.floor(random() * 1000), kind);
     }
   }
   await drain(studioPage, frame, random);
   const shown = await seen(frame, studioPage, 0);
-  const reloads = await studioPage.evaluate(
-    () => (window as unknown as { __reloads: number }).__reloads,
-  );
+  const { reloads, reloadRefusals } = await studioPage.evaluate(() => {
+    const w = window as unknown as { __reloads: number; __refused?: Record<string, number> };
+    const refused = w.__refused ?? {};
+    return {
+      reloads: w.__reloads,
+      reloadRefusals: (refused["soft-reload"] ?? 0) + (refused["restore-attributes"] ?? 0),
+    };
+  });
   await studioPage.close();
   const fresh = await freshLoad(saved);
   return { shown, fresh, reloads, reloadRefusals };
@@ -328,14 +336,14 @@ describe("sealed preview after late answers in any order", () => {
       return { save: SAVES[Math.floor(random() * SAVES.length)]!, refused: random() < 0.5 };
     });
   };
-  it.each(Array.from({ length: Number(process.env.HF_ORDERING_SEEDS ?? 40) }, (_, i) => i + 1))(
-    "generated sequence %i",
-    async (seed) => {
-      const steps = generated(seed);
-      const { shown, fresh, reloads } = await play(steps, seed);
-      expect({ steps, state: shown }).toEqual({ steps, state: fresh });
-      // A random "answer" can deliver any refusal, so only a sequence with no refused save may never reload.
-      if (steps.every((step) => !("save" in step) || !step.refused)) expect(reloads).toBe(0);
-    },
-  );
+  const base = Number(process.env.HF_ORDERING_SEED_BASE ?? 0);
+  it.each(
+    Array.from({ length: Number(process.env.HF_ORDERING_SEEDS ?? 40) }, (_, i) => base + i + 1),
+  )("generated sequence %i", async (seed) => {
+    const steps = generated(seed);
+    const { shown, fresh, reloads, reloadRefusals } = await play(steps, seed);
+    expect({ steps, state: shown }).toEqual({ steps, state: fresh });
+    // Only a refused re-run or restore leaves nothing to recover in place.
+    if (reloadRefusals === 0) expect({ steps, reloads }).toEqual({ steps, reloads: 0 });
+  });
 });
