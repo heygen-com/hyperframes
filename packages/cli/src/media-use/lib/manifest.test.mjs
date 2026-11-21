@@ -398,13 +398,16 @@ function runTests() {
   });
 
   // fails without the fix: a linked .media/audio folder took reserved files and records outside the project.
-  test("a media type folder that a link leads outside the project is refused", () => {
+  test("a media type folder that is a link is refused before anything is made through it", () => {
     const project = mkdtempSync(join(tmpdir(), "mu-typedir-"));
     const outside = mkdtempSync(join(tmpdir(), "mu-outside-"));
     try {
       mkdirSync(join(project, ".media"));
       symlinkSync(outside, join(project, ".media", "audio"));
-      assert.throws(() => allocateId(project, "sfx", ".mp3"), /leads outside the project/);
+      assert.throws(
+        () => allocateId(project, "sfx", ".mp3"),
+        /is a link; media is written only into real folders/,
+      );
       assert.deepEqual(readdirSync(outside), []);
     } finally {
       rmSync(project, { recursive: true, force: true });

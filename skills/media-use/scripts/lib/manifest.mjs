@@ -88,14 +88,16 @@ export function ownMediaDir(projectDir) {
   return dir;
 }
 
-/** The project's own folder for `type` under `.media`, made if missing; throws when a link leads it elsewhere. */
+/** The project's own folder for `type` under `.media`, made if missing; throws when any folder on the way is a link. */
 export function ownTypeDir(projectDir, type) {
   let dir = ownMediaDir(projectDir);
   // Each folder is looked at before it is made, so nothing is ever made through a link.
   for (const part of typeSubdir(type).split("/")) {
     dir = join(dir, part);
     if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) {
-      throw new Error(`${dir} leads outside the project folder; nothing was written there`);
+      throw new Error(
+        `${dir} is a link; media is written only into real folders, so nothing was written there`,
+      );
     }
     mkdirSync(dir, { recursive: true });
   }
