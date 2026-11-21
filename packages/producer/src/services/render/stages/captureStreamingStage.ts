@@ -81,7 +81,12 @@ import {
 } from "../perfSummary.js";
 import { createStallClock } from "../stallClock.js";
 import { ensureFrameWritten } from "./captureHdrFrameShared.js";
-import { reportEncodeProgress, reportFrameProgress, reportWorkerStartup } from "../shared.js";
+import {
+  reportEncodeProgress,
+  reportFrameProgress,
+  reportWorkerStartup,
+  streamingCaptureProgress,
+} from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import type { SdrStreamingCapturePlan } from "../capturePlan.js";
 
@@ -616,7 +621,7 @@ async function runWorkerEncodePipelineLoop(
     reportFrameProgress(
       job,
       `Streaming frame ${prev.idx + 1}/${totalFrames}`,
-      Math.round(25 + ((prev.idx + 1) / totalFrames) * 55),
+      streamingCaptureProgress(prev.idx + 1, totalFrames),
       onProgress,
       prev.idx + 1,
       totalFrames,
@@ -645,7 +650,7 @@ async function runWorkerEncodePipelineLoop(
       reportFrameProgress(
         job,
         `Streaming frame ${item.idx + 1}/${totalFrames}`,
-        Math.round(25 + ((item.idx + 1) / totalFrames) * 55),
+        streamingCaptureProgress(item.idx + 1, totalFrames),
         onProgress,
         item.idx + 1,
         totalFrames,
@@ -974,11 +979,10 @@ export async function runCaptureStreamingStage(
               }
               const doneFrames = resumeFrom + progress.capturedFrames;
               job.framesRendered = doneFrames;
-              const frameProgress = doneFrames / totalFrames;
               reportFrameProgress(
                 job,
                 `Streaming frame ${doneFrames}/${totalFrames} (${workerCount} workers)`,
-                Math.round(25 + frameProgress * 55),
+                streamingCaptureProgress(doneFrames, totalFrames),
                 onProgress,
                 doneFrames,
                 totalFrames,
@@ -1189,8 +1193,7 @@ export async function runCaptureStreamingStage(
               resume.written = i + 1;
               lastProgressAt = Date.now();
 
-              const frameProgress = (i + 1) / totalFrames;
-              const progress = 25 + frameProgress * 55;
+              const progress = streamingCaptureProgress(i + 1, totalFrames);
 
               // Keep status cadence identical to disk sequential capture; the
               // capture error wrapper below must remain separate from finally so it

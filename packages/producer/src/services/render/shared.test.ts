@@ -10,6 +10,7 @@ import {
   reportFrameProgress,
   reportWorkerStartup,
   resolveBrowserMediaEnd,
+  streamingCaptureProgress,
 } from "./shared.js";
 
 describe("resolveBrowserMediaEnd", () => {
@@ -162,5 +163,22 @@ describe("stage progress for machines", () => {
     expect(seen).toEqual([
       { stage: "Assembling final video", progress: 99, code: "assemble", done: 20, total: 20 },
     ]);
+  });
+});
+
+describe("streamingCaptureProgress", () => {
+  it("spans 25 to 90 so the bar tracks frames done, not a fixed band", () => {
+    expect(streamingCaptureProgress(0, 3000)).toBe(25);
+    // The issue's repro: 2856/3000 printed 77%; it should print 87%.
+    expect(streamingCaptureProgress(2856, 3000)).toBe(87);
+    // The long render: 14912/15723 printed 77%; it should print 87%.
+    expect(streamingCaptureProgress(14912, 15723)).toBe(87);
+    expect(streamingCaptureProgress(3000, 3000)).toBe(90);
+  });
+
+  it("never leaves the band", () => {
+    expect(streamingCaptureProgress(0, 0)).toBe(25);
+    expect(streamingCaptureProgress(4000, 3000)).toBe(90);
+    expect(streamingCaptureProgress(-5, 3000)).toBe(25);
   });
 });
