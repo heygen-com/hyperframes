@@ -6124,11 +6124,15 @@ export function initSandboxRuntimeModular(): void {
   // enough, and the bytes it has not read count against the connection every file shares: the clip the
   // hold waits for then gets none. Each such clip reloads at preload metadata, which the browser ends
   // once the clip can play, and the hold waits for it too. WebKit keeps its own hold-back.
-  const reloadPlayedClipsForHold = (time: number): HTMLMediaElement[] =>
+  const reloadPlayedClipsForHold = (
+    time: number,
+    waitingFor: HTMLMediaElement[],
+  ): HTMLMediaElement[] =>
     mediaClipsInWindow
       .filter(
         ({ el, start, end }) =>
           !isWebKit() &&
+          !waitingFor.includes(el) &&
           isInClipWindow(time, start, end) &&
           isPlayableTrack(el) &&
           el.played.length > 0 &&
@@ -6142,7 +6146,9 @@ export function initSandboxRuntimeModular(): void {
           el.addEventListener(
             "loadedmetadata",
             () => {
-              el.currentTime = mediaElementTime(mediaSourceTimeAt(clip, time));
+              const sameHold =
+                bufferingFor.includes(el) && Math.abs(state.currentTime - time) < 1e-3;
+              if (sameHold) el.currentTime = mediaElementTime(mediaSourceTimeAt(clip, time));
             },
             { once: true },
           );
@@ -6470,7 +6476,7 @@ export function initSandboxRuntimeModular(): void {
       if (clock.isPlaying() && notReady.length > 0) {
         bufferingFor = notReady;
         haltPlayback(true);
-        bufferingFor = [...new Set([...notReady, ...reloadPlayedClipsForHold(state.currentTime)])];
+        bufferingFor = [...notReady, ...reloadPlayedClipsForHold(state.currentTime, notReady)];
       } else if (
         bufferingFor.length > 0 &&
         !mediaNotReadyAt(state.currentTime, canResumeFrom).some((el) => bufferingFor.includes(el))
