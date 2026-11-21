@@ -147,6 +147,12 @@ function pageDetail(page: PageResult) {
       target: num(x.target),
       ms: num(x.ms),
       timedOut: x.timedOut === true,
+      syncMs: num(x.syncMs),
+      timeMs: num(x.timeMs),
+      framesMs: num(x.framesMs),
+      gapMs: num(x.gapMs),
+      seekingAfterCall: num(x.seekingAfterCall),
+      states: String(x.states ?? ""),
     })),
   };
 }

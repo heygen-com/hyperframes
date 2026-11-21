@@ -160,11 +160,27 @@ export async function bench(cfg) {
     for (const v of videos()) {
       if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(() => presented.add(v));
     }
+    // probe: phases of one seek and the longest main-thread gap while it settles.
+    let gap = 0,
+      last = now(),
+      watching = true;
+    const watch = () => {
+      const n = now();
+      gap = Math.max(gap, n - last);
+      last = n;
+      if (watching) requestAnimationFrame(watch);
+    };
+    requestAnimationFrame(watch);
     const t0 = now();
     host.seek(target);
+    const syncMs = now() - t0;
+    const seekingAfterCall = videos().filter((v) => v.seeking).length;
+    let timeMs = null,
+      framesMs = null;
     let timedOut = false;
     try {
-      await until(() => Math.abs(runtime.getTime() - target) < 0.05, 5_000, `time ${target}`);
+      await until(() => Math.abs(runtime.getTime() - target) < 0.05, 30_000, `time ${target}`);
+      timeMs = now() - t0;
       await nextFrame();
       await nextFrame();
       await until(
@@ -172,14 +188,29 @@ export async function bench(cfg) {
           videos()
             .filter((v) => shown(v) && !v.error)
             .every((v) => presented.has(v) || (!v.seeking && v.readyState >= 2)),
-        5_000,
+        30_000,
         `video frames at ${target}`,
       );
+      framesMs = now() - t0;
     } catch {
       timedOut = true;
     }
     await nextFrame();
-    seeks.push({ target, ms: now() - t0, timedOut });
+    watching = false;
+    const states = videos()
+      .map((v) => `${v.readyState}${v.seeking ? "s" : ""}${v.paused ? "p" : ""}`)
+      .join(" ");
+    seeks.push({
+      target,
+      ms: now() - t0,
+      timedOut,
+      syncMs,
+      timeMs,
+      framesMs,
+      gapMs: gap,
+      seekingAfterCall,
+      states,
+    });
     await sleep(100);
   }
 
