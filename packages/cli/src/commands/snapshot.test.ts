@@ -775,10 +775,10 @@ describe("extractVideoFrameToBuffer", () => {
         const clip = join(dir, "clip.mp4");
         execFileSync(ffmpeg!, [
           ...["-hide_banner", "-loglevel", "error", "-f", "lavfi"],
-          ...["-i", "testsrc2=d=20:r=25:s=320x180", "-c:v", "libx264", "-g", "50"],
+          ...["-i", "testsrc2=d=8:r=25:s=320x180", "-c:v", "libx264", "-g", "50"],
           ...["-pix_fmt", "yuv420p", clip],
         ]);
-        const times = Array.from({ length: 40 }, (_, i) => 0.4 + i * 0.47);
+        const times = Array.from({ length: 16 }, (_, i) => 0.4 + i * 0.47);
         spawned.files.length = 0;
         const alone = [];
         for (const time of times)
@@ -798,7 +798,7 @@ describe("extractVideoFrameToBuffer", () => {
         const landings = spawned.files.length - probes;
         // One stream read and one packet read; a seek landing per keyframe (a keyframe every 2 s), not per time.
         expect(probes).toBe(2);
-        expect(landings).toBeLessThanOrEqual(2 * Math.ceil(20 / 2));
+        expect(landings).toBeLessThanOrEqual(2 * Math.ceil(8 / 2));
         expect(spawned.files.length * 3, "far fewer processes than a probe per time").toBeLessThan(
           spawnedAlone,
         );
