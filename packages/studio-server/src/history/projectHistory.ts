@@ -233,7 +233,16 @@ interface WrittenAt {
   fileTime?: number;
 }
 
-type Copied = { hash: string; referenced?: true; release?: () => void } | "gone" | "changing";
+type Copied =
+  | {
+      hash: string;
+      referenced?: true;
+      release?: () => void;
+      /** Save receipts heard by the moment of the read: after hash to the hash it replaced. */
+      heardAtRead?: Map<string, string>;
+    }
+  | "gone"
+  | "changing";
 
 const FIRST_COPY_FILE_MS = 10_000;
 
@@ -523,6 +532,8 @@ class Engine {
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
   adopting = new Map<string, Adoption>();
   reading = new Map<string, Promise<unknown>>();
+  /** Bytes a save replaced in a file history holds no copy of yet: its pending first copy may start there. */
+  heardBeforeCopy = new Map<string, Set<string>>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
   stopHearing: (() => void) | undefined;
@@ -714,6 +725,8 @@ class Engine {
         path,
         chainBackFrom(this.overwritten.get(path), replaced).set(after, replaced),
       );
+      if (this.adopting.has(path))
+        this.heardBeforeCopy.set(path, (this.heardBeforeCopy.get(path) ?? new Set()).add(replaced));
       this.queue(async () => {
         if (!this.blobs.has(replaced) && !isUncopied(path, bytes.length))
           await this.storeBytes(bytes);
@@ -793,6 +806,7 @@ class Engine {
         late.set(file.path, copies[i]!.work);
       } else if (result.value !== "gone") {
         this.tracked.set(file.path, { hash: result.value.hash, stat: this.statKey(file, sweptAt) });
+        this.heardBeforeCopy.delete(file.path);
         result.value.release?.();
       }
     });
@@ -891,6 +905,7 @@ class Engine {
         // Still named for the next open until recorded, so a failed record is never logged as added.
         if ((await this.recordAdopted(file, sweptAt, copied)) === "changing") return "changing";
         this.adopting.delete(file.path);
+        this.heardBeforeCopy.delete(file.path);
         this.saveAdopting();
         // The sweeps since open passed this file by: one more takes in any edit since the bytes were read.
         if (fromOpen) this.sweepIn(0);
@@ -910,7 +925,8 @@ class Engine {
     const copied = first;
     const { hash } = copied;
     const change = { path: file.path, before: null, after: hash };
-    const found = this.overwrittenBy(change, undefined, new Set());
+    const heard = copied.heardAtRead ?? new Map<string, string>();
+    const found = this.overwrittenBy(change, undefined, new Set(), heard);
     const start = found && this.blobs.has(found) ? found : hash;
     this.tracked.set(file.path, { hash, stat: this.statKey(file, sweptAt) });
     this.log.baseline.set(file.path, start);
@@ -1044,11 +1060,17 @@ class Engine {
     try {
       const abs = join(this.dir, path);
       const { size } = await stat(abs);
-      if (isUncopied(path, size))
-        return { hash: await this.blobs.reference(abs), referenced: true };
-      const hash = await this.blobs.put(abs, pin);
+      let heardAtRead: Map<string, string> | undefined;
+      const read = () => (heardAtRead = new Map(this.overwritten.get(path)));
+      if (isUncopied(path, size)) {
+        const hash = await this.blobs.reference(abs);
+        read();
+        return { hash, referenced: true, heardAtRead };
+      }
+      const hash = await this.blobs.put(abs, pin, read);
       if (hash === null) return "changing";
-      return pin ? { hash, release: () => this.blobs.unpin(hash) } : { hash };
+      const release = pin ? { release: () => this.blobs.unpin(hash) } : {};
+      return { hash, ...release, heardAtRead };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return "gone";
       throw error;
@@ -1186,13 +1208,18 @@ class Engine {
   }
 
   /** Walks the server's writes back from `change.after` to the stored bytes they replaced. */
-  overwrittenBy(change: HistoryFileChange, told: string | undefined, seen: Set<string>) {
+  overwrittenBy(
+    change: HistoryFileChange,
+    told: string | undefined,
+    seen: Set<string>,
+    heard = this.overwritten.get(change.path),
+  ) {
     let found: string | undefined;
     for (let hash = change.after; hash; ) {
       // A loop (X, Y, back to X) says nothing about what was there first: the client's word stands.
       if (seen.has(hash)) return undefined;
       seen.add(hash);
-      const replaced = this.overwritten.get(change.path)?.get(hash);
+      const replaced = heard?.get(hash);
       if (replaced === undefined) break;
       found = hash = replaced;
       if (hash === change.before || hash === told) return hash;
@@ -1310,7 +1337,8 @@ class Engine {
   historyBytes(): number {
     let current = 0;
     const baseline = [...this.tracked.values()].map((file) => file.hash);
-    for (const hash of new Set([...baseline, ...this.blobs.pinned()]))
+    const owedStarts = [...this.heardBeforeCopy.values()].flatMap((replaced) => [...replaced]);
+    for (const hash of new Set([...baseline, ...this.blobs.pinned(), ...owedStarts]))
       current += this.blobs.size(hash);
     return this.blobs.bytes() - current;
   }
@@ -1324,6 +1352,7 @@ class Engine {
           ...referencedHashes(this.log, this.manifest()),
           ...this.pendingHashes(),
           ...[...this.overwritten.values()].flatMap((byAfter) => [...byAfter.values()]),
+          ...[...this.heardBeforeCopy.values()].flatMap((replaced) => [...replaced]),
         ]),
       );
       if (this.historyBytes() <= budget || !foldOldest(this.log)) break;

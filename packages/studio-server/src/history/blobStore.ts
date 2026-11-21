@@ -22,7 +22,7 @@ import { assertLandedIn, assertStillWithin, folderWithin } from "./containedPath
 /** File contents stored once by sha256, text and binary alike. */
 export interface BlobStore {
   /** Copies the file in (cloned where it can) and returns its hash; null while it keeps changing. */
-  put(absPath: string, pin?: boolean): Promise<string | null>;
+  put(absPath: string, pin?: boolean, onRead?: () => void): Promise<string | null>;
   unpin(hash: string): void;
   pinned(): Iterable<string>;
   reference(absPath: string): Promise<string>;
@@ -77,13 +77,17 @@ export async function hashFile(path: string): Promise<string> {
 
 async function readIfSmall(
   path: string,
+  onRead: () => void,
 ): Promise<{ bytes: Buffer; mode: number; moved: boolean } | null> {
   const handle = await open(path, "r");
   try {
     const before = await handle.stat();
     if (before.size > READ_ONCE_AT_MOST_BYTES) return null;
     const bytes = await handle.readFile();
-    return { bytes, mode: before.mode, moved: !unchanged(before, await handle.stat()) };
+    const moved = !unchanged(before, await handle.stat());
+    // At the read itself, not after the close, which a slow drive can hold.
+    if (!moved) onRead();
+    return { bytes, mode: before.mode, moved };
   } finally {
     await handle.close();
   }
@@ -252,9 +256,14 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     return hash;
   };
 
-  const putIfUnchanged = async (absPath: string, pinned: boolean): Promise<string | null> => {
-    const small = await readIfSmall(absPath);
-    if (small) return small.moved ? null : putBytes(small.bytes, small.mode, pinned);
+  const putIfUnchanged = async (
+    absPath: string,
+    pinned: boolean,
+    onRead: () => void,
+  ): Promise<string | null> => {
+    const small = await readIfSmall(absPath, onRead);
+    if (small?.moved) return null;
+    if (small) return putBytes(small.bytes, small.mode, pinned);
     // Hash the copy, not the source, so a write racing the copy can never file bytes under the wrong hash.
     const temp = join(dir, `incoming-${randomUUID()}`);
     // Recreated if removed while open, so a missing folder is never mistaken for a deleted project file.
@@ -270,6 +279,7 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
       await rm(temp, { force: true });
       return null;
     }
+    onRead();
     const hash = await hashFile(temp);
     return inTurn(hash, async () => {
       if (sizes.has(hash)) {
@@ -287,9 +297,9 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
   };
 
   return {
-    async put(absPath, pinned = false) {
+    async put(absPath, pinned = false, onRead = () => {}) {
       for (let read = 0; read < READS_BEFORE_LEAVING_IT; read += 1) {
-        const hash = await putIfUnchanged(absPath, pinned);
+        const hash = await putIfUnchanged(absPath, pinned, onRead);
         if (hash !== null) return hash;
       }
       return null;

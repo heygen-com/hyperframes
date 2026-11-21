@@ -24,6 +24,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 });
 
 import * as fsp from "node:fs/promises";
+import { fileContentVersion, recordFileWriteReceipt } from "../helpers/fileVersion.js";
 import { blobPath } from "./blobStore.js";
 import { START } from "./historyLog.js";
 import { openProjectHistory } from "./projectHistory.js";
@@ -76,6 +77,39 @@ function expectAllKept(
     expect(readFileSync(blobPath(blobs, sha256(bytes))).equals(bytes)).toBe(true);
   }
 }
+/** The first filing of `bytes` into the blob store waits until released. */
+function holdFiling(bytes: Buffer): { release: () => void; reached: Promise<void> } {
+  const releases: (() => void)[] = [];
+  let reach = () => {};
+  const reached = new Promise<void>((held) => (reach = held));
+  vi.mocked(fsp.writeFile).mockImplementation(async (...args: Parameters<typeof realWriteFile>) => {
+    const [to, written] = args;
+    if (!releases.length && String(to).includes("incoming-") && bytes.equals(written as Buffer)) {
+      const wait = new Promise<void>((answer) => releases.push(answer));
+      reach();
+      await wait;
+    }
+    return realWriteFile(...args);
+  });
+  const release = () => releases.forEach((answer) => answer());
+  closes.push(async () => release());
+  return { release, reached };
+}
+
+const saveReceipt = (absPath: string, bytes: string, overwrote: string) =>
+  recordFileWriteReceipt(absPath, {
+    path: "parts/p0.js",
+    version: fileContentVersion(bytes),
+    writeToken: "studio",
+    overwrote,
+  });
+
+/** Every first copy is recorded: nothing is named as still being adopted. */
+const adopted = (historyRoot: string) =>
+  vi.waitFor(() => expect(existsSync(join(homeIn(historyRoot), "adopting.json"))).toBe(false), {
+    timeout: 10_000,
+  });
+
 const pathsOf = (count: number) => [
   "index.html",
   ...Array.from({ length: count }, (_, i) => `parts/p${i}.js`),
@@ -175,14 +209,15 @@ describe("a project's first history copy", () => {
   });
 
   it("gives a queued first copy its deadline from when its read starts", async () => {
+    // Nine reads of 150 ms through four slots: the last round ends at 450 ms, each read well within 400 ms.
     const projectDir = projectOf(9, "queued");
     vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
       if (String(args[0]).startsWith(projectDir))
-        await new Promise((later) => setTimeout(later, 120));
+        await new Promise((later) => setTimeout(later, 150));
       return realOpen(...args);
     });
     const historyRoot = tempDir("hf-first-copy-root-");
-    const history = await openProjectHistory({ projectDir, historyRoot, firstCopyFileMs: 200 });
+    const history = await openProjectHistory({ projectDir, historyRoot, firstCopyFileMs: 400 });
     closes.push(() => history.close());
     expect(Object.keys(history.peek(START) ?? {}).sort()).toEqual(pathsOf(9).sort());
     expect(existsSync(join(homeIn(historyRoot), "adopting.json"))).toBe(false);
@@ -207,6 +242,61 @@ describe("a project's first history copy", () => {
     expect(JSON.parse(readFileSync(join(homeIn(historyRoot), "adopting.json"), "utf8"))).toEqual([
       "parts/p0.js",
     ]);
+  });
+
+  it("keeps the original as the start of a late copy when a save writes it back over a later change", async () => {
+    const projectDir = projectOf(1, "late");
+    const p0 = join(projectDir, "parts", "p0.js");
+    const original = readFileSync(p0);
+    const filing = holdFiling(original);
+    const historyRoot = tempDir("hf-first-copy-root-");
+    const history = await openProjectHistory({ projectDir, historyRoot, firstCopyFileMs: 100 });
+    closes.push(() => history.close());
+    await filing.reached;
+    writeFileSync(p0, "// B\n");
+    writeFileSync(p0, original);
+    saveReceipt(p0, original.toString(), "// B\n");
+    filing.release();
+    await adopted(historyRoot);
+    expect(history.peek(START)!["parts/p0.js"]).toBe(sha256(original));
+  });
+
+  it("keeps the original an early save's receipt names through a prune before its late copy is filed", async () => {
+    const projectDir = projectOf(1, "prune");
+    const p0 = join(projectDir, "parts", "p0.js");
+    const original = readFileSync(p0);
+    const releases: (() => void)[] = [];
+    closes.push(async () => releases.forEach((answer) => answer()));
+    let stalled = false;
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      if (String(args[0]) === p0 && !stalled) {
+        stalled = true;
+        await new Promise<void>((answer) => releases.push(answer));
+      }
+      return realOpen(...args);
+    });
+    const filing = holdFiling(Buffer.from("// B\n"));
+    const historyRoot = tempDir("hf-first-copy-root-");
+    // The claim's prune and fold leave only what history still needs.
+    const history = await openProjectHistory({
+      projectDir,
+      historyRoot,
+      firstCopyFileMs: 100,
+      budgetBytes: 16,
+      quietMs: 30,
+    });
+    closes.push(() => history.close());
+    writeFileSync(p0, "// B\n");
+    saveReceipt(p0, "// B\n", original.toString());
+    releases.forEach((answer) => answer());
+    await filing.reached;
+    // A later receipt that starts a new chain: the live receipts no longer name the original.
+    saveReceipt(p0, "// C\n", "// unrelated\n");
+    writeFileSync(join(projectDir, "index.html"), "<html>person</html>");
+    await history.claim({ kind: "person", name: "You" }, "Edit", ["index.html"]);
+    filing.release();
+    await adopted(historyRoot);
+    expect(history.peek(START)!["parts/p0.js"]).toBe(sha256(original));
   });
 
   it("keeps a first copy that lands past its deadline as the file's start, and an edit since as a change", async () => {
