@@ -34,7 +34,7 @@ function runCli(args: string[]): Promise<Run> {
 
 it("shows control characters in an unknown command word as visible text", async () => {
   const [word, file, json] = await Promise.all([
-    runCli(["ren\u001b[2Jdr‮"]),
+    runCli(["ren\u001b[2Jdr\u202e"]),
     runCli(["cloud", "a\u001b[2Jb.html"]),
     runCli(["cloud", "a\u001b[2Jb.html", "--json"]),
   ]);
@@ -43,7 +43,7 @@ it("shows control characters in an unknown command word as visible text", async 
   for (const run of [word, file]) {
     expect(run.code).toBe(2);
     expect(run.stderr).not.toContain("\u001b");
-    expect(run.stderr).not.toContain("‮");
+    expect(run.stderr).not.toContain("\u202e");
   }
   expect(JSON.parse(json.stdout).error.hint).not.toContain("\\x1b");
 }, 60_000);
