@@ -1,4 +1,5 @@
 import { createInterface } from "node:readline/promises";
+import { terminalLines } from "@hyperframes/core";
 import { openBrowser } from "../auth/browser.js";
 import {
   addonBlocks,
@@ -124,7 +125,7 @@ async function readPlanBefore(stop: AbortSignal): Promise<Plan | null> {
 }
 
 function reportCheckoutFailure(error: unknown): CheckoutError | null {
-  console.error(c.error(error instanceof Error ? error.message : String(error)));
+  console.error(c.error(terminalLines(error instanceof Error ? error.message : String(error))));
   if (!(error instanceof CheckoutError)) return null;
   trackBillingCheckoutFailed({ reason: error.reason });
   return error;

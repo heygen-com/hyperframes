@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 
 const publishState = vi.hoisted(() => ({
   publish: vi.fn(),
+  credentialError: null as Error | null,
   noticeRelease: null as string | null,
   confirm: vi.fn(),
 }));
@@ -22,6 +23,16 @@ vi.mock("../utils/attendedTerminal.js", async (importOriginal) => ({
 vi.mock("../utils/publishProject.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/publishProject.js")>()),
   publishProjectArchive: publishState.publish,
+  resolvePublishCredential: async (
+    ...args: Parameters<typeof import("../utils/publishProject.js").resolvePublishCredential>
+  ) => {
+    if (publishState.credentialError) throw publishState.credentialError;
+    return (
+      await vi.importActual<typeof import("../utils/publishProject.js")>(
+        "../utils/publishProject.js",
+      )
+    ).resolvePublishCredential(...args);
+  },
 }));
 
 vi.mock("../share/publishTransition.js", async (importOriginal) => {
@@ -305,6 +316,30 @@ describe("publish visibility messaging", () => {
       expect(output).toContain("film\\x1b]0;x\\x07");
       expect(output).toContain("project-id\\x1b[2J");
     } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  // fails without the fix: the sign-in failure reached the terminal with its control characters live.
+  it("prints a sign-in failure with control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    const project = mkdtempSync(join(tmpdir(), "hf-publish-sign-in-failure-"));
+    writeFileSync(join(project, "index.html"), VISIBLE_INDEX);
+    publishState.credentialError = new Error(`Sign-in refused${esc}[2J\nRun auth login`);
+    const lines: string[] = [];
+    const error = vi.spyOn(console, "error").mockImplementation((...parts: unknown[]) => {
+      lines.push(parts.map(String).join(" "));
+    });
+    try {
+      await captureLog(() =>
+        publishCommand.run?.({ args: { dir: project, yes: true, proxy: false } } as never),
+      );
+      expect(consumeCommandResult().exitCode).toBe(1);
+      expect(lines.join("\n")).toContain("  Sign-in refused\\x1b[2J\nRun auth login");
+      expect(lines.join("\n")).not.toContain(esc);
+    } finally {
+      publishState.credentialError = null;
+      error.mockRestore();
       rmSync(project, { recursive: true, force: true });
     }
   });

@@ -166,7 +166,7 @@ export default defineCommand({
       credential = await resolvePublishCredential();
     } catch (err: unknown) {
       console.error();
-      console.error(`  ${(err as Error).message}`);
+      console.error(`  ${terminalLines((err as Error).message)}`);
       console.error();
       setCommandExitCode(1);
       return;

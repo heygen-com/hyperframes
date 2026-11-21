@@ -371,6 +371,25 @@ describe("billing outcomes", () => {
     expect(events.timeout).toEqual([]);
   });
 
+  // fails without the fix: the checkout failure reached the terminal with its control characters live.
+  it("prints a checkout failure's control characters as visible escapes", async () => {
+    const { CheckoutError } = await import("../heygen/plan.js");
+    const esc = String.fromCharCode(27);
+    terminal.checkoutError = new CheckoutError("checkout_rejected", `No${esc}[2J checkout`);
+    never.paid = false;
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe", "--timeout", "4"] });
+    const settled = expect(done).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(6000);
+    await settled;
+    vi.useRealTimers();
+    const printed = error.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).toContain("No\\x1b[2J checkout");
+    expect(printed).not.toContain(`${esc}[2J`);
+  });
+
   it("stops at once when credits are not on sale, since the credits page cannot sell them either", async () => {
     const { CheckoutError } = await import("../heygen/plan.js");
     terminal.checkoutError = new CheckoutError("checkout_unavailable", "Credits are not on sale");

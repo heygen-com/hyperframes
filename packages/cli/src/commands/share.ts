@@ -4,7 +4,7 @@ import { CliUsageError, setCommandExitCode } from "../utils/commandResult.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
 import * as prompts from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
-import { terminalText } from "@hyperframes/core";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { receivedRecordStatus } from "../utils/privateProjectFile.js";
 import {
   changesNamedReview,
@@ -92,7 +92,7 @@ export default defineCommand({
         console.log(
           JSON.stringify({ ...jsonFailure(failure.code, failure.message), error: failure }),
         );
-      else console.error(failure.message);
+      else console.error(terminalLines(failure.message));
       setCommandExitCode(error instanceof CliUsageError ? 2 : 1);
     }
   },
@@ -295,7 +295,7 @@ function presentFailure(result: ShareState, json: boolean) {
   if (json)
     console.log(JSON.stringify({ ...result, ...jsonFailure("share_export_failed", message) }));
   else {
-    console.error(message);
+    console.error(terminalLines(message));
     if (result.previousUrl) console.log(`Previous shared version: ${result.previousUrl}`);
   }
   setCommandExitCode(1);

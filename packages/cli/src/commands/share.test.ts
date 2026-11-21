@@ -119,6 +119,33 @@ it("deduplicates progress and terminates each message before the friendly error"
   expect(friendly).toHaveBeenCalledWith("Sharing blocked.");
 });
 
+// fails without the fix: the failure line reached the terminal with its control characters live.
+it("prints a failure's control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  const friendly = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  mocks.run.mockRejectedValue(new Error(`Sharing blocked${esc}[2J.\nTry again`));
+  await runCommand(command, { rawArgs: ["--private", "-y"] });
+  expect(friendly).toHaveBeenLastCalledWith("Sharing blocked\\x1b[2J.\nTry again");
+});
+
+// fails without the fix: a failed export's reason reached the terminal with its control characters live.
+it("prints a failed export's control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  const friendly = vi.spyOn(console, "error").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "failed",
+    ready: false,
+    url: null,
+    previousUrl: null,
+    manageUrl: "https://hyperframes.dev/shares",
+    source: { at: "not_checked" },
+    version: { failure: `Export stopped${esc}]0;t${String.fromCharCode(7)}` },
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(friendly).toHaveBeenLastCalledWith("Export stopped\\x1b]0;t\\x07");
+});
+
 it.each(["owner@example.com", "another@example.com"])(
   "keeps the owner error code stable for %s",
   async (owner) => {
