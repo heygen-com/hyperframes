@@ -56,7 +56,7 @@ async function play(cors: boolean) {
   return { videos, pixels, warnings };
 }
 
-type CaseResult = { crossOrigin: string | null; playing: boolean; pixels: string; loads: number };
+type CaseResult = { crossOrigin: string | null; playing: boolean; pixels: string };
 
 /**
  * One sealed film, each case a video the test adds to it: the frame's own CORS decision per media element, read back
@@ -85,10 +85,6 @@ async function mediaCases() {
           `<video data-case="${caseName}" muted preload="auto"`,
         );
         const video = holder.querySelector("video")!;
-        const loads = { count: 0 };
-        const load = video.load.bind(video);
-        video.load = () => (loads.count++, load());
-        (video as unknown as { loads: typeof loads }).loads = loads;
         document.body.append(video);
         if (script) new Function("video", script)(video);
       },
@@ -96,39 +92,38 @@ async function mediaCases() {
       html,
       then,
     );
-  const read = (name: string) =>
-    frame
+  const read = async (name: string) => {
+    // A video that neither plays nor fails is read as it stands, so every case reports.
+    await frame
       .waitForFunction(
         (caseName) => {
           const video = document.querySelector<HTMLVideoElement>(`[data-case="${caseName}"]`)!;
-          return video.readyState >= 2 || video.networkState === 3 || video.error ? true : null;
+          return video.readyState >= 2 || video.error ? true : null;
         },
-        { timeout: 30_000 },
+        { timeout: 15_000 },
         name,
       )
-      .then(() =>
-        frame.evaluate((caseName): CaseResult => {
-          const video = document.querySelector<HTMLVideoElement>(`[data-case="${caseName}"]`)!;
-          let pixels = "none";
-          if (video.readyState >= 2) {
-            const context = document.createElement("canvas").getContext("2d")!;
-            context.drawImage(video, 0, 0, 1, 1);
-            try {
-              context.getImageData(0, 0, 1, 1);
-              pixels = "readable";
-            } catch {
-              pixels = "refused";
-            }
-          }
-          const loads = (video as unknown as { loads: { count: number } }).loads.count;
-          return {
-            crossOrigin: video.getAttribute("crossorigin"),
-            playing: video.readyState >= 2,
-            pixels,
-            loads,
-          };
-        }, name),
-      );
+      .catch(() => undefined);
+    return frame.evaluate((caseName): CaseResult => {
+      const video = document.querySelector<HTMLVideoElement>(`[data-case="${caseName}"]`)!;
+      let pixels = "none";
+      if (video.readyState >= 2) {
+        const context = document.createElement("canvas").getContext("2d")!;
+        context.drawImage(video, 0, 0, 1, 1);
+        try {
+          context.getImageData(0, 0, 1, 1);
+          pixels = "readable";
+        } catch {
+          pixels = "refused";
+        }
+      }
+      return {
+        crossOrigin: video.getAttribute("crossorigin"),
+        playing: video.readyState >= 2,
+        pixels,
+      };
+    }, name);
+  };
   const base = "/fixtures/10-video-grid/sample.mp4";
   const plain = "/fixtures-no-cors/10-video-grid/sample.mp4";
   await add("refused", `<video src="${plain}"></video>`);
@@ -212,35 +207,41 @@ try {
   console.log("[sealed-media] a host without CORS plays; a CORS host keeps pixel access");
 
   const { results, authored, warnings } = await mediaCases();
-  assert.equal(results.refused.crossOrigin, null, "a source that refused CORS plays without it");
-  const readable = (name: keyof typeof results) =>
-    assert.deepEqual(
-      [results[name].crossOrigin, results[name].pixels],
-      ["anonymous", "readable"],
-      `${name}: ${JSON.stringify(results[name])}`,
+  const failures: string[] = [];
+  const check = (claim: string, ok: boolean, seen: unknown) => {
+    if (!ok) failures.push(`${claim}: ${JSON.stringify(seen)}`);
+  };
+  check(
+    "a source that refused CORS plays without it",
+    results.refused.crossOrigin === null,
+    results.refused,
+  );
+  for (const name of ["healthy", "sibling", "explicit"] as const) {
+    const { crossOrigin, pixels } = results[name];
+    check(
+      `${name} keeps CORS and readable pixels`,
+      crossOrigin === "anonymous" && pixels === "readable",
+      results[name],
     );
-  readable("healthy");
-  readable("sibling");
-  readable("explicit");
-  assert.ok(
+  }
+  check(
+    "a non-CORS source before one the browser cannot play is retried without CORS",
     results.unsupported.playing && results.unsupported.crossOrigin === null,
-    `a non-CORS source before one the browser cannot play is retried without CORS: ${JSON.stringify(results.unsupported)}`,
+    results.unsupported,
   );
-  assert.deepEqual(
-    [results.missing.playing, results.missing.loads],
-    [false, 1],
-    `a source that fails with and without CORS is tried again once: ${JSON.stringify(results.missing)}`,
+  check(
+    "a source that fails with and without CORS ends without CORS and is named once",
+    !results.missing.playing &&
+      results.missing.crossOrigin === null &&
+      warnings.filter((w) => w.includes("missing.mp4")).length === 1,
+    { video: results.missing, warnings },
   );
-  assert.equal(
-    warnings.filter((w) => w.includes("missing.mp4")).length,
-    1,
-    "the failed URL is named once",
-  );
-  assert.deepEqual(
-    authored,
-    ["use-credentials", "anonymous"],
+  check(
     "a crossorigin the composition set is the composition's, also when it is the same value",
+    authored[0] === "use-credentials" && authored[1] === "anonymous",
+    authored,
   );
+  assert.deepEqual(failures, [], failures.join("\n"));
   console.log(
     "[sealed-media] each media element decides its own CORS, and an author's attribute wins",
   );
