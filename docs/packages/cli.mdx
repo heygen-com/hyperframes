@@ -47,6 +47,13 @@ default to the current directory: `npx hyperframes check ./my-video`. A few
 take it as a flag instead — `add`, `transcribe`, `feedback`, `skills`, `history`, and
 the `timeline` edit commands use `--dir`.
 
+**Printed lines show control characters as text.** When a line for people
+repeats a value the CLI did not write — a file name, a page title, a reason
+from a service — control characters in it are printed as visible text
+(`\x1b`, `\x07`), and a short value shown inside a sentence stays on that line, with
+a line break shown as `\x0a`. `--json` output is not changed by this: it carries
+the value as it is, with JSON's own escaping.
+
 **`--json` for agents and scripts.** Most commands accept it, and the ones
 that do not reject it with exit 2. The payload is wrapped with a `_meta` field
 so a script can spot an outdated CLI from any command's output, without a
@@ -409,6 +416,10 @@ the page exposed. It is raw material for an agent, not a finished composition;
 the `/hyperframes` skill uses it when a real product has to appear on screen. Dynamic sites, protected pages, and unusual media loaders produce
 partial results, so read `dropped`, the warnings, and the contact sheets before
 you build.
+
+Each warning, and the reason on a `Capture failed:` line, is printed on one
+line: a line break inside the text is shown as `\x0a` instead of starting a new
+terminal line. `--json` output is unchanged and carries the full text.
 
 Downloaded fonts are saved under `assets/fonts/`, and their CSS references point
 to those local files. Distinct URLs such as `demo.woff2?v=1` and
