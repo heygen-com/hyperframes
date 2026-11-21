@@ -13,6 +13,7 @@ import {
   readdirSync,
   readFileSync,
 } from "node:fs";
+import { terminalText } from "@hyperframes/core";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { join, resolve } from "node:path";
 import { c } from "../ui/colors.js";
@@ -99,11 +100,11 @@ export default defineCommand({
 
     console.log();
     console.log(`   ${c.dim("Current:")}  ${c.bold("v" + result.current)}`);
-    console.log(`   ${c.dim("Latest:")}   ${c.bold(c.accent("v" + result.latest))}`);
+    console.log(`   ${c.dim("Latest:")}   ${c.bold(c.accent("v" + terminalText(result.latest)))}`);
     console.log();
 
     if (checkOnly) {
-      clack.outro(c.accent("Update available: v" + result.latest));
+      clack.outro(c.accent("Update available: v" + terminalText(result.latest)));
       return;
     }
 
@@ -240,7 +241,7 @@ function printNpxFallback(reason: string, npxFallback: string, autoYes: boolean)
   console.log();
   if (autoYes) {
     console.log(
-      `   ${c.dim("Couldn't detect a global install to upgrade")} ${c.dim("(" + reason + ")")}`,
+      `   ${c.dim("Couldn't detect a global install to upgrade")} ${c.dim("(" + terminalText(reason) + ")")}`,
     );
   }
   console.log(`   ${c.accent(npxFallback)}`);
@@ -338,7 +339,9 @@ function printProjectPinResult(
     return;
   }
   if (!res.changed) {
-    console.log(`   ${c.success("◇")}  Project pins already on hyperframes@${res.to}`);
+    console.log(
+      `   ${c.success("◇")}  Project pins already on hyperframes@${terminalText(res.to)}`,
+    );
     return;
   }
   const verb = checkOnly ? "would bump" : "bumped";
@@ -355,7 +358,7 @@ export function runDetectedInstall(
 ): void {
   const location = globalInstallLocation();
   if ("reason" in location) {
-    clack.outro(c.dim(location.reason));
+    clack.outro(c.dim(terminalText(location.reason)));
     setCommandExitCode(1);
     return;
   }
