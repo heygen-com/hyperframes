@@ -138,3 +138,65 @@ it("finds a caught failure printed as it came, directly or through a local name"
   );
   expect(found).toEqual(["sample.ts:3", "sample.ts:7", "sample.ts:9"]);
 });
+
+const ENTRY_PATH_NAMES_WRITTEN_BY_CLI: Record<string, string[]> = {
+  "cli.ts": ["VERSION", "MEASURE_OPS", "group", "label"],
+  "utils/reject-unknown-flags.ts": ["c"],
+  "utils/reject-extra-positionals.ts": [],
+};
+
+const handsOverAHelper = (node: ts.Node) =>
+  ts.isCallExpression(node) &&
+  node.arguments.some((each) => ts.isIdentifier(each) && SHOWS_TEXT_AS_WRITTEN.has(each.text));
+
+function readsAnyValue(node: ts.Node, written: Set<string>): boolean {
+  if (shownAsWritten(node) || handsOverAHelper(node)) return false;
+  if (ts.isConditionalExpression(node))
+    return readsAnyValue(node.whenTrue, written) || readsAnyValue(node.whenFalse, written);
+  if (ts.isIdentifier(node))
+    return (
+      !written.has(node.text) &&
+      !(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node)
+    );
+  return !!ts.forEachChild(node, (child) => readsAnyValue(child, written) || undefined);
+}
+
+function valuesPrintedAsTheyCame(name: string, text: string, writtenByCli: string[]): string[] {
+  const file = ts.createSourceFile(name, text, ts.ScriptTarget.Latest, true);
+  const written = new Set(writtenByCli);
+  const found: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      printsToTerminal(node) &&
+      node.arguments.some((argument) => readsAnyValue(argument, written))
+    )
+      found.push(`${name}:${file.getLineAndCharacterOfPosition(node.getStart()).line + 1}`);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+it("prints a value in the files that run before a command only through the text helpers", () => {
+  const sites = Object.entries(ENTRY_PATH_NAMES_WRITTEN_BY_CLI).flatMap(([name, written]) =>
+    valuesPrintedAsTheyCame(name, readFileSync(join(SRC, name), "utf8"), written),
+  );
+  expect(sites).toEqual([]);
+});
+
+it("finds a value printed as it came in a file that runs before a command", () => {
+  const found = valuesPrintedAsTheyCame(
+    "sample.ts",
+    [
+      "console.error(`Unknown command: ${word}`);",
+      "console.error(`Unknown command: ${terminalText(word)}`);",
+      "console.error(`Run '${group} --help' to list every command.`);",
+      "console.error(build(terminalText));",
+      "console.error(short ? terminalText(text) : text);",
+      "console.log(JSON.stringify({ error: text }));",
+    ].join("\n"),
+    ["group"],
+  );
+  expect(found).toEqual(["sample.ts:1", "sample.ts:5"]);
+});
