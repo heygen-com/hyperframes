@@ -371,6 +371,7 @@ type Seen = {
   seekPaused?: string;
   extraSeeks?: string;
   loops: number;
+  restores: number;
   interrupted?: string;
   play?: string;
   pixels: string;
@@ -428,6 +429,7 @@ async function installDriver(frame: Frame) {
       if (this.dataset.table && !driving) {
         const data = this.dataset;
         data.ours = String(Number(data.ours ?? 0) + 1);
+        data.loadedAt = String(this.currentTime);
         if (this.hasAttribute("crossorigin"))
           data.upgrades = String(Number(data.upgrades ?? 0) + 1);
         delete data.restartGap;
@@ -494,7 +496,11 @@ async function installDriver(frame: Frame) {
             const data = video.dataset;
             const looped = Number(data.seekFrom ?? 0) > 2 && video.currentTime < 1;
             if (looped) data.loops = String(Number(data.loops ?? 0) + 1);
-            if (data.seekAt !== undefined && !looped)
+            // A load of ours puts the playhead back where it was; within a frame of that, it is not a jump.
+            const restored = Math.abs(video.currentTime - Number(data.loadedAt)) <= 1 / 30 + 0.01;
+            if (data.seekAt !== undefined && !looped && restored)
+              data.restores = String(Number(data.restores ?? 0) + 1);
+            else if (data.seekAt !== undefined && !looped)
               data.extraSeeks =
                 `${data.extraSeeks ?? ""} ${data.seekFrom}->${video.currentTime}`.trim();
             if (!data.seekTo) return;
@@ -611,6 +617,7 @@ async function installDriver(frame: Frame) {
             extraSeeks: data.extraSeeks,
             interrupted: data.interrupted,
             loops: Number(data.loops ?? 0),
+            restores: Number(data.restores ?? 0),
             play: data.play,
             pixels,
             currentSrc: video.currentSrc,
@@ -773,10 +780,12 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
       const kinds = everListed.get(el)!;
       // The runtime loads media without the helper too; the helper's share is what the sealed film adds.
       const helper = Math.max(0, seen.ours - plain.ours);
-      const most = 2 * kinds.size * seen.selections;
+      // Every load the runtime's CORS handling did not make starts a selection: the driver's and the runtime's own.
+      const selections = seen.selections + plain.ours;
+      const most = 2 * kinds.size * selections;
       if (helper > most)
         problems.push(
-          `${where}: ${helper} loads of the helper, at most ${most} for ${seen.selections} selections`,
+          `${where}: ${helper} loads of the helper, at most ${most} for ${selections} selections`,
         );
       if (sequence.upgradesAtMost !== undefined && seen.upgrades > sequence.upgradesAtMost)
         problems.push(`${where}: ${seen.upgrades} upgrades, at most ${sequence.upgradesAtMost}`);
@@ -912,9 +921,12 @@ try {
   const { problems, gaps, budget, playback } = judge(sequences, sealed, control, open);
   const loops = (film: Readings[]) =>
     [...film.at(-1)!.values()].reduce((sum, reading) => sum + reading.loops, 0);
+  const restores = (film: Readings[]) =>
+    [...film.at(-1)!.values()].reduce((sum, reading) => sum + reading.restores, 0);
   console.log(
     `[sealed-media-table] playback comparisons ${playback.judged}, skipped for a buffering control ${playback.skipped}; ` +
-      `loop restarts not counted as seeks: sealed ${loops(sealed)}, without the helper ${loops(control)}`,
+      `loop restarts not counted as seeks: sealed ${loops(sealed)}, without the helper ${loops(control)}; ` +
+      `restores by our loads after a composition seek: ${restores(sealed)}`,
   );
   const requests = new Map<string, number>();
   for (const url of server.requested) {
