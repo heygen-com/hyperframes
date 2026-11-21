@@ -1,10 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { copyFileSync, renameSync, statSync } from "node:fs";
+import { copyFileSync, readdirSync, renameSync } from "node:fs";
 import { copyFile, rename } from "node:fs/promises";
 import { removeScratch } from "./removeScratch.js";
 
-// Windows reports EPERM/EACCES/EBUSY while antivirus or a just-exited process holds the file (it clears in ms; about
-// 1.3 s of waits in all), and EPERM for a rename onto a folder that exists, which no wait clears.
+// Windows reports EPERM/EACCES/EBUSY while antivirus or a just-exited process holds the file (clears in ms; ~1.3 s of
+// waits in all). EPERM onto a folder with files in it never clears; an empty one may be a removed folder still held.
 const RETRYABLE = new Set(["EPERM", "EACCES", "EBUSY"]);
 const BACKOFF_MS = [10, 20, 40, 80, 160, 320, 640];
 
@@ -53,13 +53,18 @@ function nextStep(
   platform: NodeJS.Platform,
   to: string,
 ) {
-  if (!isWindowsHold(error, platform) || isFolder(to)) return "throw";
+  if (!isWindowsHold(error, platform) || isFilledFolder(to)) return "throw";
   if (attempt < BACKOFF_MS.length) return "wait";
   return options.copyFallback ? "copy" : "throw";
 }
 
-const isFolder = (path: string) =>
-  statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
+function isFilledFolder(path: string): boolean {
+  try {
+    return readdirSync(path).length > 0;
+  } catch {
+    return false;
+  }
+}
 
 function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
