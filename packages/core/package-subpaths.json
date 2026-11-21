@@ -116,6 +116,12 @@
       "types": "./dist/missingPath.d.ts",
       "environments": ["bun", "node"]
     },
+    "./terminal-text": {
+      "source": "./src/terminalText.ts",
+      "runtime": "./dist/terminalText.js",
+      "types": "./dist/terminalText.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./rename-retry": {
       "source": "./src/renameWithRetry.ts",
       "runtime": "./dist/renameWithRetry.js",

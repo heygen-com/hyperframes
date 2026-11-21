@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, rm, rmdir, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, realpath, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import {
   type Dirent,
   type Stats,
@@ -100,6 +100,7 @@ export interface ProjectHistoryOptions {
   closedWindowAfterOwnership?: () => ClosedWindow | undefined;
   undoScope?: "own" | "everyone";
   pruneGoneProjectsBudgetMs?: number;
+  ignores?: (path: string) => boolean;
 }
 
 interface ClaimOptions {
@@ -252,8 +253,9 @@ async function inFirstCopySlot<T>(copy: () => Promise<T>): Promise<T> {
 const MEDIA_LEDGER = ".media/manifest.jsonl";
 const KEPT_HIDDEN_PATHS = new Set<string>([...STUDIO_SIGNATURE_MANIFEST_PATHS, MEDIA_LEDGER]);
 
-/** A hidden name (a tool's own record) is nobody's work, except the kept ones above; nor is a path out or a private file. */
-function isHistoryPath(path: string): boolean {
+/** A hidden name (a tool's record) is nobody's work, bar those kept above; nor an outside, private or ignored path. */
+function isHistoryPath(path: string, ignores?: (path: string) => boolean): boolean {
+  if (ignores?.(path)) return false;
   if (!isRelativeProjectPath(path) || isStudioPrivatePath(path)) return false;
   if (KEPT_HIDDEN_PATHS.has(path)) return true;
   return !path.split("/").some((segment) => segment.startsWith("."));
@@ -282,15 +284,37 @@ function namesBlob(log: HistoryLog, hash: string): boolean {
   );
 }
 
-function withoutHiddenPaths(log: HistoryLog): HistoryLog {
-  for (const path of log.baseline.keys()) if (!isHistoryPath(path)) log.baseline.delete(path);
-  for (const entry of log.entries)
-    entry.files = entry.files.filter((file) => isHistoryPath(file.path));
+function withoutHiddenPaths(log: HistoryLog, ignores?: (path: string) => boolean): HistoryLog {
+  dropUnrecordedPaths(log, ignores);
   return log;
 }
 
-const historyFiles = async (dir: string) =>
-  (await listProjectFilesAsync(dir)).filter((file) => isHistoryPath(file.path));
+function dropKeptOutside(entry: HistoryEntry, ignores?: (path: string) => boolean): boolean {
+  const kept = Object.entries(entry.keptInPlace ?? {});
+  const left = kept.filter(([path]) => isHistoryPath(path, ignores));
+  if (left.length === kept.length) return false;
+  if (left.length) entry.keptInPlace = Object.fromEntries(left);
+  else delete entry.keptInPlace;
+  return true;
+}
+
+function dropUnrecordedPaths(log: HistoryLog, ignores?: (path: string) => boolean): boolean {
+  let dropped = false;
+  for (const path of log.baseline.keys())
+    if (!isHistoryPath(path, ignores)) dropped = log.baseline.delete(path) || dropped;
+  for (const entry of log.entries) {
+    dropped = dropKeptOutside(entry, ignores) || dropped;
+    const files = entry.files.filter((file) => isHistoryPath(file.path, ignores));
+    if (files.length === entry.files.length) continue;
+    entry.files = files;
+    keepTargetsOfItsFiles(entry);
+    dropped = true;
+  }
+  return dropped;
+}
+
+const historyFiles = async (dir: string, ignores?: (path: string) => boolean) =>
+  (await listProjectFilesAsync(dir)).filter((file) => isHistoryPath(file.path, ignores));
 type ListedFile = ListedProjectFile;
 const COPY_LATER_ABOVE_BYTES = 1024 ** 2;
 
@@ -461,6 +485,20 @@ class Engine {
   closed = false;
   closing: Promise<void> | undefined;
 
+  readonly records = (path: string) => isHistoryPath(path, this.options.ignores);
+  readonly historyFiles = () => historyFiles(this.dir, this.options.ignores);
+  readonly recordsOnDisk = async (path: string) => {
+    const { ignores } = this.options;
+    if (!this.records(path)) return false;
+    if (!ignores) return true;
+    const at = join(this.dir, path);
+    const found = await lstat(at).catch(() => null);
+    if (!found || found.isSymbolicLink()) return true;
+    const [real, root] = await Promise.all([realpath(at), realpath(this.dir)]);
+    const onDisk = relative(root, real).split(sep).join("/");
+    return onDisk.startsWith("../") || isAbsolute(onDisk) || !ignores(onDisk);
+  };
+
   constructor(
     readonly options: ProjectHistoryOptions,
     readonly projectId: string,
@@ -555,7 +593,7 @@ class Engine {
       ),
     );
     if (!log) return this.firstOpen();
-    this.log = withoutHiddenPaths(log);
+    this.takeLog(log);
     await this.reclaimUncopied();
     if (!this.log.keepsLedger) await this.takeInUnnamedLedger();
     const cache = this.readStatCache();
@@ -567,10 +605,17 @@ class Engine {
     const left = this.readAdopting();
     const unadopted = (file: { path: string }) =>
       left.has(file.path) && !this.tracked.has(file.path);
-    this.adoptMediaInBackground((await historyFiles(this.dir)).filter(unadopted), this.now());
+    this.adoptMediaInBackground((await this.historyFiles()).filter(unadopted), this.now());
     // What changed while the project was closed is one outside entry, or the closed window's.
     this.reopenClosedWindow();
     await this.settleAll();
+  }
+
+  /** Pruning keeps only what this log names, so the log on disk must not name more than the one in memory. */
+  takeLog(log: HistoryLog): void {
+    const dropped = dropUnrecordedPaths(log, this.options.ignores);
+    this.log = log;
+    if (dropped) this.persistLog();
   }
 
   /** Copies an older version took of files that are no longer copied; text and small files are never touched. */
@@ -586,7 +631,7 @@ class Engine {
       const replaced = hashOfVersion(fileContentVersion(bytes));
       if (!replaced || replaced === after) return;
       const path = relative(realDir, absPath).split(sep).join("/");
-      if (!isHistoryPath(path)) return;
+      if (!this.records(path)) return;
       this.seen.note(path, replaced);
       this.seen.note(path, after);
       // One chain per file, a new Map per write (forgetWritesBefore checks identity); off-chain notes were overwritten.
@@ -632,7 +677,7 @@ class Engine {
   async takeInUnnamedLedger(): Promise<void> {
     const named = (path: string) =>
       this.log.entries.some((entry) => entry.files.some((file) => file.path === path));
-    const ledger = (await historyFiles(this.dir)).find((file) => file.path === MEDIA_LEDGER);
+    const ledger = (await this.historyFiles()).find((file) => file.path === MEDIA_LEDGER);
     if (ledger && !this.log.baseline.has(MEDIA_LEDGER) && !named(MEDIA_LEDGER)) {
       const copied = await this.storeIfPresent(MEDIA_LEDGER);
       if (typeof copied === "object") this.log.baseline.set(MEDIA_LEDGER, copied.hash);
@@ -644,7 +689,7 @@ class Engine {
 
   async firstOpen(): Promise<void> {
     const sweptAt = this.now();
-    const files = await historyFiles(this.dir);
+    const files = await this.historyFiles();
     const copied = files.filter((file) => file.size <= COPY_LATER_ABOVE_BYTES);
     const hashes = await Promise.allSettled(
       copied.map((file) => inFirstCopySlot(() => this.storeIfPresent(file.path))),
@@ -795,7 +840,7 @@ class Engine {
     const sweptAt = this.now();
     const changedAt = (file: { mtimeMs: number; ctimeMs: number }) =>
       Math.min(sweptAt, Math.max(file.mtimeMs, file.ctimeMs));
-    const seen = (await historyFiles(this.dir)).filter((file) => !this.adopting.has(file.path));
+    const seen = (await this.historyFiles()).filter((file) => !this.adopting.has(file.path));
     const heard = new Map(this.overwritten);
     const present = new Set(seen.map((file) => file.path));
     const removed = [...this.tracked.keys()]
@@ -1155,7 +1200,7 @@ class Engine {
   noteChange(path: string): void {
     const absolute = resolve(this.dir, path);
     if (this.notedTimer || !affectsProjectSignature(this.dir, absolute)) return;
-    if (!isHistoryPath(relative(this.dir, absolute).split(sep).join("/"))) return;
+    if (!this.records(relative(this.dir, absolute).split(sep).join("/"))) return;
     this.sweepIn(20);
   }
 
@@ -1278,10 +1323,12 @@ class Engine {
     extra: Partial<HistoryEntry>,
   ): Promise<HistoryEntry | null> {
     this.assertWritable();
-    const wanted = [...target].filter(
+    const candidates = [...target].filter(
       ([path, hash]) =>
         this.studioWouldWrite(path) && (this.tracked.get(path)?.hash ?? null) !== hash,
     );
+    const onDisk = await Promise.all(candidates.map(([path]) => this.recordsOnDisk(path)));
+    const wanted = candidates.filter((_, i) => onDisk[i]);
     const named = await this.stillNamed(wanted);
     const changes = wanted
       .filter(([path, hash]) => hash !== null || !named.has(path))
@@ -1721,7 +1768,7 @@ export interface ProjectHistoryView {
 
 /** Reads only: takes no lock and files, prunes or writes nothing; an owner's half-appended last line is skipped. */
 export function readProjectHistory(
-  options: Pick<ProjectHistoryOptions, "projectDir" | "historyRoot">,
+  options: Pick<ProjectHistoryOptions, "projectDir" | "historyRoot" | "ignores">,
 ): ProjectHistoryView {
   const dir = resolve(options.projectDir);
   const id = readId(dir);
@@ -1730,7 +1777,10 @@ export function readProjectHistory(
       ? join(options.historyRoot, id)
       : null;
   const read = home && readLog(logFileIn(home), () => {});
-  const log = withoutHiddenPaths(read || { baseline: new Map(), entries: [], pins: new Set() });
+  const log = withoutHiddenPaths(
+    read || { baseline: new Map(), entries: [], pins: new Set() },
+    options.ignores,
+  );
   return {
     list: () => listOf(log),
     peek: (point) => peekOf(log, point),

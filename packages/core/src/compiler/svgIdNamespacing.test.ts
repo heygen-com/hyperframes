@@ -803,6 +803,31 @@ it("splits a rule's selector list a fixed number of times, however many selector
   expect(splits).toBeLessThan(10);
 });
 
+// fails without the fix: each mount sharing a namespace probed past every name the earlier mounts minted.
+it("mints names for many mounts sharing a namespace with probes linear in the renames", () => {
+  const ids = Array.from({ length: 20 }, (_, index) => `c${index}`);
+  const defs = ids.map((id) => `<clipPath id="${id}"/><rect clip-path="url(#${id})"/>`).join("");
+  const mounts = 1000;
+  const { document, scopes } = scopedDocument([
+    { namespace: "host", html: `<svg>${defs}</svg>` },
+    ...Array.from({ length: mounts }, () => ({ namespace: "scene", html: `<svg>${defs}</svg>` })),
+  ]);
+  const has = vi.spyOn(Set.prototype, "has");
+  let idMaps: ReturnType<typeof namespaceCollidingSvgIds>;
+  let probes: number;
+  try {
+    idMaps = namespaceCollidingSvgIds(document, scopes);
+    probes = has.mock.calls.length;
+  } finally {
+    has.mockRestore();
+  }
+
+  const minted = idMaps.slice(1).flatMap((idMap) => ids.map((id) => idMap.get(id)!));
+  expect(minted).toHaveLength(ids.length * mounts);
+  expect(new Set(minted).size).toBe(minted.length);
+  expect(probes).toBeLessThan(100 * minted.length);
+});
+
 // fails without the fix: every ^=, $=, ~= and |= predicate compared its value against every alias.
 it("looks up prefix, suffix, token and dash predicates without reading every alias", () => {
   let reads = 0;
