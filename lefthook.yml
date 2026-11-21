@@ -41,6 +41,9 @@ pre-commit:
     - name: cli-process-ownership
       glob: "packages/cli/src/**/*.ts"
       run: bun run check:cli-process-ownership
+    - name: studio-server-sync-fs
+      glob: "packages/studio-server/src/{routes,history}/**/*.ts"
+      run: bun run check:studio-server-sync-fs
     - name: largefiles
       # Rejects staged binaries over the limit that are not LFS pointers; see
       # the script header. CI runs the same script with --range.
