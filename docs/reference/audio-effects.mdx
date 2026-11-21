@@ -123,6 +123,10 @@ On a clip, `data-volume` is applied **ahead of** its effects, so a compressor or
 limiter in its `data-fx-chain` reacts to it; the lane comes after them. A group's
 `data-volume` stays after its effects, like a track fader.
 
+Rendered clips keep floating-point headroom through volume automation and group
+mixing. A boosted clip can be turned down by its group fader without clipping
+first; adding a lane held at `1` preserves the waveform and level.
+
 A lane holds its first value backwards to the start of its clip and its last
 value forward to the end. **A bed that begins before the voice therefore needs an
 explicit "no cut" point at `t: 0`, or it starts out already ducked.** Maximum 512
