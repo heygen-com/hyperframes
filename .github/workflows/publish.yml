@@ -524,7 +524,7 @@ jobs:
     name: Publish
     needs: [release-source, pack]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     # Per release, not per ref: on main a later push would cancel a release run still waiting to start.
     concurrency:
       group: publish-${{ needs.release-source.outputs.version }}
@@ -978,7 +978,7 @@ jobs:
 
           # npm answers a publish before it serves the version (14 min for the largest tarballs in v0.9.74), so the
           # release is done only once npm serves every package this run sent, with the contents it sent.
-          deadline=$((SECONDS + ${PUBLISH_VISIBLE_SECONDS:-2700}))
+          deadline=$((SECONDS + ${PUBLISH_VISIBLE_SECONDS:-1800}))
           while [ -n "$SENT" ]; do
             waiting=""
             while read -r name integrity; do
@@ -995,7 +995,7 @@ jobs:
             [ -n "$SENT" ] || break
             if [ "$SECONDS" -ge "$deadline" ]; then
               while read -r name integrity; do
-                [ -z "$name" ] || echo "::error::${name}@${VERSION} was sent to npm, but npm does not serve it after ${PUBLISH_VISIBLE_SECONDS:-2700} s."
+                [ -z "$name" ] || echo "::error::${name}@${VERSION} was sent to npm, but npm does not serve it after ${PUBLISH_VISIBLE_SECONDS:-1800} s."
               done <<< "$SENT"
               FAILED=1
               break
