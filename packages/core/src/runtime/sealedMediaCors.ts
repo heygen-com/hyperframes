@@ -178,6 +178,11 @@ function visit(node: Node, home: string): void {
   for (const inner of el.querySelectorAll("video, audio")) sync(inner as HTMLMediaElement, home);
 }
 
+let home = "";
+// One function each, so a second start adds no second listener.
+const onError = (event: Event) => ranOut(event, home);
+const onFirstFrame = (event: Event) => firstFrame(event, home);
+
 /** In a sealed document, opts the preview server's own media into CORS as it parses or changes src, before it loads;
  * a source that refuses CORS on an element plays there without it, after one more load. */
 export function corsForSealedMedia(): MutationObserver | null {
@@ -187,7 +192,7 @@ export function corsForSealedMedia(): MutationObserver | null {
     window.origin !== "null"
   )
     return null;
-  const home = document.baseURI;
+  home = document.baseURI;
   // Every crossorigin change in a batch is accounted for first, so an author's write beside a src change wins.
   const observer = new MutationObserver((records) => {
     for (const record of records) {
@@ -205,7 +210,7 @@ export function corsForSealedMedia(): MutationObserver | null {
   });
   visit(document.documentElement, home);
   // Media events do not bubble; capture listeners on the document hear every element's.
-  document.addEventListener("error", (event) => ranOut(event, home), true);
-  document.addEventListener("loadeddata", (event) => firstFrame(event, home), true);
+  document.addEventListener("error", onError, true);
+  document.addEventListener("loadeddata", onFirstFrame, true);
   return observer;
 }
