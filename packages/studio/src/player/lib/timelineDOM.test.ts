@@ -313,6 +313,59 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
     expect(element.link).toBe("lk-1");
     expect(element.syncOrigin).toBe("lk-1");
   });
+
+  it("names a sealed preview's files by their project path, not the frame's passing token", () => {
+    const token = "A".repeat(43);
+    const preview = `${window.location.origin}/api/projects/p1/preview`;
+    const clip = (kind: "element" | "composition", tagName: string) => ({
+      id: tagName,
+      label: tagName,
+      kind,
+      tagName,
+      start: 0,
+      duration: 5,
+      track: 0,
+      compositionId: kind === "composition" ? "intro" : null,
+      parentCompositionId: null,
+      compositionSrc:
+        kind === "composition" ? `${preview}/~${token}/compositions/intro.html` : null,
+      assetUrl: kind === "element" ? `${preview}/~${token}/assets/a%20b.mp4?t=1` : null,
+    });
+
+    const video = createTimelineElementFromManifestClip({
+      clip: clip("element", "video"),
+      fallbackIndex: 0,
+    });
+    const scene = createTimelineElementFromManifestClip({
+      clip: clip("composition", "div"),
+      fallbackIndex: 1,
+    });
+
+    expect(video.src).toBe(`${preview}/assets/a%20b.mp4?t=1`);
+    expect(scene.compositionSrc).toBe(`${preview}/compositions/intro.html`);
+  });
+
+  it("keeps a file on another site as written, even when its path looks like a preview's", () => {
+    const elsewhere = `http://media.example:9000/api/projects/p1/preview/~${"A".repeat(43)}/assets/v.mp4`;
+    const video = createTimelineElementFromManifestClip({
+      clip: {
+        id: "v",
+        label: "v",
+        kind: "element",
+        tagName: "video",
+        start: 0,
+        duration: 5,
+        track: 0,
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: elsewhere,
+      },
+      fallbackIndex: 0,
+    });
+
+    expect(video.src).toBe(elsewhere);
+  });
 });
 
 describe("a sealed preview's text rows", () => {

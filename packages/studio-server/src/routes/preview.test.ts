@@ -40,9 +40,13 @@ import type { StudioApiAdapter } from "../types";
 import {
   affectsPreview,
   recordPreviewBuilt,
+  previewReferences,
   recordPreviewRead,
-  recordPreviewReferences,
 } from "../helpers/previewReads";
+
+const recordPreviewReferences = (projectDir: string, html: string) => {
+  for (const path of previewReferences(html)) recordPreviewRead(projectDir, path);
+};
 
 const tempDirs: string[] = [];
 

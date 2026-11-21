@@ -71,7 +71,7 @@ export interface DragCommitDeps {
    * returns the clip's current z-index (from the live DOM inline style / computed;
    * "auto" ⇒ 0).
    */
-  readZIndex?: (element: TimelineElement) => number;
+  readZIndex?: (element: TimelineElement) => number | Promise<number>;
   /**
    * Apply the computed z-index patches. Wiring (in the drag hook, which owns the
    * DOM/persist plumbing) forwards these to the SAME atomic style-patch persist
@@ -550,24 +550,25 @@ function syncStackingForEdit(
   // slips through). Every real lane-realization drop aims at a DIFFERENT lane.
   if (aimedLane === currentLane) return Promise.resolve();
 
-  // Discovery order is DOM order, which breaks equal-z ties.
-  const stackingEls = candidate.map((el, domIndex) => ({
-    key: keyOf(el),
-    start: el.start,
-    duration: el.duration,
-    track: el.track,
-    zIndex: readZIndex(el),
-    isAudio: classifyZone(el) === "audio",
-    sourceFile: el.sourceFile,
-    domIndex,
-    stackingContextId: el.stackingContextId ?? null,
-  }));
-
-  const patches = computeStackingPatches(
-    stackingEls,
-    [dragKey],
-    aimedLane < currentLane ? "up" : "down",
-  );
-  if (patches.length === 0) return Promise.resolve();
-  return Promise.resolve(onStackingPatches(patches, coalesceKey)).then(() => undefined);
+  return Promise.all(candidate.map((el) => readZIndex(el))).then((zIndexes) => {
+    // Discovery order is DOM order, which breaks equal-z ties.
+    const stackingEls = candidate.map((el, domIndex) => ({
+      key: keyOf(el),
+      start: el.start,
+      duration: el.duration,
+      track: el.track,
+      zIndex: zIndexes[domIndex]!,
+      isAudio: classifyZone(el) === "audio",
+      sourceFile: el.sourceFile,
+      domIndex,
+      stackingContextId: el.stackingContextId ?? null,
+    }));
+    const patches = computeStackingPatches(
+      stackingEls,
+      [dragKey],
+      aimedLane < currentLane ? "up" : "down",
+    );
+    if (patches.length === 0) return;
+    return Promise.resolve(onStackingPatches(patches, coalesceKey)).then(() => undefined);
+  });
 }

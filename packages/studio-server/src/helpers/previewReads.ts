@@ -108,10 +108,6 @@ export async function recordPreviewReadOff(projectDir: string, filePath: string)
   remember(realProject, read, await walkOff(linksOnTheWay(read)));
 }
 
-export function recordPreviewReferences(projectDir: string, html: string): void {
-  for (const path of previewReferences(html)) recordPreviewRead(projectDir, path);
-}
-
 export function previewReferences(html: string): Set<string> {
   const named = new Set<string>();
   const add = (reference: string) => {

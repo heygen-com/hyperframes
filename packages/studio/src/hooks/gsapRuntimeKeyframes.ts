@@ -19,7 +19,8 @@ import { withParsedStart } from "./gsapParsedTween";
 import { BOX_SIZE_STYLE_PROPS } from "../components/editor/manualEditsDomPatches";
 import { gsapRendersTransform } from "../components/editor/gsapAnimatesProperty";
 import { previewFrameOpaque } from "../player/lib/previewChannel";
-import { frameQuery, frameTarget, frameTimelines } from "./gsapFrameSnapshot";
+import { frameQuery, frameTarget, frameTimelines, settleGsapSnapshot } from "./gsapFrameSnapshot";
+import { previewStandIn } from "../components/editor/previewDrafts";
 
 /**
  * A GSAP tween's `vars` object — intentionally open: it mixes channel values
@@ -282,12 +283,6 @@ export const GSAP_TRANSFORM_KEYS = new Set(
 );
 const TRANSFORM_CHANNELS = [...MOVE_CHANNELS, ...GSAP_TRANSFORM_KEYS];
 
-/** Sealed `!editsPlainCss(el, "move")`: the frame snapshot's tweens move or transform `el`. */
-export function sealedGsapRendersTransform(iframe: HTMLIFrameElement, el: Element): boolean {
-  const target = frameTarget(iframe, el);
-  return !!target && timelinesWriteChannels(frameTimelines(iframe), target, TRANSFORM_CHANNELS);
-}
-
 /** Whether a live timeline tween or hold writes any of `channels` on `el`. Sync, no fetch. */
 export function gsapWritesChannels(el: Element, channels: string[]): boolean {
   const win = el.ownerDocument.defaultView as { __timelines?: Record<string, RuntimeTimeline> };
@@ -356,7 +351,31 @@ const GSAP_OWNS: Record<EditGesture, (el: Element) => boolean> = {
 /** The one GSAP-or-CSS route decision. Make it when an edit starts and carry it: mid-gesture
  *  writes make GSAP render the element, so asking again at commit can flip the route. */
 export function editsPlainCss(el: Element, gesture: EditGesture): boolean {
-  return !GSAP_OWNS[gesture](el);
+  const standIn = previewStandIn(el);
+  return standIn ? !sealedGsapOwns(standIn.iframe, el, gesture) : !GSAP_OWNS[gesture](el);
+}
+
+// A sealed frame's snapshot cannot say whether GSAP renders the transform: a transform tween stands in.
+const SEALED_OWNED_CHANNELS: Record<EditGesture, string[]> = {
+  move: TRANSFORM_CHANNELS,
+  rotate: TRANSFORM_CHANNELS,
+  resize: [...TRANSFORM_CHANNELS, ...BOX_CHANNELS],
+};
+
+function sealedGsapOwns(iframe: HTMLIFrameElement, el: Element, gesture: EditGesture): boolean {
+  const target = frameTarget(iframe, el);
+  const timelines = frameTimelines(iframe);
+  return !!target && timelinesWriteChannels(timelines, target, SEALED_OWNED_CHANNELS[gesture]);
+}
+
+/** `editsPlainCss`, once a sealed frame's snapshot is read at the playhead; a live element answers now. */
+export function editsPlainCssSettled(
+  el: Element,
+  gesture: EditGesture,
+): boolean | Promise<boolean> {
+  const standIn = previewStandIn(el);
+  if (!standIn) return editsPlainCss(el, gesture);
+  return settleGsapSnapshot(standIn.iframe).then(() => editsPlainCss(el, gesture));
 }
 
 /** `hasNonHoldTweenForElement` for an element in hand, read from its own window's timelines. */

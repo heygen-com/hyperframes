@@ -1183,6 +1183,33 @@ describe("ffprobe missing-binary fallback", () => {
     expect(calls).toHaveLength(2);
   });
 
+  // fails without the fix: extractMediaMetadata took no signal, so its probe ran to the end after a cancel.
+  it("extractMediaMetadata stops on a cancel raised while it probes", async () => {
+    const controller = new AbortController();
+    const { spawn: baseSpawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "video", codec_name: "h264", width: 16, height: 16 }],
+          format: { duration: "1" },
+        }),
+      },
+    ]);
+    const spawn = (command: string, args: readonly string[]) => {
+      controller.abort(new Error("render cancelled"));
+      return baseSpawn(command, args);
+    };
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    await expect(
+      extractMediaMetadata("/tmp/aborted.video", { signal: controller.signal }),
+    ).rejects.toThrow("render cancelled");
+    expect(calls).toHaveLength(1);
+  });
+
   it("extractMediaMetadata falls back to PNG cICP metadata when ffprobe is missing", async () => {
     const { spawn, calls } = createSpawnSpy([{ kind: "missing" }]);
     hidePathBinaries();

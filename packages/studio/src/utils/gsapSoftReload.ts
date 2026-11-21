@@ -15,6 +15,7 @@ import {
 } from "@hyperframes/core/runtime/soft-reload";
 import { authoredStyles, findAuthoredElement, savedTiming } from "./authoredSource";
 import { fileDocs, standaloneSets } from "./softReloadTargets";
+import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
 import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
 
 export {
@@ -102,6 +103,7 @@ export function extractGsapScriptText(html: string): string | null {
 export interface SoftReloadOptions {
   /** Escalation for a failure found after this returned, such as a MotionPath CDN error. */
   onAsyncFailure?: () => void;
+  onShownInPlace?: () => void;
   /** Seek target for the rebuilt timeline; defaults to the iframe player time. */
   currentTimeOverride?: number;
   /** After-write file HTML: the source of the authored opacity and transform restore. */
@@ -112,6 +114,7 @@ export interface SoftReloadOptions {
   timingEdit?: boolean;
   /** Other composition files a reset element is written in, by path; null when one could not be read. */
   nestedFiles?: Map<string, string> | null;
+  restore?: EditingParams<"soft-reload">["restore"];
 }
 
 /**
@@ -196,7 +199,9 @@ function softReloadSealed(
     previousHtml,
     currentTimeOverride,
     onAsyncFailure,
+    onShownInPlace,
     timingEdit,
+    restore = [],
   }: SoftReloadOptions,
 ): SoftReloadResult {
   if (authoredHtml === undefined || previousHtml === undefined || currentTimeOverride === undefined)
@@ -208,8 +213,10 @@ function softReloadSealed(
     sets: standaloneSets(outgoingScripts(previous, scriptText)),
     authored: authoredStyles(authoredHtml),
     timing: timingEdit ? savedTiming(authoredHtml) : [],
+    restore,
   }).then((reply) => {
     if (sealedSoftReloadResult(reply) === "cannot-soft-reload") onAsyncFailure?.();
+    else onShownInPlace?.();
   });
   return "applied";
 }

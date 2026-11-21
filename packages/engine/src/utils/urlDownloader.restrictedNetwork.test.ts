@@ -1,6 +1,5 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { EventEmitter } from "node:events";
-import { execFileSync } from "node:child_process";
 import {
   createServer,
   type IncomingHttpHeaders,
@@ -14,6 +13,7 @@ import { connect, isIP, type AddressInfo, type LookupFunction } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
+import { generate } from "selfsigned";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -299,20 +299,18 @@ describe("downloads on a render service through the egress proxy in HYPERFRAMES_
   let egress: Server;
 
   beforeAll(async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-egress-tls-"));
-    dirs.push(dir);
-    execFileSync(
-      "openssl",
-      [
-        ...["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes"],
-        ...["-keyout", join(dir, "key.pem"), "-out", join(dir, "cert.pem"), "-days", "1"],
-        ...["-subj", `/CN=${HOST}`, "-addext", `subjectAltName=DNS:${HOST}`],
+    // In-process, not an openssl child: a synchronous child stalled Windows CI for minutes past the hook timeout.
+    const { private: key, cert } = await generate([{ name: "commonName", value: HOST }], {
+      keyType: "ec",
+      algorithm: "sha256",
+      notAfterDate: new Date(Date.now() + 86_400_000),
+      extensions: [
+        { name: "basicConstraints", cA: true },
+        { name: "subjectAltName", altNames: [{ type: 2, value: HOST }] },
       ],
-      { stdio: "ignore" },
-    );
-    const cert = readFileSync(join(dir, "cert.pem"), "utf8");
+    });
     setDefaultCACertificates([...defaultCAs, cert]);
-    origin = createHttpsServer({ key: readFileSync(join(dir, "key.pem")), cert }, serveRoute);
+    origin = createHttpsServer({ key, cert }, serveRoute);
     await new Promise<void>((resolve) => origin.listen(0, "127.0.0.1", resolve));
     const originPort = (origin.address() as AddressInfo).port;
     egress = createServer();

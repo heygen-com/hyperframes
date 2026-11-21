@@ -214,11 +214,16 @@ export function collectStudioLookScene(
   };
 }
 
+const sceneStatusOnceTimelinePosted = (snapshot: StudioLookSnapshot) =>
+  snapshot.duration > 0 ? snapshot.scene.status : "loading";
+
 function describeScene(snapshot: StudioLookSnapshot): {
   elements: LookElement[];
   drillIn: StudioLook["drillIn"];
 } {
-  if (snapshot.scene.status === "loading") return { elements: [], drillIn: null };
+  const { scene } = snapshot;
+  if (scene.status === "loading" || sceneStatusOnceTimelinePosted(snapshot) === "loading")
+    return { elements: [], drillIn: null };
 
   const activeCompositionPath = snapshot.compositionPath ?? "index.html";
   const timelineByHandle = new Map<string, LookTimeline>();
@@ -230,7 +235,7 @@ function describeScene(snapshot: StudioLookSnapshot): {
   }
 
   const parentHandles: string[] = [];
-  const elements = snapshot.scene.items.map((item) => {
+  const elements = scene.items.map((item) => {
     const handle = mintElementHandle(
       patchTargetAddress(item, activeCompositionPath, snapshot.projectId),
     );
@@ -250,7 +255,7 @@ function describeScene(snapshot: StudioLookSnapshot): {
     };
   });
 
-  const drillInItem = snapshot.scene.drillInItem;
+  const drillInItem = scene.drillInItem;
   const drillInHandle = drillInItem
     ? mintElementHandle(patchTargetAddress(drillInItem, activeCompositionPath, snapshot.projectId))
     : null;
@@ -300,7 +305,7 @@ export function buildStudioLook(
           snapshot.projectId,
         )
       : null,
-    sceneStatus: snapshot.scene.status,
+    sceneStatus: sceneStatusOnceTimelinePosted(snapshot),
     drillIn: scene.drillIn,
     // The count is of everything that MATCHED, so a truncated list is visible
     // as a truncated list rather than reading as "that is all there is".

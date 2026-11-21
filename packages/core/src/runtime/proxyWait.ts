@@ -33,7 +33,7 @@ function reportProgress(res: Response | null, onProgress?: (fraction: number) =>
 }
 
 /** Asks for one byte of a `?hf-proxy=` URL until it is served, after each Retry-After: while the
- * server answers 202 (copy being made) or 503 (queue full), and after up to 3 failed asks. */
+ * server answers 202 (copy being made) or 503 (queue full), after up to 3 failed asks; a throw is not served. */
 export async function waitForServedProxy(
   href: string,
   live: () => boolean,
@@ -44,17 +44,21 @@ export async function waitForServedProxy(
 ): Promise<boolean> {
   let failed = 0;
   let ask = href;
-  while (live()) {
-    const headers = askHeaders(atPlayhead(), background, onAsk);
-    const res = await fetch(ask, { headers, cache: "no-store" }).catch(() => null);
-    ask = withoutRetryFlag(href);
-    void res?.body?.cancel().catch(() => {});
-    const pending = res?.status === 202 || res?.status === 503;
-    reportProgress(res, onProgress);
-    if (!pending && res?.ok) return true;
-    if (!pending && ++failed > MAX_FAILED_ASKS) return false;
-    const seconds = Math.min(Number(res?.headers.get("Retry-After")) || 2, 30);
-    await new Promise((resolveWait) => wallSetTimeout(resolveWait, seconds * 1000));
+  try {
+    while (live()) {
+      const headers = askHeaders(atPlayhead(), background, onAsk);
+      const res = await fetch(ask, { headers, cache: "no-store" }).catch(() => null);
+      ask = withoutRetryFlag(href);
+      void res?.body?.cancel().catch(() => {});
+      const pending = res?.status === 202 || res?.status === 503;
+      reportProgress(res, onProgress);
+      if (!pending && res?.ok) return true;
+      if (!pending && ++failed > MAX_FAILED_ASKS) return false;
+      const seconds = Math.min(Number(res?.headers.get("Retry-After")) || 2, 30);
+      await new Promise((resolveWait) => wallSetTimeout(resolveWait, seconds * 1000));
+    }
+  } catch {
+    return false;
   }
   return false;
 }

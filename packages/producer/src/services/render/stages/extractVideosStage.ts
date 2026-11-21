@@ -481,14 +481,20 @@ export async function runExtractVideosStage(
           // default zero budget this remains the exact legacy single probe.
           const attempted =
             extractionPolicy.maxTransientRetries === 0
-              ? { result: await extractMediaMetadata(videoPath), retries: 0 }
-              : await runVideoExtractionWithRetry(() => extractMediaMetadata(videoPath), {
-                  signal: abortSignal,
-                  maxTransientRetries: extractionPolicy.maxTransientRetries,
-                  onRetry: () => {
-                    hdrProbeTransientRetries += 1;
+              ? {
+                  result: await extractMediaMetadata(videoPath, { signal: abortSignal }),
+                  retries: 0,
+                }
+              : await runVideoExtractionWithRetry(
+                  () => extractMediaMetadata(videoPath, { signal: abortSignal }),
+                  {
+                    signal: abortSignal,
+                    maxTransientRetries: extractionPolicy.maxTransientRetries,
+                    onRetry: () => {
+                      hdrProbeTransientRetries += 1;
+                    },
                   },
-                });
+                );
           const meta = attempted.result;
           if (isHdrColorSpace(meta.colorSpace)) {
             nativeHdrVideoIds.add(v.id);
@@ -736,7 +742,7 @@ export async function appendVideoAudioFromProbe(input: VideoAudioProbeInput): Pr
         ? await remoteProbeSource(video, input)
         : localProbeSource(video.src, input);
       if (readFrom === null) return null;
-      const metadata = await extractMediaMetadata(readFrom);
+      const metadata = await extractMediaMetadata(readFrom, { signal: input.signal });
       const window = await resolveFinalFrameExtractionWindow(
         readFrom,
         video,

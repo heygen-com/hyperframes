@@ -119,7 +119,9 @@ function gsapHoldsCard(tweens: unknown[] = []) {
   const card = document.getElementById("card")!;
   Object.assign(card, { _gsap: { renderTransform: () => {} } });
   Object.assign(window, {
-    gsap: { getProperty: (_: Element, axis: string) => (axis === "x" ? 200 : 5) },
+    gsap: {
+      getProperty: (_: Element, axis: string) => (axis === "x" ? 200 : axis === "y" ? 5 : 0),
+    },
     __timelines: { main: { getChildren: () => tweens } },
   });
 }
@@ -151,6 +153,7 @@ describe("a gesture's start on an opaque frame", () => {
       layout: { width: 200, height: 100 },
       screenToOffset: { a: -2, b: 0, c: 0, d: 2 },
       gsap: { x: 200, y: 5, moving: false },
+      gsapRotation: 0,
     });
     const selection = { ...makeSelection("card", standIn), handle };
     const made = createManualOffsetDragMember({
@@ -215,6 +218,7 @@ const START: PreviewGestureStart = {
   layout: { width: 200, height: 100 },
   screenToOffset: { a: 2, b: 0, c: 0, d: 2 },
   gsap: null,
+  gsapRotation: null,
 };
 const SNAP = { targets: [], compositionTarget: null, gridEdges: null, snapEnabled: true };
 

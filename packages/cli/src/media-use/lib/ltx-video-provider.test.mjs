@@ -1,9 +1,13 @@
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { ltxVideoGenerate } from "./ltx-video-provider.mjs";
+
+const scratch = mkdtempSync(join(tmpdir(), "ltx-provider-test-"));
+process.env.TMPDIR = process.env.TEMP = process.env.TMP = scratch;
+after(() => rmSync(scratch, { recursive: true, force: true }));
 
 const fittingSpecs = { availableRamMB: 20000, gpu: { present: true } };
 

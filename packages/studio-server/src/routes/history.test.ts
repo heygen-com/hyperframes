@@ -1,6 +1,14 @@
 // @vitest-environment node
 // fallow-ignore-file code-duplication
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -226,6 +234,21 @@ describe("history routes", () => {
     expect(await (await call(`/blob/${entry.files[0].before}`)).text()).toBe("A");
     expect((await call(`/blob/${"0".repeat(64)}`)).status).toBe(404);
     expect((await call(`/blob/${encodeURIComponent(outsideHistory)}`)).status).toBe(404);
+  });
+
+  // fails without the fix: the redo of an undo that kept its file changes no file, so it named no paths.
+  it("name the file a redo of a kept upload will write", async () => {
+    const { projectDir, history, call } = await demoProject();
+    const you = { kind: "person", name: "You" } as const;
+    mkdirSync(join(projectDir, "assets"));
+    writeFileSync(join(projectDir, "assets/song.mp3"), "mp3");
+    await history.claim(you, "Uploaded", ["assets/song.mp3"]);
+    writeFileSync(join(projectDir, "index.html"), '<audio src="assets/song.mp3"></audio>');
+    await history.claim({ kind: "agent", name: "Agent" }, "Music", ["index.html"]);
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect(await (await call("")).json()).toMatchObject({
+      forward: { label: "Undid: Uploaded", paths: ["assets/song.mp3"] },
+    });
   });
 
   it("name what Cmd+Z and Cmd+Shift+Z would revert next", async () => {

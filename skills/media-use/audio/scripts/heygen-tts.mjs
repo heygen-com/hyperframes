@@ -15,9 +15,10 @@
 //   --voice (starfish id), --speed, --lang, --list.
 // Requires: $HEYGEN_API_KEY / OAuth ~/.hyperframes credentials and ffmpeg for .wav output.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { heygenAuthHeaders, heygenJSON, loadEnvFromDir } from "./lib/heygen.mjs";
+import { replaceFile } from "../../scripts/lib/manifest.mjs";
 import { terminalText } from "../../scripts/lib/terminal-text.mjs";
 import { ffprobeDuration, resolveVoiceId, synthesizeOne, withWordIds } from "./lib/tts.mjs";
 
@@ -111,7 +112,7 @@ let wordCount = 0;
 if (wordsPath) {
   if (words && words.length) {
     mkdirSync(dirname(wordsPath), { recursive: true });
-    writeFileSync(wordsPath, JSON.stringify(withWordIds(words), null, 2));
+    replaceFile(wordsPath, JSON.stringify(withWordIds(words), null, 2));
     wordCount = words.length;
   } else {
     console.error("⚠ no word_timestamps in response — run `hyperframes transcribe` instead");

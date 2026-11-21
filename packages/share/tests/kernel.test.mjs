@@ -65,10 +65,11 @@ function client() {
     register: async (value) => {
       calls++;
       body.push(value);
-      return { project_id: "p1" };
+      return { project_id: "p1", created: true };
     },
     signedInEmail: async () => "owner@example.com",
     share: async () => dto,
+    project: async () => ({ project_id: "p1", latest_ready_version_id: null }),
   };
 }
 test("a lost registration response retries the persisted operation and identity", async (t) => {
@@ -336,7 +337,7 @@ for (const fallback of [false, true])
     import {realpathSync} from 'node:fs'; import {appendFile} from 'node:fs/promises';
     const dir=process.argv[1]; bindShareHost({normalize:realpathSync,channelSite:'https://hyperframes.dev',signinSites:['https://hyperframes.dev']});
     const client={ spaces:async()=>[{space_id:'s1',bound:true,can_create_review:true}], signedInEmail:async()=>null,
-      register:async()=>{await appendFile(dir+'/registrations','registered\\n');await new Promise(r=>setTimeout(r,80));return {project_id:'p1'}},
+      register:async()=>{await appendFile(dir+'/registrations','registered\\n');await new Promise(r=>setTimeout(r,80));return {project_id:'p1',created:true}},
       share:async()=>({project_id:'p1',review_url:'https://hyperframes.dev/r/t',access_mode:'public',default_role:'commenter',comments_enabled:true,revoked:false})};
     await shareForReview({projectPath:dir,title:'Video',client,audience:'public'});`;
     await Promise.all([success(child(script, [dir])), success(child(script, [dir]))]);
@@ -704,3 +705,179 @@ test("change detection still applies a .hyperframesignore it can read", async (t
   for (const options of [undefined, lenient])
     assert.deepEqual([...(await snapshotProject(dir, options)).keys()], ["index.html"]);
 });
+
+test("registration reports whether the server created the project", async () => {
+  for (const [status, created] of [
+    [201, true],
+    [200, false],
+  ]) {
+    const api = reviewClient({
+      access: async () => ({ token: "t", heygen: "https://review.test", heygenApi: "" }),
+      fetchImpl: async () => Response.json({ data: { project_id: "p1" } }, { status }),
+    });
+    const body = { studio_project_id: "s", title: "Video", client_operation_id: "op" };
+    assert.deepEqual(await api.register(body, null), { project_id: "p1", created });
+  }
+});
+
+/** One of the signed-in account's existing reviews, answered for any registration of its studio id. */
+function existingReview({ ready = "v1", access = "team", revoked = true, created = false } = {}) {
+  const writes = [];
+  const share = {
+    project_id: "existing",
+    review_url: null,
+    access_mode: access,
+    default_role: "commenter",
+    comments_enabled: true,
+    revision: 4,
+    link_generation: 2,
+    revoked,
+  };
+  const write =
+    (name) =>
+    async (...args) => {
+      writes.push([name, ...args]);
+      return share;
+    };
+  return {
+    writes,
+    registrations: [],
+    spaces: async () => [{ space_id: "s1", bound: true, can_create_review: true }],
+    async register(body) {
+      this.registrations.push(body);
+      return { project_id: "existing", latest_ready_version_id: ready, created };
+    },
+    signedInEmail: async () => "owner@example.com",
+    share: async () => share,
+    project: async () => ({ project_id: "existing", latest_ready_version_id: ready }),
+    updateShare: write("updateShare"),
+    linkOn: write("linkOn"),
+    createExport: write("createExport"),
+  };
+}
+async function recordFolder(t, record) {
+  const dir = await folder(t);
+  await mkdir(join(dir, ".hyperframes"));
+  await writeFile(join(dir, ".hyperframes/review.json"), JSON.stringify(record));
+  return dir;
+}
+const planted = {
+  studio_project_id: "existing-studio",
+  title: "Their video",
+  client_operation_id: "11111111-1111-4111-8111-111111111111",
+};
+for (const [name, record, review] of [
+  ["only its studio id", { studioProjectId: "existing-studio" }, {}],
+  [
+    "a saved registration, once it has a version",
+    { studioProjectId: "existing-studio", spaceId: "s1", registration: planted },
+    { access: "private", revoked: false },
+  ],
+  [
+    "a saved registration, once its audience was set",
+    { studioProjectId: "existing-studio", spaceId: "s1", registration: planted },
+    { ready: null, revoked: false },
+  ],
+  [
+    "a saved registration, once its link was turned off",
+    { studioProjectId: "existing-studio", spaceId: "s1", registration: planted },
+    { ready: null, access: "private" },
+  ],
+]) {
+  test(`a first share refuses an existing review reached through ${name}`, async (t) => {
+    const dir = await recordFolder(t, record);
+    const api = existingReview(review);
+    await assert.rejects(
+      shareForReview({ projectPath: dir, title: "Video", client: api, audience: "public" }),
+      { status: 409, reason: "review_project_changed" },
+    );
+    assert.equal(api.registrations.length, 1);
+    assert.deepEqual(api.writes, []);
+    const after = await reviewRecord(dir);
+    assert.equal(after.projectId, null);
+    assert.equal(after.opened, false);
+    assert.deepEqual(after.registration, record.registration);
+  });
+}
+
+test("a retry after a lost registration reply reaches the project it registered", async (t) => {
+  const dir = await folder(t);
+  const api = existingReview({ ready: null, access: "private", revoked: false, created: true });
+  const register = api.register;
+  api.register = async function (body) {
+    const project = await register.call(this, body);
+    if (this.registrations.length === 1) throw new Error("lost reply");
+    return { ...project, created: false };
+  };
+  await assert.rejects(
+    shareForReview({ projectPath: dir, title: "Video", client: api, audience: "public" }),
+  );
+  await shareForReview({ projectPath: dir, title: "Video", client: api, audience: "public" });
+  assert.deepEqual(api.registrations[0], api.registrations[1]);
+  assert.equal(api.writes.length, 1);
+  assert.equal(api.writes[0][0], "updateShare");
+  assert.equal(api.writes[0][2].access_mode, "public");
+  const after = await reviewRecord(dir);
+  assert.equal(after.projectId, "existing");
+  assert.equal(after.opened, true);
+});
+
+test("a share confirmed for one review refuses a record that now names another", async (t) => {
+  const record = { studioProjectId: "studio", projectId: "existing", opened: false };
+  for (const confirmed of [null, "another"]) {
+    const dir = await recordFolder(t, record);
+    const api = existingReview();
+    await assert.rejects(
+      shareForReview({ projectPath: dir, title: "Video", client: api, confirmed }),
+      { status: 409, reason: "review_project_changed" },
+    );
+    assert.deepEqual(api.writes, []);
+    assert.equal((await reviewRecord(dir)).opened, false);
+  }
+});
+
+const unopened = { studioProjectId: "existing-studio", projectId: "existing", opened: false };
+for (const [name, review] of [
+  ["once it has a version", { access: "private", revoked: false }],
+  ["once its audience was set", { ready: null, revoked: false }],
+  ["once its link was turned off", { ready: null, access: "private" }],
+]) {
+  test(`an unconfirmed share refuses a record's unopened review ${name}`, async (t) => {
+    const dir = await recordFolder(t, unopened);
+    const api = existingReview(review);
+    const prepared = [];
+    await assert.rejects(
+      shareForReview({
+        projectPath: dir,
+        title: "Video",
+        client: api,
+        audience: "public",
+        beforeOpen: async (id) => void prepared.push(id),
+      }),
+      { status: 409, reason: "review_project_changed" },
+    );
+    assert.deepEqual(api.registrations, []);
+    assert.deepEqual(api.writes, []);
+    assert.deepEqual(prepared, []);
+    const saved = JSON.parse(await readFile(join(dir, ".hyperframes/review.json"), "utf8"));
+    assert.deepEqual(saved, unopened);
+  });
+}
+
+for (const [name, access, writes] of [
+  ["before its audience was set", "private", ["updateShare"]],
+  ["after only the reply to its audience was lost", "public", []],
+]) {
+  test(`an unconfirmed share finishes a first share that stopped ${name}`, async (t) => {
+    const dir = await recordFolder(t, unopened);
+    const api = existingReview({ ready: null, access, revoked: false });
+    await shareForReview({ projectPath: dir, title: "Video", client: api, audience: "public" });
+    assert.deepEqual(
+      api.writes.map(([call]) => call),
+      writes,
+    );
+    const after = await reviewRecord(dir);
+    assert.equal(after.projectId, "existing");
+    assert.equal(after.opened, true);
+  });
+}

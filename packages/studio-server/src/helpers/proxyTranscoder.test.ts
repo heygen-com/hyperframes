@@ -272,7 +272,8 @@ describe("resolveProxy on a long source", () => {
     await answerAll(calls);
     await result;
     const joinArgs = calls.at(-1)!.args;
-    expect(joinArgs.slice(1, 14)).toEqual([
+    expect(joinArgs.slice(1, 15)).toEqual([
+      "-copyts",
       "-xerror",
       "-protocol_whitelist",
       "file",
@@ -287,6 +288,120 @@ describe("resolveProxy on a long source", () => {
       "-c",
       "copy",
     ]);
+  });
+
+  async function loadWithSound(probePiece: (signal?: AbortSignal) => unknown = () => undefined) {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
+    vi.doMock("node:child_process", () => ({ spawn, default: { spawn } }));
+    vi.doMock("@hyperframes/parsers/ff-binaries", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@hyperframes/parsers/ff-binaries")>()),
+      findFfBinary: () => FFMPEG_PATH,
+    }));
+    vi.doMock("./mediaMetadata.js", () => ({
+      probeMediaMetadata: async (path: string, _runner?: unknown, signal?: AbortSignal) =>
+        (path.includes(".part-") && probePiece(signal)) || {
+          kind: "video",
+          color: { isHdr: false, hdrTransfer: null },
+          durationSeconds: LONG_SECONDS,
+          audioStream: 0,
+        },
+      probeFirstFrameColour: async () => ({}),
+    }));
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "talk.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const leftIn = () =>
+      readdirSync(join(projectDir, ".transcode-cache")).filter((name) =>
+        /^\.(part|tmp)-/.test(name),
+      );
+    return { ...(await import("./proxyTranscoder.js")), calls, projectDir, sourcePath, leftIn };
+  }
+  const isJoin = (call: SpawnCall) => call.args.includes("concat");
+
+  it("makes every piece again after a join ffmpeg refuses, and leaves no picture behind", async () => {
+    const { resolveProxy, getProxyCachePath, clearFailedTranscodesForTest, ...made } =
+      await loadWithSound();
+    const { calls, projectDir, sourcePath, leftIn } = made;
+
+    const refused = resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
+    await answerUntilIdle(calls, (call) => {
+      if (!isJoin(call)) return succeed(call);
+      writeFileSync(call.args.at(-1)!, "partial picture");
+      fail(call, 1, "Impossible to open piece");
+    });
+    expect(await refused).toBeInstanceOf(Error);
+    expect(leftIn()).toEqual([]);
+
+    clearFailedTranscodesForTest();
+    const piecesBefore = startsOf(calls).length;
+    const answered = new Set(calls);
+    const whole = resolveProxy(projectDir, sourcePath);
+    await answerUntilIdle(calls, (call) => answered.has(call) || succeed(call));
+    expect(await whole).toBe(getProxyCachePath(projectDir, sourcePath));
+    expect(startsOf(calls).length - piecesBefore).toBe(piecesBefore);
+    expect(leftIn()).toEqual([]);
+  });
+
+  it("keeps its finished pieces and no picture when its last caller leaves during the join", async () => {
+    const { resolveProxy, calls, projectDir, sourcePath, leftIn } = await loadWithSound();
+    const leave = new AbortController();
+
+    const left = resolveProxy(projectDir, sourcePath, "h264", undefined, {
+      signal: leave.signal,
+    }).catch((error: unknown) => error);
+    await answerUntilIdle(calls, (call) => {
+      if (!isJoin(call)) return succeed(call);
+      writeFileSync(call.args.at(-1)!, "partial picture");
+      leave.abort();
+      call.proc.emit("close", null, "SIGKILL");
+    });
+    expect(await left).toBe(leave.signal.reason);
+    await flush(50);
+    expect(leftIn().every((name) => name.startsWith(".part-"))).toBe(true);
+    expect(leftIn()).toHaveLength(3);
+  });
+
+  it("measures left pieces one at a time and stops when its last caller leaves", async () => {
+    const probing: AbortSignal[] = [];
+    let hang = false;
+    const { resolveProxy, getProxyCachePath, calls, projectDir, sourcePath } = await loadWithSound(
+      (signal) =>
+        hang &&
+        new Promise((resolve) => {
+          probing.push(signal!);
+          if (signal!.aborted) resolve({ kind: "video", color: {} });
+          signal!.addEventListener("abort", () => resolve({ kind: "video", color: {} }));
+        }),
+    );
+    const leave = new AbortController();
+    const left = resolveProxy(projectDir, sourcePath, "h264", undefined, {
+      signal: leave.signal,
+    }).catch((error: unknown) => error);
+    await answerUntilIdle(calls, (call) => {
+      if (!isJoin(call)) return succeed(call);
+      leave.abort();
+      call.proc.emit("close", null, "SIGKILL");
+    });
+    expect(await left).toBe(leave.signal.reason);
+    hang = true;
+    const leaveAgain = new AbortController();
+    const resumed = resolveProxy(projectDir, sourcePath, "h264", undefined, {
+      signal: leaveAgain.signal,
+    }).catch((error: unknown) => error);
+    await flush(50);
+    expect(probing).toHaveLength(1);
+    leaveAgain.abort();
+    expect(await resumed).toBe(leaveAgain.signal.reason);
+    await flush(50);
+    expect(probing).toHaveLength(1);
+    expect(probing[0]!.aborted).toBe(true);
+    hang = false;
+    const answered = new Set(calls);
+    const whole = resolveProxy(projectDir, sourcePath);
+    await answerUntilIdle(calls, (call) => answered.has(call) || succeed(call));
+    expect(await whole).toBe(getProxyCachePath(projectDir, sourcePath));
   });
 
   it.skipIf(process.platform === "win32")(

@@ -9,11 +9,7 @@ import {
   playbackStartAttributeForElement,
   readPlaybackStartAttributes,
 } from "../../player/lib/timelineElementHelpers";
-import {
-  editsPlainCss,
-  GSAP_TRANSFORM_KEYS,
-  sealedGsapRendersTransform,
-} from "../../hooks/gsapRuntimeKeyframes";
+import { editsPlainCss, GSAP_TRANSFORM_KEYS } from "../../hooks/gsapRuntimeKeyframes";
 import { getIframeGsap } from "../../hooks/gsapShared";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
 
@@ -498,9 +494,7 @@ export function readGsapRuntimeValuesForPanel(
     const el = sealed ? element.element : findPreviewNode(iframe.contentDocument, element);
     if (!gsap || !el) return null;
     const propKeys = collectPanelPropKeys(gsapAnimations);
-    const readsTransform = sealed
-      ? sealedGsapRendersTransform(iframe, el)
-      : !editsPlainCss(el, "move");
+    const readsTransform = !editsPlainCss(el, "move");
     const result: Record<string, number> = {};
     for (const prop of propKeys) {
       if (!readsTransform && GSAP_TRANSFORM_KEYS.has(prop)) continue;

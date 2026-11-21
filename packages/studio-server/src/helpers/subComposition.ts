@@ -1,7 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { firstHtmlTemplate } from "@hyperframes/parsers/sub-composition-validity";
+import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
 import {
   rewriteAssetPaths,
   rewriteCssAssetUrls,
@@ -15,6 +16,11 @@ import {
 import { findStartTags, isFullHtmlDocument } from "@hyperframes/core/compiler/html-document";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { resolveWithinProject } from "@hyperframes/core/safe-path";
+import {
+  assertCompositionFileSize,
+  CompositionExpansionBudget,
+} from "@hyperframes/core/compiler/composition-size-limit";
+import { TIMELINE_REGISTRY_SCRIPT } from "./authoredCode.js";
 import { htmlHasGsapCore, insertGsapCoreBeforeHeadPlugin } from "./gsapCoreScript.js";
 import { withRootPathsRelative } from "./rootPaths.js";
 
@@ -365,6 +371,7 @@ export function buildSubCompositionHtml(
     `<!DOCTYPE html><html><head></head><body>${rewrittenContent}</body></html>`,
   );
   deferScriptsUntilFonts(scriptsDoc as unknown as Document);
+  chargeMountsTheBrowserFetches(projectDir, scriptsDoc as unknown as Document);
   rewrittenContent = scriptsDoc.body.innerHTML;
 
   // The comp's root carries data-composition-id but (unlike inlined sub-comps,
@@ -418,10 +425,36 @@ ${htmlOpen}
 ${headContent}
 </head>
 ${bodyOpen}
-<script>window.__timelines=window.__timelines||{};</script>
+${TIMELINE_REGISTRY_SCRIPT}
 ${rewrittenContent}
 </body>
 </html>`;
+}
+
+function mountedFileBytes(projectDir: string, src: string): number {
+  const file = resolveWithinProject(projectDir, decodedUrlPath(src));
+  if (!file) return 0;
+  assertCompositionFileSize(file, src);
+  try {
+    const stats = statSync(file);
+    return stats.isFile() ? stats.size : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function chargeMountsTheBrowserFetches(projectDir: string, doc: Document): void {
+  const budget = new CompositionExpansionBudget();
+  const bytesBySrc = new Map<string, number>();
+  for (const host of doc.querySelectorAll("[data-composition-src]")) {
+    const src = host.getAttribute("data-composition-src") ?? "";
+    let bytes = bytesBySrc.get(src);
+    if (bytes === undefined) {
+      bytes = mountedFileBytes(projectDir, src);
+      bytesBySrc.set(src, bytes);
+    }
+    budget.charge(src, bytes);
+  }
 }
 
 /** True for a real `<base>` element; the text "<base" inside a script or comment does not count. */
