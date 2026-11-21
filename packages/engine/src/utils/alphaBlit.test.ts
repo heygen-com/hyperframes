@@ -1327,6 +1327,28 @@ describe("resampleRgb48leObjectFit", () => {
   });
 
   it.each([
+    { position: "3px 0px", x: 3, y: 0 },
+    { position: "3px 50%", x: 3, y: 2 },
+    { position: "0px 3px", x: 0, y: 3 },
+  ])("places none-fit content at the px offset in $position", ({ position, x, y }) => {
+    const src = makeHdrFrame(2, 2, 40000, 30000, 20000);
+    const out = resampleRgb48leObjectFit(src, 2, 2, 6, 6, "none", position);
+    expect(readRgb16(out, 6, x, y)).toEqual([40000, 30000, 20000]);
+  });
+
+  it("moves cover-fit content by a px offset like the browser does", () => {
+    const src = makeHdrFrame(4, 2, 40000, 30000, 20000);
+    const out = resampleRgb48leObjectFit(src, 4, 2, 2, 2, "cover", "1px 0px");
+    // A 1px offset starts the content at x=1, so the first column is covered
+    // by neither content nor a slack fraction — it stays black, while the
+    // second column samples the shifted image.
+    expect(readRgb16(out, 2, 0, 0)).toEqual([0, 0, 0]);
+    expect(readRgb16(out, 2, 1, 0)).toEqual([40000, 30000, 20000]);
+    const clipped = resampleRgb48leObjectFit(src, 4, 2, 2, 2, "cover", "3px 0px");
+    expect(readRgb16(clipped, 2, 0, 0)).toEqual([0, 0, 0]);
+  });
+
+  it.each([
     { position: "-50% 50%", blackX: 0, coloredX: 1 },
     { position: "150% 50%", blackX: 1, coloredX: 0 },
   ])("moves cover-fit content beyond the box at $position", ({ position, blackX, coloredX }) => {
@@ -1337,6 +1359,17 @@ describe("resampleRgb48leObjectFit", () => {
       expect(readRgb16(out, 2, blackX, y)).toEqual([0, 0, 0]);
       expect(readRgb16(out, 2, coloredX, y)).toEqual([40000, 30000, 20000]);
     }
+  });
+
+  it.each([
+    { position: "top", x: 2, y: 0 },
+    { position: "bottom", x: 2, y: 4 },
+    { position: "left", x: 0, y: 2 },
+    { position: "right", x: 4, y: 2 },
+  ])("places none-fit content at the single-keyword position $position", ({ position, x, y }) => {
+    const src = makeHdrFrame(2, 2, 40000, 30000, 20000);
+    const out = resampleRgb48leObjectFit(src, 2, 2, 6, 6, "none", position);
+    expect(readRgb16(out, 6, x, y)).toEqual([40000, 30000, 20000]);
   });
 
   it("returns the same buffer unchanged for identity fill resample", () => {

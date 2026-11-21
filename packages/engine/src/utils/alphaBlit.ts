@@ -776,20 +776,26 @@ export type ObjectFit = "fill" | "cover" | "contain" | "none" | "scale-down";
  * Defaults to 0.5 (centered) for unrecognized inputs to match CSS, which
  * resolves invalid `object-position` values to the initial value (`50% 50%`).
  */
-function parseObjectPositionAxis(value: string, axis: "x" | "y"): number {
+/** A single axis of `object-position`: a fraction of the slack space, or an absolute length. */
+type ObjectPositionAxis = { kind: "fraction"; value: number } | { kind: "px"; value: number };
+
+function parseObjectPositionAxis(value: string, _axis: "x" | "y"): ObjectPositionAxis {
   const lower = value.trim().toLowerCase();
-  if (lower === "left" || lower === "top") return 0;
-  if (lower === "right" || lower === "bottom") return 1;
-  if (lower === "center" || lower === "") return 0.5;
+  if (lower === "left" || lower === "top") return { kind: "fraction", value: 0 };
+  if (lower === "right" || lower === "bottom") return { kind: "fraction", value: 1 };
+  if (lower === "center" || lower === "") return { kind: "fraction", value: 0.5 };
   if (lower.endsWith("%")) {
     const pct = parseFloat(lower) / 100;
-    return Number.isFinite(pct) ? pct : 0.5;
+    return { kind: "fraction", value: Number.isFinite(pct) ? pct : 0.5 };
   }
-  // Pixel values (e.g. "10px") aren't fractional; without the slack-space
-  // numerator we can't honor them precisely. Fall back to center — this is
-  // strictly worse than the browser but matches what we'd render today.
-  if (axis === "x" || axis === "y") return 0.5;
-  return 0.5;
+  // A length is an offset from the box's leading edge, not a fraction of the
+  // slack space: `object-position: 300px 50%` puts the content's left edge at
+  // x=300, which is what the browser paints.
+  if (lower.endsWith("px")) {
+    const px = parseFloat(lower);
+    return Number.isFinite(px) ? { kind: "px", value: px } : { kind: "fraction", value: 0.5 };
+  }
+  return { kind: "fraction", value: 0.5 };
 }
 
 /**
@@ -801,13 +807,22 @@ function parseObjectPositionAxis(value: string, axis: "x" | "y"): number {
  * leading and trailing edges. `0` aligns to the left/top, `1` to the
  * right/bottom, `0.5` (the default) centers the content.
  */
-function parseObjectPosition(css: string | undefined): { x: number; y: number } {
-  if (!css || !css.trim()) return { x: 0.5, y: 0.5 };
+function parseObjectPosition(css: string | undefined): {
+  x: ObjectPositionAxis;
+  y: ObjectPositionAxis;
+} {
+  if (!css || !css.trim())
+    return { x: { kind: "fraction", value: 0.5 }, y: { kind: "fraction", value: 0.5 } };
   const tokens = css.trim().split(/\s+/);
   if (tokens.length === 1) {
     const single = tokens[0] ?? "";
+    const lower = single.trim().toLowerCase();
+    // A lone vertical keyword means 50% on x, not a left-edge x position.
+    if (lower === "top" || lower === "bottom") {
+      return { x: { kind: "fraction", value: 0.5 }, y: parseObjectPositionAxis(single, "y") };
+    }
     const v = parseObjectPositionAxis(single, "x");
-    return { x: v, y: 0.5 };
+    return { x: v, y: { kind: "fraction", value: 0.5 } };
   }
   return {
     x: parseObjectPositionAxis(tokens[0] ?? "", "x"),
@@ -829,7 +844,7 @@ function computeObjectFitRect(
   dstW: number,
   dstH: number,
   fit: ObjectFit,
-  pos: { x: number; y: number },
+  pos: { x: ObjectPositionAxis; y: ObjectPositionAxis },
 ): { dx: number; dy: number; dw: number; dh: number } {
   let renderedW = dstW;
   let renderedH = dstH;
@@ -854,8 +869,8 @@ function computeObjectFitRect(
     renderedW = srcW * scale;
     renderedH = srcH * scale;
   }
-  const dx = (dstW - renderedW) * pos.x;
-  const dy = (dstH - renderedH) * pos.y;
+  const dx = pos.x.kind === "px" ? pos.x.value : (dstW - renderedW) * pos.x.value;
+  const dy = pos.y.kind === "px" ? pos.y.value : (dstH - renderedH) * pos.y.value;
   return { dx, dy, dw: renderedW, dh: renderedH };
 }
 
