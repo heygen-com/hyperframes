@@ -504,7 +504,8 @@ describe("capture command: what it prints", () => {
 
     const text = printed(log);
     expect(text).toContain("Capturing https://example.com/a\\x07b");
-    expect(text).toContain("Captured Example → /tmp/hf-capture\\x1b[2Jout");
+    // The folder is printed as a full path, whose root and separators differ by platform.
+    expect(text).toMatch(/Captured Example → \S*hf-capture\\x1b\[2Jout/);
     expect(text).not.toContain("\u0007");
     expect(text).not.toContain("\u001b[2J");
   });
