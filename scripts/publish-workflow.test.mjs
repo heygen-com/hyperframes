@@ -805,7 +805,7 @@ test("publishing skips only identical uploads and fails on a version it did not 
       writeFileSync(log, "");
       writeFileSync(
         join(bin, "npm"),
-        `#!/bin/sh\necho "npm $*" >> "${log}"\nif [ "$1" = publish ]; then echo "$INTEGRITY" > "${temp}/on-npm"; fi\nif [ "$1" = view ]; then if [ -n "$VIEW_RESULT" ]; then echo "$VIEW_RESULT"; elif [ -s "${temp}/on-npm" ]; then cat "${temp}/on-npm"; else exit 1; fi; fi\n`,
+        `#!/bin/sh\necho "npm $*" >> "${log}"\nif [ "$1" = publish ]; then cat "${temp}/asked" >> "${temp}/sent"; fi\nif [ "$1" = view ]; then echo "$2" > "${temp}/asked"; if [ -n "$VIEW_RESULT" ]; then echo "$VIEW_RESULT"; elif grep -qxF "$2" "${temp}/sent" 2>/dev/null; then echo "$INTEGRITY"; else exit 1; fi; fi\n`,
       );
       chmodSync(join(bin, "npm"), 0o755);
       packTarball(temp, "core.tgz", { name: "@hyperframes/core", version: "1.2.3-alpha.1" });
