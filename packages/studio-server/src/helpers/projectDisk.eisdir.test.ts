@@ -19,7 +19,20 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-describe.skipIf(process.platform === "win32")("the off-loop private-file check", () => {
+// Windows makes a link only with the right to (an admin, or Developer Mode); without it these cases can't be set up.
+const canLink = (() => {
+  const dir = mkdtempSync(join(tmpdir(), "link-probe-"));
+  try {
+    symlinkSync(join(dir, "a"), join(dir, "b"));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+})();
+
+describe.skipIf(!canLink)("the off-loop private-file check", () => {
   // fails without the fix: native realpath failed at every level, so the check compared the link's own spelling and
   // served the project's .env under an innocuous name.
   it("refuses an innocuously named link to a private file on a volume whose native realpath refuses", async () => {
