@@ -133,11 +133,17 @@ const landed = (historyRoot: string) =>
   });
 
 /** Runs `__fixtures__/stepThenDie.ts`; resolves with the step's window id once the process is killed. */
-function stepThenDie(dir: string, historyRoot: string, stuck: string, mode: string) {
+function stepThenDie(
+  dir: string,
+  historyRoot: string,
+  stuck: string,
+  mode: string,
+  ...rest: string[]
+) {
   return new Promise<string>((done, fail) => {
     let id = "";
     const fixture = join(import.meta.dirname, "__fixtures__", "stepThenDie.ts");
-    fork(fixture, [dir, historyRoot, stuck, mode], { execArgv: ["--import", "tsx"] })
+    fork(fixture, [dir, historyRoot, stuck, mode, ...rest], { execArgv: ["--import", "tsx"] })
       .on("message", (message) => (id = (message as { id: string }).id))
       .once("exit", (_, signal) =>
         signal === "SIGKILL" ? done(id) : fail(new Error(`stepThenDie exited: ${signal}`)),
@@ -381,25 +387,48 @@ describe("an agent step that began while a file's first copy was pending", () =>
     expect(read("parts/p1.js")).toBe("// agent\n");
   });
 
-  it("keeps the refusal for a step recovered after the process died while it was open", async () => {
-    const { dir, file, read, historyRoot, opts } = project();
-    const id = await stepThenDie(dir, historyRoot, file("parts/p1.js"), "open");
-    const closedWindow = {
-      id,
-      who: agent,
-      label: "Step",
-      startedAt: 1,
-      lastWriteAt: Date.now(),
-      idleMs: 60_000,
-    };
-    const history = await open({ ...opts, closedWindow });
-    await landed(historyRoot);
-    const recovered = history.list().find((item) => item.id === id)!;
-    expect(recovered.files.map((change) => change.path)).toContain("index.html");
-    await expect(history.undo(recovered.id, { who: agent })).rejects.toThrow(NOT_KEPT);
-    expect(read("index.html")).toBe("<html>agent</html>");
-    expect(read("parts/p1.js")).toBe("// agent\n");
-  });
+  for (const twice of [false, true])
+    it(`keeps the refusal for a step recovered after the process died while it was open${twice ? ", twice" : ""}`, async () => {
+      const { dir, file, read, historyRoot, opts } = project();
+      const id = await stepThenDie(dir, historyRoot, file("parts/p1.js"), "open");
+      const closedWindow = {
+        id,
+        who: agent,
+        label: "Step",
+        startedAt: 1,
+        lastWriteAt: Date.now(),
+        idleMs: 600_000,
+      };
+      if (twice)
+        await stepThenDie(
+          dir,
+          historyRoot,
+          file("parts/p1.js"),
+          "reopen",
+          JSON.stringify(closedWindow),
+        );
+      const release = stallRead(file("parts/p1.js"));
+      const history = await open({ ...opts, closedWindow });
+      // A Studio claim commits the recovered step's writes so far before the copy lands.
+      writeFileSync(file("notes.txt"), "person");
+      await history.claim(you, "Note", ["notes.txt"]);
+      release();
+      await landed(historyRoot);
+      const parts = history.list().filter((item) => item.label === "Step");
+      expect(parts.flatMap((part) => part.files.map((change) => change.path))).toContain(
+        "index.html",
+      );
+      // The first undo commits what the open step wrote since; the refusals change nothing after that.
+      await history.undo(parts[0]!.id, { who: agent }).catch(() => undefined);
+      const cursor = history.next("back", agent)?.id;
+      const listed = history.list();
+      for (const part of parts)
+        await expect(history.undo(part.id, { who: agent })).rejects.toThrow(NOT_KEPT);
+      expect(history.next("back", agent)?.id).toBe(cursor);
+      expect(history.list()).toEqual(listed);
+      expect(read("index.html")).toBe("<html>agent</html>");
+      expect(read("parts/p1.js")).toBe("// agent\n");
+    });
 
   it("refuses its whole undo when the step deleted the pending file", async () => {
     const { file, read, historyRoot, opts } = project();
@@ -467,8 +496,12 @@ describe("an agent step that began while a file's first copy was pending", () =>
     expect(recorded.map((change) => change.path)).toEqual(["index.html"]);
   });
 
-  for (const readBefore of [false, true])
-    it(`never takes the agent's bytes as the start from a later Studio save's receipt (read ${readBefore ? "before" : "after"} the step)`, async () => {
+  for (const [readBefore, saved] of [
+    [false, "// person\n"],
+    [true, "// person\n"],
+    [true, "// before\n"],
+  ] as const)
+    it(`never takes the agent's bytes as the start from a later Studio save's receipt (read ${readBefore ? "before" : "after"} the step, saved ${JSON.stringify(saved)})`, async () => {
       const { file, read, historyRoot, opts } = project();
       const release = readBefore
         ? holdFiling(Buffer.from("// before\n")).release
@@ -477,10 +510,10 @@ describe("an agent step that began while a file's first copy was pending", () =>
       await step(history, () => writeFileSync(file("parts/p1.js"), "// agent\n"), [
         file("parts/p1.js"),
       ]);
-      writeFileSync(file("parts/p1.js"), "// person\n");
+      writeFileSync(file("parts/p1.js"), saved);
       recordFileWriteReceipt(file("parts/p1.js"), {
         path: "parts/p1.js",
-        version: fileContentVersion("// person\n"),
+        version: fileContentVersion(saved),
         writeToken: "studio",
         overwrote: "// agent\n",
       });
@@ -494,7 +527,7 @@ describe("an agent step that began while a file's first copy was pending", () =>
         expect(start).not.toBe(sha256("// agent\n"));
         await expect(history.restore(START, agent)).rejects.toThrow(NOT_KEPT);
       }
-      expect(read("parts/p1.js")).toBe("// person\n");
+      expect(read("parts/p1.js")).toBe(saved);
     });
 
   it("answers a Studio claim on the pending file within the deadline", async () => {

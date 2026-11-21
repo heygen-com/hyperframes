@@ -1,13 +1,16 @@
-// One file's first read never answers; a step rewrites or deletes it, then the process dies (mode "open": mid-step).
+// One file's first read never answers; a step rewrites or deletes it, then the process dies (mode "open": mid-step;
+// "reopen": at the first sweep while recovering the closed window given as JSON).
 import { unlinkSync, writeFileSync } from "node:fs";
 import fsp from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 
-const [projectDir, historyRoot, stuck, mode = "close"] = process.argv.slice(2);
+const [projectDir, historyRoot, stuck, mode = "close", closedWindow] = process.argv.slice(2);
 const realOpen = fsp.open;
 fsp.open = (async (...args: Parameters<typeof realOpen>) => {
   if (String(args[0]) === stuck) await new Promise(() => {});
+  if (mode === "reopen" && String(args[0]) === join(projectDir!, "index.html"))
+    process.kill(process.pid, "SIGKILL");
   return realOpen(...args);
 }) as typeof realOpen;
 syncBuiltinESMExports();
@@ -18,6 +21,7 @@ const history = await openProjectHistory({
   historyRoot: historyRoot!,
   firstCopyFileMs: 100,
   now: () => Date.now() + 60_000,
+  ...(closedWindow && { closedWindow: JSON.parse(closedWindow) }),
 });
 const agent = { kind: "agent", name: "Framey" } as const;
 const index = join(projectDir!, "index.html");

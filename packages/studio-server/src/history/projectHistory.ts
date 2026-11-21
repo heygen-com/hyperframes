@@ -705,12 +705,12 @@ class Engine {
     const left = this.readAdopting();
     const files = await this.historyFiles();
     const wentAhead = this.readJson<WentAhead>("went-ahead.json", { pending: [], windows: {} });
+    // What changed while the project was closed is one outside entry, or the closed window's.
+    this.reopenClosedWindow(wentAhead.windows);
     this.markWentAheadBeforeReopen(wentAhead.pending, left, new Set(files.map((f) => f.path)));
     const unadopted = (file: { path: string }) =>
       left.has(file.path) && !this.tracked.has(file.path);
     this.adoptMediaInBackground(files.filter(unadopted), this.now());
-    // What changed while the project was closed is one outside entry, or the closed window's.
-    this.reopenClosedWindow(wentAhead.windows);
     await this.settleAll();
   }
 
@@ -1032,7 +1032,7 @@ class Engine {
 
   adoptedStart(path: string, hash: string, provenance: Provenance): string {
     // A save's receipt after a step went ahead may name the step's bytes as the ones it replaced.
-    if (provenance === "unknown") return hashNoVersionHas();
+    if (provenance !== "no-step") return provenance === "unknown" ? hashNoVersionHas() : hash;
     const found = this.overwrittenBy({ path, before: null, after: hash }, undefined, new Set());
     return found && this.blobs.has(found) ? found : hash;
   }
