@@ -3,7 +3,7 @@ import { failCommand, scheduleCliExit, failUsage } from "../utils/commandResult.
 import { defineCommand } from "../utils/defineCommand.js";
 import { resolve } from "node:path";
 import type { Example } from "./_examples.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { normalizeErrorMessage, SetupStepsError } from "../utils/errorMessage.js";
 import { diag } from "../ui/diagnostics.js";
 import type { CapturePhaseProgress } from "../capture/types.js";
 import { parseCaptureDeadline } from "../capture/captureWatchdog.js";
@@ -359,7 +359,9 @@ export default defineCommand({
       if (isJson) {
         console.log(JSON.stringify(jsonFailure("runtime_error", errMsg)));
       } else {
-        console.error(`\n  ✗ Capture failed: ${terminalText(errMsg)}\n`);
+        const setup = err instanceof SetupStepsError ? err : undefined;
+        console.error(`\n  ✗ Capture failed: ${terminalText(setup?.summary ?? errMsg)}\n`);
+        if (setup) console.error(`${setup.steps}\n`);
       }
       scheduleCliExit(1);
       failCommand();

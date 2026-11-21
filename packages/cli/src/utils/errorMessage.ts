@@ -12,6 +12,16 @@ function namedAfterCrash(message: string): string {
     : message;
 }
 
+/** A failure with `steps`: lines this CLI wrote for the reader to run, kept apart from `summary`. */
+export class SetupStepsError extends Error {
+  constructor(
+    readonly summary: string,
+    readonly steps: string,
+  ) {
+    super(`${summary}\n\n${steps}`);
+  }
+}
+
 export function normalizeErrorMessage(error: unknown): string {
   if (error instanceof Error) return namedAfterCrash(error.message);
   if (typeof error === "string") return error;
