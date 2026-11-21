@@ -1,4 +1,4 @@
-import { sep } from "node:path";
+import { posix, sep } from "node:path";
 import { decodeCssEscapes, decodedUrlPath, encodeUrlPath } from "@hyperframes/parsers/asset-paths";
 import {
   HTML_ATTRIBUTE_ENTITIES,
@@ -116,7 +116,7 @@ function spellLike(
   return SPELLINGS[context.syntax](path, context);
 }
 
-export function referenceSyntax(file: string): ReferenceSyntax {
+function referenceSyntax(file: string): ReferenceSyntax {
   if (/\.html$/i.test(file)) return "html";
   if (/\.css$/i.test(file)) return "css";
   if (/\.(?:[cm]?js|jsx|tsx?|json)$/i.test(file)) return "script";
@@ -138,16 +138,16 @@ function decodeQuotedReference(text: string, syntax: ReferenceSyntax): string {
   return text;
 }
 
-function referencePattern(oldPath: string, isDirectory: boolean): RegExp {
+function referencePattern(oldPath: string, isDirectory: boolean, bareOrDotLead: boolean): RegExp {
   const name = oldPath
     .split("/")
     .map((segment) => Array.from(segment, referenceSpellings).join(""))
     .join(SEPARATOR);
   const end = isDirectory ? `(?=${SEPARATOR})` : FILE_END;
-  return new RegExp(
-    String.raw`${REFERENCE_START}(?<lead>(?:\.{1,2}${SEPARATOR}|${SEPARATOR}){0,4})${name}${end}`,
-    "g",
-  );
+  const lead = bareOrDotLead
+    ? String.raw`(?:\.${SEPARATOR})?`
+    : String.raw`(?:\.{1,2}${SEPARATOR}|${SEPARATOR}){0,4}`;
+  return new RegExp(String.raw`${REFERENCE_START}(?<lead>${lead})${name}${end}`, "g");
 }
 
 type ValueAttribute = Extract<HtmlAttributeSpan, { kind: "value" }>;
@@ -212,14 +212,15 @@ function matchContext(
 
 // A match inside the longer path of a file or folder that exists (`a.png&b.png`, `other assets/`) is that path's.
 // Existing paths are indexed by the text after the old path, then the text before it, so a match costs a few lookups.
-export function referenceRewriter(
+function referenceEdits(
   oldPath: string,
   newPath: string,
   isDirectory: boolean,
-  existing: readonly string[] = [],
-): (text: string, syntax?: ReferenceSyntax) => string {
+  existing: readonly string[],
+  beside: { targets: ReadonlySet<string> | null } | null = null,
+): ReferenceEditor {
   const oldIdentity = sep === "\\" ? oldPath.replace(/\\/g, "/") : oldPath;
-  const pattern = referencePattern(oldPath, isDirectory);
+  const pattern = referencePattern(oldPath, isDirectory, beside !== null);
   const around = new Map<string, Map<number, Set<string>>>();
   const afterLengths = new Set<number>();
   let window = 0;
@@ -271,12 +272,9 @@ export function referenceRewriter(
     const head = normalized(text.slice(Math.max(0, at - window), at), context);
     return !inLonger(head, normalized(text.slice(end, end + window), context, context.url));
   };
-  return function rewriteText(text, syntax = "html", normalizeEntities = true) {
-    if (syntax === "html" && normalizeEntities) {
-      text = rewriteEntityAttributes(text, (source) => rewriteText(source, "html", false));
-    }
+  return (text, syntax) => {
     pattern.lastIndex = 0;
-    if (!pattern.test(text)) return text;
+    if (!pattern.test(text)) return [];
     pattern.lastIndex = 0;
     const tags = syntax === "html" ? scanHtmlOpeningTags(text) : [];
     const inlineRegions = tags
@@ -348,16 +346,119 @@ export function referenceRewriter(
     ].sort((a, b) => a.start - b.start);
     const inlineAt = advancing(inlineRegions);
     const urlAt = advancing(urlRegions);
-    return text.replace(pattern, (...args) => {
-      const [match, offset] = [args[0] as string, args.at(-3) as number];
-      const { lead } = args.at(-1) as { lead: string };
+    return [...text.matchAll(pattern)].flatMap((found): Edit[] => {
+      const [match, offset, lead] = [found[0], found.index, found.groups?.lead ?? ""];
       const urlRegion = urlAt(offset);
       const context = matchContext(text, offset, syntax, inlineAt(offset), urlRegion);
-      if (context.url && offset !== urlRegion!.start) return match;
+      if (context.url && offset !== urlRegion!.start) return [];
       const reference = match.slice(lead.length);
-      if (!namesOldPath(text, offset, match, lead, context)) return match;
-      return `${lead}${spellLike(reference, newPath, oldPath, context)}`;
+      if (!namesOldPath(text, offset, match, lead, context)) return [];
+      const end = offset + match.length;
+      if (
+        beside &&
+        !besideReaches(beside.targets, context, normalized(restAfter(text, end), context))
+      )
+        return [];
+      return [
+        { at: offset + lead.length, end, text: spellLike(reference, newPath, oldPath, context) },
+      ];
     });
+  };
+
+  function besideReaches(
+    targets: ReadonlySet<string> | null,
+    context: ReferenceContext,
+    rest: string,
+  ) {
+    if (context.syntax === "script") return false;
+    if (isDirectory && leavesFolder(rest)) return false;
+    return !targets || reaches(targets, `${newPath}${rest}`);
+  }
+}
+
+type Edit = { at: number; end: number; text: string };
+type ReferenceEditor = (text: string, syntax: ReferenceSyntax) => Edit[];
+
+function rewriteWith(
+  editors: readonly ReferenceEditor[],
+): (text: string, syntax?: ReferenceSyntax, normalizeEntities?: boolean) => string {
+  return function rewriteText(text, syntax = "html", normalizeEntities = true) {
+    if (syntax === "html" && normalizeEntities) {
+      text = rewriteEntityAttributes(text, (source) => rewriteText(source, "html", false));
+    }
+    let [out, pos] = ["", 0];
+    const edits = editors.flatMap((editor) => editor(text, syntax));
+    for (const edit of edits.sort((x, y) => x.at - y.at)) {
+      if (edit.at < pos) continue;
+      out += text.slice(pos, edit.at) + edit.text;
+      pos = edit.end;
+    }
+    return out + text.slice(pos);
+  };
+}
+
+export function referenceRewriter(
+  oldPath: string,
+  newPath: string,
+  isDirectory: boolean,
+  existing: readonly string[] = [],
+): (text: string, syntax?: ReferenceSyntax) => string {
+  return rewriteWith([referenceEdits(oldPath, newPath, isDirectory, existing)]);
+}
+
+const MAX_REST = 256;
+const restAfter = (text: string, end: number) =>
+  /^[^"'`<>\r\n]*/.exec(text.slice(end, end + MAX_REST))![0];
+const REFERENCE_END = /^(?:$|\)(?=$|[\s;,])|[?#]|,\s|\s+\d+(?:\.\d+)?[wx](?![\w.]))/;
+
+function reaches(targets: ReadonlySet<string>, path: string): boolean {
+  for (let i = 0; i <= path.length; i++)
+    if (REFERENCE_END.test(path.slice(i)) && targets.has(path.slice(0, i))) return true;
+  return false;
+}
+
+function filesOnly(paths: readonly string[]): Set<string> {
+  const folders = new Set<string>();
+  for (const path of paths)
+    for (let at = path.indexOf("/"); at > 0; at = path.indexOf("/", at + 1))
+      folders.add(path.slice(0, at));
+  return new Set(paths.filter((path) => !folders.has(path)));
+}
+
+function leavesFolder(rest: string): boolean {
+  let depth = 0;
+  for (const segment of rest.split("/")) {
+    if (segment === ".." && --depth < 0) return true;
+    if (segment !== ".." && segment !== "." && segment !== "") depth++;
+  }
+  return false;
+}
+
+export function renameRewriter(
+  oldPath: string,
+  newPath: string,
+  isDirectory: boolean,
+  existing: readonly string[],
+): (text: string, file: string) => string {
+  const rootEdits = referenceEdits(oldPath, newPath, isDirectory, existing);
+  const parentFolderEdits = new Map<string, Record<"css" | "html", ReferenceEditor>>();
+  for (let at = oldPath.indexOf("/"); at > 0; at = oldPath.indexOf("/", at + 1)) {
+    const dir = oldPath.slice(0, at);
+    const inside = existing
+      .filter((path) => path.startsWith(`${dir}/`))
+      .map((path) => path.slice(at + 1));
+    const [from, to] = [oldPath.slice(at + 1), posix.relative(dir, newPath)];
+    const everywhere = filesOnly(existing.map((path) => posix.relative(dir, path)));
+    parentFolderEdits.set(dir, {
+      css: referenceEdits(from, to, isDirectory, inside, { targets: null }),
+      html: referenceEdits(from, to, isDirectory, inside, { targets: everywhere }),
+    });
+  }
+  return (text, file) => {
+    const syntax = referenceSyntax(file);
+    const parent = parentFolderEdits.get(posix.dirname(file));
+    const beside = syntax === "css" || syntax === "html" ? parent?.[syntax] : undefined;
+    return rewriteWith(beside ? [beside, rootEdits] : [rootEdits])(text, syntax);
   };
 }
 

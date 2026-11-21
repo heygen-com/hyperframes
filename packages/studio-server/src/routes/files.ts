@@ -20,7 +20,7 @@ import {
   realpathSync,
   type Dirent,
 } from "node:fs";
-import { resolve, dirname, join } from "node:path";
+import { resolve, dirname, join, relative, sep } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
 import { isAudioFile } from "../helpers/mime.js";
 import { lengthIsTimeline } from "../helpers/compositionInputs.js";
@@ -113,7 +113,7 @@ import {
 } from "../helpers/compositionInsertion.js";
 import { resolveGsapWriter } from "./gsapMutationCapabilities.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
-import { canNameFiles, referenceRewriter, referenceSyntax } from "../helpers/fileReferences.js";
+import { canNameFiles, renameRewriter } from "../helpers/fileReferences.js";
 import {
   hasCompositionOutsideTemplates,
   insertBeforeCloseTag,
@@ -747,14 +747,14 @@ function updateReferences(
 ): number {
   const textFiles = walkFiles(projectDir, canNameFiles);
 
-  const rewrite = referenceRewriter(oldPath, newPath, isDirectory, projectPaths(projectDir));
+  const rewrite = renameRewriter(oldPath, newPath, isDirectory, projectPaths(projectDir));
   let updatedCount = 0;
   for (const file of textFiles) {
     if (!isSafePath(projectDir, file) || !isWritableProjectFile(projectDir, file)) continue;
     const content = readableText(file);
     if (content === null) continue;
 
-    const updated = rewrite(content, referenceSyntax(file));
+    const updated = rewrite(content, relative(projectDir, file).split(sep).join("/"));
     if (updated !== content) {
       replaceFileAtomically(file, updated, statSync(file).mode);
       updatedCount++;
