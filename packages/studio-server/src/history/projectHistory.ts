@@ -289,11 +289,21 @@ function withoutHiddenPaths(log: HistoryLog, ignores?: (path: string) => boolean
   return log;
 }
 
+function dropKeptOutside(entry: HistoryEntry, ignores?: (path: string) => boolean): boolean {
+  const kept = Object.entries(entry.keptInPlace ?? {});
+  const left = kept.filter(([path]) => isHistoryPath(path, ignores));
+  if (left.length === kept.length) return false;
+  if (left.length) entry.keptInPlace = Object.fromEntries(left);
+  else delete entry.keptInPlace;
+  return true;
+}
+
 function dropUnrecordedPaths(log: HistoryLog, ignores?: (path: string) => boolean): boolean {
   let dropped = false;
   for (const path of log.baseline.keys())
     if (!isHistoryPath(path, ignores)) dropped = log.baseline.delete(path) || dropped;
   for (const entry of log.entries) {
+    dropped = dropKeptOutside(entry, ignores) || dropped;
     const files = entry.files.filter((file) => isHistoryPath(file.path, ignores));
     if (files.length === entry.files.length) continue;
     entry.files = files;
@@ -478,13 +488,15 @@ class Engine {
   readonly records = (path: string) => isHistoryPath(path, this.options.ignores);
   readonly historyFiles = () => historyFiles(this.dir, this.options.ignores);
   readonly recordsOnDisk = async (path: string) => {
+    const { ignores } = this.options;
     if (!this.records(path)) return false;
+    if (!ignores) return true;
     const at = join(this.dir, path);
     const found = await lstat(at).catch(() => null);
     if (!found || found.isSymbolicLink()) return true;
     const [real, root] = await Promise.all([realpath(at), realpath(this.dir)]);
     const onDisk = relative(root, real).split(sep).join("/");
-    return onDisk.startsWith("../") || isAbsolute(onDisk) || this.records(onDisk);
+    return onDisk.startsWith("../") || isAbsolute(onDisk) || !ignores(onDisk);
   };
 
   constructor(
