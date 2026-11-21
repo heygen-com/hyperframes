@@ -532,6 +532,7 @@ declare global {
 
 async function runAll(frame: Frame, sequences: Sequence[], run: string) {
   const rounds = Math.max(...sequences.map((s) => s.rounds.length));
+  const readings: Readings[] = [];
   for (let round = 0; round < rounds; round++) {
     for (const [index, sequence] of sequences.entries()) {
       for (const step of sequence.rounds[round] ?? []) {
@@ -556,7 +557,9 @@ async function runAll(frame: Frame, sequences: Sequence[], run: string) {
         .catch(() => undefined);
     await settle();
     if (await frame.evaluate(() => window.__table.flush())) await settle();
+    readings.push(await readAll(frame));
   }
+  return readings;
 }
 
 const describe = (sequence: Sequence) =>
@@ -594,11 +597,11 @@ const idOf = (src: string) => (src ? new URL(src).searchParams.get("id")!.slice(
 // One frame at 30 fps, with room for the timer that reads it.
 const FRAME = 1 / 30 + 0.01;
 
-function history(sequence: Sequence) {
+function history(sequence: Sequence, upTo = sequence.rounds.length - 1) {
   const lists = new Map<number, Source[]>();
   const everListed = new Map<number, Map<string, Kind>>();
   const authored = new Map<number, string>();
-  for (const steps of sequence.rounds)
+  for (const steps of sequence.rounds.slice(0, upTo + 1))
     for (const step of steps) {
       const list = lists.get(step.el) ?? [];
       if (step.do === "create") lists.set(step.el, [...step.sources]);
@@ -626,25 +629,35 @@ function history(sequence: Sequence) {
 // Per element, against the helper off: the same source, playing state and moving playhead; after a load of ours
 // while it played, it resumes where it was at the same rate. Pixels readable wherever the unsealed film reads them
 // from a source that sends CORS, except the known gap.
-function judge(sequences: Sequence[], sealed: Readings, control: Readings, open: Readings) {
+// Each round of each sequence, so a wrong middle step is not hidden by a right end; an element is reported once.
+function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], open: Readings[]) {
   const budget = new Map<string, number>();
   const gaps: string[] = [];
-  const all = sequences.map((sequence, index) => {
-    const { lists, everListed, authored } = history(sequence);
+  const reported = new Set<string>();
+  const all = sequences.flatMap((sequence, index) =>
+    sequence.rounds.map((_, round) => judgeRound(sequence, index, round)),
+  );
+  function judgeRound(sequence: Sequence, index: number, round: number) {
+    const { lists, everListed, authored } = history(sequence, round);
+    const last = round === sequence.rounds.length - 1;
     const problems: string[] = [];
+    const starts: Array<[string, number]> = [];
     for (const [el, list] of lists) {
       const key = `${index}-${el}`;
-      const seen = sealed.get(key)!;
-      const plain = control.get(key)!;
-      const unsealed = open.get(key)!;
+      if (reported.has(key)) continue;
+      starts.push([key, problems.length]);
+      const seen = sealed[round]!.get(key)!;
+      const plain = control[round]!.get(key)!;
+      const unsealed = open[round]!.get(key)!;
       const { moves } = seen;
       const movesPlain = plain.moves;
-      const where = `${sequence.name} (${describe(sequence)}), element ${el}`;
+      const where = `${sequence.name} (${describe(sequence)}), element ${el} after round ${round + 1}`;
       const kinds = everListed.get(el)!;
       // The runtime loads media without the helper too; the helper's share is what the sealed film adds.
       const helper = Math.max(0, seen.ours - plain.ours);
       const selections = seen.loads - helper;
-      for (const id of kinds.keys()) budget.set(id, (budget.get(id) ?? 0) + 2 * selections);
+      if (last)
+        for (const id of kinds.keys()) budget.set(id, (budget.get(id) ?? 0) + 2 * selections);
       const most = 2 * kinds.size * seen.selections;
       if (helper > most)
         problems.push(
@@ -699,11 +712,15 @@ function judge(sequences: Sequence[], sealed: Readings, control: Readings, open:
         (sequence.keepsCors?.includes(el) || !seen.failedWithCors.includes(seen.currentSrc));
       if (!readable || seen.pixels === "readable") continue;
       const line = `${where}: plays ${idOf(seen.currentSrc)} unreadable ${JSON.stringify(seen)}`;
-      if (mixed(list) && !foreign(kind)) gaps.push(line);
-      else problems.push(line);
+      if (mixed(list) && !foreign(kind)) {
+        if (last) gaps.push(line);
+      } else problems.push(line);
     }
+    starts.forEach(([key, start], i) => {
+      if ((starts[i + 1]?.[1] ?? problems.length) > start) reported.add(key);
+    });
     return problems;
-  });
+  }
   return { problems: all.flat(), gaps, budget };
 }
 
@@ -734,8 +751,7 @@ try {
       });
     const frame = await filmFrame(page, query);
     await installDriver(frame);
-    await runAll(frame, sequences, prefix);
-    const readings = await readAll(frame);
+    const readings = await runAll(frame, sequences, prefix);
     await page.close();
     return readings;
   };
