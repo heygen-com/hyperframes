@@ -16,6 +16,7 @@ vi.mock("../player/lib/previewChannel", async (importOriginal) => ({
 import { applySoftReload } from "./gsapSoftReload";
 import { applyUndoRestoreToPreview } from "./gsapUndoRestore";
 import { applyPreviewSync } from "../hooks/useGsapScriptCommits";
+import { moveLiveTweens } from "./gsapLiveRetime";
 import { markStudioWriteToken } from "./studioFileVersion";
 
 const iframe = document.createElement("iframe");
@@ -136,4 +137,24 @@ it("ignores a restore answered after the next load: the new load shows the saved
   held[0]!.answer(null);
   await settled();
   expect(reload).not.toHaveBeenCalled();
+});
+
+// fails without the fix: the recovery re-ran the retime's script without its saved clip timing.
+it("re-runs a refused patch's recovery with the timing of a live retime saved after it", async () => {
+  const retimed = (d: number) =>
+    `window.__timelines["main"] = gsap.timeline().to("#a", { x: 10, duration: ${d} }, 0);`;
+  const file = (start: number, d: number) =>
+    page(`<div id="a" data-hf-id="a" data-start="${start}"></div><script>${retimed(d)}</script>`);
+  markStudioWriteToken("patch");
+  const patched = { ok: true, scriptText: retimed(1), before: file(0, 1), after: file(0, 1) };
+  const instantPatch = { selector: "#a", change: { kind: "set" as const, props: { x: 10 } } };
+  applyPreviewSync(iframe, patched, { label: "drag", softReload: true, instantPatch }, vi.fn());
+  markStudioWriteToken("retime");
+  void moveLiveTweens(iframe, retimed(2), 1, vi.fn(), { before: file(0, 1), after: file(1, 2) });
+  await settled();
+  expect(held.map(({ kind }) => kind)).toEqual(["patch-tweens", "live-retime"]);
+  held[0]!.answer({ patched: false });
+  await settled();
+  const rerun = held.find(({ kind }) => kind === "soft-reload")!.params as { timing: unknown[] };
+  expect(rerun.timing).toContainEqual(["hf:a", [["data-start", "1"]]]);
 });

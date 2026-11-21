@@ -139,7 +139,7 @@ const FIXTURE: SequenceFixture<Saved, Save> = {
 };
 const play = (steps: Step[], seed = 1) => playSequence(browser, studioBundle, FIXTURE, steps, seed);
 
-// The three sequences a reviewer probed by hand, as written in the review; each is red without the fix.
+// The reviewer's sequences: the first and third are red without the fix; the second guards its class.
 const SEEDS: Array<[string, Step[]]> = [
   [
     "an undo of a script and a title the frame refuses, held past a newer script-only run",
@@ -151,7 +151,9 @@ const SEEDS: Array<[string, Step[]]> = [
     ],
   ],
   [
-    "a patch refusal held while a retime to data-start 1 saves, then the patch recovers",
+    // A guard, not the reviewer's sequence: his retime went through live-retime, which this harness does not
+    // send (sealedPreviewLedger.test.ts reproduces it); seed 28 reproduces the lost data-start here.
+    "a refused patch, then a refused retime re-run, then the patch's refusal",
     [
       { save: "patch", refused: true },
       { save: "retime", refused: true },
