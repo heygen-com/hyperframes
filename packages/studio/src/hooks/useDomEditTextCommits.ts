@@ -9,6 +9,7 @@ import {
   getDomEditTargetKey,
   isTextEditableSelection,
   buildDefaultDomEditTextField,
+  spacedAfter,
   type DomEditTextField,
   type DomEditSelection,
 } from "../components/editor/domEditing";
@@ -480,13 +481,13 @@ export function useDomEditTextCommits({
       const baseField =
         domEditSelection.textFields[insertionIndex >= 0 ? insertionIndex : 0] ??
         domEditSelection.textFields[0];
-      const nextField = buildDefaultDomEditTextField(baseField);
       const nextTextFields = [...domEditSelection.textFields];
-      nextTextFields.splice(
-        insertionIndex >= 0 ? insertionIndex + 1 : nextTextFields.length,
-        0,
-        nextField,
+      const at = insertionIndex >= 0 ? insertionIndex + 1 : nextTextFields.length;
+      const nextField = spacedAfter(
+        nextTextFields[at - 1],
+        buildDefaultDomEditTextField(baseField),
       );
+      nextTextFields.splice(at, 0, nextField);
 
       await commitDomTextFields(domEditSelection, nextTextFields);
       return nextField.key;

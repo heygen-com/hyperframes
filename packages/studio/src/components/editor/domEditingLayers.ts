@@ -181,6 +181,15 @@ function serializeTextField(field: DomEditTextField): string {
   return `<${field.tagName}${attrs}${styleAttr}>${escapeHtmlText(field.value)}</${field.tagName}>`;
 }
 
+export function spacedAfter(
+  previous: DomEditTextField | undefined,
+  field: DomEditTextField,
+): DomEditTextField {
+  const joins =
+    Boolean(previous?.value) && !/\s$/.test(previous!.value) && !/^\p{P}/u.test(field.value);
+  return joins ? { ...field, spaceBefore: " " } : field;
+}
+
 export function buildDefaultDomEditTextField(base?: Partial<DomEditTextField>): DomEditTextField {
   return {
     key: `child:new:${Date.now()}`,
