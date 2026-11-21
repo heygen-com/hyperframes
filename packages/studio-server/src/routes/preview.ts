@@ -785,7 +785,11 @@ export function registerPreviewRoutes(
     if (!file || (await isPrivateProjectFileOff(project.dir, file))) {
       return c.text("not found", 404);
     }
-    await recordPreviewReadOff(project.dir, file);
+    const recorded = await recordPreviewReadOff(project.dir, file).then(
+      () => true,
+      () => false,
+    );
+    if (!recorded) return c.text("not found", 404);
     const stat = await statOrNull(file);
     if (!stat?.isFile()) {
       return c.text("not found", 404);
