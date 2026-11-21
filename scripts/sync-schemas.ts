@@ -10,8 +10,8 @@
  *   bun run sync-schemas         # copy core → docs
  *   bun run sync-schemas --check # exit non-zero if copies are stale (CI)
  *
- * `docs/schema/hyperframes.json` is authored directly in docs (no source in
- * core) so it's skipped by this script.
+ * `docs/schema/hyperframes.json` and `docs/schema/hf-render-sidecar.json` are
+ * authored directly in docs (no source in core), so this script skips them.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";

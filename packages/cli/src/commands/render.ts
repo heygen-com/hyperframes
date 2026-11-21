@@ -495,6 +495,17 @@ export default defineCommand({
       // guard below leaves PRODUCER_EXPERIMENTAL_FAST_CAPTURE untouched and the
       // env fallback survives (matches the --low-memory-mode idiom).
     },
+    provenance: {
+      type: "boolean",
+      description:
+        "Write a render provenance sidecar (<output>.hf-render.json) after a successful render: " +
+        "a JSON receipt with tool versions, input hashes, variables hash, fonts, " +
+        "format/fps/resolution, encoder, stage timings and warning codes. Off by default.",
+    },
+    "provenance-path": {
+      type: "string",
+      description: "Write the provenance sidecar to this path instead. Implies --provenance.",
+    },
     "frames-cache-dir": {
       type: "string",
       description:
@@ -637,6 +648,8 @@ export interface RenderOptions {
   protocolTimeout?: number;
   /** Player-ready timeout override (ms). */
   playerReadyTimeout?: number;
+  /** Provenance sidecar: omitted or false = none, true = next to the output, string = custom path. */
+  provenance?: string | boolean;
   /** Throw render failures to the caller instead of printing and exiting. */
   throwOnError?: boolean;
   /** Skip the interactive feedback prompt after a successful render. */
@@ -930,6 +943,7 @@ export function dockerRenderOptions(
     playerReadyTimeoutMs: options.playerReadyTimeout,
     refuseOutsideFiles:
       options.refuseOutsideFiles ?? !outsideAssetsAllowedOrWarn(projectDir, options.entryFile),
+    provenance: options.provenance,
   };
 }
 
@@ -1260,6 +1274,7 @@ async function executeLocalRender(
       entryFile: options.entryFile,
       outputResolution: options.outputResolution,
       outputResolutionAspectAgnostic: options.outputResolutionAspectAgnostic,
+      provenance: options.provenance,
       debug: options.debug,
       resumeSegments: options.resumeSegments,
       keepSegments: options.keepSegments,
