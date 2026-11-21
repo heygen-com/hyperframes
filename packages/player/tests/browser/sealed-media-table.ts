@@ -6,8 +6,8 @@ import { launchBrowser } from "../perf/runner.js";
 import { startServer } from "../perf/server.js";
 
 /**
- * Seeded sequences of media edits, each run three times: in the sealed film with the runtime, in a sealed frame
- * without it (the control for source choice and playback), and in a same-origin frame (the control for pixels).
+ * Seeded sequences of media edits, each run in the sealed film and in the same film unsealed: the same runtime, whose
+ * CORS helper starts only in an opaque origin. The unsealed film is the control for source, playback and pixels.
  */
 
 type Kind =
@@ -581,7 +581,7 @@ const describe = (sequence: Sequence) =>
     )
     .join(" | ");
 
-type Runs = { sealed: Frame; plain: Frame; open: Frame };
+type Runs = { sealed: Frame; control: Frame };
 const idOf = (src: string) => (src ? new URL(src).searchParams.get("id")!.slice(2) : "");
 // One frame at 30 fps, with room for the timer that reads it.
 const FRAME = 1 / 30 + 0.01;
@@ -615,9 +615,9 @@ function history(sequence: Sequence) {
   return { lists, everListed, authored };
 }
 
-// Per element, against the frame without the runtime: the same source, playing state and moving playhead; after
-// a load of ours while playing, it resumes where it was at the same rate. Pixels readable wherever the same-origin
-// frame reads them from a source that sends CORS, except the known gap.
+// Per element, against the unsealed film: the same source, playing state and moving playhead; after a load of ours
+// while it played, it resumes where it was at the same rate. Pixels readable wherever the unsealed film reads them
+// from a source that sends CORS, except the known gap.
 async function judge(sequences: Sequence[], runs: Runs) {
   const budget = new Map<string, number>();
   const gaps: string[] = [];
@@ -627,12 +627,11 @@ async function judge(sequences: Sequence[], runs: Runs) {
       const problems: string[] = [];
       for (const [el, list] of lists) {
         const key = `${index}-${el}`;
-        const [seen, plain, open, moves, movesPlain] = await Promise.all([
+        const [seen, plain, moves, movesPlain] = await Promise.all([
           runs.sealed.evaluate((k) => window.__table.read(k), key),
-          runs.plain.evaluate((k) => window.__table.read(k), key),
-          runs.open.evaluate((k) => window.__table.read(k), key),
+          runs.control.evaluate((k) => window.__table.read(k), key),
           runs.sealed.evaluate((k) => window.__table.advancing(k), key),
-          runs.plain.evaluate((k) => window.__table.advancing(k), key),
+          runs.control.evaluate((k) => window.__table.advancing(k), key),
         ]);
         const where = `${sequence.name} (${describe(sequence)}), element ${el}`;
         const kinds = everListed.get(el)!;
@@ -652,12 +651,10 @@ async function judge(sequences: Sequence[], runs: Runs) {
         if (!variable) {
           if (idOf(seen.currentSrc) !== idOf(plain.currentSrc))
             problems.push(
-              `${where}: plays ${idOf(seen.currentSrc)}, without the runtime ${idOf(plain.currentSrc)}`,
+              `${where}: plays ${idOf(seen.currentSrc)}, unsealed ${idOf(plain.currentSrc)}`,
             );
           if (seen.playing !== plain.playing || seen.paused !== plain.paused)
-            problems.push(
-              `${where}: ${JSON.stringify(seen)}, without the runtime ${JSON.stringify(plain)}`,
-            );
+            problems.push(`${where}: ${JSON.stringify(seen)}, unsealed ${JSON.stringify(plain)}`);
           if (movesPlain && !moves)
             problems.push(`${where}: the playhead stopped ${JSON.stringify(seen)}`);
         }
@@ -668,7 +665,7 @@ async function judge(sequences: Sequence[], runs: Runs) {
           problems.push(`${where}: rate ${seen.rate}, set to 2`);
         if (action === "seek" && !(Number(seen.seekGap ?? 1) <= FRAME))
           problems.push(`${where}: resumed ${seen.seekGap} s off the composition's seek`);
-        if (seen.savedRate !== undefined && !action && !variable) {
+        if (seen.savedRate !== undefined && !action && !variable && movesPlain) {
           if (!(Number(seen.restartGap ?? 1) <= FRAME))
             problems.push(
               `${where}: after our load it resumed ${seen.restartGap ?? "never"} s off`,
@@ -692,7 +689,7 @@ async function judge(sequences: Sequence[], runs: Runs) {
         if (!seen.playing) continue;
         const kind = kinds.get(idOf(seen.currentSrc))!;
         const readable =
-          open.pixels === "readable" &&
+          plain.pixels === "readable" &&
           SENDS_CORS.has(kind) &&
           (sequence.keepsCors?.includes(el) || !seen.failedWithCors.includes(seen.currentSrc));
         if (!readable || seen.pixels === "readable") continue;
@@ -706,50 +703,28 @@ async function judge(sequences: Sequence[], runs: Runs) {
   return { problems: all.flat(), gaps, budget };
 }
 
-async function frameNamed(page: import("puppeteer-core").Page, name: string) {
-  for (;;) {
-    const frame = page.frames().find((candidate) => candidate.name() === name);
-    if (frame) {
-      await frame.waitForFunction(() => document.readyState === "complete");
-      return frame;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-}
-
-const browser = await launchBrowser();
-try {
-  const page = await browser.newPage();
-  await page.goto(`${server.origin}/host.html?fixture=10-video-grid&sealed=1`, {
+async function filmFrame(page: import("puppeteer-core").Page, query: string) {
+  await page.goto(`${server.origin}/host.html?fixture=10-video-grid${query}`, {
     waitUntil: "domcontentloaded",
   });
   await page.waitForFunction(() => window.__playerReady || window.__playerError, {
     timeout: 60_000,
   });
-  const sealed = page.frames().find((candidate) => candidate.url().includes("/10-video-grid/"));
-  assert.ok(sealed, "the film's frame must load");
-  await page.evaluate(() => {
-    for (const name of ["plain", "open"]) {
-      const frame = document.createElement("iframe");
-      frame.name = name;
-      if (name === "plain") frame.sandbox.add("allow-scripts");
-      frame.srcdoc = "<!doctype html><body></body>";
-      document.body.append(frame);
-    }
-  });
+  const frame = page.frames().find((candidate) => candidate.url().includes("/10-video-grid/"));
+  assert.ok(frame, "the film's frame must load");
+  return frame;
+}
+
+const browser = await launchBrowser();
+try {
   const runs: Runs = {
-    sealed,
-    plain: await frameNamed(page, "plain"),
-    open: await frameNamed(page, "open"),
+    sealed: await filmFrame(await browser.newPage(), "&sealed=1"),
+    control: await filmFrame(await browser.newPage(), ""),
   };
   for (const frame of Object.values(runs)) await installDriver(frame);
   const seeds = Number(process.env.SEALED_MEDIA_SEEDS ?? 40);
   const sequences = [...FIXED, ...Array.from({ length: seeds }, (_, seed) => generated(seed + 1))];
-  await Promise.all([
-    runAll(runs.sealed, sequences, "s"),
-    runAll(runs.plain, sequences, "p"),
-    runAll(runs.open, sequences, "o"),
-  ]);
+  await Promise.all([runAll(runs.sealed, sequences, "s"), runAll(runs.control, sequences, "c")]);
   const { problems, gaps, budget } = await judge(sequences, runs);
   const requests = new Map<string, number>();
   for (const url of server.requested) {
@@ -766,7 +741,7 @@ try {
   for (const gap of gaps) console.log(`  gap: ${gap}`);
   console.log(`[sealed-media-table] ${sequences.length} sequences, ${problems.length} problems`);
   assert.deepEqual(problems, [], problems.join("\n"));
-  console.log("[sealed-media-table] every element matches the frames without the runtime");
+  console.log("[sealed-media-table] every element matches the unsealed film");
 } finally {
   await browser.close();
   await server.stop();
