@@ -24,7 +24,8 @@ type Kind =
   | "down"
   | "outage"
   | "lapse"
-  | "lapseCors";
+  | "lapseCors"
+  | "slowNocors";
 type Source = { id: string; kind: Kind };
 type Step =
   | { do: "create"; el: number; sources: Source[]; attr?: true }
@@ -54,8 +55,9 @@ const KINDS: Kind[] = [
   "down",
   "lapse",
   "lapseCors",
+  "slowNocors",
 ];
-const PLAYABLE = new Set<Kind>(["cors", "nocors", "foreignCors", "foreignNocors"]);
+const PLAYABLE = new Set<Kind>(["cors", "nocors", "slowNocors", "foreignCors", "foreignNocors"]);
 // A host that fails some requests plays only if a later selection asks it again, as in unsealed Studio.
 const MAY_PLAY = new Set<Kind>([...PLAYABLE, "flaky", "outage", "lapse", "lapseCors"]);
 const SENDS_CORS = new Set<Kind>(["cors", "foreignCors", "flaky", "outage", "lapseCors"]);
@@ -290,19 +292,19 @@ const FIXED: Sequence[] = [
     }),
   ),
   {
-    name: "an own source without CORS, played",
+    name: "an own source without CORS on a slow host, played",
     rounds: [
       [
-        { do: "create", el: 0, sources: [own("r8b-a", "nocors")] },
+        { do: "create", el: 0, sources: [own("r8b-a", "slowNocors")] },
         { do: "play", el: 0, rate: 1 },
       ],
     ],
   },
   {
-    name: "an own src attribute without CORS, played",
+    name: "an own src attribute without CORS on a slow host, played",
     rounds: [
       [
-        { do: "create", el: 0, sources: [own("r8c-a", "nocors")], attr: true },
+        { do: "create", el: 0, sources: [own("r8c-a", "slowNocors")], attr: true },
         { do: "play", el: 0, rate: 1 },
       ],
     ],
@@ -347,6 +349,8 @@ function urlFor(source: Source, run: string): SourceAttrs {
       return { src: `${server.origin}${path("/fixtures-flaky")}&fail=1000` };
     case "outage":
       return { src: `${server.origin}${path("/fixtures-flaky")}&fail=2` };
+    case "slowNocors":
+      return { src: `${server.origin}${path("/fixtures-no-cors")}&delay=1500` };
     case "lapse":
       return { src: `${server.origin}${path("/fixtures-lapse")}` };
     case "lapseCors":

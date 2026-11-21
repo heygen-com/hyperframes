@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
  *   /fixtures/<name>/<file>            → fixture HTML + assets
  *   /fixtures-flaky/<name>/<file>      → as /fixtures/, but a 503 the first time each URL is asked (?fail=N: N times)
  *   /fixtures-lapse/<name>/<file>?id=… → a 503 until recover(id), then the file (CORS headers only with ?cors)
+ *   ...?delay=ms                        → the answer comes that much later
  *   ...?no-store                       → never cached, so every load reaches the server
  */
 
@@ -215,6 +216,8 @@ export function startServer(options: ServeOptions = {}): RunningServer {
 
       const served = /^\/(fixtures|fixtures-no-cors|fixtures-flaky|fixtures-lapse)\//.exec(path);
       const failed = failures.get(url.href) ?? 0;
+      const delay = Number(url.searchParams.get("delay") ?? 0);
+      if (served && delay > 0) await new Promise((wake) => setTimeout(wake, delay));
       const lapsed =
         served?.[1] === "fixtures-lapse" && !recovered.has(url.searchParams.get("id") ?? "");
       if (
