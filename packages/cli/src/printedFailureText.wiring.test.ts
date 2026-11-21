@@ -41,6 +41,7 @@ function printsToTerminal(call: ts.CallExpression): boolean {
   const target = call.expression.expression.getText();
   const method = call.expression.name.text;
   if (target === "console") return CONSOLE_PRINTS.has(method);
+  if (target === "clack.log") return true;
   return method === "write" && (target === "process.stderr" || target === "process.stdout");
 }
 
@@ -132,7 +133,8 @@ it("finds a caught failure printed as it came, directly or through a local name"
       "}",
       "work().catch((error) => process.stderr.write(String(error)));",
       "work().catch((error) => process.stderr.write(terminalLines(String(error))));",
+      "work().catch((error) => clack.log.warn(`Not saved: ${error.message}`));",
     ].join("\n"),
   );
-  expect(found).toEqual(["sample.ts:3", "sample.ts:7"]);
+  expect(found).toEqual(["sample.ts:3", "sample.ts:7", "sample.ts:9"]);
 });
