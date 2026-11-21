@@ -15,6 +15,7 @@ export default defineConfig({
     cli: "src/cli.ts",
     fontLocalizeCli: "src/fontLocalizeCli.ts",
     runtimeVersion: "src/runtimeVersion.ts",
+    compileCache: "src/compileCache.ts",
     hangReport: "src/hangReport.ts",
     warmCheck: "src/warmCheck.ts",
     warmCheckClient: "src/warmCheckClient.ts",

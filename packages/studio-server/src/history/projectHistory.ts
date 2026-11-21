@@ -298,11 +298,12 @@ async function inFirstCopySlot<T>(copy: () => Promise<T>): Promise<T> {
 /** Owed `ms` after its read starts; while queued, `ms` after the last first copy that finished. */
 function firstCopyOrOwed(copy: () => Promise<Copied>, ms: number) {
   let timer: NodeJS.Timeout | undefined;
+  let settled = false;
   let owe = () => {};
   const owed = new Promise<"changing">((resolve) => (owe = () => resolve("changing")));
   const restart = () => {
     clearTimeout(timer);
-    timer = setTimeout(owe, ms);
+    if (!settled) timer = setTimeout(owe, ms);
   };
   firstCopyProgress.add(restart);
   restart();
@@ -312,6 +313,7 @@ function firstCopyOrOwed(copy: () => Promise<Copied>, ms: number) {
     return copy();
   });
   const result = Promise.race([work, owed]).finally(() => {
+    settled = true;
     clearTimeout(timer);
     firstCopyProgress.delete(restart);
   });

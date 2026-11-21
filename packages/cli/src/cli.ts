@@ -34,7 +34,6 @@ for (const stream of [process.stdout, process.stderr]) {
 // We emit the worker entry next to cli.js (see tsup.config.ts) and tell
 // the pool where to find it via the published env-var override.
 import "./utils/hideChildConsoles.js";
-import "./utils/envProxyFetch.js";
 import "./utils/windowsExeSearch.js";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -713,8 +712,7 @@ async function executeCli(): Promise<void> {
       if (!typed || !error.result.presented) {
         const message = error instanceof Error ? error.message : String(error);
         const oneLine = error instanceof CliUsageError || isCittyUsageError(error);
-        const shown = oneLine ? terminalText : terminalLines;
-        console.error(shown(message));
+        console.error(oneLine ? terminalText(message) : terminalLines(message));
       }
       if (usage && error.hint) console.error(terminalText(error.hint));
     }

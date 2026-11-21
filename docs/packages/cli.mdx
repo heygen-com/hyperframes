@@ -53,7 +53,15 @@ the `timeline` edit commands use `--dir`.
 about files left out) print control characters in a repeated value as visible
 text such as `\x1b` and `\x07`, and keep the value on its line, with a line break
 shown as `\x0a`. [`capture`](#capture) does the same for its warnings and failure
-reason. The same lines show the Unicode marks that switch text direction
+reason. So do the notices that repeat the reason something went wrong: the
+`[studio]` lines of `preview`, the `Error:` line and its hint that `auth login`
+prints when sign-in is not set up, the `Browser close failed` and
+`Browser shutdown failed` lines, the port and `--remote-debugging-port` messages
+of `play` and `present`, and the notices about telemetry settings, project
+history, the received-files record, the media scan before a preview, the desktop
+app project file, render priority, a file approval that could not be saved and
+`HF_TOOL_CONTEXT` events.
+The same lines show the Unicode marks that switch text direction
 (U+202A to U+202E and U+2066 to U+2069) and the line and paragraph separators
 (U+2028 and U+2029) as visible text such as `\u202e`. Right-to-left letters, the
 marks U+200E, U+200F and U+061C, and the zero-width characters (U+200B to U+200D

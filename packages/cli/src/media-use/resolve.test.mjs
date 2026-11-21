@@ -8,8 +8,9 @@ import {
   existsSync,
   readdirSync,
   chmodSync,
+  symlinkSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { createServer } from "node:http";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
@@ -521,6 +522,90 @@ test("project manifest hit skips providers", () => {
   assert.equal(parsed.ok, true);
   assert.equal(parsed.id, "bgm_001");
   assert.equal(parsed._source, "cached");
+  cleanup();
+});
+
+// An Openverse sound recorded in the manifest under `path`, its file written at `file`.
+function recordedSound(path, file) {
+  appendRecord(
+    tmp,
+    makeRecord({
+      id: "sfx_001",
+      type: "sfx",
+      path,
+      provenance: {
+        provider: "openverse.audio",
+        license: "by",
+        credit: "Sam Sound",
+        source_url: "https://freesound.org/s/1/",
+        prompt: "whoosh",
+      },
+    }),
+  );
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, "outside bytes");
+}
+
+for (const [name, place] of [
+  [
+    "leaves the project through ..",
+    () => ["../outside/boom.mp3", join(tmp, "..", "outside", "boom.mp3")],
+  ],
+  [
+    "is absolute",
+    () => [join(tmp, "..", "outside", "boom.mp3"), join(tmp, "..", "outside", "boom.mp3")],
+  ],
+  [
+    "goes through a folder link out of the project",
+    () => {
+      mkdirSync(join(tmp, "assets"), { recursive: true });
+      mkdirSync(join(tmp, "..", "outside"), { recursive: true });
+      symlinkSync(join(tmp, "..", "outside"), join(tmp, "assets", "linked"), "dir");
+      return ["assets/linked/boom.mp3", join(tmp, "..", "outside", "boom.mp3")];
+    },
+  ],
+]) {
+  test(`a manifest record whose path ${name} is neither reused nor credited`, () => {
+    setup();
+    tmp = join(tmp, "proj");
+    mkdirSync(tmp);
+    try {
+      const [path, file] = place();
+      recordedSound(path, file);
+      const result = spawnResolve(
+        ["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"],
+        {
+          env: { HOME: tmp, PATH: tmp },
+          nodeArgs: openverseImport([OPENVERSE_BY_WHOOSH]),
+        },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.notEqual(parsed._source, "cached");
+      assert.notEqual(parsed.path, path);
+      assert.equal(readFileSync(file, "utf8"), "outside bytes");
+      assert.ok(!readFileSync(join(tmp, ".media/audio/sfx/CREDITS.md"), "utf8").includes(path));
+    } finally {
+      tmp = dirname(tmp);
+      cleanup();
+    }
+  });
+}
+
+test("a manifest record whose path is inside the project is reused and credited", () => {
+  setup();
+  recordedSound("assets/sfx/boom.mp3", join(tmp, "assets", "sfx", "boom.mp3"));
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
+    env: { HOME: tmp, PATH: tmp },
+    nodeArgs: openverseImport([]),
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout)._source, "cached");
+  assert.ok(
+    readFileSync(join(tmp, ".media/audio/sfx/CREDITS.md"), "utf8").includes(
+      "`assets/sfx/boom.mp3`: Sam Sound",
+    ),
+  );
   cleanup();
 });
 

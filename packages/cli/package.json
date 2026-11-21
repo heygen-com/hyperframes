@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.9.77",
+  "version": "0.9.79",
   "description": "Make videos with code and AI agents: write HTML, render MP4. Open source.",
   "keywords": [
     "ai-agents",
@@ -71,7 +71,7 @@
     "open": "^10.0.0",
     "postcss": "^8.5.8",
     "puppeteer-core": "^25.10.0",
-    "undici": "8.13.0",
+    "undici": "7.30.1",
     "yauzl": "^3.4.0"
   },
   "devDependencies": {
@@ -105,6 +105,6 @@
     "sharp": "^0.35.5"
   },
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=22"
   }
 }
