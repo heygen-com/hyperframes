@@ -52,17 +52,30 @@ const root = (s: Saved) =>
   `<div id="target" data-hf-id="target" class="clip box" data-start="${s.start}" data-duration="4" data-track-index="1" style="left: 100px; top: 100px"></div>` +
   `<div id="c" data-hf-id="c" class="clip box" data-start="0" data-duration="4" data-track-index="2" data-label="${s.label}" title="${s.title}" style="left: 0px; top: 500px"></div>` +
   `</div>`;
+/** A second GSAP script, so the file has no single script to re-run. */
+const SIDE = `window.__timelines = window.__timelines || {};
+  window.__timelines["side"] = gsap.timeline({ paused: true }).to("#c", { opacity: 0.5, duration: 4 }, 0);`;
+const scripts = (s: Saved, two: boolean) =>
+  `<script>${script(s)}</script>${two ? `<script>${SIDE}</script>` : ""}`;
 /** The saved file as Studio reads it; every element carries the `data-hf-id` Studio's server gives it. */
-const file = (s: Saved) => `<html><body>${root(s)}<script>${script(s)}</script></body></html>`;
+const file = (s: Saved, two = false) => `<html><body>${root(s)}${scripts(s, two)}</body></html>`;
 /** The saved file as the preview loads it. */
-const page = (s: Saved) =>
+const page = (s: Saved, two = false) =>
   `<!doctype html><html><head><meta charset="UTF-8" />${MARK}
   <style>html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden }
     #root { position: relative; width: 100%; height: 100% } .box { position: absolute; width: 200px; height: 200px }</style>
-  </head><body>${root(s)}<script>${GSAP}</script><script>${script(s)}</script><script>${RUNTIME}</script></body></html>`;
+  </head><body>${root(s)}<script>${GSAP}</script>${scripts(s, two)}<script>${RUNTIME}</script></body></html>`;
 
 // A label is restore-safe and applies in place; a title is not (restoreAttributes.ts), so the frame refuses it.
-type Save = "run" | "patch" | "retime" | "liveRetime" | "undoLabel" | "undoTitle" | "undoBoth";
+type Save =
+  | "run"
+  | "patch"
+  | "retime"
+  | "liveRetime"
+  | "undoLabel"
+  | "undoTitle"
+  | "undoBoth"
+  | "undoStart";
 type Step = SequenceStep<Save>;
 
 const next: Record<Save, (s: Saved, n: number) => Saved> = {
@@ -73,10 +86,11 @@ const next: Record<Save, (s: Saved, n: number) => Saved> = {
   undoLabel: (s) => ({ ...s, label: s.label === "a" ? "b" : "a" }),
   undoTitle: (s) => ({ ...s, title: s.title === "a" ? "b" : "a" }),
   undoBoth: (s) => ({ ...s, gen: s.gen + 1, title: s.title === "a" ? "b" : "a" }),
+  undoStart: (s) => ({ ...s, start: 1 - s.start }),
 };
 
 /** Sends `save` the way Studio does after writing the file from `before` to `after`. */
-function send(studioPage: Page, save: Save, before: Saved, after: Saved) {
+function send(studioPage: Page, save: Save, before: Saved, after: Saved, two: boolean) {
   return studioPage.evaluate(
     (kind, prev, saved, savedPage, x, text) => {
       const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
@@ -122,25 +136,25 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved) {
           w.__reload,
         );
       }
-      if (kind === "undoLabel" || kind === "undoTitle" || kind === "undoBoth") {
+      if (kind.startsWith("undo")) {
         const files = { "index.html": { previous: prev, restored: saved } };
         studio.applyUndoRestoreToPreview(iframe, null, files, time, w.__reload);
       }
     },
     save,
-    file(before),
-    file(after),
-    page(after),
+    file(before, two),
+    file(after, two),
+    page(after, two),
     after.x,
     script(after),
   );
 }
 
-const FIXTURE: SequenceFixture<Saved, Save> = {
+const fixture = (two: boolean): SequenceFixture<Saved, Save> => ({
   first: FIRST,
-  page,
+  page: (s) => page(s, two),
   next,
-  send,
+  send: (studioPage, save, before, after) => send(studioPage, save, before, after, two),
   at: 2,
   /** What a viewer sees: the script that ran, the clip timing, the label and title, and the tween's values. */
   read: (frame) =>
@@ -156,11 +170,15 @@ const FIXTURE: SequenceFixture<Saved, Save> = {
         y: Math.round(m.m42),
       };
     }),
-};
-const play = (steps: Step[], seed = 1) => playSequence(browser, studioBundle, FIXTURE, steps, seed);
+});
+const ONE_SCRIPT = fixture(false);
+const TWO_SCRIPTS = fixture(true);
+const play = (steps: Step[], seed = 1, two = false) =>
+  playSequence(browser, studioBundle, two ? TWO_SCRIPTS : ONE_SCRIPT, steps, seed);
 
 // The reviewer's sequences: the first and third are red without the fix; the second guards its class.
-const SEEDS: Array<[string, Step[]]> = [
+type Fixed = [string, Step[], { seed?: number; two?: boolean }?];
+const SEEDS: Fixed[] = [
   [
     "an undo of a script and a title the frame refuses, held past a newer script-only run",
     [
@@ -227,11 +245,117 @@ const SEEDS: Array<[string, Step[]]> = [
       { answer: "soft-reload" },
     ],
   ],
+  // The reviewer's round-9 probes, as written.
+  [
+    "two scripts: a refused patch, then an undo of data-start applied, then the patch's refusal",
+    [
+      { save: "patch", fate: "refused" },
+      { save: "undoStart", fate: "frame" },
+      { answer: "oldest" },
+      { answer: "patch-tweens" },
+    ],
+    { two: true },
+  ],
+  [
+    "an undo of a script and a title the frame refuses, and a newer run, both answered after the undo's deadline",
+    [
+      { save: "undoBoth", fate: "frame" },
+      { save: "run", fate: "frame" },
+      { pastDeadline: true },
+      { answer: "oldest" },
+      { answer: "oldest" },
+    ],
+  ],
+  // The round-8 generator's seeds that found a class without the fix, kept as it generated them: 50 a recovery
+  // dropping saved timing; 80 and 261 a recovery rewinding a newer scrub; 312, 147 and 377 a port rejection taken
+  // for a missing reply.
+  ...(
+    [
+      [
+        50,
+        [
+          { save: "undoLabel", fate: "frame" },
+          { answer: "any" },
+          { answer: "any" },
+          { scrub: 4 },
+          { save: "undoBoth", fate: "refused" },
+          { reloadFrame: true },
+          { save: "liveRetime", fate: "refused" },
+          { save: "patch", fate: "frame" },
+        ],
+      ],
+      [
+        80,
+        [
+          { scrub: 1 },
+          { save: "undoBoth", fate: "frame" },
+          { answer: "any" },
+          { save: "liveRetime", fate: "refused" },
+          { save: "run", fate: "frame" },
+          { save: "retime", fate: "frame" },
+          { scrub: 4 },
+          { save: "run", fate: "refused" },
+        ],
+      ],
+      [
+        261,
+        [
+          { scrub: 3 },
+          { scrub: 1 },
+          { save: "liveRetime", fate: "refused" },
+          { save: "retime", fate: "frame" },
+          { reloadFrame: true },
+          { save: "liveRetime", fate: "refused" },
+          { scrub: 3 },
+          { answer: "any" },
+        ],
+      ],
+      [
+        312,
+        [
+          { answer: "any" },
+          { scrub: 4 },
+          { reloadFrame: true },
+          { answer: "any" },
+          { reloadFrame: true },
+          { save: "liveRetime", fate: "rejected" },
+          { scrub: 4 },
+          { save: "run", fate: "frame" },
+        ],
+      ],
+      [
+        147,
+        [
+          { save: "patch", fate: "frame" },
+          { answer: "any" },
+          { scrub: 3 },
+          { save: "patch", fate: "frame" },
+          { answer: "any" },
+          { save: "undoBoth", fate: "rejected" },
+          { save: "liveRetime", fate: "frame" },
+          { save: "patch", fate: "rejected" },
+        ],
+      ],
+      [
+        377,
+        [
+          { save: "undoBoth", fate: "rejected" },
+          { answer: "any" },
+          { reloadFrame: true },
+          { save: "patch", fate: "frame" },
+          { answer: "any" },
+          { scrub: 4 },
+          { save: "undoBoth", fate: "rejected" },
+          { save: "liveRetime", fate: "refused" },
+        ],
+      ],
+    ] as Array<[number, Step[]]>
+  ).map(([seed, steps]): Fixed => [`round-8 seed ${seed}`, steps, { seed }]),
 ];
 
 describe("sealed preview after late answers in any order", () => {
-  it.each(SEEDS)("%s", async (name, steps) => {
-    const { shown, fresh, reloads, reloadRefusals, playhead } = await play(steps);
+  it.each(SEEDS)("%s", async (name, steps, { seed, two } = {}) => {
+    const { shown, fresh, reloads, reloadRefusals, playhead } = await play(steps, seed, two);
     expect(shown).toEqual(fresh);
     expect(playhead.shown).toBeCloseTo(playhead.studio, 1);
     if (reloadRefusals === 0) expect(reloads).toBe(0);
@@ -239,16 +363,8 @@ describe("sealed preview after late answers in any order", () => {
     if (name.includes("title")) expect(reloads).toBeGreaterThan(0);
   });
 
-  const SAVES: Save[] = [
-    "run",
-    "patch",
-    "retime",
-    "liveRetime",
-    "undoLabel",
-    "undoTitle",
-    "undoBoth",
-  ];
-  const FATES: SaveFate[] = ["frame", "frame", "refused", "rejected"];
+  const SAVES = Object.keys(next) as Save[];
+  const FATES: SaveFate[] = ["frame", "frame", "refused", "rejected", "never"];
   const SCRUBS = [1, 3, 4];
   const generated = (seed: number): Step[] => {
     let state = seed;
@@ -256,23 +372,23 @@ describe("sealed preview after late answers in any order", () => {
     const pick = <T>(list: T[]) => list[Math.floor(random() * list.length)]!;
     return Array.from({ length: 8 }, (): Step => {
       const roll = random();
-      if (roll < 0.07) return { reloadFrame: true };
-      if (roll < 0.17) return { scrub: pick(SCRUBS) };
+      if (roll < 0.06) return { reloadFrame: true };
+      if (roll < 0.14) return { scrub: pick(SCRUBS) };
+      if (roll < 0.2) return { pastDeadline: true };
       if (roll < 0.47) return { answer: "any" };
       return { save: pick(SAVES), fate: pick(FATES) };
     });
   };
   const base = Number(process.env.HF_ORDERING_SEED_BASE ?? 0);
-  // Seeds that found a class without the fix, run every time: 50 a recovery dropping saved timing; 80 and 261
-  // a recovery rewinding a newer scrub; 312, 147 and 377 a port rejection taken for a missing reply.
-  const PINNED = [50, 80, 261, 312, 147, 377];
-  const random = Array.from(
+  const seeds = Array.from(
     { length: Number(process.env.HF_ORDERING_SEEDS ?? 40) },
     (_, i) => base + i + 1,
-  ).filter((seed) => !PINNED.includes(seed));
-  it.each([...PINNED, ...random])("generated sequence %i", async (seed) => {
+  );
+  // Odd seeds play a file with two GSAP scripts, so no save has a single script to re-run.
+  it.each(seeds)("generated sequence %i", async (seed) => {
     const steps = generated(seed);
-    const { shown, fresh, reloads, reloadRefusals, playhead } = await play(steps, seed);
+    const two = seed % 2 === 1;
+    const { shown, fresh, reloads, reloadRefusals, playhead } = await play(steps, seed, two);
     expect({ steps, state: shown }).toEqual({ steps, state: fresh });
     // The preview's playhead stays where Studio last put it, within a frame.
     expect({

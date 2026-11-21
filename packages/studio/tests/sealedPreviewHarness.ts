@@ -55,6 +55,7 @@ function holdReplies() {
     __swallowed: Array<{ kind: string; answer: (result: unknown) => void }>;
     __posted: number;
     __rejecting: boolean;
+    __neverAnswer: boolean;
     __refusals: number;
   };
   w.__hold = false;
@@ -63,6 +64,7 @@ function holdReplies() {
   w.__swallowed = [];
   w.__posted = 0;
   w.__rejecting = false;
+  w.__neverAnswer = false;
   w.__refusals = 0;
   const own = Object.getOwnPropertyDescriptor(MessagePort.prototype, "onmessage")!;
   // A request of a swallowed kind never reaches the frame; the test answers it as the frame would.
@@ -76,6 +78,8 @@ function holdReplies() {
     if (typeof request?.id === "number") w.__posted++;
     if (typeof request?.id !== "number" || !w.__swallow.has(request.kind ?? ""))
       return post.call(this, data, ...rest);
+    // Never answered: only its deadline settles it.
+    if (w.__neverAnswer) return;
     const rejected = w.__rejecting;
     w.__swallowed.push({
       kind: request.kind!,

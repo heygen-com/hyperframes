@@ -4,12 +4,14 @@ import type { Browser, Frame, Page } from "puppeteer-core";
 import { openPreview, type Studio } from "./sealedPreviewHarness";
 
 /** A save reaches the frame, is refused by it, or is rejected by the port before the frame applies anything. */
-export type SaveFate = "frame" | "refused" | "rejected";
+export type SaveFate = "frame" | "refused" | "rejected" | "never";
 
 export type SequenceStep<Save extends string> =
   | { save: Save; fate: SaveFate }
   | { answer: "any" | "oldest" | "newest" | string }
   | { scrub: number }
+  /** The oldest request deadline still pending passes; a reply after it arrives too late. */
+  | { pastDeadline: true }
   | { reloadFrame: true };
 
 export interface SequenceFixture<Saved, Save extends string> {
@@ -74,6 +76,7 @@ async function openStudio(browser: Browser, bundle: string, first: string, at: n
       __saved: string;
       __reloads: number;
       __reload: () => void;
+      __refusals: number;
     };
     w.__hold = true;
     w.__saved = first;
@@ -81,6 +84,37 @@ async function openStudio(browser: Browser, bundle: string, first: string, at: n
     w.__reload = () => {
       w.__reloads++;
       document.querySelector("iframe")!.srcdoc = w.__saved;
+    };
+    // A deadline (4 s or more) fires only when a step or the drain says it passes, never on its own.
+    const deadlines = new Map<number, () => void>();
+    let nextDeadline = -1;
+    const set = window.setTimeout.bind(window);
+    const clear = window.clearTimeout.bind(window);
+    window.setTimeout = ((
+      handler: (...args: unknown[]) => void,
+      ms?: number,
+      ...args: unknown[]
+    ) => {
+      if (typeof ms !== "number" || ms < 4_000) return set(handler, ms, ...args);
+      const id = nextDeadline--;
+      deadlines.set(id, () => handler(...args));
+      return id;
+    }) as typeof window.setTimeout;
+    window.clearTimeout = ((id?: number) => {
+      if (id === undefined || !deadlines.delete(id)) clear(id);
+    }) as typeof window.clearTimeout;
+    (window as unknown as { __passDeadlines: (all: boolean) => number }).__passDeadlines = (
+      all,
+    ) => {
+      const due = all ? [...deadlines.keys()] : [...deadlines.keys()].slice(0, 1);
+      for (const id of due) {
+        const fire = deadlines.get(id)!;
+        deadlines.delete(id);
+        // A missed reply may leave nothing to recover in place.
+        w.__refusals++;
+        fire();
+      }
+      return due.length;
     };
     // A new load is shown at Studio's playhead, as the real preview's shadow reload shows it.
     window.addEventListener("message", (event) => {
@@ -184,7 +218,17 @@ const readPlayheads = (studioPage: Page, frame: Frame) =>
     ),
   ]).then(([shown, studio]) => ({ shown, studio }));
 
-/** Answers everything still pending, new recoveries included, until nothing is left and the frame is loaded. */
+const passDeadlines = (studioPage: Page, all: boolean) =>
+  studioPage.evaluate(
+    (every) =>
+      (window as unknown as { __passDeadlines: (all: boolean) => number }).__passDeadlines(every),
+    all,
+  );
+
+/**
+ * Answers everything still pending, new recoveries included, until nothing is left and the frame is loaded; then
+ * every deadline still pending passes, and it drains again.
+ */
 async function drain(studioPage: Page, frame: Frame, random: () => number) {
   await studioPage.evaluate(() => {
     (window as unknown as { __swallow: Set<string> }).__swallow = new Set();
@@ -193,7 +237,8 @@ async function drain(studioPage: Page, frame: Frame, random: () => number) {
     await ready(frame);
     await frame.evaluate(() => new Promise((done) => requestAnimationFrame(() => done(null))));
     const left = await pending(studioPage);
-    if (left.length === 0) quiet++;
+    if (left.length === 0 && quiet === 2 && (await passDeadlines(studioPage, true)) > 0) quiet = 0;
+    else if (left.length === 0) quiet++;
     else {
       quiet = 0;
       await answer(studioPage, Math.floor(random() * 1000), null);
@@ -234,9 +279,14 @@ export async function playSequence<Saved, Save extends string>(
       const after = fixture.next[step.save](saved, n);
       await studioPage.evaluate(
         (fate, kinds) => {
-          const w = window as unknown as { __swallow: Set<string>; __rejecting: boolean };
+          const w = window as unknown as {
+            __swallow: Set<string>;
+            __rejecting: boolean;
+            __neverAnswer: boolean;
+          };
           w.__swallow = new Set(fate === "frame" ? [] : kinds);
           w.__rejecting = fate === "rejected";
+          w.__neverAnswer = fate === "never";
         },
         step.fate,
         SAVE_KINDS,
@@ -255,6 +305,8 @@ export async function playSequence<Saved, Save extends string>(
         (window as unknown as { __swallow: Set<string> }).__swallow = new Set();
       });
       saved = after;
+    } else if ("pastDeadline" in step) {
+      await passDeadlines(studioPage, false);
     } else if ("scrub" in step) {
       await scrub(studioPage, frame, step.scrub);
     } else if ("reloadFrame" in step) {
