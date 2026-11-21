@@ -527,7 +527,8 @@ async function openLink(client, projectPath, record, id, share, audience) {
       expected_link_generation: share.link_generation,
       client_operation_id: randomUUID(),
     });
-  // A lost PATCH reply leaves the first share incomplete; a fresh explicit choice must still apply.
+  // Opens a first share. Unless the host confirmed this review, a retry after a lost reply reaches here only while
+  // the review is private or already has this audience (assertUnfinished).
   if (!record.opened) {
     share = await applyFirstAudience(client, id, share, audience);
     await writeJsonAtomic(recordPath(projectPath), { ...record, projectId: id, opened: true });
@@ -583,7 +584,8 @@ const SENTENCES = {
   review_subscription_required: "Restricted sharing requires a HyperFrames subscription.",
   review_public_consent_required: "Choose Share with anyone who has the link to continue.",
   review_entitlement_unavailable: "Couldn't confirm sharing availability. Try again.",
-  review_project_changed: "This project’s review changed. Reopen sharing and try again.",
+  review_project_changed:
+    "This project’s review changed. Reopen sharing and try again. If it keeps failing, remove .hyperframes/review.json to share this folder as a new review.",
   review_project_removed:
     "This review project was removed. Share again to create a new link and discussion.",
   moderation_hold: "This review was taken down for a policy violation, so it can't be shared.",

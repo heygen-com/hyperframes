@@ -117,8 +117,9 @@ export async function ensureModel(
   model: string = DEFAULT_MODEL,
   options?: { onProgress?: (message: string) => void },
 ): Promise<string> {
-  const url = MODEL_URLS[model];
-  const pin = MODEL_PINS[model];
+  const known = Object.hasOwn(MODEL_URLS, model) && Object.hasOwn(MODEL_PINS, model);
+  const url = known ? MODEL_URLS[model] : undefined;
+  const pin = known ? MODEL_PINS[model] : undefined;
   if (!url || !pin) {
     throw new Error(
       `Unknown TTS model: ${model}. Available: ${Object.keys(MODEL_URLS).join(", ")}`,

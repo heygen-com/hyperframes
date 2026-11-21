@@ -189,9 +189,10 @@ async function confirmNamedReview(
     input.confirmedReview = args.review;
     return;
   }
-  if (!changesNamedReview(current, input)) return;
-  if (!canAsk(args)) throw reviewConfirmationRequired(current);
-  await askToChangeReview(current);
+  if (changesNamedReview(current, input)) {
+    if (!canAsk(args)) throw reviewConfirmationRequired(current);
+    await askToChangeReview(current);
+  }
   input.confirmedReview = current.reviewId;
 }
 
