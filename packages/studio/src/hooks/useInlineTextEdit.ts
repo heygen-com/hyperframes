@@ -123,6 +123,21 @@ const PREVIEW_DID_NOT_ANSWER = "the preview did not answer";
 
 // The newest session per element: an older one that settles late must not write over it.
 const latestEdit = new WeakMap<HTMLElement, InlineTextEditSession>();
+const openSealedEdit = new WeakMap<HTMLElement, InlineTextEditSession>();
+const redrawsAfter = new WeakMap<InlineTextEditSession, Array<() => void>>();
+
+/** Runs a saved text's redraw now, or once the sealed edit open on its element settles, which owns what shows. */
+export function redrawAfterInlineEdit(element: HTMLElement, redraw: () => void): void {
+  const open = openSealedEdit.get(element);
+  if (!open) return redraw();
+  redrawsAfter.set(open, [...(redrawsAfter.get(open) ?? []), redraw]);
+}
+
+function sealedEditSettled(open: InlineTextEditSession): void {
+  if (openSealedEdit.get(open.element) === open) openSealedEdit.delete(open.element);
+  redrawsAfter.get(open)?.forEach((redraw) => redraw());
+  redrawsAfter.delete(open);
+}
 
 function frameGone(open: InlineTextEditSession, keep: boolean, onLost?: (reason: string) => void) {
   const { sealed, original } = open;
@@ -222,6 +237,7 @@ export function useInlineTextEdit({
         const open = { element, original: "", outline: "", outlineOffset: "", sealed };
         openRef.current = open;
         latestEdit.set(element, open);
+        openSealedEdit.set(element, open);
         setSession(open);
         onPause?.();
         sealed.iframe.focus();
@@ -231,6 +247,7 @@ export function useInlineTextEdit({
           if (reply?.applied) open.original = reply.previous ?? "";
           else {
             teardown();
+            sealedEditSettled(open);
             if (reply === null) endWithOriginal(sealed);
           }
         });
@@ -294,7 +311,7 @@ export function useInlineTextEdit({
           void editPreviewElement(sealed.iframe, sealed.handle, back);
         }
       });
-      return trackStudioPendingEdit(ended);
+      return trackStudioPendingEdit(ended.finally(() => sealedEditSettled(open)));
     },
     [onCommit, onLost],
   );
@@ -344,10 +361,11 @@ export function useInlineTextEdit({
     const stopEnded = previewEditingClient(sealed.iframe).onTextEditEnded((ended) => {
       if (openRef.current !== session || ended.handle !== sealed.handle) return;
       teardown();
-      if (ended.html === null) return endWithOriginal(sealed);
       const kept = keptMarkup(ended);
-      if (kept)
+      if (ended.html === null) endWithOriginal(sealed);
+      else if (kept)
         trackStudioPendingEdit(Promise.resolve(onCommit({ element: session.element, ...kept })));
+      sealedEditSettled(session);
     });
     return () => {
       stopEnded();

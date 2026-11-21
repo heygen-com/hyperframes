@@ -37,6 +37,17 @@ export interface DomEditCommitVersionGuard {
   release: () => void;
 }
 
+/** Claims `key` for a commit numbered before its first await; one below the key's kept last claim is stale. */
+export function claimDomEditCommitInOrder<TKey>(
+  claims: Map<TKey, number>,
+  key: TKey,
+  begun: number,
+): (() => boolean) | null {
+  if ((claims.get(key) ?? 0) > begun) return null;
+  claims.set(key, begun);
+  return () => claims.get(key) === begun;
+}
+
 export function bumpDomEditCommitMapVersion<TKey>(
   versionMap: Map<TKey, symbol>,
   versionKey: TKey,

@@ -23,6 +23,7 @@ import { buildNextDomTextFields, planDomTextCommit } from "./domEditTextCommitPl
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import {
   bumpDomEditCommitMapVersion,
+  claimDomEditCommitInOrder,
   domEditCommitDeclined,
   runDomEditCommit,
   runReportedDomEditCommit,
@@ -38,7 +39,7 @@ import {
   type PreviewElementEdit,
 } from "../player/lib/previewElements";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
-import type { InlineTextEditCommit } from "./useInlineTextEdit";
+import { redrawAfterInlineEdit, type InlineTextEditCommit } from "./useInlineTextEdit";
 import type { UseDomSelectionReturn } from "./useDomSelectionTypes";
 
 // ── Types ──
@@ -189,6 +190,8 @@ export function useDomEditTextCommits({
   const latestSelectionRef = useRef(domEditSelection);
   latestSelectionRef.current = domEditSelection;
   const domTextCommitVersionRef = useRef(new Map<string, symbol>());
+  const richTextBegunRef = useRef(0);
+  const richTextClaimsRef = useRef(new Map<string, number>());
   const domStyleCommitVersionRef = useRef(new Map<string, symbol>());
 
   const {
@@ -319,6 +322,7 @@ export function useDomEditTextCommits({
    */
   const handleDomRichTextCommit = useCallback(
     async ({ element, html, previousHtml }: InlineTextEditCommit) => {
+      const begun = ++richTextBegunRef.current;
       const sealed = previewStandIn(element);
       const putBack = () => {
         if (sealed) {
@@ -338,22 +342,22 @@ export function useDomEditTextCommits({
         ? await sealedInlineTextSelection(element, sealed, buildDomSelectionFromTarget)
         : await liveInlineTextSelection(element, doc, buildDomSelectionFromTarget);
       if (typeof selection === "string") return refuse(selection);
-      const isLatestTextCommit = bumpDomEditCommitMapVersion(
-        domTextCommitVersionRef.current,
-        getDomEditTargetKey(selection),
-      );
+      const targetKey = getDomEditTargetKey(selection);
+      const inOrder = claimDomEditCommitInOrder(richTextClaimsRef.current, targetKey, begun);
+      if (!inOrder) return;
+      const latestOfKind = bumpDomEditCommitMapVersion(domTextCommitVersionRef.current, targetKey);
+      const isLatestTextCommit = () => inOrder() && latestOfKind();
       const operations = [buildDomEditRichTextPatchOperation(html)];
       let appliedHtml = "";
+      let redrawn: Promise<boolean> = Promise.resolve(true);
+      const showSavedOverOriginal = () =>
+        sealed && editPreviewElement(sealed.iframe, sealed.handle, { html, expect: previousHtml });
 
       await runDomEditCommit({
         capture: () => {},
         apply: () => {
-          // A frame showing the original (a re-added node) is set to the saved text; any other markup is left.
-          if (sealed)
-            return void editPreviewElement(sealed.iframe, sealed.handle, {
-              html,
-              expect: previousHtml,
-            });
+          const drawing = showSavedOverOriginal();
+          if (drawing) return void (redrawn = drawing.drawn);
           // Idempotent: the caret put this there. Assigned anyway so a commit
           // raised from anywhere but the element itself still lands.
           element.innerHTML = html;
@@ -366,6 +370,12 @@ export function useDomEditTextCommits({
             shouldSave: isLatestTextCommit,
           });
           if (result?.changed) trackPreviewFeatureUsed("text_edit", "field");
+          // A redraw refused under a newer open edit is that edit's to show once it settles.
+          if (sealed && isLatestTextCommit())
+            void redrawn.then(
+              (drawn) =>
+                drawn || redrawAfterInlineEdit(element, () => void showSavedOverOriginal()),
+            );
         },
         shouldRevert: () => isLatestTextCommit(),
         revert: () => {
@@ -389,7 +399,7 @@ export function useDomEditTextCommits({
                 buildDomSelectionFromTarget,
                 applyDomSelection,
               ),
-        onFinally: isLatestTextCommit.release,
+        onFinally: latestOfKind.release,
       });
     },
     [
