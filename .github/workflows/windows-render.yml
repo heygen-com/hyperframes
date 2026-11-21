@@ -8,13 +8,13 @@ on:
 
 jobs:
   probe:
-    name: "watchdog at ${{ matrix.sha }}"
+    name: "reaper ${{ matrix.code }}"
     runs-on: windows-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        sha: [003a83281a3, a730d6b9267]
+        code: [main, fix]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -22,7 +22,10 @@ jobs:
           fetch-depth: 0
       - name: Check out the commit under test
         shell: pwsh
-        run: git checkout ${{ matrix.sha }}
+        run: |
+          git checkout c8f24de87b2
+          if ("${{ matrix.code }}" -eq "main") { git checkout origin/main -- packages/cli/src/utils/childReaper.ts }
+          git status --short
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
