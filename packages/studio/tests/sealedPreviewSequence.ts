@@ -82,6 +82,23 @@ async function openStudio(browser: Browser, bundle: string, first: string, at: n
       w.__reloads++;
       document.querySelector("iframe")!.srcdoc = w.__saved;
     };
+    // A new load is shown at Studio's playhead, as the real preview's shadow reload shows it.
+    window.addEventListener("message", (event) => {
+      const iframe = document.querySelector("iframe")!;
+      const data = event.data as { source?: string; type?: string } | null;
+      if (
+        event.source !== iframe.contentWindow ||
+        data?.source !== "hf-preview" ||
+        data.type !== "ready"
+      )
+        return;
+      const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+      const timeSeconds = studio.usePlayerStore.getState().currentTime;
+      iframe.contentWindow!.postMessage(
+        { source: "hf-parent", type: "control", action: "seek", timeSeconds },
+        "*",
+      );
+    });
   }, first);
   return preview;
 }
@@ -136,8 +153,27 @@ async function scrub(studioPage: Page, frame: Frame, at: number) {
   await seekTo(studioPage, frame, 0, at);
 }
 
-/** Where the preview's playhead is, and where Studio thinks it is. */
-const playheads = (studioPage: Page, frame: Frame) =>
+/** Where the preview's playhead is, and where Studio thinks it is, once a pending seek has had time to land. */
+const playheads = async (studioPage: Page, frame: Frame) => {
+  const studio = await studioPage.evaluate(
+    () =>
+      (window as unknown as { hfStudio: Studio }).hfStudio.usePlayerStore.getState().currentTime,
+  );
+  await frame
+    .waitForFunction(
+      (t) =>
+        Math.abs(
+          (window as unknown as { __player: { getTime(): number } }).__player.getTime() - t,
+        ) <
+        1 / 30,
+      { timeout: 1_000 },
+      studio,
+    )
+    .catch(() => {});
+  return readPlayheads(studioPage, frame);
+};
+
+const readPlayheads = (studioPage: Page, frame: Frame) =>
   Promise.all([
     frame.evaluate(() =>
       (window as unknown as { __player: { getTime(): number } }).__player.getTime(),
