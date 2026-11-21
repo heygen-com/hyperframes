@@ -14,7 +14,7 @@ Or use directly with npx:
 npx hyperframes <command>
 ```
 
-**Requirements:** Node.js >= 22.19, FFmpeg
+**Requirements:** Node.js >= 22, FFmpeg
 
 ## Commands
 

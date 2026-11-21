@@ -1,5 +1,4 @@
 import "./utils/hideChildConsoles.js";
-import "./utils/envProxyFetch.js";
 import "./utils/windowsExeSearch.js";
 import { readFile, rm } from "node:fs/promises";
 import { constants, setPriority } from "node:os";

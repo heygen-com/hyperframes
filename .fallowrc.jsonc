@@ -72,7 +72,6 @@
     "packages/cli/src/warmCheckClient.fixture.ts",
     "packages/cli/src/browser/chromeOrphans.fixture.ts",
     "packages/cli/src/capture/publicNetwork.fixture.ts",
-    "packages/cli/src/registry/envProxy.fixture.ts",
     "packages/cli/src/utils/commandResult.fixture.ts",
     "packages/studio-server/src/routes/recoveryDrafts.fixture.ts",
     // Test fixture worker, spawned by path via the pools' workerEntryPath
