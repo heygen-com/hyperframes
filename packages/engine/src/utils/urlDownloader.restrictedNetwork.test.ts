@@ -7,9 +7,9 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import { createServer as createHttpsServer } from "node:https";
+import { createSecureServer, type Http2SecureServer } from "node:http2";
 import { getCACertificates, setDefaultCACertificates } from "node:tls";
-import { connect, isIP, type AddressInfo, type LookupFunction } from "node:net";
+import { connect, isIP, type AddressInfo, type LookupFunction, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -75,13 +75,13 @@ import { downloadToTemp, fetchPublicHttpsText, UrlDownloadError } from "./urlDow
 
 type Route = { status: number; headers?: Record<string, string>; body?: string | Buffer };
 let routes: Record<string, Route | "drop"> = {};
-let received: Array<{ url: string; headers: IncomingHttpHeaders }> = [];
+let received: Array<{ url: string; headers: IncomingHttpHeaders; httpVersion: string }> = [];
 const BODY = "\u0000\u0001asset-bytes";
 let server: Server;
 
 function serveRoute(req: IncomingMessage, res: ServerResponse): void {
   const url = `https://${req.headers.host}${req.url}`;
-  received.push({ url, headers: req.headers });
+  received.push({ url, headers: req.headers, httpVersion: req.httpVersion });
   const found = routes[url];
   if (found === "drop") return void req.socket.destroy();
   if (!found) return void res.writeHead(599).end();
@@ -297,7 +297,8 @@ describe("downloads on a render service through the egress proxy in HYPERFRAMES_
   const DROPPED = "gone.egress-assets.com";
   const tunnels: string[] = [];
   const defaultCAs = getCACertificates("default");
-  let origin: Server;
+  let origin: Http2SecureServer;
+  const originSockets = new Set<Socket>();
   let egress: Server;
 
   beforeAll(async () => {
@@ -312,7 +313,11 @@ describe("downloads on a render service through the egress proxy in HYPERFRAMES_
       ],
     });
     setDefaultCACertificates([...defaultCAs, cert]);
-    origin = createHttpsServer({ key, cert }, serveRoute);
+    // Offers HTTP/2 as well, so a client that would negotiate it shows up in received[].httpVersion.
+    origin = createSecureServer({ key, cert, allowHTTP1: true }, (req, res) =>
+      serveRoute(req as unknown as IncomingMessage, res as unknown as ServerResponse),
+    );
+    origin.on("secureConnection", (socket: Socket) => originSockets.add(socket));
     await new Promise<void>((resolve) => origin.listen(0, "127.0.0.1", resolve));
     const originPort = (origin.address() as AddressInfo).port;
     egress = createServer();
@@ -331,7 +336,7 @@ describe("downloads on a render service through the egress proxy in HYPERFRAMES_
   afterAll(async () => {
     setDefaultCACertificates(defaultCAs);
     egress.closeAllConnections();
-    origin.closeAllConnections();
+    for (const socket of originSockets) socket.destroy();
     await Promise.all([egress, origin].map((s) => new Promise((resolve) => s.close(resolve))));
   });
   beforeEach(() => {
@@ -357,6 +362,7 @@ describe("downloads on a render service through the egress proxy in HYPERFRAMES_
     expect(tunnels).toEqual([`${HOST}:443`]);
     expect(received[0]?.headers["user-agent"]).toBeTruthy();
     expect(received[0]?.headers.accept).toBe("*/*");
+    expect(received[0]?.httpVersion).toBe("1.1");
     expect(mocks.resolve4).not.toHaveBeenCalled();
     expect(mocks.lookup).not.toHaveBeenCalled();
   });
