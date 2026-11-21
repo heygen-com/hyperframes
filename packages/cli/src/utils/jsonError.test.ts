@@ -138,3 +138,29 @@ describe("failCaught", () => {
     ]);
   });
 });
+
+describe("printFailureLine", () => {
+  // fails without the fix: a --json run's error message was built from the line as people see it.
+  it("shows control characters as text and leaves the text as given for a --json envelope", async () => {
+    const saved = {
+      out: process.stdout.write,
+      err: process.stderr.write,
+      console: { ...console },
+    };
+    const shown: string[] = [];
+    console.error = (...args: unknown[]) => void shown.push(args.map(String).join(" "));
+    try {
+      const { printFailureLine, watchOutput } = await import("./jsonError.js");
+      const output = watchOutput();
+      printFailureLine((show) => `File not found: ${show("mis\u0007sing.wav")}`);
+      expect(shown).toEqual(["File not found: mis\\x07sing.wav"]);
+      expect(output.stderrText()).toBe("File not found: mis\u0007sing.wav");
+      console.error("later a\u0007b");
+      expect(output.stderrText()).toContain("later a\u0007b");
+    } finally {
+      process.stdout.write = saved.out;
+      process.stderr.write = saved.err;
+      Object.assign(console, saved.console);
+    }
+  });
+});

@@ -1,4 +1,4 @@
-import { terminalText } from "@hyperframes/core";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -137,7 +137,7 @@ export default defineCommand({
         setCommandExitCode(1);
         return;
       }
-      console.error(message);
+      console.error(terminalLines(message));
       setCommandExitCode(1);
     }
   },

@@ -31,6 +31,7 @@ import type {
 } from "@hyperframes/aws-lambda/sdk";
 import type { CanvasResolution, DistributedFps } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { errorBox } from "../../ui/format.js";
 import {
   loadProjectVariableSchema,
@@ -246,14 +247,14 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
       expectedBucketOwner: parseStateMachineArn(stack.stateMachineArn).account,
       region: stack.region,
       includeOutsideFiles: args.includeOutsideFiles,
-      onNotice: (message) => console.error(c.dim(message)),
+      onNotice: (message) => console.error(c.dim(terminalLines(message))),
     });
     if (!args.json) {
       console.log(
         c.success(
           siteHandle.uploaded
-            ? `Site uploaded once for the batch: ${siteHandle.siteId}`
-            : `Site already up to date (skipped upload): ${siteHandle.siteId}`,
+            ? `Site uploaded once for the batch: ${terminalText(siteHandle.siteId)}`
+            : `Site already up to date (skipped upload): ${terminalText(siteHandle.siteId)}`,
         ),
       );
       console.log();
@@ -338,9 +339,11 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
           : c.error("✗");
     const detail =
       row.status === "failed-to-start"
-        ? c.error(row.error ?? "unknown error")
-        : (row.executionArn ?? c.dim("(no execution)"));
-    console.log(`  ${tag} line ${row.inputLine}  ${c.dim(row.outputKey)}  ${detail}`);
+        ? c.error(terminalLines(row.error ?? "unknown error"))
+        : row.executionArn
+          ? terminalText(row.executionArn)
+          : c.dim("(no execution)");
+    console.log(`  ${tag} line ${row.inputLine}  ${c.dim(terminalText(row.outputKey))}  ${detail}`);
   }
   if (failed > 0) setCommandExitCode(1);
 }

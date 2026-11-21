@@ -7,7 +7,6 @@ import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
   AFTER_FONTS_SCRIPT_TYPE,
-  addScenePartsManifest,
   RUNTIME_BOOTSTRAP_ATTR,
   insertBeforeCloseTag,
   insertRuntimeTag,
@@ -53,6 +52,7 @@ import { openRangeEnd } from "../helpers/mediaRange.js";
 import { hasBaseElement } from "../helpers/subComposition.js";
 import {
   runOffThread,
+  ROOT_PREVIEW_DEADLINE_MS,
   SUB_COMPOSITION_DEADLINE_MS,
   SubCompositionDeadlineError,
   withinDeadline,
@@ -74,11 +74,7 @@ import {
 } from "../helpers/studioMotionRenderScript.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { settledFileTag } from "../helpers/fileVersion.js";
-import {
-  recordPreviewBuilt,
-  recordPreviewRead,
-  recordPreviewReferences,
-} from "../helpers/previewReads.js";
+import { recordPreviewBuilt, recordPreviewRead } from "../helpers/previewReads.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { injectPreviewVariables } from "../helpers/previewVariables.js";
 import {
@@ -483,7 +479,7 @@ export const PREVIEW_BUNDLE_OPTIONS = {
 const previewBaseHref = (projectId: string) =>
   `/api/projects/${encodeURIComponent(projectId)}/preview/`;
 
-const withPreviewBase = (html: string, projectId: string) => {
+export const withPreviewBase = (html: string, projectId: string) => {
   const base = previewBaseHref(projectId);
   const mapped = withRootImportMap(withRootPathsRelative(html, base), base);
   return hasBaseElement(mapped) ? mapped : injectTagsAtHeadStart(mapped, `<base href="${base}">`);
@@ -559,20 +555,42 @@ export function registerPreviewRoutes(
         mainCompositionPath = diskMain.compositionPath;
       }
       // <base> and root paths under it, before the runtime adds the server's own root path
-      bundled = withPreviewRuntime(withPreviewBase(bundled, project.id), adapter.runtimeUrl);
-      recordPreviewReferences(project.dir, bundled);
+      const rootDeadline = performance.now() + ROOT_PREVIEW_DEADLINE_MS;
+      const based = await runOffThread(
+        { kind: "base", html: bundled, projectId: project.id, runtimeUrl: adapter.runtimeUrl },
+        rootDeadline,
+        mainCompositionPath,
+      );
+      bundled = based.html;
+      for (const path of based.references) recordPreviewRead(project.dir, path);
       recordPreviewBuilt(project.dir);
 
-      // Also covers elements the adapter injected; ids already present are kept.
-      bundled = injectStudioPreviewAugmentations(
-        ensureHfIds(await transformPreviewHtml(bundled, adapter, project, mainCompositionPath)),
-        adapter.runtimeUrl,
-        signature,
-        project.dir,
+      // The passes that parse the page run on the build worker (a capture page builds while a film plays); the
+      // host's transform and the media probes stay here.
+      const transformed = await transformPreviewHtml(
+        bundled,
+        adapter,
+        project,
         mainCompositionPath,
-        { capture, gsapBaseUrl, sandboxedCapture: sandboxThumbnailCaptures },
       );
-      if (previewVariables) bundled = injectPreviewVariables(bundled, previewVariables);
+      const options = { capture, gsapBaseUrl, sandboxedCapture: sandboxThumbnailCaptures };
+      const job = {
+        runtimeUrl: adapter.runtimeUrl,
+        signature,
+        projectDir: project.dir,
+        compPath: mainCompositionPath,
+      };
+      bundled = await runOffThread(
+        {
+          kind: "finish",
+          html: transformed,
+          ...job,
+          options,
+          ...(previewVariables && { variables: previewVariables }),
+        },
+        rootDeadline,
+        mainCompositionPath,
+      );
       bundled = await injectMediaCodecMap(
         bundled,
         adapter,
@@ -580,7 +598,12 @@ export function registerPreviewRoutes(
         mainCompositionPath,
         mediaCodecProbeCache,
       );
-      bundled = addScenePartsManifest(bundled, [`meta[name="${PROJECT_SIGNATURE_META}"]`]);
+      const ignore = [`meta[name="${PROJECT_SIGNATURE_META}"]`];
+      bundled = await runOffThread(
+        { kind: "parts", html: bundled, ignore },
+        rootDeadline,
+        mainCompositionPath,
+      );
       if ((await createProjectSignatureAsync(project.dir)) === signature) {
         rememberPreview(builtKey, bundled);
         if (!capture) adapter.previewDocuments?.write(builtKey, bundled);
@@ -588,6 +611,7 @@ export function registerPreviewRoutes(
       return bundled;
     } catch (error) {
       if (isCompositionTooLargeError(error)) return previewRefusalPage(error.message);
+      console.warn("[Studio] preview build failed, building from the saved file:", error);
       // Re-read disk on bundle failure so we serve the latest file content,
       // not the pre-request snapshot that may have been saved over.
       const fallback = resolveProjectMainHtml(project.dir, project.id);

@@ -166,7 +166,7 @@ export default defineCommand({
       credential = await resolvePublishCredential();
     } catch (err: unknown) {
       console.error();
-      console.error(`  ${(err as Error).message}`);
+      console.error(`  ${terminalLines((err as Error).message)}`);
       console.error();
       setCommandExitCode(1);
       return;
@@ -225,7 +225,7 @@ export default defineCommand({
           args.public === true ? "" : " and keeps its current visibility, which may be public";
         const created = args.public === true ? "public" : "private";
         console.log(
-          `  ${c.bold(`If you can access project ${existingTarget}, this updates it in place${keeps}. Otherwise it creates a new ${created} project.`)}`,
+          `  ${c.bold(`If you can access project ${terminalText(existingTarget)}, this updates it in place${keeps}. Otherwise it creates a new ${created} project.`)}`,
         );
       }
       console.log();
@@ -247,7 +247,7 @@ export default defineCommand({
     // user knows a re-publish updates that same link (when logged in).
     if (priorLink?.url) {
       console.log();
-      console.log(`  ${c.dim(`Previously published at ${priorLink.url}`)}`);
+      console.log(`  ${c.dim(`Previously published at ${terminalText(priorLink.url)}`)}`);
     }
 
     clack.intro(c.bold("hyperframes publish"));
@@ -297,7 +297,7 @@ export default defineCommand({
       const archive = zipPublishFileMap(fileMap);
       if (outsideFiles.length > 0) {
         publishSpinner.stop("Project prepared");
-        clack.log.info(outsideFilesNotice(outsideFiles));
+        clack.log.info(terminalLines(outsideFilesNotice(outsideFiles)));
         publishSpinner.start("Uploading project...");
       } else {
         publishSpinner.message("Uploading project...");
@@ -371,7 +371,7 @@ export default defineCommand({
             const file = writeTeamProject(dir, { projectId: published.projectId, spaceId });
             console.log();
             console.log(
-              `  ${c.dim(`Wrote ${relative(dir, file) || file} — commit it so your team publishes to this link.`)}`,
+              `  ${c.dim(`Wrote ${terminalText(relative(dir, file) || file)} — commit it so your team publishes to this link.`)}`,
             );
           } catch {
             // Convenience file only; never shadow a successful publish with a local write failure.
@@ -381,7 +381,9 @@ export default defineCommand({
       } else {
         const claimUrl = new URL(published.url);
         claimUrl.searchParams.set("claim_token", published.claimToken);
-        console.log(`  ${c.dim("Claim URL")}  ${c.accent(cliSourced(claimUrl.toString()))}`);
+        console.log(
+          `  ${c.dim("Claim URL")}  ${c.accent(terminalText(cliSourced(claimUrl.toString())))}`,
+        );
         console.log(`  ${c.dim("Access")}     ${c.accent("Sign in required to claim")}`);
         console.log();
         console.log(

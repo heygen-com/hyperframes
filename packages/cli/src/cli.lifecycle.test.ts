@@ -475,6 +475,39 @@ describe("CLI lifecycle", () => {
     }
   });
 
+  // fails without the fix: the envelope's message was the line as people see it, escapes included.
+  it("answers a --json run for a missing file with the file's name as given", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let answered = "";
+    const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+      answered += String(chunk);
+      return true;
+    }) as never);
+    const missing = join(tmpdir(), "hf-mis\u0007sing.wav");
+    try {
+      mockTelemetry();
+      process.argv = ["node", "cli.ts", "transcribe", missing, "--json"];
+      await import("./cli.js");
+
+      const said = errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+      expect(said).toContain("hf-mis\\x07sing.wav");
+      expect(said).not.toContain("\u0007");
+      const body = JSON.parse(answered.trim().split("\n").at(-1) ?? "") as {
+        ok: boolean;
+        error: { message: string };
+      };
+      expect(body.ok).toBe(false);
+      expect(process.exitCode).toBe(1);
+      expect(body.error.message).toBe(`File not found: ${missing}`);
+      expect(body.error.message).not.toContain("\\x07");
+    } finally {
+      outSpy.mockRestore();
+      errorSpy.mockRestore();
+      exitSpy.mockRestore();
+    }
+  });
+
   it("exits 1 and scores a failure when the pipe closes before the run delivered", async () => {
     const trackCommandResult = vi.fn();
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
