@@ -278,6 +278,25 @@ it("saves a sealed rich text commit and puts the frame's text back when the save
   await vi.waitFor(() => expect(title.innerHTML).toBe(ORIGINAL));
 });
 
+it("shows the saved text when the frame put the original back before the save, as on a removed and re-added node", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  const persist = vi.fn<PersistDomEditOperations>(async () => undefined);
+  expect(title.innerHTML).toBe(ORIGINAL);
+  await textCommits(iframe, selection, persist)(selection.element, "Typed");
+  expect(persist).toHaveBeenCalledOnce();
+  await settled(iframe, selection);
+  expect(title.innerHTML).toBe("Typed");
+});
+
+it("leaves the frame alone when it already shows something other than the original", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  const persist = vi.fn<PersistDomEditOperations>(async () => undefined);
+  title.innerHTML = "Newer";
+  await textCommits(iframe, selection, persist)(selection.element, "Typed");
+  await settled(iframe, selection);
+  expect(title.innerHTML).toBe("Newer");
+});
+
 it("saves a sealed edit whose selection was cleared or moved before the frame's reply", async () => {
   const { title, iframe, selection } = await sealedTitle();
   for (const current of [null, await select(iframe, "other")]) {

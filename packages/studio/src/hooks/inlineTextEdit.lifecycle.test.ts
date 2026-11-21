@@ -27,40 +27,81 @@ const nextTask = () => new Promise((resolve) => setTimeout(resolve));
 interface Title {
   target: HTMLElement;
   shown: HTMLElement;
-  /** What Chrome does when a focused element leaves the document (checked in Chrome 155). */
   remove: () => void;
   putBack: () => void;
   silenceEnds?: () => void;
+  holdEndReplies?: () => () => void;
   frameReloads?: () => void;
+  /** Observers on the live element's document that are still connected. */
+  watching?: () => number;
 }
 
 function liveTitle(): Title {
   const frame = document.createElement("iframe");
   document.body.append(frame);
   frame.contentDocument!.body.innerHTML = `<h1 id="title">Hello</h1>`;
-  const shown = frame.contentDocument!.getElementById("title")!;
-  const remove = () => {
-    shown.remove();
-    shown.dispatchEvent(new FocusEvent("blur"));
+  const doc = frame.contentDocument!;
+  const shown = doc.getElementById("title")!;
+  const open = new Set<MutationObserver>();
+  const { observe, disconnect } = MutationObserver.prototype;
+  const watch = vi
+    .spyOn(MutationObserver.prototype, "observe")
+    .mockImplementation(function (this: MutationObserver, target, options) {
+      if (target === doc) open.add(this);
+      return observe.call(this, target, options);
+    });
+  const unwatch = vi
+    .spyOn(MutationObserver.prototype, "disconnect")
+    .mockImplementation(function (this: MutationObserver) {
+      open.delete(this);
+      return disconnect.call(this);
+    });
+  cleanups.push(() => (watch.mockRestore(), unwatch.mockRestore()));
+  return {
+    target: shown,
+    shown,
+    remove: () => shown.remove(),
+    putBack: () => doc.body.append(shown),
+    watching: () => open.size,
   };
-  return { target: shown, shown, remove, putBack: () => frame.contentDocument!.body.append(shown) };
 }
 
 async function sealedTitle(): Promise<Title> {
   document.body.innerHTML = `<h1 id="title">Hello</h1>`;
   const shown = document.getElementById("title")!;
   let answersEnd = true;
+  let holding: MessageEvent[] | null = null;
+  const ends = new Set<unknown>();
   const { iframe } = sealedPreviewFrame({
     wrapHandedOverPort: (port) => {
       const send = port.postMessage.bind(port);
       port.postMessage = (data: unknown) => {
-        const message = data as { kind?: string; params?: { action?: string } };
-        if (!answersEnd && message.kind === "text-edit" && message.params?.action === "end") return;
+        const message = data as { id?: unknown; kind?: string; params?: { action?: string } };
+        const end = message.kind === "text-edit" && message.params?.action === "end";
+        if (end) ends.add(message.id);
+        if (!answersEnd && end) return;
         send(data);
+      };
+      const accessor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(port), "onmessage")!;
+      Object.defineProperty(port, "onmessage", {
+        set(handler: (event: MessageEvent) => void) {
+          accessor.set!.call(port, (event: MessageEvent) => {
+            const held = holding && ends.has((event.data as { id?: unknown })?.id);
+            return held ? holding!.push(event) : handler(event);
+          });
+        },
+      });
+      const deliver = (event: MessageEvent) =>
+        (accessor.get!.call(port) as (e: MessageEvent) => void)(event);
+      releaseHeld = () => {
+        const events = holding ?? [];
+        holding = null;
+        events.forEach(deliver);
       };
       return port;
     },
   });
+  let releaseHeld = () => {};
   cleanups.push(() => retirePreviewEditingClient(iframe));
   // This frame shares Studio's document; a real sealed frame's focus is out of Studio's sight.
   const focus = vi.spyOn(document, "activeElement", "get").mockReturnValue(document.body);
@@ -77,6 +118,10 @@ async function sealedTitle(): Promise<Title> {
     remove: () => shown.remove(),
     putBack: () => document.body.append(shown),
     silenceEnds: () => (answersEnd = false),
+    holdEndReplies: () => {
+      holding = [];
+      return () => releaseHeld();
+    },
     frameReloads: () => iframe.dispatchEvent(new Event("load")),
   };
 }
@@ -105,7 +150,23 @@ async function openEdit(mode: "unsealed" | "sealed") {
   title.shown.innerHTML = "Typed";
   const blur = () => title.shown.dispatchEvent(new FocusEvent("blur"));
   const land = () => held.splice(0).forEach((resolve) => resolve());
-  return { ...title, onCommit, onLost, blur, land, session: () => controls.session };
+  const reopen = async (typed: string) => {
+    act(() => void controls.start(title.target));
+    await vi.waitFor(() => expect(controls.session).not.toBeNull());
+    await vi.waitFor(() => expect(title.shown.hasAttribute("contenteditable")).toBe(true));
+    title.shown.innerHTML = typed;
+  };
+  return {
+    ...title,
+    onCommit,
+    onLost,
+    blur,
+    land,
+    reopen,
+    controls: () => controls,
+    session: () => controls.session,
+    unmount: () => act(() => root.unmount()),
+  };
 }
 
 type Edit = Awaited<ReturnType<typeof openEdit>>;
@@ -185,4 +246,77 @@ it("says the text edit was not saved when the sealed frame never answers, and le
   expect(edit.onCommit).not.toHaveBeenCalled();
   expect(edit.onLost).toHaveBeenCalledOnce();
   expect(edit.session()).toBeNull();
+});
+
+describe("a sealed inline text edit reopened before its first end settled", () => {
+  it("keeps the newer draft when the first end goes unanswered", async () => {
+    const edit = await openEdit("sealed");
+    edit.silenceEnds!();
+    act(() => edit.controls().commit());
+    await edit.reopen("Second");
+    edit.frameReloads!();
+    await vi.waitFor(() => expect(edit.onLost).toHaveBeenCalledOnce());
+    await nextTask();
+    expect([edit.shown.innerHTML, edit.shown.hasAttribute("contenteditable")]).toEqual([
+      "Second",
+      true,
+    ]);
+    expect(edit.session()).not.toBeNull();
+  });
+
+  it("settles only its own edit when the first end answers late", async () => {
+    const edit = await openEdit("sealed");
+    const release = edit.holdEndReplies!();
+    act(() => edit.controls().commit());
+    await edit.reopen("Second");
+    release();
+    await vi.waitFor(() => expect(edit.onCommit).toHaveBeenCalledOnce());
+    expect(edit.onCommit).toHaveBeenCalledWith(expect.objectContaining({ html: "Typed" }));
+    await nextTask();
+    expect([edit.shown.innerHTML, edit.shown.hasAttribute("contenteditable")]).toEqual([
+      "Second",
+      true,
+    ]);
+    expect(edit.session()).not.toBeNull();
+  });
+});
+
+describe("an unsealed inline text edit", () => {
+  it("closes when its element is removed before it ever got focus", async () => {
+    const title = liveTitle();
+    let controls!: ReturnType<typeof useInlineTextEdit>;
+    const root = createRoot(document.createElement("div"));
+    act(() =>
+      root.render(
+        createElement(() => {
+          controls = useInlineTextEdit({ onCommit: vi.fn(async () => {}) });
+          return null;
+        }),
+      ),
+    );
+    cleanups.unshift(() => act(() => root.unmount()));
+    act(() => {
+      controls.start(title.target);
+      title.remove();
+    });
+    await vi.waitFor(() => expect(controls.session).toBeNull());
+    expect([title.shown.hasAttribute("contenteditable"), title.shown.style.outline]).toEqual([
+      false,
+      "",
+    ]);
+    expect(title.watching!()).toBe(0);
+  });
+
+  it.each([
+    ["saved", (edit: Edit) => edit.blur()],
+    ["cancelled", (edit: Edit) => edit.controls().cancel()],
+    ["removed", (edit: Edit) => edit.remove()],
+    ["unmounted", (edit: Edit) => edit.unmount()],
+  ])("watches its document for removal only while open: %s", async (_, settle) => {
+    const edit = await openEdit("unsealed");
+    expect(edit.watching!()).toBe(1);
+    act(() => void settle(edit));
+    await vi.waitFor(() => expect(edit.watching!()).toBe(0));
+    edit.land();
+  });
 });
