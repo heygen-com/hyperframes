@@ -21,12 +21,14 @@ const resolved = (src: string, home: string) => {
   }
 };
 
-// Per element: withCors while our crossorigin is on it, withoutCors once its last candidate failed with it.
+// Per element: withCors while our crossorigin is on it; withoutCors once the browser ran out of sources with it,
+// until the element's sources change.
 const state = new WeakMap<HTMLMediaElement, "withCors" | "withoutCors">();
 // A crossorigin change we did not write, even to our own value, makes the attribute the composition's for good.
 const authored = new WeakSet<HTMLMediaElement>();
 const pendingWrites = new WeakMap<HTMLMediaElement, number>();
-const failedWithCors = new WeakMap<HTMLMediaElement, Set<string>>();
+const failedInSelection = new WeakMap<HTMLMediaElement, Set<string>>();
+const fellBackFor = new WeakMap<HTMLMediaElement, Set<string>>();
 const loadsWithoutCors = new Set<string>();
 
 const playable = (media: HTMLMediaElement, source: Element) => {
@@ -63,10 +65,12 @@ function crossOriginChanged(media: HTMLMediaElement): void {
 
 function sync(media: HTMLMediaElement, home: string): void {
   if (authored.has(media)) return;
-  if (media.hasAttribute("crossorigin") && state.get(media) !== "withCors") {
+  const current = state.get(media);
+  if (media.hasAttribute("crossorigin") && current !== "withCors") {
     authored.add(media);
     return;
   }
+  if (current === "withoutCors") return;
   const want = wantsCors(media, home);
   if (want && !media.hasAttribute("crossorigin")) {
     write(media, "anonymous");
@@ -84,7 +88,7 @@ function mediaOf(el: Element): HTMLMediaElement | null {
   return parent && isMedia(parent) ? parent : null;
 }
 
-function failedCandidate(event: Event): { el: Element; media: HTMLMediaElement } | null {
+function failedWithOurCors(event: Event): { el: Element; media: HTMLMediaElement } | null {
   const target = event.target as Node | null;
   if (target?.nodeType !== 1) return null;
   const media = mediaOf(target as Element);
@@ -92,15 +96,9 @@ function failedCandidate(event: Event): { el: Element; media: HTMLMediaElement }
   return { el: target as Element, media };
 }
 
-const laterCandidateRemains = (media: HTMLMediaElement, failed: Element) => {
-  const candidates = candidatesOf(media);
-  const at = candidates.indexOf(failed);
-  return failed !== media && at >= 0 && at < candidates.length - 1;
-};
-
 function recordFailure(media: HTMLMediaElement, el: Element, home: string): Set<string> {
-  const failed = failedWithCors.get(media) ?? new Set<string>();
-  failedWithCors.set(media, failed);
+  const failed = failedInSelection.get(media) ?? new Set<string>();
+  failedInSelection.set(media, failed);
   const src = el.getAttribute("src");
   if (src) failed.add(resolved(src, home));
   return failed;
@@ -117,17 +115,41 @@ function rememberRefused(urls: Set<string>): void {
   }
 }
 
+// The browser's own word that it has nothing left to try: the element's error, or a source's with no source left.
+const exhausted = (media: HTMLMediaElement, el: Element) =>
+  el === media || media.networkState === HTMLMediaElement.NETWORK_NO_SOURCE;
+
 function fallBackWithoutCors(event: Event, home: string): void {
-  const failure = failedCandidate(event);
+  const failure = failedWithOurCors(event);
   if (!failure) return;
   const { el, media } = failure;
   const failed = recordFailure(media, el, home);
-  if (laterCandidateRemains(media, el)) return;
+  if (!exhausted(media, el)) return;
+  failedInSelection.delete(media);
+  const done = fellBackFor.get(media) ?? new Set<string>();
+  fellBackFor.set(media, done);
+  if ([...failed].every((url) => done.has(url))) return;
+  failed.forEach((url) => done.add(url));
   state.set(media, "withoutCors");
-  failedWithCors.delete(media);
   rememberRefused(failed);
   write(media, null);
   media.load();
+}
+
+function loadedWithCors(event: Event): void {
+  const media = event.target as HTMLMediaElement;
+  if (!isMedia(media) || state.get(media) !== "withCors") return;
+  failedInSelection.delete(media);
+  loadsWithoutCors.delete(media.currentSrc);
+}
+
+// A src or <source> change starts a new selection: its failures and fallback start over.
+function sourcesChanged(record: MutationRecord): void {
+  const target = record.target as Element;
+  const media = record.type === "attributes" ? mediaOf(target) : isMedia(target) ? target : null;
+  if (!media) return;
+  failedInSelection.delete(media);
+  if (state.get(media) === "withoutCors") state.delete(media);
 }
 
 function visit(node: Node, home: string): void {
@@ -148,22 +170,29 @@ export function corsForSealedMedia(): MutationObserver | null {
   )
     return null;
   const home = document.baseURI;
-  visit(document.documentElement, home);
+  // Every crossorigin change in a batch is accounted for first, so an author's write beside a src change wins.
   const observer = new MutationObserver((records) => {
     for (const record of records) {
       if (record.attributeName === "crossorigin" && isMedia(record.target as Element))
         crossOriginChanged(record.target as HTMLMediaElement);
+    }
+    for (const record of records) {
+      if (record.attributeName === "crossorigin") continue;
+      sourcesChanged(record);
       if (record.type === "attributes") visit(record.target, home);
       else record.addedNodes.forEach((node) => visit(node, home));
     }
   });
-  // Media errors do not bubble; a capture listener on the document hears every element's.
-  document.addEventListener("error", (event) => fallBackWithoutCors(event, home), true);
+  // Observing first: the writes the first scan makes are counted against their own records.
   observer.observe(document.documentElement, {
     childList: true,
     subtree: true,
     attributes: true,
     attributeFilter: ["src", "crossorigin"],
   });
+  visit(document.documentElement, home);
+  // Media events do not bubble; capture listeners on the document hear every element's.
+  document.addEventListener("error", (event) => fallBackWithoutCors(event, home), true);
+  document.addEventListener("loadeddata", loadedWithCors, true);
   return observer;
 }
