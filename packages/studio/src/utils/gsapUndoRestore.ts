@@ -481,7 +481,7 @@ function sendSealedRestore(
     scriptText,
     snapshot,
     rerun: false,
-    attributes: true,
+    beyondScript: true,
   });
   void previewRequest(iframe, "restore-attributes", { ...restore, time: currentTime }).then(
     (reply) => {

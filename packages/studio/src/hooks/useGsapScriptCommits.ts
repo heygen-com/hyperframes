@@ -315,7 +315,7 @@ function patchInstantly(
     scriptText: write.scriptText,
     snapshot,
     rerun: false,
-    attributes: false,
+    beyondScript: false,
   });
   patchSealedPreview(iframe, patches, !options.deferPreviewSync, () => {
     if (ticketNeedsRecovery(ticket)) show(newestPreviewWrite(ticket));

@@ -216,7 +216,7 @@ function softReloadSealed(
     scriptText,
     snapshot: { scriptText, authoredHtml, previousHtml, nestedFiles, timingEdit },
     rerun: true,
-    attributes: restore.length > 0,
+    beyondScript: restore.length > 0 || timingEdit === true,
   });
   void previewRequest(iframe, "soft-reload", {
     ...rerun,

@@ -18,8 +18,8 @@ export interface PreviewSend {
   snapshot: PreviewWrite | null;
   /** It re-runs its timelines, so it owns them from its send. */
   rerun: boolean;
-  /** It carries restored attributes: refused by the frame, no later script-only re-run sends them again. */
-  attributes: boolean;
+  /** It carries restored attributes or clip timing: refused, no later script-only re-run sends them again. */
+  beyondScript: boolean;
 }
 
 export interface PreviewTicket {
@@ -83,7 +83,7 @@ export function ticketLoadLive(ticket: PreviewTicket): boolean {
 export function ticketCovered(ticket: PreviewTicket, refused = false): boolean {
   const { reruns } = ledgerOf(ticket.load);
   return (
-    !(refused && ticket.sent.attributes) &&
+    !(refused && ticket.sent.beyondScript) &&
     ticket.keys.length > 0 &&
     ticket.keys.every((key) => {
       const owner = reruns.get(key);
