@@ -2881,7 +2881,7 @@ describe("check pipeline", () => {
     expect(report.layout.errorCount).toBeGreaterThan(0);
     expect(report.runtime.findings).toContainEqual(
       expect.objectContaining({
-        code: "check_runtime_failure",
+        code: "check_deadline",
         message: "Check did not finish within its deadline.",
       }),
     );
@@ -2992,14 +2992,15 @@ describe("check pipeline", () => {
       const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
       await vi.advanceTimersByTimeAsync(120_000);
       const report = await pending;
-      const failure = report.runtime.findings.find(
-        (finding) => finding.code === "check_runtime_failure",
-      );
+      const failure = report.runtime.findings.find((finding) => finding.code === "check_deadline");
       expect(failure?.message).toMatch(/^Check did not finish within its deadline/);
       expect(failure?.message).toContain(
         "while running the overlap pass (overlap probes from 0s).",
       );
       expect(failure?.message).toContain("checking samples 0.0, running the overlap pass 120.0.");
+      expect(trackCheckReport).toHaveBeenCalledWith(
+        expect.objectContaining({ ok: false, stopCode: "check_deadline" }),
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -3018,11 +3019,12 @@ describe("check pipeline", () => {
       const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
       await vi.advanceTimersByTimeAsync(180_000);
       const report = await pending;
-      const failure = report.runtime.findings.find(
-        (finding) => finding.code === "check_runtime_failure",
-      );
+      const failure = report.runtime.findings.find((finding) => finding.code === "check_deadline");
       expect(failure?.message).toMatch(/^Chrome did not start within 180 s while starting Chrome/);
       expect(report.ok).toBe(false);
+      expect(trackCheckReport).toHaveBeenCalledWith(
+        expect.objectContaining({ ok: false, stopCode: "check_deadline" }),
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -3055,9 +3057,7 @@ describe("check pipeline", () => {
       expect(aborted.aborted).toBe(false);
       await vi.advanceTimersByTimeAsync(110_000);
       const report = await pending;
-      const failure = report.runtime.findings.find(
-        (finding) => finding.code === "check_runtime_failure",
-      );
+      const failure = report.runtime.findings.find((finding) => finding.code === "check_deadline");
       expect(failure?.message).toContain("no progress for 410 s");
     } finally {
       vi.useRealTimers();
@@ -3100,9 +3100,9 @@ describe("check pipeline", () => {
         true,
       );
       expect(report.browserSkipped).toBe(false);
-      expect(
-        report.runtime.findings.some((finding) => finding.code === "check_runtime_failure"),
-      ).toBe(true);
+      expect(report.runtime.findings.some((finding) => finding.code === "check_deadline")).toBe(
+        true,
+      );
     } finally {
       vi.useRealTimers();
     }
