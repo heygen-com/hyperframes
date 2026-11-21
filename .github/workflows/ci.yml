@@ -585,9 +585,6 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-test-workspace
       - run: bun run --cwd packages/studio test
-        # Date reads ten years ahead (scripts/test-clock-ahead.mjs): a date-dependent test fails in its own PR.
-        env:
-          NODE_OPTIONS: --import ${{ github.workspace }}/scripts/test-clock-ahead.mjs
 
   test-runtime:
     name: Test (runtime)

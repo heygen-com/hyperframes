@@ -1,7 +1,7 @@
-// Preloaded into a test process (`node --import`): `Date` reads ten years ahead of the real clock, so a test that
-// depends on today's date fails on the day it is written, not on a later one. CI sets it for the packages named in
-// .github/workflows/ci.yml (NODE_OPTIONS); gcp-cloud-run's `bun test` preloads it from its bunfig.toml.
-// The offset is fixed, so threads and child processes agree on the time. Test: scripts/test-clock-ahead.test.mjs.
+// Preloaded into a test process (`node --import`, or bunfig.toml for `bun test`): `Date` reads ten years ahead of the
+// real clock, so a test that depends on today's date fails on the day it is written. ci.yml names the packages.
+// The offset is fixed, so Node threads and child processes agree on the time; a Bun worker still reads the real
+// clock. Test: scripts/test-clock-ahead.test.mjs.
 const RealDate = globalThis.Date;
 export const AHEAD_MS = 3653 * 86_400_000;
 
