@@ -92,7 +92,7 @@ export function ticketCovered(ticket: PreviewTicket, refused = false): boolean {
   );
 }
 
-/** The newest complete saved state sent for the ticket's timelines; it holds every earlier saved change. */
+/** The newest saved state for the ticket's timelines, with its timing: an earlier save's may not be on screen. */
 export function newestPreviewWrite(ticket: PreviewTicket): PreviewWrite | null {
   const { writes } = ledgerOf(ticket.load);
   let newest = { seq: ticket.seq, write: ticket.sent.snapshot };
@@ -100,7 +100,7 @@ export function newestPreviewWrite(ticket: PreviewTicket): PreviewWrite | null {
     const sent = writes.get(key);
     if (sent && sent.seq > newest.seq) newest = sent;
   }
-  return newest.write;
+  return newest.write && { ...newest.write, timingEdit: true };
 }
 
 /** A late failure acts only for the live load and only when no later re-run carries its change. */

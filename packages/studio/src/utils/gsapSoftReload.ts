@@ -16,7 +16,7 @@ import {
 import { authoredStyles, findAuthoredElement, savedTiming } from "./authoredSource";
 import { fileDocs, standaloneSets } from "./softReloadTargets";
 import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
-import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
+import { PREVIEW_REJECTED, previewAnswer, previewFrameOpaque } from "../player/lib/previewChannel";
 import { takePreviewTicket, ticketCovered, ticketNeedsRecovery } from "./sealedPreviewLedger";
 
 export {
@@ -218,14 +218,15 @@ function softReloadSealed(
     rerun: true,
     beyondScript: restore.length > 0 || timingEdit === true,
   });
-  void previewRequest(iframe, "soft-reload", {
+  void previewAnswer(iframe, "soft-reload", {
     ...rerun,
     time: currentTimeOverride,
     restore,
-  }).then((reply) => {
-    const result = sealedSoftReloadResult(reply);
+  }).then((answer) => {
+    const result =
+      answer === PREVIEW_REJECTED ? "cannot-soft-reload" : sealedSoftReloadResult(answer);
     // No answer is not a refusal: the frame takes requests in order, and wrote this one's attributes at its start.
-    if (!ticketNeedsRecovery(ticket, reply !== null && result === "cannot-soft-reload")) return;
+    if (!ticketNeedsRecovery(ticket, answer !== null && result === "cannot-soft-reload")) return;
     if (result === "cannot-soft-reload") onAsyncFailure?.();
     else if (result !== "superseded" && !ticketCovered(ticket)) onShownInPlace?.();
   });

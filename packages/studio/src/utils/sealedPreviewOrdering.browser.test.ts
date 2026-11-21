@@ -85,13 +85,20 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved) {
       const iframe = document.querySelector("iframe")!;
       const time = studio.usePlayerStore.getState().currentTime;
       const rerun = { currentTimeOverride: time, authoredHtml: saved, previousHtml: prev };
-      // As Studio's timing sync: move the live tweens, or re-run the script with its timing when that cannot.
+      // As Studio's timing sync (timelineTimingSync.ts): move the live tweens, or re-run the script with its timing
+      // at the playhead then.
       if (kind === "liveRetime")
         void Promise.resolve(
           studio.moveLiveTweens(iframe, text, time, w.__reload, { before: prev, after: saved }),
         ).then((moved) => {
           if (moved) return;
-          const options = { ...rerun, timingEdit: true, onAsyncFailure: w.__reload };
+          const now = studio.usePlayerStore.getState().currentTime;
+          const options = {
+            ...rerun,
+            currentTimeOverride: now,
+            timingEdit: true,
+            onAsyncFailure: w.__reload,
+          };
           if (studio.applySoftReload(iframe, text, options) === "cannot-soft-reload") w.__reload();
         });
       if (kind === "run")

@@ -13,7 +13,8 @@ import {
   scriptsRegistering,
   timelineKeys,
 } from "./gsapSoftReload";
-import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
+import { PREVIEW_REJECTED, previewAnswer, previewFrameOpaque } from "../player/lib/previewChannel";
+import { usePlayerStore } from "../player/store/playerStore";
 import { savedTiming } from "./authoredSource";
 import {
   newestPreviewWrite,
@@ -151,10 +152,11 @@ function planFromSavedFile(
 function rerunNewest(
   iframe: HTMLIFrameElement,
   { scriptText, ...write }: PreviewWrite,
-  currentTime: number,
   reloadPreview: () => void,
 ): void {
-  const options = { ...write, currentTimeOverride: currentTime, onAsyncFailure: reloadPreview };
+  // At the playhead now, not when the retime was sent: a scrub since then must not be undone.
+  const currentTimeOverride = usePlayerStore.getState().currentTime;
+  const options = { ...write, currentTimeOverride, onAsyncFailure: reloadPreview };
   if (applySoftReload(iframe, scriptText, options) === "cannot-soft-reload") reloadPreview();
 }
 
@@ -182,19 +184,20 @@ async function moveSealedLiveTweens(
     rerun: false,
     beyondScript: true,
   });
-  const reply = await previewRequest(iframe, "live-retime", {
+  const answer = await previewAnswer(iframe, "live-retime", {
     key: planKey,
     after,
     tweens,
     time: currentTime,
     timing: savedTiming(files.after),
   });
-  const result = sealedRetimeResult(reply);
-  if (result === "moved" || !ticketNeedsRecovery(ticket, reply !== null)) return true;
+  const result = sealedRetimeResult(answer === PREVIEW_REJECTED ? null : answer);
+  if (result === "moved" || !ticketNeedsRecovery(ticket, answer !== null)) return true;
   const newest = newestPreviewWrite(ticket);
   if (result === "failed" || !newest) reloadPreview();
-  // A newer save to these timelines is the one to re-run: the caller would re-run this older script.
-  else if (newest !== snapshot) rerunNewest(iframe, newest, currentTime, reloadPreview);
+  // A newer saved file is the one to re-run: the caller would re-run this older script.
+  else if (newest.authoredHtml !== snapshot.authoredHtml)
+    rerunNewest(iframe, newest, reloadPreview);
   else return false;
   return true;
 }

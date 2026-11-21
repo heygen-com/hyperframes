@@ -1,6 +1,7 @@
 // Runtime-state reads over a preview frame's editing port; an opaque frame's window is out of reach.
 import {
   createEditingPortClient,
+  EditingPortError,
   type EditingParams,
   type EditingPortClient,
   type EditingRequestKind,
@@ -84,16 +85,32 @@ async function agentConnected(client: EditingPortClient): Promise<boolean> {
   return connected;
 }
 
-/** Null when no port comes within AGENT_PROBE_MS (a runtime without the editing agent), or on error. */
+export const PREVIEW_REJECTED = Symbol("preview-rejected");
+
+/** previewRequest's reply, keeping an error answer (PREVIEW_REJECTED) apart from no reply (null: no port, timeout). */
+export async function previewAnswer<K extends EditingRequestKind>(
+  iframe: HTMLIFrameElement,
+  kind: K,
+  params: EditingParams<K>,
+  timeoutMs?: number,
+): Promise<EditingResult<K> | typeof PREVIEW_REJECTED | null> {
+  const client = previewEditingClient(iframe);
+  if (!(await agentConnected(client))) return null;
+  return client.request(kind, params, { timeoutMs }).catch((err: unknown) => {
+    const noReply =
+      err instanceof EditingPortError && (err.code === "timeout" || err.code === "disposed");
+    return noReply ? null : PREVIEW_REJECTED;
+  });
+}
+
 export async function previewRequest<K extends EditingRequestKind>(
   iframe: HTMLIFrameElement,
   kind: K,
   params: EditingParams<K>,
   timeoutMs?: number,
 ): Promise<EditingResult<K> | null> {
-  const client = previewEditingClient(iframe);
-  if (!(await agentConnected(client))) return null;
-  return client.request(kind, params, { timeoutMs }).catch(() => null);
+  const answer = await previewAnswer(iframe, kind, params, timeoutMs);
+  return answer === PREVIEW_REJECTED ? null : answer;
 }
 
 export async function previewSeekPainted(iframe: HTMLIFrameElement, timeoutMs?: number) {
