@@ -138,7 +138,8 @@
 
         var KEYWORDS = new Set([8, 12, 15, 24, 27]); // HyperFrames, HTML, professional, code, cinema.
 
-        var RAW_GROUPS = [
+        // Hand-tuned for the demo WORDS; a replaced transcript is grouped by buildGroups instead.
+        var DEMO_GROUPS = [
           [0, 3],
           [4, 7],
           [8, 8],
@@ -150,6 +151,35 @@
           [23, 24],
           [25, 27],
         ];
+
+        function buildGroups(words) {
+          var groups = [];
+          var start = 0;
+          var chars = 0;
+          for (var i = 0; i < words.length; i++) {
+            chars += words[i].text.length + 1;
+            var endsSentence = /[.!?]$/.test(words[i].text);
+            var nextGap = i + 1 < words.length ? words[i + 1].start - words[i].end : 0;
+            var full = i - start >= 3 || chars >= 21;
+            if (endsSentence || nextGap > 0.28 || full || i === words.length - 1) {
+              groups.push([start, i]);
+              start = i + 1;
+              chars = 0;
+            }
+          }
+          return groups;
+        }
+
+        function tilesWords(groups, words) {
+          var next = 0;
+          for (var i = 0; i < groups.length; i++) {
+            if (groups[i][0] !== next || groups[i][1] < next) return false;
+            next = groups[i][1] + 1;
+          }
+          return next === words.length;
+        }
+
+        var RAW_GROUPS = tilesWords(DEMO_GROUPS, WORDS) ? DEMO_GROUPS : buildGroups(WORDS);
         var GROUPS = RAW_GROUPS.map(function (pair, gi) {
           var ws = pair[0],
             we = pair[1];
