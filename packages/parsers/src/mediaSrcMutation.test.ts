@@ -110,4 +110,59 @@ describe("extractMediaSrcMutations", () => {
   it("does not recurse through circular aliases", () => {
     expect(extractMediaSrcMutations(`let a = b; let b = a; a.src = "new.mp4";`)).toEqual([]);
   });
+
+  it("resolves a src write on a querySelectorAll forEach parameter", () => {
+    const script = `document.querySelectorAll("[data-clip]").forEach((el) => { el.src = "assets/blue-swapped.mp4"; });`;
+    expect(extractMediaSrcMutations(script)).toEqual([
+      {
+        selector: "[data-clip]",
+        operation: "src_assignment",
+        raw: `el.src = "assets/blue-swapped.mp4"`,
+      },
+    ]);
+  });
+
+  it("resolves a setAttribute write on a querySelectorAll forEach parameter", () => {
+    const script = `document.querySelectorAll("video").forEach(function (el) { el.setAttribute("src", "clip-b.mp4"); });`;
+    expect(extractMediaSrcMutations(script)).toEqual([
+      {
+        selector: "video",
+        operation: "set_attribute",
+        raw: `el.setAttribute("src", "clip-b.mp4")`,
+      },
+    ]);
+  });
+
+  it("resolves a src write on a querySelectorAll for-of variable", () => {
+    const script = `for (const el of document.querySelectorAll("[data-clip]")) { el.src = "clip-b.mp4"; }`;
+    expect(extractMediaSrcMutations(script)).toEqual([
+      {
+        selector: "[data-clip]",
+        operation: "src_assignment",
+        raw: `el.src = "clip-b.mp4"`,
+      },
+    ]);
+  });
+
+  it("resolves a forEach over an identifier bound to querySelectorAll", () => {
+    const script = `const clips = document.querySelectorAll("[data-clip]"); clips.forEach((el) => { el.src = "clip-b.mp4"; });`;
+    expect(extractMediaSrcMutations(script)).toEqual([
+      {
+        selector: "[data-clip]",
+        operation: "src_assignment",
+        raw: `el.src = "clip-b.mp4"`,
+      },
+    ]);
+  });
+
+  it("does not resolve a forEach over a non-DOM collection", () => {
+    expect(extractMediaSrcMutations(`clips.forEach((el) => { el.src = "clip-b.mp4"; });`)).toEqual(
+      [],
+    );
+  });
+
+  it("does not inherit the loop selector through a shadowed binding", () => {
+    const script = `document.querySelectorAll("[data-clip]").forEach((el) => { const el = findClip(); el.src = "clip-b.mp4"; });`;
+    expect(extractMediaSrcMutations(script)).toEqual([]);
+  });
 });
