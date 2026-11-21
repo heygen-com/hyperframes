@@ -25,24 +25,30 @@ function withoutVersion(text) {
   }
 }
 
-/** The new version when the only difference between two manifest texts is `version`, else null. */
+/** `{ from, to }` when the only difference between two manifest texts is `version`, else null. */
 function versionBump(was, now) {
   const a = was === null ? null : withoutVersion(was);
   const b = now === null ? null : withoutVersion(now);
-  return a && b && sameJson(a.rest, b.rest) && a.version !== b.version ? b.version : null;
+  return a && b && sameJson(a.rest, b.rest) && a.version !== b.version
+    ? { from: a.version, to: b.version }
+    : null;
 }
 
 /** Sorts changed paths into the release's own and the rest; before and after read a path at each end, or null. */
 export function classify(paths, before, after) {
   const other = [];
   const versions = new Map();
+  const previous = new Set();
   for (const path of paths) {
     if (RELEASE_NOTES.test(path) || path === CHANGELOG) continue;
     const bumped = MANIFESTS.has(basename(path)) ? versionBump(before(path), after(path)) : null;
     if (bumped === null) other.push(path);
-    else versions.set(path, bumped);
+    else {
+      versions.set(path, bumped.to);
+      previous.add(bumped.from);
+    }
   }
-  return { releaseOnly: versions.size > 0 && other.length === 0, other, versions };
+  return { releaseOnly: versions.size > 0 && other.length === 0, other, versions, previous };
 }
 
 /** The commits in `commits` ({ sha, subject }) that release notes should list but do not link. */
@@ -50,8 +56,24 @@ export function unlistedCommits(commits, notes) {
   return commits.filter(({ sha, subject }) => !skipsChangelog(subject) && !notes.includes(sha));
 }
 
+const BREAKING_SUBJECT = /^[a-z]+(?:\([^)]+\))?!:/;
+
+/** The version a breaking change needs after `from`: the next minor below 1.0, the next major from 1.0 on. */
+function breakingVersionAfter(from) {
+  const [major, minor] = from.split(".").map(Number);
+  return major === 0 ? `0.${minor + 1}.0` : `${major + 1}.0.0`;
+}
+
+/** Whether `to` is at least the version a breaking change needs after `from`. */
+function allowsBreaking(from, to) {
+  const needed = breakingVersionAfter(from).split(".").map(Number);
+  const got = to.split(".").map((part) => Number.parseInt(part, 10));
+  for (let i = 0; i < 3; i++) if (got[i] !== needed[i]) return got[i] > needed[i];
+  return true;
+}
+
 /** Problems with a release that is otherwise only versions and notes; empty when it is consistent. */
-export function verifyRelease({ versions }, after, commits = []) {
+export function verifyRelease({ versions, previous = new Set() }, after, commits = []) {
   const problems = [];
   const distinct = new Set(versions.values());
   if (distinct.size !== 1) {
@@ -61,6 +83,14 @@ export function verifyRelease({ versions }, after, commits = []) {
     return problems;
   }
   const [version] = distinct;
+  const breaking = commits.find(({ subject }) => BREAKING_SUBJECT.test(subject));
+  const from = [...previous][0];
+  if (breaking && from && !allowsBreaking(from, version))
+    problems.push(
+      `v${version} is too small a bump for a breaking change: ` +
+        `${breaking.sha.slice(0, 9)} ${breaking.subject}. ` +
+        `Release it as v${breakingVersionAfter(from)}, or revert the change first.`,
+    );
   const notes = after(`releases/v${version}.md`);
   if (notes === null) problems.push(`releases/v${version}.md is missing`);
   else {

@@ -208,6 +208,39 @@ test("the last release is found by its subject, not by a line in another commit'
   assert.match(result.stderr, /misses 2 commit\(s\)/);
 });
 
+/** A release v0.8.1 commit, then a breaking change on main; the release moves to `version`. */
+function repoWithBreakingChange(version) {
+  let sha = "";
+  return repo(
+    (write) => {
+      bump(version)(write);
+      write(`releases/v${version}.md`, NOTES(version, `- Needs Node 22 ([x](/commit/${sha})).`));
+    },
+    (write, git) => {
+      git("commit", "-q", "--allow-empty", "-m", "chore: release v0.8.1 (#1)");
+      write("packages/cli/src/floor.ts", "export const node = 22;\n");
+      git("add", "-A");
+      git("commit", "-qm", "fix(cli)!: needs Node 22 (#2)");
+      sha = git("rev-parse", "HEAD").trim();
+    },
+  );
+}
+
+// fails without the fix: a patch release carrying a "fix(cli)!:" commit passed the release checks.
+test("--verify refuses a patch release that carries a breaking change", () => {
+  const result = run(repoWithBreakingChange("0.8.2"), "--verify");
+  assert.equal(result.code, 1);
+  assert.match(
+    result.stderr,
+    /v0\.8\.2 is too small a bump for a breaking change: [0-9a-f]{9} fix\(cli\)!: needs Node 22 \(#2\)/,
+  );
+  assert.match(result.stderr, /Release it as v0\.9\.0/);
+});
+
+test("--verify passes a breaking change released as the next minor below 1.0", () => {
+  assert.equal(run(repoWithBreakingChange("0.9.0"), "--verify").code, 0);
+});
+
 test("the merge queue runs the release checks on a release diff", () => {
   const ci = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
   assert.match(ci, /release-checks:[\s\S]*merge_group[\s\S]*release_diff/);
