@@ -1,9 +1,9 @@
 // fallow-ignore-file code-duplication
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { runCommand, type CommandDef } from "citty";
 
 import type { RegistryItem } from "@hyperframes/core";
-import { catalogRow, countUnindexed, pickByName, searchMissCommand } from "./catalog.js";
+import { catalogRow, countUnindexed, pickByName, searchMissReport } from "./catalog.js";
 
 /** The whole registry, which is what "in this registry" has to be measured against. */
 const registryNames = new Set(["fade-through", "whip-pan", "count-up"]);
@@ -205,6 +205,7 @@ const component = (name: string): { name: string; type: string } => ({
 });
 
 interface Envelope {
+  query: string;
   tier: string;
   dropped: number;
   unindexed: number;
@@ -536,6 +537,21 @@ describe("catalog --json meaning search", () => {
     );
   });
 
+  // fails without the fix: on Windows the envelope carried a bash-escaped line that runs "$(calc)" in PowerShell.
+  it("on Windows, hands back how to report the gap, not a line that would run the query", async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    onTestFinished(() => {
+      Object.defineProperty(process, "platform", platform);
+    });
+
+    const envelope = await runEnvelope({ query: "count up $(calc)" });
+
+    expect(envelope.query).toBe("count up $(calc)");
+    expect(envelope.report_gap).not.toContain("$(calc)");
+    expect(envelope.report_gap).toContain("--search-miss");
+  });
+
   it("names the tier that actually answered in the gap-report command", async () => {
     state.modelStatus = "declined";
     state.ranking = null;
@@ -676,19 +692,51 @@ describe("a zero-result search", () => {
   });
 });
 
-describe("searchMissCommand", () => {
-  it("keeps a non-ASCII query intact", () => {
+// Each one keeps a shell meaning in PowerShell or cmd.exe however it is double-quoted.
+const WINDOWS_LIVE_QUERIES = [
+  "$(calc)",
+  "a`b",
+  "o'neil $x",
+  "x\u201D;calc;\u201Dy",
+  "x\u2019;calc;\u2018 $y",
+  "$(calc)&calc",
+  "\u201Cquoted\u201D",
+  "%USERPROFILE%",
+  "50% off, 20% more",
+  "Hello!",
+  "a!b",
+  'say "hi" & calc',
+];
+
+describe("searchMissReport", () => {
+  it("keeps a non-ASCII query intact, on Windows and elsewhere", () => {
     // Half of the gap reports received so far were CJK. A query mangled on the
     // way into the command is a report nobody can act on.
-    expect(searchMissCommand("実写写真のみ 9:16 生活ハック", "on-device")).toContain(
-      '--search-miss "実写写真のみ 9:16 生活ハック"',
-    );
+    for (const platform of ["win32", "linux"] as const) {
+      expect(searchMissReport("実写写真のみ 9:16 生活ハック", "on-device", platform)).toBe(
+        'npx hyperframes feedback --search-miss "実写写真のみ 9:16 生活ハック" ' +
+          '--wanted "<the move you needed>" --tier on-device',
+      );
+    }
   });
 
-  it("escapes shell metacharacters so the printed line is safe to paste", () => {
-    const cmd = searchMissCommand('a "quoted" $VAR `sub` \\ thing', "words");
+  // fails without the fix: the query was put in a bash-escaped line on every platform, where a backslash escapes
+  // nothing in PowerShell or cmd.exe, so running the line ran part of the query.
+  it("never puts a query PowerShell or cmd.exe would read as code into a line on Windows", () => {
+    for (const query of WINDOWS_LIVE_QUERIES) {
+      const report = searchMissReport(query, "words", "win32");
+      expect(report, query).not.toContain(query);
+      expect(report, query).not.toMatch(/^npx /);
+      expect(report, query).toContain("--tier words");
+    }
+  });
 
-    expect(cmd).toContain('--search-miss "a \\"quoted\\" \\$VAR \\`sub\\` \\\\ thing"');
+  it("quotes a query with shell syntax as one literal word for sh, bash and zsh", () => {
+    expect(searchMissReport('a "quoted" $VAR `sub` \\ thing!', "words", "linux")).toBe(
+      "npx hyperframes feedback --search-miss 'a \"quoted\" $VAR `sub` \\ thing!' " +
+        '--wanted "<the move you needed>" --tier words',
+    );
+    expect(searchMissReport("o'neil", "words", "darwin")).toContain(`--search-miss "o'neil"`);
   });
 });
 
