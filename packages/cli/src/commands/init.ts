@@ -4,6 +4,7 @@
 // own task.
 // fallow-ignore-file complexity
 import { failCommand, finishCommand, failUsage } from "../utils/commandResult.js";
+import { printFailureLine } from "../utils/jsonError.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 import { runCommand } from "citty";
 import { defineCommand } from "../utils/defineCommand.js";
@@ -898,9 +899,9 @@ export default defineCommand({
     if (args.resolution !== undefined) {
       resolutionPreset = normalizeResolutionFlag(args.resolution);
       if (!resolutionPreset) {
-        console.error(
+        printFailureLine((show) =>
           c.error(
-            `Invalid --resolution: "${terminalText(args.resolution)}". ` +
+            `Invalid --resolution: "${show(String(args.resolution))}". ` +
               `Use one of: landscape, portrait, landscape-4k, portrait-4k, square, square-4k, ` +
               `landscape-1440p, portrait-1440p, square-1440p ` +
               `(or aliases 1080p, 4k, uhd, 1440p, qhd, 1080p-square, square-1080p, 4k-square, 1440p-portrait, 1440p-square).`,
@@ -925,7 +926,9 @@ export default defineCommand({
       }
 
       if (holdsFilesBesideProjectConfigOrSources(destDir, [videoFlag, audioFlag])) {
-        console.error(c.error(`Directory already exists and is not empty: ${terminalText(name)}`));
+        printFailureLine((show) =>
+          c.error(`Directory already exists and is not empty: ${show(name)}`),
+        );
         failCommand();
       }
 
@@ -939,12 +942,12 @@ export default defineCommand({
       // already validates in this order.
       const videoPath = videoFlag ? resolve(videoFlag) : undefined;
       if (videoPath && !existsSync(videoPath)) {
-        console.error(c.error(`Video file not found: ${terminalText(String(videoFlag))}`));
+        printFailureLine((show) => c.error(`Video file not found: ${show(String(videoFlag))}`));
         failCommand();
       }
       const audioPath = audioFlag ? resolve(audioFlag) : undefined;
       if (audioPath && !existsSync(audioPath)) {
-        console.error(c.error(`Audio file not found: ${terminalText(String(audioFlag))}`));
+        printFailureLine((show) => c.error(`Audio file not found: ${show(String(audioFlag))}`));
         failCommand();
       }
 
@@ -1018,9 +1021,9 @@ export default defineCommand({
           args.skill,
         );
       } catch (err) {
-        console.error(
+        printFailureLine((show) =>
           c.error(
-            `Failed to scaffold example "${terminalText(templateId)}": ${terminalLines(err instanceof Error ? err.message : String(err))}`,
+            `Failed to scaffold example "${show(templateId)}": ${show(err instanceof Error ? err.message : String(err))}`,
           ),
         );
         console.error(c.dim("Use --example blank for offline use."));

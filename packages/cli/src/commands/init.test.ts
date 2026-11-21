@@ -628,13 +628,76 @@ describe("hyperframes init flag rename", () => {
     expect(res.stderr).toContain(`npx hyperframes init "my film" --example "two words"`);
   });
 
-  it("refuses --json before a refused value is read, so no printed line reaches the answer", () => {
-    const bell = String.fromCharCode(7);
-    const res = runInit(["proj", "--resolution", `b${bell}ad`, "--non-interactive", "--json"]);
+  // fails without the fix: the answer's message was the line as people see it, escapes included.
+  it.each([
+    [
+      "a refused --resolution",
+      ["--resolution", "b\u0007ad"],
+      'Invalid --resolution: "b\u0007ad"',
+      2,
+    ],
+    ["a missing --video", ["--video", "cl\u0007ip.mp4"], "Video file not found: cl\u0007ip.mp4", 1],
+    ["a missing --audio", ["--audio", "so\u0007ng.mp3"], "Audio file not found: so\u0007ng.mp3", 1],
+  ])("with --json first, answers %s with the value as given", (_name, flags, given, exit) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    try {
+      const res = spawnSync(
+        "bun",
+        ["run", cliEntry, "--json", "init", join(dir, "proj"), ...flags, "--non-interactive"],
+        {
+          encoding: "utf-8",
+          timeout: 30_000,
+          env: { ...process.env, HYPERFRAMES_SKIP_SKILLS: "1" },
+        },
+      );
+      expect(res.status).toBe(exit);
+      expect(res.stderr).toContain(given.replace("\u0007", "\\x07"));
+      expect(res.stderr).not.toContain("\u0007");
+      const body = JSON.parse(res.stdout.trim()) as { ok: boolean; error: { message: string } };
+      expect(body.ok).toBe(false);
+      expect(body.error.message).toContain(given);
+      expect(body.error.message).not.toContain("\\x07");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // Windows refuses control characters in folder names.
+  // fails without the fix: the answer's message was the line as people see it, escapes included.
+  it.skipIf(process.platform === "win32")(
+    "with --json first, answers a folder that is not empty with its name as given",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+      const target = join(dir, "fu\u0007ll");
+      mkdirSync(target);
+      writeFileSync(join(target, "notes.txt"), "");
+      try {
+        const res = spawnSync(
+          "bun",
+          ["run", cliEntry, "--json", "init", target, "--non-interactive"],
+          {
+            encoding: "utf-8",
+            timeout: 30_000,
+            env: { ...process.env, HYPERFRAMES_SKIP_SKILLS: "1" },
+          },
+        );
+        expect(res.status).toBe(1);
+        expect(res.stderr).toContain("fu\\x07ll");
+        const body = JSON.parse(res.stdout.trim()) as { ok: boolean; error: { message: string } };
+        expect(body.error.message).toContain(
+          `Directory already exists and is not empty: ${target}`,
+        );
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("refuses --json after the command name, before any value is read", () => {
+    const res = runInit(["proj", "--resolution", "bad", "--non-interactive", "--json"]);
     expect(res.status).toBe(2);
     const body = JSON.parse(res.stdout.trim()) as { ok: boolean; error: { code: string } };
     expect(body).toMatchObject({ ok: false, error: { code: "json_unsupported" } });
-    expect(res.stdout + res.stderr).not.toContain("resolution");
   });
 
   it("--template prints a rename hint and exits 2", () => {
