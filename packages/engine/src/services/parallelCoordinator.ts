@@ -27,6 +27,8 @@ import {
   type BeforeCaptureHook,
 } from "./frameCapture.js";
 import { psnrDb, resolveDeVerifyMinDb } from "../utils/psnr.js";
+// Hard ceiling on `--workers N`: past it, CDP dispatch through Node's event loop and OS scheduling noise
+// outweigh more parallelism. Raised 10 -> 24 in hf#732 so 32-96+ core hosts can use their cores.
 import { ABSOLUTE_MAX_WORKERS } from "../utils/workerLimits.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { assertSwiftShader } from "../utils/assertSwiftShader.js";
