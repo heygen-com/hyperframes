@@ -31,8 +31,12 @@ const seen = new WeakSet<HTMLMediaElement>();
 // A crossorigin change we did not write, even to our own value, makes the attribute the composition's for good.
 const authored = new WeakSet<HTMLMediaElement>();
 const pendingWrites = new WeakMap<HTMLMediaElement, number>();
+const ownLoads = new WeakSet<HTMLMediaElement>();
+const pendingPlays = new WeakMap<HTMLMediaElement, Set<object>>();
+const retryOf = new WeakMap<object, Promise<void>>();
+let nativePlay: HTMLMediaElement["play"];
 
-function setOf(map: WeakMap<HTMLMediaElement, Set<string>>, media: HTMLMediaElement): Set<string> {
+function setOf<T>(map: WeakMap<HTMLMediaElement, Set<T>>, media: HTMLMediaElement): Set<T> {
   let set = map.get(media);
   if (!set) map.set(media, (set = new Set()));
   return set;
@@ -88,10 +92,36 @@ function sync(media: HTMLMediaElement, home: string): void {
 // load() resets the playhead, rate and play state; set in the same task, a later change by the composition wins.
 function reload(media: HTMLMediaElement): void {
   const { currentTime, playbackRate, paused } = media;
+  ownLoads.add(media);
   media.load();
   if (currentTime) media.currentTime = mediaElementTime(currentTime);
   media.playbackRate = playbackRate;
-  if (!paused) void media.play().catch(() => undefined);
+  if (paused) return;
+  const retry = nativePlay.call(media);
+  retry.catch(() => undefined);
+  for (const play of pendingPlays.get(media) ?? []) retryOf.set(play, retry);
+}
+
+// The composition's play() settles with the playback our load retried, as it would without us: load() rejects it.
+function play(this: HTMLMediaElement): Promise<void> {
+  const token = {};
+  const plays = setOf(pendingPlays, this);
+  plays.add(token);
+  const settle = (promise: Promise<void>): Promise<void> =>
+    promise.catch((error: unknown) => {
+      const retry = retryOf.get(token);
+      retryOf.delete(token);
+      if (retry) return settle(retry);
+      throw error;
+    });
+  return settle(nativePlay.call(this)).finally(() => plays.delete(token));
+}
+
+// A selection the composition starts tries every source again, as the browser does.
+function selecting(event: Event): void {
+  const media = event.target as HTMLMediaElement;
+  if (!isMedia(media) || ownLoads.delete(media)) return;
+  down.delete(media);
 }
 
 function mediaOf(el: Element): HTMLMediaElement | null {
@@ -179,6 +209,7 @@ let home = "";
 // One function each, so a second start adds no second listener.
 const onError = (event: Event) => failed(event, home);
 const onFirstFrame = (event: Event) => firstFrame(event, home);
+const onSelecting = (event: Event) => selecting(event);
 
 /** In a sealed document, opts the preview server's own media into CORS as it parses or changes src, before it loads;
  * a source that refuses CORS on an element plays there without it, after one more load. */
@@ -209,5 +240,10 @@ export function corsForSealedMedia(): MutationObserver | null {
   // Media events do not bubble; capture listeners on the document hear every element's.
   document.addEventListener("error", onError, true);
   document.addEventListener("loadeddata", onFirstFrame, true);
+  document.addEventListener("loadstart", onSelecting, true);
+  if (HTMLMediaElement.prototype.play !== play) {
+    nativePlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = play;
+  }
   return observer;
 }

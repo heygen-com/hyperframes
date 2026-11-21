@@ -340,4 +340,51 @@ describe("corsForSealedMedia", () => {
     expect(observer).toBeNull();
     expect(host.querySelector("video")!.hasAttribute("crossorigin")).toBe(false);
   });
+  it("tries a down source again when the composition starts a selection of its own", async () => {
+    vi.stubGlobal("origin", "null");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    observer = corsForSealedMedia();
+    const video = add(
+      `<video><source src="media/down.mp4"><source src="media/own.mp4"></video>`,
+    ).querySelector("video")!;
+    await settled();
+    const load = vi
+      .spyOn(video, "load")
+      .mockImplementation(() => void video.dispatchEvent(new Event("loadstart")));
+    const down = video.querySelector("source")!;
+    down.dispatchEvent(new Event("error"));
+    down.dispatchEvent(new Event("error"));
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    expect(load).toHaveBeenCalledTimes(2);
+    video.dispatchEvent(new Event("loadstart"));
+    down.dispatchEvent(new Event("error"));
+    expect([video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([false, 3]);
+  });
+
+  it("settles the composition's play() with the playback its load retried", async () => {
+    vi.stubGlobal("origin", "null");
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockImplementationOnce(() => Promise.reject(new DOMException("load()", "AbortError")))
+      .mockImplementationOnce(() => Promise.resolve())
+      .mockImplementationOnce(() => Promise.reject(new DOMException("load()", "AbortError")))
+      .mockImplementationOnce(() => Promise.reject(new DOMException("none", "NotSupportedError")));
+    observer = corsForSealedMedia();
+    const [first, second] = [0, 1].map(
+      () => add(`<video><source src="media/a.mp4"></video>`).querySelector("video")!,
+    );
+    await settled();
+    const outcomes = [first!, second!].map((video) => {
+      vi.spyOn(video, "load").mockImplementation(() => {});
+      Object.defineProperty(video, "paused", { configurable: true, value: false });
+      const outcome = video.play().then(
+        () => "resolved",
+        (error: DOMException) => error.name,
+      );
+      video.querySelector("source")!.dispatchEvent(new Event("error"));
+      return outcome;
+    });
+    expect(await Promise.all(outcomes)).toEqual(["resolved", "NotSupportedError"]);
+    expect(play).toHaveBeenCalledTimes(4);
+  });
 });
