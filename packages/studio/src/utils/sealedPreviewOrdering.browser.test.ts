@@ -99,6 +99,8 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved, two: bo
       const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
       const w = window as unknown as { __saved: string; __reload: () => void; __refusals: number };
       w.__saved = savedPage;
+      // Studio's own write of the file, as the save does before the preview sync.
+      studio.markStudioWriteToken(`save-${savedPage.length}-${Date.now()}`);
       // A reload Studio asks for because nothing can apply in place counts as a refusal that allows one.
       const reloadNow = () => {
         w.__refusals++;
