@@ -12,6 +12,15 @@ function namedAfterCrash(message: string): string {
     : message;
 }
 
+export class SetupStepsError extends Error {
+  constructor(
+    readonly summary: string,
+    readonly stepsWrittenByCli: string,
+  ) {
+    super(`${summary}\n\n${stepsWrittenByCli}`);
+  }
+}
+
 export function normalizeErrorMessage(error: unknown): string {
   if (error instanceof Error) return namedAfterCrash(error.message);
   if (typeof error === "string") return error;

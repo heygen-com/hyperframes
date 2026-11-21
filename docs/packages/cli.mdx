@@ -430,7 +430,11 @@ you build.
 
 Each warning, and the reason on a `Capture failed:` line, is printed on one
 line: a line break inside the text is shown as `\x0a` instead of starting a new
-terminal line. `--json` output is unchanged and carries the full text.
+terminal line. `--json` output is unchanged and carries the full text. The
+`Design style extraction failed` line printed during a capture follows the same
+rule. When a capture fails because no browser can be set up on Linux ARM64, the
+reason stays on the `Capture failed:` line and the setup commands follow it on
+lines of their own, ready to copy.
 
 Downloaded fonts are saved under `assets/fonts/`, and their CSS references point
 to those local files. Distinct URLs such as `demo.woff2?v=1` and
