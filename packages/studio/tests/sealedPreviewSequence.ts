@@ -291,13 +291,19 @@ export async function playSequence<Saved, Save extends string>(
         step.fate,
         SAVE_KINDS,
       );
-      const posted = () =>
-        studioPage.evaluate(() => (window as unknown as { __posted: number }).__posted);
-      const before = await posted();
+      const sent = () =>
+        studioPage.evaluate(() => {
+          const w = window as unknown as { __posted: number; __reloads: number };
+          return w.__posted + w.__reloads;
+        });
+      const before = await sent();
       await fixture.send(studioPage, step.save, saved, after);
-      // Studio posts the request a tick later; its fate holds until it has gone out.
+      // Studio posts the request a tick later, or reloads when nothing can apply in place; its fate holds until then.
       await studioPage.waitForFunction(
-        (n) => (window as unknown as { __posted: number }).__posted > n,
+        (n) => {
+          const w = window as unknown as { __posted: number; __reloads: number };
+          return w.__posted + w.__reloads > n;
+        },
         {},
         before,
       );

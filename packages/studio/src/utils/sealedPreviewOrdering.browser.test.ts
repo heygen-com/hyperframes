@@ -97,8 +97,15 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved, two: bo
   return studioPage.evaluate(
     (kind, prev, saved, savedPage, x, text) => {
       const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
-      const w = window as unknown as { __saved: string; __reload: () => void };
+      const w = window as unknown as { __saved: string; __reload: () => void; __refusals: number };
       w.__saved = savedPage;
+      // A reload Studio asks for because nothing can apply in place counts as a refusal that allows one.
+      const reloadNow = () => {
+        w.__refusals++;
+        w.__reload();
+      };
+      let sending = true;
+      const reloadPreview = () => (sending ? reloadNow() : w.__reload());
       const iframe = document.querySelector("iframe")!;
       const time = studio.usePlayerStore.getState().currentTime;
       const rerun = { currentTimeOverride: time, authoredHtml: saved, previousHtml: prev };
@@ -116,16 +123,15 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved, two: bo
             timingEdit: true,
             onAsyncFailure: w.__reload,
           };
-          if (studio.applySoftReload(iframe, text, options) === "cannot-soft-reload") w.__reload();
+          if (studio.applySoftReload(iframe, text, options) === "cannot-soft-reload") reloadNow();
         });
-      if (kind === "run")
-        studio.applySoftReload(iframe, text, { ...rerun, onAsyncFailure: w.__reload });
-      if (kind === "retime")
-        studio.applySoftReload(iframe, text, {
-          ...rerun,
-          timingEdit: true,
-          onAsyncFailure: w.__reload,
-        });
+      // As Studio's preview sync: a run nothing can apply in place reloads.
+      const rerunOrReload = (timingEdit: boolean) => {
+        const options = { ...rerun, timingEdit, onAsyncFailure: w.__reload };
+        if (studio.applySoftReload(iframe, text, options) === "cannot-soft-reload") reloadNow();
+      };
+      if (kind === "run") rerunOrReload(false);
+      if (kind === "retime") rerunOrReload(true);
       if (kind === "patch") {
         const instantPatch = {
           selector: "#target",
@@ -136,13 +142,14 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved, two: bo
           iframe,
           result,
           { label: "drag", softReload: true, instantPatch },
-          w.__reload,
+          reloadPreview,
         );
       }
       if (kind.startsWith("undo")) {
         const files = { "index.html": { previous: prev, restored: saved } };
-        studio.applyUndoRestoreToPreview(iframe, null, files, time, w.__reload);
+        studio.applyUndoRestoreToPreview(iframe, null, files, time, reloadPreview);
       }
+      sending = false;
     },
     save,
     file(before, two),
