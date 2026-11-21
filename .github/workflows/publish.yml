@@ -710,6 +710,18 @@ jobs:
           DIST_TAG: ${{ steps.version.outputs.dist_tag }}
         run: |
           while IFS=$'\t' read -r name tarball; do
+            # A rerun after some packages went out: npm refuses even a dry run of a version it already has. The
+            # same bytes are what npm already published, so there is nothing left to ask it.
+            integrity="sha512-$(openssl dgst -sha512 -binary "$tarball" | base64 -w0)"
+            if published="$(npm view "${name}@${VERSION}" dist.integrity --registry https://registry.npmjs.org/ 2>/dev/null)" \
+                && [ -n "$published" ]; then
+              if [ "$published" != "$integrity" ]; then
+                echo "::error::${name}@${VERSION} is already on npm with other contents than $(basename "$tarball")"
+                exit 1
+              fi
+              echo "${name}@${VERSION} is already on npm with these contents; nothing to check"
+              continue
+            fi
             if ! view="$(npm publish "$tarball" --dry-run --json --ignore-scripts --access public --tag "$DIST_TAG" \
                 --registry https://registry.npmjs.org/ 2>/dev/null)"; then
               echo "::error::npm cannot read $(basename "$tarball")"
