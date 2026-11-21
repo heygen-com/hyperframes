@@ -25,6 +25,7 @@ import * as parakeet from "../whisper/parakeet.js";
 import * as sherpa from "../whisper/sherpa.js";
 import * as whisper from "../whisper/transcribe.js";
 import { CliRuntimeError, consumeCommandResult } from "../utils/commandResult.js";
+import * as clack from "../ui/prompts.js";
 import transcribeCmd from "./transcribe.js";
 
 // Make the whisper core report "unavailable" so we exercise the soft-skip path.
@@ -1206,5 +1207,26 @@ describe("transcribe output for people", () => {
     expect(printed).toContain(`sm${SHOWN}all`);
     expect(printed).toContain(`model fi${SHOWN}le unreadable`);
     expect(printed).not.toContain(ODD);
+  });
+
+  // fails without the fix: a runner's status line is handed to the spinner as it arrived.
+  it("shows control characters in a runner's status line as text", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    const model = `sm${ODD}all`;
+    transcribeMock.mockImplementation(async (_input, outputDir, options) => {
+      options.onProgress?.(`Downloading model ${model}...`);
+      return fakeTranscript(outputDir, "whisper");
+    });
+    const shown: string[] = [];
+    const spinner = clack.spinner();
+    vi.spyOn(spinner, "message").mockImplementation((text) => {
+      shown.push(String(text));
+    });
+    vi.spyOn(spinner, "start").mockImplementation(() => {});
+    vi.spyOn(spinner, "stop").mockImplementation(() => {});
+    vi.spyOn(clack, "spinner").mockReturnValue(spinner);
+    await transcribeCmd.run!({ args: { input, dir, engine: "whisper", model } } as never);
+    expect(shown).toEqual([`Downloading model sm${SHOWN}all...`]);
   });
 });

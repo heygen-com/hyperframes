@@ -136,7 +136,7 @@ export default defineCommand({
         timeoutMs: readTimeout(args.timeout)?.ms,
         captions: { format: args.to, outputPath: args.output, preserveCues: args["preserve-cues"] },
         stopOnProcessSignals: true,
-        onStatus: json ? undefined : (message) => ui.spin?.message(message),
+        onStatus: json ? undefined : (message) => ui.spin?.message(terminalText(message)),
         onProgress: json ? createProgressWriter(process.stderr) : undefined,
         onEngine: (event) => {
           if (event.notice && !json) console.error(c.dim(`  Note: ${terminalLines(event.notice)}`));

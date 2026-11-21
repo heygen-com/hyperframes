@@ -22,7 +22,6 @@ import { CliUsageError, failUsage, setCommandExitCode } from "../../utils/comman
  */
 
 import { readJsonFileText } from "../../utils/jsonFlag.js";
-import { terminalLines } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import { failureMessage, jsonFailure } from "../../utils/jsonError.js";
 
@@ -280,7 +279,7 @@ export async function runPolicies(args: PoliciesArgs): Promise<void> {
           setCommandExitCode(1);
           return;
         }
-        console.error(c.error(terminalLines(`Failed to validate ${args.inputPath}: ${msg}`)));
+        console.error(c.error(`Failed to validate ${args.inputPath}: ${msg}`));
         setCommandExitCode(1);
         return;
       }
@@ -290,7 +289,7 @@ export async function runPolicies(args: PoliciesArgs): Promise<void> {
         return;
       }
       for (const warning of result.warnings) {
-        console.warn(c.dim(`Warning: ${terminalLines(warning)}`));
+        console.warn(c.dim(`Warning: ${warning}`));
       }
       if (result.missing.length === 0) {
         console.log(c.success(`Policy covers all ${result.required.length} required actions.`));
