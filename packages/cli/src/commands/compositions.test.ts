@@ -33,6 +33,21 @@ describe("parseCompositions", () => {
     },
   );
 
+  it.each(["wide", "", "0", "-640"])(
+    "lists the default size when data-width is %j",
+    (declaredWidth) => {
+      const html = `<div data-composition-id="main" data-width="${declaredWidth}" data-height="360"></div>`;
+
+      expect(parseCompositions(html, ".")[0]).toMatchObject({ width: 1920, height: 360 });
+    },
+  );
+
+  it("lists the default height when data-height is not a number", () => {
+    const html = `<div data-composition-id="main" data-width="640" data-height="tall"></div>`;
+
+    expect(parseCompositions(html, ".")[0]).toMatchObject({ width: 640, height: 1080 });
+  });
+
   it("resolves relative sub-composition starts when computing host duration", () => {
     const baseDir = mkdtempSync(join(tmpdir(), "hyperframes-compositions-"));
 
@@ -68,6 +83,15 @@ describe("parseCompositions", () => {
 describe("parseSubComposition", () => {
   beforeEach(() => {
     ensureDOMParser();
+  });
+
+  it("lists the parent size when a sub-composition dimension is not a number", () => {
+    const html = `<div data-composition-id="scene" data-width="wide" data-height="tall"></div>`;
+
+    expect(parseSubComposition(html, "fallback", 1280, 720)).toMatchObject({
+      width: 1280,
+      height: 720,
+    });
   });
 
   it.each([false, true])(
