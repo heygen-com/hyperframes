@@ -9,7 +9,6 @@ import {
   writeSync,
   rmSync,
   renameSync,
-  statSync,
   lstatSync,
   realpathSync,
   constants,
@@ -74,33 +73,35 @@ export function readManifest(projectDir) {
 }
 
 /**
- * The project's `.media` folder, or the `subdir` inside it, made one level at a time if missing. Throws when any
- * level is a link or resolves outside the project, before anything is made inside it, since a project from someone
- * else could carry such a link to send writes elsewhere.
+ * The project's `.media` folder, made if missing. Throws when it is a link or resolves outside the project, since
+ * a project from someone else could carry such a link to send manifest and index writes elsewhere.
  */
-export function ownMediaDir(projectDir, subdir = "") {
-  mkdirSync(projectDir, { recursive: true });
-  let dir = mediaDir(projectDir);
-  let expected = join(realpathSync(projectDir), ".media");
-  ownFolder(dir, expected);
-  for (const part of subdir.split("/").filter(Boolean)) {
-    dir = join(dir, part);
-    expected = join(expected, part);
-    ownFolder(dir, expected);
+export function ownMediaDir(projectDir) {
+  const dir = mediaDir(projectDir);
+  mkdirSync(dir, { recursive: true });
+  if (
+    lstatSync(dir).isSymbolicLink() ||
+    realpathSync(dir) !== join(realpathSync(projectDir), ".media")
+  ) {
+    throw new Error(`${dir} leads outside the project folder; nothing was written there`);
   }
   return dir;
 }
 
-function ownFolder(dir, expected) {
-  try {
-    mkdirSync(dir);
-  } catch (error) {
-    if (error?.code !== "EEXIST") throw error;
+/** The project's own folder for `type` under `.media`, made if missing; throws when any folder on the way is a link. */
+export function ownTypeDir(projectDir, type) {
+  let dir = ownMediaDir(projectDir);
+  // Each folder is looked at before it is made, so nothing is ever made through a link.
+  for (const part of typeSubdir(type).split("/")) {
+    dir = join(dir, part);
+    if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) {
+      throw new Error(
+        `${dir} is a link; media is written only into real folders, so nothing was written there`,
+      );
+    }
+    mkdirSync(dir, { recursive: true });
   }
-  const stats = lstatSync(dir);
-  if (stats.isSymbolicLink() || !stats.isDirectory() || realpathSync(dir) !== expected) {
-    throw new Error(`${dir} leads outside the project folder; nothing was written there`);
-  }
+  return dir;
 }
 
 /** Throws when `path` is a link. */
@@ -110,13 +111,12 @@ export function refuseLink(path) {
   }
 }
 
-/** Replaces the file at `path` with `content` by writing a temp file beside it and renaming it over, so a link there is replaced, never followed. */
-export function replaceFile(path, content) {
+/** A new temp file beside `path` holding `content`, with a random name, created exclusively. */
+export function writeTempBeside(path, content) {
   // Same shape as core atomicTempPath, which Studio's project history skips.
   const temp = `${path}.hf${randomBytes(3).toString("hex")}.tmp`;
   try {
     writeFileSync(temp, content, { flag: "wx" });
-    renameRidingWindowsHolds(temp, path);
   } catch (error) {
     // EEXIST: the random name belongs to another writer, so it is left alone. A failed cleanup must not hide `error`.
     if (error?.code !== "EEXIST") {
@@ -124,6 +124,18 @@ export function replaceFile(path, content) {
         rmSync(temp, { force: true });
       } catch {}
     }
+    throw error;
+  }
+  return temp;
+}
+
+/** Writes `content` to a temp file beside `path`, then renames it over: a link at `path` is replaced, not followed. */
+export function replaceFile(path, content) {
+  const temp = writeTempBeside(path, content);
+  try {
+    renameRidingWindowsHolds(temp, path);
+  } catch (error) {
+    rmSync(temp, { force: true });
     throw error;
   }
 }
@@ -145,7 +157,7 @@ function renameRidingWindowsHolds(from, to) {
 }
 
 export function appendRecord(projectDir, record) {
-  ownMediaDir(projectDir, typeSubdir(record.type));
+  ownTypeDir(projectDir, record.type);
 
   const p = manifestPath(projectDir);
   refuseLink(p);
@@ -262,13 +274,12 @@ function withLock(dir, fn) {
       break;
     } catch (err) {
       if (err.code !== "EEXIST") throw err;
-      try {
-        if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) {
-          rmSync(lock, { force: true }); // steal a stale lock from a dead holder
-          continue;
-        }
-      } catch {
-        continue; // lock vanished between check and stat — retry the acquire
+      const held = lstatSync(lock, { throwIfNoEntry: false });
+      if (!held) continue; // released between the open and the look: retry the acquire
+      if (!held.isFile()) throw new Error(`${lock} is not a lock file; remove it and try again`);
+      if (Date.now() - held.mtimeMs > LOCK_STALE_MS) {
+        rmSync(lock, { force: true }); // steal a stale lock from a dead holder
+        continue;
       }
       if (Date.now() - start > LOCK_TIMEOUT_MS) {
         throw new Error("media-use: timed out acquiring .media/.lock");
@@ -295,7 +306,7 @@ export function withMediaLock(projectDir, fn) {
 // O_EXCL-create an empty marker under core's atomic temp name, which Studio's
 // project history skips. Returns { id, localPath, markerPath }.
 export function allocateId(projectDir, type, ext) {
-  ownMediaDir(projectDir, typeSubdir(type));
+  ownTypeDir(projectDir, type);
   return withMediaLock(projectDir, () => {
     const id = nextFreeId(projectDir, type, ext);
     const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;

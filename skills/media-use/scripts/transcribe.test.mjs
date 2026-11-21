@@ -213,3 +213,46 @@ test(
     }
   },
 );
+
+// fails without the fix: the transcript went through a link at `<out>.tmp-<pid>`, onto a file outside.
+test(
+  "the transcript is never written through a link beside it",
+  { skip: process.platform === "win32" },
+  () => {
+    const root = mkdtempSync(join(tmpdir(), "media-use-transcribe-link-"));
+    try {
+      const outside = join(root, "outside.txt");
+      writeFileSync(outside, "keep me");
+      const out = join(root, "in.transcribe.json");
+      const cli = join(root, "cli.mjs");
+      // The stand-in runs as this script's child, so its parent pid is the one the temp name would use.
+      writeFileSync(
+        cli,
+        `import { symlinkSync, writeFileSync } from "node:fs";\nconst a = process.argv.slice(2);\n` +
+          `symlinkSync(${JSON.stringify(outside)}, ${JSON.stringify(out)} + ".tmp-" + process.ppid);\n` +
+          `writeFileSync(a[a.indexOf("--dir") + 1] + "/transcript.json", '[{"text":"a","start":0,"end":1}]');\n` +
+          `console.log('{"ok":true,"engine":"whisper"}');\n`,
+      );
+      writeFileSync(join(root, "in.wav"), "");
+      const script = fileURLToPath(new URL("./transcribe.mjs", import.meta.url));
+      const env = { ...process.env, HYPERFRAMES_CLI_ENTRY: cli, HOME: root };
+      delete env.HYPERFRAMES_PARAKEET;
+      execFileSync(
+        process.execPath,
+        [script, "--input", join(root, "in.wav"), "--engine", "whisper", "--json"],
+        {
+          encoding: "utf8",
+          env: {
+            ...env,
+            HYPERFRAMES_MEDIA_HOME: join(root, "home"),
+            HYPERFRAMES_NO_TELEMETRY: "1",
+          },
+        },
+      );
+      assert.equal(readFileSync(outside, "utf8"), "keep me");
+      assert.match(readFileSync(out, "utf8"), /"text"/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);

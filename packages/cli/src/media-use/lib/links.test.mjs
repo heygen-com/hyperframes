@@ -58,7 +58,10 @@ function reserveAndWrite(project, type, ext) {
 test("a reservation refuses a linked .media before taking the lock", posixOnly, () =>
   withSandbox(({ project, outside, outsideUnchanged }) => {
     symlinkSync(outside, join(project, ".media"));
-    assert.throws(() => reserveAndWrite(project, "image", ".png"), /leads outside the project/);
+    assert.throws(
+      () => reserveAndWrite(project, "image", ".png"),
+      /leads outside the project|is a link/,
+    );
     outsideUnchanged();
   }),
 );
@@ -76,7 +79,10 @@ for (const [linked, type] of [
     () =>
       withSandbox(({ project, outside, outsideUnchanged }) => {
         plantLink(outside, join(project, ".media", linked));
-        assert.throws(() => reserveAndWrite(project, type, ".bin"), /leads outside the project/);
+        assert.throws(
+          () => reserveAndWrite(project, type, ".bin"),
+          /leads outside the project|is a link/,
+        );
         outsideUnchanged();
       }),
   );
@@ -87,7 +93,7 @@ test("appending a record refuses a linked type folder", posixOnly, () =>
     plantLink(outside, join(project, ".media", "images"));
     assert.throws(
       () => appendRecord(project, { id: "image_001", type: "image", path: ".media/images/x.png" }),
-      /leads outside the project/,
+      /leads outside the project|is a link/,
     );
     outsideUnchanged();
   }),
@@ -159,7 +165,7 @@ test("a project preference refuses a linked .media and writes nothing", posixOnl
     symlinkSync(outside, join(project, ".media"));
     assert.throws(
       () => recordPreference({ projectDir: project, key: "aspect", value: "16:9" }),
-      /leads outside the project/,
+      /leads outside the project|is a link/,
     );
     outsideUnchanged();
   }),

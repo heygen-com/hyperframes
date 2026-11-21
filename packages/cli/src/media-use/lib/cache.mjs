@@ -7,9 +7,9 @@ import {
   statSync,
   constants,
 } from "node:fs";
-import { join, basename, dirname } from "node:path";
+import { join, basename } from "node:path";
 import { createHash } from "node:crypto";
-import { readManifest, appendRecord, normalizePrompt, ownMediaDir } from "./manifest.mjs";
+import { readManifest, appendRecord, normalizePrompt, ownTypeDir } from "./manifest.mjs";
 import { globalMediaDir, mediaHome } from "./media-home.mjs";
 
 export { globalMediaDir };
@@ -130,7 +130,7 @@ export function importFromCache(cacheRecord, projectDir, localId, localPath) {
   const sha = cacheRecord.sha;
   const cachedFile = cacheRecord.cached_path;
 
-  ownMediaDir(projectDir, dirname(localPath).replace(/^\.media\/?/, ""));
+  ownTypeDir(projectDir, cacheRecord.type);
   const fullDest = join(projectDir, localPath);
   copyFileSync(cachedFile, fullDest, constants.COPYFILE_EXCL);
 

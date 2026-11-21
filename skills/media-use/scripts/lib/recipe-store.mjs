@@ -173,12 +173,11 @@ export function skeletonizeStoryboard(source) {
   return out.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
-/** The run's workflow as BRIEF.md records it — the source of truth a freeze
- * must not contradict. Undefined when no BRIEF.md (or no `workflow:`) exists. */
-function briefWorkflow(root) {
-  const brief = join(root, "BRIEF.md");
-  if (!existsSync(brief)) return undefined;
-  const lines = readFileSync(brief, "utf8").split(/\r?\n/);
+/** The run's workflow as BRIEF.md's text records it — the source of truth a freeze
+ * must not contradict. Undefined when there is no BRIEF.md (or no `workflow:`). */
+function briefWorkflow(brief) {
+  if (brief === undefined) return undefined;
+  const lines = brief.split(/\r?\n/);
   if (lines[0]?.trim() !== "---") return undefined;
   for (let i = 1; i < lines.length && lines[i].trim() !== "---"; i++) {
     const match = lines[i].match(/^workflow\s*:\s*(.+?)\s*$/);
@@ -259,6 +258,19 @@ export function readRegularFile(path, noFollow = constants.O_NOFOLLOW ?? 0) {
  * Writes each named file into `dir` as a new regular file, replacing a link at that name instead
  * of following it, and removes a leftover brief skeleton the bundle does not have.
  */
+/**
+ * The content of the project's own `name`, or undefined when it is missing. Throws when it is a link
+ * or not a regular file, since a received project could link it to a file outside the project.
+ */
+function readProjectSource(root, name) {
+  const path = join(root, name);
+  const content = readRegularFile(path);
+  if (content === undefined && lstatSync(path, { throwIfNoEntry: false })) {
+    throw new Error(`${path} is a link or not a regular file; nothing was frozen`);
+  }
+  return content;
+}
+
 function writeRecipeFiles(dir, files) {
   mkdirSync(dir, { recursive: true });
   for (const [name, content] of Object.entries(files)) replaceFile(join(dir, name), content);
@@ -273,17 +285,19 @@ function writeRecipeFiles(dir, files) {
 export function freezeRecipe({ projectDir, name, workflow, blocks }) {
   const slug = slugifyRecipeName(name);
   const root = resolve(projectDir);
-  const fromBrief = briefWorkflow(root);
+  // Read before anything moves, so a source that is a link stops the freeze with nothing written.
+  const frame = readProjectSource(root, "frame.md");
+  const storyboard = readProjectSource(root, "STORYBOARD.md")?.toString("utf8");
+  const brief = readProjectSource(root, "BRIEF.md")?.toString("utf8");
+  const fromBrief = briefWorkflow(brief);
   const fromFlag = workflow && String(workflow).trim() ? String(workflow).trim() : undefined;
   // BRIEF.md decides; the flag only covers projects briefed before it existed.
   const resolvedWorkflow = fromBrief ?? fromFlag;
   if (!resolvedWorkflow) {
     throw new Error("no workflow found — BRIEF.md names none and no --workflow was given");
   }
-  const frameSpec = join(root, "frame.md");
-  const storyboard = join(root, "STORYBOARD.md");
-  if (!existsSync(frameSpec)) throw new Error("no frame.md to freeze — run the design step first");
-  if (!existsSync(storyboard)) throw new Error("no STORYBOARD.md to freeze");
+  if (frame === undefined) throw new Error("no frame.md to freeze — run the design step first");
+  if (storyboard === undefined) throw new Error("no STORYBOARD.md to freeze");
 
   refuseLinkedRecipeDir(root, slug);
   const dir = join(projectRecipesDir(root), slug);
@@ -327,15 +341,14 @@ export function freezeRecipe({ projectDir, name, workflow, blocks }) {
 
   const files = {
     "recipe.json": `${JSON.stringify(recipe, null, 2)}\n`,
-    "frame.md": readFileSync(frameSpec),
-    "storyboard-skeleton.md": `${skeletonizeStoryboard(readFileSync(storyboard, "utf8")).trimEnd()}\n`,
+    "frame.md": frame,
+    "storyboard-skeleton.md": `${skeletonizeStoryboard(storyboard).trimEnd()}\n`,
   };
   // Best-effort fourth artifact — projects briefed before BRIEF.md existed
   // (or by workflows that don't write one) freeze fine without it.
-  const brief = join(root, "BRIEF.md");
-  const briefSkeleton = existsSync(brief);
+  const briefSkeleton = brief !== undefined;
   if (briefSkeleton) {
-    files["brief-skeleton.md"] = `${skeletonizeBrief(readFileSync(brief, "utf8")).trimEnd()}\n`;
+    files["brief-skeleton.md"] = `${skeletonizeBrief(brief).trimEnd()}\n`;
   }
   writeRecipeFiles(dir, files);
 
