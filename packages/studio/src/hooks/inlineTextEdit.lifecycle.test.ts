@@ -8,6 +8,7 @@ import {
   resolvePreviewSelection,
 } from "../components/editor/previewSelection";
 import { retirePreviewEditingClient } from "../player/lib/previewChannel";
+import { describePreviewElements } from "../player/lib/previewElements";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
 import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
 import { useInlineTextEdit, type InlineTextEditCommit } from "./useInlineTextEdit";
@@ -31,6 +32,8 @@ interface Title {
   putBack: () => void;
   silenceEnds?: () => void;
   holdEndReplies?: () => () => void;
+  /** Answered once the frame has handled every request sent before it. */
+  caughtUp?: () => Promise<unknown>;
   frameReloads?: () => void;
   /** Observers on the live element's document that are still connected. */
   watching?: () => number;
@@ -123,6 +126,7 @@ async function sealedTitle(): Promise<Title> {
       return () => releaseHeld();
     },
     frameReloads: () => iframe.dispatchEvent(new Event("load")),
+    caughtUp: () => describePreviewElements(iframe, [selection.handle!]),
   };
 }
 
@@ -153,7 +157,8 @@ async function openEdit(mode: "unsealed" | "sealed") {
   const reopen = async (typed: string) => {
     act(() => void controls.start(title.target));
     await vi.waitFor(() => expect(controls.session).not.toBeNull());
-    await vi.waitFor(() => expect(title.shown.hasAttribute("contenteditable")).toBe(true));
+    await title.caughtUp?.();
+    expect(title.shown.hasAttribute("contenteditable")).toBe(true);
     title.shown.innerHTML = typed;
   };
   return {
