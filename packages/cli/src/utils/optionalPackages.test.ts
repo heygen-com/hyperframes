@@ -34,6 +34,7 @@ import {
   optionalPackageDir,
   requireSharpBesideCli,
   SHARP_VERSION,
+  sweepStaleStaging,
   type OptionalPackageDeps,
 } from "./optionalPackages.js";
 
@@ -732,6 +733,33 @@ describe("install", () => {
         expect(existsSync(stale)).toBe(true);
         expect(run).not.toHaveBeenCalled();
       } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // fails without the fix: the folder's name was printed as it is on disk.
+  it.skipIf(process.platform === "win32")(
+    "shows control characters in a stale folder it could not remove as text",
+    () => {
+      const root = mkdtempSync(join(tmpdir(), "hf-stale-staging-"));
+      const parent = join(root, "od\u001b[2Jd\u0007");
+      const dir = join(parent, "pkg");
+      const deadPid = spawnSync(process.execPath, ["-e", ""]).pid;
+      const stale = `${dir}.tmp-${deadPid}-old`;
+      mkdirSync(join(stale, "inner"), { recursive: true });
+      chmodSync(stale, 0o500);
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        sweepStaleStaging(dir);
+        const said = log.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+        expect(said).toContain("could not remove stale install dir");
+        expect(said).toContain("od\\x1b[2Jd\\x07");
+        expect(said).not.toContain("\u001b");
+        expect(said).not.toContain("\u0007");
+      } finally {
+        log.mockRestore();
+        chmodSync(stale, 0o700);
         rmSync(root, { recursive: true, force: true });
       }
     },

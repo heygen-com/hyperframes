@@ -13,6 +13,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { c } from "../../ui/colors.js";
+import { terminalText } from "@hyperframes/core";
 import { deleteStackOutputs, requireStack } from "./state.js";
 import { deleteEcrRepository, samDelete } from "./sam.js";
 import { repoRoot } from "./repoRoot.js";
@@ -25,7 +26,9 @@ export interface DestroyArgs {
 
 export async function runDestroy(args: DestroyArgs): Promise<void> {
   const stack = requireStack(args.stackName);
-  console.log(c.dim(`→ sam delete (stack=${stack.stackName} region=${stack.region})`));
+  console.log(
+    c.dim(terminalText(`→ sam delete (stack=${stack.stackName} region=${stack.region})`)),
+  );
   const root = repoRoot();
   const awsProfile = args.awsProfile ?? process.env.AWS_PROFILE;
   // Mirror deploy.ts's AWS_PROFILE env fallback — `AWS_PROFILE=prod
@@ -41,7 +44,7 @@ export async function runDestroy(args: DestroyArgs): Promise<void> {
   }
   if (stack.videoRepository) {
     const repositoryName = videoRepositoryName(stack.stackName);
-    console.log(c.dim(`→ Deleting ECR repository ${repositoryName}`));
+    console.log(c.dim(terminalText(`→ Deleting ECR repository ${repositoryName}`)));
     deleteEcrRepository({ repositoryName, region: stack.region, awsProfile });
   }
   deleteStackOutputs(args.stackName);
@@ -49,7 +52,7 @@ export async function runDestroy(args: DestroyArgs): Promise<void> {
   console.log(c.success("Stack torn down."));
   console.log(
     c.dim(
-      `Note: the render bucket "${stack.bucketName}" was deployed with Retain — empty + delete it via the AWS console or CLI if you want to fully reclaim storage.`,
+      `Note: the render bucket "${terminalText(stack.bucketName)}" was deployed with Retain — empty + delete it via the AWS console or CLI if you want to fully reclaim storage.`,
     ),
   );
 }

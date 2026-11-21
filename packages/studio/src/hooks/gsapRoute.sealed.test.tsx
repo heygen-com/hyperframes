@@ -204,6 +204,7 @@ describe("the GSAP-or-CSS route for a layer in a sealed preview", () => {
     );
 
     announcePreviewRestoredInPlace(iframe);
+    await Promise.resolve();
 
     expect(await editsPlainCssSettled(standIn, "move")).toBe(false);
   });

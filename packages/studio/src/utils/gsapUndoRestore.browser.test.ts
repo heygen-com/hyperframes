@@ -97,7 +97,10 @@ it.each([
       (files, crop, time) => {
         document.getElementById("target")!.style.setProperty("clip-path", crop);
         const undo = (window as unknown as { hfUndo: typeof import("./gsapUndoRestore") }).hfUndo;
-        const iframe = { contentDocument: document, contentWindow: window } as HTMLIFrameElement;
+        const iframe = Object.assign(new EventTarget(), {
+          contentDocument: document,
+          contentWindow: window,
+        }) as unknown as HTMLIFrameElement;
         return undo.applyUndoRestoreToPreview(iframe, "index.html", files, time, () => {});
       },
       { "index.html": { previous, restored } },
@@ -126,7 +129,10 @@ it.each([
       (html, time) => {
         const soft = (window as unknown as { hfSoftReload: typeof import("./gsapSoftReload") })
           .hfSoftReload;
-        const iframe = { contentDocument: document, contentWindow: window } as HTMLIFrameElement;
+        const iframe = Object.assign(new EventTarget(), {
+          contentDocument: document,
+          contentWindow: window,
+        }) as unknown as HTMLIFrameElement;
         const script = soft.extractGsapScriptText(html)!;
         return soft.applySoftReload(iframe, script, {
           currentTimeOverride: time,
