@@ -21,34 +21,27 @@ const resolved = (src: string, home: string) => {
   }
 };
 
-// Per element: withCors while our crossorigin is on it; withoutCors once the browser ran out of sources with it,
-// until the element's sources change.
-const state = new WeakMap<HTMLMediaElement, "withCors" | "withoutCors">();
+// What the helper has done to an element: armed CORS; dropped it and reloaded; played without it; or failed both ways.
+type Fallback = "cors" | "retrying" | { playedWithout: string } | "failed";
+const fallback = new WeakMap<HTMLMediaElement, Fallback>();
 // A crossorigin change we did not write, even to our own value, makes the attribute the composition's for good.
 const authored = new WeakSet<HTMLMediaElement>();
 const pendingWrites = new WeakMap<HTMLMediaElement, number>();
-const failedInSelection = new WeakMap<HTMLMediaElement, Set<string>>();
-const fellBackFor = new WeakMap<HTMLMediaElement, Set<string>>();
-const loadsWithoutCors = new Set<string>();
+const playedOnlyWithoutCors = new Set<string>();
 
-const playable = (media: HTMLMediaElement, source: Element) => {
-  const type = source.getAttribute("type");
-  return !type || media.canPlayType(type) !== "";
-};
-
-/** What the browser tries, in order: `src` alone, else the `<source>` children it can play. */
-function candidatesOf(media: HTMLMediaElement): Element[] {
-  if (media.hasAttribute("src")) return [media];
-  return [...media.children].filter(
-    (el) => el.localName === "source" && el.getAttribute("src") && playable(media, el),
-  );
+function listedUrls(media: HTMLMediaElement, home: string): string[] {
+  const sources = media.hasAttribute("src") ? [media] : [...media.querySelectorAll("source")];
+  return sources.flatMap((el) => {
+    const src = el.getAttribute("src");
+    return src ? [resolved(src, home)] : [];
+  });
 }
 
 function wantsCors(media: HTMLMediaElement, home: string): boolean {
-  const urls = candidatesOf(media).map((el) => resolved(el.getAttribute("src") ?? "", home));
+  const urls = listedUrls(media, home);
   const own = originOf(home, home);
   if (!urls.length || !urls.every((url) => originOf(url, home) === own)) return false;
-  return !urls.every((url) => loadsWithoutCors.has(url));
+  return !urls.every((url) => playedOnlyWithoutCors.has(url));
 }
 
 function write(media: HTMLMediaElement, value: string | null): void {
@@ -63,22 +56,24 @@ function crossOriginChanged(media: HTMLMediaElement): void {
   else authored.add(media);
 }
 
+function ownedByAuthor(media: HTMLMediaElement, current: Fallback | undefined): boolean {
+  if (authored.has(media)) return true;
+  if (!media.hasAttribute("crossorigin") || current === "cors") return false;
+  authored.add(media);
+  return true;
+}
+
+function armCors(media: HTMLMediaElement, want: boolean, armed: boolean): void {
+  if (want === armed) return;
+  write(media, want ? "anonymous" : null);
+  if (want) fallback.set(media, "cors");
+  else fallback.delete(media);
+}
+
 function sync(media: HTMLMediaElement, home: string): void {
-  if (authored.has(media)) return;
-  const current = state.get(media);
-  if (media.hasAttribute("crossorigin") && current !== "withCors") {
-    authored.add(media);
-    return;
-  }
-  if (current === "withoutCors") return;
-  const want = wantsCors(media, home);
-  if (want && !media.hasAttribute("crossorigin")) {
-    write(media, "anonymous");
-    state.set(media, "withCors");
-  } else if (!want && state.get(media) === "withCors") {
-    write(media, null);
-    state.delete(media);
-  }
+  const current = fallback.get(media);
+  if (ownedByAuthor(media, current) || (current !== undefined && current !== "cors")) return;
+  armCors(media, wantsCors(media, home), current === "cors");
 }
 
 // The parser can add a <source> after its media element, and a script can change either's src.
@@ -88,68 +83,51 @@ function mediaOf(el: Element): HTMLMediaElement | null {
   return parent && isMedia(parent) ? parent : null;
 }
 
-function failedWithOurCors(event: Event): { el: Element; media: HTMLMediaElement } | null {
-  const target = event.target as Node | null;
-  if (target?.nodeType !== 1) return null;
-  const media = mediaOf(target as Element);
-  if (!media || authored.has(media) || state.get(media) !== "withCors") return null;
-  return { el: target as Element, media };
-}
-
-function recordFailure(media: HTMLMediaElement, el: Element, home: string): Set<string> {
-  const failed = failedInSelection.get(media) ?? new Set<string>();
-  failedInSelection.set(media, failed);
-  const src = el.getAttribute("src");
-  if (src) failed.add(resolved(src, home));
-  return failed;
-}
-
-function rememberRefused(urls: Set<string>): void {
-  for (const url of urls) {
-    if (loadsWithoutCors.has(url)) continue;
-    loadsWithoutCors.add(url);
-    console.warn(
-      `[hyperframes] ${url} did not load with CORS, so it plays without: colour grading, canvas reads and ` +
-        "audio effects are off for it. Serve it with Access-Control-Allow-Origin to keep them.",
-    );
-  }
+function remember(url: string): void {
+  if (playedOnlyWithoutCors.has(url)) return;
+  playedOnlyWithoutCors.add(url);
+  console.warn(
+    `[hyperframes] ${url} did not load with CORS, so it plays without: colour grading, canvas reads and ` +
+      "audio effects are off for it. Serve it with Access-Control-Allow-Origin to keep them.",
+  );
 }
 
 // The browser's own word that it has nothing left to try: the element's error, or a source's with no source left.
 const exhausted = (media: HTMLMediaElement, el: Element) =>
   el === media || media.networkState === HTMLMediaElement.NETWORK_NO_SOURCE;
 
-function fallBackWithoutCors(event: Event, home: string): void {
-  const failure = failedWithOurCors(event);
-  if (!failure) return;
-  const { el, media } = failure;
-  const failed = recordFailure(media, el, home);
-  if (!exhausted(media, el)) return;
-  failedInSelection.delete(media);
-  const done = fellBackFor.get(media) ?? new Set<string>();
-  fellBackFor.set(media, done);
-  if ([...failed].every((url) => done.has(url))) return;
-  failed.forEach((url) => done.add(url));
-  state.set(media, "withoutCors");
-  rememberRefused(failed);
+function ranOut(event: Event): void {
+  const target = event.target as Node | null;
+  if (target?.nodeType !== 1) return;
+  const media = mediaOf(target as Element);
+  if (!media || authored.has(media) || !exhausted(media, target as Element)) return;
+  const current = fallback.get(media);
+  if (current === "retrying") fallback.set(media, "failed");
+  if (current !== "cors") return;
+  fallback.set(media, "retrying");
   write(media, null);
   media.load();
 }
 
-function loadedWithCors(event: Event): void {
+function firstFrame(event: Event): void {
   const media = event.target as HTMLMediaElement;
-  if (!isMedia(media) || state.get(media) !== "withCors") return;
-  failedInSelection.delete(media);
-  loadsWithoutCors.delete(media.currentSrc);
+  if (!isMedia(media)) return;
+  const current = fallback.get(media);
+  if (current === "cors") playedOnlyWithoutCors.delete(media.currentSrc);
+  if (current !== "retrying") return;
+  fallback.set(media, { playedWithout: media.currentSrc });
+  remember(media.currentSrc);
 }
 
-// A src or <source> change starts a new selection: its failures and fallback start over.
-function sourcesChanged(record: MutationRecord): void {
+// A src or <source> change: a fallback holds while the URL it played is still named, else the element starts over.
+function sourcesChanged(record: MutationRecord, home: string): void {
   const target = record.target as Element;
   const media = record.type === "attributes" ? mediaOf(target) : isMedia(target) ? target : null;
-  if (!media) return;
-  failedInSelection.delete(media);
-  if (state.get(media) === "withoutCors") state.delete(media);
+  const current = media && fallback.get(media);
+  if (!media || !current || current === "cors") return;
+  if (typeof current === "object" && listedUrls(media, home).includes(current.playedWithout))
+    return;
+  fallback.delete(media);
 }
 
 function visit(node: Node, home: string): void {
@@ -178,7 +156,7 @@ export function corsForSealedMedia(): MutationObserver | null {
     }
     for (const record of records) {
       if (record.attributeName === "crossorigin") continue;
-      sourcesChanged(record);
+      sourcesChanged(record, home);
       if (record.type === "attributes") visit(record.target, home);
       else record.addedNodes.forEach((node) => visit(node, home));
     }
@@ -192,7 +170,7 @@ export function corsForSealedMedia(): MutationObserver | null {
   });
   visit(document.documentElement, home);
   // Media events do not bubble; capture listeners on the document hear every element's.
-  document.addEventListener("error", (event) => fallBackWithoutCors(event, home), true);
-  document.addEventListener("loadeddata", loadedWithCors, true);
+  document.addEventListener("error", ranOut, true);
+  document.addEventListener("loadeddata", firstFrame, true);
   return observer;
 }
