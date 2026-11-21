@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
  *   /vendor/hyperframe.runtime.iife.js
  *   /fixtures/<name>/<file>            → fixture HTML + assets
  *   /fixtures-flaky/<name>/<file>      → as /fixtures/, but a 503 the first time each URL is asked for
+ *   ...?no-store                       → never cached, so every load reaches the server
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -225,6 +226,7 @@ export function startServer(options: ServeOptions = {}): RunningServer {
         // A sealed player's film has an opaque origin and loads its own media with CORS, as from a CORS-capable host.
         const res = applyCacheHeaders(await readBunFile(filePath), noCache);
         if (served[1] !== "fixtures-no-cors") res.headers.set("Access-Control-Allow-Origin", "*");
+        if (url.searchParams.has("no-store")) res.headers.set("Cache-Control", "no-store");
         return res;
       }
 

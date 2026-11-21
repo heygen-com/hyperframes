@@ -142,7 +142,7 @@ async function mediaCases() {
   await add("missing", `<video src="/fixtures/10-video-grid/missing.mp4"></video>`);
   await add(
     "leading",
-    `<video><source src="${base}?case=skipped" type="video/x-nope"><source src="${base}?case=leading"></video>`,
+    `<video><source src="${base}?case=skipped" type="video/x-nope"><source src="${base}?case=leading&no-store"></video>`,
   );
   await add(
     "second",
