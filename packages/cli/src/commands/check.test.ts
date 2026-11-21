@@ -572,6 +572,29 @@ describe("check --prepare-media", () => {
     const answer = log.mock.calls.map((call) => String(call[0])).find((text) => text[0] === "{");
     expect(JSON.parse(answer!).error.message).toBe(reason);
   });
+
+  it("keeps a finding with another code on one line even when it carries the setup text", async () => {
+    const message = `From the page\n\n${LINUX_ARM_BROWSER_STEPS}`;
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const { report } = await runScenario(fakeDriver());
+    const finding = { ...runtimeError(), message };
+    expect(finding.code).not.toBe("check_runtime_failure");
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => PROJECT,
+        runPipeline: async () => ({
+          ...report,
+          runtime: { ...report.runtime, ok: false, errorCount: 1, findings: [finding] },
+        }),
+        prepareMedia: vi.fn(),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: [] },
+    ).then(consumeCommandResult);
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(human).toContain(`${finding.code}: ${message.replaceAll("\n", "\\x0a")}\n`);
+    expect(human).not.toContain(LINUX_ARM_BROWSER_STEPS);
+  });
 });
 
 describe("skip contrast in motion", () => {

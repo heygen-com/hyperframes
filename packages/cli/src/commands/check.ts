@@ -904,7 +904,10 @@ function printSnapshotSection(report: CheckReport): void {
 
 function printFinding(finding: CheckFinding): void {
   const where = `${terminalText(finding.sourceFile)} ${terminalText(finding.selector)} ${formatFindingTimes(finding)}`;
-  const { summary, stepsWrittenByCli } = splitStepsWrittenByCli(finding.message);
+  const { summary, stepsWrittenByCli } =
+    finding.code === "check_runtime_failure"
+      ? splitStepsWrittenByCli(finding.message)
+      : { summary: finding.message, stepsWrittenByCli: undefined };
   console.log(`  ${findingIcon(finding)} ${terminalText(finding.code)}: ${terminalText(summary)}`);
   console.log(`    ${c.dim(where)}`);
   if (stepsWrittenByCli) console.log(`\n${stepsWrittenByCli}\n`);
