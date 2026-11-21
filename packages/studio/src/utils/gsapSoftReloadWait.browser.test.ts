@@ -177,6 +177,10 @@ async function settled({ page, frame }: Preview, sealed: boolean) {
   await frame.waitForFunction(
     () => !(window as { __hfMotionPathWaiters?: unknown }).__hfMotionPathWaiters,
   );
+  // The swap's seek renders on the frame's next animation frame; a step after it must come after that render.
+  await frame.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
   if (sealed)
     await page.evaluate(async () => {
       const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
