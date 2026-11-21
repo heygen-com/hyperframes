@@ -7,13 +7,17 @@ const channel = vi.hoisted(() => ({
   request: vi.fn(),
   load: { id: 1 },
 }));
-vi.mock("../player/lib/previewChannel", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../player/lib/previewChannel")>()),
-  previewFrameOpaque: () => true,
-  previewRequest: channel.request,
-  previewAnswer: channel.request,
-  previewEditingClient: () => channel.load,
-}));
+vi.mock("../player/lib/previewChannel", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../player/lib/previewChannel")>();
+  const { admittedAnswer } = await import("../../tests/previewAnswerMock");
+  return {
+    ...original,
+    previewFrameOpaque: () => true,
+    previewRequest: channel.request,
+    previewAnswer: admittedAnswer(channel.request, original.PREVIEW_STALE),
+    previewEditingClient: () => channel.load,
+  };
+});
 import { applySoftReload } from "./gsapSoftReload";
 import { applyUndoRestoreToPreview } from "./gsapUndoRestore";
 import { applyPreviewSync } from "../hooks/useGsapScriptCommits";

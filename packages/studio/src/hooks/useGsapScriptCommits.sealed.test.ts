@@ -5,12 +5,16 @@ const { previewRequest, patchRuntimeTweenInPlace } = vi.hoisted(() => ({
   previewRequest: vi.fn(),
   patchRuntimeTweenInPlace: vi.fn(),
 }));
-vi.mock("../player/lib/previewChannel", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../player/lib/previewChannel")>()),
-  previewFrameOpaque: () => true,
-  previewRequest,
-  previewAnswer: previewRequest,
-}));
+vi.mock("../player/lib/previewChannel", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../player/lib/previewChannel")>();
+  const { admittedAnswer } = await import("../../tests/previewAnswerMock");
+  return {
+    ...original,
+    previewFrameOpaque: () => true,
+    previewRequest,
+    previewAnswer: admittedAnswer(previewRequest, original.PREVIEW_STALE),
+  };
+});
 vi.mock("./gsapRuntimePatch", () => ({ patchRuntimeTweenInPlace }));
 
 import { applyPreviewSync } from "./useGsapScriptCommits";

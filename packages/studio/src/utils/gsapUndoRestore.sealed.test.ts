@@ -4,13 +4,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const channel = vi.hoisted(() => ({ request: vi.fn() }));
 const PREVIEW_LOAD = vi.hoisted(() => ({}));
-vi.mock("../player/lib/previewChannel", () => ({
-  previewFrameOpaque: () => true,
-  previewEditingClient: () => PREVIEW_LOAD,
-  previewRequest: channel.request,
-  previewAnswer: channel.request,
-  PREVIEW_REJECTED: Symbol("preview-rejected"),
-}));
+vi.mock("../player/lib/previewChannel", async () => {
+  const { admittedAnswer } = await import("../../tests/previewAnswerMock");
+  const PREVIEW_STALE = Symbol("preview-stale");
+  return {
+    previewFrameOpaque: () => true,
+    previewEditingClient: () => PREVIEW_LOAD,
+    previewRequest: channel.request,
+    previewAnswer: admittedAnswer(channel.request, PREVIEW_STALE),
+    PREVIEW_REJECTED: Symbol("preview-rejected"),
+    PREVIEW_STALE,
+  };
+});
 import { applyUndoRestoreToPreview } from "./gsapUndoRestore";
 import { applySoftReload } from "./gsapSoftReload";
 import { SAVED_STATE_DEADLINE_MS } from "./sealedPreviewLedger";

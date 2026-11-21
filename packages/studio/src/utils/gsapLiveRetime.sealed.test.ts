@@ -2,12 +2,16 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
 const { previewRequest } = vi.hoisted(() => ({ previewRequest: vi.fn() }));
-vi.mock("../player/lib/previewChannel", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../player/lib/previewChannel")>()),
-  previewFrameOpaque: () => true,
-  previewRequest,
-  previewAnswer: previewRequest,
-}));
+vi.mock("../player/lib/previewChannel", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../player/lib/previewChannel")>();
+  const { admittedAnswer } = await import("../../tests/previewAnswerMock");
+  return {
+    ...original,
+    previewFrameOpaque: () => true,
+    previewRequest,
+    previewAnswer: admittedAnswer(previewRequest, original.PREVIEW_STALE),
+  };
+});
 
 import { moveLiveTweens } from "./gsapLiveRetime";
 import { SAVED_STATE_DEADLINE_MS } from "./sealedPreviewLedger";
