@@ -1137,6 +1137,59 @@ test("npm publishes only what the check read: name, version and every file", () 
   );
 });
 
+// fails without the fix: a rerun after a partial publish dry-ran a version npm already held, which npm refuses.
+test("a rerun checks only the tarballs npm does not hold yet, and fails on one npm holds otherwise", () => {
+  const step = stepOf(publish, "Check what npm will publish");
+  const run = (viewResult) => {
+    const temp = mkdtempSync(join(tmpdir(), "hyperframes-npm-rerun-"));
+    try {
+      const bin = join(temp, "bin");
+      mkdirSync(bin);
+      const log = join(temp, "npm.log");
+      writeFileSync(log, "");
+      // npm refuses to dry-run a version it already holds.
+      writeFileSync(
+        join(bin, "npm"),
+        `#!/bin/sh\necho "npm $*" >> "${log}"\nif [ "$1" = view ]; then [ -n "$VIEW_RESULT" ] || exit 1; echo "$VIEW_RESULT"; exit 0; fi\necho "npm error code E403" >&2\nexit 1\n`,
+      );
+      chmodSync(join(bin, "npm"), 0o755);
+      packTarball(temp, "core.tgz", { name: "@hyperframes/core", version: "1.2.3" });
+      writeFileSync(
+        join(temp, "publish-order.tsv"),
+        `@hyperframes/core\t${join(temp, "core.tgz")}\n`,
+      );
+      const integrity = `sha512-${createHash("sha512")
+        .update(readFileSync(join(temp, "core.tgz")))
+        .digest("base64")}`;
+      const result = runStep(step, {
+        cwd: temp,
+        path: `${bin}:${process.env.PATH}`,
+        env: {
+          VERSION: "1.2.3",
+          DIST_TAG: "latest",
+          VIEW_RESULT: viewResult === "same" ? integrity : viewResult,
+        },
+      });
+      return { ...result, calls: readFileSync(log, "utf8") };
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  };
+
+  const identical = run("same");
+  assert.equal(identical.status, 0, identical.stdout + identical.stderr);
+  assert.doesNotMatch(identical.calls, /npm publish/);
+
+  const other = run("sha512-other");
+  assert.equal(other.status, 1);
+  assert.match(other.stdout, /this run did not publish it/);
+  assert.doesNotMatch(other.calls, /npm publish/);
+
+  const fresh = run("");
+  assert.equal(fresh.status, 1);
+  assert.match(fresh.calls, /npm publish .*core\.tgz --dry-run/);
+});
+
 const stepIndex = (job, name) => {
   const index = job.steps.findIndex((step) => step.name === name);
   assert.ok(index >= 0, `missing step ${name}`);
