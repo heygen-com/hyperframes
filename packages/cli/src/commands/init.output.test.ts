@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,7 +41,7 @@ vi.mock("@clack/prompts", () => {
       for (const option of opts.options) fake.lines.push(`${option.label} ${option.hint}`);
       return "blank";
     },
-    spinner: () => ({ start: say, stop: say, message: say }),
+    spinner: () => (fake.lines.push("(spinner)"), { start: say, stop: say, message: say }),
     log: { info: say, warn: say, error: say },
   };
 });
@@ -187,11 +187,15 @@ describe("init output with prompts", () => {
     expectNoControlCharacters();
   });
 
-  // fails without the fix: a run that asked for JSON went to the questions, which never answer in JSON.
-  it("asks nothing when the run asked for JSON", async () => {
+  // fails without the fix: a run that asked for JSON went to the questions, and a spinner drew the video's status on stdout.
+  it("asks nothing and draws no spinner when the run asked for JSON", async () => {
     fake.json = true;
-    await run({ name: join(work, "film") });
+    const clip = join(work, "clip.mov");
+    copyFileSync(new URL("./__fixtures__/mpeg4.mp4", import.meta.url), clip);
+    await run({ name: join(work, "film"), video: clip, "skip-transcribe": true });
+    expect(printed()).toContain("Transcoded to clip.mp4\n");
     expect(printed()).toContain("Get started:");
+    expect(printed()).not.toContain("(spinner)");
   });
 
   // fails without the fix: the example name and the reason are printed as they arrived.

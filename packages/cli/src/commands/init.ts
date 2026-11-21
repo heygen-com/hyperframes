@@ -555,7 +555,7 @@ async function handleVideoFile(
       if (shouldTranscode) {
         const mp4Name = freeTranscodeName(destDir, localVideoName);
         const mp4Path = resolve(destDir, mp4Name);
-        const spin = clack.spinner();
+        const spin = interactive ? clack.spinner() : { start: status, stop: status };
         spin.start("Transcoding to H.264 MP4...");
         const ok = await transcodeToMp4(videoPath, mp4Path);
         if (ok) {
