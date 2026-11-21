@@ -864,18 +864,24 @@ export default defineCommand({
   },
   async run({ args }) {
     if (args.template !== undefined) {
-      console.error(
-        c.error(
-          `The --template flag was renamed to --example. Example:\n  npx hyperframes init ${shellArg(args.name ?? "my-video") ?? "<name>"} --example ${shellArg(args.template) ?? "<example>"}`,
-        ),
+      const template = args.template;
+      printFailureLine(
+        () =>
+          c.error(
+            `The --template flag was renamed to --example. Example:\n  npx hyperframes init ${shellArg(args.name ?? "my-video") ?? "<name>"} --example ${shellArg(template) ?? "<example>"}`,
+          ),
+        `The --template flag was renamed to --example (given: --template ${template})`,
       );
       failUsage();
     }
     if (args["video-legacy"] !== undefined) {
-      console.error(
-        c.error(
-          `The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init ${shellArg(args.name ?? "my-video") ?? "<name>"} --video ${shellArg(args["video-legacy"]) ?? "<file>"}`,
-        ),
+      const legacy = args["video-legacy"];
+      printFailureLine(
+        () =>
+          c.error(
+            `The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init ${shellArg(args.name ?? "my-video") ?? "<name>"} --video ${shellArg(legacy) ?? "<file>"}`,
+          ),
+        `The -V short flag no longer maps to --video; use --video or -v (given: -V ${legacy})`,
       );
       failUsage();
     }

@@ -52,8 +52,11 @@ let reported: { message: string; hint?: string } | undefined;
 let noticeDepth = 0;
 let asGiven: string | undefined;
 
-export function printFailureLine(line: (show: (text: string) => string) => string): void {
-  asGiven = line((text) => text);
+export function printFailureLine(
+  line: (show: (text: string) => string) => string,
+  answer?: string,
+): void {
+  asGiven = answer ?? line((text) => text);
   try {
     console.error(line(terminalLines));
   } finally {
