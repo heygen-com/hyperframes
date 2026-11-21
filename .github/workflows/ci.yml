@@ -60,6 +60,9 @@ jobs:
       - name: Report head reachability
         run: node scripts/check-test-reachability.mjs --report
       - run: node --test packages/share/tests/*.test.mjs
+        # Date reads ten years ahead (scripts/test-clock-ahead.mjs): a date-dependent test fails in its own PR.
+        env:
+          NODE_OPTIONS: --import ${{ github.workspace }}/scripts/test-clock-ahead.mjs
       - run: node --test scripts/check-test-reachability.test.mjs
       - run: node scripts/check-test-reachability.mjs
 
@@ -582,6 +585,9 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-test-workspace
       - run: bun run --cwd packages/studio test
+        # Date reads ten years ahead (scripts/test-clock-ahead.mjs): a date-dependent test fails in its own PR.
+        env:
+          NODE_OPTIONS: --import ${{ github.workspace }}/scripts/test-clock-ahead.mjs
 
   test-runtime:
     name: Test (runtime)
@@ -596,7 +602,11 @@ jobs:
           lfs: true
       - uses: ./.github/actions/setup-test-workspace
       - run: bash scripts/ci/install-pinned-headless-shell.sh
-      - run: bun run --filter '@hyperframes/{core,engine}' test
+      - run: bun run --filter '@hyperframes/core' test
+        # Date reads ten years ahead (scripts/test-clock-ahead.mjs): a date-dependent test fails in its own PR.
+        env:
+          NODE_OPTIONS: --import ${{ github.workspace }}/scripts/test-clock-ahead.mjs
+      - run: bun run --filter '@hyperframes/engine' test
 
   test-cli:
     name: Test (cli ${{ matrix.shard }}/2)
@@ -636,7 +646,12 @@ jobs:
       - run: bun run test:scripts
         env:
           HYPERFRAMES_BROWSER_PATH: ${{ steps.workspace.outputs.chrome-path }}
-      - run: bun run --filter '@hyperframes/{lint,parsers,studio-server,sdk,player,aws-lambda,gcp-cloud-run,sdk-playground,shader-transitions,inspector}' test
+      - run: bun run --filter '@hyperframes/{lint,parsers,sdk,player,sdk-playground,shader-transitions,inspector}' test
+        # Date reads ten years ahead (scripts/test-clock-ahead.mjs): a date-dependent test fails in its own PR.
+        env:
+          NODE_OPTIONS: --import ${{ github.workspace }}/scripts/test-clock-ahead.mjs
+      # gcp-cloud-run reads the same clock from its bunfig.toml: NODE_OPTIONS does not reach `bun test`.
+      - run: bun run --filter '@hyperframes/{studio-server,aws-lambda,gcp-cloud-run}' test
 
   flake-gate:
     name: Flake gate
