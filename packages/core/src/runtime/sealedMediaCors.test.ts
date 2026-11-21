@@ -340,25 +340,25 @@ describe("corsForSealedMedia", () => {
     expect(observer).toBeNull();
     expect(host.querySelector("video")!.hasAttribute("crossorigin")).toBe(false);
   });
-  it("tries a down source again when the composition starts a selection of its own", async () => {
+  it("tries a down source again when the composition calls load(), and only then", async () => {
     vi.stubGlobal("origin", "null");
     vi.spyOn(console, "warn").mockImplementation(() => {});
+    const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
     observer = corsForSealedMedia();
     const video = add(
       `<video><source src="media/down.mp4"><source src="media/own.mp4"></video>`,
     ).querySelector("video")!;
     await settled();
-    const load = vi
-      .spyOn(video, "load")
-      .mockImplementation(() => void video.dispatchEvent(new Event("loadstart")));
     const down = video.querySelector("source")!;
     down.dispatchEvent(new Event("error"));
     down.dispatchEvent(new Event("error"));
     playsFrom(video, `${PREVIEW}media/own.mp4`);
-    expect(load).toHaveBeenCalledTimes(2);
     video.dispatchEvent(new Event("loadstart"));
     down.dispatchEvent(new Event("error"));
-    expect([video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([false, 3]);
+    expect([video.getAttribute("crossorigin"), load.mock.calls.length]).toEqual(["anonymous", 2]);
+    video.load();
+    down.dispatchEvent(new Event("error"));
+    expect([video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([false, 4]);
   });
 
   it("settles the composition's play() with the playback its load retried", async () => {
