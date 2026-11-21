@@ -109,7 +109,7 @@ import {
   CompositionExpansionBudget,
   REMOTE_SCRIPTS,
   REMOTE_STYLESHEETS,
-} from "./compositionSizeLimit.js";
+} from "@hyperframes/core/compiler";
 import {
   escapesAssetRoot,
   isPathInside,
@@ -782,13 +782,17 @@ async function resolveMediaDuration(
         // a typed NotMediaPayloadError instead of letting ffprobe emit an opaque
         // `[mov,mp4,...] moov atom not found` that routes as a codec bug.
         await assertMediaPayload(filePath, elementIdentity);
-        const profile = await probeMediaProfile(filePath);
+        const signal = run?.assets.signal;
+        const profile = await probeMediaProfile(filePath, { signal });
         if (tagName === "video") {
-          return { profile, fileDuration: (await extractMediaMetadata(filePath)).durationSeconds };
+          const { durationSeconds } = await extractMediaMetadata(filePath, { signal });
+          return { profile, fileDuration: durationSeconds };
         }
         try {
-          return { profile, fileDuration: (await extractAudioMetadata(filePath)).durationSeconds };
+          const { durationSeconds } = await extractAudioMetadata(filePath, { signal });
+          return { profile, fileDuration: durationSeconds };
         } catch {
+          if (signal?.aborted) throw signal.reason;
           // Source file has no audio stream (e.g. a silent video used as an audio src).
           // Duration 0 excludes the element from the composition, as missing files do.
           return { profile, fileDuration: null };

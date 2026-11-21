@@ -202,11 +202,14 @@ const need = <T>(value: T | undefined, flag: string, example: string): T => {
   return value;
 };
 
+const ownEntry = <T>(table: Record<string, T>, name: string): T | undefined =>
+  Object.hasOwn(table, name) ? table[name] : undefined;
+
 function imageModel(r: GenerateRequest): string {
   const model = r.model ?? DEFAULTS.image;
-  const replacement = RETIRED_IMAGE_MODELS[model];
+  const replacement = ownEntry(RETIRED_IMAGE_MODELS, model);
   if (replacement) throw new Fix(`${model} is no longer offered here`, `--model ${replacement}`);
-  const spec = IMAGE_MODELS[model];
+  const spec = ownEntry(IMAGE_MODELS, model);
   if (!spec) return model;
   if (r.aspect && !spec.aspects.includes(r.aspect))
     throw new Fix(`${model} does not make ${r.aspect}`, `--aspect ${spec.aspects.join("|")}`);

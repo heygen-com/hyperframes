@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.72",
+  "version": "0.9.73",
   "description": "",
   "repository": {
     "type": "git",
@@ -537,6 +537,12 @@
       "import": "./src/runtime/levelTap.ts",
       "types": "./src/runtime/levelTap.ts"
     },
+    "./compiler/composition-size-limit": {
+      "bun": "./src/compiler/compositionSizeLimit.ts",
+      "node": "./dist/compiler/compositionSizeLimit.js",
+      "import": "./src/compiler/compositionSizeLimit.ts",
+      "types": "./src/compiler/compositionSizeLimit.ts"
+    },
     "./compiler/html-document": {
       "bun": "./src/compiler/htmlDocument.ts",
       "node": "./dist/compiler/htmlDocument.js",
@@ -1050,6 +1056,10 @@
       "./runtime/levelTap": {
         "import": "./dist/runtime/levelTap.js",
         "types": "./dist/runtime/levelTap.d.ts"
+      },
+      "./compiler/composition-size-limit": {
+        "import": "./dist/compiler/compositionSizeLimit.js",
+        "types": "./dist/compiler/compositionSizeLimit.d.ts"
       },
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",

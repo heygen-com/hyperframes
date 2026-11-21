@@ -37,6 +37,8 @@ import {
   normalizeGsapLocalRoot,
 } from "@hyperframes/core/gsap-cdn";
 import { findStartTags, injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import { hasAuthoredCode } from "../helpers/authoredCode.js";
+import { THUMBNAIL_NO_AUTHORED_CODE_META } from "../helpers/screenshotClip.js";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import {
@@ -108,6 +110,8 @@ import {
   type PreviewApiAdapter,
 } from "../helpers/mediaProxyPreview.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
+import { previewRefusalPage } from "../helpers/previewErrorPage.js";
+import { isCompositionTooLargeError } from "@hyperframes/core/compiler/composition-size-limit";
 import { lazyPreviewImages } from "../helpers/lazyPreviewImages.js";
 import { corsProjectVideos } from "../helpers/captureVideos.js";
 import { createJobSlots, JobAbandonedError, JobQueueFullError } from "../helpers/jobSlots.js";
@@ -386,10 +390,15 @@ export function injectStudioPreviewAugmentations(
   activeCompositionPath: string,
   options: { capture: boolean; gsapBaseUrl: string; sandboxedCapture: boolean },
 ): string {
+  const studioMotion = readStudioMotion(projectDir, activeCompositionPath);
+  const noTimelineToCome =
+    options.capture && !studioMotion && !hasAuthoredCode(html)
+      ? `<meta name="${THUMBNAIL_NO_AUTHORED_CODE_META}">`
+      : "";
   const marked = options.capture
     ? injectTagsAtHeadStart(
         options.sandboxedCapture ? corsProjectVideos(html) : html,
-        `<meta name="${STUDIO_PREVIEW_MARK_META}" content="${STUDIO_PREVIEW_CAPTURE_MODE}">`,
+        `<meta name="${STUDIO_PREVIEW_MARK_META}" content="${STUDIO_PREVIEW_CAPTURE_MODE}">${noTimelineToCome}`,
       )
     : injectTagsAtHeadStart(
         lazyPreviewImages(html),
@@ -405,7 +414,6 @@ export function injectStudioPreviewAugmentations(
     ),
     options.gsapBaseUrl,
   );
-  const studioMotion = readStudioMotion(projectDir, activeCompositionPath);
   // Studio motion's GSAP core goes in first, so a MotionPathPlugin injected next lands after it.
   const withMotionDependencies = studioMotion
     ? injectStudioMotionDependencies(
@@ -578,7 +586,8 @@ export function registerPreviewRoutes(
         if (!capture) adapter.previewDocuments?.write(builtKey, bundled);
       }
       return bundled;
-    } catch {
+    } catch (error) {
+      if (isCompositionTooLargeError(error)) return previewRefusalPage(error.message);
       // Re-read disk on bundle failure so we serve the latest file content,
       // not the pre-request snapshot that may have been saved over.
       const fallback = resolveProjectMainHtml(project.dir, project.id);
@@ -699,6 +708,7 @@ export function registerPreviewRoutes(
         compPath,
       );
       if (!built) return c.text("not found", 404);
+      if ("refused" in built) return c.html(previewRefusalPage(built.refused), 200);
       for (const path of built.references) recordPreviewRead(project.dir, path);
       const transformed = await withinDeadline(
         transformPreviewHtml(built.html, adapter, project, compPath),

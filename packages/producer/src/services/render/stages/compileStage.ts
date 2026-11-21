@@ -43,7 +43,7 @@ import { privateCacheRoot, type ChromaSubsampling, type EngineConfig } from "@hy
 import { suggestMatchingPreset, type CanvasResolution } from "@hyperframes/core";
 import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
-import { assertCompositionFileSize } from "../../compositionSizeLimit.js";
+import { assertCompositionFileSize } from "@hyperframes/core/compiler";
 import type { CompiledComposition } from "../../htmlCompiler.js";
 import { compileForRender } from "../../htmlCompiler.js";
 import type { ProducerLogger } from "../../../logger.js";
