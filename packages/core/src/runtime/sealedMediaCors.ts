@@ -27,6 +27,7 @@ function originOf(url: string, base: string): string | null {
 // Only a crossorigin added here is taken back when a src moves to a host that may not answer CORS.
 const optedIn = new WeakSet<HTMLMediaElement>();
 const loadsWithoutCors = new Set<string>();
+const failedWithCors = new WeakMap<HTMLMediaElement, Set<string>>();
 
 const resolved = (src: string, home: string) => {
   try {
@@ -42,7 +43,7 @@ function sync(media: HTMLMediaElement, home: string): void {
   if (own && !refused && !media.hasAttribute("crossorigin")) {
     media.setAttribute("crossorigin", "anonymous");
     optedIn.add(media);
-  } else if (!own && optedIn.delete(media)) {
+  } else if ((!own || refused) && optedIn.delete(media)) {
     media.removeAttribute("crossorigin");
   }
 }
@@ -54,12 +55,24 @@ function mediaOf(el: Element): HTMLMediaElement | null {
   return parent && isMedia(parent) ? parent : null;
 }
 
+const laterSourceRemains = (media: HTMLMediaElement, failed: Element) => {
+  const sources = [...media.querySelectorAll("source")];
+  return failed !== media && sources.indexOf(failed as HTMLSourceElement) < sources.length - 1;
+};
+
 function fallBackWithoutCors(event: Event, home: string): void {
   const target = event.target as Node | null;
-  const media = target?.nodeType === 1 ? mediaOf(target as Element) : null;
-  if (!media || !optedIn.delete(media)) return;
-  for (const src of sourcesOf(media)) {
-    const url = resolved(src, home);
+  const el = target?.nodeType === 1 ? (target as Element) : null;
+  const media = el && mediaOf(el);
+  if (!el || !media || !optedIn.has(media)) return;
+  const failed = failedWithCors.get(media) ?? new Set<string>();
+  failedWithCors.set(media, failed);
+  const src = el.getAttribute("src");
+  if (src) failed.add(resolved(src, home));
+  if (laterSourceRemains(media, el)) return;
+  optedIn.delete(media);
+  failedWithCors.delete(media);
+  for (const url of failed) {
     if (loadsWithoutCors.has(url)) continue;
     loadsWithoutCors.add(url);
     console.warn(
