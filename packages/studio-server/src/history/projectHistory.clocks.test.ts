@@ -113,6 +113,24 @@ describe.each([
     ]);
   });
 
+  it("files a removal made while closed to the reopened turn it came within", async () => {
+    const { history, projectDir, historyRoot } = await project(
+      { "a.html": "a1", "b.html": "b1" },
+      { now },
+    );
+    await history.close();
+    const closedWindow = {
+      ...{ id: "turn-1", who: agent, label: "Turn", startedAt: 1, lastWriteAt: now() },
+      ...{ lastWriteFileTime: Date.now(), idleMs: 60_000 },
+    };
+    rmSync(join(projectDir, "b.html"));
+    const reopened = await openProjectHistory({ projectDir, historyRoot, now, closedWindow });
+    cleanup.push(() => reopened.close());
+    expect(reopened.list().map((entry) => [entry.who.kind, entry.files[0]?.path])).toEqual([
+      ["agent", "b.html"],
+    ]);
+  });
+
   it("keeps a same-size rewrite made within one 2 s FAT time step", async () => {
     fat.held = Math.floor(Date.now() / 2000) * 2000;
     const { history, write } = await project({ "a.html": "aa" }, { now });

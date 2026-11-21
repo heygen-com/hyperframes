@@ -225,7 +225,7 @@ const statOf = (file: { size: number; mtimeMs: number; ctimeMs: number }) =>
 const fileTimeOf = (file: { mtimeMs: number; ctimeMs: number }) =>
   Math.max(file.mtimeMs, file.ctimeMs);
 
-/** When a write happened: `at` on history's clock, `fileTime` on the drive's. The two are never compared. */
+/** When a write happened: `at` on history's clock, `fileTime` on the drive's (none for a removal). Never compared. */
 interface WrittenAt {
   at: number;
   fileTime?: number;
@@ -394,8 +394,8 @@ const MAX_TIMER_MS = 2 ** 31 - 1;
 
 const takesWrite = (window: Group, { at, fileTime }: WrittenAt) => {
   if (window.idleMs === undefined) return true;
-  if (window.lastFileTime !== undefined && fileTime !== undefined)
-    return fileTime - window.lastFileTime <= window.idleMs;
+  if (Number.isFinite(window.lastFileTime) && Number.isFinite(fileTime))
+    return fileTime! - window.lastFileTime! <= window.idleMs;
   return at - (window.lastWriteAt ?? at) <= window.idleMs;
 };
 
@@ -922,20 +922,22 @@ class Engine {
       .filter((path) => !present.has(path))
       .map((path) => {
         const standing = this.standingAt(path);
-        return { fileTime: standing ? fileTimeOf(standing.stat) : Infinity, path, file: null };
+        return { fileTime: standing ? fileTimeOf(standing.stat) : undefined, path, file: null };
       });
     // A file in the way of a removal (a/b over file a, or the reverse) appeared no earlier than that removal.
-    const appearedAt = (file: (typeof seen)[number]) =>
-      Math.max(
-        fileTimeOf(file),
-        ...removed
-          .filter((gone) => blocks(this.nameKey(gone.path), this.nameKey(file.path)))
-          .map((gone) => gone.fileTime),
-      );
+    const appearedAt = (file: (typeof seen)[number]): number | undefined => {
+      const blocked = removed
+        .filter((gone) => blocks(this.nameKey(gone.path), this.nameKey(file.path)))
+        .map((gone) => gone.fileTime);
+      return blocked.includes(undefined)
+        ? undefined
+        : Math.max(fileTimeOf(file), ...(blocked as number[]));
+    };
+    const order = (fileTime: number | undefined) => fileTime ?? Infinity;
     const events = [
       ...removed,
       ...seen.map((file) => ({ fileTime: appearedAt(file), path: file.path, file })),
-    ].sort((a, b) => a.fileTime - b.fileTime);
+    ].sort((a, b) => order(a.fileTime) - order(b.fileTime));
     // An emptied file may be a save not yet written; a window's write, a claimed path and an undo take it as it is.
     const waitsForQuiet = (path: string, file: ListedFile, when: WrittenAt) =>
       file.size === 0 &&
@@ -1326,7 +1328,7 @@ class Engine {
   /** A window with no write for its idleMs ends, so a close that never comes cannot hold every later write. */
   touch(window: Group, { at, fileTime }: WrittenAt): void {
     window.lastWriteAt = Math.max(window.lastWriteAt ?? at, at);
-    if (window.lastFileTime !== undefined && fileTime !== undefined && Number.isFinite(fileTime))
+    if (window.lastFileTime !== undefined && fileTime !== undefined)
       window.lastFileTime = Math.max(window.lastFileTime, fileTime);
     this.endWhenIdle(window, window.idleMs);
   }
