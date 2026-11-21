@@ -43,9 +43,6 @@ const READS_BEFORE_LEAVING_IT = 3;
 // Longer than the 20 ms a watcher gathers a burst for, so the sweep a save's first event starts sees it under way.
 export const SETTLE_MS = 100;
 
-export const isSettling = (file: { mtimeMs: number; ctimeMs: number }, now: number) =>
-  Math.abs(now - Math.max(file.mtimeMs, file.ctimeMs)) < SETTLE_MS;
-
 const unchanged = (before: Stats, after: Stats) =>
   before.size === after.size &&
   before.mtimeMs === after.mtimeMs &&
@@ -70,7 +67,7 @@ async function readChecked(path: string, hash: string): Promise<Buffer> {
 
 export const readBlob = (dir: string, hash: string) => readChecked(blobPath(dir, hash), hash);
 
-async function hashFile(path: string): Promise<string> {
+export async function hashFile(path: string): Promise<string> {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   return hash.digest("hex");

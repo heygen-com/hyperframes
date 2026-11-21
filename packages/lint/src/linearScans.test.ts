@@ -132,25 +132,71 @@ function disagreements(page: string): string[] {
     .map(([name]) => `${name}: ${JSON.stringify(page)}`);
 }
 
+function scanAll(page: string): void {
+  replaceBlockComments(page, "");
+  hasInvalidScriptClose(page);
+  emptyStyleBlocks(page);
+  styleTagTokens(page);
+  protectedBlockRanges(page);
+  htmlTagTracker(page)(page.length);
+  hasScriptWithSrc(page);
+}
+
+/** Characters the searches inside `run` read: each regex exec and indexOf from where it starts to where it stops. */
+function charactersRead(run: () => void): number {
+  let read = 0;
+  const { exec } = RegExp.prototype;
+  const { indexOf, lastIndexOf } = String.prototype;
+  RegExp.prototype.exec = function (this: RegExp, input: string) {
+    const from = this.global || this.sticky ? this.lastIndex : 0;
+    const found = exec.call(this, input);
+    read += (found ? found.index + found[0].length : input.length) - from;
+    return found;
+  };
+  String.prototype.indexOf = function (this: string, search: string, from = 0) {
+    const at = indexOf.call(this, search, from);
+    read += (at < 0 ? this.length : at + search.length) - from;
+    return at;
+  };
+  String.prototype.lastIndexOf = function (this: string, search: string, from?: number) {
+    read += this.length;
+    return lastIndexOf.call(this, search, from);
+  };
+  try {
+    run();
+  } finally {
+    RegExp.prototype.exec = exec;
+    String.prototype.indexOf = indexOf;
+    String.prototype.lastIndexOf = lastIndexOf;
+  }
+  return read;
+}
+
 describe("linear scans", () => {
   it("answer every page exactly as the regexes they replace", () => {
     expect(pages(20_000).flatMap(disagreements)).toEqual([]);
   });
 
-  // At 4 MB each regex above runs for minutes or more on these pages; the scans take milliseconds.
+  // fails without the fix: the same scans were held to 1,000 ms of wall clock and took 1,027 ms on a loaded runner.
+  // Counting characters read is the same on any machine; a scan that rereads from every unclosed opener grows as n².
   it.each(["<script ", "<script>", "<style ", "<style>", "/*", "<pre>", "<text ", "< / script"])(
-    "finish a 4 MB page of unclosed %j in well under a second",
+    "read a page of unclosed %j a bounded number of times over",
+    (unit) => {
+      const page = unit.repeat(Math.floor(200_000 / unit.length));
+      expect(charactersRead(() => scanAll(page)) / page.length).toBeLessThan(16);
+    },
+  );
+
+  // A regex that rescans inside one call is invisible to the count. At 4 MB those regexes run for minutes; the scans
+  // take milliseconds quiet and about a second on a loaded runner, so 15 s fails only a reversion.
+  it.each(["<script ", "<script>", "<style ", "<style>", "/*", "<pre>", "<text ", "< / script"])(
+    "finish a 4 MB page of unclosed %j in seconds, not the minutes a backtracking regex takes",
     (unit) => {
       const page = unit.repeat(Math.floor(4_000_000 / unit.length));
       const started = performance.now();
-      replaceBlockComments(page, "");
-      hasInvalidScriptClose(page);
-      emptyStyleBlocks(page);
-      styleTagTokens(page);
-      protectedBlockRanges(page);
-      htmlTagTracker(page)(page.length);
-      hasScriptWithSrc(page);
-      expect(performance.now() - started).toBeLessThan(1000);
+      scanAll(page);
+      expect(performance.now() - started).toBeLessThan(15_000);
     },
+    30_000,
   );
 });

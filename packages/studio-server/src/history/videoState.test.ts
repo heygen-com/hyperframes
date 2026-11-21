@@ -218,9 +218,10 @@ describe("video state", () => {
 
   it("repairs malformed derived state without losing committed history", async () => {
     const f = await fixture();
-    const revision = await f.edit("first");
+    await f.edit("first");
     writeFileSync(join(f.projectDir, ".hyperframes/video-state.json"), "{bad");
-    await f.history.flush();
+    // The next change rewrites it: a flush that finds nothing leaves the file alone.
+    const revision = await f.edit("second");
     expect(read(f.projectDir).currentRevision).toBe(revision);
     expect(
       readdirSync(join(f.projectDir, ".hyperframes")).some((name) =>

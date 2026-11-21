@@ -147,13 +147,14 @@ describe("composition expansion budget", () => {
     const perScene = 1000;
     const scene = `<template><div data-composition-id="scene">${"<i></i>".repeat(perScene - 2)}</div></template>`;
     const mounts = Math.floor(MAX_EXPANDED_ELEMENTS / perScene) + 1;
-    const error = await compileError(
-      project({ "index.html": rootMounting("scene.html", mounts), "scene.html": scene }),
-    );
+    const entry = rootMounting("scene.html", mounts);
+    const entryElements = parseHTML(entry).document.querySelectorAll("*").length;
+    const copied = Math.floor((MAX_EXPANDED_ELEMENTS - entryElements) / perScene) + 1;
+    const error = await compileError(project({ "index.html": entry, "scene.html": scene }));
     expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
     expect(error).toMatchObject({
       publicMetadata: {
-        elements: mounts * perScene,
+        elements: entryElements + copied * perScene,
         limitElements: MAX_EXPANDED_ELEMENTS,
         exceeded: "elements",
       },

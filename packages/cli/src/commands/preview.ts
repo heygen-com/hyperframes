@@ -1351,8 +1351,8 @@ function printStudioSummary(
   const urls = studioSummaryUrls(projectName, serverUrl);
   console.log();
   console.log(`  ${c.dim("Project")}   ${c.accent(terminalText(projectName))}`);
-  console.log(`  ${c.dim("Studio")}    ${c.accent(urls.studioUrl)}`);
-  console.log(`  ${c.dim("Server")}    ${c.accent(urls.serverUrl)}`);
+  console.log(`  ${c.dim("Studio")}    ${c.accent(terminalText(urls.studioUrl))}`);
+  console.log(`  ${c.dim("Server")}    ${c.accent(terminalText(urls.serverUrl))}`);
   const hint = desktopHint(projectDir, { preview: opts.preview });
   if (hint) console.log(`  ${c.dim("Desktop")}   ${terminalText(hint)}`);
   console.log();
@@ -1478,7 +1478,7 @@ function attachStudioReadyHandler(
       reportPreviewFailure(true, "start", "preview-start-failed", err.message);
     } else {
       spinner.stop(c.error("Failed to start studio"));
-      console.error(c.dim(err.message));
+      console.error(c.dim(terminalLines(err.message)));
     }
   });
 }
@@ -1650,7 +1650,7 @@ export async function runEmbeddedMode(
       console.error();
       console.error(`  ${c.dim("Could not find")} ${c.accent("index.html")} ${c.dim("in:")}`);
       for (const checkedPath of studioBundle.checkedPaths) {
-        console.error(`  ${c.dim("-")} ${checkedPath}`);
+        console.error(`  ${c.dim("-")} ${terminalText(checkedPath)}`);
       }
       console.error();
       console.error(`  ${c.dim("Rebuild the CLI package with")} ${c.accent("bun run build")}`);

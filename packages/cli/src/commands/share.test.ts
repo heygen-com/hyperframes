@@ -146,6 +146,33 @@ it("deduplicates progress and terminates each message before the friendly error"
   expect(friendly).toHaveBeenCalledWith("Sharing blocked.");
 });
 
+// fails without the fix: the failure line reached the terminal with its control characters live.
+it("prints a failure's control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  const friendly = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  mocks.run.mockRejectedValue(new Error(`Sharing blocked${esc}[2J.\nTry again`));
+  await runCommand(command, { rawArgs: ["--private", "-y"] });
+  expect(friendly).toHaveBeenLastCalledWith("Sharing blocked\\x1b[2J.\\x0aTry again");
+});
+
+// fails without the fix: a failed export's reason reached the terminal with its control characters live.
+it("prints a failed export's control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  const friendly = vi.spyOn(console, "error").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "failed",
+    ready: false,
+    url: null,
+    previousUrl: null,
+    manageUrl: "https://hyperframes.dev/shares",
+    source: { at: "not_checked" },
+    version: { failure: `Export stopped${esc}]0;t${String.fromCharCode(7)}` },
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(friendly).toHaveBeenLastCalledWith("Export stopped\\x1b]0;t\\x07");
+});
+
 it.each(["owner@example.com", "another@example.com"])(
   "keeps the owner error code stable for %s",
   async (owner) => {
@@ -343,4 +370,43 @@ describe("a received folder whose record names an existing review", () => {
       expect.not.objectContaining({ confirmedReview: expect.anything() }),
     );
   });
+});
+
+// fails without the fix: the finished share's link reached the terminal with its control characters live.
+it("prints a ready share's link with control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "shared",
+    ready: true,
+    url: `https://hyperframes.dev/review/a${esc}[2J`,
+    previousUrl: null,
+    manageUrl: "https://hyperframes.dev/shares",
+    source: { at: "not_checked" },
+    version: {},
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(log).toHaveBeenLastCalledWith(
+    "Shared video ready: https://hyperframes.dev/review/a\\x1b[2J",
+  );
+});
+
+// fails without the fix: the earlier version's link reached the terminal with its control characters live.
+it("prints the earlier version's link with control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "failed",
+    ready: false,
+    url: null,
+    previousUrl: `https://hyperframes.dev/review/b${esc}[2J`,
+    manageUrl: "https://hyperframes.dev/shares",
+    source: { at: "not_checked" },
+    version: { failure: "Export stopped" },
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(log).toHaveBeenLastCalledWith(
+    "Previous shared version: https://hyperframes.dev/review/b\\x1b[2J",
+  );
 });

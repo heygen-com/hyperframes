@@ -582,6 +582,27 @@ export function lintVersionedCliRuns(content: string): LineViolation[] {
     );
 }
 
+/** A project's own scripts or a CLI installed into it: routes that let a received project pick what an agent runs. */
+const PROJECT_CLI_ROUTE =
+  /\bnpm\s+run\b|\bnpm\s+(?:i|install)\b[^\n]*\bhyperframes\b|node_modules\/\.bin\/hyperframes/;
+
+/** A skill core documents only the launcher, so an agent reading it alone finds no route through a project's files. */
+export function lintProjectCliRoutes(content: string): LineViolation[] {
+  return content
+    .split("\n")
+    .flatMap((text, index) =>
+      PROJECT_CLI_ROUTE.test(text)
+        ? [
+            violation(
+              index + 1,
+              "Offer only the launcher here. A project's own scripts and a CLI installed into it belong in a reference, for the person's own pipelines.",
+              text,
+            ),
+          ]
+        : [],
+    );
+}
+
 function collectMarkdownFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true, recursive: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
@@ -643,6 +664,9 @@ function main(): void {
 
   for (const file of files) {
     report(relative(process.cwd(), file), lintFile(file));
+    if (file.startsWith(join(REPO_ROOT, "skills") + sep)) {
+      report(relative(process.cwd(), file), lintProjectCliRoutes(readFileSync(file, "utf-8")));
+    }
   }
 
   const knownItems = registryItemNames();

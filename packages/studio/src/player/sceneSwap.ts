@@ -1,6 +1,7 @@
 import { studioApiFetch } from "../utils/studioApiFetch";
 import { studioFileRevision } from "../utils/studioFileVersion";
 import { logReload } from "../utils/reloadDebug";
+import { afterStudioPendingEdits } from "../utils/studioPendingEdits";
 import { whileScriptWrites } from "./previewReloading";
 import { markScenesStaleIn } from "@hyperframes/core/runtime/scenes";
 import { previewFrameOpaque, previewRequest } from "./lib/previewChannel";
@@ -30,7 +31,8 @@ export function onPreviewDocumentLoaded(
 const RESTORED_IN_PLACE = "hf-preview-restored-in-place";
 
 export function announcePreviewRestoredInPlace(iframe: HTMLIFrameElement): void {
-  iframe.dispatchEvent(new Event(RESTORED_IN_PLACE));
+  const announce = () => iframe.dispatchEvent(new Event(RESTORED_IN_PLACE));
+  queueMicrotask(() => afterStudioPendingEdits(announce));
 }
 
 export function onPreviewRestoredInPlace(iframe: HTMLIFrameElement, onRestored: () => void) {

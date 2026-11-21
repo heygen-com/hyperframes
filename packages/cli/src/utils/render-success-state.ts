@@ -22,6 +22,7 @@
  * still exited 1 after the terminal "artifact validated" checkpoint.
  */
 
+import { terminalLines } from "@hyperframes/core";
 import { sanitizeSuccessfulExitCode } from "./commandResult.js";
 
 let renderSucceeded = false;
@@ -100,7 +101,9 @@ export async function runPostRenderStepAsync(
 
 function reportPostRenderStepFailure(label: string, err: unknown, sink: PostRenderErrorSink): void {
   const message = err instanceof Error ? err.message : String(err);
-  sink(`  [hyperframes] Post-render step '${label}' failed (render already succeeded): ${message}`);
+  sink(
+    `  [hyperframes] Post-render step '${label}' failed (render already succeeded): ${terminalLines(message)}`,
+  );
   // The failing step (or something it triggered) may have set a non-zero
   // exitCode. The render succeeded, so ask the root CLI owner to clear it.
   if (isRenderSucceeded()) sanitizeSuccessfulExitCode();

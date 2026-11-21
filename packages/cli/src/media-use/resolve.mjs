@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync, writeFileSync, renameSync, rmSync, realpathSync } from "node:fs";
+import { existsSync, statSync, renameSync, rmSync, realpathSync } from "node:fs";
 import { resolve, join, extname, basename, relative, isAbsolute, sep } from "node:path";
 import { parseArgs } from "node:util";
 import {
@@ -12,8 +12,9 @@ import {
   findByPrompt,
   findByEntity,
   nextId,
-  typeDirPath,
+  ownTypeDir,
   withMediaLock,
+  writeTempBeside,
   withReservedFile,
   withReservedFileSync,
 } from "./lib/manifest.mjs";
@@ -653,16 +654,16 @@ function freezeGeneratedLut(
   },
 ) {
   return withReservedFileSync(projectDir, type, ".cube", ({ id, localPath, fullPath }) => {
-    const tmpPath = `${fullPath}.tmp`;
+    let tmpPath = null;
     try {
-      // Write + validate at .tmp, then atomic rename, so a crash between write and
+      // Write + validate at a temp file, then atomic rename, so a crash between write and
       // validate can't leave an invalid .cube at the final path.
-      writeFileSync(tmpPath, buildCube(params));
+      tmpPath = writeTempBeside(fullPath, buildCube(params));
       const check = validateCubeFile(tmpPath);
       if (!check.ok) throw new Error(check.error);
       renameSync(tmpPath, fullPath);
     } catch (err) {
-      rmSync(tmpPath, { force: true });
+      if (tmpPath) rmSync(tmpPath, { force: true });
       throw new Error(`${validationErrorPrefix}: ${err.message}`);
     }
     return {
@@ -1351,7 +1352,7 @@ async function result(record, source, match = recordedMatch(record)) {
   // Under the media lock: two resolves at once each read, then rewrite, the whole credits file.
   if (provider === OPENVERSE_SFX_PROVIDER)
     withMediaLock(projectDir, () =>
-      writeSfxCredit(join(typeDirPath(projectDir, "sfx"), "CREDITS.md"), record.path, {
+      writeSfxCredit(join(ownTypeDir(projectDir, "sfx"), "CREDITS.md"), record.path, {
         license,
         credit,
         sourceUrl,

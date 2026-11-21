@@ -16,6 +16,7 @@ import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
 import type { Example } from "./_examples.js";
 import type { VideoArch } from "./lambda/videoImage.js";
 import { c } from "../ui/colors.js";
+import { terminalText } from "@hyperframes/core";
 import { deliveryFlagArgs, parseDeliveryFlags } from "../utils/deliveryFlags.js";
 import { defaultCloudFps } from "../utils/compositionFps.js";
 import { isMissingPackageError, missingPackageMessage } from "../utils/missingPackage.js";
@@ -293,7 +294,7 @@ export default defineCommand({
       case "sites": {
         if (args.target !== "create") {
           console.error(
-            `[lambda sites] unknown verb "${String(args.target)}". Only "create" is supported.`,
+            `[lambda sites] unknown verb "${terminalText(String(args.target))}". Only "create" is supported.`,
           );
           failUsage();
         }
@@ -454,7 +455,7 @@ export default defineCommand({
         return;
       }
       default:
-        console.error(`${c.error("Unknown subcommand:")} ${subcommand}\n${HELP}`);
+        console.error(`${c.error("Unknown subcommand:")} ${terminalText(subcommand)}\n${HELP}`);
         failUsage();
     }
   },

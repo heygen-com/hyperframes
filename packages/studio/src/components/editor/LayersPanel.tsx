@@ -1,5 +1,5 @@
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
-import { onPreviewContentReplaced } from "../../player/sceneSwap";
+import { onPreviewContentReplaced, onPreviewRestoredInPlace } from "../../player/sceneSwap";
 import { memo, useState, useCallback, useEffect, useRef } from "react";
 import {
   collectDomEditLayerItems,
@@ -211,7 +211,11 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
       prevDocVersionRef.current += 1;
       collectLayers();
     };
-    return onPreviewContentReplaced(iframe, handleLoad);
+    const stops = [
+      onPreviewContentReplaced(iframe, handleLoad),
+      onPreviewRestoredInPlace(iframe, collectLayers),
+    ];
+    return () => stops.forEach((stop) => stop());
   }, [previewIframeRef, livePreviewIframe, collectLayers]);
 
   useEffect(() => {
@@ -221,11 +225,8 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
     }
   }, [compositionLoading, collectLayers]);
 
-  // Subscribe to liveTime so the panel refreshes during scrubbing.
-  // liveTime bypasses React state (no re-renders per frame), so a plain
-  // usePlayerStore(s => s.currentTime) subscription never fires while the
-  // RAF loop is running.  Throttle with a trailing rAF + 100 ms cooldown to
-  // avoid a collectLayers call on every animation frame.
+  // Refresh while scrubbing: liveTime bypasses React state, so a currentTime store subscription never
+  // fires during the RAF loop. A trailing rAF + 100 ms cooldown keeps it off every frame.
   useEffect(() => {
     const throttle = createRafThrottle(collectLayers, 100);
     const unsubscribe = liveTime.subscribe(throttle.invoke);

@@ -6,6 +6,7 @@ import {
   CheckBudgetError,
   CheckDeadline,
   CheckCopiesUnfinishedError,
+  CheckChromeStartError,
   CheckDeadlineError,
   CheckStoppedError,
   idleWindow,
@@ -2363,6 +2364,7 @@ function emptyBrowserResult(): CheckBrowserResult {
 const STOP_CODES = [
   "media_copies_unfinished",
   "check_budget_reached",
+  "check_deadline",
   "check_runtime_failure",
 ] as const;
 export type StopCode = (typeof STOP_CODES)[number];
@@ -2374,7 +2376,9 @@ function runtimeFailure(error: unknown, code?: string): CheckFinding {
         ? "media_copies_unfinished"
         : error instanceof CheckBudgetError
           ? "check_budget_reached"
-          : "check_runtime_failure"),
+          : error instanceof CheckDeadlineError || error instanceof CheckChromeStartError
+            ? "check_deadline"
+            : "check_runtime_failure"),
     "error",
     normalizeErrorMessage(error),
     error instanceof CheckDeadlineError ? (error.sourceFile ?? "index.html") : "index.html",

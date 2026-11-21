@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 // fallow-ignore-file complexity
 import { defineCommand } from "../utils/defineCommand.js";
 import { execFileSync, type ExecFileSyncOptions } from "node:child_process";
@@ -484,12 +485,12 @@ export default defineCommand({
 
     for (const outcome of outcomes) {
       const icon = outcome.ok ? c.success("\u2713") : c.error("\u2717");
-      const name = outcome.name.padEnd(16);
+      const name = terminalText(outcome.name).padEnd(16);
       console.log(
-        `  ${icon} ${c.bold(name)} ${outcome.ok ? c.dim(outcome.detail) : c.error(outcome.detail)}`,
+        `  ${icon} ${c.bold(name)} ${outcome.ok ? c.dim(terminalLines(outcome.detail)) : c.error(terminalLines(outcome.detail))}`,
       );
       if (!outcome.ok && outcome.hint) {
-        console.log(`  ${" ".repeat(19)}${c.accent(outcome.hint)}`);
+        console.log(`  ${" ".repeat(19)}${c.accent(terminalLines(outcome.hint))}`);
       }
     }
 
