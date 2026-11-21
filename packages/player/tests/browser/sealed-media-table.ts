@@ -309,6 +309,10 @@ const FIXED: Sequence[] = [
   },
 ];
 
+// Generated sequences that found a fault by themselves: a recovered source skipped (75, 84, 127, 133, 158) and the
+// composition's play() rejected for it (94, 151). Run on every count of seeds.
+const PINNED = [75, 84, 94, 127, 133, 151, 158];
+
 const server = startServer();
 const foreignOrigin = server.origin.replace("127.0.0.1", "localhost");
 
@@ -854,7 +858,8 @@ async function filmFrame(page: import("puppeteer-core").Page, query: string) {
 const browser = await launchBrowser();
 try {
   const seeds = Number(process.env.SEALED_MEDIA_SEEDS ?? 40);
-  const sequences = [...FIXED, ...Array.from({ length: seeds }, (_, seed) => generated(seed + 1))];
+  const numbers = [...new Set([...Array.from({ length: seeds }, (_, n) => n + 1), ...PINNED])];
+  const sequences = [...FIXED, ...numbers.map(generated)];
   // One page at a time: a page behind another one has its media held back.
   const run = async (query: string, prefix: string, helperOff = false) => {
     const page = await browser.newPage();
