@@ -30,14 +30,7 @@ import {
   listProjectFilesAsync,
   type ListedProjectFile,
 } from "../helpers/projectSignature.js";
-import {
-  hashFile,
-  isSettling,
-  openBlobStore,
-  readBlob,
-  SETTLE_MS,
-  type BlobStore,
-} from "./blobStore.js";
+import { hashFile, openBlobStore, readBlob, SETTLE_MS, type BlobStore } from "./blobStore.js";
 import { isUncopied, uncopiedOnlyHashes } from "./uncopied.js";
 import {
   assertStillWithin,
@@ -131,6 +124,7 @@ export interface ClosedWindow {
   label: string;
   startedAt: number;
   lastWriteAt: number;
+  lastWriteFileTime?: number;
   idleMs: number;
 }
 
@@ -220,21 +214,25 @@ interface Group {
   /** Windows only: the idle lifetime, its timer, the last write's time, and the entry it became once ended. */
   idleMs?: number;
   lastWriteAt?: number;
+  lastFileTime?: number;
   idleTimer?: NodeJS.Timeout;
   entry?: HistoryEntry | null;
   parts?: Set<string>;
   wentAheadOf?: Set<string>;
 }
 
-/**
- * A stat is only trusted once the file is older than any file system's timestamp tick (git's "racily clean"): a
- * same-size rewrite inside one tick keeps its size, mtime and ctime. "" is never trusted, so the file is re-hashed.
- */
+/** Longer than any file system's time step (FAT's 2 s): a same-size rewrite inside one keeps its stat. */
 const RACY_MS = 2000;
-const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, sweptAt: number) =>
-  sweptAt - Math.max(file.mtimeMs, file.ctimeMs) < RACY_MS
-    ? ""
-    : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
+const statOf = (file: { size: number; mtimeMs: number; ctimeMs: number }) =>
+  `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
+const fileTimeOf = (file: { mtimeMs: number; ctimeMs: number }) =>
+  Math.max(file.mtimeMs, file.ctimeMs);
+
+/** When a write happened: `at` on history's clock, `fileTime` on the drive's (none for a removal). Never compared. */
+interface WrittenAt {
+  at: number;
+  fileTime?: number;
+}
 
 type Copied =
   | { hash: string; referenced?: true; release?: () => void; readAfterStep?: true }
@@ -446,8 +444,12 @@ const blocks = (removed: string, added: string) =>
 /** A window takes a write within idleMs of its last one; past that it has ended, even before its timer commits it. */
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
-const takesWrite = (window: Group, at: number) =>
-  window.idleMs === undefined || at - (window.lastWriteAt ?? at) <= window.idleMs;
+const takesWrite = (window: Group, { at, fileTime }: WrittenAt) => {
+  if (window.idleMs === undefined) return true;
+  if (Number.isFinite(window.lastFileTime) && Number.isFinite(fileTime))
+    return fileTime! - window.lastFileTime! <= window.idleMs;
+  return at - (window.lastWriteAt ?? at) <= window.idleMs;
+};
 
 function chainBackFrom(
   byAfter: Map<string, string> | undefined,
@@ -513,7 +515,8 @@ class TrackedFiles extends Map<string, Tracked> {
     super();
   }
   override set(path: string, file: Tracked): this {
-    this.changed();
+    const was = super.get(path);
+    if (was?.hash !== file.hash || was.stat !== file.stat) this.changed();
     this.seen(path, file.hash);
     return super.set(path, file);
   }
@@ -593,8 +596,33 @@ class Engine {
     return logFileIn(this.home);
   }
 
+  latest = 0;
   now(): number {
-    return (this.options.now ?? Date.now)();
+    this.latest = Math.max(this.latest, (this.options.now ?? Date.now)());
+    return this.latest;
+  }
+
+  statSince = new Map<string, { stat: string; at: number }>();
+  /** A stat history trusts: one it has seen unchanged for RACY_MS by its own clock; "" until then, so it re-hashes. */
+  statKey(file: ListedFile, at: number): string {
+    const stat = statOf(file);
+    if (this.tracked.get(file.path)?.stat === stat) return stat;
+    const first = this.statSince.get(file.path);
+    if (first?.stat !== stat) {
+      this.statSince.set(file.path, { stat, at });
+      return "";
+    }
+    if (at - first.at < RACY_MS) return "";
+    this.statSince.delete(file.path);
+    return stat;
+  }
+
+  emptied = new Map<string, string>();
+  emptiedSinceLastLook(file: ListedFile): boolean {
+    const stat = statOf(file);
+    if (this.emptied.get(file.path) === stat) return false;
+    this.emptied.set(file.path, stat);
+    return true;
   }
 
   /** One operation at a time, in order: sweeps, windows and undos never interleave. */
@@ -742,7 +770,17 @@ class Engine {
     const closed = this.options.closedWindow;
     if (!closed || this.log.entries.some((entry) => entry.id === closed.id)) return;
     const { id, who, label, startedAt, lastWriteAt, idleMs } = closed;
-    this.windows.push({ id, who, label, startedAt, lastWriteAt, idleMs, changes: new Map() });
+    const lastFileTime = closed.lastWriteFileTime;
+    this.windows.push({
+      id,
+      who,
+      label,
+      startedAt,
+      lastWriteAt,
+      lastFileTime,
+      idleMs,
+      changes: new Map(),
+    });
   }
 
   async takeInUnnamedLedger(): Promise<void> {
@@ -778,7 +816,7 @@ class Engine {
         owed.push(file);
         late.set(file.path, copies[i]!.work);
       } else if (result.value !== "gone") {
-        this.tracked.set(file.path, { hash: result.value.hash, stat: statKey(file, sweptAt) });
+        this.tracked.set(file.path, { hash: result.value.hash, stat: this.statKey(file, sweptAt) });
         result.value.release?.();
       }
     });
@@ -811,11 +849,11 @@ class Engine {
     return paths.length > 0;
   }
 
-  async provenanceOf(copied: Copied, file: ListedFile, sweptAt: number): Promise<Provenance> {
+  async provenanceOf(copied: Copied, file: ListedFile): Promise<Provenance> {
     if (!this.wentAhead.has(file.path)) return "no-step";
     if (typeof copied !== "object") return "unknown";
     const thisOpen = !this.wentAheadBeforeReopen.has(file.path);
-    if (thisOpen && (await this.unchangedSinceListed(file, sweptAt))) return "unchanged";
+    if (thisOpen && (await this.unchangedSinceListed(file))) return "unchanged";
     return copied.readAfterStep ? "unknown" : "read-before";
   }
 
@@ -833,11 +871,11 @@ class Engine {
     return rewrite;
   }
 
-  async unchangedSinceListed(file: ListedFile, sweptAt: number): Promise<boolean> {
-    const listed = statKey(file, sweptAt);
-    if (listed === "") return false;
+  async unchangedSinceListed(file: ListedFile): Promise<boolean> {
     try {
-      return statKey(await stat(join(this.dir, file.path)), this.now()) === listed;
+      const { size, mtimeMs, ctimeMs } = await stat(join(this.dir, file.path));
+      const seen = this.statKey({ path: file.path, size, mtimeMs, ctimeMs }, this.now());
+      return seen !== "" && seen === statOf(file);
     } catch {
       return false;
     }
@@ -853,6 +891,7 @@ class Engine {
     let stalledAhead = Promise.resolve(false);
     for (const file of files) {
       const late = lateFirstCopies.get(file.path);
+      this.statKey(file, sweptAt);
       const adoption = this.adopt(file, sweptAt, turn, late);
       const landed = adoption.firstTry.then(() => false);
       const stepMayBegin = late
@@ -925,7 +964,7 @@ class Engine {
       const fromOpen = typeof first === "object";
       const read = () => this.storeIfPresent(file.path, true);
       const copied = fromOpen ? first : await (owedFromOpen ? inFirstCopySlot(read) : read());
-      const provenance = await this.provenanceOf(copied, file, sweptAt);
+      const provenance = await this.provenanceOf(copied, file);
       const record = this.queue(async () => {
         // Still named for the next open until recorded, so a failed record is never logged as added.
         if ((await this.recordAdopted(file, sweptAt, copied, provenance)) === "changing")
@@ -971,7 +1010,7 @@ class Engine {
     hash: string,
     provenance: Provenance,
   ) {
-    this.tracked.set(file.path, { hash, stat: statKey(file, sweptAt) });
+    this.tracked.set(file.path, { hash, stat: this.statKey(file, sweptAt) });
     this.log.baseline.set(file.path, start);
     if (start !== hash) addChange(this.outsideGroup(), file.path, start, hash);
     const rewrite = provenance === "unchanged" && this.seenUnchanged(file.path);
@@ -1023,18 +1062,16 @@ class Engine {
     replaceFileAtomically(join(this.home, "stat.json"), files, 0o644);
   }
 
-  copiesNothing(file: ListedFile, now: number): boolean {
+  copiesNothing(file: ListedFile): boolean {
     if (this.adopting.has(file.path) || isUncopied(file.path, file.size)) return true;
-    const stat = statKey(file, now);
-    return stat !== "" && this.tracked.get(file.path)?.stat === stat;
+    return this.tracked.get(file.path)?.stat === statOf(file);
   }
 
   async unsavedBlobBytes(): Promise<number> {
     if (this.whereFolder() !== "here") return 0;
-    const now = this.now();
     const missing = new Map<string, number>();
     for (const file of await this.historyFiles()) {
-      if (this.copiesNothing(file, now)) continue;
+      if (this.copiesNothing(file)) continue;
       const hash = await hashIfPresent(join(this.dir, file.path));
       if (hash && !this.blobs.has(hash)) missing.set(hash, file.size);
     }
@@ -1045,55 +1082,61 @@ class Engine {
    * Takes in every write since the last sweep and files each change to its writer. ponytail: always the whole
    * project (a stat per file, a hash only when the stat moved); per-path sweeps if projects reach tens of thousands.
    */
-  async sweep(asItStands: "every" | ReadonlySet<string> = new Set()): Promise<void> {
+  async sweep(
+    asItStands: "every" | ReadonlySet<string> = new Set(),
+    foundBy = Infinity,
+  ): Promise<void> {
     // A folder moved or removed was not emptied, and another project at its path is none of this history's.
     if (this.whereFolder() !== "here") return;
     const sweptAt = this.now();
-    const changedAt = (file: { mtimeMs: number; ctimeMs: number }) =>
-      Math.min(sweptAt, Math.max(file.mtimeMs, file.ctimeMs));
     const seen = (await this.historyFiles()).filter((file) => !this.adopting.has(file.path));
+    const at = Math.min(sweptAt, foundBy);
     const heard = new Map(this.overwritten);
     const present = new Set(seen.map((file) => file.path));
     const removed = [...this.tracked.keys()]
       .filter((path) => !present.has(path))
       .map((path) => {
         const standing = this.standingAt(path);
-        return { at: standing ? changedAt(standing.stat) : sweptAt, path, file: null };
+        return { fileTime: standing ? fileTimeOf(standing.stat) : undefined, path, file: null };
       });
     // A file in the way of a removal (a/b over file a, or the reverse) appeared no earlier than that removal.
-    const appearedAt = (file: (typeof seen)[number]) =>
-      Math.max(
-        changedAt(file),
-        ...removed
-          .filter((gone) => blocks(this.nameKey(gone.path), this.nameKey(file.path)))
-          .map((gone) => gone.at),
-      );
+    const appearedAt = (file: (typeof seen)[number]): number | undefined => {
+      const blocked = removed
+        .filter((gone) => blocks(this.nameKey(gone.path), this.nameKey(file.path)))
+        .map((gone) => gone.fileTime);
+      return blocked.includes(undefined)
+        ? undefined
+        : Math.max(fileTimeOf(file), ...(blocked as number[]));
+    };
+    const order = (fileTime: number | undefined) => fileTime ?? Infinity;
     const events = [
       ...removed,
-      ...seen.map((file) => ({ at: appearedAt(file), path: file.path, file })),
-    ].sort((a, b) => a.at - b.at);
+      ...seen.map((file) => ({ fileTime: appearedAt(file), path: file.path, file })),
+    ].sort((a, b) => order(a.fileTime) - order(b.fileTime));
     // An emptied file may be a save not yet written; a window's write, a claimed path and an undo take it as it is.
-    const waitsForQuiet = (path: string, file: ListedFile, at: number) =>
+    const waitsForQuiet = (path: string, file: ListedFile, when: WrittenAt) =>
       file.size === 0 &&
       asItStands !== "every" &&
       !asItStands.has(path) &&
-      isSettling(file, sweptAt) &&
-      !this.windows.some((open) => takesWrite(open, at));
+      !this.windows.some((open) => takesWrite(open, when)) &&
+      this.emptiedSinceLastLook(file);
     let changed = false;
     let waiting = false;
-    for (const { at, path, file } of events) {
-      if (file && waitsForQuiet(path, file, at)) {
+    for (const { fileTime, path, file } of events) {
+      const when = { at, fileTime };
+      if (file && waitsForQuiet(path, file, when)) {
         waiting = true;
         continue;
       }
       if (file) {
-        changed = (await this.observe(path, statKey(file, sweptAt), at)) || changed;
+        this.emptied.delete(path);
+        changed = (await this.observe(path, this.statKey(file, sweptAt), when)) || changed;
         continue;
       }
       const known = this.tracked.get(path)!;
       this.tracked.delete(path);
       this.forgetWritesBefore(path, null, heard.get(path));
-      await this.record(path, known.hash, null, at);
+      await this.record(path, known.hash, null, when);
       changed = true;
     }
     if (changed) this.saveStatCache();
@@ -1131,7 +1174,7 @@ class Engine {
     }
   }
 
-  async observe(path: string, stat: string, at: number): Promise<boolean> {
+  async observe(path: string, stat: string, when: WrittenAt): Promise<boolean> {
     const known = this.tracked.get(path) ?? { hash: null, stat: null };
     if (stat && known.stat === stat) return false;
     const heard = this.overwritten.get(path);
@@ -1140,7 +1183,7 @@ class Engine {
     const { hash } = copied;
     this.tracked.set(path, { hash, stat });
     this.forgetWritesBefore(path, hash, heard);
-    if (known.hash !== hash) await this.record(path, known.hash, hash, at);
+    if (known.hash !== hash) await this.record(path, known.hash, hash, when);
     return known.hash !== hash || known.stat !== stat;
   }
 
@@ -1148,13 +1191,13 @@ class Engine {
     path: string,
     before: string | null,
     after: string | null,
-    at: number,
+    when: WrittenAt,
   ): Promise<void> {
-    const endedBeforeThisWrite = this.windows.filter((open) => !takesWrite(open, at));
+    const endedBeforeThisWrite = this.windows.filter((open) => !takesWrite(open, when));
     if (endedBeforeThisWrite.length) await this.commitOutside();
     for (const window of endedBeforeThisWrite) await this.endWindow(window);
     const window = this.windows.at(-1);
-    if (window) this.touch(window, at);
+    if (window) this.touch(window, when);
     addChange(window ?? this.outsideGroup(), path, before, after);
   }
 
@@ -1467,24 +1510,26 @@ class Engine {
       const at = this.now();
       if (exclusive) {
         const blocking = this.windows.find(
-          (open) => !sameWho(open.who, who) && takesWrite(open, at),
+          (open) => !sameWho(open.who, who) && takesWrite(open, { at }),
         );
         if (blocking)
           throw new Error(`${blocking.who.name}'s turn is open; it has to end before yours begins`);
         for (const open of [...this.windows])
-          if (!takesWrite(open, at) || sameWho(open.who, who)) await this.endWindow(open);
+          if (!takesWrite(open, { at }) || sameWho(open.who, who)) await this.endWindow(open);
       }
       const window = { ...this.newGroup(who, label), idleMs };
       this.windows.push(window);
-      this.touch(window, this.now());
+      this.touch(window, { at: this.now() });
       const close = () => this.queue(() => this.sweepAndEnd(window));
       return { id: window.id, startedAt: window.startedAt, close };
     });
   }
 
   /** A window with no write for its idleMs ends, so a close that never comes cannot hold every later write. */
-  touch(window: Group, at: number): void {
+  touch(window: Group, { at, fileTime }: WrittenAt): void {
     window.lastWriteAt = Math.max(window.lastWriteAt ?? at, at);
+    if (window.lastFileTime !== undefined && fileTime !== undefined)
+      window.lastFileTime = Math.max(window.lastFileTime, fileTime);
     this.endWhenIdle(window, window.idleMs);
   }
 
@@ -1496,15 +1541,16 @@ class Engine {
       () => {
         const left = window.idleMs! - (this.now() - (window.lastWriteAt ?? this.now()));
         if (left > 0) this.endWhenIdle(window, left);
-        else this.background(() => this.sweepAndEnd(window));
+        // It fires at the deadline, so what its sweep finds was written by then.
+        else this.background(() => this.sweepAndEnd(window, window.lastWriteAt! + window.idleMs!));
       },
       Math.min(delay, MAX_TIMER_MS),
     );
     window.idleTimer.unref?.();
   }
 
-  async sweepAndEnd(window: Group): Promise<HistoryEntry | null> {
-    await this.sweep();
+  async sweepAndEnd(window: Group, foundBy?: number): Promise<HistoryEntry | null> {
+    await this.sweep(new Set(), foundBy);
     return this.endWindow(window);
   }
 

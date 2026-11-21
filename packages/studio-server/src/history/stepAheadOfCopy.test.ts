@@ -59,14 +59,16 @@ function project() {
   const historyRoot = tempDir("hf-step-ahead-root-");
   const file = (path: string) => join(dir, path);
   const read = (path: string) => readFileSync(file(path), "utf8");
-  // Read a minute later, so the open trusts the stats it listed.
+  let ahead = 0;
   const opts = {
     projectDir: dir,
     historyRoot,
     firstCopyFileMs: 100,
-    now: () => Date.now() + 60_000,
+    now: () => Date.now() + ahead,
   };
-  return { dir, historyRoot, file, read, opts };
+  // History trusts a stat it has seen unchanged for longer than a file system's time step.
+  const later = () => (ahead += 5000);
+  return { dir, historyRoot, file, read, opts, later };
 }
 
 /** The first open of `path` waits until released, at the latest before the test's histories close. */
@@ -160,7 +162,7 @@ describe("an agent step that began while a file's first copy was pending", () =>
   });
 
   it("undoes as usual once the copy lands showing the file unchanged", async () => {
-    const { file, read, historyRoot, opts } = project();
+    const { file, read, historyRoot, opts, later } = project();
     const release = stallRead(file("parts/p1.js"));
     const history = await open(opts);
     const entry = await step(
@@ -168,6 +170,7 @@ describe("an agent step that began while a file's first copy was pending", () =>
       () => writeFileSync(file("index.html"), "<html>agent</html>"),
       [file("index.html")],
     );
+    later();
     release();
     await landed(historyRoot);
     expect(history.peek(START)!["parts/p1.js"]).toBe(sha256("// before\n"));

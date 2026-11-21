@@ -34,6 +34,7 @@ for (const stream of [process.stdout, process.stderr]) {
 // We emit the worker entry next to cli.js (see tsup.config.ts) and tell
 // the pool where to find it via the published env-var override.
 import "./utils/hideChildConsoles.js";
+import "./utils/envProxyFetch.js";
 import "./utils/windowsExeSearch.js";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -74,8 +75,9 @@ if (rootVersionRequested) {
 const { loadProjectDotEnv, yieldReceivedProviderKeys } = await import("./utils/dotEnv.js");
 const captureEnv = argv[commandWordIndex(argv)] === "capture";
 if (!captureEnv || process.env.HYPERFRAMES_NO_CAPTURE_DOTENV !== "1") {
-  loadProjectDotEnv(process.cwd(), process.env, (line) => console.error(line));
-  await yieldReceivedProviderKeys((line) => console.error(line));
+  const say = (line: string) => console.error(terminalText(line));
+  loadProjectDotEnv(process.cwd(), process.env, say);
+  await yieldReceivedProviderKeys(say);
 }
 
 // ── Lazy imports ────────────────────────────────────────────────────────────
@@ -134,7 +136,7 @@ async function assertStudioWorkspaceBuilt(): Promise<void> {
     await import("./utils/workspaceBuildCheck.js");
   const problems = checkStudioWorkspaceBuild(repoRoot);
   if (problems.length === 0) return;
-  console.error(formatWorkspaceBuildProblems(problems));
+  console.error(terminalLines(formatWorkspaceBuildProblems(problems)));
   throw new CliRuntimeError("Studio workspace build check failed", {
     exitCode: 1,
     presented: true,
@@ -220,7 +222,7 @@ if (argv[commandWordIndex(argv)] === "measure") {
   if (rewritten !== argv) {
     const file = rewritten[rewritten.indexOf("probe") + 1];
     console.error(
-      `No measure op named: running 'probe ${JSON.stringify(file)}'. Ops: ${MEASURE_OPS.join(", ")}.`,
+      `No measure op named: running 'probe ${terminalText(JSON.stringify(file))}'. Ops: ${MEASURE_OPS.join(", ")}.`,
     );
     process.argv = [...process.argv.slice(0, 2), ...rewritten];
     argv = process.argv.slice(2);
@@ -609,8 +611,8 @@ async function unknownCommandError(requested: ResolvedCommandUsage): Promise<Cli
   const subCommands = typeof declared === "function" ? await declared() : await declared;
   const names = Object.keys(subCommands ?? {});
   const hint = unknownCommandHint(word, requested.path, names);
-  console.error(`Unknown command: ${word}`);
-  if (hint) console.error(hint);
+  console.error(`Unknown command: ${terminalText(word)}`);
+  if (hint) console.error(terminalText(hint));
   console.error(`Run '${group} --help' to list every command.`);
   return new CliUsageError(`Unknown command: ${word}`, {
     presented: true,
@@ -709,9 +711,12 @@ async function executeCli(): Promise<void> {
       const usage = error instanceof CliUsageError && !error.result.presented;
       if (usage && !error.hint) await showRequestedUsage(console.error);
       if (!typed || !error.result.presented) {
-        console.error(terminalLines(error instanceof Error ? error.message : String(error)));
+        const message = error instanceof Error ? error.message : String(error);
+        const oneLine = error instanceof CliUsageError || isCittyUsageError(error);
+        const shown = oneLine ? terminalText : terminalLines;
+        console.error(shown(message));
       }
-      if (usage && error.hint) console.error(error.hint);
+      if (usage && error.hint) console.error(terminalText(error.hint));
     }
   } finally {
     const pending = consumeCommandResult();
