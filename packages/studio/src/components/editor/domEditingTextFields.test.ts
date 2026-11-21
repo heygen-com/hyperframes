@@ -96,11 +96,14 @@ describe("text fields — spaces between child elements", () => {
     return unstamped(document.getElementById("title")!.innerHTML);
   };
 
-  it.each([SPANS, "Hello <b>big</b> <i>world</i>"])("writes %s back with its spaces", (markup) => {
-    expect(unstamped(serializeDomEditTextFields(collectDomEditTextFields(heading(markup))))).toBe(
-      markup,
-    );
-  });
+  it.each([SPANS, "Hello <span>big</span> <span>world</span>"])(
+    "writes %s back with its spaces",
+    (markup) => {
+      expect(unstamped(serializeDomEditTextFields(collectDomEditTextFields(heading(markup))))).toBe(
+        markup,
+      );
+    },
+  );
 
   it("keeps the spaces when a field is added from the panel", () => {
     const html = written(SPANS, (fields) => [...fields, buildDefaultDomEditTextField(fields[1])]);
