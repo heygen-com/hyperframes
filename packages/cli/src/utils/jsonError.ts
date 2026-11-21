@@ -50,31 +50,14 @@ export function writeJsonFailure(body: CliErrorBody): void {
  */
 let reported: { message: string; hint?: string; exact?: boolean } | undefined;
 let noticeDepth = 0;
-let jsonRun = false;
-const heldStatus: string[] = [];
 
-export function printFailureLine(
-  line: (show: (text: string) => string) => string,
-  answer?: string,
-  hint?: string,
-): void {
+export function printFailureLine(line: (show: (text: string) => string) => string): void {
   console.error(line(terminalLines));
   const given: string[] = [];
   const shape = tidy(line((text) => `\uE000${given.push(text) - 1}\uE001`));
   const message = shape.replace(/\uE000(\d+)\uE001/g, (_, at) => given[Number(at)] ?? "");
   const earlier = reported?.exact ? `${reported.message} ` : "";
-  reported = { message: earlier + (answer ?? message), hint, exact: true };
-}
-
-export const isJsonRun = (): boolean => jsonRun;
-
-export function status(text: string): void {
-  if (jsonRun) heldStatus.push(text);
-  else console.log(text);
-}
-
-export function releaseStatus(): void {
-  for (const text of heldStatus.splice(0)) console.log(text);
+  reported = { message: earlier + message, exact: true };
 }
 
 /** The failure a command reported to the person (errorBox); the envelope's message when it has none. */
@@ -106,7 +89,6 @@ export function failureMessage(error: unknown): string {
 }
 
 export function watchOutput(): { wroteStdout: () => boolean; stderrText: () => string } {
-  jsonRun = true;
   let wrote = false;
   let stderr = "";
   let inConsole = false;

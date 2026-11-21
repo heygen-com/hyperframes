@@ -114,5 +114,5 @@ export function leftOutNotice(command: string, result: StagedFiles): string | nu
     result.leftOut.length > NAMES_SHOWN ? `, and ${result.leftOut.length - NAMES_SHOWN} more` : "";
   const named = shown.length > 0 ? ` left out ${shown.join(", ")}${more}.` : "";
   const partial = result.complete ? "" : " Some files were too large or too many to read in full.";
-  return `${command}:${named}${partial} Only the files the page names in its own folder are served; pass the project folder to keep the rest.`;
+  return `${terminalText(command)}:${named}${partial} Only the files the page names in its own folder are served; pass the project folder to keep the rest.`;
 }

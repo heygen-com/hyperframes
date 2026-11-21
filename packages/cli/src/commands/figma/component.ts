@@ -206,7 +206,9 @@ export default defineCommand({
         download: downloadRender,
         name: args.name,
       });
-      console.log(`imported component "${result.name}" → ${result.htmlPath}`);
+      console.log(
+        `imported component "${terminalText(result.name)}" → ${terminalText(result.htmlPath)}`,
+      );
       if (result.rasterized.length > 0) {
         const ok = result.rasterized.length - result.failedRasterize.length;
         console.log(

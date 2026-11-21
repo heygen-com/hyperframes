@@ -4,7 +4,7 @@
 // own task.
 // fallow-ignore-file complexity
 import { failCommand, finishCommand, failUsage } from "../utils/commandResult.js";
-import { isJsonRun, printFailureLine, releaseStatus, status } from "../utils/jsonError.js";
+import { printFailureLine } from "../utils/jsonError.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 import { runCommand } from "citty";
 import { defineCommand } from "../utils/defineCommand.js";
@@ -508,7 +508,7 @@ async function handleVideoFile(
     if (interactive) {
       clack.log.warn(msg);
     } else {
-      status(c.warn(msg));
+      console.log(c.warn(msg));
     }
   }
 
@@ -521,7 +521,7 @@ async function handleVideoFile(
         ),
       );
     } else {
-      status(
+      console.log(
         c.warn(`Video codec "${terminalText(probed.videoCodec)}" is not supported by browsers.`),
       );
     }
@@ -555,7 +555,8 @@ async function handleVideoFile(
       if (shouldTranscode) {
         const mp4Name = freeTranscodeName(destDir, localVideoName);
         const mp4Path = resolve(destDir, mp4Name);
-        const spin = interactive ? clack.spinner() : { start: status, stop: status };
+        const say = (text: string) => console.log(text);
+        const spin = interactive ? clack.spinner() : { start: say, stop: say };
         spin.start("Transcoding to H.264 MP4...");
         const ok = await transcodeToMp4(videoPath, mp4Path);
         if (ok) {
@@ -573,8 +574,8 @@ async function handleVideoFile(
         clack.log.warn(c.dim("ffmpeg not installed — cannot transcode."));
         clack.log.info(c.accent(`Install: ${getFFmpegInstallHint()}`));
       } else {
-        status(c.warn("ffmpeg not installed — cannot transcode. Copying original."));
-        status(c.dim("Install: ") + c.accent(getFFmpegInstallHint()));
+        console.log(c.warn("ffmpeg not installed — cannot transcode. Copying original."));
+        console.log(c.dim("Install: ") + c.accent(getFFmpegInstallHint()));
       }
       copyIntoProjectUnlessAlreadyThere(videoPath, resolve(destDir, localVideoName));
     }
@@ -865,23 +866,19 @@ export default defineCommand({
   async run({ args }) {
     if (args.template !== undefined) {
       const template = args.template;
-      printFailureLine(
-        () =>
-          c.error(
-            `The --template flag was renamed to --example. Example:\n  npx hyperframes init ${shellArg(args.name ?? "my-video") ?? "<name>"} --example ${shellArg(template) ?? "<example>"}`,
-          ),
-        `The --template flag was renamed to --example (given: --template ${template})`,
+      printFailureLine(() =>
+        c.error(
+          `The --template flag was renamed to --example. Example:\n  npx hyperframes init ${shellArg(args.name ?? "my-video") ?? "<name>"} --example ${shellArg(template) ?? "<example>"}`,
+        ),
       );
       failUsage();
     }
     if (args["video-legacy"] !== undefined) {
       const legacy = args["video-legacy"];
-      printFailureLine(
-        () =>
-          c.error(
-            `The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init ${shellArg(args.name ?? "my-video") ?? "<name>"} --video ${shellArg(legacy) ?? "<file>"}`,
-          ),
-        `The -V short flag no longer maps to --video; use --video or -v (given: -V ${legacy})`,
+      printFailureLine(() =>
+        c.error(
+          `The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init ${shellArg(args.name ?? "my-video") ?? "<name>"} --video ${shellArg(legacy) ?? "<file>"}`,
+        ),
       );
       failUsage();
     }
@@ -899,7 +896,7 @@ export default defineCommand({
       modelFlag ?? DEFAULT_MODEL,
       languageFlag,
     );
-    const interactive = !nonInteractive && !isUnattended() && !isJsonRun();
+    const interactive = !nonInteractive && !isUnattended();
 
     let resolutionPreset: CanvasResolution | undefined;
     if (args.resolution !== undefined) {
@@ -973,7 +970,7 @@ export default defineCommand({
         videoHasAudio = result.meta.hasAudio;
         videoDuration = result.meta.durationSeconds;
         videoSize = result.meta;
-        status(
+        console.log(
           `Video: ${result.meta.width}x${result.meta.height}, ${result.meta.durationSeconds.toFixed(1)}s`,
         );
       }
@@ -984,7 +981,7 @@ export default defineCommand({
         copyIntoProjectUnlessAlreadyThere(audioPath, resolve(destDir, basename(audioPath)));
         const { getMediaDurationSeconds } = await import("../whisper/transcribe.js");
         videoDuration = getMediaDurationSeconds(audioPath) ?? undefined;
-        status(`Audio: ${terminalText(basename(audioPath))}`);
+        console.log(`Audio: ${terminalText(basename(audioPath))}`);
       }
 
       // Transcribe
@@ -993,16 +990,18 @@ export default defineCommand({
           const { ensureWhisper, ensureModel } = await import("../whisper/manager.js");
           await ensureWhisper();
           await ensureModel(initialTranscriptionModel);
-          status("Transcribing...");
+          console.log("Transcribing...");
           const { transcribe: runTranscribe } = await import("../whisper/transcribe.js");
           const result = await runTranscribe(sourceFilePath, destDir, {
             model: modelFlag,
             language: languageFlag,
           });
-          status(`Transcribed: ${result.wordCount} words (${result.durationSeconds.toFixed(1)}s)`);
+          console.log(
+            `Transcribed: ${result.wordCount} words (${result.durationSeconds.toFixed(1)}s)`,
+          );
           if (!videoDuration) videoDuration = result.durationSeconds;
         } catch (err) {
-          status(
+          console.log(
             `Transcription skipped: ${terminalLines(err instanceof Error ? err.message : String(err))}`,
           );
         }
@@ -1025,19 +1024,15 @@ export default defineCommand({
           args.skill,
         );
       } catch (err) {
-        printFailureLine(
-          (show) =>
-            c.error(
-              `Failed to scaffold example "${show(templateId)}": ${show(err instanceof Error ? err.message : String(err))}`,
-            ),
-          undefined,
-          "Use --example blank for offline use.",
+        printFailureLine((show) =>
+          c.error(
+            `Failed to scaffold example "${show(templateId)}": ${show(err instanceof Error ? err.message : String(err))}`,
+          ),
         );
         console.error(c.dim("Use --example blank for offline use."));
         failCommand();
       }
       await finishScaffold(destDir, templateId, tailwind);
-      releaseStatus();
 
       console.log(c.success(`Created ${c.accent(terminalText(name) + "/")}`));
       for (const f of readdirSync(destDir).filter((f) => !f.startsWith("."))) {

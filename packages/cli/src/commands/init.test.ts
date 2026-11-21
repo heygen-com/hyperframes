@@ -620,15 +620,13 @@ describe("hyperframes init flag rename", () => {
   );
 
   // One row per init failure line that names something the caller typed.
-  // fails without the fix: the answer's message was the line as people see it, escapes included.
-  describe("with --json first, a failure answers with the value as given", () => {
+  describe("a failure line shows the value as text", () => {
     type Row = {
       name: string;
       args: string[];
       before?: (dir: string) => void;
       after?: (dir: string) => void;
       shown?: string;
-      given?: string;
       exit: number;
       stderr?: string;
       stdout?: string;
@@ -641,7 +639,6 @@ describe("hyperframes init flag rename", () => {
         name: "the renamed --template flag",
         args: ["proj", "--template", "bl\u0007a\nnk  "],
         shown: "--example <example>",
-        given: "(given: --template bl\u0007a\nnk  )",
         exit: 2,
         stderr:
           "The --template flag was renamed to --example. Example:\n  npx hyperframes init proj --example <example>\n",
@@ -650,7 +647,6 @@ describe("hyperframes init flag rename", () => {
         name: "the renamed -V flag",
         args: ["proj", "-V", "cl\u0007i\np.mp4  "],
         shown: "--video <file>",
-        given: "(given: -V cl\u0007i\np.mp4  )",
         exit: 2,
         stderr:
           "The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init proj --video <file>\n",
@@ -659,7 +655,6 @@ describe("hyperframes init flag rename", () => {
         name: "a refused --resolution",
         args: ["proj", "--resolution", "b\u0007a\nd  "],
         shown: 'Invalid --resolution: "b\\x07a\nd  "',
-        given: 'Invalid --resolution: "b\u0007a\nd  "',
         exit: 2,
       },
       {
@@ -670,7 +665,6 @@ describe("hyperframes init flag rename", () => {
           writeFileSync(join(dir, "fu\u0007l\nl  ", "notes.txt"), "");
         },
         shown: "fu\\x07l\nl  ",
-        given: "fu\u0007l\nl  ",
         exit: 1,
         skip: posixOnly,
       },
@@ -678,14 +672,12 @@ describe("hyperframes init flag rename", () => {
         name: "a missing --video",
         args: ["proj", "--video", "cl\u0007i\np.mp4  "],
         shown: "Video file not found: cl\\x07i\np.mp4  ",
-        given: "Video file not found: cl\u0007i\np.mp4  ",
         exit: 1,
       },
       {
         name: "a missing --audio",
         args: ["proj", "--audio", "so\u0007n\ng.mp3  "],
         shown: "Audio file not found: so\\x07n\ng.mp3  ",
-        given: "Audio file not found: so\u0007n\ng.mp3  ",
         exit: 1,
       },
       {
@@ -698,17 +690,8 @@ describe("hyperframes init flag rename", () => {
         },
         after: (dir) => chmodSync(join(dir, "lo\u0007cked"), 0o755),
         shown: 'Failed to scaffold example "from-file": ',
-        given: "lo\u0007cked",
         exit: 1,
         skip: posixOnly || process.getuid?.() === 0,
-      },
-      {
-        name: "a folder that cannot be made, in the words of the error itself",
-        args: ["fi\nle  /sub"],
-        before: (dir) => writeFileSync(join(dir, "fi\nle  "), ""),
-        given: "fi\nle  /sub'",
-        exit: 1,
-        skip: posixOnly,
       },
       {
         name: "a finished project, whose status line still comes first",
@@ -720,7 +703,6 @@ describe("hyperframes init flag rename", () => {
       {
         name: "the renamed --template flag with values the shell would split",
         args: ["my film", "--template", "two words"],
-        given: "The --template flag was renamed to --example (given: --template two words)",
         exit: 2,
         stderr:
           'The --template flag was renamed to --example. Example:\n  npx hyperframes init "my film" --example "two words"\n',
@@ -728,8 +710,6 @@ describe("hyperframes init flag rename", () => {
       {
         name: "the renamed -V flag with a value in two words",
         args: ["proj", "-V", "two words.mp4"],
-        given:
-          "The -V short flag no longer maps to --video; use --video or -v (given: -V two words.mp4)",
         exit: 2,
         stderr:
           'The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init proj --video "two words.mp4"\n',
@@ -740,25 +720,17 @@ describe("hyperframes init flag rename", () => {
       const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
       row.before?.(dir);
       try {
-        const res = spawnSync(
-          "bun",
-          ["run", cliEntry, "--json", "init", ...row.args, "--non-interactive"],
-          {
-            cwd: dir,
-            encoding: "utf-8",
-            timeout: 30_000,
-            env: { ...process.env, HYPERFRAMES_SKIP_SKILLS: "1" },
-          },
-        );
+        const res = spawnSync("bun", ["run", cliEntry, "init", ...row.args, "--non-interactive"], {
+          cwd: dir,
+          encoding: "utf-8",
+          timeout: 30_000,
+          env: { ...process.env, HYPERFRAMES_SKIP_SKILLS: "1" },
+        });
         expect(res.status).toBe(row.exit);
         if (row.stdout !== undefined) return expect(res.stdout.startsWith(row.stdout)).toBe(true);
         expect(res.stderr).toContain(row.shown ?? "");
         expect(res.stderr).not.toContain("\u0007");
         if (row.stderr !== undefined) expect(res.stderr).toBe(row.stderr);
-        const body = JSON.parse(res.stdout.trim()) as { ok: boolean; error: { message: string } };
-        expect(body.ok).toBe(false);
-        expect(body.error.message).toContain(row.given ?? "");
-        expect(body.error.message).not.toContain("\\x07");
       } finally {
         row.after?.(dir);
         rmSync(dir, { recursive: true, force: true });
