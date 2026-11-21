@@ -711,7 +711,7 @@ async function executeCli(): Promise<void> {
       if (!typed || !error.result.presented) {
         console.error(terminalLines(error instanceof Error ? error.message : String(error)));
       }
-      if (usage && error.hint) console.error(terminalLines(error.hint));
+      if (usage && error.hint) console.error(terminalText(error.hint));
     }
   } finally {
     const pending = consumeCommandResult();
