@@ -177,7 +177,97 @@ describe("billing add-credits", () => {
   });
 });
 
+describe("billing with no action", () => {
+  const printed = async (rawArgs: string[], read: { plan: string; credits: number } | null) => {
+    held.reads = [read];
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await runCommand(billing, { rawArgs });
+    return log.mock.calls.flat().join("\n");
+  };
+  const MANAGE =
+    /^Manage or cancel your plan: https:\/\/hyperframes\.studio\/billing\?from=cli&utm_source=cli&workspace_hint=sp-1$/m;
+
+  it("shows a paid plan and the page that manages or cancels it, opening nothing", async () => {
+    const out = await printed([], { plan: "pro", credits: 500 });
+    expect(out).toContain("HyperFrames: pro plan, 500 credits");
+    expect(out).toMatch(MANAGE);
+    expect(opened).toEqual([]);
+  });
+
+  // fails without the fix: the plan name reached the terminal with its control characters live.
+  it("shows a plan name's control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    const out = await printed([], { plan: `pro${esc}[2J`, credits: 500 });
+    expect(out).toContain("HyperFrames: pro\\x1b[2J");
+    expect(out).not.toContain(esc);
+  });
+
+  it("shows Free with no manage line", async () => {
+    const out = await printed([], { plan: "none", credits: 0 });
+    expect(out).toContain("HyperFrames: Free");
+    expect(out).not.toContain("Manage or cancel");
+  });
+
+  it("--manage opens that page at a terminal", async () => {
+    terminal.attended = true;
+    expect(await printed(["--manage"], { plan: "pro", credits: 500 })).toMatch(MANAGE);
+    expect(new URL(opened[0] ?? "").pathname).toBe("/billing");
+  });
+
+  it("--manage only prints the link when no one is at the terminal", async () => {
+    expect(await printed(["--manage"], null)).toMatch(MANAGE);
+    expect(opened).toEqual([]);
+  });
+});
+
+describe("billing numeric flags", () => {
+  it.each([
+    ["--timeout", "abc"],
+    ["--timeout", "-5"],
+    ["--timeout", "0"],
+    ["--timeout", "2.5"],
+    ["--needed", "abc"],
+    ["--needed", "-1"],
+    ["--needed", "0"],
+  ])("rejects %s %s as a usage error before opening any page", async (flag, value) => {
+    await expect(
+      runCommand(billing, { rawArgs: ["add-credits", flag, value] }),
+    ).rejects.toMatchObject({ result: { exitCode: 2, kind: "usage_error" } });
+    expect(opened).toEqual([]);
+    expect(plan.calls).toBe(0);
+  });
+
+  it("still waits for a valid --needed and --timeout", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, {
+      rawArgs: ["add-credits", "--needed", "100", "--timeout", "30"],
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+    await done;
+    vi.useRealTimers();
+    expect(opened).toHaveLength(1);
+    expect(new URL(opened[0] ?? "").searchParams.get("needed_credits")).toBe("100");
+  });
+});
+
 describe("billing without a terminal", () => {
+  // fails without the fix: the checkout link reached the terminal with its control characters live.
+  it("prints a checkout link's control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    held.checkout = Promise.resolve(`https://checkout.example.test/c${esc}[2J`);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    await done;
+    vi.useRealTimers();
+    const printed = log.mock.calls.flat().join("\n");
+    expect(printed).toContain("Checkout link: https://checkout.example.test/c\\x1b[2J");
+    expect(printed).not.toContain(esc);
+  });
+
   it("prints Stripe's checkout link instead of waiting for Enter, and opens only the pricing page", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     vi.useFakeTimers();
@@ -302,6 +392,25 @@ describe("billing outcomes", () => {
     vi.useRealTimers();
     expect(events.failed).toEqual([{ reason: "checkout_rejected" }]);
     expect(events.timeout).toEqual([]);
+  });
+
+  // fails without the fix: the checkout failure reached the terminal with its control characters live.
+  it("prints a checkout failure's control characters as visible escapes", async () => {
+    const { CheckoutError } = await import("../heygen/plan.js");
+    const esc = String.fromCharCode(27);
+    terminal.checkoutError = new CheckoutError("checkout_rejected", `No${esc}[2J checkout`);
+    never.paid = false;
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe", "--timeout", "4"] });
+    const settled = expect(done).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(6000);
+    await settled;
+    vi.useRealTimers();
+    const printed = error.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).toContain("No\\x1b[2J checkout");
+    expect(printed).not.toContain(`${esc}[2J`);
   });
 
   it("stops at once when credits are not on sale, since the credits page cannot sell them either", async () => {

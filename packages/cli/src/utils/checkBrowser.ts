@@ -5,7 +5,7 @@ import { logCheckProgress } from "./checkProgress.js";
 import { BrowserCleanupError, closeManagedBrowser, onStopSignal } from "../browser/launch.js";
 import { collectMotionBlurDrafts, dropMotionBlurConsoleEcho } from "./checkMotionBlur.js";
 import { checkSnapshotDirectory } from "./checkSnapshotDirectory.js";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join, resolve } from "node:path";
 import type { Browser, Page } from "puppeteer-core";
@@ -29,7 +29,8 @@ import {
   shouldIgnoreHttpError,
   shouldIgnoreRequestFailure,
 } from "../commands/validate.js";
-import { loadBrowserScript } from "../commands/layout.js";
+import { loadBrowserScript } from "../commands/browserScript.js";
+import { projectLocalFile } from "../commands/snapshotHeldVideos.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import { ambiguousIssue, type MotionFrame } from "./motionAudit.js";
 import type { LayoutIssue, LayoutIssueCode, LayoutRect } from "./layoutAudit.js";
@@ -92,6 +93,7 @@ import type {
   RotationSample,
   RunAuditGrid,
   SeekClock,
+  TextOverVideoCandidate,
 } from "./checkTypes.js";
 import type { ProjectDir } from "./project.js";
 
@@ -474,7 +476,7 @@ export async function runBrowserCheck(
   let chromeBrowser: import("puppeteer-core").Browser | undefined;
   const helperSession =
     samplingBrowserCount(options) > 1
-      ? startHelperSession(html, server.url, options, deadline)
+      ? startHelperSession(html, server.url, options, deadline, project.dir)
       : undefined;
   const helperOpen = helperSession?.opened;
   const helpers = helperOpen?.then(
@@ -527,7 +529,7 @@ export async function runBrowserCheck(
     const blur = await collectMotionBlurDrafts(page);
     drafts.push(...blur);
     const sampleLog = sampleWindow(drafts);
-    const driver = createPageDriver(page, clock, sampleLog);
+    const driver = createPageDriver(page, clock, sampleLog, project.dir);
     const result = await runGrid(
       driver,
       options,
@@ -536,6 +538,7 @@ export async function runBrowserCheck(
       deadline?.enter,
       logCheckProgress,
       deadline?.keepPartial,
+      deadline?.signal,
     );
     helperSession?.stop();
     const helper = await helperOpen?.catch(() => undefined);
@@ -611,10 +614,11 @@ function startHelperSession(
   url: string,
   options: CheckOptions,
   deadline: CheckDeadline | undefined,
+  projectDir: string,
 ) {
   const abort = new AbortController();
   let browser: Browser | undefined;
-  const opened = openHelperSession(html, url, options, deadline, {
+  const opened = openHelperSession(html, url, options, deadline, projectDir, {
     signal: deadline ? AbortSignal.any([deadline.signal, abort.signal]) : abort.signal,
     onBrowser: (launched) => {
       browser = launched;
@@ -637,6 +641,7 @@ async function openHelperSession(
   url: string,
   options: CheckOptions,
   deadline: CheckDeadline | undefined,
+  projectDir: string,
   owner: { signal: AbortSignal; onBrowser: (browser: Browser) => void },
 ): Promise<HelperSession> {
   const sampleLog = sampleWindow([]);
@@ -655,7 +660,7 @@ async function openHelperSession(
   });
   await waitForPreferredSeekTarget(session.page);
   return {
-    driver: createPageDriver(session.page, clock, sampleLog),
+    driver: createPageDriver(session.page, clock, sampleLog, projectDir),
     sampleLog,
   };
 }
@@ -789,7 +794,6 @@ async function withFindingCapturePage<T>(
     chromeBrowser = session.browser;
     await waitForPreferredSeekTarget(session.page);
     const snapshotDir = checkSnapshotDirectory(project.dir);
-    mkdirSync(snapshotDir, { recursive: true });
     return await capture(session.page, snapshotDir, server);
   } catch (error) {
     failure = { kind: "failed", error };
@@ -988,7 +992,7 @@ export async function networkChangesStillFailing(drafts: RuntimeDraft[]): Promis
     urls.map(async (url) => {
       try {
         const response = await fetch(url, {
-          headers: { Range: "bytes=0-0" },
+          headers: { Range: "bytes=0-0", Referer: `${new URL(url).origin}/` },
           signal: AbortSignal.timeout(5000),
         });
         await response.body?.cancel();
@@ -1090,6 +1094,7 @@ export function createPageDriver(
   page: Page,
   clock: RuntimeClock = createRuntimeClock(),
   sampleLog?: SampleWindow,
+  projectDir?: string,
 ): CheckAuditDriver {
   return failWhenPageDies(page, {
     initialize: (contrast) => injectAuditScripts(page, contrast),
@@ -1143,6 +1148,9 @@ export function createPageDriver(
     collectSeekClock: () => collectSeekClock(page),
     collectRotationSample: (time) => collectRotationSample(page, time),
     collectOffPivotRotationSample: (time) => collectOffPivotRotationSample(page, time),
+    ...(projectDir === undefined
+      ? {}
+      : { collectTextOverVideo: (time) => collectTextOverVideo(page, time, projectDir) }),
     collectGeometryCandidates: (time, request) => collectGeometryCandidates(page, time, request),
     collectMotionFrame: (time, selectors, scopes) =>
       collectMotionFrame(page, time, selectors, scopes),
@@ -1571,6 +1579,80 @@ function parseRotationSample(value: unknown, time: number): RotationSample[] {
     return [];
   }
   return [{ time, selector, cx, cy, w, h, angle }];
+}
+
+async function collectTextOverVideo(
+  page: Page,
+  time: number,
+  projectDir: string,
+): Promise<TextOverVideoCandidate[]> {
+  const raw = await page.evaluate(
+    (options: { time: number }) => {
+      const collect = Reflect.get(window, "__hyperframesTextOverVideo");
+      if (typeof collect !== "function") return [];
+      const result = Reflect.apply(collect, window, [options]);
+      return Array.isArray(result) ? result : [];
+    },
+    { time },
+  );
+  return raw.flatMap((value) => parseTextOverVideo(value, time, page.url(), projectDir));
+}
+
+/** The project file a page-origin URL is served from; null for a remote source, or a path outside the project, private or not a regular file. */
+export function servedProjectFile(src: string, pageUrl: string, projectDir: string): string | null {
+  const url = parseUrl(src);
+  if (!url || url.origin !== parseUrl(pageUrl)?.origin) return null;
+  const file = projectLocalFile(projectDir, url.href);
+  return file && isRegularFile(file) ? file : null;
+}
+
+function isRegularFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function parsePlacedVideo(
+  value: Record<string, unknown> | null,
+  pageUrl: string,
+  projectDir: string,
+): TextOverVideoCandidate["video"] | null {
+  if (!value) return null;
+  const selector = stringValue(value, "selector");
+  const file = servedProjectFile(stringValue(value, "src") ?? "", pageUrl, projectDir);
+  const mediaTime = numberValue(value, "mediaTime");
+  const box = parseBbox(Reflect.get(value, "box"));
+  const frame = parseBbox(Reflect.get(value, "frame"));
+  if (!selector || !file || mediaTime === null || !box || !frame) return null;
+  return {
+    selector,
+    file,
+    mediaTime,
+    box,
+    frame,
+    flipX: booleanValue(value, "flipX") === true,
+    flipY: booleanValue(value, "flipY") === true,
+  };
+}
+
+function parseTextOverVideo(
+  value: unknown,
+  time: number,
+  pageUrl: string,
+  projectDir: string,
+): TextOverVideoCandidate[] {
+  if (!isRecord(value)) return [];
+  const rect = parseRect(Reflect.get(value, "rect"));
+  const anchor = rect ? parseGeometryAnchor(value, rect, time) : null;
+  const video = parsePlacedVideo(recordField(value, "video"), pageUrl, projectDir);
+  const rawWords: unknown = Reflect.get(value, "wordRects");
+  const wordRects = Array.isArray(rawWords)
+    ? rawWords.flatMap((word) => parseBbox(word) ?? [])
+    : [];
+  if (!rect || !anchor || !video || wordRects.length === 0) return [];
+  return [{ ...anchor, text: stringValue(value, "text") ?? "", rect, wordRects, video }];
 }
 
 async function collectOffPivotRotationSample(page: Page, time: number): Promise<OffPivotFrame> {
@@ -2092,7 +2174,7 @@ function joinContrastEntries(
   });
 }
 
-function parseLayoutIssue(value: unknown): LayoutIssue[] {
+export function parseLayoutIssue(value: unknown): LayoutIssue[] {
   if (!isRecord(value)) return [];
   const code = layoutCodeValue(Reflect.get(value, "code"));
   const severity = severityValue(Reflect.get(value, "severity"));

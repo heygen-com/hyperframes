@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "./editingAgent";
+import { PREVIEW_FOR_ANOTHER_SITE_META, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 
 const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
 const H = "0123456789abcdef:1";
+const studioMark = document.createElement("meta");
+studioMark.name = STUDIO_PREVIEW_MARK_META;
+document.head.append(studioMark);
 
 function frameWindow(): Window {
   const iframe = document.createElement("iframe");
@@ -42,6 +46,7 @@ describe("installEditingAgent", () => {
     delete window.__hfStartupError;
     delete window.__hfWaitForSeekCompletion;
     delete window.__hf;
+    Reflect.deleteProperty(window, "__hfPreviewErrors");
   });
 
   const connectedPort = (): MessagePort => {
@@ -110,6 +115,32 @@ describe("installEditingAgent", () => {
     }
   });
 
+  it("never hands off in a document its server answered to another site", () => {
+    const mark = document.createElement("meta");
+    mark.name = PREVIEW_FOR_ANOTHER_SITE_META;
+    document.head.appendChild(mark);
+    try {
+      post(parent, CONNECT);
+      expect(handoff).not.toHaveBeenCalled();
+    } finally {
+      mark.remove();
+    }
+    post(parent, CONNECT);
+    expect(handoff).toHaveBeenCalledOnce();
+  });
+
+  it("never hands off in a document Studio's preview server did not mark", () => {
+    studioMark.remove();
+    try {
+      post(parent, CONNECT);
+      expect(handoff).not.toHaveBeenCalled();
+    } finally {
+      document.head.append(studioMark);
+    }
+    post(parent, CONNECT);
+    expect(handoff).toHaveBeenCalledOnce();
+  });
+
   it("stops listening for a connect once disposed", () => {
     agent.dispose();
     post(parent, CONNECT);
@@ -151,6 +182,34 @@ describe("installEditingAgent", () => {
           "layers",
           "draft",
           "gesture-start",
+          "console-errors",
+          "watch-keys",
+          "restore-attributes",
+          "caption-words",
+          "caption-transform",
+          "color-grading-status",
+          "color-grading-previews",
+          "color-grading-playback",
+          "watch-geometry",
+          "audio-meter",
+          "document-markup",
+          "set-audio-group-attribute",
+          "assign-audio-group",
+          "gsap-snapshot",
+          "motion-path-home",
+          "max-z-index",
+          "crop-lift",
+          "edit-element",
+          "stacking-family",
+          "gsap-set",
+          "patch-tweens",
+          "soft-reload",
+          "hold-scenes",
+          "mark-scenes-stale",
+          "swap-scenes",
+          "live-retime",
+          "assets-unloaded",
+          "text-edit",
         ],
       },
     });
@@ -192,6 +251,9 @@ describe("installEditingAgent", () => {
       "invalid-params",
     ],
     [{ v: 1, id: 16, kind: "computed-styles", params: { selector: "p" } }, 16, "invalid-params"],
+    [{ v: 1, id: 160, kind: "console-errors", params: {} }, 160, "invalid-params"],
+    [{ v: 1, id: 161, kind: "console-errors", params: { from: -1 } }, 161, "invalid-params"],
+    [{ v: 1, id: 162, kind: "console-errors", params: { from: 1.5 } }, 162, "invalid-params"],
     [
       { v: 1, id: 17, kind: "computed-styles", params: { selector: "", properties: [] } },
       17,
@@ -348,6 +410,17 @@ describe("installEditingAgent", () => {
       { drafts: [{ handle: H, translate: { x: 1e6, y: 0 }, size: null }] },
       { drafts: [{ handle: H, translate: null, size: { width: -1, height: 2 } }] },
       { drafts: [{ handle: H, translate: null, size: { width: 1, height: 2, depth: 3 } }] },
+      { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1 } }] },
+      { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1, route: "x" } }] },
+      {
+        drafts: [{ handle: H, translate: null, size: null, rotate: { angle: "1", route: "css" } }],
+      },
+      {
+        drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1e6, route: "css" } }],
+      },
+      {
+        drafts: [{ handle: H, translate: null, size: null, rotate: { angle: NaN, route: "gsap" } }],
+      },
     ].map((params, index) => [
       { v: 1, id: 150 + index, kind: "draft", params },
       150 + index,
@@ -360,6 +433,26 @@ describe("installEditingAgent", () => {
         "invalid-params",
       ],
     ),
+    ...[
+      {},
+      { combos: "Space" },
+      { combos: [1] },
+      { combos: ["ctrl+alt+x"] },
+      { combos: ["k".repeat(65)] },
+      { combos: Array(33).fill("k") },
+      { combos: [], extra: 1 },
+    ].map((params, index) => [
+      { v: 1, id: 180 + index, kind: "watch-keys", params },
+      180 + index,
+      "invalid-params",
+    ]),
+    ...[{}, { handles: ["1"] }, { handles: Array(33).fill(H) }, { handles: [], extra: 1 }].map(
+      (params, index) => [
+        { v: 1, id: 900 + index, kind: "watch-geometry", params },
+        900 + index,
+        "invalid-params",
+      ],
+    ),
     ...[["--"], ["--a b"], ["--a;b"], ["--a:b"], ["Color"], ["-x"], ["--" + "a".repeat(255)]].map(
       (properties, index) => [
         { v: 1, id: 60 + index, kind: "computed-styles", params: { selector: "p", properties } },
@@ -367,12 +460,161 @@ describe("installEditingAgent", () => {
         "invalid-params",
       ],
     ),
+    ...[{}, { words: 3 }, { words: [-1] }, { words: [1.5] }, { words: [100_000] }].map(
+      (params, index) => [
+        { v: 1, id: 190 + index, kind: "caption-words", params },
+        190 + index,
+        "invalid-params",
+      ],
+    ),
+    ...[
+      { entries: [] },
+      { entries: Array(257).fill({ group: 0, word: 0 }) },
+      { entries: [{ group: -1, word: 0 }] },
+      { entries: [{ group: 0, word: 0, extra: 1 }] },
+      { entries: [{ group: 0, word: 0, set: { x: 100_001 } }] },
+      { entries: [{ group: 0, word: 0, set: { x: Infinity } }] },
+      { entries: [{ group: 0, word: 0, set: { x: undefined } }] },
+      { entries: [{ group: 0, word: 0, set: { skew: 1 } }] },
+      { entries: [{ group: 0, word: 0, set: [] }] },
+    ].map((params, index) => [
+      { v: 1, id: 200 + index, kind: "caption-transform", params },
+      200 + index,
+      "invalid-params",
+    ]),
   ])("rejects %j with a typed error", async (request, id, code) => {
     const setLoopStart = vi.fn();
     window.__hf = { setLoopStart };
     const reply = await ask(connectedPort(), request);
     expect(reply).toMatchObject({ v: 1, id, ok: false, error: { code } });
     expect(setLoopStart).not.toHaveBeenCalled();
+  });
+
+  describe("console errors", () => {
+    const errorsFrom = async (port: MessagePort, from: number) =>
+      (await ask(port, { v: 1, id: 30, kind: "console-errors", params: { from } })).result;
+    let logged: unknown[][];
+    beforeEach(() => {
+      logged = [];
+      vi.spyOn(console, "error").mockImplementation((...args) => void logged.push(args));
+    });
+    afterEach(() => {
+      agent.dispose();
+      vi.restoreAllMocks();
+    });
+
+    it("starts from what the page raised before it was asked, then keeps what follows", async () => {
+      Reflect.set(window, "__hfPreviewErrors", ["Uncaught Error: early"]);
+      const port = connectedPort();
+      expect(await errorsFrom(port, 0)).toEqual({
+        errors: ["Uncaught Error: early"],
+        truncated: false,
+      });
+
+      console.error("GSAP target", new Error("not found"), 3);
+      console.error("GET /favicon.ico 404");
+      window.dispatchEvent(new ErrorEvent("error", { message: "Uncaught TypeError: x" }));
+
+      expect(await errorsFrom(port, 1)).toEqual({
+        errors: ["GSAP target not found 3", "Uncaught TypeError: x"],
+        truncated: false,
+      });
+      expect(logged).toHaveLength(2);
+    });
+
+    it("sends a long list in pages", async () => {
+      const raised = Array.from({ length: 2_050 }, (_, i) => `e${i}`);
+      Reflect.set(window, "__hfPreviewErrors", raised);
+      const port = connectedPort();
+      const first = (await errorsFrom(port, 0)) as { errors: string[]; truncated: boolean };
+      expect(first.errors).toHaveLength(2_048);
+      expect(first.truncated).toBe(true);
+      expect(await errorsFrom(port, 2_048)).toEqual({
+        errors: ["e2048", "e2049"],
+        truncated: false,
+      });
+    });
+
+    it("leaves the page's console alone until asked, and puts it back when disposed", async () => {
+      const own = console.error;
+      const port = connectedPort();
+      expect(console.error).toBe(own);
+      await errorsFrom(port, 0);
+      expect(console.error).not.toBe(own);
+      agent.dispose();
+      expect(console.error).toBe(own);
+    });
+  });
+
+  it("re-runs a sent script through the port, and refuses a request carrying anything extra", async () => {
+    const script = `var __timelines = {}; __timelines["main"] = 1;`;
+    document.body.innerHTML = `<div data-composition-id="main"></div><script>${script}</script>`;
+    const frame = window as unknown as Record<string, unknown>;
+    Object.assign(frame, { gsap: { set: () => {} }, __timelines: { main: {} } });
+    frame.__hfForceTimelineRebind = () => {};
+    const port = connectedPort();
+    const params = { script, time: 0, sets: [], authored: [], timing: [], restore: [] };
+
+    const extra = { ...params, keys: ["main"] };
+    expect(await ask(port, { v: 1, id: 1, kind: "soft-reload", params: extra })).toMatchObject({
+      id: 1,
+      ok: false,
+    });
+    expect(document.querySelector("script")?.textContent).toBe(script);
+    // The sent script registers on a local, so the frame reads its timeline empty for now.
+    expect(await ask(port, { v: 1, id: 2, kind: "soft-reload", params })).toMatchObject({
+      id: 2,
+      ok: true,
+      result: { result: "verify-failed" },
+    });
+    expect(document.querySelector("script")?.textContent).toBe(`(function(){${script}\n})();`);
+    for (const key of ["gsap", "__timelines", "__hfForceTimelineRebind"]) delete frame[key];
+  });
+
+  it("holds and swaps scenes through the port, and refuses a hold carrying anything extra", async () => {
+    const hold = vi.fn(async () => {});
+    window.__hfHoldScenes = hold;
+    window.__hfSwapScenes = async () => {
+      throw new Error("no scene changed");
+    };
+    const port = connectedPort();
+
+    const extra = { names: ["intro"], holder: "frame" };
+    expect(await ask(port, { v: 1, id: 1, kind: "hold-scenes", params: extra })).toMatchObject({
+      ok: false,
+    });
+    expect(hold).not.toHaveBeenCalled();
+    const held = await ask(port, {
+      v: 1,
+      id: 2,
+      kind: "hold-scenes",
+      params: { names: ["intro"] },
+    });
+    expect(held).toMatchObject({ ok: true, result: { held: true } });
+    const swap = { html: "<p></p>", timeoutMs: 1000 };
+    expect(await ask(port, { v: 1, id: 3, kind: "swap-scenes", params: swap })).toMatchObject({
+      ok: true,
+      result: { swapped: false, reason: "Error: no scene changed" },
+    });
+    delete window.__hfHoldScenes;
+    delete window.__hfSwapScenes;
+  });
+
+  it("answers a live retime through the port, and refuses one carrying anything extra", async () => {
+    const port = connectedPort();
+    const tween = { selector: "#a", start: 1, duration: 1, wasStart: 0, wasDuration: 1 };
+    const tweens = [{ ...tween, moved: true, source: 0 }];
+    const plan = { key: "t", after: "x", time: 0, tweens, timing: [] };
+
+    const extra = { ...plan, script: "x" };
+    expect(await ask(port, { v: 1, id: 1, kind: "live-retime", params: extra })).toMatchObject({
+      ok: false,
+    });
+    // No live script registers the timeline, so nothing can move.
+    expect(await ask(port, { v: 1, id: 2, kind: "live-retime", params: plan })).toMatchObject({
+      ok: true,
+      result: { result: "unchanged" },
+    });
   });
 
   it("answers computed styles for the element a selector names", async () => {
@@ -411,6 +653,36 @@ describe("installEditingAgent", () => {
     );
   });
 
+  it("patches a set tween through the port, and refuses a patch with an unknown field", async () => {
+    document.body.innerHTML = `<div id="box"></div>`;
+    const set = {
+      vars: { x: 0 },
+      targets: () => [document.getElementById("box")],
+      duration: () => 0,
+    };
+    Object.assign(window, { __timelines: { main: { getChildren: () => [set], time: () => 0 } } });
+    const port = connectedPort();
+    const patch = { selector: "#box", change: { kind: "set", props: { x: 12 } } };
+
+    const applied = await ask(port, {
+      v: 1,
+      id: 1,
+      kind: "patch-tweens",
+      params: { patches: [patch], seek: true },
+    });
+    const refused = await ask(port, {
+      v: 1,
+      id: 2,
+      kind: "patch-tweens",
+      params: { patches: [{ ...patch, script: "x" }], seek: true },
+    });
+
+    expect(applied).toMatchObject({ id: 1, ok: true, result: { patched: true } });
+    expect(set.vars.x).toBe(12);
+    expect(refused).toMatchObject({ id: 2, ok: false, error: { code: "invalid-params" } });
+    Reflect.deleteProperty(window, "__timelines");
+  });
+
   it("replies failed when a handler rejects or its result cannot be cloned", async () => {
     window.__hfWaitForSeekCompletion = () => Promise.reject(new Error("seek lost"));
     const port = connectedPort();
@@ -424,6 +696,102 @@ describe("installEditingAgent", () => {
       id: 2,
       ok: false,
       error: { code: "failed" },
+    });
+  });
+
+  describe("watch-keys", () => {
+    const press = (type: string, init: KeyboardEventInit, target: EventTarget = document.body) => {
+      const event = new KeyboardEvent(type, { bubbles: true, cancelable: true, ...init });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    const SPACE = { key: " ", code: "Space" };
+    const forwarded = (type: string, key: string, code: string, repeat = false) => ({
+      v: 1,
+      event: "key",
+      key: {
+        type,
+        key,
+        code,
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        repeat,
+      },
+    });
+    // Port messages arrive in order, so everything sent before this reply has arrived by then.
+    const received = async (port: MessagePort, seen: unknown[]) => {
+      port.postMessage({ v: 1, id: 99, kind: "hello" });
+      await vi.waitFor(() => expect(seen.at(-1)).toMatchObject({ id: 99 }));
+      return seen.slice(0, -1);
+    };
+    const watch = (port: MessagePort, combos: string[], id = 1) =>
+      ask(port, { v: 1, id, kind: "watch-keys", params: { combos } });
+    const collect = (port: MessagePort) => {
+      const seen: unknown[] = [];
+      port.onmessage = (event) => seen.push(event.data);
+      return seen;
+    };
+
+    it("cancels and forwards a watched combo outside the elements that own keys, and its keyup", async () => {
+      document.body.innerHTML = `<input id="field" /><button id="go">Go</button>`;
+      const port = connectedPort();
+      expect(await watch(port, ["Space", "k"])).toMatchObject({
+        ok: true,
+        result: { watching: 2 },
+      });
+      const seen = collect(port);
+
+      expect(press("keydown", SPACE)).toBe(true);
+      expect(press("keydown", { ...SPACE, repeat: true })).toBe(true);
+      expect(press("keydown", { key: "j", code: "KeyJ" })).toBe(false);
+      expect(press("keydown", SPACE, document.getElementById("field")!)).toBe(false);
+      expect(press("keydown", SPACE, document.getElementById("go")!)).toBe(false);
+      expect(press("keyup", SPACE)).toBe(false);
+      press("keyup", { key: "j", code: "KeyJ" });
+
+      expect(await received(port, seen)).toEqual([
+        forwarded("keydown", " ", "Space"),
+        forwarded("keydown", " ", "Space", true),
+        forwarded("keyup", " ", "Space"),
+      ]);
+    });
+
+    it("leaves a key the film cancelled before it", async () => {
+      const film = (event: Event) => event.preventDefault();
+      window.addEventListener("keydown", film, true);
+      try {
+        const port = connectedPort();
+        await watch(port, ["k"]);
+        const seen = collect(port);
+        press("keydown", { key: "k", code: "KeyK" });
+        expect(await received(port, seen)).toEqual([]);
+      } finally {
+        window.removeEventListener("keydown", film, true);
+      }
+    });
+
+    it("still forwards the keyup of a key held while the watch list changes", async () => {
+      const port = connectedPort();
+      await watch(port, ["k"]);
+      const seen = collect(port);
+      press("keydown", { key: "k", code: "KeyK" });
+      await vi.waitFor(() => expect(seen).toEqual([forwarded("keydown", "k", "KeyK")]));
+      expect(await watch(port, ["k", "j"], 2)).toMatchObject({ result: { watching: 2 } });
+      const after = collect(port);
+      press("keyup", { key: "k", code: "KeyK" });
+      expect(await received(port, after)).toEqual([forwarded("keyup", "k", "KeyK")]);
+    });
+
+    it("stops on an empty list and when disposed", async () => {
+      const port = connectedPort();
+      await watch(port, ["k"]);
+      expect(await watch(port, [], 2)).toMatchObject({ result: { watching: 0 } });
+      expect(press("keydown", { key: "k", code: "KeyK" })).toBe(false);
+      await watch(port, ["k"], 3);
+      agent.dispose();
+      expect(press("keydown", { key: "k", code: "KeyK" })).toBe(false);
     });
   });
 });

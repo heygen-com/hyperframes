@@ -28,6 +28,7 @@ import {
   previewLaunchMode,
   previewLaunchModeError,
   previewPortError,
+  stopBackgroundCommand,
   publicPreviewPid,
   previewViteArgs,
   reportPreviewShutdown,
@@ -51,6 +52,14 @@ const killOrphanedProcesses = vi.hoisted(() => vi.fn(() => 0));
 vi.mock("../utils/orphanCleanup.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/orphanCleanup.js")>()),
   killOrphanedProcesses,
+}));
+
+const studio = vi.hoisted(() => ({ find: vi.fn(), selection: vi.fn(), lint: vi.fn() }));
+vi.mock("../utils/studioSelectionClient.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/studioSelectionClient.js")>()),
+  findPreviewServerForProject: studio.find,
+  fetchStudioSelection: studio.selection,
+  fetchStudioLint: studio.lint,
 }));
 
 const tempDirs: string[] = [];
@@ -152,6 +161,7 @@ describe("preview --status reporting", () => {
           projectDir: "/tmp/preview-unverified",
           projectName: "scanned-project",
           version: "test",
+          proven: true,
         },
       ],
       listManaged: async () => [{ pid: null, port: 32600, projectDir: "/tmp/preview-unverified" }],
@@ -657,6 +667,50 @@ describe("startup lint", () => {
     expect(error).toHaveBeenCalledWith(expect.stringContaining("--user-data-dir"));
     expect(lint.inProcess).not.toHaveBeenCalled();
   }, 5_000);
+
+  it("prints a background start failure with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    lint.worker.mockImplementation(neverSettles);
+    vi.spyOn(previewLifecycle, "startBackgroundPreview").mockRejectedValue(
+      new Error(`background preview did not stop for /work/video${esc}[2J`),
+    );
+    const error = vi.spyOn(clack.log, "error").mockImplementation(() => {});
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    try {
+      await runCommand(previewCommand, { rawArgs: [dir, "--background"] });
+
+      expect(error).toHaveBeenCalledWith("background preview did not stop for /work/video\\x1b[2J");
+    } finally {
+      lint.worker.mockReset();
+      killOrphanedProcesses.mockClear();
+    }
+  });
+
+  it("prints a lint failure with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    lint.worker.mockRejectedValue(new Error(`bad${esc}]0;x${String.fromCharCode(7)}`));
+    vi.spyOn(previewLifecycle, "startBackgroundPreview").mockRejectedValue(
+      new Error("not started"),
+    );
+    vi.spyOn(clack.log, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(clack.log, "warn").mockImplementation(() => {});
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+
+    try {
+      await runCommand(previewCommand, { rawArgs: [dir, "--background"] });
+
+      await vi.waitFor(() =>
+        expect(warn).toHaveBeenCalledWith("Lint did not finish: bad\\x1b]0;x\\x07"),
+      );
+    } finally {
+      lint.worker.mockReset();
+      killOrphanedProcesses.mockClear();
+    }
+  });
 });
 
 describe("foreground preview JSON", () => {
@@ -853,4 +907,152 @@ describe("preview inside a host app's agent run", () => {
     expect(payload).toMatchObject({ ok: false, error: { code: "host-app-owns-preview" } });
     expect(killOrphanedProcesses).not.toHaveBeenCalled();
   });
+});
+
+describe("stopBackgroundCommand", () => {
+  it("spells the project folder so pasting the stop line runs nothing else", () => {
+    expect(stopBackgroundCommand("/work/my film", "darwin")).toBe(
+      'hyperframes preview "/work/my film" --stop',
+    );
+    expect(stopBackgroundCommand("/work/$(touch x)", "darwin")).toBe(
+      "hyperframes preview '/work/$(touch x)' --stop",
+    );
+    expect(stopBackgroundCommand("C:\\Users\\Bob\\film", "win32")).toBe(
+      'hyperframes preview "C:\\Users\\Bob\\film" --stop',
+    );
+    expect(stopBackgroundCommand("C:\\work\\$(calc)", "win32")).toBe(
+      "hyperframes preview --stop from the project folder",
+    );
+    expect(stopBackgroundCommand("C:\\work\\$(calc)&calc", "win32")).toBe(
+      "hyperframes preview --stop from the project folder",
+    );
+  });
+});
+
+// Windows refuses control characters in folder names.
+describe.skipIf(process.platform === "win32")(
+  "preview with a control character folder name",
+  () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const name = `video${esc}]0;x${String.fromCharCode(7)}${esc}[2J`;
+    const shown = "video\\x1b]0;x\\x07\\x1b[2J";
+    const colors = new RegExp(`${esc}\\[[0-9;]*m`, "g");
+
+    function projectNamedWithControls(): string {
+      const dir = join(tempProject(), name);
+      mkdirSync(dir);
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      return dir;
+    }
+
+    it.each(["--status", "--stop"])("prints it as visible escapes for %s", async (flag) => {
+      const dir = projectNamedWithControls();
+      vi.spyOn(previewLifecycle, "readBackgroundPreviewStatus").mockResolvedValue({
+        pid: 5555,
+        port: 32530,
+        projectDir: dir,
+        logPath: join(dir, "preview.log"),
+      });
+      vi.spyOn(previewLifecycle, "stopBackgroundPreview").mockResolvedValue(true);
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runCommand(previewCommand, { rawArgs: [dir, flag] });
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+      expect(human.replace(colors, "")).not.toContain(esc);
+      expect(human).toContain(shown);
+    });
+
+    it("prints it as visible escapes in --list and keeps it in --list --json", async () => {
+      const dir = projectNamedWithControls();
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      const dependencies = {
+        scan: async () => [],
+        listManaged: async () => [{ pid: 4242, port: 32600, projectDir: dir }],
+      };
+      await handlePreviewList(3002, false, dependencies);
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      log.mockClear();
+      await handlePreviewList(3002, true, dependencies);
+
+      expect(human.replace(colors, "")).not.toContain(esc);
+      expect(human).toContain(shown);
+      expect(JSON.parse(log.mock.calls.flat().join("\n")).result.sessions[0]).toMatchObject({
+        projectName: name,
+        projectDir: dir,
+      });
+    });
+  },
+);
+
+describe("preview --selection and --context on a terminal", () => {
+  // Built rather than written: a literal control character in the source is a lint error.
+  const esc = String.fromCharCode(27);
+  const bel = String.fromCharCode(7);
+  const osc = `${esc}]52;c;cHduZWQ=${bel}`;
+  const shown = "\\x1b]52;c;cHduZWQ=\\x07";
+  const colors = new RegExp(`${esc}\\[[0-9;]*m`, "g");
+  const selection = {
+    schemaVersion: 1 as const,
+    projectId: "film",
+    compositionPath: "index.html",
+    sourceFile: `scene${osc}.html`,
+    currentTime: 1.5,
+    target: { hfId: `title${esc}[2J`, selector: "#title" },
+    label: `Title${osc}`,
+    tagName: "h1",
+    boundingBox: { x: 0, y: 0, width: 10, height: 10 },
+    textContent: "Title",
+    dataAttributes: {},
+    inlineStyles: {},
+    computedStyles: {},
+    textFields: [],
+    capabilities: {},
+    thumbnailUrl: `/thumb${osc}.png`,
+  };
+
+  function serveSelection(): void {
+    studio.find.mockResolvedValue({
+      port: 32700,
+      host: "127.0.0.1",
+      projectName: `film${osc}`,
+      projectDir: "/tmp/film",
+      version: "test",
+      pid: null,
+      proven: true,
+    });
+    studio.selection.mockResolvedValue({
+      selection,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    studio.lint.mockResolvedValue({ findings: [] });
+  }
+
+  it.each(["--selection", "--context"])(
+    "prints Studio's text with control characters as visible escapes for %s",
+    async (flag) => {
+      const dir = tempProject();
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      serveSelection();
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runCommand(previewCommand, { rawArgs: [dir, flag] });
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      log.mockClear();
+      await runCommand(previewCommand, { rawArgs: [dir, flag, "--json"] });
+      const payload = JSON.parse(log.mock.calls.flat().join("\n"));
+
+      expect(human.replace(colors, "")).not.toContain(esc);
+      expect(human).toContain(`Title${shown}`);
+      if (flag === "--selection") {
+        expect(human).toContain(`scene${shown}.html`);
+        expect(human).toContain("title\\x1b[2J");
+        expect(human).toContain(`/thumb${shown}.png`);
+        expect(payload.selection.label).toBe(selection.label);
+      } else {
+        expect(human).toContain(`film${shown}`);
+        expect(payload.selection.label).toBe(selection.label);
+        expect(payload.server.projectName).toBe(`film${osc}`);
+      }
+    },
+  );
 });

@@ -4,6 +4,7 @@ import {
   type TimelineRow,
   type TimelineTrack,
 } from "./describeProject.js";
+import { terminalText } from "@hyperframes/core";
 
 const BAR_WIDTH = 40;
 const n = (v: number) => String(Math.round(v * 1000) / 1000);
@@ -65,7 +66,9 @@ function line(row: TimelineRow, total: number): string {
   const times = row.host
     ? `${span(row.absStart, row.absEnd)} (local ${span(row.start, row.end)}) nested in ${row.host} ${row.file}`
     : span(row.start, row.end);
-  return `  |${bar(row, total)}| ${row.ref} ${row.id} ${times} ${details(row)}`.trimEnd();
+  return terminalText(
+    `  |${bar(row, total)}| ${row.ref} ${row.id} ${times} ${details(row)}`.trimEnd(),
+  );
 }
 
 function header({ kind, rows }: TimelineTrack): string {

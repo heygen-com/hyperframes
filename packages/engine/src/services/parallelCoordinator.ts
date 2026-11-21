@@ -279,6 +279,14 @@ export function formatWorkerFailure(result: WorkerResult): string {
   return `${base}; diagnostics: ${diagnostics}`;
 }
 
+export function formatPoolFailure(errors: WorkerResult[]): string {
+  const causes = errors.filter((result) => result.failure?.kind !== "cancelled");
+  const stopped = errors.length - causes.length;
+  if (causes.length === 0 || stopped === 0) return errors.map(formatWorkerFailure).join("; ");
+  const peers = stopped === 1 ? "1 other worker was" : `${stopped} other workers were`;
+  return `${causes.map(formatWorkerFailure).join("; ")} (${peers} stopped after this failure)`;
+}
+
 /** Which constraint produced the final auto-sized worker count. */
 export type WorkerSizingBound =
   | "explicit"
@@ -1245,7 +1253,7 @@ export async function executeParallelCapture(
 
   const errors = results.filter((r) => r.failure || r.error);
   if (errors.length > 0) {
-    const errorMessages = errors.map(formatWorkerFailure).join("; ");
+    const errorMessages = formatPoolFailure(errors);
     const representative =
       failureHandler.firstFatalFailure() ?? errors.find((result) => result.failure)?.failure;
     const workerDiagnostics = errors.flatMap((result) => result.failure?.workerDiagnostics ?? []);

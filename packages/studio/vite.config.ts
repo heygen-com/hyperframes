@@ -19,6 +19,7 @@ import { previewConfigPayload } from "./vite.preview-config";
 import { loadStudioServerDevModule } from "./vite.studio-server-module";
 import type { openProjectHistory } from "@hyperframes/studio-server";
 import { previewChangeOwner } from "./vite.preview-watch";
+import { carriesOAuthReturn, refuseOAuthReturn } from "../studio-server/src/helpers/inertRefusal";
 import {
   hostHeaderAllowed,
   PREVIEW_ALLOWED_HOSTS_ENV,
@@ -220,6 +221,11 @@ function devProjectApi(): Plugin {
       const allowedHosts = [...previewAllowedHostsFromEnv()];
       if (typeof server.config.server.host === "string")
         allowedHosts.push(server.config.server.host);
+      // Refuse an OAuth return first, before every route and Vite's own SPA fallback.
+      server.middlewares.use((req, res, next) => {
+        if (!carriesOAuthReturn(req.url ?? "/")) return next();
+        void bridgeHonoResponse(refuseOAuthReturn(), res);
+      });
       server.middlewares.use((req, res, next) => {
         const url = req.url ?? "";
         if (url !== "/__hyperframes_config" && !url.startsWith("/api/")) return next();
@@ -239,7 +245,7 @@ function devProjectApi(): Plugin {
 
       server.middlewares.use((req, res, next) => {
         if (req.url !== "/__hyperframes_config") return next();
-        const payload = previewConfigPayload(process.env, process.pid, studioPkg.version);
+        const payload = previewConfigPayload(process.env, process.pid, studioPkg.version, req);
         if (!payload) return next();
         res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
         res.end(JSON.stringify(payload));

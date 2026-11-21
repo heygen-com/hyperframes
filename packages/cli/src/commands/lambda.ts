@@ -16,6 +16,7 @@ import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
 import type { Example } from "./_examples.js";
 import type { VideoArch } from "./lambda/videoImage.js";
 import { c } from "../ui/colors.js";
+import { terminalText } from "@hyperframes/core";
 import { deliveryFlagArgs, parseDeliveryFlags } from "../utils/deliveryFlags.js";
 import { defaultCloudFps } from "../utils/compositionFps.js";
 import { isMissingPackageError, missingPackageMessage } from "../utils/missingPackage.js";
@@ -136,6 +137,12 @@ export default defineCommand({
 
     // sites / render
     "site-id": { type: "string", description: "Explicit site id (overrides content hash)" },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Upload the files a link brings in from outside the project folder. Otherwise they are left out and named.",
+      default: false,
+    },
     width: {
       type: "string",
       description:
@@ -287,7 +294,7 @@ export default defineCommand({
       case "sites": {
         if (args.target !== "create") {
           console.error(
-            `[lambda sites] unknown verb "${String(args.target)}". Only "create" is supported.`,
+            `[lambda sites] unknown verb "${terminalText(String(args.target))}". Only "create" is supported.`,
           );
           failUsage();
         }
@@ -303,6 +310,7 @@ export default defineCommand({
           projectDir,
           stackName,
           siteId: args["site-id"] as string | undefined,
+          includeOutsideFiles: args["include-outside-files"] === true,
           json: Boolean(args.json),
         });
         return;
@@ -334,6 +342,7 @@ export default defineCommand({
           projectDir,
           stackName,
           siteId: args["site-id"] as string | undefined,
+          includeOutsideFiles: args["include-outside-files"] === true,
           fps: fpsRaw,
           width,
           height,
@@ -392,6 +401,7 @@ export default defineCommand({
           stackName,
           batch,
           siteId: args["site-id"] as string | undefined,
+          includeOutsideFiles: args["include-outside-files"] === true,
           fps: fpsRaw,
           width,
           height,
@@ -445,7 +455,7 @@ export default defineCommand({
         return;
       }
       default:
-        console.error(`${c.error("Unknown subcommand:")} ${subcommand}\n${HELP}`);
+        console.error(`${c.error("Unknown subcommand:")} ${terminalText(subcommand)}\n${HELP}`);
         failUsage();
     }
   },

@@ -1,6 +1,6 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { basename, dirname, extname, join, posix } from "node:path";
 import type { MediaProcessingJobState, StudioApiAdapter } from "../types.js";
 import { requestedProjectPath } from "../helpers/requestSubPath.js";
@@ -10,8 +10,9 @@ import {
   resolveWithinProject,
   resolveWritableWithinProject,
 } from "../helpers/safePath.js";
-import { probeMediaMetadata } from "../helpers/mediaMetadata.js";
+import { probeMediaMetadata, type MediaMetadata } from "../helpers/mediaMetadata.js";
 import { forgetJobsFinishedLongerThan } from "../helpers/finishedJobs.js";
+import { ThumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
 
 const VIDEO_EXTENSIONS = new Set([
   ".mp4",
@@ -42,6 +43,8 @@ interface BackgroundRemovalBody {
 }
 
 type ProbeMediaMetadata = typeof probeMediaMetadata;
+
+const MAX_CONCURRENT_METADATA_PROBES = 4;
 
 function isVideoPath(path: string): boolean {
   return VIDEO_EXTENSIONS.has(extname(path).toLowerCase());
@@ -134,6 +137,7 @@ export function registerMediaRoutes(
   const mediaJobs = new Map<string, MediaProcessingJobState>();
   const TTL_MS = 300_000;
   const readMediaMetadata = options.probeMediaMetadata ?? probeMediaMetadata;
+  const probes = new ThumbnailGenerationCoordinator<MediaMetadata>(MAX_CONCURRENT_METADATA_PROBES);
 
   function cleanupFinishedJobs(): void {
     forgetJobsFinishedLongerThan(
@@ -156,9 +160,12 @@ export function registerMediaRoutes(
 
     const filePath = resolveWithinProject(project.dir, assetPath);
     if (!filePath) return c.json({ error: "forbidden" }, 403);
-    if (!existsSync(filePath)) return c.json({ error: "media not found" }, 404);
+    const stat = statSync(filePath, { throwIfNoEntry: false });
+    if (!stat) return c.json({ error: "media not found" }, 404);
 
-    return c.json({ path: assetPath, metadata: await readMediaMetadata(filePath) });
+    const key = JSON.stringify([filePath, stat.dev, stat.ino, stat.size, stat.mtimeMs]);
+    const metadata = await probes.acquire(key, c.req.raw.signal, () => readMediaMetadata(filePath));
+    return c.json({ path: assetPath, metadata });
   });
 
   api.post(

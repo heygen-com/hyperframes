@@ -1,6 +1,7 @@
 /** A gesture on a frame Studio cannot script starts from one `gesture-start` read (core `editingGestureStart.ts`). */
 import { previewGestureStart } from "../../player/lib/previewElements";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
+import type { CropFrameStart } from "./domEditOverlayCrop";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 import { invertManualOffsetDragMatrix, type ManualOffsetDragMatrix } from "./manualOffsetDrag";
 import { flatVisibleRect, groupAwareRect } from "./previewOverlayRects";
@@ -13,12 +14,17 @@ export interface PreviewGestureStart {
   screenToOffset: ManualOffsetDragMatrix | null;
   /** GSAP's x/y when it owns the element's position, and whether a tween with a duration moves it. */
   gsap: { x: number; y: number; moving: boolean } | null;
+  gsapRotation?: number | null;
 }
 
 export interface PreviewGestureStarts {
   elements: Array<{ rect: OverlayRect; start: PreviewGestureStart } | null>;
   snap: SnapContext;
 }
+
+const startLayouts = new Map<string, PreviewGestureStart["layout"]>();
+
+export const gestureStartLayout = (handle: string) => startLayouts.get(handle) ?? null;
 
 /** Everything a gesture on `handles` reads from the frame, in one request; null when it cannot answer. */
 export async function measurePreviewGestureStart(
@@ -27,6 +33,11 @@ export async function measurePreviewGestureStart(
   handles: string[],
 ): Promise<PreviewGestureStarts | null> {
   const reply = await previewGestureStart(iframe, handles);
+  startLayouts.clear();
+  reply?.elements.forEach((start, i) => {
+    const { width = 0, height = 0 } = start?.layout ?? {};
+    if (width >= 1 && height >= 1) startLayouts.set(handles[i]!, { width, height });
+  });
   const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
   if (!reply || !scale) return null;
   const { iframeRect, overlayRect, rootScaleX: sx, rootScaleY: sy } = scale;
@@ -56,6 +67,7 @@ export async function measurePreviewGestureStart(
             layout: start.layout,
             screenToOffset: screenToOffset(start.move),
             gsap: start.gsap,
+            gsapRotation: start.gsapRotation,
           },
         },
     ),
@@ -64,4 +76,12 @@ export async function measurePreviewGestureStart(
       reply.snap.map((box) => flatVisibleRect(scale, box)),
     ),
   };
+}
+
+export async function readCropFrameStart(
+  iframe: HTMLIFrameElement,
+  handle: string,
+): Promise<CropFrameStart | null> {
+  const start = (await previewGestureStart(iframe, [handle]))?.elements[0];
+  return start ? { layout: start.layout } : null;
 }

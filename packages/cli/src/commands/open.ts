@@ -1,6 +1,7 @@
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import {
   desktopInstalled,
@@ -29,9 +30,26 @@ const WHY_NOT: Record<Extract<DesktopOpenResult, { opened: false }>["reason"], s
 type PreviewBeforeOpen =
   | { state: "none" }
   | { state: "stopped"; port: number }
-  | { state: "left-running"; port: number; stopCommand: string; error?: string };
+  | {
+      state: "left-running";
+      port: number;
+      stopCommand: string | null;
+      stopCommandFromProject?: string;
+      error?: string;
+    };
 
 const PREVIEW_SCAN_START_PORT = 3002;
+
+function stopCommands(
+  dir: string,
+  port: number,
+  platform: NodeJS.Platform,
+): { stopCommand: string | null; stopCommandFromProject?: string } {
+  const stopCommand = previewStopCommandFor(dir, port, process.cwd(), platform);
+  return stopCommand === null
+    ? { stopCommand, stopCommandFromProject: `hyperframes preview --stop --port ${port}` }
+    : { stopCommand };
+}
 
 export async function endPreviewBeforeOpening(
   dir: string,
@@ -39,10 +57,12 @@ export async function endPreviewBeforeOpening(
     status = readBackgroundPreviewStatus,
     stop = stopBackgroundPreview,
     appInstalled = () => desktopInstalled(),
+    platform = process.platform,
   }: {
     status?: (dir: string, startPort: number) => ReturnType<typeof readBackgroundPreviewStatus>;
     stop?: (dir: string, startPort: number) => Promise<boolean>;
     appInstalled?: () => boolean;
+    platform?: NodeJS.Platform;
   } = {},
 ): Promise<PreviewBeforeOpen> {
   const running = await status(dir, PREVIEW_SCAN_START_PORT);
@@ -50,7 +70,7 @@ export async function endPreviewBeforeOpening(
   const leftRunning = (error?: string): PreviewBeforeOpen => ({
     state: "left-running",
     port: running.port,
-    stopCommand: previewStopCommandFor(dir, running.port),
+    ...stopCommands(dir, running.port, platform),
     ...(error ? { error } : {}),
   });
   const startedInBackground = Boolean(running.logPath);
@@ -72,15 +92,18 @@ function printPreview(preview: PreviewBeforeOpen, opened: boolean): void {
   if (preview.state !== "left-running" || !opened) return;
   console.log(
     preview.error
-      ? `${c.warn("◇")}  Couldn't stop this project's preview (port ${preview.port}): ${preview.error}`
+      ? `${c.warn("◇")}  Couldn't stop this project's preview (port ${preview.port}): ${terminalLines(preview.error)}`
       : `${c.warn("◇")}  A preview of this project is running (port ${preview.port}), and the app's edits wait until it stops.`,
   );
-  console.log(`   Stop it with: ${c.accent(preview.stopCommand)}`);
+  const stop = preview.stopCommand ?? `${preview.stopCommandFromProject} from the project folder`;
+  console.log(`   Stop it with: ${c.accent(terminalText(stop))}`);
 }
 
 function printResult(project: ProjectDir, result: DesktopOpenResult): void {
   if (result.opened) {
-    console.log(`${c.success("◇")}  Opening ${c.accent(project.name)} in ${result.app}`);
+    console.log(
+      `${c.success("◇")}  Opening ${c.accent(terminalText(project.name))} in ${terminalText(result.app)}`,
+    );
     if (result.handedOver) {
       const agent = { claude: "Claude Code", codex: "Codex", grok: "Grok" }[
         result.handedOver.engine

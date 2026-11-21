@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { findExistingAsset, adoptExistingAssets } from "./adopt.mjs";
+import { findExistingAsset, adoptExistingAssets, scanExistingAssets } from "./adopt.mjs";
 
 let tmp;
 function setup() {
@@ -119,6 +119,25 @@ function runTests() {
       "assets/track.mp3": "bgm",
       "assets/soundfx/pop.mp3": "sfx",
     });
+    cleanup();
+  });
+
+  test("prints a skipped file name from the project with control characters escaped", () => {
+    setup();
+    const name = "bad\x1b]0;owned\x07\r\nok.mp3";
+    mkdirSync(join(tmp, "assets", "dir\x1b[2J"), { recursive: true });
+    writeFileSync(join(tmp, "assets", "dir\x1b[2J", name), "");
+    const lines = [];
+    const original = console.error;
+    console.error = (line) => lines.push(String(line));
+    try {
+      assert.deepEqual(scanExistingAssets(tmp), []);
+    } finally {
+      console.error = original;
+    }
+    assert.deepEqual(lines, [
+      "media-use: skipping 0-byte asset assets/dir\\x1b[2J/bad\\x1b]0;owned\\x07\\x0d\\x0aok.mp3",
+    ]);
     cleanup();
   });
 

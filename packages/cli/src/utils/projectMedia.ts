@@ -1,4 +1,5 @@
 import {
+  assetRootsRefusal,
   extractAudioMetadata,
   resolveProjectRelativeSrc,
   type AudioElement,
@@ -26,9 +27,15 @@ export async function collectProjectMedia(projectDir: string): Promise<ProjectMe
   return { ...producer.collectRenderMedia(html), html };
 }
 
-/** The path the render reads a media `src` from: remote URLs as they are, local ones resolved like render. */
-export function mediaPath(src: string, projectDir: string): string {
-  return /^https?:\/\//i.test(src) ? src : resolveProjectRelativeSrc(src, projectDir, projectDir);
+export function isRemoteMediaSrc(src: string): boolean {
+  return /^https?:\/\//i.test(src);
+}
+
+/** The local file the render reads a media `src` from, resolved like render; null for a remote source or a local file it never opens. */
+export function mediaPath(src: string, projectDir: string): string | null {
+  if (isRemoteMediaSrc(src)) return null;
+  const path = resolveProjectRelativeSrc(src, projectDir, projectDir);
+  return assetRootsRefusal(path, [projectDir]) === null ? path : null;
 }
 
 /** A clip the render mixes into the film, on the film's clock; `end` 0 means it runs to its media's end. */
@@ -55,6 +62,7 @@ export async function heardClips(
   const lengths = new Map<string, Promise<number | null>>();
   const length = (src: string): Promise<number | null> => {
     const path = mediaPath(src, projectDir);
+    if (path === null) return Promise.resolve(null);
     const known = lengths.get(path) ?? probe.seconds(path).catch(() => null);
     lengths.set(path, known);
     return known;

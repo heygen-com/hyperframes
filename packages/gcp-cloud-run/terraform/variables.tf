@@ -47,6 +47,12 @@ variable "request_timeout_seconds" {
   default     = 3600
 }
 
+variable "restrict_page_network" {
+  type        = bool
+  description = "Hold render pages to public addresses: loopback, private, link-local and IPv6 hosts are refused, and ffmpeg https inputs may open only https. Set false only when every composition is trusted and needs VPC-only or private-DNS hosts."
+  default     = true
+}
+
 variable "min_instances" {
   type        = number
   description = "Min Cloud Run instances. Default 0 (scale-to-zero) is cheapest but means the first render after idle pays a cold start (image pull + Chrome + bun boot, ~20-30s). Set to 1 to keep one warm if first-render latency matters."

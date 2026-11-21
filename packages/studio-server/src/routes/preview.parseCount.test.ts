@@ -20,6 +20,13 @@ vi.mock("linkedom", async (actual) => {
   };
 });
 
+// The parses run on the build worker in the app; here its jobs run in-process, where the count can see them.
+vi.mock("../helpers/subCompositionBuild", async (actual) => ({
+  ...(await actual<typeof import("../helpers/subCompositionBuild")>()),
+  runOffThread: async (job: import("../helpers/subCompositionBuild").SubCompositionJob) =>
+    (await import("../helpers/previewJobs")).runPreviewJob(job),
+}));
+
 const { registerPreviewRoutes } = await import("./preview");
 
 it("parses a stamped page once per preview build (the read-tracking walk) when it has no images, <base> or scene parts", async () => {

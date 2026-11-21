@@ -215,6 +215,18 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
     expect(files()).toEqual(["A", "N2"]);
   });
 
+  it("a turn with a long label and agent name still ends and undoes as that agent's", async () => {
+    const { write, json, hf, files } = await setup();
+    const name = "agent-".repeat(40);
+    await hf("begin", "--who", name, "--label", "x".repeat(201));
+    write("index.html", "A2");
+
+    const ended = await json("end");
+    expect(ended.entry).toMatchObject({ who: { kind: "agent", name }, files: ["index.html"] });
+    expect((await hf("undo", "--who", name)).code).toBe(0);
+    expect(files()[0]).toBe("A");
+  });
+
   it("undo by one agent leaves another agent's open turn open", async () => {
     const { write, read, json, hf, turn } = await setup();
     await turn("gemini", "Notes", "notes.html", "N2");
@@ -358,7 +370,7 @@ describe("hyperframes history, one owner", () => {
     await hf();
     const turn = {
       via: "preview",
-      id: "turn-1",
+      id: "7f3c2a1e-0b4d-4c8e-9a6f-2d1b3c4e5f60",
       who: { kind: "agent", name: "claude" },
       label: "Retitle",
       startedAt: 1,
@@ -368,7 +380,7 @@ describe("hyperframes history, one owner", () => {
     write("index.html", "A2");
 
     expect((await json("end")).entry).toMatchObject({
-      id: "turn-1",
+      id: "7f3c2a1e-0b4d-4c8e-9a6f-2d1b3c4e5f60",
       who: turn.who,
       files: ["index.html"],
     });
@@ -475,7 +487,8 @@ describe("hyperframes history, one owner", () => {
     const { dir, write, json, hf } = project();
     await hf();
     const who = { kind: "agent", name: "claude" };
-    const marker = { via: "direct", id: "turn-1", who, label: "Retitle", startedAt: 1 };
+    const id = "7f3c2a1e-0b4d-4c8e-9a6f-2d1b3c4e5f61";
+    const marker = { via: "direct", id, who, label: "Retitle", startedAt: 1 };
     writeFileSync(join(dir, ".hyperframes", "history-turn.json"), JSON.stringify(marker));
     write("index.html", "A2");
 
@@ -889,3 +902,21 @@ describe.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     });
   },
 );
+
+// fails without the fix: a refusal reached the terminal with its control characters live.
+it("prints a refusal's control characters as visible escapes", async () => {
+  const { hf } = project();
+  const refused = await hf("--since", "20\u001b[2J26");
+  expect([refused.code, refused.err]).toEqual([2, 'No entry "20\\x1b[2J26" in this history']);
+});
+
+// fails without the fix: a changed file's text reached the terminal with its control characters live.
+it("prints a diff's control characters as visible escapes", async () => {
+  const { hf, turn } = project();
+  await hf("begin", "--who", "claude", "--label", "Start");
+  await hf("end");
+  const entry = await turn("claude", "Retitle", "index.html", "A\u001b[2J2");
+  const diff = (await hf("show", entry.id, "--diff")).out;
+  expect(diff).toContain("+A\\x1b[2J2");
+  expect(diff).not.toContain("\u001b");
+});

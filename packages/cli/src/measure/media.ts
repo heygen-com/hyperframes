@@ -1,13 +1,25 @@
 // Decode with ffmpeg into raw arrays, so measuring and comparing need nothing but node and ffmpeg.
 // Ported from the Studio's viral-clone media.mjs and tool.mjs.
 import { execFileSync } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
+import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { recordFolder } from "../utils/projectRecords.js";
 
 const MAX_BUFFER = 1 << 30;
 /** ffmpeg flags on every run. Inline before a spread, the ffprobe `--` contract test reads them as a probe wrapper. */
 const FFMPEG_QUIET = ["-nostdin", "-v", "error"];
+export const GUARDED_RUN_MS = 30_000;
+
+export function guardedLimitReason(err: unknown): string | undefined {
+  const { code, signal } = (err ?? {}) as { code?: unknown; signal?: unknown };
+  return code === "ETIMEDOUT" || signal === "SIGTERM"
+    ? `stopped after ${GUARDED_RUN_MS / 1000} s`
+    : undefined;
+}
 
 /** An error whose message says what to run instead; commands print `fix` as its own line. */
 export class Fix extends Error {
@@ -44,13 +56,26 @@ export function sumOf(terms: string[]): string {
 }
 
 /** Runs ffmpeg and returns its stdout; `input` is piped to stdin. */
-export function runFfmpeg(args: string[], input?: Buffer, cwd?: string): Buffer {
+export function runFfmpeg(args: string[], input?: Buffer, cwd?: string, timeout?: number): Buffer {
   return execFileSync(ffmpegBin(), [...FFMPEG_QUIET, ...args], {
     maxBuffer: MAX_BUFFER,
     windowsHide: true,
     ...(input ? { input } : {}),
     ...(cwd ? { cwd } : {}),
+    ...(timeout ? { timeout } : {}),
   });
+}
+
+export function ffmpegToFile(args: string[], out: string, input?: Buffer): string {
+  const work = createStagingDir(dirname(out), ".ffmpeg-");
+  try {
+    const made = join(work, basename(out));
+    runFfmpeg([...args, made], input);
+    renameWithRetry(made, out);
+    return out;
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 }
 
 export interface VideoInfo {
@@ -74,6 +99,8 @@ export interface VideoInfo {
   hdr: boolean;
   transfer?: string;
   codec: string;
+  /** A file a composition names: each run reads it with render's demuxer list and stops after {@link GUARDED_RUN_MS}. */
+  guarded?: boolean;
 }
 
 interface ProbeStream {
@@ -170,21 +197,37 @@ function startsWithMp4Header(path: string): boolean {
   }
 }
 
-/** Size (as displayed, rotation applied), clock and sound of a video. */
+/** Size (as displayed, rotation applied), clock and sound of a video; `guarded` for a file a composition names. */
 // fallow-ignore-next-line complexity
-export function probeVideo(path: string): VideoInfo {
+export function probeVideo(path: string, { guarded = false } = {}): VideoInfo {
   if (!existsSync(path)) throw new Fix(`no file at ${path}`, missingFileFix(path));
   let json: { streams?: ProbeStream[]; format?: { duration?: string } };
   try {
+    const bin = ffprobeBin();
     json = JSON.parse(
       execFileSync(
-        ffprobeBin(),
-        ["-v", "error", "-show_streams", "-show_format", "-of", "json", "--", path],
-        { maxBuffer: MAX_BUFFER, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
+        bin,
+        [
+          "-v",
+          "error",
+          ...(guarded ? mediaInputFormatArgs(bin, path) : []),
+          "-show_streams",
+          "-show_format",
+          "-of",
+          "json",
+          "--",
+          path,
+        ],
+        {
+          maxBuffer: MAX_BUFFER,
+          windowsHide: true,
+          stdio: ["ignore", "pipe", "pipe"],
+          ...(guarded ? { timeout: GUARDED_RUN_MS } : {}),
+        },
       ).toString(),
     );
   } catch (err) {
-    const reason = ffprobeReason(err, path);
+    const reason = (guarded ? guardedLimitReason(err) : undefined) ?? ffprobeReason(err, path);
     throw new Fix(
       `ffprobe cannot read ${path}${reason ? `: ${reason}` : ""}`,
       unreadableFix(reason, startsWithMp4Header(path)),
@@ -221,6 +264,7 @@ export function probeVideo(path: string): VideoInfo {
     hdr: /smpte2084|arib-std-b67/.test(video.color_transfer ?? ""),
     transfer: video.color_transfer,
     codec: video.codec_name ?? "",
+    ...(guarded ? { guarded } : {}),
   };
 }
 
@@ -361,11 +405,11 @@ export function meanAbsDiff(a: Uint8Array, b: Uint8Array): number {
 /** Writes raw RGB (or grey) bytes as an image; the extension picks the format. */
 export function writeImage(path: string, px: Uint8Array, w: number, h: number, gray = false) {
   const header = Buffer.from(`${gray ? "P5" : "P6"}\n${w} ${h}\n255\n`);
-  runFfmpeg(
-    ["-y", "-f", gray ? "pgm_pipe" : "ppm_pipe", "-i", "-", "-frames:v", "1", path],
+  return ffmpegToFile(
+    ["-y", "-f", gray ? "pgm_pipe" : "ppm_pipe", "-i", "-", "-frames:v", "1"],
+    path,
     Buffer.concat([header, Buffer.from(px.buffer, px.byteOffset, px.byteLength)]),
   );
-  return path;
 }
 
 export const round = (n: number, d = 3) => Math.round(n * 10 ** d) / 10 ** d;
@@ -420,10 +464,20 @@ export function parseRoi(text: unknown, width?: number, height?: number): Roi {
   return roi;
 }
 
-/** The folder a tool writes its pictures to, made on demand: --out, or .hyperframes/<tool> in the current folder. */
+/** The folder a tool writes its pictures to, made on demand: --out, or .hyperframes/<tool> in the current folder.
+ * The default is used only when each folder on the way is a real one: a cloned project can link any of them out. */
 export function outDir(out: unknown, tool: string): string {
-  const dir = typeof out === "string" && out ? resolve(out) : resolve(join(".hyperframes", tool));
-  mkdirSync(dir, { recursive: true });
+  if (typeof out === "string" && out) {
+    const dir = resolve(out);
+    mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+  const dir = recordFolder(resolve("."), tool);
+  if (!dir)
+    throw new Fix(
+      `${join(".hyperframes", tool)} is a link or not a folder here, so nothing is written into it`,
+      "pass --out <folder>",
+    );
   return dir;
 }
 

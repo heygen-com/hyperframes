@@ -41,6 +41,7 @@ export interface TimelineLike {
 }
 
 export interface ClipManifestClip extends RuntimeTimelineClipIdentity {
+  text?: unknown;
   zIndex?: number;
   stackingContextId?: string | null;
   compositionAncestors?: string[];
@@ -73,8 +74,6 @@ export type IframeWindow = Window & {
    *  Every member stays optional and is optional-called, so a runtime that
    *  predates the hook degrades to a no-op instead of throwing. */
   __hf?: {
-    leasePausedMedia?: (el: HTMLMediaElement) => void;
-    releasePausedMedia?: (el: HTMLMediaElement) => void;
     setPausedVideoFrameProvider?: (provider: PausedVideoFrameProvider | null) => void;
     setLoopStart?: (seconds: number | null) => void;
   };

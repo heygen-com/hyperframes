@@ -1,12 +1,19 @@
+import {
+  blockComments,
+  hasInvalidScriptClose,
+  htmlTagTracker,
+  protectedBlockRanges,
+  styleTagTokens,
+} from "../linearScans";
 import type { LintContext, HyperframeLintFinding } from "../context";
 import postcss from "postcss";
 import { styleRoot } from "../styleRoots";
 import selectorParser from "postcss-selector-parser";
 import { GLSL_SCRIPT_TYPES } from "../shaderDomains";
 import {
-  HTML_BODY_CSS_WIDTH_FIRST_RE,
-  HTML_BODY_CSS_HEIGHT_FIRST_RE,
-  VIEWPORT_META_SIZE_RE,
+  matchHtmlBodyCssWidthFirst,
+  matchHtmlBodyCssHeightFirst,
+  matchViewportMetaSize,
 } from "@hyperframes/parsers/composition";
 import {
   readAttr,
@@ -22,7 +29,6 @@ import {
   TIMELINE_REGISTRY_INIT_PATTERN,
   TIMELINE_REGISTRY_ASSIGN_PATTERN,
   TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN,
-  INVALID_SCRIPT_CLOSE_PATTERN,
 } from "../utils";
 
 const SCRIPT_SYNTAX_EXEMPT_TYPES = new Set([
@@ -354,55 +360,15 @@ function describeStudioElement(tag: { raw: string; name: string }): string {
   return parts.join("");
 }
 
-const VISIBLE_MARKUP_COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g;
-const VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN =
-  /<(style|script|template|title|noscript|pre|code|textarea|text)\b[^>]*>[\s\S]*?<\/\1(?:\s[^>]*)?>/gi;
-
-interface SourceRange {
-  start: number;
-  end: number;
-}
-
-function findProtectedVisibleMarkupRanges(source: string): SourceRange[] {
-  const ranges: SourceRange[] = [];
-  for (const match of source.matchAll(VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN)) {
-    ranges.push({ start: match.index, end: match.index + match[0].length });
-  }
-  return ranges;
-}
-
-function isInsideSourceRange(index: number, ranges: SourceRange[]): boolean {
-  return ranges.some((range) => range.start <= index && index < range.end);
-}
-
-function isInsideHtmlTag(source: string, index: number): boolean {
-  let inTag = false;
-  let quote: '"' | "'" | null = null;
-  for (let i = 0; i < index; i++) {
-    const char = source[i];
-    if (!inTag) {
-      if (char === "<") inTag = true;
-      continue;
-    }
-    if (quote) {
-      if (char === quote) quote = null;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      quote = char;
-    } else if (char === ">") {
-      inTag = false;
-    }
-  }
-  return inTag;
-}
-
 function findVisibleMarkupCommentLeak(source: string): string | null {
-  const protectedRanges = findProtectedVisibleMarkupRanges(source);
-  for (const match of source.matchAll(VISIBLE_MARKUP_COMMENT_PATTERN)) {
-    if (isInsideHtmlTag(source, match.index)) continue;
-    if (isInsideSourceRange(match.index, protectedRanges)) continue;
-    return match[0];
+  const protectedRanges = protectedBlockRanges(source);
+  const insideHtmlTag = htmlTagTracker(source);
+  let range = 0;
+  for (const comment of blockComments(source)) {
+    if (insideHtmlTag(comment.index)) continue;
+    while (protectedRanges[range] && protectedRanges[range]!.end <= comment.index) range++;
+    if ((protectedRanges[range]?.start ?? Infinity) <= comment.index) continue;
+    return comment.text;
   }
   return null;
 }
@@ -412,12 +378,12 @@ type ScaffoldSize = { width: string; height: string };
 // Groups 1 and 3 are prefix text for applyResolutionPreset's in-place
 // replace; lint only reads the digit groups (2 and 4).
 function readHtmlBodyCssSize(source: string): ScaffoldSize | null {
-  const widthFirst = source.match(HTML_BODY_CSS_WIDTH_FIRST_RE);
+  const widthFirst = matchHtmlBodyCssWidthFirst(source);
   if (widthFirst) {
     const [, , width = "", , height = ""] = widthFirst;
     return { width, height };
   }
-  const heightFirst = source.match(HTML_BODY_CSS_HEIGHT_FIRST_RE);
+  const heightFirst = matchHtmlBodyCssHeightFirst(source);
   if (heightFirst) {
     const [, , height = "", , width = ""] = heightFirst;
     return { width, height };
@@ -426,7 +392,7 @@ function readHtmlBodyCssSize(source: string): ScaffoldSize | null {
 }
 
 function readViewportMetaSize(source: string): ScaffoldSize | null {
-  const match = source.match(VIEWPORT_META_SIZE_RE);
+  const match = matchViewportMetaSize(source);
   if (!match) return null;
   const [, , width = "", , height = ""] = match;
   return { width, height };
@@ -577,14 +543,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     let opens = 0;
     let closes = 0;
     let firstTag = "";
-    for (const match of source.matchAll(
-      /<script\b[\s\S]*?<\/script[^>]*>|<style\b|<\/style\s*>/gi,
-    )) {
-      const token = match[0].toLowerCase();
-      if (token.startsWith("<script")) continue;
-      if (token.startsWith("</style")) closes += 1;
+    for (const tag of styleTagTokens(source)) {
+      if (tag.toLowerCase().startsWith("</style")) closes += 1;
       else opens += 1;
-      if (!firstTag) firstTag = match[0];
+      if (!firstTag) firstTag = tag;
     }
     if (opens === closes) return [];
     return [
@@ -830,7 +792,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
 
   // invalid_inline_script_syntax (malformed close tag)
   ({ source }) => {
-    if (!INVALID_SCRIPT_CLOSE_PATTERN.test(source)) return [];
+    if (!hasInvalidScriptClose(source)) return [];
     return [
       {
         code: "invalid_inline_script_syntax",

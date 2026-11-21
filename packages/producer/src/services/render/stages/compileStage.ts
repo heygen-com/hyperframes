@@ -35,13 +35,15 @@
  *     same behavior as before this PR.
  */
 
+import { requireOutputDimensions } from "../outputDimensions.js";
 import { existsSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { escapesAssetRoot } from "../../../utils/paths.js";
-import type { ChromaSubsampling, EngineConfig } from "@hyperframes/engine";
+import { privateCacheRoot, type ChromaSubsampling, type EngineConfig } from "@hyperframes/engine";
 import { suggestMatchingPreset, type CanvasResolution } from "@hyperframes/core";
 import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
+import { assertCompositionFileSize } from "@hyperframes/core/compiler";
 import type { CompiledComposition } from "../../htmlCompiler.js";
 import { compileForRender } from "../../htmlCompiler.js";
 import type { ProducerLogger } from "../../../logger.js";
@@ -56,6 +58,15 @@ import {
   dropMediaOutsideProject,
   preflightCompositionAssetMediaTypes,
 } from "../../assetMediaType.js";
+
+function animatedGifCacheDir(extractCacheDir: string | undefined): string | undefined {
+  try {
+    const root = extractCacheDir && privateCacheRoot(extractCacheDir);
+    return root ? join(root, "animated-gif") : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface CompileStageInput {
   projectDir: string;
@@ -176,6 +187,7 @@ export function resolveEntryHtmlPath(input: {
         `Entry file "${relative(projectDir, path)}" leads outside the project folder`,
       );
     }
+    assertCompositionFileSize(path, relative(projectDir, path));
     return readTextFile(path);
   };
   const htmlPath = join(projectDir, entryFile);
@@ -249,11 +261,10 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     variables: input.variables,
     urlByAbsentLocalPath: input.urlByAbsentLocalPath,
     pageMotionBlur: input.pageMotionBlur,
-    animatedGifCacheDir: cfg.extractCacheDir
-      ? join(cfg.extractCacheDir, "animated-gif")
-      : undefined,
+    animatedGifCacheDir: animatedGifCacheDir(cfg.extractCacheDir),
     ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
     allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+    includeOutsideScripts: job.config.includeOutsideScripts,
   });
   assertNotAborted();
   const compileOnlyMs = Date.now() - compileStart;
@@ -408,6 +419,8 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
   });
   const outputWidth = Math.round(width * deviceScaleFactor);
   const outputHeight = Math.round(height * deviceScaleFactor);
+  requireOutputDimensions(job.config.expectedOutputDimensions, outputWidth, outputHeight);
+  if (job.config.expectedOutputDimensions !== undefined) job.outputDimensionsChecked = true;
   if (deviceScaleFactor !== 1) {
     log.info("Scaling composition via deviceScaleFactor", {
       compositionWidth: width,

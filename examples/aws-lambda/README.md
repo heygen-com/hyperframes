@@ -200,7 +200,7 @@ with `--profile <name>` or `AWS_PROFILE=<name>`.
 | `LambdaMemoryMb`                | `10240`       | Lambda memory; Lambda allocates CPU proportionally. 10 GB recommended for 1080p.                |
 | `LambdaTimeoutSec`              | `900`         | Per-invocation timeout. 15 min is Lambda's hard ceiling.                                        |
 | `ReservedConcurrency`           | `-1`          | Hard cap on simultaneous Lambda invocations. `-1` = unreserved. Set to e.g. `50` to bound cost. |
-| `ChromeSource`                  | `sparticuz`   | Must match the `--source=` flag passed to `build-zip.ts`.                                       |
+| `ChromeSource`                  | `sparticuz`   | Only `sparticuz`: a ZIP built with `--source=chrome-headless-shell` is over Lambda's limit.     |
 | `ChunkInvocationAlarmThreshold` | `1000`        | CloudWatch alarm threshold (RenderChunk invocations per hour).                                  |
 
 ## Cleanup

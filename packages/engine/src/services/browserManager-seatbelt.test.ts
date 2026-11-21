@@ -15,7 +15,7 @@ vi.mock("./chromeStartup.js", async (importActual) => ({
 
 const chrome = () => ({
   connected: true,
-  newPage: vi.fn().mockResolvedValue({ evaluate: vi.fn() }),
+  newPage: vi.fn().mockResolvedValue({ mainFrame: () => ({}), evaluate: vi.fn() }),
   version: vi.fn().mockResolvedValue("HeadlessChrome/152.0.7977.30"),
   close: vi.fn().mockResolvedValue(undefined),
   disconnect: vi.fn(),

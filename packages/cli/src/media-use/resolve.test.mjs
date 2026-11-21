@@ -374,10 +374,38 @@ test("music without the HeyGen CLI fails naming it and the host app's own tool",
 
 test("a sound effect nothing matches is a plain miss that never names the HeyGen CLI", async () => {
   setup();
-  // The local media index answers 404, so the miss never depends on the network.
+  // A registry and a cached index that both name files outside the bundled SFX
+  // folder: the resolve reads neither, copies nothing and reports the miss.
+  const tampered = JSON.stringify({
+    dimensions: 384,
+    names: ["dog-barking", "dog-barking-2"],
+    rows: [
+      {
+        id: "dog-barking",
+        kind: "sfx",
+        title: "dog barking",
+        description: "dog barking",
+        tags: ["sfx"],
+        file: "/etc/hosts",
+      },
+      {
+        id: "dog-barking-2",
+        kind: "sfx",
+        title: "dog barking",
+        description: "dog barking",
+        tags: ["sfx"],
+        file: "../../.ssh/id_ed25519",
+      },
+    ],
+  });
+  const cacheDir = join(tmp, "cache");
+  mkdirSync(join(cacheDir, "catalog"), { recursive: true });
+  writeFileSync(join(cacheDir, "catalog", "media-vectors.json"), tampered);
+  let registryRequests = 0;
   const server = createServer((_req, res) => {
-    res.writeHead(404);
-    res.end();
+    registryRequests++;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(tampered);
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
@@ -387,6 +415,7 @@ test("a sound effect nothing matches is a plain miss that never names the HeyGen
         env: {
           HOME: tmp,
           PATH: tmp,
+          HYPERFRAMES_CACHE_DIR: cacheDir,
           HYPERFRAMES_REGISTRY: `http://127.0.0.1:${server.address().port}`,
         },
         nodeArgs: openverseImport([]),
@@ -399,6 +428,8 @@ test("a sound effect nothing matches is a plain miss that never names the HeyGen
       parsed.error,
       /^no sound effect matched "dog barking": HeyGen sound search \(min score 0\.4\)/,
     );
+    assert.equal(registryRequests, 0);
+    assert.equal(existsSync(join(tmp, ".media/audio/sfx")), false);
   } finally {
     server.close();
     cleanup();
@@ -491,6 +522,106 @@ test("project manifest hit skips providers", () => {
   assert.equal(parsed.id, "bgm_001");
   assert.equal(parsed._source, "cached");
   cleanup();
+});
+
+test("a manifest hit prints control characters from the record as visible escapes", () => {
+  setup();
+  const record = makeRecord({
+    id: "bgm_001\x1b]52;c;aGk=\x07",
+    provenance: { prompt: "cached query", provider: "test" },
+  });
+  appendRecord(tmp, record);
+  const filePath = join(tmp, record.path);
+  mkdirSync(join(filePath, ".."), { recursive: true });
+  writeFileSync(filePath, "cached audio");
+
+  const out = runResolve(["--type", "bgm", "--intent", "cached query", "--project", tmp]);
+  assert.ok(out.includes("resolved bgm_001\\x1b]52;c;aGk=\\x07 →"), out);
+  for (const raw of ["\x07", "\x1b"])
+    assert.ok(!out.includes(raw), "no raw control character reaches the terminal");
+  const json = JSON.parse(
+    runResolve(["--type", "bgm", "--intent", "cached query", "--project", tmp, "--json"]).trim(),
+  );
+  assert.equal(json.id, record.id, "--json keeps the record as it is");
+  cleanup();
+});
+
+test("recipe and stats output print control characters as visible escapes", () => {
+  setup();
+  try {
+    const recipe = join(tmp, ".media", "recipes", "promo");
+    mkdirSync(recipe, { recursive: true });
+    const name = "promo\x1b[2K";
+    writeFileSync(
+      join(recipe, "recipe.json"),
+      JSON.stringify({ name, version: 1, workflow: "w\x07" }),
+    );
+    writeFileSync(join(recipe, "frame.md"), "# frame\n");
+    const used = runResolve(["--type", "recipe", "--entity", "promo", "--project", tmp]);
+    assert.ok(used.includes("resolved recipe promo\\x1b[2K (v1, w\\x07)"), used);
+
+    const missing = spawnResolve(["--type", "recipe", "--entity", "nope", "--project", tmp]);
+    assert.notEqual(missing.status, 0);
+    assert.ok(missing.stderr.includes("known: promo\\x1b[2K"), missing.stderr);
+    for (const raw of ["\x07", "\x1b"])
+      assert.ok(!missing.stderr.includes(raw), "no raw control character reaches the terminal");
+
+    const home = join(process.env.HYPERFRAMES_MEDIA_HOME, ".media");
+    mkdirSync(home, { recursive: true });
+    const miss = {
+      ts: new Date().toISOString(),
+      type: "sfx\x1b[8m",
+      intent: "boom\x1b]52;c;agk=\x07",
+    };
+    writeFileSync(join(home, "misses.jsonl"), `${JSON.stringify(miss)}\n`);
+    const stats = runResolve(["--stats", "--project", tmp]);
+    assert.ok(stats.includes("  sfx\\x1b[8m:"), stats);
+    assert.ok(stats.includes("boom\\x1b]52;c;agk=\\x07"), stats);
+    for (const out of [used, stats])
+      for (const raw of ["\x07", "\x1b"])
+        assert.ok(!out.includes(raw), "no raw control character reaches the terminal");
+  } finally {
+    cleanup();
+  }
+});
+
+test("argument errors and the similar-asset hint print control characters as visible escapes", () => {
+  setup();
+  try {
+    const record = makeRecord({ provenance: { prompt: "cached query", provider: "test" } });
+    appendRecord(tmp, record);
+    const filePath = join(tmp, record.path);
+    mkdirSync(join(filePath, ".."), { recursive: true });
+    writeFileSync(filePath, "cached audio");
+    const evil = "\x1b]52;c;aGk=\x07";
+    const shown = "\\x1b]52;c;aGk=\\x07";
+    const runs = [
+      ["unknown media type", "--type", `bgm${evil}`, "--intent", "x"],
+      ["unknown provider", "--type", "bgm", "--intent", "x", "--provider", `p${evil}`],
+      ["file not found", "--type", "bgm", "--from", join(tmp, `missing${evil}.wav`)],
+      ["no reusable global asset", "--type", "bgm", "--reuse", `ab${evil}`],
+      [
+        "similar cached asset",
+        "--type",
+        "bgm",
+        "--intent",
+        `cached query song${evil}`,
+        "--local-only",
+      ],
+    ];
+    for (const [line, ...args] of runs) {
+      const { stderr } = spawnResolve([...args, "--project", tmp]);
+      const printed = stderr.split("\n").find((l) => l.includes(line)) ?? "";
+      assert.ok(printed.includes(shown), `${line}\n${stderr}`);
+      for (const raw of ["\x07", "\x1b"])
+        assert.ok(
+          !stderr.includes(raw),
+          `no raw control character reaches the terminal: ${stderr}`,
+        );
+    }
+  } finally {
+    cleanup();
+  }
 });
 
 test("entity hit matches across icon/image (figma-imported brand marks)", () => {
@@ -1644,5 +1775,49 @@ globalThis.fetch = async (url, init) => {
     assert.equal(plain.provenance.variant, "default", `default logo in ${project}`);
   }
   rmSync(otherProject, { recursive: true, force: true });
+  cleanup();
+});
+
+test("a local generator's private output folder is gone once the file is in the project", () => {
+  setup();
+  const privateTmp = join(tmp, "tmp");
+  mkdirSync(privateTmp);
+  // A stand-in for `hyperframes tts`: write a few bytes to the --output path it is given.
+  const entry = join(tmp, "fake-cli.mjs");
+  writeFileSync(
+    entry,
+    'import { writeFileSync } from "node:fs";\n' +
+      'const at = process.argv.indexOf("--output");\n' +
+      'writeFileSync(process.argv[at + 1], "RIFF-voice");\n',
+  );
+  const result = spawnResolve(
+    [
+      "--type",
+      "voice",
+      "--intent",
+      "hello there",
+      "--project",
+      tmp,
+      "--provider",
+      "kokoro.local",
+      "--json",
+    ],
+    {
+      env: {
+        HOME: tmp,
+        TMPDIR: privateTmp,
+        TEMP: privateTmp,
+        TMP: privateTmp,
+        HYPERFRAMES_CLI_ENTRY: entry,
+      },
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(readFileSync(join(tmp, parsed.path), "utf8"), "RIFF-voice");
+  assert.deepEqual(
+    readdirSync(privateTmp).filter((name) => name.startsWith("media-use-")),
+    [],
+  );
   cleanup();
 });

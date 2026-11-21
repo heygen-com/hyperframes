@@ -44,6 +44,17 @@ test("quotes inside a regex literal open no string, so later comments still coun
   assert.equal(measure(source, ".ts").comment, 4);
 });
 
+test("a template nested in a substitution does not end the outer template, so later comments still count", () => {
+  const source = [
+    "const quoted = `'${value.replace(/'/g, `'\\\\''`)}'`;",
+    "// one",
+    "const label = `${what} copied`; // two",
+    'const deep = `a${b ? `c${d}` : "}"}e`;',
+    "// three",
+  ].join("\n");
+  assert.equal(measure(source, ".ts").comment, 3);
+});
+
 test("a JSX closing tag's slash opens no regex", () => {
   assert.equal(measure("const a = <p>x</p>; // c\n", ".tsx").comment, 1);
   assert.equal(measure("const a = <a>x</a>{/* note */};\n", ".tsx").comment, 1);

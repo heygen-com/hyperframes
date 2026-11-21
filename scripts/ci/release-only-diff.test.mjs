@@ -213,6 +213,19 @@ test("the merge queue runs the release checks on a release diff", () => {
   assert.match(ci, /release-checks:[\s\S]*merge_group[\s\S]*release_diff/);
 });
 
+// fails without the fix: a fix to an earlier release's notes counted as a release, so its checks wanted a bump.
+test("a diff of only release notes and the changelog is a notes fix, not a release", () => {
+  const files = { "releases/v1.2.3.md": "# old", "docs/changelog.mdx": "old" };
+  const after = { "releases/v1.2.3.md": "# new", "docs/changelog.mdx": "new" };
+  const result = classify(
+    Object.keys(files),
+    (p) => files[p] ?? null,
+    (p) => after[p] ?? null,
+  );
+  assert.equal(result.releaseOnly, false);
+  assert.equal(result.versions.size, 0);
+});
+
 test("classify works on plain data", () => {
   const files = { "a/package.json": manifest("1"), "plugin.json": manifest("1") };
   const after = { "a/package.json": manifest("2"), "plugin.json": manifest("2") };
@@ -236,6 +249,7 @@ test("every heavy workflow asks the release-only action, and the decision is use
     "player-perf",
     "player-safari",
     "lambda-arm64-image",
+    "lambda-handler-zip",
   ])
     assert.match(read(name), /uses: \.\/\.github\/actions\/release-only-diff/, name);
   const ci = read("ci");

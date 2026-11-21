@@ -284,7 +284,7 @@ window.__timelines["root"] = tl;`;
     expect(contentWindow.__timelines.root).toBeDefined();
   });
 
-  it("falls back to the async plugin load when MotionPathPlugin is genuinely absent", () => {
+  it("falls back to the async plugin load when MotionPathPlugin is genuinely absent", async () => {
     const head = document.createElement("div");
     const appendedScripts: HTMLScriptElement[] = [];
     const realHeadAppend = head.appendChild.bind(head);
@@ -313,12 +313,13 @@ window.__timelines["root"] = tl;`;
     // it escalates via onAsyncFailure so the caller can full-reload to recover,
     // and clears the in-flight loading flag.
     appendedScripts[0]!.onerror?.(new Event("error"));
+    await Promise.resolve();
     expect(onAsyncFailure).toHaveBeenCalledTimes(1);
     expect(contentWindow.__hfForceTimelineRebind).not.toHaveBeenCalled();
     expect(contentWindow.__hfMotionPathPluginLoading).toBe(false);
   });
 
-  it("loads a missing soft-reload plugin from the iframe mirror and reports its failure", () => {
+  it("loads a missing soft-reload plugin from the iframe mirror and reports its failure", async () => {
     const { iframe, contentWindow } = buildMockIframe({
       gsap: { timeline: vi.fn(), registerPlugin: vi.fn(), version: "3.14.2" },
     });
@@ -334,6 +335,7 @@ window.__timelines["root"] = tl;`;
       "http://localhost:8080/vendor/npm/gsap@3.14.2/dist/MotionPathPlugin.min.js",
     );
     plugin?.onerror?.(new Event("error"));
+    await Promise.resolve();
     expect(onAsyncFailure).toHaveBeenCalledTimes(1);
     expect(contentWindow.__hfForceTimelineRebind).not.toHaveBeenCalled();
     expect(contentWindow.__hfMotionPathPluginLoading).toBe(false);

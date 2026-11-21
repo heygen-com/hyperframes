@@ -2,9 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   BUNDLED_VOICES,
   SUPPORTED_LANGS,
+  ensureModel,
   inferLangFromVoiceId,
   isSupportedLang,
 } from "./manager.js";
+
+describe("ensureModel", () => {
+  it.each(["no-such-model", "constructor", "toString", "__proto__"])(
+    "names %s as an unknown model",
+    async (model) => {
+      await expect(ensureModel(model)).rejects.toThrow(`Unknown TTS model: ${model}.`);
+    },
+  );
+});
 
 describe("inferLangFromVoiceId", () => {
   it.each([

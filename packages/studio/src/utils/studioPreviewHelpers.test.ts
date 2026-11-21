@@ -90,6 +90,29 @@ describe("pauseStudioPreviewPlayback", () => {
     expect(siblingPause).not.toHaveBeenCalled();
   });
 
+  it("pauses a sealed preview by message, since its window refuses every other read", () => {
+    const postMessage = vi.fn();
+    // A cross-origin window: postMessage is allowed, any other property read throws.
+    const sealedWindow = new Proxy(
+      { postMessage },
+      {
+        get(target, key) {
+          if (key === "postMessage") return target.postMessage;
+          throw new DOMException(
+            "Blocked a frame from accessing a cross-origin frame.",
+            "SecurityError",
+          );
+        },
+      },
+    );
+    const iframe = { contentWindow: sealedWindow } as unknown as HTMLIFrameElement;
+
+    pauseStudioPreviewPlayback(iframe);
+
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage.mock.calls[0]?.[0]).toMatchObject({ action: "pause" });
+  });
+
   it("falls back to pausing timelines directly when __player is unavailable", () => {
     const timelinePause = vi.fn();
     const siblingPause = vi.fn();

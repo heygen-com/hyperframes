@@ -10,7 +10,7 @@
  */
 
 import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml, YAMLParseError } from "yaml";
 import type { RegistryManifest } from "../packages/core/src/index.js";
@@ -509,6 +509,100 @@ export function lintDocRefs(filePath: string, content: string): LineViolation[] 
     .flatMap((ref) => checkDocRef(ref, filePath, content) ?? []);
 }
 
+// ---------------------------------------------------------------------------
+// Helper scripts run by a working-directory-relative path
+// ---------------------------------------------------------------------------
+//
+// An agent runs a skill's commands from the user's project directory, and that
+// project may come from someone else. `node skills/x/scripts/y.mjs` or
+// `node scripts/y.mjs` resolves inside that project, so a planted file with
+// the same name runs instead of the bundled helper. A doc names its helpers
+// through the skill's own folder (`<SKILL_DIR>/scripts/y.mjs`) instead.
+//
+// A doc whose relative commands are safe opts out with a marker line that
+// says why, for example when its commands run inside a HyperFrames checkout
+// rather than a user project:
+//
+//   <!-- skill-scripts: relative-ok, runs inside a HyperFrames checkout -->
+//
+// Only interpreter invocations are seen: a script run directly (`./setup.sh`)
+// or after interpreter flags (`node --test x.mjs`) is a known false negative.
+
+const RELATIVE_SCRIPT_OPT_OUT = /<!--\s*skill-scripts:\s*relative-ok,\s*\S[^>]*-->/;
+const CODE_FENCE = /^ {0,3}(?:```|~~~)/;
+const RELATIVE_SCRIPT_RUN =
+  /(?:^|[\s(;&|])(?:node|python3?|bash|sh|tsx|bun)\s+["']?((?![<$/~"'-])[^\s"'`]+\.(?:mjs|cjs|js|ts|py|sh))(?=["'\s;)|&]|$)/;
+
+/** Each fenced-block line and each inline code span, with its 1-based line number. */
+function codeSegments(content: string): { text: string; line: number }[] {
+  const segments: { text: string; line: number }[] = [];
+  let inFence = false;
+  content.split("\n").forEach((text, index) => {
+    if (CODE_FENCE.test(text)) {
+      inFence = !inFence;
+      return;
+    }
+    if (inFence) {
+      segments.push({ text, line: index + 1 });
+      return;
+    }
+    for (const span of text.matchAll(INLINE_CODE_SPAN)) {
+      segments.push({ text: span[1] ?? "", line: index + 1 });
+    }
+  });
+  return segments;
+}
+
+export function lintRelativeScriptRuns(content: string): LineViolation[] {
+  if (RELATIVE_SCRIPT_OPT_OUT.test(content)) return [];
+  return codeSegments(content).flatMap(({ text, line }) => {
+    const script = RELATIVE_SCRIPT_RUN.exec(text)?.[1];
+    if (!script) return [];
+    return [
+      violation(
+        line,
+        `Runs \`${script}\` by a path relative to the working directory, which resolves inside the user's project. Name the bundled helper through its skill folder, for example \`<SKILL_DIR>/scripts/...\`.`,
+        text,
+      ),
+    ];
+  });
+}
+
+export function lintVersionedCliRuns(content: string): LineViolation[] {
+  return codeSegments(content)
+    .filter(({ text }) =>
+      /\b(?:npx|npm\s+exec|bunx)\s+(?:-{1,2}[\w-]+\s+|--\s+)*hyperframes@/.test(text),
+    )
+    .map(({ text, line }) =>
+      violation(
+        line,
+        "Select the CLI release with the installed launcher's --cli-version option.",
+        text,
+      ),
+    );
+}
+
+/** A project's own scripts or a CLI installed into it: routes that let a received project pick what an agent runs. */
+const PROJECT_CLI_ROUTE =
+  /\bnpm\s+run\b|\bnpm\s+(?:i|install)\b[^\n]*\bhyperframes\b|node_modules\/\.bin\/hyperframes/;
+
+/** A skill core documents only the launcher, so an agent reading it alone finds no route through a project's files. */
+export function lintProjectCliRoutes(content: string): LineViolation[] {
+  return content
+    .split("\n")
+    .flatMap((text, index) =>
+      PROJECT_CLI_ROUTE.test(text)
+        ? [
+            violation(
+              index + 1,
+              "Offer only the launcher here. A project's own scripts and a CLI installed into it belong in a reference, for the person's own pipelines.",
+              text,
+            ),
+          ]
+        : [],
+    );
+}
+
 function collectMarkdownFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true, recursive: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
@@ -537,6 +631,10 @@ function lintMarkdownFiles(paths: string[], knownItems: Set<string>, report: Rep
     const content = readFileSync(path, "utf-8");
     const file = relative(process.cwd(), path);
     report(file, lintDocRefs(path, content));
+    report(file, lintRelativeScriptRuns(content));
+    if (path.startsWith(join(REPO_ROOT, "skills") + sep)) {
+      report(file, lintVersionedCliRuns(content));
+    }
     const found = lintRegistryItemRefs(content, knownItems);
     if (found === null) continue;
     snapshotsChecked++;
@@ -566,6 +664,9 @@ function main(): void {
 
   for (const file of files) {
     report(relative(process.cwd(), file), lintFile(file));
+    if (file.startsWith(join(REPO_ROOT, "skills") + sep)) {
+      report(relative(process.cwd(), file), lintProjectCliRoutes(readFileSync(file, "utf-8")));
+    }
   }
 
   const knownItems = registryItemNames();

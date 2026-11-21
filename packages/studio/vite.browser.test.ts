@@ -26,6 +26,7 @@ vi.mock("node:child_process", async (original) => ({
   execFileSync: browserMocks.versionProbe,
 }));
 
+import { thumbnailSeekReadyInBrowser } from "@hyperframes/studio-server";
 import { findSystemChrome, generateThumbnail, type GenerateThumbnailOptions } from "./vite.browser";
 
 const originalBrowserPath = process.env["HYPERFRAMES_BROWSER_PATH"];
@@ -121,6 +122,16 @@ describe("generateThumbnail", () => {
       browserMocks.page.goto.mock.invocationCallOrder[0]!,
     );
     expect(browserMocks.page.goto).toHaveBeenCalledWith(previewUrl, expect.anything());
+  });
+
+  it("holds a thumbnail's shot on the thumbnail readiness rule", async () => {
+    await expect(generateThumbnail(options())).resolves.toEqual(Buffer.from("thumbnail"));
+
+    const { waitForFunction, screenshot } = browserMocks.page;
+    expect(waitForFunction).toHaveBeenCalledWith(thumbnailSeekReadyInBrowser, { timeout: 5000 });
+    expect(waitForFunction.mock.invocationCallOrder[0]).toBeLessThan(
+      screenshot.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it("captures at the route-provided physical output size", async () => {

@@ -113,6 +113,10 @@ jobs:
         env:
           BASE_SHA: ${{ steps.base.outputs.sha }}
         run: sh scripts/check-large-files.sh --range "$BASE_SHA" HEAD
+      - name: Reject symbolic links outside the allowlist
+        run: node scripts/check-symlinks.mjs
+      - name: Reject values shaped like a live HeyGen API key
+        run: node scripts/check-committed-keys.mjs
       - name: Find a release-only diff
         id: release
         uses: ./.github/actions/release-only-diff
@@ -241,6 +245,7 @@ jobs:
               - "packages/cli/src/server/**"
               - "packages/cli/src/browser/**"
               - "packages/cli/src/utils/**"
+              - "packages/cli/src/whisper/modelFile.ts"
               - "packages/cli/src/ui/**"
               - "packages/cli/src/{background-removal,registry,telemetry}/**"
               - "packages/cli/src/capture/{captureCompositionFrame,captureTimeout,navigateForCapture,readBoundedResponse}.ts"
@@ -352,6 +357,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - run: bun run check:cli-lazy-deps
+      - run: bun run check:studio-server-sync-fs
 
   # The shards need only the built CLI; building it apart keeps them from waiting on Build's packing checks.
   edit-accuracy-cli:
@@ -589,6 +595,7 @@ jobs:
         with:
           lfs: true
       - uses: ./.github/actions/setup-test-workspace
+      - run: bash scripts/ci/install-pinned-headless-shell.sh
       - run: bun run --filter '@hyperframes/{core,engine}' test
 
   test-cli:
@@ -606,6 +613,7 @@ jobs:
         with:
           lfs: true
       - uses: ./.github/actions/setup-test-workspace
+      - uses: ./.github/actions/opencv-test-cache
       - run: bun run --filter '@hyperframes/cli' test --shard=${{ matrix.shard }}/2
 
   test-support:
@@ -727,6 +735,7 @@ jobs:
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --filter @hyperframes/engine build
+      - run: bash scripts/ci/install-pinned-headless-shell.sh
       - run: bun run producer:test:${{ matrix.lane }}
 
   # Tests under skills/**/*.test.mjs are bare `node --test` files with only
@@ -880,7 +889,7 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts --linker=hoisted
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
-      - run: bun run --cwd packages/cli test src/utils/npxCommand.test.ts src/commands/skills.test.ts
+      - run: bun run --cwd packages/cli test src/utils/npxCommand.test.ts src/commands/skills.test.ts src/utils/shellArg.test.ts
         env:
           HF_NPX_SHIM_E2E: "1"
 
@@ -1175,6 +1184,11 @@ jobs:
             node packages/studio/tests/e2e/timeline-snap-release.mjs || rc=1
           STUDIO_URL="http://localhost:5316/#project/aroll-backdrop" \
             node packages/studio/tests/e2e/aroll-backdrop.mjs || rc=1
+          rm -rf packages/studio/data/projects/graded-video-transitions
+          cp -R packages/studio/tests/e2e/fixtures/graded-video-transitions \
+            packages/studio/data/projects/graded-video-transitions
+          STUDIO_URL="http://localhost:5316/#project/graded-video-transitions" \
+            node packages/studio/tests/e2e/graded-video-transitions.mjs || rc=1
           exit "$rc"
       - name: Measure the caret of a text edited in place
         if: success() || failure()
@@ -1222,6 +1236,25 @@ jobs:
             STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/preview-video-regression" \
             OUT_DIR=/tmp/preview-video-regression \
             node packages/studio/tests/e2e/preview-video-regression.mjs
+      - name: Verify a sealed preview's proxy wait gets past its preflight
+        if: success() || failure()
+        run: |
+          set -euo pipefail
+          project=packages/studio/data/projects/sealed-proxy
+          mkdir -p "$project"
+          cp packages/cli/src/templates/blank/index.html "$project/index.html"
+          ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc=size=320x180:rate=30 -t 1 \
+            -c:v libx264 -pix_fmt yuv420p "$project/clip.mov"
+          VITE_STUDIO_OPAQUE_PREVIEW_ENABLED=1 NODE_ENV=production \
+            bun run --cwd packages/studio dev -- --port 5319 --strictPort &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -sf "http://localhost:5319/" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          STUDIO_URL="http://localhost:5319/#project/sealed-proxy" \
+            node packages/studio/tests/e2e/sealed-preview-proxy.mjs
       - name: Upload gate evidence
         # The gate's whole output is machine-readable evidence, and a red run is
         # exactly when someone needs to read it. Keep it on failure too.

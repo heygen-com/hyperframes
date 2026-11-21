@@ -1,7 +1,8 @@
 // fallow-ignore-file code-duplication
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { EventEmitter } from "node:events";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -91,6 +92,7 @@ function setupMocks(opts: {
   // before the test runs. Critical for CI, where GitHub Actions always sets
   // CI=true and would cause every scheduling assertion to fail false-negative.
   // Tests that specifically want one of these set pass it via opts.env.
+  delete process.env["npm_lifecycle_event"];
   delete process.env["CI"];
   delete process.env["HYPERFRAMES_NO_AUTO_INSTALL"];
   delete process.env["HYPERFRAMES_NO_UPDATE_CHECK"];
@@ -117,6 +119,7 @@ describe("scheduleBackgroundInstall", () => {
     vi.doUnmock("./installerDetection.js");
     vi.doUnmock("node:child_process");
     vi.doUnmock("node:fs");
+    vi.doUnmock("node:os");
     vi.resetModules();
   });
 
@@ -129,10 +132,92 @@ describe("scheduleBackgroundInstall", () => {
     const scheduled = scheduleBackgroundInstall("0.4.4", "0.4.3");
 
     expect(scheduled).toBe(true);
-    expect(spawnSpy).toHaveBeenCalledOnce();
+    expect(spawnSpy).toHaveBeenCalledWith(
+      process.execPath,
+      expect.any(Array),
+      expect.objectContaining({ cwd: homedir(), detached: true }),
+    );
     expect(writeSpy).toHaveBeenCalled();
     expect(config.pendingUpdate?.version).toBe("0.4.4");
     expect(config.pendingUpdate?.command).toBe("npm install -g hyperframes@0.4.4");
+  });
+
+  it.each(["missing", "relative", "file"] as const)(
+    "skips an install with a %s home directory",
+    async (kind) => {
+      const { spawnSpy, writeSpy } = setupMocks({
+        installer: { kind: "bun", command: "bun add -g hyperframes@0.4.4" },
+      });
+      const homes = { missing: join(homedir(), "absent"), relative: ".", file: process.execPath };
+      vi.doMock("node:os", async (importOriginal) => ({
+        ...(await importOriginal<typeof import("node:os")>()),
+        homedir: () => homes[kind],
+      }));
+      const { scheduleBackgroundInstall } = await import("./autoUpdate.js");
+      expect(scheduleBackgroundInstall("0.4.4", "0.4.3")).toBe(false);
+      expect(spawnSpy).not.toHaveBeenCalled();
+      expect(writeSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it.skipIf(!process.geteuid).each([
+    ["other-owner", "belongs to a different user"],
+    ["group-writable", "allows writes by the group or other users"],
+  ] as const)(
+    "explains a rejected %s home on stderr without writing in it",
+    async (kind, message) => {
+      const home = mkdtempSync(join(tmpdir(), "hf-update-home-"));
+      try {
+        const { spawnSpy, writeSpy } = setupMocks({
+          installer: { kind: "npm", command: "npm install -g hyperframes@0.4.4" },
+        });
+        if (kind === "other-owner") {
+          vi.spyOn(process, "geteuid").mockReturnValue(process.geteuid!() + 1);
+        } else {
+          chmodSync(home, 0o775);
+        }
+        vi.doMock("node:os", async (importOriginal) => ({
+          ...(await importOriginal<typeof import("node:os")>()),
+          homedir: () => home,
+        }));
+        const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+        const fs = await import("node:fs");
+        const logWrite = vi.spyOn(fs, "appendFileSync");
+        const { scheduleBackgroundInstall } = await import("./autoUpdate.js");
+        expect(scheduleBackgroundInstall("0.4.4", "0.4.3")).toBe(false);
+        expect(stderr).toHaveBeenCalledWith(expect.stringContaining(message));
+        expect(spawnSpy).not.toHaveBeenCalled();
+        expect(writeSpy).not.toHaveBeenCalled();
+        expect(logWrite).not.toHaveBeenCalled();
+      } finally {
+        vi.restoreAllMocks();
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("leaves no pending install when launched by a package script", async () => {
+    const { spawnSpy, writeSpy } = setupMocks({
+      installer: { kind: "bun", command: "bun add -g hyperframes@0.4.4" },
+      env: { npm_lifecycle_event: "preview", npm_config_color: "always" },
+    });
+    const { scheduleBackgroundInstall } = await import("./autoUpdate.js");
+    expect(scheduleBackgroundInstall("0.4.4", "0.4.3")).toBe(false);
+    expect(spawnSpy).not.toHaveBeenCalled();
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+
+  it("clears the pending update if the installer cannot enter its working directory", async () => {
+    const { spawnSpy, config } = setupMocks({
+      installer: { kind: "npm", command: "npm install -g hyperframes@0.4.4" },
+    });
+    const child = new EventEmitter();
+    spawnSpy.mockReturnValueOnce(child);
+    const { scheduleBackgroundInstall } = await import("./autoUpdate.js");
+
+    expect(scheduleBackgroundInstall("0.4.4", "0.4.3")).toBe(false);
+    child.emit("error", new Error("ENOENT"));
+    expect(config.pendingUpdate).toBeUndefined();
   });
 
   it("schedules nothing from a CLI that could not put itself on record as running", async () => {

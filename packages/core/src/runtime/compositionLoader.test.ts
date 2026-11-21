@@ -437,6 +437,25 @@ describe("loadCompositions external hosts", () => {
     );
   });
 
+  it.each(["https://example.com/scene.png", "https://example.com/scene.mp4?x=.html", "scene"])(
+    "never fetches a data-composition-src that is not an .html file: %s",
+    async (src) => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", src);
+      document.body.appendChild(host);
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response("<p>media as page</p>"));
+      const onDiagnostic = vi.fn();
+      await loadCompositions({ ...createLoaderParams(), onDiagnostic });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(host.innerHTML).not.toContain("media as page");
+      expect(onDiagnostic).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "external_composition_load_failed" }),
+      );
+    },
+  );
+
   it("calls onDiagnostic when HTTP response is not ok", async () => {
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/404.html");
@@ -1446,6 +1465,25 @@ describe("loadCompositions inline templates", () => {
     await loadFixture();
 
     expect(host.querySelector("p")?.textContent).toBe("Logo content");
+  });
+
+  // fails without the fix: an SVG element named template with the matching id counted as the host's template.
+  it("leaves hosts alone when only an SVG element named template matches their id", async () => {
+    document.body.innerHTML = `<svg><template id="card-template"><g></g></template></svg>`;
+    const hosts = [0, 1].map(() => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-id", "card");
+      return document.body.appendChild(host);
+    });
+
+    await loadFixture();
+
+    expect(
+      hosts.map((host) => [host.getAttribute("data-composition-id"), host.children.length]),
+    ).toEqual([
+      ["card", 0],
+      ["card", 0],
+    ]);
   });
 
   it("does nothing when no matching template exists", async () => {

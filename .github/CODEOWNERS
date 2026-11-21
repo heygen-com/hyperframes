@@ -1,3 +1,18 @@
+# Release and publish path: workflows, the composite actions they run, and the
+# scripts the publish and catalog workflows execute need a maintainer's review.
+/.github/workflows/ @miguel-heygen @jrusso1020
+/.github/actions/ @miguel-heygen @jrusso1020
+/.github/CODEOWNERS @miguel-heygen @jrusso1020
+/scripts/validate-release-channel.mjs @miguel-heygen @jrusso1020
+/scripts/package-agent-plugin.mjs @miguel-heygen @jrusso1020
+/scripts/publish-catalog.mjs @miguel-heygen @jrusso1020
+/scripts/ci/release-only-diff.mjs @miguel-heygen @jrusso1020
+/scripts/set-version.ts @miguel-heygen @jrusso1020
+/scripts/release-prepare.ts @miguel-heygen @jrusso1020
+/packages/aws-lambda/scripts/pin-handler-zip.ts @miguel-heygen @jrusso1020
+/packages/aws-lambda/scripts/stage-arm64-image.ts @miguel-heygen @jrusso1020
+
+# Later lines win: the PR-captures check stays Miguel's alone.
 /scripts/check-pr-captures.mjs @miguel-heygen
 /scripts/check-pr-captures.test.mjs @miguel-heygen
 /.github/workflows/pr-captures.yml @miguel-heygen

@@ -187,6 +187,13 @@
       "basis": "Operating-system metadata: it changes when a folder is browsed and would show as false edits and conflicts"
     },
     {
+      "id": "nested-hyperframes-state",
+      "regex": "(?:[^/]+/)+\\.hyperframes(?:/.*)?",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "A .hyperframes folder below the project root, such as one inside a project copied into compositions/, holds that copy's client records; only the root folder's named portable files below travel"
+    },
+    {
       "id": "portable-transcripts",
       "regex": "\\.hyperframes/transcripts/(?:[^/]+/)*[^/]+\\.json",
       "client_action": "include",
@@ -305,7 +312,10 @@
     "basis": "Desktop's podcast intake links the original camera files, which live outside the project, under assets/podcast/, and the page plays the transcodes under .hyperframes/prepared-assets/podcast/; real files there, such as the joins under assets/podcast/joins/, travel normally"
   },
   "stored_manifest": {
-    "legacy_agent_state_regex": "(?:[^/]+/)*(?:\\.claude|\\.agents|\\.cursor|\\.vscode|\\.idea)(?:/.*)?",
-    "rule": "Only stored snapshot reads use the v3 agent-state rule to retain immutable manifest digests. New captures and uploads use the current rules. Clients never install excluded paths; the server never signs their download URLs."
+    "legacy_rule_regexes": {
+      "agent-client-state": "(?:[^/]+/)*(?:\\.claude|\\.agents|\\.cursor|\\.vscode|\\.idea)(?:/.*)?",
+      "nested-hyperframes-state": "(?!)"
+    },
+    "rule": "Only stored snapshot reads use each listed rule's regex in place of its current one, to retain immutable manifest digests: agent-client-state its v3 regex, and nested-hyperframes-state, added after v4, none. New captures and uploads use the current rules. Clients never install excluded paths; the server never signs their download URLs."
   }
 }

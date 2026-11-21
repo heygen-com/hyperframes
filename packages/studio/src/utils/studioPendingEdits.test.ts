@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import {
+  setStudioPendingEditsSettled,
   addStudioPendingEditFlushListener,
   adoptingStudioPendingEdit,
   beginStudioPendingEdit,
@@ -513,4 +514,23 @@ it("counts an edit whose later write failed as saved once an earlier write lande
   edit.settle(committed.catch(() => undefined));
   const shown = paintBackNewestStudioPendingEdit()!;
   await expect(shown.landed()).resolves.toBe(true);
+});
+
+describe("every pending edit settled", () => {
+  it("is told once, when the last of two overlapping edits settles", async () => {
+    const told = vi.fn();
+    setStudioPendingEditsSettled(told);
+    try {
+      const first = beginStudioPendingEdit(null);
+      const second = beginStudioPendingEdit(null);
+      first.settle();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(told).not.toHaveBeenCalled();
+      second.settle();
+      await vi.waitFor(() => expect(told).toHaveBeenCalledOnce());
+    } finally {
+      setStudioPendingEditsSettled(null);
+    }
+  });
 });

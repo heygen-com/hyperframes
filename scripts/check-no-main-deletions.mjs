@@ -2135,6 +2135,26 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/cli/src/commands/cloud/render.pageMotionBlur.test.ts",
     "tests for the removed cloud render --page-motion-blur flag; the hosted render API never accepted the field",
   ],
+  [
+    "packages/engine/src/services/pageNetworkPolicy.ts",
+    "replaced by the browser-wide public-only proxy every render browser launches behind on a restricted host",
+  ],
+  [
+    "packages/engine/src/services/pageNetworkPolicy.browser.test.ts",
+    "its cases moved to renderNetwork.browser.test.ts, which drives the browser-wide proxy through a real capture session",
+  ],
+  [
+    "packages/engine/src/services/frameCapture-pageNetwork.test.ts",
+    "pinned the removed per-page filter; browserManager.test.ts pins when a render browser goes behind the proxy",
+  ],
+  [
+    "packages/studio/src/utils/authoredOpacity.ts",
+    "its two authored-opacity helpers moved into core's colorGrading, which the frame's own tween patch now calls; Studio imports them from there",
+  ],
+  [
+    "packages/studio/src/utils/htmlAttrSafety.ts",
+    "Studio's hand-synced copy of core's html-attr-safety rules; Studio imports core's now, one source",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

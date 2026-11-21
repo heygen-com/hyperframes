@@ -7,6 +7,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -25,6 +26,7 @@ import {
 import { extractVideoMetadata } from "../utils/ffprobe.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { COMPLETE_SENTINEL, GC_MARKER, SCHEMA_PREFIX } from "./extractionCache.js";
+import { defaultExtractCacheDir } from "../config.js";
 
 // Pass-through, so a test can tell whether extraction ran ffmpeg.
 vi.mock("../utils/runFfmpeg.js", async (importOriginal) => {
@@ -630,6 +632,37 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       stderr.mockRestore();
     }
   }, 60_000);
+
+  it.skipIf(process.getuid === undefined)(
+    "disables caching for this render when the default cache dir is a link",
+    async () => {
+      const savedTmpdir = process.env.TMPDIR;
+      const sharedTmp = mkdtempSync(join(tmpdir(), "hf-shared-tmp-"));
+      process.env.TMPDIR = sharedTmp;
+      const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      try {
+        const elsewhere = mkdtempSync(join(sharedTmp, "elsewhere-"));
+        symlinkSync(elsewhere, defaultExtractCacheDir());
+        const SRC = await synthCfrClip("cache-linked-src.mp4", 1);
+        const result = await extractWithCache(
+          cfrClipElement("linked", SRC, 1),
+          "out-cache-linked",
+          defaultExtractCacheDir(),
+        );
+
+        expect(result.errors).toEqual([]);
+        expect(result.phaseBreakdown.cacheMisses).toBe(0);
+        expect(readdirSync(elsewhere)).toEqual([]);
+        expect(String(stderr.mock.calls[0]?.[0])).toContain("caching disabled for this render");
+      } finally {
+        stderr.mockRestore();
+        if (savedTmpdir === undefined) delete process.env.TMPDIR;
+        else process.env.TMPDIR = savedTmpdir;
+        rmSync(sharedTmp, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
 
   it("invalidates the cache when fps changes", async () => {
     const CACHE_DIR = mkdtempSync(join(tmpdir(), "hf-extract-cache-test-"));

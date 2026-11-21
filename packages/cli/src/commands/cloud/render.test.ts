@@ -10,6 +10,7 @@ import {
   logsTick,
   resolveCloudFpsArg,
   parseAspectRatioFlag,
+  reencodeProgressLines,
   resolveAspectRatioForSubmit,
   validateDryRunSource,
   type ProjectInputSource,
@@ -180,7 +181,7 @@ describe("cloud render --dry-run of an imported project", () => {
 });
 
 describe("cloud render --dry-run with heavy media", () => {
-  it("plans the media as HeyGen asset uploads and leaves it out of the archive", () => {
+  it("sends every file in the zip when the project fits, with no uploads", () => {
     const dir = writeComposition(1920, 1080);
     writeFileSync(
       join(dir, "index.html"),
@@ -192,6 +193,7 @@ describe("cloud render --dry-run with heavy media", () => {
       join(dir, "clip.mp4"),
       Buffer.concat([mp4Header, Buffer.alloc(6 * 1024 * 1024 - mp4Header.length, 1)]),
     );
+    writeFileSync(join(dir, "unused-take.mp4"), Buffer.concat([mp4Header, Buffer.alloc(1024, 2)]));
     const result = spawnSync(
       "bun",
       ["run", cliEntry, "cloud", "render", dir, "--dry-run", "--json"],
@@ -214,13 +216,16 @@ describe("cloud render --dry-run with heavy media", () => {
         file_count: number;
         size_bytes: number;
         offloaded_media: Array<{ path: string; action: string; size_bytes: number }>;
+        largest_files: Array<{ path: string; size_bytes: number }>;
       };
     };
-    expect(archive.offloaded_media).toEqual([
-      { path: "clip.mp4", action: "upload", size_bytes: 6 * 1024 * 1024 },
+    // One zip is faster than any per-file upload, so media leaves it only when the zip would not fit.
+    expect(archive.offloaded_media).toEqual([]);
+    expect(archive.largest_files.map((file) => file.path)).toEqual([
+      "clip.mp4",
+      "unused-take.mp4",
+      "index.html",
     ]);
-    expect(archive.file_count).toBe(1);
-    expect(archive.size_bytes).toBeLessThan(64 * 1024);
   });
 });
 
@@ -276,6 +281,21 @@ describe("assertArchiveFits", () => {
     expect([...errors.mock.calls, ...logs.mock.calls].flat().join("\n")).toContain(
       "data/scan.tiff",
     );
+  });
+
+  it("names the largest files with control characters, line feeds included, as visible escapes", () => {
+    const esc = String.fromCharCode(27);
+    const errors = vi.mocked(console.error);
+    errors.mockClear();
+    expect(() =>
+      assertArchiveFits(200 * 1024 * 1024 + 1, [
+        { path: `a${esc}[2J\n  190.0 MB  b.tiff`, size_bytes: 190 * 1024 * 1024 },
+      ]),
+    ).toThrow(CliRuntimeError);
+    const printed = errors.mock.calls.flat().join("\n");
+
+    expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(printed).toContain("a\\x1b[2J\\x0a  190.0 MB  b.tiff");
   });
 });
 
@@ -408,5 +428,55 @@ describe("resolveAspectRatioForSubmit — local dir", () => {
     const output = printed.mock.calls.flat().join("\n");
     expect(output).toContain(`resolves to ${resolve(dir, "missing.html")}`);
     expect(output).toContain(`project directory ${resolve(dir)}`);
+  });
+});
+
+describe("reencodeProgressLines", () => {
+  it("writes one JSON line on stderr per whole percent, and per second when the length is unknown", () => {
+    const lines: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((line: string) => void lines.push(line));
+    let clock = 0;
+    const report = reencodeProgressLines(() => clock);
+
+    report({ path: "take.mkv", doneSeconds: 0.5, totalSeconds: 100 });
+    report({ path: "take.mkv", doneSeconds: 0.9, totalSeconds: 100 });
+    report({ path: "take.mkv", doneSeconds: 1.2, totalSeconds: 100 });
+    report({ path: "raw.mxf", doneSeconds: 3, totalSeconds: null });
+    clock = 400;
+    report({ path: "raw.mxf", doneSeconds: 3.5, totalSeconds: null });
+    clock = 1200;
+    report({ path: "raw.mxf", doneSeconds: 4, totalSeconds: null });
+
+    expect(lines.map((line) => JSON.parse(line))).toEqual([
+      {
+        event: "reencode_progress",
+        file: "take.mkv",
+        percent: 0,
+        done_seconds: 0.5,
+        total_seconds: 100,
+      },
+      {
+        event: "reencode_progress",
+        file: "take.mkv",
+        percent: 1,
+        done_seconds: 1.2,
+        total_seconds: 100,
+      },
+      {
+        event: "reencode_progress",
+        file: "raw.mxf",
+        percent: null,
+        done_seconds: 3,
+        total_seconds: null,
+      },
+      {
+        event: "reencode_progress",
+        file: "raw.mxf",
+        percent: null,
+        done_seconds: 4,
+        total_seconds: null,
+      },
+    ]);
+    vi.restoreAllMocks();
   });
 });

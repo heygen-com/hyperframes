@@ -10,6 +10,7 @@ type Registered = { fn: (...args: unknown[]) => void; args: unknown[] };
 function recordingSession(skipReadinessVideoIds: string[]) {
   const registered: Registered[] = [];
   const page = {
+    mainFrame: () => ({}),
     evaluateOnNewDocument: async (fn: Registered["fn"], ...args: unknown[]) => {
       registered.push({ fn, args });
     },

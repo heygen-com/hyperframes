@@ -1,5 +1,5 @@
 import { StudioFileConflictError, type StudioSaveDrainResult } from "./studioSaveDiagnostics";
-import { isTypingTarget } from "./typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 
 const STUDIO_FLUSH_PENDING_EDITS_EVENT = "hf-studio-flush-pending-edits";
 
@@ -32,6 +32,12 @@ let historyClaims: () => number = () => 0;
 
 export function setStudioPendingEditClaimClock(read: (() => number) | null): void {
   historyClaims = read ?? (() => 0);
+}
+
+let allSettled: (() => void) | null = null;
+
+export function setStudioPendingEditsSettled(run: (() => void) | null): void {
+  allSettled = run;
 }
 const NOT_SAVED = () => Promise.resolve(false);
 let cancelWaitingPress: (() => boolean) | null = null;
@@ -119,10 +125,11 @@ export function trackStudioPendingEdit(
     showAgain: null,
     claimsAtBegin: historyClaims(),
   });
-  promise.then(
-    () => pendingEdits.delete(promise),
-    () => pendingEdits.delete(promise),
-  );
+  const done = () => {
+    pendingEdits.delete(promise);
+    if (!pendingEdits.size) allSettled?.();
+  };
+  promise.then(done, done);
   return promise;
 }
 

@@ -28,6 +28,7 @@ function fakeChrome(reachesGpu: (env: NodeJS.ProcessEnv | undefined) => boolean)
   const launch = vi.fn(async (options: LaunchOptions) => ({
     connected: true,
     newPage: vi.fn().mockResolvedValue({
+      mainFrame: () => ({}),
       evaluate: vi.fn().mockResolvedValue(reachesGpu(options.env) ? D3D12 : NO_WEBGL),
     }),
     version: vi.fn().mockResolvedValue("HeadlessChrome/152.0.7977.30"),
@@ -47,6 +48,7 @@ describe("WSL GPU without WAYLAND_DISPLAY", () => {
 
   beforeEach(() => {
     process.env.WAYLAND_DISPLAY = "wayland-0";
+    vi.stubEnv("PRODUCER_HEADLESS_SHELL_PATH", process.execPath);
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
   });
@@ -58,6 +60,7 @@ describe("WSL GPU without WAYLAND_DISPLAY", () => {
     _setPuppeteerForTests(undefined);
     if (savedWayland === undefined) delete process.env.WAYLAND_DISPLAY;
     else process.env.WAYLAND_DISPLAY = savedWayland;
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 

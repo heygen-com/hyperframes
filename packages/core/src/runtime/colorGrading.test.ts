@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mediaElementTime } from "./mediaClock";
 import { PREVIEW_SEEK_HOLD_ATTR } from "../studioPreviewMark";
 import {
+  COLOR_GRADING_SOURCE_HIDDEN_ATTR,
   HF_COLOR_GRADING_ATTR,
   HF_COLOR_GRADING_EFFECT_KEYS,
   serializeHfColorGrading,
@@ -312,34 +313,30 @@ describe("createColorGradingRuntime", () => {
     runtime?.redraw();
   }
 
-  it("restores the authored inline opacity captured before animation transients", () => {
+  it("hides its source without touching the source's own opacity, which the canvas copies", () => {
     const video = makeDrawableVideo();
-    // Parse-time capture stamped the authored value; by hide time GSAP has
-    // already left a from()-tween transient (0) in the inline style.
-    video.setAttribute("data-hf-authored-opacity", "0.75");
-    video.style.opacity = "0";
-    startRuntimeWithVideo(video);
+    video.style.opacity = "0.75";
+    const { canvas } = startRuntimeWithVideo(video);
 
-    expect(video.style.getPropertyPriority("opacity")).toBe("important");
-
-    runtime?.destroy();
-    runtime = null;
-
-    // Restore must use the authored 0.75, not the GSAP transient 0.
+    expect(video.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
     expect(video.style.getPropertyValue("opacity")).toBe("0.75");
     expect(video.style.getPropertyPriority("opacity")).toBe("");
-  });
-
-  it("restores no inline opacity when the authored capture recorded none", () => {
-    const video = makeDrawableVideo();
-    video.setAttribute("data-hf-authored-opacity", "");
-    video.style.opacity = "0";
-    startRuntimeWithVideo(video);
+    expect(canvas.style.opacity).toBe("0.75");
 
     runtime?.destroy();
     runtime = null;
 
-    expect(video.style.getPropertyValue("opacity")).toBe("");
+    expect(video.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe(false);
+    expect(video.style.getPropertyValue("opacity")).toBe("0.75");
+  });
+
+  it("hides its source with a filter, keeping its hit area, with one rule for the whole document", () => {
+    startRuntimeWithVideo();
+    const rules = [...document.querySelectorAll("style")].filter((style) =>
+      style.textContent?.includes(`[${COLOR_GRADING_SOURCE_HIDDEN_ATTR}]`),
+    );
+    expect(rules).toHaveLength(1);
+    expect(rules[0]?.textContent).toContain("filter: opacity(0) !important");
   });
 
   it("re-syncs the graded canvas when the source's inline transform changes", async () => {
@@ -391,8 +388,7 @@ describe("createColorGradingRuntime", () => {
 
     expect(canvas.id).toBe("__hf_color_grading_hero-video");
     expect(video.style.getPropertyValue("visibility")).toBe("");
-    expect(video.style.getPropertyValue("opacity")).toBe("0");
-    expect(video.style.getPropertyPriority("opacity")).toBe("important");
+    expect(video.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
     expect(video.hasAttribute("data-hf-color-grading-source-hidden")).toBe(true);
     expect(canvas?.style.visibility).toBe("visible");
     expect(canvas?.style.opacity).toBe("1");
@@ -412,8 +408,7 @@ describe("createColorGradingRuntime", () => {
     expect(recreated).not.toBeNull();
     expect(recreated).toBe(canvas);
     expect(webglContexts()).toBe(1);
-    expect(video.style.getPropertyValue("opacity")).toBe("0");
-    expect(video.style.getPropertyPriority("opacity")).toBe("important");
+    expect(video.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
   });
 
   it("draws every graded clip through one WebGL context, however often a seek run shows and hides them", () => {
@@ -949,7 +944,7 @@ describe("createColorGradingRuntime", () => {
 
       expect(runtime.isGraded(canvas)).toBe(true);
       expect(runtime.getStatus("drawn")).toMatchObject({ state: "active" });
-      expect(canvas.style.getPropertyValue("opacity")).toBe("0");
+      expect(canvas.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
       expect(canvasUploads(canvas)).toBe(1);
 
       expect(runtime.redrawAnimated()).toBe(1);
@@ -1002,8 +997,7 @@ describe("createColorGradingRuntime", () => {
     runtime.redraw();
 
     expect(canvas.style.display).toBe("block");
-    expect(video.style.getPropertyValue("opacity")).toBe("0");
-    expect(video.style.getPropertyPriority("opacity")).toBe("important");
+    expect(video.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
   });
 
   it("caps a clip shown far larger than the screen to what a GPU can draw, keeping its shape", () => {
@@ -1029,7 +1023,7 @@ describe("createColorGradingRuntime", () => {
 
     const { video } = startRuntimeWithVideo();
 
-    expect(video.style.getPropertyValue("opacity")).not.toBe("0");
+    expect(video.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe(false);
   });
 
   it("gives a drawn clip back to its source when a later draw outgrows the drawing buffer", () => {
@@ -1038,14 +1032,14 @@ describe("createColorGradingRuntime", () => {
       type === "webgl" ? createMockWebGl({ drawingBuffer }) : type === "2d" ? mock2d() : null,
     );
     const { video, canvas } = startRuntimeWithVideo();
-    expect(video.style.getPropertyValue("opacity")).toBe("0");
+    expect(video.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
 
     drawingBuffer.width = 100;
     drawingBuffer.height = 100;
     Object.defineProperty(video, "offsetWidth", { value: 3000, configurable: true });
     video.dispatchEvent(new Event("seeked"));
 
-    expect(video.style.getPropertyValue("opacity")).not.toBe("0");
+    expect(video.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe(false);
     expect(canvas.style.display).toBe("none");
   });
 
@@ -1099,7 +1093,7 @@ describe("createColorGradingRuntime", () => {
     expect(canvas.style.opacity).toBe("0.75");
   });
 
-  it("drops the injected render frame's border while grading draws over it", () => {
+  it("hides the injected render frame while grading draws over it, and shows it after", () => {
     const video = makeDrawableVideo();
     Object.defineProperty(video, "readyState", {
       value: HTMLMediaElement.HAVE_METADATA,
@@ -1125,12 +1119,12 @@ describe("createColorGradingRuntime", () => {
     runtime.redraw();
 
     expect(canvas.style.display).toBe("block");
-    expect(frame.style.borderStyle).toBe("none");
+    expect(frame.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
 
-    video.style.border = "16px dashed rgb(255, 0, 0)";
     video.removeAttribute(HF_COLOR_GRADING_ATTR);
     runtime.refresh();
-    expect(frame.style.borderStyle).toBe("dashed");
+    expect(frame.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe(false);
+    expect(frame.style.borderStyle).toBe("solid");
   });
 
   it("keeps a staged scene copy's canvas on its own render frame (#3994)", async () => {
@@ -1199,7 +1193,6 @@ describe("createColorGradingRuntime", () => {
     runtime.redraw();
 
     expect(canvas.style.visibility).toBe("visible");
-    // Grading still owns the source's opacity hide, so the canvas keeps full opacity.
     expect(canvas.style.opacity).toBe("1");
   });
 
@@ -1224,7 +1217,7 @@ describe("createColorGradingRuntime", () => {
 
     expect(runtime.isGraded(image)).toBe(true);
     expect(image.nextElementSibling?.hasAttribute("data-hf-color-grading-canvas")).toBe(true);
-    expect(image.style.getPropertyValue("opacity")).toBe("0");
+    expect(image.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
   });
 
   it.each([
@@ -1251,34 +1244,16 @@ describe("createColorGradingRuntime", () => {
     expect(runtime.isGraded(image)).toBe(false);
   });
 
-  it("updates canvas opacity through grading's own hide when CSS animation progresses (#3329)", () => {
-    const video = makeDrawableVideo();
-    // Simulate a CSS entrance animation: the authored opacity is empty (no
-    // inline opacity), but at parse time the element has opacity 0 from the
-    // animation's initial keyframe.
-    video.setAttribute("data-hf-authored-opacity", "");
-    document.body.appendChild(video);
-
-    runtime = createColorGradingRuntime();
-    const canvas = document.querySelector<HTMLCanvasElement>("[data-hf-color-grading-canvas]");
-    if (!canvas) throw new Error("Expected color grading canvas");
-
-    // Source is hidden by color grading.
-    expect(video.style.getPropertyValue("opacity")).toBe("0");
-    expect(video.style.getPropertyPriority("opacity")).toBe("important");
-
-    // The canvas opacity should NOT be frozen at "0" — after the hide is
-    // temporarily lifted, jsdom's getComputedStyle returns "" (no inline
-    // opacity set), which the code normalizes to "1".
+  it("copies the source's animated opacity to the canvas on every redraw (#3329)", () => {
+    const { video, canvas } = startRuntimeWithVideo();
+    expect(video.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
     expect(canvas.style.opacity).toBe("1");
 
-    // Simulate the CSS animation progressing by re-reading after a redraw.
-    runtime.redraw();
-    expect(canvas.style.opacity).toBe("1");
+    video.style.opacity = "0.4";
+    runtime?.redraw();
 
-    // Source remains hidden throughout.
-    expect(video.style.getPropertyValue("opacity")).toBe("0");
-    expect(video.style.getPropertyPriority("opacity")).toBe("important");
+    expect(canvas.style.opacity).toBe("0.4");
+    expect(video.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
   });
 
   it("allows a drawable producer render frame to initialize hidden source grading", () => {
@@ -2324,7 +2299,7 @@ describe("createColorGradingRuntime", () => {
 
     expect(runtime?.getStatus("#hero-video").state).toBe("active");
     expect(video.hasAttribute("data-hf-color-grading-source-hidden")).toBe(true);
-    expect(video.style.getPropertyValue("opacity")).toBe("0");
+    expect(video.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
   });
 
   it("does not rescan the document when only text changes", async () => {

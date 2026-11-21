@@ -39,11 +39,12 @@ import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFi
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
-import { isStudioManualEditGestureLiveIn } from "../../components/editor/manualEditsDom";
+import { isStudioManualEditGestureLiveIn } from "../../components/editor/manualEditGesture";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { usePreviewQualityForwarding } from "./usePreviewQualityForwarding";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
+import { gestureDocumentOf } from "../../components/editor/previewSelection";
 import { sceneSwapFor, supersededByNewerEdit, swapFreshly } from "../sceneSwap";
 
 export interface UseTimelinePlayerOptions {
@@ -51,6 +52,7 @@ export interface UseTimelinePlayerOptions {
   onShadowPromoted?: () => void;
   /** A reload was abandoned (cause in the message); the previous preview is still showing. */
   onPreviewReloadFailed?: (message: string) => void;
+  holdPreviewStill?: (live: HTMLIFrameElement) => Promise<(() => void) | null>;
 }
 
 const publishSeek = (time: number, options?: { follow?: boolean }) =>
@@ -60,6 +62,7 @@ const publishSeek = (time: number, options?: { follow?: boolean }) =>
 export function useTimelinePlayer({
   onShadowPromoted,
   onPreviewReloadFailed,
+  holdPreviewStill,
 }: UseTimelinePlayerOptions = {}) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const rafRef = useRef<number>(0);
@@ -420,6 +423,7 @@ export function useTimelinePlayer({
     beginShadowReload,
     resetPreviewSlots,
     previewGeneration,
+    onLiveLoaded,
   } = useShadowPreviewReload({
     iframeRef,
     getAdapter,
@@ -434,6 +438,7 @@ export function useTimelinePlayer({
     applyPreviewAudioState,
     onPromoted: onShadowPromoted,
     onReloadFailed: onPreviewReloadFailed,
+    holdStill: holdPreviewStill,
     handOverPlayback: (time, playing) => {
       // keepPlaying: move the playhead without the paused-seek audio scrub.
       seek(time, { keepPlaying: true, follow: false });
@@ -498,8 +503,8 @@ export function useTimelinePlayer({
     // A newer edit, or anything replacing the live preview (a reload, a composition switch), wins.
     const isCurrent = () => gen === refreshGenRef.current && slot === previewGeneration();
     const swap = sceneSwapFor(iframe);
-    const swapWouldReplaceGestureNode =
-      !!iframe.contentDocument && isStudioManualEditGestureLiveIn(iframe.contentDocument);
+    const gestureDoc = gestureDocumentOf(iframe);
+    const swapWouldReplaceGestureNode = !!gestureDoc && isStudioManualEditGestureLiveIn(gestureDoc);
     if (!swap || isRefreshingRef.current || swapWouldReplaceGestureNode)
       return reloadWholeFilm(url.toString());
     swapFreshly(swap, url, isCurrent, cancel.signal, reloadWholeFilm);
@@ -566,13 +571,21 @@ export function useTimelinePlayer({
     });
   }, [applyPlaybackRate, applyPreviewAudioState]);
 
+  const onLiveIframeLoad = useCallback(
+    (context?: number) => {
+      onIframeLoad(context);
+      onLiveLoaded();
+    },
+    [onIframeLoad, onLiveLoaded],
+  );
+
   return {
     iframeRef,
     play,
     pause,
     togglePlay,
     seek,
-    onIframeLoad,
+    onIframeLoad: onLiveIframeLoad,
     refreshPlayer,
     saveSeekPosition,
     resetPlayer,

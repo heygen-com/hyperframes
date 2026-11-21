@@ -15,6 +15,7 @@ export {
   MenuRadioItem,
   MenuSeparator,
   MenuShortcut,
+  menuItemBase,
   popupSurface,
 } from "./components/ui/Menu";
 export type { MenuItemTone, PopupPreviewState } from "./components/ui/Menu";

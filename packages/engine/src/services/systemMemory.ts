@@ -8,7 +8,8 @@
  * it lives here once instead of being re-derived inline.
  */
 
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 import { readFileSync } from "fs";
 import { availableParallelism, cpus, freemem, platform, totalmem } from "os";
 
@@ -234,7 +235,9 @@ export function getAvailableMemoryMb(): number {
 
   if (platform() === "darwin") {
     try {
-      const raw = execSync("vm_stat", { encoding: "utf-8", timeout: 5000 });
+      const vmStat = findTrustedExecutable("vm_stat");
+      if (!vmStat) return fallback;
+      const raw = execFileSync(vmStat, [], { encoding: "utf-8", timeout: 5000 });
       const pageSize = parseInt(raw.match(/page size of (\d+)/)?.[1] ?? "0", 10);
       if (!pageSize) return fallback;
 
@@ -272,7 +275,27 @@ export function getAvailableMemoryMb(): number {
 
 /** CPUs this process may run on: a cpuset (taskset, --cpuset-cpus) lowers it, a CPU quota does not. */
 export function usableCpuCount(): number {
-  return availableParallelism();
+  // libuv clamps availableParallelism() to a cgroup v2 quota; getCgroupCpuLimit owns the quota, so count the affinity.
+  if (getCgroupCpuLimit() === null) return availableParallelism();
+  const affinity = countCpuList(readCgroupFile("/proc/self/status"));
+  // The affinity mask can name offline CPUs; cpus() lists only online ones.
+  return affinity === null ? availableParallelism() : Math.min(affinity, cpus().length);
+}
+
+/** Whole CPUs of time this process gets: the usable CPUs, lowered by a CPU quota. */
+export function cpuBudget(): number {
+  const quota = getCgroupCpuLimit();
+  return Math.max(1, Math.min(usableCpuCount(), quota === null ? Infinity : Math.floor(quota)));
+}
+
+function countCpuList(status: string | null): number | null {
+  const list = status?.match(/^Cpus_allowed_list:\s*(\S+)/m)?.[1];
+  if (!list) return null;
+  const count = list.split(",").reduce((sum, range) => {
+    const [first, last = first] = range.split("-").map(Number);
+    return sum + last! - first! + 1;
+  }, 0);
+  return count > 0 ? count : null;
 }
 
 export function hostCpuCount(): number {

@@ -189,6 +189,25 @@ describe.skipIf(!ffmpeg)("inspectAudio", () => {
   });
 });
 
+describe("inspectAudio on a remote video", () => {
+  it("does not probe a remote video, and does not call a film it may sound in silent", async () => {
+    const probed: string[] = [];
+    const findings = await inspectAudio(
+      dir,
+      "index.html",
+      media([], [{ src: "http://127.0.0.1:8080/talk.mp4", hasAudio: true }]),
+      {
+        renderAccepts: () => Promise.reject(new Error("no audio clips to probe")),
+        probeAudio: () => Promise.reject(new Error("no audio clips to probe")),
+        isSilent: () => Promise.reject(new Error("no audio clips to decode")),
+        videoHasAudio: async (path) => (probed.push(path), false),
+      },
+    );
+    expect(probed).toEqual([]);
+    expect(findings).toEqual([]);
+  });
+});
+
 describe("inspectAudio on a project of many clips trimmed from few files", () => {
   it("probes each file once, however many clips are cut from it", async () => {
     const probes = { accepts: 0, audio: 0, silence: 0 };

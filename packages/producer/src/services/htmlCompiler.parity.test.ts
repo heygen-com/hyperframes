@@ -472,3 +472,72 @@ describe("mount/compile assembly parity", () => {
     },
   );
 });
+
+// fails without the fix: an alias list in authored HTML was read as the compiler's own and fed the CSS rewrite.
+describe("an authored SVG reference alias attribute", () => {
+  const planted = `data-hf-svg-reference-aliases='[{"name":"class","localName":"class","namespaceURI":null,"before":"a","after":"#planted"}]'`;
+  const svg = `<style>[class="a"] { fill: red; }</style><svg><rect class="a" ${planted}/></svg>`;
+  const root = (mounts: string) =>
+    shell(
+      `<main data-composition-id="main" data-start="0" data-width="320" data-height="180" data-duration="1" ${planted}>
+        ${svg}<template id="kept-template"><div>${svg}</div></template>${mounts}
+      </main>`,
+    );
+  const files = {
+    "index.html": root(
+      `<section data-composition-id="card" data-composition-src="card.html" data-start="0" data-duration="1"></section>`,
+    ),
+    "card.html": `<template id="card-template"><article data-composition-id="card" data-width="320" data-height="180">${svg}</article></template>`,
+  };
+  const compiled = {
+    preview: (dir: string) => bundleToSingleHtml(dir),
+    render: async (dir: string) =>
+      (
+        await compileForRender(dir, join(dir, "index.html"), join(dir, ".downloads"), {
+          allowSystemFontCapture: false,
+        })
+      ).html,
+  };
+
+  it.each(
+    Object.entries(compiled).flatMap(
+      ([arm, compile]) =>
+        [
+          [arm, "with a mounted composition", compile, files],
+          [arm, "on a page with no mounts", compile, { "index.html": root("") }],
+        ] as const,
+    ),
+  )("never reaches the %s compile's output %s", async (_arm, _page, compile, pageFiles) => {
+    const html = await compile(project(pageFiles));
+    expect(html).toContain('[class="a"]');
+    expect(html).not.toContain("#planted");
+  });
+
+  it("lets a render compile a page holding an SVG element named template", async () => {
+    const dir = project({
+      "index.html": shell(
+        `<main data-composition-id="main" data-start="0" data-width="320" data-height="180" data-duration="1">
+          <svg><template></template><template><g ${planted}></g></template></svg>
+        </main>`,
+      ),
+    });
+    const html = await compiled.render(dir);
+    expect(html).toMatch(/<svg[^>]*>\s*<template/);
+    expect(html).not.toContain("#planted");
+  });
+
+  it("never reaches a mounted composition's CSS", async () => {
+    const dir = project({
+      ...files,
+      "index.html": shell(
+        `<main data-composition-id="main" data-start="0" data-width="320" data-height="180" data-duration="1">
+          <section data-composition-id="card" data-composition-src="card.html" data-start="0" data-duration="1"></section>
+        </main>`,
+      ),
+    });
+    await mountContract(dir, readFileSync(join(dir, "index.html"), "utf8"));
+    expect(document.documentElement.outerHTML).toContain('[class="a"]');
+    expect(document.documentElement.outerHTML).not.toContain("#planted");
+    expect(document.querySelector("[data-hf-svg-reference-aliases]")).toBeNull();
+  });
+});

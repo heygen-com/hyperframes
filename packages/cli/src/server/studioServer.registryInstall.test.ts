@@ -37,6 +37,7 @@ const block = (name: string, dependencies?: string[]) => ({
 });
 const ITEMS = [
   block("studio-drop-block"),
+  { ...block("studio-drop-retired"), deprecated: "use \u001b]0;t\u0007other" },
   block("studio-drop-other"),
   block("studio-drop-parent", ["studio-drop-part"]),
   {
@@ -125,6 +126,19 @@ function installer(link: string) {
 }
 
 describe("Studio catalog install", () => {
+  it("writes a registry warning to stderr with control characters escaped", async () => {
+    const { link } = projectWithRegistry();
+    const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await installer(link)("studio-drop-retired");
+      const line = write.mock.calls.map(([chunk]) => String(chunk)).join("");
+      expect(line).toContain("use \\x1b]0;t\\x07other");
+      for (const control of ["\u001b", "\u0007"]) expect(line).not.toContain(control);
+    } finally {
+      write.mockRestore();
+    }
+  });
+
   it("answers that the project folder is gone when it is renamed while the item downloads", async () => {
     let real = "";
     ({ real } = projectWithRegistry(() => renameSync(real, `${real}-renamed`)));

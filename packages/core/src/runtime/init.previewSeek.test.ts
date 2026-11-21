@@ -994,6 +994,27 @@ it("keeps pending-seek Play synchronous in an unmarked Safari player frame", () 
   expect(next.some(({ video }) => vi.mocked(video.play).mock.calls.length > 0)).toBe(true);
 });
 
+it.each([
+  [
+    "Chrome",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+  ],
+  ["Firefox", "Mozilla/5.0 (X11; Linux x86_64; rv:160.0) Gecko/20100101 Firefox/160.0"],
+])(
+  "moves the playhead at once on a paused seek in a %s player frame, with no picture held",
+  (_, userAgent) => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
+    const frame = document.createElement("iframe");
+    frame.setAttribute(PLAYER_FRAME_ATTR, "");
+    vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
+    const { main } = film(false, false);
+    void window.__player!.seek(6);
+    expect(main.time?.()).toBe(6);
+    expect(document.querySelectorAll("canvas")).toHaveLength(0);
+    expect(document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)).toBe(false);
+  },
+);
+
 it("retains an explicit unmarked provider handoff before its first picture", async () => {
   const { main, old, next } = safariPlayerFilm();
   for (const video of old) video.metadataAt(0);

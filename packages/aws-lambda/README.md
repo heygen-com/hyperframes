@@ -90,10 +90,10 @@ when `sites/<id>/files.json` is missing, the render uses that site's
 
 The package supports two Chromium sources:
 
-| Source                          | Default | Size               | When to pick it                                                                                                       |
-| ------------------------------- | ------- | ------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `@sparticuz/chromium`           | yes     | ~70 MiB compressed | Lambda. Decompresses into `/tmp` at runtime; the rest of the ecosystem already uses it for headless-Chrome-in-Lambda. |
-| Bundled `chrome-headless-shell` | no      | ~140 MiB           | Fallback. Used if `@sparticuz/chromium` ever drops `HeadlessExperimental.beginFrame` support.                         |
+| Source                          | Default | Size               | When to pick it                                                                                                           |
+| ------------------------------- | ------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `@sparticuz/chromium`           | yes     | ~70 MiB compressed | Lambda. Decompresses into `/tmp` at runtime; the rest of the ecosystem already uses it for headless-Chrome-in-Lambda.     |
+| Bundled `chrome-headless-shell` | no      | ~296 MB            | Does not fit a ZIP function today. Kept for the case where `@sparticuz/chromium` drops `HeadlessExperimental.beginFrame`. |
 
 Pick the source at build time:
 
@@ -102,9 +102,22 @@ bun run --cwd packages/aws-lambda build:zip
 bun run --cwd packages/aws-lambda build:zip -- --source=chrome-headless-shell
 ```
 
-The handler reads `HYPERFRAMES_LAMBDA_CHROME_SOURCE` at boot. The build
-script sets that env var via Lambda function configuration in
-`examples/aws-lambda/template.yaml`.
+The handler reads `HYPERFRAMES_LAMBDA_CHROME_SOURCE` at boot, and for
+`chrome-headless-shell` the executable from `HYPERFRAMES_LAMBDA_CHROME_PATH`.
+The build stages the repo's pinned shell build, and only when its folder
+matches that build's pinned digest. It stages the whole folder (the
+executable needs its ICU data and `.pak` files beside it), which is over
+Lambda's 250 MiB unzipped limit for a ZIP function, so the build fails its
+size gate and the x86 ZIP ships `@sparticuz/chromium`. For the same reason
+`hyperframes lambda deploy`, `examples/aws-lambda/template.yaml` and the CDK
+construct refuse `chrome-headless-shell` as the ZIP's Chrome source.
+
+The arm64 video image (`image/Dockerfile`, `video` target) does not use
+`@sparticuz/chromium`: it installs Chrome for Testing's linux-arm64
+`chrome-headless-shell` folder, pinned by version and sha256, with the shared
+libraries it needs, and sets both env vars itself. It keeps `@sparticuz/chromium`'s
+fonts and `fonts.conf` from the handler ZIP, so text resolves to the same fonts as
+on the x86 function; CI compares the two on a mixed-script page.
 
 ## BeginFrame regression guard
 
@@ -122,7 +135,9 @@ bun run --cwd packages/aws-lambda probe:beginframe:docker
 The probe boots `@sparticuz/chromium` inside
 `public.ecr.aws/lambda/nodejs:22` and asserts CDP `beginFrame` with
 `screenshot: true` returns a PNG buffer. Exit code 0 = green; non-zero =
-fall back to bundling chrome-headless-shell directly via `--source=chrome-headless-shell`.
+`@sparticuz/chromium` lost BeginFrame. `--source=chrome-headless-shell` does
+not fit a ZIP function, so that function would move to a container image like
+the arm64 video function.
 
 ## Building the ZIP
 
@@ -142,7 +157,9 @@ designed to extract cleanly into Lambda's `/var/task/`.
 - Unzipped ≤ 248 MiB (in-house budget; Lambda hard ceiling is 250 MiB unzipped — AWS docs label this "250 MB" but use binary mebibytes)
 - Zipped ≤ 150 MiB (in-house budget; Lambda has no hard zipped cap for S3-deployed functions)
 
-CI fails the PR if either is exceeded.
+The sparticuz ZIP is about 1.5 MiB under the unzipped budget, and the handler
+bundles the producer, engine and core. So the `Lambda handler ZIP` workflow
+builds it on every PR that touches them, and fails the PR if either is exceeded.
 
 ## Running tests
 
