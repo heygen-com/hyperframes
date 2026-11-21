@@ -226,9 +226,9 @@
   "dependencies": {
     "@hyperframes/core": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
-    "hono": "^4.13.16",
-    "linkedom": "^0.18.12",
-    "postcss": "^8.5.8",
+    "hono": "^4.13.19",
+    "linkedom": "^0.18.15",
+    "postcss": "^8.5.33",
     "postcss-selector-parser": "^7.1.7"
   },
   "devDependencies": {

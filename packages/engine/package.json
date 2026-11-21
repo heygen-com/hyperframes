@@ -114,14 +114,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hono/node-server": "^2.1.6",
+    "@hono/node-server": "^2.1.11",
     "@hyperframes/core": "workspace:^",
     "@hyperframes/parsers": "workspace:^",
-    "hono": "^4.13.16",
-    "linkedom": "^0.18.12",
+    "hono": "^4.13.19",
+    "linkedom": "^0.18.15",
     "puppeteer": "~25.13.0",
     "puppeteer-core": "^25.13.0",
-    "undici": "7.30.1"
+    "undici": "7.30.2"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

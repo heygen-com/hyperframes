@@ -12,7 +12,7 @@
   "dependencies": {
     "@hyperframes/core": "workspace:*",
     "@hyperframes/sdk": "workspace:*",
-    "gsap": "^3.15.0"
+    "gsap": "^3.15.1"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
