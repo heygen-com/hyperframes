@@ -6,7 +6,13 @@ import {
   type CaptureSession,
 } from "./frameCapture.js";
 
-type Reading = { arrived: string[]; waiting: string[]; broken: string[] };
+type Reading = {
+  arrived: string[];
+  waiting: string[];
+  broken: string[];
+  timings?: Record<string, unknown>;
+  origin?: string;
+};
 
 function sessionReading(readings: Reading[], late: string[], playerReadyTimeout = 60_000) {
   const evaluate = vi.fn(async () => readings.shift() ?? { arrived: [], waiting: [], broken: [] });
@@ -41,6 +47,60 @@ describe("waitForShownLateImages", () => {
     expect(session.lateImages.size).toBe(0);
     await waitForShownLateImages(session, 13);
     expect(evaluate).toHaveBeenCalledTimes(2);
+  });
+
+  it("logs one load-time record when a late image arrives, without its file name", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const timing = {
+        startTime: 0,
+        fetchStart: 0,
+        connectStart: 0,
+        connectEnd: 0,
+        requestStart: 30_000,
+        responseStart: 30_005,
+        responseEnd: 30_006,
+      };
+      const { session } = sessionReading(
+        [
+          { arrived: [], waiting: [PHOTO], broken: [] },
+          {
+            arrived: [PHOTO],
+            waiting: [],
+            broken: [],
+            timings: { [PHOTO]: timing },
+            origin: "http://localhost:1",
+          },
+        ],
+        [PHOTO],
+      );
+      await waitForShownLateImages(session, 12);
+      await waitForShownLateImages(session, 13);
+      const records = warn.mock.calls.filter(
+        ([text]) => text === "[FrameCapture:late_image_arrived]",
+      );
+      expect(records).toEqual([
+        [
+          "[FrameCapture:late_image_arrived]",
+          {
+            frameIndex: 12,
+            from: "page-server",
+            pathDepth: 2,
+            extension: "png",
+            timing: {
+              requestedAtMs: 0,
+              queuedMs: 30_000,
+              connectMs: 0,
+              firstByteMs: 5,
+              downloadMs: 1,
+            },
+          },
+        ],
+      ]);
+      expect(JSON.stringify(records)).not.toContain("photo");
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("captures on when the late image is not in this frame, and keeps it listed", async () => {
