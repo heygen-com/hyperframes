@@ -116,7 +116,7 @@ function spellLike(
   return SPELLINGS[context.syntax](path, context);
 }
 
-export function referenceSyntax(file: string): ReferenceSyntax {
+function referenceSyntax(file: string): ReferenceSyntax {
   if (/\.html$/i.test(file)) return "html";
   if (/\.css$/i.test(file)) return "css";
   if (/\.(?:[cm]?js|jsx|tsx?|json)$/i.test(file)) return "script";
