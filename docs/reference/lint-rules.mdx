@@ -949,3 +949,9 @@ Source: the project lint pass in `packages/lint/src/project.ts`, `packages/lint/
 **Warning.** A video's `data-media-start` sits at or past the source's playable duration, so the video holds its final frame for the whole slot.
 
 **Fix:** Trim `data-media-start` below the source duration if the final-frame hold is unintended.
+
+### `video_slot_outlasts_source`
+
+**Warning.** A video's `data-duration` is longer than the source it has left to play (from `data-media-start`, at its `data-playback-rate`), so the video holds its final frame for the rest of the slot. Holds of 0.1 s or less are not reported, nor are looping videos or videos with a rate lane.
+
+**Fix:** Shorten `data-duration` to what the source covers, add `loop`, or use a longer source if the final-frame hold is unintended.
