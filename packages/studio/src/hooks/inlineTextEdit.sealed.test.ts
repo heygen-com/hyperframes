@@ -16,6 +16,7 @@ import { describePreviewElements, previewTextEdit } from "../player/lib/previewE
 import { retirePreviewEditingClient } from "../player/lib/previewChannel";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
+import { forgetLandedText } from "./textSaves";
 import { useInlineTextEdit, type InlineTextEditCommit } from "./useInlineTextEdit";
 import { hasStudioPendingEdits } from "../utils/studioPendingEdits";
 
@@ -42,6 +43,7 @@ afterEach(() => {
 
 const PATH = "index.html";
 const ORIGINAL = "Hello <b>world</b>";
+const nextTask = () => new Promise((resolve) => setTimeout(resolve));
 
 const OPTIONS = { activeCompositionPath: PATH, isMasterView: false, skipSourceProbe: true };
 
@@ -50,11 +52,14 @@ async function select(iframe: HTMLIFrameElement, id: string) {
   return (await resolvePreviewSelection(iframe, found!, OPTIONS))!;
 }
 
-async function sealedTitle(ports: MessagePort[] = []) {
+async function sealedTitle(
+  ports: MessagePort[] = [],
+  wrap: (port: MessagePort) => MessagePort = (port) => port,
+) {
   document.body.innerHTML = `<h1 id="title">${ORIGINAL}</h1><p id="other">x</p>`;
   const title = document.getElementById("title")!;
   const { iframe, reload } = sealedFrame({
-    wrapHandedOverPort: (port) => (ports.push(port), port),
+    wrapHandedOverPort: (port) => (ports.push(port), wrap(port)),
   });
   return { title, iframe, reload, selection: await select(iframe, "title") };
 }
@@ -252,6 +257,244 @@ function held() {
   const lookup = { entered, wait: new Promise<void>((resolve) => (release = resolve)) };
   return { lookup, reached, release };
 }
+
+/** The inline editor wired to the real commit pipeline, as the canvas wires them. */
+function wiredEditor(
+  iframe: HTMLIFrameElement,
+  selection: DomEditSelection,
+  persist: PersistDomEditOperations,
+  lookups: Array<{ entered: () => void; wait: Promise<void> }> = [],
+) {
+  let controls!: ReturnType<typeof useInlineTextEdit>;
+  let commits!: ReturnType<typeof useDomEditTextCommits>;
+  mount(() => {
+    commits = useDomEditTextCommits({
+      activeCompPath: PATH,
+      previewIframeRef: { current: iframe },
+      showToast: vi.fn(),
+      domEditSelection: selection,
+      applyDomSelection: vi.fn(),
+      refreshDomEditSelectionFromPreview: vi.fn(),
+      buildDomSelectionFromTarget: async (target, options) => {
+        const gate = lookups.shift();
+        gate?.entered();
+        await gate?.wait;
+        return resolveFoundSelection(iframe, target, { ...OPTIONS, ...options });
+      },
+      persistDomEditOperations: persist,
+      resolveImportedFontAsset: () => null,
+      readOnlyPreview: false,
+    });
+    controls = useInlineTextEdit({ onCommit: commits.handleDomRichTextCommit });
+  });
+  return { controls: () => controls, commits: () => commits };
+}
+
+/** A sealed heading whose frame answers `end` only when the test lets it. */
+async function sealedTitleHoldingEnds() {
+  let holding: MessageEvent[] | null = null;
+  const ends = new Set<unknown>();
+  let deliver: (event: MessageEvent) => void = () => {};
+  const title = (await sealedTitle([], (port) => {
+    const send = port.postMessage.bind(port);
+    port.postMessage = (data: unknown) => {
+      const message = data as { id?: unknown; kind?: string; params?: { action?: string } };
+      if (message.kind === "text-edit" && message.params?.action === "end") ends.add(message.id);
+      send(data);
+    };
+    const accessor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(port), "onmessage")!;
+    Object.defineProperty(port, "onmessage", {
+      set(handler: (event: MessageEvent) => void) {
+        deliver = handler;
+        accessor.set!.call(port, (event: MessageEvent) => {
+          const held = holding && ends.has((event.data as { id?: unknown })?.id);
+          return held ? holding!.push(event) : handler(event);
+        });
+      },
+    });
+    return port;
+  })) as Awaited<ReturnType<typeof sealedTitle>>;
+  const holdEndReplies = () => {
+    holding = [];
+    return () => {
+      const events = holding ?? [];
+      holding = null;
+      events.forEach((event) => deliver(event));
+    };
+  };
+  return { ...title, holdEndReplies };
+}
+
+const enter = (el: HTMLElement) =>
+  el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+
+it("saves a newer blur-ended edit last when the older edit's end reply comes late", async () => {
+  const { title, iframe, selection, holdEndReplies } = await sealedTitleHoldingEnds();
+  const { saved, persist } = fileWrites();
+  const { controls } = wiredEditor(iframe, selection, persist);
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.innerHTML = "First";
+  const release = holdEndReplies();
+  act(() => controls().commit());
+  act(() => void controls().start(selection.element));
+  await settled(iframe, selection);
+  title.innerHTML = "Second";
+  title.dispatchEvent(new FocusEvent("blur"));
+  await vi.waitFor(() => expect(saved).toContain("title=Second"));
+  release();
+  await settled(iframe, selection);
+  await nextTask();
+  expect(saved.at(-1)).toBe("title=Second");
+});
+
+it("keeps a Design panel save made while an older inline save was still looking up its target", async () => {
+  const { iframe, selection } = await sealedTitle();
+  const { saved, persist } = fileWrites();
+  const first = held();
+  const { commits } = wiredEditor(iframe, selection, persist, [first.lookup]);
+  const older = act(() =>
+    commits().handleDomRichTextCommit({
+      element: selection.element,
+      html: "First",
+      previousHtml: ORIGINAL,
+    }),
+  );
+  await first.reached;
+  await act(() => commits().handleDomTextCommitForSelection(selection, "Newer"));
+  first.release();
+  await older;
+  expect(saved.at(-1)).toBe("title=Newer");
+});
+
+it("saves the inline edit last when the Design panel saved the heading while that edit was open", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  const { saved, persist } = fileWrites();
+  const { controls, commits } = wiredEditor(iframe, selection, persist);
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  await act(() => commits().handleDomTextCommitForSelection(selection, "Panel"));
+  title.innerHTML = "Inline";
+  act(() => controls().commit());
+  await vi.waitFor(() => expect(saved.at(-1)).toBe("title=Inline"));
+  await settled(iframe, selection);
+  expect(saved.at(-1)).toBe("title=Inline");
+});
+
+it("lands the newer of two saves of a heading last when the older write is slow", async () => {
+  const { iframe, selection } = await sealedTitle();
+  const landed: string[] = [];
+  let finishOlder!: () => void;
+  const persist = vi.fn<PersistDomEditOperations>(async (_, operations, options) => {
+    if (options?.shouldSave?.() === false) return;
+    const value = String(operations[0]!.value);
+    if (value === "Older") await new Promise<void>((resolve) => (finishOlder = resolve));
+    landed.push(value);
+  });
+  const { commits } = wiredEditor(iframe, selection, persist);
+  const commit = (html: string) =>
+    act(() =>
+      commits().handleDomRichTextCommit({
+        element: selection.element,
+        html,
+        previousHtml: ORIGINAL,
+      }),
+    );
+  const older = commit("Older");
+  await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(1));
+  const newer = commit("Newer");
+  await nextTask();
+  await nextTask();
+  finishOlder();
+  await older;
+  await newer;
+  expect(landed).toEqual(["Older", "Newer"]);
+});
+
+it("leaves another writer's text on the canvas when a later save fails after it", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  let fail!: (error: Error) => void;
+  const persist = vi
+    .fn<PersistDomEditOperations>()
+    .mockResolvedValueOnce(undefined)
+    .mockImplementationOnce(() => new Promise((_, reject) => (fail = reject)));
+  const { commits } = wiredEditor(iframe, selection, persist);
+  await act(() =>
+    commits().handleDomRichTextCommit({
+      element: selection.element,
+      html: "First",
+      previousHtml: ORIGINAL,
+    }),
+  );
+  await settled(iframe, selection);
+  const later = act(() =>
+    commits().handleDomRichTextCommit({
+      element: selection.element,
+      html: "Second",
+      previousHtml: "First",
+    }),
+  );
+  await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(2));
+  await settled(iframe, selection);
+  title.innerHTML = "Undone";
+  forgetLandedText();
+  fail(new Error("disk full"));
+  await later;
+  await settled(iframe, selection);
+  await nextTask();
+  expect(title.innerHTML).toBe("Undone");
+});
+
+it("keeps the last saved text on the canvas when an Enter-submitted draft fails after a refused redraw", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  const persist = vi
+    .fn<PersistDomEditOperations>()
+    .mockResolvedValueOnce(undefined)
+    .mockRejectedValueOnce(new Error("disk full"));
+  const first = held();
+  const { controls, commits } = wiredEditor(iframe, selection, persist, [first.lookup]);
+  const saving = act(() =>
+    commits().handleDomRichTextCommit({
+      element: selection.element,
+      html: "First",
+      previousHtml: ORIGINAL,
+    }),
+  );
+  await first.reached;
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  first.release();
+  await saving;
+  title.innerHTML = "Second";
+  enter(title);
+  await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(2));
+  await settled(iframe, selection);
+  await nextTask();
+  await settled(iframe, selection);
+  expect(title.innerHTML).toBe("First");
+});
+
+it("shows the newer of two saves whose redraws were refused once the open edit is cancelled", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  const { persist } = fileWrites();
+  const { controls, commits } = wiredEditor(iframe, selection, persist);
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  for (const html of ["First", "Second"])
+    await act(() =>
+      commits().handleDomRichTextCommit({
+        element: selection.element,
+        html,
+        previousHtml: ORIGINAL,
+      }),
+    );
+  await settled(iframe, selection);
+  act(() => controls().cancel());
+  await settled(iframe, selection);
+  await nextTask();
+  await settled(iframe, selection);
+  expect(title.innerHTML).toBe("Second");
+});
 
 it("drops an older save of a heading that resumes after a newer save of it", async () => {
   const { iframe, selection } = await sealedTitle();
