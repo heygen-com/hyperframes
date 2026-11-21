@@ -158,6 +158,7 @@ type CaptureStep =
   | "injecting video frames"
   | "waiting for page seek handlers"
   | "loading color-grading LUTs"
+  | "settling deferred DOM updates"
   | "compositing the page"
   | "capturing the frame"
   | "waiting for a late image";
@@ -3614,6 +3615,135 @@ async function seekPageTimeline(
   );
 }
 
+/**
+ * Wall-clock budget for {@link settlePostSeekDomUpdates}: in-page clocks are
+ * virtualized, so it is armed via the shim's `originalSetTimeout`. Tune with
+ * `HF_POST_SEEK_SETTLE_MS`; 0 disables the settle.
+ */
+const POST_SEEK_SETTLE_BUDGET_MS = Number(process.env.HF_POST_SEEK_SETTLE_MS ?? "1500");
+
+interface PostSeekSettleStats {
+  /** Callback executions the post-seek drain ran (0 when the queue settled in `__hf.seek`). */
+  drainedRan: number;
+  /** Deferred callbacks still queued when the drain caps stopped it. */
+  drainPending: number;
+  fontsPending: boolean;
+  imagesDecoded: number;
+  paintsCommitted: number;
+}
+
+/**
+ * Per-seek readiness barrier for the capture path (heygen-com/hyperframes#5888).
+ * `__hf.seek` flushes one rAF turn at the authored time; this drains what a
+ * deferred DOM update chains past that turn — callbacks queued by post-seek
+ * hooks, fonts and image decodes that only start once the drained DOM forces
+ * layout — and, when the compositor free-runs, commits two native paints so
+ * the screenshot cannot race the commit. BeginFrame sessions skip that wait:
+ * the capture's own BeginFrame is the commit and a native rAF would stall on
+ * the locked compositor.
+ */
+export async function settlePostSeekDomUpdates(
+  page: Pick<Page, "evaluate">,
+  allowNativePaintWait: boolean,
+): Promise<PostSeekSettleStats | null> {
+  if (!(POST_SEEK_SETTLE_BUDGET_MS > 0)) return null;
+  return page.evaluate(
+    async ({ allowPaint, budgetMs }): Promise<PostSeekSettleStats> => {
+      const root = globalThis as typeof globalThis & {
+        __HF_VIRTUAL_TIME__?: {
+          originalSetTimeout?: (cb: () => void, ms?: number) => unknown;
+          originalRequestAnimationFrame?: (cb: (time: number) => void) => unknown;
+          drainAnimationFrames?: (
+            maxTurns?: number,
+            maxCallbacks?: number,
+          ) => { turns: number; ran: number; pending: number };
+          readonly lastDrain?: { turns: number; ran: number; pending: number };
+        };
+        __hfDecodeDynamicCssBackgroundImages?: () => Promise<void>;
+        __hf_seek_settle_decoded?: WeakMap<HTMLImageElement, string>;
+      };
+      const empty: PostSeekSettleStats = {
+        drainedRan: 0,
+        drainPending: 0,
+        fontsPending: false,
+        imagesDecoded: 0,
+        paintsCommitted: 0,
+      };
+      const vt = root.__HF_VIRTUAL_TIME__;
+      if (!vt || typeof vt.drainAnimationFrames !== "function") return empty;
+
+      let expired = false;
+      const deadline = new Promise<void>((resolve) =>
+        (vt.originalSetTimeout ?? setTimeout)(() => {
+          expired = true;
+          resolve();
+        }, budgetMs),
+      );
+      const bounded = <T>(work: Promise<T>): Promise<T | void> => Promise.race([work, deadline]);
+      const stats: PostSeekSettleStats = { ...empty };
+
+      // Deferred work can be queued after `__hf.seek` returns (seek-completion
+      // handlers, video-frame injection, LUT application); drain it at the same
+      // virtual time so capture observes the settled DOM.
+      const seekDrainRan = vt.lastDrain?.ran ?? 0;
+      const drain = vt.drainAnimationFrames();
+      stats.drainedRan = drain.ran;
+      stats.drainPending = drain.pending;
+      if (drain.ran > 0 && root.__hfDecodeDynamicCssBackgroundImages) {
+        await bounded(root.__hfDecodeDynamicCssBackgroundImages());
+      }
+
+      // A synchronous reflow starts font/image loads that lazy layout would
+      // otherwise only request at the capture's implicit style pass — too late
+      // for the readiness check to see them.
+      void document.documentElement?.offsetHeight;
+      const fontSet = (document as { fonts?: FontFaceSet }).fonts;
+      stats.fontsPending = typeof fontSet?.status === "string" && fontSet.status !== "loaded";
+      if (stats.fontsPending && !expired && fontSet) {
+        await bounded(fontSet.ready.then(() => undefined));
+      }
+
+      // Keyed by currentSrc so a mutated src decodes again; a complete img with
+      // naturalWidth 0 already settled in error — waiting can't fix it (same
+      // rule pollImagesReady applies). decode() on a still-loading img simply
+      // outlives its frame's deadline and resolves in-page later.
+      const decoded = (root.__hf_seek_settle_decoded ??= new WeakMap<HTMLImageElement, string>());
+      const decodes: Promise<unknown>[] = [];
+      for (const img of Array.from(document.querySelectorAll("img"))) {
+        const src = img.currentSrc || img.src || img.getAttribute("src") || "";
+        if (!src || decoded.get(img) === src || typeof img.decode !== "function") continue;
+        if (img.complete && img.naturalWidth === 0) continue;
+        decodes.push(
+          img
+            .decode()
+            .then(() => decoded.set(img, src))
+            .catch(() => undefined),
+        );
+      }
+      if (decodes.length && !expired) {
+        await bounded(Promise.all(decodes));
+        stats.imagesDecoded = decodes.length;
+      }
+
+      const observedWork =
+        seekDrainRan > 0 || stats.drainedRan > 0 || stats.fontsPending || decodes.length > 0;
+      if (allowPaint && observedWork && typeof vt.originalRequestAnimationFrame === "function") {
+        for (let i = 0; i < 2 && !expired; i++) {
+          await bounded(
+            new Promise<void>((resolve) => {
+              vt.originalRequestAnimationFrame?.(() => resolve());
+            }),
+          );
+          if (expired) break;
+          stats.paintsCommitted++;
+        }
+      }
+      return stats;
+    },
+    { allowPaint: allowNativePaintWait, budgetMs: POST_SEEK_SETTLE_BUDGET_MS },
+  );
+}
+
 async function prepareFrameForCapture(
   session: CaptureSession,
   frameIndex: number,
@@ -3668,6 +3798,8 @@ async function prepareFrameForCapture(
     ).__hf?.colorGrading;
     await runtime?.waitForActiveLuts?.();
   });
+  session.captureStep = "settling deferred DOM updates";
+  await settlePostSeekDomUpdates(page, session.beginFrameTimeTicks === 0);
   const beforeCaptureMs = Date.now() - beforeCaptureStart;
 
   // Page-side compositing three-phase protocol:
