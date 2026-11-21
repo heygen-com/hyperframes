@@ -188,21 +188,24 @@ function positionsFor(
   return lookups[operator]({ entry, value: fold(value), fold, id, chargeScan });
 }
 
+function entryFor(
+  index: AliasIndex,
+  { name, namespace }: ParsedAttribute,
+  namespaces?: Namespaces,
+): AttributeAliases | undefined {
+  if (namespace.kind === "none") return index.unprefixed.get(lower(name));
+  if (namespace.kind === "any") return index.anyNamespace.get(lower(name));
+  const uri = namespaces!.get(namespace.prefix);
+  return uri === undefined ? undefined : index.inNamespace.get(namespacedKey(name, uri));
+}
+
 function aliasesFor(
   index: AliasIndex,
   parsed: ParsedAttribute,
   namespaces?: Namespaces,
   chargeScan?: (chars: number) => void,
 ) {
-  const { name, namespace } = parsed;
-  let forName: AttributeAliases | undefined;
-  if (namespace.kind === "none") forName = index.unprefixed.get(lower(name));
-  else if (namespace.kind === "any") forName = index.anyNamespace.get(lower(name));
-  else {
-    const uri = namespaces!.get(namespace.prefix);
-    if (uri !== undefined) forName = index.inNamespace.get(namespacedKey(name, uri));
-  }
-  const entry = forName;
+  const entry = entryFor(index, parsed, namespaces);
   if (!entry) return [];
   return positionsFor(entry, parsed, chargeScan)
     .sort((a, b) => a - b)
