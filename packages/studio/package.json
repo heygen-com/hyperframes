@@ -99,11 +99,11 @@
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
-    "@codemirror/autocomplete": "^6.20.1",
+    "@codemirror/autocomplete": "^6.20.4",
     "@codemirror/commands": "^6.10.3",
     "@codemirror/lang-css": "^6.3.1",
-    "@codemirror/lang-html": "^6.4.9",
-    "@codemirror/lang-javascript": "^6.2.2",
+    "@codemirror/lang-html": "^6.4.12",
+    "@codemirror/lang-javascript": "^6.2.5",
     "@codemirror/lang-markdown": "^6.3.4",
     "@codemirror/language": "^6.12.2",
     "@codemirror/search": "^6.6.0",
@@ -115,15 +115,15 @@
     "@hyperframes/sdk": "workspace:*",
     "@hyperframes/shader-transitions": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
-    "@lezer/highlight": "^1.2.3",
+    "@lezer/highlight": "^1.2.5",
     "@mcp-b/global": "^6.1.0",
     "@phosphor-icons/react": "^2.1.10",
-    "@tanstack/react-virtual": "^3.14.13",
+    "@tanstack/react-virtual": "^3.14.26",
     "acorn": "^8.17.0",
     "cn": "0.2.4",
     "dockview-react": "8.3.1",
     "gsap": "^3.13.0",
-    "mediabunny": "^1.66.0"
+    "mediabunny": "^1.66.2"
   },
   "devDependencies": {
     "@hyperframes/producer": "workspace:*",
