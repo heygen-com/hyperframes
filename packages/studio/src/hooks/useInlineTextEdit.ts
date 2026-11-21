@@ -112,10 +112,11 @@ function clearSelectionWithin(element: HTMLElement): void {
   selection.removeAllRanges();
 }
 
-/** Ends the frame's session with its original back, as a refused or failed reply must. */
+/** What to save; an untouched draft is nothing, so a removed or re-rendered element raises no message. */
 function keptMarkup(outcome: { html: string | null; previous: string | null }) {
-  if (outcome.html === null || outcome.previous === null) return null;
-  return { html: outcome.html, previousHtml: outcome.previous };
+  const { html, previous } = outcome;
+  if (html === null || previous === null || html === previous) return null;
+  return { html, previousHtml: previous };
 }
 
 const PREVIEW_DID_NOT_ANSWER = "the preview did not answer";
@@ -162,6 +163,7 @@ function settleWhileOpen(
   };
 }
 
+/** Ends the frame's session with its original back, as a refused or failed reply must. */
 function endWithOriginal(sealed: NonNullable<InlineTextEditSession["sealed"]>): void {
   void previewTextEdit(sealed.iframe, { handle: sealed.handle, action: "end", keep: false });
 }
@@ -308,6 +310,7 @@ export function useInlineTextEdit({
     // saved rather than something the server will quietly cut down.
     sanitizeRichTextChildren(open.element);
     const html = takeDraft(open);
+    if (html === open.original) return void teardown();
     // Counted and pending before the edit closes, so a reload waits for the save, not the mark.
     let settle: (saving: unknown) => void = () => {};
     const saving = trackStudioPendingEdit(new Promise((resolve) => (settle = resolve)));
@@ -342,8 +345,9 @@ export function useInlineTextEdit({
       if (openRef.current !== session || ended.handle !== sealed.handle) return;
       teardown();
       if (ended.html === null) return endWithOriginal(sealed);
-      const commit = { element: session.element, html: ended.html, previousHtml: ended.previous };
-      trackStudioPendingEdit(Promise.resolve(onCommit(commit)));
+      const kept = keptMarkup(ended);
+      if (kept)
+        trackStudioPendingEdit(Promise.resolve(onCommit({ element: session.element, ...kept })));
     });
     return () => {
       stopEnded();
