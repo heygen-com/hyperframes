@@ -62,6 +62,7 @@ const limitText = `One render generates at most ${megabytes(MAX_EXPANDED_COMPOSI
 
 export const REMOTE_SCRIPTS = "remote scripts";
 export const REMOTE_STYLESHEETS = "remote stylesheets";
+export const ENTRY_PAGE = "the entry page";
 
 function generatedTooLarge(file: string, bytes: number): string {
   if (file === "composition variables") {
@@ -101,7 +102,9 @@ export class CompositionExpansionBudget {
     this.elements += count;
     if (this.elements <= MAX_EXPANDED_ELEMENTS) return;
     throw new CompositionTooLargeError(
-      `Sub-composition mounts, ending at ${quotedForTerminalAndLogs(file)}, add up to ${this.elements} elements. ` +
+      (file === ENTRY_PAGE
+        ? `The entry page holds ${this.elements} elements. `
+        : `Sub-composition mounts, ending at ${quotedForTerminalAndLogs(file)}, add up to ${this.elements} elements. `) +
         `One render inlines at most ${MAX_EXPANDED_ELEMENTS} elements. Mount large or repeated scenes fewer times.`,
       {
         bytes: this.bytes,
