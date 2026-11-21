@@ -156,6 +156,7 @@ describe("hydrateTimelineFromPreview", () => {
       iframe,
       adapter: { getDuration: () => 1 } as unknown as PlaybackAdapter,
       processTimelineMessage: vi.fn(),
+      readSealedTimeline: vi.fn(),
       enrichMissingCompositions: vi.fn(),
       applyPreviewAudioState: vi.fn(),
       attachIframeShortcutListeners,

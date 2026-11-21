@@ -7,6 +7,8 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { PlaybackAdapter } from "../lib/playbackTypes";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 import { sealedPreviewFrame } from "../lib/sealedPreviewFrame.test-helpers";
+import { previewClipParents, previewDocumentCopy } from "../lib/previewChannel";
+import { detachedFakeIframe } from "./timelinePlayerTestHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -14,12 +16,17 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function processWith(iframe: HTMLIFrameElement, adapter: PlaybackAdapter | null = null) {
+function processWith(
+  iframe: HTMLIFrameElement,
+  adapter: PlaybackAdapter | null = null,
+  isCurrent?: () => boolean,
+) {
   const sync = vi.fn<(els: TimelineElement[], duration?: number) => void>();
   let callbacks: ReturnType<typeof useTimelineSyncCallbacks> | undefined;
+  const iframeRef: { current: HTMLIFrameElement | null } = { current: iframe };
   function Harness() {
     callbacks = useTimelineSyncCallbacks({
-      iframeRef: { current: iframe },
+      iframeRef,
       probeIntervalRef: { current: undefined },
       pendingSeekRef: { current: null },
       isRefreshingRef: { current: false },
@@ -32,16 +39,19 @@ function processWith(iframe: HTMLIFrameElement, adapter: PlaybackAdapter | null 
       attachIframeShortcutListeners: () => {},
       applyPreviewAudioState: () => {},
       onAdapterReady: (_iframe, _context, commit) => commit(),
+      isCurrent,
     });
     return null;
   }
   const host = document.createElement("div");
   act(() => createRoot(host).render(createElement(Harness)));
-  const { processTimelineMessage, initializeAdapter } = callbacks!;
+  const { processTimelineMessage, initializeAdapter, onIframeLoad } = callbacks!;
   return {
     sync,
+    iframeRef,
     process: processTimelineMessage,
     initialize: () => act(() => initializeAdapter()),
+    load: () => act(() => onIframeLoad()),
   };
 }
 
@@ -116,6 +126,15 @@ const rootOnly = `<section id="scene5-root" data-composition-id="scene5" data-du
   <h1>Scene 6</h1>
 </section>`;
 
+const adapterOf = (duration: number): PlaybackAdapter => ({
+  pause() {},
+  seek() {},
+  play() {},
+  getTime: () => 0,
+  getDuration: () => duration,
+  isPlaying: () => false,
+});
+
 function rootRow(sync: ReturnType<typeof processWith>["sync"]) {
   return sync.mock.calls.at(-1)?.[0].map((row) => `${row.id}@${row.start}+${row.duration}`);
 }
@@ -134,17 +153,72 @@ it("shows a sealed composition the runtime lists no clips for as its own row", a
 it("gives a sealed composition its row when the preview loads", async () => {
   document.body.innerHTML = rootOnly;
   usePlayerStore.getState().setElements([]);
-  const adapter = {
-    pause() {},
-    seek() {},
-    play() {},
-    getTime: () => 0,
-    getDuration: () => 5,
-    isPlaying: () => false,
-  };
-  const { sync, initialize } = processWith(sealedPreviewFrame().iframe, adapter);
+  const { sync, initialize } = processWith(sealedPreviewFrame().iframe, adapterOf(5));
 
   initialize();
 
   await vi.waitFor(() => expect(rootRow(sync)).toEqual(["scene5@0+5"]));
+});
+
+// fails without the fix: the reply was read against the frame ref, which a shadow promotion has already cleared.
+it("keeps a sealed load's row when its frame is promoted before the reply", async () => {
+  document.body.innerHTML = rootOnly;
+  usePlayerStore.getState().setElements([]);
+  const { sync, iframeRef, initialize } = processWith(
+    sealedPreviewFrame().iframe,
+    adapterOf(5),
+    () => true,
+  );
+
+  initialize();
+  iframeRef.current = null;
+
+  await vi.waitFor(() => expect(rootRow(sync)).toEqual(["scene5@0+5"]));
+});
+
+// fails without the fix: the previous preview's late reply replaced the rows of the preview loaded after it.
+it("drops a sealed load's reply that arrives after the next preview loaded", async () => {
+  document.body.innerHTML = rootOnly;
+  (window as unknown as { __clipManifest: unknown }).__clipManifest = {
+    clips: [{ ...boxClip, id: "stale" }],
+    durationInFrames: 60,
+  };
+  onTestFinished(() => delete (window as unknown as { __clipManifest?: unknown }).__clipManifest);
+  usePlayerStore.getState().setElements([]);
+  const sealed = sealedPreviewFrame().iframe;
+  const { sync, iframeRef, initialize, load } = processWith(sealed, adapterOf(5));
+  initialize();
+
+  iframeRef.current = detachedFakeIframe({
+    __clipManifest: { clips: [{ ...boxClip, id: "next" }], durationInFrames: 60 },
+    scrollTo() {},
+  });
+  load();
+  // The channel answers in order: once a later request is back, the first load's reply has landed too.
+  await previewDocumentCopy(sealed);
+  await previewClipParents(sealed);
+
+  expect(sync.mock.calls.flatMap(([rows]) => rows.map((row) => row.id))).not.toContain("stale");
+  expect(rootRow(sync)).toEqual(["next@0+2"]);
+});
+
+// fails without the fix: the row took the frame-rounded total, 151 frames, instead of the authored 5.01 s.
+it("gives a composition's own row its authored length, not the frame-rounded total", async () => {
+  document.body.innerHTML = rootOnly.replace('data-duration="5"', 'data-duration="5.01"');
+  const { sync, process } = processWith(sealedPreviewFrame().iframe);
+
+  process({ clips: [], durationInFrames: 151 });
+
+  await vi.waitFor(() => expect(rootRow(sync)).toEqual(["scene5@0+5.01"]));
+});
+
+// fails without the fix: with no clip list and no authored length, the preview's own duration was ignored.
+it("gives a sealed composition with no authored length the preview's duration", async () => {
+  document.body.innerHTML = rootOnly.replace(' data-duration="5"', "");
+  usePlayerStore.getState().setElements([]);
+  const { sync, initialize } = processWith(sealedPreviewFrame().iframe, adapterOf(4));
+
+  initialize();
+
+  await vi.waitFor(() => expect(rootRow(sync)).toEqual(["scene5@0+4"]));
 });

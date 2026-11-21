@@ -397,10 +397,18 @@ export function isPreviewReadinessMessage(
   return inspectStudioRuntimeMessage(data).status !== "unsupported";
 }
 
+/** Reads a sealed frame's rows for a clip list still on its way; `null` from it commits nothing. */
+export type SealedTimelineRead = (
+  iframe: HTMLIFrameElement,
+  manifest: Promise<RuntimeTimelineMessage | null>,
+  previewDuration: number,
+) => void;
+
 export interface HydrateTimelineFromPreviewInput {
   iframe: HTMLIFrameElement | null;
   adapter: PlaybackAdapter;
   processTimelineMessage: (manifest: RuntimeTimelineMessage) => void;
+  readSealedTimeline: SealedTimelineRead;
   enrichMissingCompositions: () => void;
   applyPreviewAudioState: () => void;
   attachIframeShortcutListeners: () => void;
@@ -423,20 +431,20 @@ function normalizePreviewDom(doc: Document | null, iframeWin: IframeWindow | nul
 }
 
 /** Hand the runtime's own clip manifest to the timeline, if it published one. */
-function applyRuntimeClipManifest(
-  iframe: HTMLIFrameElement | null,
-  processTimelineMessage: (manifest: RuntimeTimelineMessage) => void,
-): void {
+function applyRuntimeClipManifest(input: HydrateTimelineFromPreviewInput): void {
+  const { iframe, adapter } = input;
   if (iframe && previewFrameOpaque(iframe)) {
     // An empty clip list still goes through, so its document copy can stand up the fallback row.
-    void previewClipManifest(iframe).then((manifest) => {
-      if (manifest?.clips.length || usePlayerStore.getState().elements.length === 0)
-        processTimelineMessage(manifest ?? { clips: [], durationInFrames: 0 });
-    });
+    const manifest = previewClipManifest(iframe).then((found) =>
+      found?.clips.length || usePlayerStore.getState().elements.length === 0
+        ? (found ?? { clips: [], durationInFrames: 0 })
+        : null,
+    );
+    input.readSealedTimeline(iframe, manifest, adapter.getDuration());
     return;
   }
   const manifest = (iframe?.contentWindow as IframeWindow | null)?.__clipManifest;
-  if (manifest && manifest.clips.length > 0) processTimelineMessage(manifest);
+  if (manifest && manifest.clips.length > 0) input.processTimelineMessage(manifest);
 }
 
 export function hydrateTimelineFromPreview(input: HydrateTimelineFromPreviewInput): void {
@@ -446,7 +454,7 @@ export function hydrateTimelineFromPreview(input: HydrateTimelineFromPreviewInpu
     const iframeWin = (iframe?.contentWindow as IframeWindow | null) ?? null;
     normalizePreviewDom(doc, iframeWin);
     input.attachIframeShortcutListeners();
-    applyRuntimeClipManifest(iframe, input.processTimelineMessage);
+    applyRuntimeClipManifest(input);
     input.enrichMissingCompositions();
     input.applyPreviewAudioState();
     if (doc && usePlayerStore.getState().elements.length === 0) {
