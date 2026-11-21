@@ -21,10 +21,12 @@ const resolved = (src: string, home: string) => {
   }
 };
 
-// Per element, never shared: a source refused CORS here, or this element already reloaded for it.
+// Per element, never shared: a source refused CORS here; this element reloaded once without CORS, or with, for it.
 const refused = new WeakMap<HTMLMediaElement, Set<string>>();
-const reloadedFor = new WeakMap<HTMLMediaElement, Set<string>>();
+const retriedWithout = new WeakMap<HTMLMediaElement, Set<string>>();
+const rearmedFor = new WeakMap<HTMLMediaElement, Set<string>>();
 const retrying = new WeakSet<HTMLMediaElement>();
+const lastPlayed = new WeakMap<HTMLMediaElement, string>();
 const warned = new WeakMap<HTMLMediaElement, Set<string>>();
 const seen = new WeakSet<HTMLMediaElement>();
 // A crossorigin change we did not write, even to our own value, makes the attribute the composition's for good.
@@ -65,13 +67,20 @@ function setCors(media: HTMLMediaElement, want: boolean): void {
   if (want !== media.hasAttribute("crossorigin")) write(media, want ? "anonymous" : null);
 }
 
-// The first listed source is the guess for what the browser picks; a wrong guess is fixed once it plays.
+// The guess for what the browser picks: what played last, else the first source that has not refused CORS here.
+function guess(media: HTMLMediaElement, home: string): string | undefined {
+  const urls = listedUrls(media, home);
+  const played = lastPlayed.get(media);
+  if (played && urls.includes(played)) return played;
+  return urls.find((url) => !refused.get(media)?.has(url)) ?? urls[0];
+}
+
 function sync(media: HTMLMediaElement, home: string): void {
   if (!seen.has(media)) {
     seen.add(media);
     if (media.hasAttribute("crossorigin")) authored.add(media);
   }
-  if (!authored.has(media)) setCors(media, wantsCors(media, listedUrls(media, home)[0], home));
+  if (!authored.has(media)) setCors(media, wantsCors(media, guess(media, home), home));
 }
 
 function mediaOf(el: Element): HTMLMediaElement | null {
@@ -99,7 +108,8 @@ function wasDown(media: HTMLMediaElement, home: string): void {
   retrying.delete(media);
   for (const url of listedUrls(media, home)) {
     refused.get(media)?.delete(url);
-    reloadedFor.get(media)?.delete(url);
+    retriedWithout.get(media)?.delete(url);
+    rearmedFor.get(media)?.delete(url);
   }
 }
 
@@ -113,7 +123,7 @@ function ranOut(event: Event, home: string): void {
   if (armed && src) setOf(refused, media).add(src);
   if (!exhausted(media, target as Element)) return;
   if (!armed) return void (retrying.has(media) && wasDown(media, home));
-  const tried = setOf(reloadedFor, media);
+  const tried = setOf(retriedWithout, media);
   const retry = listedUrls(media, home).filter(
     (url) => refused.get(media)?.has(url) && !tried.has(url),
   );
@@ -129,9 +139,10 @@ function firstFrame(event: Event, home: string): void {
   if (!isMedia(media) || authored.has(media)) return;
   retrying.delete(media);
   const chosen = media.currentSrc;
+  lastPlayed.set(media, chosen);
   const armed = media.hasAttribute("crossorigin");
   if (!armed && refused.get(media)?.has(chosen)) warnOnce(media, chosen);
-  const tried = setOf(reloadedFor, media);
+  const tried = setOf(rearmedFor, media);
   if (armed || tried.has(chosen) || !wantsCors(media, chosen, home)) return;
   tried.add(chosen);
   write(media, "anonymous");
@@ -166,7 +177,12 @@ export function corsForSealedMedia(): MutationObserver | null {
       if (record.attributeName === "crossorigin") continue;
       const target = record.target as Element;
       if (record.type === "attributes") visit(target, home);
-      else if (isMedia(target)) sync(target, home);
+      // Chrome tries an exhausted element's sources again on a crossorigin write; only an insertion resumes it.
+      else if (
+        isMedia(target) &&
+        (record.addedNodes.length || target.networkState !== HTMLMediaElement.NETWORK_NO_SOURCE)
+      )
+        sync(target, home);
       if (record.type === "childList") record.addedNodes.forEach((node) => visit(node, home));
     }
   });
