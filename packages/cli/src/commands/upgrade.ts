@@ -4,7 +4,15 @@ import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import * as clack from "../ui/prompts.js";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+} from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { join, resolve } from "node:path";
 import { c } from "../ui/colors.js";
@@ -273,6 +281,15 @@ export function resolveProjectArgs(
   return { dir: project, check: opts.check, json: opts.json };
 }
 
+function readWrapper(path: string): { mode: number; text: string } {
+  const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    return { mode: fstatSync(fd).mode & 0o7777, text: readFileSync(fd, "utf-8") };
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export async function upgradeProjectPins(
   dir: string,
   opts: { json: boolean; check: boolean },
@@ -292,11 +309,8 @@ export async function upgradeProjectPins(
     .filter((entry) => entry.isFile() && entry.name.endsWith(".sh"))
     .map((entry) => {
       const path = resolve(dir, entry.name);
-      return {
-        path,
-        mode: statSync(path).mode & 0o7777,
-        rewrite: rewritePinnedHyperframesText(readFileSync(path, "utf-8"), latest),
-      };
+      const { mode, text } = readWrapper(path);
+      return { path, mode, rewrite: rewritePinnedHyperframesText(text, latest) };
     });
   if (rewrite.changed && !opts.check) {
     raw.scripts = rewrite.scripts;
