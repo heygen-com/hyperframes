@@ -511,6 +511,18 @@ describe("CLI lifecycle", () => {
   // fails without the fix: the envelope's message was the line as people see it, escapes included.
   it.each([
     [
+      "a capture URL that does not parse",
+      ["capture", "ht tp\u0007"],
+      "Invalid URL: ht tp\u0007",
+      2,
+    ],
+    [
+      "a capture --video folder with no manifest",
+      ["capture", "--video", join(tmpdir(), "hf-no\u0007ne")],
+      `no video-manifest.json at ${join(tmpdir(), "hf-no\u0007ne", "extracted")}`,
+      1,
+    ],
+    [
       "a refused remove-background device",
       ["remove-background", "in.mp4", "-o", "out.webm", "--device", "g\u0007pu"],
       "Invalid --device 'g\u0007pu'.",

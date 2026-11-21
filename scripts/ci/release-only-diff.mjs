@@ -42,7 +42,7 @@ export function classify(paths, before, after) {
     if (bumped === null) other.push(path);
     else versions.set(path, bumped);
   }
-  return { releaseOnly: paths.length > 0 && other.length === 0, other, versions };
+  return { releaseOnly: versions.size > 0 && other.length === 0, other, versions };
 }
 
 /** The commits in `commits` ({ sha, subject }) that release notes should list but do not link. */

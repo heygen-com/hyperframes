@@ -20,6 +20,7 @@ import {
   scanActiveServers,
   type ActiveServer,
 } from "../server/portUtils.js";
+import { terminalText } from "@hyperframes/core";
 import { namedCacheDir } from "@hyperframes/core/cache-dir";
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 import { windowsLocalAppData } from "../utils/windowsAppData.js";
@@ -246,7 +247,7 @@ function openLog(logPath: string): number {
     return openSync(logPath, "a", 0o600);
   } catch (error) {
     console.warn(
-      `[hyperframes] background preview log not written: cannot open ${logPath} (${error})`,
+      `[hyperframes] background preview log not written: cannot open ${terminalText(logPath)} (${terminalText(String(error))})`,
     );
     return openSync(devNull, "a");
   }

@@ -30,7 +30,14 @@ import {
   listProjectFilesAsync,
   type ListedProjectFile,
 } from "../helpers/projectSignature.js";
-import { isSettling, openBlobStore, readBlob, SETTLE_MS, type BlobStore } from "./blobStore.js";
+import {
+  hashFile,
+  isSettling,
+  openBlobStore,
+  readBlob,
+  SETTLE_MS,
+  type BlobStore,
+} from "./blobStore.js";
 import { isUncopied, uncopiedOnlyHashes } from "./uncopied.js";
 import {
   assertStillWithin,
@@ -155,6 +162,7 @@ export interface ProjectHistory {
     label: string,
     options?: { idleMs?: number; exclusive?: boolean },
   ): Promise<HistoryWindow>;
+  unsavedBlobBytes(): Promise<number>;
   /**
    * For a writer that records after writing (Studio): moves the uncommitted changes to `paths` into one entry of
    * `who`'s, each cut at the `overwrote` version so earlier parts stay their writer's. Same-key claims merge until
@@ -288,6 +296,12 @@ function withoutHiddenPaths(log: HistoryLog, ignores?: (path: string) => boolean
   dropUnrecordedPaths(log, ignores);
   return log;
 }
+
+const hashIfPresent = (path: string) =>
+  hashFile(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
 
 function dropKeptOutside(entry: HistoryEntry, ignores?: (path: string) => boolean): boolean {
   const kept = Object.entries(entry.keptInPlace ?? {});
@@ -828,6 +842,24 @@ class Engine {
     const files = JSON.stringify(Object.fromEntries(this.tracked));
     mkdirSync(this.home, { recursive: true });
     replaceFileAtomically(join(this.home, "stat.json"), files, 0o644);
+  }
+
+  copiesNothing(file: ListedFile, now: number): boolean {
+    if (this.adopting.has(file.path) || isUncopied(file.path, file.size)) return true;
+    const stat = statKey(file, now);
+    return stat !== "" && this.tracked.get(file.path)?.stat === stat;
+  }
+
+  async unsavedBlobBytes(): Promise<number> {
+    if (this.whereFolder() !== "here") return 0;
+    const now = this.now();
+    const missing = new Map<string, number>();
+    for (const file of await this.historyFiles()) {
+      if (this.copiesNothing(file, now)) continue;
+      const hash = await hashIfPresent(join(this.dir, file.path));
+      if (hash && !this.blobs.has(hash)) missing.set(hash, file.size);
+    }
+    return [...missing.values()].reduce((sum, size) => sum + size, 0);
   }
 
   /**
@@ -1611,6 +1643,7 @@ class Engine {
           options.idleMs ?? this.options.maxGroupMs ?? 30_000,
           options.exclusive === true,
         ),
+      unsavedBlobBytes: () => this.unsavedBlobBytes(),
       claim: async (who, label, paths, options = {}) => {
         await Promise.all(paths.map((path) => this.adopting.get(this.logPath(path))?.retryNow()));
         return this.queue(() => this.claimNow(who, label, paths, options));

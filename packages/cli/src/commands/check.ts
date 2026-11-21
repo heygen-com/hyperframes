@@ -784,7 +784,7 @@ function browserSkippedLine(report: CheckReport): string {
 function printHumanReport(report: CheckReport): void {
   if (report.cached)
     console.log(
-      `${c.dim("◇")} Nothing changed since the pass at ${report.cached.at}; showing that result. Remote scripts and assets were not fetched again. Run with --no-cache to check again.`,
+      `${c.dim("◇")} Nothing changed since the pass at ${terminalText(report.cached.at)}; showing that result. Remote scripts and assets were not fetched again. Run with --no-cache to check again.`,
     );
   if (report.scope) {
     console.log(
@@ -902,7 +902,9 @@ function printSnapshotSection(report: CheckReport): void {
 
 function printFinding(finding: CheckFinding): void {
   const where = `${terminalText(finding.sourceFile)} ${terminalText(finding.selector)} ${formatFindingTimes(finding)}`;
-  console.log(`  ${findingIcon(finding)} ${finding.code}: ${terminalText(finding.message)}`);
+  console.log(
+    `  ${findingIcon(finding)} ${terminalText(finding.code)}: ${terminalText(finding.message)}`,
+  );
   console.log(`    ${c.dim(where)}`);
   if (finding.fixHint) console.log(`    ${c.dim(`Fix: ${terminalText(finding.fixHint)}`)}`);
 }
