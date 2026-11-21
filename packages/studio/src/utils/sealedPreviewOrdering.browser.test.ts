@@ -371,7 +371,8 @@ describe("sealed preview after late answers in any order", () => {
     const { shown, fresh, reloads, reloadRefusals, playhead } = await play(steps, seed, two);
     expect(shown).toEqual(fresh);
     expect(playhead.shown).toBeCloseTo(playhead.studio, 1);
-    if (reloadRefusals === 0) expect(reloads).toBe(0);
+    // A two-script file has no single script to snapshot, so a recovery there may only reload.
+    if (reloadRefusals === 0 && !two) expect(reloads).toBe(0);
     // The frame cannot set a title in place, so the refused undo recovers only by reloading.
     if (name.includes("title")) expect(reloads).toBeGreaterThan(0);
   });
@@ -417,7 +418,7 @@ describe("sealed preview after late answers in any order", () => {
       steps,
       off: false,
     });
-    // Only a refused re-run or restore leaves nothing to recover in place.
-    if (reloadRefusals === 0) expect({ steps, reloads }).toEqual({ steps, reloads: 0 });
+    // Only a refused re-run or restore, or a two-script file, leaves nothing to recover in place.
+    if (reloadRefusals === 0 && !two) expect({ steps, reloads }).toEqual({ steps, reloads: 0 });
   });
 });
