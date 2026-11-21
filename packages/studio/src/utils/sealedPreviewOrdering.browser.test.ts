@@ -40,11 +40,11 @@ const script = (s: Saved) => `(function () {
     window.__ran = { main: "g${s.gen}" };
   })();`;
 const root = (s: Saved) =>
-  `<div id="root" data-composition-id="main" data-start="0" data-duration="4" data-width="1920" data-height="1080">` +
+  `<div id="root" data-hf-id="root" data-composition-id="main" data-start="0" data-duration="4" data-width="1920" data-height="1080">` +
   `<div id="target" data-hf-id="target" class="clip box" data-start="${s.start}" data-duration="4" data-track-index="1" style="left: 100px; top: 100px"></div>` +
   `<div id="c" data-hf-id="c" class="clip box" data-start="0" data-duration="4" data-track-index="2" data-label="${s.label}" style="left: 0px; top: 500px"></div>` +
   `</div>`;
-/** The saved file as Studio reads it. */
+/** The saved file as Studio reads it; every element carries the `data-hf-id` Studio's server gives it. */
 const file = (s: Saved) => `<html><body>${root(s)}<script>${script(s)}</script></body></html>`;
 /** The saved file as the preview loads it. */
 const page = (s: Saved) =>
