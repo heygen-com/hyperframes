@@ -95,7 +95,7 @@ it("still recovers an older script run after an unrelated successful patch of it
   expect(older).toHaveBeenCalledOnce();
 });
 
-it("still recovers an older script run after an attribute-only undo of its timeline", async () => {
+it("still recovers an older script run that times out after an attribute-only undo of its timeline", async () => {
   const older = rerun(1);
   const files = {
     "index.html": {
@@ -109,7 +109,7 @@ it("still recovers an older script run after an attribute-only undo of its timel
   };
   applyUndoRestoreToPreview(iframe, null, files, 2, vi.fn());
   held.find(({ kind }) => kind === "restore-attributes")!.answer({ applied: true, reran: false });
-  held[0]!.answer({ result: "cannot-soft-reload" });
+  held[0]!.answer(null);
   await settled();
   expect(older).toHaveBeenCalledOnce();
 });

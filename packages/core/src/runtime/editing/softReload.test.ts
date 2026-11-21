@@ -365,7 +365,7 @@ describe("restore-attributes with a re-run", () => {
     const seen: Array<string | null> = [];
     win.__hfForceTimelineRebind = () => seen.push(el.getAttribute("style"));
     const params = parseRestoreAttributesRerun(request(RERUN))!;
-    expect(await restoreAttributesOrRerun(params)).toEqual({ applied: true });
+    expect(await restoreAttributesOrRerun(params)).toEqual({ applied: true, reran: true });
     expect(seen).toEqual([expect.stringContaining("left: 0px")]);
     expect(killed).toHaveBeenCalledOnce();
     expect(seeks).toContain(1.5);
@@ -376,6 +376,7 @@ describe("restore-attributes with a re-run", () => {
     const el = parsedEl();
     expect(await restoreAttributesOrRerun(parseRestoreAttributesRerun(request())!)).toEqual({
       applied: false,
+      reran: false,
     });
     expect(el.getAttribute("style")).toBe("left: 90px");
     expect(killed).not.toHaveBeenCalled();
@@ -384,7 +385,7 @@ describe("restore-attributes with a re-run", () => {
   it("sets the attributes without re-running when GSAP has parsed none of them", async () => {
     preview(MARKUP);
     const params = parseRestoreAttributesRerun(request(RERUN))!;
-    expect(await restoreAttributesOrRerun(params)).toEqual({ applied: true });
+    expect(await restoreAttributesOrRerun(params)).toEqual({ applied: true, reran: false });
     expect(document.getElementById("a")!.getAttribute("style")).toBe("left: 0px");
     expect(killed).not.toHaveBeenCalled();
   });
@@ -407,7 +408,7 @@ describe("restore-attributes with a re-run", () => {
     preview(MARKUP);
     const big = { ...RERUN, authored: [["#big", "x".repeat(16_385)]] };
     const params = parseRestoreAttributesRerun(request(big))!;
-    expect(await restoreAttributesOrRerun(params)).toEqual({ applied: true });
+    expect(await restoreAttributesOrRerun(params)).toEqual({ applied: true, reran: false });
     expect(document.getElementById("a")!.getAttribute("style")).toBe("left: 0px");
   });
 });
