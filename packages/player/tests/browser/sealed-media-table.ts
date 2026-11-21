@@ -213,8 +213,8 @@ const FIXED: Sequence[] = [
     rounds: [
       [{ do: "create", el: 0, sources: [own("r7g-n", "nocors")] }],
       [{ do: "prepend", el: 0, source: own("r7g-a", "cors") }],
-      [{ do: "reverse", el: 0 }],
-      [{ do: "reverse", el: 0 }],
+      [{ do: "remove", el: 0, index: 0 }],
+      [{ do: "prepend", el: 0, source: own("r7g-a", "cors") }],
     ],
   },
   {
