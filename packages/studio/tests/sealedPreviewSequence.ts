@@ -1,11 +1,15 @@
 // A sealed preview driven by a sequence of saves, replies and reloads, then compared with a fresh load of the
 // saved file. A fixture says what a save changes, how Studio sends it, and what a viewer sees.
 import type { Browser, Frame, Page } from "puppeteer-core";
-import { openPreview } from "./sealedPreviewHarness";
+import { openPreview, type Studio } from "./sealedPreviewHarness";
+
+/** A save reaches the frame, is refused by it, or is rejected by the port before the frame applies anything. */
+export type SaveFate = "frame" | "refused" | "rejected";
 
 export type SequenceStep<Save extends string> =
-  | { save: Save; refused: boolean }
+  | { save: Save; fate: SaveFate }
   | { answer: "any" | "oldest" | "newest" | string }
+  | { scrub: number }
   | { reloadFrame: true };
 
 export interface SequenceFixture<Saved, Save extends string> {
@@ -25,7 +29,10 @@ const REFUSAL: Record<string, unknown> = {
   "soft-reload": { result: "cannot-soft-reload" },
   "patch-tweens": { patched: false },
   "restore-attributes": { applied: false, reran: false },
+  "live-retime": { result: "unchanged" },
 };
+
+const SAVE_KINDS = ["soft-reload", "patch-tweens", "restore-attributes", "live-retime"];
 
 const ready = (frame: Frame) =>
   frame.waitForFunction(() => "__player" in window && "__timelines" in window);
@@ -57,9 +64,10 @@ async function seekTo(studioPage: Page, frame: Frame, index: number, at: number)
 }
 
 /** Studio's page: every reply held until answered; a full reload loads the newest saved file and is counted. */
-async function openStudio(browser: Browser, bundle: string, first: string) {
+async function openStudio(browser: Browser, bundle: string, first: string, at: number) {
   const preview = await openPreview(browser, bundle, first, "sealed");
   await preview.release(200);
+  await scrub(preview.page, preview.frame, at);
   await preview.page.evaluate((first) => {
     const w = window as unknown as {
       __hold: boolean;
@@ -119,6 +127,27 @@ function answer(studioPage: Page, pick: number, kind: string | null) {
   );
 }
 
+/** Moves Studio's playhead to `at`, as a scrub does: the player store and the frame together. */
+async function scrub(studioPage: Page, frame: Frame, at: number) {
+  await studioPage.evaluate((t) => {
+    const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+    studio.usePlayerStore.getState().setCurrentTime(t);
+  }, at);
+  await seekTo(studioPage, frame, 0, at);
+}
+
+/** Where the preview's playhead is, and where Studio thinks it is. */
+const playheads = (studioPage: Page, frame: Frame) =>
+  Promise.all([
+    frame.evaluate(() =>
+      (window as unknown as { __player: { getTime(): number } }).__player.getTime(),
+    ),
+    studioPage.evaluate(
+      () =>
+        (window as unknown as { hfStudio: Studio }).hfStudio.usePlayerStore.getState().currentTime,
+    ),
+  ]).then(([shown, studio]) => ({ shown, studio }));
+
 /** Answers everything still pending, new recoveries included, until nothing is left and the frame is loaded. */
 async function drain(studioPage: Page, frame: Frame, random: () => number) {
   await studioPage.evaluate(() => {
@@ -161,16 +190,21 @@ export async function playSequence<Saved, Save extends string>(
 ) {
   let state = seed;
   const random = () => (state = (state * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
-  const preview = await openStudio(browser, bundle, fixture.page(fixture.first));
+  const preview = await openStudio(browser, bundle, fixture.page(fixture.first), fixture.at);
   const { page: studioPage, frame } = preview;
   let saved = fixture.first;
   for (const [n, step] of steps.entries()) {
     if ("save" in step) {
       const after = fixture.next[step.save](saved, n);
-      await studioPage.evaluate((refused) => {
-        const kinds = ["soft-reload", "patch-tweens", "restore-attributes"];
-        (window as unknown as { __swallow: Set<string> }).__swallow = new Set(refused ? kinds : []);
-      }, step.refused);
+      await studioPage.evaluate(
+        (fate, kinds) => {
+          const w = window as unknown as { __swallow: Set<string>; __rejecting: boolean };
+          w.__swallow = new Set(fate === "frame" ? [] : kinds);
+          w.__rejecting = fate === "rejected";
+        },
+        step.fate,
+        SAVE_KINDS,
+      );
       const posted = () =>
         studioPage.evaluate(() => (window as unknown as { __posted: number }).__posted);
       const before = await posted();
@@ -185,6 +219,8 @@ export async function playSequence<Saved, Save extends string>(
         (window as unknown as { __swallow: Set<string> }).__swallow = new Set();
       });
       saved = after;
+    } else if ("scrub" in step) {
+      await scrub(studioPage, frame, step.scrub);
     } else if ("reloadFrame" in step) {
       await studioPage.evaluate(() => {
         const w = window as unknown as { __saved: string };
@@ -197,6 +233,7 @@ export async function playSequence<Saved, Save extends string>(
     }
   }
   await drain(studioPage, frame, random);
+  const playhead = await playheads(studioPage, frame);
   await seekTo(studioPage, frame, 0, fixture.at);
   const shown = await fixture.read(frame);
   const { reloads, reloadRefusals } = await studioPage.evaluate(() => {
@@ -205,5 +242,5 @@ export async function playSequence<Saved, Save extends string>(
   });
   await studioPage.close();
   const fresh = await freshLoad(browser, bundle, fixture, saved);
-  return { shown, fresh, reloads, reloadRefusals };
+  return { shown, fresh, reloads, reloadRefusals, playhead };
 }

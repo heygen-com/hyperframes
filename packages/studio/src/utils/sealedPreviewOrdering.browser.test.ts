@@ -10,6 +10,7 @@ import { buildStudioBundle, type Studio } from "../../tests/sealedPreviewHarness
 import {
   playSequence,
   type SequenceFixture,
+  type SaveFate,
   type SequenceStep,
 } from "../../tests/sealedPreviewSequence";
 
@@ -32,16 +33,17 @@ interface Saved {
   gen: number;
   x: number;
   start: number;
+  dur: number;
   label: string;
   title: string;
 }
-const FIRST: Saved = { gen: 0, x: 10, start: 0, label: "a", title: "a" };
+const FIRST: Saved = { gen: 0, x: 10, start: 0, dur: 4, label: "a", title: "a" };
 
 const script = (s: Saved) => `(function () {
     window.__timelines = window.__timelines || {};
     var tl = gsap.timeline({ paused: true });
     tl.set("#target", { x: ${s.x} }, 0);
-    tl.to("#target", { y: 100, duration: 4, ease: "none" }, 0);
+    tl.to("#target", { y: 100, duration: ${s.dur}, ease: "none" }, 0);
     window.__timelines["main"] = tl;
     window.__ran = { main: "g${s.gen}" };
   })();`;
@@ -60,13 +62,14 @@ const page = (s: Saved) =>
   </head><body>${root(s)}<script>${GSAP}</script><script>${script(s)}</script><script>${RUNTIME}</script></body></html>`;
 
 // A label is restore-safe and applies in place; a title is not (restoreAttributes.ts), so the frame refuses it.
-type Save = "run" | "patch" | "retime" | "undoLabel" | "undoTitle" | "undoBoth";
+type Save = "run" | "patch" | "retime" | "liveRetime" | "undoLabel" | "undoTitle" | "undoBoth";
 type Step = SequenceStep<Save>;
 
 const next: Record<Save, (s: Saved, n: number) => Saved> = {
   run: (s) => ({ ...s, gen: s.gen + 1 }),
   patch: (s, n) => ({ ...s, x: 20 + n }),
   retime: (s) => ({ ...s, start: 1 - s.start }),
+  liveRetime: (s) => ({ ...s, start: 1 - s.start, dur: s.dur === 4 ? 3 : 4 }),
   undoLabel: (s) => ({ ...s, label: s.label === "a" ? "b" : "a" }),
   undoTitle: (s) => ({ ...s, title: s.title === "a" ? "b" : "a" }),
   undoBoth: (s) => ({ ...s, gen: s.gen + 1, title: s.title === "a" ? "b" : "a" }),
@@ -80,7 +83,17 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved) {
       const w = window as unknown as { __saved: string; __reload: () => void };
       w.__saved = savedPage;
       const iframe = document.querySelector("iframe")!;
-      const rerun = { currentTimeOverride: 2, authoredHtml: saved, previousHtml: prev };
+      const time = studio.usePlayerStore.getState().currentTime;
+      const rerun = { currentTimeOverride: time, authoredHtml: saved, previousHtml: prev };
+      // As Studio's timing sync: move the live tweens, or re-run the script with its timing when that cannot.
+      if (kind === "liveRetime")
+        void Promise.resolve(
+          studio.moveLiveTweens(iframe, text, time, w.__reload, { before: prev, after: saved }),
+        ).then((moved) => {
+          if (moved) return;
+          const options = { ...rerun, timingEdit: true, onAsyncFailure: w.__reload };
+          if (studio.applySoftReload(iframe, text, options) === "cannot-soft-reload") w.__reload();
+        });
       if (kind === "run")
         studio.applySoftReload(iframe, text, { ...rerun, onAsyncFailure: w.__reload });
       if (kind === "retime")
@@ -104,7 +117,7 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved) {
       }
       if (kind === "undoLabel" || kind === "undoTitle" || kind === "undoBoth") {
         const files = { "index.html": { previous: prev, restored: saved } };
-        studio.applyUndoRestoreToPreview(iframe, null, files, 2, w.__reload);
+        studio.applyUndoRestoreToPreview(iframe, null, files, time, w.__reload);
       }
     },
     save,
@@ -144,8 +157,8 @@ const SEEDS: Array<[string, Step[]]> = [
   [
     "an undo of a script and a title the frame refuses, held past a newer script-only run",
     [
-      { save: "undoBoth", refused: false },
-      { save: "run", refused: false },
+      { save: "undoBoth", fate: "frame" },
+      { save: "run", fate: "frame" },
       { answer: "newest" },
       { answer: "oldest" },
     ],
@@ -155,16 +168,16 @@ const SEEDS: Array<[string, Step[]]> = [
     // send (sealedPreviewLedger.test.ts reproduces it); seed 28 reproduces the lost data-start here.
     "a refused patch, then a refused retime re-run, then the patch's refusal",
     [
-      { save: "patch", refused: true },
-      { save: "retime", refused: true },
+      { save: "patch", fate: "refused" },
+      { save: "retime", fate: "refused" },
       { answer: "patch-tweens" },
     ],
   ],
   [
     "a refused patch, then a static undo, then the patch's refusal",
     [
-      { save: "patch", refused: true },
-      { save: "undoLabel", refused: false },
+      { save: "patch", fate: "refused" },
+      { save: "undoLabel", fate: "frame" },
       { answer: "any" },
       { answer: "patch-tweens" },
     ],
@@ -180,15 +193,27 @@ describe("sealed preview after late answers in any order", () => {
     if (name.includes("title")) expect(reloads).toBeGreaterThan(0);
   });
 
-  const SAVES: Save[] = ["run", "patch", "retime", "undoLabel", "undoTitle", "undoBoth"];
+  const SAVES: Save[] = [
+    "run",
+    "patch",
+    "retime",
+    "liveRetime",
+    "undoLabel",
+    "undoTitle",
+    "undoBoth",
+  ];
+  const FATES: SaveFate[] = ["frame", "frame", "refused", "rejected"];
+  const SCRUBS = [1, 3, 4];
   const generated = (seed: number): Step[] => {
     let state = seed;
     const random = () => (state = (state * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
-    return Array.from({ length: 7 }, (): Step => {
+    const pick = <T>(list: T[]) => list[Math.floor(random() * list.length)]!;
+    return Array.from({ length: 8 }, (): Step => {
       const roll = random();
-      if (roll < 0.08) return { reloadFrame: true };
-      if (roll < 0.45) return { answer: "any" };
-      return { save: SAVES[Math.floor(random() * SAVES.length)]!, refused: random() < 0.5 };
+      if (roll < 0.07) return { reloadFrame: true };
+      if (roll < 0.17) return { scrub: pick(SCRUBS) };
+      if (roll < 0.47) return { answer: "any" };
+      return { save: pick(SAVES), fate: pick(FATES) };
     });
   };
   const base = Number(process.env.HF_ORDERING_SEED_BASE ?? 0);
@@ -196,8 +221,17 @@ describe("sealed preview after late answers in any order", () => {
     Array.from({ length: Number(process.env.HF_ORDERING_SEEDS ?? 40) }, (_, i) => base + i + 1),
   )("generated sequence %i", async (seed) => {
     const steps = generated(seed);
-    const { shown, fresh, reloads, reloadRefusals } = await play(steps, seed);
+    const { shown, fresh, reloads, reloadRefusals, playhead } = await play(steps, seed);
     expect({ steps, state: shown }).toEqual({ steps, state: fresh });
+    // The preview's playhead stays where Studio last put it, within a frame.
+    expect({
+      steps,
+      off: Math.abs(playhead.shown - playhead.studio) > 1 / 30,
+      playhead,
+    }).toMatchObject({
+      steps,
+      off: false,
+    });
     // Only a refused re-run or restore leaves nothing to recover in place.
     if (reloadRefusals === 0) expect({ steps, reloads }).toEqual({ steps, reloads: 0 });
   });

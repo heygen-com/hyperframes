@@ -15,6 +15,8 @@ export type Studio = typeof import("../src/utils/gsapSoftReload") & {
   patchRuntimeTweenInPlace: typeof import("../src/hooks/gsapRuntimePatch").patchRuntimeTweenInPlace;
   applyPreviewSync: typeof import("../src/hooks/useGsapScriptCommits").applyPreviewSync;
   applyUndoRestoreToPreview: typeof import("../src/utils/gsapUndoRestore").applyUndoRestoreToPreview;
+  moveLiveTweens: typeof import("../src/utils/gsapLiveRetime").moveLiveTweens;
+  usePlayerStore: typeof import("../src/player/store/playerStore").usePlayerStore;
 };
 
 /** Studio's preview code, bundled for the page as `window.hfStudio`. */
@@ -27,6 +29,8 @@ export async function buildStudioBundle(): Promise<string> {
         `export { patchRuntimeTweenInPlace } from "./hooks/gsapRuntimePatch";`,
         `export { applyPreviewSync } from "./hooks/useGsapScriptCommits";`,
         `export { applyUndoRestoreToPreview } from "./utils/gsapUndoRestore";`,
+        `export { moveLiveTweens } from "./utils/gsapLiveRetime";`,
+        `export { usePlayerStore } from "./player/store/playerStore";`,
       ].join(" "),
       resolveDir: fileURLToPath(new URL("../src", import.meta.url)),
     },
@@ -50,6 +54,7 @@ function holdReplies() {
     __swallow: Set<string>;
     __swallowed: Array<{ kind: string; answer: (result: unknown) => void }>;
     __posted: number;
+    __rejecting: boolean;
     __refusals: number;
   };
   w.__hold = false;
@@ -57,6 +62,7 @@ function holdReplies() {
   w.__swallow = new Set();
   w.__swallowed = [];
   w.__posted = 0;
+  w.__rejecting = false;
   w.__refusals = 0;
   const own = Object.getOwnPropertyDescriptor(MessagePort.prototype, "onmessage")!;
   // A request of a swallowed kind never reaches the frame; the test answers it as the frame would.
@@ -70,11 +76,17 @@ function holdReplies() {
     if (typeof request?.id === "number") w.__posted++;
     if (typeof request?.id !== "number" || !w.__swallow.has(request.kind ?? ""))
       return post.call(this, data, ...rest);
+    const rejected = w.__rejecting;
     w.__swallowed.push({
       kind: request.kind!,
-      // Arrives now, at the step that answers it, never back in the held queue.
+      // Arrives now, at the step that answers it, never back in the held queue. A rejection is the port's own
+      // refusal of the request before the frame applied anything.
       answer: (result) => {
-        const data = { v: request.v, id: request.id, ok: true, result };
+        const error = { code: "invalid-params", message: "rejected before applying" };
+        const data = rejected
+          ? { v: request.v, id: request.id, ok: false, error }
+          : { v: request.v, id: request.id, ok: true, result };
+        if (rejected && request.kind !== "patch-tweens") w.__refusals++;
         const hold = w.__hold;
         w.__hold = false;
         own.get!.call(this)?.call(this, new MessageEvent("message", { data }));
