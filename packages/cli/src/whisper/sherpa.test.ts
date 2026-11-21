@@ -320,6 +320,20 @@ module.exports = {
     expect(String(log.mock.calls[0]?.[0])).not.toContain("\n");
   });
 
+  // fails without the fix: the child's own words were printed with only whitespace collapsed.
+  it("shows control characters in the broken copy's error as text", async () => {
+    const { cache, cliUrl } = layout(
+      'throw new Error("cannot open od\\u001b[2Jd\\u0007");',
+      decoder(),
+    );
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    await transcript(cache, cliUrl);
+    const said = String(log.mock.calls[0]?.[0]);
+    expect(said).toContain("cannot open od\\x1b[2Jd\\x07");
+    expect(said).not.toContain("\u001b");
+    expect(said).not.toContain("\u0007");
+  });
+
   it("reports an accepted package with a missing entry and uses the healthy cache", async () => {
     const { cache, cliUrl, pinnedPath } = layout(LOADS, decoder());
     rmSync(pinnedPath);

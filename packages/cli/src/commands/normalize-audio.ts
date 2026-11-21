@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { relative, resolve } from "node:path";
 import {
@@ -42,7 +43,7 @@ function fail(message: string, json: boolean, cause?: unknown): never {
     console.log(
       JSON.stringify(jsonFailure(usage ? cause.code : "runtime_error", message), null, 2),
     );
-  } else console.error(c.error(message));
+  } else console.error(c.error(terminalLines(message)));
   if (usage) failUsage();
   failCommand(1, cause);
 }
@@ -221,8 +222,8 @@ const LIMIT_TEXT: Record<LoudnessLimit, string> = {
 function printMeasuredLine(result: NormalizeAudioResult): void {
   if (result.mode === "reference") {
     console.log(
-      `${c.bold(`#${result.referenceId}`)} ${result.referenceLufs.toFixed(1)} LUFS → ` +
-        `${c.bold(`#${result.targetId}`)} ${result.targetLufs.toFixed(1)} LUFS`,
+      `${c.bold(`#${terminalText(result.referenceId)}`)} ${result.referenceLufs.toFixed(1)} LUFS → ` +
+        `${c.bold(`#${terminalText(result.targetId)}`)} ${result.targetLufs.toFixed(1)} LUFS`,
     );
     if (result.limitedBy) {
       console.log(
@@ -235,7 +236,7 @@ function printMeasuredLine(result: NormalizeAudioResult): void {
   }
   const limit = result.limitedBy ? ` (${LIMIT_TEXT[result.limitedBy]})` : "";
   console.log(
-    `${c.bold(`#${result.targetId}`)} ${result.sourceLufs.toFixed(1)} LUFS → ` +
+    `${c.bold(`#${terminalText(result.targetId)}`)} ${result.sourceLufs.toFixed(1)} LUFS → ` +
       `${result.reachedLufs.toFixed(1)} LUFS, target ${result.targetLufs.toFixed(1)}${limit}`,
   );
 }
@@ -255,12 +256,14 @@ function printHumanResult(result: NormalizeAudioResult): void {
   }
 
   console.log(
-    `Set #${result.targetId} data-volume ${result.previousVolume.toFixed(3)} → ${result.volume.toFixed(6)} ` +
+    `Set #${terminalText(result.targetId)} data-volume ${result.previousVolume.toFixed(3)} → ${result.volume.toFixed(6)} ` +
       `(${result.changeDb >= 0 ? "+" : ""}${result.changeDb.toFixed(1)} dB).`,
   );
   console.log(
     result.wrote
-      ? c.success(`Updated ${relative(process.cwd(), result.filePath) || "index.html"}.`)
+      ? c.success(
+          `Updated ${terminalText(relative(process.cwd(), result.filePath) || "index.html")}.`,
+        )
       : c.dim("Dry run only. Pass --write to persist this gain."),
   );
 }

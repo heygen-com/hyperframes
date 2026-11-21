@@ -9,6 +9,61 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.77"
+  description="Released - 2026-11-21"
+  tags={["Release", "Core", "Ci", "CLI"]}
+>
+CLI messages now show control characters as plain text. An undo in Studio never deletes a file another page still uses, and big root previews no longer hold up other requests.
+
+## Features
+
+- **Studio Server:** A host can name paths its project history never records ([9bea44695](https://github.com/heygen-com/hyperframes/commit/9bea44695b6c36f9eb89542fdeca556750dcc797), [#8224](https://github.com/heygen-com/hyperframes/pull/8224)).
+
+## Fixes
+
+- **Core:** Look up SVG selector aliases by namespace before matching their values ([c8c5214a4](https://github.com/heygen-com/hyperframes/commit/c8c5214a4136e75aedaf12890f5e8479f695e39d), [#8354](https://github.com/heygen-com/hyperframes/pull/8354)).
+- **CI:** A diff is a release only when it bumps versions ([de63e9731](https://github.com/heygen-com/hyperframes/commit/de63e9731196d1cdf62bf57bc064f15a2d31c4a0), [#8355](https://github.com/heygen-com/hyperframes/pull/8355)).
+- **CLI:** Show control characters as text in four more commands' printed lines ([a744f5c3f](https://github.com/heygen-com/hyperframes/commit/a744f5c3f523c6fe9039a42b7968c78f708b1e46), [#8346](https://github.com/heygen-com/hyperframes/pull/8346)).
+- **CLI:** Show control characters as text in cloudrun and cloud printed lines ([af0664c8f](https://github.com/heygen-com/hyperframes/commit/af0664c8f5ee4e51a788031dca3d421248571a01), [#8350](https://github.com/heygen-com/hyperframes/pull/8350)).
+- **CLI:** Show control characters as text in the lambda commands' printed lines ([eaec4f4ad](https://github.com/heygen-com/hyperframes/commit/eaec4f4ad9a084f6ef157837b05ae53dcaf0f3a2), [#8348](https://github.com/heygen-com/hyperframes/pull/8348)).
+- **CLI:** Show control characters as text in sign-in, account status and preview lines ([7a91dc9fe](https://github.com/heygen-com/hyperframes/commit/7a91dc9fe9efa0f3bfb23b5ae8accbdf48745b4a), [#8347](https://github.com/heygen-com/hyperframes/pull/8347)).
+- **CLI:** Show control characters in more command messages as text ([9937baee1](https://github.com/heygen-com/hyperframes/commit/9937baee1e2292b50443990ad983e9955bc62c95), [#8344](https://github.com/heygen-com/hyperframes/pull/8344)).
+- **CLI:** Show control characters in service reply messages as text ([efd04c3b8](https://github.com/heygen-com/hyperframes/commit/efd04c3b81676ce45e87a4f590d9550de6ba0266), [#8345](https://github.com/heygen-com/hyperframes/pull/8345)).
+- **Core:** Remember each minted svg id's next free suffix ([990aec78b](https://github.com/heygen-com/hyperframes/commit/990aec78ba66a809d1c680d4f46f8a2b40b25446), [#8285](https://github.com/heygen-com/hyperframes/pull/8285)).
+- **Studio Server:** An undo never deletes a file a page it leaves still names ([7df3ae0a5](https://github.com/heygen-com/hyperframes/commit/7df3ae0a516c106abfc605aca183bc99eb1785d7), [#8186](https://github.com/heygen-com/hyperframes/pull/8186)).
+
+## Performance
+
+- **Studio Server:** A root preview's parse passes run off the request thread ([e1b951586](https://github.com/heygen-com/hyperframes/commit/e1b951586f93493910bf4690219e95c3030fe793), [#7934](https://github.com/heygen-com/hyperframes/pull/7934)).
+
+## Docs & Examples
+
+- **Release:** List the Layers panel undo fix in the v0.9.75 notes ([4095b7368](https://github.com/heygen-com/hyperframes/commit/4095b7368985a8e1f888dc4e78be7a5ba4534a4d), [#8351](https://github.com/heygen-com/hyperframes/pull/8351)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.75...v0.9.77).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.75"
+  description="Released - 2026-11-21"
+  tags={["Release", "CLI", "Studio Server", "Core", "Studio"]}
+>
+Seeking a film with many videos no longer hangs Safari. Opening and pruning history no longer stalls on a slow project folder, and CLI writes never follow a link already in a project.
+
+## Fixes
+
+- **CLI:** Writes into a project folder never follow a link already there ([4a50fb279](https://github.com/heygen-com/hyperframes/commit/4a50fb2798186e3292144f4cee78071cbca7172b), [#8334](https://github.com/heygen-com/hyperframes/pull/8334)).
+- **Studio Server:** History reads a project's folder off the thread when opening and pruning ([63d1bb559](https://github.com/heygen-com/hyperframes/commit/63d1bb5596d0a307b3efa4290a7a3cf3848e090e), [#8340](https://github.com/heygen-com/hyperframes/pull/8340)).
+- **Core:** Look up attribute-selector aliases by sorted key instead of scanning each ([370f09d74](https://github.com/heygen-com/hyperframes/commit/370f09d74ca61020ba51417e7fd375b8bb50ad28), [#8280](https://github.com/heygen-com/hyperframes/pull/8280)).
+- **Media Use:** Read recipe freeze sources only as regular files ([056a13e28](https://github.com/heygen-com/hyperframes/commit/056a13e28ee76ae8eda1d372e01d45d32a25dbc3), [#8325](https://github.com/heygen-com/hyperframes/pull/8325)).
+- **Core:** Seeking a film with many videos no longer hangs Safari ([6515a9080](https://github.com/heygen-com/hyperframes/commit/6515a9080440bfbeffa9380e83f7f8d688e280fa), [#8278](https://github.com/heygen-com/hyperframes/pull/8278)).
+- **CLI:** Show control characters in failure messages as text ([183bc1080](https://github.com/heygen-com/hyperframes/commit/183bc10807b930158cc02ca4d928252ca8211d3e), [#8336](https://github.com/heygen-com/hyperframes/pull/8336)).
+- **Studio:** The Layers panel shows the undone order after an in-place undo ([06ba53b7c](https://github.com/heygen-com/hyperframes/commit/06ba53b7c5df49983e88a9222064e335e584f958), [#8328](https://github.com/heygen-com/hyperframes/pull/8328)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.74...v0.9.75).
+</Update>
+
+<Update
   label="HyperFrames v0.9.74"
   description="Released - 2026-11-21"
   tags={["Release", "Producer", "Ci", "Core"]}

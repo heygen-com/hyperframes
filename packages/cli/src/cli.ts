@@ -52,6 +52,7 @@ import { existsSync } from "node:fs";
 // `hyperframes --version` near-instant (~10ms vs ~80ms).
 import { VERSION } from "./version.js";
 
+process.argv = [...process.argv.slice(0, 2), ...jsonFlagAfterCommand(process.argv.slice(2))];
 let argv = process.argv.slice(2);
 if (argv[0] === "help") {
   process.argv = [...process.argv.slice(0, 2), ...argv.slice(1), "--help"];
@@ -112,7 +113,9 @@ import {
 } from "./utils/commandResult.js";
 import { registerRunningCli } from "./utils/runningCli.js";
 import {
+  jsonFlagBeforeSeparator,
   commandWordIndex,
+  jsonFlagAfterCommand,
   measureProbeShortcutArgv,
   openShortcutArgv,
   registryAliasArgv,
@@ -246,7 +249,7 @@ const cliCommandArg = process.argv[2];
 // (in the failure reporter) and `command` references `subCommands` (the `in`
 // check), so its type can't be inferred from its own initializer.
 const command: string = cliCommandArg && cliCommandArg in subCommands ? cliCommandArg : "unknown";
-const hasJsonFlag = process.argv.includes("--json");
+const hasJsonFlag = jsonFlagBeforeSeparator(argv);
 // Under --json a failure always answers on stdout with the shared envelope (see executeCli).
 const jsonOutput = hasJsonFlag ? watchOutput() : undefined;
 

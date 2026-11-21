@@ -6,6 +6,7 @@ import { safeFetch } from "../../capture/assetDownloader.js";
 import { ensureCaptureDirSync } from "../../capture/captureFile.js";
 import { CAPTURE_USER_AGENT } from "../../capture/userAgent.js";
 import { terminalText } from "@hyperframes/core";
+import { printFailureLine } from "../../utils/jsonError.js";
 
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const VIDEO_CONTENT_TYPE_RE = /^(video\/|application\/(mp4|octet-stream|x-mpegurl))/i;
@@ -198,8 +199,9 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
   const manifestPath = existsSync(directPath) ? directPath : w2hPath;
   const isW2hLayout = manifestPath === w2hPath;
   if (!existsSync(manifestPath)) {
-    console.error(
-      `${c.error("✗")} no video-manifest.json at ${directPath} or ${w2hPath}\n` +
+    printFailureLine(
+      (show) =>
+        `${c.error("✗")} no video-manifest.json at ${show(directPath)} or ${show(w2hPath)}\n` +
         `  Was this directory produced by \`hyperframes capture\`?`,
     );
     setCommandExitCode(1);
@@ -209,8 +211,8 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
   try {
     manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
   } catch (e) {
-    console.error(
-      `${c.error("✗")} video-manifest.json is malformed: ${shown((e as Error).message)}`,
+    printFailureLine(
+      (show) => `${c.error("✗")} video-manifest.json is malformed: ${show((e as Error).message)}`,
     );
     setCommandExitCode(1);
     return;
@@ -222,7 +224,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
       return;
     }
     console.log(
-      `${manifest.length} video entr${manifest.length === 1 ? "y" : "ies"} in ${manifestPath}:`,
+      `${manifest.length} video entr${manifest.length === 1 ? "y" : "ies"} in ${shown(manifestPath)}:`,
     );
     for (const e of manifest) {
       console.log(
@@ -236,8 +238,9 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
 
   const pick = pickManifestEntry(manifest, args);
   if (!pick.ok) {
-    console.error(
-      `${c.error("✗")} ${shown(pick.message)}` +
+    printFailureLine(
+      (show) =>
+        `${c.error("✗")} ${show(pick.message)}` +
         (pick.code === "no-match-url" ? `\n  Run with --list to see what's available.` : ""),
     );
     setCommandExitCode(1);
@@ -247,10 +250,11 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
 
   const collisions = findFilenameCollision(manifest, entry);
   if (collisions.length > 0) {
-    console.error(
-      `${c.error("✗")} filename "${safeFilename(entry.filename || basename(entry.url))}" ` +
+    printFailureLine(
+      (show) =>
+        `${c.error("✗")} filename "${safeFilename(entry.filename || basename(entry.url))}" ` +
         `collides with manifest entr${collisions.length === 1 ? "y" : "ies"} ` +
-        `${collisions.map((co) => `[${shown(co.index)}]`).join(", ")}. ` +
+        `${collisions.map((co) => `[${show(String(co.index))}]`).join(", ")}. ` +
         `Refusing to download — the on-disk file's bytes would not match the requested entry.`,
     );
     setCommandExitCode(1);
@@ -263,7 +267,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
   try {
     ensureCaptureDirSync(projectDir, outDir);
   } catch (e) {
-    console.error(`${c.error("✗")} ${terminalText((e as Error).message)}`);
+    printFailureLine((show) => `${c.error("✗")} ${show((e as Error).message)}`);
     setCommandExitCode(1);
     return;
   }
@@ -292,7 +296,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
       return;
     }
     const message = (e as Error).message.replace(/\r/g, "").replace(/\n/g, "");
-    console.error(`${c.error("✗")} download failed: ${shown(message)}`);
+    printFailureLine((show) => `${c.error("✗")} download failed: ${show(message)}`);
     setCommandExitCode(1);
   }
 }
