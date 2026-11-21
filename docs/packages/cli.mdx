@@ -47,6 +47,14 @@ default to the current directory: `npx hyperframes check ./my-video`. A few
 take it as a flag instead — `add`, `transcribe`, `feedback`, `skills`, `history`, and
 the `timeline` edit commands use `--dir`.
 
+**Control characters in a few printed lines.** `figma component` (the
+`imported component` line), `usage` (the reason on a `Usage unknown` line),
+`measure hands` (its notices) and `compare` and `keyframes` (the notice
+about files left out) print control characters in a repeated value as visible
+text such as `\x1b` and `\x07`, and keep the value on its line, with a line break
+shown as `\x0a`. [`capture`](#capture) does the same for its warnings and failure
+reason. `--json` output is not changed by this.
+
 **`--json` for agents and scripts.** Most commands accept it, and the ones
 that do not reject it with exit 2. The payload is wrapped with a `_meta` field
 so a script can spot an outdated CLI from any command's output, without a
@@ -409,6 +417,10 @@ the page exposed. It is raw material for an agent, not a finished composition;
 the `/hyperframes` skill uses it when a real product has to appear on screen. Dynamic sites, protected pages, and unusual media loaders produce
 partial results, so read `dropped`, the warnings, and the contact sheets before
 you build.
+
+Each warning, and the reason on a `Capture failed:` line, is printed on one
+line: a line break inside the text is shown as `\x0a` instead of starting a new
+terminal line. `--json` output is unchanged and carries the full text.
 
 Downloaded fonts are saved under `assets/fonts/`, and their CSS references point
 to those local files. Distinct URLs such as `demo.woff2?v=1` and
