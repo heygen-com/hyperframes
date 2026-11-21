@@ -186,4 +186,17 @@ describe("linear scans", () => {
       expect(charactersRead(() => scanAll(page)) / page.length).toBeLessThan(16);
     },
   );
+
+  // A regex that rescans inside one call is invisible to the count. At 4 MB those regexes run for minutes; the scans
+  // take milliseconds quiet and about a second on a loaded runner, so 15 s fails only a reversion.
+  it.each(["<script ", "<script>", "<style ", "<style>", "/*", "<pre>", "<text ", "< / script"])(
+    "finish a 4 MB page of unclosed %j in seconds, not the minutes a backtracking regex takes",
+    (unit) => {
+      const page = unit.repeat(Math.floor(4_000_000 / unit.length));
+      const started = performance.now();
+      scanAll(page);
+      expect(performance.now() - started).toBeLessThan(15_000);
+    },
+    30_000,
+  );
 });
