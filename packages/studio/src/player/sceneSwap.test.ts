@@ -24,7 +24,7 @@ function swappableIframe(swap: Swap = vi.fn(async () => {})) {
 }
 
 describe("sceneSwapFor", () => {
-  it("returns no swap for an opaque frame, without reading its window", () => {
+  it("swaps an opaque frame through its editing port, without reading its window", () => {
     const iframe = document.createElement("iframe");
     const blocked = new Proxy({} as Window, {
       get: () => {
@@ -33,7 +33,7 @@ describe("sceneSwapFor", () => {
     });
     Object.defineProperty(iframe, "contentWindow", { value: blocked });
     Object.defineProperty(iframe, "contentDocument", { value: null });
-    expect(sceneSwapFor(iframe)).toBeNull();
+    expect(sceneSwapFor(iframe)).toBeTypeOf("function");
   });
 
   it("gives up on a preview download that never finishes, so the caller can reload", async () => {

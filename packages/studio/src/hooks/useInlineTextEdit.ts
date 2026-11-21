@@ -6,7 +6,7 @@ import {
   beginStudioManualEditGesture,
   endStudioManualEditGesture,
   countStudioManualEditSave,
-} from "../components/editor/manualEditsDom";
+} from "../components/editor/manualEditGesture";
 
 /**
  * Editing an element's text where it sits, in the composition itself.

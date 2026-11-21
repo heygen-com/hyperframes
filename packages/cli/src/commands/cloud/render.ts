@@ -374,15 +374,15 @@ export default defineCommand({
         );
       } else {
         console.log("");
-        console.log(`${c.success("✓")}  Submitted ${c.accent(renderId)}`);
-        console.log(c.dim(`   Poll with: hyperframes cloud get ${renderId}`));
+        console.log(`${c.success("✓")}  Submitted ${c.accent(terminalText(renderId))}`);
+        console.log(c.dim(`   Poll with: hyperframes cloud get ${terminalText(renderId)}`));
       }
       return;
     }
 
     if (!asJson) {
       console.log("");
-      console.log(c.dim(`  Polling ${renderId} every ${pollIntervalMs / 1000}s …`));
+      console.log(c.dim(`  Polling ${terminalText(renderId)} every ${pollIntervalMs / 1000}s …`));
     }
 
     const detail = await pollWithProgress(client, renderId, asJson, {
@@ -1063,7 +1063,7 @@ async function maybeUploadProject(
   if (!asJson) {
     console.log(
       c.dim(
-        `   asset_id: ${c.accent(uploaded.asset_id)} · ${formatDuration(Date.now() - uploadStart)}`,
+        `   asset_id: ${c.accent(terminalText(uploaded.asset_id))} · ${formatDuration(Date.now() - uploadStart)}`,
       ),
     );
   }
@@ -1196,7 +1196,7 @@ export function logsTick(
 }
 
 function formatTickLine(detail: HyperframesRenderDetail, elapsedMs: number): string {
-  const status = colorStatus(detail.status);
+  const status = colorStatus(terminalText(detail.status));
   return `${status}  ${c.dim(formatDuration(elapsedMs))}`;
 }
 
@@ -1242,7 +1242,7 @@ async function streamVideo(
   // `downloadToFile` creates the parent directory and preserves existing output on failure.
   if (!asJson) {
     console.log("");
-    console.log(`${c.accent("◆")}  Downloading to ${c.accent(destPath)}`);
+    console.log(`${c.accent("◆")}  Downloading to ${c.accent(terminalText(destPath))}`);
   }
   try {
     const result = await downloadToFile(url, destPath);

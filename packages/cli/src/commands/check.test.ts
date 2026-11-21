@@ -927,6 +927,38 @@ it("prints composition text in a finding with its control characters as visible 
   expect(out).toContain("Fix: use \\x1b]52;c;Y2xpcA==\\x07");
 });
 
+it("prints a replayed pass's time and finding code with control characters as visible escapes", async () => {
+  const planted: CheckFinding = {
+    code: "audio_quiet\u0007",
+    severity: "warning",
+    message: "voice.wav is quiet",
+    selector: "#v",
+    dataAttributes: {},
+    sourceFile: "scene.html",
+    bbox: { x: 0, y: 0, width: 0, height: 0 },
+    time: 1,
+  };
+  const { report } = await runScenario(
+    fakeDriver(),
+    {},
+    { inspectAudio: vi.fn(async () => [planted]) },
+  );
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline: vi.fn(async () => ({ ...report, cached: { at: "2026-01-02\u001b[2J" } })),
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: [] }).catch(() => undefined);
+
+  const out = log.mock.calls.map((call) => String(call[0] ?? "")).join("\n");
+  for (const control of ["\u0007", "\u001b[2J"]) expect(out).not.toContain(control);
+  expect(out).toContain("since the pass at 2026-01-02\\x1b[2J;");
+  expect(out).toContain("audio_quiet\\x07: voice.wav is quiet");
+});
+
 it("prints a contrast finding's selector, colour and source with control characters escaped", async () => {
   const planted: CheckContrastFinding = {
     code: "contrast_aa_failure",

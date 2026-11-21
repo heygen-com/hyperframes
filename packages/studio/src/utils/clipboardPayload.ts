@@ -6,6 +6,7 @@ const CLIPBOARD_MARKER = "hyperframes-clipboard:v1";
  *  relative offsets and tracks across a group paste. */
 export interface TimelineClipboardClip {
   html: string;
+  saved?: boolean;
   start: number;
   duration: number;
   track: number;
@@ -22,6 +23,7 @@ export type ClipboardPayload =
   | {
       kind: "dom-element";
       html: string;
+      saved?: boolean;
       sourceFile: string;
       projectId?: string;
       originSelector?: string;
@@ -51,17 +53,19 @@ export function deserializeClipboardPayload(json: string): ClipboardPayload | nu
   if (typeof obj.sourceFile !== "string") return null;
   if (obj.kind === "timeline-clip") {
     if (!Array.isArray(obj.clips)) return null;
-    const clips = obj.clips.filter((c): c is TimelineClipboardClip => {
-      const clip = c as Partial<TimelineClipboardClip> | null;
-      return (
-        !!clip &&
-        typeof clip === "object" &&
-        typeof clip.html === "string" &&
-        typeof clip.start === "number" &&
-        typeof clip.duration === "number" &&
-        typeof clip.track === "number"
-      );
-    });
+    const clips = obj.clips
+      .filter((c): c is TimelineClipboardClip => {
+        const clip = c as Partial<TimelineClipboardClip> | null;
+        return (
+          !!clip &&
+          typeof clip === "object" &&
+          typeof clip.html === "string" &&
+          typeof clip.start === "number" &&
+          typeof clip.duration === "number" &&
+          typeof clip.track === "number"
+        );
+      })
+      .map(({ html, start, duration, track }) => ({ html, start, duration, track }));
     if (clips.length === 0) return null;
     const projectId = typeof obj.projectId === "string" ? obj.projectId : undefined;
     const copiedInComposition =

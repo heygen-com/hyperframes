@@ -70,7 +70,7 @@ async function readChecked(path: string, hash: string): Promise<Buffer> {
 
 export const readBlob = (dir: string, hash: string) => readChecked(blobPath(dir, hash), hash);
 
-async function hashFile(path: string): Promise<string> {
+export async function hashFile(path: string): Promise<string> {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   return hash.digest("hex");

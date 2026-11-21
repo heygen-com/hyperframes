@@ -10,6 +10,7 @@ import { computedTranslateAxes, movedTranslate } from "./editingDraft";
 import {
   boxOf,
   elementGeometry,
+  readElementTransformSnapshot,
   snapCandidates,
   MAX_SNAP_TARGETS,
   type EditingElementBox,
@@ -24,6 +25,9 @@ export interface EditingGestureStart extends EditingElementGeometry {
   move: { a: number; b: number; c: number; d: number } | null;
   /** Set when GSAP owns its position: its x/y now, and whether a tween with a duration moves it. */
   gsap: { x: number; y: number; moving: boolean } | null;
+  /** GSAP's rotation now when it owns the element's turn; null when it turns by its own CSS `rotate`. */
+  gsapRotation: number | null;
+  planar: { a: number; b: number; c: number; d: number } | null;
 }
 
 const PROBE_PX = 100;
@@ -77,6 +81,16 @@ type GsapWindow = {
 // The channels Studio's move route and drag commit read as GSAP moving an element.
 const POSITION = ["x", "y", "xPercent", "yPercent", "left", "top", "translateX", "translateY"];
 const MOVES = [...POSITION, "motionPath"];
+const TURNS = [
+  "rotation",
+  "rotationX",
+  "rotationY",
+  "rotationZ",
+  "rotate",
+  "rotateX",
+  "rotateY",
+  "rotateZ",
+];
 
 function carries(vars: Record<string, unknown>, channels: string[]): boolean {
   if (channels.some((channel) => channel in vars)) return true;
@@ -103,16 +117,28 @@ function tweensOn(element: Element): GsapTween[] {
   );
 }
 
+const rendersTransform = (element: Element) =>
+  !!(element as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
+// Read only once GSAP owns it: asking GSAP for x makes it fold a CSS translate into its transform.
+const readGsap = (element: Element, property: string) =>
+  Number((window as GsapWindow).gsap?.getProperty?.(element, property)) || 0;
+
 /** GSAP's x/y when it owns the element's position: it renders its transform, or a tween writes it. */
 function gsapPosition(element: Element): EditingGestureStart["gsap"] {
   const tweens = tweensOn(element).filter((tween) => tween.vars && carries(tween.vars, MOVES));
-  const renders = !!(element as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
-  if (!renders && !tweens.length) return null;
-  // Read only now: asking GSAP for x makes it fold a CSS translate into its transform.
-  const read = (axis: string) =>
-    Number((window as GsapWindow).gsap?.getProperty?.(element, axis)) || 0;
+  if (!rendersTransform(element) && !tweens.length) return null;
   const moving = tweens.some((tween) => (tween.duration?.() ?? 0) > 0);
-  return { x: read("x"), y: read("y"), moving };
+  return { x: readGsap(element, "x"), y: readGsap(element, "y"), moving };
+}
+
+function gsapRotation(element: Element): number | null {
+  const turned = tweensOn(element).some((tween) => tween.vars && carries(tween.vars, TURNS));
+  return rendersTransform(element) || turned ? readGsap(element, "rotation") : null;
+}
+
+function planarOf(element: StylableElement): EditingGestureStart["planar"] {
+  const matrix = readElementTransformSnapshot(window, element as HTMLElement)?.matrix;
+  return matrix ? { a: matrix.a, b: matrix.b, c: matrix.c, d: matrix.d } : null;
 }
 
 /** Each handle's gesture start, null as in `describe`, and the snap boxes of the page around them. */
@@ -131,6 +157,8 @@ export function gestureStart(handles: readonly EditingElementHandle[]): {
       layout: { width: offsetWidth, height: offsetHeight },
       move: measureMoveResponse(element),
       gsap: gsapPosition(element),
+      gsapRotation: gsapRotation(element),
+      planar: planarOf(element),
     };
   });
   const root = document.querySelector("[data-composition-id]") ?? document.documentElement;

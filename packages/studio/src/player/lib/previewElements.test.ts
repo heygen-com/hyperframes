@@ -12,6 +12,7 @@ import {
   previewElementSelectorIndex,
   previewElementSourceFile,
   previewElementsAtPoint,
+  previewStackingSiblings,
   readPreviewElement,
   type PreviewElement,
 } from "./previewElements";
@@ -22,6 +23,7 @@ import {
   setCompositionSourceMap,
 } from "../../components/editor/domEditingDom";
 import { detachedFakeIframe, serveEditingRequests } from "../hooks/timelinePlayerTestHarness";
+import { previewStackingFamily } from "../../components/editor/previewLayers";
 
 const closers: Array<() => void> = [];
 afterEach(() => {
@@ -153,6 +155,53 @@ describe("element requests over an opaque frame's port", () => {
     expect(await describePreviewElements(iframe, [])).toBeNull();
     expect(await describePreviewElements(iframe, Array(257).fill(h(1)))).toBeNull();
     expect(handed).not.toHaveBeenCalled();
+  });
+
+  it("reads an element's stacking family, and refuses one that is not a family of it", async () => {
+    const family = [
+      { handle: h(1), zIndex: 1 },
+      { handle: h(2), zIndex: 2 },
+    ];
+    let reply: unknown = { family, locked: false };
+    const { iframe, handed } = opaqueFrame(() => reply);
+    expect(await previewStackingSiblings(iframe, h(1))).toEqual({ family, locked: false });
+    expect(handed).toHaveBeenCalledWith("stacking-family", { handle: h(1) });
+    for (const bad of [
+      { family: {}, locked: false },
+      { family, locked: "no" },
+      { family: [family[0], { handle: h(2), zIndex: Number.NaN }], locked: false },
+      { family: [family[0], { handle: h(2), zIndex: 1.5 }], locked: false },
+      { family: [family[0], { handle: "x", zIndex: 2 }], locked: false },
+      { family: [family[0], family[0]], locked: false },
+      { family: [family[1]], locked: false },
+      { family: Array(2049).fill(family[0]), locked: false },
+    ]) {
+      reply = bad;
+      expect(await previewStackingSiblings(iframe, h(1))).toBeNull();
+    }
+  });
+
+  it("restacks nothing from a malformed family, before describing any sibling", async () => {
+    let reply: unknown = { family: {}, locked: false };
+    const { iframe, handed } = opaqueFrame((kind, params) =>
+      kind === "describe"
+        ? {
+            elements: (params as { handles: string[] }).handles.map((handle) =>
+              described(1, { handle }),
+            ),
+          }
+        : reply,
+    );
+    await expect(previewStackingFamily(iframe, h(1), null)).resolves.toBeNull();
+    reply = {
+      family: [
+        { handle: h(1), zIndex: 1 },
+        { handle: h(2), zIndex: Number.NaN },
+      ],
+      locked: false,
+    };
+    await expect(previewStackingFamily(iframe, h(1), null)).resolves.toBeNull();
+    expect(handed).not.toHaveBeenCalledWith("describe", expect.anything());
   });
 
   it("gives up after the agent probe when the frame's runtime has no editing agent", async () => {

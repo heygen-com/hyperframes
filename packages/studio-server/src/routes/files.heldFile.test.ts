@@ -175,18 +175,6 @@ function holdFor(file: string, ms: number) {
   });
 }
 
-/** How many `Atomics.wait` calls ran while `work` ran: core's only synchronous retry sleep, which stops the whole
- * process. Blocking any other way (a busy loop, a sync child process) is not counted. */
-async function syncWaits(work: () => Promise<unknown>) {
-  const wait = vi.spyOn(Atomics, "wait");
-  try {
-    await work();
-    return wait.mock.calls.length;
-  } finally {
-    wait.mockRestore();
-  }
-}
-
 /** The most rename attempts onto `file` in one event-loop turn while `work` ran. A retry that blocks the process makes
  * every attempt in the same turn, however it sleeps; a busy machine only spaces the turns out. */
 async function mostAttemptsInOneTurn(file: string, work: () => Promise<unknown>) {
@@ -256,18 +244,18 @@ describe("an element edit while Windows briefly holds the file", () => {
     expect(readFileSync(file, "utf8")).toContain("color: blue");
   }, 10_000);
 
-  // fails without the fix: each retry slept the whole process, up to 640 ms in one go. Not covered: a single blocking
-  // pause with no retry that is not an `Atomics.wait`.
-  it("keeps the app answering while it waits", async () => {
+  // fails without the fix: the save slept the thread between retries (Atomics.wait), so the app froze for the hold.
+  it("keeps the app answering while it waits: it never sleeps the thread", async () => {
     const { file, remove } = fixture("held.html");
     writeFileSync(file, `${edited}<p id="gone">tag</p>`);
     holdFor(file, 1_500);
-    let waits = -1;
-    const most = await mostAttemptsInOneTurn(file, async () => {
-      waits = await syncWaits(async () => expect((await remove("gone")).status).toBe(200));
-    });
-    expect(waits).toBe(0);
-    expect(most).toBe(1);
+    const sleeps = vi.spyOn(Atomics, "wait");
+    cleanups.push(() => sleeps.mockRestore());
+    let answer: Response | undefined;
+    const most = await mostAttemptsInOneTurn(file, async () => (answer = await remove("gone")));
+    expect(sleeps).not.toHaveBeenCalled();
+    expect(most, "a retry that blocks the process another way").toBe(1);
+    expect(answer?.status).toBe(200);
   }, 10_000);
 
   it("answers 423 busy once the hold outlasts the wait, reports it once, and leaves the file as it was", async () => {

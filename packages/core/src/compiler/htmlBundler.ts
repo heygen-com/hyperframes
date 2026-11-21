@@ -71,6 +71,7 @@ import {
 import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
+import { assertCompositionFileSize, CompositionExpansionBudget } from "./compositionSizeLimit";
 import {
   ensureExternalLinkTag,
   inlineSubCompositions,
@@ -86,6 +87,7 @@ import {
 } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
+import { isHtmlTemplate, templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
 import { assignMediaRenderIds } from "./mediaRenderIds";
 import { terminalText } from "../terminalText.js";
@@ -550,6 +552,11 @@ function getBundledHostCompositionIdentity(host: Element): BundledHostCompositio
   };
 }
 
+function hasInlineTemplate(document: Document, compositionId: string): boolean {
+  const template = document.getElementById(`${compositionId}-template`);
+  return !!template && isHtmlTemplate(template);
+}
+
 function getBundledTrackedCompositionHosts(document: Document): Element[] {
   const hosts = Array.from(
     document.querySelectorAll<Element>("[data-composition-src], [data-composition-id]"),
@@ -558,7 +565,7 @@ function getBundledTrackedCompositionHosts(document: Document): Element[] {
     if (host.hasAttribute("data-composition-src")) return true;
     const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
     if (!authoredCompositionId) return false;
-    return !!document.getElementById(`${authoredCompositionId}-template`);
+    return hasInlineTemplate(document, authoredCompositionId);
   });
 }
 
@@ -566,7 +573,7 @@ function shouldAssignBundledRuntimeCompositionId(host: Element, document: Docume
   if (host.hasAttribute("data-composition-src")) return true;
   const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
   if (!authoredCompositionId) return false;
-  if (!document.getElementById(`${authoredCompositionId}-template`)) return false;
+  if (!hasInlineTemplate(document, authoredCompositionId)) return false;
   return host.children.length === 0;
 }
 
@@ -1104,6 +1111,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     throw new Error(`${entryFile} not found in project directory`);
   }
   noteRead(indexPath);
+  assertCompositionFileSize(indexPath, entryFile);
   const entryHtml = readTextFile(indexPath);
   const mountedShell = readMountedSceneShell(projectDir, entryFile, entryHtml);
   const sourceDir = mountedShell ? projectDir : dirname(indexPath);
@@ -1182,7 +1190,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     ? [
         ...document.querySelectorAll(`script:not([${RUNTIME_BOOTSTRAP_ATTR}])`),
         ...[...document.querySelectorAll("template")].flatMap((t) => [
-          ...(t as HTMLTemplateElement).content.querySelectorAll("script"),
+          ...(templateContent(t)?.querySelectorAll("script") ?? []),
         ]),
       ].map((el) => {
         const src = el.getAttribute("src");
@@ -1199,6 +1207,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     host.hasAttribute("data-composition-src"),
   );
   const sceneSources = new Map<string, string | null>();
+  const budget = new CompositionExpansionBudget();
   const subCompResult = inlineSubCompositions(document, subCompositionHosts, {
     resolveHtml: (srcPath: string) => {
       if (!isRelativeUrl(srcPath)) return null;
@@ -1206,14 +1215,18 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
       if (!compPath) return null;
       let source = sceneSources.get(compPath);
       if (source === undefined) {
+        if (readAllowed(compPath)) assertCompositionFileSize(compPath, srcPath);
         const html = safeReadFile(compPath);
         source = html === null ? null : readSource(html);
         sceneSources.set(compPath, source);
       } else {
         noteRead(compPath);
       }
+      if (source !== null) budget.charge(srcPath, Buffer.byteLength(source));
       return source;
     },
+    chargeEmitted: (srcPath: string, bytes: number) => budget.chargeGenerated(srcPath, bytes),
+    chargeElements: (srcPath: string, count: number) => budget.chargeElements(srcPath, count),
     parseHtml: parseHTMLContent,
     hostIdentityMap: hostIdentityByElement,
     rewriteInlineStyles: true,
@@ -1294,6 +1307,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     (host) => !host.hasAttribute("data-composition-src"),
   );
   for (const templateEl of [...document.querySelectorAll("template[id]")]) {
+    if (!isHtmlTemplate(templateEl)) continue;
     const templateId = templateEl.getAttribute("id") || "";
     const match = templateId.match(/^(.+)-template$/);
     if (!match) continue;

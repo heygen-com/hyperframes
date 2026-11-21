@@ -32,7 +32,6 @@ const GPT_IMAGE: Record<string, number> = {
   "3:4": 0.03612,
 };
 const GPT_REFERENCE = 0.0125;
-const NANO_IMAGE = 0.067;
 const NANO_2_1_IMAGE = 0.0336;
 const NANO_2_1_REFERENCE = 0.00168;
 const MINIMAX_IMAGE: Record<string, number> = {
@@ -77,7 +76,6 @@ export function priceOf(r: GenerateRequest): Price {
     case "image": {
       const refs = r.references?.length ?? 0;
       const model = r.model ?? "nano-banana-2.1";
-      if (model === "nano-banana-2") return image(NANO_IMAGE, "nano-banana-2, $0.067 an image");
       if (model === "nano-banana-2.1")
         return image(
           NANO_2_1_IMAGE + refs * NANO_2_1_REFERENCE,

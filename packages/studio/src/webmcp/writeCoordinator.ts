@@ -1,5 +1,7 @@
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { parseElementHandle, resolveLiveHandleSelection } from "./handles";
+import type { PreviewElement } from "../player/lib/previewElements";
+import type { ElementNow } from "./agentPreview";
+import { parseElementHandle, resolveLiveHandleSelection, type PreviewTargets } from "./handles";
 import { toolFailure, type ToolFailure, type ToolFailureKind } from "./toolResult";
 
 export type StudioWriteOperation =
@@ -58,10 +60,11 @@ export type StudioWriteResult<T extends object> =
     });
 
 export interface TargetedWriteDeps {
-  getPreviewDocument: () => Document | null;
+  preview: PreviewTargets;
   getProjectId: () => string | null;
   getWriteBlockedReason: () => string | null;
-  buildSelection: (element: HTMLElement) => Promise<DomEditSelection | null>;
+  buildSelection: (target: HTMLElement | PreviewElement) => Promise<DomEditSelection | null>;
+  readNow: (selection: DomEditSelection) => Promise<ElementNow>;
   applySelection: (selection: DomEditSelection) => void;
 }
 
@@ -167,11 +170,7 @@ async function resolveWriteSelection(
   deps: TargetedWriteDeps,
   handle: string,
 ): Promise<ResolvedWriteSelection> {
-  const resolved = await resolveLiveHandleSelection(
-    deps.getPreviewDocument,
-    handle,
-    deps.buildSelection,
-  );
+  const resolved = await resolveLiveHandleSelection(deps.preview, handle, deps.buildSelection);
   if (resolved.status === "preview-unavailable") {
     return { ok: false, failure: toolFailure("blocked", "the composition preview is not ready") };
   }

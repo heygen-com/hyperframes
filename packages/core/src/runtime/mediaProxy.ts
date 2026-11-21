@@ -15,7 +15,10 @@ import {
   deriveCodecMapKey,
   lookupCodecMapEntry,
   sourceFactsOf,
+  sourceFactsOfSrc,
 } from "./mediaSourceLookup";
+import { naturalVideoSize } from "../mediaDisplaySize";
+import { escapeCssString } from "./editingElement";
 import {
   heldForCopy,
   heldPosters,
@@ -46,7 +49,7 @@ import {
   type PreviewSourceFacts,
   wantsLighterCopy,
 } from "../previewProxyBox";
-import { capturePageIn } from "../studioPreviewMark";
+import { capturePageIn, PREVIEW_FILE_SIZE_ATTR } from "../studioPreviewMark";
 
 /**
  * One entry per project-root-relative asset pathname, injected by the
@@ -128,8 +131,8 @@ function shownScale(): Promise<number | null> {
 
 /** The video's box in device pixels, at least the stage so a later zoom or a clip still hidden fits. */
 function shownBox(el: HTMLMediaElement, scale: number): PreviewProxyBox | null {
-  // object-fit: none shows the source at its own size.
-  if (getComputedStyle(el).objectFit === "none") return null;
+  // These show the file at its own size when it fits, so a smaller copy would show smaller.
+  if (["none", "scale-down"].includes(getComputedStyle(el).objectFit)) return null;
   const rect = el.getBoundingClientRect();
   const stage = document.documentElement;
   const pixels = scale * (window.devicePixelRatio || 1);
@@ -299,8 +302,87 @@ function loadProxy(
   evictMediaSyncState(el);
   restartPlaybackHealth();
   holdShownFrame(el);
+  keepFileSize(el, href, originalSrc);
   el.src = href;
   el.load();
+}
+
+// Each size this page pinned, keyed by mark and copy address, so a video given any other file is sized as before.
+// ponytail: rules are never removed; at most one per copy and size this page asked for.
+let copySizes: HTMLStyleElement | null = null;
+const sizeRules = new Set<string>();
+const pinnedSizes = new WeakMap<HTMLMediaElement, { href: string; mark: string }>();
+// Read before a hold or a still lays the box out instead of the file.
+const sizedBeforeCopy = new WeakMap<HTMLMediaElement, boolean>();
+const isCopyAddress = (src: string | null) => /[?&]hf-proxy=/.test(src ?? "");
+
+/** While a smaller copy plays, a video the film leaves unsized keeps the size its file gave it. */
+function keepFileSize(el: HTMLMediaElement, href: string, originalSrc: string): void {
+  const decided = sizedBeforeCopy.get(el);
+  sizedBeforeCopy.delete(el);
+  const size =
+    isVideoElement(el) && (decided ?? sizedByItsFile(el)) ? fileSizeOf(el, originalSrc) : null;
+  if (!size) {
+    pinnedSizes.delete(el);
+    el.removeAttribute(PREVIEW_FILE_SIZE_ATTR);
+    return;
+  }
+  const mark = `${size.width}x${size.height}`;
+  pinnedSizes.set(el, { href, mark });
+  el.setAttribute(PREVIEW_FILE_SIZE_ATTR, mark);
+  const rule =
+    `:where(video[${PREVIEW_FILE_SIZE_ATTR}="${mark}"][src="${escapeCssString(href)}"]) ` +
+    `{ width: ${size.width}px; height: ${size.height}px; flex-shrink: 0; }`;
+  if (sizeRules.has(rule)) return;
+  sizeRules.add(rule);
+  copySizes ??= document.createElement("style");
+  copySizes.textContent += `${rule}\n`;
+  if (!copySizes.isConnected) document.head.appendChild(copySizes);
+}
+
+/** The film leaves the video's size to its file: its content box is the file's own size (300x150 with none). */
+function sizedByItsFile(el: HTMLVideoElement): boolean {
+  if (pinnedSizes.get(el)?.href === el.getAttribute("src")) return true;
+  if (el.getClientRects().length === 0) return false;
+  const style = getComputedStyle(el);
+  const px = (value: string) => parseFloat(value) || 0;
+  const width = el.clientWidth - px(style.paddingLeft) - px(style.paddingRight);
+  const height = el.clientHeight - px(style.paddingTop) - px(style.paddingBottom);
+  const [own, ownHeight] = el.videoWidth ? [el.videoWidth, el.videoHeight] : [300, 150];
+  return Math.abs(width - own) < 1 && Math.abs(height - ownHeight) < 1;
+}
+
+/** The video's box at its file's size: the original's decoded size when it has one, else its facts. */
+function fileSizeOf(
+  el: HTMLVideoElement,
+  originalSrc: string,
+): { width: number; height: number } | null {
+  const pinned = pinnedSizes.get(el);
+  if (pinned?.href === el.getAttribute("src")) {
+    const [width = 0, height = 0] = pinned.mark.split("x").map(Number);
+    return { width, height };
+  }
+  if (!isCopyAddress(el.getAttribute("src")) && el.videoWidth > 0) {
+    return withBoxEdges(el, { width: el.videoWidth, height: el.videoHeight });
+  }
+  const facts = sourceFactsOfSrc(originalSrc);
+  return facts && withBoxEdges(el, naturalVideoSize(facts));
+}
+
+/** A border-box video's size with its padding and border added, so its content box stays `size`. */
+function withBoxEdges(el: HTMLVideoElement, size: { width: number; height: number }) {
+  const style = getComputedStyle(el);
+  if (style.boxSizing !== "border-box") return size;
+  const px = (...values: string[]) =>
+    values.reduce((sum, value) => sum + (parseFloat(value) || 0), 0);
+  return {
+    width:
+      size.width +
+      px(style.paddingLeft, style.paddingRight, style.borderLeftWidth, style.borderRightWidth),
+    height:
+      size.height +
+      px(style.paddingTop, style.paddingBottom, style.borderTopWidth, style.borderBottomWidth),
+  };
 }
 
 /**
@@ -447,6 +529,7 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     if (proxyRequested.get(el) === originalAttr) proxyRequested.delete(el);
     return;
   }
+  if (isVideoElement(el)) sizedBeforeCopy.set(el, sizedByItsFile(el));
   const held = lightFacts && box && isOversizedForPreview(lightFacts, box) && holdForCopy(el);
   const proxiedSrc = appendProxyParam(
     originalSrc,
@@ -466,6 +549,7 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     light && !held ? undefined : () => showStill(el, originalSrc, variant, box),
   );
   const wanted = live();
+  if (!served || !wanted) sizedBeforeCopy.delete(el);
   if (held) endCopyHold(el, served && wanted ? null : originalAttr);
   if (!wanted) {
     dropStill(el);

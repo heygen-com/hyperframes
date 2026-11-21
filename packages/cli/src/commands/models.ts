@@ -1,6 +1,7 @@
 import { defineCommand } from "../utils/defineCommand.js";
 import * as clack from "../ui/prompts.js";
 import type { Example } from "./_examples.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { formatBytes } from "../ui/format.js";
 import { failCommand, failUsage, setCommandExitCode } from "../utils/commandResult.js";
@@ -17,7 +18,7 @@ export const examples: Example[] = [
 function fail(message: string, json: boolean, usage = false): never {
   if (json)
     console.log(JSON.stringify(jsonFailure(usage ? "usage_error" : "runtime_error", message)));
-  else console.error(c.error(message));
+  else console.error(c.error(terminalLines(message)));
   if (usage) failUsage();
   failCommand();
 }
@@ -145,7 +146,7 @@ async function listModels(json: boolean): Promise<void> {
     return;
   }
   for (const m of models) {
-    console.log(`${m.engine.padEnd(9)}${m.model.padEnd(22)}${describeState(m)}`);
+    console.log(`${m.engine.padEnd(9)}${terminalText(m.model).padEnd(22)}${describeState(m)}`);
   }
 }
 

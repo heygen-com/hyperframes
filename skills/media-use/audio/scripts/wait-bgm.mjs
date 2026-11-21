@@ -18,6 +18,7 @@ import { join, resolve } from "node:path";
 import { replaceFile } from "../../scripts/lib/manifest.mjs";
 import { recordInManifest } from "./lib/media-record.mjs";
 import { engineBgmLog, projectPath } from "./lib/project-path.mjs";
+import { terminalText } from "../../scripts/lib/terminal-text.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name, def) => {
@@ -26,7 +27,7 @@ const flag = (name, def) => {
 };
 
 function die(msg) {
-  console.error(`✗ wait-bgm.mjs: ${msg}`);
+  console.error(`✗ wait-bgm.mjs: ${msg}`.split("\n").map(terminalText).join("\n"));
   process.exit(1);
 }
 
@@ -89,7 +90,12 @@ function writeStatus(status) {
 
 if (!existsSync(audioMetaPath)) die(`audio_meta.json missing at ${audioMetaPath}`);
 
-const audioMeta = JSON.parse(readFileSync(audioMetaPath, "utf8"));
+let audioMeta;
+try {
+  audioMeta = JSON.parse(readFileSync(audioMetaPath, "utf8"));
+} catch (e) {
+  die(`audio_meta.json parse: ${e.message}`);
+}
 // A track path that leads outside the project counts as no track.
 const bgmAbsPath = (audioMeta.bgm?.path && projectPath(hyperframesDir, audioMeta.bgm.path)) || "";
 const bgmPath = bgmAbsPath ? audioMeta.bgm.path : "";
@@ -118,7 +124,7 @@ if (!base.enabled) {
     waited_ms: 0,
     message: "BGM not requested or disabled in audio_meta.json.",
   });
-  console.log(`✓ bgm: ${status.status} (${status.message})`);
+  console.log(terminalText(`✓ bgm: ${status.status} (${status.message})`));
   process.exit(0);
 }
 
@@ -137,10 +143,10 @@ while (Date.now() - started <= timeoutMs) {
       size_bytes: size,
       message: `BGM ready at ${bgmPath}.`,
     });
-    console.log(`✓ bgm: ready (${bgmPath}, ${size}B)`);
+    console.log(terminalText(`✓ bgm: ready (${bgmPath}, ${size}B)`));
     const generated = { path: bgmPath, type: "bgm", source: "generated", provider: base.provider };
     for (const anomaly of recordInManifest(hyperframesDir, [generated]))
-      console.error(`  ${anomaly}`);
+      console.error(terminalText(`  ${anomaly}`));
     process.exit(0);
   }
 
@@ -160,7 +166,7 @@ while (Date.now() - started <= timeoutMs) {
       message,
       error_tail: (lastFailure || lastTail).slice(-2000),
     });
-    console.log(`! bgm: failed (${status.message})`);
+    console.log(terminalText(`! bgm: failed (${status.message})`));
     process.exit(0);
   }
 
@@ -177,4 +183,4 @@ const status = writeStatus({
   message: `Timed out waiting for ${bgmPath}; assemble-index will skip BGM if still absent.`,
   log_tail: lastTail.slice(-2000),
 });
-console.log(`! bgm: timeout after ${status.waited_ms}ms (${bgmPath})`);
+console.log(terminalText(`! bgm: timeout after ${status.waited_ms}ms (${bgmPath})`));

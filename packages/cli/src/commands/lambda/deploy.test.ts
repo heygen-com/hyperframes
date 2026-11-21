@@ -31,6 +31,10 @@ const { pushVideoImage } = await import("./videoImage.js");
 let dir: string | undefined;
 let quiet: { mockRestore(): void };
 
+const ESC = String.fromCharCode(27);
+const ODD = `od${ESC}[2Jd\x07`;
+const SHOWN = "od\\x1b[2Jd\\x07";
+
 beforeEach(() => {
   vi.mocked(samDeploy).mockClear();
   vi.mocked(warmFunction).mockReset();
@@ -117,6 +121,27 @@ describe("runDeploy", () => {
       });
       await expect(runDeploy({ skipBuild: true, stackName: "hf" })).resolves.toBeUndefined();
       expect(written).toHaveLength(1);
+    });
+
+    // fails without the fix: the stack outputs and the warm-up failure are printed as they arrived.
+    it("shows control characters in the stack outputs and a warm-up failure as text", async () => {
+      checkout();
+      vi.mocked(fetchStackOutputs).mockReset();
+      vi.mocked(fetchStackOutputs).mockReturnValueOnce({
+        bucketName: `b-${ODD}`,
+        functionName: `f-${ODD}`,
+        stateMachineArn: `s-${ODD}`,
+        videoFunctionName: `v-${ODD}`,
+      });
+      vi.mocked(warmFunction).mockImplementation(() => {
+        throw new Error(`Task ${ODD}\ntimed out`);
+      });
+      await runDeploy({ skipBuild: true, stackName: `hf${ODD}`, region: "eu-west-1" });
+      const printed = vi.mocked(console.log).mock.calls.flat().join("\n");
+      expect(printed).toContain(`sam deploy (stack=hf${SHOWN} region=eu-west-1)`);
+      for (const shown of ["b-", "f-", "s-", "v-"]) expect(printed).toContain(`${shown}${SHOWN}`);
+      expect(printed).toContain(`the deploy is fine: Task ${SHOWN}\ntimed out`);
+      expect(printed).not.toContain(ESC);
     });
 
     it("does not warm with warm: false", async () => {

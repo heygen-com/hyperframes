@@ -26,10 +26,11 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { availableParallelism, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   applyFaststart,
+  cpuBudget,
   muxVideoWithAudio,
   PROVENANCE_RENDERER_NAME,
   PROVENANCE_VERSION,
@@ -722,7 +723,7 @@ describe("assemble()", () => {
 
   it("cfr re-encode pins x264 threads to the CPU quota", () => {
     const args = cfrEncodeArgs(["-i", "chunk.mp4"], {}, "30");
-    expect(args[args.indexOf("-threads") + 1]).toBe(String(availableParallelism()));
+    expect(args[args.indexOf("-threads") + 1]).toBe(String(cpuBudget()));
   });
 
   it("cfr re-encode keeps the keyframe interval and the peak cap", () => {

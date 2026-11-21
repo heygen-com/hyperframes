@@ -12,6 +12,13 @@ vi.mock("../../cloud/index.js", async (importOriginal) => ({
   createCloudClient: async () => client,
 }));
 
+const ask = vi.hoisted(() => ({ confirm: vi.fn() }));
+vi.mock("../../ui/prompts.js", () => ask);
+vi.mock("../../utils/attendedTerminal.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/attendedTerminal.js")>()),
+  isUnattended: () => false,
+}));
+
 const { default: get } = await import("./get.js");
 const { default: list } = await import("./list.js");
 const { default: remove } = await import("./delete.js");
@@ -98,5 +105,18 @@ describe("cloud subcommands on a terminal", () => {
 
     expect(human.replace(colors, "")).not.toContain(esc);
     expect(human).toContain(`r1${shown}`);
+  });
+
+  // fails without the fix: the question repeats the id as it was typed.
+  it("delete asks about an id with control characters as visible escapes", async () => {
+    ask.confirm.mockResolvedValue(false);
+    client.deleteRender.mockClear();
+
+    await expect(output(remove, [`r1${osc}`])).rejects.toThrow("Command failed");
+
+    expect(ask.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ message: `Delete render r1${shown}? This is irreversible.` }),
+    );
+    expect(client.deleteRender).not.toHaveBeenCalled();
   });
 });

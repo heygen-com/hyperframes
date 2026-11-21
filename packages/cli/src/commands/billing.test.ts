@@ -194,6 +194,14 @@ describe("billing with no action", () => {
     expect(opened).toEqual([]);
   });
 
+  // fails without the fix: the plan name reached the terminal with its control characters live.
+  it("shows a plan name's control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    const out = await printed([], { plan: `pro${esc}[2J`, credits: 500 });
+    expect(out).toContain("HyperFrames: pro\\x1b[2J");
+    expect(out).not.toContain(esc);
+  });
+
   it("shows Free with no manage line", async () => {
     const out = await printed([], { plan: "none", credits: 0 });
     expect(out).toContain("HyperFrames: Free");
@@ -245,6 +253,21 @@ describe("billing numeric flags", () => {
 });
 
 describe("billing without a terminal", () => {
+  // fails without the fix: the checkout link reached the terminal with its control characters live.
+  it("prints a checkout link's control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    held.checkout = Promise.resolve(`https://checkout.example.test/c${esc}[2J`);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    await done;
+    vi.useRealTimers();
+    const printed = log.mock.calls.flat().join("\n");
+    expect(printed).toContain("Checkout link: https://checkout.example.test/c\\x1b[2J");
+    expect(printed).not.toContain(esc);
+  });
+
   it("prints Stripe's checkout link instead of waiting for Enter, and opens only the pricing page", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     vi.useFakeTimers();
@@ -369,6 +392,25 @@ describe("billing outcomes", () => {
     vi.useRealTimers();
     expect(events.failed).toEqual([{ reason: "checkout_rejected" }]);
     expect(events.timeout).toEqual([]);
+  });
+
+  // fails without the fix: the checkout failure reached the terminal with its control characters live.
+  it("prints a checkout failure's control characters as visible escapes", async () => {
+    const { CheckoutError } = await import("../heygen/plan.js");
+    const esc = String.fromCharCode(27);
+    terminal.checkoutError = new CheckoutError("checkout_rejected", `No${esc}[2J checkout`);
+    never.paid = false;
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe", "--timeout", "4"] });
+    const settled = expect(done).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(6000);
+    await settled;
+    vi.useRealTimers();
+    const printed = error.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).toContain("No\\x1b[2J checkout");
+    expect(printed).not.toContain(`${esc}[2J`);
   });
 
   it("stops at once when credits are not on sale, since the credits page cannot sell them either", async () => {

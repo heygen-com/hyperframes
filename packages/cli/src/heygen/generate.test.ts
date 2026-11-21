@@ -1,5 +1,14 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -161,7 +170,7 @@ describe("generate", () => {
       type: "image",
       out: join(project, "assets/charged.png"),
       prompt: "a charged picture",
-      model: "gpt-image-2.5",
+      model: "gpt-image-2.6",
     });
     expect(r.charged_credits).toBe(41);
     expect(readFileSync(join(project, ".media/manifest.jsonl"), "utf8")).toContain(
@@ -182,7 +191,7 @@ describe("generate", () => {
         type: "image",
         out: join(dir, "assets/limited.png"),
         prompt: "a limited picture",
-        model: "gpt-image-2.5",
+        model: "gpt-image-2.6",
         aspect: "16:9",
       } as const;
       return generate(request, undefined, creditsOf(priceOf(request)) ?? undefined);
@@ -250,7 +259,7 @@ describe("generate", () => {
       type: "image",
       out: join(project, "assets/api-charged.png"),
       prompt: "an api-charged picture",
-      model: "gpt-image-2.5",
+      model: "gpt-image-2.6",
     });
     expect(r).not.toHaveProperty("charged_credits");
   });
@@ -658,6 +667,82 @@ describe("generate", () => {
     },
   );
 
+  const canLink = (() => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-generate-link-"));
+    try {
+      symlinkSync(join(dir, "nowhere"), join(dir, "link"));
+      return true;
+    } catch {
+      return false;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  })();
+
+  it.skipIf(!canLink)(
+    "replaces a live or dangling link at --out, never writing through it",
+    async () => {
+      const outside = mkdtempSync(join(tmpdir(), "hf-generate-outside-"));
+      try {
+        const kept = join(outside, "kept");
+        writeFileSync(kept, "keep me");
+        const live = join(project, "assets/linked-live.png");
+        const dangling = join(project, "assets/linked-dangling.png");
+        mkdirSync(join(project, "assets"), { recursive: true });
+        symlinkSync(kept, live);
+        symlinkSync(join(outside, "made"), dangling);
+        vi.stubGlobal("fetch", async (url: string) =>
+          url === "https://files.test/linked.png"
+            ? new Response(new Uint8Array([7]))
+            : json({
+                data: {
+                  id: "img-linked",
+                  status: "completed",
+                  images: [{ url: "https://files.test/linked.png" }],
+                },
+              }),
+        );
+        for (const out of [live, dangling]) {
+          await generate({ type: "image", out, prompt: "a linked picture" });
+          expect(lstatSync(out).isFile()).toBe(true);
+          expect(readFileSync(out)).toEqual(Buffer.from([7]));
+        }
+        expect(readFileSync(kept, "utf8")).toBe("keep me");
+        expect(existsSync(join(outside, "made"))).toBe(false);
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(!ffmpeg || !canLink)(
+    "crops past a live or dangling link at <out>.fit.mp4, never writing through it",
+    async () => {
+      const outside = mkdtempSync(join(tmpdir(), "hf-generate-outside-"));
+      try {
+        const kept = join(outside, "kept");
+        writeFileSync(kept, "keep me");
+        answers(textured("wide-linked.mp4", "1344x768", false));
+        const cases = [
+          [join(project, "assets/fit-live.mp4"), kept],
+          [join(project, "assets/fit-dangling.mp4"), join(outside, "made")],
+        ] as const;
+        for (const [out, target] of cases) {
+          symlinkSync(target, `${out}.fit.mp4`);
+          const r = await generate({ type: "video", out, prompt: "p" });
+          expect(lstatSync(r.out).isFile()).toBe(true);
+          const { width, height } = probeVideo(r.out);
+          expect([width, height]).toEqual([1344, 756]);
+          expect(lstatSync(`${out}.fit.mp4`).isSymbolicLink()).toBe(true);
+        }
+        expect(readFileSync(kept, "utf8")).toBe("keep me");
+        expect(existsSync(join(outside, "made"))).toBe(false);
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    },
+  );
+
   const still = (name: string, size: string) => {
     const path = join(project, name);
     execFileSync(ffmpeg!, [
@@ -893,7 +978,7 @@ describe("generate", () => {
       priceOf({
         type: "image",
         out: "a.png",
-        model: "gpt-image-2.5",
+        model: "gpt-image-2.6",
         aspect: "1:1",
         references: ["a", "b"],
       }).usd,
@@ -905,7 +990,7 @@ describe("generate", () => {
   it("prices every reference picture of a GPT Image edit, on each GPT Image model", () => {
     const edit = (model: string, references: string[]) =>
       creditsOf(priceOf({ type: "image", out: "a.png", model, aspect: "16:9", references }));
-    for (const model of ["gpt-image-2.5", "gpt-image-2.6", "gpt-image-2.6-flare"]) {
+    for (const model of ["gpt-image-2.6", "gpt-image-2.6-flare"]) {
       expect(edit(model, [])).toBe(66);
       expect(edit(model, ["a"])).toBe(87);
       expect(
@@ -925,9 +1010,9 @@ describe("generate", () => {
 
   it("says a GPT Image price is an estimate charged on the vendor's bill, and a Nano Banana one is not", () => {
     expect(
-      priceOf({ type: "image", out: "a.png", model: "gpt-image-2.5", aspect: "16:9" }).basis,
+      priceOf({ type: "image", out: "a.png", model: "gpt-image-2.6", aspect: "16:9" }).basis,
     ).toBe(
-      "gpt-image-2.5 at 16:9, about 66 credits (charged on the vendor's bill), with about $0.0125 a reference; vendor price x1.5 on an API key, x1.6545 in HyperFrames credits",
+      "gpt-image-2.6 at 16:9, about 66 credits (charged on the vendor's bill), with about $0.0125 a reference; vendor price x1.5 on an API key, x1.6545 in HyperFrames credits",
     );
     expect(priceOf({ type: "image", out: "a.png" }).basis).toBe(
       "nano-banana-2.1, $0.0336 an image and $0.00168 a reference; vendor price x1.5 on an API key, x1.6545 in HyperFrames credits",
@@ -982,8 +1067,7 @@ describe("generate", () => {
     const rows: [string, string, number][] = [
       ["gpt-image-2.6", "1:1", 87.15906],
       ["gpt-image-2.6-flare", "16:9", 65.5182],
-      ["gpt-image-2.5", "4:3", 59.76054],
-      ["nano-banana-2", "21:9", 110.8515],
+      ["gpt-image-2.6", "4:3", 59.76054],
       ["nano-banana-2.1", "3:2", 55.5912],
     ];
     for (const [model, aspect, row] of rows)
@@ -994,9 +1078,6 @@ describe("generate", () => {
     expect(
       image("nano-banana-2.1", "1:1", 1).credits! - image("nano-banana-2.1", "1:1").credits!,
     ).toBeCloseTo(2.77956, 6);
-    expect(image("nano-banana-2", "1:1", 3).credits).toBe(image("nano-banana-2", "1:1").credits);
-    expect(image("nano-banana-2", "1:1").list).toBeCloseTo(0.1005, 9);
-    expect(image("nano-banana-2", "1:1").usd).toBe(0.12);
     expect(image("gpt-image-2.6", "16:9").list).toBeCloseTo(0.0594, 9);
     expect(image("gpt-image-2.6", "16:9").usd).toBe(0.07);
     expect(image("nano-banana-2.1", "16:9", 2).list).toBeCloseTo((0.0336 + 2 * 0.00168) * 1.5, 9);
@@ -1027,8 +1108,15 @@ describe("generate", () => {
     }
     expect(check("gpt-image-2.6", "21:9")).toThrow("gpt-image-2.6 does not make 21:9");
     expect(check("nano-banana-2.1", "21:9")).not.toThrow();
-    expect(check("nano-banana-2", undefined, 15)).toThrow("at most 14 --reference pictures");
+    expect(check("nano-banana-2.1", undefined, 15)).toThrow("at most 14 --reference pictures");
+    expect(check("nano-banana-2")).toThrow("nano-banana-2 is no longer offered here");
+    expect(check("gpt-image-2.5", "16:9")).toThrow("gpt-image-2.5 is no longer offered here");
     expect(check("some-new-model", "7:5")).not.toThrow();
+    // A name every object carries is a model this build has no entry for, like any other.
+    for (const model of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      expect(check(model, "7:5")).not.toThrow();
+      expect(check(model, undefined, 20)).toThrow("no file at");
+    }
   });
 
   it("prices only a request the real call would accept", () => {
@@ -1194,16 +1282,16 @@ describe("generate", () => {
   it("keeps 10% headroom under the limit for an image charged on the vendor's bill", () => {
     const limited = (request: GenerateRequest, limit: number) => () =>
       checkLimit(creditsOf(priceOf(request)), limit, isVendorPriced(request));
-    const gpt = { type: "image", out: "a.png", model: "gpt-image-2.5", aspect: "16:9" } as const;
+    const gpt = { type: "image", out: "a.png", model: "gpt-image-2.6", aspect: "16:9" } as const;
     expect(creditsOf(priceOf(gpt))).toBe(66);
     expect(limited(gpt, 66)).toThrow(
       "about 66 credits, 73 with 10% headroom because it is charged on the vendor's bill, over --max-credits 66",
     );
     expect(limited(gpt, 72)).toThrow("73 with 10% headroom");
     expect(limited(gpt, 73)).not.toThrow();
-    const nano = { type: "image", out: "a.png", model: "nano-banana-2" } as const;
+    const nano = { type: "image", out: "a.png", model: "nano-banana-2.1" } as const;
     expect(isVendorPriced(nano)).toBe(false);
-    expect(limited(nano, 111)).not.toThrow();
+    expect(limited(nano, 56)).not.toThrow();
   });
 });
 

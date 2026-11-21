@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { HEYGEN_CLIENT_SOURCE_ARGV, reportHeygenFailure } from "./heygen-cli.mjs";
+import { terminalLines } from "./terminal-text.mjs";
 
 export function heygenSearch(subcommand, query, { type, limit = 5, minScore, onEmpty } = {}) {
   // execFileSync with an argv array (no shell), so query/type/etc. are passed as
@@ -36,7 +37,9 @@ export function heygenSearch(subcommand, query, { type, limit = 5, minScore, onE
   }
   if (parsed?.error) {
     const e = parsed.error;
-    console.error(`media-use: \`heygen ${subcommand}\` error: ${e.message ?? JSON.stringify(e)}`);
+    console.error(
+      terminalLines(`media-use: \`heygen ${subcommand}\` error: ${e.message ?? JSON.stringify(e)}`),
+    );
     return null;
   }
 
