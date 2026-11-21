@@ -711,7 +711,8 @@ async function executeCli(): Promise<void> {
       if (usage && !error.hint) await showRequestedUsage(console.error);
       if (!typed || !error.result.presented) {
         const message = error instanceof Error ? error.message : String(error);
-        const shown = error instanceof CliUsageError ? terminalText : terminalLines;
+        const oneLine = error instanceof CliUsageError || isCittyUsageError(error);
+        const shown = oneLine ? terminalText : terminalLines;
         console.error(shown(message));
       }
       if (usage && error.hint) console.error(terminalText(error.hint));

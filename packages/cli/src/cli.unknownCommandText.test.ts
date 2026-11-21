@@ -77,3 +77,21 @@ it("shows direction marks in the file name the measure shortcut repeats", async 
   expect(run.stderr).toContain("running 'probe \"clip\\u202e\\x85.mp4\"'");
   expect(run.stderr).not.toContain("\u202e");
 }, 60_000);
+
+it("keeps a flag value that looks like the next option on one line", async () => {
+  const run = await runCli(["catalog", "--query", "--json=a\u001b[2Jb\nError: c"]);
+  expect(run.stderr).toContain('Missing value for --query: value "--json=a\\x1b[2Jb\\x0aError: c"');
+  expect(run.stderr).not.toContain("\u001b[2J");
+  expect(startsALine(run, "Error:")).toEqual([]);
+}, 60_000);
+
+it("shows control characters in an extra argument as visible text", async () => {
+  const [text, json] = await Promise.all([
+    runCli(["info", ".", "x\u001b[2Jy\nError: z"]),
+    runCli(["info", ".", "x\u001b[2Jy", "--json"]),
+  ]);
+  expect(text.stderr).toContain("hyperframes info: x\\x1b[2Jy\\x0aError: z\nUsage: ");
+  expect(text.stderr).not.toContain("\u001b");
+  expect(startsALine(text, "Error:")).toEqual([]);
+  expect(JSON.parse(json.stdout).error.message).toContain("x\u001b[2Jy");
+}, 60_000);

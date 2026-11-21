@@ -58,11 +58,13 @@ reason. The same lines show the Unicode marks that switch text direction
 (U+2028 and U+2029) as visible text such as `\u202e`. Right-to-left letters, the
 marks U+200E, U+200F and U+061C, and the zero-width characters (U+200B to U+200D
 and U+FEFF) are printed as they are: they reorder and hide nothing, and ordinary
-Arabic, Hebrew, Persian and emoji text needs them. Four more lines follow all of
-these rules for text you typed or a project supplied: the `Unknown command:`
-line and the suggestion under it, the line a mistyped flag or other usage
-mistake prints, the `.env:` notices at start-up, and the line the
-`measure <file>` shortcut prints.
+Arabic, Hebrew, Persian and emoji text needs them. These lines follow all of
+these rules for text you typed or a project supplied, and no others are changed
+here: the `Unknown command:` line and the suggestion under it, the
+`Unknown flag:` line, the `Missing value for --<flag>` line, the
+`Unexpected extra argument` line, the `.env:` notices at start-up, and the line
+the `measure <file>` shortcut prints. Other lines a command prints are as they
+were.
 `--json` output is not changed by this.
 
 **`--json` for agents and scripts.** Most commands accept it, before or after
