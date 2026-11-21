@@ -97,9 +97,7 @@ async function stemsFor(
   const cached = cachedStems(dir);
   if (cached) return cached;
   if (quality !== "best") {
-    warnings.push(
-      `not separated into stems: quality ${quality} keeps audio on this machine; --quality best separates it through HeyGen`,
-    );
+    warnings.push("not separated into stems: music, and effects under speech, are not read");
     return null;
   }
   const access = await stemsAccess();
