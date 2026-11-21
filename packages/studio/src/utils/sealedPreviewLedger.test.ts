@@ -23,6 +23,7 @@ import { applyUndoRestoreToPreview } from "./gsapUndoRestore";
 import { applyPreviewSync } from "../hooks/useGsapScriptCommits";
 import { moveLiveTweens } from "./gsapLiveRetime";
 import { markStudioWriteToken } from "./studioFileVersion";
+import { previewLoadShows } from "./sealedPreviewLedger";
 
 const iframe = document.createElement("iframe");
 const page = (body: string) => `<html><body>${body}</body></html>`;
@@ -213,5 +214,19 @@ describe("an older live retime whose preview sync goes out after a newer file's"
     expect(recovery.timing).toContainEqual(["hf:b", [["data-start", "1"]]]);
     expect(recovery.timing).toContainEqual(["hf:a", [["data-start", "1"]]]);
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("is not sent to a new load showing a newer saved file, and reloads it", async () => {
+    channel.load = { id: Math.random() };
+    previewLoadShows(iframe, 5);
+    const reload = vi.fn();
+    await moveLiveTweens(iframe, retimed(2), 1, reload, {
+      before: file(0, 1),
+      after: file(1, 2),
+      revision: 4,
+    });
+    await settled();
+    expect(kinds()).toEqual([]);
+    expect(reload).toHaveBeenCalledOnce();
   });
 });

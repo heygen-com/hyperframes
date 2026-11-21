@@ -24,6 +24,7 @@ import type { IframeWindow, PlaybackAdapter } from "../lib/playbackTypes";
 import { setPreviewReloading } from "../previewReloading";
 import { previewFrameOpaque, previewSeekPainted } from "../lib/previewChannel";
 import { studioFileRevision } from "../../utils/studioFileVersion";
+import { previewLoadShows } from "../../utils/sealedPreviewLedger";
 import { announcePreviewPromoted } from "../sceneSwap";
 import { afterStudioPendingEdits, isStudioEditSaving } from "../../utils/studioPendingEdits";
 import { usePlayerStore } from "../store/playerStore";
@@ -314,6 +315,7 @@ export function useShadowPreviewReload({
       attachIframeShortcutListeners();
       applyPreviewAudioState();
       setPreviewSlots((prev) => planShadowPromotion(prev, gen));
+      previewLoadShows(shadow, revisionAtRequestRef.current);
       if (liveTime != null) handOverPlaybackRef.current(liveTime, playing);
       if (held) releaseAfterPaint(shadow, held.release);
       announcePreviewPromoted({ retired, live: shadow });

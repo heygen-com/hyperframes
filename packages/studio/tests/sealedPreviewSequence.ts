@@ -94,13 +94,19 @@ async function openStudio(browser: Browser, bundle: string, first: string, at: n
     w.__saved = first;
     w.__reloads = 0;
     // As Studio's shadow reload (useShadowPreviewReload.ts): a save during the load loads the newer file again.
+    const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
     w.__load = () => {
       const iframe = document.querySelector("iframe")!;
       const content = w.__saved;
+      const revision = studio.studioFileRevision();
       w.__loading = true;
       iframe.addEventListener(
         "load",
-        () => (w.__saved === content ? (w.__loading = false) : w.__load()),
+        () => {
+          if (w.__saved !== content) return w.__load();
+          studio.previewLoadShows(iframe, revision);
+          w.__loading = false;
+        },
         { once: true },
       );
       iframe.srcdoc = content;

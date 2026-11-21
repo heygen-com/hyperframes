@@ -4,7 +4,11 @@ import type {
   EditingPortClient,
   EditingRequestKind,
 } from "@hyperframes/core/runtime/editing-port";
-import { previewAnswer, previewEditingClient } from "../player/lib/previewChannel";
+import {
+  previewAnswer,
+  previewEditingClient,
+  previewFrameOpaque,
+} from "../player/lib/previewChannel";
 import { studioFileRevision } from "./studioFileVersion";
 import { timelineKeys } from "@hyperframes/core/runtime/soft-reload";
 
@@ -127,6 +131,14 @@ export function sendPreviewWrite<K extends EditingRequestKind>(
     if (ticket.sent.rerun) confirmPreviewRerun(ticket);
     return true;
   });
+}
+
+/** The load now in `iframe` shows the saved file at `revision`: an older write is not sent to it. */
+export function previewLoadShows(iframe: HTMLIFrameElement, revision: number): void {
+  if (!previewFrameOpaque(iframe)) return;
+  const ledger = ledgerOf(previewEditingClient(iframe));
+  ledger.sentVersion = Math.max(ledger.sentVersion, revision);
+  ledger.newestVersion = Math.max(ledger.newestVersion, revision);
 }
 
 /** An answer from a load that has since been replaced must not touch its replacement. */
