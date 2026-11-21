@@ -239,11 +239,14 @@ type Copied = { hash: string; referenced?: true; release?: () => void } | "gone"
 
 const FIRST_COPY_FILE_MS = 10_000;
 
-async function owedAfter(copy: Promise<Copied>, ms: number): Promise<Copied> {
+async function orAfter<T, L>(work: Promise<T>, ms: number, late: L): Promise<T | L> {
   let timer: NodeJS.Timeout | undefined;
-  const late = new Promise<Copied>((owed) => (timer = setTimeout(() => owed("changing"), ms)));
+  const missed = new Promise<L>((owed) => {
+    timer = setTimeout(() => owed(late), ms);
+    timer.unref?.();
+  });
   try {
-    return await Promise.race([copy, late]);
+    return await Promise.race([work, missed]);
   } finally {
     clearTimeout(timer);
   }
@@ -253,6 +256,7 @@ const ADOPT_RETRY_AT_MOST_MS = 30_000;
 /** Owed until a whole copy is recorded, the file is gone or history closes; retryNow waits for a fresh try. */
 interface Adoption {
   firstTry: Promise<unknown>;
+  stepMayBegin: Promise<boolean>;
   ended: Promise<void>;
   retryNow(): Promise<void>;
 }
@@ -725,7 +729,9 @@ class Engine {
     const copies = copied.map((file) =>
       inFirstCopySlot(() => this.storeIfPresent(file.path, true)),
     );
-    const hashes = await Promise.allSettled(copies.map((copy) => owedAfter(copy, waitMs)));
+    const hashes = await Promise.allSettled(
+      copies.map((copy) => orAfter(copy, waitMs, "changing" as const)),
+    );
     const late = new Map<string, Promise<Copied>>();
     // Nothing names these copies until the log below is written, so one look at the end covers the whole copy.
     if (this.whereFolder() !== "here") throw this.replaced();
@@ -752,8 +758,8 @@ class Engine {
     );
   }
 
-  async untilFirstCopiesLandBeforeAnyWrite(): Promise<void> {
-    await Promise.all([...this.adopting.values()].map((adoption) => adoption.firstTry));
+  async untilFirstCopiesLandOrStall(): Promise<void> {
+    await Promise.all([...this.adopting.values()].map((adoption) => adoption.stepMayBegin));
   }
 
   adoptMediaInBackground(
@@ -761,12 +767,18 @@ class Engine {
     sweptAt: number,
     lateFirstCopies = new Map<string, Promise<Copied>>(),
   ): void {
+    const waitMs = this.options.firstCopyFileMs ?? FIRST_COPY_FILE_MS;
     let turn: Promise<unknown> = Promise.resolve();
+    let stalledAhead = Promise.resolve(false);
     for (const file of files) {
       const late = lateFirstCopies.get(file.path);
       const adoption = this.adopt(file, sweptAt, turn, late);
-      if (!late) turn = adoption.firstTry;
-      this.adopting.set(file.path, adoption);
+      const landed = adoption.firstTry.then(() => false);
+      const stepMayBegin = (late ? Promise.resolve(false) : stalledAhead).then(
+        (stalled) => stalled || orAfter(landed, waitMs, true),
+      );
+      if (!late) [turn, stalledAhead] = [adoption.firstTry, stepMayBegin];
+      this.adopting.set(file.path, { ...adoption, stepMayBegin });
     }
     this.saveAdopting();
   }
@@ -784,7 +796,7 @@ class Engine {
     sweptAt: number,
     turn: Promise<unknown>,
     late?: Promise<Copied>,
-  ): Adoption {
+  ): Omit<Adoption, "stepMayBegin"> {
     let asked: Array<() => void> = [];
     let wake = () => {};
     const owedFromOpen = late !== undefined;
@@ -1701,7 +1713,7 @@ class Engine {
     return {
       projectId: this.projectId,
       beginWindow: async (who, label, options = {}) => {
-        await this.untilFirstCopiesLandBeforeAnyWrite();
+        await this.untilFirstCopiesLandOrStall();
         return this.beginWindow(
           who,
           label,

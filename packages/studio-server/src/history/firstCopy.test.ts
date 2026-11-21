@@ -25,7 +25,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 
 import * as fsp from "node:fs/promises";
 import { blobPath } from "./blobStore.js";
-import { START } from "./historyLog.js";
+import { START, type HistoryWho } from "./historyLog.js";
 import { openProjectHistory } from "./projectHistory.js";
 
 const { writeFile: realWriteFile, open: realOpen } =
@@ -53,6 +53,15 @@ function projectOf(count: number, tag: string): string {
   for (let i = 0; i < count; i++) writeFileSync(join(dir, "parts", `p${i}.js`), `// ${tag} ${i}\n`);
   return dir;
 }
+/** A project with `count` 2 MiB files, copied in the background after the open, one after another. */
+function mediaProject(count: number): string {
+  const dir = tempDir("hf-first-copy-");
+  writeFileSync(join(dir, "index.html"), "<html></html>");
+  for (let i = 0; i < count; i++)
+    writeFileSync(join(dir, `m${i}.bin`), Buffer.alloc(2 * 1024 ** 2, i + 1));
+  return dir;
+}
+const agent: HistoryWho = { kind: "agent", name: "Framey" };
 const homeIn = (historyRoot: string) => {
   const homes = readdirSync(historyRoot, { withFileTypes: true }).filter((e) => e.isDirectory());
   return join(historyRoot, homes.find((e) => existsSync(join(historyRoot, e.name, "blobs")))!.name);
@@ -172,6 +181,69 @@ describe("a project's first history copy", () => {
     } finally {
       for (const answer of releases) answer();
     }
+  });
+
+  it("begins an agent step about a deadline after the open while a file's read never answers", async () => {
+    const projectDir = projectOf(6, "stuck");
+    const stuck = join(projectDir, "parts", "p1.js");
+    const releases: (() => void)[] = [];
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      if (String(args[0]) === stuck) await new Promise<void>((answer) => releases.push(answer));
+      return realOpen(...args);
+    });
+    try {
+      const history = await openProjectHistory({
+        projectDir,
+        historyRoot: tempDir("hf-first-copy-root-"),
+        firstCopyFileMs: 100,
+      });
+      closes.push(() => history.close());
+      const askedAt = Date.now();
+      await history.beginWindow(agent, "Step");
+      expect(Date.now() - askedAt).toBeGreaterThanOrEqual(90);
+    } finally {
+      for (const answer of releases) answer();
+    }
+  });
+
+  it("begins an agent step when media waits behind a read that never answers", async () => {
+    const projectDir = mediaProject(2);
+    const stuck = join(projectDir, "m0.bin");
+    const releases: (() => void)[] = [];
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      if (String(args[0]) === stuck) await new Promise<void>((answer) => releases.push(answer));
+      return realOpen(...args);
+    });
+    try {
+      const history = await openProjectHistory({
+        projectDir,
+        historyRoot: tempDir("hf-first-copy-root-"),
+        firstCopyFileMs: 100,
+      });
+      closes.push(() => history.close());
+      await history.beginWindow(agent, "Step");
+    } finally {
+      for (const answer of releases) answer();
+    }
+  });
+
+  it("holds an agent step for media that copies slowly, each file within its deadline", async () => {
+    const projectDir = mediaProject(3);
+    const delayed = new Set([0, 1, 2].map((i) => join(projectDir, `m${i}.bin`)));
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      if (delayed.delete(String(args[0]))) await new Promise((later) => setTimeout(later, 300));
+      return realOpen(...args);
+    });
+    const history = await openProjectHistory({
+      projectDir,
+      historyRoot: tempDir("hf-first-copy-root-"),
+      firstCopyFileMs: 600,
+    });
+    closes.push(() => history.close());
+    await history.beginWindow(agent, "Step");
+    expect(Object.keys(history.peek(START) ?? {}).sort()).toEqual(
+      ["index.html", "m0.bin", "m1.bin", "m2.bin"].sort(),
+    );
   });
 
   it("keeps a first copy that lands past its deadline as the file's start, and an edit since as a change", async () => {
