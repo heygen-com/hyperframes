@@ -212,11 +212,12 @@ function softReloadSealed(
   if (authoredHtml === undefined || previousHtml === undefined || currentTimeOverride === undefined)
     return "cannot-soft-reload";
   const rerun = sealedRerun(scriptText, { authoredHtml, previousHtml, timingEdit });
-  const ticket = takePreviewTicket(
-    iframe,
-    { scriptText, authoredHtml, previousHtml, nestedFiles, timingEdit },
-    true,
-  );
+  const ticket = takePreviewTicket(iframe, {
+    scriptText,
+    snapshot: { scriptText, authoredHtml, previousHtml, nestedFiles, timingEdit },
+    rerun: true,
+    attributes: restore.length > 0,
+  });
   void previewRequest(iframe, "soft-reload", {
     ...rerun,
     time: currentTimeOverride,

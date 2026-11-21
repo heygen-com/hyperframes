@@ -17,6 +17,7 @@ import {
   takePreviewTicket,
   ticketCovered,
   ticketLoadLive,
+  type PreviewWrite,
 } from "./sealedPreviewLedger";
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
@@ -452,7 +453,15 @@ function applySealedRestore(
     if (rerun === "applied") return "soft";
   } else if (restore?.scopes.length) {
     const sent = withRerun(restore, active, script);
-    sendSealedRestore(iframe, sent, currentTime, reloadPreview, onShownInPlace);
+    const snapshot =
+      sent.rerun && active
+        ? {
+            scriptText: sent.rerun.script,
+            authoredHtml: active.restored,
+            previousHtml: active.previous,
+          }
+        : null;
+    sendSealedRestore(iframe, sent, snapshot, currentTime, reloadPreview, onShownInPlace);
     return "soft";
   }
   reloadPreview();
@@ -462,11 +471,18 @@ function applySealedRestore(
 function sendSealedRestore(
   iframe: HTMLIFrameElement,
   restore: SealedRestore,
+  snapshot: PreviewWrite | null,
   currentTime: number,
   reloadPreview: () => void,
   onShownInPlace?: () => void,
 ): void {
-  const ticket = takePreviewTicket(iframe, { scriptText: restore.rerun?.script ?? "" }, false);
+  const scriptText = restore.rerun?.script ?? "";
+  const ticket = takePreviewTicket(iframe, {
+    scriptText,
+    snapshot,
+    rerun: false,
+    attributes: true,
+  });
   void previewRequest(iframe, "restore-attributes", { ...restore, time: currentTime }).then(
     (reply) => {
       if (!ticketLoadLive(ticket)) return;

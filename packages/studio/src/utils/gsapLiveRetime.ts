@@ -170,11 +170,18 @@ async function moveSealedLiveTweens(
   const plan = planFromSavedFile(scriptText, files.before);
   if (!plan) return false;
   const { key: planKey, after, tweens } = plan;
-  const ticket = takePreviewTicket(
-    iframe,
-    { scriptText, authoredHtml: files.after, previousHtml: files.before, timingEdit: true },
-    false,
-  );
+  const snapshot = {
+    scriptText,
+    authoredHtml: files.after,
+    previousHtml: files.before,
+    timingEdit: true,
+  };
+  const ticket = takePreviewTicket(iframe, {
+    scriptText,
+    snapshot,
+    rerun: false,
+    attributes: false,
+  });
   const reply = await previewRequest(iframe, "live-retime", {
     key: planKey,
     after,
@@ -185,9 +192,9 @@ async function moveSealedLiveTweens(
   const result = sealedRetimeResult(reply);
   if (result === "moved" || !ticketNeedsRecovery(ticket)) return true;
   const newest = newestPreviewWrite(ticket);
-  if (result === "failed") reloadPreview();
+  if (result === "failed" || !newest) reloadPreview();
   // A newer save to these timelines is the one to re-run: the caller would re-run this older script.
-  else if (newest !== ticket.write) rerunNewest(iframe, newest, currentTime, reloadPreview);
+  else if (newest !== snapshot) rerunNewest(iframe, newest, currentTime, reloadPreview);
   else return false;
   return true;
 }

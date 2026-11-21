@@ -4,13 +4,22 @@ import { previewEditingClient } from "../player/lib/previewChannel";
 import { studioFileRevision } from "./studioFileVersion";
 import { timelineKeys } from "@hyperframes/core/runtime/soft-reload";
 
-/** A saved file state a re-run can show: the script and the files it was read with. */
+/** A complete saved file state a re-run can show: the script, both files it was read from, and its timing. */
 export interface PreviewWrite {
   scriptText: string;
-  authoredHtml?: string;
-  previousHtml?: string;
+  authoredHtml: string;
+  previousHtml: string;
   nestedFiles?: Map<string, string> | null;
   timingEdit?: boolean;
+}
+
+export interface PreviewSend {
+  scriptText: string;
+  snapshot: PreviewWrite | null;
+  /** It re-runs its timelines, so it owns them from its send. */
+  rerun: boolean;
+  /** It carries restored attributes, which no later script-only re-run sends again. */
+  attributes: boolean;
 }
 
 export interface PreviewTicket {
@@ -20,7 +29,7 @@ export interface PreviewTicket {
   readonly seq: number;
   /** The Studio file version its write produced: a re-run read at a lower one lacks it. */
   readonly version: number;
-  readonly write: PreviewWrite;
+  readonly sent: PreviewSend;
 }
 
 interface Ledger {
@@ -37,24 +46,21 @@ function ledgerOf(load: EditingPortClient): Ledger {
   return ledger;
 }
 
-/** Records a write sent to the preview; `rerun` when it re-runs the timelines it names (it then owns them). */
-export function takePreviewTicket(
-  iframe: HTMLIFrameElement,
-  write: PreviewWrite,
-  rerun: boolean,
-): PreviewTicket {
+export function takePreviewTicket(iframe: HTMLIFrameElement, sent: PreviewSend): PreviewTicket {
   const load = previewEditingClient(iframe);
   const ledger = ledgerOf(load);
   const ticket = {
     iframe,
     load,
-    keys: timelineKeys(write.scriptText),
+    keys: timelineKeys(sent.scriptText),
     seq: ++ledger.seq,
     version: studioFileRevision(),
-    write,
+    sent,
   };
-  for (const key of ticket.keys) ledger.writes.set(key, { seq: ticket.seq, write });
-  if (rerun) confirmPreviewRerun(ticket);
+  if (sent.snapshot)
+    for (const key of ticket.keys)
+      ledger.writes.set(key, { seq: ticket.seq, write: sent.snapshot });
+  if (sent.rerun) confirmPreviewRerun(ticket);
   return ticket;
 }
 
@@ -77,6 +83,7 @@ export function ticketLoadLive(ticket: PreviewTicket): boolean {
 export function ticketCovered(ticket: PreviewTicket): boolean {
   const { reruns } = ledgerOf(ticket.load);
   return (
+    !ticket.sent.attributes &&
     ticket.keys.length > 0 &&
     ticket.keys.every((key) => {
       const owner = reruns.get(key);
@@ -85,10 +92,10 @@ export function ticketCovered(ticket: PreviewTicket): boolean {
   );
 }
 
-/** The newest saved state sent for the ticket's timelines; it holds every earlier saved change. */
-export function newestPreviewWrite(ticket: PreviewTicket): PreviewWrite {
+/** The newest complete saved state sent for the ticket's timelines; it holds every earlier saved change. */
+export function newestPreviewWrite(ticket: PreviewTicket): PreviewWrite | null {
   const { writes } = ledgerOf(ticket.load);
-  let newest = { seq: ticket.seq, write: ticket.write };
+  let newest = { seq: ticket.seq, write: ticket.sent.snapshot };
   for (const key of ticket.keys) {
     const sent = writes.get(key);
     if (sent && sent.seq > newest.seq) newest = sent;

@@ -232,24 +232,13 @@ async function seen(frame: Frame, studioPage: Page, iframeIndex: number) {
   });
 }
 
-/** A fresh load of `saved` in a second sealed frame of the same page. */
-async function freshLoad(studioPage: Page, saved: Saved) {
-  await studioPage.evaluate((html) => {
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("sandbox", "allow-scripts");
-    iframe.name = "fresh";
-    iframe.style.cssText = "width: 1920px; height: 1080px; border: 0";
-    iframe.srcdoc = html;
-    document.body.append(iframe);
-  }, page(saved));
-  for (;;) {
-    const fresh = studioPage.frames().find((f) => f.name() === "fresh");
-    if (fresh) {
-      await ready(fresh);
-      return seen(fresh, studioPage, 1);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
+/** A fresh load of `saved` in a page of its own. */
+async function freshLoad(saved: Saved) {
+  const fresh = await openPreview(browser, studioBundle, page(saved), "sealed");
+  await ready(fresh.frame);
+  const shown = await seen(fresh.frame, fresh.page, 0);
+  await fresh.page.close();
+  return shown;
 }
 
 /** Plays `steps`, settles every reply, and compares the preview with a fresh load of the saved file. */
@@ -286,8 +275,8 @@ async function play(steps: Step[], seed = 1) {
   const reloads = await studioPage.evaluate(
     () => (window as unknown as { __reloads: number }).__reloads,
   );
-  const fresh = await freshLoad(studioPage, saved);
   await studioPage.close();
+  const fresh = await freshLoad(saved);
   return { shown, fresh, reloads, reloadRefusals };
 }
 
@@ -344,7 +333,7 @@ describe("sealed preview after late answers in any order", () => {
     async (seed) => {
       const steps = generated(seed);
       const { shown, fresh, reloads } = await play(steps, seed);
-      expect({ steps, shown }).toEqual({ steps, fresh });
+      expect({ steps, state: shown }).toEqual({ steps, state: fresh });
       // A random "answer" can deliver any refusal, so only a sequence with no refused save may never reload.
       if (steps.every((step) => !("save" in step) || !step.refused)) expect(reloads).toBe(0);
     },
