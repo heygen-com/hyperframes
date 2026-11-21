@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -20,7 +20,11 @@ it("names the bytes the next restore point would copy in: changed files the stor
   const projectDir = tempDir("hf-history-project-");
   const historyRoot = tempDir("hf-history-root-");
   writeFileSync(join(projectDir, "index.html"), "<h1>Hello</h1>");
-  const history = await openProjectHistory({ projectDir, historyRoot });
+  const history = await openProjectHistory({
+    projectDir,
+    historyRoot,
+    ignores: (path) => path.startsWith("private/"),
+  });
   cleanup.push(() => history.close());
   await (await history.beginWindow({ kind: "person", name: "You" }, "first")).close();
   expect(await history.unsavedBlobBytes()).toBe(0);
@@ -34,5 +38,10 @@ it("names the bytes the next restore point would copy in: changed files the stor
   // Two new files with the same bytes are one blob.
   writeFileSync(join(projectDir, "b1.html"), "y".repeat(2000));
   writeFileSync(join(projectDir, "b2.html"), "y".repeat(2000));
+  expect(await history.unsavedBlobBytes()).toBe(3000);
+
+  // A path history ignores is never copied in.
+  mkdirSync(join(projectDir, "private"));
+  writeFileSync(join(projectDir, "private", "notes.html"), "z".repeat(4000));
   expect(await history.unsavedBlobBytes()).toBe(3000);
 });

@@ -1,4 +1,10 @@
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
+import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
+import {
+  authoredKey,
+  TIMING_ATTRIBUTES,
+  type SavedTiming,
+} from "@hyperframes/core/runtime/soft-reload";
 import {
   PREVIEW_ONLY_ATTRS,
   PREVIEW_VIDEO_CANVAS_ATTR,
@@ -15,7 +21,13 @@ const rootsByDoc = new WeakMap<Document, ParentNode[]>();
 // A plain template is a runtime clone source, so ids inside it repeat across clones.
 function searchRoots(root: ParentNode): ParentNode[] {
   const templates = Array.from(root.querySelectorAll("template")).filter(isCompositionTemplate);
-  return [root, ...templates.flatMap((template) => searchRoots(template.content))];
+  return [
+    root,
+    ...templates.flatMap((template) => {
+      const content = templateContent(template);
+      return content ? searchRoots(content) : [];
+    }),
+  ];
 }
 
 function findByAttribute(doc: Document, name: string, value: string): Element | null {
@@ -35,7 +47,39 @@ export function findAuthoredElement(doc: Document, live: Element): Element | nul
   return live.id ? findByAttribute(doc, "id", live.id) : null;
 }
 
-export function findAuthoredElementById(doc: Document, live: Element): Element | null {
+// Both keys an element's style is filed under: its hf-id and its id.
+function styleKeys(el: Element): string[] {
+  const hfId = el.getAttribute("data-hf-id");
+  return [hfId ? `hf:${hfId}` : "", el.id ? `#${el.id}` : ""].filter(Boolean);
+}
+
+export function authoredStyles(html: string): Array<[string, string]> {
+  const styles = new Map<string, string>();
+  const elements = searchRoots(parseSavedSource(html)).flatMap((root) => [
+    ...root.querySelectorAll("[data-hf-id], [id]"),
+  ]);
+  for (const el of elements) {
+    for (const key of styleKeys(el)) {
+      if (!styles.has(key)) styles.set(key, el.getAttribute("style") ?? "");
+    }
+  }
+  return [...styles];
+}
+
+export function savedTiming(html: string): SavedTiming {
+  const timing: SavedTiming = [];
+  for (const el of parseSavedSource(html).querySelectorAll("[data-hf-id], [id]")) {
+    const key = authoredKey(el);
+    const attributes = [...TIMING_ATTRIBUTES].flatMap((name): Array<[string, string]> => {
+      const value = el.getAttribute(name);
+      return value === null ? [] : [[name, value]];
+    });
+    if (key && attributes.length > 0) timing.push([key, attributes]);
+  }
+  return timing;
+}
+
+function findAuthoredElementById(doc: Document, live: Element): Element | null {
   return live.id ? findByAttribute(doc, "id", live.id) : null;
 }
 
@@ -66,7 +110,7 @@ function livePathsOf(live: Element): Set<string> {
 
 // The preview inlines a sub-composition with its relative asset paths rebased to the project
 // root (rewriteAssetPath in @hyperframes/parsers, which is not browser-safe); copy does the same.
-export function authoredMarkup(authored: Element, live: Element, sourceFile: string): string {
+function authoredMarkup(authored: Element, live: Element, sourceFile: string): string {
   if (!sourceFile.includes("/")) return authored.outerHTML;
   const livePaths = livePathsOf(live);
   const rebase = (path: string): string => {
@@ -104,4 +148,32 @@ export function liveMarkupWithoutPreviewMarks(live: Element): string {
     for (const attr of PREVIEW_ONLY_ATTRS) el.removeAttribute(attr);
   }
   return copy.outerHTML;
+}
+
+export type MarkedMarkup = { html: string; saved: boolean };
+
+export function savedMarkupElseLive(
+  saved: Document,
+  live: Element,
+  sourceFile: string,
+): MarkedMarkup {
+  const authored = findAuthoredElement(saved, live) ?? findAuthoredElementById(saved, live);
+  return authored
+    ? { html: authoredMarkup(authored, live, sourceFile), saved: true }
+    : { html: liveMarkupWithoutPreviewMarks(live), saved: false };
+}
+
+export async function readSavedMarkup(
+  readSaved: (path: string) => Promise<string>,
+  paths: string[],
+  lives: Element[],
+): Promise<MarkedMarkup[]> {
+  const sources = new Map<string, Promise<Document>>();
+  return Promise.all(
+    paths.map(async (path, index) => {
+      if (!sources.has(path)) sources.set(path, readSaved(path).then(parseSavedSource));
+      const saved = await (sources.get(path) as Promise<Document>);
+      return savedMarkupElseLive(saved, lives[index] as Element, path);
+    }),
+  );
 }

@@ -9,6 +9,7 @@
 
 import { join } from "node:path";
 import { replaceFileAtomically } from "../atomicFile";
+import { terminalText } from "../terminalText";
 import { readJsonlValues } from "./jsonl";
 import { manifestPath, mediaDir, ownMediaDir } from "./manifest";
 
@@ -22,8 +23,10 @@ export function indexPath(projectDir: string): string {
   return join(mediaDir(projectDir), "index.md");
 }
 
+const LINE_BREAKS = /\s*[\r\n\v\f\u0085\u2028\u2029]+\s*/g;
+
 function singleLineCell(value: unknown): string {
-  return String(value ?? "").replace(/\s*[\r\n]+\s*/g, " ");
+  return terminalText(String(value ?? "").replace(LINE_BREAKS, " "));
 }
 
 function pad(str: unknown, len: number): string {

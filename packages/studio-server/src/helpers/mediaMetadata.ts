@@ -7,6 +7,8 @@ import {
   parseFirstFrameColour,
   readsKeyframeTransfers,
   parseKeyframeTransfers,
+  parseSampleAspectRatio,
+  streamRotation,
   type PreviewSourceFacts,
   type ToneMapFrameColour,
 } from "@hyperframes/core";
@@ -30,7 +32,7 @@ export interface FfprobeRunResult {
 export type FfprobeRunner = (
   command: string,
   args: string[],
-  options?: { timeout?: number; maxBuffer?: number },
+  options?: { timeout?: number; maxBuffer?: number; signal?: AbortSignal },
 ) => FfprobeRunResult | Promise<FfprobeRunResult>;
 
 /** Default runner: genuinely async (`execFile`), unlike the previous
@@ -41,7 +43,12 @@ const execFileRunner: FfprobeRunner = (command, args, options) =>
     execFile(
       command,
       args,
-      { timeout: options?.timeout, maxBuffer: options?.maxBuffer, windowsHide: true },
+      {
+        timeout: options?.timeout,
+        maxBuffer: options?.maxBuffer,
+        signal: options?.signal,
+        windowsHide: true,
+      },
       (error, stdout, stderr) => {
         if (error && error.code === "ENOENT") {
           resolvePromise({ status: null, stdout: "", stderr: "", error });
@@ -105,8 +112,10 @@ interface FfprobeStream {
   bit_rate?: string;
   r_frame_rate?: string;
   avg_frame_rate?: string;
+  sample_aspect_ratio?: string;
   disposition?: Record<string, number | undefined>;
   tags?: Record<string, string | undefined>;
+  side_data_list?: { rotation?: number | string }[];
 }
 
 const VIDEO_EXT = new Set([
@@ -232,6 +241,17 @@ function bitDepthOf(stream: FfprobeStream): number {
   return suffixed ? Number(suffixed[1]) : 8;
 }
 
+function shownAs(
+  stream: FfprobeStream,
+): Pick<PreviewSourceFacts, "sampleAspectRatio" | "rotation"> {
+  const sampleAspectRatio = parseSampleAspectRatio(stream.sample_aspect_ratio);
+  const rotation = streamRotation(stream);
+  return {
+    ...(sampleAspectRatio === undefined ? {} : { sampleAspectRatio }),
+    ...(rotation === undefined ? {} : { rotation }),
+  };
+}
+
 function sourceFactsOf(
   stream: FfprobeStream | undefined,
   formatBitrate: string | undefined,
@@ -248,6 +268,7 @@ function sourceFactsOf(
   return {
     width: stream.width,
     height: stream.height,
+    ...shownAs(stream),
     bitDepth: bitDepthOf(stream),
     bitrate: Number.isFinite(bitrate) ? bitrate : 0,
     ...(nominal > 0
@@ -348,6 +369,7 @@ export async function probeAudioTrack(
 export async function probeMediaMetadata(
   filePath: string,
   runner: FfprobeRunner = execFileRunner,
+  signal?: AbortSignal,
 ): Promise<MediaMetadata> {
   const kind = inferKindFromPath(filePath);
   if (kind === "audio" || kind === "unknown") {
@@ -372,14 +394,14 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,bit_rate,r_frame_rate,avg_frame_rate:stream_disposition:stream_tags=alpha_mode:format=duration,bit_rate",
+      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,sample_aspect_ratio,bit_rate,r_frame_rate,avg_frame_rate:stream_disposition:stream_tags=alpha_mode,rotate:stream_side_data_list:format=duration,bit_rate",
       "-of",
       "json",
       ...mediaInputArgs(filePath),
       "--",
       filePath,
     ],
-    { timeout: 15_000, maxBuffer: 1024 * 1024 },
+    { timeout: 15_000, maxBuffer: 1024 * 1024, signal },
   );
 
   if (result.error?.code === "ENOENT") {

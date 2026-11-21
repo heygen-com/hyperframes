@@ -269,6 +269,8 @@ it("does not retire an adopted decoded picture when its native snapshot lease en
   expect(video.currentTime).toBe(3);
 });
 
+const MAC_SAFARI =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15";
 const MAC_CHROME =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 
@@ -331,6 +333,7 @@ it("draws a held picture through a VideoFrame closed after the draw, else from t
   const video = document.createElement("video");
   Object.defineProperty(video, "videoWidth", { value: 64 });
   Object.defineProperty(video, "videoHeight", { value: 36 });
+  vi.stubGlobal("navigator", { userAgent: MAC_CHROME });
   vi.stubGlobal("VideoFrame", FakeVideoFrame);
   expect(captureNativeVideoFrame(video)?.width).toBe(64);
   const [first] = draws;
@@ -348,5 +351,32 @@ it("draws a held picture through a VideoFrame closed after the draw, else from t
   );
   expect(captureNativeVideoFrame(video)).not.toBeNull();
   expect(draws[1]?.source).toBe(video);
+  vi.unstubAllGlobals();
+});
+
+// fails without the fix: seeking a film of 16 1080p videos, Safari never came back from making a VideoFrame of a
+// video it had just paused. The frame route is for Chromium's image cache, which WebKit does not have.
+it("draws a held picture from the video itself in WebKit, making no VideoFrame", () => {
+  const draws: unknown[] = [];
+  let framesMade = 0;
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage: (source: unknown) => draws.push(source),
+  } as unknown as CanvasRenderingContext2D);
+  const video = document.createElement("video");
+  Object.defineProperty(video, "videoWidth", { value: 64 });
+  Object.defineProperty(video, "videoHeight", { value: 36 });
+  vi.stubGlobal("navigator", { userAgent: MAC_SAFARI });
+  vi.stubGlobal(
+    "VideoFrame",
+    class {
+      constructor() {
+        framesMade++;
+      }
+      close() {}
+    },
+  );
+  expect(captureNativeVideoFrame(video)?.width).toBe(64);
+  expect(framesMade).toBe(0);
+  expect(draws).toEqual([video]);
   vi.unstubAllGlobals();
 });

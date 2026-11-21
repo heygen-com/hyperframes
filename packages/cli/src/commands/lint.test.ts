@@ -181,3 +181,19 @@ describe("lint and compositions the project never mounts", () => {
     ]);
   });
 });
+
+// fails without the fix: the failure line reached the terminal with its control characters live.
+it("prints a failure's control characters as visible escapes", async () => {
+  consumeCommandResult();
+  lintProjectMock.mockRejectedValue(new Error("Cannot read scenes/a\u001b[2Jb.html\nline two"));
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await run({ json: false, verbose: false });
+    expect(error.mock.calls.map((call) => call.join(" "))).toEqual([
+      "Cannot read scenes/a\\x1b[2Jb.html\nline two",
+    ]);
+  } finally {
+    error.mockRestore();
+    consumeCommandResult();
+  }
+});

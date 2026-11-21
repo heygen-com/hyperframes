@@ -8,10 +8,12 @@
 
 import { replaceMatches, urlHashRefMatches } from "@hyperframes/parsers/css-url-scans";
 import postcss from "postcss";
-import { escapeCssIdentifier } from "./selectorIdTokens";
+import { fnv1a32 } from "../canary";
+import { escapeCssIdentifier, selectorIdTokens } from "./selectorIdTokens";
 import {
   SVG_REFERENCE_ALIASES_ATTR,
   readSvgReferenceAliases,
+  recordedSvgIds,
   rewriteSvgSelectors,
   type SvgReferenceAlias,
 } from "./svgSelectorAliases";
@@ -33,8 +35,13 @@ function isHrefAttrName(name: string): boolean {
   return name === "href" || name.endsWith(":href");
 }
 
+const MAX_NAMESPACE_PREFIX = 48;
+
+/** A namespace this long keeps its head and a hash of the whole, so a renamed id's length never depends on it. */
 function sanitizeNamespaceSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_-]/g, "-");
+  const segment = value.replace(/[^a-zA-Z0-9_-]/g, "-");
+  if (segment.length <= MAX_NAMESPACE_PREFIX) return segment;
+  return `${segment.slice(0, 32)}-${fnv1a32(value).toString(16).padStart(8, "0")}`;
 }
 
 /**
@@ -44,7 +51,7 @@ function sanitizeNamespaceSegment(value: string): string {
  * URL, not a CSS identifier, so it carries no escapes; the replacement keeps the quoting and
  * swaps only the id, which stays a valid fragment because the prefix is `[A-Za-z0-9_-]`.
  */
-function rewriteUrlHashRefs(value: string, idMap: ReadonlyMap<string, string>): string {
+function rewriteUrlHashRefs(value: string, idMap: SvgIdMap): string {
   if (!value || !value.toLowerCase().includes("url(")) return value;
   return replaceMatches(value, urlHashRefMatches(value), (full, pre, quote, id, post) => {
     const mapped = idMap.get(id);
@@ -57,11 +64,7 @@ type ReferenceDecision =
   | { kind: "retain"; alias: SvgReferenceAlias }
   | { kind: "managed"; before: string; after: string };
 
-function nativeReferenceValue(
-  name: string,
-  value: string,
-  idMap: ReadonlyMap<string, string>,
-): string | null {
+function nativeReferenceValue(name: string, value: string, idMap: SvgIdMap): string | null {
   if (isHrefAttrName(name) && value.startsWith("#")) {
     const mapped = idMap.get(value.slice(1));
     return mapped ? `#${mapped}` : value;
@@ -73,7 +76,7 @@ function nativeReferenceValue(
 function decideReferenceWrite(
   attr: Attr,
   previous: SvgReferenceAlias | undefined,
-  idMap: ReadonlyMap<string, string>,
+  idMap: SvgIdMap,
 ): ReferenceDecision {
   if (attr.name === SVG_REFERENCE_ALIASES_ATTR || attr.name === ID_ATTR) return { kind: "skip" };
   const before = previous && attr.value === previous.after ? previous.before : attr.value;
@@ -100,7 +103,7 @@ function referenceAlias(
 }
 
 /** Apply managed reference writes while retaining provenance for later assembly phases. */
-function rewriteElementIdReferences(el: Element, idMap: ReadonlyMap<string, string>): void {
+function rewriteElementIdReferences(el: Element, idMap: SvgIdMap): void {
   const prior = new Map(
     readSvgReferenceAliases(el, SVG_REFERENCE_ALIASES_ATTR, false).map((alias) => [
       alias.name,
@@ -220,15 +223,16 @@ function collectNativelyReferencedIds(
   return referenced;
 }
 
-function isExcluded(el: Element, exclude: readonly Element[]): boolean {
-  return exclude.some((excluded) => excluded === el || excluded.contains(el));
+function isExcluded(el: Element, exclude: ReadonlySet<Element>): boolean {
+  for (let at: Element | null = el; at; at = at.parentElement) if (exclude.has(at)) return true;
+  return false;
 }
 
 /** `root` plus every descendant that is not inside an excluded subtree. */
 function collectScopeElements(scope: SvgIdScope): Element[] {
-  const exclude = scope.exclude ?? [];
+  const exclude = new Set(scope.exclude);
   const descendants = [...scope.root.querySelectorAll("*")];
-  const own = exclude.length ? descendants.filter((el) => !isExcluded(el, exclude)) : descendants;
+  const own = exclude.size ? descendants.filter((el) => !isExcluded(el, exclude)) : descendants;
   return [scope.root, ...own];
 }
 
@@ -241,9 +245,9 @@ interface ResolvedScope {
 
 /** Every `<svg>`-subtree element in the scope that carries an id. */
 function collectSvgIdElements(scope: SvgIdScope): Element[] {
-  const exclude = scope.exclude ?? [];
+  const exclude = new Set(scope.exclude);
   const matches = [...scope.root.querySelectorAll("svg [id], svg[id]")];
-  return exclude.length ? matches.filter((el) => !isExcluded(el, exclude)) : matches;
+  return exclude.size ? matches.filter((el) => !isExcluded(el, exclude)) : matches;
 }
 
 function resolveScope(scope: SvgIdScope): ResolvedScope {
@@ -274,6 +278,7 @@ interface IdCensus {
   /** Every id in the document, extended with each minted id so no two
    *  renames (or a rename and an authored id) can ever coincide. */
   usedIds: Set<string>;
+  nextFreeSuffixByBase: Map<string, number>;
 }
 
 function currentAuthoredSvgId(el: Element): string | null {
@@ -302,16 +307,18 @@ function buildIdCensus(document: SvgIdQueryable): IdCensus {
       else elementsById.set(authored, [el]);
     }
   }
-  return { elementsById, usedIds };
+  return { elementsById, usedIds, nextFreeSuffixByBase: new Map() };
 }
 
 /** A namespaced id that is not already taken anywhere in the document. */
-function mintNamespacedId(namespace: string, originalId: string, usedIds: Set<string>): string {
-  const base = `${sanitizeNamespaceSegment(namespace)}--${originalId}`;
-  let candidate = base;
-  for (let n = 2; usedIds.has(candidate); n += 1) candidate = `${base}-${n}`;
-  usedIds.add(candidate);
-  return candidate;
+function mintNamespacedId(prefix: string, originalId: string, census: IdCensus): string {
+  const base = `${prefix}--${originalId}`;
+  const name = (n: number) => (n === 1 ? base : `${base}-${n}`);
+  let n = census.nextFreeSuffixByBase.get(base) ?? 1;
+  while (census.usedIds.has(name(n))) n += 1;
+  census.nextFreeSuffixByBase.set(base, n + 1);
+  census.usedIds.add(name(n));
+  return name(n);
 }
 
 function collisionScopes(
@@ -337,10 +344,12 @@ function planRenames(
   scopeIndexByRenamable: ReadonlyMap<Element, number>,
 ): Map<string, string>[] {
   const idMaps = scopes.map(() => new Map<string, string>());
+  const prefixes: Array<string | undefined> = [];
   for (const [id, elements] of census.elementsById) {
     if (elements.length < 2) continue;
     for (const index of collisionScopes(id, elements, scopeIndexByRenamable)) {
-      idMaps[index]!.set(id, mintNamespacedId(scopes[index]!.namespace, id, census.usedIds));
+      prefixes[index] ??= sanitizeNamespaceSegment(scopes[index]!.namespace);
+      idMaps[index]!.set(id, mintNamespacedId(prefixes[index]!, id, census));
     }
   }
   return idMaps;
@@ -379,10 +388,48 @@ function localReferenceBindings(elements: readonly Element[]) {
   return { ids, renamed };
 }
 
+/** What reads a scope's renames: a plain `Map`, or a `ScopedIdMap`. */
+export type SvgIdMap = Pick<ReadonlyMap<string, string>, "get" | "has" | "size">;
+
+/** One scope's renames read through to the document's shared table, never copied per scope. */
+class ScopedIdMap implements SvgIdMap {
+  readonly size: number;
+
+  constructor(
+    private readonly own: ReadonlyMap<string, string>,
+    private readonly shared: ReadonlyMap<string, string>,
+    private readonly hidden: ReadonlySet<string | null>,
+  ) {
+    let size = own.size + shared.size;
+    for (const id of own.keys()) if (shared.has(id)) size -= 1;
+    for (const id of hidden) if (id !== null && !own.has(id) && shared.has(id)) size -= 1;
+    this.size = size;
+  }
+
+  get(id: string): string | undefined {
+    return this.own.get(id) ?? (this.hidden.has(id) ? undefined : this.shared.get(id));
+  }
+
+  has(id: string): boolean {
+    return this.get(id) !== undefined;
+  }
+}
+
+const attributeBytes = (el: Element): number =>
+  Array.from(el.attributes ?? [], (attr) => attr.name.length + attr.value.length + 4).reduce(
+    (sum, bytes) => sum + bytes,
+    0,
+  );
+
 /** Rename the planned elements in one scope and rewrite every reference in
- *  that scope's attributes to match. */
-function applyRenames(resolved: ResolvedScope, idMap: ReadonlyMap<string, string>): void {
+ *  that scope's attributes to match. `charge` gets each element's added bytes. */
+function applyRenames(
+  resolved: ResolvedScope,
+  idMap: SvgIdMap,
+  charge?: (bytes: number) => void,
+): void {
   for (const el of resolved.elements) {
+    const before = charge ? attributeBytes(el) : 0;
     const currentId = el.getAttribute(ID_ATTR);
     if (currentId && resolved.renamable.has(el) && idMap.has(currentId)) {
       if (!el.hasAttribute(SVG_AUTHORED_ID_ATTR)) el.setAttribute(SVG_AUTHORED_ID_ATTR, currentId);
@@ -399,6 +446,7 @@ function applyRenames(resolved: ResolvedScope, idMap: ReadonlyMap<string, string
       el.setAttribute(ID_ATTR, after);
     }
     rewriteElementIdReferences(el, idMap);
+    if (charge) charge(attributeBytes(el) - before);
   }
 }
 
@@ -407,11 +455,12 @@ const CLIP_SELECTOR = "[data-start]:not([data-composition-id]):not([data-composi
 /** The outermost timed clips holding an `<svg>` outside every composition host. Each is its own id scope, as an
  *  inlined composition is, so two scenes drawn with the same ids each resolve their own `url(#id)` and `href`. */
 export function sceneClipRoots(document: SvgIdQueryable, hosts: readonly Element[]): Element[] {
+  const hostSet = new Set(hosts);
   return [...document.querySelectorAll(CLIP_SELECTOR)].filter(
     (clip) =>
       !clip.parentElement?.closest(CLIP_SELECTOR) &&
       !!clip.parentElement?.closest("[data-composition-id]") &&
-      !isExcluded(clip, hosts) &&
+      !isExcluded(clip, hostSet) &&
       !!clip.querySelector("svg"),
   );
 }
@@ -437,7 +486,8 @@ export function namespaceCollidingSvgIds(
   document: SvgIdQueryable,
   scopes: readonly SvgIdScope[],
   finalizedIds?: Set<Element>,
-): Map<string, string>[] {
+  charge?: (scopeIndex: number, bytes: number) => void,
+): SvgIdMap[] {
   if (scopes.length === 0) return [];
 
   const census = buildIdCensus(document);
@@ -460,11 +510,14 @@ export function namespaceCollidingSvgIds(
     const local = localReferenceBindings(
       scopes[index]!.referenceTarget === "document" ? [] : scope.elements,
     );
-    const inherited = [...documentTargets].filter(([id]) => !local.ids.has(id));
-    return new Map([...inherited, ...local.renamed, ...idMaps[index]!]);
+    return new ScopedIdMap(
+      new Map([...local.renamed, ...idMaps[index]!]),
+      documentTargets,
+      local.ids,
+    );
   });
   referenceMaps.forEach((idMap, index) => {
-    applyRenames(resolved[index]!, idMap);
+    applyRenames(resolved[index]!, idMap, charge && ((bytes) => charge(index, bytes)));
   });
   for (const el of newlyEligible) finalizedIds?.add(el);
   return referenceMaps;
@@ -485,8 +538,9 @@ export function namespaceCollidingSvgIds(
  */
 export function rewriteSvgIdReferencesInCss(
   css: string,
-  idMap: ReadonlyMap<string, string>,
+  idMap: SvgIdMap,
   references: readonly SvgReferenceAlias[] = [],
+  charge?: (bytes: number) => void,
 ): string {
   if (!css || (idMap.size === 0 && references.length === 0)) return css;
   if (!css.includes("#") && !css.includes("[") && !css.toLowerCase().includes("url(")) return css;
@@ -500,20 +554,35 @@ export function rewriteSvgIdReferencesInCss(
     return css;
   }
   let mutated = false;
-  const recordedIds = new Set(
-    references.filter((alias) => alias.name === ID_ATTR).map((alias) => alias.before),
-  );
-  const ids = [...idMap]
-    .filter(([id]) => !recordedIds.has(id))
-    .map(([id, renamed]) => ({
-      id,
-      replacement: `:is(#${escapeCssIdentifier(id)}, #${escapeCssIdentifier(renamed)})`,
-    }));
+  let charged = 0;
+  const chargeSelector =
+    charge &&
+    ((bytes: number) => {
+      charged += bytes;
+      charge(bytes);
+    });
+  const recordedIds = recordedSvgIds(references);
+  const idsNamedBy = (selector: string) =>
+    selectorIdTokens(selector).flatMap((id) => {
+      const renamed = recordedIds.has(id) ? undefined : idMap.get(id);
+      if (!renamed) return [];
+      return [
+        { id, replacement: `:is(#${escapeCssIdentifier(id)}, #${escapeCssIdentifier(renamed)})` },
+      ];
+    });
   root.walkRules((rule) => {
-    const rewritten = rule.selectors.map((selector) =>
-      rewriteSvgSelectors(selector, ids, references),
+    const selectors = rule.selectors;
+    const rewritten = selectors.map((selector) =>
+      rewriteSvgSelectors(
+        selector,
+        idsNamedBy(selector),
+        references,
+        undefined,
+        chargeSelector,
+        charge,
+      ),
     );
-    if (rewritten.some((selector, index) => selector !== rule.selectors[index])) {
+    if (rewritten.some((selector, index) => selector !== selectors[index])) {
       rule.selectors = rewritten;
       mutated = true;
     }
@@ -534,5 +603,9 @@ export function rewriteSvgIdReferencesInCss(
     }
   });
 
-  return mutated ? root.toResult({ map: false }).css : css;
+  const rewritten = mutated ? root.toResult({ map: false }).css : css;
+  // Selector growth was charged as it was built; settle to the sheet's real growth. A scan's charge stays.
+  const settle = Math.max(0, rewritten.length - css.length) - charged;
+  if (charge && settle !== 0) charge(settle);
+  return rewritten;
 }

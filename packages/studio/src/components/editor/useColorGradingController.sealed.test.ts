@@ -4,12 +4,10 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { normalizeHfColorGrading } from "@hyperframes/core/color-grading";
-// The frame's real runtime agent, serving the opaque frame from this document.
-import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingAgent.test-helpers";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
-import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness";
 import type { DomEditSelection } from "./domEditing";
 import { useColorGradingController } from "./useColorGradingController";
+import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 
 installReactActEnvironment();
 
@@ -19,29 +17,6 @@ afterEach(() => {
   delete (window as { __hf?: unknown }).__hf;
   document.body.innerHTML = "";
 });
-
-/** A frame Studio cannot read, whose runtime is the real editing agent over this document. */
-function opaqueFrame(): HTMLIFrameElement {
-  const frame: Record<string, unknown> = {};
-  const iframe = detachedFakeIframe(frame);
-  Object.defineProperty(iframe, "contentDocument", { value: null });
-  Object.defineProperty(frame, "document", {
-    get: () => {
-      throw new DOMException("blocked", "SecurityError");
-    },
-  });
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      window.dispatchEvent(
-        new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
-      ),
-  } as unknown as Window;
-  const agent = installMarkedEditingAgent(parent);
-  frame.postMessage = (data: unknown) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
-  closers.push(() => agent.dispose());
-  return iframe;
-}
 
 /** The frame's colour grading runtime, on the window the agent serves. */
 function installFrameGrading() {
@@ -109,7 +84,7 @@ const settle = (check: () => void) =>
 describe("grade preview sealed", () => {
   it("reads the frame's grading status over the editing port", async () => {
     const { grading } = installFrameGrading();
-    const state = renderController(opaqueFrame());
+    const state = renderController(sealedPreviewFrame().iframe);
 
     await settle(() =>
       expect(state().runtimeStatus).toEqual({ state: "active", message: "Shader active" }),
@@ -119,7 +94,7 @@ describe("grade preview sealed", () => {
 
   it("draws preset cards the frame renders, and drops any that are not image data", async () => {
     const { grading } = installFrameGrading();
-    const state = renderController(opaqueFrame());
+    const state = renderController(sealedPreviewFrame().iframe);
 
     act(() => state().requestPresetPreviews());
     await settle(() => expect(state().presetPreviews.images["bright-pop"]).toBeDefined());
@@ -135,7 +110,7 @@ describe("grade preview sealed", () => {
 
   it("plays the hovered card in the frame and stops it when the hover ends", async () => {
     const { grading, stopPlayback } = installFrameGrading();
-    const state = renderController(opaqueFrame());
+    const state = renderController(sealedPreviewFrame().iframe);
     const look = normalizeHfColorGrading({ preset: "bright-pop", intensity: 1 })!;
 
     act(() =>
@@ -157,7 +132,7 @@ describe("grade preview sealed", () => {
 
   it("captures a graded frame from the frame", async () => {
     installFrameGrading();
-    const state = renderController(opaqueFrame());
+    const state = renderController(sealedPreviewFrame().iframe);
 
     const frame = await act(() => state().captureGradedFrame());
     expect(frame).toEqual({ dataUrl: "data:image/png;base64,capture", width: 160, height: 90 });

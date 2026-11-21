@@ -48,7 +48,7 @@ export function prepareLiveInspection(
   if (fingerprint(project) !== sourceVersion) throw new Error("source_changed_during_load");
   if (!/<head\b[^>]*>/i.test(html)) throw new Error("preview_head_missing");
   const generation = randomUUID();
-  const stamp = `window.__hfLiveInspection=${JSON.stringify({ generation, project })};`;
+  const stamp = `window.__hfLiveInspection=${JSON.stringify({ generation })};`;
   const script = `${stamp}\n${runtime()}`.replace(/<\/script/gi, "<\\/script");
   const prepared = html.replace(/<head\b[^>]*>/i, (head) => `${head}<script>${script}</script>`);
   let document = prepared;

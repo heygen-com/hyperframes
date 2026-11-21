@@ -34,9 +34,18 @@ import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
 import { restoreAttributes } from "./editing/restoreAttributes";
 import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
+import { maxZIndex } from "./editing/maxZIndex";
 import { gestureStart } from "./editingGestureStart";
 import { gsapSnapshot } from "./editing/gsapSnapshot";
 import { motionPathHome } from "./editing/motionPathHome";
+import { cropLift } from "./editing/cropLift";
+import { stackingFamily } from "./editingLayers";
+import { gsapSet } from "./editing/gsapSet";
+import { patchTweens } from "./editing/patchTween";
+import { softReload } from "./editing/softReload";
+import { holdScenes, markScenesStale, swapScenes } from "./editing/scenes";
+import { liveRetime } from "./editing/liveRetime";
+import { previewAssetsUnloaded } from "../lottieReadiness";
 import {
   getLogicalOpacity,
   markedForStudio,
@@ -55,6 +64,8 @@ import { assignAudioGroup } from "./editing/assignAudioGroup";
 import { audioMeter } from "./editing/audioMeter";
 import { documentMarkup } from "./editing/documentMarkup";
 import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
+import { editElement } from "./editing/editElement";
+import { endTextEdit, textEdit } from "./editing/textEdit";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -214,6 +225,19 @@ const HANDLERS: Handlers = {
   "assign-audio-group": (params) => assignAudioGroup(params, elementForHandle),
   "gsap-snapshot": () => gsapSnapshot(),
   "motion-path-home": ({ selector }) => motionPathHome(selector),
+  "max-z-index": () => maxZIndex(),
+  "crop-lift": cropLift,
+  "edit-element": editElement,
+  "stacking-family": stackingFamily,
+  "gsap-set": gsapSet,
+  "patch-tweens": patchTweens,
+  "soft-reload": softReload,
+  "hold-scenes": holdScenes,
+  "mark-scenes-stale": markScenesStale,
+  "swap-scenes": swapScenes,
+  "live-retime": liveRetime,
+  "assets-unloaded": () => ({ unloaded: previewAssetsUnloaded(document, window.__hfLottie) }),
+  "text-edit": (params, port) => textEdit(params, port, EDITING_PROTOCOL_VERSION),
 };
 
 function serve(port: MessagePort): void {
@@ -294,6 +318,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       keyWatches.clear();
       listenForKeys(false);
       stopWatchingGeometry();
+      endTextEdit();
     },
   };
 }

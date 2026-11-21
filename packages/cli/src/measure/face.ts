@@ -6,6 +6,7 @@ import {
   GUARDED_RUN_MS,
   ffmpegBin,
   frameAt,
+  guardedLimitReason,
   round,
   runFfmpeg,
   sumOf,
@@ -54,6 +55,17 @@ export function minWindow(h: number, share: number): number {
   return Math.round(WINDOW_PX * STEP ** steps);
 }
 
+function decode(info: VideoInfo, args: string[]): Buffer {
+  if (!info.guarded) return runFfmpeg(args);
+  const formats = mediaInputFormatArgs(ffmpegBin(), info.path);
+  try {
+    return runFfmpeg([...formats, ...args], undefined, undefined, GUARDED_RUN_MS);
+  } catch (err) {
+    const stopped = guardedLimitReason(err);
+    throw stopped ? new Error(`ffmpeg cannot read ${info.path}: ${stopped}`) : err;
+  }
+}
+
 /** Frames `ks` (indices from the first) as grey bytes at `w` x `h`, keeping the video's aspect. Each run of nearby
  * frames is one ffmpeg pass from its first frame to its last; a variable-rate video, which a seek can't index, is read
  * from its start. */
@@ -74,27 +86,21 @@ export function readSamples(info: VideoInfo, ks: number[], w: number, h: number)
       ...(w !== info.width || h !== info.height ? [`scale=${w}:${h}`] : []),
       "format=gray",
     ];
-    const raw = runFfmpeg(
-      [
-        ...seek,
-        ...(info.guarded ? mediaInputFormatArgs(ffmpegBin(), info.path) : []),
-        "-i",
-        info.path,
-        "-an",
-        "-vf",
-        filters.join(","),
-        "-fps_mode",
-        "passthrough",
-        "-frames:v",
-        String(run.length),
-        "-f",
-        "rawvideo",
-        "-",
-      ],
-      undefined,
-      undefined,
-      info.guarded ? GUARDED_RUN_MS : undefined,
-    );
+    const raw = decode(info, [
+      ...seek,
+      "-i",
+      info.path,
+      "-an",
+      "-vf",
+      filters.join(","),
+      "-fps_mode",
+      "passthrough",
+      "-frames:v",
+      String(run.length),
+      "-f",
+      "rawvideo",
+      "-",
+    ]);
     const frames: Uint8Array[] = [];
     for (let i = 0; i + size <= raw.length; i += size) frames.push(raw.subarray(i, i + size));
     return frames;

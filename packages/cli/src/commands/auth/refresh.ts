@@ -8,6 +8,7 @@ import { failCommand } from "../../utils/commandResult.js";
  * job. Status's 401-retry path already does this automatically.
  */
 
+import { terminalLines } from "@hyperframes/core";
 import { defineCommand } from "../../utils/defineCommand.js";
 import {
   assertOAuthConfiguredOrExit,
@@ -39,8 +40,8 @@ export default defineCommand({
       console.log(c.success("✓ Refreshed OAuth access token."));
     } catch (err) {
       if (isAuthError(err) && err.code === "REFRESH_FAILED") {
-        console.error(c.error(err.message));
-        if (err.hint) console.error(c.dim(err.hint));
+        console.error(c.error(terminalLines(err.message)));
+        if (err.hint) console.error(c.dim(terminalLines(err.hint)));
         failCommand();
       }
       throw err;

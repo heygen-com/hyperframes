@@ -8,6 +8,7 @@ import {
   getElementScreenshotClip,
   grantCaptureLoads,
   thumbnailDeviceScaleFactor,
+  thumbnailSeekReadyInBrowser,
   type ScreenshotClip,
 } from "@hyperframes/studio-server";
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
@@ -236,11 +237,7 @@ async function prepareThumbnailPage(
     document.body.style.margin = "0";
     document.body.style.overflow = "hidden";
   });
-  await page
-    .waitForFunction(`!!(window.__timelines && Object.keys(window.__timelines).length > 0)`, {
-      timeout: 5000,
-    })
-    .catch(() => {});
+  await page.waitForFunction(thumbnailSeekReadyInBrowser, { timeout: 5000 }).catch(() => {});
   await seekThumbnailPreview(page, opts.seekTime);
   await page.evaluate("window.__hfWaitForSeekCompletion?.()");
   await applyStudioRenderBodyScriptsToThumbnailPage(page, opts.project.dir, opts.compPath);

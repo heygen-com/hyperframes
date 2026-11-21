@@ -10,6 +10,7 @@ import { createRafThrottle, LayersPanel, sortLayersByZIndex } from "./LayersPane
 import { isLayerDraggable } from "./useLayerDrag";
 import { liveTime } from "../../player";
 import { announcePreviewDocumentLoaded, sceneSwapFor } from "../../player/sceneSwap";
+import { applyUndoRestoreToPreview } from "../../utils/gsapUndoRestore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -51,34 +52,31 @@ vi.mock("./domEditing", async (importOriginal) => ({
   collectDomEditLayerItems: mocks.collect,
 }));
 
-function makeLayer(
-  overrides: Partial<DomEditLayerItem> & { zIndex?: string; locked?: boolean },
-): DomEditLayerItem {
-  const win = new Window();
-  const doc = win.document;
-  const parent = doc.createElement("div") as unknown as HTMLElement;
-  if (overrides.locked) {
-    (parent as unknown as Element).setAttribute("data-timeline-locked", "true");
-  }
-  const el = doc.createElement("div") as unknown as HTMLElement;
-  parent.appendChild(el as unknown as Node);
-  if (overrides.zIndex != null) {
-    (el as unknown as { style: { zIndex: string } }).style.zIndex = overrides.zIndex;
-  }
-  if (overrides.id) {
-    (el as unknown as Element).setAttribute("id", overrides.id);
-  }
+function layerElement({ locked, zIndex, id }: { locked?: boolean; zIndex?: string; id?: string }) {
+  const doc = new Window().document;
+  const parent = doc.createElement("div");
+  if (locked) parent.setAttribute("data-timeline-locked", "true");
+  const el = doc.createElement("div");
+  parent.appendChild(el);
+  if (zIndex != null) el.style.zIndex = zIndex;
+  if (id) el.setAttribute("id", id);
+  return el as unknown as HTMLElement;
+}
+
+function makeLayer({
+  zIndex,
+  locked,
+  ...overrides
+}: Partial<DomEditLayerItem> & { zIndex?: string; locked?: boolean }): DomEditLayerItem {
   return {
-    key: overrides.key ?? `layer-${Math.random()}`,
-    element: el,
-    label: overrides.label ?? "div",
-    tagName: overrides.tagName ?? "div",
-    depth: overrides.depth ?? 0,
-    childCount: overrides.childCount ?? 0,
-    id: overrides.id,
-    selector: overrides.selector,
-    selectorIndex: overrides.selectorIndex,
-    sourceFile: overrides.sourceFile ?? "index.html",
+    key: `layer-${Math.random()}`,
+    label: "div",
+    tagName: "div",
+    depth: 0,
+    childCount: 0,
+    sourceFile: "index.html",
+    ...overrides,
+    element: layerElement({ locked, zIndex, id: overrides.id }),
   };
 }
 
@@ -305,6 +303,33 @@ describe("LayersPanel preview promotion", () => {
     await act(() => sceneSwapFor(a)!("/preview", () => true));
     expect(collectedRootIds()).toEqual(["a"]);
     fetchSpy.mockRestore();
+  });
+
+  // fails without the fix: an in-place undo announced nothing the panel reads, so its rows kept the old order.
+  it("recollects layers when an undo restacks them in place", async () => {
+    const restack = (z: number) =>
+      `<div data-composition-id="a" data-hf-id="a"><div id="back" data-hf-id="back" style="z-index: ${z}"></div></div>`;
+    const doc = new Window().document;
+    doc.body.innerHTML = restack(1);
+    const iframe = document.createElement("iframe");
+    Object.defineProperty(iframe, "contentDocument", { value: doc });
+    Object.defineProperty(iframe, "contentWindow", {
+      value: { document: doc, __player: { seek() {} } },
+    });
+    mocks.previewIframeRef.current = iframe;
+    usePreviewIframeStore.setState({ iframe });
+    act(() => root.render(createElement(LayersPanel)));
+    mocks.collect.mockClear();
+
+    const page = (z: number) => `<html><body>${restack(z)}</body></html>`;
+    const files = { "index.html": { previous: page(1), restored: page(3) } };
+    let strategy = "";
+    await act(async () => {
+      strategy = applyUndoRestoreToPreview(iframe, "index.html", files, 0, vi.fn());
+    });
+    expect(strategy).toBe("soft");
+    expect(doc.getElementById("back")!.getAttribute("style")).toBe("z-index: 3");
+    expect(collectedRootIds()).toEqual(["a"]);
   });
 
   it("a row press starts no text selection, so dragging a row leaves no letters highlighted", () => {

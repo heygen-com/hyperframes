@@ -134,7 +134,7 @@ when no login or API key is saved (see [`auth`](#hyperframes-auth)).
 **Flags, not prompts.** A missing required flag fails immediately with a usage
 example rather than waiting for input. These commands can ask questions on a TTY:
 `init` prompts for a project name and example unless you pass
-`--non-interactive`, `catalog --human-friendly` opens a picker, and `share` asks for a first-share audience. Nothing else
+`--non-interactive`, `catalog --human-friendly` opens a picker, and `share` asks for a first-share audience and, in a folder that came from someone else, confirms the existing review it would change. Nothing else
 prompts, apart from confirmations you can skip with `--yes` or `--no-confirm`.
 
 **Unattended runs never prompt.** A run is unattended when stdin or stdout is not
@@ -142,6 +142,22 @@ a terminal, under CI, inside a coding agent, or with `HYPERFRAMES_AGENT=1`.
 There, a command that would ask for confirmation, such as `publish` or `upgrade`,
 exits 2 instead and names the flag to pass (`--yes`), and spinners print only
 their final line, on stderr.
+
+**`npx` installs before the CLI runs.** The guarantee above starts once the CLI
+is running, and `npx` keeps it: with no terminal, npm skips its
+`Ok to proceed?` prompt, prints a warning, and installs. What `npx` adds is the
+install itself. An unversioned `npx hyperframes` asks the registry for the
+latest release on every run and installs it when it is new there, so two jobs
+that start together can collide in npm's cache (`_cacache` for the fetch,
+`_npx` for the install: `EEXIST` or `ENOTEMPTY`; a retry succeeds), and a new
+release silently changes
+what the same command renders. In scripts and CI, run the `npm run` scripts a
+scaffolded project ships (`npm run render` is `npx --yes hyperframes@X.Y.Z`,
+pinned to the version that created the project), or pin the same way yourself.
+An installed binary (`npm i hyperframes@X.Y.Z`, then
+`node_modules/.bin/hyperframes`, or a global install) skips the fetch
+entirely. Check the render's dimensions and duration with `ffprobe` before
+anything downstream consumes it.
 
 **Exit codes.** `0` means the command succeeded, `1` means it ran and failed, and
 `2` means the command line itself is wrong: an unknown command or flag, or a
@@ -404,12 +420,10 @@ For AI image descriptions, set `GEMINI_API_KEY` in a `.env` file
 [OpenRouter](https://openrouter.ai) — it wins if both are set, and
 `HYPERFRAMES_OPENROUTER_MODEL` overrides the model.
 
-A project's `.env` never replaces a vision credential you set in your shell:
-when your shell holds a complete credential for another vision provider,
-capture ignores the `.env` vision key, with a note naming the file.
-Model and timeout settings in the `.env` still apply. A received project's
-`.env` (one its received-files record lists) also gives way to your own
-project's `.env`, for every command. When capture or `snapshot --describe` uses
+A received project's `.env` (one its received-files record lists) never
+replaces a vision or Gemini credential you set in your shell or your own
+project's `.env`: its competing keys are ignored, with a note naming the file.
+Keys in your own or a cloned project's `.env` are used as set. When capture or `snapshot --describe` uses
 a vision key from a project's `.env`, a note naming the file prints before the
 first request.
 
@@ -1155,6 +1169,10 @@ setting `preview` uses:
 ```bash
 HYPERFRAMES_PREVIEW_ALLOWED_HOSTS=demo.tunnels.example hyperframes present
 ```
+
+Any path they have no page for, and any address carrying a `code` or `state`
+parameter, gets a plain-text `Not found` that cannot be framed or scripted, so a
+sign-in that returns to their port leaves nothing the project's own script can read.
 
 ### `publish`
 
@@ -2144,12 +2162,27 @@ against a single-encoder streaming render, and buys three things:
   segments a previous attempt finished, after re-validating each one; a
   resumed render is byte-identical to an uninterrupted one.
 
-Segments live in `renders/.hf-segments/<hash>/`, where the hash covers
-everything that determines segment bytes, so changing the composition, fps,
-resolution, quality or segment size starts a fresh set instead of splicing
-mismatched encodes. The directory is deleted after a successful render unless
-`--keep-segments`, and deliberately kept after a failure, because that is what
-`--resume` reads next time.
+Segments live in the local HyperFrames cache under `segments/<project-key>/<plan-hash>/`.
+Run `--resume` from the same project location with the same render settings.
+Moving a project, changing its settings, or upgrading from a version that stored
+segments in the project starts a fresh capture. A failed render keeps its
+checkpoints. A successful render removes them unless you pass `--keep-segments`.
+After a successful render with the new version, you can delete the old
+`renders/.hf-segments/` directory to reclaim disk space. If you set
+`HYPERFRAMES_CACHE_DIR`, choose a private directory outside the project.
+Segmented and multi-chunk joins require FFmpeg 5.0 or later for per-file
+options in concat lists. If FFmpeg reports an unknown `option` directive,
+update the binary used for rendering.
+
+`--resume` reuses only segments you finished on this machine. Their record is
+signed with a key derived from your per-user preview token, a private file in
+your home folder (`~/.local/state/hyperframes/auth`, or
+`%LOCALAPPDATA%\hyperframes` on Windows), so a `.hf-segments` folder copied
+from another machine or received inside a project is captured again. If that
+token cannot be read or created, for example in a read-only home folder,
+`--resume` warns and captures every segment again. Each reused segment must
+also match the size and SHA-256 recorded when it finished. Segments recorded by
+an older HyperFrames version are captured again once.
 
 mp4 and mov only; png-sequence, gif, webm, HDR and shader-transition renders
 keep their existing routes.
@@ -2409,6 +2442,10 @@ prompting, `--yes, -y` upgrades a detected global install (otherwise it prints
 the right `npx` command; an unattended run without `--yes` or `--check` exits 2),
 and `--project [dir]` rewrites
 `hyperframes@<version>` script pins in a project's `package.json`.
+Foreground and background CLI updates run the global package manager from your home directory.
+Run global CLI updates directly from your shell. An npm, pnpm, or Bun package script can pass project settings to its children, so the CLI skips self-installation in that context.
+On POSIX systems, the home directory must belong to the effective user and allow writes only by its owner. If `sudo` retains a different user's home, the update reports the ownership mismatch. A skipped background install reports its reason on stderr.
+
 `--check --json` returns:
 
 ```json
@@ -2906,13 +2943,15 @@ imports projects for you can tell the CLI more by pointing
   `{ "project": "<path>", "files": [...] }` with `path` exactly as the state file
   names it. A file that copy lists still counts as received while something is at
   its path, even if the project's record no longer lists it. For a project found
-  only by `dev` and `ino`, the copy counts only when its `"identity"` is
-  `"<dev>:<ino>:<birth time in ns>"` of the project folder. A copy with
-  `"files": null` or `"doubted": true`, or one that is a link or cannot be read,
-  counts every file as received.
-- A file the copy lists that is no longer at its path is not added back. A
-  received file that is renamed after its record entry is removed is judged by
-  the project's record alone until the app reads the record again.
+  only by `dev` and `ino`, the copy's `"identity"` must be
+  `"<dev>:<ino>:<birth time in ns>"` of the project folder; a copy with another
+  identity counts every file as received. A copy that names another project,
+  has `"files": null` or `"doubted": true`, or is a link, larger than 16 MB or
+  unreadable also counts every file as received.
+- A file the copy lists that is no longer at its path is not added back. When
+  the app restores lost entries to a project's record, it uses the same rule, so
+  a received file that is renamed after its record entry is removed is judged by
+  the project's record alone.
 
 A file from outside the project folder that would be copied (each file a
 composition points at, and each project file that is a link to a file outside
@@ -3064,8 +3103,8 @@ deploy:
 | `--profile`       | `AWS_PROFILE`                        | AWS profile name                                         |
 | `--concurrency`   | none                                 | Lambda reserved concurrency. Without it, a new stack reserves none and each render runs up to 90% of the account's unreserved concurrency; a redeploy keeps the stack's current reservation; `none` removes it |
 | `--memory`        | `10240`                              | Lambda memory in MB                                      |
-| `--chrome-source` | `sparticuz`                          | `sparticuz` or `chrome-headless-shell`                   |
-| `--video-arch`    | `arm64`                              | `arm64` runs the plan and the chunks on an arm64 container-image function, pushed to an ECR repository named `<stack>-video`; audio and assemble stay on x86. Needs `sparticuz`. `x86_64` runs everything on the x86 function |
+| `--chrome-source` | `sparticuz`                          | `sparticuz`. `chrome-headless-shell` is refused: it does not fit a ZIP function, and the arm64 video image already runs it |
+| `--video-arch`    | `arm64`                              | `arm64` runs the plan and the chunks on an arm64 container-image function, pushed to an ECR repository named `<stack>-video`; audio and assemble stay on x86. The image runs its own `chrome-headless-shell`. `x86_64` runs everything on the x86 function |
 | `--skip-build`    | off                                  | Reuse the existing `handler.zip`                         |
 | `--no-warm`       | warm                                 | Skip the one warm-up call to the video function after deploy, which loads its container image so the first render is not the one that waits for it |
 
@@ -3377,6 +3416,20 @@ visible while an update processes. Interrupted first uploads can resume when
 the source is unchanged; if it changed, explicitly use `--update`. If the
 project's review or audience changes while rendering, check the current share
 with `--status` before retrying.
+
+A folder that came from someone else can carry a review record that names their
+existing review. When the project's received-files record, or one above or inside
+it, marks the folder as received, `share` confirms that review before it changes
+who can open it, its link or its versions. This covers an audience flag,
+`--update`, and a share that would add a version or finish setting up the link. In an attended terminal it shows
+the review's title, id and link and asks first; declining changes nothing. An
+unattended run (`--yes`, `--json`, CI or no terminal) is refused with
+`review_confirmation_required` unless `--review <review-id>` names that same
+review; a `--review` that names another review is refused with `review_mismatch`.
+A folder whose received-files records cannot all be read counts as received.
+Reading the existing link, a first share with no existing review, and folders
+not marked as received are unchanged. To share a received folder as a new review
+instead, remove the review record in its `.hyperframes` folder.
 
 Completed renders accumulate in `.hyperframes/share-renders/`. To reclaim that
 space, wait for uploads to finish and close any running share commands, then

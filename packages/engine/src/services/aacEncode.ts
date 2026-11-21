@@ -3,6 +3,7 @@
  * so long audio is encoded as frame-aligned segments in parallel and their frames joined.
  */
 
+import { localContainerInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { execFile } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { removeScratch } from "@hyperframes/core/remove-scratch";
@@ -84,10 +85,11 @@ function supportsSettsDuration(binary = getFfmpegBinary()): Promise<boolean> {
 function encodeInOnePass(
   input: string,
   outputPath: string,
+  inputArgs: string[],
   { signal, timeout, filter }: { signal?: AbortSignal; timeout: number; filter?: string },
 ): Promise<RunFfmpegResult> {
   const filters = [filter, `aresample=${SAMPLE_RATE}`].filter(Boolean).join(",");
-  return runFfmpeg(["-i", input, "-af", filters, ...AAC_ARGS, "-y", outputPath], {
+  return runFfmpeg([...inputArgs, "-i", input, "-af", filters, ...AAC_ARGS, "-y", outputPath], {
     signal,
     timeout,
   });
@@ -102,11 +104,19 @@ export async function encodeAac(
     signal,
     timeout,
     filter,
+    inputContainer,
     segments: count = aacSegmentCount(totalDuration),
-  }: { signal?: AbortSignal; timeout: number; filter?: string; segments?: number },
+  }: {
+    signal?: AbortSignal;
+    timeout: number;
+    filter?: string;
+    segments?: number;
+    inputContainer?: "mov";
+  },
 ): Promise<RunFfmpegResult> {
+  const inputArgs = localContainerInputArgs(inputContainer);
   if (!(await supportsSettsDuration())) {
-    return encodeInOnePass(input, outputPath, { signal, timeout, filter });
+    return encodeInOnePass(input, outputPath, inputArgs, { signal, timeout, filter });
   }
   const dir = createStagingDir(dirname(outputPath), ".aac-segments-");
   try {
@@ -120,6 +130,7 @@ export async function encodeAac(
           [
             "-cpuflags",
             "0",
+            ...inputArgs,
             "-i",
             input,
             "-af",

@@ -121,7 +121,8 @@ test("test files under a watched package need no capture", () => {
     "28\t0\tpackages/studio/tests/e2e/edit-accuracy/server.test.mjs\0" +
       "12\t4\tpackages/studio/tests/e2e/edit-accuracy/case.mjs\0" +
       "6\t1\tpackages/player/src/a.spec.tsx\0" +
-      "40\t0\tpackages/studio/src/b.test.ts\0",
+      "40\t0\tpackages/studio/src/b.test.ts\0" +
+      "39\t0\tpackages/studio/src/c.test-helpers.ts\0",
   );
   assert.deepEqual(files, []);
   assert.equal(evaluate({ body: "", files }).ok, true);

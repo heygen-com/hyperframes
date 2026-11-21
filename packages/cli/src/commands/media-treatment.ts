@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { relative, resolve } from "node:path";
 import {
   HF_COLOR_GRADING_ATTR,
@@ -734,7 +735,7 @@ async function prepareMutation(args: MediaTreatmentCommandArgs) {
   const lintResult = await lintHyperframeHtml(result.html);
   const findings = lintResult.findings.filter(({ code }) => code.startsWith("color_grading_"));
   const lint = { ok: findings.every(({ severity }) => severity !== "error"), findings };
-  if (result.changed && !dryRun) writeFileSync(filePath, result.html);
+  if (result.changed && !dryRun) replaceFileAtomically(filePath, result.html);
 
   const action: "clear" | "apply" = result.targets.every(({ value }) => value === null)
     ? "clear"

@@ -12,6 +12,7 @@ import {
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { displayPathFromInput, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
+import { parsePositiveIntegerArg } from "../utils/integerArg.js";
 import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { leftOutNotice, stageReferencedFiles } from "../utils/stageReferencedFiles.js";
@@ -118,13 +119,10 @@ function parseColumns(value: unknown): number | undefined {
 }
 
 function parseTimeoutMs(value: unknown): number {
-  const raw = readOptionalString(value);
-  if (!raw) return DEFAULT_RENDER_READY_TIMEOUT_MS;
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new CliUsageError("--timeout must be a positive integer number of milliseconds");
-  }
-  return parsed;
+  return (
+    parsePositiveIntegerArg(readOptionalString(value), "--timeout", { unit: "milliseconds" }) ??
+    DEFAULT_RENDER_READY_TIMEOUT_MS
+  );
 }
 
 function defaultCompareCols(cellCount: number): number {

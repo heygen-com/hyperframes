@@ -49,7 +49,13 @@ function runCreateReleaseTag(cwd, version) {
 test("stable publishing has one reviewed immutable event path", () => {
   // fails without the fix: a merged release PR's event ran as refs/pull/N/merge, a ref the publish environment refuses.
   assert.deepEqual(config.on, { push: { branches: ["main"], tags: ["v*-*"] } });
-  for (const name of ["lambda-arm64-ffmpeg", "lambda-handler-zip", "pack", "publish"]) {
+  for (const name of [
+    "lambda-arm64-ffmpeg",
+    "lambda-handler-zip",
+    "lambda-video-image",
+    "pack",
+    "publish",
+  ]) {
     const job = config.jobs[name];
     assert.ok(job.needs.includes("release-source"), `${name} needs release-source`);
     assert.equal(normalizeExpression(job.if), "needs.release-source.outputs.sha != ''", name);
@@ -853,6 +859,85 @@ test("publishing skips only identical uploads and fails on a version it did not 
   assert.doesNotMatch(rerun.calls, /npm publish/);
 });
 
+test("a publish that fails on the way is tried again, three times in all, asking npm first each time", () => {
+  const step = stepOf(publish, "Publish packages");
+  // The fake npm fails its first `failures` publishes; with `lands` the package is on npm after a failed one.
+  const run = ({ failures, lands = "" }) => {
+    const temp = mkdtempSync(join(tmpdir(), "hyperframes-publish-retry-"));
+    try {
+      const bin = join(temp, "bin");
+      mkdirSync(bin);
+      const log = join(temp, "npm.log");
+      const seen = join(temp, "on-npm");
+      writeFileSync(log, "");
+      writeFileSync(
+        join(bin, "npm"),
+        `#!/bin/sh
+echo "npm $1" >> "${log}"
+if [ "$1" = view ]; then [ -s "${seen}" ] || exit 1; cat "${seen}"; exit 0; fi
+tried=$(grep -c "^npm publish" "${log}")
+if [ "$tried" -le "$FAILURES" ]; then [ -z "$LANDS" ] || echo "$LANDS" > "${seen}"; exit 1; fi
+echo "$INTEGRITY" > "${seen}"
+`,
+      );
+      chmodSync(join(bin, "npm"), 0o755);
+      packTarball(temp, "core.tgz", { name: "@hyperframes/core", version: "1.2.3-alpha.1" });
+      writeFileSync(
+        join(temp, "publish-order.tsv"),
+        `@hyperframes/core\t${join(temp, "core.tgz")}\n`,
+      );
+      const integrity = `sha512-${createHash("sha512")
+        .update(readFileSync(join(temp, "core.tgz")))
+        .digest("base64")}`;
+      const result = runStep(step, {
+        cwd: temp,
+        path: `${bin}:${process.env.PATH}`,
+        env: {
+          VERSION: "1.2.3-alpha.1",
+          DIST_TAG: "alpha",
+          NODE_AUTH_TOKEN: "",
+          PUBLISH_RETRY_SECONDS: "0",
+          FAILURES: String(failures),
+          LANDS: lands === "same" ? integrity : lands,
+          INTEGRITY: integrity,
+        },
+      });
+      const calls = readFileSync(log, "utf8").trim().split("\n");
+      return { ...result, calls, publishes: calls.filter((c) => c === "npm publish").length };
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  };
+
+  // fails without the fix: one failed publish failed the release, with the rest of the packages already out.
+  const second = run({ failures: 1 });
+  assert.equal(second.status, 0, second.stdout + second.stderr);
+  assert.equal(second.publishes, 2);
+  assert.deepEqual(second.calls, ["npm view", "npm publish", "npm view", "npm publish"]);
+
+  const third = run({ failures: 2 });
+  assert.equal(third.status, 0, third.stdout);
+  assert.equal(third.publishes, 3);
+
+  const never = run({ failures: 9 });
+  assert.equal(never.status, 1);
+  assert.equal(never.publishes, 3);
+  assert.match(never.stdout, /failed to publish/);
+
+  // The publish answered with a failure but the package went out: it is not sent a second time.
+  const landed = run({ failures: 9, lands: "same" });
+  assert.equal(landed.status, 0, landed.stdout);
+  assert.equal(landed.publishes, 1);
+  const landedLast = run({ failures: 9, lands: "" });
+  assert.equal(landedLast.calls.at(-1), "npm view", "npm is asked once more after the last try");
+
+  // Someone else's contents under this version, seen between tries: no further try, and the release fails.
+  const others = run({ failures: 9, lands: "sha512-other" });
+  assert.equal(others.status, 1);
+  assert.equal(others.publishes, 1);
+  assert.match(others.stdout, /this run did not publish it/);
+});
+
 test("every publish runs in npm-publish, the environment npm trusted publishing names", () => {
   assert.equal(publish.environment, "npm-publish");
   const jobsWithEnvironment = Object.entries(config.jobs).filter(([, job]) => job.environment);
@@ -894,6 +979,25 @@ test("the Lambda ffmpeg ships only when it matches its committed digest", () => 
   assert.ok(
     image.on.pull_request.paths.includes("packages/aws-lambda/hf-media-linux-aarch64.sha256"),
   );
+});
+
+test("the Lambda video image builds on ARM, and pack ships only the digest that job built", () => {
+  // fails without the fix: pack built the arm64 image on an x86 runner, which cannot run the video stage's microdnf.
+  const image = config.jobs["lambda-video-image"];
+  assert.equal(image["runs-on"], "ubuntu-24.04-arm");
+  assert.deepEqual(image.permissions, { contents: "read" });
+  const build = stepOf(image, "Build Lambda video image");
+  assert.match(build.run, /--platform linux\/arm64 --target video/);
+  assert.equal(build.env.EXPECTED_ZIP_SHA256, "${{ needs.lambda-handler-zip.outputs.sha256 }}");
+  assert.equal(image.outputs.sha256, "${{ steps.image.outputs.sha256 }}");
+
+  assert.ok(
+    !pack.steps.some((step) => /docker buildx build/.test(step.run ?? "")),
+    "pack builds no image",
+  );
+  const pin = stepOf(pack, "Pin Lambda video image");
+  assert.equal(pin.env.EXPECTED_SHA256, "${{ needs.lambda-video-image.outputs.sha256 }}");
+  assert.match(pin.run, /pin-handler-zip\.ts --video-image$/m);
 });
 
 test("the release installs no tool restored from the shared cache", () => {
@@ -1054,9 +1158,14 @@ test("a tag publishes only a commit already on main, next or alpha, before any j
   for (const name of ["lambda-arm64-ffmpeg", "lambda-handler-zip"]) {
     assert.deepEqual(config.jobs[name].needs, ["release-source"], name);
   }
-  assert.deepEqual([...pack.needs].sort(), [
+  assert.deepEqual([...config.jobs["lambda-video-image"].needs].sort(), [
     "lambda-arm64-ffmpeg",
     "lambda-handler-zip",
+    "release-source",
+  ]);
+  assert.deepEqual([...pack.needs].sort(), [
+    "lambda-handler-zip",
+    "lambda-video-image",
     "release-source",
   ]);
   const step = stepOf(source, "Check the tagged commit is on main, next or alpha");

@@ -488,10 +488,11 @@ class HyperframesPlayer extends HTMLElement {
     this._media.stopAdoptedMedia();
   }
 
-  seek(timeInSeconds: number) {
-    // seek()'s own contract is that it lands paused, so a play still queued
-    // from the asset-buffering window is cancelled here too — same reason as
-    // pause() above.
+  seek(timeInSeconds: number, options?: { keepPlaying?: boolean }) {
+    const playOn = options?.keepPlaying === true && (!this._paused || this._pendingPlay);
+    // A plain seek() lands paused, so a play still queued from the
+    // asset-buffering window is cancelled here too — same reason as pause()
+    // above. keepPlaying plays on from the new time, as <video>'s currentTime does.
     this._pendingPlay = false;
     if (!this._trySyncSeek(timeInSeconds) && !this._tryDirectTimelineSeek(timeInSeconds)) {
       this._sendControl("seek", {
@@ -524,6 +525,7 @@ class HyperframesPlayer extends HTMLElement {
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
     this.controlsApi?.updateTime(this._currentTime, this._duration);
+    if (playOn) this._play(false);
   }
 
   setColorGrading(target: ColorGradingTarget, grading: unknown) {
@@ -1459,6 +1461,7 @@ class HyperframesPlayer extends HTMLElement {
   /** Every host-driven navigation or teardown: the old document's handshake, asset wait and
    *  data deliveries end here. A queued play is the caller's, so only its owners clear it. */
   private _abandonComposition(reason: string): void {
+    this.probe.latchUntilNextLoad();
     this.probe.stop();
     this._ready = false;
     this._readyDocument = null;

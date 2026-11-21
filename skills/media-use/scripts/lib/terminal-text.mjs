@@ -10,3 +10,12 @@ export function terminalText(value) {
   }
   return shown;
 }
+
+// Multi-line output keeps its line breaks, with a "\r\n" pair printed as one break. Every other
+// control character, a lone "\r" included, still prints as an escape.
+export function terminalLines(value) {
+  return String(value)
+    .split(/\r?\n/)
+    .map((line) => terminalText(line))
+    .join("\n");
+}

@@ -28,6 +28,7 @@ function fakeChrome(reachesGpu: (env: NodeJS.ProcessEnv | undefined) => boolean)
   const launch = vi.fn(async (options: LaunchOptions) => ({
     connected: true,
     newPage: vi.fn().mockResolvedValue({
+      mainFrame: () => ({}),
       evaluate: vi.fn().mockResolvedValue(reachesGpu(options.env) ? D3D12 : NO_WEBGL),
     }),
     version: vi.fn().mockResolvedValue("HeadlessChrome/152.0.7977.30"),

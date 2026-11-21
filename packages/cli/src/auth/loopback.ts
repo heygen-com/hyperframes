@@ -10,18 +10,23 @@
  * redirect URI's port is just a placeholder — the actual port the
  * server lands on is what matters at runtime.
  *
- * Times out after 60 minutes. Validates `state` matches the value we
- * generated. Renders a small "you can close this window" page back
- * to the browser before shutting down.
+ * Times out after 60 minutes. Only a request with our `state` ends the
+ * flow; others get a 400 and the server keeps waiting. Renders a small
+ * "you can close this window" page back to the browser before shutting down.
  */
 
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { AddressInfo } from "node:net";
+import { terminalText } from "@hyperframes/core";
 import { connectedPage, failurePage } from "./callbackPage.js";
 
+// Shown for a callback from another sign-in, such as an older tab; the terminal keeps waiting.
+const STALE_SIGN_IN =
+  "This page is from a different sign-in. Your terminal is still waiting: finish signing in from the newest sign-in tab.";
+
 export interface LoopbackOptions {
-  /** Expected `state` value — flow fails if it doesn't match. */
+  /** Expected `state` value — a callback without it is answered 400 and ignored. */
   state: string;
   /** Timeout in ms (default 60 minutes). */
   timeoutMs?: number;
@@ -135,18 +140,18 @@ function handleRequest(
   }
 
   const params = url.searchParams;
+  const state = params.get("state");
+  if (!state || !stateMatches(state, expectedState)) {
+    respond(res, 400, failurePage("invalid_state", STALE_SIGN_IN));
+    return;
+  }
+
   const error = params.get("error");
   if (error) {
     const desc = params.get("error_description") ?? "";
     respond(res, 400, failurePage(error, desc));
-    rejectResult(new Error(`OAuth authorize returned error: ${error}${desc ? ` — ${desc}` : ""}`));
-    return;
-  }
-
-  const state = params.get("state");
-  if (!state || !stateMatches(state, expectedState)) {
-    respond(res, 400, failurePage("invalid_state", "State parameter did not match."));
-    rejectResult(new Error("OAuth state mismatch — possible CSRF, aborting."));
+    const shown = `${terminalText(error)}${desc ? ` — ${terminalText(desc)}` : ""}`;
+    rejectResult(new Error(`OAuth authorize returned error: ${shown}`));
     return;
   }
 

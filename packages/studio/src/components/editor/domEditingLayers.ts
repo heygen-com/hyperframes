@@ -134,7 +134,7 @@ export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
   return [];
 }
 
-function escapeHtmlText(value: string): string {
+export function escapeHtmlText(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 

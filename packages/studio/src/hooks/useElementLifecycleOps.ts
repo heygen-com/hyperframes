@@ -13,6 +13,13 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import { LAYER_REVEAL_PRIOR_POSITION_ATTR } from "../player/lib/timelineElementHelpers";
+import { previewComputedStyles } from "../player/lib/previewChannel";
+import {
+  afterSealedDraw,
+  editPreviewElement,
+  type PreviewElementEdit,
+} from "../player/lib/previewElements";
+import { previewStandIn } from "../components/editor/previewDrafts";
 import {
   beginLayerRevealCommit,
   beginLayerZPersist,
@@ -255,6 +262,15 @@ export function useElementLifecycleOps({
       return (async () => {
         const releaseZPersists = entries.map((entry) => beginLayerZPersist(entry.element));
         try {
+          const sealed = entries.map((entry) => previewStandIn(entry.element));
+          const sealedPositions = sealed.some(Boolean)
+            ? await Promise.all(
+                sealed.map(
+                  (frame) => frame && previewComputedStyles(frame.iframe, frame, ["position"]),
+                ),
+              )
+            : [];
+          const sealedEdits: PreviewElementEdit[] = [];
           // Resolver shadow (telemetry-only, decoupled from cutover): record whether
           // the SDK resolves each reordered element — the reorderElements op's targets.
           onReorderShadow?.(
@@ -271,7 +287,8 @@ export function useElementLifecycleOps({
             element: HTMLElement;
             ownership: LayerRevealCommitOwnership;
           }> = [];
-          for (const entry of entries) {
+          for (const [index, entry] of entries.entries()) {
+            const frame = sealed[index];
             const priorZIndex = entry.element.style.zIndex;
             const priorPosition = entry.element.style.position;
             const priorStoreEntry = entry.key
@@ -297,7 +314,11 @@ export function useElementLifecycleOps({
               const win = entry.element.ownerDocument?.defaultView;
               const effectivePosition =
                 liftPriorPosition ??
-                (win ? win.getComputedStyle(entry.element).position : undefined);
+                (frame
+                  ? sealedPositions[index]?.position
+                  : win
+                    ? win.getComputedStyle(entry.element).position
+                    : undefined);
               if (effectivePosition === "static") {
                 entry.element.style.position = "relative";
                 positionChanged = true;
@@ -311,7 +332,14 @@ export function useElementLifecycleOps({
                 .getState()
                 .updateElement(entry.key, { zIndex: entry.zIndex, hasExplicitZIndex: true });
             }
+            const sealedEdit =
+              frame &&
+              editPreviewElement(frame.iframe, frame.handle, {
+                styles: patches.map((patch): [string, string] => [patch.property, patch.value]),
+              });
+            if (sealedEdit) sealedEdits.push(sealedEdit);
             rollbacks.push(() => {
+              sealedEdit?.restore();
               if (revealOwnership) {
                 rollbackLayerRevealCommit(entry.element, revealOwnership);
               } else {
@@ -357,18 +385,19 @@ export function useElementLifecycleOps({
           // commitDomEditPatchBatches still falls back to reloading whenever the
           // server reports an unmatched patch target (live DOM ≠ disk).
           try {
-            const result = await commitDomEditPatchBatches(batches, {
-              label: "Reorder layers",
-              coalesceKey,
-              // Unbounded window: every key this commit records under is unique per
-              // gesture (zReorderCoalesceKey's gesture seq, or the lane drag's
-              // clip-lane-move:<seq>), so the fold can only merge records of the SAME
-              // gesture — and those records are separated by a server round-trip
-              // (move→z on a lane drag, z→lane-mirror on a canvas action), which
-              // under real network latency exceeds the 300ms default window.
-              coalesceMs: Number.POSITIVE_INFINITY,
-              skipReload: true,
-            });
+            const drawn = sealedEdits.length
+              ? Promise.all(sealedEdits.map((edit) => edit.drawn)).then((all) => all.every(Boolean))
+              : null;
+            const result = await afterSealedDraw(drawn && { drawn }, (allDrawn) =>
+              commitDomEditPatchBatches(batches, {
+                label: "Reorder layers",
+                coalesceKey,
+                // Unbounded: each key is unique per gesture, and one gesture's records sit a
+                // server round-trip apart, longer than the 300ms default window.
+                coalesceMs: Number.POSITIVE_INFINITY,
+                skipReload: allDrawn,
+              }),
+            );
             if (!result.durable) {
               rollbackOptimisticState();
               return result;

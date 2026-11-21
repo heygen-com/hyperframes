@@ -3,7 +3,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { noHandlerMessage, type StageDeps, stagePrebuiltHandler } from "./prebuiltHandler.js";
+import {
+  defaultDeps,
+  noHandlerMessage,
+  type StageDeps,
+  stagePrebuiltHandler,
+} from "./prebuiltHandler.js";
 
 const ownedByAnotherAccount = vi.hoisted(() => new Set<string>());
 vi.mock("node:fs", async (importOriginal) => {
@@ -21,6 +26,10 @@ const ZIP = Buffer.from("prebuilt handler zip");
 const SHA = createHash("sha256").update(ZIP).digest("hex");
 const URL = "https://github.com/heygen-com/hyperframes/releases/download/v9.8.7/x.zip";
 const dirs: string[] = [];
+
+const ESC = String.fromCharCode(27);
+const ODD = `od${ESC}[2Jd\x07`;
+const SHOWN = "od\\x1b[2Jd\\x07";
 
 function setup(body: Buffer = ZIP) {
   const root = mkdtempSync(join(tmpdir(), "hf-prebuilt-"));
@@ -171,5 +180,16 @@ describe("stagePrebuiltHandler with nothing to deploy", () => {
     await expect(stagePrebuiltHandler(deps)).rejects.toThrow(noHandlerMessage(true));
     expect(noHandlerMessage(true)).toMatch(/has no prebuilt handler for its version/);
     expect(downloads).toEqual([]);
+  });
+
+  // fails without the fix: a progress line is printed as it was handed over.
+  it("prints a progress line's control characters as text", () => {
+    const said = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      defaultDeps.log(`→ Pushing to ${ODD}`);
+      expect(said.mock.calls).toEqual([[`→ Pushing to ${SHOWN}`]]);
+    } finally {
+      said.mockRestore();
+    }
   });
 });

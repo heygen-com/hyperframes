@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { duckKeyframes, duckLane, speechSpans } from "./lib/duck.mjs";
 import { track } from "./lib/telemetry.mjs";
+import { terminalText } from "./lib/terminal-text.mjs";
 
 const { values: args } = parseArgs({
   options: {
@@ -51,7 +52,7 @@ try {
   await track("media_use_duck", { sequential: !!args.sequential });
 } catch (err) {
   if (args.json) console.log(JSON.stringify({ ok: false, error: err.message }));
-  else console.error(`error: ${err.message}`);
+  else console.error(`error: ${err.message}`.split("\n").map(terminalText).join("\n"));
   process.exit(1);
 }
 
@@ -88,7 +89,9 @@ function run() {
     return;
   }
 
-  console.log(`<!-- auto-duck: ${target} under narration; add to its <audio> element -->`);
+  console.log(
+    terminalText(`<!-- auto-duck: ${target} under narration; add to its <audio> element -->`),
+  );
   console.log(`data-automation='${JSON.stringify(lane)}'`);
 }
 
