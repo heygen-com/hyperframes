@@ -266,6 +266,43 @@ describe("usableCpuCount under a CPU quota", () => {
   });
 });
 
+describe("getCgroupCpuLimit outside a cgroup namespace", () => {
+  // systemd's CPUQuota= or --cgroupns=host: the quota sits on the process's own cgroup, not the mount root.
+  const ownCgroup = { "/proc/self/cgroup": "0::/system.slice/render.service\n" };
+
+  it("reads the quota from the process's own cgroup, as libuv does", async () => {
+    await withSystemMemoryMocks(
+      {
+        files: {
+          ...ownCgroup,
+          "/sys/fs/cgroup/system.slice/render.service/cpu.max": "400000 100000",
+        },
+      },
+      ({ getCgroupCpuLimit }) => expect(getCgroupCpuLimit()).toBe(4),
+    );
+  });
+
+  it("takes the tightest quota on the way up to the root", async () => {
+    await withSystemMemoryMocks(
+      {
+        files: {
+          ...ownCgroup,
+          "/sys/fs/cgroup/system.slice/render.service/cpu.max": "max 100000",
+          "/sys/fs/cgroup/system.slice/cpu.max": "250000 100000",
+        },
+      },
+      ({ getCgroupCpuLimit }) => expect(getCgroupCpuLimit()).toBe(2.5),
+    );
+  });
+
+  it("still reads the mount root inside a container's own namespace", async () => {
+    await withSystemMemoryMocks(
+      { files: { "/proc/self/cgroup": "0::/\n", "/sys/fs/cgroup/cpu.max": "600000 100000" } },
+      ({ getCgroupCpuLimit }) => expect(getCgroupCpuLimit()).toBe(6),
+    );
+  });
+});
+
 describe("getCgroupMemoryLimitMb", () => {
   it("returns only an actual cgroup limit and never host RAM", async () => {
     await withSystemMemoryMocks(
@@ -381,7 +418,7 @@ describe("getSystemTotalMb", () => {
         expect(isLowMemorySystem()).toBe(false);
         expect(warn).toHaveBeenCalledTimes(1);
         expect(warn.mock.calls[0]?.[0]).toContain(
-          "[SystemMemory] Unable to read cgroup memory limit",
+          `[SystemMemory] Unable to read cgroup limit at ${CGROUP_V2_MEMORY_MAX_PATH}`,
         );
         expect(warn.mock.calls[0]?.[0]).toContain("EACCES");
       },
