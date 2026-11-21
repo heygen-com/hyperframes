@@ -862,7 +862,8 @@ async function filmFrame(page: import("puppeteer-core").Page, query: string) {
 const browser = await launchBrowser();
 try {
   const seeds = Number(process.env.SEALED_MEDIA_SEEDS ?? 40);
-  const numbers = [...new Set([...Array.from({ length: seeds }, (_, n) => n + 1), ...PINNED])];
+  const from = Number(process.env.SEALED_MEDIA_SEED_FROM ?? 1);
+  const numbers = [...new Set([...Array.from({ length: seeds }, (_, n) => n + from), ...PINNED])];
   const sequences = [...FIXED, ...numbers.map(generated)];
   // One page at a time: a page behind another one has its media held back.
   const run = async (query: string, prefix: string, helperOff = false) => {
