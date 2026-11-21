@@ -8,7 +8,7 @@ on:
 
 jobs:
   probe:
-    name: "reaper ${{ matrix.code }}"
+    name: "rename ${{ matrix.code }}"
     runs-on: windows-latest
     timeout-minutes: 40
     strategy:
@@ -18,13 +18,13 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: fix/windows-watchdog-own-chrome
+          ref: fix/windows-rename-onto-folder
           fetch-depth: 0
       - name: Check out the commit under test
         shell: pwsh
         run: |
-          git checkout c8f24de87b2
-          if ("${{ matrix.code }}" -eq "main") { git checkout origin/main -- packages/cli/src/utils/childReaper.ts }
+          git checkout 98bee3a4f7c
+          if ("${{ matrix.code }}" -eq "main") { git checkout origin/main -- packages/core/src/renameWithRetry.ts }
           git status --short
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -38,7 +38,12 @@ jobs:
         run: |
           bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
           bun run --cwd packages/core build
-      - name: Watchdog and preview lifecycle tests
+      - name: Rename retry tests
         shell: pwsh
-        working-directory: packages/cli
-        run: bunx vitest run src/browser/windowsChromeWatchdog.test.ts src/commands/previewLifecycle.test.ts src/utils/childReaper.test.ts src/utils/cancellableProcess.test.ts --maxWorkers=2 --reporter=verbose
+        working-directory: packages/core
+        run: bunx vitest run src/renameWithRetry.test.ts --reporter=verbose
+      - name: Extraction cache tests
+        if: always()
+        shell: pwsh
+        working-directory: packages/engine
+        run: bunx vitest run src/services/extractionCache.test.ts --maxWorkers=2 --reporter=verbose
