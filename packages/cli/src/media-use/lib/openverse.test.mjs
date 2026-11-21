@@ -1,5 +1,13 @@
 import { strict as assert } from "node:assert";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -213,6 +221,41 @@ test("earlier credit lines survive a new credit", () => {
       readFileSync(path, "utf8"),
       /- `assets\/sfx\/old\.mp3`: kept\n- `assets\/sfx\/new\.mp3`: c\. Source: https:\/\/freesound\.org\/s\/2\n$/,
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// fails without the fix: a linked CREDITS.md had its target overwritten with the project's text.
+test("credits are never written through a link at the credits file", () => {
+  const dir = mkdtempSync(join(tmpdir(), "openverse-credits-link-"));
+  try {
+    const outside = join(dir, "outside.txt");
+    writeFileSync(outside, "keep me\n- secret line\n");
+    const path = join(dir, "project", ".media", "audio", "sfx", "CREDITS.md");
+    mkdirSync(join(dir, "project", ".media", "audio", "sfx"), { recursive: true });
+    symlinkSync(outside, path);
+    const by = { license: "by", credit: '"Pop" by Ana', sourceUrl: "https://freesound.org/s/1" };
+    assert.throws(() => writeSfxCredit(path, "assets/sfx/pop.mp3", by), /link/);
+    assert.equal(readFileSync(outside, "utf8"), "keep me\n- secret line\n");
+    assert.ok(lstatSync(path).isSymbolicLink());
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// fails without the fix: a record path with a newline added lines of its own to the credits file.
+test("a file name with a line break or backtick stays one credit line", () => {
+  const dir = mkdtempSync(join(tmpdir(), "openverse-credits-line-"));
+  try {
+    const path = join(dir, "CREDITS.md");
+    const by = { license: "by", credit: '"Pop" by Ana', sourceUrl: "https://freesound.org/s/1" };
+    writeSfxCredit(path, "a.mp3`\n- injected line", by);
+    const lines = readFileSync(path, "utf8")
+      .split("\n")
+      .filter((l) => l.startsWith("- "));
+    assert.equal(lines.length, 1);
+    assert.doesNotMatch(lines[0], /\n|`a\.mp3`.*`/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

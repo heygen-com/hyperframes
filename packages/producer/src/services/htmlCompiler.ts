@@ -25,7 +25,7 @@ import {
  */
 
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from "fs";
 import { join, dirname, resolve, basename, relative, sep } from "path";
 import { parseHTML } from "linkedom";
 import { bundledScript } from "./bundledScripts.js";
@@ -107,9 +107,10 @@ import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js"
 import {
   assertCompositionFileSize,
   CompositionExpansionBudget,
+  ENTRY_PAGE,
   REMOTE_SCRIPTS,
   REMOTE_STYLESHEETS,
-} from "./compositionSizeLimit.js";
+} from "@hyperframes/core/compiler";
 import {
   escapesAssetRoot,
   isPathInside,
@@ -635,6 +636,72 @@ type SourceProbe = { profile: MediaProbeProfile; fileDuration: number | null } |
 /** One probe per unique source for a whole compile, whatever number of elements point at it. */
 type SourceProbes = Map<string, Promise<SourceProbe>>;
 
+/** At most this many distinct remote media, image and font files download for one compile. */
+export const MAX_REMOTE_ASSETS = 1000;
+const ASSET_DOWNLOADS_AT_ONCE = 8;
+
+/** One compile's media, image and font downloads: its cancel, a cap on distinct files, a few at a time. */
+class AssetDownloads {
+  private readonly reserved = new Set<string>();
+  private running = 0;
+  private readonly queued: (() => void)[] = [];
+  private readonly ended = new AbortController();
+  readonly signal: AbortSignal;
+
+  constructor(cancel?: AbortSignal) {
+    this.signal = cancel ? AbortSignal.any([cancel, this.ended.signal]) : this.ended.signal;
+  }
+
+  /** Stops every download still running or queued: the compile that owns them has returned. */
+  end(): void {
+    this.ended.abort(new Error("The compile that started this download has ended"));
+  }
+
+  /** Throws before any of `urls` downloads when they would take the compile past the cap. */
+  reserve(urls: Iterable<string>): void {
+    this.signal?.throwIfAborted();
+    const fresh = new Set([...urls].filter((url) => !this.reserved.has(url)));
+    if (this.reserved.size + fresh.size > MAX_REMOTE_ASSETS) {
+      throw new Error(
+        `The composition links more than ${MAX_REMOTE_ASSETS} remote media, image and font files; at most ${MAX_REMOTE_ASSETS} are downloaded at compile time`,
+      );
+    }
+    for (const url of fresh) this.reserved.add(url);
+  }
+
+  async download(url: string, destDir: string): Promise<string> {
+    while (this.running >= ASSET_DOWNLOADS_AT_ONCE) {
+      await new Promise<void>((resolve) => this.queued.push(resolve));
+    }
+    if (this.signal?.aborted) {
+      this.queued.shift()?.();
+      this.signal.throwIfAborted();
+    }
+    this.running += 1;
+    try {
+      return await downloadToTemp(url, destDir, undefined, this.signal, undefined, {
+        onTelemetry: logRemoteDownloadTelemetry,
+      });
+    } finally {
+      this.running -= 1;
+      this.queued.shift()?.();
+    }
+  }
+}
+
+const downloadAsset = (url: string, destDir: string, assets?: AssetDownloads) =>
+  assets
+    ? assets.download(url, destDir)
+    : downloadToTemp(url, destDir, undefined, undefined, undefined, {
+        onTelemetry: logRemoteDownloadTelemetry,
+      });
+
+/** What one compile shares across the root and every sub-composition it compiles. */
+interface CompileRun {
+  probes: SourceProbes;
+  assets: AssetDownloads;
+}
+
 async function resolveMediaDuration(
   src: string,
   mediaStart: number,
@@ -646,7 +713,7 @@ async function resolveMediaDuration(
   elementIdentity: string,
   log?: ProducerLogger,
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
-  probes?: SourceProbes,
+  run?: CompileRun,
   assetRoot?: string,
 ): Promise<{ duration: number | null; resolvedPath: string }> {
   let filePath = src;
@@ -654,11 +721,11 @@ async function resolveMediaDuration(
   if (isHttpUrl(src)) {
     const remoteDir = join(downloadDir, REMOTE_MEDIA_SUBDIR);
     if (!existsSync(remoteDir)) mkdirSync(remoteDir, { recursive: true });
+    run?.assets.reserve([src]);
     try {
-      filePath = await downloadToTemp(src, remoteDir, undefined, undefined, undefined, {
-        onTelemetry: logRemoteDownloadTelemetry,
-      });
-    } catch {
+      filePath = await downloadAsset(src, remoteDir, run?.assets);
+    } catch (err) {
+      if (run?.assets.signal?.aborted) throw err;
       // Download failed (e.g. 404 placeholder URL) — skip gracefully.
       // The element will get duration 0 and be excluded from the render.
       return { duration: null, resolvedPath: src };
@@ -716,13 +783,17 @@ async function resolveMediaDuration(
         // a typed NotMediaPayloadError instead of letting ffprobe emit an opaque
         // `[mov,mp4,...] moov atom not found` that routes as a codec bug.
         await assertMediaPayload(filePath, elementIdentity);
-        const profile = await probeMediaProfile(filePath);
+        const signal = run?.assets.signal;
+        const profile = await probeMediaProfile(filePath, { signal });
         if (tagName === "video") {
-          return { profile, fileDuration: (await extractMediaMetadata(filePath)).durationSeconds };
+          const { durationSeconds } = await extractMediaMetadata(filePath, { signal });
+          return { profile, fileDuration: durationSeconds };
         }
         try {
-          return { profile, fileDuration: (await extractAudioMetadata(filePath)).durationSeconds };
+          const { durationSeconds } = await extractAudioMetadata(filePath, { signal });
+          return { profile, fileDuration: durationSeconds };
         } catch {
+          if (signal?.aborted) throw signal.reason;
           // Source file has no audio stream (e.g. a silent video used as an audio src).
           // Duration 0 excludes the element from the composition, as missing files do.
           return { profile, fileDuration: null };
@@ -732,10 +803,10 @@ async function resolveMediaDuration(
       }
     });
   const key = `${tagName}\0${filePath}`;
-  let probed = probes?.get(key);
+  let probed = run?.probes.get(key);
   if (!probed) {
     probed = probe();
-    probes?.set(key, probed);
+    run?.probes.set(key, probed);
   }
   const outcome = await probed;
   if ("error" in outcome) {
@@ -794,7 +865,7 @@ async function compileHtmlFile(
   downloadDir: string,
   log?: ProducerLogger,
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
-  probes?: SourceProbes,
+  run?: CompileRun,
   assetRoot?: string,
 ): Promise<{ html: string; unresolvedCompositions: UnresolvedElement[] }> {
   const { html: staticCompiled, unresolved } = compileTimingAttrs(html);
@@ -805,6 +876,8 @@ async function compileHtmlFile(
 
   const unresolvedCompositions = unresolved.filter((el) => el.tagName === "div");
 
+  // Every remote source of this file counts against the cap before any of them downloads.
+  run?.assets.reserve(mediaUnresolved.map((el) => el.src!).filter(isHttpUrl));
   // Phase 1: Resolve missing durations (parallel ffprobe)
   const resolvedResults = await Promise.all(
     mediaUnresolved.map((el) =>
@@ -819,7 +892,7 @@ async function compileHtmlFile(
         el.id,
         log,
         urlByAbsentLocalPath,
-        probes,
+        run,
         assetRoot,
       ).then(({ duration }) => ({ id: el.id, duration })),
     ),
@@ -836,26 +909,26 @@ async function compileHtmlFile(
   // Explicit video slots may outlive their source and hold the final frame.
   const preResolved = extractResolvedMedia(compiledHtml);
   const hiddenVideoIds = collectHiddenVideoIds(compiledHtml);
+  const clampable = preResolved.filter((el) => !!el.src && !el.loop && !hiddenVideoIds.has(el.id));
+  run?.assets.reserve(clampable.map((el) => el.src!).filter(isHttpUrl));
   const clampResults = await Promise.all(
-    preResolved
-      .filter((el) => !!el.src && !el.loop && !hiddenVideoIds.has(el.id))
-      .map(async (el) => {
-        const { duration: maxDuration } = await resolveMediaDuration(
-          el.src!,
-          el.mediaStart,
-          el.playbackRate,
-          projectDir,
-          baseDir,
-          downloadDir,
-          el.tagName,
-          el.id,
-          log,
-          undefined,
-          probes,
-          assetRoot,
-        );
-        return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
-      }),
+    clampable.map(async (el) => {
+      const { duration: maxDuration } = await resolveMediaDuration(
+        el.src!,
+        el.mediaStart,
+        el.playbackRate,
+        projectDir,
+        baseDir,
+        downloadDir,
+        el.tagName,
+        el.id,
+        log,
+        undefined,
+        run,
+        assetRoot,
+      );
+      return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
+    }),
   );
   const clampList: ResolvedDuration[] = [];
   for (const r of clampResults) {
@@ -921,7 +994,7 @@ async function parseSubCompositions(
   downloadDir: string,
   visited: Set<string> = new Set(),
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
-  probes?: SourceProbes,
+  run?: CompileRun,
   assetRoot?: string,
   outsideFiles: OutsideFilePolicy = {},
   compiledSrcs: Set<string> = new Set(),
@@ -978,7 +1051,7 @@ async function parseSubCompositions(
         downloadDir,
         undefined,
         urlByAbsentLocalPath,
-        probes,
+        run,
         assetRoot,
       );
 
@@ -988,7 +1061,7 @@ async function parseSubCompositions(
         downloadDir,
         item.nestedVisited,
         urlByAbsentLocalPath,
-        probes,
+        run,
         assetRoot,
         outsideFiles,
         compiledSrcs,
@@ -1067,15 +1140,32 @@ function promoteCssImportsToLinkTags(html: string): string {
 }
 
 class ProducerHostIdentityMap extends Map<Element, BundledHostCompositionIdentity> {
-  readonly #document: Document;
   readonly #lateInstanceByCompositionId = new Map<string, number>();
+  /** How many elements carry each composition id: the page once, then each mount's copy once. */
+  readonly #idCounts = new Map<string, number>();
+  /** Hosts whose copied content has not been counted yet; the inliner fills a host after asking for it. */
+  #uncounted: ParentNode[];
 
   constructor(document: Document, initialHosts: Element[]) {
     super(assignBundledRuntimeCompositionIds(initialHosts));
-    this.#document = document;
+    this.#uncounted = [document];
+  }
+
+  #countUncopied(): void {
+    for (const root of this.#uncounted.splice(0)) {
+      for (const element of Array.from(root.querySelectorAll("[data-composition-id]"))) {
+        this.#adjust(element.getAttribute("data-composition-id"), 1);
+      }
+    }
+  }
+
+  #adjust(id: string | null, by: number): void {
+    if (id) this.#idCounts.set(id, (this.#idCounts.get(id) ?? 0) + by);
   }
 
   override get(host: Element): BundledHostCompositionIdentity | undefined {
+    this.#countUncopied();
+    this.#uncounted.push(host);
     const existing = super.get(host);
     if (existing) return existing;
 
@@ -1094,21 +1184,20 @@ class ProducerHostIdentityMap extends Map<Element, BundledHostCompositionIdentit
       return identity;
     }
 
+    const ownId = host.getAttribute("data-composition-id");
+    const heldByOthers = (id: string) => (this.#idCounts.get(id) ?? 0) - (id === ownId ? 1 : 0) > 0;
     let instanceIndex = this.#lateInstanceByCompositionId.get(authoredCompositionId) || 0;
     let runtimeCompositionId: string;
     do {
       instanceIndex += 1;
       runtimeCompositionId = `${authoredCompositionId}__hf${instanceIndex}`;
-    } while (
-      Array.from(this.#document.querySelectorAll("[data-composition-id]")).some(
-        (element) =>
-          element !== host && element.getAttribute("data-composition-id") === runtimeCompositionId,
-      )
-    );
+    } while (heldByOthers(runtimeCompositionId));
     this.#lateInstanceByCompositionId.set(authoredCompositionId, instanceIndex);
 
     host.setAttribute("data-hf-original-composition-id", authoredCompositionId);
     host.setAttribute("data-composition-id", runtimeCompositionId);
+    this.#adjust(ownId, -1);
+    this.#adjust(runtimeCompositionId, 1);
     const identity = { authoredCompositionId, runtimeCompositionId };
     this.set(host, identity);
     return identity;
@@ -1203,6 +1292,7 @@ function inlineSubCompositions(
   budget: CompositionExpansionBudget,
 ): { html: string; variablesByComp: Record<string, Record<string, unknown>> } {
   const { document } = parseHTML(html);
+  budget.chargeElements(ENTRY_PAGE, document.querySelectorAll("*").length);
   const head = document.querySelector("head");
   const body = document.querySelector("body");
   const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
@@ -1284,6 +1374,7 @@ function inlineSubCompositions(
         return compHtml;
       },
       chargeEmitted: (srcPath: string, bytes: number) => budget.chargeGenerated(srcPath, bytes),
+      chargeElements: (srcPath: string, count: number) => budget.chargeElements(srcPath, count),
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
       // Mirrors the preview bundler: a sub-composition's SIBLING assets resolve
       // against its own directory, project-root refs stay as authored.
@@ -1757,8 +1848,10 @@ async function downloadAndRewriteUrls(
   remoteDir: string,
   warnLabel: string,
   logLabel: string,
+  assets: AssetDownloads | undefined,
   extraRewrite?: (html: string, url: string, relPath: string) => string,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
+  assets?.reserve(urlSet);
   if (urlSet.size === 0) return { html, remoteMediaAssets: new Map() };
   if (!existsSync(remoteDir)) mkdirSync(remoteDir, { recursive: true });
 
@@ -1766,11 +1859,10 @@ async function downloadAndRewriteUrls(
   await Promise.all(
     [...urlSet].map(async (url) => {
       try {
-        const localPath = await downloadToTemp(url, remoteDir, undefined, undefined, undefined, {
-          onTelemetry: logRemoteDownloadTelemetry,
-        });
+        const localPath = await downloadAsset(url, remoteDir, assets);
         urlToLocal.set(url, localPath);
       } catch (err) {
+        if (assets?.signal?.aborted) throw err;
         const identity = safeDownloadUrlIdentity(url);
         defaultLogger.warn(`[Compiler] ${warnLabel}, using original URL as fallback.`, {
           urlFingerprint: identity.urlFingerprint,
@@ -1821,6 +1913,7 @@ async function downloadAndRewriteUrls(
 export async function localizeRemoteMediaSources(
   html: string,
   downloadDir: string,
+  assets?: AssetDownloads,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   const urlSet = new Set([...remoteSrcUrls(html, "media"), ...remoteSrcUrls(html, "source")]);
   const localized = await downloadAndRewriteUrls(
@@ -1829,6 +1922,7 @@ export async function localizeRemoteMediaSources(
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote media download failed",
     "Localized remote media source(s)",
+    assets,
   );
   return { ...localized, html: dropBindingOnLocalizedMedia(localized.html) };
 }
@@ -1877,6 +1971,7 @@ function dropBindingOnLocalizedMedia(html: string): string {
 export async function localizeRemoteImageSources(
   html: string,
   downloadDir: string,
+  assets?: AssetDownloads,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   // frameCapture's `pollImagesReady`/`decodeAllImages` cover any remote URL this misses.
   const urlSet = new Set(remoteSrcUrls(html, "img"));
@@ -1886,6 +1981,7 @@ export async function localizeRemoteImageSources(
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote image download failed",
     "Localized remote image source(s)",
+    assets,
   );
 }
 
@@ -1905,6 +2001,7 @@ export async function localizeRemoteImageSources(
 export async function localizeRemoteBackgroundImages(
   html: string,
   downloadDir: string,
+  assets?: AssetDownloads,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   const urlSet = new Set<string>();
   for (const { parts } of remoteBackgroundUrlMatches(html)) {
@@ -1916,6 +2013,7 @@ export async function localizeRemoteBackgroundImages(
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote background-image download failed",
     "Localized remote background-image(s)",
+    assets,
     // Quoted url('..')/url("..") are rewritten by downloadAndRewriteUrls' default
     // replaceAll; this handles the unquoted url(https://..) form.
     (h, url, rel) => h.replaceAll(`url(${url})`, `url(${rel})`),
@@ -2148,6 +2246,7 @@ export async function localizeRemoteFontFaces(
 function localizeFontFaceUrls(
   html: string,
   downloadDir: string,
+  assets?: AssetDownloads,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   return downloadAndRewriteUrls(
     collectFontFaceUrls(html),
@@ -2155,6 +2254,7 @@ function localizeFontFaceUrls(
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote font download failed",
     "Localized remote font face(s)",
+    assets,
     (h, url, relPath) => h.replaceAll(`url(${url})`, `url("${relPath}")`),
   );
 }
@@ -2182,24 +2282,36 @@ async function readLocalFont(absPath: string): Promise<LocalFontRead> {
   return { kind: "inline", buffer: Buffer.concat(chunks, totalBytes) };
 }
 
-/** The data URI a project font path embeds as, or undefined when it stays a file. */
+/** The data URI a project or downloaded font path embeds as, or undefined when it stays a file. */
 async function localFontDataUri(
   localPath: string,
   projectDir: string,
   assetRoot: string | undefined,
   dataUriByAbsolutePath: Map<string, string | undefined>,
   log: ProducerLogger,
+  downloadedPath: string | undefined,
+  reserve: (dataUriBytes: number) => boolean,
 ): Promise<string | undefined> {
-  const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
-  if (!isPathInside(absPath, projectDir) || escapesAssetRoot(absPath, assetRoot)) return undefined;
-  // A project font that is a link leading outside obeys the same policy as the file server.
-  if (refusesOutsideLink(projectDir, absPath, (line) => log.warn(`[Compiler] ${line}`))) {
-    return undefined;
+  const absPath =
+    downloadedPath ?? (localPath.startsWith("/") ? localPath : resolve(projectDir, localPath));
+  if (downloadedPath === undefined) {
+    if (!isPathInside(absPath, projectDir) || escapesAssetRoot(absPath, assetRoot)) {
+      return undefined;
+    }
+    // A project font that is a link leading outside obeys the same policy as the file server.
+    if (refusesOutsideLink(projectDir, absPath, (line) => log.warn(`[Compiler] ${line}`))) {
+      return undefined;
+    }
+    if (isPrivateCompositionFile(projectDir, absPath)) return undefined;
   }
-  if (isPrivateCompositionFile(projectDir, absPath)) return undefined;
   if (dataUriByAbsolutePath.has(absPath)) return dataUriByAbsolutePath.get(absPath);
   const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
   try {
+    // Base64 plus a short data: prefix; a font that cannot fit is never read.
+    if (!reserve(Math.ceil(statSync(absPath).size / 3) * 4 + 64)) {
+      dataUriByAbsolutePath.set(absPath, undefined);
+      return undefined;
+    }
     const font = await readLocalFont(absPath);
     if (font.kind === "file-backed") {
       dataUriByAbsolutePath.set(absPath, undefined);
@@ -2242,9 +2354,28 @@ async function embedLocalFontFaces(
   assetRoot: string | undefined,
   budget: CompositionExpansionBudget,
   log: ProducerLogger = defaultLogger,
+  downloadedFonts: ReadonlyMap<string, string> = new Map(),
 ): Promise<string> {
   const dataUriByPath = new Map<string, string | undefined>();
   const dataUriByAbsolutePath = new Map<string, string | undefined>();
+  let warned = false;
+  const keptFileBacked = (localPath: string) => {
+    if (warned) return;
+    warned = true;
+    log.warn(
+      `[Compiler] Kept local font ${localPath} file-backed: the page reached its inline size limit`,
+    );
+  };
+  // The fonts read here are kept until every copy is placed, so together they fit the budget's room.
+  let reserved = 0;
+  const reserveFor = (localPath: string) => (bytes: number) => {
+    if (reserved + bytes > budget.generatedRoom) {
+      keptFileBacked(localPath);
+      return false;
+    }
+    reserved += bytes;
+    return true;
+  };
   for (const { parts: style } of styleBlockMatches(html)) {
     for (const { parts: face } of fontFaceBlockMatches(style[1])) {
       for (const { parts } of localFontFaceUrlMatches(face[1])) {
@@ -2252,25 +2383,27 @@ async function embedLocalFontFaces(
         if (!localPath || dataUriByPath.has(localPath)) continue;
         dataUriByPath.set(
           localPath,
-          await localFontDataUri(localPath, projectDir, assetRoot, dataUriByAbsolutePath, log),
+          await localFontDataUri(
+            localPath,
+            projectDir,
+            assetRoot,
+            dataUriByAbsolutePath,
+            log,
+            downloadedFonts.get(localPath),
+            reserveFor(localPath),
+          ),
         );
       }
     }
   }
   if (![...dataUriByPath.values()].some(Boolean)) return html;
 
-  let warned = false;
   const embed = (source: string, localPath: string) => {
     const dataUri = dataUriByPath.get(localPath);
     if (!dataUri) return source;
     const inlined = `url("${dataUri}")`;
     if (budget.chargeGeneratedIfItFits(inlined.length - source.length)) return inlined;
-    if (!warned) {
-      warned = true;
-      log.warn(
-        `[Compiler] Kept local font ${localPath} file-backed: the page reached its inline size limit`,
-      );
-    }
+    keptFileBacked(localPath);
     return source;
   };
   return replaceMatches(html, styleBlockMatches(html), (style, css) =>
@@ -2459,12 +2592,27 @@ const entryFileName = (projectDir: string, htmlPath: string) =>
  * Compile an HTML composition project into a single self-contained HTML string
  * with all media metadata resolved.
  */
-// fallow-ignore-next-line complexity
 export async function compileForRender(
   projectDir: string,
   htmlPath: string,
   downloadDir: string,
   options: CompileForRenderOptions = {},
+): Promise<CompiledComposition> {
+  const assets = new AssetDownloads(options.abortSignal);
+  try {
+    return await compileWithAssets(projectDir, htmlPath, downloadDir, options, assets);
+  } finally {
+    assets.end();
+  }
+}
+
+// fallow-ignore-next-line complexity
+async function compileWithAssets(
+  projectDir: string,
+  htmlPath: string,
+  downloadDir: string,
+  options: CompileForRenderOptions,
+  assets: AssetDownloads,
 ): Promise<CompiledComposition> {
   const assetRoot = options.allowOutsideProjectAssets ? undefined : projectDir;
   const outsideFiles: OutsideFilePolicy = { includeScripts: options.includeOutsideScripts };
@@ -2503,7 +2651,7 @@ export async function compileForRender(
   // start.
   assertSubCompositionsUsable(rawHtml, projectDir, assetRoot, outsideFiles);
 
-  const probes: SourceProbes = new Map();
+  const run: CompileRun = { probes: new Map(), assets };
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
     rawHtml,
     projectDir,
@@ -2511,7 +2659,7 @@ export async function compileForRender(
     downloadDir,
     options.log,
     options.urlByAbsentLocalPath,
-    probes,
+    run,
     assetRoot,
   );
 
@@ -2522,7 +2670,7 @@ export async function compileForRender(
     downloadDir,
     undefined,
     options.urlByAbsentLocalPath,
-    probes,
+    run,
     assetRoot,
     outsideFiles,
   );
@@ -2611,6 +2759,7 @@ export async function compileForRender(
   const { html: htmlWithLocalMedia, remoteMediaAssets } = await localizeRemoteMediaSources(
     htmlWithDeferredScripts,
     downloadDir,
+    run.assets,
   );
 
   // Download remote <img> sources. Same race shape as video/audio: the
@@ -2618,20 +2767,20 @@ export async function compileForRender(
   // evict decoded pixels mid-render and re-fetch, producing intermittent
   // blank-frame flicker. Localising to disk removes both races.
   const { html: htmlWithLocalImages, remoteMediaAssets: remoteImageAssets } =
-    await localizeRemoteImageSources(htmlWithLocalMedia, downloadDir);
+    await localizeRemoteImageSources(htmlWithLocalMedia, downloadDir, run.assets);
 
   // Download remote CSS background-image url() references. drawElementImage omits
   // cross-origin content, so remote backgrounds render black on the fast path;
   // localising them to same-origin closes that gap.
   const { html: htmlWithLocalBg, remoteMediaAssets: remoteBgAssets } =
-    await localizeRemoteBackgroundImages(htmlWithLocalImages, downloadDir);
+    await localizeRemoteBackgroundImages(htmlWithLocalImages, downloadDir, run.assets);
 
   // Download remote @font-face src URLs and rewrite to local paths.
   // Remote font URLs fail with a CORS rejection at render time (S3 does not
   // allow http://localhost:PORT as origin), causing Chrome to silently fall
   // back to the next font in the stack.
   const { html: htmlWithLocalizedFonts, remoteMediaAssets: remoteFontAssets } =
-    await localizeFontFaceUrls(htmlWithLocalBg, downloadDir);
+    await localizeFontFaceUrls(htmlWithLocalBg, downloadDir, run.assets);
 
   // Chrome cannot decode HEIC, and ffprobe reads a tiled one as video streams,
   // so convert to JPEG before the media-type preflight sees it.
@@ -2668,12 +2817,14 @@ export async function compileForRender(
     defaultLogger.debug(`[Compiler] Prepared ${preparedGifs.length} animated GIF input(s) as WebM`);
   }
 
+  // Remote fonts were downloaded outside the project, so they embed from where they landed.
   const embeddedHtml = await embedLocalFontFaces(
     htmlWithPreparedGifs,
     projectDir,
     assetRoot,
     budget,
     options.log,
+    remoteFontAssets,
   );
 
   // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).

@@ -365,12 +365,39 @@ function readPlanarTransform(element: HTMLElement): Planar2D | null {
   return acc && !isIdentity(acc) ? acc : null;
 }
 
+/** What the frame measured of a stand-in's element at the press: a stand-in has no box of its own. */
+export interface CropFrameStart {
+  layout: { width: number; height: number };
+}
+
+/** A stand-in's crop frame: the frame's live oriented box of its element, scaled by the layout a press measured. */
+function standInCropFrame(
+  overlayRect: CropScreenRect & { angle?: number },
+  layout: { width: number; height: number } | null,
+  edit: { x: number; y: number },
+): CropFrame {
+  const { left, top, width, height } = overlayRect;
+  return {
+    angleDeg: overlayRect.angle ?? 0,
+    left,
+    top,
+    width,
+    height,
+    scaleX: layout && layout.width > 0 ? width / layout.width : edit.x,
+    scaleY: layout && layout.height > 0 ? height / layout.height : edit.y,
+  };
+}
+
 export function readElementCropFrame(
   element: HTMLElement,
-  overlayRect: CropScreenRect & { editScaleX: number; editScaleY: number },
+  overlayRect: CropScreenRect & { editScaleX: number; editScaleY: number; angle?: number },
+  start?: CropFrameStart,
 ): CropFrame {
   const editX = overlayRect.editScaleX > 0 ? overlayRect.editScaleX : 1;
   const editY = overlayRect.editScaleY > 0 ? overlayRect.editScaleY : 1;
+  if (previewStandIn(element)) {
+    return standInCropFrame(overlayRect, start?.layout ?? null, { x: editX, y: editY });
+  }
   const aabb: CropFrame = {
     angleDeg: 0,
     left: overlayRect.left,
@@ -391,8 +418,9 @@ export function readElementCropFrame(
   const angleDeg = (Math.atan2(b, a) * 180) / Math.PI;
   const scaleX = elScaleX * editX;
   const scaleY = elScaleY * editY;
-  const width = element.offsetWidth * scaleX;
-  const height = element.offsetHeight * scaleY;
+  const size = { width: element.offsetWidth, height: element.offsetHeight };
+  const width = size.width * scaleX;
+  const height = size.height * scaleY;
   if (!(width > 0) || !(height > 0)) return aabb;
   // Rotation about the default center keeps the center invariant, so the
   // local box is centered on the AABB center.

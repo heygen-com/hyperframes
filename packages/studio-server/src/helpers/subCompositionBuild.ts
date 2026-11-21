@@ -25,7 +25,9 @@ export interface FinishJob {
 }
 
 export type SubCompositionJob = BuildJob | FinishJob;
-type Result<J> = J extends BuildJob ? { html: string; references: string[] } | null : string;
+type Result<J> = J extends BuildJob
+  ? { html: string; references: string[] } | { refused: string } | null
+  : string;
 
 export class SubCompositionDeadlineError extends Error {
   constructor(compPath: string) {

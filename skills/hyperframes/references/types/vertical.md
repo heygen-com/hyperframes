@@ -4,7 +4,7 @@ Made at 1080×1920 when the request or the platform says vertical; a landscape f
 
 ## The platform's own UI
 
-The app draws over the frame. On 1080×1920: nothing in the top 168 px (status and search bar); every word and the product inside the band from 168 to 1330 px; below 1330 px (caption, handle, buttons) only texture or decoration; no text under the right-hand action rail. Ads and some apps reserve more at the bottom; check the platform the clip is for. Burned-in captions sit at the bottom of the band (`../captions.md`).
+The app draws over the frame. On 1080×1920 every word and the product stay inside the area TikTok, Instagram Reels and YouTube Shorts all leave clear, the one `npx hyperframes check` warns about (`outside_safe_zone`): from 288 to 1248 px down and 120 to 888 px across, narrowing to 780 px below 840 px where TikTok's action rail widens. Outside it (status and search bar above, caption, handle and buttons below, the action rail on the right) only texture or decoration. Ads and some apps reserve more at the bottom; for a clip made for one platform, `--safe-zone tiktok`, `reels` or `shorts` checks only that one. Burned-in captions sit at the bottom of the band (`../captions.md`).
 
 ## The first second
 

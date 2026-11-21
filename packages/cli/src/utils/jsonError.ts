@@ -1,4 +1,5 @@
 import { format, stripVTControlCharacters } from "node:util";
+import { terminalLines } from "@hyperframes/core";
 import {
   CliRuntimeError,
   CliUsageError,
@@ -33,7 +34,7 @@ export function failCaught(
   const message = failureMessage(error);
   const usage = error instanceof CliUsageError;
   if (json) print(jsonFailure(usage ? error.code : "runtime_error", message));
-  else console.error(line(message));
+  else console.error(line(terminalLines(message)));
   if (usage) failUsage();
   failCommand();
 }

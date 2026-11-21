@@ -9,7 +9,6 @@ import {
   writeSync,
   rmSync,
   renameSync,
-  statSync,
   lstatSync,
   realpathSync,
   constants,
@@ -89,29 +88,72 @@ export function ownMediaDir(projectDir) {
   return dir;
 }
 
-function refuseLink(path) {
+/** The project's own folder for `type` under `.media`, made if missing; throws when any folder on the way is a link. */
+export function ownTypeDir(projectDir, type) {
+  let dir = ownMediaDir(projectDir);
+  // Each folder is looked at before it is made, so nothing is ever made through a link.
+  for (const part of typeSubdir(type).split("/")) {
+    dir = join(dir, part);
+    if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) {
+      throw new Error(
+        `${dir} is a link; media is written only into real folders, so nothing was written there`,
+      );
+    }
+    mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
+/** Throws when `path` is a link. */
+export function refuseLink(path) {
   if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) {
     throw new Error(`${path} is a link; nothing was written through it`);
   }
 }
 
-/** Replaces the file at `path` with `content` by writing a temp file beside it and renaming it over, so a link there is replaced, never followed. */
-export function replaceFile(path, content) {
+/** A new temp file beside `path` holding `content`, with a random name, created exclusively. */
+export function writeTempBeside(path, content) {
   // Same shape as core atomicTempPath, which Studio's project history skips.
   const temp = `${path}.hf${randomBytes(3).toString("hex")}.tmp`;
-  writeFileSync(temp, content, { flag: "wx" });
   try {
-    renameSync(temp, path);
+    writeFileSync(temp, content, { flag: "wx" });
+  } catch (error) {
+    // EEXIST: the random name belongs to another writer, so it is left alone.
+    if (error?.code !== "EEXIST") rmSync(temp, { force: true });
+    throw error;
+  }
+  return temp;
+}
+
+/** Writes `content` to a temp file beside `path`, then renames it over: a link at `path` is replaced, not followed. */
+export function replaceFile(path, content) {
+  const temp = writeTempBeside(path, content);
+  try {
+    renameRidingWindowsHolds(temp, path);
   } catch (error) {
     rmSync(temp, { force: true });
     throw error;
   }
 }
 
+// Windows refuses a rename for a moment while antivirus or a just-exited process still holds the file.
+const WINDOWS_HOLD = new Set(["EPERM", "EACCES", "EBUSY"]);
+const HOLD_BACKOFF_MS = [10, 20, 40, 80, 160, 320, 640];
+
+function renameRidingWindowsHolds(from, to) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return renameSync(from, to);
+    } catch (error) {
+      const held = process.platform === "win32" && WINDOWS_HOLD.has(error?.code);
+      if (!held || attempt >= HOLD_BACKOFF_MS.length) throw error;
+      sleepMs(HOLD_BACKOFF_MS[attempt]);
+    }
+  }
+}
+
 export function appendRecord(projectDir, record) {
-  ownMediaDir(projectDir);
-  const typeDir = typeDirPath(projectDir, record.type);
-  mkdirSync(typeDir, { recursive: true });
+  ownTypeDir(projectDir, record.type);
 
   const p = manifestPath(projectDir);
   refuseLink(p);
@@ -228,13 +270,12 @@ function withLock(dir, fn) {
       break;
     } catch (err) {
       if (err.code !== "EEXIST") throw err;
-      try {
-        if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) {
-          rmSync(lock, { force: true }); // steal a stale lock from a dead holder
-          continue;
-        }
-      } catch {
-        continue; // lock vanished between check and stat — retry the acquire
+      const held = lstatSync(lock, { throwIfNoEntry: false });
+      if (!held) continue; // released between the open and the look: retry the acquire
+      if (!held.isFile()) throw new Error(`${lock} is not a lock file; remove it and try again`);
+      if (Date.now() - held.mtimeMs > LOCK_STALE_MS) {
+        rmSync(lock, { force: true }); // steal a stale lock from a dead holder
+        continue;
       }
       if (Date.now() - start > LOCK_TIMEOUT_MS) {
         throw new Error("media-use: timed out acquiring .media/.lock");
@@ -251,8 +292,7 @@ function withLock(dir, fn) {
 
 /** Runs `fn` holding the project's `.media/.lock`, so concurrent resolves take turns on what it guards. */
 export function withMediaLock(projectDir, fn) {
-  mkdirSync(mediaDir(projectDir), { recursive: true });
-  return withLock(mediaDir(projectDir), fn);
+  return withLock(ownMediaDir(projectDir), fn);
 }
 
 // Atomically allocate the next free id for `type` AND reserve it on disk, so a
@@ -262,7 +302,7 @@ export function withMediaLock(projectDir, fn) {
 // O_EXCL-create an empty marker under core's atomic temp name, which Studio's
 // project history skips. Returns { id, localPath, markerPath }.
 export function allocateId(projectDir, type, ext) {
-  mkdirSync(typeDirPath(projectDir, type), { recursive: true });
+  ownTypeDir(projectDir, type);
   return withMediaLock(projectDir, () => {
     const id = nextFreeId(projectDir, type);
     const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;

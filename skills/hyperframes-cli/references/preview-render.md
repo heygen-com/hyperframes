@@ -217,6 +217,11 @@ link; `share --update` explicitly renders/uploads changed content. Five retained
 free projects are counted per workspace across CLI and Desktop; versions do
 not consume slots and turning a link off does not release a slot.
 
+On `review_confirmation_required`, show the user the review the error names:
+its title, and its link from `hyperframes share --status --json` when it has
+one. Ask before re-running with `--review <review-id>`. Never pass `--review`
+on your own.
+
 `publish` uploads source to legacy `/p/` pages. It is not a review share alias.
 During the announced 60-day window its old behavior stays available with a
 notice. The start date is release-owned and currently unscheduled. After it, new

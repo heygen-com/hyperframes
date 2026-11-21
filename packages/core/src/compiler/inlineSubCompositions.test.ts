@@ -1259,6 +1259,26 @@ describe("SVG namespacing compatibility on current compiler", () => {
   });
 });
 
+it("tells the caller each mount's element count, template content included, before copying it", () => {
+  const { document } = parseHTML(`<!DOCTYPE html><html><body><div data-composition-id="main">
+    <div data-composition-id="a" data-composition-src="art.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="b" data-composition-src="art.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`);
+  const charged: Array<[string, number]> = [];
+
+  inlineSubCompositions(document, [...document.querySelectorAll("[data-composition-src]")], {
+    resolveHtml: () =>
+      `<template><div data-composition-id="art"><p><b></b></p><i></i></div></template>`,
+    parseHtml: (html) => parseHTML(html).document,
+    chargeElements: (src, count) => charged.push([src, count]),
+  });
+
+  expect(charged).toEqual([
+    ["art.html", 5],
+    ["art.html", 5],
+  ]);
+});
+
 // fails without the fix: renaming a mount's colliding SVG ids charged nothing to the render's budget.
 it("charges the bytes SVG id renaming adds to the mount that grew", () => {
   const { document } = parseHTML(`<!DOCTYPE html><html><body><div data-composition-id="main">
@@ -1279,6 +1299,72 @@ it("charges the bytes SVG id renaming adds to the mount that grew", () => {
   expect(charged.filter(([src, bytes]) => src === "art.html" && bytes > 0).length).toBeGreaterThan(
     0,
   );
+});
+
+// fails without the fix: a mount's alias alternatives were all built before any of their bytes were charged.
+it("charges a mount's selector aliases while they are built, and each byte once", () => {
+  const leaves = 300;
+  const leaf = `<template><div data-composition-id="leaf"><svg><g id="a"></g><use href="#a"/></svg></div></template>`;
+  const art = (rules: number) =>
+    `<template><div data-composition-id="art"><style>${Array.from(
+      { length: rules },
+      (_, i) => `[href="#a"] .r${i} { fill: red; }`,
+    ).join(
+      "\n",
+    )}</style>${'<div data-composition-id="leaf" data-composition-src="leaf.html" data-start="0" data-duration="2"></div>'.repeat(leaves)}</div></template>`;
+  const inline = (rules: number, chargeEmitted: (src: string, bytes: number) => void) => {
+    const { document } = parseHTML(`<!DOCTYPE html><html><body><div data-composition-id="main">
+      <div data-composition-id="a" data-composition-src="art.html" data-start="0" data-duration="2"></div>
+    </div></body></html>`);
+    return inlineSubCompositions(
+      document,
+      [...document.querySelectorAll("[data-composition-src]")],
+      {
+        resolveHtml: (src) => (src === "art.html" ? art(rules) : leaf),
+        parseHtml: (html) => parseHTML(html).document,
+        chargeEmitted,
+      },
+    );
+  };
+
+  let renaming = 0;
+  inline(0, (_src, bytes) => (renaming += bytes));
+  let charged = 0;
+  const limit = renaming + 16 * 1024;
+  expect(() =>
+    inline(50, (_src, bytes) => {
+      charged += bytes;
+      if (charged > limit) throw new Error("over budget");
+    }),
+  ).toThrow("over budget");
+  expect(charged).toBeLessThan(limit + 200);
+
+  const perSrc = new Map<string, number>();
+  const { styles } = inline(1, (src, bytes) => perSrc.set(src, (perSrc.get(src) ?? 0) + bytes));
+  const authored = art(1).match(/<style>([^<]*)<\/style>/)![1]!;
+  const growth = styles[0]!.css.length - authored.length;
+  expect(growth).toBeGreaterThan(5_000);
+  expect(perSrc.get("art.html")).toBeGreaterThanOrEqual(growth);
+  expect(perSrc.get("art.html")).toBeLessThan(growth + 1000);
+});
+
+// The default scope escapes `<` itself, so it can't end its style element even without postcss.
+it("writes `<` in a host id as a CSS escape itself in the default scope selector", () => {
+  const id = "scene</style><script>window.ran = true</script>";
+  const { document } = parseHTML(`<!DOCTYPE html><html><body><div data-composition-id="main">
+    <div data-composition-src="scene.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`);
+  const host = document.querySelector("[data-composition-src]")!;
+  host.setAttribute("data-composition-id", id);
+  const { styles } = inlineSubCompositions(document, [host], {
+    resolveHtml: () =>
+      `<template><div data-composition-id="scene"><style>.title { color: red; }</style></div></template>`,
+    parseHtml: (html) => parseHTML(html).document,
+  });
+
+  expect(styles.map((style) => style.css)).toEqual([
+    String.raw`[data-composition-id="scene\3c /style>\3c script>window.ran = true\3c /script>"] .title { color: red; }`,
+  ]);
 });
 
 // fails without the fix: nested templates were walked per copy, linkedom copied each, and SVG ones rescanned.
@@ -1354,4 +1440,37 @@ describe("dropAuthoredSvgReferenceAliases", () => {
     expect(reads).toBeLessThanOrEqual(dom === "linkedom" || page !== "HTML templates" ? 0 : depth);
     expect(serialize()).not.toContain("data-hf-svg-reference-aliases");
   });
+});
+
+// fails without the fix: each clip's scope tested every mount, and the page's scope every element, by contains().
+it("scopes a page of 2000 svg clips and 200 mounts without testing each against every other", () => {
+  const clips = Array.from(
+    { length: 2000 },
+    (_, i) => `<div data-start="${i}" data-duration="1"><svg><rect/></svg></div>`,
+  ).join("");
+  const mounts = Array.from(
+    { length: 200 },
+    (_, i) => `<div data-composition-id="m${i}" data-composition-src="s.html"></div>`,
+  ).join("");
+  const { document } = parseHTML(
+    `<!DOCTYPE html><html><body><div data-composition-id="main">${mounts}${clips}</div></body></html>`,
+  );
+  const hosts = [...document.querySelectorAll("[data-composition-src]")];
+  const elements = document.querySelectorAll("*").length;
+  let owner = Object.getPrototypeOf(document.body);
+  while (!Object.hasOwn(owner, "contains")) owner = Object.getPrototypeOf(owner);
+  const contains = vi.spyOn(owner, "contains");
+  let checks: number;
+  try {
+    inlineSubCompositions(document, hosts, {
+      resolveHtml: () =>
+        `<div data-composition-id="s"><svg><clipPath id="c"/><rect clip-path="url(#c)"/></svg></div>`,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+    checks = contains.mock.calls.length;
+  } finally {
+    contains.mockRestore();
+  }
+
+  expect(checks).toBeLessThan(elements);
 });

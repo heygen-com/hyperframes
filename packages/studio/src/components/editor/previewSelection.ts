@@ -75,6 +75,7 @@ import {
 } from "./manualEditsTypes";
 import { rememberFrameTranslate, TRANSLATE_PX_PROPERTIES, translatePx } from "./plainTranslate";
 import { rememberFrameClipPath } from "./domEditOverlayCrop";
+import { previewTextFields } from "./previewTextFields";
 
 let inertDocument: Document | undefined;
 const inert = () => (inertDocument ??= document.implementation.createHTMLDocument(""));
@@ -100,6 +101,25 @@ const GESTURE_START_ATTRS = [
   STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
 ];
 const standIns = new WeakMap<EditingPortClient, Map<string, HTMLElement>>();
+const savedOnStandIn = new WeakMap<Element, Set<string>>();
+
+export function showSavedStylesOnStandIn(standIn: HTMLElement, styles: Array<[string, string]>) {
+  const names = savedOnStandIn.get(standIn) ?? new Set<string>();
+  savedOnStandIn.set(standIn, names);
+  for (const [name, value] of styles) {
+    standIn.style.setProperty(name, value);
+    names.add(name);
+  }
+}
+
+function takeFrameValuesForSavedStyles(standIn: HTMLElement, frameInline: Record<string, string>) {
+  for (const name of savedOnStandIn.get(standIn) ?? []) {
+    const value = frameInline[name];
+    if (value && !mayBeCut(value)) standIn.style.setProperty(name, value);
+    else standIn.style.removeProperty(name);
+  }
+  savedOnStandIn.delete(standIn);
+}
 const standInHandles = new WeakMap<Element, string>();
 const standInAncestors = new WeakMap<Element, string[]>();
 
@@ -330,8 +350,7 @@ const compositionSourceOf = (element: PreviewElement) =>
   attr(element, "data-composition-src") ?? attr(element, "data-composition-file") ?? undefined;
 
 /**
- * `resolveDomEditSelection` for a frame element Studio has a description of. Text fields are left
- * empty: they are read for text edits, which write through the frame's document.
+ * `resolveDomEditSelection` for a frame element Studio has a description of.
  */
 export async function resolvePreviewSelection(
   iframe: HTMLIFrameElement,
@@ -356,6 +375,7 @@ export async function resolvePreviewSelection(
     ...new Set([...CURATED_STYLE_PROPERTIES, ...TRANSLATE_PX_PROPERTIES]),
   ]);
   if (!styles) return null;
+  takeFrameValuesForSavedStyles(element, current.inlineStyles);
   // The stand-in has no box to size a % or em against: a move starts from what the frame renders.
   rememberFrameClipPath(
     element,
@@ -413,7 +433,7 @@ export async function resolvePreviewSelection(
     dataAttributes: getDataAttributes(probe),
     inlineStyles,
     computedStyles,
-    textFields: [],
+    textFields: await previewTextFields(iframe, current),
     capabilities,
     existsInSource,
   };
@@ -465,6 +485,11 @@ export async function findOpaqueTimelineElement(
 }
 
 export const standInHandle = (element: Element) => standInHandles.get(element);
+
+export function gestureDocumentOf(iframe: HTMLIFrameElement | null): Document | null {
+  if (!iframe) return null;
+  return previewFrameOpaque(iframe) ? inert() : iframe.contentDocument;
+}
 
 export function elementWithin(container: HTMLElement, element: HTMLElement): boolean {
   const handle = standInHandles.get(container);

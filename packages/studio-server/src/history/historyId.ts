@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, utimesSync } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { mkdirOwnedWithinProject } from "../helpers/safePath.js";
@@ -16,6 +17,25 @@ export function readId(projectDir: string): string | null {
     return ID_SHAPE.test(id) ? id : null;
   } catch {
     return null;
+  }
+}
+
+export async function readIdOffThread(projectDir: string): Promise<string | null> {
+  try {
+    const id = (await readFile(join(projectDir, ID_PATH), "utf-8")).trim();
+    return ID_SHAPE.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function statOffThread(path: string) {
+  try {
+    return await stat(path);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+    throw error;
   }
 }
 
@@ -57,11 +77,11 @@ function isCopyOf0878Folder(recordedDir: string, id: string, folder: FolderIdent
  * The project's history id, kept in the project so a rename or move keeps its history; only the folder its history
  * was recorded for keeps it (isRecordedFolder). An id file that cannot be read is refused, never replaced.
  */
-export function projectHistoryId(projectDir: string, historyRoot: string): string {
+export async function projectHistoryId(projectDir: string, historyRoot: string): Promise<string> {
   const dir = resolve(projectDir);
-  const folder = statSync(dir);
-  let id = readId(dir);
-  if (!id && existsSync(join(dir, ID_PATH)))
+  const folder = await stat(dir);
+  let id = await readIdOffThread(dir);
+  if (!id && (await statOffThread(join(dir, ID_PATH))))
     throw new HistoryIdError(
       `${join(dir, ID_PATH)} holds no history id this version can read; move it aside to start anew.`,
     );

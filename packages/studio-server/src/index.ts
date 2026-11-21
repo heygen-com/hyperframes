@@ -7,6 +7,7 @@ export {
   PREVIEW_ALLOWED_HOSTS_ENV,
   previewAllowedHostsFromEnv,
 } from "./helpers/requestIdentity.js";
+export { carriesOAuthReturn, inertRefusal, refuseOAuthReturn } from "./helpers/inertRefusal.js";
 export { MAX_UPLOAD_BYTES } from "./routes/files.js";
 export { renderArtifactPaths } from "./routes/render.js";
 export {
@@ -71,6 +72,7 @@ export {
   clearElementScreenshotIsolation,
   getElementScreenshotClip,
   type ScreenshotClip,
+  thumbnailSeekReadyInBrowser,
 } from "./helpers/screenshotClip.js";
 export {
   thumbnailDeviceScaleFactor,

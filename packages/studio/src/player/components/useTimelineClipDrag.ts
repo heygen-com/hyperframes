@@ -48,6 +48,7 @@ import {
   type TimelineTrackInsertLayout,
 } from "./timelineTrackInsertLayout";
 import type { TimelineRowGeometry } from "./timelineLayout";
+import type { DragCommitDeps } from "./timelineClipDragCommit";
 import {
   mountTimelineClipDragGestureLifecycle,
   type TimelineGestureKind,
@@ -90,7 +91,7 @@ interface UseTimelineClipDragInput {
    * iframe + the canvas z-order persist path; forwarded straight to
    * commitDraggedClipMove. Both optional → absent = no-op (backward compatible).
    */
-  readZIndex?: (element: TimelineElement) => number;
+  readZIndex?: DragCommitDeps["readZIndex"];
   onStackingPatches?: (patches: StackingPatch[]) => Promise<unknown> | void;
   refreshAfterLaneMove?: () => void;
   sessionEpoch?: number;

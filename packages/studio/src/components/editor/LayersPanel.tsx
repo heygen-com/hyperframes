@@ -41,8 +41,12 @@ import { useLayerReorderTimelineMirror } from "../nle/useCanvasZOrderTimelineMir
 import { runZLaneGesture } from "../nle/zLaneGesture";
 import { useLayerRevealOverride } from "./useLayerRevealOverride";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
-import { describePreviewElements } from "../../player/lib/previewElements";
-import { collectPreviewLayerItems, layerDataAttribute } from "./previewLayers";
+import { describePreviewElements, editPreviewElement } from "../../player/lib/previewElements";
+import {
+  collectPreviewLayerItems,
+  layerDataAttribute,
+  previewStackingFamily,
+} from "./previewLayers";
 import { resolvePreviewSelection, selectionDataAttribute } from "./previewSelection";
 
 // Rows this panel renders before it stops. A display budget, not a document limit.
@@ -330,22 +334,17 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
   }, []);
 
   // fallow-ignore-next-line complexity
-  const handleReorder = useCallback(
-    (event: LayerReorderEvent) => {
-      const { siblingLayers, fromIndex, toIndex } = event;
-      const reordered = [...siblingLayers];
-      const [moved] = reordered.splice(fromIndex, 1);
-      reordered.splice(toIndex, 0, moved);
-
-      // Panel order is top-first (sortLayersByZIndex: z desc, later-DOM-first),
-      // so the desired RENDER order (bottom→top) is the reverse. The minimal
-      // resolver (shared with the canvas z-menu) then writes one between-z
-      // value when a strict gap exists, band-safe renumber otherwise — instead
-      // of the old computeReorderZValues stamp of every sibling.
-      const desiredBottomToTop = [...reordered].reverse();
+  const commitReorder = useCallback(
+    (
+      siblingLayers: DomEditLayerItem[],
+      moved: DomEditLayerItem,
+      desiredBottomToTop: DomEditLayerItem[],
+      family?: NonNullable<Awaited<ReturnType<typeof previewStackingFamily>>>,
+    ) => {
       const patches = resolveZOrderReposition(
         moved.element,
         desiredBottomToTop.map((l) => l.element),
+        family?.entries,
       );
       if (!patches || patches.length === 0) return; // paint order unchanged
 
@@ -365,26 +364,28 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
         // node, exactly like the canvas menu's siblingZIndexEntry. Un-targetable
         // nodes get a live-only style write (reverts on reload).
         const layer = layerByElement.get(patch.element);
-        const id = layer?.id ?? (patch.element.id || undefined);
-        const selector = layer?.selector ?? buildStableSelector(patch.element);
+        const sealed = family?.identities.get(patch.element);
+        const id = layer?.id ?? (sealed ? sealed.id : patch.element.id || undefined);
+        const selector =
+          layer?.selector ?? (sealed ? sealed.selector : buildStableSelector(patch.element));
         if (!id && !selector) {
-          patch.element.style.zIndex = String(patch.zIndex);
+          const zIndex = String(patch.zIndex);
+          const iframe = previewIframeRef.current;
+          if (!sealed) patch.element.style.zIndex = zIndex;
+          else if (iframe)
+            editPreviewElement(iframe, sealed.handle, { styles: [["z-index", zIndex]] });
           continue;
         }
-        const sourceFile = layer?.sourceFile ?? moved.sourceFile;
+        const sourceFile = layer?.sourceFile ?? sealed?.sourceFile ?? moved.sourceFile;
+        const selectorIndex = layer?.selectorIndex ?? sealed?.selectorIndex;
         entries.push({
           element: patch.element,
           zIndex: patch.zIndex,
           id,
           selector,
-          selectorIndex: layer?.selectorIndex,
+          selectorIndex,
           sourceFile,
-          key: deriveTimelineStoreKey({
-            domId: id,
-            selector,
-            selectorIndex: layer?.selectorIndex,
-            sourceFile,
-          }),
+          key: deriveTimelineStoreKey({ domId: id, selector, selectorIndex, sourceFile }),
         });
       }
       if (entries.length === 0) return;
@@ -418,7 +419,25 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
           mirrorLayerReorderToTimeline({ selectionKey: movedKey, desiredOrderKeys, coalesceKey }),
       }).catch(() => undefined);
     },
-    [handleDomZIndexReorderCommit, mirrorLayerReorderToTimeline],
+    [handleDomZIndexReorderCommit, mirrorLayerReorderToTimeline, previewIframeRef],
+  );
+
+  const handleReorder = useCallback(
+    (event: LayerReorderEvent) => {
+      const { siblingLayers, fromIndex, toIndex } = event;
+      const reordered = [...siblingLayers];
+      const [moved] = reordered.splice(fromIndex, 1);
+      reordered.splice(toIndex, 0, moved);
+      // Panel order is top-first (z desc, later-DOM-first): render order is its reverse.
+      const desiredBottomToTop = [...reordered].reverse();
+      const iframe = previewIframeRef.current;
+      if (!moved.preview || !iframe) return commitReorder(siblingLayers, moved, desiredBottomToTop);
+      void previewStackingFamily(iframe, moved.preview.handle, activeCompPath).then((family) => {
+        if (family?.locked) return showToast("This layer can't be reordered", "info");
+        if (family) commitReorder(siblingLayers, moved, desiredBottomToTop, family);
+      });
+    },
+    [commitReorder, previewIframeRef, activeCompPath, showToast],
   );
 
   const selectedKey = domEditSelection ? getDomEditLayerKey(domEditSelection) : null;
@@ -492,7 +511,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
           const KindIcon = KIND_ICON[kind];
           const kindName = kind[0].toUpperCase() + kind.slice(1);
           const hint = draggable
-            ? layer.element.hasAttribute("data-hf-group")
+            ? layerDataAttribute(layer, "data-hf-group") !== null
               ? "Double-click to enter group"
               : undefined
             : "This layer can't be reordered";

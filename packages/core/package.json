@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.70",
+  "version": "0.9.74",
   "description": "",
   "repository": {
     "type": "git",
@@ -483,6 +483,18 @@
       "import": "./src/runtime/editing/softReload.ts",
       "types": "./src/runtime/editing/softReload.ts"
     },
+    "./runtime/scenes": {
+      "bun": "./src/runtime/editing/scenes.ts",
+      "node": "./dist/runtime/editing/scenes.js",
+      "import": "./src/runtime/editing/scenes.ts",
+      "types": "./src/runtime/editing/scenes.ts"
+    },
+    "./runtime/live-retime": {
+      "bun": "./src/runtime/editing/liveRetime.ts",
+      "node": "./dist/runtime/editing/liveRetime.js",
+      "import": "./src/runtime/editing/liveRetime.ts",
+      "types": "./src/runtime/editing/liveRetime.ts"
+    },
     "./runtime/clip-window": {
       "bun": "./src/runtime/clipWindow.ts",
       "node": "./dist/runtime/clipWindow.js",
@@ -524,6 +536,12 @@
       "node": "./dist/runtime/levelTap.js",
       "import": "./src/runtime/levelTap.ts",
       "types": "./src/runtime/levelTap.ts"
+    },
+    "./compiler/composition-size-limit": {
+      "bun": "./src/compiler/compositionSizeLimit.ts",
+      "node": "./dist/compiler/compositionSizeLimit.js",
+      "import": "./src/compiler/compositionSizeLimit.ts",
+      "types": "./src/compiler/compositionSizeLimit.ts"
     },
     "./compiler/html-document": {
       "bun": "./src/compiler/htmlDocument.ts",
@@ -1003,6 +1021,14 @@
         "import": "./dist/runtime/editing/softReload.js",
         "types": "./dist/runtime/editing/softReload.d.ts"
       },
+      "./runtime/scenes": {
+        "import": "./dist/runtime/editing/scenes.js",
+        "types": "./dist/runtime/editing/scenes.d.ts"
+      },
+      "./runtime/live-retime": {
+        "import": "./dist/runtime/editing/liveRetime.js",
+        "types": "./dist/runtime/editing/liveRetime.d.ts"
+      },
       "./runtime/clip-window": {
         "import": "./dist/runtime/clipWindow.js",
         "types": "./dist/runtime/clipWindow.d.ts"
@@ -1030,6 +1056,10 @@
       "./runtime/levelTap": {
         "import": "./dist/runtime/levelTap.js",
         "types": "./dist/runtime/levelTap.d.ts"
+      },
+      "./compiler/composition-size-limit": {
+        "import": "./dist/compiler/compositionSizeLimit.js",
+        "types": "./dist/compiler/compositionSizeLimit.d.ts"
       },
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",

@@ -19,6 +19,8 @@ const CGROUP_V1_MEMORY_LIMIT_PATH = "/sys/fs/cgroup/memory/memory.limit_in_bytes
 type SystemMemoryModule = typeof import("./systemMemory.js");
 
 type MockSystemMemoryOptions = {
+  availableParallelism?: number;
+  hostCpus?: number;
   files?: Record<string, string>;
   hostTotalMb?: number;
   platform?: NodeJS.Platform;
@@ -43,6 +45,8 @@ async function withSystemMemoryMocks(
   run: (systemMemory: SystemMemoryModule) => void | Promise<void>,
 ): Promise<void> {
   const {
+    availableParallelism = 32,
+    hostCpus = 32,
     files = {},
     hostTotalMb = 32768,
     platform = "linux",
@@ -54,6 +58,8 @@ async function withSystemMemoryMocks(
 
   vi.resetModules();
   vi.doMock("os", () => ({
+    availableParallelism: () => availableParallelism,
+    cpus: () => Array.from({ length: hostCpus }, () => ({})),
     totalmem: () => hostTotalMb * BYTES_PER_MIB,
   }));
   vi.doMock("fs", () => ({
@@ -190,6 +196,72 @@ describe("getCgroupCpuLimit", () => {
     );
     await withSystemMemoryMocks({ platform: "darwin" }, ({ getCgroupCpuLimit }) =>
       expect(getCgroupCpuLimit()).toBeNull(),
+    );
+  });
+});
+
+describe("usableCpuCount under a CPU quota", () => {
+  // Node 22.23 (libuv 1.51) clamps availableParallelism() to a cgroup v2 quota, as on a Kubernetes CPU limit.
+  const quotaOfSix = {
+    availableParallelism: 6,
+    files: { "/sys/fs/cgroup/cpu.max": "600000 100000" },
+  };
+
+  it("is the affinity count, leaving the quota to getCgroupCpuLimit", async () => {
+    await withSystemMemoryMocks(
+      {
+        ...quotaOfSix,
+        files: {
+          ...quotaOfSix.files,
+          "/proc/self/status": "Name:\tnode\nCpus_allowed_list:\t0-31\n",
+        },
+      },
+      ({ usableCpuCount, getCgroupCpuLimit }) => {
+        expect(usableCpuCount()).toBe(32);
+        expect(getCgroupCpuLimit()).toBe(6);
+      },
+    );
+  });
+
+  it("is a cpuset's count when a cpuset and a quota both apply", async () => {
+    await withSystemMemoryMocks(
+      {
+        ...quotaOfSix,
+        files: { ...quotaOfSix.files, "/proc/self/status": "Cpus_allowed_list:\t0-3,8,10-11\n" },
+      },
+      ({ usableCpuCount }) => expect(usableCpuCount()).toBe(7),
+    );
+  });
+
+  it("never counts more CPUs than the host has online", async () => {
+    await withSystemMemoryMocks(
+      {
+        ...quotaOfSix,
+        hostCpus: 16,
+        files: { ...quotaOfSix.files, "/proc/self/status": "Cpus_allowed_list:\t0-63\n" },
+      },
+      ({ usableCpuCount }) => expect(usableCpuCount()).toBe(16),
+    );
+  });
+
+  it("leaves cpuBudget at the quota's whole CPUs", async () => {
+    await withSystemMemoryMocks(
+      {
+        files: {
+          "/sys/fs/cgroup/cpu.max": "350000 100000",
+          "/proc/self/status": "Cpus_allowed_list:\t0-31\n",
+        },
+      },
+      ({ cpuBudget, usableCpuCount }) => {
+        expect(usableCpuCount()).toBe(32);
+        expect(cpuBudget()).toBe(3);
+      },
+    );
+  });
+
+  it("falls back to availableParallelism when the affinity list is unreadable", async () => {
+    await withSystemMemoryMocks(quotaOfSix, ({ usableCpuCount }) =>
+      expect(usableCpuCount()).toBe(6),
     );
   });
 });

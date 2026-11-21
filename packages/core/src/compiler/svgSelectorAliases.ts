@@ -18,8 +18,12 @@ const lower = (text: string) => text.replace(/[A-Z]/g, (char) => char.toLowerCas
 
 interface AttributeAliases {
   all: SvgReferenceAlias[];
-  byBefore: Map<string, SvgReferenceAlias[]>;
-  byLowercaseBefore: Map<string, SvgReferenceAlias[]>;
+  lookups: Map<string, SortedKeys | Map<string, number[]>>;
+}
+
+interface SortedKeys {
+  keys: string[];
+  at: number[];
 }
 
 interface AliasIndex {
@@ -44,20 +48,8 @@ function aliasIndex(references: readonly SvgReferenceAlias[]): AliasIndex {
   const ids = new Map<string, Set<string>>();
   const add = (map: Map<string, AttributeAliases>, name: string, alias: SvgReferenceAlias) => {
     let entry = map.get(lower(name));
-    if (!entry)
-      map.set(
-        lower(name),
-        (entry = { all: [], byBefore: new Map(), byLowercaseBefore: new Map() }),
-      );
+    if (!entry) map.set(lower(name), (entry = { all: [], lookups: new Map() }));
     entry.all.push(alias);
-    for (const [values, key] of [
-      [entry.byBefore, alias.before],
-      [entry.byLowercaseBefore, lower(alias.before)],
-    ] as const) {
-      const same = values.get(key);
-      if (same) same.push(alias);
-      else values.set(key, [alias]);
-    }
   };
   // Every element that references one symbol records the same alias; one copy is enough.
   const seen = new Set<string>();
@@ -94,35 +86,110 @@ export function recordedSvgIds(references: readonly SvgReferenceAlias[]): Readon
 type ParsedAttribute = NonNullable<ReturnType<typeof tokens.parseAttributeSelector>>;
 type Namespaces = ReadonlyMap<string, string | null>;
 
-const attributeOperators = {
-  "=": (before, value) => before === value,
-  "~=": (before, value) => before.split(/[ \t\r\n\f]+/).includes(value),
-  "|=": (before, value) => before === value || before.startsWith(value + "-"),
-  "^=": (before, value) => before.startsWith(value),
-  "$=": (before, value) => before.endsWith(value),
-  "*=": (before, value) => before.includes(value),
-} satisfies Record<ParsedAttribute["operator"], (before: string, value: string) => boolean>;
+type Fold = (text: string) => string;
+const same: Fold = (text) => text;
+const reversed: Fold = (text) => text.split("").reverse().join("");
+const whitespace = /[ \t\r\n\f]+/;
 
-function matchesValue(before: string, { operator, value, flag }: ParsedAttribute): boolean {
-  if (!value && operator !== "=" && operator !== "|=") return false;
-  const fold = flag?.toLowerCase() === "i" ? lower : (text: string) => text;
-  return attributeOperators[operator](fold(before), fold(value));
+function sortedKeys(entry: AttributeAliases, id: string, key: Fold): SortedKeys {
+  let keys = entry.lookups.get(id) as SortedKeys | undefined;
+  if (keys) return keys;
+  const order = entry.all.map((alias, at) => [key(alias.before), at] as const);
+  order.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  keys = { keys: order.map(([text]) => text), at: order.map(([, at]) => at) };
+  entry.lookups.set(id, keys);
+  return keys;
 }
 
-function aliasesFor(index: AliasIndex, parsed: ParsedAttribute, namespaces?: Namespaces) {
-  const { name, namespace, operator, value, flag } = parsed;
+function keysFrom({ keys, at }: SortedKeys, prefix: string, exact = false): number[] {
+  let low = 0;
+  for (let high = keys.length; low < high; ) {
+    const mid = (low + high) >>> 1;
+    if (keys[mid]! < prefix) low = mid + 1;
+    else high = mid;
+  }
+  const found: number[] = [];
+  for (
+    let i = low;
+    i < keys.length && (exact ? keys[i] === prefix : keys[i]!.startsWith(prefix));
+    i++
+  )
+    found.push(at[i]!);
+  return found;
+}
+
+function withToken(entry: AttributeAliases, id: string, fold: Fold, token: string): number[] {
+  let tokens = entry.lookups.get(id) as Map<string, number[]> | undefined;
+  if (!tokens) {
+    tokens = new Map();
+    for (const [at, alias] of entry.all.entries())
+      for (const each of new Set(fold(alias.before).split(whitespace))) {
+        const list = tokens.get(each);
+        if (list) list.push(at);
+        else tokens.set(each, [at]);
+      }
+    entry.lookups.set(id, tokens);
+  }
+  return tokens.get(token) ?? [];
+}
+
+interface Lookup {
+  entry: AttributeAliases;
+  value: string;
+  fold: Fold;
+  id: (lookup: string) => string;
+  chargeScan?: (chars: number) => void;
+}
+
+const starts = ({ entry, fold, id }: Lookup) => sortedKeys(entry, id("^="), fold);
+
+// Each lookup but `*=` costs only its matches, which are charged as alternatives; `*=` charges its scan.
+const lookups: Record<ParsedAttribute["operator"], (lookup: Lookup) => number[]> = {
+  "=": (lookup) => keysFrom(starts(lookup), lookup.value, true),
+  "^=": (lookup) => keysFrom(starts(lookup), lookup.value),
+  "$=": ({ entry, value, fold, id }) =>
+    keysFrom(
+      sortedKeys(entry, id("$="), (text) => reversed(fold(text))),
+      reversed(value),
+    ),
+  "|=": (lookup) => [
+    ...keysFrom(starts(lookup), lookup.value, true),
+    ...keysFrom(starts(lookup), `${lookup.value}-`),
+  ],
+  "~=": ({ entry, value, fold, id }) => withToken(entry, id("~="), fold, value),
+  "*=": ({ entry, value, fold, chargeScan }) =>
+    entry.all.flatMap((alias, at) => {
+      chargeScan?.(alias.before.length);
+      return fold(alias.before).includes(value) ? [at] : [];
+    }),
+};
+
+function positionsFor(
+  entry: AttributeAliases,
+  { operator, value, flag }: ParsedAttribute,
+  chargeScan?: (chars: number) => void,
+): number[] {
+  if (!value && operator !== "=" && operator !== "|=") return [];
+  const folds = flag?.toLowerCase() === "i";
+  const fold = folds ? lower : same;
+  const id = (lookup: string) => (folds ? `${lookup} i` : lookup);
+  return lookups[operator]({ entry, value: fold(value), fold, id, chargeScan });
+}
+
+function aliasesFor(
+  index: AliasIndex,
+  parsed: ParsedAttribute,
+  namespaces?: Namespaces,
+  chargeScan?: (chars: number) => void,
+) {
+  const { name, namespace } = parsed;
   const forName = (namespace.kind === "none" ? index.byName : index.byLocalName).get(lower(name));
   if (!forName) return [];
-  const sameValue =
-    flag?.toLowerCase() === "i"
-      ? forName.byLowercaseBefore.get(lower(value))
-      : forName.byBefore.get(value);
   const uri = namespace.kind === "named" ? namespaces!.get(namespace.prefix) : null;
-  return ((operator === "=" ? sameValue : forName.all) ?? []).filter(
-    (alias) =>
-      (namespace.kind === "any" || alias.namespaceURI === uri) &&
-      matchesValue(alias.before, parsed),
-  );
+  return positionsFor(forName, parsed, chargeScan)
+    .sort((a, b) => a - b)
+    .map((at) => forName.all[at]!)
+    .filter((alias) => namespace.kind === "any" || alias.namespaceURI === uri);
 }
 
 /**
@@ -134,6 +201,8 @@ export function rewriteSvgSelectors(
   ids: readonly IdSelectorAlias[],
   references: readonly SvgReferenceAlias[],
   namespaces?: Namespaces,
+  charge?: (bytes: number) => void,
+  chargeScan?: (chars: number) => void,
 ): string {
   const index = aliasIndex(references);
   const rewriteAttribute = (predicate: string): string => {
@@ -143,10 +212,11 @@ export function rewriteSvgSelectors(
     }
     const { rawName, flag } = parsed;
     const alternatives = new Set([predicate]);
-    for (const alias of aliasesFor(index, parsed, namespaces)) {
-      alternatives.add(
-        `[${rawName}="${tokens.escapeCssAttributeValue(alias.after)}"${flag ? ` ${flag}` : ""}]`,
-      );
+    for (const alias of aliasesFor(index, parsed, namespaces, chargeScan)) {
+      const alternative = `[${rawName}="${tokens.escapeCssAttributeValue(alias.after)}"${flag ? ` ${flag}` : ""}]`;
+      if (alternatives.has(alternative)) continue;
+      charge?.(alternative.length + (alternatives.size === 1 ? ":is(, )".length : ", ".length));
+      alternatives.add(alternative);
     }
     return alternatives.size === 1 ? predicate : `:is(${[...alternatives].join(", ")})`;
   };
@@ -155,11 +225,11 @@ export function rewriteSvgSelectors(
   const namedIds = tokens
     .selectorIdTokens(selector)
     .filter((id) => replacements.has(id) || index.renamedIdAlternatives.has(id));
-  const rewrittenIds = tokens.replaceSelectorIdTokens(
-    selector,
-    namedIds,
-    (id) => replacements.get(id) ?? index.renamedIdAlternatives.get(id)!,
-  );
+  const rewrittenIds = tokens.replaceSelectorIdTokens(selector, namedIds, (id, token) => {
+    const replacement = replacements.get(id) ?? index.renamedIdAlternatives.get(id)!;
+    charge?.(replacement.length - token.length);
+    return replacement;
+  });
   return tokens.replaceSelectorAttributeTokens(rewrittenIds, rewriteAttribute);
 }
 
