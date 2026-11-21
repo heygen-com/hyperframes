@@ -602,6 +602,24 @@ describe("openProjectHistory", () => {
     },
   );
 
+  // fails without the fix: an undo wrote through a folder link into a path the host's ignores option names.
+  it("never writes an ignored file through a folder that now links to it", async () => {
+    const { history, write, read, projectDir, historyRoot } = await project({
+      "pages/a.html": "v1",
+    });
+    write("pages/a.html", "v2");
+    await history.claim(you, "Edited", ["pages/a.html"]);
+    await history.close();
+    renameSync(join(projectDir, "pages"), join(projectDir, "private"));
+    symlinkSync("private", join(projectDir, "pages"), "dir");
+    write("private/a.html", "host");
+    const again = await open(projectDir, historyRoot, {
+      ignores: (path: string) => path.startsWith("private/"),
+    });
+    await again.step("back", you);
+    expect(read("private/a.html")).toBe("host");
+  });
+
   it("records a write nobody announced as one outside entry, and undo puts the bytes back as a new entry", async () => {
     const { history, write, read, projectDir } = await project(
       { "index.html": "<h1>Hello</h1>", "assets/logo.png": Buffer.from([1, 2, 3]) },
