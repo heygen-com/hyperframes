@@ -5,7 +5,7 @@
 import type { Browser } from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { closeTestChrome, launchTestChrome } from "../../tests/chromeTestUtils";
-import { playOrdering, type Step } from "../../tests/sealedOrderingFixture";
+import { expectGenerated, playOrdering, type Step } from "../../tests/sealedOrderingFixture";
 import { buildStudioBundle } from "../../tests/sealedPreviewHarness";
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 60_000 });
@@ -314,4 +314,9 @@ describe("sealed preview after late answers in any order", () => {
     // The frame cannot set a title in place, so the refused undo recovers only by reloading.
     if (name.includes("title")) expect(reloads).toBeGreaterThan(0);
   });
+  // Generated seeds that found the reversed-response class without the fix: 52 an older script left on screen,
+  // 148 a newer patch's value lost.
+  it.each([52, 148])("generated sequence %i", (seed) =>
+    expectGenerated(browser, studioBundle, seed),
+  );
 });
