@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Hyperframes
 
 Open-source video rendering framework: write HTML, render video.
@@ -92,10 +96,15 @@ docs/                   → Mintlify documentation site (hyperframes.heygen.com)
 skills/                 → AI agent skill definitions
 ```
 
+## Issue and PR Triage
+
+Read `TRIAGE.md` before classifying issues, advertising contribution work, or triaging PRs. Check current source and overlapping PRs; keep difficulty, readiness, and ownership separate. Apply changes only within the task's authorization and verify the resulting GitHub state.
+
 ## Key Conventions
 
 - **Package manager**: bun (not pnpm, not npm for workspace operations)
 - **Commit format**: Conventional commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`)
+- **Comments**: say why, not what. A bug fix comment says what the code must do and how to reproduce the bug.
 - **TypeScript**: Avoid `any` and `as T` assertions. Prefer type guards and narrowing.
 - **Compositions**: HTML files with `data-*` attributes. Clips need `class="clip"`. Register one paused GSAP root timeline per composition on `window.__timelines`. Scene timelines manually added to that root must not be paused, or they will not advance when the root is seeked.
 - **Frame Adapters**: Animation runtimes plug in via the seek-by-frame adapter pattern. GSAP is the primary adapter.
