@@ -25,7 +25,10 @@ import { validateCube, validateCubeFile } from "./cube-validate.mjs";
 const REPO_ROOT = join(import.meta.dirname, "..", "..", "..", "..", "..");
 
 function corePresetIdsFromSource() {
-  const src = readFileSync(join(REPO_ROOT, "packages/core/src/colorGrading.ts"), "utf8");
+  const src = readFileSync(
+    join(REPO_ROOT, "packages/core/src/colorGrading.ts"),
+    "utf8",
+  );
   const match = src.match(/export type HfColorGradingPresetId =([\s\S]*?);/);
   assert.ok(match, "core preset union should be readable");
   return [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
@@ -63,7 +66,11 @@ test("library look freezes a validated cube from params offline (--local-only)",
     assert.equal(match.kind, "library");
     // localOnly forces the deterministic params path (no network); online, the
     // same look downloads its .cube from the CDN url (via "url").
-    const frozen = await freezeLibraryLut(match, { projectDir, type: "grade", localOnly: true });
+    const frozen = await freezeLibraryLut(match, {
+      projectDir,
+      type: "grade",
+      localOnly: true,
+    });
     assert.match(frozen.localPath, /^\.media\/luts\/grade_001\.cube$/);
     assert.ok(existsSync(join(projectDir, frozen.localPath)));
     assert.equal(validateCubeFile(join(projectDir, frozen.localPath)).ok, true);
@@ -95,10 +102,17 @@ test("bundled LUT index entries resolve from params or url", () => {
   for (const entry of readBundledLutIndex()) {
     assert.ok(entry.id);
     assert.ok(entry.description);
-    assert.ok(entry.params || entry.url, `${entry.id} should define params or url`);
+    assert.ok(
+      entry.params || entry.url,
+      `${entry.id} should define params or url`,
+    );
     if (entry.params) {
       assert.equal(typeof entry.params, "object");
-      assert.equal(validateCube(buildCube(entry.params)).ok, true, `${entry.id} params validate`);
+      assert.equal(
+        validateCube(buildCube(entry.params)).ok,
+        true,
+        `${entry.id} params validate`,
+      );
     }
     if (entry.url) assert.equal(typeof entry.url, "string");
   }
@@ -137,7 +151,9 @@ test("url library entries respect localOnly and freeze through fetch", async () 
       fetchCalls++;
       assert.equal(url, match.url);
       const directory = join(projectDir, ".media/luts");
-      const staging = readdirSync(directory).filter((name) => name.startsWith(".lut-download-"));
+      const staging = readdirSync(directory).filter((name) =>
+        name.startsWith(".lut-download-"),
+      );
       assert.equal(staging.length, 1);
       if (process.platform !== "win32") {
         assert.equal(statSync(join(directory, staging[0])).mode & 0o777, 0o700);
@@ -157,7 +173,10 @@ test("url library entries respect localOnly and freeze through fetch", async () 
     assert.match(frozen.localPath, /^\.media\/luts\/lut_001\.cube$/);
     assert.equal(validateCubeFile(join(projectDir, frozen.localPath)).ok, true);
     assert.equal(frozen.metadata.provenance.via, "url");
-    assert.equal(readFileSync(join(projectDir, "victim.cube"), "utf8"), "unchanged");
+    assert.equal(
+      readFileSync(join(projectDir, "victim.cube"), "utf8"),
+      "unchanged",
+    );
     assert.deepEqual(readdirSync(join(projectDir, ".media/luts")).sort(), [
       "lut_001.cube",
       "lut_001.cube.tmp",
@@ -194,6 +213,34 @@ test("failed URL library freeze releases its reservation", async () => {
     assert.deepStrictEqual(readdirSync(join(projectDir, ".media/luts")), []);
   } finally {
     globalThis.fetch = originalFetch;
+    rmSync(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("spektrafilm looks match by film stock intent and freeze offline without network", async () => {
+  const projectDir = mkdtempSync(join(tmpdir(), "mu-spektrafilm-look-"));
+  try {
+    const portra = matchColorLook("kodak portra 400");
+    assert.equal(portra?.kind, "library");
+    assert.equal(portra.id, "kodak-portra-400");
+
+    const vision = matchColorLook("kodak vision3 500t 2383");
+    assert.equal(vision?.kind, "library");
+    assert.equal(vision.id, "kodak-vision3-500t");
+
+    const velvia = matchColorLook("fujifilm velvia 100 slide");
+    assert.equal(velvia?.kind, "library");
+    assert.equal(velvia.id, "fujifilm-velvia-100");
+
+    const frozen = await freezeLibraryLut(portra, {
+      projectDir,
+      type: "grade",
+      localOnly: true,
+    });
+    assert.equal(validateCubeFile(join(projectDir, frozen.localPath)).ok, true);
+    assert.equal(frozen.metadata.provenance.look_id, "kodak-portra-400");
+    assert.equal(frozen.metadata.provenance.via, "params");
+  } finally {
     rmSync(projectDir, { recursive: true, force: true });
   }
 });

@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Film Looks — HyperFrames</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #111;
+        font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+        color: #f4f1ea;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #161616;
+      }
+      .panel {
+        position: absolute;
+        top: 160px;
+        width: 560px;
+        height: 720px;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #000;
+      }
+      #fl-panel-a {
+        left: 80px;
+      }
+      #fl-panel-b {
+        left: 680px;
+      }
+      #fl-panel-c {
+        left: 1280px;
+      }
+      .panel canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .label {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 20px 24px 24px;
+        background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+        font-size: 28px;
+        letter-spacing: 0.02em;
+      }
+      .label small {
+        display: block;
+        margin-top: 6px;
+        font-size: 16px;
+        opacity: 0.75;
+        font-weight: 400;
+      }
+      #fl-title {
+        position: absolute;
+        left: 80px;
+        top: 56px;
+        font-size: 42px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      #fl-sub {
+        position: absolute;
+        left: 80px;
+        top: 110px;
+        font-size: 18px;
+        opacity: 0.65;
+        max-width: 1400px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="film-looks"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6"
+      data-start="0"
+    >
+      <div
+        id="fl-title"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+      >
+        Film looks (original Rec.709 approximations)
+      </div>
+      <div
+        id="fl-sub"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+      >
+        Self-authored .cube + grain/vignette via data-color-grading. Not
+        affiliated with any film manufacturer. Not measured stock data.
+      </div>
+
+      <div id="fl-panel-a" class="panel">
+        <canvas
+          id="fl-chart-a"
+          class="clip"
+          data-start="0"
+          data-duration="6"
+          data-track-index="1"
+          width="560"
+          height="720"
+          data-color-grading='{"intensity":0.9,"lut":{"src":"assets/luts/soft-color-neg.cube","intensity":1},"details":{"grain":0.1,"grainSize":0.22,"grainRoughness":0.45,"vignette":0.08,"vignetteFeather":0.7}}'
+        ></canvas>
+        <div
+          id="fl-label-a"
+          class="label clip"
+          data-start="0"
+          data-duration="6"
+          data-track-index="2"
+        >
+          soft-color-neg
+          <small>warm soft negative look</small>
+        </div>
+      </div>
+
+      <div id="fl-panel-b" class="panel">
+        <canvas
+          id="fl-chart-b"
+          class="clip"
+          data-start="0"
+          data-duration="6"
+          data-track-index="1"
+          width="560"
+          height="720"
+          data-color-grading='{"intensity":0.95,"lut":{"src":"assets/luts/vivid-slide.cube","intensity":1},"details":{"grain":0.04,"grainSize":0.15,"grainRoughness":0.35,"vignette":0.12,"vignetteFeather":0.55}}'
+        ></canvas>
+        <div
+          id="fl-label-b"
+          class="label clip"
+          data-start="0"
+          data-duration="6"
+          data-track-index="2"
+        >
+          vivid-slide
+          <small>high-sat slide look</small>
+        </div>
+      </div>
+
+      <div id="fl-panel-c" class="panel">
+        <canvas
+          id="fl-chart-c"
+          class="clip"
+          data-start="0"
+          data-duration="6"
+          data-track-index="1"
+          width="560"
+          height="720"
+          data-color-grading='{"intensity":0.88,"lut":{"src":"assets/luts/cinema-daylight.cube","intensity":1},"details":{"grain":0.14,"grainSize":0.2,"grainRoughness":0.55,"vignette":0.14,"vignetteMidpoint":0.48,"vignetteFeather":0.68}}'
+        ></canvas>
+        <div
+          id="fl-label-c"
+          class="label clip"
+          data-start="0"
+          data-duration="6"
+          data-track-index="2"
+        >
+          cinema-daylight
+          <small>denser cinema daylight look</small>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function paintChart(canvas) {
+        const ctx = canvas.getContext("2d");
+        const w = canvas.width;
+        const h = canvas.height;
+        const g = ctx.createLinearGradient(0, 0, w, h);
+        g.addColorStop(0, "#6ec1ff");
+        g.addColorStop(0.35, "#f2d2b6");
+        g.addColorStop(0.65, "#3f7a4a");
+        g.addColorStop(1, "#1a1a1a");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, w, h);
+
+        const patches = [
+          ["#c47a5a", 40, 40, 140, 140],
+          ["#f5f0e6", 200, 40, 140, 140],
+          ["#2f5d9f", 360, 40, 140, 140],
+          ["#d4af37", 40, 220, 140, 140],
+          ["#7a3e2e", 200, 220, 140, 140],
+          ["#88c9a0", 360, 220, 140, 140],
+        ];
+        for (const [color, x, y, pw, ph] of patches) {
+          ctx.fillStyle = color;
+          ctx.fillRect(x, y, pw, ph);
+        }
+
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.font = "600 28px IBM Plex Sans, sans-serif";
+        ctx.fillText("Reference chart", 40, 480);
+        ctx.font = "400 18px IBM Plex Sans, sans-serif";
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.fillText("Same source · three looks", 40, 520);
+      }
+
+      for (const id of ["fl-chart-a", "fl-chart-b", "fl-chart-c"]) {
+        paintChart(document.getElementById(id));
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo(
+        ".panel",
+        { opacity: 0, y: 24 },
+        { opacity: 1, y: 0, duration: 0.8, stagger: 0.12, ease: "power2.out" },
+        0.15,
+      );
+      tl.to({}, { duration: 4.2 });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["film-looks"] = tl;
+    </script>
+  </body>
+</html>
