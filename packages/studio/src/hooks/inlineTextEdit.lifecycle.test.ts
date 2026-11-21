@@ -29,6 +29,7 @@ interface Title {
   shown: HTMLElement;
   /** What Chrome does when a focused element leaves the document (checked in Chrome 155). */
   remove: () => void;
+  putBack: () => void;
   silenceEnds?: () => void;
   frameReloads?: () => void;
 }
@@ -42,7 +43,7 @@ function liveTitle(): Title {
     shown.remove();
     shown.dispatchEvent(new FocusEvent("blur"));
   };
-  return { target: shown, shown, remove };
+  return { target: shown, shown, remove, putBack: () => frame.contentDocument!.body.append(shown) };
 }
 
 async function sealedTitle(): Promise<Title> {
@@ -74,6 +75,7 @@ async function sealedTitle(): Promise<Title> {
     target: selection.element,
     shown,
     remove: () => shown.remove(),
+    putBack: () => document.body.append(shown),
     silenceEnds: () => (answersEnd = false),
     frameReloads: () => iframe.dispatchEvent(new Event("load")),
   };
@@ -150,6 +152,18 @@ describe.each(["unsealed", "sealed"] as const)("an inline text edit, %s", (mode)
     act(() => edit.remove());
     await vi.waitFor(() => expect(edit.session()).toBeNull());
     await drainWaitsForTheSave(edit, flushStudioPendingEdits());
+  });
+
+  it("leaves no draft on an element removed mid-edit, so it shows the original when it comes back", async () => {
+    const edit = await openEdit(mode);
+    act(() => edit.remove());
+    await vi.waitFor(() => expect(edit.session()).toBeNull());
+    await drainWaitsForTheSave(edit, flushStudioPendingEdits());
+    edit.putBack();
+    expect([edit.shown.innerHTML, edit.shown.hasAttribute("contenteditable")]).toEqual([
+      "Hello",
+      false,
+    ]);
   });
 
   it("finishes its save when its element is removed while saving", async () => {
