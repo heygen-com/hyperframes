@@ -21,7 +21,7 @@ export interface SequenceFixture<Saved, Save extends string> {
 }
 
 /** The refusal a frame that never took the request would send, by request kind. */
-export const REFUSAL: Record<string, unknown> = {
+const REFUSAL: Record<string, unknown> = {
   "soft-reload": { result: "cannot-soft-reload" },
   "patch-tweens": { patched: false },
   "restore-attributes": { applied: false, reran: false },
