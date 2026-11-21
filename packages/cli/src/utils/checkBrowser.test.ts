@@ -1705,6 +1705,41 @@ describe("preResolveHostileMediaProxies", () => {
     }
   });
 
+  // fails without the fix: the video's own name reached stderr with its escape sequence intact.
+  it("prints a copying video's name with its control characters as visible escapes", async () => {
+    vi.useFakeTimers();
+    try {
+      const projectDir = mkProjectDir();
+      mocks.scanProjectMediaCodecMap.mockResolvedValue({
+        "/clip\x1b]52;c;aGk=\x07.mov": {
+          codecName: "hevc",
+          browserHostile: true,
+          representativeMime: null,
+          hasAlpha: false,
+        },
+      });
+      let finish: (() => void) | undefined;
+      mocks.resolveProxy.mockImplementation(
+        () => new Promise<string>((done) => (finish = () => done("/cache/clip.mp4"))),
+      );
+      mocks.proxyProgress.feed = (report) => report(0, { doneSeconds: 30, totalSeconds: 120 });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const pending = preResolveHostileMediaProxies(projectDir, "<html></html>");
+      await vi.advanceTimersByTimeAsync(10_000);
+      mocks.proxyProgress.feed = undefined;
+      finish?.();
+      await pending;
+
+      expect(errorSpy.mock.calls.map(([line]) => line)).toContain(
+        "[hyperframes] making browser-playable copies: 0 of 1 done. clip\\x1b]52;c;aGk=\\x07.mov: 25% (10s so far)",
+      );
+    } finally {
+      mocks.proxyProgress.feed = undefined;
+      vi.useRealTimers();
+    }
+  });
+
   it("copies only the stretch of a long video the composition plays", async () => {
     const projectDir = mkProjectDir();
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
