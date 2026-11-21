@@ -265,6 +265,7 @@ export function useDomEditCommits({
     persistDomEditOperations,
     resolveImportedFontAsset,
     showToast,
+    reloadPreview,
   });
 
   // ── Position patch helper (shared by geometry + lifecycle hooks) ──

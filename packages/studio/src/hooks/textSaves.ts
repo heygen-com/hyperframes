@@ -1,3 +1,5 @@
+import { previewChangesOutsideTextSaves } from "../player/previewReloading";
+
 let lastOrder = 0;
 /** Numbers a text save when the user asks for it, so the newest request wins for its target. */
 export const nextTextSaveOrder = (): number => ++lastOrder;
@@ -10,35 +12,32 @@ export function orderedSave<T extends object>(save: T, order = nextTextSaveOrder
 }
 export const requestedOrder = (save: object): number | undefined => requested.get(save);
 
-let epoch = 0;
-const landed = new WeakMap<HTMLElement, { order: number; html: string; epoch: number }>();
-const saving = new WeakMap<HTMLElement, number>();
-
-/** The markup of the newest save of this canvas element that reached the file, unless something else wrote since. */
-export function landedText(element: HTMLElement): string | undefined {
-  const last = landed.get(element);
-  return last?.epoch === epoch ? last.html : undefined;
+export interface LandedText {
+  number: number;
+  markup: string;
+  changes: number;
 }
 
-export function textSaveLanded(element: HTMLElement, order: number, html: string): void {
-  const last = landed.get(element);
-  if (last?.epoch === epoch && last.order > order) return;
-  landed.set(element, { order, html, epoch });
+/** Per file target: the newest text save that reached the file, and how many writes to it are running. */
+export interface TextTargets {
+  landed: Map<string, LandedText>;
+  writing: Map<string, number>;
 }
 
-/** An undo, redo or reload wrote the file outside the text save pipeline: what landed before no longer shows. */
-export function forgetLandedText(): void {
-  epoch++;
+const targetOf = new WeakMap<HTMLElement, { targets: TextTargets; key: string }>();
+
+export function rememberTextTarget(element: HTMLElement, targets: TextTargets, key: string): void {
+  targetOf.set(element, { targets, key });
 }
 
-export function textSaveStarted(element: HTMLElement): () => void {
-  saving.set(element, (saving.get(element) ?? 0) + 1);
-  let done = false;
-  return () => {
-    if (done) return;
-    done = true;
-    saving.set(element, (saving.get(element) ?? 1) - 1);
-  };
+/** What the file holds for this canvas element's target, if a save reached it since the preview last changed. */
+export function landedTextFor(element: HTMLElement): string | undefined {
+  const target = targetOf.get(element);
+  const last = target?.targets.landed.get(target.key);
+  return last?.changes === previewChangesOutsideTextSaves() ? last.markup : undefined;
 }
 
-export const isTextSaving = (element: HTMLElement): boolean => (saving.get(element) ?? 0) > 0;
+export function isTextTargetWriting(element: HTMLElement): boolean {
+  const target = targetOf.get(element);
+  return (target?.targets.writing.get(target.key) ?? 0) > 0;
+}

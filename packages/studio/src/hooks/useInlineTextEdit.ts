@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import { usePreviewReadOnly } from "../components/editor/previewReadOnlyContext";
 import { settleOnDrain, trackStudioPendingEdit } from "../utils/studioPendingEdits";
-import { isTextSaving, landedText, nextTextSaveOrder, orderedSave } from "./textSaves";
+import { isTextTargetWriting, landedTextFor, nextTextSaveOrder, orderedSave } from "./textSaves";
 import {
   beginStudioManualEditGesture,
   endStudioManualEditGesture,
@@ -129,7 +129,7 @@ const settledWhileSaving = new WeakMap<HTMLElement, InlineTextEditSession>();
 
 // The frame shows this session's original once it ends unsaved; a save that landed meanwhile shows over it.
 function showLanded(open: InlineTextEditSession): void {
-  const saved = landedText(open.element);
+  const saved = landedTextFor(open.element);
   const { sealed, original } = open;
   if (!sealed || saved === undefined || saved === original) return;
   void editPreviewElement(sealed.iframe, sealed.handle, { html: saved, expect: original });
@@ -137,14 +137,14 @@ function showLanded(open: InlineTextEditSession): void {
 
 function sealedEditSettled(open: InlineTextEditSession): void {
   if (openSealedEdit.get(open.element) === open) openSealedEdit.delete(open.element);
-  if (isTextSaving(open.element)) settledWhileSaving.set(open.element, open);
+  if (isTextTargetWriting(open.element)) settledWhileSaving.set(open.element, open);
   else showLanded(open);
 }
 
 /** A text save of `element` ended: an edit that ended while it ran shows what landed, once nothing else runs. */
 export function textSaveEnded(element: HTMLElement): void {
   const open = settledWhileSaving.get(element);
-  if (!open || isTextSaving(element) || openSealedEdit.has(element)) return;
+  if (!open || isTextTargetWriting(element) || openSealedEdit.has(element)) return;
   settledWhileSaving.delete(element);
   showLanded(open);
 }
@@ -174,6 +174,17 @@ function takeDraft(open: InlineTextEditSession): string {
   return html;
 }
 
+const openOn = new WeakMap<HTMLElement, () => unknown>();
+
+/** Ends the inline edit open on `element`, keeping its draft, so its save is asked for before the caller's. */
+export function endInlineEditOn(element: HTMLElement): Promise<void> {
+  const end = openOn.get(element);
+  return Promise.resolve(end?.()).then(
+    () => {},
+    () => {},
+  );
+}
+
 function settleWhileOpen(
   session: InlineTextEditSession | null,
   openRef: { current: InlineTextEditSession | null },
@@ -182,8 +193,10 @@ function settleWhileOpen(
   if (!session) return undefined;
   const settle = () => openRef.current === session && save.current();
   const stop = settleOnDrain(settle);
+  openOn.set(session.element, settle);
   return () => {
     stop();
+    if (openOn.get(session.element) === settle) openOn.delete(session.element);
     void settle();
   };
 }
