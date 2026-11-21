@@ -1,6 +1,6 @@
 import { TimeoutError, type Browser } from "puppeteer-core";
 import { describe, expect, it, vi } from "vitest";
-import { closeTestChrome, launchTestChrome } from "./chromeTestUtils";
+import { closeTestChrome, launchTestChrome, warmTestChrome } from "./chromeTestUtils";
 
 vi.mock("../vite.browser", () => ({
   findSystemChrome: () => "/test/chrome",
@@ -26,6 +26,41 @@ describe("closeTestChrome", () => {
     const { browser, kill } = fakeBrowser(async () => undefined);
     await closeTestChrome(browser, 60_000);
     expect(kill).not.toHaveBeenCalled();
+  });
+});
+
+describe("warmTestChrome", () => {
+  it("starts Chrome once with the launcher's flags, closes it and says how long it took", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      const close = vi.fn(async () => undefined);
+      const launch = vi.fn().mockResolvedValue(fakeBrowser(close).browser);
+      await warmTestChrome(launch);
+      expect(launch).toHaveBeenCalledOnce();
+      expect(launch.mock.calls[0]?.[0]).toMatchObject({
+        executablePath: "/test/chrome",
+        headless: true,
+        args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+        timeout: 60_000,
+      });
+      expect(close).toHaveBeenCalledOnce();
+      expect(String(info.mock.calls[0]?.[0])).toMatch(/warm start took \d+ ms$/);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("reports a warm start that fails and lets the suite go on", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const launch = vi.fn().mockRejectedValue(new Error("no usable sandbox"));
+      await expect(warmTestChrome(launch)).resolves.toBeUndefined();
+      expect(String(error.mock.calls[0]?.[0])).toMatch(
+        /warm start failed after \d+ ms: no usable sandbox$/,
+      );
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });
 
