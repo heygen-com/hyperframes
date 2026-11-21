@@ -524,7 +524,7 @@ jobs:
     name: Publish
     needs: [release-source, pack]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     # Per release, not per ref: on main a later push would cancel a release run still waiting to start.
     concurrency:
       group: publish-${{ needs.release-source.outputs.version }}
@@ -923,6 +923,7 @@ jobs:
           DIST_TAG: ${{ steps.version.outputs.dist_tag }}
         run: |
           FAILED=0
+          SENT=""
 
           # 0 when npm already has this version with these contents, 2 when it has it with others, 1 when it has none.
           on_npm() {
@@ -960,7 +961,8 @@ jobs:
 
               echo "📦 Publishing ${name}@${VERSION} (try ${try} of 3)..."
               if npm publish "$tarball" --access public --tag "$DIST_TAG" --registry https://registry.npmjs.org/ --ignore-scripts; then
-                echo "✅ ${name}@${VERSION} published"
+                echo "📨 ${name}@${VERSION} sent to npm"
+                SENT="${SENT}${name} ${integrity}"$'\n'
                 return 0
               fi
               echo "::warning::${name}@${VERSION} did not publish on try ${try}"
@@ -973,6 +975,33 @@ jobs:
           while IFS=$'\t' read -r name tarball; do
             publish_tarball "$name" "$tarball"
           done < publish-order.tsv
+
+          # npm answers a publish before it serves the version (14 min for the largest tarballs in v0.9.74), so the
+          # release is done only once npm serves every package this run sent, with the contents it sent.
+          deadline=$((SECONDS + ${PUBLISH_VISIBLE_SECONDS:-1800}))
+          while [ -n "$SENT" ]; do
+            waiting=""
+            while read -r name integrity; do
+              [ -n "$name" ] || continue
+              state=0
+              on_npm "$name" "$integrity" || state=$?
+              case "$state" in
+                0) echo "✅ ${name}@${VERSION} is on npm" ;;
+                2) echo "::error::${name}@${VERSION} is on npm with other contents than this run sent."; FAILED=1 ;;
+                *) waiting="${waiting}${name} ${integrity}"$'\n' ;;
+              esac
+            done <<< "$SENT"
+            SENT="$waiting"
+            [ -n "$SENT" ] || break
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              while read -r name integrity; do
+                [ -z "$name" ] || echo "::error::${name}@${VERSION} was sent to npm, but npm does not serve it after ${PUBLISH_VISIBLE_SECONDS:-1800} s."
+              done <<< "$SENT"
+              FAILED=1
+              break
+            fi
+            sleep "${PUBLISH_POLL_SECONDS:-30}"
+          done
 
           if [ "$FAILED" -ne 0 ]; then
             echo "::error::One or more packages failed to publish"
