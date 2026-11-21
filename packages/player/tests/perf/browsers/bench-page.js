@@ -149,6 +149,7 @@ export async function bench(cfg) {
   countOps = false;
   host.pause();
   await until(() => !runtime.isPlaying(), 5_000, "pause");
+  await sleep(500); // probe: time between pause and the first seek
 
   // Seek to paint: the timeline reports the target, then every shown video has presented
   // a frame for it (requestVideoFrameCallback, or settled after two frames), then one paint.
