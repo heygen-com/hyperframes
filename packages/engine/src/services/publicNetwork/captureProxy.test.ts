@@ -112,6 +112,45 @@ describe("capture proxy", () => {
     expect(refused).toEqual([]);
   });
 
+  // fails without the fix: a name that would not resolve answered 403 and reported nothing, refused or failed.
+  it("reports a name that would not resolve as a failed request, plain and tunneled", async () => {
+    const failures: CaptureFailure[] = [];
+    const refused: string[] = [];
+    const proxy = await startCaptureProxy(null, (c) => refused.push(c), undefined, {
+      onFailed: (failure) => failures.push(failure),
+    });
+    proxies.push(proxy);
+    const plain = (path: string) =>
+      new Promise<number>((resolve, reject) => {
+        const req = request(proxy.url, { path }, (res) => {
+          res.resume();
+          res.on("end", () => resolve(res.statusCode!));
+        });
+        req.on("error", reject);
+        req.end();
+      });
+    const tunnel = (authority: string) =>
+      new Promise<string>((resolve) => {
+        const socket = connect(Number(new URL(proxy.url).port), "127.0.0.1");
+        socket.write(`CONNECT ${authority} HTTP/1.1\r\nHost: ${authority}\r\n\r\n`);
+        socket.once("data", (data) => {
+          resolve(String(data).split("\r\n")[0]!);
+          socket.destroy();
+        });
+      });
+    resolveAddress.mockRejectedValue(new Error("DNS timed out"));
+    expect(await plain("http://slow.example.com/")).toBe(403);
+    expect(await tunnel("slow.example.com:443")).toBe("HTTP/1.1 403 Forbidden");
+    expect(failures.map((failure) => failure.reason)).toEqual([
+      "upstream_failed",
+      "upstream_failed",
+    ]);
+    resolveAddress.mockRejectedValue(new NonPublicHostError("refused", "private"));
+    expect(await plain("http://inside.example.com/")).toBe(403);
+    expect(failures).toHaveLength(2);
+    expect(refused).toEqual(["private"]);
+  });
+
   it("listens on the fixed loopback port it is given", async () => {
     const free = createServer();
     await new Promise<void>((resolve) => free.listen(0, "127.0.0.1", resolve));
