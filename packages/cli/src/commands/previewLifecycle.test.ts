@@ -9,8 +9,17 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ActiveServer } from "../server/portUtils.js";
+
+const realKills = vi.hoisted(() => [] as number[]);
+// fails without the fix: a case that faked spawn but not kill sent a real taskkill /T to its made-up pid, ending
+// whatever process held that number (a test worker on a Windows runner).
+vi.mock("../utils/processTree.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/processTree.js")>()),
+  terminateProcessTree: async (pid: number) => void realKills.push(pid),
+}));
+afterEach(() => expect(realKills.splice(0), "a real process kill").toEqual([]));
 import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 import {
   PreviewPortUnavailableError,
