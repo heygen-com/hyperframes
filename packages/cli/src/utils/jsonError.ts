@@ -1,4 +1,5 @@
 import { format, stripVTControlCharacters } from "node:util";
+import { terminalLines } from "@hyperframes/core";
 import {
   CliRuntimeError,
   CliUsageError,
@@ -23,7 +24,12 @@ export function jsonFailure(code: string, message: string, hint?: string): JsonF
   return { ok: false, error: hint ? { code, message, hint } : { code, message } };
 }
 
-/** Reports a caught failure as the --json envelope or one stderr line; exit 2 if usage, else 1. */
+/**
+ * Reports a caught failure as the --json envelope or one stderr line; exit 2 if usage, else 1.
+ * The message can quote project text (a file name, an attribute value), so the stderr line shows
+ * control characters as text such as \\x1b. To reproduce: `compare` on a project whose
+ * data-composition-src holds an ESC byte and is mounted past the mount limit.
+ */
 export function failCaught(
   error: unknown,
   json: boolean,
@@ -33,7 +39,7 @@ export function failCaught(
   const message = failureMessage(error);
   const usage = error instanceof CliUsageError;
   if (json) print(jsonFailure(usage ? error.code : "runtime_error", message));
-  else console.error(line(message));
+  else console.error(line(terminalLines(message)));
   if (usage) failUsage();
   failCommand();
 }
