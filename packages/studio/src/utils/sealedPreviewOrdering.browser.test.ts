@@ -184,10 +184,10 @@ const SEEDS: Array<[string, Step[]]> = [
   ],
   // The reviewer's round-8 probes, as written.
   [
-    "a refused patch, a held live retime and a static undo, then the patch's refusal",
+    "a refused patch, a live retime whose refusal is pending and a static undo, then the patch's refusal",
     [
       { save: "patch", fate: "refused" },
-      { save: "liveRetime", fate: "frame" },
+      { save: "liveRetime", fate: "refused" },
       { save: "undoLabel", fate: "frame" },
       { answer: "patch-tweens" },
     ],
