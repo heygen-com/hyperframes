@@ -43,7 +43,7 @@ export async function buildStudioBundle(): Promise<string> {
 }
 
 /** Studio's end of the editing port keeps the frame's replies while `__hold` is set, to deliver them later. */
-export function holdReplies() {
+function holdReplies() {
   const w = window as unknown as {
     __hold: boolean;
     __held: Array<(result?: unknown) => void>;

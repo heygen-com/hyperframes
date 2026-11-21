@@ -453,19 +453,21 @@ function applySealedRestore(
     if (rerun === "applied") return "soft";
   } else if (restore?.scopes.length) {
     const sent = withRerun(restore, active, script);
-    const snapshot =
-      sent.rerun && active
-        ? {
-            scriptText: sent.rerun.script,
-            authoredHtml: active.restored,
-            previousHtml: active.previous,
-          }
-        : null;
+    const snapshot = restoredSnapshot(sent, active);
     sendSealedRestore(iframe, sent, snapshot, currentTime, reloadPreview, onShownInPlace);
     return "soft";
   }
   reloadPreview();
   return "full";
+}
+
+/** The restored file as a complete snapshot, when the restore re-runs its script. */
+function restoredSnapshot(
+  { rerun }: SealedRestore,
+  active: RestoreFiles[string] | undefined,
+): PreviewWrite | null {
+  if (!rerun || !active) return null;
+  return { scriptText: rerun.script, authoredHtml: active.restored, previousHtml: active.previous };
 }
 
 function sendSealedRestore(
