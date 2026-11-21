@@ -729,6 +729,10 @@ class Engine {
     );
   }
 
+  async untilFirstCopiesLandBeforeAnyWrite(): Promise<void> {
+    await Promise.all([...this.adopting.values()].map((adoption) => adoption.firstTry));
+  }
+
   adoptMediaInBackground(files: ListedFile[], sweptAt: number): void {
     let turn: Promise<unknown> = Promise.resolve();
     for (const file of files) {
@@ -1639,13 +1643,15 @@ class Engine {
   api(): ProjectHistory {
     return {
       projectId: this.projectId,
-      beginWindow: (who, label, options = {}) =>
-        this.beginWindow(
+      beginWindow: async (who, label, options = {}) => {
+        await this.untilFirstCopiesLandBeforeAnyWrite();
+        return this.beginWindow(
           who,
           label,
           options.idleMs ?? this.options.maxGroupMs ?? 30_000,
           options.exclusive === true,
-        ),
+        );
+      },
       unsavedBlobBytes: () => this.unsavedBlobBytes(),
       claim: async (who, label, paths, options = {}) => {
         await Promise.all(paths.map((path) => this.adopting.get(this.logPath(path))?.retryNow()));
