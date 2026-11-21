@@ -1427,6 +1427,9 @@ export function initSandboxRuntimeModular(): void {
   const isExportRenderDrivingFrames = (): boolean =>
     renderCaptureSeekStarted && window.__HF_EXPORT_RENDER_SEEK_CONFIG != null;
 
+  const isStillCaptureDrivingFrames = (): boolean =>
+    renderCaptureSeekStarted && window.__HF_REPLAY_SKIPPED_FRAMES === true;
+
   // The media and authored-composition duration floors are derived from the
   // DOM and the timeline registry — never from the playhead — so they change
   // only when the composition changes. transportTick asks for them on EVERY
@@ -2678,8 +2681,8 @@ export function initSandboxRuntimeModular(): void {
       // Gated on the pair rather than renderCaptureSeekStarted alone, because
       // the flag alone would silently disable this self-correction for a live
       // Studio scrub too, where duration hasn't been pre-resolved by a probe
-      // stage and still needs it. See isExportRenderDrivingFrames.
-      if (isExportRenderDrivingFrames()) return;
+      // stage and still needs it. See isExportRenderDrivingFrames; still-capture pages gate the same way (HF#7706).
+      if (isExportRenderDrivingFrames() || isStillCaptureDrivingFrames()) return;
       const resolution = resolveRootTimelineFromDocument();
       if (!resolution.timeline) return;
       const hasResolvedMediaFloor = isUsableTimelineDuration(
