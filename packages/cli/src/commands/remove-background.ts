@@ -16,7 +16,7 @@ import {
 import { DEFAULT_QUALITY, QUALITIES, isQuality } from "../background-removal/pipeline.js";
 import type { Example } from "./_examples.js";
 import { RemoveBackgroundError, removeBackground } from "../api/removeBackground.js";
-import { failureMessage, jsonFailure } from "../utils/jsonError.js";
+import { failureMessage, jsonFailure, printFailureLine } from "../utils/jsonError.js";
 
 export const examples: Example[] = [
   [
@@ -111,18 +111,14 @@ export default defineCommand({
       failUsage();
     }
     if (!isDevice(args.device)) {
-      console.error(
-        c.error(
-          `Invalid --device '${terminalText(String(args.device))}'. Use: ${DEVICES.join(", ")}.`,
-        ),
+      printFailureLine((show) =>
+        c.error(`Invalid --device '${show(String(args.device))}'. Use: ${DEVICES.join(", ")}.`),
       );
       failUsage();
     }
     if (!isQuality(args.quality)) {
-      console.error(
-        c.error(
-          `Invalid --quality '${terminalText(String(args.quality))}'. Use: ${QUALITIES.join(", ")}.`,
-        ),
+      printFailureLine((show) =>
+        c.error(`Invalid --quality '${show(String(args.quality))}'. Use: ${QUALITIES.join(", ")}.`),
       );
       failUsage();
     }

@@ -508,6 +508,51 @@ describe("CLI lifecycle", () => {
     }
   });
 
+  // fails without the fix: the envelope's message was the line as people see it, escapes included.
+  it.each([
+    [
+      "a refused remove-background device",
+      ["remove-background", "in.mp4", "-o", "out.webm", "--device", "g\u0007pu"],
+      "Invalid --device 'g\u0007pu'.",
+      2,
+    ],
+    [
+      "a refused remove-background quality",
+      ["remove-background", "in.mp4", "-o", "out.webm", "--quality", "be\u0007st"],
+      "Invalid --quality 'be\u0007st'.",
+      2,
+    ],
+  ])("answers a --json run for %s with the value as given", async (_name, argv, given, exit) => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let answered = "";
+    const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+      answered += String(chunk);
+      return true;
+    }) as never);
+    try {
+      mockTelemetry();
+      process.argv = ["node", "cli.ts", ...argv, "--json"];
+      await import("./cli.js");
+
+      const said = errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+      expect(said).toContain(given.replace("\u0007", "\\x07"));
+      expect(said).not.toContain("\u0007");
+      const body = JSON.parse(answered.trim().split("\n").at(-1) ?? "") as {
+        ok: boolean;
+        error: { message: string };
+      };
+      expect(body.ok).toBe(false);
+      expect(process.exitCode).toBe(exit);
+      expect(body.error.message).toContain(given);
+      expect(body.error.message).not.toContain("\\x07");
+    } finally {
+      outSpy.mockRestore();
+      errorSpy.mockRestore();
+      exitSpy.mockRestore();
+    }
+  });
+
   it("exits 1 and scores a failure when the pipe closes before the run delivered", async () => {
     const trackCommandResult = vi.fn();
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
