@@ -107,6 +107,7 @@ import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js"
 import {
   assertCompositionFileSize,
   CompositionExpansionBudget,
+  ENTRY_PAGE,
   REMOTE_SCRIPTS,
   REMOTE_STYLESHEETS,
 } from "@hyperframes/core/compiler";
@@ -644,8 +645,17 @@ class AssetDownloads {
   private readonly reserved = new Set<string>();
   private running = 0;
   private readonly queued: (() => void)[] = [];
+  private readonly ended = new AbortController();
+  readonly signal: AbortSignal;
 
-  constructor(readonly signal?: AbortSignal) {}
+  constructor(cancel?: AbortSignal) {
+    this.signal = cancel ? AbortSignal.any([cancel, this.ended.signal]) : this.ended.signal;
+  }
+
+  /** Stops every download still running or queued: the compile that owns them has returned. */
+  end(): void {
+    this.ended.abort(new Error("The compile that started this download has ended"));
+  }
 
   /** Throws before any of `urls` downloads when they would take the compile past the cap. */
   reserve(urls: Iterable<string>): void {
@@ -866,6 +876,8 @@ async function compileHtmlFile(
 
   const unresolvedCompositions = unresolved.filter((el) => el.tagName === "div");
 
+  // Every remote source of this file counts against the cap before any of them downloads.
+  run?.assets.reserve(mediaUnresolved.map((el) => el.src!).filter(isHttpUrl));
   // Phase 1: Resolve missing durations (parallel ffprobe)
   const resolvedResults = await Promise.all(
     mediaUnresolved.map((el) =>
@@ -897,26 +909,26 @@ async function compileHtmlFile(
   // Explicit video slots may outlive their source and hold the final frame.
   const preResolved = extractResolvedMedia(compiledHtml);
   const hiddenVideoIds = collectHiddenVideoIds(compiledHtml);
+  const clampable = preResolved.filter((el) => !!el.src && !el.loop && !hiddenVideoIds.has(el.id));
+  run?.assets.reserve(clampable.map((el) => el.src!).filter(isHttpUrl));
   const clampResults = await Promise.all(
-    preResolved
-      .filter((el) => !!el.src && !el.loop && !hiddenVideoIds.has(el.id))
-      .map(async (el) => {
-        const { duration: maxDuration } = await resolveMediaDuration(
-          el.src!,
-          el.mediaStart,
-          el.playbackRate,
-          projectDir,
-          baseDir,
-          downloadDir,
-          el.tagName,
-          el.id,
-          log,
-          undefined,
-          run,
-          assetRoot,
-        );
-        return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
-      }),
+    clampable.map(async (el) => {
+      const { duration: maxDuration } = await resolveMediaDuration(
+        el.src!,
+        el.mediaStart,
+        el.playbackRate,
+        projectDir,
+        baseDir,
+        downloadDir,
+        el.tagName,
+        el.id,
+        log,
+        undefined,
+        run,
+        assetRoot,
+      );
+      return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
+    }),
   );
   const clampList: ResolvedDuration[] = [];
   for (const r of clampResults) {
@@ -1128,15 +1140,32 @@ function promoteCssImportsToLinkTags(html: string): string {
 }
 
 class ProducerHostIdentityMap extends Map<Element, BundledHostCompositionIdentity> {
-  readonly #document: Document;
   readonly #lateInstanceByCompositionId = new Map<string, number>();
+  /** How many elements carry each composition id: the page once, then each mount's copy once. */
+  readonly #idCounts = new Map<string, number>();
+  /** Hosts whose copied content has not been counted yet; the inliner fills a host after asking for it. */
+  #uncounted: ParentNode[];
 
   constructor(document: Document, initialHosts: Element[]) {
     super(assignBundledRuntimeCompositionIds(initialHosts));
-    this.#document = document;
+    this.#uncounted = [document];
+  }
+
+  #countUncopied(): void {
+    for (const root of this.#uncounted.splice(0)) {
+      for (const element of Array.from(root.querySelectorAll("[data-composition-id]"))) {
+        this.#adjust(element.getAttribute("data-composition-id"), 1);
+      }
+    }
+  }
+
+  #adjust(id: string | null, by: number): void {
+    if (id) this.#idCounts.set(id, (this.#idCounts.get(id) ?? 0) + by);
   }
 
   override get(host: Element): BundledHostCompositionIdentity | undefined {
+    this.#countUncopied();
+    this.#uncounted.push(host);
     const existing = super.get(host);
     if (existing) return existing;
 
@@ -1155,21 +1184,20 @@ class ProducerHostIdentityMap extends Map<Element, BundledHostCompositionIdentit
       return identity;
     }
 
+    const ownId = host.getAttribute("data-composition-id");
+    const heldByOthers = (id: string) => (this.#idCounts.get(id) ?? 0) - (id === ownId ? 1 : 0) > 0;
     let instanceIndex = this.#lateInstanceByCompositionId.get(authoredCompositionId) || 0;
     let runtimeCompositionId: string;
     do {
       instanceIndex += 1;
       runtimeCompositionId = `${authoredCompositionId}__hf${instanceIndex}`;
-    } while (
-      Array.from(this.#document.querySelectorAll("[data-composition-id]")).some(
-        (element) =>
-          element !== host && element.getAttribute("data-composition-id") === runtimeCompositionId,
-      )
-    );
+    } while (heldByOthers(runtimeCompositionId));
     this.#lateInstanceByCompositionId.set(authoredCompositionId, instanceIndex);
 
     host.setAttribute("data-hf-original-composition-id", authoredCompositionId);
     host.setAttribute("data-composition-id", runtimeCompositionId);
+    this.#adjust(ownId, -1);
+    this.#adjust(runtimeCompositionId, 1);
     const identity = { authoredCompositionId, runtimeCompositionId };
     this.set(host, identity);
     return identity;
@@ -1264,6 +1292,7 @@ function inlineSubCompositions(
   budget: CompositionExpansionBudget,
 ): { html: string; variablesByComp: Record<string, Record<string, unknown>> } {
   const { document } = parseHTML(html);
+  budget.chargeElements(ENTRY_PAGE, document.querySelectorAll("*").length);
   const head = document.querySelector("head");
   const body = document.querySelector("body");
   const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
@@ -2563,12 +2592,27 @@ const entryFileName = (projectDir: string, htmlPath: string) =>
  * Compile an HTML composition project into a single self-contained HTML string
  * with all media metadata resolved.
  */
-// fallow-ignore-next-line complexity
 export async function compileForRender(
   projectDir: string,
   htmlPath: string,
   downloadDir: string,
   options: CompileForRenderOptions = {},
+): Promise<CompiledComposition> {
+  const assets = new AssetDownloads(options.abortSignal);
+  try {
+    return await compileWithAssets(projectDir, htmlPath, downloadDir, options, assets);
+  } finally {
+    assets.end();
+  }
+}
+
+// fallow-ignore-next-line complexity
+async function compileWithAssets(
+  projectDir: string,
+  htmlPath: string,
+  downloadDir: string,
+  options: CompileForRenderOptions,
+  assets: AssetDownloads,
 ): Promise<CompiledComposition> {
   const assetRoot = options.allowOutsideProjectAssets ? undefined : projectDir;
   const outsideFiles: OutsideFilePolicy = { includeScripts: options.includeOutsideScripts };
@@ -2607,7 +2651,7 @@ export async function compileForRender(
   // start.
   assertSubCompositionsUsable(rawHtml, projectDir, assetRoot, outsideFiles);
 
-  const run: CompileRun = { probes: new Map(), assets: new AssetDownloads(options.abortSignal) };
+  const run: CompileRun = { probes: new Map(), assets };
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
     rawHtml,
     projectDir,

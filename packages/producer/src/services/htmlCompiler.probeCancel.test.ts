@@ -65,8 +65,9 @@ it.each(cases)(
     });
     compile.catch(() => {});
     await vi.waitFor(() => expect(probes.calls.some((call) => call.name === probe)).toBe(true));
-    expect(probes.calls.every((call) => call.signal === cancel.signal)).toBe(true);
+    expect(probes.calls.every((call) => call.signal && !call.signal.aborted)).toBe(true);
     cancel.abort(new Error("render cancelled"));
+    expect(probes.calls.every((call) => call.signal?.aborted)).toBe(true);
 
     await expect(compile).rejects.toThrow("render cancelled");
   },

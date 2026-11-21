@@ -101,6 +101,7 @@ export {
 export {
   assertCompositionFileSize,
   CompositionExpansionBudget,
+  ENTRY_PAGE,
   isCompositionTooLargeError,
   MAX_COMPOSITION_HTML_BYTES,
   MAX_EXPANDED_COMPOSITION_BYTES,
