@@ -314,8 +314,8 @@ function patchInstantly(
   const ticket = takePreviewTicket(iframe, {
     scriptText: write.scriptText,
     snapshot,
-    rerun: false,
-    beyondScript: false,
+    attributes: false,
+    timing: false,
   });
   patchSealedPreview(iframe, patches, !options.deferPreviewSync, () => {
     if (ticketNeedsRecovery(ticket)) show(newestPreviewWrite(ticket));

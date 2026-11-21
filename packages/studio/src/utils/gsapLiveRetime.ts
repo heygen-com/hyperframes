@@ -17,6 +17,7 @@ import { PREVIEW_REJECTED, previewAnswer, previewFrameOpaque } from "../player/l
 import { usePlayerStore } from "../player/store/playerStore";
 import { savedTiming } from "./authoredSource";
 import {
+  SAVED_STATE_DEADLINE_MS,
   newestPreviewWrite,
   takePreviewTicket,
   ticketNeedsRecovery,
@@ -182,18 +183,19 @@ async function moveSealedLiveTweens(
   const ticket = takePreviewTicket(iframe, {
     scriptText,
     snapshot,
-    rerun: false,
-    beyondScript: true,
+    attributes: false,
+    timing: true,
   });
-  const answer = await previewAnswer(iframe, "live-retime", {
+  const params = {
     key: planKey,
     after,
     tweens,
     time: currentTime,
     timing: savedTiming(files.after),
-  });
+  };
+  const answer = await previewAnswer(iframe, "live-retime", params, SAVED_STATE_DEADLINE_MS);
   const result = sealedRetimeResult(answer === PREVIEW_REJECTED ? null : answer);
-  if (result === "moved" || !ticketNeedsRecovery(ticket, answer !== null)) return true;
+  if (result === "moved" || !ticketNeedsRecovery(ticket)) return true;
   return recoverRetime(iframe, ticket, result === "failed", files.after, reloadPreview);
 }
 

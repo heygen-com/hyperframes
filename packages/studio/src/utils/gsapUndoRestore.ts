@@ -13,9 +13,9 @@ import {
   timelineKeys,
 } from "./gsapSoftReload";
 import {
+  SAVED_STATE_DEADLINE_MS,
   confirmPreviewRerun,
   takePreviewTicket,
-  ticketCovered,
   ticketLoadLive,
   type PreviewWrite,
 } from "./sealedPreviewLedger";
@@ -482,16 +482,17 @@ function sendSealedRestore(
   const ticket = takePreviewTicket(iframe, {
     scriptText,
     snapshot,
-    rerun: false,
-    beyondScript: true,
+    attributes: true,
+    timing: false,
   });
-  void previewRequest(iframe, "restore-attributes", { ...restore, time: currentTime }).then(
+  const params = { ...restore, time: currentTime };
+  void previewRequest(iframe, "restore-attributes", params, SAVED_STATE_DEADLINE_MS).then(
     (reply) => {
       if (!ticketLoadLive(ticket)) return;
       // Refused: its attributes are not on screen, and a newer re-run does not set them.
       if (!reply?.applied) return reloadPreview();
       if (reply.reran === true) confirmPreviewRerun(ticket);
-      if (!ticketCovered(ticket)) onShownInPlace?.();
+      onShownInPlace?.();
     },
   );
 }

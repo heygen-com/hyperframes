@@ -17,7 +17,12 @@ import { authoredStyles, findAuthoredElement, savedTiming } from "./authoredSour
 import { fileDocs, standaloneSets } from "./softReloadTargets";
 import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
 import { PREVIEW_REJECTED, previewAnswer, previewFrameOpaque } from "../player/lib/previewChannel";
-import { takePreviewTicket, ticketCovered, ticketNeedsRecovery } from "./sealedPreviewLedger";
+import {
+  SAVED_STATE_DEADLINE_MS,
+  confirmPreviewRerun,
+  takePreviewTicket,
+  ticketNeedsRecovery,
+} from "./sealedPreviewLedger";
 
 export {
   findGsapScriptElements,
@@ -215,20 +220,20 @@ function softReloadSealed(
   const ticket = takePreviewTicket(iframe, {
     scriptText,
     snapshot: { scriptText, authoredHtml, previousHtml, nestedFiles, timingEdit },
-    rerun: true,
-    beyondScript: restore.length > 0 || timingEdit === true,
+    attributes: restore.length > 0,
+    timing: timingEdit === true,
   });
-  void previewAnswer(iframe, "soft-reload", {
-    ...rerun,
-    time: currentTimeOverride,
-    restore,
-  }).then((answer) => {
+  const savedState = ticket.sent.attributes || ticket.sent.timing;
+  const deadline = savedState ? SAVED_STATE_DEADLINE_MS : undefined;
+  const params = { ...rerun, time: currentTimeOverride, restore };
+  void previewAnswer(iframe, "soft-reload", params, deadline).then((answer) => {
+    // No answer, a refusal and a rejection all leave the change unproven on screen.
     const result =
       answer === PREVIEW_REJECTED ? "cannot-soft-reload" : sealedSoftReloadResult(answer);
-    // No answer is not a refusal: the frame takes requests in order, and wrote this one's attributes at its start.
-    if (!ticketNeedsRecovery(ticket, answer !== null && result === "cannot-soft-reload")) return;
+    if (result === "applied") confirmPreviewRerun(ticket);
+    if (!ticketNeedsRecovery(ticket)) return;
     if (result === "cannot-soft-reload") onAsyncFailure?.();
-    else if (result !== "superseded" && !ticketCovered(ticket)) onShownInPlace?.();
+    else if (result !== "superseded") onShownInPlace?.();
   });
   return "applied";
 }
