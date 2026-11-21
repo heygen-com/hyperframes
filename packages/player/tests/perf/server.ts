@@ -13,8 +13,8 @@ import { fileURLToPath } from "node:url";
  *
  * URL routes:
  *   /                                  → host.html (default fixture: gsap-heavy)
- *   /host.html?fixture=<name>          → embed page hosting <hyperframes-player>, sealed
- *   /host.html?...&trusted=1           → the same with sandbox-origin="same-origin", for benches that read the film
+ *   /host.html?fixture=<name>          → embed page hosting <hyperframes-player>
+ *   /host.html?...&sealed=1            → the same with sandbox-origin="opaque"
  *   /host.html?...&cors=0              → the film from /fixtures-no-cors/, a host that sends no CORS headers
  *   /player/hyperframes-player.global.js
  *   /vendor/gsap.min.js
@@ -85,7 +85,7 @@ function buildHostHtml(
   fixtureName: string,
   width: number,
   height: number,
-  trusted: boolean,
+  sealed: boolean,
   cors = true,
 ): string {
   const playerSrc = "/player/hyperframes-player.global.js";
@@ -102,7 +102,7 @@ function buildHostHtml(
   </head>
   <body>
     <hyperframes-player
-      id="player"${trusted ? '\n      sandbox-origin="same-origin"' : ""}
+      id="player"${sealed ? '\n      sandbox-origin="opaque"' : ""}
       src="${fixtureSrc}"
       width="${width}"
       height="${height}"
@@ -182,7 +182,7 @@ export function startServer(options: ServeOptions = {}): RunningServer {
           fixture,
           width,
           height,
-          params.get("trusted") === "1",
+          params.get("sealed") === "1",
           params.get("cors") !== "0",
         );
         return applyCacheHeaders(

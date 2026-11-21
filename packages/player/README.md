@@ -128,7 +128,7 @@ Removing `audio-locked` only unhides the controls; it does **not** auto-unmute. 
 
 Mobile browsers block `audio.play()` inside iframes when the user gesture happened in the parent frame (the [User Activation spec](https://html.spec.whatwg.org/multipage/interaction.html#tracking-user-activation) does not propagate activation across frame boundaries via `postMessage`).
 
-The player handles this automatically for a trusted player (`sandbox-origin="same-origin"`, see [Advanced: iframe access](#advanced-iframe-access)), whose iframe it can read:
+The player handles this automatically for same-origin iframes (the default — `sandbox` includes `allow-same-origin`):
 
 1. When the composition is ready, the player extracts all timed media (`audio[data-start]`, `video[data-start]`) from the iframe DOM and creates parent-frame copies.
 2. The iframe originals are disabled (`src` and `data-start` removed) so the runtime doesn't try to play them.
@@ -196,15 +196,18 @@ indefinitely.
 
 ## Advanced: iframe access
 
-The composition runs inside a sandboxed `<iframe>` in the player's Shadow DOM. By default the frame is sealed: it runs scripts but has an opaque origin, so the composition cannot read your page, its cookies or its storage. The player still controls it through its message bridge, so playback, seeking, events and runtime data work the same.
+The composition runs inside a sandboxed `<iframe>` in the player's Shadow DOM. The default sandbox includes `allow-same-origin` for editor, recorder, and custom-timeline integrations that inspect the composition DOM. That is a trusted-content mode, not an isolation boundary: same-origin composition code can reach the embedding page.
 
-An editor, recorder or custom-timeline integration that needs the composition's DOM can opt in with `sandbox-origin="same-origin"`, only for compositions you trust: the frame then shares your page's origin, and its code can reach your page. Only that exact value grants it; any other value, `opaque` included, stays sealed, so a typo cannot weaken isolation. Changing between the two reloads the active composition, because browser sandbox changes take effect only on navigation. Set the attribute before `src` or `srcdoc`: the policy in force when the source is set is the one that loads.
+For read-only or message-bridge integrations, set `sandbox-origin="opaque"`. Any non-null value is
+treated as opaque so a typo cannot weaken isolation. Changing the attribute reloads the active
+composition because browser sandbox changes take effect only on navigation. Opaque mode removes
+`allow-same-origin` while retaining scripts, and prevents the composition from reading unrelated
+parent DOM. Direct `contentDocument`, `__player`, and `__timelines` access is intentionally
+unavailable in that mode.
 
-A sealed composition loads the videos and audio served from its own host with CORS, so colour grading, canvas reads and audio effects can use them. Serve them with `Access-Control-Allow-Origin` (for example `*`). From a host that sends no CORS headers, each one plays anyway: it is loaded again once without CORS, those effects are off for it, and the console names it.
+An opaque composition loads the videos and audio served from its own host with CORS, so colour grading, canvas reads and audio effects can use them. Serve them with `Access-Control-Allow-Origin` (for example `*`). From a host that sends no CORS headers, each one plays anyway: it is loaded again once without CORS, those effects are off for it, and the console names it.
 
-Earlier versions shared the page's origin by default, and added the runtime to a composition that had none. To keep that behaviour, add `sandbox-origin="same-origin"`, or have the composition load the runtime script so it plays sealed.
-
-With `sandbox-origin="same-origin"`, use the `iframeElement` getter for direct access:
+If you are building a trusted editor integration that needs direct access, use the `iframeElement` getter:
 
 ```js
 const player = document.querySelector("hyperframes-player");
@@ -345,7 +348,7 @@ The `width` and `height` attributes define the composition's native resolution f
 
 ## How it works
 
-The player renders compositions in a sandboxed `<iframe>` inside a Shadow DOM. It communicates with the HyperFrames runtime via `postMessage`. A sealed player cannot add anything to the composition, so a composition must load the runtime script itself. If a composition has GSAP timelines (`window.__timelines`) but no runtime, only a trusted player (`sandbox-origin="same-origin"`) adds the runtime from the CDN; a sealed one fires `error` after 8 seconds with a message naming both fixes.
+The player renders compositions in a sandboxed `<iframe>` inside a Shadow DOM. It communicates with the HyperFrames runtime via `postMessage`. If the composition has GSAP timelines (`window.__timelines`) but no runtime, the player auto-injects it from CDN. An opaque player cannot add anything to the composition, so there the composition must load the runtime script itself; without it the player fires `error` after 8 seconds with a message naming both fixes.
 
 ## Distribution
 

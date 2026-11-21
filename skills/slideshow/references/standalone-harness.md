@@ -67,7 +67,6 @@ For public or user-facing generated projects, make this wrapper the root `index.
     >
       <hyperframes-player
         interactive
-        sandbox-origin="same-origin"
         style="position: absolute; inset: 0"
         src="composition/index.html"
       ></hyperframes-player>

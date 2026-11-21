@@ -132,7 +132,7 @@ describe("composition probe readiness", () => {
     });
     vi.advanceTimersByTime(8000);
     expect(onError).toHaveBeenCalledExactlyOnceWith(SEALED_TIMELINE_NOT_FOUND);
-    expect(SEALED_TIMELINE_NOT_FOUND).toContain('sandbox-origin="same-origin"');
+    expect(SEALED_TIMELINE_NOT_FOUND).toContain("without sandbox-origin");
     expect(SEALED_TIMELINE_NOT_FOUND).toContain("runtime script");
   });
   it("does not invent duration for an unresolved document", () => {

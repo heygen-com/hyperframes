@@ -269,7 +269,7 @@ async function runFilm(base: string, browser: Browser, origin: string, fixture: 
   try {
     await wd(base, "POST", `${s}/window/rect`, { x: 0, y: 0, width: 1024, height: 768 });
     await wd(base, "POST", `${s}/url`, {
-      url: `${origin}/host.html?fixture=${fixture}&width=960&height=540&trusted=1`,
+      url: `${origin}/host.html?fixture=${fixture}&width=960&height=540`,
     });
     await wd(base, "POST", `${s}/execute/sync`, {
       script: `window.__hfBench = ${bench.toString()};

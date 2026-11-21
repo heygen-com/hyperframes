@@ -14,56 +14,41 @@ try {
   await page.waitForFunction(() => (window.__sandboxProbeResults?.length ?? 0) >= 1);
   assert.equal(
     await page.evaluate(() => window.__sandboxProbeResults?.at(-1)),
-    false,
-    "a default player must seal the composition away from the embedding page",
+    true,
+    "the default trusted sandbox should allow same-origin parent access",
   );
 
   await page.evaluate(() => {
-    const player = document.querySelector("hyperframes-player");
-    player?.setAttribute("sandbox-origin", "same-origin");
+    document.querySelector("hyperframes-player")?.setAttribute("sandbox-origin", "opaque");
   });
   await page.waitForFunction(() => (window.__sandboxProbeResults?.length ?? 0) >= 2);
   assert.equal(
     await page.evaluate(() => window.__sandboxProbeResults?.at(-1)),
-    true,
-    "sandbox-origin=same-origin must reload into the page's origin",
+    false,
+    "switching a live player to opaque must reload into an isolated origin",
   );
 
   await page.evaluate(() => {
-    const player = document.querySelector("hyperframes-player");
-    player?.setAttribute("sandbox-origin", "Same-Origin");
+    document.querySelector("hyperframes-player")?.setAttribute("sandbox-origin", "opaqu");
   });
   await page.waitForFunction(() => (window.__sandboxProbeResults?.length ?? 0) >= 3);
   assert.equal(
     await page.evaluate(() => window.__sandboxProbeResults?.at(-1)),
     false,
-    "any other sandbox-origin value must reload sealed",
+    "an unrecognized non-null policy must remain isolated",
   );
 
   await page.evaluate(() => {
-    const player = document.querySelector("hyperframes-player");
-    player?.setAttribute("sandbox-origin", "same-origin");
+    document.querySelector("hyperframes-player")?.removeAttribute("sandbox-origin");
   });
   await page.waitForFunction(() => (window.__sandboxProbeResults?.length ?? 0) >= 4);
   assert.equal(
     await page.evaluate(() => window.__sandboxProbeResults?.at(-1)),
     true,
-    "returning to same-origin must reload into the page's origin",
+    "removing the policy must reload into the documented trusted mode",
   );
-
-  await page.evaluate(() => {
-    const player = document.querySelector("hyperframes-player");
-    player?.removeAttribute("sandbox-origin");
-  });
-  await page.waitForFunction(() => (window.__sandboxProbeResults?.length ?? 0) >= 5);
-  assert.equal(
-    await page.evaluate(() => window.__sandboxProbeResults?.at(-1)),
-    false,
-    "removing sandbox-origin must reload sealed",
-  );
-
   const direct = await browser.newPage();
-  await direct.goto(`${server.origin}/host.html?fixture=direct-timeline`, {
+  await direct.goto(`${server.origin}/host.html?fixture=direct-timeline&sealed=1`, {
     waitUntil: "domcontentloaded",
   });
   await direct.waitForFunction(() => window.__playerError !== undefined, { timeout: 15_000 });
@@ -73,28 +58,21 @@ try {
     /include the runtime script/,
     "a sealed timeout must name the runtime script",
   );
-  assert.match(
-    sealedError,
-    /sandbox-origin="same-origin"/,
-    "a sealed timeout must name the trusted opt-in",
-  );
+  assert.match(sealedError, /without sandbox-origin/, "a sealed timeout must name the trusted way");
 
   const trusted = await browser.newPage();
   await trusted.goto(`${server.origin}/host.html?fixture=direct-timeline`, {
     waitUntil: "domcontentloaded",
   });
-  await trusted.evaluate(() => {
-    document.querySelector("hyperframes-player")?.setAttribute("sandbox-origin", "same-origin");
-  });
   await trusted.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
   assert.equal(
     await trusted.evaluate(() => window.__playerDuration),
     5,
-    "a trusted player must still add the runtime to a composition that has none",
+    "a default player must still add the runtime to a composition that has none",
   );
 
   const bundled = await browser.newPage();
-  await bundled.goto(`${server.origin}/host.html?fixture=direct-timeline-runtime`, {
+  await bundled.goto(`${server.origin}/host.html?fixture=direct-timeline-runtime&sealed=1`, {
     waitUntil: "domcontentloaded",
   });
   await bundled.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });

@@ -15,9 +15,12 @@ async function play(cors: boolean) {
   page.on("console", (message) => {
     if (message.type() === "warn") warnings.push(message.text());
   });
-  await page.goto(`${server.origin}/host.html?fixture=10-video-grid${cors ? "" : "&cors=0"}`, {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto(
+    `${server.origin}/host.html?fixture=10-video-grid&sealed=1${cors ? "" : "&cors=0"}`,
+    {
+      waitUntil: "domcontentloaded",
+    },
+  );
   await page.waitForFunction(() => window.__playerReady || window.__playerError, {
     timeout: 60_000,
   });
