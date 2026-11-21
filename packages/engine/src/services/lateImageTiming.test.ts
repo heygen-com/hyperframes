@@ -21,6 +21,7 @@ describe("describeLateImage", () => {
       extension: "svg",
       timing: {
         requestedAtMs: 1_500,
+        totalMs: 40_012,
         queuedMs: 40_000,
         connectMs: 0,
         firstByteMs: 10,
@@ -40,6 +41,14 @@ describe("describeLateImage", () => {
     const record = describeLateImage(src, PAGE, QUEUED);
     expect(record).toMatchObject({ from: "other-origin", pathDepth: 2, extension: "png" });
     expect(JSON.stringify(record)).not.toMatch(/customer-brand|acme|secret|token|team/);
+  });
+
+  // fails without the fix: the zeroed fields made a slow server read as a slow download.
+  it("reports only the total for another origin that hides its request timing", () => {
+    // What Chrome records for another origin without Timing-Allow-Origin.
+    const hidden = { ...QUEUED, connectStart: 0, connectEnd: 0, requestStart: 0, responseStart: 0 };
+    const record = describeLateImage("https://cdn.example/a/b.png", PAGE, hidden);
+    expect(record.timing).toEqual({ requestedAtMs: 1_500, totalMs: 40_012, split: "not-exposed" });
   });
 
   it("says so when the page kept no timing entry for the image", () => {

@@ -89,6 +89,7 @@ describe("waitForShownLateImages", () => {
             extension: "png",
             timing: {
               requestedAtMs: 0,
+              totalMs: 30_006,
               queuedMs: 30_000,
               connectMs: 0,
               firstByteMs: 5,
