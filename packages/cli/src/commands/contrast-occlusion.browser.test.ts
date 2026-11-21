@@ -28,9 +28,9 @@ function installStack(ids: string[]): void {
   });
 }
 
-function prepare(): unknown {
+function prepare(occludedSelectors: string[] = []): unknown {
   window.eval(script);
-  return window.eval("window.__contrastAuditPrepare()");
+  return window.eval(`window.__contrastAuditPrepare(${JSON.stringify(occludedSelectors)})`);
 }
 
 beforeEach(() => {
@@ -230,5 +230,27 @@ describe("contrast audit beneath composition boxes", () => {
     element("headline").style.clipPath = "inset(0)";
     element("overlay").style.backgroundColor = "white";
     expect(prepare()).toEqual([]);
+  });
+
+  it("leaves text the layout audit flagged as occluded out of contrast candidates", () => {
+    expect(prepare(["#headline"])).toEqual([]);
+  });
+
+  it("still audits the text when the flagged selector names another element", () => {
+    expect(prepare(["#overlay"])).toContainEqual(
+      expect.objectContaining({ selector: "#headline" }),
+    );
+  });
+
+  it("ignores a flagged selector that matches nothing or is not a valid selector", () => {
+    expect(prepare(["#missing"])).toContainEqual(
+      expect.objectContaining({ selector: "#headline" }),
+    );
+    // prepare() hides the text's paint; restore it before the second call or
+    // the element reads as transparent and is skipped for that reason instead.
+    window.eval("window.__contrastAuditRestoreIfPending?.()");
+    expect(prepare(["#headline["])).toContainEqual(
+      expect.objectContaining({ selector: "#headline" }),
+    );
   });
 });

@@ -1,5 +1,7 @@
 // Browser-side WCAG contrast audit, injected as a raw string so esbuild can't mangle it.
-// __contrastAuditPrepare() hides each text element's own paint (layout-neutral) and returns candidates;
+// __contrastAuditPrepare(occludedSelectors?) hides each text element's own paint (layout-neutral) and returns candidates;
+// elements the layout audit already flagged as text_occluded (by selector) are left out —
+// sampling inside their box would read the opaque cover hiding them, not anything a viewer sees.
 // the caller takes one screenshot, full frame or clipped to the candidates (collectContrast in checkBrowser.ts);
 // __contrastAuditFinish(png, time, candidates, region) restores paint first, then samples inside each box.
 
@@ -10,7 +12,7 @@
 // The "which rect to sample" decision is mirrored and unit-tested in contrast-sample.ts.
 
 /* eslint-disable */
-window.__contrastAuditPrepare = function () {
+window.__contrastAuditPrepare = function (occludedSelectors) {
   // SVG text (<text>, <tspan>, <textPath>) is painted via the `fill`
   // property, not `color` — the two are independent CSS properties in SVG.
   // A page can set `fill` (inline style, `fill` attribute, or a CSS rule)
@@ -317,6 +319,27 @@ window.__contrastAuditPrepare = function () {
     return !paintsAnyProbePoint(el, rect, true);
   }
 
+  // The layout audit's text_occluded finding names the element by selector.
+  // A match means the text is already reported as hidden, so a contrast
+  // ratio measured against its cover would be a duplicate, not a finding.
+  // An invalid or unmatchable selector never skips anything.
+  function isLayoutOccluded(el) {
+    if (!occludedSelectors || !occludedSelectors.length) return false;
+    if (typeof document.querySelector !== "function") return false;
+    for (var i = 0; i < occludedSelectors.length; i++) {
+      var selector = occludedSelectors[i];
+      if (typeof selector !== "string" || !selector) continue;
+      var flagged = null;
+      try {
+        flagged = document.querySelector(selector);
+      } catch (err) {
+        continue;
+      }
+      if (flagged === el) return true;
+    }
+    return false;
+  }
+
   var out = [];
   var restores = [];
   // Registered BEFORE the walk starts (not after it finishes) and pushed to
@@ -390,6 +413,10 @@ window.__contrastAuditPrepare = function () {
     // to sit behind another scene. Skip contrast only while every probe point
     // is actually covered; the same copy is audited normally when visible.
     if (isIntentionallyOccluded(el, rect)) continue;
+    // The layout audit already reported this text as hidden beneath an opaque
+    // element (text_occluded). The contrast audit leaves it out: sampling
+    // inside its box would read the cover, not anything a viewer sees.
+    if (isLayoutOccluded(el)) continue;
 
     // SVG text paints `fill`, not `color`. A gradient fill is judged by its weakest stop; a pattern
     // or a missing reference has no colour to judge, so the text is skipped.

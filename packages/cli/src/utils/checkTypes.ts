@@ -329,6 +329,7 @@ export interface CheckAuditDriver {
     time: number,
     snapshotAnnotations?: CheckAnnotationBox[],
     skipInMotion?: boolean,
+    occludedSelectors?: string[],
   ): Promise<ContrastCapture>;
   /** Craft section: text, stillness and paint at the current seek. A driver without it skips the section. */
   collectCraftFrame?(time: number): Promise<CraftFrame>;
