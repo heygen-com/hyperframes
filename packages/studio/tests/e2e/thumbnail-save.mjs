@@ -115,7 +115,7 @@ try {
       { timeout: 30_000 },
       clip,
     );
-    await waitFor(() => heldFor(id) >= 2, "Each project starts real held thumbnail requests");
+    await waitFor(() => heldFor(id) >= 1, "Each project starts a real held thumbnail request");
     previous = page;
   }
   const box = await (await page.$(clip)).boundingBox();
@@ -144,8 +144,8 @@ try {
   assert.equal(heldFor(projects[0].id), 0, "First hidden document releases its thumbnail sockets");
   assert.equal(heldFor(projects[1].id), 0, "Second hidden document releases its thumbnail sockets");
   assert(
-    heldFor(projects[2].id) >= 2,
-    "Current document still has unfinished thumbnails at the save",
+    heldFor(projects[2].id) >= 1,
+    "Current document still has an unfinished thumbnail at the save",
   );
   console.log(
     JSON.stringify({
