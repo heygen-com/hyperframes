@@ -713,6 +713,7 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
       const kind = kinds.get(idOf(seen.currentSrc))!;
       const readable =
         unsealed.pixels === "readable" &&
+        !foreign(kind) &&
         SENDS_CORS.has(kind) &&
         (sequence.keepsCors?.includes(el) || !seen.failedWithCors.includes(seen.currentSrc));
       if (!readable || seen.pixels === "readable") continue;
@@ -729,8 +730,8 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
   const final = sealed.at(-1)!;
   sequences.forEach((sequence, index) => {
     for (const [el, kinds] of history(sequence).everListed) {
-      const loadsAskingEachSource = final.get(`${index}-${el}`)!.loads;
-      for (const id of kinds.keys()) budget.set(id, (budget.get(id) ?? 0) + loadsAskingEachSource);
+      const tryAndRangePerLoad = 2 * final.get(`${index}-${el}`)!.loads;
+      for (const id of kinds.keys()) budget.set(id, (budget.get(id) ?? 0) + tryAndRangePerLoad);
     }
   });
   return { problems: all.flat(), gaps, budget };
