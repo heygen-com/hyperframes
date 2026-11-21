@@ -19,6 +19,7 @@ import { previewClipParents, previewDocumentCopy, previewFrameOpaque } from "../
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import {
   buildTimelineElementsFromClips,
+  fallbackTimelineFromDom,
   syncManifestTimeline,
   clipTreeParentMap,
   collectSubCompositionDomChildren,
@@ -199,7 +200,6 @@ export function useTimelineSyncCallbacks({
         // A document the walk cannot read leaves the maps empty.
       }
 
-      const els = buildTimelineElementsFromClips(filtered, iframeDoc);
       // Clamp non-finite or absurdly large durations — the runtime can emit
       // Infinity when it detects a loop-inflated GSAP timeline without an
       // explicit data-duration on the root composition. Floor the manifest total
@@ -212,6 +212,10 @@ export function useTimelineSyncCallbacks({
         manifestDurationSeconds: data.durationInFrames / fps,
         authoredRootDurationSeconds: readTimelineDurationFromDocument(iframeDoc),
       });
+      const els =
+        data.clips.length === 0 && iframeDoc
+          ? fallbackTimelineFromDom(iframeDoc, iframeRef.current, newDuration)
+          : buildTimelineElementsFromClips(filtered, iframeDoc);
       syncManifestTimeline(
         els,
         newDuration,
@@ -219,7 +223,7 @@ export function useTimelineSyncCallbacks({
         syncTimelineElements,
       );
     },
-    [syncTimelineElements],
+    [iframeRef, syncTimelineElements],
   );
 
   const timelineReads = useRef(0);

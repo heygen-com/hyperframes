@@ -4,6 +4,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import type { PlaybackAdapter } from "../lib/playbackTypes";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 import { sealedPreviewFrame } from "../lib/sealedPreviewFrame.test-helpers";
 
@@ -13,7 +14,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function processWith(iframe: HTMLIFrameElement) {
+function processWith(iframe: HTMLIFrameElement, adapter: PlaybackAdapter | null = null) {
   const sync = vi.fn<(els: TimelineElement[], duration?: number) => void>();
   let callbacks: ReturnType<typeof useTimelineSyncCallbacks> | undefined;
   function Harness() {
@@ -22,7 +23,7 @@ function processWith(iframe: HTMLIFrameElement) {
       probeIntervalRef: { current: undefined },
       pendingSeekRef: { current: null },
       isRefreshingRef: { current: false },
-      getAdapter: () => null,
+      getAdapter: () => adapter,
       syncTimelineElements: sync,
       setDuration: () => {},
       setCurrentTime: () => {},
@@ -30,12 +31,18 @@ function processWith(iframe: HTMLIFrameElement) {
       setIsPlaying: () => {},
       attachIframeShortcutListeners: () => {},
       applyPreviewAudioState: () => {},
+      onAdapterReady: (_iframe, _context, commit) => commit(),
     });
     return null;
   }
   const host = document.createElement("div");
   act(() => createRoot(host).render(createElement(Harness)));
-  return { sync, process: callbacks!.processTimelineMessage };
+  const { processTimelineMessage, initializeAdapter } = callbacks!;
+  return {
+    sync,
+    process: processTimelineMessage,
+    initialize: () => act(() => initializeAdapter()),
+  };
 }
 
 const boxClip = {
@@ -103,4 +110,41 @@ it("fills a sealed scene's children and the runtime's clip parents", async () =>
 
   await vi.waitFor(() => expect(usePlayerStore.getState().clipParentMap.get("cue")).toBe("scene"));
   expect(usePlayerStore.getState().domClipChildren.map((child) => child.id)).toContain("title");
+});
+
+const rootOnly = `<section id="scene5-root" data-composition-id="scene5" data-duration="5">
+  <h1>Scene 6</h1>
+</section>`;
+
+function rootRow(sync: ReturnType<typeof processWith>["sync"]) {
+  return sync.mock.calls.at(-1)?.[0].map((row) => `${row.id}@${row.start}+${row.duration}`);
+}
+
+// fails without the fix: an empty clip list from a sealed frame committed no rows, so the composition had no clip.
+it("shows a sealed composition the runtime lists no clips for as its own row", async () => {
+  document.body.innerHTML = rootOnly;
+  const { sync, process } = processWith(sealedPreviewFrame().iframe);
+
+  process({ clips: [], durationInFrames: 0 });
+
+  await vi.waitFor(() => expect(rootRow(sync)).toEqual(["scene5@0+5"]));
+});
+
+// fails without the fix: reading the sealed frame's manifest threw, so loading it ended with no clip.
+it("gives a sealed composition its row when the preview loads", async () => {
+  document.body.innerHTML = rootOnly;
+  usePlayerStore.getState().setElements([]);
+  const adapter = {
+    pause() {},
+    seek() {},
+    play() {},
+    getTime: () => 0,
+    getDuration: () => 5,
+    isPlaying: () => false,
+  };
+  const { sync, initialize } = processWith(sealedPreviewFrame().iframe, adapter);
+
+  initialize();
+
+  await vi.waitFor(() => expect(rootRow(sync)).toEqual(["scene5@0+5"]));
 });
