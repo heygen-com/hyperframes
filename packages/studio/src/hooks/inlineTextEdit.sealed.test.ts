@@ -19,6 +19,7 @@ import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { previewReloadBegun, requestPreviewReload } from "../player/previewReloading";
 import { useInlineTextEdit, type InlineTextEditCommit } from "./useInlineTextEdit";
 import { hasStudioPendingEdits } from "../utils/studioPendingEdits";
+import { patchElementInHtml } from "@hyperframes/studio-server/source-mutation";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -43,6 +44,7 @@ afterEach(() => {
 
 const PATH = "index.html";
 const ORIGINAL = "Hello <b>world</b>";
+const SPANS = '<span data-hf-id="hf-one">One</span> <span data-hf-id="hf-two">Two</span>';
 const nextTask = () => new Promise((resolve) => setTimeout(resolve));
 
 const OPTIONS = { activeCompositionPath: PATH, isMasterView: false, skipSourceProbe: true };
@@ -55,8 +57,9 @@ async function select(iframe: HTMLIFrameElement, id: string) {
 async function sealedTitle(
   ports: MessagePort[] = [],
   wrap: (port: MessagePort) => MessagePort = (port) => port,
+  markup = ORIGINAL,
 ) {
-  document.body.innerHTML = `<h1 id="title">${ORIGINAL}</h1><p id="other">x</p>`;
+  document.body.innerHTML = `<h1 id="title">${markup}</h1><p id="other">x</p>`;
   const title = document.getElementById("title")!;
   const { iframe, reload } = sealedFrame({
     wrapHandedOverPort: (port) => (ports.push(port), wrap(port)),
@@ -251,6 +254,21 @@ function fileWrites() {
   return { saved, persist };
 }
 
+/** The composition's file, written through the server's own patcher; `fails` refuses a write by its value. */
+function sourceFile(fails: (value: string) => boolean = () => false, markup = ORIGINAL) {
+  let file = `<h1 id="title">${markup}</h1><p id="other">x</p>`;
+  const persist = vi.fn<PersistDomEditOperations>(async (selection, operations, options) => {
+    if (options?.shouldSave?.() === false) return;
+    if (fails(String(operations[0]!.value))) throw new Error("disk full");
+    file = patchElementInHtml(file, { id: selection.id }, operations).html;
+  });
+  const text = (id: string) => {
+    const element = new DOMParser().parseFromString(file, "text/html").getElementById(id)!;
+    return element.innerHTML.replace(/ data-hf-[a-z-]+="[^"]*"/g, "");
+  };
+  return { persist, text };
+}
+
 /** A target lookup the test holds; `reached` once the commit is waiting on it. */
 function held() {
   let release!: () => void;
@@ -295,29 +313,33 @@ function wiredEditor(
 }
 
 /** A sealed heading whose frame answers `end` only when the test lets it. */
-async function sealedTitleHoldingEnds() {
+async function sealedTitleHoldingEnds(markup = ORIGINAL) {
   let holding: MessageEvent[] | null = null;
   const ends = new Set<unknown>();
   let deliver: (event: MessageEvent) => void = () => {};
-  const title = (await sealedTitle([], (port) => {
-    const send = port.postMessage.bind(port);
-    port.postMessage = (data: unknown) => {
-      const message = data as { id?: unknown; kind?: string; params?: { action?: string } };
-      if (message.kind === "text-edit" && message.params?.action === "end") ends.add(message.id);
-      send(data);
-    };
-    const accessor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(port), "onmessage")!;
-    Object.defineProperty(port, "onmessage", {
-      set(handler: (event: MessageEvent) => void) {
-        deliver = handler;
-        accessor.set!.call(port, (event: MessageEvent) => {
-          const held = holding && ends.has((event.data as { id?: unknown })?.id);
-          return held ? holding!.push(event) : handler(event);
-        });
-      },
-    });
-    return port;
-  })) as Awaited<ReturnType<typeof sealedTitle>>;
+  const title = (await sealedTitle(
+    [],
+    (port) => {
+      const send = port.postMessage.bind(port);
+      port.postMessage = (data: unknown) => {
+        const message = data as { id?: unknown; kind?: string; params?: { action?: string } };
+        if (message.kind === "text-edit" && message.params?.action === "end") ends.add(message.id);
+        send(data);
+      };
+      const accessor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(port), "onmessage")!;
+      Object.defineProperty(port, "onmessage", {
+        set(handler: (event: MessageEvent) => void) {
+          deliver = handler;
+          accessor.set!.call(port, (event: MessageEvent) => {
+            const held = holding && ends.has((event.data as { id?: unknown })?.id);
+            return held ? holding!.push(event) : handler(event);
+          });
+        },
+      });
+      return port;
+    },
+    markup,
+  )) as Awaited<ReturnType<typeof sealedTitle>>;
   const holdEndReplies = () => {
     holding = [];
     return () => {
@@ -954,4 +976,69 @@ it("leaves Enter to playback on text too long for the frame to edit", async () =
   const { iframe } = sealedFrame();
   expect(canEditSealedTextInline(await select(iframe, "long"))).toBe(false);
   expect(canEditSealedTextInline(await select(iframe, "short"))).toBe(true);
+});
+
+it("keeps the inline text its handoff saved when a field added from the panel follows it", async () => {
+  const { title, iframe, selection } = await sealedTitle([], undefined, SPANS);
+  const { persist, text } = sourceFile(undefined, SPANS);
+  const { controls, commits } = wiredEditor(iframe, selection, persist);
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.querySelector("span")!.textContent = "Uno";
+  await act(() => commits().handleDomAddTextField(selection.textFields.at(-1)!.key));
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+  expect(text("title")).toMatch(/^<span>Uno<\/span> ?<span>Two<\/span><span>/);
+});
+
+it("saves the draft and the first panel save when the draft's end reply is late and a second panel save fails", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const { iframe, holdEndReplies } = await sealedTitleHoldingEnds();
+  const plain = await select(iframe, "other");
+  const shown = document.getElementById("other")!;
+  const { persist, text } = sourceFile((value) => value === "Second");
+  const { controls, commits } = wiredEditor(iframe, plain, persist);
+  act(() => void controls().start(plain.element));
+  await vi.waitFor(() => expect(shown.getAttribute("contenteditable")).toBe("true"));
+  shown.innerHTML = "Draft";
+  const release = holdEndReplies();
+  const saves: Array<Promise<unknown>> = [];
+  act(() => void saves.push(commits().handleDomTextCommitForSelection(plain, "First")));
+  act(() => void saves.push(commits().handleDomTextCommitForSelection(plain, "Second")));
+  release();
+  await act(() => Promise.allSettled(saves));
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+  expect(persist.mock.calls.map(([, operations]) => String(operations[0]!.value))).toEqual([
+    "Draft",
+    "First",
+    "Second",
+  ]);
+  expect(text("other")).toBe("First");
+});
+
+it("redraws the last saved text when a newer draft is cancelled before that save's write completes", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  const { controls } = inlineEditor();
+  let finish!: () => void;
+  const persist = vi.fn<PersistDomEditOperations>(
+    () => new Promise<void>((resolve) => (finish = resolve)),
+  );
+  const first = held();
+  const saving = textCommits(iframe, selection, persist, [first.lookup])(
+    selection.element,
+    "First",
+  );
+  await first.reached;
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.hasAttribute("contenteditable")).toBe(true));
+  first.release();
+  await vi.waitFor(() => expect(persist).toHaveBeenCalledOnce());
+  await settled(iframe, selection);
+  expect(title.innerHTML).toBe(ORIGINAL);
+  act(() => controls().cancel());
+  await settled(iframe, selection);
+  finish();
+  await saving;
+  await settled(iframe, selection);
+  await vi.waitFor(() => expect(title.innerHTML).toBe("First"));
+  act(unmounts.pop()!);
 });
