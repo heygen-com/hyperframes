@@ -12,11 +12,7 @@ import type {
 type ResizeUpdates = Pick<TimelineElement, "start" | "duration" | "playbackStart">;
 
 interface UseTimelineTrimRippleOptions {
-  handleTimelineElementResize: (
-    element: TimelineElement,
-    updates: ResizeUpdates,
-    options?: { coalesceKey?: string },
-  ) => Promise<void>;
+  handleTimelineElementResize: (element: TimelineElement, updates: ResizeUpdates) => Promise<void>;
   handleTimelineGroupResize: (
     changes: TimelineGroupResizeChange[],
     options?: TimelineGroupCommitOptions,
@@ -47,41 +43,47 @@ export function useTimelineTrimRipple({
     async (
       trims: TimelineGroupResizeChange[],
       label: string,
-      persistTrim: (coalesceKey: string) => Promise<void>,
-      given?: { coalesceKey?: string },
+      persistTrimAlone: () => Promise<void>,
+      given?: TimelineGroupCommitOptions,
     ): Promise<void> => {
-      const step = timingGestureStep("timeline-resize", given);
       const { elements, rippleEditEnabled } = usePlayerStore.getState();
       const ripple = resolveMainTrackTrimRipple(elements, trims, rippleEditEnabled);
-      if (!ripple) return persistTrim(step.coalesceKey);
+      if (!ripple) return persistTrimAlone();
+      const { coalesceKey } = timingGestureStep("timeline-resize", given);
       const undoRipple = () =>
         setStarts(ripple.map(({ element }) => ({ element, start: element.start })));
       setStarts(ripple);
+      // Both join the edit queue in this call, so no later edit can land between the trim and
+      // its shift and be overwritten by it.
+      const trimmed = handleTimelineGroupResize(trims, { ...given, coalesceKey });
+      const shifted = handleTimelineGroupMove(ripple, {
+        beforeTiming: trimmed,
+        coalesceKey,
+        label,
+        suppressFailureToast: true,
+      });
       try {
-        await persistTrim(step.coalesceKey);
+        await trimmed;
       } catch (error) {
         undoRipple();
+        void shifted.catch(() => undefined);
         throw error;
       }
       try {
-        await handleTimelineGroupMove(ripple, {
-          coalesceKey: step.coalesceKey,
-          label,
-          suppressFailureToast: true,
-        });
+        await shifted;
       } catch (error) {
         undoRipple();
         console.error("[Timeline] ripple-edit failed to persist after trim", error);
         showToast("Clip trimmed, but the gap could not be closed.", "error");
       }
     },
-    [handleTimelineGroupMove, showToast],
+    [handleTimelineGroupResize, handleTimelineGroupMove, showToast],
   );
 
   const handleTrimElement = useCallback(
     (element: TimelineElement, updates: ResizeUpdates) =>
-      persistWithRipple([{ element, ...updates }], "Resize timeline clip", (coalesceKey) =>
-        handleTimelineElementResize(element, updates, { coalesceKey }),
+      persistWithRipple([{ element, ...updates }], "Resize timeline clip", () =>
+        handleTimelineElementResize(element, updates),
       ),
     [persistWithRipple, handleTimelineElementResize],
   );
@@ -91,7 +93,7 @@ export function useTimelineTrimRipple({
       persistWithRipple(
         changes,
         "Resize timeline clips",
-        (coalesceKey) => handleTimelineGroupResize(changes, { ...options, coalesceKey }),
+        () => handleTimelineGroupResize(changes, options),
         options,
       ),
     [persistWithRipple, handleTimelineGroupResize],
