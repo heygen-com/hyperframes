@@ -22,7 +22,7 @@ const wirePatch = ({ selector, change }: { selector: string; change: RuntimeTwee
 
 const sealedGroupPatched = new WeakMap<HTMLIFrameElement, Promise<boolean>>();
 
-/** A sealed preview patches its own tweens; a refusal, or no answer, runs `fallback` once after the group's last write. */
+/** A sealed preview patches its own tweens; a refusal or no answer runs `fallback` after the group's last write. */
 export function patchSealedPreview(
   iframe: HTMLIFrameElement,
   patches: ReadonlyArray<{ selector: string; change: RuntimeTweenChange }>,

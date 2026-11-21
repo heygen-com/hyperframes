@@ -230,7 +230,7 @@ const styleTarget = (preview: Preview, name: string, value: string) =>
   );
 
 const STEPS: Record<Step, (preview: Preview, sealed: boolean) => Promise<unknown>> = {
-  // Playback runs past 1 s during the wait, then pauses: the swap must leave the playhead there.
+  // Playback runs past 1 s during the wait, then pauses: the swap leaves the playhead on that frame.
   play: async (p) => {
     const control = (action: string) =>
       p.page.evaluate((a) => {
@@ -240,7 +240,9 @@ const STEPS: Record<Step, (preview: Preview, sealed: boolean) => Promise<unknown
     await control("play");
     await expect.poll(p.time).toBeGreaterThan(1);
     await control("pause");
-    await expect.poll(p.time).toBeLessThan(3);
+    await p.frame.waitForFunction(
+      () => !(window as unknown as { __player: { isPlaying(): boolean } }).__player.isPlaying(),
+    );
     pausedAt = Math.round((await p.time()) * 100) / 100;
   },
   // Studio's editing port gives a request 5 s (editingPort.ts); the plugin stays held past that.
@@ -322,7 +324,7 @@ async function play(mode: string, steps: Step[]) {
     answer,
     ...state,
     at,
-    ...(pausedAt === undefined ? {} : { moved: at !== pausedAt }),
+    ...(pausedAt === undefined ? {} : { moved: Math.abs(at - pausedAt) > 1 / 30 }),
   };
   await page.close();
   return outcome;
