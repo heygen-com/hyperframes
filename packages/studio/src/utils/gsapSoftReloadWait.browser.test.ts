@@ -20,7 +20,7 @@ beforeAll(async () => {
   browser = await launchTestChrome();
   const out = await build({
     stdin: {
-      contents: `export * from "./gsapSoftReload"; export { previewRequest } from "../player/lib/previewChannel";`,
+      contents: `export * from "./gsapSoftReload"; export { previewRequest } from "../player/lib/previewChannel"; export { patchRuntimeTweenInPlace } from "../hooks/gsapRuntimePatch";`,
       resolveDir: dirname(fileURLToPath(import.meta.url)),
     },
     bundle: true,
@@ -145,6 +145,7 @@ async function openPreview(mode: string) {
 
 type Studio = typeof import("./gsapSoftReload") & {
   previewRequest: typeof import("../player/lib/previewChannel").previewRequest;
+  patchRuntimeTweenInPlace: typeof import("../hooks/gsapRuntimePatch").patchRuntimeTweenInPlace;
 };
 type Preview = Awaited<ReturnType<typeof openPreview>>;
 
@@ -188,7 +189,19 @@ async function settled({ page, frame }: Preview, sealed: boolean) {
     });
 }
 
-type Step = "scrub" | "same" | "other" | "attr" | "edit" | "move" | "ok" | "fail";
+type Step =
+  | "scrub"
+  | "play"
+  | "late"
+  | "same"
+  | "other"
+  | "two"
+  | "patch"
+  | "attr"
+  | "edit"
+  | "move"
+  | "ok"
+  | "fail";
 
 /** Restores #c's left as Studio does: through the frame when sealed, by writing the same-origin DOM otherwise. */
 function restoreLeftOfC(preview: Preview, sealed: boolean, left: number) {
@@ -216,6 +229,29 @@ const styleTarget = (preview: Preview, name: string, value: string) =>
   );
 
 const STEPS: Record<Step, (preview: Preview, sealed: boolean) => Promise<unknown>> = {
+  play: (p) =>
+    p.page.evaluate(() =>
+      document
+        .querySelector("iframe")!
+        .contentWindow!.postMessage({ source: "hf-parent", type: "control", action: "play" }, "*"),
+    ),
+  // Studio's editing port gives a request 5 s (editingPort.ts); the plugin stays held past that.
+  late: () => new Promise((done) => setTimeout(done, 5_500)),
+  two: (p) => void rerun(p.page, timeline("other", "newer", 200, true), 3),
+  patch: async (p, sealed) => {
+    const patched = await p.page.evaluate(async (isSealed) => {
+      const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+      const iframe = document.querySelector("iframe")!;
+      const change = { kind: "set" as const, props: { x: 300 } };
+      if (!isSealed) return studio.patchRuntimeTweenInPlace(iframe, "#target", change);
+      const reply = await studio.previewRequest(iframe, "patch-tweens", {
+        patches: [{ selector: "#target", change }],
+        seek: true,
+      });
+      return reply?.patched === true;
+    }, sealed);
+    expect(patched).toBe(false);
+  },
   scrub: async (p) => {
     for (const t of [3, 4]) await p.seek(t);
   },
@@ -260,7 +296,8 @@ async function play(mode: string, steps: Step[]) {
       x: Math.round(new DOMMatrix(getComputedStyle(target).transform).m41),
     };
   });
-  const outcome = { answer, ...state, at: Math.round((await time()) * 100) / 100 };
+  const at = Math.round((await time()) * 100) / 100;
+  const outcome = { answer, ...state, at, rewound: at < 3.9 };
   await page.close();
   return outcome;
 }
@@ -268,7 +305,7 @@ async function play(mode: string, steps: Step[]) {
 // fails without the fix (core as at 5822316a): scrub,ok ends at 2; same,ok and same,fail lose the newer edit
 // or reload; other,fail reloads with main's timeline killed; attr,ok puts the older left back.
 const ROWS: [string, Step[], Record<string, unknown>][] = [
-  ["ok", ["ok"], { answer: "kept", ran: { main: "older", other: "file" }, at: 2, x: 30 }],
+  ["ok", ["ok"], { answer: "kept", ran: { main: "older", other: "file" }, at: 4, x: 60 }],
   ["scrub,ok", ["scrub", "ok"], { answer: "kept", ran: { main: "older" }, at: 4, x: 60 }],
   ["ok,scrub", ["ok", "scrub"], { answer: "kept", ran: { main: "older" }, at: 4, x: 60 }],
   ["same,ok", ["same", "ok"], { answer: "kept", ran: { main: "newer" }, x: 200 }],
@@ -284,10 +321,14 @@ const ROWS: [string, Step[], Record<string, unknown>][] = [
   ["ok,other", ["ok", "other"], { answer: "kept", ran: { main: "older", other: "newer" } }],
   ["attr,ok", ["attr", "ok"], { answer: "kept", left: "2px" }],
   ["ok,attr", ["ok", "attr"], { answer: "kept", left: "2px" }],
-  ["edit,ok", ["edit", "ok"], { answer: "kept", color: "red", x: 30 }],
-  ["ok,edit", ["ok", "edit"], { answer: "kept", color: "red", x: 30 }],
-  ["move,ok", ["move", "ok"], { answer: "kept", x: 30 }],
+  ["edit,ok", ["edit", "ok"], { answer: "kept", color: "red", x: 60 }],
+  ["ok,edit", ["ok", "edit"], { answer: "kept", color: "red", x: 60 }],
+  ["move,ok", ["move", "ok"], { answer: "kept", x: 60 }],
   ["ok,move", ["ok", "move"], { answer: "kept", x: 300 }],
+  ["play,ok", ["play", "ok"], { answer: "kept", rewound: false }],
+  ["same,late,ok", ["same", "late", "ok"], { answer: "kept", ran: { main: "newer" } }],
+  ["two,ok", ["two", "ok"], { answer: "kept", ran: { main: "older", other: "newer" }, at: 4 }],
+  ["patch,ok", ["patch", "ok"], { answer: "kept", ran: { main: "older" }, x: 60 }],
 ];
 
 describe.each(MODES)("a re-run waiting for the MotionPath plugin, %s", (mode) => {

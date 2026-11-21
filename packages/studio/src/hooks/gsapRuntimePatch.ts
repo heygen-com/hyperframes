@@ -10,6 +10,7 @@ import {
   type PatchTarget,
   type RuntimeTweenChange,
 } from "@hyperframes/core/runtime/patch-tween";
+import { swapWaiting, type SoftReloadWindow } from "@hyperframes/core/runtime/soft-reload";
 
 export type { RuntimeTweenChange, SetPatchProps } from "@hyperframes/core/runtime/patch-tween";
 
@@ -42,6 +43,7 @@ export function patchRuntimeTweenInPlace(
 ): boolean {
   if (!iframe) return false;
   try {
+    if (iframe.contentWindow && swapWaiting(iframe.contentWindow as SoftReloadWindow)) return false;
     const target = reachablePreview(iframe);
     if (change.kind !== "global-set")
       return patchTween(target, selector, change, compositionId, deferSeek);

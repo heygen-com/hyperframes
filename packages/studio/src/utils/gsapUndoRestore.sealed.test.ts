@@ -184,6 +184,33 @@ describe("undo on a sealed preview", () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
+  // fails without the fix: a request that timed out reloaded over a newer run already shown.
+  it.each([
+    ["no newer run was sent for its timeline", false, 1],
+    ["a newer run on its timeline was sent", true, 0],
+  ])("reloads a timed-out re-run only when %s", async (_name, newer, reloads) => {
+    const late: Array<(reply: unknown) => void> = [];
+    channel.request.mockImplementation(() => new Promise((resolve) => late.push(resolve)));
+    const iframe = document.createElement("iframe");
+    const reload = vi.fn();
+    const run = (x: number, onAsyncFailure?: () => void) =>
+      applySoftReload(
+        iframe,
+        `window.__timelines["main"] = gsap.timeline().to("#t", { x: ${x} });`,
+        {
+          currentTimeOverride: 1,
+          authoredHtml: page(box(0)),
+          previousHtml: page(box(0)),
+          onAsyncFailure,
+        },
+      );
+    run(1, reload);
+    if (newer) run(2);
+    late[0]!(null);
+    await settled();
+    expect(reload).toHaveBeenCalledTimes(reloads);
+  });
+
   it("reloads when the frame cannot re-run the changed script", async () => {
     channel.request.mockResolvedValue({ result: "cannot-soft-reload" });
     const { reload, iframe } = undo(box(90) + script("{ x: 1 }"), box(0) + script("{ x: 2 }"));

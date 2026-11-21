@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { patchTweens } from "./patchTween";
 import { parseRestoreAttributes } from "./restoreAttributes";
 import {
-  countPlayerSeek,
   parseRestoreAttributesRerun,
   parseSoftReload,
   restoreAttributesOrRerun,
@@ -54,7 +54,7 @@ afterEach(() => {
     "__hfStudioSeekReapplyStarted",
     "MotionPathPlugin",
     "__hfMotionPathWaiters",
-    "__hfPlayerSeeks",
+    "__hfSwapsWaiting",
     "__hfTimelineGenerations",
   ])
     delete win[key];
@@ -143,7 +143,17 @@ describe("a re-run that waits for the MotionPath plugin", () => {
       ],
     },
   ];
-  type Step = "scrub" | "same" | "other" | "attr" | "edit" | "ok" | "fail";
+  type Step =
+    | "scrub"
+    | "play"
+    | "same"
+    | "other"
+    | "two"
+    | "patch"
+    | "attr"
+    | "edit"
+    | "ok"
+    | "fail";
   type Outcome = {
     answer: string;
     main?: string;
@@ -167,7 +177,14 @@ describe("a re-run that waits for the MotionPath plugin", () => {
     win.__hfForceTimelineRebind = () => {};
     const seeks: number[] = [];
     let now = 4;
-    win.__player = { seek: (t: number) => seeks.push((now = t)), getTime: () => now };
+    let playing = false;
+    win.__player = {
+      seek: (t: number) => seeks.push((now = t)),
+      getTime: () => now,
+      isPlaying: () => playing,
+      play: () => {},
+      playFor: (t: number) => ((playing = true), (now = t)),
+    };
     const append = document.body.appendChild.bind(document.body);
     document.body.appendChild = <T extends Node>(node: T): T => {
       for (const [, key] of (node.textContent ?? "").matchAll(/__timelines\["(\w+)"\]/g))
@@ -183,11 +200,17 @@ describe("a re-run that waits for the MotionPath plugin", () => {
   const newer = async (key: string) =>
     expect(await softReload(params({ script: run(key, "newer") }))).toEqual({ result: "applied" });
   const STEPS: Record<Step, () => unknown> = {
+    play: () => (win.__player as { playFor(t: number): void }).playFor(5),
+    two: () => void softReload(params({ script: run("other", "newer", true), time: 3 })),
+    patch: () =>
+      expect(
+        patchTweens({
+          patches: [{ selector: "#a", change: { kind: "set", props: { x: 300 } } }],
+          seek: true,
+        }),
+      ).toEqual({ patched: false }),
     scrub: () => {
-      for (const t of [3, 4]) {
-        countPlayerSeek(win);
-        (win.__player as { seek(t: number): void }).seek(t);
-      }
+      for (const t of [3, 4]) (win.__player as { seek(t: number): void }).seek(t);
     },
     same: () => newer("main"),
     other: () => newer("other"),
@@ -233,9 +256,10 @@ describe("a re-run that waits for the MotionPath plugin", () => {
     expect(await second).toEqual({ result: "applied" });
   });
 
-  // fails without the fix: rows "scrub,ok", "same,ok", "same,fail", "other,ok", "other,fail" and "attr,ok".
+  // fails without the fix: rows "ok", "same,ok", "same,fail", "other,ok", "other,fail", "attr,ok", "play,ok",
+  // "two,ok" and "patch,ok".
   it.each<[string, Step[], Partial<Outcome>]>([
-    ["ok", ["ok"], { answer: "applied", main: "older", left: "1px", at: 2 }],
+    ["ok", ["ok"], { answer: "applied", main: "older", left: "1px", at: 4 }],
     ["scrub,ok", ["scrub", "ok"], { answer: "applied", main: "older", at: 4 }],
     ["ok,scrub", ["ok", "scrub"], { answer: "applied", main: "older", at: 4 }],
     ["same,ok", ["same", "ok"], { answer: "superseded", main: "newer", left: "1px" }],
@@ -253,6 +277,9 @@ describe("a re-run that waits for the MotionPath plugin", () => {
     ["ok,attr", ["ok", "attr"], { answer: "applied", main: "older", left: "2px" }],
     ["edit,ok", ["edit", "ok"], { answer: "applied", main: "older", color: "red" }],
     ["ok,edit", ["ok", "edit"], { answer: "applied", main: "older", color: "red" }],
+    ["play,ok", ["play", "ok"], { answer: "applied", main: "older", at: 5 }],
+    ["two,ok", ["two", "ok"], { answer: "applied", main: "older", other: "newer", at: 4 }],
+    ["patch,ok", ["patch", "ok"], { answer: "applied", main: "older" }],
   ])("%s", async (_name, steps, expected) => {
     expect(await play(steps)).toMatchObject(expected);
   });

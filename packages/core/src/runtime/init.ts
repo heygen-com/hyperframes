@@ -41,7 +41,6 @@ import { copiesReady } from "./previewCopies";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { createScrubAudio } from "./scrubAudio";
 import { installEditingAgent } from "./editingAgent";
-import { countPlayerSeek } from "./editing/softReload";
 import { instantTolerance } from "../clipFacts";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
 import { isWebKit, mediaElementTime } from "./mediaClock";
@@ -5304,7 +5303,6 @@ export function initSandboxRuntimeModular(): void {
       else if (wasBuffering) postState(true);
     },
     seek: (timeSeconds, options) => {
-      countPlayerSeek();
       const quantized = quantizeTimeToFrame(
         Math.max(0, Number(timeSeconds) || 0),
         state.canonicalFps,

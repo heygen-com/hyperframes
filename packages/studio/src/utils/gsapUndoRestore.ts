@@ -10,6 +10,7 @@ import {
   readNestedFiles,
   repaintDroppedTweenStyle,
   sealedRerun,
+  sendSealedRun,
   timelineKeys,
 } from "./gsapSoftReload";
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
@@ -460,8 +461,10 @@ function sendSealedRestore(
   reloadPreview: () => void,
   onShownInPlace?: () => void,
 ): void {
+  const newest = restore.rerun ? sendSealedRun(iframe, restore.rerun.script) : () => true;
   void previewRequest(iframe, "restore-attributes", { ...restore, time: currentTime }).then(
     (reply) => {
+      if (reply === null && !newest()) return;
       if (!reply?.applied) reloadPreview();
       else onShownInPlace?.();
     },

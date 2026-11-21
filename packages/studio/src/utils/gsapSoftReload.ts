@@ -175,6 +175,16 @@ function sealedSoftReloadResult(reply: unknown): SoftReloadResult {
   return result as SoftReloadResult;
 }
 
+const sentRuns = new WeakMap<HTMLIFrameElement, Map<string, number>>();
+
+export function sendSealedRun(iframe: HTMLIFrameElement, script: string): () => boolean {
+  const sent = sentRuns.get(iframe) ?? new Map<string, number>();
+  sentRuns.set(iframe, sent);
+  const numbered = timelineKeys(script).map((key) => [key, (sent.get(key) ?? 0) + 1] as const);
+  for (const [key, n] of numbered) sent.set(key, n);
+  return () => numbered.every(([key, n]) => sent.get(key) === n);
+}
+
 /** What a sealed frame needs to re-run `scriptText`, from the saved files alone. */
 export function sealedRerun(
   scriptText: string,
@@ -210,11 +220,13 @@ function softReloadSealed(
   if (authoredHtml === undefined || previousHtml === undefined || currentTimeOverride === undefined)
     return "cannot-soft-reload";
   const rerun = sealedRerun(scriptText, { authoredHtml, previousHtml, timingEdit });
+  const newest = sendSealedRun(iframe, scriptText);
   void previewRequest(iframe, "soft-reload", {
     ...rerun,
     time: currentTimeOverride,
     restore,
   }).then((reply) => {
+    if (reply === null && !newest()) return;
     const result = sealedSoftReloadResult(reply);
     if (result === "cannot-soft-reload") onAsyncFailure?.();
     else if (result !== "superseded") onShownInPlace?.();

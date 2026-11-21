@@ -35,7 +35,7 @@ export type SoftReloadWindow = Window & {
   __hfStudioManualEditsApply?: () => void;
   // Everyone waiting on the one MotionPathPlugin script being fetched; absent when none is.
   __hfMotionPathWaiters?: [ready: () => void, failed: () => void][];
-  __hfPlayerSeeks?: number;
+  __hfSwapsWaiting?: number;
   __hfTimelineGenerations?: Map<string, number>;
   gsap?: {
     version?: string;
@@ -451,8 +451,8 @@ function readAuthoredStyles(
 
 // Re-runs the script in place of the live one registering the same `__timelines` keys, tearing down
 // only those timelines. A promise only while it waits for the MotionPath plugin.
-export function countPlayerSeek(win: SoftReloadWindow = window as SoftReloadWindow): void {
-  win.__hfPlayerSeeks = (win.__hfPlayerSeeks ?? 0) + 1;
+export function swapWaiting(win: SoftReloadWindow = window as SoftReloadWindow): boolean {
+  return (win.__hfSwapsWaiting ?? 0) > 0;
 }
 
 /** Loads and registers MotionPathPlugin ahead of the first re-run that needs it, as Studio does same-origin. */
@@ -481,12 +481,7 @@ function startRun(win: SoftReloadWindow, keys: string[]) {
   const generations = (win.__hfTimelineGenerations ??= new Map());
   const numbered = keys.map((key) => [key, (generations.get(key) ?? 0) + 1] as const);
   for (const [key, n] of numbered) generations.set(key, n);
-  const seeks = win.__hfPlayerSeeks ?? 0;
-  return {
-    current: () => numbered.every(([key, n]) => generations.get(key) === n),
-    timeAfter: (sent: number) =>
-      (win.__hfPlayerSeeks ?? 0) !== seeks ? (win.__player?.getTime?.() ?? sent) : sent,
-  };
+  return () => numbered.every(([key, n]) => generations.get(key) === n);
 }
 
 export function softReloadFrame(
@@ -514,7 +509,7 @@ export function softReloadFrame(
     })
   )
     return "cannot-soft-reload";
-  const run = startRun(win, targetKeys);
+  const current = startRun(win, targetKeys);
   const swap = (time: number): boolean => {
     let builtDom = false;
     const ran = runSuppressed(win, () => {
@@ -533,17 +528,23 @@ export function softReloadFrame(
     if (!swap(currentTime)) return "cannot-soft-reload";
     return verifyTimelinesPopulated(win, targetKeys) ? "applied" : "verify-failed";
   }
-  return new Promise<SoftReloadResult>((settle) =>
+  win.__hfSwapsWaiting = (win.__hfSwapsWaiting ?? 0) + 1;
+  return new Promise<SoftReloadResult>((settle) => {
+    const end = (result: SoftReloadResult) => {
+      win.__hfSwapsWaiting = (win.__hfSwapsWaiting ?? 1) - 1;
+      settle(result);
+    };
     whenMotionPathLoaded(
       win,
       doc,
       () => {
-        if (!run.current()) return settle("superseded");
-        settle(swap(run.timeAfter(currentTime)) ? "applied" : "cannot-soft-reload");
+        if (!current()) return end("superseded");
+        const time = win.__player?.getTime?.() ?? currentTime;
+        end(swap(time) ? "applied" : "cannot-soft-reload");
       },
-      () => settle(run.current() ? "cannot-soft-reload" : "superseded"),
-    ),
-  );
+      () => end(current() ? "cannot-soft-reload" : "superseded"),
+    );
+  });
 }
 
 export const MAX_SOFT_RELOAD_SCRIPT = 1_000_000;
