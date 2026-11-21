@@ -209,13 +209,19 @@ describe("prefetching an upcoming clip", () => {
   const EDGE = `${CHROME} Edg/120.0`;
   const FIREFOX = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0";
   const SAFARI = "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15";
+  const ANDROID_CHROME =
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36";
+  const IOS_CHROME =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 CriOS/120.0 Mobile/15E148 Safari/604.1";
   afterEach(() => vi.restoreAllMocks());
 
   it.each([
     { engine: "Chrome", userAgent: CHROME, preload: "metadata" },
     { engine: "Edge", userAgent: EDGE, preload: "metadata" },
+    { engine: "Android Chrome", userAgent: ANDROID_CHROME, preload: "metadata" },
     { engine: "Firefox", userAgent: FIREFOX, preload: "auto" },
     { engine: "Safari", userAgent: SAFARI, preload: "auto" },
+    { engine: "Chrome on iOS, which is WebKit,", userAgent: IOS_CHROME, preload: "auto" },
   ])("$engine loads it at preload $preload", ({ userAgent, preload }) => {
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
     const clip = { ...media("VIDEO", 0, 0), preload: "none" };
