@@ -361,7 +361,7 @@ export default defineCommand({
       } else {
         const setup = err instanceof SetupStepsError ? err : undefined;
         console.error(`\n  ✗ Capture failed: ${terminalText(setup?.summary ?? errMsg)}\n`);
-        if (setup) console.error(`${setup.steps}\n`);
+        if (setup) console.error(`${setup.stepsWrittenByCli}\n`);
       }
       scheduleCliExit(1);
       failCommand();

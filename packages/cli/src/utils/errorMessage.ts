@@ -12,13 +12,12 @@ function namedAfterCrash(message: string): string {
     : message;
 }
 
-/** A failure with `steps`: lines this CLI wrote for the reader to run, kept apart from `summary`. */
 export class SetupStepsError extends Error {
   constructor(
     readonly summary: string,
-    readonly steps: string,
+    readonly stepsWrittenByCli: string,
   ) {
-    super(`${summary}\n\n${steps}`);
+    super(`${summary}\n\n${stepsWrittenByCli}`);
   }
 }
 
