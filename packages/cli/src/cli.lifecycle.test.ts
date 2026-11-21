@@ -522,6 +522,8 @@ describe("CLI lifecycle", () => {
       "Invalid --quality 'be\u0007st'.",
       2,
     ],
+    // `docs` has no --json flag of its own; --json before the command name still reaches it.
+    ["an unknown docs topic", ["--json", "docs", "to\u0007pic"], "Unknown topic: to\u0007pic", 2],
   ])("answers a --json run for %s with the value as given", async (_name, argv, given, exit) => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -532,7 +534,7 @@ describe("CLI lifecycle", () => {
     }) as never);
     try {
       mockTelemetry();
-      process.argv = ["node", "cli.ts", ...argv, "--json"];
+      process.argv = ["node", "cli.ts", ...argv, ...(argv[0] === "--json" ? [] : ["--json"])];
       await import("./cli.js");
 
       const said = errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
