@@ -6,8 +6,8 @@ import { launchBrowser } from "../perf/runner.js";
 import { startServer } from "../perf/server.js";
 
 /**
- * Seeded sequences of media edits, each run in the sealed film and in the same film unsealed: the same runtime, whose
- * CORS helper starts only in an opaque origin. The unsealed film is the control for source, playback and pixels.
+ * Seeded sequences of media edits, each run in the sealed film, in the sealed film with the CORS helper off (the
+ * control for source and playback), and in the film unsealed (the control for pixels).
  */
 
 type Kind =
@@ -643,10 +643,10 @@ function history(sequence: Sequence) {
   return { lists, everListed, authored };
 }
 
-// Per element, against the unsealed film: the same source, playing state and moving playhead; after a load of ours
+// Per element, against the helper off: the same source, playing state and moving playhead; after a load of ours
 // while it played, it resumes where it was at the same rate. Pixels readable wherever the unsealed film reads them
 // from a source that sends CORS, except the known gap.
-function judge(sequences: Sequence[], sealed: Readings, control: Readings) {
+function judge(sequences: Sequence[], sealed: Readings, control: Readings, open: Readings) {
   const budget = new Map<string, number>();
   const gaps: string[] = [];
   const all = sequences.map((sequence, index) => {
@@ -656,6 +656,7 @@ function judge(sequences: Sequence[], sealed: Readings, control: Readings) {
       const key = `${index}-${el}`;
       const seen = sealed.get(key)!;
       const plain = control.get(key)!;
+      const unsealed = open.get(key)!;
       const { moves } = seen;
       const movesPlain = plain.moves;
       const where = `${sequence.name} (${describe(sequence)}), element ${el}`;
@@ -683,10 +684,12 @@ function judge(sequences: Sequence[], sealed: Readings, control: Readings) {
       if (!variable) {
         if (idOf(seen.currentSrc) !== idOf(plain.currentSrc))
           problems.push(
-            `${where}: plays ${idOf(seen.currentSrc)}, unsealed ${idOf(plain.currentSrc)}`,
+            `${where}: plays ${idOf(seen.currentSrc)}, without the helper ${idOf(plain.currentSrc)}`,
           );
         if (seen.playing !== plain.playing || seen.paused !== plain.paused)
-          problems.push(`${where}: ${JSON.stringify(seen)}, unsealed ${JSON.stringify(plain)}`);
+          problems.push(
+            `${where}: ${JSON.stringify(seen)}, without the helper ${JSON.stringify(plain)}`,
+          );
         if (movesPlain && !moves)
           problems.push(`${where}: the playhead stopped ${JSON.stringify(seen)}`);
       }
@@ -711,7 +714,7 @@ function judge(sequences: Sequence[], sealed: Readings, control: Readings) {
       if (!seen.playing) continue;
       const kind = kinds.get(idOf(seen.currentSrc))!;
       const readable =
-        plain.pixels === "readable" &&
+        unsealed.pixels === "readable" &&
         SENDS_CORS.has(kind) &&
         (sequence.keepsCors?.includes(el) || !seen.failedWithCors.includes(seen.currentSrc));
       if (!readable || seen.pixels === "readable") continue;
@@ -738,18 +741,28 @@ async function filmFrame(page: import("puppeteer-core").Page, query: string) {
 
 const browser = await launchBrowser();
 try {
-  const page = await browser.newPage();
   const seeds = Number(process.env.SEALED_MEDIA_SEEDS ?? 40);
   const sequences = [...FIXED, ...Array.from({ length: seeds }, (_, seed) => generated(seed + 1))];
-  const run = async (query: string, prefix: string) => {
+  // One page at a time: a page behind another one has its media held back.
+  const run = async (query: string, prefix: string, helperOff = false) => {
+    const page = await browser.newPage();
+    // The helper starts only where window.origin reads "null"; the other two readers touch no table video.
+    if (helperOff)
+      await page.evaluateOnNewDocument(() => {
+        if (window.origin === "null")
+          Object.defineProperty(window, "origin", { value: "helper-off" });
+      });
     const frame = await filmFrame(page, query);
     await installDriver(frame);
     await runAll(frame, sequences, prefix);
-    return readAll(frame);
+    const readings = await readAll(frame);
+    await page.close();
+    return readings;
   };
-  const control = await run("", "c");
   const sealed = await run("&sealed=1", "s");
-  const { problems, gaps, budget } = judge(sequences, sealed, control);
+  const control = await run("&sealed=1", "c", true);
+  const open = await run("", "o");
+  const { problems, gaps, budget } = judge(sequences, sealed, control, open);
   const requests = new Map<string, number>();
   for (const url of server.requested) {
     const id = new URL(url).searchParams.get("id");
@@ -765,7 +778,7 @@ try {
   for (const gap of gaps) console.log(`  gap: ${gap}`);
   console.log(`[sealed-media-table] ${sequences.length} sequences, ${problems.length} problems`);
   assert.deepEqual(problems, [], problems.join("\n"));
-  console.log("[sealed-media-table] every element matches the unsealed film");
+  console.log("[sealed-media-table] every element matches the film without the helper");
 } finally {
   await browser.close();
   await server.stop();
