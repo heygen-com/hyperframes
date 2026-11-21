@@ -1287,6 +1287,27 @@ describe("detectRenderModeHints", () => {
     }
   });
 
+  // fails without the fix: with no <head> to move them into, every scene's styles were dropped from the page.
+  it("compileForRender keeps a scene's styles when the root page has no <head>", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-headless-root-",
+      [{ id: "intro", src: "compositions/intro.html" }],
+      {
+        "intro.html": `<template><style>.scene-title { color: rgb(12, 34, 56); }</style><div data-composition-id="intro" data-width="100" data-height="100"><div class="scene-title">Scene</div></div></template>`,
+      },
+    );
+    const indexPath = join(projectDir, "index.html");
+    writeFileSync(indexPath, readFileSync(indexPath, "utf8").replace("<head></head>", ""));
+    try {
+      const result = await compileForRender(projectDir, indexPath, projectDir);
+      const { document } = parseHTML(result.html);
+      expect(document.querySelector(".scene-title")?.textContent).toBe("Scene");
+      expect(document.querySelector("head")?.textContent).toContain("rgb(12, 34, 56)");
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("compileForRender succeeds when the sub-composition file is valid (happy path)", async () => {
     const projectDir = makeSubCompProject(
       "hf-valid-subcomp-",
