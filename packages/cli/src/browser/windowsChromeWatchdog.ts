@@ -1,8 +1,11 @@
 import { ChildProcess, spawn } from "node:child_process";
+import { win32 } from "node:path";
+import { windowsOwnTreeKillArgs } from "../utils/processTree.js";
 
 const WATCHDOG = `let clean = false;
+const killArgs = ${windowsOwnTreeKillArgs};
 const done = () => {
-  if (!clean) require("node:child_process").spawnSync("taskkill", ["/PID", process.env.HF_CHROME_PID, "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 20000 });
+  if (!clean) require("node:child_process").spawnSync("taskkill", killArgs(process.env.HF_CHROME_PID, process.env.HF_CHROME_IMAGE), { windowsHide: true, stdio: "ignore", timeout: 20000 });
   process.exit(0);
 };
 process.stdin.on("data", (data) => { clean ||= String(data).includes("clean"); });
@@ -18,7 +21,11 @@ export function watchChromeTree(chrome: ChildProcess): ChromeWatchdog | undefine
     return undefined;
   const watchdog = spawn(process.execPath, ["-e", WATCHDOG], {
     detached: true,
-    env: { ...process.env, HF_CHROME_PID: String(chrome.pid) },
+    env: {
+      ...process.env,
+      HF_CHROME_PID: String(chrome.pid),
+      HF_CHROME_IMAGE: win32.basename(chrome.spawnfile),
+    },
     stdio: ["pipe", "ignore", "ignore"],
     windowsHide: true,
   });

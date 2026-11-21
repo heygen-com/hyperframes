@@ -58,6 +58,10 @@ export function windowsProcessTreeKillArgs(pid: number): string[] {
   return ["/PID", String(pid), "/T", "/F"];
 }
 
+export function windowsOwnTreeKillArgs(pid: string, image: string): string[] {
+  return ["/F", "/T", "/FI", `PID eq ${pid}`, "/FI", `IMAGENAME eq ${image}`];
+}
+
 export function terminateWindowsProcessTree(
   pid: number,
   spawnProcess: SpawnProcess = (command, args, options) => spawn(command, [...args], options),
