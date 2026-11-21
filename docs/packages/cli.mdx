@@ -47,12 +47,13 @@ default to the current directory: `npx hyperframes check ./my-video`. A few
 take it as a flag instead — `add`, `transcribe`, `feedback`, `skills`, `history`, and
 the `timeline` edit commands use `--dir`.
 
-**Printed lines show control characters as text.** When a line for people
-repeats a value the CLI did not write — a file name, a page title, a reason
-from a service — control characters in it are printed as visible text
-(`\x1b`, `\x07`), and a short value shown inside a sentence stays on that line, with
-a line break shown as `\x0a`. `--json` output is not changed by this: it carries
-the value as it is, with JSON's own escaping.
+**Control characters in a few printed lines.** `figma component` (the
+`imported component` line), `usage` (the reason on a `Usage unknown` line),
+`measure hands` (its notices) and `compare` and `keyframes` (the notice
+about files left out) print control characters in a repeated value as visible
+text such as `\x1b` and `\x07`, and keep the value on its line, with a line break
+shown as `\x0a`. [`capture`](#capture) does the same for its warnings and failure
+reason. `--json` output is not changed by this.
 
 **`--json` for agents and scripts.** Most commands accept it, and the ones
 that do not reject it with exit 2. The payload is wrapped with a `_meta` field
