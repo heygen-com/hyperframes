@@ -279,6 +279,11 @@ const SEEDS: Fixed[] = [
       { answer: "oldest" },
     ],
   ],
+  // A guard: Studio's reload loads the newer file again when a save lands during it (useShadowPreviewReload.ts).
+  [
+    "a run saved while the reload from a refused title undo is in flight",
+    [{ save: "undoTitle", fate: "frame" }, { answer: "oldest" }, { save: "run", fate: "frame" }],
+  ],
   // The round-8 generator's seeds that found a class without the fix, kept as it generated them: 50 a recovery
   // dropping saved timing; 80 and 261 a recovery rewinding a newer scrub; 312, 147 and 377 a port rejection taken
   // for a missing reply.

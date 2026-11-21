@@ -76,14 +76,29 @@ async function openStudio(browser: Browser, bundle: string, first: string, at: n
       __saved: string;
       __reloads: number;
       __reload: () => void;
+      __load: () => void;
+      __loading: boolean;
       __refusals: number;
     };
     w.__hold = true;
     w.__saved = first;
     w.__reloads = 0;
+    // As Studio's shadow reload (useShadowPreviewReload.ts): a save during the load loads the newer file again.
+    w.__load = () => {
+      const iframe = document.querySelector("iframe")!;
+      const content = w.__saved;
+      w.__loading = true;
+      iframe.addEventListener(
+        "load",
+        () => (w.__saved === content ? (w.__loading = false) : w.__load()),
+        { once: true },
+      );
+      iframe.srcdoc = content;
+    };
+    w.__loading = false;
     w.__reload = () => {
       w.__reloads++;
-      document.querySelector("iframe")!.srcdoc = w.__saved;
+      w.__load();
     };
     // A deadline (4 s or more) fires only when a step or the drain says it passes, never on its own.
     const deadlines = new Map<number, () => void>();
@@ -218,6 +233,12 @@ const readPlayheads = (studioPage: Page, frame: Frame) =>
     ),
   ]).then(([shown, studio]) => ({ shown, studio }));
 
+/** Waits until a reload in flight has shown the newest saved file. */
+async function loaded(studioPage: Page, frame: Frame) {
+  await studioPage.waitForFunction(() => !(window as unknown as { __loading: boolean }).__loading);
+  await ready(frame);
+}
+
 const passDeadlines = (studioPage: Page, all: boolean) =>
   studioPage.evaluate(
     (every) =>
@@ -234,7 +255,7 @@ async function drain(studioPage: Page, frame: Frame, random: () => number) {
     (window as unknown as { __swallow: Set<string> }).__swallow = new Set();
   });
   for (let quiet = 0; quiet < 3; ) {
-    await ready(frame);
+    await loaded(studioPage, frame);
     await frame.evaluate(() => new Promise((done) => requestAnimationFrame(() => done(null))));
     const left = await pending(studioPage);
     if (left.length === 0 && quiet === 2 && (await passDeadlines(studioPage, true)) > 0) quiet = 0;
@@ -316,11 +337,8 @@ export async function playSequence<Saved, Save extends string>(
     } else if ("scrub" in step) {
       await scrub(studioPage, frame, step.scrub);
     } else if ("reloadFrame" in step) {
-      await studioPage.evaluate(() => {
-        const w = window as unknown as { __saved: string };
-        document.querySelector("iframe")!.srcdoc = w.__saved;
-      });
-      await ready(frame);
+      await studioPage.evaluate(() => (window as unknown as { __load: () => void }).__load());
+      await loaded(studioPage, frame);
     } else {
       const kind = step.answer === "any" ? null : step.answer;
       await answer(studioPage, Math.floor(random() * 1000), kind);

@@ -88,7 +88,7 @@ export function ticketLoadLive(ticket: PreviewTicket): boolean {
 }
 
 /** A later re-run read at this version or newer carries everything this write changed. */
-export function ticketCovered(ticket: PreviewTicket): boolean {
+function ticketCovered(ticket: PreviewTicket): boolean {
   const { reruns } = ledgerOf(ticket.load);
   return (
     !ticket.sent.attributes &&
