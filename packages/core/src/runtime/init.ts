@@ -112,6 +112,7 @@ import {
   readElementPlaybackStart,
   readElementRateSpec,
   refreshRuntimeMediaCache,
+  mediaSourceDuration,
   resolveNaturalMediaTimelineDuration,
   resolveRuntimeMediaClipDuration,
   syncRuntimeMedia,
@@ -242,7 +243,12 @@ import {
   shouldAttemptPeriodicTimelineBind,
 } from "./timelineRebindPolicy";
 import { installStudioCustomEase } from "./customEase";
-import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } from "./playbackRate";
+import {
+  hasRememberedSourceDuration,
+  parseStrictFiniteTimingNumber,
+  rememberSourceDuration,
+  resolveMediaElementDurationSeconds,
+} from "./playbackRate";
 import { cutToHostSlots, MEDIA_START_BASIS_ATTR } from "../mediaTiming";
 import { settleFirstFrameCompositionReadiness } from "../compositionReadiness";
 import { AUTHORED_DURATION_ATTR, AUTHORED_END_ATTR } from "./authoredTiming";
@@ -2747,9 +2753,21 @@ export function initSandboxRuntimeModular(): void {
   // Chromium's software decoders cost threads per loaded video; WebKit's reload of a shared file stalls audio.
   const freesBufferedVideo = (el: unknown): el is HTMLVideoElement =>
     isVideoElement(el) && !isWebKit();
+  // A preview's video with no set length loads its length first; once known, the window decides it.
+  const learnsLength = (el: unknown): el is HTMLVideoElement =>
+    mediaDeferred &&
+    loadsAhead &&
+    freesBufferedVideo(el) &&
+    el.hasAttribute("data-start") &&
+    !lengthIsAuthored(el);
   // A far clip can finish a load the parser started before its window was decided.
   const onMediaLoadedWhileFar = (event: Event) => {
     const el = event.currentTarget;
+    if (learnsLength(el) && !hasRememberedSourceDuration(el)) {
+      rememberSourceDuration(el);
+      syncTimedElementVisibility(state.currentTime, [el]);
+      return;
+    }
     if (!freesBufferedVideo(el) || mediaNearPlayhead.get(el) !== false || el.readyState === 0)
       return;
     withoutOwnTimingRecords(el, () => releaseMedia(el, true));
@@ -2853,7 +2871,13 @@ export function initSandboxRuntimeModular(): void {
 
       // Studio's preview loads a timed clip only near the playhead; the visibility pass decides.
       if (inPreloadWindow(mediaEl)) nearPlayheadPending.push(mediaEl);
-      else preloadMedia(mediaEl);
+      else if (
+        learnsLength(mediaEl) &&
+        resolveAbsoluteMediaStartSeconds(mediaEl) > state.currentTime + LOOKAHEAD_SECONDS
+      ) {
+        mediaEl.preload = "metadata";
+        mediaEl.load();
+      } else preloadMedia(mediaEl);
 
       // Probe volume automation from the GSAP timeline — same approach as the
       // renderer (see discoverAudioVolumeAutomationFromTimeline / audioMixer).
@@ -3126,7 +3150,9 @@ export function initSandboxRuntimeModular(): void {
   const inPreloadWindow = (el: HTMLMediaElement) =>
     mediaDeferred &&
     el.hasAttribute("data-start") &&
-    (lengthIsAuthored(el) || (!loadsAhead && el.readyState === HTMLMediaElement.HAVE_NOTHING));
+    (lengthIsAuthored(el) ||
+      hasRememberedSourceDuration(el) ||
+      (!loadsAhead && el.readyState === HTMLMediaElement.HAVE_NOTHING));
 
   // Media on screen or due within the look-ahead loads; the rest stops holding a connection to
   // the origin that also serves Studio's thumbnails.
@@ -3630,8 +3656,9 @@ export function initSandboxRuntimeModular(): void {
           context.inheritedDuration > 0
             ? Math.max(0, context.inheritedStart + context.inheritedDuration - start)
             : null;
-        const sourceDuration = Number.isFinite(element.duration)
-          ? resolveNaturalMediaTimelineDuration(element, element.duration)
+        const reported = mediaSourceDuration(element);
+        const sourceDuration = Number.isFinite(reported)
+          ? resolveNaturalMediaTimelineDuration(element, reported)
           : null;
         // The element's own data-duration is an explicit clip-length trim
         // (the studio writes it when you drag the clip edge). It must bound

@@ -13,6 +13,7 @@
 import type { RuntimeTimelineLike } from "./types";
 import {
   parseStrictFiniteTimingNumber,
+  mediaSourceDuration,
   resolveNaturalMediaTimelineDuration,
   resolveTimedImageDurationSeconds,
 } from "./playbackRate";
@@ -74,9 +75,8 @@ function durationFromTimeline(
 
 function durationFromMedia(el: Element): number | null {
   if (isMediaElement(el)) {
-    return Number.isFinite(el.duration)
-      ? resolveNaturalMediaTimelineDuration(el, el.duration)
-      : null;
+    const source = mediaSourceDuration(el);
+    return Number.isFinite(source) ? resolveNaturalMediaTimelineDuration(el, source) : null;
   }
   return resolveTimedImageDurationSeconds(el);
 }
