@@ -790,7 +790,9 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
         if (movesPlain && !moves)
           problems.push(`${where}: the playhead stopped ${JSON.stringify(seen)}`);
         // A play() still pending is rejected by whichever load comes next, ours or the runtime's binding load.
-        if (plain.play === "resolved" && seen.play !== "resolved")
+        // The composition's own pause or load rejects a pending play() in either film, at different moments.
+        const ownAbort = seen.interrupted === "pause" || seen.interrupted === "source";
+        if (plain.play === "resolved" && seen.play !== "resolved" && !ownAbort)
           problems.push(`${where}: play() ${seen.play}, without the helper resolved`);
       }
       const action = seen.interrupted;

@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
  *   /fixtures/<name>/<file>            → fixture HTML + assets
  *   /fixtures-flaky/<name>/<file>      → as /fixtures/, but a 503 the first time each URL is asked (?fail=N: N times)
  *   /fixtures-lapse/<name>/<file>?id=… → a 503 until recover(id), then the file (CORS headers only with ?cors)
- *   ...?delay=ms                        → the answer comes that much later
+ *   ...?delay=ms                        → the first answer for that URL comes that much later
  *   ...?no-store                       → never cached, so every load reaches the server
  */
 
@@ -177,6 +177,7 @@ export function startServer(options: ServeOptions = {}): RunningServer {
   const failures = new Map<string, number>();
   const requested: string[] = [];
   const recovered = new Set<string>();
+  const delayed = new Set<string>();
   const server = Bun.serve({
     port: options.port ?? 0,
     async fetch(req) {
@@ -217,7 +218,10 @@ export function startServer(options: ServeOptions = {}): RunningServer {
       const served = /^\/(fixtures|fixtures-no-cors|fixtures-flaky|fixtures-lapse)\//.exec(path);
       const failed = failures.get(url.href) ?? 0;
       const delay = Number(url.searchParams.get("delay") ?? 0);
-      if (served && delay > 0) await new Promise((wake) => setTimeout(wake, delay));
+      if (served && delay > 0 && !delayed.has(url.href)) {
+        delayed.add(url.href);
+        await new Promise((wake) => setTimeout(wake, delay));
+      }
       const lapsed =
         served?.[1] === "fixtures-lapse" && !recovered.has(url.searchParams.get("id") ?? "");
       if (
