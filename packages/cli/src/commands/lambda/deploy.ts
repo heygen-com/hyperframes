@@ -12,6 +12,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { c } from "../../ui/colors.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { stagePrebuiltHandler } from "./prebuiltHandler.js";
 import { fetchStackOutputs, locateSamTemplate, samDeploy } from "./sam.js";
 import { repoRoot } from "./repoRoot.js";
@@ -66,7 +67,9 @@ export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
         })
       : undefined;
 
-  console.log(c.dim(`→ sam deploy (stack=${resolved.stackName} region=${resolved.region})`));
+  console.log(
+    c.dim(terminalText(`→ sam deploy (stack=${resolved.stackName} region=${resolved.region})`)),
+  );
   samDeploy({
     samDir,
     stackName: resolved.stackName,
@@ -108,13 +111,13 @@ export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
 
   console.log();
   console.log(c.success("Stack deployed."));
-  console.log(`  ${c.dim("Bucket:")}         ${outputs.bucketName}`);
-  console.log(`  ${c.dim("State machine:")}  ${outputs.stateMachineArn}`);
-  console.log(`  ${c.dim("Function:")}       ${outputs.functionName}`);
+  console.log(`  ${c.dim("Bucket:")}         ${terminalText(outputs.bucketName)}`);
+  console.log(`  ${c.dim("State machine:")}  ${terminalText(outputs.stateMachineArn)}`);
+  console.log(`  ${c.dim("Function:")}       ${terminalText(outputs.functionName)}`);
   if (outputs.videoFunctionName) {
-    console.log(`  ${c.dim("Video function:")} ${outputs.videoFunctionName} (arm64)`);
+    console.log(`  ${c.dim("Video function:")} ${terminalText(outputs.videoFunctionName)} (arm64)`);
   }
-  console.log(`  ${c.dim("State file:")}     ${resolve(statePath)}`);
+  console.log(`  ${c.dim("State file:")}     ${terminalText(resolve(statePath))}`);
   console.log();
   console.log(c.dim(`Render with: hyperframes lambda render <project-dir>`));
 }
@@ -141,7 +144,9 @@ function warmVideoFunction(functionName: string | undefined, args: DeployArgs): 
   try {
     warmFunction({ functionName, region: args.region, awsProfile: args.awsProfile });
   } catch (error) {
-    console.log(c.warn(`Warm-up skipped, the deploy is fine: ${(error as Error).message}`));
+    console.log(
+      c.warn(terminalLines(`Warm-up skipped, the deploy is fine: ${(error as Error).message}`)),
+    );
   }
 }
 
