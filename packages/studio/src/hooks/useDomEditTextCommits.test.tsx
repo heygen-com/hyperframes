@@ -288,16 +288,18 @@ describe("useDomEditTextCommits", () => {
     );
 
     let staleCommit: Promise<void> | undefined;
+    let newestCommit: Promise<void> | undefined;
     act(() => {
       staleCommit = hook.commitDomTextFields(selection, [textField("Stale")]);
-    });
-    await act(async () => {
-      await hook.commitDomTextFields(selection, [textField("Newest")]);
+      newestCommit = hook.commitDomTextFields(selection, [textField("Newest")]);
     });
     stalePersist.reject(new Error("stale request failed"));
     await act(async () => {
       await staleCommit;
+      await newestCommit;
     });
+
+    expect(persistDomEditOperations).toHaveBeenCalledTimes(2);
 
     expect(element.innerHTML).toBe("Newest");
   });

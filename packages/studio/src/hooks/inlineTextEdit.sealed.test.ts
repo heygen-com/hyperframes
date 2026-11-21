@@ -343,46 +343,46 @@ it("saves a newer blur-ended edit last when the older edit's end reply comes lat
   title.dispatchEvent(new FocusEvent("blur"));
   await vi.waitFor(() => expect(saved).toContain("title=Second"));
   release();
-  await settled(iframe, selection);
-  await nextTask();
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
   expect(saved.at(-1)).toBe("title=Second");
 });
 
 it("keeps a Design panel save made while an older inline save was still looking up its target", async () => {
-  const { iframe, selection } = await sealedTitle();
+  const { iframe } = await sealedTitle();
+  const plain = await select(iframe, "other");
   const { saved, persist } = fileWrites();
   const first = held();
-  const { commits } = wiredEditor(iframe, selection, persist, [first.lookup]);
+  const { commits } = wiredEditor(iframe, plain, persist, [first.lookup]);
   const older = act(() =>
-    commits().handleDomRichTextCommit({
-      element: selection.element,
-      html: "First",
-      previousHtml: ORIGINAL,
-    }),
+    commits().handleDomRichTextCommit({ element: plain.element, html: "First", previousHtml: "x" }),
   );
   await first.reached;
-  await act(() => commits().handleDomTextCommitForSelection(selection, "Newer"));
+  await act(() => commits().handleDomTextCommitForSelection(plain, "Newer"));
+  expect(saved).toEqual(["other=Newer"]);
   first.release();
   await older;
-  expect(saved.at(-1)).toBe("title=Newer");
+  expect(saved.at(-1)).toBe("other=Newer");
 });
 
 it("saves the inline edit last when the Design panel saved the heading while that edit was open", async () => {
-  const { title, iframe, selection } = await sealedTitle();
+  const { iframe } = await sealedTitle();
+  const plain = await select(iframe, "other");
+  const shown = document.getElementById("other")!;
   const { saved, persist } = fileWrites();
-  const { controls, commits } = wiredEditor(iframe, selection, persist);
-  act(() => void controls().start(selection.element));
-  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
-  await act(() => commits().handleDomTextCommitForSelection(selection, "Panel"));
-  title.innerHTML = "Inline";
+  const { controls, commits } = wiredEditor(iframe, plain, persist);
+  act(() => void controls().start(plain.element));
+  await vi.waitFor(() => expect(shown.getAttribute("contenteditable")).toBe("true"));
+  await act(() => commits().handleDomTextCommitForSelection(plain, "Panel"));
+  expect(saved).toEqual(["other=Panel"]);
+  shown.innerHTML = "Inline";
   act(() => controls().commit());
-  await vi.waitFor(() => expect(saved.at(-1)).toBe("title=Inline"));
-  await settled(iframe, selection);
-  expect(saved.at(-1)).toBe("title=Inline");
+  await vi.waitFor(() => expect(saved.at(-1)).toBe("other=Inline"));
+  await settled(iframe, plain);
+  expect(saved.at(-1)).toBe("other=Inline");
 });
 
 it("lands the newer of two saves of a heading last when the older write is slow", async () => {
-  const { iframe, selection } = await sealedTitle();
+  const { title, iframe, selection } = await sealedTitle();
   const landed: string[] = [];
   let finishOlder!: () => void;
   const persist = vi.fn<PersistDomEditOperations>(async (_, operations, options) => {
@@ -392,19 +392,13 @@ it("lands the newer of two saves of a heading last when the older write is slow"
     landed.push(value);
   });
   const { commits } = wiredEditor(iframe, selection, persist);
-  const commit = (html: string) =>
-    act(() =>
-      commits().handleDomRichTextCommit({
-        element: selection.element,
-        html,
-        previousHtml: ORIGINAL,
-      }),
-    );
-  const older = commit("Older");
+  // Not in act: the newer commit's scope would still be open when the older one's closes.
+  const commit = (html: string, previousHtml: string) =>
+    commits().handleDomRichTextCommit({ element: selection.element, html, previousHtml });
+  const older = commit("Older", ORIGINAL);
   await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(1));
-  const newer = commit("Newer");
-  await nextTask();
-  await nextTask();
+  const newer = commit("Newer", "Older");
+  await vi.waitFor(() => expect(title.innerHTML).toBe("Newer"));
   finishOlder();
   await older;
   await newer;
