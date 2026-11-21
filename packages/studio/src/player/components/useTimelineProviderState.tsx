@@ -43,6 +43,7 @@ import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { useTimelineLaneMoveRefresh } from "./useTimelineLaneMoveRefresh";
 import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 import {
   refuseWhenReadOnly,
   useAbandonEditsOnReadOnly,
@@ -80,6 +81,7 @@ export function useTimelineProviderState({
   sessionEpoch: sessionEpochProp,
   previewIframeRef,
   onZIndexReorder,
+  insertOnClipDrop,
 }: TimelineProps = {}): TimelineContextValue {
   const {
     onMoveElement,
@@ -104,6 +106,7 @@ export function useTimelineProviderState({
   });
   const theme = useMemo(() => ({ ...defaultTimelineTheme, ...themeOverrides }), [themeOverrides]);
   const editContext = useTimelineEditContextOptional();
+  const notice = useStudioShellContextOptional()?.showToast ?? editContext.onNotice;
   const readOnlyPress = useTimelineReadOnlyPress();
   const oneShotEdits = refuseWhenReadOnly(readOnlyPress, {
     onBlockedEditAttempt,
@@ -229,6 +232,8 @@ export function useTimelineProviderState({
     onStackingPatches: zSyncEnabled ? applyStackingPatches : undefined,
     refreshAfterLaneMove,
     sessionEpoch,
+    insertOnClipDrop,
+    onDropRefused: notice && (() => notice("Clips on the same track can't overlap.", "info")),
   });
   const assetDrop = useTimelineAssetDrop({
     scrollRef,

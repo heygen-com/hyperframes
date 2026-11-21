@@ -95,6 +95,8 @@ interface UseTimelineClipDragInput {
   onStackingPatches?: (patches: StackingPatch[]) => Promise<unknown> | void;
   refreshAfterLaneMove?: () => void;
   sessionEpoch?: number;
+  insertOnClipDrop?: boolean;
+  onDropRefused?: DragCommitDeps["onDropRefused"];
 }
 
 export function useTimelineClipDrag({
@@ -116,6 +118,8 @@ export function useTimelineClipDrag({
   onStackingPatches,
   refreshAfterLaneMove,
   sessionEpoch = 0,
+  insertOnClipDrop,
+  onDropRefused,
 }: UseTimelineClipDragInput) {
   const getClipCapabilities = useTimelineClipCapabilities();
   const commitGestureRef = useRef<() => void>(() => {});
@@ -297,6 +301,8 @@ export function useTimelineClipDrag({
   onStackingPatchesRef.current = onStackingPatches;
   const refreshAfterLaneMoveRef = useRef(refreshAfterLaneMove);
   refreshAfterLaneMoveRef.current = refreshAfterLaneMove;
+  const dropOptionsRef = useRef({ insertOnClipDrop, onDropRefused });
+  dropOptionsRef.current = { insertOnClipDrop, onDropRefused };
 
   const clipDragScrollRaf = useRef(0);
   const clipDragPointerRef = useRef<{
@@ -461,6 +467,7 @@ export function useTimelineClipDrag({
       commitGestureRef,
       onStackingPatchesRef,
       refreshAfterLaneMoveRef,
+      dropOptionsRef,
       readZIndexRef,
       onBlockedEditAttemptRef,
       onLinkEditRef,

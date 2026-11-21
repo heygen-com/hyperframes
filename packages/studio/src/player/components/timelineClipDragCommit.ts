@@ -27,6 +27,9 @@ import { authoredTrackForLane } from "./timelineAuthoredTrack";
 import { resolveGroupMovers } from "./timelineMultiDragPreview";
 import { beginStudioPendingEdit } from "../../utils/studioPendingEdits";
 import { batchElementUpdates } from "../store/batchElementUpdates";
+import { resolveMainTrackInsert } from "./timelineMainTrackInsert";
+import { sharesLinkGroup } from "./audioClipLink";
+import { isLinkedSelectionOn } from "../../utils/linkedClipPreferences";
 
 type StartTrack = TimelineAtomicMoveUpdates;
 export interface TimelineMoveEdit extends TimelineAtomicMoveEdit {
@@ -81,12 +84,47 @@ export interface DragCommitDeps {
   onStackingPatches?: (patches: StackingPatch[], coalesceKey?: string) => Promise<unknown> | void;
   /** Converge the preview manifest after the complete lane + z transaction. */
   refreshAfterLaneMove?: () => void;
+  /** A drop onto other main-track clips inserts there instead of landing in free space. */
+  insertOnClipDrop?: boolean;
+  /** The drop aimed somewhere else but the clip went back where it was. */
+  onDropRefused?: (element: TimelineElement) => void;
 }
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 // One deterministic coalesce key shared by both records in a lane-change gesture.
 let laneChangeGestureSeq = 0;
+let clipInsertGestureSeq = 0;
+// Studio saves starts to the centisecond, so a smaller aim is the clip's own place.
+const REFUSED_DROP_MIN_S = 0.01;
+
+/** True when the drop was handled as a main-track insert (see resolveMainTrackInsert). */
+function commitMainTrackInsert(
+  drag: DraggedClipState,
+  deps: DragCommitDeps,
+  movingKeys: ReadonlySet<string> | undefined,
+): boolean {
+  if (drag.aimStart == null || (drag.desiredTrack ?? drag.previewTrack) !== drag.element.track) {
+    return false;
+  }
+  // A group drag inserts only when the group is the clip and its linked partners.
+  const groupOfOne = deps.elements.every(
+    (e) =>
+      !movingKeys?.has(keyOf(e)) ||
+      keyOf(e) === keyOf(drag.element) ||
+      sharesLinkGroup(e, drag.element),
+  );
+  if (!groupOfOne) return false;
+  const linked = isLinkedSelectionOn();
+  const moves = resolveMainTrackInsert(deps.elements, drag.element, drag.aimStart, linked);
+  if (!moves) return false;
+  const edits = moves.map(({ element, start }) => ({
+    element,
+    updates: { start, track: element.track },
+  }));
+  void persistMoveEdits(edits, deps, `clip-insert:${clipInsertGestureSeq++}`);
+  return true;
+}
 
 function moveStoreUpdates(edit: TimelineMoveEdit) {
   const writtenTrack =
@@ -276,8 +314,13 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
 
   // ── Pure time-move (dragged clip keeps its lane, no insert) ─────────────────
   if (!isInsert && !laneChanged) {
+    if (deps.insertOnClipDrop && commitMainTrackInsert(drag, deps, multi?.keys)) return;
     const delta = drag.previewStart - drag.element.start;
-    if (delta === 0) return;
+    if (delta === 0) {
+      const aimedAway = Math.abs((drag.aimStart ?? drag.element.start) - drag.element.start);
+      if (aimedAway >= REFUSED_DROP_MIN_S) deps.onDropRefused?.(drag.element);
+      return;
+    }
     if (multi) {
       const edits: TimelineMoveEdit[] = elements
         .filter((e) => multi.keys.has(keyOf(e)))
