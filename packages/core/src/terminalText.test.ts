@@ -11,6 +11,13 @@ describe("terminalText", () => {
       "a\\x1b[31mb\\x07c\\x0ad\\x7fe\\x9bf\\x85",
     );
   });
+
+  it("writes text direction marks out as visible escapes and keeps right-to-left letters", () => {
+    expect(
+      terminalText("clip\u202egpj.exe\u202c \u2066a\u2069 \u202a\u202b\u202d\u2067\u2068"),
+    ).toBe("clip\\u202egpj.exe\\u202c \\u2066a\\u2069 \\u202a\\u202b\\u202d\\u2067\\u2068");
+    expect(terminalText("שלום \u200f مرحبا")).toBe("שלום \u200f مرحبا");
+  });
 });
 
 describe("terminalLines", () => {
