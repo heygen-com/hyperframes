@@ -470,7 +470,8 @@ async function installDriver(frame: Frame) {
           video.loop = true;
           // The runtime binds new media with preload auto and a load() of its own, at a time of its choosing.
           video.preload = "metadata";
-          video.addEventListener("playing", () => {
+          // Where a load of ours starts the video again: its metadata places the playhead before it plays.
+          video.addEventListener("loadedmetadata", () => {
             const data = video.dataset;
             if (data.watch) {
               delete data.watch;
@@ -490,9 +491,10 @@ async function installDriver(frame: Frame) {
           );
           video.addEventListener("seeked", () => {
             const data = video.dataset;
-            const looped = Number(data.seekFrom ?? 0) > video.duration - 1 && video.currentTime < 1;
+            const looped = Number(data.seekFrom ?? 0) > 2 && video.currentTime < 1;
             if (data.seekAt !== undefined && !looped)
-              data.extraSeeks = String(Number(data.extraSeeks ?? 0) + 1);
+              data.extraSeeks =
+                `${data.extraSeeks ?? ""} ${data.seekFrom}->${video.currentTime}`.trim();
             if (!data.seekTo) return;
             data.seekAt = String(video.currentTime);
             data.seekPaused = String(video.paused);
@@ -783,7 +785,9 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
       }
       // A host failing some requests may play after the runtime's extra request and not without it.
       const variable = [...kinds.values()].some((kind) => kind === "flaky" || kind === "outage");
-      if (!variable) {
+      // A control that resolved play() and was not paused but has no frame is buffering: it says nothing.
+      const stalled = !plain.playing && !plain.paused && plain.play === "resolved";
+      if (!variable && !stalled) {
         if (idOf(seen.currentSrc) !== idOf(plain.currentSrc))
           problems.push(
             `${where}: plays ${idOf(seen.currentSrc)}, without the helper ${idOf(plain.currentSrc)}`,
