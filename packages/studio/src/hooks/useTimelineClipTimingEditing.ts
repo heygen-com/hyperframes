@@ -242,6 +242,7 @@ export function useTimelineClipTimingEditing({
     (
       element: TimelineElement,
       updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
+      options?: { coalesceKey?: string },
     ) => {
       const authoredStart = toAuthoredStart(element, updates.start);
       const liveAttrs: Array<[string, string]> = [
@@ -271,7 +272,7 @@ export function useTimelineClipTimingEditing({
       // positions/durations on the server, then soft-reload with the rewritten
       // script (timing-only resize) — same no-flash path as move; full reload is
       // the fallback.
-      const step = timingGestureStep("timeline-resize");
+      const step = timingGestureStep("timeline-resize", options);
       const finishResizeGsapSync = (sdkGsap?: ReturnType<typeof sdkTimingGsapSync>) =>
         finishClipTimingFallback({
           iframe: previewIframeRef.current,
