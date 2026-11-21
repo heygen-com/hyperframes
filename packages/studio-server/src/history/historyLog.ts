@@ -38,6 +38,7 @@ export interface HistoryEntry {
   undoes?: string;
   /** Set on a restore: the point (an entry id, or START) the files were made equal to. */
   restoredTo?: string;
+  keptInPlace?: Record<string, string>;
 }
 
 /** The point before the first kept entry. */
@@ -164,6 +165,10 @@ export function undoneIds(entries: readonly HistoryEntry[]): Set<string> {
   }
   return undone;
 }
+
+export const stepPaths = (entry: HistoryEntry): string[] => [
+  ...new Set([...entry.files.map((file) => file.path), ...Object.keys(entry.keptInPlace ?? {})]),
+];
 
 /**
  * What Cmd+Z (back) or Cmd+Shift+Z (forward) reverts for `mine`. Back: the newest change `mine` owns that is still

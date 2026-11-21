@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { parseHTML } from "linkedom";
-import { MEDIA_RENDER_ID_ATTR } from "@hyperframes/core";
+import { MEDIA_RENDER_ID_ATTR, naturalVideoSize, streamRotation } from "@hyperframes/core";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { isNotMediaPayload, type CaptureVideoMetadataHint } from "@hyperframes/engine";
 import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
@@ -84,19 +84,12 @@ interface ProbeJson {
 function parseProbe(json: ProbeJson): HeldVideoProbe {
   const duration = Number(json.format?.duration);
   const stream = json.streams?.[0];
-  const rotation = Number(
-    stream?.side_data_list?.find((d) => d.rotation !== undefined)?.rotation ??
-      stream?.tags?.rotate ??
-      0,
-  );
-  const turned = Math.abs(rotation) % 180 === 90;
   const [width, height] = [Number(stream?.width), Number(stream?.height)];
-  const sized = width > 0 && height > 0;
-  return {
-    duration: Number.isFinite(duration) && duration > 0 ? duration : 0,
-    width: sized ? (turned ? height : width) : 0,
-    height: sized ? (turned ? width : height) : 0,
-  };
+  const shown =
+    stream && width > 0 && height > 0
+      ? naturalVideoSize({ width, height, rotation: streamRotation(stream) })
+      : { width: 0, height: 0 };
+  return { duration: Number.isFinite(duration) && duration > 0 ? duration : 0, ...shown };
 }
 
 /** A file's duration and display size from FFprobe, zeros when it cannot be read; each file is probed once. */
@@ -119,7 +112,7 @@ export function probeHeldVideo(
           "-select_streams",
           "v:0",
           "-show_entries",
-          "format=duration:stream=width,height:stream_tags=rotate:stream_side_data=rotation",
+          "format=duration:stream=width,height:stream_tags=rotate:stream_side_data_list",
           "-of",
           "json",
           "--",

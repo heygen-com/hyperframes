@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -242,7 +243,7 @@ function printTable(rows: Leftover[]): void {
   const whatWidth = Math.max(...rows.map((row) => row.what.length));
   for (const row of rows) {
     console.log(
-      `  ${row.what.padEnd(whatWidth)}  ${formatBytes(row.bytes).padStart(9)}  ${c.dim(row.path)}`,
+      `  ${row.what.padEnd(whatWidth)}  ${formatBytes(row.bytes).padStart(9)}  ${c.dim(terminalText(row.path))}`,
     );
   }
 }
@@ -304,6 +305,6 @@ export default defineCommand({
       );
       printTable(result.alsoReclaimable);
     }
-    for (const error of result.errors) console.log(c.warn(`  ${error}`));
+    for (const error of result.errors) console.log(c.warn(`  ${terminalLines(error)}`));
   },
 });

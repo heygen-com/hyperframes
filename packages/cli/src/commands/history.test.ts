@@ -902,3 +902,21 @@ describe.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     });
   },
 );
+
+// fails without the fix: a refusal reached the terminal with its control characters live.
+it("prints a refusal's control characters as visible escapes", async () => {
+  const { hf } = project();
+  const refused = await hf("--since", "20\u001b[2J26");
+  expect([refused.code, refused.err]).toEqual([2, 'No entry "20\\x1b[2J26" in this history']);
+});
+
+// fails without the fix: a changed file's text reached the terminal with its control characters live.
+it("prints a diff's control characters as visible escapes", async () => {
+  const { hf, turn } = project();
+  await hf("begin", "--who", "claude", "--label", "Start");
+  await hf("end");
+  const entry = await turn("claude", "Retitle", "index.html", "A\u001b[2J2");
+  const diff = (await hf("show", entry.id, "--diff")).out;
+  expect(diff).toContain("+A\\x1b[2J2");
+  expect(diff).not.toContain("\u001b");
+});

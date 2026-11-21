@@ -3,6 +3,7 @@ import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isWithinProjectRoot, readProjectFile } from "@hyperframes/parsers/asset-resolution";
+import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { resolve, dirname, basename, join, relative, sep } from "node:path";
 import {
   parseGsapScript,
@@ -118,12 +119,12 @@ interface SurfacedComposition {
 function compositionRoots(html: string): Array<{ querySelectorAll(s: string): Iterable<Element> }> {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const roots: Array<{ querySelectorAll(s: string): Iterable<Element> }> = [doc];
-  const queue = Array.from(doc.querySelectorAll("template")) as HTMLTemplateElement[];
+  const queue = Array.from(doc.querySelectorAll("template"));
   while (queue.length > 0) {
-    const content = queue.shift()!.content;
+    const content = templateContent(queue.shift()!);
     if (!content) continue;
     roots.push(content);
-    queue.push(...(Array.from(content.querySelectorAll("template")) as HTMLTemplateElement[]));
+    queue.push(...Array.from(content.querySelectorAll("template")));
   }
   return roots;
 }
@@ -884,7 +885,7 @@ function onionShotOptions(args: ShotArgs & { selector?: string }) {
 }
 
 function printOnionShotSaved(saved: string, elementCount: number): void {
-  console.log(`${c.success("◇")}  onion-skin screenshot saved ${c.accent(saved)}`);
+  console.log(`${c.success("◇")}  onion-skin screenshot saved ${c.accent(terminalText(saved))}`);
   console.log(
     c.dim(
       `   ${elementCount} element${elementCount === 1 ? "" : "s"} · open it to verify the motion matches your target, then read the keyframes below.`,

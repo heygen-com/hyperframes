@@ -97,6 +97,19 @@ export {
   wrapScopedCompositionScript,
 } from "./compositionScoping";
 
+// Size limits on one compile's expansion (shared between bundler and producer)
+export {
+  assertCompositionFileSize,
+  CompositionExpansionBudget,
+  ENTRY_PAGE,
+  isCompositionTooLargeError,
+  MAX_COMPOSITION_HTML_BYTES,
+  MAX_EXPANDED_COMPOSITION_BYTES,
+  MAX_EXPANDED_ELEMENTS,
+  REMOTE_SCRIPTS,
+  REMOTE_STYLESHEETS,
+} from "./compositionSizeLimit";
+
 // Sub-composition inlining (shared between bundler and producer)
 export {
   ensureExternalLinkTag,
@@ -126,4 +139,5 @@ export {
 } from "./mediaRenderIds";
 
 export { ensureExternalScriptTag } from "./externalScripts";
+export { dropAuthoredSvgReferenceAliases } from "./svgSelectorAliases";
 export { emitMountedModuleScripts } from "./importMaps";

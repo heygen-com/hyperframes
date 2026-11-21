@@ -25,13 +25,20 @@ import { HistoryBusyError } from "./ownerLock";
 import { HistoryIdError } from "./historyId";
 import {
   HistoryClosedError,
-  HistoryRefusedError,
   openProjectHistory,
   readProjectHistory,
   type ProjectHistory,
 } from "./projectHistory";
+import { HistoryRefusedError, type RefusalReason } from "./historyRefused";
 import { START, type HistoryWho } from "./historyLog";
 import { openBlobStore } from "./blobStore";
+
+/** A refusal Desktop shows as one, not as a failure. */
+const refused = (reason: RefusalReason, text: string) => ({
+  name: "HistoryRefusedError",
+  reason,
+  message: expect.stringContaining(text),
+});
 
 // A test can hold a media copy, and run work after its blob is stored but before history records it.
 const mediaCopy = vi.hoisted(() => ({
@@ -350,11 +357,12 @@ describe("openProjectHistory", () => {
       { "index.html": "A", "clip.bin": Buffer.alloc(2 * 1024 ** 2, 7) },
       { budgetBytes: 1, quietMs: 30 },
     );
-    // The edit's prune takes the first copy; storing it again then fails.
+    // Studio's edit, whose prune takes the first copy; storing it again then fails. A step would wait for the copy.
     mediaCopy.fails = (copy) => copy === 2;
     mediaCopy.stored = () => {
       mediaCopy.stored = null;
-      return change(history, you, "Color", () => write("index.html", "B"));
+      write("index.html", "B");
+      return history.claim(you, "Color", ["index.html"]);
     };
     await vi.waitFor(() => expect(mediaCopy.copies).toHaveLength(2), { timeout: 10_000 });
     await history.flush();
@@ -428,10 +436,11 @@ describe("openProjectHistory", () => {
       { "index.html": "A", "clip.bin": clip },
       { budgetBytes: 1, quietMs: 30 },
     );
-    // The copy is stored; an edit commits and prunes before history records the copy.
+    // The copy is stored; Studio's edit commits and prunes before history records it. A step would wait for it.
     mediaCopy.stored = () => {
       mediaCopy.stored = null;
-      return change(history, you, "Color", () => write("index.html", "B"));
+      write("index.html", "B");
+      return history.claim(you, "Color", ["index.html"]);
     };
     release();
     await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.bin"]), {
@@ -519,6 +528,140 @@ describe("openProjectHistory", () => {
     history.noteChange(".spawn-record");
     await history.flush();
     expect(history.list()).toHaveLength(1);
+  });
+
+  // fails without the fix: a host's temporary page beside the film was recorded like the film's own files.
+  it("never records a path its ignores option names: not at open, in a change, or for a reader", async () => {
+    const ignores = (path: string) => path.endsWith(".hf-flat.html");
+    const { history, write, projectDir, historyRoot } = await project(
+      { "index.html": "A", "index.hf-flat.html": "x" },
+      { ignores },
+    );
+    const entry = await change(history, agent, "Turn", () => {
+      write("index.html", "B");
+      write("index.hf-flat.html", "y");
+    });
+    expect(entry.files.map((file) => file.path)).toEqual(["index.html"]);
+    expect(Object.keys(history.peek(entry.id)!)).toEqual(["index.html"]);
+    const reader = readProjectHistory({ projectDir, historyRoot, ignores });
+    expect(Object.keys(reader.peek(entry.id)!)).toEqual(["index.html"]);
+  });
+
+  // fails without the fix: an entry written before the rule kept its target on the ignored file.
+  it("drops an older entry's targets on a path it now ignores", async () => {
+    const { history, write, projectDir, historyRoot } = await project({
+      "index.html": "A",
+      "temp.html": "x",
+    });
+    write("index.html", "B");
+    write("temp.html", "y");
+    await history.claim(you, "Edited", ["index.html", "temp.html"], {
+      targets: [
+        { file: "index.html", selector: "#i" },
+        { file: "temp.html", selector: "#t" },
+      ],
+    });
+    await history.close();
+    const ignores = (path: string) => path === "temp.html";
+    const again = await open(projectDir, historyRoot, { ignores });
+    const reader = readProjectHistory({ projectDir, historyRoot, ignores });
+    for (const [entry] of [again.list(), reader.list()])
+      expect(entry!.targets).toEqual([{ file: "index.html", selector: "#i" }]);
+  });
+
+  // fails without the fix: pruning kept only what the filtered log named, but the log on disk still named the rest.
+  it("never leaves a version on disk named that pruning removed, once a path is ignored", async () => {
+    const { history, write, projectDir, historyRoot } = await project({
+      "index.html": "A",
+      "big.bin": "a".repeat(1000),
+    });
+    write("big.bin", "b".repeat(1000));
+    await history.claim(you, "Edited", ["big.bin"]);
+    await history.close();
+    const again = await open(projectDir, historyRoot, {
+      ignores: (path: string) => path === "big.bin",
+      budgetBytes: 10,
+    });
+    write("index.html", "B");
+    await again.claim(you, "Page", ["index.html"]);
+    const reader = readProjectHistory({ projectDir, historyRoot });
+    for (const point of [START, ...reader.list().map((entry) => entry.id)])
+      for (const hash of Object.values(reader.peek(point) ?? {}))
+        await expect(reader.readBlob(hash)).resolves.toBeInstanceOf(Buffer);
+  });
+
+  // fails without the fix where the disk ignores case: an undo wrote the older spelling over the host's own file.
+  it.skipIf(!caseInsensitive())(
+    "never writes over an ignored file through an older spelling of its name",
+    async () => {
+      const { history, write, read, projectDir, historyRoot } = await project({
+        "Temp.html": "v1",
+      });
+      write("Temp.html", "v2");
+      await history.claim(you, "Edited", ["Temp.html"]);
+      await history.close();
+      renameSync(join(projectDir, "Temp.html"), join(projectDir, "t.tmp"));
+      renameSync(join(projectDir, "t.tmp"), join(projectDir, "temp.html"));
+      write("temp.html", "host");
+      const again = await open(projectDir, historyRoot, {
+        ignores: (path: string) => path === "temp.html",
+      });
+      await again.step("back", you);
+      expect(read("temp.html")).toBe("host");
+    },
+  );
+
+  // fails without the fix: Undo stopped on the folder link instead of skipping the file the host ignores.
+  it("never writes an ignored file through a folder that now links to it", async () => {
+    const { history, write, read, projectDir, historyRoot } = await project({
+      "pages/a.html": "v1",
+    });
+    write("pages/a.html", "v2");
+    await history.claim(you, "Edited", ["pages/a.html"]);
+    await history.close();
+    renameSync(join(projectDir, "pages"), join(projectDir, "private"));
+    symlinkSync("private", join(projectDir, "pages"), "dir");
+    write("private/a.html", "host");
+    const again = await open(projectDir, historyRoot, {
+      ignores: (path: string) => path.startsWith("private/"),
+    });
+    await again.step("back", you);
+    expect(read("private/a.html")).toBe("host");
+  });
+
+  // fails without the fix: with no ignores option, Undo through a folder now linked to a hidden one said nothing.
+  it("still refuses an undo through a folder link when the host passes no ignores option", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "pages/a.html": "v1" });
+    write("pages/a.html", "v2");
+    await history.claim(you, "Edited", ["pages/a.html"]);
+    await history.close();
+    renameSync(join(projectDir, "pages"), join(projectDir, ".hold"));
+    symlinkSync(".hold", join(projectDir, "pages"), "dir");
+    const again = await open(projectDir, historyRoot);
+    await expect(again.step("back", you)).rejects.toMatchObject(
+      refused("in_the_way", "pages is in the way"),
+    );
+  });
+
+  // fails without the fix: an older undo's kept file stayed in both views, and Redo still offered it.
+  it("an ignores option drops an older undo's kept file from both views and from Redo", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "a" });
+    write("assets/song.mp3", "mp3");
+    await history.claim(you, "Uploaded", ["assets/song.mp3"]);
+    write(
+      "compositions/scene.html",
+      '<template><audio src="../assets/song.mp3"></audio></template>',
+    );
+    await history.claim(agent, "Music in a scene", ["compositions/scene.html"]);
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect(history.next("forward", you)?.label).toBe("Undid: Uploaded");
+    await history.close();
+    const ignores = (path: string) => path === "assets/song.mp3";
+    const again = await open(projectDir, historyRoot, { ignores });
+    const reader = readProjectHistory({ projectDir, historyRoot, ignores });
+    expect(JSON.stringify(again.list())).not.toContain("song.mp3");
+    expect(JSON.stringify(reader.list())).not.toContain("song.mp3");
+    expect(again.next("forward", you)).toBeUndefined();
   });
 
   it("records a write nobody announced as one outside entry, and undo puts the bytes back as a new entry", async () => {
@@ -653,7 +796,7 @@ describe("openProjectHistory", () => {
     await expect(history.checkout(second.id, "after", after)).rejects.toThrow("empty folder");
     await expect(
       history.checkout("gone", "after", tempDir("hf-history-checkout-")),
-    ).rejects.toThrow("no longer kept");
+    ).rejects.toMatchObject(refused("not_kept", "That change is no longer kept"));
   });
 
   it("checks out each entry's own change around a drag held when an agent turn starts", async () => {
@@ -769,8 +912,8 @@ describe("openProjectHistory", () => {
     await history.flush();
     const entries = history.list().length;
 
-    await expect(history.undo(turn.id, { who: you })).rejects.toThrow(
-      "a/sub/new.html is in the way",
+    await expect(history.undo(turn.id, { who: you })).rejects.toMatchObject(
+      refused("in_the_way", "a/sub/new.html is in the way"),
     );
     expect([read("a/b.html"), read("a/sub/new.html"), history.list().length]).toEqual([
       "b",
@@ -792,7 +935,9 @@ describe("openProjectHistory", () => {
       mkdirSync(join(outside, "empty"));
       symlinkSync(outside, join(projectDir, "a"), "dir");
 
-      await expect(history.undo(turn.id, { who: you })).rejects.toThrow("a is in the way");
+      await expect(history.undo(turn.id, { who: you })).rejects.toMatchObject(
+        refused("in_the_way", "a is in the way"),
+      );
       expect([read("c.html"), existsSync(join(outside, "empty"))]).toEqual(["c", true]);
     },
   );
@@ -810,8 +955,8 @@ describe("openProjectHistory", () => {
       symlinkSync(outside, join(projectDir, "a"), "dir");
       await history.flush();
 
-      await expect(history.undo(turn.id, { who: you, mode: "just-this" })).rejects.toThrow(
-        "a is in the way",
+      await expect(history.undo(turn.id, { who: you, mode: "just-this" })).rejects.toMatchObject(
+        refused("in_the_way", "a is in the way"),
       );
       expect(existsSync(join(outside, "b.html"))).toBe(false);
     },

@@ -200,7 +200,16 @@ describe("installEditingAgent", () => {
           "max-z-index",
           "crop-lift",
           "edit-element",
+          "stacking-family",
           "gsap-set",
+          "patch-tweens",
+          "soft-reload",
+          "hold-scenes",
+          "mark-scenes-stale",
+          "swap-scenes",
+          "live-retime",
+          "assets-unloaded",
+          "text-edit",
         ],
       },
     });
@@ -401,6 +410,17 @@ describe("installEditingAgent", () => {
       { drafts: [{ handle: H, translate: { x: 1e6, y: 0 }, size: null }] },
       { drafts: [{ handle: H, translate: null, size: { width: -1, height: 2 } }] },
       { drafts: [{ handle: H, translate: null, size: { width: 1, height: 2, depth: 3 } }] },
+      { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1 } }] },
+      { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1, route: "x" } }] },
+      {
+        drafts: [{ handle: H, translate: null, size: null, rotate: { angle: "1", route: "css" } }],
+      },
+      {
+        drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1e6, route: "css" } }],
+      },
+      {
+        drafts: [{ handle: H, translate: null, size: null, rotate: { angle: NaN, route: "gsap" } }],
+      },
     ].map((params, index) => [
       { v: 1, id: 150 + index, kind: "draft", params },
       150 + index,
@@ -526,6 +546,77 @@ describe("installEditingAgent", () => {
     });
   });
 
+  it("re-runs a sent script through the port, and refuses a request carrying anything extra", async () => {
+    const script = `var __timelines = {}; __timelines["main"] = 1;`;
+    document.body.innerHTML = `<div data-composition-id="main"></div><script>${script}</script>`;
+    const frame = window as unknown as Record<string, unknown>;
+    Object.assign(frame, { gsap: { set: () => {} }, __timelines: { main: {} } });
+    frame.__hfForceTimelineRebind = () => {};
+    const port = connectedPort();
+    const params = { script, time: 0, sets: [], authored: [], timing: [], restore: [] };
+
+    const extra = { ...params, keys: ["main"] };
+    expect(await ask(port, { v: 1, id: 1, kind: "soft-reload", params: extra })).toMatchObject({
+      id: 1,
+      ok: false,
+    });
+    expect(document.querySelector("script")?.textContent).toBe(script);
+    // The sent script registers on a local, so the frame reads its timeline empty for now.
+    expect(await ask(port, { v: 1, id: 2, kind: "soft-reload", params })).toMatchObject({
+      id: 2,
+      ok: true,
+      result: { result: "verify-failed" },
+    });
+    expect(document.querySelector("script")?.textContent).toBe(`(function(){${script}\n})();`);
+    for (const key of ["gsap", "__timelines", "__hfForceTimelineRebind"]) delete frame[key];
+  });
+
+  it("holds and swaps scenes through the port, and refuses a hold carrying anything extra", async () => {
+    const hold = vi.fn(async () => {});
+    window.__hfHoldScenes = hold;
+    window.__hfSwapScenes = async () => {
+      throw new Error("no scene changed");
+    };
+    const port = connectedPort();
+
+    const extra = { names: ["intro"], holder: "frame" };
+    expect(await ask(port, { v: 1, id: 1, kind: "hold-scenes", params: extra })).toMatchObject({
+      ok: false,
+    });
+    expect(hold).not.toHaveBeenCalled();
+    const held = await ask(port, {
+      v: 1,
+      id: 2,
+      kind: "hold-scenes",
+      params: { names: ["intro"] },
+    });
+    expect(held).toMatchObject({ ok: true, result: { held: true } });
+    const swap = { html: "<p></p>", timeoutMs: 1000 };
+    expect(await ask(port, { v: 1, id: 3, kind: "swap-scenes", params: swap })).toMatchObject({
+      ok: true,
+      result: { swapped: false, reason: "Error: no scene changed" },
+    });
+    delete window.__hfHoldScenes;
+    delete window.__hfSwapScenes;
+  });
+
+  it("answers a live retime through the port, and refuses one carrying anything extra", async () => {
+    const port = connectedPort();
+    const tween = { selector: "#a", start: 1, duration: 1, wasStart: 0, wasDuration: 1 };
+    const tweens = [{ ...tween, moved: true, source: 0 }];
+    const plan = { key: "t", after: "x", time: 0, tweens, timing: [] };
+
+    const extra = { ...plan, script: "x" };
+    expect(await ask(port, { v: 1, id: 1, kind: "live-retime", params: extra })).toMatchObject({
+      ok: false,
+    });
+    // No live script registers the timeline, so nothing can move.
+    expect(await ask(port, { v: 1, id: 2, kind: "live-retime", params: plan })).toMatchObject({
+      ok: true,
+      result: { result: "unchanged" },
+    });
+  });
+
   it("answers computed styles for the element a selector names", async () => {
     document.body.innerHTML = `<p id="title" style="color: rgb(1, 2, 3); opacity: 0.5">Hi</p>
       <canvas data-hf-preview-video-canvas style="opacity: 0.25"></canvas>
@@ -560,6 +651,36 @@ describe("installEditingAgent", () => {
     expect(Object.keys((reply.result as { styles: object }).styles)).toEqual(
       expect.arrayContaining(["--Brand_Color", "--x2"]),
     );
+  });
+
+  it("patches a set tween through the port, and refuses a patch with an unknown field", async () => {
+    document.body.innerHTML = `<div id="box"></div>`;
+    const set = {
+      vars: { x: 0 },
+      targets: () => [document.getElementById("box")],
+      duration: () => 0,
+    };
+    Object.assign(window, { __timelines: { main: { getChildren: () => [set], time: () => 0 } } });
+    const port = connectedPort();
+    const patch = { selector: "#box", change: { kind: "set", props: { x: 12 } } };
+
+    const applied = await ask(port, {
+      v: 1,
+      id: 1,
+      kind: "patch-tweens",
+      params: { patches: [patch], seek: true },
+    });
+    const refused = await ask(port, {
+      v: 1,
+      id: 2,
+      kind: "patch-tweens",
+      params: { patches: [{ ...patch, script: "x" }], seek: true },
+    });
+
+    expect(applied).toMatchObject({ id: 1, ok: true, result: { patched: true } });
+    expect(set.vars.x).toBe(12);
+    expect(refused).toMatchObject({ id: 2, ok: false, error: { code: "invalid-params" } });
+    Reflect.deleteProperty(window, "__timelines");
   });
 
   it("replies failed when a handler rejects or its result cannot be cloned", async () => {

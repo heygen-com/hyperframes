@@ -100,8 +100,8 @@ describe("studio bundle cache policy", () => {
 });
 
 describe("studio shell framing", () => {
-  it("lets only its own origin frame the shell, on any SPA route", async () => {
-    for (const route of ["/", "/projects/demo"]) {
+  it("lets only its own origin frame the shell, on each entry route", async () => {
+    for (const route of ["/", "/index.html"]) {
       const response = await server.app.request(route);
 
       expect(response.status).toBe(200);

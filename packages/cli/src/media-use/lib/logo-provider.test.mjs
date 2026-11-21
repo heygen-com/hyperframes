@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { discardPrivateOutput } from "./private-output.mjs";
+import { dirname } from "node:path";
 import {
   entityFrom,
   titleMatches,
@@ -232,9 +234,13 @@ test("faviconSearch hands verified bytes over as a local file — one fetch, no 
   const fetchMock = t.mock.method(globalThis, "fetch", async () => bin(600));
   const res = await faviconSearch("someco logo", {});
   assert.ok(res.localPath, "returns a localPath, not a url");
+  t.after(() => rmSync(dirname(res.localPath), { recursive: true, force: true }));
+  assert.match(res.localPath, /media-use-logo-[^/\\]+[/\\]output\.ico$/);
   assert.equal(readFileSync(res.localPath).byteLength, 600, "frozen bytes are the verified bytes");
   assert.equal(fetchMock.mock.callCount(), 1, "single network round-trip");
   assert.equal(res.metadata.provenance.low_res, true);
+  discardPrivateOutput(res.localPath);
+  assert.equal(existsSync(dirname(res.localPath)), false, "resolve can remove its folder");
 });
 
 test("githubAvatarSearch never touches the network for an unmapped entity", async (t) => {
@@ -267,6 +273,7 @@ test("the real logo cascade falls through tier by tier to the first hit", async 
     entity: "zzzbrand",
   });
   assert.ok(res, "cascade must land on the favicon tier");
+  t.after(() => rmSync(dirname(res.localPath), { recursive: true, force: true }));
   assert.equal(res.metadata.provider, "favicon.ddg");
 });
 

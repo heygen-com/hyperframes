@@ -1,6 +1,7 @@
 import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
-import { existsSync, readFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, statSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { join, dirname, resolve } from "node:path";
 import {
   analyzeMusicFromSignal,
@@ -11,7 +12,7 @@ import {
 } from "@hyperframes/core/beats";
 import { parseHTMLContent } from "@hyperframes/core/compiler";
 import { walkCompositionDescendants } from "@hyperframes/parsers";
-import { isSafePath, resolveWithinProject } from "@hyperframes/core";
+import { isSafePath, resolveWithinProject, terminalLines, terminalText } from "@hyperframes/core";
 import type { Example } from "./_examples.js";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
 import type { AudioSignal } from "@hyperframes/core/audio-analysis";
@@ -25,7 +26,7 @@ export const examples: Example[] = [
 ];
 
 function fail(message: string): never {
-  console.error(c.error(message));
+  console.error(c.error(terminalLines(message)));
   failCommand();
 }
 
@@ -91,7 +92,7 @@ function report(file: string, result: MusicBeatAnalysis, json: boolean): void {
   }
   console.log(
     c.success(
-      `✓ Wrote ${result.beatTimes.length} beats → ${file} (bpm ${result.bpm ?? "?"}, ${result.bpmConfidence})`,
+      `✓ Wrote ${result.beatTimes.length} beats → ${terminalText(file)} (bpm ${result.bpm ?? "?"}, ${result.bpmConfidence})`,
     ),
   );
 }
@@ -100,7 +101,7 @@ function answerNoBeats(rel: string, json: boolean): void {
   if (json) {
     console.log(JSON.stringify({ ok: true, track: rel, file: null, count: 0, bpm: null }, null, 2));
   } else {
-    console.log(c.dim(`No beats in ${rel}; nothing written.`));
+    console.log(c.dim(`No beats in ${terminalText(rel)}; nothing written.`));
   }
 }
 
@@ -123,12 +124,12 @@ async function analyzeFile(audioPath: string, json: boolean): Promise<void> {
     return;
   }
   if (result.beatTimes.length === 0) {
-    console.log(c.dim(`No beats in ${audioPath}.`));
+    console.log(c.dim(`No beats in ${terminalText(audioPath)}.`));
     return;
   }
   console.log(
     c.success(
-      `✓ ${result.beatTimes.length} beats in ${audioPath} (bpm ${result.bpm ?? "?"}, ${result.bpmConfidence})`,
+      `✓ ${result.beatTimes.length} beats in ${terminalText(audioPath)} (bpm ${result.bpm ?? "?"}, ${result.bpmConfidence})`,
     ),
   );
 }
@@ -160,7 +161,7 @@ export default defineCommand({
     const target = resolveMusicTarget(project);
     if (!target) return answerNoTrack(Boolean(args.json));
     const { rel, audioPath } = target;
-    if (!args.json) console.log(c.dim(`Analyzing ${rel}…`));
+    if (!args.json) console.log(c.dim(`Analyzing ${terminalText(rel)}…`));
 
     const result = await analyzeMusicFromSignal(await decode(audioPath));
     // The Studio ignores a 0-beat file (treats it as a stale seed), so don't write one.
@@ -170,7 +171,7 @@ export default defineCommand({
     if (!isSafePath(project.dir, outPath))
       fail(`Beat file path resolves outside the project: ${rel}`);
     mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, serializeBeats(result.beatTimes, result.beatStrengths, rel));
+    replaceFileAtomically(outPath, serializeBeats(result.beatTimes, result.beatStrengths, rel));
     report(`beats/${rel}.json`, result, Boolean(args.json));
   },
 });

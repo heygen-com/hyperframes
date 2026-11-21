@@ -21,7 +21,8 @@ import { ReviewFailed } from "./reviewClient.mjs";
 import { rename } from "./storage.mjs";
 
 /** @typedef {import("./reviewClient.mjs").ReviewClient} ReviewClient
- * @typedef {import("./types/reviewWire.js").ShareDTO} ShareDTO */
+ * @typedef {import("./types/reviewWire.js").ShareDTO} ShareDTO
+ * @typedef {import("./types/reviewWire.js").ProjectDTO} ProjectDTO */
 
 /** @typedef {import("./types/share.js").ReviewShare} ReviewShare
  * @typedef {import("./types/share.js").ReviewSpace} ReviewSpace
@@ -426,13 +427,45 @@ async function registerOnce(client, projectPath, record, title) {
     client_operation_id: randomUUID(),
   };
   await writeJsonAtomic(recordPath(projectPath), { ...record, registration: body });
+  let project;
   try {
-    return (await client.register(body, record.spaceId)).project_id;
+    project = await client.register(body, record.spaceId);
   } catch (error) {
     if (!(error instanceof ReviewFailed) || error.reason !== "space_forbidden") throw error;
     await writeJsonAtomic(recordPath(projectPath), { ...record, spaceId: null });
     throw await spaceRefusal(client, record.spaceId, error);
   }
+  if (project.created || (record.registration && (await unused(client, project))))
+    return project.project_id;
+  await writeJsonAtomic(recordPath(projectPath), record);
+  throw new ReviewFailed(409, "review_project_changed");
+}
+
+/** A first share may only land on a project it made. A server answer of an existing project is a retry after a lost
+ * reply only when the record already held this registration and the project is as registration left it: private,
+ * link never turned off, no ready version. Anything else is a review nobody confirmed, so nothing is changed.
+ * @param {ReviewClient} client @param {ProjectDTO} project */
+async function unused(client, project) {
+  if (project.latest_ready_version_id) return false;
+  return untouched(project, await readShare(client, project.project_id));
+}
+
+/** A project as an unfinished first share leaves it: no ready version, its link never turned off, and private, or set
+ * to this share's audience already when only the reply to that change was lost.
+ * @param {ProjectDTO} project @param {ShareDTO} share @param {import("./types/share.js").AccessMode} [audience] */
+const untouched = (project, share, audience) =>
+  !project.latest_ready_version_id &&
+  !share.revoked &&
+  (share.access_mode === "private" || share.access_mode === audience);
+
+/** With no review a host confirmed, a record's project that no share finished names nothing the person agreed to: only
+ * a first share that stopped before it finished goes on. Anything else is refused, and the record stays as it is.
+ * @param {ReviewClient} client @param {ReviewRecord} read @param {ShareDTO} share
+ * @param {import("./types/share.js").AccessMode} [audience] */
+async function assertUnfinished(client, read, share, audience) {
+  if (!read.projectId || read.opened) return;
+  if (!untouched(await client.project(read.projectId), share, audience))
+    throw new ReviewFailed(409, "review_project_changed");
 }
 
 /** A space refused at registration. Only one picked before the workspace changed is replaced by the next press;
@@ -447,8 +480,10 @@ async function spaceRefusal(client, refused, error) {
 /** Share's press: the first registers the project into the space given (none: the signed-in one) and opens its link
  * to that space; a later one reads the link, turning it back on when it was off. A registered project keeps its space.
  * A host can prepare review content after registration is saved and before the link or its audience changes.
+ * `confirmed` is the review the person was shown, null for a new one; a record that names another is refused unchanged.
  * @param {{ projectPath: string, title: string, client: ReviewClient, spaceId?: string | null, audience?:
- * import("./types/share.js").AccessMode | undefined, beforeOpen?: (projectId: string) => Promise<void> }} request */
+ * import("./types/share.js").AccessMode | undefined, beforeOpen?: (projectId: string) => Promise<void>,
+ * confirmed?: string | null }} request */
 export const shareForReview = ({
   projectPath,
   title,
@@ -456,9 +491,10 @@ export const shareForReview = ({
   spaceId = null,
   audience,
   beforeOpen,
+  confirmed,
 }) =>
   oneAtATime(projectPath, async () => {
-    const read = await recordToShare(client, projectPath, spaceId);
+    const read = assertConfirmed(await recordToShare(client, projectPath, spaceId), confirmed);
     const id = read.projectId ?? (await registerOnce(client, projectPath, read, title));
     const record = read.projectId
       ? read
@@ -466,12 +502,20 @@ export const shareForReview = ({
     if (!read.projectId) await writeJsonAtomic(recordPath(projectPath), record);
     const share = await readShare(client, id, projectPath);
     if (takenDown(share)) return shown(client, share);
+    if (confirmed === undefined) await assertUnfinished(client, read, share, audience);
     if (!record.opened || share.revoked) await beforeOpen?.(id);
     return openLink(client, projectPath, record, id, share, audience).then(
       (opened) => shown(client, opened),
       heldInstead(client, id),
     );
   });
+
+/** @param {ReviewRecord} record @param {string | null | undefined} confirmed */
+function assertConfirmed(record, confirmed) {
+  if (confirmed !== undefined && record.projectId !== confirmed)
+    throw new ReviewFailed(409, "review_project_changed");
+  return record;
+}
 
 /** Turns a link that was off back on, and opens a first share to the workspace.
  * @param {ReviewClient} client @param {string} projectPath @param {ReviewRecord} record @param {string} id
@@ -483,7 +527,8 @@ async function openLink(client, projectPath, record, id, share, audience) {
       expected_link_generation: share.link_generation,
       client_operation_id: randomUUID(),
     });
-  // A lost PATCH reply leaves the first share incomplete; a fresh explicit choice must still apply.
+  // Opens a first share. Unless the host confirmed this review, a retry after a lost reply reaches here only while
+  // the review is private or already has this audience (assertUnfinished).
   if (!record.opened) {
     share = await applyFirstAudience(client, id, share, audience);
     await writeJsonAtomic(recordPath(projectPath), { ...record, projectId: id, opened: true });
@@ -539,7 +584,8 @@ const SENTENCES = {
   review_subscription_required: "Restricted sharing requires a HyperFrames subscription.",
   review_public_consent_required: "Choose Share with anyone who has the link to continue.",
   review_entitlement_unavailable: "Couldn't confirm sharing availability. Try again.",
-  review_project_changed: "This project’s review changed. Reopen sharing and try again.",
+  review_project_changed:
+    "This project’s review changed. Reopen sharing and try again. If it keeps failing, remove .hyperframes/review.json to share this folder as a new review.",
   review_project_removed:
     "This review project was removed. Share again to create a new link and discussion.",
   moderation_hold: "This review was taken down for a policy violation, so it can't be shared.",

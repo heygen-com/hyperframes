@@ -8,7 +8,7 @@ import {
   PREVIEW_VIDEO_FRAME_ATTR,
   PREVIEW_VIDEO_SOURCE_ATTR,
 } from "@hyperframes/core/studio-preview-mark";
-import { liveMarkupWithoutPreviewMarks } from "./authoredSource";
+import { authoredStyles, liveMarkupWithoutPreviewMarks } from "./authoredSource";
 
 describe("liveMarkupWithoutPreviewMarks", () => {
   it("omits generated video surfaces and their hiding marks from copied composition markup", () => {
@@ -42,5 +42,13 @@ describe("liveMarkupWithoutPreviewMarks", () => {
     expect(liveMarkupWithoutPreviewMarks(live)).toBe(
       '<div><div id="title" data-start="0" data-duration="10"></div></div>',
     );
+  });
+});
+
+// fails without the fix: an SVG element named template has no content, and the search read it as an HTML one.
+describe("authoredStyles", () => {
+  it("reads a page holding an SVG element named template around a composition root", () => {
+    const html = `<svg><template><g data-composition-id="x"></g></template></svg><div id="a" style="color: red"></div>`;
+    expect(authoredStyles(html)).toContainEqual(["#a", "color: red"]);
   });
 });

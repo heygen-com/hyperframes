@@ -154,30 +154,21 @@ function untrustedOrigin(name) {
   return state === null ? null : RECEIVED_ORIGIN[state];
 }
 
-// 0: set outside any project .env; 1: the person's own project .env; 2: a received or unreadable one.
-function keyRank(name) {
-  if (projectKeyDir(name) === undefined) return 0;
-  return untrustedOrigin(name) === null ? 1 : 2;
-}
-
-// A credential for a competing provider from a source the person controls more surely, named for the note. The
-// person's own project key gives way only to the other API key, which speech and music both accept, and an own
-// ElevenLabs key stays for an explicit provider choice.
+// The person's own credential that the provider of a received project's key competes with, named for the note;
+// undefined when the key is the person's own or nothing competes.
 function ownCompetingCredential(name) {
-  const rank = keyRank(name);
-  const surer = (other) => other !== name && process.env[other] && keyRank(other) < rank;
-  if (name !== "ELEVENLABS_API_KEY")
-    return (rank === 2 ? GEMINI_CREDENTIALS : ["GEMINI_API_KEY", "GOOGLE_API_KEY"]).find(surer);
-  if (rank < 2) return undefined;
+  if (untrustedOrigin(name) === null) return undefined;
+  const own = (other) => other !== name && process.env[other] && untrustedOrigin(other) === null;
+  if (name !== "ELEVENLABS_API_KEY") return GEMINI_CREDENTIALS.find(own);
   if (process.env.HEYGEN_ACCESS_TOKEN) return "HEYGEN_ACCESS_TOKEN";
-  const heygenKey = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY"].find(surer);
+  const heygenKey = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY"].find(own);
   if (heygenKey) return heygenKey;
   return storedCredential() ? "saved HeyGen credentials" : undefined;
 }
 
 const projectOrigin = (name) => untrustedOrigin(name) ?? "a project .env";
 
-// A project .env's provider key gives way to the person's own credential for a competing provider.
+// A received project .env's provider key gives way to the person's own credential for a competing provider.
 function yieldProjectProviderKeys() {
   for (const name of ["GEMINI_API_KEY", "GOOGLE_API_KEY", "ELEVENLABS_API_KEY"]) {
     const dir = projectKeyDir(name);

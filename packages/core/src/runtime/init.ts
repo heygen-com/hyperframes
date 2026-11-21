@@ -23,6 +23,7 @@ import {
   giveBackWhenDue,
   isLongSource,
   preloadMedia,
+  prefetchMedia,
   prepareUpcomingMedia,
   releaseMedia,
   lengthIsAuthored,
@@ -161,7 +162,7 @@ import {
 } from "./compositionLength";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
-import { loadCompositions } from "./compositionLoader";
+import { inlineMountTemplate, loadCompositions } from "./compositionLoader";
 import { runScriptsAfterFonts, waitForFonts } from "./afterFonts";
 import {
   applyCaptionOverrides,
@@ -1085,7 +1086,7 @@ export function initSandboxRuntimeModular(): void {
         el.style.position = "absolute";
       }
       if (tag !== "audio") {
-        const sizedByItsFile = tag === "img";
+        const sizedByItsFile = tag === "img" || tag === "video";
         const forcedWidth = parseDimensionPx(el.getAttribute("data-width"));
         const forcedHeight = parseDimensionPx(el.getAttribute("data-height"));
         const hasMeaningfulComputedWidth = computed.width !== "0px" && computed.width !== "auto";
@@ -1211,11 +1212,7 @@ export function initSandboxRuntimeModular(): void {
     );
     for (const el of candidates) {
       const cid = el.getAttribute("data-composition-id");
-      if (
-        cid &&
-        el.children.length === 0 &&
-        document.querySelector(`template#${CSS.escape(cid)}-template`)
-      ) {
+      if (cid && el.children.length === 0 && inlineMountTemplate(document, cid)) {
         hasInlineTemplateCompositions = true;
         break;
       }
@@ -2398,6 +2395,17 @@ export function initSandboxRuntimeModular(): void {
     return true;
   };
 
+  const renderRootBackAtPlayheadAfterRenest = () => {
+    const root = state.capturedTimeline;
+    if (
+      typeof root?.time !== "function" ||
+      typeof root.totalTime !== "function" ||
+      typeof root.duration !== "function"
+    )
+      return;
+    const target = Math.min(Math.max(0, state.currentTime || 0), root.duration());
+    if (Math.abs(root.time() - target) > 1e-3) root.totalTime(target, true);
+  };
   const reconcileTimeline = () => {
     if (state.tornDown) return;
     const resolution = resolveRootTimelineFromDocument();
@@ -2422,6 +2430,7 @@ export function initSandboxRuntimeModular(): void {
         clock.setDuration(length);
         postTimeline();
       }
+      renderRootBackAtPlayheadAfterRenest();
     }
     syncTimedElementVisibility(state.currentTime);
   };
@@ -2744,6 +2753,7 @@ export function initSandboxRuntimeModular(): void {
     const el = event.currentTarget;
     if (!freesBufferedVideo(el) || mediaNearPlayhead.get(el) !== false || el.readyState === 0)
       return;
+    el.preload = "none";
     withoutOwnTimingRecords(el, () => releaseMedia(el, true));
   };
   const onMediaErrorForProxy = (event: Event) => {
@@ -3214,7 +3224,7 @@ export function initSandboxRuntimeModular(): void {
     compactWaitingForSlot();
   };
   const startPrefetch = (el: HTMLMediaElement) => {
-    preloadMedia(el);
+    prefetchMedia(el);
     prepareInWindow(el);
     if (prefetching.has(el) || el.readyState >= 3) return;
     prefetching.add(el);
@@ -3303,6 +3313,19 @@ export function initSandboxRuntimeModular(): void {
       else startPrefetch(el);
     }
   };
+  const moveMediaWindow = (time: number, clips: RuntimeMediaClip[]) =>
+    withTimingResolver(() => {
+      const visibleAt = timedVisibilityAt();
+      for (const el of metadataBoundMedia) armedFrom.delete(el);
+      for (const el of metadataBoundMedia) {
+        if (mediaNearPlayhead.get(el) !== true || clips.some((clip) => clip.el === el)) continue;
+        if (visibleAt(el, time) || dueSoon(el, visibleAt, time, RELEASE_LOOKAHEAD_SECONDS))
+          continue;
+        preloadNearPlayhead(el, false, false, time, false);
+      }
+      for (const { el } of clips)
+        if (mediaNearPlayhead.get(el) === false) mediaNearPlayhead.set(el, true);
+    });
   // Held past the look-ahead so a scrub across its edge does not refetch, and while playing when
   // due at the loop start.
   const dueAtLoopStart = (el: HTMLMediaElement, visibleAt: ReturnType<typeof timedVisibilityAt>) =>
@@ -3422,6 +3445,7 @@ export function initSandboxRuntimeModular(): void {
     if (timingRevision !== undefined) refreshWaitingForSlotOrder(timingRevision);
     // While the scene the playhead landed in mounts, the page keeps what it last drew.
     if (moveSceneWindow(currentTime)) return;
+    const seekOwnsMedia = previewSeek?.targetTime !== undefined && !previewSeek.committing;
     const rootComp = resolveRootCompositionElement();
     let decidedTimedClip = false;
     const visibleAt = timedVisibilityAt(timingRevision);
@@ -3495,7 +3519,12 @@ export function initSandboxRuntimeModular(): void {
       if (upcoming && !rawNode.hasAttribute(STUDIO_PREVIEW_UPCOMING_ATTR))
         loadPreviewImagesIn(rawNode);
       rawNode.toggleAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, upcoming);
-      if (isMediaElement(rawNode) && metadataBoundMedia.has(rawNode) && inPreloadWindow(rawNode))
+      if (
+        !seekOwnsMedia &&
+        isMediaElement(rawNode) &&
+        metadataBoundMedia.has(rawNode) &&
+        inPreloadWindow(rawNode)
+      )
         preloadNearPlayhead(
           rawNode,
           isVisibleNow,
@@ -5081,6 +5110,7 @@ export function initSandboxRuntimeModular(): void {
       },
       prepare: (clips, time, signal, settled) => {
         moveSceneWindow(time);
+        moveMediaWindow(time, clips);
         for (const { el } of clips) {
           if (!isVideoElement(el) || el.videoWidth > 0) continue;
           if (el.preload === "none") el.preload = "metadata";
@@ -5135,6 +5165,7 @@ export function initSandboxRuntimeModular(): void {
     clipsAt: previewVideoClipsAt,
     prepare: (clips, time) => {
       moveSceneWindow(time);
+      moveMediaWindow(time, clips);
       for (const clip of clips) {
         const { el } = clip;
         if (el.preload !== "auto") el.preload = "auto";
@@ -5175,7 +5206,7 @@ export function initSandboxRuntimeModular(): void {
     nativePlayTime = undefined;
     wallClearTimeout(nativeWarmTimer);
     if (
-      !mediaDeferred ||
+      !(studioPreview || (playerFrame && isWebKit())) ||
       state.nativeMediaSyncDisabled ||
       isExportRenderDrivingFrames() ||
       window.__HF_EXPORT_RENDER_SEEK_CONFIG ||
@@ -5913,6 +5944,8 @@ export function initSandboxRuntimeModular(): void {
         swallow("runtime.init.transport.adapter", err);
       }
     }
+    window.__hf = window.__hf || {};
+    window.__hf.redraws = (window.__hf.redraws ?? 0) + 1;
     return pageAnimations;
   }
 
@@ -6086,6 +6119,41 @@ export function initSandboxRuntimeModular(): void {
     transportWakeRequested = false;
     requestTransportTick();
   };
+
+  // A held film plays nothing, yet a clip that has played keeps its response open once it has buffered
+  // enough, and the bytes it has not read count against the connection every file shares: the clip the
+  // hold waits for then gets none. Each such clip reloads at preload metadata, which the browser ends
+  // once the clip can play, and the hold waits for it too. WebKit keeps its own hold-back.
+  const reloadPlayedClipsForHold = (
+    time: number,
+    waitingFor: HTMLMediaElement[],
+  ): HTMLMediaElement[] =>
+    mediaClipsInWindow
+      .filter(
+        ({ el, start, end }) =>
+          !isWebKit() &&
+          !waitingFor.includes(el) &&
+          isInClipWindow(time, start, end) &&
+          isPlayableTrack(el) &&
+          el.played.length > 0 &&
+          !webAudio.ownsElement(el),
+      )
+      .map((clip) => {
+        const { el } = clip;
+        el.preload = "metadata";
+        withoutOwnTimingRecords(el, () => releaseMedia(el));
+        if (el.readyState === 0)
+          el.addEventListener(
+            "loadedmetadata",
+            () => {
+              const sameHold =
+                bufferingFor.includes(el) && Math.abs(state.currentTime - time) < 1e-3;
+              if (sameHold) el.currentTime = mediaElementTime(mediaSourceTimeAt(clip, time));
+            },
+            { once: true },
+          );
+        return el;
+      });
 
   const isPlayableTrack = (el: HTMLMediaElement): boolean =>
     el.isConnected &&
@@ -6408,6 +6476,7 @@ export function initSandboxRuntimeModular(): void {
       if (clock.isPlaying() && notReady.length > 0) {
         bufferingFor = notReady;
         haltPlayback(true);
+        bufferingFor = [...notReady, ...reloadPlayedClipsForHold(state.currentTime, notReady)];
       } else if (
         bufferingFor.length > 0 &&
         !mediaNotReadyAt(state.currentTime, canResumeFrom).some((el) => bufferingFor.includes(el))

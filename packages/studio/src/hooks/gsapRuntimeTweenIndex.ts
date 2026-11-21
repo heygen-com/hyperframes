@@ -1,12 +1,8 @@
 import type { RuntimeTimeline, RuntimeTween } from "./gsapRuntimeKeyframes";
 
-export function matchesElement(tween: RuntimeTween, el: Element): boolean {
-  if (!tween.targets) return false;
-  for (const t of tween.targets()) {
-    if (t === el || (el.id && (t as Element).id === el.id)) return true;
-  }
-  return false;
-}
+import { matchesElement } from "@hyperframes/core/runtime/patch-tween";
+
+export { matchesElement };
 
 type TweenIndex = { byElement: Map<unknown, RuntimeTween[]>; byId: Map<string, RuntimeTween[]> };
 let tweenIndexes: WeakMap<RuntimeTimeline, TweenIndex> | null = null;

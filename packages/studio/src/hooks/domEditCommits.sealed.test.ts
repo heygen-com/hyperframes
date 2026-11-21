@@ -13,7 +13,12 @@ import {
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { commitDomStyles } from "./domStyleCommit";
+import { readElementCropInsets } from "../components/editor/domEditOverlayCrop";
+import { applyUndoRestoreToPreview } from "../utils/gsapUndoRestore";
+import { onPreviewRestoredInPlace } from "../player/sceneSwap";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
+import { usePlayerStore } from "../player/store/playerStore";
+import { syncStoredAutomationFromFrame } from "../player/lib/automationStoreSync";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -121,6 +126,79 @@ describe("DOM edit commits in a sealed preview", () => {
     expect(card.style.color).toBe("red");
   });
 
+  // fails without the fix: a sealed crop's release drew the press-time crop until the save's resync.
+  it("shows a sealed style commit on the selection at once, before the save lands", async () => {
+    const { iframe, selection } = await sealedCard(`<div id="card">Hi</div>`);
+    let land = () => {};
+    const persist = vi.fn<PersistDomEditOperations>(
+      () => new Promise<void>((resolve) => (land = resolve)),
+    );
+    const saved = commitDomStyles(styleContext(iframe, persist), selection, {
+      "clip-path": "inset(0px 40px 0px 0px)",
+      opacity: "0.5",
+    });
+    await settle();
+    expect(persist).toHaveBeenCalled();
+    expect(readElementCropInsets(selection.element)).toMatchObject({ right: 40 });
+    expect(selection.element.style.opacity).toBe("0.5");
+    land();
+    await saved;
+  });
+
+  it("puts the selection's own style back exactly when a sealed save fails", async () => {
+    const { iframe, selection } = await sealedCard(
+      `<div id="card" style="clip-path: inset(10px)">Hi</div>`,
+    );
+    const before = selection.element.getAttribute("style");
+    const persist = vi.fn<PersistDomEditOperations>(async () => {
+      throw new Error("disk full");
+    });
+    await commitDomStyles(styleContext(iframe, persist), selection, {
+      "clip-path": "inset(20px)",
+    });
+    await settle();
+    expect(selection.element.getAttribute("style")).toBe(before);
+    expect(readElementCropInsets(selection.element)).toMatchObject({ top: 10, right: 10 });
+  });
+
+  // fails without the fix: an in-place undo never re-read the selection, which kept drawing the undone crop.
+  it("shows the undone crop on the selection after a sealed undo restores it in place", async () => {
+    const page = (clip: string) =>
+      `<div data-composition-id="main"><div id="card" data-hf-id="card" style="clip-path: ${clip}">Hi</div></div>`;
+    const { card, iframe, selection } = await sealedCard(page("inset(10px)"));
+    const persist = vi.fn<PersistDomEditOperations>(async () => undefined);
+    await commitDomStyles(styleContext(iframe, persist), selection, { "clip-path": "inset(20px)" });
+    await settle();
+    expect(readElementCropInsets(selection.element)).toMatchObject({ top: 20 });
+
+    Object.assign(window, { __player: { seek: () => {} } });
+    closers.push(() => Reflect.deleteProperty(window, "__player"));
+    const reReadSelection = async () => {
+      const found = await findPreviewElementForSelection(
+        iframe,
+        { id: "card", sourceFile: PATH },
+        PATH,
+      );
+      await resolvePreviewSelection(iframe, found!, {
+        activeCompositionPath: PATH,
+        isMasterView: false,
+        skipSourceProbe: true,
+      });
+    };
+    const html = (clip: string) => `<html><body>${page(clip)}</body></html>`;
+    const files = { [PATH]: { previous: html("inset(20px)"), restored: html("inset(10px)") } };
+    const reload = vi.fn();
+    closers.push(onPreviewRestoredInPlace(iframe, () => void reReadSelection()));
+    const strategy = applyUndoRestoreToPreview(iframe, PATH, files, 0, reload);
+    await settle();
+    await settle();
+
+    expect(strategy).toBe("soft");
+    expect(reload).not.toHaveBeenCalled();
+    expect(card.style.clipPath).toBe("inset(10px)");
+    expect(readElementCropInsets(selection.element)).toMatchObject({ top: 10 });
+  });
+
   it("reloads a sealed frame for a font change, which it cannot load from Studio", async () => {
     const { iframe, selection } = await sealedCard(`<div id="card">Hi</div>`);
     const persist = vi.fn<PersistDomEditOperations>(async () => undefined);
@@ -156,6 +234,33 @@ describe("DOM edit commits in a sealed preview", () => {
     await settle();
     expect(card.dataset.volume).toBe("0.25");
     expect(card.getAttribute("title")).toBe("Card");
+  });
+
+  it("records a sealed automation save in the timeline's store", async () => {
+    const { iframe, selection } = await sealedCard(`<audio id="card" data-volume="1"></audio>`);
+    const clip = { id: "card", key: "card", tag: "audio", start: 0, duration: 4, track: 1 };
+    usePlayerStore.setState({ elements: [{ ...clip, domId: "card", volume: 1 }] });
+    const commits = attributeCommits(
+      iframe,
+      selection,
+      vi.fn(async () => undefined),
+    );
+    await act(() => commits.handleDomAttributeQuietCommit("volume", "0.25"));
+    await vi.waitFor(() => expect(usePlayerStore.getState().elements[0]?.volume).toBe(0.25));
+    usePlayerStore.getState().reset();
+  });
+
+  it("drops a sealed lane read when the frame loads before it answers", async () => {
+    const { iframe } = await sealedCard(`<audio id="card" data-volume="0.25"></audio>`);
+    const clip = { id: "card", key: "card", tag: "audio", start: 0, duration: 4, track: 1 };
+    usePlayerStore.setState({ elements: [{ ...clip, domId: "card", volume: 1 }] });
+    syncStoredAutomationFromFrame(iframe);
+    iframe.dispatchEvent(new Event("load"));
+    await settle();
+    expect(usePlayerStore.getState().elements[0]?.volume).toBe(1);
+    syncStoredAutomationFromFrame(iframe);
+    await vi.waitFor(() => expect(usePlayerStore.getState().elements[0]?.volume).toBe(0.25));
+    usePlayerStore.getState().reset();
   });
 
   it("never puts back a value over a newer edit that saved", async () => {

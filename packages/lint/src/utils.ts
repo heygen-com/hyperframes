@@ -4,6 +4,7 @@
 import { Parser } from "htmlparser2";
 import { parse, type CallExpression, type Comment, type Program } from "acorn";
 import { base, recursive, simple } from "acorn-walk";
+import { readClipTiming } from "@hyperframes/parsers/composition-contract";
 
 export type OpenTag = {
   raw: string;
@@ -239,11 +240,12 @@ export function isAudibleVideoTag(tagSource: string): boolean {
 }
 
 export function mediaTimeWindow(tagSource: string): { start: number; end: number } | null {
-  const start = Number(readAttr(tagSource, "data-start"));
-  const duration = Number(readAttr(tagSource, "data-duration"));
   if (!readAttr(tagSource, "data-start") || !readAttr(tagSource, "data-duration")) return null;
-  if (!Number.isFinite(start) || !Number.isFinite(duration)) return null;
-  return { start, end: start + duration };
+  const timing = readClipTiming({
+    getAttribute: (name) => readAttr(tagSource, name),
+  });
+  if (timing.start === null || timing.duration === null) return null;
+  return { start: timing.start, end: timing.start + timing.duration };
 }
 
 export function mediaWindowsOverlap(

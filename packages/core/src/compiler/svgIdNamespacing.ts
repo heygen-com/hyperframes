@@ -13,6 +13,7 @@ import { escapeCssIdentifier, selectorIdTokens } from "./selectorIdTokens";
 import {
   SVG_REFERENCE_ALIASES_ATTR,
   readSvgReferenceAliases,
+  recordedSvgIds,
   rewriteSvgSelectors,
   type SvgReferenceAlias,
 } from "./svgSelectorAliases";
@@ -222,15 +223,16 @@ function collectNativelyReferencedIds(
   return referenced;
 }
 
-function isExcluded(el: Element, exclude: readonly Element[]): boolean {
-  return exclude.some((excluded) => excluded === el || excluded.contains(el));
+function isExcluded(el: Element, exclude: ReadonlySet<Element>): boolean {
+  for (let at: Element | null = el; at; at = at.parentElement) if (exclude.has(at)) return true;
+  return false;
 }
 
 /** `root` plus every descendant that is not inside an excluded subtree. */
 function collectScopeElements(scope: SvgIdScope): Element[] {
-  const exclude = scope.exclude ?? [];
+  const exclude = new Set(scope.exclude);
   const descendants = [...scope.root.querySelectorAll("*")];
-  const own = exclude.length ? descendants.filter((el) => !isExcluded(el, exclude)) : descendants;
+  const own = exclude.size ? descendants.filter((el) => !isExcluded(el, exclude)) : descendants;
   return [scope.root, ...own];
 }
 
@@ -243,9 +245,9 @@ interface ResolvedScope {
 
 /** Every `<svg>`-subtree element in the scope that carries an id. */
 function collectSvgIdElements(scope: SvgIdScope): Element[] {
-  const exclude = scope.exclude ?? [];
+  const exclude = new Set(scope.exclude);
   const matches = [...scope.root.querySelectorAll("svg [id], svg[id]")];
-  return exclude.length ? matches.filter((el) => !isExcluded(el, exclude)) : matches;
+  return exclude.size ? matches.filter((el) => !isExcluded(el, exclude)) : matches;
 }
 
 function resolveScope(scope: SvgIdScope): ResolvedScope {
@@ -276,6 +278,7 @@ interface IdCensus {
   /** Every id in the document, extended with each minted id so no two
    *  renames (or a rename and an authored id) can ever coincide. */
   usedIds: Set<string>;
+  nextFreeSuffixByBase: Map<string, number>;
 }
 
 function currentAuthoredSvgId(el: Element): string | null {
@@ -304,16 +307,18 @@ function buildIdCensus(document: SvgIdQueryable): IdCensus {
       else elementsById.set(authored, [el]);
     }
   }
-  return { elementsById, usedIds };
+  return { elementsById, usedIds, nextFreeSuffixByBase: new Map() };
 }
 
 /** A namespaced id that is not already taken anywhere in the document. */
-function mintNamespacedId(prefix: string, originalId: string, usedIds: Set<string>): string {
+function mintNamespacedId(prefix: string, originalId: string, census: IdCensus): string {
   const base = `${prefix}--${originalId}`;
-  let candidate = base;
-  for (let n = 2; usedIds.has(candidate); n += 1) candidate = `${base}-${n}`;
-  usedIds.add(candidate);
-  return candidate;
+  const name = (n: number) => (n === 1 ? base : `${base}-${n}`);
+  let n = census.nextFreeSuffixByBase.get(base) ?? 1;
+  while (census.usedIds.has(name(n))) n += 1;
+  census.nextFreeSuffixByBase.set(base, n + 1);
+  census.usedIds.add(name(n));
+  return name(n);
 }
 
 function collisionScopes(
@@ -344,7 +349,7 @@ function planRenames(
     if (elements.length < 2) continue;
     for (const index of collisionScopes(id, elements, scopeIndexByRenamable)) {
       prefixes[index] ??= sanitizeNamespaceSegment(scopes[index]!.namespace);
-      idMaps[index]!.set(id, mintNamespacedId(prefixes[index]!, id, census.usedIds));
+      idMaps[index]!.set(id, mintNamespacedId(prefixes[index]!, id, census));
     }
   }
   return idMaps;
@@ -450,11 +455,12 @@ const CLIP_SELECTOR = "[data-start]:not([data-composition-id]):not([data-composi
 /** The outermost timed clips holding an `<svg>` outside every composition host. Each is its own id scope, as an
  *  inlined composition is, so two scenes drawn with the same ids each resolve their own `url(#id)` and `href`. */
 export function sceneClipRoots(document: SvgIdQueryable, hosts: readonly Element[]): Element[] {
+  const hostSet = new Set(hosts);
   return [...document.querySelectorAll(CLIP_SELECTOR)].filter(
     (clip) =>
       !clip.parentElement?.closest(CLIP_SELECTOR) &&
       !!clip.parentElement?.closest("[data-composition-id]") &&
-      !isExcluded(clip, hosts) &&
+      !isExcluded(clip, hostSet) &&
       !!clip.querySelector("svg"),
   );
 }
@@ -534,6 +540,7 @@ export function rewriteSvgIdReferencesInCss(
   css: string,
   idMap: SvgIdMap,
   references: readonly SvgReferenceAlias[] = [],
+  charge?: (bytes: number) => void,
 ): string {
   if (!css || (idMap.size === 0 && references.length === 0)) return css;
   if (!css.includes("#") && !css.includes("[") && !css.toLowerCase().includes("url(")) return css;
@@ -547,9 +554,14 @@ export function rewriteSvgIdReferencesInCss(
     return css;
   }
   let mutated = false;
-  const recordedIds = new Set(
-    references.filter((alias) => alias.name === ID_ATTR).map((alias) => alias.before),
-  );
+  let charged = 0;
+  const chargeSelector =
+    charge &&
+    ((bytes: number) => {
+      charged += bytes;
+      charge(bytes);
+    });
+  const recordedIds = recordedSvgIds(references);
   const idsNamedBy = (selector: string) =>
     selectorIdTokens(selector).flatMap((id) => {
       const renamed = recordedIds.has(id) ? undefined : idMap.get(id);
@@ -559,10 +571,18 @@ export function rewriteSvgIdReferencesInCss(
       ];
     });
   root.walkRules((rule) => {
-    const rewritten = rule.selectors.map((selector) =>
-      rewriteSvgSelectors(selector, idsNamedBy(selector), references),
+    const selectors = rule.selectors;
+    const rewritten = selectors.map((selector) =>
+      rewriteSvgSelectors(
+        selector,
+        idsNamedBy(selector),
+        references,
+        undefined,
+        chargeSelector,
+        charge,
+      ),
     );
-    if (rewritten.some((selector, index) => selector !== rule.selectors[index])) {
+    if (rewritten.some((selector, index) => selector !== selectors[index])) {
       rule.selectors = rewritten;
       mutated = true;
     }
@@ -583,5 +603,9 @@ export function rewriteSvgIdReferencesInCss(
     }
   });
 
-  return mutated ? root.toResult({ map: false }).css : css;
+  const rewritten = mutated ? root.toResult({ map: false }).css : css;
+  // Selector growth was charged as it was built; settle to the sheet's real growth. A scan's charge stays.
+  const settle = Math.max(0, rewritten.length - css.length) - charged;
+  if (charge && settle !== 0) charge(settle);
+  return rewritten;
 }

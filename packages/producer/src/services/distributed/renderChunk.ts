@@ -58,7 +58,7 @@ import {
   readWebGlVendorInfoFromCanvas,
   resolveConfig,
   type ShownBox,
-  usableCpuCount,
+  cpuBudget,
 } from "@hyperframes/engine";
 import { defaultLogger } from "../../logger.js";
 import {
@@ -1043,10 +1043,10 @@ export async function renderChunk(
           const captureSession = session;
           session = null;
           verifyStarted = Date.now();
-          overlap.current = canEncodeWhileCapturing(encodeInput, chunkWorkerCount, usableCpuCount())
+          overlap.current = canEncodeWhileCapturing(encodeInput, chunkWorkerCount, cpuBudget())
             ? encodeWhileCapturing(encodeInput, framesInChunk, {
                 workerCount: chunkWorkerCount,
-                cpuCount: usableCpuCount(),
+                cpuCount: cpuBudget(),
               })
             : null;
           await observeRenderStage(

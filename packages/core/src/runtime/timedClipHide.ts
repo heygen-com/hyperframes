@@ -24,11 +24,13 @@ const HIDDEN_CLIP_DOUBLED_FOR_WEIGHT = `[${CLIP_HIDDEN_ATTR}][${CLIP_HIDDEN_ATTR
 const HIDDEN_CLIP_BY_INLINE_STYLE = `[${CLIP_HIDDEN_ATTR}][style*="visibility: hidden"]`;
 const skipHiddenImages = (clip: string) =>
   `${SKIPPABLE_CLIP}${clip} img { display: none !important; }`;
+const LAYER_OUTRANKING_UNLAYERED_IMPORTANT = "hf-hidden-clip";
 const hideHiddenClipContents = (clip: string) => {
   const filterOutputLayers = [clip, `${clip} *`]
     .flatMap((layer) => [layer, `${layer}::before`, `${layer}::after`])
     .join(", ");
-  return `${clip} * { visibility: hidden !important; } ${filterOutputLayers} { filter: none !important; }`;
+  const rules = `${clip} * { visibility: hidden !important; } ${filterOutputLayers} { filter: none !important; }`;
+  return `${rules} @layer ${LAYER_OUTRANKING_UNLAYERED_IMPORTANT} { ${rules} }`;
 };
 
 export function showHiddenClips(only: (el: HTMLElement) => boolean = () => true): () => void {

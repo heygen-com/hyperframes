@@ -276,7 +276,7 @@ describe("a project's first history copy", () => {
       // The sweep's record prunes everything past the 1-byte budget that history does not still need.
       holds.get(edited)!.release();
       await sweep;
-      // Read START before the sweep that takes in the edit: a 1-byte budget folds that change into START.
+      // Read the start before the sweep that takes in the edit: a 1-byte budget folds that change into it.
       await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["parts/p2.js"]), {
         timeout: 10_000,
       });
@@ -457,7 +457,7 @@ describe("a project's first history copy", () => {
       writeFileSync(late, saved);
       holds.get(edited)!.release();
       await sweep;
-      // Read START before the sweep that takes in the edit: a 1-byte budget folds that change into START.
+      // Read the start before the sweep that takes in the edit: a 1-byte budget folds that change into it.
       await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["parts/p1.js"]), {
         timeout: 10_000,
       });

@@ -152,112 +152,170 @@ window.__timelines.main = gsap.timeline({ paused: true });
   (function() {
     "use strict";
     (() => {
-      function I(e) {
+      function q(e) {
         return e ? /[\w-]/.test(e) || e.charCodeAt(0) >= 128 : false;
       }
-      function _(e) {
+      function L(e) {
         return e === " " || e === "	" || e === `
 ` || e === "\r" || e === "\f";
       }
-      var j = /^[0-9a-fA-F]{1,6}/;
-      function G(e) {
+      var Y = /^[0-9a-fA-F]{1,6}/;
+      function Z(e) {
         let n = e >= 55296 && e <= 57343;
         return e === 0 || e > 1114111 || n ? 65533 : e;
       }
-      function $(e, n) {
+      function K(e, n) {
         return e[n] === "\r" && e[n + 1] === `
-` ? n + 2 : _(e[n]) ? n + 1 : n;
+` ? n + 2 : L(e[n]) ? n + 1 : n;
       }
-      function R(e, n) {
+      function T(e, n) {
         let t = e[n + 1];
         if (t === void 0 || /[\n\r\f]/.test(t)) return null;
-        let i = j.exec(e.slice(n + 1, n + 7));
-        if (!i) return { value: t, end: n + 2 };
-        let o = G(Number.parseInt(i[0], 16));
-        return { value: String.fromCodePoint(o), end: $(e, n + 1 + i[0].length) };
+        let s = Y.exec(e.slice(n + 1, n + 7));
+        if (!s) return { value: t, end: n + 2 };
+        let r = Z(Number.parseInt(s[0], 16));
+        return { value: String.fromCodePoint(r), end: K(e, n + 1 + s[0].length) };
       }
-      function H(e, n) {
-        let t = (o) => I(o) && !/[0-9-]/.test(o), i = (o) => e[o] === "\\" && R(e, o) !== null;
-        return e[n] === "-" ? e[n + 1] === "-" || t(e[n + 1]) || i(n + 1) : t(e[n]) || i(n);
+      function ee(e, n) {
+        let t = (r) => q(r) && !/[0-9-]/.test(r), s = (r) => e[r] === "\\" && T(e, r) !== null;
+        return e[n] === "-" ? e[n + 1] === "-" || t(e[n + 1]) || s(n + 1) : t(e[n]) || s(n);
       }
-      function y(e, n) {
+      function C(e, n) {
         let t = n;
         for (; e.startsWith("/*", t); ) {
-          let i = e.indexOf("*/", t + 2);
-          t = i < 0 ? e.length : i + 2;
+          let s = e.indexOf("*/", t + 2);
+          t = s < 0 ? e.length : s + 2;
         }
         return t;
       }
-      function A(e, n) {
-        let t = y(e, n);
-        for (; _(e[t]); ) t = y(e, t + 1);
+      function I(e, n) {
+        let t = C(e, n);
+        for (; L(e[t]); ) t = C(e, t + 1);
         return t;
       }
-      function h(e, n) {
-        if (!H(e, n)) return null;
-        let t = n, i = "";
+      function y(e, n) {
+        if (!ee(e, n)) return null;
+        let t = n, s = "";
         for (; t < e.length; ) {
-          let o = e[t];
-          if (o === "\\") {
-            let a = R(e, t);
-            if (!a) break;
-            i += a.value, t = a.end;
+          let r = e[t];
+          if (r === "\\") {
+            let i = T(e, t);
+            if (!i) break;
+            s += i.value, t = i.end;
             continue;
           }
-          if (!I(o)) break;
-          i += o, t += 1;
+          if (!q(r)) break;
+          s += r, t += 1;
         }
-        return t === n ? null : { value: i, end: t };
+        return t === n ? null : { value: s, end: t };
       }
-      var C = 45;
-      function T(e) {
+      var $ = 45;
+      function O(e) {
         return e >= 48 && e <= 57;
       }
-      function z(e) {
-        return e >= 128 || e === C || e === 95 || T(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
+      function ne(e) {
+        return e >= 128 || e === $ || e === 95 || O(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
       }
-      function J(e, n) {
+      function te(e, n) {
         let t = e.charCodeAt(n);
-        return t >= 1 && t <= 31 || t === 127 ? true : T(t) ? n === 0 || n === 1 && e.charCodeAt(0) === C : false;
+        return t >= 1 && t <= 31 || t === 127 ? true : O(t) ? n === 0 || n === 1 && e.charCodeAt(0) === $ : false;
       }
-      function k(e) {
+      function x(e) {
         let n = "";
         for (let t = 0; t < e.length; t += 1) {
-          let i = e.charCodeAt(t), o = e[t];
-          i === 0 ? n += "\uFFFD" : J(e, t) ? n += `\\${i.toString(16)} ` : t === 0 && e.length === 1 && i === C ? n += `\\${o}` : z(i) ? n += o : n += `\\${o}`;
+          let s = e.charCodeAt(t), r = e[t];
+          s === 0 ? n += "\uFFFD" : te(e, t) ? n += `\\${s.toString(16)} ` : t === 0 && e.length === 1 && s === $ ? n += `\\${r}` : ne(s) ? n += r : n += `\\${r}`;
         }
         return n;
       }
-      var W = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
-      function Q(e) {
+      var A = -1, R = -2, M = /\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])/y;
+      function H(e) {
+        let n = e.length, t = new Int32Array(n + 2).fill(A);
+        for (let o = n - 2; o >= 0; o -= 1) t[o] = e[o] === "*" && e[o + 1] === "/" ? o : t[o + 1];
+        let s = (o) => {
+          let l = t[o + 2];
+          return l === A ? A : l + 2;
+        }, r = (o, l, S) => {
+          let W = [], h = l, k;
+          for (; ; ) {
+            if (h >= n) {
+              k = A;
+              break;
+            }
+            if (o[h] !== R) {
+              k = o[h];
+              break;
+            }
+            W.push(h);
+            let w = S(h);
+            if (typeof w != "number") {
+              k = w[0];
+              break;
+            }
+            h = w;
+          }
+          for (let w of W) o[w] = k;
+          return k;
+        }, i = { '"': new Int32Array(n).fill(R), "'": new Int32Array(n).fill(R) }, a = (o, l) => r(i[o], l, (S) => e[S] === o ? [S] : e[S] === "\\" ? S + 1 < n ? S + 2 : [A] : S + 1), f = (o) => {
+          let l = a(e[o], o + 1);
+          return l === A ? A : l + 1;
+        }, g = (o) => {
+          let l = e[o];
+          return l === "/" && e[o + 1] === "*" ? s(o) : l === '"' || l === "'" ? f(o) : l !== "\\" ? o + 1 : o + 1 < n ? o + 2 : A;
+        }, m = new Int32Array(n).fill(R), p = (o) => r(m, o, (l) => {
+          if (e[l] === "]") return [l];
+          let S = g(l);
+          return S === A ? [A] : S;
+        }), c = (o) => (M.lastIndex = o, M.test(e) ? M.lastIndex : A), u = (o) => {
+          let l = p(o + 1);
+          return l === A ? A : l + 1;
+        }, d = (o) => {
+          let l = e[o];
+          return l === "/" ? e[o + 1] === "*" ? s(o) : A : l === "\\" ? c(o) : l === '"' || l === "'" ? f(o) : l === "[" ? u(o) : A;
+        }, b = [];
+        for (let o = 0; o < n; ) {
+          let l = d(o);
+          l === A ? o += 1 : (b.push([o, l]), o = l);
+        }
+        return b;
+      }
+      function U(e) {
         let n = new Array(e.length).fill(true);
-        for (let t of e.matchAll(W)) {
-          let i = t.index;
-          n.fill(false, i, i + t[0].length);
+        for (let [t, s] of H(e)) n.fill(false, t, s);
+        return n;
+      }
+      function j(e) {
+        let n = [];
+        if (!e.includes("#")) return n;
+        let t = U(e);
+        for (let s = 0; s < e.length; s += 1) {
+          if (!t[s] || e[s] !== "#") continue;
+          let r = y(e, s + 1);
+          r && (n.push(r.value), s = r.end - 1);
         }
         return n;
       }
-      function q(e, n, t) {
+      function V(e, n, t) {
         if (n.length === 0 || !e.includes("#")) return e;
-        let i = new Set(n), o = Q(e), a = "", u = 0;
-        for (; u < e.length; ) {
-          let d = o[u] && e[u] === "#" ? h(e, u + 1) : null;
-          d && i.has(d.value) ? (a += t(d.value), u = d.end) : (a += e[u], u += 1);
+        let s = new Set(n), r = U(e), i = "", a = 0;
+        for (; a < e.length; ) {
+          let f = r[a] && e[a] === "#" ? y(e, a + 1) : null;
+          f && s.has(f.value) ? (i += t(f.value, e.slice(a, f.end)), a = f.end) : (i += e[a], a += 1);
         }
-        return a;
+        return i;
       }
-      function X(e) {
+      function re(e) {
         let n = "";
         for (let t = 0; t < e.length; t += 1) {
           if (e[t] === "\\") {
-            let i = e[t + 1];
-            if (i !== void 0 && /[\n\r\f]/.test(i)) {
-              t = $(e, t + 1) - 1;
+            let s = e[t + 1];
+            if (s !== void 0 && /[\n\r\f]/.test(s)) {
+              t = K(e, t + 1) - 1;
               continue;
             }
-            let o = R(e, t);
-            if (o) {
-              n += o.value, t = o.end - 1;
+            let r = T(e, t);
+            if (r) {
+              n += r.value, t = r.end - 1;
               continue;
             }
           }
@@ -265,168 +323,232 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return n;
       }
-      function N(e) {
+      function F(e) {
         return Array.from(e, (n) => {
           let t = n.charCodeAt(0);
-          return t === 0 ? "\uFFFD" : t < 32 || t === 127 ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
+          return t === 0 ? "\uFFFD" : t < 32 || t === 127 || n === "<" ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
         }).join("");
       }
-      function Y(e, n) {
+      function se(e, n) {
         return e ? { kind: "any" } : n === void 0 ? { kind: "none" } : { kind: "named", prefix: n };
       }
-      function Z(e, n) {
+      function ie(e, n) {
         return e[n] === "|" && e[n + 1] !== "=";
       }
-      function B(e, n) {
-        let t = e[n] === "*", i = t ? { value: "*", end: n + 1 } : h(e, n), o = y(e, i?.end ?? n);
-        if (!Z(e, o)) return t ? null : i ? { token: i, namespace: { kind: "none" } } : null;
-        let a = h(e, y(e, o + 1));
-        return a ? { token: a, namespace: Y(t, i?.value) } : null;
+      function oe(e, n) {
+        let t = e[n] === "*", s = t ? { value: "*", end: n + 1 } : y(e, n), r = C(e, s?.end ?? n);
+        if (!ie(e, r)) return t ? null : s ? { token: s, namespace: { kind: "none" } } : null;
+        let i = y(e, C(e, r + 1));
+        return i ? { token: i, namespace: se(t, s?.value) } : null;
       }
-      function K(e) {
+      function ae(e) {
         if (e[0] !== "[") return null;
-        let n = A(e, 1), t = B(e, n);
+        let n = I(e, 1), t = oe(e, n);
         if (!t) return null;
-        let { token: i, namespace: o } = t;
-        return { name: i.value, rawName: e.slice(n, i.end), namespace: o, end: i.end };
+        let { token: s, namespace: r } = t;
+        return { name: s.value, rawName: e.slice(n, s.end), namespace: r, end: s.end };
       }
-      function ee(e, n) {
+      function ue(e, n) {
         let t = /^(?:"((?:\\[\s\S]|[^"\\])*)"|'((?:\\[\s\S]|[^'\\])*)')/.exec(e.slice(n));
-        return t ? { value: X(t[1] ?? t[2]), end: n + t[0].length } : h(e, n);
+        return t ? { value: re(t[1] ?? t[2]), end: n + t[0].length } : y(e, n);
       }
-      function ne(e, n) {
-        let t = A(e, n), i = h(e, t);
-        if (i) {
-          if (!/^[is]$/i.test(i.value)) return null;
-          t = A(e, i.end);
+      function le(e, n) {
+        let t = I(e, n), s = y(e, t);
+        if (s) {
+          if (!/^[is]$/i.test(s.value)) return null;
+          t = I(e, s.end);
         }
-        return e[t] !== "]" || t !== e.length - 1 ? null : { flag: i?.value };
+        return e[t] !== "]" || t !== e.length - 1 ? null : { flag: s?.value };
       }
-      function F(e) {
-        let n = K(e);
+      function z(e) {
+        let n = ae(e);
         if (!n) return null;
-        let t = A(e, n.end), o = ["=", "~=", "|=", "^=", "$=", "*="].find((d) => e.startsWith(d, t));
-        if (!o) return null;
-        let a = ee(e, A(e, t + o.length));
-        if (!a) return null;
-        let u = ne(e, a.end);
-        return u ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: o, value: a.value, flag: u.flag } : null;
+        let t = I(e, n.end), r = ["=", "~=", "|=", "^=", "$=", "*="].find((f) => e.startsWith(f, t));
+        if (!r) return null;
+        let i = ue(e, I(e, t + r.length));
+        if (!i) return null;
+        let a = le(e, i.end);
+        return a ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: r, value: i.value, flag: a.flag } : null;
       }
-      function x(e, n) {
-        return e.replace(W, (t) => t.startsWith("[") ? n(t) : t);
+      function _(e, n) {
+        let t = "", s = 0;
+        for (let [r, i] of H(e)) e[r] === "[" && (t += e.slice(s, r) + n(e.slice(r, i)), s = i);
+        return t + e.slice(s);
       }
-      var re = "data-hf-svg-reference-aliases";
-      function O(e, n, t, i) {
-        let o = { "=": (s, r) => s === r, "~=": (s, r) => s.split(/[ \t\r\n\f]+/).includes(r), "|=": (s, r) => s === r || s.startsWith(r + "-"), "^=": (s, r) => s.startsWith(r), "$=": (s, r) => s.endsWith(r), "*=": (s, r) => s.includes(r) }, a = (s, r, l) => !r && l !== "=" && l !== "|=" ? false : o[l](s, r), u = (s) => s.replace(/[A-Z]/g, (r) => r.toLowerCase()), d = (s) => {
-          let r = F(s);
-          if (!r) return s;
-          let { name: l, rawName: g, namespace: m, operator: b, value: D, flag: w } = r;
-          if (m.kind === "named" != (i !== void 0)) return s;
-          let E = w?.toLowerCase() === "i" ? u : (S) => S, L = u(l), P = t.filter((S) => {
-            let V = m.kind === "none" ? S.name : S.localName, U = m.kind === "named" ? i.get(m.prefix) : null;
-            return (m.kind === "any" || S.namespaceURI === U) && u(V) === L;
-          }), v = /* @__PURE__ */ new Set([s]);
-          for (let S of P) a(E(S.before), E(D), b) && v.add(`[${g}="${N(S.after)}"${w ? ` ${w}` : ""}]`);
-          return v.size === 1 ? s : `:is(${[...v].join(", ")})`;
-        };
-        if (i) return x(e, d);
-        let p = new Map(n.map(({ id: s, replacement: r }) => [s, r])), f = /* @__PURE__ */ new Map();
-        for (let s of t) {
-          if (s.name !== "id" || s.before === s.after || p.has(s.before)) continue;
-          let r = f.get(s.before);
-          r || (r = /* @__PURE__ */ new Set([`#${k(s.before)}`]), f.set(s.before, r)), r.add(`#${k(s.after)}`);
+      var fe = "data-hf-svg-reference-aliases", v = (e) => e.replace(/[A-Z]/g, (n) => n.toLowerCase()), G = (e, n) => JSON.stringify([v(e), n]), D = /* @__PURE__ */ new WeakMap();
+      function P(e, n, t) {
+        let s = e.get(n);
+        s || e.set(n, s = { all: [], lookups: /* @__PURE__ */ new Map() }), s.all.push(t);
+      }
+      function de(e, n) {
+        let { namespaceURI: t } = n;
+        t === null && P(e.unprefixed, v(n.name), n), P(e.anyNamespace, v(n.localName), n), P(e.inNamespace, G(n.localName, t), n);
+      }
+      function ge(e) {
+        let n = D.get(e);
+        if (n) return n;
+        n = { everyRecordedId: /* @__PURE__ */ new Set(), renamedIdAlternatives: /* @__PURE__ */ new Map(), unprefixed: /* @__PURE__ */ new Map(), anyNamespace: /* @__PURE__ */ new Map(), inNamespace: /* @__PURE__ */ new Map() };
+        let t = /* @__PURE__ */ new Map(), s = /* @__PURE__ */ new Set();
+        for (let r of e) {
+          if (r.name === "id" && n.everyRecordedId.add(r.before), r.before === r.after) continue;
+          let i = JSON.stringify([r.name, r.localName, r.namespaceURI, r.before, r.after]);
+          if (s.has(i) || (s.add(i), de(n, r), r.name !== "id")) continue;
+          let a = t.get(r.before);
+          a || t.set(r.before, a = /* @__PURE__ */ new Set([`#${x(r.before)}`])), a.add(`#${x(r.after)}`);
         }
-        for (let [s, r] of f) p.set(s, `:is(${[...r].join(", ")})`);
-        let c = q(e, [...p.keys()], (s) => p.get(s));
-        return x(c, d);
+        for (let [r, i] of t) n.renamedIdAlternatives.set(r, `:is(${[...i].join(", ")})`);
+        return D.set(e, n), n;
       }
-      function se(e, n, t = true) {
-        let i = [], a = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((d) => d.getAttribute(n)), u = e.getAttribute?.(n);
-        u && a.unshift(u);
-        for (let d of a) {
-          let p;
+      var me = (e) => e, J = (e) => e.split("").reverse().join(""), pe = /[ \t\r\n\f]+/;
+      function Q(e, n, t) {
+        let s = e.lookups.get(n);
+        if (s) return s;
+        let r = e.all.map((i, a) => [t(i.before), a]);
+        return r.sort(([i], [a]) => i < a ? -1 : i > a ? 1 : 0), s = { keys: r.map(([i]) => i), at: r.map(([, i]) => i) }, e.lookups.set(n, s), s;
+      }
+      function N({ keys: e, at: n }, t, s = false) {
+        let r = 0;
+        for (let a = e.length; r < a; ) {
+          let f = r + a >>> 1;
+          e[f] < t ? r = f + 1 : a = f;
+        }
+        let i = [];
+        for (let a = r; a < e.length && (s ? e[a] === t : e[a].startsWith(t)); a++) i.push(n[a]);
+        return i;
+      }
+      function be(e, n, t, s) {
+        let r = e.lookups.get(n);
+        if (!r) {
+          r = /* @__PURE__ */ new Map();
+          for (let [i, a] of e.all.entries()) for (let f of new Set(t(a.before).split(pe))) {
+            let g = r.get(f);
+            g ? g.push(i) : r.set(f, [i]);
+          }
+          e.lookups.set(n, r);
+        }
+        return r.get(s) ?? [];
+      }
+      var E = ({ entry: e, fold: n, id: t }) => Q(e, t("^="), n), Ae = { "=": (e) => N(E(e), e.value, true), "^=": (e) => N(E(e), e.value), "$=": ({ entry: e, value: n, fold: t, id: s }) => N(Q(e, s("$="), (r) => J(t(r))), J(n)), "|=": (e) => [...N(E(e), e.value, true), ...N(E(e), `${e.value}-`)], "~=": ({ entry: e, value: n, fold: t, id: s }) => be(e, s("~="), t, n), "*=": ({ entry: e, value: n, fold: t, chargeScan: s }) => e.all.flatMap((r, i) => (s?.(r.before.length), t(r.before).includes(n) ? [i] : [])) };
+      function Se(e, { operator: n, value: t, flag: s }, r) {
+        if (!t && n !== "=" && n !== "|=") return [];
+        let i = s?.toLowerCase() === "i", a = i ? v : me, f = (g) => i ? `${g} i` : g;
+        return Ae[n]({ entry: e, value: a(t), fold: a, id: f, chargeScan: r });
+      }
+      function he(e, { name: n, namespace: t }, s) {
+        if (t.kind === "none") return e.unprefixed.get(v(n));
+        if (t.kind === "any") return e.anyNamespace.get(v(n));
+        let r = s.get(t.prefix);
+        return r === void 0 ? void 0 : e.inNamespace.get(G(n, r));
+      }
+      function ye(e, n, t, s) {
+        let r = he(e, n, t);
+        return r ? Se(r, n, s).sort((i, a) => i - a).map((i) => r.all[i]) : [];
+      }
+      function B(e, n, t, s, r, i) {
+        let a = ge(t), f = (c) => {
+          let u = z(c);
+          if (!u || u.namespace.kind === "named" != (s !== void 0)) return c;
+          let { rawName: d, flag: b } = u, o = /* @__PURE__ */ new Set([c]);
+          for (let l of ye(a, u, s, i)) {
+            let S = `[${d}="${F(l.after)}"${b ? ` ${b}` : ""}]`;
+            o.has(S) || (r?.(S.length + (o.size === 1 ? 7 : 2)), o.add(S));
+          }
+          return o.size === 1 ? c : `:is(${[...o].join(", ")})`;
+        };
+        if (s) return _(e, f);
+        let g = new Map(n.map(({ id: c, replacement: u }) => [c, u])), m = j(e).filter((c) => g.has(c) || a.renamedIdAlternatives.has(c)), p = V(e, m, (c, u) => {
+          let d = g.get(c) ?? a.renamedIdAlternatives.get(c);
+          return r?.(d.length - u.length), d;
+        });
+        return _(p, f);
+      }
+      function ve(e, n, t = true) {
+        let s = [], i = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((f) => f.getAttribute(n)), a = e.getAttribute?.(n);
+        a && i.unshift(a);
+        for (let f of i) {
+          let g;
           try {
-            p = JSON.parse(d);
+            g = JSON.parse(f);
           } catch {
             continue;
           }
-          if (!Array.isArray(p)) continue;
-          let f = p;
-          for (let c of f) {
-            if (!ie(c)) continue;
-            let { name: s, localName: r, namespaceURI: l, before: g, after: m } = c;
-            i.push({ name: s, localName: r, namespaceURI: l, before: g, after: m });
+          if (!Array.isArray(g)) continue;
+          let m = g;
+          for (let p of m) {
+            if (!ke(p)) continue;
+            let { name: c, localName: u, namespaceURI: d, before: b, after: o } = p;
+            s.push({ name: c, localName: u, namespaceURI: d, before: b, after: o });
           }
         }
-        return i;
+        return s;
       }
-      function ie(e) {
+      function ke(e) {
         if (!e || typeof e != "object") return false;
-        let { name: n, localName: t, namespaceURI: i, before: o, after: a } = e;
-        return typeof n == "string" && typeof t == "string" && (i === null || typeof i == "string") && typeof o == "string" && typeof a == "string";
+        let { name: n, localName: t, namespaceURI: s, before: r, after: i } = e;
+        return typeof n == "string" && typeof t == "string" && (s === null || typeof s == "string") && typeof r == "string" && typeof i == "string";
       }
-      function oe(e) {
-        let n = [], t = [], i = false, o, a = /* @__PURE__ */ new WeakMap(), u = (f, c) => {
-          for (let s of f) {
-            if ("selectorText" in s) {
-              let r = s, l = a.get(r), g = r.selectorText, m = l?.applied === g ? l.authored : g, b = O(m, [], t, c);
-              b !== g && (r.selectorText = b), b === m ? a.delete(r) : a.set(r, { authored: m, applied: r.selectorText });
+      function we(e) {
+        let n = [], t = [], s = false, r, i = /* @__PURE__ */ new WeakMap(), a = (m, p) => {
+          for (let c of m) {
+            if ("selectorText" in c) {
+              let u = c, d = i.get(u), b = u.selectorText, o = d?.applied === b ? d.authored : b, l = B(o, [], t, p);
+              l !== b && (u.selectorText = l), l === o ? i.delete(u) : i.set(u, { authored: o, applied: u.selectorText });
             }
-            "cssRules" in s && u(s.cssRules, c);
+            "cssRules" in c && a(c.cssRules, p);
           }
-        }, d = () => {
-          if (t.length) for (let f of e.document.styleSheets) {
-            let c;
+        }, f = () => {
+          if (t.length) for (let m of e.document.styleSheets) {
+            let p;
             try {
-              c = f.cssRules;
+              p = m.cssRules;
             } catch {
               continue;
             }
-            let s = /* @__PURE__ */ new Map();
-            for (let r of c) {
-              if (!("namespaceURI" in r)) continue;
-              let { prefix: l, namespaceURI: g } = r;
-              l && s.set(l, g || null);
+            let c = /* @__PURE__ */ new Map();
+            for (let u of p) {
+              if (!("namespaceURI" in u)) continue;
+              let { prefix: d, namespaceURI: b } = u;
+              d && c.set(d, b || null);
             }
-            s.size && u(c, s);
+            c.size && a(p, c);
           }
-        }, p = { rewrite: (f, c = []) => {
-          if (typeof f != "string" || !f.includes("#") && !f.includes("[")) return f;
-          let s = O(f, c.length ? [...c, ...n] : n, t);
-          if (s !== f) {
-            if (!o) {
-              let r = e.document.createElement("div");
-              o = r.matches.bind(r);
+        }, g = { rewrite: (m, p = []) => {
+          if (typeof m != "string" || !m.includes("#") && !m.includes("[")) return m;
+          let c = B(m, p.length ? [...p, ...n] : n, t);
+          if (c !== m) {
+            if (!r) {
+              let u = e.document.createElement("div");
+              r = u.matches.bind(u);
             }
-            o(f);
+            r(m);
           }
-          return s;
+          return c;
         }, refresh() {
-          t = se(e.document, re).filter((r) => r.before !== r.after);
-          let f = new Set(t.filter((r) => r.name === "id").map((r) => r.before)), c = /* @__PURE__ */ new Set();
+          t = ve(e.document, fe).filter((u) => u.before !== u.after);
+          let m = new Set(t.filter((u) => u.name === "id").map((u) => u.before)), p = /* @__PURE__ */ new Set();
           n = [];
-          for (let r of e.document.querySelectorAll("[data-hf-authored-id][id]")) {
-            let l = r.getAttribute("data-hf-authored-id");
-            if (!l || l === r.id || c.has(l) || f.has(l)) continue;
-            c.add(l);
-            let g = N(l);
-            n.push({ id: l, replacement: `:is(#${k(l)}, [data-hf-authored-id="${g}"])` });
+          for (let u of e.document.querySelectorAll("[data-hf-authored-id][id]")) {
+            let d = u.getAttribute("data-hf-authored-id");
+            if (!d || d === u.id || p.has(d) || m.has(d)) continue;
+            p.add(d);
+            let b = F(d);
+            n.push({ id: d, replacement: `:is(#${x(d)}, [data-hf-authored-id="${b}"])` });
           }
-          if (d(), i || !n.length && !t.length) return;
-          let s = e.Element.prototype;
-          s.querySelector = new Proxy(s.querySelector, { apply(r, l, g) {
-            return Reflect.apply(r, l, [p.rewrite(g[0])]);
-          } }), s.querySelectorAll = new Proxy(s.querySelectorAll, { apply(r, l, g) {
-            return Reflect.apply(r, l, [p.rewrite(g[0])]);
-          } }), i = true;
+          if (f(), s || !n.length && !t.length) return;
+          let c = e.Element.prototype;
+          c.querySelector = new Proxy(c.querySelector, { apply(u, d, b) {
+            return Reflect.apply(u, d, [g.rewrite(b[0])]);
+          } }), c.querySelectorAll = new Proxy(c.querySelectorAll, { apply(u, d, b) {
+            return Reflect.apply(u, d, [g.rewrite(b[0])]);
+          } }), s = true;
         } };
-        e.__hfSvgSelectorAliases = p, p.refresh();
+        e.__hfSvgSelectorAliases = g, g.refresh();
       }
-      function M() {
+      function X() {
         let e = window;
-        e.__hfSvgSelectorAliases || oe(e);
+        e.__hfSvgSelectorAliases || we(e);
       }
-      M();
+      X();
     })();
   })();
   var __hfCompId = "card";
@@ -704,112 +826,170 @@ window.__timelines.main = gsap.timeline({ paused: true });
   (function() {
     "use strict";
     (() => {
-      function I(e) {
+      function q(e) {
         return e ? /[\w-]/.test(e) || e.charCodeAt(0) >= 128 : false;
       }
-      function _(e) {
+      function L(e) {
         return e === " " || e === "	" || e === `
 ` || e === "\r" || e === "\f";
       }
-      var j = /^[0-9a-fA-F]{1,6}/;
-      function G(e) {
+      var Y = /^[0-9a-fA-F]{1,6}/;
+      function Z(e) {
         let n = e >= 55296 && e <= 57343;
         return e === 0 || e > 1114111 || n ? 65533 : e;
       }
-      function $(e, n) {
+      function K(e, n) {
         return e[n] === "\r" && e[n + 1] === `
-` ? n + 2 : _(e[n]) ? n + 1 : n;
+` ? n + 2 : L(e[n]) ? n + 1 : n;
       }
-      function R(e, n) {
+      function T(e, n) {
         let t = e[n + 1];
         if (t === void 0 || /[\n\r\f]/.test(t)) return null;
-        let i = j.exec(e.slice(n + 1, n + 7));
-        if (!i) return { value: t, end: n + 2 };
-        let o = G(Number.parseInt(i[0], 16));
-        return { value: String.fromCodePoint(o), end: $(e, n + 1 + i[0].length) };
+        let s = Y.exec(e.slice(n + 1, n + 7));
+        if (!s) return { value: t, end: n + 2 };
+        let r = Z(Number.parseInt(s[0], 16));
+        return { value: String.fromCodePoint(r), end: K(e, n + 1 + s[0].length) };
       }
-      function H(e, n) {
-        let t = (o) => I(o) && !/[0-9-]/.test(o), i = (o) => e[o] === "\\" && R(e, o) !== null;
-        return e[n] === "-" ? e[n + 1] === "-" || t(e[n + 1]) || i(n + 1) : t(e[n]) || i(n);
+      function ee(e, n) {
+        let t = (r) => q(r) && !/[0-9-]/.test(r), s = (r) => e[r] === "\\" && T(e, r) !== null;
+        return e[n] === "-" ? e[n + 1] === "-" || t(e[n + 1]) || s(n + 1) : t(e[n]) || s(n);
       }
-      function y(e, n) {
+      function C(e, n) {
         let t = n;
         for (; e.startsWith("/*", t); ) {
-          let i = e.indexOf("*/", t + 2);
-          t = i < 0 ? e.length : i + 2;
+          let s = e.indexOf("*/", t + 2);
+          t = s < 0 ? e.length : s + 2;
         }
         return t;
       }
-      function A(e, n) {
-        let t = y(e, n);
-        for (; _(e[t]); ) t = y(e, t + 1);
+      function I(e, n) {
+        let t = C(e, n);
+        for (; L(e[t]); ) t = C(e, t + 1);
         return t;
       }
-      function h(e, n) {
-        if (!H(e, n)) return null;
-        let t = n, i = "";
+      function y(e, n) {
+        if (!ee(e, n)) return null;
+        let t = n, s = "";
         for (; t < e.length; ) {
-          let o = e[t];
-          if (o === "\\") {
-            let a = R(e, t);
-            if (!a) break;
-            i += a.value, t = a.end;
+          let r = e[t];
+          if (r === "\\") {
+            let i = T(e, t);
+            if (!i) break;
+            s += i.value, t = i.end;
             continue;
           }
-          if (!I(o)) break;
-          i += o, t += 1;
+          if (!q(r)) break;
+          s += r, t += 1;
         }
-        return t === n ? null : { value: i, end: t };
+        return t === n ? null : { value: s, end: t };
       }
-      var C = 45;
-      function T(e) {
+      var $ = 45;
+      function O(e) {
         return e >= 48 && e <= 57;
       }
-      function z(e) {
-        return e >= 128 || e === C || e === 95 || T(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
+      function ne(e) {
+        return e >= 128 || e === $ || e === 95 || O(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
       }
-      function J(e, n) {
+      function te(e, n) {
         let t = e.charCodeAt(n);
-        return t >= 1 && t <= 31 || t === 127 ? true : T(t) ? n === 0 || n === 1 && e.charCodeAt(0) === C : false;
+        return t >= 1 && t <= 31 || t === 127 ? true : O(t) ? n === 0 || n === 1 && e.charCodeAt(0) === $ : false;
       }
-      function k(e) {
+      function x(e) {
         let n = "";
         for (let t = 0; t < e.length; t += 1) {
-          let i = e.charCodeAt(t), o = e[t];
-          i === 0 ? n += "\uFFFD" : J(e, t) ? n += `\\${i.toString(16)} ` : t === 0 && e.length === 1 && i === C ? n += `\\${o}` : z(i) ? n += o : n += `\\${o}`;
+          let s = e.charCodeAt(t), r = e[t];
+          s === 0 ? n += "\uFFFD" : te(e, t) ? n += `\\${s.toString(16)} ` : t === 0 && e.length === 1 && s === $ ? n += `\\${r}` : ne(s) ? n += r : n += `\\${r}`;
         }
         return n;
       }
-      var W = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
-      function Q(e) {
+      var A = -1, R = -2, M = /\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])/y;
+      function H(e) {
+        let n = e.length, t = new Int32Array(n + 2).fill(A);
+        for (let o = n - 2; o >= 0; o -= 1) t[o] = e[o] === "*" && e[o + 1] === "/" ? o : t[o + 1];
+        let s = (o) => {
+          let l = t[o + 2];
+          return l === A ? A : l + 2;
+        }, r = (o, l, S) => {
+          let W = [], h = l, k;
+          for (; ; ) {
+            if (h >= n) {
+              k = A;
+              break;
+            }
+            if (o[h] !== R) {
+              k = o[h];
+              break;
+            }
+            W.push(h);
+            let w = S(h);
+            if (typeof w != "number") {
+              k = w[0];
+              break;
+            }
+            h = w;
+          }
+          for (let w of W) o[w] = k;
+          return k;
+        }, i = { '"': new Int32Array(n).fill(R), "'": new Int32Array(n).fill(R) }, a = (o, l) => r(i[o], l, (S) => e[S] === o ? [S] : e[S] === "\\" ? S + 1 < n ? S + 2 : [A] : S + 1), f = (o) => {
+          let l = a(e[o], o + 1);
+          return l === A ? A : l + 1;
+        }, g = (o) => {
+          let l = e[o];
+          return l === "/" && e[o + 1] === "*" ? s(o) : l === '"' || l === "'" ? f(o) : l !== "\\" ? o + 1 : o + 1 < n ? o + 2 : A;
+        }, m = new Int32Array(n).fill(R), p = (o) => r(m, o, (l) => {
+          if (e[l] === "]") return [l];
+          let S = g(l);
+          return S === A ? [A] : S;
+        }), c = (o) => (M.lastIndex = o, M.test(e) ? M.lastIndex : A), u = (o) => {
+          let l = p(o + 1);
+          return l === A ? A : l + 1;
+        }, d = (o) => {
+          let l = e[o];
+          return l === "/" ? e[o + 1] === "*" ? s(o) : A : l === "\\" ? c(o) : l === '"' || l === "'" ? f(o) : l === "[" ? u(o) : A;
+        }, b = [];
+        for (let o = 0; o < n; ) {
+          let l = d(o);
+          l === A ? o += 1 : (b.push([o, l]), o = l);
+        }
+        return b;
+      }
+      function U(e) {
         let n = new Array(e.length).fill(true);
-        for (let t of e.matchAll(W)) {
-          let i = t.index;
-          n.fill(false, i, i + t[0].length);
+        for (let [t, s] of H(e)) n.fill(false, t, s);
+        return n;
+      }
+      function j(e) {
+        let n = [];
+        if (!e.includes("#")) return n;
+        let t = U(e);
+        for (let s = 0; s < e.length; s += 1) {
+          if (!t[s] || e[s] !== "#") continue;
+          let r = y(e, s + 1);
+          r && (n.push(r.value), s = r.end - 1);
         }
         return n;
       }
-      function q(e, n, t) {
+      function V(e, n, t) {
         if (n.length === 0 || !e.includes("#")) return e;
-        let i = new Set(n), o = Q(e), a = "", u = 0;
-        for (; u < e.length; ) {
-          let d = o[u] && e[u] === "#" ? h(e, u + 1) : null;
-          d && i.has(d.value) ? (a += t(d.value), u = d.end) : (a += e[u], u += 1);
+        let s = new Set(n), r = U(e), i = "", a = 0;
+        for (; a < e.length; ) {
+          let f = r[a] && e[a] === "#" ? y(e, a + 1) : null;
+          f && s.has(f.value) ? (i += t(f.value, e.slice(a, f.end)), a = f.end) : (i += e[a], a += 1);
         }
-        return a;
+        return i;
       }
-      function X(e) {
+      function re(e) {
         let n = "";
         for (let t = 0; t < e.length; t += 1) {
           if (e[t] === "\\") {
-            let i = e[t + 1];
-            if (i !== void 0 && /[\n\r\f]/.test(i)) {
-              t = $(e, t + 1) - 1;
+            let s = e[t + 1];
+            if (s !== void 0 && /[\n\r\f]/.test(s)) {
+              t = K(e, t + 1) - 1;
               continue;
             }
-            let o = R(e, t);
-            if (o) {
-              n += o.value, t = o.end - 1;
+            let r = T(e, t);
+            if (r) {
+              n += r.value, t = r.end - 1;
               continue;
             }
           }
@@ -817,168 +997,232 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return n;
       }
-      function N(e) {
+      function F(e) {
         return Array.from(e, (n) => {
           let t = n.charCodeAt(0);
-          return t === 0 ? "\uFFFD" : t < 32 || t === 127 ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
+          return t === 0 ? "\uFFFD" : t < 32 || t === 127 || n === "<" ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
         }).join("");
       }
-      function Y(e, n) {
+      function se(e, n) {
         return e ? { kind: "any" } : n === void 0 ? { kind: "none" } : { kind: "named", prefix: n };
       }
-      function Z(e, n) {
+      function ie(e, n) {
         return e[n] === "|" && e[n + 1] !== "=";
       }
-      function B(e, n) {
-        let t = e[n] === "*", i = t ? { value: "*", end: n + 1 } : h(e, n), o = y(e, i?.end ?? n);
-        if (!Z(e, o)) return t ? null : i ? { token: i, namespace: { kind: "none" } } : null;
-        let a = h(e, y(e, o + 1));
-        return a ? { token: a, namespace: Y(t, i?.value) } : null;
+      function oe(e, n) {
+        let t = e[n] === "*", s = t ? { value: "*", end: n + 1 } : y(e, n), r = C(e, s?.end ?? n);
+        if (!ie(e, r)) return t ? null : s ? { token: s, namespace: { kind: "none" } } : null;
+        let i = y(e, C(e, r + 1));
+        return i ? { token: i, namespace: se(t, s?.value) } : null;
       }
-      function K(e) {
+      function ae(e) {
         if (e[0] !== "[") return null;
-        let n = A(e, 1), t = B(e, n);
+        let n = I(e, 1), t = oe(e, n);
         if (!t) return null;
-        let { token: i, namespace: o } = t;
-        return { name: i.value, rawName: e.slice(n, i.end), namespace: o, end: i.end };
+        let { token: s, namespace: r } = t;
+        return { name: s.value, rawName: e.slice(n, s.end), namespace: r, end: s.end };
       }
-      function ee(e, n) {
+      function ue(e, n) {
         let t = /^(?:"((?:\\[\s\S]|[^"\\])*)"|'((?:\\[\s\S]|[^'\\])*)')/.exec(e.slice(n));
-        return t ? { value: X(t[1] ?? t[2]), end: n + t[0].length } : h(e, n);
+        return t ? { value: re(t[1] ?? t[2]), end: n + t[0].length } : y(e, n);
       }
-      function ne(e, n) {
-        let t = A(e, n), i = h(e, t);
-        if (i) {
-          if (!/^[is]$/i.test(i.value)) return null;
-          t = A(e, i.end);
+      function le(e, n) {
+        let t = I(e, n), s = y(e, t);
+        if (s) {
+          if (!/^[is]$/i.test(s.value)) return null;
+          t = I(e, s.end);
         }
-        return e[t] !== "]" || t !== e.length - 1 ? null : { flag: i?.value };
+        return e[t] !== "]" || t !== e.length - 1 ? null : { flag: s?.value };
       }
-      function F(e) {
-        let n = K(e);
+      function z(e) {
+        let n = ae(e);
         if (!n) return null;
-        let t = A(e, n.end), o = ["=", "~=", "|=", "^=", "$=", "*="].find((d) => e.startsWith(d, t));
-        if (!o) return null;
-        let a = ee(e, A(e, t + o.length));
-        if (!a) return null;
-        let u = ne(e, a.end);
-        return u ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: o, value: a.value, flag: u.flag } : null;
+        let t = I(e, n.end), r = ["=", "~=", "|=", "^=", "$=", "*="].find((f) => e.startsWith(f, t));
+        if (!r) return null;
+        let i = ue(e, I(e, t + r.length));
+        if (!i) return null;
+        let a = le(e, i.end);
+        return a ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: r, value: i.value, flag: a.flag } : null;
       }
-      function x(e, n) {
-        return e.replace(W, (t) => t.startsWith("[") ? n(t) : t);
+      function _(e, n) {
+        let t = "", s = 0;
+        for (let [r, i] of H(e)) e[r] === "[" && (t += e.slice(s, r) + n(e.slice(r, i)), s = i);
+        return t + e.slice(s);
       }
-      var re = "data-hf-svg-reference-aliases";
-      function O(e, n, t, i) {
-        let o = { "=": (s, r) => s === r, "~=": (s, r) => s.split(/[ \t\r\n\f]+/).includes(r), "|=": (s, r) => s === r || s.startsWith(r + "-"), "^=": (s, r) => s.startsWith(r), "$=": (s, r) => s.endsWith(r), "*=": (s, r) => s.includes(r) }, a = (s, r, l) => !r && l !== "=" && l !== "|=" ? false : o[l](s, r), u = (s) => s.replace(/[A-Z]/g, (r) => r.toLowerCase()), d = (s) => {
-          let r = F(s);
-          if (!r) return s;
-          let { name: l, rawName: g, namespace: m, operator: b, value: D, flag: w } = r;
-          if (m.kind === "named" != (i !== void 0)) return s;
-          let E = w?.toLowerCase() === "i" ? u : (S) => S, L = u(l), P = t.filter((S) => {
-            let V = m.kind === "none" ? S.name : S.localName, U = m.kind === "named" ? i.get(m.prefix) : null;
-            return (m.kind === "any" || S.namespaceURI === U) && u(V) === L;
-          }), v = /* @__PURE__ */ new Set([s]);
-          for (let S of P) a(E(S.before), E(D), b) && v.add(`[${g}="${N(S.after)}"${w ? ` ${w}` : ""}]`);
-          return v.size === 1 ? s : `:is(${[...v].join(", ")})`;
-        };
-        if (i) return x(e, d);
-        let p = new Map(n.map(({ id: s, replacement: r }) => [s, r])), f = /* @__PURE__ */ new Map();
-        for (let s of t) {
-          if (s.name !== "id" || s.before === s.after || p.has(s.before)) continue;
-          let r = f.get(s.before);
-          r || (r = /* @__PURE__ */ new Set([`#${k(s.before)}`]), f.set(s.before, r)), r.add(`#${k(s.after)}`);
+      var fe = "data-hf-svg-reference-aliases", v = (e) => e.replace(/[A-Z]/g, (n) => n.toLowerCase()), G = (e, n) => JSON.stringify([v(e), n]), D = /* @__PURE__ */ new WeakMap();
+      function P(e, n, t) {
+        let s = e.get(n);
+        s || e.set(n, s = { all: [], lookups: /* @__PURE__ */ new Map() }), s.all.push(t);
+      }
+      function de(e, n) {
+        let { namespaceURI: t } = n;
+        t === null && P(e.unprefixed, v(n.name), n), P(e.anyNamespace, v(n.localName), n), P(e.inNamespace, G(n.localName, t), n);
+      }
+      function ge(e) {
+        let n = D.get(e);
+        if (n) return n;
+        n = { everyRecordedId: /* @__PURE__ */ new Set(), renamedIdAlternatives: /* @__PURE__ */ new Map(), unprefixed: /* @__PURE__ */ new Map(), anyNamespace: /* @__PURE__ */ new Map(), inNamespace: /* @__PURE__ */ new Map() };
+        let t = /* @__PURE__ */ new Map(), s = /* @__PURE__ */ new Set();
+        for (let r of e) {
+          if (r.name === "id" && n.everyRecordedId.add(r.before), r.before === r.after) continue;
+          let i = JSON.stringify([r.name, r.localName, r.namespaceURI, r.before, r.after]);
+          if (s.has(i) || (s.add(i), de(n, r), r.name !== "id")) continue;
+          let a = t.get(r.before);
+          a || t.set(r.before, a = /* @__PURE__ */ new Set([`#${x(r.before)}`])), a.add(`#${x(r.after)}`);
         }
-        for (let [s, r] of f) p.set(s, `:is(${[...r].join(", ")})`);
-        let c = q(e, [...p.keys()], (s) => p.get(s));
-        return x(c, d);
+        for (let [r, i] of t) n.renamedIdAlternatives.set(r, `:is(${[...i].join(", ")})`);
+        return D.set(e, n), n;
       }
-      function se(e, n, t = true) {
-        let i = [], a = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((d) => d.getAttribute(n)), u = e.getAttribute?.(n);
-        u && a.unshift(u);
-        for (let d of a) {
-          let p;
+      var me = (e) => e, J = (e) => e.split("").reverse().join(""), pe = /[ \t\r\n\f]+/;
+      function Q(e, n, t) {
+        let s = e.lookups.get(n);
+        if (s) return s;
+        let r = e.all.map((i, a) => [t(i.before), a]);
+        return r.sort(([i], [a]) => i < a ? -1 : i > a ? 1 : 0), s = { keys: r.map(([i]) => i), at: r.map(([, i]) => i) }, e.lookups.set(n, s), s;
+      }
+      function N({ keys: e, at: n }, t, s = false) {
+        let r = 0;
+        for (let a = e.length; r < a; ) {
+          let f = r + a >>> 1;
+          e[f] < t ? r = f + 1 : a = f;
+        }
+        let i = [];
+        for (let a = r; a < e.length && (s ? e[a] === t : e[a].startsWith(t)); a++) i.push(n[a]);
+        return i;
+      }
+      function be(e, n, t, s) {
+        let r = e.lookups.get(n);
+        if (!r) {
+          r = /* @__PURE__ */ new Map();
+          for (let [i, a] of e.all.entries()) for (let f of new Set(t(a.before).split(pe))) {
+            let g = r.get(f);
+            g ? g.push(i) : r.set(f, [i]);
+          }
+          e.lookups.set(n, r);
+        }
+        return r.get(s) ?? [];
+      }
+      var E = ({ entry: e, fold: n, id: t }) => Q(e, t("^="), n), Ae = { "=": (e) => N(E(e), e.value, true), "^=": (e) => N(E(e), e.value), "$=": ({ entry: e, value: n, fold: t, id: s }) => N(Q(e, s("$="), (r) => J(t(r))), J(n)), "|=": (e) => [...N(E(e), e.value, true), ...N(E(e), `${e.value}-`)], "~=": ({ entry: e, value: n, fold: t, id: s }) => be(e, s("~="), t, n), "*=": ({ entry: e, value: n, fold: t, chargeScan: s }) => e.all.flatMap((r, i) => (s?.(r.before.length), t(r.before).includes(n) ? [i] : [])) };
+      function Se(e, { operator: n, value: t, flag: s }, r) {
+        if (!t && n !== "=" && n !== "|=") return [];
+        let i = s?.toLowerCase() === "i", a = i ? v : me, f = (g) => i ? `${g} i` : g;
+        return Ae[n]({ entry: e, value: a(t), fold: a, id: f, chargeScan: r });
+      }
+      function he(e, { name: n, namespace: t }, s) {
+        if (t.kind === "none") return e.unprefixed.get(v(n));
+        if (t.kind === "any") return e.anyNamespace.get(v(n));
+        let r = s.get(t.prefix);
+        return r === void 0 ? void 0 : e.inNamespace.get(G(n, r));
+      }
+      function ye(e, n, t, s) {
+        let r = he(e, n, t);
+        return r ? Se(r, n, s).sort((i, a) => i - a).map((i) => r.all[i]) : [];
+      }
+      function B(e, n, t, s, r, i) {
+        let a = ge(t), f = (c) => {
+          let u = z(c);
+          if (!u || u.namespace.kind === "named" != (s !== void 0)) return c;
+          let { rawName: d, flag: b } = u, o = /* @__PURE__ */ new Set([c]);
+          for (let l of ye(a, u, s, i)) {
+            let S = `[${d}="${F(l.after)}"${b ? ` ${b}` : ""}]`;
+            o.has(S) || (r?.(S.length + (o.size === 1 ? 7 : 2)), o.add(S));
+          }
+          return o.size === 1 ? c : `:is(${[...o].join(", ")})`;
+        };
+        if (s) return _(e, f);
+        let g = new Map(n.map(({ id: c, replacement: u }) => [c, u])), m = j(e).filter((c) => g.has(c) || a.renamedIdAlternatives.has(c)), p = V(e, m, (c, u) => {
+          let d = g.get(c) ?? a.renamedIdAlternatives.get(c);
+          return r?.(d.length - u.length), d;
+        });
+        return _(p, f);
+      }
+      function ve(e, n, t = true) {
+        let s = [], i = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((f) => f.getAttribute(n)), a = e.getAttribute?.(n);
+        a && i.unshift(a);
+        for (let f of i) {
+          let g;
           try {
-            p = JSON.parse(d);
+            g = JSON.parse(f);
           } catch {
             continue;
           }
-          if (!Array.isArray(p)) continue;
-          let f = p;
-          for (let c of f) {
-            if (!ie(c)) continue;
-            let { name: s, localName: r, namespaceURI: l, before: g, after: m } = c;
-            i.push({ name: s, localName: r, namespaceURI: l, before: g, after: m });
+          if (!Array.isArray(g)) continue;
+          let m = g;
+          for (let p of m) {
+            if (!ke(p)) continue;
+            let { name: c, localName: u, namespaceURI: d, before: b, after: o } = p;
+            s.push({ name: c, localName: u, namespaceURI: d, before: b, after: o });
           }
         }
-        return i;
+        return s;
       }
-      function ie(e) {
+      function ke(e) {
         if (!e || typeof e != "object") return false;
-        let { name: n, localName: t, namespaceURI: i, before: o, after: a } = e;
-        return typeof n == "string" && typeof t == "string" && (i === null || typeof i == "string") && typeof o == "string" && typeof a == "string";
+        let { name: n, localName: t, namespaceURI: s, before: r, after: i } = e;
+        return typeof n == "string" && typeof t == "string" && (s === null || typeof s == "string") && typeof r == "string" && typeof i == "string";
       }
-      function oe(e) {
-        let n = [], t = [], i = false, o, a = /* @__PURE__ */ new WeakMap(), u = (f, c) => {
-          for (let s of f) {
-            if ("selectorText" in s) {
-              let r = s, l = a.get(r), g = r.selectorText, m = l?.applied === g ? l.authored : g, b = O(m, [], t, c);
-              b !== g && (r.selectorText = b), b === m ? a.delete(r) : a.set(r, { authored: m, applied: r.selectorText });
+      function we(e) {
+        let n = [], t = [], s = false, r, i = /* @__PURE__ */ new WeakMap(), a = (m, p) => {
+          for (let c of m) {
+            if ("selectorText" in c) {
+              let u = c, d = i.get(u), b = u.selectorText, o = d?.applied === b ? d.authored : b, l = B(o, [], t, p);
+              l !== b && (u.selectorText = l), l === o ? i.delete(u) : i.set(u, { authored: o, applied: u.selectorText });
             }
-            "cssRules" in s && u(s.cssRules, c);
+            "cssRules" in c && a(c.cssRules, p);
           }
-        }, d = () => {
-          if (t.length) for (let f of e.document.styleSheets) {
-            let c;
+        }, f = () => {
+          if (t.length) for (let m of e.document.styleSheets) {
+            let p;
             try {
-              c = f.cssRules;
+              p = m.cssRules;
             } catch {
               continue;
             }
-            let s = /* @__PURE__ */ new Map();
-            for (let r of c) {
-              if (!("namespaceURI" in r)) continue;
-              let { prefix: l, namespaceURI: g } = r;
-              l && s.set(l, g || null);
+            let c = /* @__PURE__ */ new Map();
+            for (let u of p) {
+              if (!("namespaceURI" in u)) continue;
+              let { prefix: d, namespaceURI: b } = u;
+              d && c.set(d, b || null);
             }
-            s.size && u(c, s);
+            c.size && a(p, c);
           }
-        }, p = { rewrite: (f, c = []) => {
-          if (typeof f != "string" || !f.includes("#") && !f.includes("[")) return f;
-          let s = O(f, c.length ? [...c, ...n] : n, t);
-          if (s !== f) {
-            if (!o) {
-              let r = e.document.createElement("div");
-              o = r.matches.bind(r);
+        }, g = { rewrite: (m, p = []) => {
+          if (typeof m != "string" || !m.includes("#") && !m.includes("[")) return m;
+          let c = B(m, p.length ? [...p, ...n] : n, t);
+          if (c !== m) {
+            if (!r) {
+              let u = e.document.createElement("div");
+              r = u.matches.bind(u);
             }
-            o(f);
+            r(m);
           }
-          return s;
+          return c;
         }, refresh() {
-          t = se(e.document, re).filter((r) => r.before !== r.after);
-          let f = new Set(t.filter((r) => r.name === "id").map((r) => r.before)), c = /* @__PURE__ */ new Set();
+          t = ve(e.document, fe).filter((u) => u.before !== u.after);
+          let m = new Set(t.filter((u) => u.name === "id").map((u) => u.before)), p = /* @__PURE__ */ new Set();
           n = [];
-          for (let r of e.document.querySelectorAll("[data-hf-authored-id][id]")) {
-            let l = r.getAttribute("data-hf-authored-id");
-            if (!l || l === r.id || c.has(l) || f.has(l)) continue;
-            c.add(l);
-            let g = N(l);
-            n.push({ id: l, replacement: `:is(#${k(l)}, [data-hf-authored-id="${g}"])` });
+          for (let u of e.document.querySelectorAll("[data-hf-authored-id][id]")) {
+            let d = u.getAttribute("data-hf-authored-id");
+            if (!d || d === u.id || p.has(d) || m.has(d)) continue;
+            p.add(d);
+            let b = F(d);
+            n.push({ id: d, replacement: `:is(#${x(d)}, [data-hf-authored-id="${b}"])` });
           }
-          if (d(), i || !n.length && !t.length) return;
-          let s = e.Element.prototype;
-          s.querySelector = new Proxy(s.querySelector, { apply(r, l, g) {
-            return Reflect.apply(r, l, [p.rewrite(g[0])]);
-          } }), s.querySelectorAll = new Proxy(s.querySelectorAll, { apply(r, l, g) {
-            return Reflect.apply(r, l, [p.rewrite(g[0])]);
-          } }), i = true;
+          if (f(), s || !n.length && !t.length) return;
+          let c = e.Element.prototype;
+          c.querySelector = new Proxy(c.querySelector, { apply(u, d, b) {
+            return Reflect.apply(u, d, [g.rewrite(b[0])]);
+          } }), c.querySelectorAll = new Proxy(c.querySelectorAll, { apply(u, d, b) {
+            return Reflect.apply(u, d, [g.rewrite(b[0])]);
+          } }), s = true;
         } };
-        e.__hfSvgSelectorAliases = p, p.refresh();
+        e.__hfSvgSelectorAliases = g, g.refresh();
       }
-      function M() {
+      function X() {
         let e = window;
-        e.__hfSvgSelectorAliases || oe(e);
+        e.__hfSvgSelectorAliases || we(e);
       }
-      M();
+      X();
     })();
   })();
   var __hfCompId = "card";
@@ -1256,112 +1500,170 @@ window.__timelines.main = gsap.timeline({ paused: true });
   (function() {
     "use strict";
     (() => {
-      function I(e) {
+      function q(e) {
         return e ? /[\w-]/.test(e) || e.charCodeAt(0) >= 128 : false;
       }
-      function _(e) {
+      function L(e) {
         return e === " " || e === "	" || e === `
 ` || e === "\r" || e === "\f";
       }
-      var j = /^[0-9a-fA-F]{1,6}/;
-      function G(e) {
+      var Y = /^[0-9a-fA-F]{1,6}/;
+      function Z(e) {
         let n = e >= 55296 && e <= 57343;
         return e === 0 || e > 1114111 || n ? 65533 : e;
       }
-      function $(e, n) {
+      function K(e, n) {
         return e[n] === "\r" && e[n + 1] === `
-` ? n + 2 : _(e[n]) ? n + 1 : n;
+` ? n + 2 : L(e[n]) ? n + 1 : n;
       }
-      function R(e, n) {
+      function T(e, n) {
         let t = e[n + 1];
         if (t === void 0 || /[\n\r\f]/.test(t)) return null;
-        let i = j.exec(e.slice(n + 1, n + 7));
-        if (!i) return { value: t, end: n + 2 };
-        let o = G(Number.parseInt(i[0], 16));
-        return { value: String.fromCodePoint(o), end: $(e, n + 1 + i[0].length) };
+        let s = Y.exec(e.slice(n + 1, n + 7));
+        if (!s) return { value: t, end: n + 2 };
+        let r = Z(Number.parseInt(s[0], 16));
+        return { value: String.fromCodePoint(r), end: K(e, n + 1 + s[0].length) };
       }
-      function H(e, n) {
-        let t = (o) => I(o) && !/[0-9-]/.test(o), i = (o) => e[o] === "\\" && R(e, o) !== null;
-        return e[n] === "-" ? e[n + 1] === "-" || t(e[n + 1]) || i(n + 1) : t(e[n]) || i(n);
+      function ee(e, n) {
+        let t = (r) => q(r) && !/[0-9-]/.test(r), s = (r) => e[r] === "\\" && T(e, r) !== null;
+        return e[n] === "-" ? e[n + 1] === "-" || t(e[n + 1]) || s(n + 1) : t(e[n]) || s(n);
       }
-      function y(e, n) {
+      function C(e, n) {
         let t = n;
         for (; e.startsWith("/*", t); ) {
-          let i = e.indexOf("*/", t + 2);
-          t = i < 0 ? e.length : i + 2;
+          let s = e.indexOf("*/", t + 2);
+          t = s < 0 ? e.length : s + 2;
         }
         return t;
       }
-      function A(e, n) {
-        let t = y(e, n);
-        for (; _(e[t]); ) t = y(e, t + 1);
+      function I(e, n) {
+        let t = C(e, n);
+        for (; L(e[t]); ) t = C(e, t + 1);
         return t;
       }
-      function h(e, n) {
-        if (!H(e, n)) return null;
-        let t = n, i = "";
+      function y(e, n) {
+        if (!ee(e, n)) return null;
+        let t = n, s = "";
         for (; t < e.length; ) {
-          let o = e[t];
-          if (o === "\\") {
-            let a = R(e, t);
-            if (!a) break;
-            i += a.value, t = a.end;
+          let r = e[t];
+          if (r === "\\") {
+            let i = T(e, t);
+            if (!i) break;
+            s += i.value, t = i.end;
             continue;
           }
-          if (!I(o)) break;
-          i += o, t += 1;
+          if (!q(r)) break;
+          s += r, t += 1;
         }
-        return t === n ? null : { value: i, end: t };
+        return t === n ? null : { value: s, end: t };
       }
-      var C = 45;
-      function T(e) {
+      var $ = 45;
+      function O(e) {
         return e >= 48 && e <= 57;
       }
-      function z(e) {
-        return e >= 128 || e === C || e === 95 || T(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
+      function ne(e) {
+        return e >= 128 || e === $ || e === 95 || O(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
       }
-      function J(e, n) {
+      function te(e, n) {
         let t = e.charCodeAt(n);
-        return t >= 1 && t <= 31 || t === 127 ? true : T(t) ? n === 0 || n === 1 && e.charCodeAt(0) === C : false;
+        return t >= 1 && t <= 31 || t === 127 ? true : O(t) ? n === 0 || n === 1 && e.charCodeAt(0) === $ : false;
       }
-      function k(e) {
+      function x(e) {
         let n = "";
         for (let t = 0; t < e.length; t += 1) {
-          let i = e.charCodeAt(t), o = e[t];
-          i === 0 ? n += "\uFFFD" : J(e, t) ? n += `\\${i.toString(16)} ` : t === 0 && e.length === 1 && i === C ? n += `\\${o}` : z(i) ? n += o : n += `\\${o}`;
+          let s = e.charCodeAt(t), r = e[t];
+          s === 0 ? n += "\uFFFD" : te(e, t) ? n += `\\${s.toString(16)} ` : t === 0 && e.length === 1 && s === $ ? n += `\\${r}` : ne(s) ? n += r : n += `\\${r}`;
         }
         return n;
       }
-      var W = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
-      function Q(e) {
+      var A = -1, R = -2, M = /\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])/y;
+      function H(e) {
+        let n = e.length, t = new Int32Array(n + 2).fill(A);
+        for (let o = n - 2; o >= 0; o -= 1) t[o] = e[o] === "*" && e[o + 1] === "/" ? o : t[o + 1];
+        let s = (o) => {
+          let l = t[o + 2];
+          return l === A ? A : l + 2;
+        }, r = (o, l, S) => {
+          let W = [], h = l, k;
+          for (; ; ) {
+            if (h >= n) {
+              k = A;
+              break;
+            }
+            if (o[h] !== R) {
+              k = o[h];
+              break;
+            }
+            W.push(h);
+            let w = S(h);
+            if (typeof w != "number") {
+              k = w[0];
+              break;
+            }
+            h = w;
+          }
+          for (let w of W) o[w] = k;
+          return k;
+        }, i = { '"': new Int32Array(n).fill(R), "'": new Int32Array(n).fill(R) }, a = (o, l) => r(i[o], l, (S) => e[S] === o ? [S] : e[S] === "\\" ? S + 1 < n ? S + 2 : [A] : S + 1), f = (o) => {
+          let l = a(e[o], o + 1);
+          return l === A ? A : l + 1;
+        }, g = (o) => {
+          let l = e[o];
+          return l === "/" && e[o + 1] === "*" ? s(o) : l === '"' || l === "'" ? f(o) : l !== "\\" ? o + 1 : o + 1 < n ? o + 2 : A;
+        }, m = new Int32Array(n).fill(R), p = (o) => r(m, o, (l) => {
+          if (e[l] === "]") return [l];
+          let S = g(l);
+          return S === A ? [A] : S;
+        }), c = (o) => (M.lastIndex = o, M.test(e) ? M.lastIndex : A), u = (o) => {
+          let l = p(o + 1);
+          return l === A ? A : l + 1;
+        }, d = (o) => {
+          let l = e[o];
+          return l === "/" ? e[o + 1] === "*" ? s(o) : A : l === "\\" ? c(o) : l === '"' || l === "'" ? f(o) : l === "[" ? u(o) : A;
+        }, b = [];
+        for (let o = 0; o < n; ) {
+          let l = d(o);
+          l === A ? o += 1 : (b.push([o, l]), o = l);
+        }
+        return b;
+      }
+      function U(e) {
         let n = new Array(e.length).fill(true);
-        for (let t of e.matchAll(W)) {
-          let i = t.index;
-          n.fill(false, i, i + t[0].length);
+        for (let [t, s] of H(e)) n.fill(false, t, s);
+        return n;
+      }
+      function j(e) {
+        let n = [];
+        if (!e.includes("#")) return n;
+        let t = U(e);
+        for (let s = 0; s < e.length; s += 1) {
+          if (!t[s] || e[s] !== "#") continue;
+          let r = y(e, s + 1);
+          r && (n.push(r.value), s = r.end - 1);
         }
         return n;
       }
-      function q(e, n, t) {
+      function V(e, n, t) {
         if (n.length === 0 || !e.includes("#")) return e;
-        let i = new Set(n), o = Q(e), a = "", u = 0;
-        for (; u < e.length; ) {
-          let d = o[u] && e[u] === "#" ? h(e, u + 1) : null;
-          d && i.has(d.value) ? (a += t(d.value), u = d.end) : (a += e[u], u += 1);
+        let s = new Set(n), r = U(e), i = "", a = 0;
+        for (; a < e.length; ) {
+          let f = r[a] && e[a] === "#" ? y(e, a + 1) : null;
+          f && s.has(f.value) ? (i += t(f.value, e.slice(a, f.end)), a = f.end) : (i += e[a], a += 1);
         }
-        return a;
+        return i;
       }
-      function X(e) {
+      function re(e) {
         let n = "";
         for (let t = 0; t < e.length; t += 1) {
           if (e[t] === "\\") {
-            let i = e[t + 1];
-            if (i !== void 0 && /[\n\r\f]/.test(i)) {
-              t = $(e, t + 1) - 1;
+            let s = e[t + 1];
+            if (s !== void 0 && /[\n\r\f]/.test(s)) {
+              t = K(e, t + 1) - 1;
               continue;
             }
-            let o = R(e, t);
-            if (o) {
-              n += o.value, t = o.end - 1;
+            let r = T(e, t);
+            if (r) {
+              n += r.value, t = r.end - 1;
               continue;
             }
           }
@@ -1369,168 +1671,232 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return n;
       }
-      function N(e) {
+      function F(e) {
         return Array.from(e, (n) => {
           let t = n.charCodeAt(0);
-          return t === 0 ? "\uFFFD" : t < 32 || t === 127 ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
+          return t === 0 ? "\uFFFD" : t < 32 || t === 127 || n === "<" ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
         }).join("");
       }
-      function Y(e, n) {
+      function se(e, n) {
         return e ? { kind: "any" } : n === void 0 ? { kind: "none" } : { kind: "named", prefix: n };
       }
-      function Z(e, n) {
+      function ie(e, n) {
         return e[n] === "|" && e[n + 1] !== "=";
       }
-      function B(e, n) {
-        let t = e[n] === "*", i = t ? { value: "*", end: n + 1 } : h(e, n), o = y(e, i?.end ?? n);
-        if (!Z(e, o)) return t ? null : i ? { token: i, namespace: { kind: "none" } } : null;
-        let a = h(e, y(e, o + 1));
-        return a ? { token: a, namespace: Y(t, i?.value) } : null;
+      function oe(e, n) {
+        let t = e[n] === "*", s = t ? { value: "*", end: n + 1 } : y(e, n), r = C(e, s?.end ?? n);
+        if (!ie(e, r)) return t ? null : s ? { token: s, namespace: { kind: "none" } } : null;
+        let i = y(e, C(e, r + 1));
+        return i ? { token: i, namespace: se(t, s?.value) } : null;
       }
-      function K(e) {
+      function ae(e) {
         if (e[0] !== "[") return null;
-        let n = A(e, 1), t = B(e, n);
+        let n = I(e, 1), t = oe(e, n);
         if (!t) return null;
-        let { token: i, namespace: o } = t;
-        return { name: i.value, rawName: e.slice(n, i.end), namespace: o, end: i.end };
+        let { token: s, namespace: r } = t;
+        return { name: s.value, rawName: e.slice(n, s.end), namespace: r, end: s.end };
       }
-      function ee(e, n) {
+      function ue(e, n) {
         let t = /^(?:"((?:\\[\s\S]|[^"\\])*)"|'((?:\\[\s\S]|[^'\\])*)')/.exec(e.slice(n));
-        return t ? { value: X(t[1] ?? t[2]), end: n + t[0].length } : h(e, n);
+        return t ? { value: re(t[1] ?? t[2]), end: n + t[0].length } : y(e, n);
       }
-      function ne(e, n) {
-        let t = A(e, n), i = h(e, t);
-        if (i) {
-          if (!/^[is]$/i.test(i.value)) return null;
-          t = A(e, i.end);
+      function le(e, n) {
+        let t = I(e, n), s = y(e, t);
+        if (s) {
+          if (!/^[is]$/i.test(s.value)) return null;
+          t = I(e, s.end);
         }
-        return e[t] !== "]" || t !== e.length - 1 ? null : { flag: i?.value };
+        return e[t] !== "]" || t !== e.length - 1 ? null : { flag: s?.value };
       }
-      function F(e) {
-        let n = K(e);
+      function z(e) {
+        let n = ae(e);
         if (!n) return null;
-        let t = A(e, n.end), o = ["=", "~=", "|=", "^=", "$=", "*="].find((d) => e.startsWith(d, t));
-        if (!o) return null;
-        let a = ee(e, A(e, t + o.length));
-        if (!a) return null;
-        let u = ne(e, a.end);
-        return u ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: o, value: a.value, flag: u.flag } : null;
+        let t = I(e, n.end), r = ["=", "~=", "|=", "^=", "$=", "*="].find((f) => e.startsWith(f, t));
+        if (!r) return null;
+        let i = ue(e, I(e, t + r.length));
+        if (!i) return null;
+        let a = le(e, i.end);
+        return a ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: r, value: i.value, flag: a.flag } : null;
       }
-      function x(e, n) {
-        return e.replace(W, (t) => t.startsWith("[") ? n(t) : t);
+      function _(e, n) {
+        let t = "", s = 0;
+        for (let [r, i] of H(e)) e[r] === "[" && (t += e.slice(s, r) + n(e.slice(r, i)), s = i);
+        return t + e.slice(s);
       }
-      var re = "data-hf-svg-reference-aliases";
-      function O(e, n, t, i) {
-        let o = { "=": (s, r) => s === r, "~=": (s, r) => s.split(/[ \t\r\n\f]+/).includes(r), "|=": (s, r) => s === r || s.startsWith(r + "-"), "^=": (s, r) => s.startsWith(r), "$=": (s, r) => s.endsWith(r), "*=": (s, r) => s.includes(r) }, a = (s, r, l) => !r && l !== "=" && l !== "|=" ? false : o[l](s, r), u = (s) => s.replace(/[A-Z]/g, (r) => r.toLowerCase()), d = (s) => {
-          let r = F(s);
-          if (!r) return s;
-          let { name: l, rawName: g, namespace: m, operator: b, value: D, flag: w } = r;
-          if (m.kind === "named" != (i !== void 0)) return s;
-          let E = w?.toLowerCase() === "i" ? u : (S) => S, L = u(l), P = t.filter((S) => {
-            let V = m.kind === "none" ? S.name : S.localName, U = m.kind === "named" ? i.get(m.prefix) : null;
-            return (m.kind === "any" || S.namespaceURI === U) && u(V) === L;
-          }), v = /* @__PURE__ */ new Set([s]);
-          for (let S of P) a(E(S.before), E(D), b) && v.add(`[${g}="${N(S.after)}"${w ? ` ${w}` : ""}]`);
-          return v.size === 1 ? s : `:is(${[...v].join(", ")})`;
-        };
-        if (i) return x(e, d);
-        let p = new Map(n.map(({ id: s, replacement: r }) => [s, r])), f = /* @__PURE__ */ new Map();
-        for (let s of t) {
-          if (s.name !== "id" || s.before === s.after || p.has(s.before)) continue;
-          let r = f.get(s.before);
-          r || (r = /* @__PURE__ */ new Set([`#${k(s.before)}`]), f.set(s.before, r)), r.add(`#${k(s.after)}`);
+      var fe = "data-hf-svg-reference-aliases", v = (e) => e.replace(/[A-Z]/g, (n) => n.toLowerCase()), G = (e, n) => JSON.stringify([v(e), n]), D = /* @__PURE__ */ new WeakMap();
+      function P(e, n, t) {
+        let s = e.get(n);
+        s || e.set(n, s = { all: [], lookups: /* @__PURE__ */ new Map() }), s.all.push(t);
+      }
+      function de(e, n) {
+        let { namespaceURI: t } = n;
+        t === null && P(e.unprefixed, v(n.name), n), P(e.anyNamespace, v(n.localName), n), P(e.inNamespace, G(n.localName, t), n);
+      }
+      function ge(e) {
+        let n = D.get(e);
+        if (n) return n;
+        n = { everyRecordedId: /* @__PURE__ */ new Set(), renamedIdAlternatives: /* @__PURE__ */ new Map(), unprefixed: /* @__PURE__ */ new Map(), anyNamespace: /* @__PURE__ */ new Map(), inNamespace: /* @__PURE__ */ new Map() };
+        let t = /* @__PURE__ */ new Map(), s = /* @__PURE__ */ new Set();
+        for (let r of e) {
+          if (r.name === "id" && n.everyRecordedId.add(r.before), r.before === r.after) continue;
+          let i = JSON.stringify([r.name, r.localName, r.namespaceURI, r.before, r.after]);
+          if (s.has(i) || (s.add(i), de(n, r), r.name !== "id")) continue;
+          let a = t.get(r.before);
+          a || t.set(r.before, a = /* @__PURE__ */ new Set([`#${x(r.before)}`])), a.add(`#${x(r.after)}`);
         }
-        for (let [s, r] of f) p.set(s, `:is(${[...r].join(", ")})`);
-        let c = q(e, [...p.keys()], (s) => p.get(s));
-        return x(c, d);
+        for (let [r, i] of t) n.renamedIdAlternatives.set(r, `:is(${[...i].join(", ")})`);
+        return D.set(e, n), n;
       }
-      function se(e, n, t = true) {
-        let i = [], a = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((d) => d.getAttribute(n)), u = e.getAttribute?.(n);
-        u && a.unshift(u);
-        for (let d of a) {
-          let p;
+      var me = (e) => e, J = (e) => e.split("").reverse().join(""), pe = /[ \t\r\n\f]+/;
+      function Q(e, n, t) {
+        let s = e.lookups.get(n);
+        if (s) return s;
+        let r = e.all.map((i, a) => [t(i.before), a]);
+        return r.sort(([i], [a]) => i < a ? -1 : i > a ? 1 : 0), s = { keys: r.map(([i]) => i), at: r.map(([, i]) => i) }, e.lookups.set(n, s), s;
+      }
+      function N({ keys: e, at: n }, t, s = false) {
+        let r = 0;
+        for (let a = e.length; r < a; ) {
+          let f = r + a >>> 1;
+          e[f] < t ? r = f + 1 : a = f;
+        }
+        let i = [];
+        for (let a = r; a < e.length && (s ? e[a] === t : e[a].startsWith(t)); a++) i.push(n[a]);
+        return i;
+      }
+      function be(e, n, t, s) {
+        let r = e.lookups.get(n);
+        if (!r) {
+          r = /* @__PURE__ */ new Map();
+          for (let [i, a] of e.all.entries()) for (let f of new Set(t(a.before).split(pe))) {
+            let g = r.get(f);
+            g ? g.push(i) : r.set(f, [i]);
+          }
+          e.lookups.set(n, r);
+        }
+        return r.get(s) ?? [];
+      }
+      var E = ({ entry: e, fold: n, id: t }) => Q(e, t("^="), n), Ae = { "=": (e) => N(E(e), e.value, true), "^=": (e) => N(E(e), e.value), "$=": ({ entry: e, value: n, fold: t, id: s }) => N(Q(e, s("$="), (r) => J(t(r))), J(n)), "|=": (e) => [...N(E(e), e.value, true), ...N(E(e), `${e.value}-`)], "~=": ({ entry: e, value: n, fold: t, id: s }) => be(e, s("~="), t, n), "*=": ({ entry: e, value: n, fold: t, chargeScan: s }) => e.all.flatMap((r, i) => (s?.(r.before.length), t(r.before).includes(n) ? [i] : [])) };
+      function Se(e, { operator: n, value: t, flag: s }, r) {
+        if (!t && n !== "=" && n !== "|=") return [];
+        let i = s?.toLowerCase() === "i", a = i ? v : me, f = (g) => i ? `${g} i` : g;
+        return Ae[n]({ entry: e, value: a(t), fold: a, id: f, chargeScan: r });
+      }
+      function he(e, { name: n, namespace: t }, s) {
+        if (t.kind === "none") return e.unprefixed.get(v(n));
+        if (t.kind === "any") return e.anyNamespace.get(v(n));
+        let r = s.get(t.prefix);
+        return r === void 0 ? void 0 : e.inNamespace.get(G(n, r));
+      }
+      function ye(e, n, t, s) {
+        let r = he(e, n, t);
+        return r ? Se(r, n, s).sort((i, a) => i - a).map((i) => r.all[i]) : [];
+      }
+      function B(e, n, t, s, r, i) {
+        let a = ge(t), f = (c) => {
+          let u = z(c);
+          if (!u || u.namespace.kind === "named" != (s !== void 0)) return c;
+          let { rawName: d, flag: b } = u, o = /* @__PURE__ */ new Set([c]);
+          for (let l of ye(a, u, s, i)) {
+            let S = `[${d}="${F(l.after)}"${b ? ` ${b}` : ""}]`;
+            o.has(S) || (r?.(S.length + (o.size === 1 ? 7 : 2)), o.add(S));
+          }
+          return o.size === 1 ? c : `:is(${[...o].join(", ")})`;
+        };
+        if (s) return _(e, f);
+        let g = new Map(n.map(({ id: c, replacement: u }) => [c, u])), m = j(e).filter((c) => g.has(c) || a.renamedIdAlternatives.has(c)), p = V(e, m, (c, u) => {
+          let d = g.get(c) ?? a.renamedIdAlternatives.get(c);
+          return r?.(d.length - u.length), d;
+        });
+        return _(p, f);
+      }
+      function ve(e, n, t = true) {
+        let s = [], i = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((f) => f.getAttribute(n)), a = e.getAttribute?.(n);
+        a && i.unshift(a);
+        for (let f of i) {
+          let g;
           try {
-            p = JSON.parse(d);
+            g = JSON.parse(f);
           } catch {
             continue;
           }
-          if (!Array.isArray(p)) continue;
-          let f = p;
-          for (let c of f) {
-            if (!ie(c)) continue;
-            let { name: s, localName: r, namespaceURI: l, before: g, after: m } = c;
-            i.push({ name: s, localName: r, namespaceURI: l, before: g, after: m });
+          if (!Array.isArray(g)) continue;
+          let m = g;
+          for (let p of m) {
+            if (!ke(p)) continue;
+            let { name: c, localName: u, namespaceURI: d, before: b, after: o } = p;
+            s.push({ name: c, localName: u, namespaceURI: d, before: b, after: o });
           }
         }
-        return i;
+        return s;
       }
-      function ie(e) {
+      function ke(e) {
         if (!e || typeof e != "object") return false;
-        let { name: n, localName: t, namespaceURI: i, before: o, after: a } = e;
-        return typeof n == "string" && typeof t == "string" && (i === null || typeof i == "string") && typeof o == "string" && typeof a == "string";
+        let { name: n, localName: t, namespaceURI: s, before: r, after: i } = e;
+        return typeof n == "string" && typeof t == "string" && (s === null || typeof s == "string") && typeof r == "string" && typeof i == "string";
       }
-      function oe(e) {
-        let n = [], t = [], i = false, o, a = /* @__PURE__ */ new WeakMap(), u = (f, c) => {
-          for (let s of f) {
-            if ("selectorText" in s) {
-              let r = s, l = a.get(r), g = r.selectorText, m = l?.applied === g ? l.authored : g, b = O(m, [], t, c);
-              b !== g && (r.selectorText = b), b === m ? a.delete(r) : a.set(r, { authored: m, applied: r.selectorText });
+      function we(e) {
+        let n = [], t = [], s = false, r, i = /* @__PURE__ */ new WeakMap(), a = (m, p) => {
+          for (let c of m) {
+            if ("selectorText" in c) {
+              let u = c, d = i.get(u), b = u.selectorText, o = d?.applied === b ? d.authored : b, l = B(o, [], t, p);
+              l !== b && (u.selectorText = l), l === o ? i.delete(u) : i.set(u, { authored: o, applied: u.selectorText });
             }
-            "cssRules" in s && u(s.cssRules, c);
+            "cssRules" in c && a(c.cssRules, p);
           }
-        }, d = () => {
-          if (t.length) for (let f of e.document.styleSheets) {
-            let c;
+        }, f = () => {
+          if (t.length) for (let m of e.document.styleSheets) {
+            let p;
             try {
-              c = f.cssRules;
+              p = m.cssRules;
             } catch {
               continue;
             }
-            let s = /* @__PURE__ */ new Map();
-            for (let r of c) {
-              if (!("namespaceURI" in r)) continue;
-              let { prefix: l, namespaceURI: g } = r;
-              l && s.set(l, g || null);
+            let c = /* @__PURE__ */ new Map();
+            for (let u of p) {
+              if (!("namespaceURI" in u)) continue;
+              let { prefix: d, namespaceURI: b } = u;
+              d && c.set(d, b || null);
             }
-            s.size && u(c, s);
+            c.size && a(p, c);
           }
-        }, p = { rewrite: (f, c = []) => {
-          if (typeof f != "string" || !f.includes("#") && !f.includes("[")) return f;
-          let s = O(f, c.length ? [...c, ...n] : n, t);
-          if (s !== f) {
-            if (!o) {
-              let r = e.document.createElement("div");
-              o = r.matches.bind(r);
+        }, g = { rewrite: (m, p = []) => {
+          if (typeof m != "string" || !m.includes("#") && !m.includes("[")) return m;
+          let c = B(m, p.length ? [...p, ...n] : n, t);
+          if (c !== m) {
+            if (!r) {
+              let u = e.document.createElement("div");
+              r = u.matches.bind(u);
             }
-            o(f);
+            r(m);
           }
-          return s;
+          return c;
         }, refresh() {
-          t = se(e.document, re).filter((r) => r.before !== r.after);
-          let f = new Set(t.filter((r) => r.name === "id").map((r) => r.before)), c = /* @__PURE__ */ new Set();
+          t = ve(e.document, fe).filter((u) => u.before !== u.after);
+          let m = new Set(t.filter((u) => u.name === "id").map((u) => u.before)), p = /* @__PURE__ */ new Set();
           n = [];
-          for (let r of e.document.querySelectorAll("[data-hf-authored-id][id]")) {
-            let l = r.getAttribute("data-hf-authored-id");
-            if (!l || l === r.id || c.has(l) || f.has(l)) continue;
-            c.add(l);
-            let g = N(l);
-            n.push({ id: l, replacement: `:is(#${k(l)}, [data-hf-authored-id="${g}"])` });
+          for (let u of e.document.querySelectorAll("[data-hf-authored-id][id]")) {
+            let d = u.getAttribute("data-hf-authored-id");
+            if (!d || d === u.id || p.has(d) || m.has(d)) continue;
+            p.add(d);
+            let b = F(d);
+            n.push({ id: d, replacement: `:is(#${x(d)}, [data-hf-authored-id="${b}"])` });
           }
-          if (d(), i || !n.length && !t.length) return;
-          let s = e.Element.prototype;
-          s.querySelector = new Proxy(s.querySelector, { apply(r, l, g) {
-            return Reflect.apply(r, l, [p.rewrite(g[0])]);
-          } }), s.querySelectorAll = new Proxy(s.querySelectorAll, { apply(r, l, g) {
-            return Reflect.apply(r, l, [p.rewrite(g[0])]);
-          } }), i = true;
+          if (f(), s || !n.length && !t.length) return;
+          let c = e.Element.prototype;
+          c.querySelector = new Proxy(c.querySelector, { apply(u, d, b) {
+            return Reflect.apply(u, d, [g.rewrite(b[0])]);
+          } }), c.querySelectorAll = new Proxy(c.querySelectorAll, { apply(u, d, b) {
+            return Reflect.apply(u, d, [g.rewrite(b[0])]);
+          } }), s = true;
         } };
-        e.__hfSvgSelectorAliases = p, p.refresh();
+        e.__hfSvgSelectorAliases = g, g.refresh();
       }
-      function M() {
+      function X() {
         let e = window;
-        e.__hfSvgSelectorAliases || oe(e);
+        e.__hfSvgSelectorAliases || we(e);
       }
-      M();
+      X();
     })();
   })();
   var __hfCompId = "card";

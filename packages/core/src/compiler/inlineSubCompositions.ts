@@ -1,4 +1,9 @@
-import { SVG_REFERENCE_ALIASES_ATTR, readSvgReferenceAliases } from "./svgSelectorAliases";
+import {
+  SVG_REFERENCE_ALIASES_ATTR,
+  dropAuthoredSvgReferenceAliases,
+  readSvgReferenceAliases,
+  type SvgReferenceAlias,
+} from "./svgSelectorAliases";
 import { readExternalScriptAttributes, type ExternalScriptAttributes } from "./externalScripts";
 import { parseImportMap, type ImportMap } from "./importMaps";
 import {
@@ -37,6 +42,7 @@ import {
   namespaceCollidingSvgIds,
   sceneClipRoots,
   rewriteSvgIdReferencesInCss,
+  type SvgIdMap,
   type SvgIdScope,
 } from "./svgIdNamespacing";
 import {
@@ -314,6 +320,22 @@ export interface InlineSubCompositionsOptions {
    * built, and each scoped sheet rule by rule as `scopeCssToComposition` reports it. May throw.
    */
   chargeEmitted?: (srcPath: string, bytes: number) => void;
+  /** Told how many elements each mount copies, before it is copied. May throw. */
+  chargeElements?: (srcPath: string, count: number) => void;
+}
+
+/** Every element under `root`, an HTML template's content included. */
+function countElements(root: ParentNode): number {
+  let count = 0;
+  const pending: ParentNode[] = [root];
+  for (let node = pending.pop(); node; node = pending.pop()) {
+    for (const el of Array.from(node.children)) {
+      count += 1;
+      const html = el.localName === "template" && !el.firstElementChild && "content" in el;
+      pending.push(html ? (el as HTMLTemplateElement).content : el);
+    }
+  }
+  return count;
 }
 
 export interface ExternalLink {
@@ -365,7 +387,7 @@ export interface InlineSubCompositionsResult {
 const isDocument = (node: Node): node is Document => node.nodeType === 9;
 
 function defaultBuildScopeSelector(compId: string): string {
-  const escaped = compId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const escaped = compId.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/</g, "\\3c ");
   return `[data-composition-id="${escaped}"]`;
 }
 
@@ -411,6 +433,7 @@ export function inlineSubCompositions(
     tagScenes = false,
     readProjectScript,
     chargeEmitted,
+    chargeElements,
   } = options;
 
   const rootStyles = [...document.querySelectorAll("style")];
@@ -434,6 +457,12 @@ export function inlineSubCompositions(
       parsed.set(html, doc);
     }
     return doc;
+  };
+  const elementCounts = new Map<string, number>();
+  const elementCount = (html: string) => {
+    let count = elementCounts.get(html);
+    if (count === undefined) elementCounts.set(html, (count = countElements(parseOnce(html))));
+    return count;
   };
   const parseCopy = (html: string): Document => {
     const copy = parseOnce(html).cloneNode(true);
@@ -479,6 +508,7 @@ export function inlineSubCompositions(
       continue;
     }
 
+    chargeElements?.(src, elementCount(compHtml));
     const compDoc = parseCopy(compHtml);
 
     // Determine composition IDs
@@ -816,8 +846,17 @@ export function inlineSubCompositions(
   // `<style>` text gets the same substitution its DOM just received. See
   // svgIdNamespacing.ts for why this is a rename, unlike the sibling
   // getElementById/media-id fixes.
+  dropAuthoredSvgReferenceAliases(document);
   const hostRoots = svgIdScopes.map(({ root }) => root);
   const clips = sceneClipRoots(document, hostRoots);
+  // Clips are outermost, so each host sits in at most one: its nearest clip ancestor.
+  const clipIndex = new Map(clips.map((clip, index) => [clip, index]));
+  const hostsInClip = clips.map((): Element[] => []);
+  for (const host of hostRoots) {
+    let at = host.parentElement;
+    while (at && !clipIndex.has(at)) at = at.parentElement;
+    if (at) hostsInClip[clipIndex.get(at)!]!.push(host);
+  }
   const svgIdMaps = namespaceCollidingSvgIds(
     document,
     [
@@ -837,16 +876,25 @@ export function inlineSubCompositions(
       ...clips.map((root, index) => ({
         root,
         namespace: `clip-${index}`,
-        exclude: hostRoots.filter((host) => root.contains(host)),
+        exclude: hostsInClip[index],
       })),
     ],
     undefined,
     chargeEmitted &&
       ((index, bytes) => chargeEmitted(svgIdScopes[index]?.src ?? "the page", bytes)),
   );
-  const chargeGrowth = (src: string, before: string, after: string) => {
-    if (after.length > before.length) chargeEmitted?.(src, after.length - before.length);
-  };
+  const rewriteCss = (
+    src: string,
+    css: string,
+    idMap: SvgIdMap,
+    references: readonly SvgReferenceAlias[],
+  ) =>
+    rewriteSvgIdReferencesInCss(
+      css,
+      idMap,
+      references,
+      chargeEmitted && ((bytes) => chargeEmitted(src, bytes)),
+    );
   svgIdMaps.slice(0, svgIdScopes.length).forEach((idMap, index) => {
     const { styleStart, styleEnd } = svgIdScopes[index]!;
     const references = readSvgReferenceAliases(
@@ -854,9 +902,7 @@ export function inlineSubCompositions(
       SVG_REFERENCE_ALIASES_ATTR,
     );
     for (let i = styleStart; i < styleEnd; i += 1) {
-      const rewritten = rewriteSvgIdReferencesInCss(styles[i]!.css, idMap, references);
-      chargeGrowth(svgIdScopes[index]!.src, styles[i]!.css, rewritten);
-      styles[i]!.css = rewritten;
+      styles[i]!.css = rewriteCss(svgIdScopes[index]!.src, styles[i]!.css, idMap, references);
     }
   });
 
@@ -866,13 +912,7 @@ export function inlineSubCompositions(
   );
   for (const style of rootStyles) {
     const css = style.textContent ?? "";
-    const rewritten = rewriteSvgIdReferencesInCss(
-      css,
-      svgIdMaps[svgIdScopes.length]!,
-      rootReferences,
-    );
-    chargeGrowth("the page", css, rewritten);
-    style.textContent = rewritten;
+    style.textContent = rewriteCss("the page", css, svgIdMaps[svgIdScopes.length]!, rootReferences);
   }
 
   return {

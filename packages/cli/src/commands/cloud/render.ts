@@ -374,15 +374,15 @@ export default defineCommand({
         );
       } else {
         console.log("");
-        console.log(`${c.success("✓")}  Submitted ${c.accent(renderId)}`);
-        console.log(c.dim(`   Poll with: hyperframes cloud get ${renderId}`));
+        console.log(`${c.success("✓")}  Submitted ${c.accent(terminalText(renderId))}`);
+        console.log(c.dim(`   Poll with: hyperframes cloud get ${terminalText(renderId)}`));
       }
       return;
     }
 
     if (!asJson) {
       console.log("");
-      console.log(c.dim(`  Polling ${renderId} every ${pollIntervalMs / 1000}s …`));
+      console.log(c.dim(`  Polling ${terminalText(renderId)} every ${pollIntervalMs / 1000}s …`));
     }
 
     const detail = await pollWithProgress(client, renderId, asJson, {
@@ -631,7 +631,7 @@ export function parseAspectRatioFlag(raw: string | undefined): string | undefine
 
 function logDetection(asJson: boolean, message: string): void {
   if (asJson) return;
-  console.log(c.dim(`   ${message}`));
+  console.log(c.dim(`   ${terminalText(message)}`));
 }
 
 // fallow-ignore-next-line complexity
@@ -870,7 +870,7 @@ async function offloadMedia(
     for (const item of offloaded.filter((entry) => entry.kept_in_archive)) {
       console.log(
         c.dim(
-          `   ${item.path} also stays in the zip: a script builds its path in a way that cannot be rewritten`,
+          `   ${terminalText(item.path)} also stays in the zip: a script builds its path in a way that cannot be rewritten`,
         ),
       );
     }
@@ -896,7 +896,7 @@ export function assertArchiveFits(sizeBytes: number, largestFiles: ArchiveFileSu
   errorBox(
     "Project too large for cloud render",
     `The zip is ${formatBytes(sizeBytes)} after moving media to HeyGen assets, over the ${formatBytes(DIRECT_UPLOAD_LIMIT_BYTES)} upload limit. Largest files left in it:\n${largestFiles
-      .map((file) => `  ${formatBytes(file.size_bytes).padStart(9)}  ${file.path}`)
+      .map((file) => `  ${formatBytes(file.size_bytes).padStart(9)}  ${terminalText(file.path)}`)
       .join("\n")}`,
     "Exclude files the render does not need with .hyperframesignore.",
   );
@@ -967,13 +967,15 @@ function describeOffload(item: OffloadedMedia, dryRun: boolean): string {
         : dryRun
           ? "would upload"
           : "uploaded";
-  return `${formatBytes(item.size_bytes).padStart(9)}  ${item.path} · ${verb}`;
+  return `${formatBytes(item.size_bytes).padStart(9)}  ${terminalText(item.path)} · ${verb}`;
 }
 
 function reportLargestFiles(prepared: PreparedLocalArchive): void {
   console.log(c.dim("   Largest included files:"));
   for (const file of prepared.largestFiles) {
-    console.log(c.dim(`   ${formatBytes(file.size_bytes).padStart(9)}  ${file.path}`));
+    console.log(
+      c.dim(`   ${formatBytes(file.size_bytes).padStart(9)}  ${terminalText(file.path)}`),
+    );
   }
   console.log(c.dim("   Exclude verified-unneeded files with .hyperframesignore."));
 }
@@ -1061,7 +1063,7 @@ async function maybeUploadProject(
   if (!asJson) {
     console.log(
       c.dim(
-        `   asset_id: ${c.accent(uploaded.asset_id)} · ${formatDuration(Date.now() - uploadStart)}`,
+        `   asset_id: ${c.accent(terminalText(uploaded.asset_id))} · ${formatDuration(Date.now() - uploadStart)}`,
       ),
     );
   }
@@ -1194,7 +1196,7 @@ export function logsTick(
 }
 
 function formatTickLine(detail: HyperframesRenderDetail, elapsedMs: number): string {
-  const status = colorStatus(detail.status);
+  const status = colorStatus(terminalText(detail.status));
   return `${status}  ${c.dim(formatDuration(elapsedMs))}`;
 }
 
@@ -1240,7 +1242,7 @@ async function streamVideo(
   // `downloadToFile` creates the parent directory and preserves existing output on failure.
   if (!asJson) {
     console.log("");
-    console.log(`${c.accent("◆")}  Downloading to ${c.accent(destPath)}`);
+    console.log(`${c.accent("◆")}  Downloading to ${c.accent(terminalText(destPath))}`);
   }
   try {
     const result = await downloadToFile(url, destPath);

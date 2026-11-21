@@ -101,7 +101,7 @@ export interface StudioAgentToolsDeps
     TransformToolDeps,
     AnimationToolDeps {
   /** Read Studio's current state. Called per tool invocation, never cached. */
-  getSnapshot: () => StudioLookSnapshot;
+  getSnapshot: () => StudioLookSnapshot | Promise<StudioLookSnapshot>;
 }
 
 /**
@@ -153,7 +153,7 @@ export function buildStudioTools(depsRef: {
       },
       execute: (input): Promise<ToolResult<StudioLook>> =>
         runToolBody("studio_look", async () =>
-          buildStudioLook(depsRef.current.getSnapshot(), input as StudioLookInput),
+          buildStudioLook(await depsRef.current.getSnapshot(), input as StudioLookInput),
         ),
     },
     {
