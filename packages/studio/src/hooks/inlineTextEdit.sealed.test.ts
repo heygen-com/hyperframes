@@ -546,12 +546,16 @@ it("keeps a Design panel save on the canvas when a later inline draft is cancell
   expect(shown.innerHTML).toBe("Panel");
 });
 
-it("shows the reloaded file's text when a draft is cancelled after the file changed outside Studio", async () => {
+it("rolls a failed save after an outside change and reload back to the file, not to an older save", async () => {
   const { iframe, reload } = await sealedTitle();
   const plain = await select(iframe, "other");
   const shown = document.getElementById("other")!;
-  const { saved, persist } = fileWrites();
-  const { commits } = wiredEditor(iframe, plain, persist);
+  const { saved, persist: write } = fileWrites();
+  const persist = vi.fn<PersistDomEditOperations>(async (target, operations, options) => {
+    if (String(operations[0]!.value) === "Draft") throw new Error("disk full");
+    return write(target, operations, options);
+  });
+  const { commits, reloads } = wiredEditor(iframe, plain, persist);
   await act(() =>
     commits().handleDomRichTextCommit({
       element: plain.element,
@@ -567,15 +571,16 @@ it("shows the reloaded file's text when a draft is cancelled after the file chan
   reload();
   previewReloadBegun();
   const again = await select(iframe, "other");
-  const { controls } = wiredEditor(iframe, again, persist);
-  act(() => void controls().start(again.element));
-  await vi.waitFor(() => expect(shown.getAttribute("contenteditable")).toBe("true"));
-  shown.innerHTML = "Draft";
-  act(() => controls().cancel());
+  await act(() =>
+    commits().handleDomRichTextCommit({
+      element: again.element,
+      html: "Draft",
+      previousHtml: "Agent",
+    }),
+  );
+  await vi.waitFor(() => expect(reloads).toHaveBeenCalledTimes(1));
   await settled(iframe, again);
-  await nextTask();
-  await settled(iframe, again);
-  expect(shown.innerHTML).toBe("Agent");
+  expect(shown.innerHTML).not.toBe("Inline");
 });
 
 it("rolls a failed save back to the file's text, not to an older save that was skipped", async () => {
@@ -627,16 +632,17 @@ it("retires an inline edit whose frame was replaced while its end was pending, s
   expect(saved.at(-1)).toBe("other=Panel");
 });
 
-it("keeps nothing to redraw from a save that completes after the preview reloaded", async () => {
+it("keeps nothing to roll back to from a save that completes after the preview reloaded", async () => {
   const { iframe, reload } = await sealedTitle();
   const plain = await select(iframe, "other");
   const shown = document.getElementById("other")!;
   let finish!: () => void;
-  const persist = vi.fn<PersistDomEditOperations>(async (_, __, options) => {
+  const persist = vi.fn<PersistDomEditOperations>(async (_, operations, options) => {
+    if (String(operations[0]!.value) === "Draft") throw new Error("disk full");
     await new Promise<void>((resolve) => (finish = resolve));
     options?.shouldSave?.();
   });
-  const { commits } = wiredEditor(iframe, plain, persist);
+  const { commits, reloads } = wiredEditor(iframe, plain, persist);
   const saving = commits().handleDomRichTextCommit({
     element: plain.element,
     html: "Inline",
@@ -650,15 +656,16 @@ it("keeps nothing to redraw from a save that completes after the preview reloade
   finish();
   await act(() => saving);
   const again = await select(iframe, "other");
-  const { controls } = wiredEditor(iframe, again, persist);
-  act(() => void controls().start(again.element));
-  await vi.waitFor(() => expect(shown.getAttribute("contenteditable")).toBe("true"));
-  shown.innerHTML = "Draft";
-  act(() => controls().cancel());
+  await act(() =>
+    commits().handleDomRichTextCommit({
+      element: again.element,
+      html: "Draft",
+      previousHtml: "Agent",
+    }),
+  );
+  await vi.waitFor(() => expect(reloads).toHaveBeenCalledTimes(1));
   await settled(iframe, again);
-  await nextTask();
-  await settled(iframe, again);
-  expect(shown.innerHTML).toBe("Agent");
+  expect(shown.innerHTML).not.toBe("Inline");
 });
 
 it("saves another heading's open draft before the reload a failed first save asks for", async () => {
