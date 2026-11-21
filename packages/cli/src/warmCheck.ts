@@ -1,4 +1,5 @@
 import "./utils/hideChildConsoles.js";
+import "./utils/envProxyFetch.js";
 import "./utils/windowsExeSearch.js";
 import { randomBytes } from "node:crypto";
 import { unlinkSync } from "node:fs";
