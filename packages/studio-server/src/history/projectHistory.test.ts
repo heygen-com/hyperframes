@@ -629,7 +629,7 @@ describe("openProjectHistory", () => {
     renameSync(join(projectDir, "pages"), join(projectDir, ".hold"));
     symlinkSync(".hold", join(projectDir, "pages"), "dir");
     const again = await open(projectDir, historyRoot);
-    expect(await again.step("back", you)).toMatchObject({ ok: false });
+    await expect(again.step("back", you)).rejects.toThrow("pages is in the way");
   });
 
   // fails without the fix: an older undo's kept file stayed in both views, and Redo still offered it.
@@ -650,7 +650,7 @@ describe("openProjectHistory", () => {
     const reader = readProjectHistory({ projectDir, historyRoot, ignores });
     expect(JSON.stringify(again.list())).not.toContain("song.mp3");
     expect(JSON.stringify(reader.list())).not.toContain("song.mp3");
-    expect(again.next("forward", you)).toBeNull();
+    expect(again.next("forward", you)).toBeUndefined();
   });
 
   it("records a write nobody announced as one outside entry, and undo puts the bytes back as a new entry", async () => {
