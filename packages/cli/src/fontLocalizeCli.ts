@@ -1,5 +1,4 @@
 import "./utils/hideChildConsoles.js";
-import "./utils/envProxyFetch.js";
 import "./utils/windowsExeSearch.js";
 import { injectDeterministicFontFaces } from "@hyperframes/producer";
 import { runFontLocalize, stampFontVersions } from "./fontLocalize.js";
