@@ -1343,6 +1343,10 @@ npx hyperframes check [dir] --at 1.5,4,7.25
 npx hyperframes check [dir] --strict       # warnings fail too
 ```
 
+When `check` or the deprecated `validate` fails because no browser can be set up
+on Linux ARM64, the reason stays on the failure line and the setup commands
+follow it on lines of their own, ready to copy. `--json` output is unchanged.
+
 `check` runs the linter first. A lint error fails the check but does not stop
 it: the browser checks still run and both are reported, unless the lint error
 leaves no composition to load (a root with no `data-composition-id`).

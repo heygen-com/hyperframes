@@ -24,6 +24,7 @@ vi.mock("../telemetry/events.js", () => ({
 import { contrastRatio, parseColorRGBA } from "./contrast-bg.js";
 import { createCheckCommand, parseCheckRange, parseSafeZone } from "./check.js";
 import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
+import { LINUX_ARM_BROWSER_STEPS } from "../utils/errorMessage.js";
 import { readConfig } from "../telemetry/config.js";
 import {
   CheckCopiesUnfinishedError,
@@ -527,6 +528,49 @@ describe("check --prepare-media", () => {
     expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
     expect(human).toContain("video\\x1b]0;x\\x07\\x1b[2J");
     consumeCommandResult();
+  });
+
+  // fails without the fix: the setup commands were joined to the reason with `\x0a`
+  it("prints the setup commands of a failed check on lines of their own", async () => {
+    const reason = `No browser\nhere\n\n${LINUX_ARM_BROWSER_STEPS} (while launching)`;
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const run = (rawArgs: string[]) =>
+      runCommand(
+        createCheckCommand({
+          resolveProject: () => PROJECT,
+          runPipeline: vi.fn(async () => Promise.reject(new Error(reason))),
+          prepareMedia: vi.fn(async () => []),
+          withMeta: (value) => value,
+        }),
+        { rawArgs },
+      ).then(consumeCommandResult);
+    await run([]);
+    await run(["--json"]);
+    const { report } = await runScenario(fakeDriver());
+    const finding = { ...runtimeError(), code: "check_runtime_failure", message: reason };
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => PROJECT,
+        runPipeline: async () => ({
+          ...report,
+          runtime: { ...report.runtime, ok: false, errorCount: 1, findings: [finding] },
+        }),
+        prepareMedia: vi.fn(),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: [] },
+    ).then(consumeCommandResult);
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(human).toContain("check_runtime_failure: No browser\\x0ahere (while launching)\n");
+    expect(human).toContain(`\n\n${LINUX_ARM_BROWSER_STEPS}\n`);
+
+    const printed = error.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).toContain(
+      `Check failed: No browser\\x0ahere (while launching)\n\n${LINUX_ARM_BROWSER_STEPS}\n`,
+    );
+    const answer = log.mock.calls.map((call) => String(call[0])).find((text) => text[0] === "{");
+    expect(JSON.parse(answer!).error.message).toBe(reason);
   });
 });
 
