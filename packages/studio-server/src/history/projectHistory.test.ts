@@ -25,13 +25,20 @@ import { HistoryBusyError } from "./ownerLock";
 import { HistoryIdError } from "./historyId";
 import {
   HistoryClosedError,
-  HistoryRefusedError,
   openProjectHistory,
   readProjectHistory,
   type ProjectHistory,
 } from "./projectHistory";
+import { HistoryRefusedError, type RefusalReason } from "./historyRefused";
 import { START, type HistoryWho } from "./historyLog";
 import { openBlobStore } from "./blobStore";
+
+/** A refusal Desktop shows as one, not as a failure. */
+const refused = (reason: RefusalReason, text: string) => ({
+  name: "HistoryRefusedError",
+  reason,
+  message: expect.stringContaining(text),
+});
 
 // A test can hold a media copy, and run work after its blob is stored but before history records it.
 const mediaCopy = vi.hoisted(() => ({
@@ -629,7 +636,9 @@ describe("openProjectHistory", () => {
     renameSync(join(projectDir, "pages"), join(projectDir, ".hold"));
     symlinkSync(".hold", join(projectDir, "pages"), "dir");
     const again = await open(projectDir, historyRoot);
-    await expect(again.step("back", you)).rejects.toThrow("pages is in the way");
+    await expect(again.step("back", you)).rejects.toMatchObject(
+      refused("in_the_way", "pages is in the way"),
+    );
   });
 
   // fails without the fix: an older undo's kept file stayed in both views, and Redo still offered it.
@@ -785,7 +794,7 @@ describe("openProjectHistory", () => {
     await expect(history.checkout(second.id, "after", after)).rejects.toThrow("empty folder");
     await expect(
       history.checkout("gone", "after", tempDir("hf-history-checkout-")),
-    ).rejects.toThrow("no longer kept");
+    ).rejects.toMatchObject(refused("not_kept", "That change is no longer kept"));
   });
 
   it("checks out each entry's own change around a drag held when an agent turn starts", async () => {
@@ -901,8 +910,8 @@ describe("openProjectHistory", () => {
     await history.flush();
     const entries = history.list().length;
 
-    await expect(history.undo(turn.id, { who: you })).rejects.toThrow(
-      "a/sub/new.html is in the way",
+    await expect(history.undo(turn.id, { who: you })).rejects.toMatchObject(
+      refused("in_the_way", "a/sub/new.html is in the way"),
     );
     expect([read("a/b.html"), read("a/sub/new.html"), history.list().length]).toEqual([
       "b",
@@ -924,7 +933,9 @@ describe("openProjectHistory", () => {
       mkdirSync(join(outside, "empty"));
       symlinkSync(outside, join(projectDir, "a"), "dir");
 
-      await expect(history.undo(turn.id, { who: you })).rejects.toThrow("a is in the way");
+      await expect(history.undo(turn.id, { who: you })).rejects.toMatchObject(
+        refused("in_the_way", "a is in the way"),
+      );
       expect([read("c.html"), existsSync(join(outside, "empty"))]).toEqual(["c", true]);
     },
   );
@@ -942,8 +953,8 @@ describe("openProjectHistory", () => {
       symlinkSync(outside, join(projectDir, "a"), "dir");
       await history.flush();
 
-      await expect(history.undo(turn.id, { who: you, mode: "just-this" })).rejects.toThrow(
-        "a is in the way",
+      await expect(history.undo(turn.id, { who: you, mode: "just-this" })).rejects.toMatchObject(
+        refused("in_the_way", "a is in the way"),
       );
       expect(existsSync(join(outside, "b.html"))).toBe(false);
     },
