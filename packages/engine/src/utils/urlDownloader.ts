@@ -496,6 +496,8 @@ const capturePolicyLookup: LookupFunction = (hostname, options, callback) => {
 
 type DownloadFetch = (url: string, init: RequestInit) => Promise<Response>;
 
+const HTTP1_ONLY_UNDER_UNDICI_8 = { allowH2: false } as const;
+
 const undiciTransports = new Map<LookupFunction, Promise<DownloadFetch>>();
 
 const importUndiciPackageEvenUnderBun = () => import("undici/index.js");
@@ -504,7 +506,7 @@ function undiciTransport(lookup: LookupFunction): Promise<DownloadFetch> {
   let transport = undiciTransports.get(lookup);
   if (!transport) {
     transport = importUndiciPackageEvenUnderBun().then(({ Agent, fetch: undiciFetch }) => {
-      const dispatcher = new Agent({ connect: { lookup } });
+      const dispatcher = new Agent({ connect: { lookup }, ...HTTP1_ONLY_UNDER_UNDICI_8 });
       return (target, options) =>
         undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
     });
@@ -521,7 +523,11 @@ function egressProxyTransport(proxy: UpstreamProxy): Promise<DownloadFetch> {
   let transport = proxyTransports.get(key);
   if (!transport) {
     transport = importUndiciPackageEvenUnderBun().then(({ ProxyAgent, fetch: undiciFetch }) => {
-      const dispatcher = new ProxyAgent({ uri, token: proxy.authorization });
+      const dispatcher = new ProxyAgent({
+        uri,
+        token: proxy.authorization,
+        ...HTTP1_ONLY_UNDER_UNDICI_8,
+      });
       return (target, options) =>
         undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
     });
