@@ -1,6 +1,5 @@
 import { ChildProcess, spawn } from "node:child_process";
-import { win32 } from "node:path";
-import { windowsOwnTreeKillArgs } from "../utils/processTree.js";
+import { windowsImageOf, windowsOwnTreeKillArgs } from "../utils/processTree.js";
 
 const WATCHDOG = `let clean = false;
 const killArgs = ${windowsOwnTreeKillArgs};
@@ -24,7 +23,7 @@ export function watchChromeTree(chrome: ChildProcess): ChromeWatchdog | undefine
     env: {
       ...process.env,
       HF_CHROME_PID: String(chrome.pid),
-      HF_CHROME_IMAGE: win32.basename(chrome.spawnfile),
+      HF_CHROME_IMAGE: windowsImageOf(chrome.spawnfile),
     },
     stdio: ["pipe", "ignore", "ignore"],
     windowsHide: true,
