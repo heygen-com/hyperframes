@@ -5,6 +5,7 @@
  */
 
 import { appendFileSync } from "node:fs";
+import { terminalText } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 
@@ -35,9 +36,9 @@ export async function openBrowser(url: string): Promise<OpenBrowserResult> {
 
 function printManualInstructions(url: string, detail?: string): void {
   if (detail) {
-    console.error(c.warn(`Could not open browser automatically (${detail}).`));
+    console.error(c.warn(`Could not open browser automatically (${terminalText(detail)}).`));
   } else {
     console.error(c.warn("Browser auto-open is disabled."));
   }
-  console.error(`Open this URL manually to continue:\n  ${c.accent(url)}`);
+  console.error(`Open this URL manually to continue:\n  ${c.accent(terminalText(url))}`);
 }

@@ -4,7 +4,7 @@ import { CliUsageError, setCommandExitCode } from "../utils/commandResult.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
 import * as prompts from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
-import { terminalText } from "@hyperframes/core";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { receivedRecordStatus } from "../utils/privateProjectFile.js";
 import {
   changesNamedReview,
@@ -78,7 +78,7 @@ export default defineCommand({
       let lastProgress = "";
       const service: ShareService = createShareService(project.dir, (value) => {
         if (!value || args.json) return;
-        const message = `Sharing: ${value.step}${value.slow ? " (still processing)" : ""}`;
+        const message = `Sharing: ${terminalText(value.step)}${value.slow ? " (still processing)" : ""}`;
         if (message !== lastProgress) process.stderr.write(`${message}\n`);
         lastProgress = message;
       });
@@ -92,7 +92,7 @@ export default defineCommand({
         console.log(
           JSON.stringify({ ...jsonFailure(failure.code, failure.message), error: failure }),
         );
-      else console.error(failure.message);
+      else console.error(terminalLines(failure.message));
       setCommandExitCode(error instanceof CliUsageError ? 2 : 1);
     }
   },
@@ -277,13 +277,13 @@ async function presentSuccessfulResult(result: ShareState, input: ShareAction, j
   if (json) console.log(JSON.stringify({ ok: true, ...result }));
   else if (result.activity)
     console.log(
-      `Sharing: ${result.activity.step.replaceAll("_", " ")}. Run hyperframes share --status to check progress.`,
+      `Sharing: ${terminalText(result.activity.step.replaceAll("_", " "))}. Run hyperframes share --status to check progress.`,
     );
   else if (result.upToDate) console.log("Already up to date.");
   else if (input.action === "manage") {
-    console.log(result.manageUrl);
+    console.log(terminalText(result.manageUrl));
     if (!isUnattended()) await (await import("open")).default(result.manageUrl);
-  } else if (result.ready) console.log(`Shared video ready: ${result.url}`);
+  } else if (result.ready) console.log(`Shared video ready: ${terminalText(String(result.url))}`);
   else if (result.state === "not_shared") console.log("This project has not been shared yet.");
   else if (result.state === "link_off")
     console.log("This share's link is off. Run hyperframes share --manage to turn it on.");
@@ -295,8 +295,9 @@ function presentFailure(result: ShareState, json: boolean) {
   if (json)
     console.log(JSON.stringify({ ...result, ...jsonFailure("share_export_failed", message) }));
   else {
-    console.error(message);
-    if (result.previousUrl) console.log(`Previous shared version: ${result.previousUrl}`);
+    console.error(terminalLines(message));
+    if (result.previousUrl)
+      console.log(`Previous shared version: ${terminalText(result.previousUrl)}`);
   }
   setCommandExitCode(1);
 }
