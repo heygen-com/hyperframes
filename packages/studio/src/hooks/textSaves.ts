@@ -30,11 +30,15 @@ export function rememberTextTarget(element: HTMLElement, targets: TextTargets, k
   targetOf.set(element, { targets, key });
 }
 
-/** What the file holds for this canvas element's target, if a save reached it since the preview last changed. */
+/** What the file holds for a target, if a save reached it since the preview last changed. */
+export function savedTextIn(targets: TextTargets, key: string): string | undefined {
+  const last = targets.landed.get(key);
+  return last?.changes === previewChangesOutsideTextSaves() ? last.markup : undefined;
+}
+
 export function landedTextFor(element: HTMLElement): string | undefined {
   const target = targetOf.get(element);
-  const last = target?.targets.landed.get(target.key);
-  return last?.changes === previewChangesOutsideTextSaves() ? last.markup : undefined;
+  return target && savedTextIn(target.targets, target.key);
 }
 
 export function isTextTargetWriting(element: HTMLElement): boolean {

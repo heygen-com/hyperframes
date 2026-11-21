@@ -1,5 +1,5 @@
 import { previewChangesOutsideTextSaves } from "../player/previewReloading";
-import type { TextTargets } from "./textSaves";
+import { savedTextIn, type TextTargets } from "./textSaves";
 import type { DomEditPersistOutcome } from "./domEditCommitTypes";
 
 interface DomEditCommitRunnerConfig {
@@ -100,10 +100,7 @@ export function claimTextWrite(
       if (last?.changes === changes && last.number > number) return;
       order.landed.set(key, { number, markup, changes });
     },
-    saved: () => {
-      const last = order.landed.get(key);
-      return last?.changes === previewChangesOutsideTextSaves() ? last.markup : undefined;
-    },
+    saved: () => savedTextIn(order, key),
   });
 }
 

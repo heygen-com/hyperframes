@@ -151,6 +151,16 @@ function textWriteSteps(input: {
 }
 
 export const textEditNotSaved = (reason: string) => `Couldn't save the text edit: ${reason}`;
+
+// After the drain, so other open or saving edits reach the file before the preview is drawn from it.
+const drawFileAgain = (reloadPreview: () => void) =>
+  void flushStudioPendingEdits().then(() => reloadPreview());
+
+function claimTextFor(order: TextWriteOrder, element: HTMLElement, key: string, number: number) {
+  const claim = claimTextWrite(order, key, number, () => textSaveEnded(element));
+  if (claim) rememberTextTarget(element, order, key);
+  return claim;
+}
 const NOT_FOUND = "this text was not found in the composition's source";
 const GONE = "the text's element is gone from the preview";
 // The same gate that let the edit open, not the design panel's field rule: an element
@@ -202,16 +212,6 @@ export function useDomEditTextCommits({
   const latestSelectionRef = useRef(domEditSelection);
   latestSelectionRef.current = domEditSelection;
   const textWritesRef = useRef<TextWriteOrder>(textWriteOrder());
-  // After the drain, so other open or saving edits reach the file before the preview is drawn from it.
-  const reloadFromFile = useCallback(
-    () => void flushStudioPendingEdits().then(() => reloadPreview()),
-    [reloadPreview],
-  );
-  const claimText = useCallback((element: HTMLElement, key: string, number: number) => {
-    const claim = claimTextWrite(textWritesRef.current, key, number, () => textSaveEnded(element));
-    if (claim) rememberTextTarget(element, textWritesRef.current, key);
-    return claim;
-  }, []);
   const domStyleCommitVersionRef = useRef(new Map<string, symbol>());
 
   const {
@@ -281,7 +281,12 @@ export function useDomEditTextCommits({
       const ending = endInlineEditOn(selection.element);
       const number = nextTextSaveOrder();
       await ending;
-      const claim = claimText(selection.element, getDomEditTargetKey(selection), number);
+      const claim = claimTextFor(
+        textWritesRef.current,
+        selection.element,
+        getDomEditTargetKey(selection),
+        number,
+      );
       if (!claim) return { ok: true, changed: false };
       const nextTextFields = buildNextDomTextFields(selection.textFields, value, fieldKey);
       const textCommit = planDomTextCommit(selection.textFields, nextTextFields, value);
@@ -298,7 +303,7 @@ export function useDomEditTextCommits({
           applyDomSelection,
           refreshDomEditSelectionFromPreview,
         },
-        reloadFromFile,
+        reloadFromFile: () => drawFileAgain(reloadPreview),
       });
 
       return runReportedDomEditCommit({
@@ -321,11 +326,10 @@ export function useDomEditTextCommits({
       activeCompPath,
       applyDomSelection,
       buildDomSelectionFromTarget,
-      claimText,
       persistDomEditOperations,
       previewIframeRef,
       refreshDomEditSelectionFromPreview,
-      reloadFromFile,
+      reloadPreview,
       showToast,
     ],
   );
@@ -354,7 +358,7 @@ export function useDomEditTextCommits({
       // Back to what reached the file, only over this save's own draft; with nothing saved yet, the file drawn again.
       const putBack = () => {
         const back = landedTextFor(element);
-        if (back === undefined) return reloadFromFile();
+        if (back === undefined) return drawFileAgain(reloadPreview);
         if (sealed)
           void editPreviewElement(sealed.iframe, sealed.handle, { html: back, expect: html });
         else if (element.isConnected && element.innerHTML === html) element.innerHTML = back;
@@ -370,7 +374,12 @@ export function useDomEditTextCommits({
         ? await sealedInlineTextSelection(element, sealed, buildDomSelectionFromTarget)
         : await liveInlineTextSelection(element, doc, buildDomSelectionFromTarget);
       if (typeof selection === "string") return refuse(selection);
-      const claim = claimText(element, getDomEditTargetKey(selection), number);
+      const claim = claimTextFor(
+        textWritesRef.current,
+        element,
+        getDomEditTargetKey(selection),
+        number,
+      );
       if (!claim) return;
       const operations = [buildDomEditRichTextPatchOperation(html)];
 
@@ -419,11 +428,10 @@ export function useDomEditTextCommits({
       activeCompPath,
       applyDomSelection,
       buildDomSelectionFromTarget,
-      claimText,
       persistDomEditOperations,
       previewIframeRef,
       refreshDomEditSelectionFromPreview,
-      reloadFromFile,
+      reloadPreview,
       showToast,
     ],
   );
@@ -448,7 +456,12 @@ export function useDomEditTextCommits({
       const ending = endInlineEditOn(selection.element);
       const number = nextTextSaveOrder();
       await ending;
-      const claim = claimText(selection.element, getDomEditTargetKey(selection), number);
+      const claim = claimTextFor(
+        textWritesRef.current,
+        selection.element,
+        getDomEditTargetKey(selection),
+        number,
+      );
       if (!claim) return;
       const textCommit = planDomTextCommit(
         selection.textFields,
@@ -469,7 +482,7 @@ export function useDomEditTextCommits({
           applyDomSelection,
           refreshDomEditSelectionFromPreview,
         },
-        reloadFromFile,
+        reloadFromFile: () => drawFileAgain(reloadPreview),
       });
 
       await runDomEditCommit({
@@ -493,11 +506,10 @@ export function useDomEditTextCommits({
       activeCompPath,
       applyDomSelection,
       buildDomSelectionFromTarget,
-      claimText,
       persistDomEditOperations,
       previewIframeRef,
       refreshDomEditSelectionFromPreview,
-      reloadFromFile,
+      reloadPreview,
       showToast,
     ],
   );

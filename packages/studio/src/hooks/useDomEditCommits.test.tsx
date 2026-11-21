@@ -879,7 +879,7 @@ describe("useDomEditCommits rich-text persist handling", () => {
     document.body.replaceChildren();
   });
 
-  it("restores the session snapshot when rich-text persistence fails", async () => {
+  it("draws the file again when the first rich-text save of its target fails", async () => {
     stubPatchFetch({ ok: true, changed: false, matched: false });
     const previousHtml = '<span style="color: red">Before</span>';
     const html = '<span style="color: blue">After</span>';
@@ -892,7 +892,7 @@ describe("useDomEditCommits rich-text persist handling", () => {
         await rendered.hook.handleDomRichTextCommit({ element, html, previousHtml });
       });
 
-      expect(element.innerHTML).toBe(previousHtml);
+      await vi.waitFor(() => expect(rendered.reloadPreview).toHaveBeenCalledTimes(1));
       expect(rendered.showToast).toHaveBeenCalledWith(
         expect.stringMatching(/Couldn't save "Hero title"/),
         "error",
@@ -1478,7 +1478,7 @@ describe("useDomEditCommits style persist handling", () => {
     }
   });
 
-  it("reverts and toasts a text commit when the server rejects the patch", async () => {
+  it("toasts and draws the file again when the server rejects a text commit's patch", async () => {
     stubPatchFetch(new Error("network down"));
     const { iframe, element } = createPreviewElement('<div data-hf-id="hf-card">Card</div>');
     const selection = createSelection(element, {
@@ -1495,7 +1495,7 @@ describe("useDomEditCommits style persist handling", () => {
         'Couldn\'t save "Hero title": network down',
         "error",
       );
-      expect(element.textContent).toBe("Card");
+      await vi.waitFor(() => expect(rendered.reloadPreview).toHaveBeenCalledTimes(1));
       expect(rendered.recordEdit).not.toHaveBeenCalled();
     } finally {
       rendered.cleanup();
