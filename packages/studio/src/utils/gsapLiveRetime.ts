@@ -20,6 +20,7 @@ import {
   newestPreviewWrite,
   takePreviewTicket,
   ticketNeedsRecovery,
+  type PreviewTicket,
   type PreviewWrite,
 } from "./sealedPreviewLedger";
 
@@ -193,11 +194,21 @@ async function moveSealedLiveTweens(
   });
   const result = sealedRetimeResult(answer === PREVIEW_REJECTED ? null : answer);
   if (result === "moved" || !ticketNeedsRecovery(ticket, answer !== null)) return true;
+  return recoverRetime(iframe, ticket, result === "failed", files.after, reloadPreview);
+}
+
+/** False when the caller's own re-run of this saved file is the recovery. */
+function recoverRetime(
+  iframe: HTMLIFrameElement,
+  ticket: PreviewTicket,
+  failed: boolean,
+  savedAfter: string,
+  reloadPreview: () => void,
+): boolean {
   const newest = newestPreviewWrite(ticket);
-  if (result === "failed" || !newest) reloadPreview();
+  if (failed || !newest) reloadPreview();
   // A newer saved file is the one to re-run: the caller would re-run this older script.
-  else if (newest.authoredHtml !== snapshot.authoredHtml)
-    rerunNewest(iframe, newest, reloadPreview);
+  else if (newest.authoredHtml !== savedAfter) rerunNewest(iframe, newest, reloadPreview);
   else return false;
   return true;
 }
