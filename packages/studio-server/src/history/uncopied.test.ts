@@ -108,7 +108,17 @@ describe("project history and media files", () => {
     write("clip.mp4", Buffer.alloc(2 * MiB, 2));
     const entry = (await edit.close())!;
     expect(blobBytes(historyRoot, history)).toBeLessThan(2048);
-    await expect(history.undo(entry.id, { who: you })).rejects.toThrow(/clip\.mp4 is not kept/);
+    const notKept = (text: string) => ({
+      name: "HistoryRefusedError",
+      reason: "not_kept",
+      message: expect.stringContaining(text),
+    });
+    await expect(history.undo(entry.id, { who: you })).rejects.toMatchObject(
+      notKept("An earlier version of clip.mp4 is not kept"),
+    );
+    await expect(
+      history.checkout(entry.id, "before", tempDir("hf-uncopied-out-")),
+    ).rejects.toMatchObject(notKept("The version of clip.mp4 from then is not kept"));
   });
 
   it("reclaims media copies an older version left, and keeps every text copy", async () => {
