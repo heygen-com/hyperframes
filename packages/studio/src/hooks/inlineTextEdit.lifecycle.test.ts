@@ -130,7 +130,7 @@ async function sealedTitle(): Promise<Title> {
   };
 }
 
-async function openEdit(mode: "unsealed" | "sealed") {
+async function openEdit(mode: "unsealed" | "sealed", typed: string | null = "Typed") {
   const title = mode === "sealed" ? await sealedTitle() : liveTitle();
   const held: Array<() => void> = [];
   const onCommit = vi.fn(
@@ -151,7 +151,7 @@ async function openEdit(mode: "unsealed" | "sealed") {
   cleanups.unshift(() => act(() => root.unmount()));
   act(() => void controls.start(title.target));
   await vi.waitFor(() => expect(title.shown.hasAttribute("contenteditable")).toBe(true));
-  title.shown.innerHTML = "Typed";
+  if (typed !== null) title.shown.innerHTML = typed;
   const blur = () => title.shown.dispatchEvent(new FocusEvent("blur"));
   const land = () => held.splice(0).forEach((resolve) => resolve());
   const reopen = async (typed: string) => {
@@ -232,6 +232,16 @@ describe.each(["unsealed", "sealed"] as const)("an inline text edit, %s", (mode)
     ]);
   });
 
+  it("settles with no save and no message when its untouched element is removed", async () => {
+    const edit = await openEdit(mode, null);
+    act(() => edit.remove());
+    await vi.waitFor(() => expect(edit.session()).toBeNull());
+    await flushStudioPendingEdits();
+    await nextTask();
+    expect(edit.onCommit).not.toHaveBeenCalled();
+    expect(edit.onLost).not.toHaveBeenCalled();
+  });
+
   it("finishes its save when its element is removed while saving", async () => {
     const edit = await openEdit(mode);
     act(() => void edit.blur());
@@ -289,12 +299,13 @@ describe("a sealed inline text edit reopened before its first end settled", () =
 describe("an unsealed inline text edit", () => {
   it("closes when its element is removed before it ever got focus", async () => {
     const title = liveTitle();
+    const onCommit = vi.fn(async (_: InlineTextEditCommit) => {});
     let controls!: ReturnType<typeof useInlineTextEdit>;
     const root = createRoot(document.createElement("div"));
     act(() =>
       root.render(
         createElement(() => {
-          controls = useInlineTextEdit({ onCommit: vi.fn(async () => {}) });
+          controls = useInlineTextEdit({ onCommit });
           return null;
         }),
       ),
@@ -310,6 +321,7 @@ describe("an unsealed inline text edit", () => {
       "",
     ]);
     expect(title.watching!()).toBe(0);
+    expect(onCommit).not.toHaveBeenCalled();
   });
 
   it.each([
