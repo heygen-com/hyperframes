@@ -208,7 +208,7 @@ function textCommits(
   iframe: HTMLIFrameElement,
   current: DomEditSelection | null,
   persist: PersistDomEditOperations,
-  lookups: Array<Promise<void>> = [],
+  lookups: Array<{ entered: () => void; wait: Promise<void> }> = [],
 ) {
   let commits!: ReturnType<typeof useDomEditTextCommits>;
   mount(() => {
@@ -220,7 +220,9 @@ function textCommits(
       applyDomSelection: vi.fn(),
       refreshDomEditSelectionFromPreview: vi.fn(),
       buildDomSelectionFromTarget: async (target, options) => {
-        await lookups.shift();
+        const gate = lookups.shift();
+        gate?.entered();
+        await gate?.wait;
         return resolveFoundSelection(iframe, target, { ...OPTIONS, ...options });
       },
       persistDomEditOperations: persist,
@@ -242,10 +244,13 @@ function fileWrites() {
   return { saved, persist };
 }
 
+/** A target lookup the test holds; `reached` once the commit is waiting on it. */
 function held() {
   let release!: () => void;
-  const lookup = new Promise<void>((resolve) => (release = resolve));
-  return { lookup, release };
+  let entered!: () => void;
+  const reached = new Promise<void>((resolve) => (entered = resolve));
+  const lookup = { entered, wait: new Promise<void>((resolve) => (release = resolve)) };
+  return { lookup, reached, release };
 }
 
 it("drops an older save of a heading that resumes after a newer save of it", async () => {
@@ -254,6 +259,7 @@ it("drops an older save of a heading that resumes after a newer save of it", asy
   const first = held();
   const commit = textCommits(iframe, selection, persist, [first.lookup]);
   const older = commit(selection.element, "First");
+  await first.reached;
   await commit(selection.element, "Second");
   first.release();
   await older;
@@ -267,6 +273,7 @@ it("saves both headings when one heading's lookup is slow and the other saves fi
   const first = held();
   const commit = textCommits(iframe, selection, persist, [first.lookup]);
   const slow = commit(selection.element, "First");
+  await first.reached;
   await commit(other.element, "Other");
   first.release();
   await slow;
@@ -279,6 +286,7 @@ it("keeps the newer save of a heading across a frame reload", async () => {
   const first = held();
   const commit = textCommits(iframe, selection, persist, [first.lookup]);
   const older = commit(selection.element, "First");
+  await first.reached;
   reload();
   const again = await select(iframe, "title");
   expect(again.element).not.toBe(selection.element);
@@ -295,6 +303,7 @@ it("shows a save whose redraw the frame refused once the newer edit open on it i
   const first = held();
   const commit = textCommits(iframe, selection, persist, [first.lookup]);
   const saving = commit(selection.element, "First");
+  await first.reached;
   act(() => void controls().start(selection.element));
   await vi.waitFor(() => expect(title.hasAttribute("contenteditable")).toBe(true));
   first.release();
