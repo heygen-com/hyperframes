@@ -1,0 +1,162 @@
+// Studio's page in real Chrome around a preview frame: the Studio bundle, the frame's replies held or answered
+// by the test, and the MotionPath plugin request held until released.
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import type { Browser, Frame, HTTPRequest, Page } from "puppeteer-core";
+import { build } from "esbuild";
+import { expect } from "vitest";
+import { emptyNodeBuiltins } from "./chromeTestUtils";
+
+const require = createRequire(import.meta.url);
+
+export type Studio = typeof import("../src/utils/gsapSoftReload") & {
+  previewRequest: typeof import("../src/player/lib/previewChannel").previewRequest;
+  patchRuntimeTweenInPlace: typeof import("../src/hooks/gsapRuntimePatch").patchRuntimeTweenInPlace;
+  applyPreviewSync: typeof import("../src/hooks/useGsapScriptCommits").applyPreviewSync;
+  applyUndoRestoreToPreview: typeof import("../src/utils/gsapUndoRestore").applyUndoRestoreToPreview;
+};
+
+/** Studio's preview code, bundled for the page as `window.hfStudio`. */
+export async function buildStudioBundle(): Promise<string> {
+  const out = await build({
+    stdin: {
+      contents: [
+        `export * from "./utils/gsapSoftReload";`,
+        `export { previewRequest } from "./player/lib/previewChannel";`,
+        `export { patchRuntimeTweenInPlace } from "./hooks/gsapRuntimePatch";`,
+        `export { applyPreviewSync } from "./hooks/useGsapScriptCommits";`,
+        `export { applyUndoRestoreToPreview } from "./utils/gsapUndoRestore";`,
+      ].join(" "),
+      resolveDir: fileURLToPath(new URL("../src", import.meta.url)),
+    },
+    bundle: true,
+    write: false,
+    platform: "browser",
+    format: "iife",
+    globalName: "hfStudio",
+    alias: { canvas: fileURLToPath(new URL("../src/shims/canvasBrowserStub.js", import.meta.url)) },
+    plugins: [emptyNodeBuiltins],
+    define: { "import.meta.env": "{}" },
+  });
+  return out.outputFiles[0]!.text;
+}
+
+/** Studio's end of the editing port keeps the frame's replies while `__hold` is set, to deliver them later. */
+export function holdReplies() {
+  const w = window as unknown as {
+    __hold: boolean;
+    __held: Array<(result?: unknown) => void>;
+    __swallow: Set<string>;
+    __swallowed: Array<{ kind: string; answer: (result: unknown) => void }>;
+  };
+  w.__hold = false;
+  w.__held = [];
+  w.__swallow = new Set();
+  w.__swallowed = [];
+  const own = Object.getOwnPropertyDescriptor(MessagePort.prototype, "onmessage")!;
+  // A request of a swallowed kind never reaches the frame; the test answers it as the frame would.
+  const post = MessagePort.prototype.postMessage;
+  MessagePort.prototype.postMessage = function (
+    this: MessagePort,
+    data: unknown,
+    ...rest: never[]
+  ) {
+    const request = data as { v?: unknown; id?: unknown; kind?: string } | null;
+    if (typeof request?.id !== "number" || !w.__swallow.has(request.kind ?? ""))
+      return post.call(this, data, ...rest);
+    w.__swallowed.push({
+      kind: request.kind!,
+      answer: (result) => {
+        const data = { v: request.v, id: request.id, ok: true, result };
+        own.get!.call(this)?.call(this, new MessageEvent("message", { data }));
+      },
+    });
+  };
+  Object.defineProperty(MessagePort.prototype, "onmessage", {
+    configurable: true,
+    get() {
+      return own.get!.call(this);
+    },
+    set(handler: ((event: MessageEvent) => void) | null) {
+      own.set!.call(this, (event: MessageEvent) => {
+        const reply = typeof event.data?.id === "number";
+        if (!reply || !w.__hold) return handler?.call(this, event);
+        w.__held.push((result) => {
+          const data = result === undefined ? event.data : { ...event.data, result };
+          handler?.call(this, new MessageEvent("message", { data }));
+        });
+      });
+    },
+  });
+}
+
+/** Opens the preview in Studio's page; the plugin request waits until `release` is called. */
+export async function openPreview(
+  browser: Browser,
+  studioBundle: string,
+  html: string,
+  mode: string,
+) {
+  const page: Page = await browser.newPage();
+  const plugin = readFileSync(require.resolve("gsap/dist/MotionPathPlugin.min.js"), "utf8");
+  const held: HTTPRequest[] = [];
+  let holding = true;
+  await page.setRequestInterception(true);
+  page.on("request", (request) => {
+    if (!/MotionPathPlugin/.test(request.url())) return void request.continue();
+    const serve = () =>
+      request.respond({ status: 200, contentType: "text/javascript", body: plugin });
+    if (holding) held.push(request);
+    else void serve();
+  });
+  const release = async (status: 200 | 404) => {
+    holding = false;
+    for (const request of held.splice(0))
+      await request.respond({
+        status,
+        contentType: "text/javascript",
+        body: status === 200 ? plugin : "",
+      });
+  };
+  await page.setContent("<!doctype html><html><body></body></html>");
+  await page.evaluate(holdReplies);
+  await page.evaluate(studioBundle);
+  await page.evaluate(
+    (srcdoc, sealed) => {
+      const iframe = document.createElement("iframe");
+      if (sealed) iframe.setAttribute("sandbox", "allow-scripts");
+      iframe.style.cssText = "width: 1920px; height: 1080px; border: 0";
+      iframe.srcdoc = srcdoc;
+      document.body.append(iframe);
+    },
+    html,
+    mode === "sealed",
+  );
+  const frame: Frame = await (async () => {
+    for (;;) {
+      const found = page.frames().find((f) => f !== page.mainFrame());
+      if (found) return found;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  })();
+  await frame.waitForFunction(() => "__player" in window);
+  const time = () =>
+    frame.evaluate(() =>
+      (window as unknown as { __player: { getTime(): number } }).__player.getTime(),
+    );
+  const seek = async (to: number) => {
+    await page.evaluate((t) => {
+      document
+        .querySelector("iframe")!
+        .contentWindow!.postMessage(
+          { source: "hf-parent", type: "control", action: "seek", timeSeconds: t },
+          "*",
+        );
+    }, to);
+    await expect.poll(time).toBeCloseTo(to, 2);
+  };
+  return { page, frame, held, release, seek, time };
+}
+
+export type Preview = Awaited<ReturnType<typeof openPreview>>;

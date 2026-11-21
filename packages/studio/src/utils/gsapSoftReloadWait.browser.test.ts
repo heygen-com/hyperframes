@@ -2,12 +2,15 @@
 // with the MotionPath plugin request held so a re-run has to wait for it.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import type { Browser, Frame, HTTPRequest, Page } from "puppeteer-core";
-import { build } from "esbuild";
+import type { Browser, Page } from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { closeTestChrome, emptyNodeBuiltins, launchTestChrome } from "../../tests/chromeTestUtils";
+import { closeTestChrome, launchTestChrome } from "../../tests/chromeTestUtils";
+import {
+  buildStudioBundle,
+  openPreview as openSharedPreview,
+  type Preview,
+  type Studio,
+} from "../../tests/sealedPreviewHarness";
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 const require = createRequire(import.meta.url);
@@ -18,27 +21,7 @@ let studioBundle: string;
 
 beforeAll(async () => {
   browser = await launchTestChrome();
-  const out = await build({
-    stdin: {
-      contents: [
-        `export * from "./gsapSoftReload";`,
-        `export { previewRequest } from "../player/lib/previewChannel";`,
-        `export { patchRuntimeTweenInPlace } from "../hooks/gsapRuntimePatch";`,
-        `export { applyPreviewSync } from "../hooks/useGsapScriptCommits";`,
-        `export { applyUndoRestoreToPreview } from "./gsapUndoRestore";`,
-      ].join(" "),
-      resolveDir: dirname(fileURLToPath(import.meta.url)),
-    },
-    bundle: true,
-    write: false,
-    platform: "browser",
-    format: "iife",
-    globalName: "hfStudio",
-    alias: { canvas: fileURLToPath(new URL("../shims/canvasBrowserStub.js", import.meta.url)) },
-    plugins: [emptyNodeBuiltins],
-    define: { "import.meta.env": "{}" },
-  });
-  studioBundle = out.outputFiles[0]!.text;
+  studioBundle = await buildStudioBundle();
 });
 
 afterAll(() => closeTestChrome(browser));
@@ -86,101 +69,7 @@ function previewHtml(): string {
     <script>${runtime}</script></body></html>`;
 }
 
-/** Studio's end of the editing port keeps the frame's replies while `__hold` is set, to deliver them later. */
-function holdReplies() {
-  const w = window as unknown as { __hold: boolean; __held: Array<(result?: unknown) => void> };
-  w.__hold = false;
-  w.__held = [];
-  const own = Object.getOwnPropertyDescriptor(MessagePort.prototype, "onmessage")!;
-  Object.defineProperty(MessagePort.prototype, "onmessage", {
-    configurable: true,
-    get() {
-      return own.get!.call(this);
-    },
-    set(handler: ((event: MessageEvent) => void) | null) {
-      own.set!.call(this, (event: MessageEvent) => {
-        const reply = typeof event.data?.id === "number";
-        if (!reply || !w.__hold) return handler?.call(this, event);
-        w.__held.push((result) => {
-          const data = result === undefined ? event.data : { ...event.data, result };
-          handler?.call(this, new MessageEvent("message", { data }));
-        });
-      });
-    },
-  });
-}
-
-/** Opens the preview in Studio's page; the plugin request waits until `release` is called. */
-async function openPreview(mode: string) {
-  const page: Page = await browser.newPage();
-  const plugin = readFileSync(require.resolve("gsap/dist/MotionPathPlugin.min.js"), "utf8");
-  const held: HTTPRequest[] = [];
-  let holding = true;
-  await page.setRequestInterception(true);
-  page.on("request", (request) => {
-    if (!/MotionPathPlugin/.test(request.url())) return void request.continue();
-    const serve = () =>
-      request.respond({ status: 200, contentType: "text/javascript", body: plugin });
-    if (holding) held.push(request);
-    else void serve();
-  });
-  const release = async (status: 200 | 404) => {
-    holding = false;
-    for (const request of held.splice(0))
-      await request.respond({
-        status,
-        contentType: "text/javascript",
-        body: status === 200 ? plugin : "",
-      });
-  };
-  const html = previewHtml();
-  await page.setContent("<!doctype html><html><body></body></html>");
-  await page.evaluate(holdReplies);
-  await page.evaluate(studioBundle);
-  await page.evaluate(
-    (srcdoc, sealed) => {
-      const iframe = document.createElement("iframe");
-      if (sealed) iframe.setAttribute("sandbox", "allow-scripts");
-      iframe.style.cssText = "width: 1920px; height: 1080px; border: 0";
-      iframe.srcdoc = srcdoc;
-      document.body.append(iframe);
-    },
-    html,
-    mode === "sealed",
-  );
-  const frame: Frame = await (async () => {
-    for (;;) {
-      const found = page.frames().find((f) => f !== page.mainFrame());
-      if (found) return found;
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-  })();
-  await frame.waitForFunction(() => "__player" in window);
-  const time = () =>
-    frame.evaluate(() =>
-      (window as unknown as { __player: { getTime(): number } }).__player.getTime(),
-    );
-  const seek = async (to: number) => {
-    await page.evaluate((t) => {
-      document
-        .querySelector("iframe")!
-        .contentWindow!.postMessage(
-          { source: "hf-parent", type: "control", action: "seek", timeSeconds: t },
-          "*",
-        );
-    }, to);
-    await expect.poll(time).toBeCloseTo(to, 2);
-  };
-  return { page, frame, held, release, seek, time };
-}
-
-type Studio = typeof import("./gsapSoftReload") & {
-  previewRequest: typeof import("../player/lib/previewChannel").previewRequest;
-  patchRuntimeTweenInPlace: typeof import("../hooks/gsapRuntimePatch").patchRuntimeTweenInPlace;
-  applyPreviewSync: typeof import("../hooks/useGsapScriptCommits").applyPreviewSync;
-  applyUndoRestoreToPreview: typeof import("./gsapUndoRestore").applyUndoRestoreToPreview;
-};
-type Preview = Awaited<ReturnType<typeof openPreview>>;
+const openPreview = (mode: string) => openSharedPreview(browser, studioBundle, previewHtml(), mode);
 
 /** Studio's re-run of `script` at `time`: its answer now, or with `late`, "reload" if Studio falls back later. */
 function rerun(page: Page, script: string, time: number, restore: unknown[] = [], late = false) {
