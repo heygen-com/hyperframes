@@ -76,6 +76,7 @@ export default defineConfig({
             "src/**/*.{browser,chromium}.test.ts",
             "src/**/{chromeOrphans,launch,checkDeadline,warmCheck}.process.test.ts",
             "src/cli.agentMode.test.ts",
+            "src/cli.unknownCommandText.test.ts",
           ],
           sequence: { groupOrder: 1 },
         },
@@ -98,7 +99,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: "spawn",
-          include: ["src/cli.agentMode.test.ts"],
+          include: ["src/cli.agentMode.test.ts", "src/cli.unknownCommandText.test.ts"],
           fileParallelism: false,
           sequence: { groupOrder: 3 },
         },

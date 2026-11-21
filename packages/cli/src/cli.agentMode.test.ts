@@ -382,20 +382,6 @@ describe("agent-mode contract", () => {
     expect(JSON.parse(run.stdout).error.hint).toBe("Did you mean 'hyperframes render'?");
   });
 
-  it("shows control characters in an unknown command word as visible text", async () => {
-    const word = await runAsAgent(["ren\u001b[2Jdr\u202e"]);
-    const file = await runAsAgent(["cloud", "a\u001b[2Jb.html"]);
-    expect(word.stderr).toContain("Unknown command: ren\\x1b[2Jdr\\u202e\n");
-    expect(file.stderr).toContain("'a\\x1b[2Jb.html' ");
-    for (const run of [word, file]) {
-      expect(run.code).toBe(2);
-      expect(run.stderr).not.toContain("\u001b");
-      expect(run.stderr).not.toContain("\u202e");
-    }
-    const json = await runAsAgent(["cloud", "a\u001b[2Jb.html", "--json"]);
-    expect(JSON.parse(json.stdout).error.hint).not.toContain("\\x1b");
-  });
-
   it("an unknown command answers in a few lines, never the full help", async () => {
     const captions = await runAsAgent(["captions"]);
     const typo = await runAsAgent(["rendr"]);
