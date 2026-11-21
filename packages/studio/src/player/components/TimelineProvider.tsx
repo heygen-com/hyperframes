@@ -30,6 +30,7 @@ import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineProviderState } from "./useTimelineProviderState";
 import { TimelineReadOnlyContext } from "./timelineReadOnly";
+import type { MenuAnchor } from "../../components/ui/menuPosition";
 import {
   TimelineEditProvider,
   useTimelineEditContextValue,
@@ -73,8 +74,7 @@ export type TimelineCanvasState = Omit<
 };
 
 export interface ClipContextMenuState {
-  x: number;
-  y: number;
+  anchor: MenuAnchor;
   element: TimelineElement;
   sessionEpoch: number;
 }
