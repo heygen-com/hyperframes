@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sha: [6913c263798]
+        sha: [003a83281a3, a730d6b9267]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -38,4 +38,4 @@ jobs:
       - name: Watchdog and preview lifecycle tests
         shell: pwsh
         working-directory: packages/cli
-        run: bunx vitest run src/browser/windowsChromeWatchdog.test.ts src/commands/previewLifecycle.test.ts --maxWorkers=2 --reporter=verbose
+        run: bunx vitest run src/browser/windowsChromeWatchdog.test.ts src/commands/previewLifecycle.test.ts src/utils/childReaper.test.ts src/utils/cancellableProcess.test.ts --maxWorkers=2 --reporter=verbose
