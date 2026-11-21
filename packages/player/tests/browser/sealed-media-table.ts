@@ -370,6 +370,7 @@ type Seen = {
   seekAt?: string;
   seekPaused?: string;
   extraSeeks?: string;
+  loops: number;
   interrupted?: string;
   play?: string;
   pixels: string;
@@ -492,6 +493,7 @@ async function installDriver(frame: Frame) {
           video.addEventListener("seeked", () => {
             const data = video.dataset;
             const looped = Number(data.seekFrom ?? 0) > 2 && video.currentTime < 1;
+            if (looped) data.loops = String(Number(data.loops ?? 0) + 1);
             if (data.seekAt !== undefined && !looped)
               data.extraSeeks =
                 `${data.extraSeeks ?? ""} ${data.seekFrom}->${video.currentTime}`.trim();
@@ -608,6 +610,7 @@ async function installDriver(frame: Frame) {
             seekPaused: data.seekPaused,
             extraSeeks: data.extraSeeks,
             interrupted: data.interrupted,
+            loops: Number(data.loops ?? 0),
             play: data.play,
             pixels,
             currentSrc: video.currentSrc,
@@ -746,6 +749,7 @@ function history(sequence: Sequence, upTo = sequence.rounds.length - 1) {
 // Each round of each sequence, so a wrong middle step is not hidden by a right end; an element is reported once.
 function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], open: Readings[]) {
   const budget = new Map<string, number>();
+  const playback = { judged: 0, skipped: 0 };
   const gaps: string[] = [];
   const reported = new Set<string>();
   const all = sequences.flatMap((sequence, index) =>
@@ -787,6 +791,7 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
       const variable = [...kinds.values()].some((kind) => kind === "flaky" || kind === "outage");
       // A control that resolved play() and was not paused but has no frame is buffering: it says nothing.
       const stalled = !plain.playing && !plain.paused && plain.play === "resolved";
+      if (!variable) playback[stalled ? "skipped" : "judged"]++;
       if (!variable && !stalled) {
         if (idOf(seen.currentSrc) !== idOf(plain.currentSrc))
           problems.push(
@@ -860,7 +865,12 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
       for (const id of kinds.keys()) budget.set(id, (budget.get(id) ?? 0) + tryAndRangePerLoad);
     }
   });
-  return { problems: all.flat(), gaps, budget };
+  // A skip that grows past a tenth of the comparisons would weaken the oracle without saying so.
+  if (playback.skipped > 0.1 * (playback.judged + playback.skipped))
+    all.push([
+      `${playback.skipped} of ${playback.judged + playback.skipped} playback comparisons skipped`,
+    ]);
+  return { problems: all.flat(), gaps, budget, playback };
 }
 
 async function filmFrame(page: import("puppeteer-core").Page, query: string) {
@@ -899,7 +909,13 @@ try {
   const sealed = await run("&sealed=1", "s");
   const control = await run("&sealed=1", "c", true);
   const open = await run("", "o");
-  const { problems, gaps, budget } = judge(sequences, sealed, control, open);
+  const { problems, gaps, budget, playback } = judge(sequences, sealed, control, open);
+  const loops = (film: Readings[]) =>
+    [...film.at(-1)!.values()].reduce((sum, reading) => sum + reading.loops, 0);
+  console.log(
+    `[sealed-media-table] playback comparisons ${playback.judged}, skipped for a buffering control ${playback.skipped}; ` +
+      `loop restarts not counted as seeks: sealed ${loops(sealed)}, without the helper ${loops(control)}`,
+  );
   const requests = new Map<string, number>();
   for (const url of server.requested) {
     const id = new URL(url).searchParams.get("id");
