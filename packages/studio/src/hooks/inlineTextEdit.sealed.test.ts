@@ -351,11 +351,12 @@ async function sealedTitleHoldingEnds(markup = ORIGINAL, action: "end" | "start"
   )) as Awaited<ReturnType<typeof sealedTitle>>;
   const holdEndReplies = () => {
     holding = [];
-    return (newestFirst = false) => {
+    const release = (newestFirst = false) => {
       const events = holding ?? [];
       holding = null;
       (newestFirst ? events.reverse() : events).forEach((event) => deliver(event));
     };
+    return Object.assign(release, { held: () => holding?.length ?? 0 });
   };
   return { ...title, holdEndReplies };
 }
@@ -1249,6 +1250,7 @@ it("keeps a panel remove that ended an edit when a newer save on another field c
   await vi.waitFor(() => expect(controls().session).not.toBeNull());
   act(() => controls().commit());
   act(() => void saves.push(commits().handleDomTextCommitForSelection(selection, "Blue", first)));
+  await vi.waitFor(() => expect(release.held()).toBe(2));
   release(true);
   await act(() => Promise.allSettled(saves));
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
@@ -1270,6 +1272,7 @@ it("keeps a panel remove that ended an edit when a newer save on the same field 
   await vi.waitFor(() => expect(controls().session).not.toBeNull());
   act(() => controls().commit());
   act(() => void saves.push(commits().handleDomTextCommitForSelection(selection, "Red", second)));
+  await vi.waitFor(() => expect(release.held()).toBe(2));
   release(true);
   await act(() => Promise.allSettled(saves));
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
