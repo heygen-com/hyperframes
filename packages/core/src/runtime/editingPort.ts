@@ -30,7 +30,8 @@ import type { GsapSnapshot } from "./editing/gsapSnapshot";
 import type { MotionPathFrameHome } from "./editing/motionPathHome";
 import type { EditingLayer, EditingStackingSibling } from "./editingLayers";
 import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
-import { parsePatchTweens, type PatchTweensParams } from "./editing/patchTween";
+import { parsePatchTweensRequest, type PatchTweensParams } from "./editing/patchTween";
+import { parseDraftEnd, type EditingDraftEnd, type EditingDraftReply } from "./editingDraftEnd";
 import {
   parseRestoreAttributesRerun,
   parseSoftReload,
@@ -258,7 +259,8 @@ export type EditingKeyMessage = {
 
 /** The `rotate` property's whole value in degrees, or GSAP's rotation; null takes the drawn turn back. */
 export type EditingDraftRotate = { angle: number; route: "css" | "gsap" };
-/** A gesture's draft on one element: null puts that part back; `end` keeps what is drawn or restores. */
+export type { EditingDraftEnd };
+/** A gesture's draft on one element: null puts that part back; an end keeps what is drawn or restores. */
 export type EditingDraft =
   | {
       handle: EditingElementHandle;
@@ -266,7 +268,7 @@ export type EditingDraft =
       size: { width: number; height: number } | null;
       rotate?: EditingDraftRotate | null;
     }
-  | { handle: EditingElementHandle; end: "keep" | "restore" };
+  | EditingDraftEnd;
 
 type NoParams = Record<string, never>;
 export interface EditingRequests {
@@ -324,7 +326,7 @@ export interface EditingRequests {
     result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
   /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here. */
-  draft: { params: { drafts: EditingDraft[] }; result: { drawn: number } };
+  draft: { params: { drafts: EditingDraft[] }; result: EditingDraftReply };
   "gesture-start": {
     params: { handles: EditingElementHandle[] };
     result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
@@ -485,9 +487,7 @@ function draftRotate(value: unknown): boolean {
 
 function draftEntry(value: unknown): EditingDraft | null {
   if (!isPlainRecord(value) || !isHandle(value.handle)) return null;
-  const { handle, end } = value;
-  if (hasKeys(value, "end,handle"))
-    return end === "keep" || end === "restore" ? { handle, end } : null;
+  if ("end" in value) return parseDraftEnd(value);
   return drawnParts(value) ? (value as EditingDraft) : null;
 }
 
@@ -602,7 +602,7 @@ const PARAM_PARSERS: {
   "stacking-family": (params) =>
     hasKeys(params, "handle") && isHandle(params.handle) ? { handle: params.handle } : null,
   "gsap-set": parseGsapSet,
-  "patch-tweens": parsePatchTweens,
+  "patch-tweens": parsePatchTweensRequest,
   "soft-reload": parseSoftReload,
   "hold-scenes": parseHoldScenes,
   "mark-scenes-stale": parseMarkScenesStale,
