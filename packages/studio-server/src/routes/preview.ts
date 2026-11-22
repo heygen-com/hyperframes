@@ -35,6 +35,7 @@ import {
   GSAP_PLUGIN_LOAD_ATTR,
   NO_PATH_TWEEN_META,
   gsapCdnDist,
+  motionPathBesideGsap,
   previewMotionPathSrc,
   namesMotionPath,
   normalizeGsapBaseUrl,
@@ -313,8 +314,8 @@ function htmlHasMotionPathPlugin(html: string): boolean {
   );
 }
 
-// The plugin goes right after the page's GSAP. The cached tag is the same for every visitor, so the document's
-// origin is a stand-in: a same-origin plugin is written as a path, which holds only under a same-origin base.
+// The plugin goes right after the page's GSAP, beside it as the page wrote it. The cached tag is the same for every
+// visitor, so a local root's origin is a stand-in: written as a path, it holds only under a same-origin base.
 const PREVIEW_DOCUMENT = "http://preview.invalid/preview";
 
 function pluginTagSrc(html: string, gsapFile: string | null, mirror: string | null): string | null {
@@ -330,8 +331,9 @@ function pluginTagSrc(html: string, gsapFile: string | null, mirror: string | nu
     baseUrl: baseUrl.href,
     pageOwned: true,
   });
+  if (!href || !mirror) return href && gsapFile && motionPathBesideGsap(gsapFile);
   const own = new URL(PREVIEW_DOCUMENT).origin;
-  if (!href || new URL(href).origin !== own) return href;
+  if (new URL(href).origin !== own) return href;
   return baseUrl.origin === own ? href.slice(own.length) : null;
 }
 

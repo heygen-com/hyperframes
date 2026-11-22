@@ -13,7 +13,7 @@ export function isGsapCoreUrl(src: string): boolean {
   return /\/gsap(-\d+(\.\d+)*)?(\.min)?\.js$/i.test(pathOf(src) ?? "");
 }
 
-function motionPathBesideGsap(gsapFile: string): string {
+export function motionPathBesideGsap(gsapFile: string): string {
   const path = gsapFile.split(/[?#]/, 1)[0]!;
   return `${path.slice(0, path.lastIndexOf("/") + 1)}MotionPathPlugin.min.js`;
 }

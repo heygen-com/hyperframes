@@ -836,7 +836,7 @@ describe("registerPreviewRoutes", () => {
     async (_, tag, plugin) => {
       const scripts = await previewScriptSrcs(tag);
       const srcs = scripts.map((el) => el.getAttribute("src") ?? "");
-      expect(srcs.some((src) => src.startsWith("/") && src.endsWith(`/${plugin}`))).toBe(true);
+      expect(srcs).toContain(plugin);
       expect(srcs.filter((src) => /jsdelivr|^https?:/.test(src))).toEqual([]);
     },
   );
@@ -3383,9 +3383,7 @@ describe("GSAP mirror configuration", () => {
       const plugin = parseHTML(await again.text()).document.querySelector(
         'script[src*="MotionPathPlugin"]',
       );
-      expect(plugin?.getAttribute("src")).toMatch(
-        /^\/api\/projects\/demo\/.*\/vendor\/MotionPathPlugin\.min\.js$/,
-      );
+      expect(plugin?.getAttribute("src")).toBe("vendor/MotionPathPlugin.min.js");
     },
   );
 
@@ -3655,6 +3653,8 @@ describe("where the preview's MotionPathPlugin tag points", () => {
     ["local root", "https://assets.example/film/", null],
     ["mirror", null, MIRROR],
     ["mirror", "https://assets.example/film/", MIRROR],
+    ["nothing", "assets/", "http://localhost/projects/demo/assets/vendor/MotionPathPlugin.min.js"],
+    ["local root", "assets/", LOCAL],
   ])("writes the tag with %s configured under the base %s", async (setup, base, expected) => {
     const projectDir = createProjectDir();
     writeFileSync(
@@ -3674,5 +3674,27 @@ describe("where the preview's MotionPathPlugin tag points", () => {
     const src = doc.querySelector('script[src*="MotionPathPlugin"]')?.getAttribute("src");
     const baseUrl = new URL(doc.querySelector("base[href]")?.getAttribute("href") ?? "", pageUrl);
     expect(src === undefined ? null : new URL(src, baseUrl).href).toBe(expected);
+  });
+
+  // fails without the fix: under <base href="assets/"> the plugin was written from the site root, so it
+  // missed the folder the page's GSAP loads from and 404ed.
+  it("puts the plugin in the folder the page's GSAP loads from under a relative base", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head><base href="assets/"></head><body><div id="card"></div>
+        <script src="vendor/gsap.min.js"></script>
+        <script>gsap.to("#card", { motionPath: { path: [{ x: 100, y: 50 }] } });</script>
+      </body></html>`,
+    );
+    vi.stubEnv("HYPERFRAMES_GSAP_BASE_URL", "");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const doc = parseHTML(await (await app.request(pageUrl)).text()).document;
+    const baseUrl = new URL(doc.querySelector("base[href]")?.getAttribute("href") ?? "", pageUrl);
+    const at = (selector: string) =>
+      new URL(doc.querySelector(selector)?.getAttribute("src") ?? "missing", baseUrl).href;
+    const gsapFolder = at('script[src$="/gsap.min.js"]').replace(/gsap\.min\.js$/, "");
+    expect(at('script[src*="MotionPathPlugin"]')).toBe(`${gsapFolder}MotionPathPlugin.min.js`);
   });
 });
