@@ -530,7 +530,7 @@ function sayCrash(error: Error): void {
 
 const quietRun = argv.includes("--quiet");
 function sayRenderCode(error: unknown, fallback: string): void {
-  if (command === "render" && !quietRun) renderExitDiagnostic(error, fallback);
+  if (command === "render" && !quietRun && !hasJsonFlag) renderExitDiagnostic(error, fallback);
 }
 
 /** The first caller line of a stack, past the Error's own line and the result bookkeeping that recorded it. */
@@ -714,7 +714,7 @@ async function executeCli(): Promise<void> {
       commandFailed = true;
       errorReported = true;
       await reportCommandFailure(command, error);
-      sayRenderCode(error, "RENDER_FAILED");
+      if (result.kind !== "usage_error") sayRenderCode(error, "RENDER_FAILED");
       const typed = error instanceof CliUsageError || error instanceof CliRuntimeError;
       const usage = error instanceof CliUsageError && !error.result.presented;
       if (usage && !error.hint) await showRequestedUsage(console.error);
