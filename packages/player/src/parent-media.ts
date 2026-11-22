@@ -630,7 +630,13 @@ function underComposition(src: string, compositionUrl: string | null): string | 
     const base = new URL(compositionUrl);
     const folder = base.pathname.slice(0, base.pathname.lastIndexOf("/") + 1);
     if (file.origin !== base.origin || !file.pathname.startsWith(folder)) return null;
-    return base.origin + file.pathname + file.search;
+    const path = file.pathname
+      .slice(folder.length)
+      .split("/")
+      .map((part) => encodeURIComponent(decodeURIComponent(part)))
+      .join("/");
+    const query = file.search ? "?" + file.search.slice(1) : "";
+    return base.origin + folder + path + query;
   } catch {
     return null;
   }

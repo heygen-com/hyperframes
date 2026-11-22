@@ -693,6 +693,7 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
     mgr.setupFromList(
       [
         clip("https://films.test/f/music/a.m4a"),
+        clip("https://films.test/f/music/my%20take%2F2.m4a?v=3"),
         clip("https://other.test/f/a.m4a"),
         clip("https://films.test/g/a.m4a"),
         clip("https://films.test/f/../secret.m4a"),
@@ -701,8 +702,11 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
       film,
     );
 
-    expect(mgr.entries.map((m) => m.el.src)).toEqual(["https://films.test/f/music/a.m4a"]);
-    expect(mgr.entries[0]!.el.getAttribute("crossorigin")).toBe("anonymous");
+    expect(mgr.entries.map((m) => m.el.src)).toEqual([
+      "https://films.test/f/music/a.m4a",
+      "https://films.test/f/music/my%20take%2F2.m4a?v=3",
+    ]);
+    expect(mgr.entries.every((m) => m.el.getAttribute("crossorigin") === "anonymous")).toBe(true);
     const refusal = events.find((e) => e.type === "playbackerror");
     expect(refusal?.detail.refused).toEqual([
       "https://other.test/f/a.m4a",
