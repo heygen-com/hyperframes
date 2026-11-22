@@ -26,7 +26,7 @@ type Kind =
   | "lapse"
   | "lapseCors"
   | "slowNocors";
-type Source = { id: string; kind: Kind };
+type Source = { id: string; kind: Kind; start?: number };
 type Step =
   | { do: "create"; el: number; sources: Source[]; attr?: true }
   | { do: "prepend" | "append"; el: number; source: Source }
@@ -133,7 +133,7 @@ function generated(seed: number): Sequence {
   return { name: `seed ${seed}`, rounds };
 }
 
-const own = (id: string, kind: Kind): Source => ({ id, kind });
+const own = (id: string, kind: Kind, start?: number): Source => ({ id, kind, start });
 // Earlier review repros, written in the same steps.
 const FIXED: Sequence[] = [
   {
@@ -286,7 +286,7 @@ const FIXED: Sequence[] = [
         {
           do: "create",
           el: 0,
-          sources: [own("r7seekPlaying-a", "down"), own("r7seekPlaying-b", "cors")],
+          sources: [own("r7seekPlaying-a", "down"), own("r7seekPlaying-b", "cors", 1.5)],
         },
         { do: "play", el: 0, rate: 1.5 },
         { do: "interrupt", el: 0, action: "seekPlaying", source: own("r7seekPlaying-c", "cors") },
@@ -335,7 +335,13 @@ const foreignOrigin = server.origin.replace("127.0.0.1", "localhost");
 type SourceAttrs = { src: string; type?: string; media?: string };
 
 // Each run asks for its own URLs, so the server's per-URL failures and request counts stay apart.
+// A trimmed clip's source opens past 0 (#t=), as a media-start does.
 function urlFor(source: Source, run: string): SourceAttrs {
+  const attrs = urlForKind(source, run);
+  return source.start ? { ...attrs, src: `${attrs.src}#t=${source.start}` } : attrs;
+}
+
+function urlForKind(source: Source, run: string): SourceAttrs {
   const query = `?id=${run}.${source.id}&no-store`;
   const path = (dir: string) => `${dir}/10-video-grid/sample.mp4${query}`;
   switch (source.kind) {
