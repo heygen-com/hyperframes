@@ -1,7 +1,7 @@
 /**
  * A gesture on a preview frame Studio cannot script edits the selection's stand-in element. What the
  * gesture draws on the stand-in is drawn on the frame's own element too, over the frame's channel,
- * so the preview follows the pointer. One request is in flight per frame; later draws wait and merge.
+ * so the preview follows the pointer. One request is in flight per frame; draws in one task, or waiting, merge.
  */
 import {
   MAX_DESCRIBE_HANDLES,
@@ -24,6 +24,7 @@ interface Queue {
   ops: EditingDraft[];
   drawn: Map<string, Entry>;
   sending: boolean;
+  sendsAtTaskEnd: boolean;
 }
 
 const standIns = new WeakMap<Element, { iframe: HTMLIFrameElement; handle: string }>();
@@ -49,7 +50,7 @@ export function previewDraftLive(standIn: Element): boolean {
 function queueFor(iframe: HTMLIFrameElement): Queue {
   let queue = queues.get(iframe);
   if (!queue) {
-    queue = { ops: [], drawn: new Map(), sending: false };
+    queue = { ops: [], drawn: new Map(), sending: false, sendsAtTaskEnd: false };
     queues.set(iframe, queue);
   }
   return queue;
@@ -75,6 +76,15 @@ function send(iframe: HTMLIFrameElement, queue: Queue): void {
     });
 }
 
+function sendAtTaskEnd(iframe: HTMLIFrameElement, queue: Queue): void {
+  if (queue.sendsAtTaskEnd) return;
+  queue.sendsAtTaskEnd = true;
+  queueMicrotask(() => {
+    queue.sendsAtTaskEnd = false;
+    send(iframe, queue);
+  });
+}
+
 /** Draws `part` of the stand-in's draft on its frame element; any other element is left alone. */
 export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
   const target = standIns.get(element);
@@ -95,7 +105,7 @@ export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
   const waiting = queue.ops[last];
   if (waiting && !("end" in waiting)) queue.ops[last] = op;
   else queue.ops.push(op);
-  send(target.iframe, queue);
+  sendAtTaskEnd(target.iframe, queue);
 }
 
 /** A gesture's commit started: the save that patches `selector` may carry this draft's end. */
@@ -111,6 +121,7 @@ export function takePreviewDraftEnds(
   selectors: readonly string[],
 ): EditingDraftEnd[] {
   const queue = queueFor(iframe);
+  send(iframe, queue);
   const ends: EditingDraftEnd[] = [];
   for (const [handle, entry] of queue.drawn) {
     const waiting = queue.ops.some((op) => op.handle === handle);
