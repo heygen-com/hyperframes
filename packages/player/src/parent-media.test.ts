@@ -693,7 +693,7 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
     mgr.setupFromList(
       [
         clip("https://films.test/f/music/a.m4a"),
-        clip("https://films.test/f/music/my%20take%2F2.m4a?v=3"),
+        clip("https://films.test/f/music/my%20take.m4a?v=3"),
         clip("https://other.test/f/a.m4a"),
         clip("https://films.test/g/a.m4a"),
         clip("https://films.test/f/../secret.m4a"),
@@ -704,7 +704,7 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
 
     expect(mgr.entries.map((m) => m.el.src)).toEqual([
       "https://films.test/f/music/a.m4a",
-      "https://films.test/f/music/my%20take%2F2.m4a?v=3",
+      "https://films.test/f/music/my%20take.m4a?v=3",
     ]);
     expect(mgr.entries.every((m) => m.el.getAttribute("crossorigin") === "anonymous")).toBe(true);
     const refusal = events.find((e) => e.type === "playbackerror");
@@ -714,6 +714,27 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
       "https://films.test/f/../secret.m4a",
       "data:audio/mp4;base64,AAAA",
     ]);
+  });
+
+  it("refuses every way out of the composition's folder, and copies a file in a folder under it", () => {
+    const { mgr, events } = makeSealedManager();
+    const escapes = [
+      "https://films.test/f/%2e%2e/secret.m4a",
+      "https://films.test/f/..%2Fsecret.m4a",
+      "https://films.test/f/music%2F..%2F..%2Fsecret.m4a",
+      "https://films.test/f/..%5Csecret.m4a",
+      "https://films.test/f/..\\secret.m4a",
+      "https://elsewhere.test/f/a.m4a",
+      "//elsewhere.test/f/a.m4a",
+    ];
+
+    mgr.setupFromList(
+      [...escapes, "https://films.test/f/music/loops/a.m4a"].map((src) => clip(src)),
+      film,
+    );
+
+    expect(mgr.entries.map((m) => m.el.src)).toEqual(["https://films.test/f/music/loops/a.m4a"]);
+    expect(events.find((e) => e.type === "playbackerror")?.detail.refused).toEqual(escapes);
   });
 
   it("copies nothing when the composition has no address of its own", () => {
