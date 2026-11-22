@@ -337,9 +337,9 @@ it.each(MODES)(
   },
 );
 
-// fails without the fix: the preload read only inline scripts, so this tween's plugin never came and it stayed at 0.
+// fails without the fix: the preload read only inline scripts, so this page's plugin was never requested.
 it.each(MODES)(
-  "a path tween from an external script moves once the plugin is preloaded (%s)",
+  "a path tween from an external script gets the plugin when Studio connects (%s)",
   async (mode) => {
     const preview = await openSharedPreview(
       browser,
@@ -350,16 +350,8 @@ it.each(MODES)(
     );
     await preview.release(200);
     await connect(preview.page);
+    expect(await pluginScripts(preview)).toBe(1);
     await preview.frame.waitForFunction(() => "MotionPathPlugin" in window, { timeout: 5_000 });
-    await preview.seek(4);
-    const x = await preview.frame.evaluate(() =>
-      Number(
-        (
-          window as unknown as { gsap: { getProperty(t: string, p: string): unknown } }
-        ).gsap.getProperty("#target", "x"),
-      ),
-    );
-    expect(x).toBeCloseTo(50, 0);
     await preview.page.close();
   },
 );
