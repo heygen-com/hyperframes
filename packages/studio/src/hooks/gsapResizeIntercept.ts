@@ -417,8 +417,8 @@ export async function tryGsapResizeIntercept(
       return false;
     }
     const dropPoint = scaleDraftDropPoint;
-    // Measure from the pre-gesture position: the scale route never saves the draft's translation, and
-    // the position write composes the residual onto that same base.
+    // Measure from the pre-gesture position: the scale route never saves the draft's translation, and the write
+    // composes the residual onto that base. A sealed frame has no live read: the stamp's base alone (gsapPos 0,0).
     const preGesture = () => {
       const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
       const { baseGsapX, baseGsapY } = computeDraggedGsapPosition(
