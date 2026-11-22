@@ -86,7 +86,7 @@ import { settledFileTag } from "../helpers/fileVersion.js";
 import {
   recordPreviewBuilt,
   recordPreviewRead,
-  recordPreviewReadOff,
+  recordPreviewReadsOff,
 } from "../helpers/previewReads.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { injectPreviewVariables } from "../helpers/previewVariables.js";
@@ -631,11 +631,14 @@ export function registerPreviewRoutes(
     const diskMain = resolveProjectMainHtml(project.dir, project.id);
 
     try {
-      let bundled = await adapter.bundle(project.dir, {
-        stampHfIds: true,
-        onRead: (filePath) => recordPreviewRead(project.dir, filePath),
-        privateFiles: "studio",
-      });
+      const reads: string[] = [];
+      let bundled = await adapter
+        .bundle(project.dir, {
+          stampHfIds: true,
+          onRead: (filePath) => reads.push(filePath),
+          privateFiles: "studio",
+        })
+        .finally(() => recordPreviewReadsOff(project.dir, reads));
       let mainCompositionPath = "index.html";
       if (!bundled) {
         if (!diskMain) return null;
@@ -650,7 +653,7 @@ export function registerPreviewRoutes(
         mainCompositionPath,
       );
       bundled = based.html;
-      for (const path of based.references) recordPreviewRead(project.dir, path);
+      await recordPreviewReadsOff(project.dir, based.references);
       recordPreviewBuilt(project.dir);
 
       // The passes that parse the page run on the build worker (a capture page builds while a film plays); the
@@ -802,9 +805,8 @@ export function registerPreviewRoutes(
       project.dir,
       requestSubPath(c.req.url, "projects/:id/preview/comp"),
     );
-    if (compFile) recordPreviewRead(project.dir, compFile);
     // The sub-composition document takes its head from the root.
-    recordPreviewRead(project.dir, "index.html");
+    await recordPreviewReadsOff(project.dir, compFile ? [compFile, "index.html"] : ["index.html"]);
     if (!compFile || !existsSync(compFile) || !statSync(compFile).isFile()) {
       return c.text("not found", 404);
     }
@@ -837,7 +839,7 @@ export function registerPreviewRoutes(
       );
       if (!built) return c.text("not found", 404);
       if ("refused" in built) return c.html(previewRefusalPage(built.refused), 200);
-      for (const path of built.references) recordPreviewRead(project.dir, path);
+      await recordPreviewReadsOff(project.dir, built.references);
       const transformed = await withinDeadline(
         transformPreviewHtml(built.html, adapter, project, compPath),
         deadline,
@@ -888,7 +890,7 @@ export function registerPreviewRoutes(
     if (!file || (await isPrivateProjectFileOff(project.dir, file))) {
       return c.text("not found", 404);
     }
-    const recorded = await recordPreviewReadOff(project.dir, file).then(
+    const recorded = await recordPreviewReadsOff(project.dir, [file]).then(
       () => true,
       () => false,
     );

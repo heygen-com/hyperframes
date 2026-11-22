@@ -1169,28 +1169,29 @@ jobs:
             echo "FAIL: studio dev server did not start on port 5316"
             exit 1
           fi
-          # All checks run even when an earlier one fails.
+          # All checks run even when an earlier one fails; each failure names its walk on the check.
           rc=0
+          failed() { echo "::error title=Studio walk failed::$1"; rc=1; }
           STUDIO_URL="http://localhost:5316/#project/fade-handles" \
-            node packages/studio/tests/e2e/fade-handles.mjs || rc=1
+            node packages/studio/tests/e2e/fade-handles.mjs || failed "fade handles"
           STUDIO_URL="http://localhost:5316/#project/fade-handles?tab=renders" \
-            node packages/studio/tests/e2e/render-selects.mjs || rc=1
+            node packages/studio/tests/e2e/render-selects.mjs || failed "render selects"
           STUDIO_URL="http://localhost:5316/" \
-            node packages/studio/tests/e2e/thumbnail-save.mjs || rc=1
+            node packages/studio/tests/e2e/thumbnail-save.mjs || failed "thumbnail connection release"
           STUDIO_URL="http://localhost:5316/#project/timeline-trim-snap" \
-            node packages/studio/tests/e2e/timeline-trim-snap.mjs || rc=1
+            node packages/studio/tests/e2e/timeline-trim-snap.mjs || failed "trim snapping"
           rm -rf packages/studio/data/projects/timeline-trim-snap
           cp -R packages/studio/tests/e2e/fixtures/timeline-trim-snap \
             packages/studio/data/projects/timeline-trim-snap
           STUDIO_URL="http://localhost:5316/#project/timeline-trim-snap" \
-            node packages/studio/tests/e2e/timeline-snap-release.mjs || rc=1
+            node packages/studio/tests/e2e/timeline-snap-release.mjs || failed "snap release"
           STUDIO_URL="http://localhost:5316/#project/aroll-backdrop" \
-            node packages/studio/tests/e2e/aroll-backdrop.mjs || rc=1
+            node packages/studio/tests/e2e/aroll-backdrop.mjs || failed "script-hidden backdrop"
           rm -rf packages/studio/data/projects/graded-video-transitions
           cp -R packages/studio/tests/e2e/fixtures/graded-video-transitions \
             packages/studio/data/projects/graded-video-transitions
           STUDIO_URL="http://localhost:5316/#project/graded-video-transitions" \
-            node packages/studio/tests/e2e/graded-video-transitions.mjs || rc=1
+            node packages/studio/tests/e2e/graded-video-transitions.mjs || failed "graded video transitions"
           exit "$rc"
       - name: Measure the caret of a text edited in place
         if: success() || failure()
