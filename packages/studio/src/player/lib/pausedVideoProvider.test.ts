@@ -73,6 +73,27 @@ it("refuses more sources than one decode may name, and a second decode while one
   expect(decoder.decode).toHaveBeenCalledOnce();
 });
 
+it("keeps an aborted decode's slot until that decode settles", async () => {
+  let settle = (_frames: unknown[]) => {};
+  decoder.decode.mockReturnValueOnce(new Promise((resolve) => (settle = resolve)));
+  const { replies, decode, port2 } = host();
+  decode([at(A)]);
+  const first = lastId;
+  await vi.waitFor(() => expect(decoder.decode).toHaveBeenCalledOnce());
+  port2.postMessage({ type: "abort", id: first });
+  decode([at(A)]);
+  await vi.waitFor(() => expect(replies).toHaveLength(1));
+  expect(replies[0]).toMatchObject({ type: "failed", message: "Preview decoder busy" });
+
+  settle([]);
+  port2.postMessage({ type: "suspend", id: ++lastId });
+  await vi.waitFor(() => expect(replies.at(-1)).toEqual({ type: "suspended", id: lastId }));
+  decoder.decode.mockResolvedValueOnce([]);
+  decode([at(A)]);
+  await vi.waitFor(() => expect(replies.at(-1)).toMatchObject({ type: "frames", frames: [] }));
+  expect(decoder.decode).toHaveBeenCalledTimes(2);
+});
+
 it("refuses frames over the byte budget and releases them", async () => {
   vi.stubGlobal("createImageBitmap", vi.fn());
   const release = vi.fn();

@@ -133,11 +133,7 @@ export function pausedFrameHost(
     const message = parsePausedFrameAsk(event.data);
     if (!message || closed) return;
     if (message.type === "close") return close();
-    if (message.type === "abort") {
-      inFlight.get(message.id)?.abort();
-      inFlight.delete(message.id);
-      return;
-    }
+    if (message.type === "abort") return inFlight.get(message.id)?.abort();
     if (message.type === "suspend") {
       void (decoder ?? Promise.resolve(null))
         .catch(() => null)
