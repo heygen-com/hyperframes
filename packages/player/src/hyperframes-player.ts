@@ -1646,6 +1646,7 @@ class HyperframesPlayer extends HTMLElement {
     if (this._ready && doc === this._readyDocument) {
       // Its asset wait scanned at DOMContentLoaded; a script may have added first-frame media since.
       if (doc && this._hasPendingFirstFrameAssets(doc)) this._waitForAssetsReady(doc);
+      if (askAgain) this._sendControl("announce-timeline");
       return;
     }
 
