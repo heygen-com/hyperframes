@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync, writeFileSync, renameSync, rmSync, realpathSync } from "node:fs";
-import { resolve, join, extname, basename, relative, isAbsolute, sep } from "node:path";
+import { existsSync, statSync, renameSync, rmSync } from "node:fs";
+import { resolve, join, extname, basename, sep } from "node:path";
 import { parseArgs } from "node:util";
 import {
   AGENT_SOURCES,
@@ -12,12 +12,14 @@ import {
   findByPrompt,
   findByEntity,
   nextId,
-  typeDirPath,
+  ownTypeDir,
   withMediaLock,
+  writeTempBeside,
   withReservedFile,
   withReservedFileSync,
 } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
+import { insideProject, recordAvailable } from "./lib/record-path.mjs";
 import { cacheGet, cacheGetByEntity, importFromCache, cachePut } from "./lib/cache.mjs";
 import {
   runCapability,
@@ -338,12 +340,6 @@ if (args.provider && !providerMatches(args.type, args.provider)) {
   process.exit(2);
 }
 
-function recordAvailable(projectDir, record) {
-  if (!record) return false;
-  if (record.path) return existsSync(join(projectDir, record.path));
-  return record.type === "grade" && record.grading;
-}
-
 // Sparse `{ authMethod }` for a heygen-family provider name (e.g. "heygen.tts"),
 // else `{}` — keeps auth_method telemetry absent for every non-heygen resolve
 // instead of implying an auth method that doesn't apply.
@@ -653,16 +649,16 @@ function freezeGeneratedLut(
   },
 ) {
   return withReservedFileSync(projectDir, type, ".cube", ({ id, localPath, fullPath }) => {
-    const tmpPath = `${fullPath}.tmp`;
+    let tmpPath = null;
     try {
-      // Write + validate at .tmp, then atomic rename, so a crash between write and
+      // Write + validate at a temp file, then atomic rename, so a crash between write and
       // validate can't leave an invalid .cube at the final path.
-      writeFileSync(tmpPath, buildCube(params));
+      tmpPath = writeTempBeside(fullPath, buildCube(params));
       const check = validateCubeFile(tmpPath);
       if (!check.ok) throw new Error(check.error);
       renameSync(tmpPath, fullPath);
     } catch (err) {
-      rmSync(tmpPath, { force: true });
+      if (tmpPath) rmSync(tmpPath, { force: true });
       throw new Error(`${validationErrorPrefix}: ${err.message}`);
     }
     return {
@@ -934,16 +930,8 @@ async function ingest(src) {
     console.error("error: --source records media files; a LUT or grade is ingested without it");
     process.exit(2);
   }
-  const real = (path) => (existsSync(path) ? realpathSync(path) : path);
-  const inProject = args.source && !isUrl ? relative(real(projectDir), real(resolve(src))) : null;
-  if (
-    inProject &&
-    inProject !== ".." &&
-    !inProject.startsWith(`..${sep}`) &&
-    !isAbsolute(inProject)
-  ) {
-    return recordProjectFile(inProject.split(sep).join("/"));
-  }
+  const inProject = args.source && !isUrl ? insideProject(projectDir, resolve(src)) : null;
+  if (inProject) return recordProjectFile(inProject.split(sep).join("/"));
   const ext = extname(isUrl ? new URL(src).pathname : src) || defaultExt(type);
   const { id, localPath, fullPath } = await withReservedFile(
     projectDir,
@@ -1348,10 +1336,11 @@ function recordedMatch(record) {
 async function result(record, source, match = recordedMatch(record)) {
   warnLowConfidence(record, match);
   const { provider, license, credit, source_url: sourceUrl } = record.provenance ?? {};
-  // Under the media lock: two resolves at once each read, then rewrite, the whole credits file.
-  if (provider === OPENVERSE_SFX_PROVIDER)
+  // Under the media lock: two resolves at once each read, then rewrite, the whole credits file. A project
+  // manifest's record ("cached") is the project's own text, so its provider claim never writes a credit.
+  if (provider === OPENVERSE_SFX_PROVIDER && source !== "cached")
     withMediaLock(projectDir, () =>
-      writeSfxCredit(join(typeDirPath(projectDir, "sfx"), "CREDITS.md"), record.path, {
+      writeSfxCredit(join(ownTypeDir(projectDir, "sfx"), "CREDITS.md"), record.path, {
         license,
         credit,
         sourceUrl,

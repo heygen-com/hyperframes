@@ -1137,6 +1137,27 @@ describe("findBrowser — cache resolution", () => {
     expect(warnSpy.mock.calls[0]?.[0]).toContain("Falling back to system Chrome");
   });
 
+  // fails without the fix: the error's code and message were printed as they arrived.
+  it("shows control characters in a cache read failure as text", async () => {
+    installFsMocks({ existing: new Set([HF_CACHE, SYSTEM_CHROME]) });
+    installPuppeteerBrowsersMock({
+      installedInHfCacheError: Object.assign(new Error("scandir '/c/od\u001b[2Jd\u0007'\nsecond"), {
+        code: "E\u001b]0;t\u0007",
+      }),
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { findBrowser, _resetSystemFallbackWarnForTests } = await import("./manager.js");
+    _resetSystemFallbackWarnForTests();
+    await findBrowser();
+
+    const said = warnSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+    expect(said).toContain("Browser cache read failed (E\\x1b]0;t\\x07)");
+    expect(said).toContain("scandir '/c/od\\x1b[2Jd\\x07'");
+    expect(said).not.toContain("\u001b");
+    expect(said).not.toContain("\u0007");
+  });
+
   it("falls back to the puppeteer-managed cache when hyperframes cache is empty", async () => {
     // Empty hyperframes cache, populated puppeteer cache — the regression
     // scenario from the hf#677 spike.

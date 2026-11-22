@@ -91,7 +91,7 @@ export default defineCommand({
 async function confirmDelete(id: string): Promise<boolean> {
   const clack = await import("../../ui/prompts.js");
   const answer = await clack.confirm({
-    message: `Delete render ${id}? This is irreversible.`,
+    message: `Delete render ${terminalText(id)}? This is irreversible.`,
     initialValue: false,
   });
   return answer === true;

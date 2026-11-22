@@ -1,4 +1,5 @@
 import type { ArgDef, ArgsDef, CommandDef } from "citty";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { CliUsageError } from "./commandResult.js";
 import { c } from "../ui/colors.js";
 import { closestMatch } from "./didYouMean.js";
@@ -177,7 +178,7 @@ export function swallowedFlagUsageError(flagName: string, next: string): CliUsag
 function throwSwallowedFlagError(flagName: string, next: string): never {
   const hint = `pass one: --${flagName} <value> or --${flagName}=<value>`;
   const message = swallowedValueMessage(flagName, next, hint);
-  console.error(c.error(message));
+  console.error(c.error(terminalText(message)));
   throw new CliUsageError(message, { presented: true });
 }
 

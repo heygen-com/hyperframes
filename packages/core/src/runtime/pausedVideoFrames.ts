@@ -1,4 +1,4 @@
-import { MEDIA_ELEMENT_LEAD_SECONDS } from "./mediaClock";
+import { isWebKit, MEDIA_ELEMENT_LEAD_SECONDS } from "./mediaClock";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
 import { applyNativeVideoLook } from "./nativeVideoLook";
 import {
@@ -13,6 +13,7 @@ import {
   PREVIEW_VIDEO_SOURCE_ATTR,
   PREVIEW_VIDEO_CANVAS_ATTR,
 } from "../studioPreviewMark";
+import { PAUSED_FRAME_BYTES as SURFACE_BUDGET } from "./editing/pausedFrames";
 
 export interface PausedVideoFrameRequest {
   video: HTMLVideoElement;
@@ -44,7 +45,6 @@ export interface PreparedPausedVideoFrames {
   release(): void;
 }
 
-const SURFACE_BUDGET = 128 * 1024 * 1024;
 type Presented = {
   video: HTMLVideoElement;
   canvas: HTMLCanvasElement;
@@ -91,7 +91,10 @@ export function captureNativeVideoFrame(video: HTMLVideoElement): HTMLCanvasElem
   }
 }
 
+const videoFrameOfAVideoCanHangThePage = isWebKit;
+
 function videoFrameOf(video: HTMLVideoElement): VideoFrame | null {
+  if (videoFrameOfAVideoCanHangThePage()) return null;
   try {
     return new VideoFrame(video);
   } catch {

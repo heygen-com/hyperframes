@@ -47,8 +47,46 @@ default to the current directory: `npx hyperframes check ./my-video`. A few
 take it as a flag instead — `add`, `transcribe`, `feedback`, `skills`, `history`, and
 the `timeline` edit commands use `--dir`.
 
-**`--json` for agents and scripts.** Most commands accept it, and the ones
-that do not reject it with exit 2. The payload is wrapped with a `_meta` field
+**Control characters in a few printed lines.** `figma component` (the
+`imported component` line), `usage` (the reason on a `Usage unknown` line),
+`measure hands` (its notices) and `compare` and `keyframes` (the notice
+about files left out) print control characters in a repeated value as visible
+text such as `\x1b` and `\x07`, and keep the value on its line, with a line break
+shown as `\x0a`. [`capture`](#capture) does the same for its warnings and failure
+reason. So do the notices that repeat the reason something went wrong: the
+`[studio]` lines of `preview`, the `Error:` line and its hint that `auth login`
+prints when sign-in is not set up, the `Browser close failed` and
+`Browser shutdown failed` lines, the port and `--remote-debugging-port` messages
+of `play` and `present`, and the notices about telemetry settings, project
+history, the received-files record, the media scan before a preview, the desktop
+app project file, render priority, a file approval that could not be saved and
+`HF_TOOL_CONTEXT` events.
+The same lines show the Unicode marks that switch text direction
+(U+202A to U+202E and U+2066 to U+2069) and the line and paragraph separators
+(U+2028 and U+2029) as visible text such as `\u202e`. Right-to-left letters, the
+marks U+200E, U+200F and U+061C, and the zero-width characters (U+200B to U+200D
+and U+FEFF) are printed as they are: they reorder and hide nothing, and ordinary
+Arabic, Hebrew, Persian and emoji text needs them. These lines follow all of
+these rules for text you typed or a project supplied, and no others are changed
+here: the `Unknown command:` line and the suggestion under it, the
+`Unknown flag:` line, the `Missing value for --<flag>` line, the
+`Unexpected extra argument` line, the `.env:` notices at start-up, and the line
+the `measure <file>` shortcut prints. Other lines a command prints are as they
+were.
+`--json` output is not changed by this.
+
+**`--json` for agents and scripts.** Most commands accept it, before or after
+the command name: `hyperframes --json info` is the same run as
+`hyperframes info --json`. The commands that have no JSON output refuse it in
+either position, without running: they print a `json_unsupported` error as JSON
+and exit 2. Those are `init`, `auth login`, `auth logout`, `auth refresh`,
+`billing`, `browser`, `docs`, `events`, `feedback`, the `figma` subcommands,
+`play`, `present`, `publish` and `templates`, and five command words run with no
+subcommand: `auth`, `cloud`, `figma`, `media-use` and `skills` (so
+`skills --json` installs nothing; `skills check` and `skills update` do accept
+the flag). A `--json` after `--` is an
+argument, not the flag, so it does not turn JSON output or the JSON form of a
+failure on. The payload is wrapped with a `_meta` field
 so a script can spot an outdated CLI from any command's output, without a
 second call:
 
@@ -134,7 +172,7 @@ when no login or API key is saved (see [`auth`](#hyperframes-auth)).
 **Flags, not prompts.** A missing required flag fails immediately with a usage
 example rather than waiting for input. These commands can ask questions on a TTY:
 `init` prompts for a project name and example unless you pass
-`--non-interactive`, `catalog --human-friendly` opens a picker, and `share` asks for a first-share audience. Nothing else
+`--non-interactive`, `catalog --human-friendly` opens a picker, and `share` asks for a first-share audience and, in a folder that came from someone else, confirms the existing review it would change. Nothing else
 prompts, apart from confirmations you can skip with `--yes` or `--no-confirm`.
 
 **Unattended runs never prompt.** A run is unattended when stdin or stdout is not
@@ -142,6 +180,22 @@ a terminal, under CI, inside a coding agent, or with `HYPERFRAMES_AGENT=1`.
 There, a command that would ask for confirmation, such as `publish` or `upgrade`,
 exits 2 instead and names the flag to pass (`--yes`), and spinners print only
 their final line, on stderr.
+
+**`npx` installs before the CLI runs.** The guarantee above starts once the CLI
+is running, and `npx` keeps it: with no terminal, npm skips its
+`Ok to proceed?` prompt, prints a warning, and installs. What `npx` adds is the
+install itself. An unversioned `npx hyperframes` asks the registry for the
+latest release on every run and installs it when it is new there, so two jobs
+that start together can collide in npm's cache (`_cacache` for the fetch,
+`_npx` for the install: `EEXIST` or `ENOTEMPTY`; a retry succeeds), and a new
+release silently changes
+what the same command renders. In scripts and CI, run the `npm run` scripts a
+scaffolded project ships (`npm run render` is `npx --yes hyperframes@X.Y.Z`,
+pinned to the version that created the project), or pin the same way yourself.
+An installed binary (`npm i hyperframes@X.Y.Z`, then
+`node_modules/.bin/hyperframes`, or a global install) skips the fetch
+entirely. Check the render's dimensions and duration with `ffprobe` before
+anything downstream consumes it.
 
 **Exit codes.** `0` means the command succeeded, `1` means it ran and failed, and
 `2` means the command line itself is wrong: an unknown command or flag, or a
@@ -393,6 +447,14 @@ the page exposed. It is raw material for an agent, not a finished composition;
 the `/hyperframes` skill uses it when a real product has to appear on screen. Dynamic sites, protected pages, and unusual media loaders produce
 partial results, so read `dropped`, the warnings, and the contact sheets before
 you build.
+
+Each warning, and the reason on a `Capture failed:` line, is printed on one
+line: a line break inside the text is shown as `\x0a` instead of starting a new
+terminal line. `--json` output is unchanged and carries the full text. The
+`Design style extraction failed` line printed during a capture follows the same
+rule. When a capture fails because no browser can be set up on Linux ARM64, the
+reason stays on the `Capture failed:` line and the setup commands follow it on
+lines of their own, ready to copy.
 
 Downloaded fonts are saved under `assets/fonts/`, and their CSS references point
 to those local files. Distinct URLs such as `demo.woff2?v=1` and
@@ -1301,6 +1363,10 @@ npx hyperframes check [dir] --at 1.5,4,7.25
 npx hyperframes check [dir] --strict       # warnings fail too
 ```
 
+When `check` or the deprecated `validate` fails because no browser can be set up
+on Linux ARM64, the reason stays on the failure line and the setup commands
+follow it on lines of their own, ready to copy. `--json` output is unchanged.
+
 `check` runs the linter first. A lint error fails the check but does not stop
 it: the browser checks still run and both are reported, unless the lint error
 leaves no composition to load (a root with no `data-composition-id`).
@@ -1365,9 +1431,11 @@ and ends a copy that makes no progress for 3 minutes (`HYPERFRAMES_PROXY_STALL_M
 For a long project, run `hyperframes check --prepare-media` first, then the check itself finds
 every copy ready.
 
-A Chrome that is not ready 3 minutes after the check begins to start it ends the check with a runtime
-finding that says Chrome did not start and how long each step took. On a first run Chrome may still be
-downloading: run `hyperframes browser ensure` once, then run check again.
+A Chrome that is not ready 3 minutes after the check begins to start it ends the check with a
+`check_deadline` finding that says Chrome did not start and how long each step took. On a first run Chrome
+may still be downloading: run `hyperframes browser ensure` once, then run check again. A check that makes
+no progress for 2 minutes, or for its `--timeout` plus 10 seconds when that is longer, also ends with
+`check_deadline`, naming the phase it was in and the script that had not finished.
 
 `--caption-zone` and `--frame-check` refuse a ranged check when none of their
 configured seek samples falls inside `--range`; a requested gate never silently
@@ -3400,6 +3468,20 @@ visible while an update processes. Interrupted first uploads can resume when
 the source is unchanged; if it changed, explicitly use `--update`. If the
 project's review or audience changes while rendering, check the current share
 with `--status` before retrying.
+
+A folder that came from someone else can carry a review record that names their
+existing review. When the project's received-files record, or one above or inside
+it, marks the folder as received, `share` confirms that review before it changes
+who can open it, its link or its versions. This covers an audience flag,
+`--update`, and a share that would add a version or finish setting up the link. In an attended terminal it shows
+the review's title, id and link and asks first; declining changes nothing. An
+unattended run (`--yes`, `--json`, CI or no terminal) is refused with
+`review_confirmation_required` unless `--review <review-id>` names that same
+review; a `--review` that names another review is refused with `review_mismatch`.
+A folder whose received-files records cannot all be read counts as received.
+Reading the existing link, a first share with no existing review, and folders
+not marked as received are unchanged. To share a received folder as a new review
+instead, remove the review record in its `.hyperframes` folder.
 
 Completed renders accumulate in `.hyperframes/share-renders/`. To reclaim that
 space, wait for uploads to finish and close any running share commands, then

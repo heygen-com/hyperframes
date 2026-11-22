@@ -697,6 +697,28 @@ describe("applyMediaTreatmentToHtml", () => {
     }
   });
 
+  // fails without the fix: the selector is repeated as it was typed.
+  it("shows control characters in the selector of a preview as text", async () => {
+    const esc = String.fromCharCode(27);
+    const project = mkdtempSync(join(tmpdir(), "hf-media-odd-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    writeFileSync(join(project, "index.html"), VIDEO);
+    const selector = `#hero:not([title="od${esc}[2Jd\x07"])`;
+    const grading = '{"preset":"warm-daylight","intensity":0.8}';
+    try {
+      await runCommand(mediaTreatmentCommand, {
+        rawArgs: ["--project", project, "--selector", selector, "--grading", grading, "--dry-run"],
+      });
+      const printed = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(printed).toContain('#hero:not([title="od\\x1b[2Jd\\x07"])');
+      expect(printed).not.toContain(`${esc}[2J`);
+      expect(printed).not.toContain("\x07");
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it("takes --grading from a file, and tells a quote-stripped value to use one", async () => {
     const project = mkdtempSync(join(tmpdir(), "hf-media-grading-file-"));
     writeFileSync(join(project, "index.html"), VIDEO);

@@ -4,7 +4,16 @@ import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import * as clack from "../ui/prompts.js";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+} from "node:fs";
+import { terminalText } from "@hyperframes/core";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { join, resolve } from "node:path";
 import { c } from "../ui/colors.js";
@@ -91,11 +100,11 @@ export default defineCommand({
 
     console.log();
     console.log(`   ${c.dim("Current:")}  ${c.bold("v" + result.current)}`);
-    console.log(`   ${c.dim("Latest:")}   ${c.bold(c.accent("v" + result.latest))}`);
+    console.log(`   ${c.dim("Latest:")}   ${c.bold(c.accent("v" + terminalText(result.latest)))}`);
     console.log();
 
     if (checkOnly) {
-      clack.outro(c.accent("Update available: v" + result.latest));
+      clack.outro(c.accent("Update available: v" + terminalText(result.latest)));
       return;
     }
 
@@ -232,7 +241,7 @@ function printNpxFallback(reason: string, npxFallback: string, autoYes: boolean)
   console.log();
   if (autoYes) {
     console.log(
-      `   ${c.dim("Couldn't detect a global install to upgrade")} ${c.dim("(" + reason + ")")}`,
+      `   ${c.dim("Couldn't detect a global install to upgrade")} ${c.dim("(" + terminalText(reason) + ")")}`,
     );
   }
   console.log(`   ${c.accent(npxFallback)}`);
@@ -273,6 +282,15 @@ export function resolveProjectArgs(
   return { dir: project, check: opts.check, json: opts.json };
 }
 
+function readWrapper(path: string): { mode: number; text: string } {
+  const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    return { mode: fstatSync(fd).mode & 0o7777, text: readFileSync(fd, "utf-8") };
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export async function upgradeProjectPins(
   dir: string,
   opts: { json: boolean; check: boolean },
@@ -292,7 +310,8 @@ export async function upgradeProjectPins(
     .filter((entry) => entry.isFile() && entry.name.endsWith(".sh"))
     .map((entry) => {
       const path = resolve(dir, entry.name);
-      return { path, rewrite: rewritePinnedHyperframesText(readFileSync(path, "utf-8"), latest) };
+      const { mode, text } = readWrapper(path);
+      return { path, mode, rewrite: rewritePinnedHyperframesText(text, latest) };
     });
   if (rewrite.changed && !opts.check) {
     raw.scripts = rewrite.scripts;
@@ -300,7 +319,8 @@ export async function upgradeProjectPins(
   }
   if (!opts.check) {
     for (const wrapper of wrapperRewrites) {
-      if (wrapper.rewrite.changed) writeFileSync(wrapper.path, wrapper.rewrite.text, "utf-8");
+      if (wrapper.rewrite.changed)
+        replaceFileAtomically(wrapper.path, wrapper.rewrite.text, wrapper.mode);
     }
   }
   const from = new Set(rewrite.fromVersions);
@@ -319,7 +339,9 @@ function printProjectPinResult(
     return;
   }
   if (!res.changed) {
-    console.log(`   ${c.success("◇")}  Project pins already on hyperframes@${res.to}`);
+    console.log(
+      `   ${c.success("◇")}  Project pins already on hyperframes@${terminalText(res.to)}`,
+    );
     return;
   }
   const verb = checkOnly ? "would bump" : "bumped";
@@ -336,7 +358,7 @@ export function runDetectedInstall(
 ): void {
   const location = globalInstallLocation();
   if ("reason" in location) {
-    clack.outro(c.dim(location.reason));
+    clack.outro(c.dim(terminalText(location.reason)));
     setCommandExitCode(1);
     return;
   }

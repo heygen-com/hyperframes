@@ -155,6 +155,22 @@ describe("createPickerModule", () => {
       expect(candidatesUnder(() => [long], "label")).toEqual([`${"x".repeat(54)}😀…`]);
     });
 
+    it("cuts a long text's label at a word, not inside one", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      const para = document.createElement("p");
+      para.textContent =
+        "Every frame of this film was made by hand over three long winters in a small studio by the sea.";
+      const word = document.createElement("p");
+      word.textContent = "x".repeat(70);
+      document.body.append(para, word);
+
+      expect(candidatesUnder(() => [para], "label")).toEqual([
+        "Every frame of this film was made by hand over three…",
+      ]);
+      expect(candidatesUnder(() => [word], "label")).toEqual([`${"x".repeat(55)}…`]);
+    });
+
     it("includes the element classes needed by host hover identifiers", () => {
       const picker = createPickerModule({ postMessage: createMockPostMessage() });
       picker.installPickerApi();

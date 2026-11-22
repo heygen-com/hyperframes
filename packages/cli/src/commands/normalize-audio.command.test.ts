@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCommand } from "citty";
@@ -67,6 +75,40 @@ describe("absolute normalize-audio command", () => {
       log.mockRestore();
       measureAudio.mockReset();
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// fails without the fix: the rewrite went through a link at its pid-named temp file, onto a file outside.
+describe("normalize-audio --write never writes through a link at its temp name", () => {
+  it("leaves the link's target alone and writes the composition in the project", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-normalize-link-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const dir = join(root, "project");
+      mkdirSync(dir);
+      const outside = join(root, "outside.txt");
+      writeFileSync(outside, "keep me");
+      const path = join(dir, "index.html");
+      writeFileSync(
+        path,
+        `<audio id="voice" src="voice.wav" data-volume="0" data-duration="2"></audio>`,
+      );
+      writeFileSync(join(dir, "voice.wav"), "audio bytes");
+      symlinkSync(outside, `${path}.hf-normalize-${process.pid}.tmp`);
+      measureAudio.mockResolvedValue({ integratedLufs: -20, truePeakDbfs: -12.3 });
+
+      await runCommand(normalizeAudioCommand, {
+        rawArgs: [dir, "--target", "voice", "--json", "--write"],
+      });
+
+      expect(readFileSync(outside, "utf8")).toBe("keep me");
+      expect(readFileSync(path, "utf8")).toMatch(/data-volume="(?!0")/);
+      expect(lstatSync(path).isSymbolicLink()).toBe(false);
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });
@@ -297,6 +339,54 @@ describe("reference normalize-audio command", () => {
       );
       expect(printed).toContain("Cannot get closer to the target; the gain is unchanged.");
       expect(readFileSync(path, "utf8")).toBe(html);
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// fails without the fix: the audio src from index.html reached the terminal with its control characters live.
+describe("normalize-audio on a clip whose file is missing", () => {
+  it("prints the src's control characters as visible escapes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-command-test-"));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      writeFileSync(
+        join(dir, "index.html"),
+        `<audio id="voice" src="vo\u001b[2Jice.wav" data-volume="1" data-duration="2"></audio>`,
+      );
+      await expect(
+        runCommand(normalizeAudioCommand, { rawArgs: [dir, "--target", "voice"] }),
+      ).rejects.toBeInstanceOf(CliRuntimeError);
+      const printed = error.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(printed).toContain("Audio #voice file was not found: vo\\x1b[2Jice.wav");
+      expect(printed).not.toContain("vo\u001b[2Jice");
+    } finally {
+      error.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// fails without the fix: the clip id from index.html reached the terminal with its control characters live.
+describe("normalize-audio on a clip whose id holds control characters", () => {
+  it("prints the id's control characters as visible escapes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-command-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      writeFileSync(
+        join(dir, "index.html"),
+        `<audio id="vo\u001b[2Jice" src="voice.wav" data-volume="1" data-duration="2"></audio>`,
+      );
+      writeFileSync(join(dir, "voice.wav"), "audio bytes");
+      measureAudio.mockResolvedValue({ integratedLufs: -20, truePeakDbfs: -12.3 });
+      await runCommand(normalizeAudioCommand, { rawArgs: [dir, "--target", "vo\u001b[2Jice"] });
+      const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(printed).toContain("#vo\\x1b[2Jice");
+      expect(printed).toContain("Set #vo\\x1b[2Jice data-volume");
+      expect(printed).not.toContain("vo\u001b[2Jice");
     } finally {
       log.mockRestore();
       measureAudio.mockReset();

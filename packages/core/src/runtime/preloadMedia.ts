@@ -10,9 +10,9 @@ import {
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { readMediaRenderId } from "./renderFrameSibling";
 import { defersMedia } from "./timedClipHide";
-import { capturePageIn, inPlayerFrame } from "../studioPreviewMark";
+import { capturePageIn, inPlayerFrame, servedToStudio } from "../studioPreviewMark";
 import { swallow } from "./diagnostics";
-import { isWebKit, mediaElementTime } from "./mediaClock";
+import { isChromium, isWebKit, mediaElementTime } from "./mediaClock";
 
 const MEDIA_EDGE_SECONDS = 0.1;
 
@@ -37,6 +37,13 @@ export function preloadMedia(media: PreloadableMedia): void {
   if (media.readyState < 3 && !videoAlreadyLoading) media.load();
 }
 
+export function prefetchMedia(media: PreloadableMedia): void {
+  if (!isChromium()) return preloadMedia(media);
+  if (isRenderFrameVideo(media)) return;
+  if (media.preload !== "metadata") media.preload = "metadata";
+  if (media.readyState === 0 && media.networkState !== 2) media.load();
+}
+
 const pendingPlaybackStart = new WeakMap<HTMLMediaElement, () => void>();
 
 function cancelPlaybackStart(media: HTMLMediaElement): void {
@@ -45,7 +52,7 @@ function cancelPlaybackStart(media: HTMLMediaElement): void {
 
 export function prepareUpcomingMedia(media: HTMLMediaElement, isUpcoming: () => boolean): void {
   cancelPlaybackStart(media);
-  if ((media.tagName !== "VIDEO" && !isWebKit()) || isRenderFrameVideo(media)) return;
+  if (isRenderFrameVideo(media)) return;
   const prepare = () => {
     if (!media.isConnected || !media.paused || media.seeking || !isUpcoming()) return;
     const start = readMediaStart(media);
@@ -99,8 +106,14 @@ export function releaseMedia(media: HTMLMediaElement, whenBuffered = false): voi
   if (media.querySelector("source") || (!whenBuffered && wholeFileBuffered(media))) return;
   if (holdsWhenIdle(media)) return holdUntilDue(media);
   const src = media.getAttribute("src");
-  stopMediaDownload(media);
-  if (src !== null) media.setAttribute("src", src);
+  if (src === null || servedToStudio(document)) {
+    stopMediaDownload(media);
+    if (src !== null) media.setAttribute("src", src);
+    return;
+  }
+  cancelPlaybackStart(media);
+  media.removeAttribute("src");
+  media.setAttribute("src", src);
 }
 
 export function lengthIsAuthored(media: Element): boolean {

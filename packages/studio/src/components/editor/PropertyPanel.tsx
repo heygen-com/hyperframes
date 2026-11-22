@@ -70,7 +70,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     onUngroup,
     onSetStyle,
     onSetAttribute,
-    onSetAttributeLive,
+    onSetAttributeQuiet,
     onApplyColorGradingScope,
     onSetManualOffset,
     onSetManualSize,
@@ -357,7 +357,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
             assets={assets}
             previewIframeRef={previewIframeRef}
             onImportAssets={onImportAssets}
-            onSetAttributeLive={onSetAttributeLive}
+            onSetAttributeQuiet={onSetAttributeQuiet}
             onApplyScope={onApplyColorGradingScope}
           />
         )}

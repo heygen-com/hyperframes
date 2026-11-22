@@ -665,6 +665,33 @@ describe("core runtime browser contract", () => {
     }
   }, 30_000);
 
+  it.each([
+    ["a timed", ' data-start="0" data-duration="3"'],
+    ["an untimed", ""],
+  ])(
+    "%s data-hidden element paints nothing in a render, and one hidden during the render keeps the film's length",
+    async (_, timing) => {
+      const filmPage = await openFilm(
+        `<div id="clip" data-hidden${timing} style="position:absolute;inset:0;background:rgb(255,0,0)"></div>
+      <div id="late"${timing} style="position:absolute;left:0;top:0;width:10px;height:10px;background:rgb(255,0,0)"></div>`,
+      );
+      try {
+        await filmPage.evaluate(() => window.__player!.renderSeek!(1));
+        expect(await redPixels(filmPage)).toBe(10 * 10);
+        const length = await filmPage.evaluate(() => window.__player!.getDuration());
+        await filmPage.evaluate(() => {
+          document.getElementById("late")!.setAttribute("data-hidden", "");
+          window.__player!.renderSeek!(2);
+        });
+        expect(await redPixels(filmPage)).toBe(0);
+        expect(await filmPage.evaluate(() => window.__player!.getDuration())).toBe(length);
+      } finally {
+        await filmPage.close();
+      }
+    },
+    30_000,
+  );
+
   // HTML ignores `/>` on a custom element, so every later sibling ends up inside the group.
   it.each([
     ["an unmuted", 320 * 180, ""],

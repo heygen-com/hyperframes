@@ -347,6 +347,24 @@ describe("patchElementInHtml", () => {
     expect(result).not.toContain("font-size");
   });
 
+  // fails without the fix: either op wrote a composition source, which the runtime fetches and runs.
+  it("never writes a composition source, by either attribute op", () => {
+    for (const op of [
+      {
+        type: "html-attribute",
+        property: "data-composition-src",
+        value: "https://elsewhere.example/a.html",
+      },
+      { type: "attribute", property: "composition-src", value: "https://elsewhere.example/a.html" },
+      { type: "attribute", property: "data-composition-src", value: "scenes/b.html" },
+    ] as const) {
+      const { html: result } = patchElementInHtml(FIXTURE, { id: "hero" }, [op]);
+      expect(result.match(/data-composition-src/g)?.length ?? 0).toBe(
+        FIXTURE.match(/data-composition-src/g)?.length ?? 0,
+      );
+    }
+  });
+
   it("removes attribute when value is null", () => {
     const { html: result } = patchElementInHtml(
       FIXTURE,

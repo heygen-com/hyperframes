@@ -2,7 +2,8 @@
 // from one photo, a voice, or music. Every call is priced first with --plan, keyed for idempotency, downloaded into
 // the project and recorded in the media ledger as generated.
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
@@ -16,7 +17,15 @@ import type {
   MusicCreateRequest,
 } from "../cloud/_gen/types.js";
 import { findCuts, signatures } from "../measure/cuts.js";
-import { Fix, probeVideo, projectOf, round, runFfmpeg, videoClip } from "../measure/media.js";
+import {
+  Fix,
+  ffmpegToFile,
+  probeVideo,
+  projectOf,
+  round,
+  runFfmpeg,
+  videoClip,
+} from "../measure/media.js";
 import { loadSharp } from "../utils/optionalPackages.js";
 import {
   chargedCredits,
@@ -169,7 +178,6 @@ const DEFAULTS = {
   music: "lyria-3-pro",
 } as const;
 export const VENDOR_PRICED_IMAGES = new Set([
-  "gpt-image-2.5",
   "gpt-image-2.6",
   "gpt-image-2.6-flare",
   "minimax-h3-image",
@@ -180,13 +188,15 @@ const GEMINI_ASPECTS = [...GPT_ASPECTS, "3:2", "2:3", "21:9"];
 const MINIMAX_ASPECTS = [...GPT_ASPECTS, "21:9"];
 /** What /v3/images accepts from each model: its aspect ratios and how many reference pictures. */
 const IMAGE_MODELS: Record<string, { aspects: string[]; references: number }> = {
-  "nano-banana-2": { aspects: GEMINI_ASPECTS, references: 14 },
   "nano-banana-2.1": { aspects: GEMINI_ASPECTS, references: 14 },
-  "gpt-image-2.5": { aspects: GPT_ASPECTS, references: 16 },
   "gpt-image-2.6": { aspects: GPT_ASPECTS, references: 16 },
   "gpt-image-2.6-flare": { aspects: GPT_ASPECTS, references: 16 },
   "minimax-h3-image": { aspects: MINIMAX_ASPECTS, references: 16 },
   "minimax-h3-image-4k": { aspects: MINIMAX_ASPECTS, references: 16 },
+};
+const RETIRED_IMAGE_MODELS: Record<string, string> = {
+  "nano-banana-2": "nano-banana-2.1",
+  "gpt-image-2.5": "gpt-image-2.6",
 };
 export const isVendorPriced = (r: GenerateRequest): boolean =>
   r.type === "image" && VENDOR_PRICED_IMAGES.has(r.model ?? "");
@@ -201,9 +211,14 @@ const need = <T>(value: T | undefined, flag: string, example: string): T => {
   return value;
 };
 
+const ownEntry = <T>(table: Record<string, T>, name: string): T | undefined =>
+  Object.hasOwn(table, name) ? table[name] : undefined;
+
 function imageModel(r: GenerateRequest): string {
   const model = r.model ?? DEFAULTS.image;
-  const spec = IMAGE_MODELS[model];
+  const replacement = ownEntry(RETIRED_IMAGE_MODELS, model);
+  if (replacement) throw new Fix(`${model} is no longer offered here`, `--model ${replacement}`);
+  const spec = ownEntry(IMAGE_MODELS, model);
   if (!spec) return model;
   if (r.aspect && !spec.aspects.includes(r.aspect))
     throw new Fix(`${model} does not make ${r.aspect}`, `--aspect ${spec.aspects.join("|")}`);
@@ -561,24 +576,13 @@ function fitAspect(out: string, aspect: string): string | undefined {
   const even = (n: number) => n - (n % 2);
   const [w, h] =
     width / height > want ? [even(height * want), height] : [width, even(width / want)];
-  const fitted = `${out}.fit${extname(out)}`;
-  runFfmpeg([
-    ...[
-      "-y",
-      "-i",
-      out,
-      "-vf",
-      `crop=${w}:${h}`,
-      "-c:v",
-      "libx264",
-      "-crf",
-      "12",
-      "-preset",
-      "slow",
+  ffmpegToFile(
+    [
+      ...["-y", "-i", out, "-vf", `crop=${w}:${h}`, "-c:v", "libx264", "-crf", "12"],
+      ...["-preset", "slow", "-pix_fmt", "yuv420p", "-c:a", "copy"],
     ],
-    ...["-pix_fmt", "yuv420p", "-c:a", "copy", fitted],
-  ]);
-  renameSync(fitted, out);
+    out,
+  );
   return `HeyGen returned ${width}x${height} for ${aspect}; cropped to ${w}x${h} (centre), not stretched`;
 }
 
@@ -750,7 +754,7 @@ export async function generate(
         `could not download the result (${res.status})`,
         "run the same command again; it re-reads the job",
       );
-    writeFileSync(out, Buffer.from(await res.arrayBuffer()));
+    replaceFileAtomically(out, Buffer.from(await res.arrayBuffer()));
     const charged = chargedCredits(job);
     // HeyGen sometimes cuts inside a shot on its own; the shot is paid for and kept, the cuts are reported.
     let cuts: number[] | null | undefined;

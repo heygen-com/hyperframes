@@ -3,7 +3,8 @@ import { ensurePinnedFile } from "../utils/pinnedFile.js";
 import type { ModelFile } from "../whisper/modelFile.js";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
-const CACHE_DIR = hyperframesCacheDir("tts");
+const CACHE_ROOT = hyperframesCacheDir();
+const CACHE_DIR = join(CACHE_ROOT, "tts");
 const MODELS_DIR = join(CACHE_DIR, "models");
 const VOICES_DIR = join(CACHE_DIR, "voices");
 
@@ -117,15 +118,16 @@ export async function ensureModel(
   model: string = DEFAULT_MODEL,
   options?: { onProgress?: (message: string) => void },
 ): Promise<string> {
-  const url = MODEL_URLS[model];
-  const pin = MODEL_PINS[model];
+  const known = Object.hasOwn(MODEL_URLS, model) && Object.hasOwn(MODEL_PINS, model);
+  const url = known ? MODEL_URLS[model] : undefined;
+  const pin = known ? MODEL_PINS[model] : undefined;
   if (!url || !pin) {
     throw new Error(
       `Unknown TTS model: ${model}. Available: ${Object.keys(MODEL_URLS).join(", ")}`,
     );
   }
 
-  return ensurePinnedFile(url, join(MODELS_DIR, `${model}.onnx`), pin, {
+  return ensurePinnedFile(url, join(MODELS_DIR, `${model}.onnx`), CACHE_ROOT, pin, {
     downloading: `Downloading TTS model ${model} (~311 MB)...`,
     onProgress: options?.onProgress,
   });
@@ -138,7 +140,7 @@ export async function ensureModel(
 export async function ensureVoices(options?: {
   onProgress?: (message: string) => void;
 }): Promise<string> {
-  return ensurePinnedFile(VOICES_URL, join(VOICES_DIR, VOICES_PIN.name), VOICES_PIN, {
+  return ensurePinnedFile(VOICES_URL, join(VOICES_DIR, VOICES_PIN.name), CACHE_ROOT, VOICES_PIN, {
     downloading: "Downloading voice data (~27 MB)...",
     onProgress: options?.onProgress,
   });

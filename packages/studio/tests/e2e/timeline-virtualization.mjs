@@ -33,6 +33,7 @@ import {
   judgeAgainstBase,
   judgeResponsiveness,
   responsivenessLimits,
+  rowVirtualizationOf,
   shouldCompareWithBase,
   TIMING_ATTEMPTS,
   timingPassed,
@@ -477,22 +478,20 @@ async function assertProductionRuntime(page) {
 }
 
 async function assertRowVirtualization(page, budgets) {
-  // Trust the DOM, not the caller. A virtualized build cannot mount every clip
-  // and an unvirtualized one cannot avoid it, so the mounted count says which
-  // build is really being measured.
-  const observedClipRoots = await page.evaluate(
-    () => window.__studioTest.readTimelinePerformanceDiagnostics().mountedClipRoots,
+  // Trust the DOM, not the caller: the mounted rows say which build is really being measured.
+  const diagnostics = await page.evaluate(() =>
+    window.__studioTest.readTimelinePerformanceDiagnostics(),
   );
-  const observedRowVirtualization = observedClipRoots <= budgets.maxMountedClipRoots ? "on" : "off";
+  const observedRowVirtualization = rowVirtualizationOf(diagnostics, budgets);
   if (observedRowVirtualization !== ROW_VIRTUALIZATION) {
     throw new Error(
       `Requested TIMELINE_ROW_VIRTUALIZATION=${ROW_VIRTUALIZATION} but the server under test ` +
-        `behaves as ${observedRowVirtualization}: ${observedClipRoots} clip roots mounted for ` +
-        `${ELEMENT_COUNT} elements against a ${budgets.maxMountedClipRoots} budget. ` +
+        `behaves as ${observedRowVirtualization}: ${diagnostics.mountedRows} rows mounted for ` +
+        `${ELEMENT_COUNT} elements against a ${budgets.maxMountedRows} budget. ` +
         "Set VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED on the Studio dev server to match.",
     );
   }
-  return observedClipRoots;
+  return diagnostics.mountedClipRoots;
 }
 
 async function waitForFixtureRender(page, elementCount) {

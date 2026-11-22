@@ -2,6 +2,7 @@ import { buildProjectApiPath } from "./projectRouting";
 import { isTypingTarget } from "@hyperframes/core/typing-target";
 import type { TimelineElement } from "../player/store/playerStore";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import { ancestorIds } from "../components/editor/previewSelection";
 import type { TimelineAssetKind } from "./timelineAssetDrop";
 import { roundToCenti } from "./rounding";
 import { studioApiFetch } from "./studioApiFetch";
@@ -263,16 +264,12 @@ export function findTimelineIdByAncestor(
   elements: TimelineElement[],
   sourceFile: string,
 ): string | null {
-  let ancestor = element?.parentElement ?? null;
-  while (ancestor) {
-    const id = ancestor.id;
-    if (id) {
-      const match = elements.find(
-        (el) => el.domId === id && (el.sourceFile ?? "index.html") === sourceFile,
-      );
-      if (match) return match.key ?? match.id;
-    }
-    ancestor = ancestor.parentElement;
+  for (const id of element ? ancestorIds(element) : []) {
+    if (!id) continue;
+    const match = elements.find(
+      (el) => el.domId === id && (el.sourceFile ?? "index.html") === sourceFile,
+    );
+    if (match) return match.key ?? match.id;
   }
   return null;
 }

@@ -20,13 +20,13 @@ import { createOwnedRenderDir } from "@hyperframes/producer";
 import { consumeCommandResult } from "../utils/commandResult.js";
 import cleanCommand, { cleanLeftovers } from "./clean.js";
 
-const history = vi.hoisted(() => ({ unreadable: false }));
+const history = vi.hoisted(() => ({ unreadable: false, message: "history unreadable" }));
 vi.mock("@hyperframes/studio-server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@hyperframes/studio-server")>();
   return {
     ...actual,
     listProjectHistories: (root: string) => {
-      if (history.unreadable) throw new Error("history unreadable");
+      if (history.unreadable) throw new Error(history.message);
       return actual.listProjectHistories(root);
     },
   };
@@ -192,6 +192,49 @@ describe("cleanLeftovers", () => {
       log.mockRestore();
     }
   });
+
+  // fails without the fix: the reason is printed as it arrived.
+  it("shows control characters in a failure line as text", async () => {
+    const esc = String.fromCharCode(27);
+    history.unreadable = true;
+    history.message = `history od${esc}[2Jd\x07`;
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await runCommand(cleanCommand, { rawArgs: [project, "--dry-run"] });
+      const printed = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(printed).toContain("history od\\x1b[2Jd\\x07");
+      expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+      expect(printed).not.toContain("\x07");
+      expect(consumeCommandResult().exitCode).toBe(1);
+    } finally {
+      history.unreadable = false;
+      history.message = "history unreadable";
+      log.mockRestore();
+    }
+  });
+
+  // fails without the fix: a leftover's path is printed as it is on disk.
+  it.skipIf(process.platform === "win32")(
+    "shows control characters in a listed path as text",
+    async () => {
+      const esc = String.fromCharCode(27);
+      const odd = join(scratch, `pr-${esc}[2Jd\x07`);
+      mkdirSync(odd);
+      writeFileSync(join(odd, "index.html"), '<div data-composition-id="main"></div>');
+      plant(odd, "snapshots");
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      try {
+        await runCommand(cleanCommand, { rawArgs: [odd, "--dry-run"] });
+        const printed = log.mock.calls.map((call) => call.join(" ")).join("\n");
+        expect(printed).toContain("pr-\\x1b[2Jd\\x07");
+        expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+        expect(printed).not.toContain("\x07");
+      } finally {
+        consumeCommandResult();
+        log.mockRestore();
+      }
+    },
+  );
 
   it("lists snapshots as reclaimable and removes them only when asked", async () => {
     const snapshots = plant(project, "snapshots");

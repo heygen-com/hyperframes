@@ -1,6 +1,6 @@
 import { roundTo3 } from "../../utils/rounding";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
-import { readCssRotation } from "../../hooks/draggedGsapPosition";
+import { readCssRotation } from "@hyperframes/core/runtime/css-rotation";
 import { readStudioPathOffset, readStudioRotation, styleUsesStudioOffset } from "./manualEditsDom";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
 import {

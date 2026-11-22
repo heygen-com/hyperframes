@@ -84,6 +84,17 @@ function resolveAnchoredResizeDraft(
 }
 
 /** A frame Studio cannot measure: the box grows about its centre by the size the draft wrote. */
+/** The pin that keeps a sealed resize's centre still: back by what the frame measured the drawn size moving it. */
+export function sealedResizeAnchor(
+  g: GestureState,
+  written: { width: number; height: number },
+): { dx: number; dy: number } {
+  const [w, h] = [g.actualWidth - written.width, g.actualHeight - written.height];
+  const grow = g.resizeGrow;
+  if (!grow) return { dx: (w / 2) * g.editScaleX, dy: (h / 2) * g.editScaleY };
+  return { dx: grow.a * w + grow.c * h, dy: grow.b * w + grow.d * h };
+}
+
 function resolveUnmeasuredResizeDraft(
   g: GestureState,
   element: HTMLElement,
@@ -92,10 +103,7 @@ function resolveUnmeasuredResizeDraft(
   const width = (g.originWidth * written.width) / g.actualWidth;
   const height = (g.originHeight * written.height) / g.actualHeight;
   if (g.pathOffsetMember) {
-    const anchor = {
-      dx: ((g.actualWidth - written.width) / 2) * g.editScaleX,
-      dy: ((g.actualHeight - written.height) / 2) * g.editScaleY,
-    };
+    const anchor = sealedResizeAnchor(g, written);
     g.lastResizeAnchor = anchor;
     applyManualOffsetDragDraft(g.pathOffsetMember, anchor.dx, anchor.dy);
   }

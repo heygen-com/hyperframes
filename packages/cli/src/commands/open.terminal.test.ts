@@ -5,10 +5,11 @@ import { runCommand } from "citty";
 import { expect, it, vi } from "vitest";
 import { consumeCommandResult } from "../utils/commandResult.js";
 
+const desktop = vi.hoisted(() => ({ app: "HyperFrames" }));
 vi.mock("../utils/desktopApp.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/desktopApp.js")>()),
   desktopInstalled: () => true,
-  openInDesktop: () => ({ opened: true, app: "HyperFrames", handedOver: null }),
+  openInDesktop: () => ({ opened: true, app: desktop.app, handedOver: null }),
 }));
 vi.mock("./previewLifecycle.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./previewLifecycle.js")>()),
@@ -46,3 +47,23 @@ it.skipIf(process.platform === "win32")(
     }
   },
 );
+
+it("prints an app name with control characters as visible escapes", async () => {
+  const bell = String.fromCharCode(7);
+  const dir = mkdtempSync(join(tmpdir(), "hf-open-app-"));
+  writeFileSync(join(dir, "index.html"), "<html></html>");
+  desktop.app = `studio.nightly${bell}`;
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  try {
+    await runCommand(open, { rawArgs: [dir] });
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(human).not.toContain(bell);
+    expect(human).toContain("in studio.nightly\\x07");
+  } finally {
+    desktop.app = "HyperFrames";
+    log.mockRestore();
+    consumeCommandResult();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -237,3 +237,43 @@ describe("runVideoMode --list", () => {
     expect(printed).toContain("a\\x1b]8;;https://x.test\\x07.mp4");
   });
 });
+
+describe("runVideoMode: the project folder in what it prints", () => {
+  const bell = String.fromCharCode(7);
+
+  it("shows control characters in a folder with no manifest as text", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    onTestFinished(() => error.mockRestore());
+
+    await runVideoMode({ project: join(tmpdir(), `hf-missing${bell}dir`), list: true });
+
+    expect(consumeCommandResult().exitCode).toBe(1);
+    const printed = error.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).not.toContain(bell);
+    expect(printed.match(/hf-missing\\x07dir/g)).toHaveLength(2);
+  });
+
+  // Windows does not allow a control character in a folder name.
+  it.skipIf(process.platform === "win32")(
+    "shows control characters in the manifest path of a listing as text",
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), "hf-video-path-"));
+      onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+      const projectDir = join(root, `site${bell}one`);
+      mkdirSync(join(projectDir, "extracted"), { recursive: true });
+      writeFileSync(
+        join(projectDir, "extracted", "video-manifest.json"),
+        JSON.stringify([ENTRY(0)]),
+      );
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      onTestFinished(() => log.mockRestore());
+
+      await runVideoMode({ project: projectDir, list: true });
+
+      const printed = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(printed).not.toContain(bell);
+      expect(printed).toContain("1 video entry in ");
+      expect(printed).toContain("site\\x07one");
+    },
+  );
+});

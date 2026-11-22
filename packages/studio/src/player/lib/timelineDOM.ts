@@ -17,9 +17,10 @@ import { readMasterFxChain } from "@hyperframes/core/audio-groups";
 import { linkScopeOf } from "@hyperframes/core/media-link";
 import { createRuntimeStartTimeResolver } from "@hyperframes/core/runtime/start-resolver";
 import { previewWithoutFrameToken } from "./frameToken";
+import { clipNumber, clipTrack } from "./manifestClips";
 import { groupInfoFor } from "./timelineGroupInfo";
 import { receivedTimelineText } from "./timelineText";
-import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
+import { transitionLabelsForDocument } from "@hyperframes/core/studio-preview-mark";
 import {
   resolveMediaElement,
   applyMediaMetadataFromElement,
@@ -81,10 +82,8 @@ export function createTimelineElementFromManifestClip(params: {
   hostEl?: Element | null;
 }): TimelineElement {
   const { clip, fallbackIndex, doc } = params;
+  const numericTrack = clipTrack(clip.track) ?? 0;
   let hostEl = params.hostEl ?? null;
-  const transitionLabels = doc
-    ? transitionLabelsForDocument(doc, (doc.defaultView as IframeWindow | null)?.__timelines)
-    : new Map<Element, string>();
   const label = getTimelineElementDisplayLabel({
     id: clip.id,
     label: clip.label,
@@ -119,21 +118,19 @@ export function createTimelineElementFromManifestClip(params: {
     id: identity.id,
     label,
     transitionLabel:
-      (hostEl && transitionLabels.get(hostEl)) ||
-      hostEl?.getAttribute("data-transition-label") ||
-      undefined,
+      clip.transitionLabel || hostEl?.getAttribute("data-transition-label") || undefined,
     key: identity.key,
     kind: clip.kind,
     tag: resolveClipTag(clip),
-    start: clip.start,
-    duration: clip.duration,
-    track: clip.track,
+    start: clipNumber(clip.start) ?? 0,
+    duration: clipNumber(clip.duration) ?? 0,
+    track: numericTrack,
     // clip.track IS the authored data-track-index verbatim (the runtime honors
     // it; see parseAuthoredTrack in core/runtime/timeline.ts). Record it at this
     // translation boundary so later display-lane remaps (normalizeToZones,
     // expanded-child rows) can persist in AUTHORED space instead of
     // reconstructing it from lane occupants.
-    authoredTrack: clip.track,
+    authoredTrack: numericTrack,
     // Runtime-computed stacking context — authoritative; helpers read it, never
     // re-derive it.
     stackingContextId: clip.stackingContextId ?? null,
