@@ -818,6 +818,29 @@ describe("registerPreviewRoutes", () => {
     return [...parseHTML(html).document.querySelectorAll("script[src]")];
   }
 
+  // fails without the fix: a page whose GSAP is the project's own file got the plugin from jsDelivr, a fetch
+  // a preview with no network cannot make and a script from a third party the page never named.
+  it.each([
+    [
+      "its own file",
+      '<script src="vendor/gsap.min.js"></script>',
+      "vendor/MotionPathPlugin.min.js",
+    ],
+    [
+      "a file the build inlined",
+      '<script data-hf-inlined-src="vendor/gsap.min.js">/* gsap */</script>',
+      "vendor/MotionPathPlugin.min.js",
+    ],
+  ])(
+    "loads the MotionPathPlugin from beside the page's GSAP when that is %s",
+    async (_, tag, plugin) => {
+      const scripts = await previewScriptSrcs(tag);
+      const srcs = scripts.map((el) => el.getAttribute("src") ?? "");
+      expect(srcs).toContain(plugin);
+      expect(srcs.filter((src) => /jsdelivr|^https?:/.test(src))).toEqual([]);
+    },
+  );
+
   it.each([
     ["a query string", "https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js?v=1"],
     ["a hash", "https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.js#core"],
@@ -3340,7 +3363,7 @@ describe("GSAP mirror configuration", () => {
     );
   });
 
-  it("preserves authored plugins and the default CDN when the override is unset", async () => {
+  it("preserves authored plugins, and names no plugin base when the override is unset", async () => {
     const projectDir = createProjectDir();
     const plugin = "https://authored.example/MotionPathPlugin.min.js";
     writeFileSync(
@@ -3353,11 +3376,7 @@ describe("GSAP mirror configuration", () => {
     ).toHaveLength(1);
     expect(configured).toContain(`src="${plugin}"`);
     const defaults = await (await appForMirror(projectDir, "").request(previewUrl)).text();
-    expect(
-      parseHTML(defaults)
-        .document.querySelector(`meta[name="${metaName}"]`)
-        ?.getAttribute("content"),
-    ).toBe("https://cdn.jsdelivr.net/npm");
+    expect(parseHTML(defaults).document.querySelector(`meta[name="${metaName}"]`)).toBeNull();
     expect(defaults).toContain('var cdnBase="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/"');
   });
 

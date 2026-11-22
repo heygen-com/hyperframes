@@ -4,6 +4,7 @@ import { parseRestoreAttributes } from "./restoreAttributes";
 import {
   parseRestoreAttributesRerun,
   parseSoftReload,
+  preloadMotionPath,
   restoreAttributesOrRerun,
   softReload,
   type SoftReloadParams,
@@ -167,6 +168,7 @@ describe("a re-run that waits for the MotionPath plugin", () => {
     document.body.innerHTML =
       `<div data-composition-id="main"><div id="a" data-hf-id="a" style="left: 0px"></div></div>` +
       `<div data-composition-id="other"></div>` +
+      `<script src="gsap.min.js"></script>` +
       `<script>${run("main", "file")}</script><script>${run("other", "file")}</script>`;
     delete document.body.dataset.main;
     delete document.body.dataset.other;
@@ -489,5 +491,36 @@ describe("parseSoftReload", () => {
     ["a restore element keyed by neither id", params({ restore: [restoreOf("a", [])] })],
   ])("refuses %s", (_label, request) => {
     expect(parseSoftReload(request)).toBeNull();
+  });
+});
+
+describe("where the MotionPath plugin loads from", () => {
+  const pluginSrc = () =>
+    document.head.querySelector<HTMLScriptElement>("script[data-hf-gsap-plugin]")?.src ?? null;
+
+  // fails without the fix: the plugin came from jsDelivr whatever the page's GSAP was, so a preview with no
+  // network asked a third party for a script the page never named.
+  it.each([
+    ['<script src="vendor/gsap.min.js"></script>', "vendor/MotionPathPlugin.min.js"],
+    [
+      '<script data-hf-inlined-src="vendor/gsap.min.js"></script>',
+      "vendor/MotionPathPlugin.min.js",
+    ],
+    [
+      '<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>',
+      "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js",
+    ],
+  ])("loads it from beside the page's own GSAP: %s", (tag, plugin) => {
+    document.body.innerHTML = tag;
+    win.gsap = { registerPlugin: () => {} };
+    preloadMotionPath(win, document);
+    expect(pluginSrc()).toBe(new URL(plugin, document.baseURI).href);
+  });
+
+  it("requests nothing when the page names no GSAP file", () => {
+    document.body.innerHTML = "<script>/* gsap inlined by hand */</script>";
+    win.gsap = { registerPlugin: () => {} };
+    preloadMotionPath(win, document);
+    expect(document.head.querySelectorAll("script[src]")).toHaveLength(0);
   });
 });

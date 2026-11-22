@@ -6,6 +6,17 @@ export const NO_PATH_TWEEN_META = "hf-no-path-tween";
 
 export const namesMotionPath = (script: string) => /motionPath["']?\s*[:{]/.test(script);
 
+const pathOf = (src: string) =>
+  URL.canParse(src, "http://localhost/") ? new URL(src, "http://localhost/").pathname : null;
+
+export function isGsapCoreUrl(src: string): boolean {
+  return /\/gsap(-\d+(\.\d+)*)?(\.min)?\.js$/i.test(pathOf(src) ?? "");
+}
+
+function motionPathBesideGsap(gsapFile: string): string {
+  return `${gsapFile.replace(/[?#].*$/, "").replace(/[^/]*$/, "")}MotionPathPlugin.min.js`;
+}
+
 function isLoopbackHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "[::1]" || /^127\.\d+\.\d+\.\d+$/.test(hostname);
 }
@@ -51,7 +62,17 @@ export function gsapCdnDist(gsapVersion?: string, baseUrl?: string): string {
   return `${normalizeGsapBaseUrl(baseUrl)}/gsap@${version}/dist/`;
 }
 
-/** MotionPathPlugin at the composition's own gsap version; a skew registers with a GSAP warning. */
 export function motionPathPluginUrl(gsapVersion?: string, baseUrl?: string): string {
   return `${gsapCdnDist(gsapVersion, baseUrl)}MotionPathPlugin.min.js`;
+}
+
+/** MotionPathPlugin from a configured mirror, else from beside the page's own GSAP file; null with neither. */
+export function motionPathPluginFor(page: {
+  gsapFile: string | null;
+  mirror?: string | null;
+  version?: string;
+}) {
+  const version = page.version ?? page.gsapFile?.match(/gsap@([\d.]+)/)?.[1];
+  if (page.mirror) return motionPathPluginUrl(version, page.mirror);
+  return page.gsapFile ? motionPathBesideGsap(page.gsapFile) : null;
 }

@@ -5,9 +5,11 @@ import {
   GSAP_BASE_URL_META,
   GSAP_PLUGIN_LOAD_ATTR,
   NO_PATH_TWEEN_META,
-  motionPathPluginUrl,
+  isGsapCoreUrl,
+  motionPathPluginFor,
   namesMotionPath,
 } from "../../gsapCdn";
+import { INLINED_FILE_ATTR } from "../../compiler/scriptRuns";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { escapeCssString } from "../editingElement";
 import { applyAuthoredTiming } from "../../studioPreviewMark";
@@ -337,11 +339,15 @@ export function finalizeSoftReload(win: SoftReloadWindow, currentTime: number): 
   if (wasPlaying) win.__player?.play?.();
 }
 
-export function previewMotionPathUrl(doc: Document, version?: string): string {
-  const baseUrl = doc.head.querySelector<HTMLMetaElement>(
+function previewMotionPathUrl(doc: Document, version?: string): string | null {
+  const mirror = doc.head.querySelector<HTMLMetaElement>(
     `meta[name="${GSAP_BASE_URL_META}"]`,
   )?.content;
-  return motionPathPluginUrl(version, baseUrl);
+  const gsap = [...doc.querySelectorAll(`script[src], script[${INLINED_FILE_ATTR}]`)]
+    .map((script) => script.getAttribute("src") ?? script.getAttribute(INLINED_FILE_ATTR) ?? "")
+    .find(isGsapCoreUrl);
+  const src = motionPathPluginFor({ gsapFile: gsap ?? null, mirror, version });
+  return src && new URL(src, doc.baseURI).href;
 }
 
 function runSuppressed(win: SoftReloadWindow, reload: () => void): boolean {
@@ -411,8 +417,10 @@ function whenMotionPathLoaded(
     win.__hfMotionPathWaiters = undefined;
     for (const [onReady, onFailed] of waiters) (loaded ? onReady : onFailed)();
   };
+  const src = previewMotionPathUrl(doc, win.gsap?.version);
+  if (!src) return settle(false);
   const pluginScript = doc.createElement("script");
-  pluginScript.src = previewMotionPathUrl(doc, win.gsap?.version);
+  pluginScript.src = src;
   pluginScript.setAttribute(GSAP_PLUGIN_LOAD_ATTR, "");
   pluginScript.onload = () => settle(Boolean(win.MotionPathPlugin));
   // Running the script without the plugin would leave a motionPath tween that cannot play.
