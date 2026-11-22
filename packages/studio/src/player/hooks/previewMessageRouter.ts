@@ -24,6 +24,7 @@ import {
 } from "../store/previewQualitySlice";
 import { parseTimelineFromDOM } from "../lib/timelineDOM";
 import { previewClipManifest, previewFrameOpaque } from "../lib/previewChannel";
+import { wellFormedClips } from "../lib/manifestClips";
 import { frameOrigins } from "../lib/bridgePlayback";
 
 /** What `processTimelineMessage` accepts — the clip-manifest postMessage. */
@@ -220,7 +221,8 @@ export function createPreviewMessageHandler(
       return;
     }
     if (data.type === "timeline" && Array.isArray(data.clips)) {
-      handleTimelineMessage(deps, iframe, data as unknown as ClipManifestMessage, enriched);
+      const message = { ...data, clips: wellFormedClips(data.clips) };
+      handleTimelineMessage(deps, iframe, message as unknown as ClipManifestMessage, enriched);
     }
   };
 }
