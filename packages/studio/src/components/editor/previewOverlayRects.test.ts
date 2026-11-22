@@ -178,8 +178,13 @@ const settled = async (overlay: Awaited<ReturnType<typeof overlayOn>>) => {
   return { overlayRect, childRects, group: groupOverlayItems.map((item) => item.rect), hoverRect };
 };
 
-const close = (rect: OverlayRect | null) =>
-  rect && Object.fromEntries(Object.entries(rect).map(([key, value]) => [key, +value.toFixed(9)]));
+const rounded = (value: unknown): unknown =>
+  typeof value === "number"
+    ? +value.toFixed(9)
+    : value && typeof value === "object"
+      ? Object.fromEntries(Object.entries(value).map(([key, v]) => [key, rounded(v)]))
+      : value;
+const close = (rect: OverlayRect | null) => rect && rounded(rect);
 const closeAll = (shown: Awaited<ReturnType<typeof settled>>) => ({
   overlayRect: close(shown.overlayRect),
   childRects: shown.childRects.map(close),
@@ -201,6 +206,22 @@ describe("overlay rects on an opaque frame match a scriptable one", () => {
     expect(closeAll(remote)).toEqual(closeAll(live));
     if (picked.selection === "gone") expect(live.overlayRect).toBeNull();
     else expect(live.overlayRect).not.toBeNull();
+  });
+
+  // fails without the fix: the hug cut the crop at the editor zoom alone, 175 px wide in both frames.
+  it("cuts a scaled layer's crop at its own scale, the same in both", async () => {
+    const grown = sized(document.createElement("div"), [1000, 100, 400, 200]);
+    grown.id = "grown";
+    grown.style.setProperty("clip-path", "inset(0px 50px 0px 0px)");
+    Object.defineProperty(grown, "offsetWidth", { value: 200, configurable: true });
+    Object.defineProperty(grown, "offsetHeight", { value: 100, configurable: true });
+    document.querySelector("[data-composition-id]")!.append(grown);
+    for (const frame of [liveFrame, opaqueFrame]) {
+      const { group } = await settled(
+        await overlayOn(frame(), { selection: null, group: ["grp", "grown"] }),
+      );
+      expect(group[1]).toMatchObject({ width: 150, height: 100 });
+    }
   });
 
   it("covers what each case decides", async () => {

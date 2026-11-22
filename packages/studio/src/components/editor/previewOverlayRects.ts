@@ -25,7 +25,7 @@ const clientRect = ({ x, y, width, height }: EditingRect) => ({ left: x, top: y,
 
 /** `toOverlayRect`. */
 const baseRect = (scale: OverlayRootScale, box: EditingElementBox) =>
-  frameRectToOverlay(scale, clientRect(box.rect), box.source);
+  frameRectToOverlay(scale, clientRect(box.rect), box.source, box.layout);
 
 /** `orientedOverlayRect`. */
 function orientedRect(scale: OverlayRootScale, box: EditingElementBox): OverlayRect {

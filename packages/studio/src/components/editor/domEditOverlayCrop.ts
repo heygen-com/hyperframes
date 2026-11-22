@@ -247,26 +247,35 @@ export function resolveCropInsetFromMoveDrag(input: {
 
 /** Display-only hug: shrink a projected rect by the element's inset crop.
  *  For rects nothing writes back to (e.g. the hover ring). */
-export function hugRectForElement(
-  rect: CropScreenRect & { editScaleX: number; editScaleY: number },
-  element: HTMLElement,
-): CropScreenRect {
+export function hugRectForElement(rect: HugRect, element: HTMLElement): CropScreenRect {
   // A lifted clip shows the full element rect.
   return isElementCropLifted(element)
     ? rect
     : hugRectForClipPath(rect, readElementClipPath(element));
 }
 
+type HugRect = CropScreenRect & {
+  editScaleX: number;
+  editScaleY: number;
+  layout?: { width: number; height: number };
+};
+
+/** Overlay px per element CSS px: shown size over own size, so its own scale counts; the zoom when unknown. */
+const hugScale = (shown: number, own: number | undefined, zoom: number) =>
+  own && own > 0 && shown > 0 ? shown / own : zoom;
+
 /** `hugRectForElement` for a clip-path read elsewhere; null is one that could not be read. */
-export function hugRectForClipPath(
-  rect: CropScreenRect & { editScaleX: number; editScaleY: number },
-  clipPath: string | null,
-): CropScreenRect {
+export function hugRectForClipPath(rect: HugRect, clipPath: string | null): CropScreenRect {
   const insets = clipPath === null ? null : parseCropClipPath(clipPath);
   // Uneditable clip — show the full element rect.
   if (!insets || (insets.top <= 0 && insets.right <= 0 && insets.bottom <= 0 && insets.left <= 0))
     return rect;
-  return cropRectFromInsets(rect, insets, rect.editScaleX, rect.editScaleY);
+  return cropRectFromInsets(
+    rect,
+    insets,
+    hugScale(rect.width, rect.layout?.width, rect.editScaleX),
+    hugScale(rect.height, rect.layout?.height, rect.editScaleY),
+  );
 }
 
 /**

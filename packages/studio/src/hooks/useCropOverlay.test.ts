@@ -44,12 +44,12 @@ const rect: OverlayRect = {
 };
 
 /** The selection box's crop hug as the overlay last drew it. */
-function drawn(element: HTMLElement) {
+function drawn(element: HTMLElement, overlayRect: OverlayRect = rect) {
   const seen: Array<number | null> = [];
   function Probe() {
     const { cropOutlineInsetPx } = useCropOverlay({
       selection: { element } as DomEditSelection,
-      overlayRect: rect,
+      overlayRect,
     });
     seen.push(cropOutlineInsetPx?.right ?? null);
     return null;
@@ -70,6 +70,21 @@ it("a sealed layer picked with no press drops its crop hug once the crop handles
   await act(async () => sent[0]!({ lifted: false, clipPath: null }));
   expect(hug(), "a lift the frame refused leaves the crop showing").toBe(150);
 });
+
+// fails without the fix: the hug used the editor zoom alone, 150 where the layer's own 2x makes 300.
+it.each([true, false])(
+  "a layer shown at twice its own size hugs its crop at that scale (sealed %s)",
+  (s) => {
+    sealed = s;
+    const element = document.body.appendChild(document.createElement("div"));
+    element.id = "grown";
+    if (s) rememberFrameClipPath(element, "inset(0px 150px 0px 0px)", "inset(0px 150px 0px 0px)");
+    else element.style.setProperty("clip-path", "inset(0px 150px 0px 0px)");
+    const hug = drawn(element, { ...rect, layout: { width: 200, height: 100 } });
+    expect(hug()).toBe(300);
+    element.remove();
+  },
+);
 
 it("an unsealed layer's crop hug follows its lift and its drop", () => {
   sealed = false;

@@ -26,6 +26,8 @@ export interface OverlayRect {
   height: number;
   editScaleX: number;
   editScaleY: number;
+  /** The element's own transform-free size in its CSS px; absent for a union of several elements. */
+  layout?: { width: number; height: number };
   /** Live screen-space rotation; omitted for axis-aligned group bounds. */
   angle?: number;
 }
@@ -164,12 +166,17 @@ function toOverlayRect(
           sourceBoundary.getBoundingClientRect(),
         )
       : sourceBoundary?.getBoundingClientRect();
-  return frameRectToOverlay(scale, elementRect, {
-    width: sourceBoundaryRect?.width,
-    height: sourceBoundaryRect?.height,
-    declaredWidth: readPositiveDimension(sourceBoundary?.getAttribute("data-width") ?? null),
-    declaredHeight: readPositiveDimension(sourceBoundary?.getAttribute("data-height") ?? null),
-  });
+  return frameRectToOverlay(
+    scale,
+    elementRect,
+    {
+      width: sourceBoundaryRect?.width,
+      height: sourceBoundaryRect?.height,
+      declaredWidth: readPositiveDimension(sourceBoundary?.getAttribute("data-width") ?? null),
+      declaredHeight: readPositiveDimension(sourceBoundary?.getAttribute("data-height") ?? null),
+    },
+    { width: element.offsetWidth, height: element.offsetHeight },
+  );
 }
 
 type FrameSource = {
@@ -184,6 +191,7 @@ export function frameRectToOverlay(
   scale: OverlayRootScale,
   elementRect: { left: number; top: number; width: number; height: number },
   source: FrameSource,
+  layout?: { width: number; height: number },
 ): OverlayRect {
   const { iframeRect, overlayRect, rootScaleX, rootScaleY } = scale;
   const editScale = resolveDomEditCoordinateScale({
@@ -202,6 +210,7 @@ export function frameRectToOverlay(
     height: elementRect.height * rootScaleY,
     editScaleX: editScale.scaleX,
     editScaleY: editScale.scaleY,
+    ...(layout && { layout }),
   };
 }
 
@@ -345,6 +354,7 @@ export function orientOverlayRect(
     height,
     editScaleX: base.editScaleX,
     editScaleY: base.editScaleY,
+    ...(base.layout && { layout: base.layout }),
     angle,
   };
 }

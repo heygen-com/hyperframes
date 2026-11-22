@@ -199,13 +199,20 @@ const isSourceBox = (value: unknown) =>
 
 const isClipPath = isValueOrNull;
 
+const isLayout = (value: unknown) =>
+  isFields(value) &&
+  [value.width, value.height].every(
+    (side) => Number.isFinite(side) && (side as number) >= 0 && (side as number) <= MAX_DRAFT_PX,
+  );
+
 const isBox = (value: unknown): value is EditingElementBox =>
   isFields(value) &&
   isRect(value.rect) &&
   Number.isFinite(value.angle) &&
   isCorners(value.corners) &&
   isSourceBox(value.source) &&
-  isClipPath(value.clipPath);
+  isClipPath(value.clipPath) &&
+  isLayout(value.layout);
 
 const readGeometry = (value: unknown): EditingElementGeometry | null => {
   if (!isBox(value) || !isFields(value) || typeof value.visible !== "boolean") return null;
@@ -247,12 +254,6 @@ const isFlag = (value: unknown) => typeof value === "boolean";
 const isFiniteFields = (value: unknown, keys: string[]) =>
   isFields(value) && keys.every((key) => Number.isFinite(value[key]));
 
-const isLayout = (value: unknown) =>
-  isFields(value) &&
-  [value.width, value.height].every(
-    (side) => Number.isFinite(side) && (side as number) >= 0 && (side as number) <= MAX_DRAFT_PX,
-  );
-
 const isTurnOrNull = (value: unknown) =>
   value === null || (Number.isFinite(value) && Math.abs(value as number) <= MAX_DRAFT_DEG);
 
@@ -265,9 +266,8 @@ export type ReadGestureStart = Omit<EditingGestureStart, "gsapRotation" | "plana
 
 const readGestureStart = (value: unknown): ReadGestureStart | null => {
   if (!readGeometry(value) || !isFields(value)) return null;
-  const { layout, move, gsap, gsapRotation, grow } = value;
+  const { move, gsap, gsapRotation, grow } = value;
   const valid = [
-    isLayout(layout),
     move === null || isFiniteFields(move, ["a", "b", "c", "d"]),
     gsap === null || (isFields(gsap) && isFiniteFields(gsap, ["x", "y"]) && isFlag(gsap.moving)),
   ];
