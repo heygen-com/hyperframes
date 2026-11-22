@@ -1,8 +1,6 @@
 import {
-  composeElementTransform,
   elementCornerPoints,
   readElementTransformSnapshot,
-  type PlanarTransformOps,
 } from "@hyperframes/core/runtime/editing-port";
 import {
   parseInsetClipPathSides,
@@ -355,68 +353,10 @@ export interface CropFrame {
   scaleY: number;
 }
 
-/**
- * The element's own 2D transform as matrix components, plus the `rotate`
- * property's angle.
- *
- * `rotate` is a separate CSS property, not part of `transform`, and it is the
- * one Studio's rotate handle writes — reading `transform` alone reported a
- * turned element as upright, so the crop outline drew square across it.
- *
- * Null means there is nothing planar to draw against: no transform and no
- * rotation, or a 3D/unparseable matrix. The caller falls back to the
- * axis-aligned box rather than guessing an angle.
- */
-const IDENTITY = { a: 1, b: 0, c: 0, d: 1 };
-
 /** Perspective terms this far from zero mean the mapping is not affine. */
 const PERSPECTIVE_EPSILON = 1e-6;
 
 type Planar2D = { a: number; b: number; c: number; d: number };
-
-/**
- * The 2D components of a computed transform, or null when it cannot be used.
- *
- * Accepts `matrix3d` as well as `matrix`, taking the same 2D projection the
- * rest of the overlay reads through DOMMatrix. GSAP writes a 3D matrix for an
- * ordinary 2D move or spin (force3D), and a composition that flips an element
- * writes one with a negative z scale — treating either as unmeasurable left the
- * crop outline square on an element every other piece of chrome drew rotated.
- *
- * Only a perspective term rules the matrix out, because that is where the
- * mapping stops being affine and a single angle stops describing it.
- */
-function parseMatrixComponents(transform: string): Planar2D | null {
-  const flat = /^matrix\(([^)]+)\)$/.exec(transform);
-  if (flat) {
-    const [a, b, c, d] = flat[1]!.split(",").map((v) => Number.parseFloat(v));
-    return [a, b, c, d].every(Number.isFinite) ? { a: a!, b: b!, c: c!, d: d! } : null;
-  }
-  const spatial = /^matrix3d\(([^)]+)\)$/.exec(transform);
-  if (!spatial) return null;
-  const m = spatial[1]!.split(",").map((v) => Number.parseFloat(v));
-  if (m.length !== 16 || !m.every(Number.isFinite)) return null;
-  const affine = [m[3], m[7], m[11]].every((v) => Math.abs(v!) < PERSPECTIVE_EPSILON);
-  if (!affine) return null;
-  return { a: m[0]!, b: m[1]!, c: m[4]!, d: m[5]! };
-}
-
-/** The crop frame only needs an angle and a scale, so it composes plain 2D components. */
-const PLANAR_2D_OPS: PlanarTransformOps<Planar2D> = {
-  identity: () => IDENTITY,
-  fromTransform: parseMatrixComponents,
-  fromRotate: (degrees) => {
-    const rad = (degrees * Math.PI) / 180;
-    return { a: Math.cos(rad), b: Math.sin(rad), c: -Math.sin(rad), d: Math.cos(rad) };
-  },
-  fromScale: (x, y) => ({ a: x, b: 0, c: 0, d: y }),
-  compose: (outer, inner) => ({
-    a: outer.a * inner.a + outer.c * inner.b,
-    b: outer.b * inner.a + outer.d * inner.b,
-    c: outer.a * inner.c + outer.c * inner.d,
-    d: outer.b * inner.c + outer.d * inner.d,
-  }),
-};
 
 /** Whether the matrix leaves the box exactly as it found it. */
 function isIdentity(m: Planar2D): boolean {
@@ -428,22 +368,17 @@ function isIdentity(m: Planar2D): boolean {
   );
 }
 
-/**
- * The transform the element paints under, in 2D components.
- *
- * Null when nothing up the chain transforms it: the caller's axis-aligned rect
- * already describes it, and that comes from real layout rather than the
- * element's untransformed box.
- */
+/** Affine: no perspective term, so one angle and one scale per axis describe the mapping. */
+const affine = (m: DOMMatrix) =>
+  [m.m14, m.m24, m.m34].every((v) => Math.abs(v) < PERSPECTIVE_EPSILON);
+
+/** The 2D components of the matrix the element paints under; null when upright and unscaled, or 3D. */
 function readPlanarTransform(element: HTMLElement): Planar2D | null {
-  const acc = composeElementTransform(element, PLANAR_2D_OPS, (node) => {
-    try {
-      return node.ownerDocument.defaultView?.getComputedStyle(node) ?? null;
-    } catch {
-      return null;
-    }
-  });
-  return acc && !isIdentity(acc) ? acc : null;
+  const win = element.ownerDocument.defaultView;
+  const matrix = win && readElementTransformSnapshot(win, element)?.matrix;
+  if (!matrix || !affine(matrix)) return null;
+  const { a, b, c, d } = matrix;
+  return isIdentity({ a, b, c, d }) ? null : { a, b, c, d };
 }
 
 /** What the frame measured of a stand-in's element at the press: a stand-in has no box of its own. */

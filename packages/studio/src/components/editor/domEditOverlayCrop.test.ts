@@ -8,7 +8,6 @@ import {
   resolveCropInsetFromMoveDrag,
   rotateDeltaIntoFrame,
 } from "./domEditOverlayCrop";
-import { individualRotateDegrees } from "@hyperframes/core/runtime/editing-port";
 
 describe("resolveCropInsetFromEdgeDrag", () => {
   const startInsets = { top: 10, right: 20, bottom: 30, left: 40 };
@@ -158,6 +157,39 @@ describe("readElementCropInsets tri-state", () => {
 // Regression: crop UI drawn on the axis-aligned bounding box visually
 // "straightens" a rotated element — the dim masks the rotated corners. The
 // frame gives the element's own box + rotation so the UI rotates with it.
+// A computed `transform` is always `matrix(...)` or `matrix3d(...)`, so this reads only those two forms.
+class ComputedMatrix {
+  a = 1;
+  b = 0;
+  c = 0;
+  d = 1;
+  m14 = 0;
+  m24 = 0;
+  m34 = 0;
+  constructor(list = "") {
+    const flat = /^matrix\(([^)]+)\)$/.exec(list)?.[1]?.split(",").map(Number);
+    const deep = /^matrix3d\(([^)]+)\)$/.exec(list)?.[1]?.split(",").map(Number);
+    if (flat) [this.a, this.b, this.c, this.d] = flat;
+    if (deep)
+      [this.a, this.b, this.c, this.d, this.m14, this.m24, this.m34] = [0, 1, 4, 5, 3, 7, 11].map(
+        (i) => deep[i]!,
+      );
+  }
+  multiply(inner: ComputedMatrix) {
+    const out = new ComputedMatrix();
+    out.a = this.a * inner.a + this.c * inner.b;
+    out.b = this.b * inner.a + this.d * inner.b;
+    out.c = this.a * inner.c + this.c * inner.d;
+    out.d = this.b * inner.c + this.d * inner.d;
+    [out.m14, out.m24, out.m34] = [
+      this.m14 + inner.m14,
+      this.m24 + inner.m24,
+      this.m34 + inner.m34,
+    ];
+    return out;
+  }
+}
+
 describe("readElementCropFrame", () => {
   const overlayRect = { left: 100, top: 50, width: 220, height: 130, editScaleX: 1, editScaleY: 1 };
 
@@ -170,7 +202,9 @@ describe("readElementCropFrame", () => {
       offsetHeight,
       parentElement: null,
       hasAttribute: () => false,
-      ownerDocument: { defaultView: { getComputedStyle: () => ({ transform }) } },
+      ownerDocument: {
+        defaultView: { DOMMatrix: ComputedMatrix, getComputedStyle: () => ({ transform }) },
+      },
     }) as unknown as HTMLElement;
 
   it("identity transform → the axis-aligned overlay rect", () => {
@@ -282,38 +316,6 @@ describe("rotateDeltaIntoFrame", () => {
   });
 });
 
-describe("individualRotateDegrees", () => {
-  /**
-   * Studio's rotate handle writes the CSS `rotate` property, not `transform`.
-   * Everything that measured an element's angle read `transform` alone, so a
-   * turned element reported upright and the selection box, crop outline and
-   * child outlines all drew square across it.
-   */
-  it("reads a plain angle", () => {
-    expect(individualRotateDegrees("-22deg")).toBeCloseTo(-22, 6);
-    expect(individualRotateDegrees("45deg")).toBeCloseTo(45, 6);
-  });
-
-  it("reads an explicit z-axis rotation, honouring the axis sign", () => {
-    expect(individualRotateDegrees("0 0 1 30deg")).toBeCloseTo(30, 6);
-    expect(individualRotateDegrees("0 0 -1 30deg")).toBeCloseTo(-30, 6);
-  });
-
-  it("reports nothing for a rotation that leaves the overlay's plane", () => {
-    // A 3D turn has no single in-plane angle. Reporting one would draw the
-    // chrome at a plausible-looking wrong angle instead of falling back square.
-    expect(individualRotateDegrees("1 0 0 45deg")).toBe(0);
-    expect(individualRotateDegrees("0 1 0 45deg")).toBe(0);
-  });
-
-  it("reports nothing when the property is absent or unparseable", () => {
-    expect(individualRotateDegrees("none")).toBe(0);
-    expect(individualRotateDegrees(undefined)).toBe(0);
-    expect(individualRotateDegrees("")).toBe(0);
-    expect(individualRotateDegrees("12")).toBe(0);
-  });
-});
-
 describe("readElementCropFrame — the composed walk", () => {
   /**
    * The case the crop outline got wrong: a text layer inside a rotated card.
@@ -328,7 +330,9 @@ describe("readElementCropFrame — the composed walk", () => {
       offsetHeight: 300,
       parentElement: null,
       hasAttribute: (name: string) => name === "data-composition-id",
-      ownerDocument: { defaultView: { getComputedStyle: () => style(parentTransform) } },
+      ownerDocument: {
+        defaultView: { DOMMatrix: ComputedMatrix, getComputedStyle: () => style(parentTransform) },
+      },
     };
     return {
       offsetWidth: 200,
@@ -337,6 +341,7 @@ describe("readElementCropFrame — the composed walk", () => {
       hasAttribute: () => false,
       ownerDocument: {
         defaultView: {
+          DOMMatrix: ComputedMatrix,
           getComputedStyle: (node: unknown) =>
             node === parent ? style(parentTransform) : style(childTransform),
         },

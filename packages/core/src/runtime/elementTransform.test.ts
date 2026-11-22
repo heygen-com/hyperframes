@@ -1,22 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { individualScale } from "./elementTransform";
+import { rotateFunction, scaleFunction } from "./elementTransform";
 
-describe("individualScale", () => {
-  it("reads one value as both axes and two as x then y", () => {
-    expect(individualScale("2")).toEqual([2, 2]);
-    expect(individualScale("2 0.5")).toEqual([2, 0.5]);
-    expect(individualScale("-1 1")).toEqual([-1, 1]);
+describe("the individual properties as transform functions", () => {
+  it("writes each computed rotate form Chrome serializes", () => {
+    expect(rotateFunction("45deg")).toBe("rotate(45deg)");
+    expect(rotateFunction("x 30deg")).toBe("rotateX(30deg)");
+    expect(rotateFunction("1 1 0 30deg")).toBe("rotate3d(1, 1, 0, 30deg)");
+    expect(rotateFunction("none")).toBe("");
+    expect(rotateFunction(undefined)).toBe("");
   });
 
-  it("keeps a planar z of 1 and refuses any other z as 3D", () => {
-    expect(individualScale("2 3 1")).toEqual([2, 3]);
-    expect(individualScale("2 3 2")).toBeNull();
-  });
-
-  it("treats none or nothing as no scale and refuses what it cannot read", () => {
-    expect(individualScale("none")).toEqual([1, 1]);
-    expect(individualScale(undefined)).toEqual([1, 1]);
-    expect(individualScale("big")).toBeNull();
-    expect(individualScale("1 1 1 1")).toBeNull();
+  it("writes each computed scale form, a depth scale as scale3d", () => {
+    expect(scaleFunction("2")).toBe("scale(2)");
+    expect(scaleFunction("2 3")).toBe("scale(2, 3)");
+    expect(scaleFunction("1 1 2")).toBe("scale3d(1, 1, 2)");
+    expect(scaleFunction("none")).toBe("");
   });
 });

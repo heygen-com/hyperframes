@@ -12,7 +12,7 @@ import {
   type EditingRect,
 } from "./editingElement";
 import { elementForHandle } from "./editingHandles";
-import { composeElementTransform, type PlanarTransformOps } from "./elementTransform";
+import { composeElementTransform } from "./elementTransform";
 
 export type EditingCorner = "nw" | "ne" | "sw" | "se";
 export type EditingCorners = Record<EditingCorner, { x: number; y: number }>;
@@ -103,18 +103,10 @@ export function readElementTransformSnapshot(
   const DOMMatrixCtor = (win as Window & typeof globalThis).DOMMatrix;
   if (!DOMMatrixCtor) return null;
   const cs = win.getComputedStyle(element);
-  // The corner math transforms points, so this keeps the full matrix, translation included.
-  const ops: PlanarTransformOps<DOMMatrix> = {
-    identity: () => new DOMMatrixCtor(),
-    fromTransform: (value) => new DOMMatrixCtor(value),
-    fromRotate: (degrees) => new DOMMatrixCtor().rotateSelf(degrees),
-    fromScale: (x, y) => new DOMMatrixCtor().scaleSelf(x, y),
-    compose: (outer, inner) => outer.multiply(inner),
-  };
   try {
     const matrix = composeElementTransform(
       element,
-      ops,
+      DOMMatrixCtor,
       (node) => (node === element ? cs : win.getComputedStyle(node)),
       memo,
     );

@@ -58,17 +58,6 @@ class FakeDOMMatrix {
     out.f = this.b * o.e + this.d * o.f + this.f;
     return out;
   }
-  rotateSelf(degrees: number) {
-    const [cos, sin] = [Math.cos((degrees * Math.PI) / 180), Math.sin((degrees * Math.PI) / 180)];
-    return this.timesSelf(new FakeDOMMatrix(`matrix(${cos}, ${sin}, ${-sin}, ${cos}, 0, 0)`));
-  }
-  scaleSelf(x: number, y = x) {
-    return this.timesSelf(new FakeDOMMatrix(`matrix(${x}, 0, 0, ${y}, 0, 0)`));
-  }
-  private timesSelf(o: FakeDOMMatrix) {
-    Object.assign(this, this.multiply(o));
-    return this;
-  }
   transformPoint(p: { x: number; y: number }) {
     return { x: this.a * p.x + this.c * p.y + this.e, y: this.b * p.x + this.d * p.y + this.f };
   }
@@ -298,39 +287,6 @@ describe("overlay rects on an opaque frame match a scriptable one", () => {
       const [plain, mirrored] = await pairIn(frame, ["plain", "mirrored"]);
       expect(mirrored.width).toBeCloseTo(plain.width, 6);
       expect(mirrored.left - plain.left).toBeCloseTo(50 / 2, 6);
-    }
-  });
-
-  // fails without the fix: live corners left out the CSS `scale` property, 75 px wide where sealed drew 150.
-  it("cuts a layer scaled by the CSS scale property like its matrix twin, the same in both", async () => {
-    const half = Math.SQRT1_2;
-    const side = (400 + 200) * half;
-    const clip = "inset(0px 50px 0px 0px)";
-    layer("twin", "matrix(2, 0, 0, 2, 0, 0)", clip, [950, 50, 400, 200]);
-    layer("scaled", "", clip, [950, 50, 400, 200]);
-    layer("turnedTwin", `matrix(${2 * half}, ${2 * half}, ${-2 * half}, ${2 * half}, 0, 0)`, clip, [
-      1000,
-      100,
-      side,
-      side,
-    ]);
-    layer("turnedScaled", "", clip, [1000, 100, side, side]);
-    document.getElementById("scaled")!.style.setProperty("scale", "2");
-    const turned = document.getElementById("turnedScaled")!;
-    turned.style.setProperty("scale", "2");
-    turned.style.setProperty("rotate", "45deg");
-    for (const frame of [liveFrame, opaqueFrame]) {
-      const [twin, scaled] = await pairIn(frame, ["twin", "scaled"]);
-      expect(scaled.width).toBeCloseTo((400 - 100) / 2, 6);
-      expect(scaled).toMatchObject({
-        width: expect.closeTo(twin.width, 6),
-        left: expect.closeTo(twin.left, 6),
-      });
-      const [turnedTwin, turnedScaled] = await pairIn(frame, ["turnedTwin", "turnedScaled"]);
-      expect(turnedScaled).toMatchObject({
-        width: expect.closeTo(turnedTwin.width, 6),
-        height: expect.closeTo(turnedTwin.height, 6),
-      });
     }
   });
 

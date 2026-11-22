@@ -1,122 +1,60 @@
 /**
- * One walk from an element up to its composition root, composing the transform
- * it actually paints under.
- *
- * The overlay measures an element's angle in two places — the selection box and
- * the crop frame — and they need different arithmetic: one works in DOMMatrix
- * because it goes on to transform corner points, the other in plain 2D
- * components because it only needs an angle and a scale. What they must never
- * differ on is *which* transforms count and in what order, because when they
- * disagree the chrome disagrees with itself: the selection box drawn at one
- * angle and the crop outline at another, on the same element.
- *
- * So the walk lives here once and takes the arithmetic as a parameter. Adding
- * an individual property CSS grew later — `translate`, `scale` — means adding
- * one step here and one method to each algebra, rather than finding both walks
- * and hoping.
+ * The one matrix every overlay measure reads: each node's `rotate`, `scale` and `transform`, in CSS's
+ * order, parsed and composed by the browser's `DOMMatrix`. `translate` never changes a shape (callers
+ * re-anchor to the measured box), and `DOMMatrix` refuses its common `50%`, so it is left out.
  */
 
 /** The composition's own root; the walk stops there rather than at the document. */
 const COMPOSITION_ROOT_ATTR = "data-composition-id";
 
-/**
- * The arithmetic the walk needs, whatever the caller's matrix type is.
- *
- * `fromTransform` returns null for a transform the caller cannot use — a
- * perspective matrix, say — which aborts the walk rather than composing a
- * matrix that describes something other than what is painted.
- */
-export interface PlanarTransformOps<M> {
-  identity(): M;
-  fromTransform(value: string): M | null;
-  fromRotate(degrees: number): M;
-  fromScale(x: number, y: number): M;
-  /** `outer` applied around `inner`, as an ancestor composes over a child. */
-  compose(outer: M, inner: M): M;
+/** Computed `rotate` (`45deg`, `x 30deg`, `1 1 0 30deg`) as its transform function; "" for none. */
+export function rotateFunction(value: string | undefined): string {
+  const parts = value && value !== "none" ? value.trim().split(/\s+/) : [];
+  const angle = parts.pop();
+  if (!angle) return "";
+  if (parts.length === 0) return `rotate(${angle})`;
+  if (parts.length === 1) return `rotate${parts[0]!.toUpperCase()}(${angle})`;
+  return `rotate3d(${parts.join(", ")}, ${angle})`;
 }
 
-/**
- * The planar rotation in the CSS `rotate` property, in degrees.
- *
- * Computes to `none`, an angle (`-22deg`), or an axis plus an angle
- * (`0 0 1 -22deg`). Only a rotation about z stays in the overlay's plane; any
- * other axis is 3D and reports 0, which leaves the caller on its axis-aligned
- * fallback rather than drawing a box at a plausible-looking wrong angle.
- */
-export function individualRotateDegrees(value: string | undefined): number {
-  if (!value || value === "none") return 0;
-  const parts = value.trim().split(/\s+/);
-  const angle = parts.at(-1);
-  if (!angle?.endsWith("deg")) return 0;
-  if (parts.length === 4) {
-    const [x, y, z] = parts;
-    if (Number(x) !== 0 || Number(y) !== 0 || Math.abs(Number(z)) !== 1) return 0;
-    const deg = Number.parseFloat(angle);
-    return Number.isFinite(deg) ? deg * Math.sign(Number(z)) : 0;
-  }
-  if (parts.length !== 1) return 0;
-  const deg = Number.parseFloat(angle);
-  return Number.isFinite(deg) ? deg : 0;
+/** Computed `scale` (`2`, `2 3`, `1 1 2`) as its transform function; "" for none. */
+export function scaleFunction(value: string | undefined): string {
+  const parts = value && value !== "none" ? value.trim().split(/\s+/) : [];
+  if (parts.length === 0) return "";
+  return `${parts.length === 3 ? "scale3d" : "scale"}(${parts.join(", ")})`;
 }
 
-/** The x and y of the CSS `scale` property; null for a 3D scale, whose z is not 1. */
-export function individualScale(value: string | undefined): [number, number] | null {
-  if (!value || value === "none") return [1, 1];
-  const parts = value.trim().split(/\s+/).map(Number);
-  if (parts.length > 3 || !parts.every(Number.isFinite)) return null;
-  const [x, y = x, z = 1] = parts as [number, number?, number?];
-  return z === 1 ? [x, y] : null;
-}
-
-/** One node's own contribution, with the individual properties applied before
- *  `transform` the way CSS does. Null when the node's transform is unusable. */
-function ownNodeTransform<M>(
+function ownNodeTransform(
   node: HTMLElement,
-  ops: PlanarTransformOps<M>,
+  Matrix: typeof DOMMatrix,
   getStyle: (node: HTMLElement) => CSSStyleDeclaration | null,
-): M | null {
+): DOMMatrix | null {
   const style = getStyle(node);
   if (!style) return null;
-  const transform = style.transform;
-  const own = transform && transform !== "none" ? ops.fromTransform(transform) : ops.identity();
-  const stretch = individualScale(style.scale);
-  if (!own || !stretch) return null;
-  const scaled =
-    stretch[0] === 1 && stretch[1] === 1 ? own : ops.compose(ops.fromScale(...stretch), own);
-  const spin = individualRotateDegrees(style.rotate);
-  return spin === 0 ? scaled : ops.compose(ops.fromRotate(spin), scaled);
+  const transform = style.transform && style.transform !== "none" ? style.transform : "";
+  const list = [rotateFunction(style.rotate), scaleFunction(style.scale), transform];
+  try {
+    return new Matrix(list.filter(Boolean).join(" "));
+  } catch {
+    return null;
+  }
 }
 
 /**
- * The element's transform composed with every ancestor's, up to the composition
- * root.
+ * The element's transform composed with every ancestor's, up to the composition root; an ancestor
+ * applies outside its child. Null when some node's transform cannot be parsed, so the caller falls back.
  *
- * Within a node, CSS applies the individual properties before `transform`, so
- * `rotate` composes on the left of it. Between nodes, an ancestor applies
- * outside its child. Null means some node's transform was unusable and the
- * caller should fall back rather than guess.
- *
- * `memo` holds each node's COMPOSED chain, for a caller walking many elements
- * in one synchronous pass.
- *
- * A chain is `chain(parent)` composed with the node's own, so siblings share
- * everything above them and the whole tree costs one style read and one
- * compose per node instead of one per node PER DESCENDANT. Valid only for the
- * length of one pass, which is why the caller owns it: nothing here writes to
- * the DOM, so nothing can move under it, and it is dropped before anything
- * else runs. Omitted, every call composes its own chain from scratch.
+ * `memo` holds each node's composed chain for a caller walking many elements in one synchronous pass:
+ * siblings share everything above them. Valid only for that pass, which is why the caller owns it.
  */
-export function composeElementTransform<M>(
+export function composeElementTransform(
   element: HTMLElement,
-  ops: PlanarTransformOps<M>,
+  Matrix: typeof DOMMatrix,
   getStyle: (node: HTMLElement) => CSSStyleDeclaration | null,
-  memo?: Map<HTMLElement, M | null>,
-): M | null {
+  memo?: Map<HTMLElement, DOMMatrix | null>,
+): DOMMatrix | null {
   const pending: HTMLElement[] = [];
-  // `undefined` means nothing on the way up was already composed, so the chain
-  // starts from identity. A memoized `null` is an answer, not a miss: some node
-  // above carries a transform this algebra cannot represent.
-  let above: M | null | undefined;
+  let above: DOMMatrix | null | undefined;
   for (let node: HTMLElement | null = element; node; node = node.parentElement) {
     above = memo?.get(node);
     if (above !== undefined) break;
@@ -124,14 +62,12 @@ export function composeElementTransform<M>(
     if (node.hasAttribute(COMPOSITION_ROOT_ATTR)) break;
   }
 
-  let acc: M | null = above === undefined ? ops.identity() : above;
+  let acc: DOMMatrix | null = above === undefined ? new Matrix() : above;
   for (let i = pending.length - 1; i >= 0; i -= 1) {
     const node = pending[i]!;
     if (acc !== null) {
-      const own = ownNodeTransform(node, ops, getStyle);
-      // The ancestors' chain is the OUTER of the pair, as an ancestor applies
-      // around its child.
-      acc = own === null ? null : ops.compose(acc, own);
+      const own = ownNodeTransform(node, Matrix, getStyle);
+      acc = own === null ? null : acc.multiply(own);
     }
     memo?.set(node, acc);
   }
