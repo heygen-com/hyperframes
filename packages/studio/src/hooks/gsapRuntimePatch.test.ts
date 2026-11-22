@@ -596,4 +596,30 @@ describe("patchRuntimeTweenInPlace — a throw inside the patch", () => {
     expect(logged).toHaveBeenCalledTimes(1);
     logged.mockRestore();
   });
+
+  it("reports a name the composition gave its own error class as 'other'", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    class FilmError extends Error {
+      override name = "user script text";
+    }
+    const el = { id: "box" };
+    const iframe = {
+      contentWindow: {
+        gsap: {
+          set: () => {
+            throw new FilmError();
+          },
+        },
+      },
+      contentDocument: { querySelector: (sel: string) => (sel === "#box" ? el : null) },
+    } as unknown as HTMLIFrameElement;
+
+    expect(patchRuntimeTweenInPlace(iframe, "#box", { kind: "global-set", props: { x: 1 } })).toBe(
+      false,
+    );
+    expect(trackStudioEvent).toHaveBeenLastCalledWith("gsap_instant_patch_threw", {
+      error_name: "other",
+    });
+    logged.mockRestore();
+  });
 });
