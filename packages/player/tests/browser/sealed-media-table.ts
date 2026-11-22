@@ -38,7 +38,7 @@ type Step =
   | { do: "recover"; el: number; source: Source };
 // Interrupt: done by the composition right after the runtime's next load of that element, or at the round's end.
 // Recover: the source's host comes back (without CORS headers unless lapseCors), then the composition reloads el.
-type Interrupt = "pause" | "seek" | "rate" | "source" | "author";
+type Interrupt = "pause" | "seek" | "seekPlaying" | "rate" | "source" | "author";
 type Sequence = { name: string; rounds: Step[][]; keepsCors?: number[]; upgradesAtMost?: number };
 
 const KINDS: Kind[] = [
@@ -279,6 +279,20 @@ const FIXED: Sequence[] = [
       ],
     }),
   ),
+  {
+    name: "a seek by the composition during the runtime's load of a playing clip wins",
+    rounds: [
+      [
+        {
+          do: "create",
+          el: 0,
+          sources: [own("r7seekPlaying-a", "down"), own("r7seekPlaying-b", "cors")],
+        },
+        { do: "play", el: 0, rate: 1.5 },
+        { do: "interrupt", el: 0, action: "seekPlaying", source: own("r7seekPlaying-c", "cors") },
+      ],
+    ],
+  },
   ...(["lapse", "lapseCors"] as const).map(
     (kind): Sequence => ({
       name: `a playing element whose first own source was down and came back (${kind}), reloaded`,
@@ -415,7 +429,7 @@ async function installDriver(frame: Frame) {
       pending.delete(video);
       video.dataset.interrupted = step.action;
       if (step.action === "pause") video.pause();
-      else if (step.action === "seek") {
+      else if (step.action === "seek" || step.action === "seekPlaying") {
         video.dataset.seekTo = "0.5";
         video.dataset.seekIssued = String(performance.now());
         video.currentTime = 0.5;
@@ -444,7 +458,8 @@ async function installDriver(frame: Frame) {
           data.savedRate = String(this.playbackRate);
           data.watch = "1";
         }
-        if (pending.has(this) && corsReload) setTimeout(() => interrupt(this));
+        const races = pending.get(this)?.action !== "seekPlaying" || this.currentTime > 0;
+        if (pending.has(this) && corsReload && races) setTimeout(() => interrupt(this));
       }
       return load.call(this);
     };
@@ -882,9 +897,10 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
       // Past the target at seeked, and how far playback could carry it: sealed beside unsealed, the parity bar.
       const past = ({ seekAt, seekCarry }: Reading) =>
         `+${(Number(seekAt) - 0.5).toFixed(3)} of ${Number(seekCarry).toFixed(3)}`;
-      if (action === "seek") landings.push(`sealed ${past(seen)}, unsealed ${past(unsealed)}`);
+      const seeks = action === "seek" || action === "seekPlaying";
+      if (seeks) landings.push(`sealed ${past(seen)}, unsealed ${past(unsealed)}`);
       if (
-        action === "seek" &&
+        seeks &&
         (!landed(seen) ||
           seen.seekPaused !== plain.seekPaused ||
           seen.extraSeeks !== plain.extraSeeks)
