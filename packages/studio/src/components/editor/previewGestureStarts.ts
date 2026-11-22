@@ -193,20 +193,22 @@ export function createPreviewGestureStarts(
     let overChannel: OverChannel | null | typeof UNANSWERED | undefined;
     let askedOf: HTMLIFrameElement | null = null;
     let asks = 0;
+    const askShownFrame = () => {
+      const frame = opts.iframeRef.current ?? channel!;
+      if (askedOf === frame || asks >= 2) return;
+      [askedOf, asks, overChannel] = [frame, asks + 1, undefined];
+      void askShownGestureStarts(
+        frame,
+        opts.overlayRef.current,
+        opts.activeCompositionPathRef.current,
+        targets(),
+      ).then((answer) => askedOf === frame && (overChannel = answer));
+    };
     const channelStep = (): "wait" | "lost" | "run" | "drawn" => {
       const overdue = performance.now() - since > PRESS_WAIT_MAX_MS;
       if (overdue) giveUpOnPreviewChange();
       if (isPreviewChanging() && !overdue) return "wait";
-      const frame = opts.iframeRef.current ?? channel!;
-      if (askedOf !== frame && asks < 2) {
-        [askedOf, asks, overChannel] = [frame, asks + 1, undefined];
-        void askShownGestureStarts(
-          frame,
-          opts.overlayRef.current,
-          opts.activeCompositionPathRef.current,
-          targets(),
-        ).then((answer) => askedOf === frame && (overChannel = answer));
-      }
+      askShownFrame();
       if (overChannel === undefined) return "wait";
       if (overChannel === UNANSWERED) return "drawn";
       return overChannel ? "run" : "lost";
@@ -222,6 +224,11 @@ export function createPreviewGestureStarts(
       if (found === 0 || settledFrames > MAX_SETTLED_WAIT_FRAMES) return "lost";
       return overdue || shownFrames >= 2 ? "run" : "wait";
     };
+    const startsFrom = (step: "lost" | "run" | "drawn"): OverChannel | undefined | false => {
+      if (step === "lost") return false;
+      if (step === "drawn") return drawn() ?? false;
+      return typeof overChannel === "object" && overChannel ? overChannel : undefined;
+    };
     const poll = () => {
       if (press.ended) return;
       const step = waitStep();
@@ -231,10 +238,8 @@ export function createPreviewGestureStarts(
       }
       endWaitingPress(press);
       const pointerDown = down as unknown as React.PointerEvent<HTMLElement>;
-      const read =
-        step === "drawn" ? drawn() : typeof overChannel === "object" ? overChannel : null;
-      if (step === "lost" || (step === "drawn" && !read)) return;
-      if (!start(pointerDown, at, true, read ?? undefined)) return;
+      const read = startsFrom(step);
+      if (read === false || !start(pointerDown, at, true, read)) return;
       if (press.moved) moveActiveGesture(press.moved);
       if (press.released) releaseActiveGesture(press.released);
     };
