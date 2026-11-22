@@ -9,6 +9,147 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.83"
+  description="Released - 2026-11-22"
+  tags={["Release", "CLI", "Producer"]}
+>
+Compiling a page with thousands of clips or style rules stays fast. The notes also list a fix that shipped in v0.9.82: a sandboxed app reads project history again.
+
+## Fixes
+
+- **Studio Server:** A sandboxed history read no longer fails with EPERM while the app holds it, shipped in v0.9.82 ([02450e3e2](https://github.com/heygen-com/hyperframes/commit/02450e3e2e9f9792589399d3a10b7a4ae34f6f2e), [#8529](https://github.com/heygen-com/hyperframes/pull/8529))
+
+## Performance
+
+- **Producer:** Compile time stays linear on pages with thousands of clips or style rules ([60c0f9e27](https://github.com/heygen-com/hyperframes/commit/60c0f9e27940001bdbb0126a291d2a9bebe5ba17), [#8528](https://github.com/heygen-com/hyperframes/pull/8528)).
+
+## Internal
+
+- **CLI:** Snapshot, render and check capture skip a held history this run cannot write ([0d624100c](https://github.com/heygen-com/hyperframes/commit/0d624100c7bf097177b2ff02700b90f89f14e4f0), [#8532](https://github.com/heygen-com/hyperframes/pull/8532)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.82...v0.9.83).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.82"
+  description="Released - 2026-11-22"
+  tags={["Release", "Producer", "Core", "Studio"]}
+>
+A preview loads GSAP's motion path plugin from the page's own GSAP folder or the host's copy, so it works with no network. Sealed previews get more fixes, from sound and the keyboard to moves inside nested compositions.
+
+## Fixes
+
+- **Producer:** A render serves every GSAP the CLI ships, and its own when the CDN is blocked ([8c9c94572](https://github.com/heygen-com/hyperframes/commit/8c9c94572a148c62675a4e181cec1e3480e75bc4), [#8349](https://github.com/heygen-com/hyperframes/pull/8349)).
+- **Core:** The motion path plugin loads from beside the page's own GSAP, never a CDN it did not name ([80f45de33](https://github.com/heygen-com/hyperframes/commit/80f45de33da92c8f765fd184a0ac4cb8e2ade261), [#8523](https://github.com/heygen-com/hyperframes/pull/8523)).
+- **Producer:** A film with many clips of one 4K video no longer freezes the render probe ([4daeb78c3](https://github.com/heygen-com/hyperframes/commit/4daeb78c3d8c2f7ab154613b13f6a1d74485d394), [#8284](https://github.com/heygen-com/hyperframes/pull/8284)).
+- **Studio:** A sealed preview never keeps the keyboard, so no key it reports is acted on ([196eff39e](https://github.com/heygen-com/hyperframes/commit/196eff39eb05752b45d9e2f84fb20c1d530dc166), [#8521](https://github.com/heygen-com/hyperframes/pull/8521)).
+- **Studio:** A turned layer's cropped box is the bounds of its cut corners ([e5e360154](https://github.com/heygen-com/hyperframes/commit/e5e360154e08cf39b2e1bca3d95c5bfc0bbb2da9), [#8502](https://github.com/heygen-com/hyperframes/pull/8502)).
+- **Player:** A sealed film is heard when its frame may not start sound ([87fddbc1a](https://github.com/heygen-com/hyperframes/commit/87fddbc1a1c5b745be0f1bbae59e37639a3f5d92), [#8495](https://github.com/heygen-com/hyperframes/pull/8495)).
+- **Core:** Pasted or written markup never carries a composition source from elsewhere ([2425df5f4](https://github.com/heygen-com/hyperframes/commit/2425df5f4d8a94a1923cb11d76a97bba9f6e0d8f), [#8520](https://github.com/heygen-com/hyperframes/pull/8520)).
+- **CLI:** Pinned-file downloaders check the cache folder is private before reading or writing it ([675e3a876](https://github.com/heygen-com/hyperframes/commit/675e3a876e550a5e5850b0b0123ffffec8be7cce), [#8486](https://github.com/heygen-com/hyperframes/pull/8486)).
+- **Studio:** Paste and duplicate check the file they write, after every edit to it ([bd7a8402d](https://github.com/heygen-com/hyperframes/commit/bd7a8402db87662cf256c4e2e29212c03b48b7de), [#8519](https://github.com/heygen-com/hyperframes/pull/8519)).
+- **CLI:** Publish updates a committed project only when this machine linked the folder ([886f609c4](https://github.com/heygen-com/hyperframes/commit/886f609c43b3e622402d2856ba5e63165e248f76), [#8487](https://github.com/heygen-com/hyperframes/pull/8487)).
+- **CLI:** Print project file names in check's stderr notes as visible escapes ([4202462ca](https://github.com/heygen-com/hyperframes/commit/4202462ca5549738c044ce45f09d27fb409a01db), [#8485](https://github.com/heygen-com/hyperframes/pull/8485)).
+- **Player:** A late timeline from the old film no longer keeps a switched player ready ([c19d98d9a](https://github.com/heygen-com/hyperframes/commit/c19d98d9a15ed060ae1a7c989c7ca10c75bf3488), [#8500](https://github.com/heygen-com/hyperframes/pull/8500)).
+- **Core:** A sealed move inside a nested composition shows where it was dropped ([ec9a3a8ef](https://github.com/heygen-com/hyperframes/commit/ec9a3a8ef2b73e35fddea9a94e6fa474cf73e09a), [#8517](https://github.com/heygen-com/hyperframes/pull/8517)).
+- **Studio Server:** A page with thousands of script tags no longer stalls the preview ([0bc7963ff](https://github.com/heygen-com/hyperframes/commit/0bc7963ffd836fe262bfce8b9422f53dc4b06b8a), [#8518](https://github.com/heygen-com/hyperframes/pull/8518)).
+- **Producer:** A probe step's out-of-memory error keeps its words, so it still reads as memory ([258a3cf4e](https://github.com/heygen-com/hyperframes/commit/258a3cf4ea1a2b9c9d9305809be52a960b7e880e), [#8513](https://github.com/heygen-com/hyperframes/pull/8513)).
+- **CLI:** Cloudrun and lambda say a usage error before loading their cloud SDK ([fbd1cd4bc](https://github.com/heygen-com/hyperframes/commit/fbd1cd4bcf8b5888c0dd21b62a637a7b2143abac), [#8510](https://github.com/heygen-com/hyperframes/pull/8510)).
+- **Core:** A timeline whose labels throw no longer empties the clip list ([5d4420fee](https://github.com/heygen-com/hyperframes/commit/5d4420fee1bae9ca9cd0b157e33c7de2680be906), [#8512](https://github.com/heygen-com/hyperframes/pull/8512)).
+- **Studio:** Vitest exits when a project is open in the dev data folder ([b3d37f948](https://github.com/heygen-com/hyperframes/commit/b3d37f948cabec76e187bed2f2fbb1336da5ae3e), [#8514](https://github.com/heygen-com/hyperframes/pull/8514)).
+- **Studio:** The viewport gate tells a virtualized timeline by its mounted rows, not its clips ([dd7799037](https://github.com/heygen-com/hyperframes/commit/dd7799037396404e4e9b7f2803072ac87dc2fcc4), [#8511](https://github.com/heygen-com/hyperframes/pull/8511)).
+- **Studio:** A cropped layer's outline is cut at the layer's own scale, sealed or not ([2b1495f7a](https://github.com/heygen-com/hyperframes/commit/2b1495f7aff642e23a571217ad7f8bdc7d5533fe), [#8496](https://github.com/heygen-com/hyperframes/pull/8496)).
+- **Core:** A far clip whose source is swapped learns its new length ([4a47c33ea](https://github.com/heygen-com/hyperframes/commit/4a47c33ea36970ac288662ac40ec7790590ce9d8), [#8509](https://github.com/heygen-com/hyperframes/pull/8509)).
+- **Studio Server:** Previewing a page with thousands of media files no longer stalls the app ([f03233ab4](https://github.com/heygen-com/hyperframes/commit/f03233ab4d1efcaaa677fd82fcad3a96bb46f9ac), [#8505](https://github.com/heygen-com/hyperframes/pull/8505)).
+- **Producer:** A render that stops while preparing names the step it stopped in ([852611378](https://github.com/heygen-com/hyperframes/commit/85261137849f8e050c904e508810e7d8292b00d1), [#8506](https://github.com/heygen-com/hyperframes/pull/8506)).
+
+## Internal
+
+- **CLI:** The diagnostic test's ffmpeg stand-in answers the demuxer listing, writing no file ([f38a4e367](https://github.com/heygen-com/hyperframes/commit/f38a4e3675a76d8742acf8843fd6f909e2a0e96b), [#8515](https://github.com/heygen-com/hyperframes/pull/8515)).
+- **Studio:** A failed walk in the viewport gate job names itself on the check ([086948766](https://github.com/heygen-com/hyperframes/commit/086948766477b8ae4c4fa1be0b4215a627e1062b), [#8516](https://github.com/heygen-com/hyperframes/pull/8516)).
+- **CLI:** The sign-in return test waits for each window's navigation instead of one second ([20a91dd5f](https://github.com/heygen-com/hyperframes/commit/20a91dd5f1092e3b1709f20886cc16bcf2c53c39), [#8507](https://github.com/heygen-com/hyperframes/pull/8507)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.81...v0.9.82).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.81"
+  description="Released - 2026-11-22"
+  tags={["Release", "Studio", "Core", "CLI"]}
+>
+A heavy page now renders without running out of memory: a render starts only as many browsers as fit. Sealed previews take more edits in place, from moves and crops to undo and hotkeys.
+
+## Fixes
+
+- **Studio:** Studio acts on a sealed preview's key report only after a real press or click ([3ac5265aac](https://github.com/heygen-com/hyperframes/commit/3ac5265aac9fc495244ab077c6b2dc425488c84d), [#8503](https://github.com/heygen-com/hyperframes/pull/8503)).
+- **Core:** A preview of hundreds of clips with no set length no longer loads them all ([d4e8d6f983](https://github.com/heygen-com/hyperframes/commit/d4e8d6f983aa03ae88dfe99d2ffad1f35cb1d373), [#8303](https://github.com/heygen-com/hyperframes/pull/8303)).
+- **Studio:** Scrubbing across a cut shows the newest frame, not black ([0e6879b8ef](https://github.com/heygen-com/hyperframes/commit/0e6879b8efea57f588ed835fab56f9211e0cfcde), [#8501](https://github.com/heygen-com/hyperframes/pull/8501)).
+- **Studio:** Copy and duplicate refuse a file that is not one of the project's compositions ([45674e840f](https://github.com/heygen-com/hyperframes/commit/45674e840f6a3155ba761f7b31330910eba556cc), [#8490](https://github.com/heygen-com/hyperframes/pull/8490)).
+- **Studio:** A sealed preview's clips keep their GSAP transition label ([97b90d8fa2](https://github.com/heygen-com/hyperframes/commit/97b90d8fa2b9e7c475e30e0e9a91f49418d1aedb), [#8499](https://github.com/heygen-com/hyperframes/pull/8499)).
+- **Studio:** A sealed press held across a frame swap starts on the frame shown ([a770f4b85d](https://github.com/heygen-com/hyperframes/commit/a770f4b85dd73e60d7880c630fc3514877d0c611), [#8492](https://github.com/heygen-com/hyperframes/pull/8492)).
+- **Studio:** Paste and duplicate write only allowed markup unless it comes from the same file ([0b73069201](https://github.com/heygen-com/hyperframes/commit/0b73069201b7771078c63c92db0e5b73d99e4dd7), [#8483](https://github.com/heygen-com/hyperframes/pull/8483)).
+- **Studio:** Rotating a layer in a sealed preview turns it from the angle its stylesheet shows ([039eca4f0f](https://github.com/heygen-com/hyperframes/commit/039eca4f0fa9e12e3a6e1a20386f655f319d89ea), [#8469](https://github.com/heygen-com/hyperframes/pull/8469)).
+- **Studio:** A menu that does not fit below opens above, never over what opened it ([679a5a7e0b](https://github.com/heygen-com/hyperframes/commit/679a5a7e0b8d6ecc75ac79c3780d814b0d2bb40d), [#8406](https://github.com/heygen-com/hyperframes/pull/8406)).
+- **Studio Server:** A cut names its new half from the file's own id ([fccd00e719](https://github.com/heygen-com/hyperframes/commit/fccd00e719c5ab8d95baf531248a64ecc6a14a3f), [#8481](https://github.com/heygen-com/hyperframes/pull/8481)).
+- **Ci:** A shard whose results never uploaded is re-run, and never read as an edit accuracy drop ([71588b0a73](https://github.com/heygen-com/hyperframes/commit/71588b0a73485efc66f00d7abb72e0328547de53), [#8477](https://github.com/heygen-com/hyperframes/pull/8477)).
+- **Studio:** A pasted element lands after its own original, never inside a script ([bfd6cb755f](https://github.com/heygen-com/hyperframes/commit/bfd6cb755f9ea4caface8532c865f9f1ddaa00e6), [#8489](https://github.com/heygen-com/hyperframes/pull/8489)).
+- **Core:** A preview seek waits for each graded video to draw its new frame ([104eab37ad](https://github.com/heygen-com/hyperframes/commit/104eab37ad38f75336290655e54308d319a4d3e9), [#8488](https://github.com/heygen-com/hyperframes/pull/8488)).
+- **Core:** A far clip the runtime lets go of keeps counting in the film's length ([5ae70826ed](https://github.com/heygen-com/hyperframes/commit/5ae70826edba1babb96e57d99be9699c45f0c1d9), [#8480](https://github.com/heygen-com/hyperframes/pull/8480)).
+- **Player:** A sealed film no longer shows failed to load while its runtime starts ([835e660e0e](https://github.com/heygen-com/hyperframes/commit/835e660e0e3ec98893ef3ace94385d045f790e14), [#8472](https://github.com/heygen-com/hyperframes/pull/8472)).
+- **Studio:** A sealed preview shows paused video frames from Studio's decoder ([61008a40dd](https://github.com/heygen-com/hyperframes/commit/61008a40dd91ca41b70b78757ced98ecf3daa31d), [#8466](https://github.com/heygen-com/hyperframes/pull/8466)).
+- **Studio:** A drag behind a refused edit is refused only when it would land on a clip ([c99cbbe44d](https://github.com/heygen-com/hyperframes/commit/c99cbbe44d92deca1345aac73729fa29828757c9), [#8456](https://github.com/heygen-com/hyperframes/pull/8456)).
+- **Studio:** A sealed Layers pick of a cropped layer puts its resize corners on the whole layer ([f57552da49](https://github.com/heygen-com/hyperframes/commit/f57552da49c3426e3af641c086fa5cdd25fd595a), [#8468](https://github.com/heygen-com/hyperframes/pull/8468)).
+- **Ci:** A rerun of the captures check reads the PR's current body ([8f7e59742f](https://github.com/heygen-com/hyperframes/commit/8f7e59742f700119875eba1d08d265eae3bd83d0), [#8479](https://github.com/heygen-com/hyperframes/pull/8479)).
+- **Studio:** A sealed move or resize ends its draft in the save's own frame message ([7e26a6d3c0](https://github.com/heygen-com/hyperframes/commit/7e26a6d3c0ac6df0e9cc881b8e3009046ff47015), [#8473](https://github.com/heygen-com/hyperframes/pull/8473)).
+- **Core:** Load the motion path plugin only for a page that tweens along a path ([4157992664](https://github.com/heygen-com/hyperframes/commit/4157992664d3a9bd456594252fb7a5061ff45c27), [#8449](https://github.com/heygen-com/hyperframes/pull/8449)).
+- **Studio:** A thrown value whose name getter throws still falls back to a reload ([f51e57b26e](https://github.com/heygen-com/hyperframes/commit/f51e57b26ea1526ee3f5a3ce6b3838243b801087), [#8474](https://github.com/heygen-com/hyperframes/pull/8474)).
+- **Engine:** A heavy page starts only as many capture browsers as the machine's memory holds ([969eeba6ee](https://github.com/heygen-com/hyperframes/commit/969eeba6eea5d04daa50586a62871d2861130513), [#8452](https://github.com/heygen-com/hyperframes/pull/8452)).
+- **Studio:** A timeline edit queued before a project switch stays in its own project ([3e101f9654](https://github.com/heygen-com/hyperframes/commit/3e101f9654033d73d47ac8a791d0f98c80755226), [#8458](https://github.com/heygen-com/hyperframes/pull/8458)).
+- **Studio:** A sealed crop draws a layer's insets at its own scale and follows a seek ([05d1bc8b1c](https://github.com/heygen-com/hyperframes/commit/05d1bc8b1c1cbff2fcb447a36da5b5db4e7bad79), [#8451](https://github.com/heygen-com/hyperframes/pull/8451)).
+- **Studio:** An in-place tween patch that throws says why it fell back to a reload ([e98ca56c4a](https://github.com/heygen-com/hyperframes/commit/e98ca56c4abe575b88ca76566e85773cf378438b), [#8454](https://github.com/heygen-com/hyperframes/pull/8454)).
+- **Studio:** A sealed resize keeps a self-centring layer where it is ([926e1b5601](https://github.com/heygen-com/hyperframes/commit/926e1b560178651346b18c0dfb105589d61a1419), [#8467](https://github.com/heygen-com/hyperframes/pull/8467)).
+- **Studio:** An undo or redo that adds a sealed page's first edit stays in place ([2d72e523ff](https://github.com/heygen-com/hyperframes/commit/2d72e523ff3e82e2e840be0daa954480a0bcfe14), [#8462](https://github.com/heygen-com/hyperframes/pull/8462)).
+- **Studio:** Hiding an element hides it in the preview, sealed or not ([d37563e35b](https://github.com/heygen-com/hyperframes/commit/d37563e35be60098c0c87be831ae0ebc921f0b0f), [#8461](https://github.com/heygen-com/hyperframes/pull/8461)).
+- **Studio:** A ripple shift queued behind a refused edit is refused before it writes ([56e0d6fbd7](https://github.com/heygen-com/hyperframes/commit/56e0d6fbd7fbaa4f668ac940b95089347d1f274e), [#8443](https://github.com/heygen-com/hyperframes/pull/8443)).
+- **Studio:** A reloaded preview shows the saved grade, not one an undo took back ([5e6068e94a](https://github.com/heygen-com/hyperframes/commit/5e6068e94a82d35815611cbecfa8830c3441a348), [#8455](https://github.com/heygen-com/hyperframes/pull/8455)).
+- **Studio:** A sealed canvas pick selects the timeline clip it belongs to ([ff01d81be1](https://github.com/heygen-com/hyperframes/commit/ff01d81be1691c8b97803c6d49d0109367928d20), [#8459](https://github.com/heygen-com/hyperframes/pull/8459)).
+- **Studio:** A key pressed in a sealed preview reaches Studio's hotkeys ([34d5c4678d](https://github.com/heygen-com/hyperframes/commit/34d5c4678d4fcfdbe21d9185984b6d97577dadce), [#8444](https://github.com/heygen-com/hyperframes/pull/8444)).
+- **CLI:** A crashed or encoder-failed render tells Desktop its code ([678fda62cd](https://github.com/heygen-com/hyperframes/commit/678fda62cda998f5b117271d8a542f901100cfd1), [#8434](https://github.com/heygen-com/hyperframes/pull/8434)).
+- **Studio:** A preview clip's track is taken only as a whole number ([bf21bf9f78](https://github.com/heygen-com/hyperframes/commit/bf21bf9f78fca5220fee2e7f4025322efb0c304d), [#8447](https://github.com/heygen-com/hyperframes/pull/8447)).
+- **Studio:** A colour grade made in the property panel saves to the file ([77f3b55fd3](https://github.com/heygen-com/hyperframes/commit/77f3b55fd3adf09c1579a582eae216c73c6d15be), [#8450](https://github.com/heygen-com/hyperframes/pull/8450)).
+- **Studio:** Moving and nudging an element works in a sealed preview ([eea73b3107](https://github.com/heygen-com/hyperframes/commit/eea73b3107466de54cd79e4e973e1e5a3c83c2d4), [#8263](https://github.com/heygen-com/hyperframes/pull/8263)).
+- **Share:** Names print as plain text in the terminal, and a saved owner address must be a real address ([d09a1809c1](https://github.com/heygen-com/hyperframes/commit/d09a1809c1eaca2b7da08eb84b47e49eeae95bd2), [#8341](https://github.com/heygen-com/hyperframes/pull/8341)).
+- **Studio:** Timeline clips from the preview keep numeric fields, and drops write them as numbers ([59ea053f10](https://github.com/heygen-com/hyperframes/commit/59ea053f1004f730714488b485fe7c98c443adb1), [#8438](https://github.com/heygen-com/hyperframes/pull/8438)).
+- **Studio:** Caption edits save through the project's file writer ([0774d96462](https://github.com/heygen-com/hyperframes/commit/0774d96462ab3e1145ac5186a3cbba98426f75f0), [#8445](https://github.com/heygen-com/hyperframes/pull/8445)).
+- **Studio:** A preview clip's track, start and length enter the timeline only as numbers ([e1845e5dec](https://github.com/heygen-com/hyperframes/commit/e1845e5dec6409633cac00937fdd77650ff08085), [#8446](https://github.com/heygen-com/hyperframes/pull/8446)).
+- **Studio:** The topology lens shows in a sealed preview ([79e43a33a8](https://github.com/heygen-com/hyperframes/commit/79e43a33a87dc3b178c7969c6ceaae7efd33b8b4), [#8420](https://github.com/heygen-com/hyperframes/pull/8420)).
+- **Media Use:** A manifest path naming a share or another root is refused without looking at it ([2a24357338](https://github.com/heygen-com/hyperframes/commit/2a243573389f4410794689d2db526dbf24ba2720), [#8437](https://github.com/heygen-com/hyperframes/pull/8437)).
+- **Studio:** A refused delete also refuses the ripple shifts queued behind it ([925cea1f1f](https://github.com/heygen-com/hyperframes/commit/925cea1f1f59bfde0d507c3575791f77a775939f), [#8421](https://github.com/heygen-com/hyperframes/pull/8421)).
+- **Studio:** A reload that gives up says whether its frame was missing, blank or unreadable ([8ad7cbae24](https://github.com/heygen-com/hyperframes/commit/8ad7cbae247661d38638e0b4ae0569288ab1ffa5), [#8419](https://github.com/heygen-com/hyperframes/pull/8419)).
+- **Studio:** Show a sealed composition's clip on the timeline ([28502224a5](https://github.com/heygen-com/hyperframes/commit/28502224a57631af0894d9a6e2bb6cd9aa9449cd), [#8408](https://github.com/heygen-com/hyperframes/pull/8408)).
+- **Media Use:** Refuse links under .media before reserving, writing or recording ([0495a57f76](https://github.com/heygen-com/hyperframes/commit/0495a57f764c8b67460db711cf34e509c2860c1d), [#8327](https://github.com/heygen-com/hyperframes/pull/8327)).
+
+## Docs & Examples
+
+- **README:** Lead with what HyperFrames makes, keep every developer section ([84ff7d71c2](https://github.com/heygen-com/hyperframes/commit/84ff7d71c28798538f33be2009d51dc22fae9794), [#8442](https://github.com/heygen-com/hyperframes/pull/8442)).
+
+## Internal
+
+- **CLI:** Run the PowerShell round-trip names in one shell so slow Windows runners stay in time ([680c9a5402](https://github.com/heygen-com/hyperframes/commit/680c9a5402c5524137763d7ce7ff33dc32589d4e), [#8498](https://github.com/heygen-com/hyperframes/pull/8498)).
+- **CLI:** The doctor output test no longer runs every machine check ([aa262c244d](https://github.com/heygen-com/hyperframes/commit/aa262c244dbe1250356f36fc08d25cfa6c2d15ad), [#8497](https://github.com/heygen-com/hyperframes/pull/8497)).
+- **Studio:** The preview regression runs green against a sealed preview ([3a68f7b3ca](https://github.com/heygen-com/hyperframes/commit/3a68f7b3ca5c2ae99b8cf039b0576f3e457a66d9), [#8470](https://github.com/heygen-com/hyperframes/pull/8470)).
+- **Studio:** The edit-accuracy bench reads what a person ends with after sealed saves and undos ([bc3d7b43e8](https://github.com/heygen-com/hyperframes/commit/bc3d7b43e852c694a5c465a69392dd35b46fe1cd), [#8475](https://github.com/heygen-com/hyperframes/pull/8475)).
+- **Studio:** The preview regression counts decoded covers, not the macOS gamma filter ([154842851a](https://github.com/heygen-com/hyperframes/commit/154842851acc143bdafa74707992103460369ae7), [#8484](https://github.com/heygen-com/hyperframes/pull/8484)).
+- **Windows:** Run the engine and CLI tests in three shards, not two, to stay under the step deadline ([a638c31aa1](https://github.com/heygen-com/hyperframes/commit/a638c31aa1a0cd44a02019930a0cf506f28bef72), [#8476](https://github.com/heygen-com/hyperframes/pull/8476)).
+- **Studio:** A preview clip's number and track rules live in one place ([deb478a3f6](https://github.com/heygen-com/hyperframes/commit/deb478a3f630aaf4ba5eeb77b497c7e4be9e8656), [#8471](https://github.com/heygen-com/hyperframes/pull/8471)).
+- **Studio:** Chrome-driven tests run alone after the unit tests ([c731046c77](https://github.com/heygen-com/hyperframes/commit/c731046c775f484959f33859488bbf98ccbd5dc6), [#8440](https://github.com/heygen-com/hyperframes/pull/8440)).
+- A studio change with no visible effect can say so at any size ([a0b76d20fb](https://github.com/heygen-com/hyperframes/commit/a0b76d20fb687eff5c1036134006a1a618895ea3), [#8439](https://github.com/heygen-com/hyperframes/pull/8439)).
+- **CLI:** A missed late SVG image in snapshot says which wait came up short ([826b4fcc69](https://github.com/heygen-com/hyperframes/commit/826b4fcc69f3adf33c068e095504f496f13e48af), [#8435](https://github.com/heygen-com/hyperframes/pull/8435)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.80...v0.9.81).
+</Update>
+
+<Update
   label="HyperFrames v0.9.80"
   description="Released - 2026-11-22"
   tags={["Release", "Engine", "Studio", "Media Use"]}

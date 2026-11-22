@@ -40,6 +40,7 @@ type BridgeDeps = {
   onSetCopiesAhead?: (on: boolean) => void;
   onRetryPreviewCopies?: () => void;
   onRequestPreviewFacts?: () => void;
+  onAnnounceTimeline?: () => void;
   onScrubAudio?: (target: PreviewTarget | null, time: number | null, volume: number) => void;
   getCanonicalFps: () => number;
 };
@@ -70,10 +71,13 @@ let markedForAnotherSite = false;
 const forAnotherSite = (): boolean =>
   (markedForAnotherSite ||= typeof document !== "undefined" && servedToAnotherSite(document));
 
+const UNSEEDED_DOCUMENT_ID = crypto.randomUUID?.() ?? String(performance.timeOrigin);
+
 export function postRuntimeMessage(payload: RuntimeOutboundMessage): void {
   if (forAnotherSite() && !ANOTHER_SITE_SEES.has(payload.type)) return;
   try {
-    window.parent.postMessage({ ...payload, ...runtimeProtocolMetadata(runtimeProtocolFps) }, "*");
+    const metadata = runtimeProtocolMetadata(runtimeProtocolFps);
+    window.parent.postMessage({ ...payload, ...metadata, documentId: UNSEEDED_DOCUMENT_ID }, "*");
   } catch (err) {
     // Cross-frame posting can throw if the parent is gone or origin-isolated.
     swallow("bridge.postMessage", err);
@@ -188,6 +192,7 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
     "set-copies-ahead": (data, deps) => deps.onSetCopiesAhead?.(data.on === true),
     "retry-preview-copies": (_d, deps) => deps.onRetryPreviewCopies?.(),
     "request-preview-facts": (_d, deps) => deps.onRequestPreviewFacts?.(),
+    "announce-timeline": (_d, deps) => deps.onAnnounceTimeline?.(),
     "set-root-duration": (data, deps) => {
       const durationSeconds = readNumber(data.durationSeconds, 0);
       if (durationSeconds !== null) deps.onSetRootDuration(durationSeconds);

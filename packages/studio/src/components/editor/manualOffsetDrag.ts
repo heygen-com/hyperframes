@@ -21,7 +21,12 @@ import {
 } from "../../hooks/draggedGsapPosition";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
-import { drawPreviewDraft, endPreviewDraft, endPreviewDraftKeepingSizeOnly } from "./previewDrafts";
+import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
+import {
+  armDraftEndOnRelease,
+  endDraftKeepingWhatTheSaveWrites,
+  settleDraftTranslate,
+} from "./manualOffsetDraftEnd";
 import type { PreviewGestureStart } from "./previewGestureStartRead";
 
 interface OffsetDragGsap {
@@ -476,7 +481,12 @@ export function applyManualOffsetDragCommit(
   dx: number,
   dy: number,
 ): { x: number; y: number } {
-  return applyManualOffsetCommitValue(member, resolveManualOffsetDragMemberOffset(member, dx, dy));
+  const offset = applyManualOffsetCommitValue(
+    member,
+    resolveManualOffsetDragMemberOffset(member, dx, dy),
+  );
+  armDraftEndOnRelease(member);
+  return offset;
 }
 
 /**
@@ -522,25 +532,6 @@ export function restoreManualOffsetDragMembers(members: ManualOffsetDragMember[]
     restoreManualOffsetDragMember(member);
     resumeGsapTimelines(member.element);
   }
-}
-
-// Drop the draft's `translate: none` so the soft reload starts clean (#1673). When GSAP owns
-// the position it folded any translate into its transform, so one still showing applies twice.
-function settleDraftTranslate(element: HTMLElement, gsapOwnsPosition: boolean): void {
-  if (element.style.getPropertyValue("translate") === "none") {
-    element.style.removeProperty("translate");
-  }
-  if (!gsapOwnsPosition) return;
-  const view = element.ownerDocument.defaultView;
-  const underneath = view?.getComputedStyle(element).getPropertyValue("translate");
-  if (underneath && underneath !== "none") element.style.setProperty("translate", "none");
-}
-
-/** Teardown after a COMMITTED drag. */
-function endDraftKeepingWhatTheSaveWrites(member: ManualOffsetDragMember): void {
-  if (member.plainTranslate) endPreviewDraft(member.element, "keep");
-  else if (member.sizeSavedAsScale) endPreviewDraft(member.element, "restore");
-  else endPreviewDraftKeepingSizeOnly(member.element);
 }
 
 export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): void {

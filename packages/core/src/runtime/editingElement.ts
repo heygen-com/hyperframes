@@ -62,6 +62,7 @@ export interface EditingElementMatch {
 export const MAX_ELEMENT_ENTRIES = 256;
 export const MAX_ELEMENT_TEXT = 10_000;
 export const MAX_ELEMENT_VALUE = 2_000;
+export const MAX_DRAFT_PX = 100_000;
 export const MAX_SOURCE_GROUPS = 64;
 export const MAX_DESCRIBE_HANDLES = 256;
 export const MAX_POINT_STACK = 64;

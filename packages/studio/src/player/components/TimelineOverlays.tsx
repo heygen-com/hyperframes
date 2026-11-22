@@ -170,8 +170,7 @@ export function TimelineClipMenuOverlay() {
   const menu = clipContextMenu;
   return (
     <ClipContextMenu
-      x={menu.x}
-      y={menu.y}
+      anchor={menu.anchor}
       element={element}
       currentTime={overlay.currentTime}
       onClose={() => setClipContextMenu(null)}

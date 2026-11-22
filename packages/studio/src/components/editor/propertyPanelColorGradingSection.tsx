@@ -136,7 +136,7 @@ export function ColorGradingSection({
   assets,
   previewIframeRef,
   onImportAssets,
-  onSetAttributeLive,
+  onSetAttributeQuiet,
   onApplyScope,
 }: {
   projectId: string;
@@ -144,7 +144,7 @@ export function ColorGradingSection({
   assets: string[];
   previewIframeRef?: RefObject<HTMLIFrameElement | null>;
   onImportAssets?: (files: FileList, dir?: string) => Promise<string[]>;
-  onSetAttributeLive: (
+  onSetAttributeQuiet: (
     attr: string,
     value: string | null,
     onSettled?: (ok: boolean) => void,
@@ -171,7 +171,7 @@ export function ColorGradingSection({
     projectId,
     element,
     previewIframeRef,
-    onSetAttributeLive,
+    onSetAttributeQuiet,
     onApplyScope,
   });
 

@@ -96,6 +96,7 @@ export interface GestureState {
    */
   resizeFixedCenterStart?: { x: number; y: number };
   resizePressFromCorner?: { x: number; y: number };
+  resizeGrow?: { a: number; b: number; c: number; d: number };
 }
 
 export interface GroupGestureState {

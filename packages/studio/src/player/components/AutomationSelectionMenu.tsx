@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import { AUTOMATION_SHAPES, type AutomationShapeId } from "./automationShapes";
 import { menuClasses } from "../../components/ui/menuStyle";
+import { placeMenu, pointAnchor } from "../../components/ui/menuPosition";
 
 interface AutomationSelectionMenuProps {
   x: number;
@@ -31,14 +32,10 @@ export const AutomationSelectionMenu = memo(function AutomationSelectionMenu({
   const menuRef = useContextMenuDismiss(onClose);
   const row =
     "block w-full px-2 py-1 text-left text-[11px] text-panel-text-1 hover:bg-panel-hover disabled:opacity-40";
-  // Same edge-clamping precedent as TrackGapContextMenu: without it a
-  // right-click near the bottom/right of the timeline renders this menu
-  // partially off-screen.
-  const menuWidth = 140;
-  const menuHeight = AUTOMATION_SHAPES.length * 24 + 32;
-  const overflowY = y + menuHeight - window.innerHeight;
-  const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
-  const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
+  const { left, top } = placeMenu(pointAnchor(x, y), {
+    width: 140,
+    height: AUTOMATION_SHAPES.length * 24 + 32,
+  });
   return createPortal(
     <div
       ref={menuRef}
@@ -47,7 +44,7 @@ export const AutomationSelectionMenu = memo(function AutomationSelectionMenu({
       // in the SAME root stacking context, so a z-50 menu opened near the top of
       // the timeline is painted through by the ruler and the playhead.
       className={`${menuClasses.panel} hf-automation-menu fixed z-200 min-w-[140px]`}
-      style={{ left: adjustedX, top: adjustedY }}
+      style={{ left, top }}
     >
       {AUTOMATION_SHAPES.map((shape) => (
         <button

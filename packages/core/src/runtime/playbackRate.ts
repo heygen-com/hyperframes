@@ -1,3 +1,4 @@
+import { sourceLengthOf } from "./sourceLength";
 import {
   clampPlaybackRate,
   readAuthoredDurationSeconds,
@@ -62,12 +63,12 @@ export function resolveMediaElementDurationSeconds(
   const resolved = resolveMediaDuration({
     tag: "video", // video and audio resolve identically
     authoredDurationSeconds: readDataDurationSeconds((name) => el.getAttribute(name)),
-    sourceDurationSeconds: Number.isFinite(el.duration) ? el.duration : null,
+    sourceDurationSeconds: Number.isFinite(sourceLengthOf(el)) ? sourceLengthOf(el) : null,
     mediaStartSeconds: readMediaStart(el),
     playbackRate: readElementPlaybackRate(el),
   });
   return resolved.source === "media"
-    ? resolveNaturalMediaTimelineDuration(el, el.duration)
+    ? resolveNaturalMediaTimelineDuration(el, sourceLengthOf(el))
     : resolved.seconds;
 }
 

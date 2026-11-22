@@ -11,6 +11,7 @@ export const RUNTIME_PROTOCOL_CAPABILITIES = [
   "composition-manifest-v1",
   "runtime-data",
   "play-range",
+  "announce-timeline",
 ] as const;
 
 export type RuntimeProtocolFps = {

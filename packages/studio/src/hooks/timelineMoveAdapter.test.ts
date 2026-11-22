@@ -23,6 +23,12 @@ const movedPair = (edits: MoveArgs[0]) => [
   { element: edits[1].element, start: 3, track: 2 },
 ];
 
+// Every drag carries its policy for an earlier refused edit.
+const commitOptions = (coalesceKey: string | undefined) => ({
+  coalesceKey,
+  ifEarlierRefused: expect.any(Function),
+});
+
 const runMove = async (edits: MoveArgs[0], coalesceKey: MoveArgs[1], intent: MoveArgs[2]) => {
   const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
   await persistTimelineMoveEditsAtomically(edits, coalesceKey, intent, {
@@ -36,17 +42,19 @@ describe("persistTimelineMoveEditsAtomically", () => {
     const edits = twoLaneEdits(1);
     const handleTimelineGroupMove = await runMove(edits, "clip-lane-move:7", "track-insert");
     expect(handleTimelineGroupMove).toHaveBeenCalledTimes(1);
-    expect(handleTimelineGroupMove).toHaveBeenCalledWith(movedPair(edits), {
-      coalesceKey: "clip-lane-move:7",
-    });
+    expect(handleTimelineGroupMove).toHaveBeenCalledWith(
+      movedPair(edits),
+      commitOptions("clip-lane-move:7"),
+    );
   });
 
   it("omits track attrs for plain timing moves (keeps the SDK fast path eligible)", async () => {
     const edit = { element: element("a", 0), updates: { start: 1, track: 0 } };
     const handleTimelineGroupMove = await runMove([edit], undefined, "timing");
-    expect(handleTimelineGroupMove).toHaveBeenCalledWith([{ element: edit.element, start: 1 }], {
-      coalesceKey: undefined,
-    });
+    expect(handleTimelineGroupMove).toHaveBeenCalledWith(
+      [{ element: edit.element, start: 1 }],
+      commitOptions(undefined),
+    );
   });
 
   it("persists the track attr for a single lane reorder (stable track lanes)", async () => {
@@ -56,16 +64,17 @@ describe("persistTimelineMoveEditsAtomically", () => {
     const handleTimelineGroupMove = await runMove([edit], "clip-lane-move:7", "lane-reorder");
     expect(handleTimelineGroupMove).toHaveBeenCalledWith(
       [{ element: edit.element, start: 1, track: 1 }],
-      { coalesceKey: "clip-lane-move:7" },
+      commitOptions("clip-lane-move:7"),
     );
   });
 
   it("persists track attrs for a multi-selection lane drag (stable track lanes)", async () => {
     const edits = twoLaneEdits(2);
     const handleTimelineGroupMove = await runMove(edits, "clip-lane-move:7", "lane-reorder");
-    expect(handleTimelineGroupMove).toHaveBeenCalledWith(movedPair(edits), {
-      coalesceKey: "clip-lane-move:7",
-    });
+    expect(handleTimelineGroupMove).toHaveBeenCalledWith(
+      movedPair(edits),
+      commitOptions("clip-lane-move:7"),
+    );
   });
 
   it("carries explicit detachment through the atomic move", async () => {
@@ -76,7 +85,7 @@ describe("persistTimelineMoveEditsAtomically", () => {
     const handle = await runMove([edit], "move", "track-insert");
     expect(handle).toHaveBeenCalledWith(
       [{ element: edit.element, start: 1, track: 0, audioGroup: null }],
-      { coalesceKey: "move" },
+      commitOptions("move"),
     );
   });
 

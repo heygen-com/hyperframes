@@ -102,6 +102,18 @@ function loadCloudRunAdapter(): Promise<CloudRunAdapter> {
   return cloudRunAdapterPromise;
 }
 
+async function cloudRunAdapter(subcommand: string): Promise<CloudRunAdapter> {
+  try {
+    return await loadCloudRunAdapter();
+  } catch (error) {
+    if (isMissingCloudRunAdapterError(error)) {
+      console.error(missingCloudRunAdapterMessage(subcommand));
+      failCommand();
+    }
+    throw error;
+  }
+}
+
 export function isMissingCloudRunAdapterError(error: unknown): boolean {
   return isMissingPackageError(error, "@hyperframes/gcp-cloud-run");
 }
@@ -232,25 +244,6 @@ export default defineCommand({
       console.log(HELP);
       return;
     }
-    const verbsNeedingAdapter = new Set([
-      "deploy",
-      "sites",
-      "render",
-      "render-batch",
-      "progress",
-      "destroy",
-    ]);
-    if (verbsNeedingAdapter.has(subcommand)) {
-      try {
-        await loadCloudRunAdapter();
-      } catch (error) {
-        if (isMissingCloudRunAdapterError(error)) {
-          console.error(missingCloudRunAdapterMessage(subcommand));
-          failCommand();
-        }
-        throw error;
-      }
-    }
     switch (subcommand) {
       case "deploy":
         return runDeploy(args);
@@ -344,7 +337,7 @@ async function runDeploy(args: Record<string, unknown>): Promise<void> {
   }
   const region = (args.region as string | undefined) ?? "us-central1";
   const repo = (args.repo as string | undefined) ?? "hyperframes";
-  const { getTerraformModuleDir } = await loadCloudRunAdapter();
+  const { getTerraformModuleDir } = await cloudRunAdapter("deploy");
   const tfDir = getTerraformModuleDir();
   const repoRoot = findRepoRoot(tfDir);
 
@@ -515,7 +508,7 @@ async function runSites(args: Record<string, unknown>): Promise<void> {
     failUsage();
   }
   const state = readState(args);
-  const { deploySite } = await loadCloudRunAdapter();
+  const { deploySite } = await cloudRunAdapter("sites");
   const handle = await deploySite({
     projectDir: resolve(projectDir),
     bucketName: state.bucketName,
@@ -569,7 +562,7 @@ async function runRender(args: Record<string, unknown>): Promise<void> {
   const intervalMs = parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms") ?? 5000;
   const state = readState(args);
 
-  const { renderToCloudRun, getRenderProgress } = await loadCloudRunAdapter();
+  const { renderToCloudRun, getRenderProgress } = await cloudRunAdapter("render");
   const handle = await renderToCloudRun({
     projectDir: resolve(projectDir),
     includeOutsideFiles: args["include-outside-files"] === true,
@@ -626,7 +619,7 @@ async function runProgress(args: Record<string, unknown>): Promise<void> {
     console.error("[cloudrun progress] usage: hyperframes cloudrun progress <executionName>");
     failUsage();
   }
-  const { getRenderProgress } = await loadCloudRunAdapter();
+  const { getRenderProgress } = await cloudRunAdapter("progress");
   const progress = await getRenderProgress({ executionName });
   if (args.json) {
     console.log(JSON.stringify(progress, null, 2));
@@ -701,7 +694,7 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
   const maxConcurrent =
     parsePositiveInt(args["max-concurrent"], "--max-concurrent") ?? DEFAULT_BATCH_MAX_CONCURRENT;
   const state = readState(args);
-  const { deploySite, renderToCloudRun } = await loadCloudRunAdapter();
+  const { deploySite, renderToCloudRun } = await cloudRunAdapter("render-batch");
 
   // Upload the project once; every entry reuses the same content-addressed
   // site handle so the tar+upload cost is paid a single time.
@@ -791,7 +784,7 @@ function parseBatchFile(path: string): BatchEntry[] {
 
 // fallow-ignore-next-line complexity
 async function runDestroy(args: Record<string, unknown>): Promise<void> {
-  const { getTerraformModuleDir } = await loadCloudRunAdapter();
+  const { getTerraformModuleDir } = await cloudRunAdapter("destroy");
   const tfDir = getTerraformModuleDir();
   const state = existsSync(statePath())
     ? (JSON.parse(readFileSync(statePath(), "utf8")) as Partial<StackState>)

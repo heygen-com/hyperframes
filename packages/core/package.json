@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.80",
+  "version": "0.9.83",
   "description": "",
   "repository": {
     "type": "git",
@@ -477,6 +477,12 @@
       "import": "./src/runtime/editingPort.ts",
       "types": "./src/runtime/editingPort.ts"
     },
+    "./runtime/css-rotation": {
+      "bun": "./src/runtime/editing/cssRotation.ts",
+      "node": "./dist/runtime/editing/cssRotation.js",
+      "import": "./src/runtime/editing/cssRotation.ts",
+      "types": "./src/runtime/editing/cssRotation.ts"
+    },
     "./runtime/patch-tween": {
       "bun": "./src/runtime/editing/patchTween.ts",
       "node": "./dist/runtime/editing/patchTween.js",
@@ -554,6 +560,12 @@
       "node": "./dist/compiler/htmlDocument.js",
       "import": "./src/compiler/htmlDocument.ts",
       "types": "./src/compiler/htmlDocument.ts"
+    },
+    "./compiler/selector-id-tokens": {
+      "bun": "./src/compiler/selectorIdTokens.ts",
+      "node": "./dist/compiler/selectorIdTokens.js",
+      "import": "./src/compiler/selectorIdTokens.ts",
+      "types": "./src/compiler/selectorIdTokens.ts"
     },
     "./compiler/png-colour-tags": {
       "bun": "./src/compiler/pngColourTags.ts",
@@ -1023,6 +1035,10 @@
         "import": "./dist/runtime/editingPort.js",
         "types": "./dist/runtime/editingPort.d.ts"
       },
+      "./runtime/css-rotation": {
+        "import": "./dist/runtime/editing/cssRotation.js",
+        "types": "./dist/runtime/editing/cssRotation.d.ts"
+      },
       "./runtime/patch-tween": {
         "import": "./dist/runtime/editing/patchTween.js",
         "types": "./dist/runtime/editing/patchTween.d.ts"
@@ -1074,6 +1090,10 @@
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",
         "types": "./dist/compiler/htmlDocument.d.ts"
+      },
+      "./compiler/selector-id-tokens": {
+        "import": "./dist/compiler/selectorIdTokens.js",
+        "types": "./dist/compiler/selectorIdTokens.d.ts"
       },
       "./compiler/png-colour-tags": {
         "import": "./dist/compiler/pngColourTags.js",

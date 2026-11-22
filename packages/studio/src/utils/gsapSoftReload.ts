@@ -34,9 +34,9 @@ export {
 type IframeWindow = SoftReloadWindow & { __playerReady?: boolean };
 
 /**
- * Pre-load and register MotionPathPlugin once per preview load (NLELayout's onIframeLoad), so
- * adding the first motion path does not wait for the CDN mid-reload and flash. Idempotent; without
- * gsap it waits for the runtime's ready, and a CDN failure is left to the soft reload's own load.
+ * Pre-load and register MotionPathPlugin once per preview load (NLELayout's onIframeLoad) unless the page is marked
+ * path-free; a first path added by an edit waits for it on its re-run. Idempotent; without gsap it waits for the
+ * runtime's ready, and a CDN failure is left to the soft reload's own load.
  */
 // At most one preview waits for its runtime; a newer load replaces it, so a frame that never boots is not kept alive.
 let pendingReadyRetry: ((event: MessageEvent) => void) | null = null;
