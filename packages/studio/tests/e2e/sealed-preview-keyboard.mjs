@@ -92,32 +92,34 @@ try {
 
   // The heading picked on the canvas, Enter opens its text edit in the frame, typing goes on at its end.
   const typeInHeading = async (text) => {
-    const picked = () =>
-      page
-        .waitForFunction(
-          () => new URLSearchParams(location.hash.split("?")[1]).get("selId") === "head",
+    const opened = () =>
+      inPreview((f) =>
+        f.waitForFunction(
+          () => {
+            const head = document.getElementById("head");
+            return head.isContentEditable && document.activeElement === head;
+          },
           { timeout: 10_000 },
-        )
-        .then(
-          () => true,
-          () => false,
-        );
-    for (let tries = 0; tries < 3; tries++) {
+        ),
+      ).then(
+        () => true,
+        () => false,
+      );
+    // A pick during a save's reload can miss or keep the old frame's selection: pick again, as a person would.
+    let open = false;
+    for (let tries = 0; tries < 3 && !open; tries++) {
       await page.waitForFunction(
         () => document.querySelector("hyperframes-player")?.painted === true,
       );
       await inPreview((f) => clickInPreview(page, f, "#head"));
-      if (await picked()) break;
+      await page.waitForFunction(
+        () => new URLSearchParams(location.hash.split("?")[1]).get("selId") === "head",
+      );
+      await keyboardBackInStudio();
+      await page.keyboard.press("Enter");
+      open = await opened();
     }
-    assert.ok(await picked(), "the heading is picked on the canvas");
-    await keyboardBackInStudio();
-    await page.keyboard.press("Enter");
-    await inPreview((f) =>
-      f.waitForFunction(() => {
-        const head = document.getElementById("head");
-        return head.isContentEditable && document.activeElement === head;
-      }),
-    );
+    assert.ok(open, "Enter on the picked heading opens its text edit");
     await page.keyboard.press("End");
     await page.keyboard.type(text);
   };
