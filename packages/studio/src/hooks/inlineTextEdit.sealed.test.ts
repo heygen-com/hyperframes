@@ -1283,12 +1283,26 @@ it("keeps a panel remove that ended an edit when a newer save on the same field 
 // fails without the fix: the failed add was not the newest save, so its field stayed drawn though no file had it.
 it("takes back a failed field add's draw when a newer save on another field lands", async () => {
   const { title, iframe, selection } = await sealedTitleHoldingEnds(SPANS);
-  const { persist, text } = sourceFile((value) => value.includes("New text"), SPANS);
+  let failAdd!: () => void;
+  const addFails = new Promise<void>((resolve) => (failAdd = resolve));
+  const { persist: write, text } = sourceFile((value) => value.includes("New text"), SPANS);
+  const persist: typeof write = async (...args) => {
+    if (String(args[1][0]!.value).includes("New text")) await addFails;
+    return write(...args);
+  };
   const { commits } = wiredEditor(iframe, selection, persist);
-  const [first, second] = selection.textFields.map((field) => field.key);
   const saves: Array<Promise<unknown>> = [];
-  act(() => void saves.push(commits().handleDomAddTextField(second)));
-  act(() => void saves.push(commits().handleDomTextCommitForSelection(selection, "Blue", first)));
+  act(() => void saves.push(commits().handleDomAddTextField(selection.textFields[1]!.key)));
+  await vi.waitFor(() => expect(title.textContent).toContain("New text"));
+  // The person picks the field from the panel as the canvas now shows it.
+  const shown = await select(iframe, "title");
+  act(
+    () =>
+      void saves.push(
+        commits().handleDomTextCommitForSelection(shown, "Blue", shown.textFields[0]!.key),
+      ),
+  );
+  failAdd();
   await act(() => Promise.allSettled(saves));
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
   expect(text("title")).toBe("<span>Blue</span> <span>Two</span>");
