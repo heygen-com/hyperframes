@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NO_PATH_TWEEN_META } from "@hyperframes/core/gsap-cdn";
@@ -77,12 +78,37 @@ describe("the preview builder's proof that no script can tween along a path", ()
     expect(await pathFree(own, {}, { "gsap.min.js": join(outside, "gsap.min.js") })).toBe(false);
   });
 
-  // fails without the fix: the scan read the disk on the route's event loop, with no limit on a silent drive.
-  it("fails when a script's read does not answer within its budget", async () => {
-    const { html, dir } = page('<script src="never-answers.js"></script>', {
-      "never-answers.js": GSAP_FILE,
-    });
-    expect(await provesNoPathTween(html, dir, 50, () => new Promise<string>(() => {}))).toBe(false);
+  // fails without the fix: each project script's path was resolved with a synchronous realpath on the server thread.
+  it("resolves project scripts without a synchronous realpath", async () => {
+    const { html, dir } = page('<script src="gsap.min.js"></script>', { "gsap.min.js": GSAP_FILE });
+    const fs = createRequire(import.meta.url)("node:fs") as typeof import("node:fs");
+    const native = fs.realpathSync.native;
+    let syncCalls = 0;
+    fs.realpathSync.native = ((...args: Parameters<typeof native>) => (
+      syncCalls++, native(...args)
+    )) as typeof native;
+    onTestFinished(() => void (fs.realpathSync.native = native));
+    expect(await provesNoPathTween(html, dir)).toBe(true);
+    expect(syncCalls).toBe(0);
+  });
+
+  // fails without the fix: the scan resolved and read the disk on the route's event loop, with no limit on a silent
+  // drive.
+  it.each([
+    [
+      "resolving its path",
+      { resolve: () => new Promise<never>(() => {}), read: async () => GSAP_FILE },
+    ],
+    [
+      "reading it",
+      {
+        resolve: async (base: string, rel: string) => join(base, rel),
+        read: () => new Promise<never>(() => {}),
+      },
+    ],
+  ])("fails when %s does not answer within the budget", async (_, files) => {
+    const { html, dir } = page('<script src="gsap.min.js"></script>', { "gsap.min.js": GSAP_FILE });
+    expect(await provesNoPathTween(html, dir, 50, files)).toBe(false);
   });
 
   it("fails for a page whose own text names a path", async () => {

@@ -16,6 +16,7 @@ import {
   isSafePath,
   isStudioPrivatePath,
   mkdirWithinProject,
+  resolveExistingWithinProjectOff,
   resolveWithinProject,
   toolTrustedFileKind,
 } from "./safePath.js";
@@ -188,6 +189,17 @@ describe("resolveWithinProject", () => {
     writeFileSync(join(external, "secret.txt"), "top secret");
     if (!tryCreateSymlink(external, join(base, "link"), "dir")) return;
     expect(resolveWithinProject(base, "link/secret.txt")).toBeNull();
+  });
+
+  it("answers the same off the event loop for a file that exists", async () => {
+    const base = tmpDir("rwp-base-");
+    const external = tmpDir("rwp-external-");
+    writeFileSync(join(base, "in.js"), "in");
+    writeFileSync(join(external, "secret.txt"), "top secret");
+    expect(await resolveExistingWithinProjectOff(base, "in.js")).toBe(join(base, "in.js"));
+    expect(await resolveExistingWithinProjectOff(base, "../../etc/passwd")).toBeNull();
+    if (!tryCreateSymlink(external, join(base, "link"), "dir")) return;
+    expect(await resolveExistingWithinProjectOff(base, "link/secret.txt")).toBeNull();
   });
 });
 

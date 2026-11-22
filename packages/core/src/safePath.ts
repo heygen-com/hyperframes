@@ -105,8 +105,26 @@ export function isSafePath(base: string, resolved: string): boolean {
     const targetReal = trailing.length
       ? join(ancestorReal, ...[...trailing].reverse())
       : ancestorReal;
-    return targetReal === baseReal || targetReal.startsWith(baseReal + sep);
+    return realPathWithin(baseReal, targetReal);
   }
+}
+
+/** The containment rule once both sides are real paths. */
+export const realPathWithin = (baseReal: string, targetReal: string): boolean =>
+  targetReal === baseReal || targetReal.startsWith(baseReal + sep);
+
+/** `resolveWithinProject` off the event loop, for a path that exists: the absolute path, or null outside `base`. */
+export async function resolveExistingWithinProjectOff(
+  base: string,
+  relativePath: string,
+): Promise<string | null> {
+  const resolved = resolve(base, relativePath);
+  if (namesAnotherNetworkRoot(resolve(base), resolved)) return null;
+  const [baseReal, targetReal] = await Promise.all([
+    realpathOff(resolve(base)),
+    realpathOff(resolved),
+  ]);
+  return realPathWithin(baseReal, targetReal) ? resolved : null;
 }
 
 /**

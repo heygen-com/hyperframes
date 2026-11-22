@@ -50,7 +50,11 @@ import {
   projectRelativePath,
   resolveWithinProject,
 } from "../helpers/safePath.js";
-import { isPrivateProjectFileOff, statOrNull } from "../helpers/projectDisk.js";
+import {
+  isPrivateProjectFileOff,
+  resolveExistingProjectFileOff,
+  statOrNull,
+} from "../helpers/projectDisk.js";
 import { getMimeType } from "../helpers/mime.js";
 import { serveWhileOpen } from "../helpers/servedFiles.js";
 import { openRangeEnd } from "../helpers/mediaRange.js";
@@ -206,21 +210,28 @@ const PROJECT_PREVIEW_BASE =
 const MAX_READ_SCRIPT_BYTES = 4 * 1024 * 1024;
 const SCRIPT_SCAN_MS = 1000;
 
-type ReadScript = (file: string) => Promise<string>;
-const readScript: ReadScript = (file) => readFile(file, "utf-8");
+/** How the scan reaches a project's files: both off the event loop. */
+interface ScriptFiles {
+  resolve: (base: string, relativePath: string) => Promise<string | null>;
+  read: (file: string) => Promise<string>;
+}
+const projectFiles: ScriptFiles = {
+  resolve: resolveExistingProjectFileOff,
+  read: (file) => readFile(file, "utf-8"),
+};
 
 async function projectScriptNamesNoPath(
   src: string,
   projectDir: string,
-  read: ReadScript,
+  files: ScriptFiles,
 ): Promise<boolean> {
   if (/^(?:[a-z][\w+.-]*:|\/)/i.test(src)) return false;
   try {
-    const file = resolveWithinProject(projectDir, decodeURIComponent(src.split(/[?#]/)[0]!));
+    const file = await files.resolve(projectDir, decodeURIComponent(src.split(/[?#]/)[0]!));
     if (file === null) return false;
     const info = await statFile(file);
     if (!info.isFile() || info.size > MAX_READ_SCRIPT_BYTES) return false;
-    return !namesMotionPath(await read(file));
+    return !namesMotionPath(await files.read(file));
   } catch {
     return false;
   }
@@ -229,14 +240,14 @@ async function projectScriptNamesNoPath(
 async function scriptCannotTweenAlongPath(
   tag: string,
   projectDir: string,
-  read: ReadScript,
+  files: ScriptFiles,
 ): Promise<boolean> {
   if (tag.includes(RUNTIME_BOOTSTRAP_ATTR)) return true;
   if (/\stype\s*=\s*["']?module\b/i.test(tag)) return false;
   const match = SCRIPT_SRC_ATTR.exec(tag);
   if (!match) return true;
   const src = (match[1] ?? match[2] ?? match[3] ?? "").replace(/&amp;/gi, "&");
-  return GSAP_ON_ITS_CDN.test(src) || projectScriptNamesNoPath(src, projectDir, read);
+  return GSAP_ON_ITS_CDN.test(src) || projectScriptNamesNoPath(src, projectDir, files);
 }
 
 /** True only when no script the page loads can tween along a path: the page's text and each project script it loads
@@ -245,20 +256,17 @@ export async function provesNoPathTween(
   html: string,
   projectDir: string,
   budgetMs = SCRIPT_SCAN_MS,
-  read = readScript,
+  files = projectFiles,
 ): Promise<boolean> {
   if (namesMotionPath(html) || /\sdata-composition-src\s*=/i.test(html)) return false;
   if ((html.match(/<base\b/gi) ?? []).length !== 1 || !PROJECT_PREVIEW_BASE.test(html))
     return false;
+  const deadline = performance.now() + budgetMs;
   const scripts = findStartTags(html, "script").map((start) =>
-    scriptCannotTweenAlongPath(html.slice(start, html.indexOf(">", start) + 1), projectDir, read),
+    scriptCannotTweenAlongPath(html.slice(start, html.indexOf(">", start) + 1), projectDir, files),
   );
   try {
-    const answers = await withinDeadline(
-      Promise.all(scripts),
-      performance.now() + budgetMs,
-      "scripts",
-    );
+    const answers = await withinDeadline(Promise.all(scripts), deadline, "scripts");
     return answers.every(Boolean);
   } catch {
     return false;
