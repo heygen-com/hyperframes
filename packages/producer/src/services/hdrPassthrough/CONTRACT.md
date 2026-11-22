@@ -106,6 +106,34 @@ progress, and reports in the 25–35% band. Encode drives `job.framesRendered`
 from ffmpeg's encoded-frame count and reports 35–80%. `frameStallRule` only
 sees `complete()` once every frame is encoded.
 
+## Stage 2 frame deferral (`frameDeferral.ts`)
+
+The passthrough reads the source file, never the frames Stage 2 decodes for
+its video. With the flag on, the orchestrator asks Stage 2 to defer them when
+`passthroughDefersFrameExtraction` passes: the eligibility gates known before
+any probe (opt-in, not `force-sdr`, mp4, no alpha, no motion blur, no canvas
+grading or master effects, exactly one local video that `qualifyVideoLayer`
+accepts, no frame window or SDR video-layer passthrough). Stage 2 then probes
+as before and, only when every video probes as native HDR, extracts with the
+engine's `deferRangeExtraction`: each video gets its metadata and an exact
+`totalFrames` with a `deferredRange` and no frames.
+
+The deferred frames are extracted with `extractAllDeferredFrames` (the same
+`extractVideoFramesRange` options a full extraction uses for a native HDR
+source, into the folder the frame lookup already points at) before the first
+route that reads them:
+
+- after a passthrough fallback, inside the `capture_hdr_layered` stage, before
+  `runCaptureHdrStage` (`captureHdrWithPassthrough`); ffmpeg progress ticks
+  `noteStaticDedupActivity` so the stall rule sees liveness;
+- before capture when the plan is anything but `hdr_layered` with HDR content;
+- worker calibration reads just its sample frames, the way it does for a
+  frame window.
+
+A completed passthrough never extracts them. Stage 2's coverage gate is
+applied again after the extraction. With the flag off nothing is deferred and
+the scheduling is unchanged.
+
 ## Ownership
 
 | File                         | Owner stream      | Notes                                                                           |
@@ -117,6 +145,7 @@ sees `complete()` once every frame is encoded.
 | `overlayCapture.ts`          | capture           | `captureOverlayStates`; needs a 16-bit RGBA PNG encoder (`encodePng` is 8-bit). |
 | `ffmpegComposite.ts`         | composite         | `buildCompositeArgs`, `compositeAndEncode`.                                     |
 | `renderOrchestrator.ts` hook | skeleton          | Done. Leave it alone unless the contract changes.                               |
+| `frameDeferral.ts`           | extraction skip   | Stage 2 deferral gate, lazy extraction, passthrough-or-layered sequencing.      |
 
 Each stream adds `<file>.test.ts` next to its file (`bun:test`, like the
 sibling `index.test.ts`). The pure parts (`planOverlayStates`,
@@ -160,7 +189,6 @@ CLI: `packages/cli/src/commands/render.ts:499` arg + help; `render/plan.ts:503` 
 
 ## Known gaps for v1
 
-- Stage 2 video extraction runs before routing, so it is not skipped for the passthrough video yet. Check whether native-HDR videos are already excluded there (`extractVideosStage.ts:549` `skipFrameExtractionIds`). If they are not, that cost remains.
 - After a fallback, `job.progress` is monotonic, so the percentage can sit still until the layered path passes where the passthrough stopped.
 - The stage is still observed as `capture_hdr_layered`, and `hdrPerf` is `undefined` on the passthrough path.
 - v1 is mp4-only, with no alpha, no HDR images and no shader transitions (see the eligibility gates).

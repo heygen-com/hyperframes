@@ -275,6 +275,11 @@ import {
 import { type CaptureHdrStageInput, runCaptureHdrStage } from "./render/stages/captureHdrStage.js";
 import { attemptHdrPassthrough } from "./hdrPassthrough/index.js";
 import {
+  captureHdrWithPassthrough,
+  createDeferredPassthroughFrames,
+  passthroughDefersFrameExtraction,
+} from "./hdrPassthrough/frameDeferral.js";
+import {
   canEncodeWhileCapturing,
   encodeWhileCapturing,
   runEncodeStage,
@@ -3667,6 +3672,17 @@ async function executeRenderPipeline(input: {
         reason,
       });
     }
+    // The HDR passthrough reads the source file, not extracted frames; they are extracted
+    // later only if the render does not complete through it (`passthroughFrames` below).
+    const deferNativeHdrFrames = passthroughDefersFrameExtraction({
+      experimentalHdrPassthrough: cfg.experimentalHdrPassthrough,
+      hdrMode: job.config.hdrMode,
+      outputFormat,
+      needsAlpha,
+      motionBlur: job.config.motionBlur !== undefined,
+      composition,
+      framesHeldBackElsewhere: windowVideoFrames || videoLayer !== undefined,
+    });
     const extractResult = await observeRenderStage(
       observability,
       "video_extract",
@@ -3686,6 +3702,7 @@ async function executeRenderPipeline(input: {
           // Local staging can use links; distributed plan() alone requires real copies.
           materializeSymlinks: false,
           deferRangeExtraction: windowVideoFrames ? true : undefined,
+          ...(deferNativeHdrFrames ? { deferNativeHdrFrames } : {}),
           shownBoxes,
           onProgress,
         }),
@@ -3701,6 +3718,7 @@ async function executeRenderPipeline(input: {
       imageTransfers,
       hdrImageSrcPaths,
       imageColorSpaces,
+      nativeHdrFramesDeferred,
       failureToEnforce,
     } = extractResult;
     perfStages.videoExtractMs = extractResult.videoExtractMs;
@@ -4024,6 +4042,35 @@ async function executeRenderPipeline(input: {
       });
     };
 
+    // Frames Stage 2 deferred for the HDR passthrough. Extracted the way a full extraction writes
+    // them, into the folder the frame lookup already points at, before any route other than a
+    // completed passthrough reads them. Never runs when nothing was deferred (flag off).
+    const passthroughFrames = createDeferredPassthroughFrames(nativeHdrFramesDeferred, async () => {
+      const extracted = extractionResult?.extracted ?? [];
+      const startedAt = Date.now();
+      log.info("[Render] HDR passthrough: extracting the video frames it deferred", {
+        videoCount: extracted.filter((video) => video.deferredRange).length,
+      });
+      await extractAllDeferredFrames(extracted, {
+        fps: job.config.fps,
+        cfg,
+        shownBoxes,
+        signal: executionSignal,
+        maxTransientRetries: resolveVideoExtractionPolicy().maxTransientRetries,
+        // Liveness for the capture stage's stall rule when this runs after a fallback.
+        onFrameProgress: () => noteStaticDedupActivity(job),
+      });
+      assertNotAborted();
+      // The same gate Stage 2 applies to the frames it extracts itself.
+      assertVideoFrameCoverage(
+        computeVideoFrameCoverage(composition.videos, extracted, job.config.fps),
+        coverageThreshold,
+      );
+      const elapsedMs = Date.now() - startedAt;
+      perfStages.videoExtractMs = (perfStages.videoExtractMs ?? 0) + elapsedMs;
+      log.info("[Render] HDR passthrough: extracted the deferred video frames", { elapsedMs });
+    });
+
     let captureCalibration:
       | {
           estimate: CaptureCostEstimate;
@@ -4334,13 +4381,15 @@ async function executeRenderPipeline(input: {
         code: "start_browsers",
       });
       // Calibration samples fixed frames, so the windowed videos it shows are extracted for just
-      // those here, outside its timing, and removed when it ends however it ends.
-      const calibrationFrames = videoFrameWindow
-        ? await buildSegmentVideoFrames().forFrames(
-            selectCaptureCalibrationFrames(totalFrames),
-            "calibration",
-          )
-        : undefined;
+      // those here, outside its timing, and removed when it ends however it ends. Frames deferred
+      // for the HDR passthrough are read the same way, so calibration times what the full route reads.
+      const calibrationFrames =
+        videoFrameWindow || passthroughFrames.pending
+          ? await buildSegmentVideoFrames().forFrames(
+              selectCaptureCalibrationFrames(totalFrames),
+              "calibration",
+            )
+          : undefined;
       let outcome: Awaited<ReturnType<typeof runCaptureCalibration>>;
       try {
         outcome = await observeRenderStage(
@@ -4912,6 +4961,10 @@ async function executeRenderPipeline(input: {
     });
     if (videoFrameWindow && capturePlan.kind !== "sdr_segmented")
       await extractDeferredVideoFrames();
+    // Only the HDR layered route can still complete through the passthrough; it extracts on fallback.
+    if (passthroughFrames.pending && !(capturePlan.kind === "hdr_layered" && hasHdrContent)) {
+      await passthroughFrames.ensureExtracted();
+    }
     updateCaptureObservability({ videoFrameWindow: videoFrameWindow ? "on" : "off" });
     observability.checkpoint("capture_strategy", "resolved", {
       plan: capturePlan.kind,
@@ -5067,13 +5120,17 @@ async function executeRenderPipeline(input: {
           };
           // Opt-in: one full-frame HDR video under statically timed overlays is
           // composited by ffmpeg from cached overlay states. Ineligible or failed
-          // attempts fall back to the layered stage below, unchanged.
-          if (cfg.experimentalHdrPassthrough && hasHdrContent) {
-            const passthrough = await attemptHdrPassthrough(hdrStageInput);
-            if (passthrough.kind === "completed") return passthrough.result;
-            resetCaptureAttemptProgress(job);
-          }
-          return runCaptureHdrStage(hdrStageInput);
+          // attempts fall back to the layered stage, unchanged, after extracting
+          // any frames Stage 2 deferred for the passthrough.
+          return captureHdrWithPassthrough({
+            attempt:
+              cfg.experimentalHdrPassthrough && hasHdrContent
+                ? () => attemptHdrPassthrough(hdrStageInput)
+                : undefined,
+            frames: passthroughFrames,
+            onFallback: () => resetCaptureAttemptProgress(job),
+            layered: () => runCaptureHdrStage(hdrStageInput),
+          });
         },
         { stall: frameStallRule(job, totalFrames, perfStages.browserProbeMs) },
       );

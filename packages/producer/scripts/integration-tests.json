@@ -71,6 +71,7 @@
   "src/services/render/planReferenceBackground.polling.test.ts",
   "src/services/render/deferredVideoFrames.integration.test.ts",
   "src/services/render/stages/extractVideosStage.integration.test.ts",
+  "src/services/render/stages/extractVideosStage.hdrDeferral.integration.test.ts",
   "src/services/render/videoShownBoxes.integration.test.ts",
   "src/services/hdrPassthrough/ffmpegComposite.integration.test.ts",
   "src/services/hdrPassthrough/overlayCapture.integration.test.ts",

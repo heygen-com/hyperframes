@@ -105,6 +105,12 @@ export interface ExtractVideosStageInput {
    */
   materializeSymlinks?: boolean;
   deferRangeExtraction?: boolean;
+  /**
+   * HDR passthrough: when every video probes as native HDR, leave their frames
+   * deferred (`deferredRange`, no decode) for the caller to extract with
+   * `extractAllDeferredFrames` before any route reads them. Unset extracts as before.
+   */
+  deferNativeHdrFrames?: boolean;
   shownBoxes?: ReadonlyMap<string, ShownBox>;
   skipFrameExtractionIds?: readonly string[];
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
@@ -133,6 +139,8 @@ export interface ExtractVideosStageResult {
   imageColorSpaces: (VideoColorSpace | null)[];
   /** Wall-clock ms for the video extraction phase. */
   videoExtractMs: number;
+  /** `deferNativeHdrFrames` took effect: some video's frames are still to be extracted. */
+  nativeHdrFramesDeferred: boolean;
   /**
    * Candidate-only typed failure gate. Callers throw this only after their
    * extraction telemetry checkpoint has been emitted.
@@ -419,6 +427,27 @@ async function probeColorSpaceSafely(
   }
 }
 
+/** `deferNativeHdrFrames` applies only when every video probed as native HDR. */
+function defersNativeHdrFrames(
+  requested: boolean | undefined,
+  videos: readonly { id: string }[],
+  nativeHdrVideoIds: ReadonlySet<string>,
+): boolean {
+  return requested === true && videos.every((video) => nativeHdrVideoIds.has(video.id));
+}
+
+/** The engine's `deferRangeExtraction`: forced on for the passthrough, otherwise the caller's value as given. */
+function rangeDeferral(
+  defersNativeHdr: boolean,
+  deferRangeExtraction: boolean | undefined,
+): boolean | undefined {
+  return defersNativeHdr ? true : deferRangeExtraction;
+}
+
+function hasDeferredRange(extracted: readonly { deferredRange?: unknown }[]): boolean {
+  return extracted.some((video) => video.deferredRange !== undefined);
+}
+
 export async function runExtractVideosStage(
   input: ExtractVideosStageInput,
 ): Promise<ExtractVideosStageResult> {
@@ -433,6 +462,7 @@ export async function runExtractVideosStage(
     assertNotAborted,
     materializeSymlinks,
     deferRangeExtraction,
+    deferNativeHdrFrames,
     shownBoxes,
     urlByAbsentLocalPath,
     audioDownloadDir,
@@ -453,6 +483,7 @@ export async function runExtractVideosStage(
   let failureToEnforce: VideoExtractionStageError | null = null;
   let videoReadinessSkipIds: string[] = [];
   let videoMetadataHints: CaptureVideoMetadataHint[] = [];
+  let nativeHdrFramesDeferred = false;
 
   // Probe ORIGINAL color spaces before extraction (which may convert SDR→HDR).
   // This is needed to identify which videos are natively HDR vs converted-SDR
@@ -569,6 +600,11 @@ export async function runExtractVideosStage(
     }
     let framesPlanned = 0;
     let framesDone = 0;
+    const defersNativeHdr = defersNativeHdrFrames(
+      deferNativeHdrFrames,
+      composition.videos,
+      nativeHdrVideoIds,
+    );
     extractionResult = await extractAllVideoFrames(
       composition.videos,
       projectDir,
@@ -583,7 +619,7 @@ export async function runExtractVideosStage(
         timelineEnd: composition.duration,
         maxTransientRetries: extractionPolicy.maxTransientRetries,
         collectProbeFailures: extractionPolicy.failureMode === "enforce",
-        deferRangeExtraction,
+        deferRangeExtraction: rangeDeferral(defersNativeHdr, deferRangeExtraction),
         shownBoxes,
         contentKeyedDirs: [join(compiledDir, REMOTE_MEDIA_SUBDIR)],
         urlByAbsentLocalPath,
@@ -598,6 +634,7 @@ export async function runExtractVideosStage(
       cfg,
       compiledDir,
     );
+    nativeHdrFramesDeferred = defersNativeHdr && hasDeferredRange(extractionResult.extracted);
     extractionResult.phaseBreakdown.transientRetries =
       (extractionResult.phaseBreakdown.transientRetries ?? 0) + hdrProbeTransientRetries;
     assertNotAborted();
@@ -637,6 +674,7 @@ export async function runExtractVideosStage(
     hdrImageSrcPaths,
     imageColorSpaces,
     videoExtractMs,
+    nativeHdrFramesDeferred,
     failureToEnforce,
   };
 }
