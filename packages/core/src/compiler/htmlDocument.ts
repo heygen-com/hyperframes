@@ -1,9 +1,8 @@
 import { acceleratedCanvasTrackerSource } from "../pageMotionBlur.js";
 import { findSceneTemplate, templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { parseHTML } from "linkedom";
-import { RUNTIME_BOOTSTRAP_ATTR } from "../studioPreviewMark.js";
 
-export { RUNTIME_BOOTSTRAP_ATTR };
+export const RUNTIME_BOOTSTRAP_ATTR = "data-hyperframes-preview-runtime";
 
 const RUNTIME_FILES = [
   "hyperframe.runtime.iife.js",

@@ -32,6 +32,7 @@ import {
 import {
   GSAP_BASE_URL_META,
   GSAP_PLUGIN_LOAD_ATTR,
+  NO_PATH_TWEEN_META,
   gsapCdnDist,
   motionPathPluginUrl,
   namesMotionPath,
@@ -195,6 +196,32 @@ function htmlHasCustomEase(html: string): boolean {
 // the bundle (the plugin registers globally, so sub-composition usage counts too).
 function htmlUsesMotionPath(html: string): boolean {
   return namesMotionPath(html);
+}
+
+const SCRIPT_SRC_ATTR = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
+const GSAP_ON_ITS_CDN = /^https:\/\/cdn\.jsdelivr\.net\/npm\/gsap@[\d.]+\/dist\/[\w.-]+\.js$/;
+const PROJECT_PREVIEW_BASE =
+  /<base\b[^>]*\shref\s*=\s*["']\/api\/projects\/[^/"']+\/preview\/["']/i;
+
+/** True only when no script the page loads can tween along a path: the page's text and each project script it loads
+ * name no `motionPath`, and any other script is GSAP on its CDN. Unsure is false, and the preview then preloads. */
+function provesNoPathTween(html: string, projectDir: string): boolean {
+  if (namesMotionPath(html) || /\sdata-composition-src\s*=/i.test(html)) return false;
+  if ((html.match(/<base\b/gi) ?? []).length !== 1 || !PROJECT_PREVIEW_BASE.test(html))
+    return false;
+  return findStartTags(html, "script").every((start) => {
+    const tag = html.slice(start, html.indexOf(">", start) + 1);
+    if (tag.includes(RUNTIME_BOOTSTRAP_ATTR)) return true;
+    if (/\stype\s*=\s*["']?module\b/i.test(tag)) return false;
+    const match = SCRIPT_SRC_ATTR.exec(tag);
+    if (!match) return true;
+    const src = (match[1] ?? match[2] ?? match[3] ?? "").replace(/&amp;/gi, "&");
+    if (GSAP_ON_ITS_CDN.test(src)) return true;
+    if (/^(?:[a-z][\w+.-]*:|\/)/i.test(src)) return false;
+    const file = resolve(projectDir, src.split(/[?#]/)[0]!);
+    if (!isWithinProjectRoot(projectDir, file) || !existsSync(file)) return false;
+    return !namesMotionPath(readFileSync(file, "utf-8"));
+  });
 }
 
 function htmlHasMotionPathPlugin(html: string): boolean {
@@ -412,7 +439,10 @@ export function injectStudioPreviewAugmentations(
     injectProjectSignature(
       injectTagsAtHeadStart(
         marked,
-        `<meta name="${GSAP_BASE_URL_META}" content="${escapeGsapUrl(options.gsapBaseUrl)}">`,
+        `<meta name="${GSAP_BASE_URL_META}" content="${escapeGsapUrl(options.gsapBaseUrl)}">` +
+          (!studioMotion && provesNoPathTween(html, projectDir)
+            ? `<meta name="${NO_PATH_TWEEN_META}">`
+            : ""),
       ),
       signature,
     ),

@@ -4,12 +4,13 @@
 import {
   GSAP_BASE_URL_META,
   GSAP_PLUGIN_LOAD_ATTR,
+  NO_PATH_TWEEN_META,
   motionPathPluginUrl,
   namesMotionPath,
 } from "../../gsapCdn";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { escapeCssString } from "../editingElement";
-import { RUNTIME_BOOTSTRAP_ATTR, applyAuthoredTiming } from "../../studioPreviewMark";
+import { applyAuthoredTiming } from "../../studioPreviewMark";
 import {
   applyRestorePlan,
   parseRestoreAttributes,
@@ -461,22 +462,13 @@ export function swapWaiting(win: SoftReloadWindow = window as SoftReloadWindow):
   return (win.__hfSwapsWaiting ?? 0) > 0;
 }
 
-const GSAP_LIBRARY_FILE = /(?:^|\/)(?:gsap@[^/]+\/dist\/[^/]+|gsap(?:\.min)?\.js)$/;
-const buildsNoPathTween = (script: HTMLScriptElement) => {
-  const src = script.getAttribute("src");
-  if (src === null) return !namesMotionPath(script.textContent ?? "");
-  return (
-    script.hasAttribute(RUNTIME_BOOTSTRAP_ATTR) || GSAP_LIBRARY_FILE.test(src.split(/[?#]/)[0]!)
-  );
-};
-
-/** Loads and registers MotionPathPlugin ahead of a re-run that needs it, unless no script can build a path tween. */
+/** Loads and registers MotionPathPlugin ahead of a re-run that needs it, unless the page is marked path-free. */
 export function preloadMotionPath(
   win: SoftReloadWindow = window as SoftReloadWindow,
   doc: Document = document,
 ): void {
   if (win.MotionPathPlugin || win.__hfMotionPathWaiters || !win.gsap) return;
-  if ([...doc.querySelectorAll<HTMLScriptElement>("script")].every(buildsNoPathTween)) return;
+  if (doc.querySelector(`meta[name="${NO_PATH_TWEEN_META}"]`)) return;
   const register = () => win.MotionPathPlugin && win.gsap?.registerPlugin?.(win.MotionPathPlugin);
   whenMotionPathLoaded(win, doc, register, () => {});
 }

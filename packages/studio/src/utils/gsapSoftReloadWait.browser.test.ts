@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import type { Browser, Page } from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { NO_PATH_TWEEN_META } from "@hyperframes/core/gsap-cdn";
 import { closeTestChrome, launchTestChrome } from "../../tests/chromeTestUtils";
 import {
   buildStudioBundle,
@@ -365,40 +366,57 @@ const LATE_PATH_TWEEN = `(function () {
   };
 })();`;
 
-// fails without the fix: an external script that builds its first path tween after connect got no plugin and stayed at 0.
-it.each(MODES)("a path tween an external script builds after connect plays (%s)", async (mode) => {
-  const preview = await openSharedPreview(
-    browser,
-    studioBundle,
-    previewHtml(`<script src="${PATH_TWEEN_URL}"></script>`),
-    mode,
-    { [PATH_TWEEN_URL]: LATE_PATH_TWEEN },
-  );
-  await preview.release(200);
-  await connect(preview.page);
-  await preview.frame.waitForFunction(() => "MotionPathPlugin" in window, { timeout: 5_000 });
-  await preview.frame.evaluate(() =>
-    (window as unknown as { buildPathTween(): void }).buildPathTween(),
-  );
-  await preview.seek(4);
-  const x = await preview.frame.evaluate(() =>
-    Number(
-      (
-        window as unknown as { gsap: { getProperty(t: string, p: string): unknown } }
-      ).gsap.getProperty("#target", "x"),
-    ),
-  );
-  expect(x).toBeCloseTo(50, 0);
-  await preview.page.close();
-});
+const LATE_TWEEN_CASES = MODES.flatMap((mode) =>
+  [PATH_TWEEN_URL, "https://fixture.hyperframes.test/authored/gsap.js"].map(
+    (url) => [mode, url] as const,
+  ),
+);
+
+// fails without the fix: an external script that builds its first path tween after connect, named gsap.js, got no
+// plugin and stayed at 0.
+it.each(LATE_TWEEN_CASES)(
+  "a path tween an external script builds after connect plays (%s, %s)",
+  async (mode, url) => {
+    const preview = await openSharedPreview(
+      browser,
+      studioBundle,
+      previewHtml(`<script src="${url}"></script>`),
+      mode,
+      { [url]: LATE_PATH_TWEEN },
+    );
+    await preview.release(200);
+    await connect(preview.page);
+    await preview.frame.waitForFunction(() => "MotionPathPlugin" in window, { timeout: 5_000 });
+    await preview.frame.evaluate(() =>
+      (window as unknown as { buildPathTween(): void }).buildPathTween(),
+    );
+    await preview.seek(4);
+    const x = await preview.frame.evaluate(() =>
+      Number(
+        (
+          window as unknown as { gsap: { getProperty(t: string, p: string): unknown } }
+        ).gsap.getProperty("#target", "x"),
+      ),
+    );
+    expect(x).toBeCloseTo(50, 0);
+    await preview.page.close();
+  },
+);
 
 // fails without the fix: every preview Studio connected to requested the plugin.
-it.each(MODES)("a page with no path tween requests no plugin (%s)", async (mode) => {
-  const preview = await openPreview(mode);
-  await connect(preview.page);
-  expect(await pluginScripts(preview)).toBe(0);
-  await preview.page.close();
-});
+it.each(MODES)(
+  "a page the preview builder marked as path-free requests no plugin (%s)",
+  async (mode) => {
+    const marked = previewHtml().replace(
+      STUDIO_MARK,
+      `${STUDIO_MARK}<meta name="${NO_PATH_TWEEN_META}">`,
+    );
+    const preview = await openSharedPreview(browser, studioBundle, marked, mode);
+    await connect(preview.page);
+    expect(await pluginScripts(preview)).toBe(0);
+    await preview.page.close();
+  },
+);
 
 // fails without the fix: all but "still recovers an older script refusal after an unrelated successful patch",
 // which guards the coverage rule against dropping a refusal no re-run carries.
