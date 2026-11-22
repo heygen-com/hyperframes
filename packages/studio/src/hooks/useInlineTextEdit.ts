@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import { usePreviewReadOnly } from "../components/editor/previewReadOnlyContext";
+import { holdSealedFrameKeyboard } from "../player/lib/sealedFrameKeyboard";
 import { settleOnDrain, trackStudioPendingEdit } from "../utils/studioPendingEdits";
 import {
   isTextTargetWriting,
@@ -82,6 +83,7 @@ export interface InlineTextEditSession {
   gesture?: string;
   /** A sealed preview's stand-in: the frame runs the edit, reached through its editing port. */
   sealed?: { iframe: HTMLIFrameElement; handle: string };
+  keyboard?: () => void;
 }
 
 /** The live markup to persist and the session snapshot to restore on failure. */
@@ -255,6 +257,7 @@ export function useInlineTextEdit({
     }
     openRef.current = null;
     setSession(null);
+    open.keyboard?.();
     if (open.sealed) return open;
     endStudioManualEditGesture(open.element, open.gesture);
     // Cleaned even when removed mid-session: a parked scene's element comes back.
@@ -278,7 +281,16 @@ export function useInlineTextEdit({
       const sealed = previewStandIn(element);
       if (sealed) {
         const gesture = beginStudioManualEditGesture(element, "edit");
-        const open = { element, original: "", outline: "", outlineOffset: "", sealed, gesture };
+        const keyboard = holdSealedFrameKeyboard(sealed.iframe);
+        const open = {
+          element,
+          original: "",
+          outline: "",
+          outlineOffset: "",
+          sealed,
+          gesture,
+          keyboard,
+        };
         openRef.current = open;
         latestEdit.set(element, open);
         openSealedEdit.set(element, open);
@@ -477,6 +489,7 @@ export function useInlineTextEdit({
   const saveRef = useRef(save);
   saveRef.current = save;
   useEffect(() => settleWhileOpen(session, openRef, saveRef), [session]);
+  useEffect(() => () => session?.keyboard?.(), [session]);
 
   return { session, start, commit, cancel };
 }
