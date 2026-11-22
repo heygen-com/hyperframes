@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseRestoreAttributes, restoreInPlace } from "./restoreAttributes";
+import { corsForSealedMedia } from "../sealedMediaCors";
+import { setRuntimePreload } from "../runtimeAttributes";
 import {
   HF_COLOR_GRADING_ATTR,
   normalizeHfColorGrading,
@@ -88,6 +90,44 @@ describe("restore-attributes", () => {
 
       expect(restoreInPlace(undoTo(restored))).toBe("applied");
       expect(normalizeHfColorGrading(live())?.adjust.exposure).toBe(0.1);
+    });
+  });
+
+  describe("a video's crossorigin and preload", () => {
+    const retimed = restore("hf:clip", [
+      ["data-hf-id", "clip"],
+      ["src", "media/clip.mp4"],
+      ["data-start", "1"],
+    ]);
+
+    it("are kept when the runtime added them, and the restore applies", async () => {
+      document.head.innerHTML = '<base href="http://localhost:4817/api/projects/demo/preview/">';
+      vi.stubGlobal("origin", "null");
+      const observer = corsForSealedMedia();
+      document.body.innerHTML =
+        '<video data-hf-id="clip" src="media/clip.mp4" data-start="0"></video>';
+      await Promise.resolve();
+      const video = document.querySelector("video")!;
+      setRuntimePreload(video, "auto");
+      player();
+
+      expect(restoreInPlace(retimed)).toBe("applied");
+      expect(video.getAttribute("data-start")).toBe("1");
+      expect(video.getAttribute("crossorigin")).toBe("anonymous");
+      expect(video.getAttribute("preload")).toBe("auto");
+      observer?.disconnect();
+      vi.unstubAllGlobals();
+      document.head.innerHTML = "";
+    });
+
+    it("still count as dropped when the film's own file set them", () => {
+      document.body.innerHTML =
+        '<video data-hf-id="clip" src="media/clip.mp4" data-start="0" crossorigin="anonymous" preload="auto"></video>';
+      player();
+      const before = document.body.innerHTML;
+
+      expect(restoreInPlace(retimed)).toBe("refused");
+      expect(document.body.innerHTML).toBe(before);
     });
   });
 
