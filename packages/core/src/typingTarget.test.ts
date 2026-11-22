@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "vitest";
-import { isTypingTarget } from "./typingTarget";
+import { isTypingTarget, shouldIgnorePlaybackShortcutTarget } from "./typingTarget";
 
 afterEach(() => document.body.replaceChildren());
 
@@ -20,4 +20,28 @@ it("does not treat a shadow host as typing when its focused element is not a fie
   frame.focus();
 
   expect(isTypingTarget(document.activeElement)).toBe(false);
+});
+
+function focusedInShadowOf(container: HTMLElement): HTMLElement {
+  document.body.append(container);
+  const host = container.appendChild(document.createElement("span"));
+  const leaf = host.attachShadow({ mode: "open" }).appendChild(document.createElement("span"));
+  leaf.tabIndex = 0;
+  leaf.focus();
+  return leaf;
+}
+
+it("treats focus inside a shadow root whose host sits in a modal dialog as typing", () => {
+  const dialog = document.createElement("div");
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  focusedInShadowOf(dialog);
+
+  expect(isTypingTarget(document.activeElement)).toBe(true);
+});
+
+it("leaves playback keys to a button that holds the focused shadow root's host", () => {
+  focusedInShadowOf(document.createElement("button"));
+
+  expect(shouldIgnorePlaybackShortcutTarget(document.activeElement)).toBe(true);
 });
