@@ -257,7 +257,9 @@ export type EditingKeyMessage = {
 };
 
 /** The `rotate` property's whole value in degrees, or GSAP's rotation; null takes the drawn turn back. */
-export type EditingDraftRotate = { angle: number; route: "css" | "gsap" };
+export type EditingDraftRotate =
+  | { angle: number; route: "css" | "gsap" }
+  | { angle: number; route: "transform"; value: string };
 /** A gesture's draft on one element: null puts that part back; `end` keeps what is drawn or restores. */
 export type EditingDraft =
   | {
@@ -476,10 +478,24 @@ function draftPart(value: unknown, keys: string, min: number): boolean {
   return keys.split(",").every((key) => isDraftPx(value[key], min));
 }
 
+const TRANSFORM_CALL =
+  /^(?:(?:translate|scale|rotate)(?:[XYZ]|3d)?|skew[XY]?|matrix(?:3d)?|perspective|calc|var|min|max|clamp)$/;
+
+export const isTransformList = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length <= 512 &&
+  /^[\w\s().,%+\-*/]*$/.test(value) &&
+  [...value.matchAll(/([\w-]+)\s*\(/g)].every(([, name]) => TRANSFORM_CALL.test(name!));
+
+const isRotateRoute = (value: unknown): value is Record<string, unknown> =>
+  (hasKeys(value, "angle,route") && (value.route === "css" || value.route === "gsap")) ||
+  (hasKeys(value, "angle,route,value") &&
+    value.route === "transform" &&
+    isTransformList(value.value));
+
 function draftRotate(value: unknown): boolean {
   if (value === undefined || value === null) return true;
-  if (!hasKeys(value, "angle,route") || (value.route !== "css" && value.route !== "gsap"))
-    return false;
+  if (!isRotateRoute(value)) return false;
   return Number.isFinite(value.angle) && Math.abs(value.angle as number) <= MAX_DRAFT_DEG;
 }
 

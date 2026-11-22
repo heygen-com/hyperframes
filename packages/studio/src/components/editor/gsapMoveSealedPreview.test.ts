@@ -349,8 +349,8 @@ it("turns a sealed frame's element by its own GSAP, and keeps the turn when the 
 const SPINS_BOX = timeline(`tl.to("#box", { rotation: 40, duration: 1, ease: "none" }, 0);`);
 
 /** The box on a sealed frame, and a press of its rotate handle as the overlay does it. */
-async function sealedRotate(script: string) {
-  mount(script);
+async function sealedRotate(script: string, extra = "") {
+  mount(script, extra);
   const iframe = opaqueFrame();
   const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
   const standIn = standInFor(iframe, (await describePreviewElements(iframe, [handle]))![0]!);
@@ -367,8 +367,8 @@ async function sealedRotate(script: string) {
   return { selection, iframe, standIn, pressRotate };
 }
 
-async function pressRotateOnSealedFrame(script: string) {
-  const sealed = await sealedRotate(script);
+async function pressRotateOnSealedFrame(script: string, extra = "") {
+  const sealed = await sealedRotate(script, extra);
   return { ...sealed, ...(await sealed.pressRotate()) };
 }
 
@@ -398,6 +398,15 @@ it("turns a layer its tween spins on GSAP's route in a sealed preview, from the 
 it("turns a layer GSAP leaves alone by its own CSS rotate in a sealed preview", async () => {
   const { gesture } = await pressRotateOnSealedFrame(timeline(""));
   expect(gesture.plainRotation).toMatchObject({ property: "rotate" });
+});
+
+// fails without the fix: the stand-in has no stylesheet, so the turn began at 0 and drew 30deg short.
+it("turns a sealed layer its stylesheet rotates from the angle it shows", async () => {
+  const { gesture } = await pressRotateOnSealedFrame(
+    timeline(""),
+    "<style>#box { rotate: 30deg; }</style>",
+  );
+  expect(gesture.actualRotation).toBeCloseTo(30, 6);
 });
 
 // fails without the fix: the first rotate's save, landing after a regrab, ended the regrab's frame draft, so a

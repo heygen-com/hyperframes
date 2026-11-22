@@ -470,6 +470,12 @@
       "types": "./dist/runtime/editingPort.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/css-rotation": {
+      "source": "./src/runtime/editing/cssRotation.ts",
+      "runtime": "./dist/runtime/editing/cssRotation.js",
+      "types": "./dist/runtime/editing/cssRotation.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/patch-tween": {
       "source": "./src/runtime/editing/patchTween.ts",
       "runtime": "./dist/runtime/editing/patchTween.js",

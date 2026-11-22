@@ -14,6 +14,7 @@ import {
   MAX_QUERY_MATCHES,
   MAX_SNAP_TARGETS,
   MAX_SOURCE_GROUPS,
+  isTransformList,
   type EditingElementBox,
   type EditingElementDescription,
   type EditingElementGeometry,
@@ -258,13 +259,31 @@ const isTurnOrNull = (value: unknown) =>
 
 const kept = <T>(value: T, valid: boolean) => (valid ? value : undefined);
 
-export type ReadGestureStart = Omit<EditingGestureStart, "gsapRotation" | "planar"> & {
+const isTurn = (value: unknown) => value !== null && isTurnOrNull(value);
+
+const isRotationTarget = (target: unknown) =>
+  isFields(target) &&
+  (target.property === "rotate" || target.property === "transform") &&
+  isTransformList(target.before) &&
+  isTransformList(target.after) &&
+  isTurn(target.share) &&
+  (target.sign === 1 || target.sign === -1) &&
+  isFlag(target.inline);
+
+const isCssRotation = (value: unknown) =>
+  value === null || (isFields(value) && isTurn(value.angle) && isRotationTarget(value.target));
+
+export type ReadGestureStart = Omit<
+  EditingGestureStart,
+  "gsapRotation" | "cssRotation" | "planar"
+> & {
   gsapRotation?: number | null;
+  cssRotation?: EditingGestureStart["cssRotation"];
 };
 
 const readGestureStart = (value: unknown): ReadGestureStart | null => {
   if (!readGeometry(value) || !isFields(value)) return null;
-  const { layout, move, gsap, gsapRotation } = value;
+  const { layout, move, gsap, gsapRotation, cssRotation } = value;
   const valid = [
     isLayout(layout),
     move === null || isFiniteFields(move, ["a", "b", "c", "d"]),
@@ -275,6 +294,7 @@ const readGestureStart = (value: unknown): ReadGestureStart | null => {
   return {
     ...start,
     gsapRotation: kept(start.gsapRotation, isTurnOrNull(gsapRotation)),
+    cssRotation: kept(start.cssRotation, isCssRotation(cssRotation)),
   };
 };
 
