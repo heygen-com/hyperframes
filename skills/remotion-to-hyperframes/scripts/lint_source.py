@@ -245,12 +245,12 @@ def _find_matching_paren(src: str, open_idx: int) -> int | None:
     """Given the index of an open `(`, return the index of its matching `)`.
 
     Skips parens that appear inside `'...'`, `"..."`, or `` `...` `` string
-    literals. Returns None if no matching close paren is found.
+    literals and `//` / `/* */` comments. Returns None if no matching close
+    paren is found.
 
-    This is good enough for hand-written Remotion source. It does not handle
-    template-literal interpolations `${...}` recursively or comments — both
-    are uncommon in Remotion code we expect to lint and would only matter
-    if the unbalanced paren landed inside such a region.
+    Comments have to be skipped, not just parens in them: the apostrophe in
+    `// don't` would otherwise open a string that swallows the call's `)`.
+    Template-literal interpolations `${...}` are not handled recursively.
     """
     if open_idx >= len(src) or src[open_idx] != "(":
         return None
@@ -270,6 +270,14 @@ def _find_matching_paren(src: str, open_idx: int) -> int | None:
         if c in ("'", '"', "`"):
             in_str = c
             i += 1
+            continue
+        if src.startswith("//", i):
+            newline = src.find("\n", i)
+            i = len(src) if newline == -1 else newline + 1
+            continue
+        if src.startswith("/*", i):
+            close = src.find("*/", i + 2)
+            i = len(src) if close == -1 else close + 2
             continue
         if c == "(":
             depth += 1
