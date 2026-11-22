@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mediaElementTime } from "./mediaClock";
 import { PREVIEW_SEEK_HOLD_ATTR } from "../studioPreviewMark";
+import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
 import {
   COLOR_GRADING_SOURCE_HIDDEN_ATTR,
   HF_COLOR_GRADING_ATTR,
@@ -368,6 +369,58 @@ describe("createColorGradingRuntime", () => {
     }
     expect(runtime?.redraw()).toBe(1);
     expect(texImage2DCalls.length).toBeGreaterThan(drawsBefore);
+  });
+
+  it("holds a seek until each graded video draws the frame it landed on", async () => {
+    resetSeekDispatchState();
+    vi.useFakeTimers();
+    try {
+      const video = makeDrawableVideo();
+      Object.defineProperty(video, "readyState", {
+        value: HTMLMediaElement.HAVE_NOTHING,
+        configurable: true,
+      });
+      startRuntimeWithVideo(video);
+      runtime!.holdSeekUntilDrawn();
+      expect(runtime!.redraw()).toBe(0);
+      let settled = false;
+      void waitForSeekCompletion().then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false);
+
+      Object.defineProperty(video, "readyState", {
+        value: HTMLMediaElement.HAVE_CURRENT_DATA,
+        configurable: true,
+      });
+      video.dispatchEvent(new Event("seeked"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets a seek go after a bounded wait when a graded video never draws", async () => {
+    resetSeekDispatchState();
+    vi.useFakeTimers();
+    try {
+      const video = makeDrawableVideo();
+      Object.defineProperty(video, "readyState", {
+        value: HTMLMediaElement.HAVE_NOTHING,
+        configurable: true,
+      });
+      startRuntimeWithVideo(video);
+      runtime!.holdSeekUntilDrawn();
+      let settled = false;
+      const seek = waitForSeekCompletion().then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await seek;
+      expect(settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not redraw-loop on its own hide writes (opacity/visibility only)", async () => {
