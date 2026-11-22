@@ -4,11 +4,16 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
 import { usePlayerStore } from "../../player/store/playerStore";
-import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
+import {
+  describePreviewElements,
+  previewGeometry,
+  queryPreviewElements,
+} from "../../player/lib/previewElements";
 import { answerTap, sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 import type { DomEditSelection } from "./domEditing";
 import { DomEditCropHandles } from "./DomEditCropHandles";
 import { rememberFrameClipPath } from "./domEditOverlayCrop";
+import { previewStandIn } from "./previewDrafts";
 import { standInFor } from "./previewSelection";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -185,20 +190,30 @@ it("re-reads a sealed card's size when it changes while selected, before any pre
   act(() => root.unmount());
 });
 
-// fails without the fix: a seek that changed the card's own size and scale together left its painted box, and so the
-// re-read's key, the same: the crop kept the old scale (360 px where 380 px is right).
-it("re-reads a sealed card's size after a seek that keeps its painted box, before any press", async () => {
+// fails without the fix: the crop re-read when Studio's playhead moved, before the frame applied the seek, so a seek
+// that changed the card's size and scale but kept its painted box drew the old scale (360 px where 380 px is right).
+it("re-reads a sealed card's size once the frame shows the seek's time, not when Studio's playhead moves", async () => {
   const standIn = await sealedCard(
     "matrix(2, 0, 0, 2, 0, 0)",
     [0, 0, 400, 200],
     "inset(0px 20px 0px 0px)",
   );
+  const { iframe, handle } = previewStandIn(standIn)!;
   const { root, show, outline } = cropHandles(standIn);
   show({ left: 0, top: 0, width: 400, height: 200 });
   await vi.waitFor(() => expect(outline()).toBe("360px"));
 
-  paint(document.getElementById("card")!, [400, 200], [0, 0, 400, 200]);
   act(() => usePlayerStore.getState().setCurrentTime(3.5));
+  // The frame answers in order: anything the playhead move asked is answered, at the old size, before this.
+  await previewGeometry(iframe, [handle]);
+  paint(document.getElementById("card")!, [400, 200], [0, 0, 400, 200]);
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      source: iframe.contentWindow,
+      origin: "null",
+      data: { source: "hf-preview", type: "state", currentTime: 3.5, isPlaying: false },
+    }),
+  );
 
   await vi.waitFor(() => expect(outline()).toBe("380px"));
   act(() => root.unmount());
