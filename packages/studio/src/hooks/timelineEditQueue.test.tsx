@@ -53,15 +53,18 @@ describe("useTimelineEditQueue", () => {
       return null;
     }
     const root = mountReactHarness(<Harness projectId="old" />);
-    const refused = enqueueTimelineEdit(queue!, () => Promise.reject(new Error("refused")));
+    const oldSave = deferred();
+    const refused = enqueueTimelineEdit(queue!, () => oldSave.promise);
     act(() => root.render(<Harness projectId="new" />));
     const writes: string[] = [];
 
-    await expect(refused).rejects.toThrow("refused");
-    await enqueueTimelineEdit(queue!, async () => void writes.push("ripple"), {
+    const ripple = enqueueTimelineEdit(queue!, async () => void writes.push("ripple"), {
       ifEarlierRefused: refuseWithEarlier,
     });
+    oldSave.reject(new Error("refused"));
 
+    await expect(refused).rejects.toThrow("refused");
+    await expect(ripple).resolves.toBeUndefined();
     expect(writes).toEqual(["ripple"]);
     act(() => root.unmount());
   });
