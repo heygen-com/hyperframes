@@ -20,6 +20,7 @@ import {
 } from "@hyperframes/engine";
 import { selectDomLayerShowIds } from "../hdrCompositor.js";
 import { seekInjectAndQueryStacking } from "../render/stages/captureHdrFrameShared.js";
+import { readOverlayFingerprint } from "./overlayFingerprint.js";
 import type {
   CaptureOverlayStatesArgs,
   CapturedOverlay,
@@ -144,6 +145,17 @@ export function overlayElementIdsAboveVideo(
 }
 
 /**
+ * Where a state's overlay pixels come from. `probe(state, time)` puts the
+ * page at `time` and returns the overlay fingerprint there (equal
+ * fingerprints render equal pixels); `capture(state, time)` returns the 8-bit
+ * RGBA pixels (`width * height * 4` bytes) at `time`, the state just probed.
+ */
+export interface OverlayStateSource {
+  probe(state: OverlayState, time: number): Promise<string>;
+  capture(state: OverlayState, time: number): Promise<Uint8Array>;
+}
+
+/**
  * Capture the overlay DOM at `time` as 8-bit straight-alpha RGBA, the same
  * way `compositeHdrFrame` captures a DOM layer: seek + frame injector +
  * stacking query, then mask every element outside the overlay (the video
@@ -191,82 +203,189 @@ async function captureOverlayRgba(
   return decoded.data;
 }
 
-/** Source of a state's 8-bit RGBA overlay pixels (`width * height * 4` bytes). */
-export type OverlayPixelSource = (state: OverlayState, time: number) => Promise<Uint8Array>;
+/**
+ * Seek to `time` and fingerprint the overlay there. The video-frame injector
+ * is skipped: it only writes the video element, its replacement frame and
+ * colour-grading canvases, which the fingerprint leaves out and the capture
+ * masks (a capture runs the full seek + inject itself).
+ */
+async function probeOverlay(
+  session: CaptureSession,
+  time: number,
+  videoId: string,
+): Promise<string> {
+  const stacking = await seekInjectAndQueryStacking(
+    session.page,
+    time,
+    null,
+    new Set([videoId]),
+    undefined,
+    "domLayerSeekMs",
+    "domLayerInjectMs",
+    "stackingQueryMs",
+  );
+  return readOverlayFingerprint(session, videoId, stacking);
+}
+
+/** The PNG one captured fingerprint renders to. */
+interface CapturedPixels {
+  hash: string;
+  pngPath: string;
+}
+
+/** A merged state being built: the candidates folded into it so far. */
+interface OpenState extends CapturedPixels {
+  startFrame: number;
+  endFrame: number;
+  captureFrame: number;
+  /** Fingerprint of the last candidate folded in. */
+  key: string;
+}
 
 /**
- * Hash, dedupe, map and write each state's pixels, in plan order. Split from
- * `captureOverlayStates` so the dedupe and file layout are testable without
- * a browser.
+ * Probe every candidate state in plan order, capture only fingerprints not
+ * captured before, and fold each candidate into the state before it when it
+ * renders the same overlay (same fingerprint, or a new fingerprint whose
+ * pixels hash the same). Split from `captureOverlayStates` so the merge and
+ * file layout are testable without a browser.
+ *
+ * Every candidate is probed: its fingerprint is read at its own capture
+ * frame, so a change on any candidate frame (a one-frame state inside a clip
+ * cut, a frame of a short tween) is seen and starts a new state. Only the
+ * frames inside one candidate are taken on the planner's word, as before.
  */
 export async function writeOverlayStates(
   args: CaptureOverlayStatesArgs,
-  source: OverlayPixelSource,
+  source: OverlayStateSource,
 ): Promise<CapturedOverlaySet> {
-  const { input, plan, video, outDir, onStateCaptured } = args;
+  const { input, plan, outDir, onStateCaptured } = args;
   const startedAt = Date.now();
   await mkdir(outDir, { recursive: true });
 
   const pathByHash = new Map<string, string>();
-  const overlays: CapturedOverlay[] = [];
+  const pixelsByKey = new Map<string, CapturedPixels>();
+  const merged: OpenState[] = [];
+  let captureCount = 0;
   let framesCovered = 0;
-  for (const state of plan.states) {
+  let candidatesDone = 0;
+  for (const candidate of plan.states) {
     input.assertNotAborted();
-    const time = (state.captureFrame * plan.fps.den) / plan.fps.num;
-    const rgba8 = await source(state, time);
-    const expected = plan.width * plan.height * 4;
-    if (rgba8.length !== expected) {
-      throw new Error(
-        `hdrPassthrough: overlay state ${state.index} has ${rgba8.length} bytes, expected ${expected}`,
-      );
+    const time = (candidate.captureFrame * plan.fps.den) / plan.fps.num;
+    const key = await source.probe(candidate, time);
+    const open = merged.at(-1);
+    if (open && open.key === key) {
+      open.endFrame = candidate.endFrame;
+    } else {
+      let pixels = pixelsByKey.get(key);
+      if (pixels === undefined) {
+        const rgba8 = await source.capture(candidate, time);
+        captureCount += 1;
+        pixels = await storeOverlayPixels(rgba8, args, merged.length, pathByHash);
+        pixelsByKey.set(key, pixels);
+      }
+      if (open && open.hash === pixels.hash) {
+        open.endFrame = candidate.endFrame;
+        open.key = key;
+      } else {
+        merged.push({
+          ...pixels,
+          startFrame: candidate.startFrame,
+          endFrame: candidate.endFrame,
+          captureFrame: candidate.captureFrame,
+          key,
+        });
+      }
     }
-    const hash = hashOverlayPixels(rgba8);
-    let pngPath = pathByHash.get(hash);
-    if (pngPath === undefined) {
-      pngPath = join(outDir, `overlay-${state.index}.png`);
-      const rgba16 = mapOverlayToSignalRgba16(rgba8, video.transfer);
-      await writeFile(pngPath, encodePngRgba16(plan.width, plan.height, rgba16));
-      pathByHash.set(hash, pngPath);
-    }
-    overlays.push({ state, pngPath, hash });
-    framesCovered += state.endFrame - state.startFrame;
-    onStateCaptured?.(framesCovered, overlays.length, plan.states.length);
+    framesCovered += candidate.endFrame - candidate.startFrame;
+    candidatesDone += 1;
+    onStateCaptured?.(framesCovered, candidatesDone, plan.states.length);
   }
 
+  const overlays: CapturedOverlay[] = merged.map((s, index) => ({
+    state: {
+      index,
+      startFrame: s.startFrame,
+      endFrame: s.endFrame,
+      captureFrame: s.captureFrame,
+    },
+    pngPath: s.pngPath,
+    hash: s.hash,
+  }));
   return {
     overlays,
+    plan: { ...plan, states: overlays.map((o) => o.state) },
     uniqueCount: pathByHash.size,
+    candidateCount: plan.states.length,
+    captureCount,
     dir: outDir,
     captureMs: Date.now() - startedAt,
   };
 }
 
 /**
- * For each `plan.states[i]` in order:
- *   1. Seek the page to `captureFrame / fps` the way the layered loop does
- *      (`seekInjectAndQueryStacking`, which runs the session's
- *      `onBeforeCapture` hook) and query the element stacking.
- *   2. Mask everything outside the DOM layers above the passthrough video
- *      (the video included) with `applyDomLayerMask`, `captureAlphaPng`,
- *      remove the mask, `decodePng`.
- *   3. Hash the 8-bit RGBA pixels (sha256). A hash seen before reuses that
- *      state's `pngPath`; otherwise map every pixel with
- *      `mapOverlayToSignalRgba16` (RGB → `getSrgbToSignalLut(transfer)`,
- *      alpha → `a8 * 257`, straight alpha) and write a 16-bit RGBA PNG
- *      (`<outDir>/overlay-<index>.png`).
- *   4. Call `onStateCaptured(framesCovered, i + 1, states.length)` with the
- *      cumulative `endFrame - startFrame` of states done so far.
+ * Hash one capture's pixels and, when no earlier capture had them, map them
+ * to the 16-bit signal space and write `<outDir>/overlay-<stateIndex>.png`.
+ */
+async function storeOverlayPixels(
+  rgba8: Uint8Array,
+  args: CaptureOverlayStatesArgs,
+  stateIndex: number,
+  pathByHash: Map<string, string>,
+): Promise<CapturedPixels> {
+  const { plan, video, outDir } = args;
+  const expected = plan.width * plan.height * 4;
+  if (rgba8.length !== expected) {
+    throw new Error(
+      `hdrPassthrough: overlay state ${stateIndex} has ${rgba8.length} bytes, expected ${expected}`,
+    );
+  }
+  const hash = hashOverlayPixels(rgba8);
+  let pngPath = pathByHash.get(hash);
+  if (pngPath === undefined) {
+    pngPath = join(outDir, `overlay-${stateIndex}.png`);
+    const rgba16 = mapOverlayToSignalRgba16(rgba8, video.transfer);
+    await writeFile(pngPath, encodePngRgba16(plan.width, plan.height, rgba16));
+    pathByHash.set(hash, pngPath);
+  }
+  return { hash, pngPath };
+}
+
+/**
+ * Walk `plan.states` (the planner's candidate states) in order:
+ *   1. Seek the page to the candidate's `captureFrame / fps`, query the
+ *      element stacking and read the overlay fingerprint
+ *      (`overlayFingerprint.ts`). No frame injection: see `probeOverlay`.
+ *   2. Same fingerprint as the candidate before it: fold it into that state,
+ *      no capture.
+ *   3. A fingerprint captured earlier (a caption-free gap again): reuse that
+ *      capture's PNG, no capture.
+ *   4. Otherwise capture exactly as the layered loop does: seek again with
+ *      the session's `onBeforeCapture` hook (`seekInjectAndQueryStacking`),
+ *      mask everything outside the DOM layers above the
+ *      passthrough video (the video included) with `applyDomLayerMask`,
+ *      `captureAlphaPng`, remove the mask, `decodePng`, and hash the 8-bit
+ *      RGBA pixels (sha256). Pixels seen before reuse that PNG; new ones are
+ *      mapped with `mapOverlayToSignalRgba16` (RGB →
+ *      `getSrgbToSignalLut(transfer)`, alpha → `a8 * 257`, straight alpha)
+ *      and written as a 16-bit RGBA PNG (`<outDir>/overlay-<index>.png`).
+ *   5. A candidate whose pixels equal the state before it folds into it too.
+ *   6. Call `onStateCaptured(framesCovered, i + 1, states.length)` with the
+ *      cumulative `endFrame - startFrame` of candidates done so far.
  *
- * Calls `input.assertNotAborted()` before each state; the mask is removed
- * after every capture, including a failed one. Pixel parity: a straight-alpha
- * `over` of a returned PNG onto a video frame equals
- * `blitRgba8OverRgb48le(domRgba, frame, w, h, transfer)` within 1 LSB at 16 bit.
+ * The result's `plan` holds the merged states (one per run of identical
+ * overlay output, tiling `[0, totalFrames)` like the input) and `overlays`
+ * one entry per merged state. Calls `input.assertNotAborted()` before each
+ * candidate; the mask is removed after every capture, including a failed
+ * one. Pixel parity: a straight-alpha `over` of a returned PNG onto a video
+ * frame equals `blitRgba8OverRgb48le(domRgba, frame, w, h, transfer)` within
+ * 1 LSB at 16 bit.
  */
 export async function captureOverlayStates(
   args: CaptureOverlayStatesArgs,
 ): Promise<CapturedOverlaySet> {
   const { session, plan, video } = args;
-  return writeOverlayStates(args, (_state, time) =>
-    captureOverlayRgba(session, time, video.id, plan.width, plan.height),
-  );
+  return writeOverlayStates(args, {
+    probe: (_state, time) => probeOverlay(session, time, video.id),
+    capture: (_state, time) => captureOverlayRgba(session, time, video.id, plan.width, plan.height),
+  });
 }

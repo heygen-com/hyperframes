@@ -213,9 +213,11 @@ export interface OverlayState {
   startFrame: number;
   endFrame: number;
   /**
-   * The frame seeked to when capturing this state:
-   * `Math.floor((startFrame + endFrame - 1) / 2)` (midpoint, away from the
-   * tween edges the static analysis under-claims).
+   * The frame seeked to when capturing this state. In a planned (candidate)
+   * state: `Math.floor((startFrame + endFrame - 1) / 2)` (midpoint, away from
+   * the tween edges the static analysis under-claims). In a captured state
+   * (`CapturedOverlaySet.plan`), which merges candidates that render the same
+   * overlay: the capture frame of the candidate it was first probed at.
    */
   captureFrame: number;
 }
@@ -276,10 +278,21 @@ export interface CapturedOverlay {
 }
 
 export interface CapturedOverlaySet {
-  /** One entry per `OverlayPlan.states`, same order. */
+  /** One entry per `plan.states`, same order. */
   overlays: CapturedOverlay[];
+  /**
+   * The input plan with its candidate states merged: one state per run of
+   * frames that render the same overlay, so a state boundary is a frame where
+   * the overlay output really changes. Same invariants as the input plan.
+   * This, not the planner's plan, is what the composite consumes.
+   */
+  plan: OverlayPlan;
   /** Number of distinct PNG files written. */
   uniqueCount: number;
+  /** Candidate states probed (the input plan's state count). */
+  candidateCount: number;
+  /** Screenshots taken; at most one per distinct overlay fingerprint. */
+  captureCount: number;
   /** Directory holding the PNGs; owned by the render's workDir cleanup. */
   dir: string;
   /** Wall-clock ms spent seeking + capturing + mapping. */

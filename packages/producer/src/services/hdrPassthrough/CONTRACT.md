@@ -35,10 +35,12 @@ renderOrchestrator (hdr_layered branch, inside observeRenderStage "capture_hdr_l
             │     └─ analyzeOverlayTiming({ session, videoId, … })  planner.ts
             │            → OverlayTiming { totalFrames, changeFrames }
             ├─ runHdrPassthrough(input, eligible, session)          index.ts (implemented)
-            │     ├─ planOverlayStates({ timing, fps, w, h })       planner.ts  → OverlayPlan
+            │     ├─ planOverlayStates({ timing, fps, w, h })       planner.ts  → OverlayPlan (candidates)
             │     ├─ captureOverlayStates({ … })                    overlayCapture.ts → CapturedOverlaySet
+            │     │     probe every candidate (seek + overlayFingerprint.ts), capture new fingerprints,
+            │     │     merge candidates that render the same overlay → CapturedOverlaySet.plan
             │     ├─ session.close()
-            │     └─ compositeAndEncode(CompositeRequest)           ffmpegComposite.ts → videoOnlyPath
+            │     └─ compositeAndEncode({ plan: overlays.plan, … }) ffmpegComposite.ts → videoOnlyPath
             └─ finally session.close()
        outcome.kind === "completed" → stage result
        outcome.kind === "fallback"  → resetCaptureAttemptProgress(job); runCaptureHdrStage(hdrStageInput)
@@ -60,9 +62,9 @@ Fallback rules (keep these in the final design):
 - `PassthroughEligibility`: `{ eligible: true, video: PassthroughVideo, timing: OverlayTiming }` or `{ eligible: false, reason: PassthroughIneligibleReason, detail? }`.
 - `PassthroughVideo { id, srcPath, mediaStart, duration, fps, width, height, fit, transfer, primaries: "bt2020", colorSpace, metadata }`.
 - `OverlayTiming { totalFrames, changeFrames }`: sorted, unique, each in `[1, totalFrames)`.
-- `OverlayState { index, startFrame, endFrame, captureFrame }`: half-open interval. `captureFrame = floor((start + end - 1) / 2)`.
+- `OverlayState { index, startFrame, endFrame, captureFrame }`: half-open interval. For a planned candidate `captureFrame = floor((start + end - 1) / 2)`; a merged (captured) state keeps the capture frame of the candidate it started at.
 - `OverlayPlan { states, fps, totalFrames, width, height }`: states tile `[0, totalFrames)` with no gaps.
-- `CapturedOverlay { state, pngPath, hash }`, `CapturedOverlaySet { overlays, uniqueCount, dir, captureMs }`.
+- `CapturedOverlay { state, pngPath, hash }`, `CapturedOverlaySet { overlays, plan, uniqueCount, candidateCount, captureCount, dir, captureMs }`: `plan` is the input plan with candidates merged, one state per run of identical overlay output; `overlays` has one entry per `plan.states`.
 - `CompositeRequest { video, plan, overlays, encoder, hdr, outputPath, workDir, abortSignal, onFramesEncoded }` and `CompositeResult { encodeMs, framesEncoded, fileSize }`.
 - `buildCompositeArgs(request, concatListPath): string[]` is pure, so it can be unit-tested at the argument level.
 - Import types from `./types.js`. `index.ts` exports only `attemptHdrPassthrough` and `createLazyOverlaySession`, and `runHdrPassthrough` is internal.
@@ -78,6 +80,19 @@ the blend through packed `rgb48le`, the format the layered path extracts to
 and pipes into its encoder: swscale's planar and packed RGB paths round chroma
 differently, and only the packed path keeps the video pixels bit-identical to
 the layered path where the overlay is transparent.
+
+Capture dedup: the planner's states are candidates, a superset of the frames
+where the overlay changes (a clip cut claims `round(t * fps) +/- 1`, a `set()`
+the frames around it), about eight per caption cue. Capture seeks to every
+candidate and reads a fingerprint of everything the overlay's pixels depend
+on (`overlayFingerprint.ts`: DOM with attributes and text, CSSOM, scroll,
+form and image state, CSS / Web Animation times, non-CSS values GSAP tweens
+write), without the frame injector, which only writes the video's own nodes.
+It screenshots only fingerprints it has not captured, through the unchanged
+layered capture path, and folds a candidate into the state before it when the
+fingerprint or the captured pixels match. A candidate whose overlay differs
+in any way starts its own state, so a one-frame change is never merged away;
+frames inside one candidate are taken on the planner's word, as before.
 
 Progress and stall contract: overlay capture calls `noteStaticDedupActivity(job)`
 for each state, which keeps the stall window open without counting as frame

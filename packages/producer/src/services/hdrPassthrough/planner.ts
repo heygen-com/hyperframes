@@ -582,7 +582,11 @@ export async function analyzeOverlayTiming(
  * exactly once (see `OverlayPlan` invariants in types.ts). `captureFrame` is
  * `Math.floor((startFrame + endFrame - 1) / 2)`. Ignores change frames
  * outside `[1, totalFrames)` and duplicates. `totalFrames <= 0` → no states.
- * Does not dedupe by content; that happens after capture.
+ *
+ * These are candidate states: every real overlay change starts one, but
+ * most do not start a real change (a clip cut claims the frames on both
+ * sides of its edge). Overlay capture probes each candidate and merges the
+ * ones that render the same overlay (`writeOverlayStates`).
  */
 export function planOverlayStates(args: PlanOverlayStatesArgs): OverlayPlan {
   const { timing, fps, width, height } = args;

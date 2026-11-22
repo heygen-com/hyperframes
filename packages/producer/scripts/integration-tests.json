@@ -72,5 +72,7 @@
   "src/services/render/deferredVideoFrames.integration.test.ts",
   "src/services/render/stages/extractVideosStage.integration.test.ts",
   "src/services/render/videoShownBoxes.integration.test.ts",
-  "src/services/hdrPassthrough/ffmpegComposite.integration.test.ts"
+  "src/services/hdrPassthrough/ffmpegComposite.integration.test.ts",
+  "src/services/hdrPassthrough/overlayCapture.integration.test.ts",
+  "src/services/hdrPassthrough/overlayFingerprint.integration.test.ts"
 ]
