@@ -7,6 +7,7 @@ import { useClipboard } from "./useClipboard";
 import { usePlayerStore, type TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
+import { setCompositionSourceMap } from "../components/editor/domEditingDom";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -21,6 +22,7 @@ afterEach(() => {
   act(() => root?.unmount());
   root = null;
   vi.unstubAllGlobals();
+  setCompositionSourceMap(new Map());
   usePlayerStore.getState().reset();
   document.body.innerHTML = "";
 });
@@ -186,7 +188,8 @@ it("checks a saved element read from another file before pasting it into this on
     selector: "#go",
     sourceFile: "compositions/recv.html",
   } as DomEditSelection;
-  // The frame shows one of the person's own clips under the received element's file and id.
+  // A received sub-composition of this project, and one of the person's own clips shown under its file and id.
+  setCompositionSourceMap(new Map([["recv", "compositions/recv.html"]]));
   const relabelled =
     '<div data-composition-file="compositions/recv.html"><button id="go" class="clip">Go</button></div>';
   const { clipboard, writes, toasts } = sealedClipboard(selection, relabelled, SAVED, {
@@ -196,6 +199,31 @@ it("checks a saved element read from another file before pasting it into this on
   await clipboard().handlePaste();
   expect(writes).toEqual([]);
   expect(toasts.at(-1)).toMatch(/^Couldn't paste/);
+});
+
+// fails without the fix: the file the frame named for a clip or a selection was read and written as given.
+it("copies and duplicates nothing from a file Studio does not know as one of this project's compositions", async () => {
+  const elsewhere = { ...clipOf("go", "button", 1, 2), sourceFile: "compositions/elsewhere.html" };
+  const shown =
+    '<div data-composition-file="compositions/elsewhere.html"><button id="go" class="clip">Go</button></div>';
+  usePlayerStore.setState({ elements: [elsewhere] });
+  selectClip("go");
+  const duplicated = sealedClipboard(null, shown);
+  expect(await duplicated.clipboard().handleDuplicate()).toBe(false);
+  expect(duplicated.writes).toEqual([]);
+  act(() => root?.unmount());
+  root = null;
+
+  usePlayerStore.setState({ selectedElementId: null, selectedElementIds: new Set() });
+  const selection = {
+    id: "go",
+    selector: "#go",
+    sourceFile: "compositions/elsewhere.html",
+  } as DomEditSelection;
+  const copied = sealedClipboard(selection, shown);
+  copied.clipboard().handleCopy();
+  await copied.clipboard().handlePaste();
+  expect(copied.writes).toEqual([]);
 });
 
 it("pastes and duplicates a saved element with its own handler, as saved", async () => {
