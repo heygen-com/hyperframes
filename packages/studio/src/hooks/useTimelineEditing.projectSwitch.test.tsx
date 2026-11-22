@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { jsonResponse, requestUrl } from "./fetchStubTestUtils";
+import { keepUnlessItOverlaps } from "./timelineEditQueue";
 import { useTimelineEditing } from "./useTimelineEditing";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -173,7 +174,15 @@ describe.each<
   [string, (hook: ReturnType<typeof useTimelineEditing>, c: TimelineElement) => unknown]
 >([
   ["a single-clip drag", (hook, c) => hook.handleTimelineElementMove(c, { start: 2.5, track: 0 })],
-  ["a group drag", (hook, c) => hook.handleTimelineGroupMove([{ element: c, start: 2.5 }])],
+  [
+    "a group drag, with the policy the move adapter gives it",
+    (hook, c) => {
+      const changes = [{ element: c, start: 2.5 }];
+      return hook.handleTimelineGroupMove(changes, {
+        ifEarlierRefused: keepUnlessItOverlaps(changes),
+      });
+    },
+  ],
 ])("%s queued behind a delete that is refused after a project switch", (_kind, drag) => {
   // fails without the fix: the drag was checked against the shown project's clips, kept, and saved
   // on top of the restored clip in its own project.
