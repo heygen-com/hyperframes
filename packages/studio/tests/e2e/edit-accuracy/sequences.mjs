@@ -243,16 +243,23 @@ async function driveStep(ctx, step, state) {
   const { page } = ctx.A;
   if (step.do === "undo") {
     await blurPreview(page);
+    const before = (await measure(ctx.A)).visible;
+    const pressedAt = Date.now();
     await chord(page, "Control+z");
-    // The next step presses the box where it is shown; a person sees the old box until then.
-    const shownMs = await restedFor(
-      () => studioBusy(page),
+    // shownMs: the box first moved, what a person sees. restMs: Studio idle, so the next press lands on the shown box.
+    let shownMs = null;
+    const restMs = await restedFor(
+      async () => {
+        const moved = quadDistance((await measure(ctx.A)).visible, before) >= 0.5;
+        if (moved && shownMs === null) shownMs = Date.now() - pressedAt;
+        return studioBusy(page);
+      },
       () => nextFrame(page),
     );
     state.depth -= 1;
     // Undone back to the start, the box belongs where it began; any other undo leaves it unknown here.
     state.intended = state.depth === 0 ? state.start : null;
-    return { do: "undo", shownMs };
+    return { do: "undo", shownMs, restMs };
   }
   if (step.do === "nudge") {
     await recording(page, true);
