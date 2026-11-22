@@ -368,6 +368,7 @@ type Seen = {
   restartGap?: string;
   restartRate?: string;
   seekAt?: string;
+  seekCarry?: string;
   seekPaused?: string;
   extraSeeks?: string;
   loops: number;
@@ -416,6 +417,7 @@ async function installDriver(frame: Frame) {
       if (step.action === "pause") video.pause();
       else if (step.action === "seek") {
         video.dataset.seekTo = "0.5";
+        video.dataset.seekIssued = String(performance.now());
         video.currentTime = 0.5;
       } else if (step.action === "rate") video.playbackRate = 2;
       else if (step.action === "author") video.setAttribute("crossorigin", "anonymous");
@@ -466,9 +468,11 @@ async function installDriver(frame: Frame) {
           key: string,
           sources: Array<{ src: string; type?: string; media?: string }>,
           attr?: boolean,
+          duringRetry?: string,
         ) {
           const video = document.createElement("video");
           video.dataset.table = key;
+          if (duringRetry) video.dataset.authorDuringRetry = duringRetry;
           video.muted = true;
           video.loop = true;
           // The runtime binds new media with preload auto and a load() of its own, at a time of its choosing.
@@ -505,6 +509,9 @@ async function installDriver(frame: Frame) {
                 `${data.extraSeeks ?? ""} ${data.seekFrom}->${video.currentTime}`.trim();
             if (!data.seekTo) return;
             data.seekAt = String(video.currentTime);
+            data.seekCarry = String(
+              (video.playbackRate * (performance.now() - Number(data.seekIssued))) / 1000,
+            );
             data.seekPaused = String(video.paused);
             delete data.seekTo;
           });
@@ -617,6 +624,7 @@ async function installDriver(frame: Frame) {
             restartGap: data.restartGap,
             restartRate: data.restartRate,
             seekAt: data.seekAt,
+            seekCarry: data.seekCarry,
             seekPaused: data.seekPaused,
             extraSeeks: data.extraSeeks,
             interrupted: data.interrupted,
@@ -637,7 +645,7 @@ async function installDriver(frame: Frame) {
 }
 
 type Table = {
-  create: (key: string, sources: SourceAttrs[], attr: boolean) => void;
+  create: (key: string, sources: SourceAttrs[], attr: boolean, duringRetry?: string) => void;
   edit: (key: string, step: object) => unknown;
   settled: () => boolean;
   flush: () => boolean;
@@ -656,16 +664,28 @@ async function runAll(frame: Frame, sequences: Sequence[], run: string) {
   const readings: Readings[] = [];
   for (let round = 0; round < rounds; round++) {
     for (const [index, sequence] of sequences.entries()) {
-      for (const step of sequence.rounds[round] ?? []) {
+      const steps = sequence.rounds[round] ?? [];
+      // A write during the retry is registered with its element: as a later call, a fast failure could beat it.
+      const duringRetry = (el: number) =>
+        steps.find((step) => step.do === "author" && step.duringRetry && step.el === el);
+      for (const step of steps) {
         const key = `${index}-${step.el}`;
         if (step.do === "recover") server.recover(`${run}.${step.source.id}`);
-        if (step.do === "create")
+        if (step.do === "create") {
+          const during = duringRetry(step.el);
           await frame.evaluate(
-            (k, s, a) => window.__table.create(k, s, a),
+            (k, s, a, d) => window.__table.create(k, s, a, d),
             key,
             step.sources.map((source) => urlFor(source, run)),
             step.attr ?? false,
+            during?.do === "author" ? during.value : undefined,
           );
+        } else if (
+          step.do === "author" &&
+          step.duringRetry &&
+          steps.some((s) => s.do === "create" && s.el === step.el)
+        )
+          continue;
         else {
           const listed =
             "source" in step ? step.source : step.do === "author" ? step.replace : undefined;
@@ -827,15 +847,18 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
         problems.push(`${where}: plays after the composition paused it`);
       if (action === "rate" && seen.rate !== 2)
         problems.push(`${where}: rate ${seen.rate}, set to 2`);
-      const settled = ({ seekAt, seekPaused, extraSeeks }: Reading) => ({
+      const settled = ({ seekAt, seekCarry, seekPaused, extraSeeks }: Reading) => ({
         seekAt,
+        seekCarry,
         seekPaused,
         extraSeeks,
       });
-      const apart = Math.abs(Number(seen.seekAt) - Number(plain.seekAt));
+      // Its seek won where the playhead sits between the target and what playback carried it to before seeked ran.
+      const landed = ({ seekAt, seekCarry }: Reading) =>
+        Number(seekAt) >= 0.5 - FRAME && Number(seekAt) <= 0.5 + Number(seekCarry) + FRAME;
       if (
         action === "seek" &&
-        (!(apart <= FRAME) ||
+        (!landed(seen) ||
           seen.seekPaused !== plain.seekPaused ||
           seen.extraSeeks !== plain.extraSeeks)
       )
@@ -849,7 +872,8 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
           problems.push(`${where}: rate ${seen.restartRate} after our load, was ${seen.savedRate}`);
       }
       const canPlay =
-        list.some((s) => PLAYABLE.has(s.kind)) || Boolean(sequence.keepsCors?.includes(el));
+        list.some((s) => PLAYABLE.has(s.kind)) ||
+        (last && Boolean(sequence.keepsCors?.includes(el)));
       const mayPlay = canPlay || list.some((s) => MAY_PLAY.has(s.kind));
       if (seen.playing ? !mayPlay : canPlay)
         problems.push(`${where}: ${canPlay ? "does not play" : "plays"} ${JSON.stringify(seen)}`);
