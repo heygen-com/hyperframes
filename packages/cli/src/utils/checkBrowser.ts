@@ -187,7 +187,7 @@ function startCopyHeartbeat(
         ? `${Math.min(100, Math.floor((doneSeconds / totalSeconds) * 100))}%`
         : "";
       console.error(
-        `[hyperframes] making browser-playable copies: ${finished} of ${total} done. ${sources[index]!.file}: ${done || `${Math.floor(doneSeconds)}s done`} (${elapsedText(Date.now() - startedAt)} so far)`,
+        `[hyperframes] making browser-playable copies: ${finished} of ${total} done. ${terminalText(sources[index]!.file)}: ${done || `${Math.floor(doneSeconds)}s done`} (${elapsedText(Date.now() - startedAt)} so far)`,
       );
     }
   }, COPY_HEARTBEAT_MS);

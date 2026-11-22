@@ -47,19 +47,24 @@ function mount(reducedMotion = false, strictMode = false): void {
   });
 }
 
-function begin(): string {
+async function settle(): Promise<void> {
+  await act(async () => {});
+}
+
+async function begin(): Promise<string> {
   let callId = "";
   act(() => {
     callId = studioEditLifecycle.begin("project-a", target, "set-text");
   });
+  await settle();
   return callId;
 }
 
-function finish(
+async function finish(
   callId: string,
   stage: "dispatched" | "saved" | "verified" | "failed",
   changed = true,
-): void {
+): Promise<void> {
   const result: StudioWriteResult<object> =
     stage === "failed"
       ? {
@@ -82,11 +87,12 @@ function finish(
               : { kind: "content-version", sourceFile: "index.html", version: "v1" },
         };
   act(() => studioEditLifecycle.finish(callId, result));
+  await settle();
 }
 
 beforeEach(() => {
   vi.useFakeTimers();
-  geometryMock.measure.mockReset().mockReturnValue({
+  geometryMock.measure.mockReset().mockResolvedValue({
     field: {
       label: "section",
       rect: { left: 5, top: 10, width: 320, height: 180, editScaleX: 1, editScaleY: 1 },
@@ -120,9 +126,9 @@ afterEach(() => {
 });
 
 describe("TopologyLens", () => {
-  it("reveals real contours for a new target and seals only a durable receipt", () => {
+  it("reveals real contours for a new target and seals only a durable receipt", async () => {
     mount();
-    const callId = begin();
+    const callId = await begin();
 
     expect(host?.querySelector('[data-topology-lens="acquiring"]')).not.toBeNull();
     expect(
@@ -137,7 +143,7 @@ describe("TopologyLens", () => {
     ).toEqual(["p", "aside"]);
     expect(host?.querySelector('[data-topology-scan="true"]')).not.toBeNull();
 
-    finish(callId, "saved");
+    await finish(callId, "saved");
     expect(host?.querySelector('[data-topology-lens="sealing"]')).not.toBeNull();
     expect(
       host
@@ -152,9 +158,9 @@ describe("TopologyLens", () => {
     expect(studioEditLifecycle.getSnapshot()).toEqual({ phase: "idle" });
   });
 
-  it("remeasures the post-write target before drawing the persistence seal", () => {
+  it("remeasures the post-write target before drawing the persistence seal", async () => {
     geometryMock.measure
-      .mockReturnValueOnce({
+      .mockResolvedValueOnce({
         field: {
           label: "section",
           rect: { left: 5, top: 10, width: 300, height: 180, editScaleX: 1, editScaleY: 1 },
@@ -165,7 +171,7 @@ describe("TopologyLens", () => {
         },
         contours: [],
       })
-      .mockReturnValueOnce({
+      .mockResolvedValueOnce({
         field: {
           label: "section",
           rect: { left: 50, top: 20, width: 360, height: 220, editScaleX: 1, editScaleY: 1 },
@@ -177,10 +183,10 @@ describe("TopologyLens", () => {
         contours: [],
       });
     mount();
-    const callId = begin();
+    const callId = await begin();
     expect(host?.querySelector<HTMLElement>("[data-topology-target]")?.style.left).toBe("10px");
 
-    finish(callId, "verified");
+    await finish(callId, "verified");
 
     const sealedTarget = host?.querySelector<HTMLElement>("[data-topology-target]");
     expect(sealedTarget?.style.left).toBe("70px");
@@ -188,23 +194,23 @@ describe("TopologyLens", () => {
     expect(host?.querySelector('[data-topology-seal="verified"]')).not.toBeNull();
   });
 
-  it("skips acquisition when the coordinator identifies a repeated target", () => {
+  it("skips acquisition when the coordinator identifies a repeated target", async () => {
     mount();
-    const firstCall = begin();
-    finish(firstCall, "saved");
+    const firstCall = await begin();
+    await finish(firstCall, "saved");
     act(() => vi.advanceTimersByTime(240));
 
-    begin();
+    await begin();
 
     expect(host?.querySelector('[data-topology-lens="localizing"]')).not.toBeNull();
     expect(host?.querySelector('[data-topology-contour="true"]')).toBeNull();
   });
 
-  it.each(["dispatched", "failed"] as const)("retracts %s without a seal", (stage) => {
+  it.each(["dispatched", "failed"] as const)("retracts %s without a seal", async (stage) => {
     mount();
-    const callId = begin();
+    const callId = await begin();
 
-    finish(callId, stage);
+    await finish(callId, stage);
 
     expect(host?.querySelector('[data-topology-lens="localizing"]')).not.toBeNull();
     expect(host?.querySelector("[data-topology-seal]")).toBeNull();
@@ -213,11 +219,11 @@ describe("TopologyLens", () => {
     expect(studioEditLifecycle.getSnapshot()).toEqual({ phase: "idle" });
   });
 
-  it.each(["saved", "verified"] as const)("retracts a %s no-op without a seal", (stage) => {
+  it.each(["saved", "verified"] as const)("retracts a %s no-op without a seal", async (stage) => {
     mount();
-    const callId = begin();
+    const callId = await begin();
 
-    finish(callId, stage, false);
+    await finish(callId, stage, false);
 
     expect(host?.querySelector('[data-topology-lens="localizing"]')).not.toBeNull();
     expect(host?.querySelector('[data-topology-terminal="no-change"]')).not.toBeNull();
@@ -226,10 +232,10 @@ describe("TopologyLens", () => {
     expect(host?.querySelector('[data-topology-lens="hidden"]')).not.toBeNull();
   });
 
-  it("does not replay a terminal seal after the overlay remounts", () => {
+  it("does not replay a terminal seal after the overlay remounts", async () => {
     mount();
-    const callId = begin();
-    finish(callId, "saved");
+    const callId = await begin();
+    await finish(callId, "saved");
     act(() => vi.advanceTimersByTime(240));
     expect(studioEditLifecycle.getSnapshot()).toEqual({ phase: "idle" });
 
@@ -243,11 +249,12 @@ describe("TopologyLens", () => {
     expect(host?.querySelector("[data-topology-seal]")).toBeNull();
   });
 
-  it("keeps an active invocation through StrictMode effect replay", () => {
-    const callId = begin();
+  it("keeps an active invocation through StrictMode effect replay", async () => {
+    const callId = await begin();
 
     mount(false, true);
     act(() => vi.advanceTimersByTime(0));
+    await settle();
 
     expect(studioEditLifecycle.getSnapshot()).toMatchObject({
       callId,
@@ -256,31 +263,31 @@ describe("TopologyLens", () => {
     expect(host?.querySelector('[data-topology-lens="acquiring"]')).not.toBeNull();
   });
 
-  it("clears on iframe reload and project switch", () => {
+  it("clears on iframe reload and project switch", async () => {
     mount();
-    begin();
+    await begin();
 
     act(() => announcePreviewDocumentLoaded(iframe!));
     expect(host?.querySelector('[data-topology-lens="hidden"]')).not.toBeNull();
 
-    begin();
+    await begin();
     act(() => studioEditLifecycle.activateProject("project-b"));
     expect(host?.querySelector('[data-topology-lens="hidden"]')).not.toBeNull();
   });
 
-  it("removes spatial travel in reduced motion while preserving target state", () => {
+  it("removes spatial travel in reduced motion while preserving target state", async () => {
     mount(true);
-    begin();
+    await begin();
 
     expect(host?.querySelector('[data-topology-lens="acquiring"]')).not.toBeNull();
     expect(host?.querySelector('[data-topology-contour="true"]')).not.toBeNull();
     expect(host?.querySelector('[data-topology-scan="true"]')).toBeNull();
   });
 
-  it("cleans its timer and iframe listener on unmount", () => {
+  it("cleans its timer and iframe listener on unmount", async () => {
     mount();
     const removeListener = vi.spyOn(iframe!, "removeEventListener");
-    begin();
+    await begin();
     expect(vi.getTimerCount()).toBe(1);
 
     act(() => root?.unmount());
@@ -294,7 +301,7 @@ describe("TopologyLens", () => {
     expect(studioEditLifecycle.getSnapshot()).toEqual({ phase: "idle" });
   });
 
-  it("dismisses on the promoted iframe's load, not the replaced one", () => {
+  it("dismisses on the promoted iframe's load, not the replaced one", async () => {
     const a = document.createElement("iframe");
     const b = document.createElement("iframe");
     document.body.append(a, b);
@@ -307,7 +314,7 @@ describe("TopologyLens", () => {
     act(() => {
       root?.render(<TopologyLens iframeRef={ref} activeCompositionPath="index.html" />);
     });
-    begin();
+    await begin();
 
     act(() => {
       ref.current = b;

@@ -280,6 +280,7 @@ export function computeDragPreview(
     pointerClientX: clientX - (floored - previewStart) * pps,
     pointerClientY: clientY,
     previewStart: placement.start,
+    aimStart: previewStart,
     previewTrack,
     // The lane the POINTER aims at (before the zone clamp): the commit reads it to
     // tell a deliberate vertical lane change from a horizontal drag.

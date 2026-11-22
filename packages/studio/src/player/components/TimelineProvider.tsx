@@ -32,8 +32,10 @@ import { useTimelineProviderState } from "./useTimelineProviderState";
 import { TimelineReadOnlyContext } from "./timelineReadOnly";
 import {
   TimelineEditProvider,
+  useTimelineEditContextOptional,
   useTimelineEditContextValue,
 } from "../../contexts/TimelineEditContext";
+import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 
 export type TimelineCanvasState = Omit<
   TimelineLaneBaseProps,
@@ -212,7 +214,11 @@ export function TimelineProvider({
 }
 
 function TimelineProviderState({ children, ...props }: TimelineProps & { children: ReactNode }) {
-  const value = useTimelineProviderState(props);
+  const shell = useStudioShellContextOptional();
+  const { onNotice } = useTimelineEditContextOptional();
+  const notice = shell?.showToast ?? onNotice;
+  const onDropRefused = notice && (() => notice("Clips on the same track can't overlap.", "info"));
+  const value = useTimelineProviderState({ ...props, onDropRefused });
   return <TimelineContext.Provider value={value}>{children}</TimelineContext.Provider>;
 }
 

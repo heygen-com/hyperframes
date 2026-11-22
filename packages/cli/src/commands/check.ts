@@ -491,7 +491,8 @@ async function runPrepareMedia(
     console.log(
       `${mark}  Browser-playable copies: ${files.length - failed.length}/${files.length} ready`,
     );
-    for (const file of failed) console.log(terminalLines(`   ${file.file}: ${file.reason}`));
+    for (const file of failed)
+      console.log(`   ${terminalText(file.file)}: ${terminalLines(file.reason ?? "")}`);
   }
   setCommandExitCode(failed.length === 0 ? 0 : 1);
 }

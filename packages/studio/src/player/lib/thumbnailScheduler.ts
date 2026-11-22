@@ -23,7 +23,7 @@ export interface ThumbnailRequest {
   priority: ThumbnailPriority;
   /** Rich work is paused while the timeline is fast-scrolling. */
   rich?: boolean;
-  /** For work whose result nobody reads: it is dropped, not cached, once its last lease ends. */
+  /** For work nobody reads: starts only in an idle bucket, and is dropped, not cached, once its last lease ends. */
   discardWhenReleased?: boolean;
   load: (signal: AbortSignal) => Promise<ThumbnailLoadedResult>;
 }
@@ -305,6 +305,7 @@ export class ThumbnailScheduler {
       if (this.isHeld(entry)) continue;
       const bucket = concurrencyBucket(entry.request.kind);
       if (this.activeByBucket[bucket] >= this.bucketLimit(bucket)) continue;
+      if (entry.request.discardWhenReleased && this.activeByBucket[bucket] > 0) continue;
       this.start(entry, bucket);
     }
   }
