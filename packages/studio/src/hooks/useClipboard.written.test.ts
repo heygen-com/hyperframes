@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { pasteElementHtml, pasteTimelineClips } from "./useClipboard";
 import { parseHTMLContent } from "@hyperframes/core/compiler/html-document";
 import { prepareCopy, refuseAddedMarkup } from "../utils/clipboardMarkup";
@@ -220,4 +220,19 @@ describe("a paste is checked as the preview server serves the file", () => {
     const file = pasteElementHtml(FILE, { html: icon, readFrom: null }, false, "index.html");
     expect(file).toMatch(/<title [^>]*>Icon &lt;\/title&gt;<\/title><circle /);
   });
+});
+
+// fails without the fix: each copy was compared with every element of the file, so a batch paste took seconds.
+it("compares each pasted copy with only the elements that could be it", () => {
+  const clips = Array.from({ length: 60 }, (_, i) => ({
+    html: `<div id="c${i}" class="clip" data-start="0" data-duration="1" data-track-index="1"><span>${i}</span></div>`,
+    readFrom: null,
+    start: i,
+    duration: 1,
+    track: 1,
+  }));
+  const compared = vi.spyOn(Node.prototype, "isEqualNode");
+  pasteTimelineClips(FILE, clips, 0, [], false, "index.html");
+  expect(compared.mock.calls.length).toBeLessThanOrEqual(clips.length * 2);
+  compared.mockRestore();
 });
