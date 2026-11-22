@@ -56,16 +56,19 @@ function stubFetch(leaks: string[]) {
 
 /** An iframe stand-in that records every way anyone reaches into it, `instanceof` included. */
 function spyIframe(touched: string[]): HTMLIFrameElement {
-  const record =
-    (trap: string) =>
-    (...args: unknown[]) => {
-      touched.push(`${trap} ${String(args[1] ?? "")}`.trim());
-      return trap === "has" ? false : trap === "getPrototypeOf" ? null : undefined;
-    };
   return new Proxy({} as HTMLIFrameElement, {
-    get: record("get"),
-    has: record("has"),
-    getPrototypeOf: record("getPrototypeOf"),
+    get: (_, property) => {
+      touched.push(`get ${String(property)}`);
+      return undefined;
+    },
+    has: (_, property) => {
+      touched.push(`has ${String(property)}`);
+      return false;
+    },
+    getPrototypeOf: () => {
+      touched.push("getPrototypeOf");
+      return null;
+    },
   });
 }
 
