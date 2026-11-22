@@ -148,19 +148,3 @@ export function insertAsSibling(source: string, newHtml: string, anchorHfId?: st
     ? source.slice(0, root.endAfterBracket) + newHtml + source.slice(root.endAfterBracket)
     : source + newHtml;
 }
-
-/** An `id="..."` attribute, not `data-id="..."` or similar — only matches
- *  when preceded by whitespace, the way every generated attribute is. */
-export const ID_ATTR_RE = /(?<=\s)id="([^"]+)"/;
-
-export function deduplicateIds(html: string, existingIds: string[]): string {
-  const existingSet = new Set(existingIds);
-  return html.replace(new RegExp(ID_ATTR_RE.source, "g"), (full, id: string) => {
-    if (!existingSet.has(id)) return full;
-    let counter = 2;
-    while (existingSet.has(`${id}-${counter}`)) counter++;
-    const newId = `${id}-${counter}`;
-    existingSet.add(newId);
-    return `id="${newId}"`;
-  });
-}
