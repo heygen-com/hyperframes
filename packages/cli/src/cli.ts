@@ -523,10 +523,9 @@ function commandSucceededForTelemetry(): boolean {
 
 // A crash before the command delivered says what it was: a program driving the CLI otherwise gets
 // an exit 1 with no words at all.
-function sayCrash(error: Error, kind: "uncaught_exception" | "unhandled_rejection"): void {
+function sayCrash(error: Error): void {
   const words = [`${error.name}: ${error.message}`, firstFrameOf(error.stack)];
   errorBox("The command stopped on an unexpected error", words.filter(Boolean).join("\n"));
-  sayRenderCode(error, kind.toUpperCase());
 }
 
 const quietRun = argv.includes("--quiet");
@@ -560,8 +559,9 @@ function exitAfterCliFailure(
   error: Error,
 ): never {
   commandFailed = true;
-  sayCrash(error, kind);
+  sayCrash(error);
   emitCliErrorEvent(kind, error);
+  sayRenderCode(error, kind.toUpperCase());
   _flushSync?.();
   process.exit(1);
 }
@@ -595,8 +595,9 @@ process.on("unhandledRejection", (reason) => {
   }
   commandFailed = true;
   process.exitCode = 1;
-  sayCrash(error, "unhandled_rejection");
+  sayCrash(error);
   emitCliErrorEvent("unhandled_rejection", error);
+  sayRenderCode(error, "UNHANDLED_REJECTION");
 });
 
 // Lazy-load help renderer — avoids allocating help data on non-help invocations

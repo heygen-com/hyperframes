@@ -55,20 +55,28 @@ const ENCODER_ERRORS: Record<string, string> = {
 const ENCODER_MESSAGES: Array<[RegExp, string]> = [
   [/^Faststart failed\b/, "FASTSTART_FAILED"],
   [/^Audio muxing failed\b/, "AUDIO_MUX_FAILED"],
-  [/encoder exited before the last frame|\bFFmpeg exited\b/, "ENCODER_EXITED"],
+  [
+    /^(?:Encoding|Streaming encode|HDR encode|Segment \d+ encode) failed\b|^Streaming encoder exited before frame\b/,
+    "ENCODER_EXITED",
+  ],
 ];
 
-function encoderCodeOf(error: unknown): string | undefined {
-  let seen: unknown = error;
-  for (let depth = 0; depth < 5 && seen instanceof Error; depth++) {
-    const message = seen.message;
-    const code =
-      ENCODER_ERRORS[seen.name] ?? ENCODER_MESSAGES.find(([words]) => words.test(message))?.[1];
-    if (code) return code;
-    seen = seen.cause;
-  }
-  return undefined;
+function causesOf(error: unknown): Error[] {
+  const causes: Error[] = [];
+  for (let seen = error; causes.length < 5 && seen instanceof Error; seen = seen.cause)
+    causes.push(seen);
+  return causes;
 }
+
+const encoderClassOf = (error: unknown) =>
+  causesOf(error)
+    .map((seen) => ENCODER_ERRORS[seen.name])
+    .find(Boolean);
+
+const encoderMessageOf = (error: unknown) =>
+  causesOf(error)
+    .map((seen) => ENCODER_MESSAGES.find(([words]) => words.test(seen.message))?.[1])
+    .find(Boolean);
 
 /** A failed render's code: never its words, which can name the person's files and folders. */
 function renderFailureCode(error: unknown, fallback = "RENDER_FAILED"): string {
@@ -77,8 +85,9 @@ function renderFailureCode(error: unknown, fallback = "RENDER_FAILED"): string {
     return error.warnings[0].code.toUpperCase();
   return (
     producerCodeOf(error) ??
-    encoderCodeOf(error) ??
+    encoderClassOf(error) ??
     fileErrorOf(error, message) ??
+    encoderMessageOf(error) ??
     captureCodeOf(error, message) ??
     fallback
   );
