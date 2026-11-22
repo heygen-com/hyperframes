@@ -42,6 +42,7 @@ function reloadedFilm() {
   const { win } = makeAdapterWindow({ duration: 2 });
   const frame = win as unknown as Record<string, unknown>;
   const iframe = detachedFakeIframe(frame);
+  Object.defineProperty(iframe, "isConnected", { value: true });
   iframe.contentDocument!.body.innerHTML = FILM;
   frame.__clipManifest = RELOADED;
   const markup = {
