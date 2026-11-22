@@ -30,7 +30,7 @@ import type { GsapSnapshot } from "./editing/gsapSnapshot";
 import type { MotionPathFrameHome } from "./editing/motionPathHome";
 import type { EditingLayer, EditingStackingSibling } from "./editingLayers";
 import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
-import { parsePatchTweens, type PatchTweensParams } from "./editing/patchTween";
+import { parsePatchTweensRequest, type PatchTweensParams } from "./editing/patchTween";
 import { parseDraftEnd, type EditingDraftEnd } from "./editingDraftEnd";
 import {
   parseRestoreAttributesRerun,
@@ -605,7 +605,7 @@ const PARAM_PARSERS: {
   "stacking-family": (params) =>
     hasKeys(params, "handle") && isHandle(params.handle) ? { handle: params.handle } : null,
   "gsap-set": parseGsapSet,
-  "patch-tweens": parsePatchTweens,
+  "patch-tweens": parsePatchTweensRequest,
   "soft-reload": parseSoftReload,
   "hold-scenes": parseHoldScenes,
   "mark-scenes-stale": parseMarkScenesStale,

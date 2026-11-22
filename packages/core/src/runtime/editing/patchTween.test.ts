@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { drawDrafts } from "../editingDraft";
 import { handleFor } from "../editingHandles";
-import { parsePatchTweens, patchTweens } from "./patchTween";
+import { parsePatchTweens, parsePatchTweensRequest, patchTweens } from "./patchTween";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -211,15 +211,17 @@ describe("patch-tweens ending a gesture's draft", () => {
     const handle = "0123456789abcdef:1";
     const base = { patches: [save], seek: true };
     expect(
-      parsePatchTweens({ ...base, endsDrafts: [{ handle, draft: 3, end: "keep-size" }] }),
+      parsePatchTweensRequest({ ...base, endsDrafts: [{ handle, draft: 3, end: "keep-size" }] }),
     ).toEqual({
       ...base,
       endsDrafts: [{ handle, draft: 3, end: "keep-size" }],
     });
     expect(
-      parsePatchTweens({ ...base, endsDrafts: [{ handle, draft: 0, end: "keep" }] }),
+      parsePatchTweensRequest({ ...base, endsDrafts: [{ handle, draft: 0, end: "keep" }] }),
     ).toBeNull();
-    expect(parsePatchTweens({ ...base, endsDrafts: [{ handle, end: "keep-size" }] })).toBeNull();
-    expect(parsePatchTweens({ ...base, endsDrafts: "all" })).toBeNull();
+    expect(
+      parsePatchTweensRequest({ ...base, endsDrafts: [{ handle, end: "keep-size" }] }),
+    ).toBeNull();
+    expect(parsePatchTweensRequest({ ...base, endsDrafts: "all" })).toBeNull();
   });
 });

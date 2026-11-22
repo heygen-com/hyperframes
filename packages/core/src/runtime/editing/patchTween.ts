@@ -422,18 +422,16 @@ function parseChange(value: unknown): RuntimeTweenChange | null {
   return props ? { kind, props } : null;
 }
 
+function parseEnds(value: unknown): EditingDraftEnd[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_PATCHES) return null;
+  const ends = value.map(parseDraftEnd);
+  return ends.includes(null) ? null : (ends as EditingDraftEnd[]);
+}
+
 export function parsePatchTweens(params: unknown): PatchTweensParams | null {
-  if (!isRecord(params)) return null;
-  const keys = Object.keys(params).sort().join();
-  if (keys !== "patches,seek" && keys !== "endsDrafts,patches,seek") return null;
-  const { patches, seek, endsDrafts } = params;
-  const ends =
-    endsDrafts === undefined
-      ? []
-      : Array.isArray(endsDrafts)
-        ? endsDrafts.map(parseDraftEnd)
-        : [null];
-  if (ends.length > MAX_PATCHES || ends.includes(null)) return null;
+  if (!isRecord(params) || Object.keys(params).sort().join() !== "patches,seek") return null;
+  const { patches, seek } = params;
   if (typeof seek !== "boolean" || !Array.isArray(patches)) return null;
   if (patches.length === 0 || patches.length > MAX_PATCHES) return null;
   const parsed: PatchTweensParams["patches"] = [];
@@ -446,9 +444,16 @@ export function parsePatchTweens(params: unknown): PatchTweensParams | null {
     if (!okSelector || !change) return null;
     parsed.push({ selector, change });
   }
-  return ends.length
-    ? { patches: parsed, seek, endsDrafts: ends as EditingDraftEnd[] }
-    : { patches: parsed, seek };
+  return { patches: parsed, seek };
+}
+
+export function parsePatchTweensRequest(params: unknown): PatchTweensParams | null {
+  if (!isRecord(params)) return null;
+  const { endsDrafts, ...rest } = params;
+  const parsed = parsePatchTweens(rest);
+  const ends = parseEnds(endsDrafts);
+  if (!parsed || !ends) return null;
+  return ends.length ? { ...parsed, endsDrafts: ends } : parsed;
 }
 
 /** The frame patching its own timelines: every patch must land, and it renders once at the end. */
