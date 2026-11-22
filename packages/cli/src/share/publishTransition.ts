@@ -30,12 +30,9 @@ export function checkPublishTransition(
 ): ReturnType<typeof publishPhase> {
   const dir = resolve(args.dir ?? ".");
   const prior = readProjectLink(dir);
-  // A committed descriptor counts only when this machine linked the folder to it: one that came
-  // with a received project is not this user's earlier publication.
   const team = readTeamProject(dir);
-  const legacyUpdate = Boolean(
-    args.update?.trim() || prior?.url || (team && teamProjectLinkedHere(dir, team)),
-  );
+  const teamLinkedHere = team !== null && teamProjectLinkedHere(dir, team);
+  const legacyUpdate = Boolean(args.update?.trim() || prior?.url || teamLinkedHere);
   const phase = publishPhase(noticeRelease);
   asNotice(() => process.stderr.write(publishNotice(phase, legacyUpdate) + "\n"));
   if (publishTransitionDecision(phase, legacyUpdate) === "guide_to_share") {

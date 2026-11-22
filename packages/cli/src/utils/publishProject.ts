@@ -22,7 +22,7 @@ import { tryResolveCredential } from "../auth/index.js";
 import { isAuthError } from "../auth/errors.js";
 import { envCredentialVar, isTokenExpired, type ResolvedCredential } from "../auth/resolver.js";
 import { refreshIfNeeded } from "../cloud/auth.js";
-import { writeProjectLink } from "./projectLink.js";
+import { PERSONAL_SPACE, writeProjectLink } from "./projectLink.js";
 import {
   isHiddenProjectFile,
   isPrivateCompositionFile,
@@ -1240,14 +1240,11 @@ export async function publishProjectArchive(
     }
     throw error;
   }
+  // Remember the server's id + url so the next publish of this directory updates in place.
   if (result.claimed) rememberPublishedLink(projectDir, result, spaceId);
   return result;
 }
 
-/**
- * Remember the server's id, url and the space published into ("" for the personal space), so
- * the next publish of this directory updates in place and its committed descriptor counts as linked.
- */
 function rememberPublishedLink(
   projectDir: string,
   result: PublishedProjectResponse,
@@ -1256,6 +1253,6 @@ function rememberPublishedLink(
   writeProjectLink(projectDir, {
     projectId: result.projectId,
     url: result.url,
-    spaceId: spaceId ?? "",
+    spaceId: spaceId ?? PERSONAL_SPACE,
   });
 }

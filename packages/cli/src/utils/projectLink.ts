@@ -8,12 +8,10 @@ import { readRecord, recordKind, writeRecord } from "./projectRecords.js";
 interface ProjectLink {
   projectId: string;
   url: string;
-  /**
-   * The space this machine published the folder into: a team space id, or "" for the personal
-   * space. Absent on records written before it was kept, and on an id minted before a publish.
-   */
   spaceId?: string;
 }
+
+export const PERSONAL_SPACE = "";
 
 type ProjectLinks = Record<string, ProjectLink>;
 
@@ -144,15 +142,9 @@ export function writeTeamProject(projectDir: string, team: TeamProject): string 
   return file;
 }
 
-/**
- * Whether this machine linked `projectDir` to the project the committed descriptor names: its
- * own record (kept outside the folder, keyed by the folder's path) holds the same project id and
- * space. The descriptor travels with every copy of the folder (a clone, a zip, a download), so on
- * its own it never picks a project to overwrite or a space to publish into.
- */
 export function teamProjectLinkedHere(projectDir: string, team: TeamProject): boolean {
   const link = readProjectLink(projectDir);
   if (!link || link.projectId !== team.projectId) return false;
-  // A record written before the space was kept names the project but not the space.
-  return link.spaceId === undefined || link.spaceId === (team.spaceId ?? "");
+  const recordPredatesSpaces = link.spaceId === undefined;
+  return recordPredatesSpaces || link.spaceId === (team.spaceId ?? PERSONAL_SPACE);
 }

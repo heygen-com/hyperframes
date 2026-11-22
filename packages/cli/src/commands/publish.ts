@@ -49,16 +49,13 @@ export const examples: Example[] = [
   ["Show full lint findings instead of the summary line", "hyperframes publish --lint-verbose"],
 ];
 
-/** An id read from a file or the server, printable on one line: anything outside visible ASCII shows as "?". */
 const shownId = (id: string): string => id.replace(/[^!-~]/g, "?");
 
-/** "project <id>", plus its team space when the descriptor names one. */
 function describeTeamProject(team: TeamProject): string {
   const space = team.spaceId ? ` in team space ${shownId(team.spaceId)}` : "";
   return `project ${shownId(team.projectId)}${space}`;
 }
 
-/** The descriptor names a project this machine never published the folder to, and --yes cannot confirm it. */
 export function unlinkedTeamProjectError(team: TeamProject): CliUsageError {
   const space = team.spaceId ? ` --space ${shownId(team.spaceId)}` : "";
   return new CliUsageError(
@@ -219,9 +216,6 @@ export default defineCommand({
       }
     }
 
-    // The committed descriptor travels with every copy of the folder (a clone, a zip, a
-    // download), so it picks the project and space only when this machine's own record links
-    // the folder to it. Otherwise the user names the project (--update) or confirms it here.
     let linkedTeam: TeamProject | null =
       committedTeam && teamProjectLinkedHere(dir, committedTeam) ? committedTeam : null;
     let declinedTeam = false;
@@ -418,7 +412,6 @@ export default defineCommand({
         // Persist a committable descriptor so a team converges on this link. This is a
         // convenience: wrap it so a read-only project dir can't turn a successful publish
         // into a "Publish failed" (the outer catch owns publish failures only).
-        // Declining a received descriptor's project makes this folder its own project.
         if (
           committedTeam === null ||
           declinedTeam ||
