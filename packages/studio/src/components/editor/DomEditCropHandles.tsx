@@ -153,9 +153,9 @@ function insetsAfterDrag(gesture: CropGestureState, x: number, y: number): ClipP
 
 type StartReads = { token: number; busy: boolean; again: boolean; element: HTMLElement };
 
-/** A stand-in has no size of its own: the frame measures it while it is selected and whenever its overlay size changes,
- * so its insets draw at the element's own scale before any press, as an unsealed crop reads it live. One read at a time,
- * and one more when it lands if anything changed meanwhile; a new selection or a press (a new `token`) drops one out. */
+/** A stand-in has no size of its own: the frame measures it while selected and when its overlay size changes, so its
+ * insets draw at the element's own scale before any press, as an unsealed crop reads it live. One read at a time, one
+ * more when it lands if anything changed meanwhile; a new selection or a press (a new `token`) drops one still out. */
 function readStandInStart(
   r: StartReads,
   take: (element: HTMLElement, start: CropFrameStart) => void,
