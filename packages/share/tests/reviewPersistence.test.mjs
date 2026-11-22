@@ -15,6 +15,8 @@ import {
   recheckHeld,
   reviewDestination,
   reviewFiles,
+  reviewRecord,
+  reviewStatus,
   reviewVersion,
   ReviewFailed,
   shareForReview,
@@ -57,6 +59,38 @@ async function project(t) {
   bind(dir);
   return { dir, metadata, render, stateFile: join(metadata, "review-export.json") };
 }
+
+test("hosts only see plausible saved owner addresses, preserving their spelling", async (t) => {
+  const { dir, metadata } = await project(t);
+  const file = join(metadata, "review.json");
+  const record = JSON.parse(await readFile(file, "utf8"));
+  const client = {
+    signedInEmail: async () => "me@example.org",
+    share: async () => {
+      throw new ReviewFailed(403, "permission_denied");
+    },
+  };
+  for (const [ownerEmail, expected] of [
+    ["A.Lee+Équipe@example.org", "A.Lee+Équipe@example.org"],
+    ["display name", null],
+    ["a@@example.org", null],
+    ["a@bad domain.org", null],
+    ["a@example.org\r", null],
+    ["a\x1b@example.org", null],
+    ["a\x07@example.org", null],
+    ["a@exam\x85ple.org", null],
+    ["a@exam\u202eple.org", null],
+    [42, null],
+    [undefined, null],
+  ]) {
+    await writeFile(file, JSON.stringify({ ...record, ownerEmail }));
+    assert.equal((await reviewRecord(dir)).ownerEmail, expected);
+    await assert.rejects(reviewStatus({ projectPath: dir, client }), {
+      status: 403,
+      reason: expected ? `owner_signed_out:${expected}` : "no_access",
+    });
+  }
+});
 
 // Hold a real second process at the create request, after its pending state has been written.
 function uploader(t, dir) {

@@ -17,7 +17,9 @@ import {
   applyManualOffsetDragDraft,
   createManualOffsetDragMember,
   endManualOffsetDragMembers,
+  type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
+import { drawPreviewDraft } from "./previewDrafts";
 import { measurePreviewGestureStart } from "./previewGestureStartRead";
 import { captureStudioRotation } from "./manualEditsSnapshot";
 import {
@@ -142,6 +144,7 @@ const press = () =>
 async function dragBoxOnSealedFrame(
   script: string,
   beforePress?: (iframe: HTMLIFrameElement) => void,
+  beforeEnd?: (standIn: Element, member: ManualOffsetDragMember) => void,
 ) {
   const box = document.getElementById("box")!;
   const iframe = opaqueFrame();
@@ -174,9 +177,41 @@ async function dragBoxOnSealedFrame(
       stamp: freezeDragStamp(standIn),
     },
   );
+  beforeEnd?.(standIn, member);
   endManualOffsetDragMembers([member]);
   return { started, start, anim: anim!, outcome, commit };
 }
+
+// fails without the fix: the frame kept the drag's drawn translate on top of the x the save gave GSAP.
+it("ends a sealed drag on GSAP's route without its drawn translate, so the saved x alone places the layer", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(SCRIPT);
+
+  await vi.waitFor(() => expect(document.getElementById("box")!.style.translate).toBe(""));
+});
+
+// fails without the fix: ending the draft on GSAP's route took back the size a resize had drawn too.
+it("keeps the size a sealed resize drew when its anchor ends on GSAP's route", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(SCRIPT, undefined, (standIn) =>
+    drawPreviewDraft(standIn, { size: { width: 300, height: 200 } }),
+  );
+
+  const box = document.getElementById("box")!;
+  await vi.waitFor(() => expect([box.style.width, box.style.translate]).toEqual(["300px", ""]));
+});
+
+// fails without the fix: a resize saved as GSAP scale kept its drawn CSS size, and the scale grew it again.
+it("drops the size a sealed resize drew when its save writes the size as GSAP scale", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(SCRIPT, undefined, (standIn, member) => {
+    drawPreviewDraft(standIn, { size: { width: 300, height: 200 } });
+    member.sizeSavedAsScale = true;
+  });
+
+  const box = document.getElementById("box")!;
+  await vi.waitFor(() => expect([box.style.width, box.style.translate]).toEqual(["", ""]));
+});
 
 // fails without the fix: a sealed preview refused to drag a layer its animation moves.
 it("drags a layer its tween moves in a sealed preview: it moves live and saves a keyframe there", async () => {
