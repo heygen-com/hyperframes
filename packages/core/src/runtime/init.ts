@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication complexity
 import { rememberSourceLength, sourceLengthOf } from "./sourceLength";
-import { restSceneAt, sceneRestingAt } from "./sceneRest";
+import { restSceneAt, sceneRestingAt, takeSceneRedrawDue } from "./sceneRest";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { setPreviewRasterScale } from "./previewRasterHints";
 import { createFarSceneSkip } from "./farScenes";
@@ -74,7 +74,7 @@ import {
   createGsapAdapter,
   holdFrameMarks,
   muteDiscreteCallbacks,
-  rerenderGsapTimelineAt,
+  redrawGsapTimelineAt,
   gsapTimelineOf,
   seekGsapTimeline,
   type GsapStructureKey,
@@ -5703,12 +5703,15 @@ export function initSandboxRuntimeModular(): void {
     timeline: RuntimeTimelineLike,
     timeSeconds: number,
     options?: RuntimeSeekOptions,
+    redrawDue = false,
   ) => {
     try {
       const suppressEvents = options?.suppressEvents === true;
       // Guarded: a partial timeline without pause() must still get its seek.
       pauseTimelineIfPossible(timeline);
-      seekGsapTimeline(timeline, timeSeconds, suppressEvents, gsapStructureOf(timeline), renderFps);
+      const structure = gsapStructureOf(timeline);
+      const redrawn = seekGsapTimeline(timeline, timeSeconds, suppressEvents, structure, renderFps);
+      if (redrawDue && !redrawn) redrawGsapTimelineAt(timeline, timeSeconds, structure);
     } catch (err) {
       // The scene's own callback threw. A warning, not a script error: it must not turn a
       // timed-out timeline wait into a script failure.
@@ -5814,8 +5817,9 @@ export function initSandboxRuntimeModular(): void {
           : sourceTime,
       );
       // A scene before or after its clip rests where the last frame left it: no redraw.
-      if (!renderCaptureSeekStarted && restsAt(timeline, localTime)) continue;
-      seekSceneTimeline(compositionId, timeline, localTime, options);
+      const redrawDue = takeSceneRedrawDue(timeline);
+      if (!redrawDue && !renderCaptureSeekStarted && restsAt(timeline, localTime)) continue;
+      seekSceneTimeline(compositionId, timeline, localTime, options, redrawDue);
       restSceneAt(timeline, localTime);
     }
   };
@@ -5945,15 +5949,7 @@ export function initSandboxRuntimeModular(): void {
           const redrawn = seekGsapTimeline(tl, tlSeekTime, suppressEvents, structure, renderFps);
           if (!redrawn && !suppressEvents && !hasZeroDurationCallbackTween(tl, structure)) {
             // The first seek is the only eventful one; the re-render only refreshes styles.
-            rerenderGsapTimelineAt(
-              {
-                totalTime: tl.totalTime.bind(tl),
-                totalDuration: tl.totalDuration?.bind(tl),
-                getChildren: tl.getChildren?.bind(tl),
-              },
-              tlSeekTime,
-              structure,
-            );
+            redrawGsapTimelineAt(tl, tlSeekTime, structure);
           }
         } else {
           tl.seek(tlSeekTime, suppressEvents);

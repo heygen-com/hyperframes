@@ -21,20 +21,25 @@ describe("patch-tweens on a scene that rests", () => {
     delete window.__hf;
   });
 
-  /** A root holding scenes `a` and `b`; `#a` is held at x 40 by a set on scene a's timeline, `depth` timelines down. */
-  function load(depth: 1 | 2) {
+  /** `#a` is held at x 40 by a set on scene a's timeline; at depth 2, scene a sits inside scene outer. */
+  function load(depth: 1 | 2, holdA = (a: gsap.core.Timeline) => a.set("#a", { x: 40 }, 0)) {
+    const a = `<div class="clip" data-composition-id="a" data-start="0" data-duration="10"><div id="a"></div></div>`;
     document.body.innerHTML =
       `<div data-composition-id="main" data-root="true" data-duration="10">` +
-      `<div class="clip" data-composition-id="a" data-start="0" data-duration="10"><div id="a"></div></div>` +
+      (depth === 1
+        ? a
+        : `<div class="clip" data-composition-id="outer" data-start="0" data-duration="10">${a}</div>`) +
       `<div class="clip" data-composition-id="b" data-start="0" data-duration="10"><div id="b"></div></div>` +
       `</div>`;
-    const held = gsap.timeline().set("#a", { x: 40 }, 0);
-    const a = gsap.timeline({ paused: true }).to({}, { duration: 5 }, 0);
-    if (depth === 1) a.set("#a", { x: 40 }, 0);
-    else a.add(held, 0);
-    const b = gsap.timeline({ paused: true }).set("#b", { x: 10 }, 0).to({}, { duration: 5 }, 0);
-    const root = gsap.timeline({ paused: true }).to({}, { duration: 10 }, 0);
-    window.__timelines = { main: root, a, b } as unknown as Record<string, RuntimeTimelineLike>;
+    const scene = () => gsap.timeline({ paused: true }).to({}, { duration: 5 }, 0);
+    const b = scene().set("#b", { x: 10 }, 0);
+    const timelines: Record<string, unknown> = {
+      main: scene(),
+      a: holdA(scene()),
+      b,
+    };
+    if (depth === 2) timelines.outer = scene();
+    window.__timelines = timelines as Record<string, RuntimeTimelineLike>;
     initSandboxRuntimeModular();
     window.__player?.seek(1);
     window.__player?.seek(1);
@@ -49,7 +54,7 @@ describe("patch-tweens on a scene that rests", () => {
     });
 
   it.each([1, 2] as const)(
-    "draws the patched set on a scene timeline %i deep, and only then answers patched",
+    "draws the patched set on a scene %i composition deep, and only then answers patched",
     (depth) => {
       load(depth);
       expect(shownX("#a")).toBe(40);
@@ -67,9 +72,48 @@ describe("patch-tweens on a scene that rests", () => {
     ]);
   });
 
+  it("answers not patched when the patched set sits in a child timeline that already ended", () => {
+    load(1, (a) => a.add(gsap.timeline().set("#a", { x: 40 }, 0), 0));
+    expect(patchA(300)).toEqual({ patched: false });
+    expect(shownX("#a")).toBe(40);
+  });
+
+  it("answers patched for a keyframe-step edit once the tween that replaced it renders", () => {
+    load(1, (a) =>
+      a.to("#a", { keyframes: { "0%": { x: 40 }, "100%": { x: 40 } }, duration: 2 }, 0),
+    );
+    const reply = patchTweens({
+      patches: [
+        { selector: "#a", change: { kind: "keyframe-rebuild", pct: 100, props: { x: 140 } } },
+      ],
+      seek: true,
+    });
+    expect(reply).toEqual({ patched: true });
+    expect(shownX("#a")).toBe(90);
+  });
+
   it("answers not patched when nothing draws the scene it changed", () => {
     load(1);
     delete window.__player;
     expect(patchA(300)).toEqual({ patched: false });
+  });
+});
+
+// The reply reads GSAP's internal _initted: an upgrade that changes it fails here, not every reply.
+describe("GSAP's init flag, as the patch reply reads it", () => {
+  it("is cleared by invalidate() and set again by the tween's next render", () => {
+    document.body.innerHTML = `<div id="a"></div>`;
+    const timeline = gsap
+      .timeline({ paused: true })
+      .set("#a", { x: 40 }, 0)
+      .to({}, { duration: 2 }, 0);
+    timeline.totalTime(1);
+    const set = timeline.getChildren(true)[0] as gsap.core.Tween & { _initted?: unknown };
+    expect(Boolean(set._initted)).toBe(true);
+    set.invalidate();
+    expect(Boolean(set._initted)).toBe(false);
+    timeline.totalTime(0.5, true);
+    timeline.totalTime(1, true);
+    expect(Boolean(set._initted)).toBe(true);
   });
 });
