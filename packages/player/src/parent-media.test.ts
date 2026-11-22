@@ -799,6 +799,24 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
     expect(setFrameMuted.mock.calls).toEqual([[true], [false]]);
   });
 
+  it("gives the film its sound back when the only copy still playing fails after the others stopped", () => {
+    const { mgr, setFrameMuted } = makeSealedManager();
+    mgr.setupFromList(
+      ["a", "b", "c"].map((f) => clip(`https://films.test/f/${f}.m4a`)),
+      film,
+    );
+    mgr.promoteToParentProxy();
+    const [a, b, c] = mgr.entries.map((m) => m.el);
+    a!.dispatchEvent(new Event("playing"));
+    a!.dispatchEvent(new Event("ended"));
+    b!.dispatchEvent(new Event("playing"));
+    b!.dispatchEvent(new Event("pause"));
+    c!.dispatchEvent(new Event("playing"));
+
+    c!.dispatchEvent(new Event("error"));
+    expect(setFrameMuted.mock.calls).toEqual([[true], [false]]);
+  });
+
   it("mutes an unsealed film's own media once a copy of it is playing", () => {
     const { mgr, setFrameMuted } = makeSealedManager();
     document.body.innerHTML = '<audio src="https://films.test/f/a.m4a" data-start="0"></audio>';

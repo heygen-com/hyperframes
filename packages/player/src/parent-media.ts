@@ -459,6 +459,8 @@ export class ParentMediaManager {
     };
     el.addEventListener("seeked", () => this._noteSeekLanded(entry));
     el.addEventListener("playing", () => this._copyPlaying(entry));
+    for (const stop of ["pause", "ended"])
+      el.addEventListener(stop, () => this._playingCopies.delete(entry));
     el.addEventListener("error", () => this._copyLost(entry));
     this._entries.push(entry);
     return entry;
