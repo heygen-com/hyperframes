@@ -1207,3 +1207,21 @@ it("saves what was typed when the frame opened a sealed edit but its start reply
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
   expect(saved).toEqual(["title=Draft"]);
 });
+
+// fails without the fix: the newer save on field 1 superseded the older one on field 0, so Blue never landed.
+it("keeps both panel saves on different fields of one element when they queue behind an edit", async () => {
+  const { title, iframe, selection, holdEndReplies } = await sealedTitleHoldingEnds(SPANS);
+  const { persist, text } = sourceFile(undefined, SPANS);
+  const { controls, commits } = wiredEditor(iframe, selection, persist);
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  const release = holdEndReplies();
+  const [first, second] = selection.textFields.map((field) => field.key);
+  const saves: Array<Promise<unknown>> = [];
+  act(() => void saves.push(commits().handleDomTextCommitForSelection(selection, "Blue", first)));
+  act(() => void saves.push(commits().handleDomTextCommitForSelection(selection, "Red", second)));
+  release();
+  await act(() => Promise.allSettled(saves));
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+  expect(text("title")).toBe("<span>Blue</span> <span>Red</span>");
+});
