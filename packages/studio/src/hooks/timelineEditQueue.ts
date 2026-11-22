@@ -1,4 +1,10 @@
 import type { MutableRefObject } from "react";
+import { usePlayerStore } from "../player";
+import {
+  landsOnLaneClip,
+  laneOverlapRefusal,
+  type LaneLanding,
+} from "../player/components/timelineCollision";
 
 /** The editor's one timeline edit queue. `placed` rejects when an edit still pending is refused. */
 export interface TimelineEditQueue extends MutableRefObject<Promise<void>> {
@@ -7,6 +13,18 @@ export interface TimelineEditQueue extends MutableRefObject<Promise<void>> {
 
 export const refuseWithEarlier = (error: unknown): never => {
   throw error;
+};
+
+/** For an edit the user placed, such as a drop or a trim: kept unless it now overlaps a lane clip. */
+export const keepUnlessItOverlaps = (changes: readonly LaneLanding[]) => () => {
+  const { elements } = usePlayerStore.getState();
+  const shown = new Map(elements.map((e) => [e.key ?? e.id, e]));
+  const placed = changes.map(({ element, start, duration }) => ({
+    element: shown.get(element.key ?? element.id) ?? element,
+    start,
+    duration,
+  }));
+  if (landsOnLaneClip(elements, placed)) throw laneOverlapRefusal();
 };
 
 /** Runs `run` after every edit queued before it. When one of those was refused, `ifEarlierRefused`

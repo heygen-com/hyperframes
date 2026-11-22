@@ -1,6 +1,6 @@
 import { useCallback } from "react";
-import { usePlayerStore, type TimelineElement } from "../player";
-import { landsOnLaneClip, LANE_OVERLAP_NOTICE } from "../player/components/timelineCollision";
+import type { TimelineElement } from "../player";
+import { keepUnlessItOverlaps } from "./timelineEditQueue";
 import type {
   TimelineGroupCommitOptions,
   TimelineGroupMoveChange,
@@ -46,18 +46,9 @@ export function persistTimelineMoveEditsAtomically(
     // ("timing") omit it so they stay eligible for the SDK fast path.
     track: operation === "timing" ? undefined : updates.track,
   }));
-  const keepDropUnlessItOverlaps = () => {
-    const { elements } = usePlayerStore.getState();
-    const shown = new Map(elements.map((e) => [e.key ?? e.id, e]));
-    const drops = changes.map((c) => ({
-      element: shown.get(c.element.key ?? c.element.id) ?? c.element,
-      start: c.start,
-    }));
-    if (landsOnLaneClip(elements, drops)) throw new Error(LANE_OVERLAP_NOTICE);
-  };
   return deps.handleTimelineGroupMove(changes, {
     coalesceKey,
-    ifEarlierRefused: keepDropUnlessItOverlaps,
+    ifEarlierRefused: keepUnlessItOverlaps(changes),
   });
 }
 

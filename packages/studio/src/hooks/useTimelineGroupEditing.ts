@@ -32,7 +32,7 @@ import {
   syncPreviewContentDuration,
 } from "./timelineTimingSync";
 import type { GsapMutationStatus } from "./gsapMutationClient";
-import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
+import { getStudioSaveErrorMessage, getStudioSaveErrorTone } from "../utils/studioSaveDiagnostics";
 import { enqueueTimelineEdit, type TimelineEditQueue } from "./timelineEditQueue";
 
 export interface TimelineGroupMoveChange {
@@ -352,7 +352,7 @@ export function useTimelineGroupEditing({
         if (options?.suppressFailureToast) {
           console.error("[Timeline] group move failed to persist", error);
         } else {
-          showToast(getStudioSaveErrorMessage(error), "error");
+          showToast(getStudioSaveErrorMessage(error), getStudioSaveErrorTone(error));
         }
         throw error;
       });
@@ -400,7 +400,8 @@ export function useTimelineGroupEditing({
       // the just-patched live DOM. See syncPreviewContentDuration.
       syncPreviewContentDuration(previewIframeRef.current);
       const { coalesceKey, coalesceMs } = timingGestureStep("timeline-group-resize", options);
-      return enqueueGroupOperation("Resize timeline clips", undefined, async (projectId) => {
+      const refused = options?.ifEarlierRefused;
+      return enqueueGroupOperation("Resize timeline clips", refused, async (projectId) => {
         await options?.beforeTiming;
         const sdk = await trySdkBatchPersist({
           changes,
@@ -463,7 +464,7 @@ export function useTimelineGroupEditing({
         // Failed persist: revert the optimistic duration readout + live root
         // alongside the gesture owner's store rollback.
         rollbackDuration();
-        showToast(getStudioSaveErrorMessage(error), "error");
+        showToast(getStudioSaveErrorMessage(error), getStudioSaveErrorTone(error));
         throw error;
       });
     },

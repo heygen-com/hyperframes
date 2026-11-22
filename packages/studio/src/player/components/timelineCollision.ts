@@ -218,20 +218,30 @@ export function timeRangesOverlap(
 }
 
 export const LANE_OVERLAP_NOTICE = "Clips on the same track can't overlap.";
+export const LANE_OVERLAP_TONE = "info";
 
-type Landing = { element: TimelineElement; start: number; track?: number };
+export const laneOverlapRefusal = () =>
+  Object.assign(new Error(LANE_OVERLAP_NOTICE), { tone: LANE_OVERLAP_TONE });
+
+export type LaneLanding = {
+  element: TimelineElement;
+  start: number;
+  duration?: number;
+  track?: number;
+};
 
 /** True when one of `checked` overlaps another clip in its lane, each clip placed where `moves` puts it. */
 export function landsOnLaneClip(
   elements: readonly TimelineElement[],
-  moves: readonly Landing[],
-  checked: readonly Landing[] = moves,
+  moves: readonly LaneLanding[],
+  checked: readonly LaneLanding[] = moves,
 ): boolean {
   const keyOf = (e: TimelineElement) => e.key ?? e.id;
   const landed = new Map(moves.map((m) => [keyOf(m.element), m]));
   const place = (e: TimelineElement) => {
     const move = landed.get(keyOf(e));
-    return { start: move?.start ?? e.start, track: move?.track ?? e.track };
+    const start = move?.start ?? e.start;
+    return { start, end: start + (move?.duration ?? e.duration), track: move?.track ?? e.track };
   };
   return checked.some(({ element }) => {
     const self = place(element);
@@ -240,12 +250,7 @@ export function landsOnLaneClip(
       return (
         keyOf(other) !== keyOf(element) &&
         at.track === self.track &&
-        timeRangesOverlap(
-          self.start,
-          self.start + element.duration,
-          at.start,
-          at.start + other.duration,
-        )
+        timeRangesOverlap(self.start, self.end, at.start, at.end)
       );
     });
   });

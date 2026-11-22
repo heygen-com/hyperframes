@@ -3,7 +3,7 @@ import { usePlayerStore, type TimelineElement } from "../player";
 import { batchElementUpdates } from "../player/store/batchElementUpdates";
 import { resolveMainTrackTrimRipple } from "../player/components/timelineGapCommit";
 import { timingGestureStep } from "./timelineTimingSync";
-import { refuseWithEarlier } from "./timelineEditQueue";
+import { keepUnlessItOverlaps, refuseWithEarlier } from "./timelineEditQueue";
 import type {
   TimelineGroupCommitOptions,
   TimelineGroupMoveChange,
@@ -63,7 +63,11 @@ export function useTimelineTrimRipple({
       setStarts(ripple);
       // Both join the edit queue in this call, so no later edit can land between the trim and
       // its shift and be overwritten by it.
-      const trimmed = handleTimelineGroupResize(trims, { ...given, coalesceKey });
+      const trimmed = handleTimelineGroupResize(trims, {
+        ...given,
+        coalesceKey,
+        ifEarlierRefused: keepUnlessItOverlaps(trims),
+      });
       const shifted = handleTimelineGroupMove(ripple, {
         beforeTiming: trimmed,
         ifEarlierRefused: refuseWithEarlier,
@@ -102,7 +106,11 @@ export function useTimelineTrimRipple({
       persistWithRipple(
         changes,
         "Resize timeline clips",
-        () => handleTimelineGroupResize(changes, options),
+        () =>
+          handleTimelineGroupResize(changes, {
+            ...options,
+            ifEarlierRefused: keepUnlessItOverlaps(changes),
+          }),
         options,
       ),
     [persistWithRipple, handleTimelineGroupResize],

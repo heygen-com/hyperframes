@@ -24,8 +24,12 @@ import {
 import { serializeZLaneGesture } from "../components/nle/zLaneGesture";
 import { cutoverCommittedOrThrow, sdkTimingPersist } from "../utils/sdkCutover";
 import type { TimelineMoveUpdates, UseTimelineEditingOptions } from "./useTimelineEditingTypes";
-import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
-import { enqueueTimelineEdit, type TimelineEditQueue } from "./timelineEditQueue";
+import { getStudioSaveErrorMessage, getStudioSaveErrorTone } from "../utils/studioSaveDiagnostics";
+import {
+  enqueueTimelineEdit,
+  keepUnlessItOverlaps,
+  type TimelineEditQueue,
+} from "./timelineEditQueue";
 
 type UseTimelineClipTimingEditingOptions = Pick<
   UseTimelineEditingOptions,
@@ -73,6 +77,7 @@ export function useTimelineClipTimingEditing({
       label: string,
       buildPatches: PersistTimelineEditInput["buildPatches"],
       step: ReturnType<typeof timingGestureStep>,
+      ifEarlierRefused?: (error: unknown) => void,
     ): Promise<void> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
@@ -96,7 +101,7 @@ export function useTimelineClipTimingEditing({
           });
           forceReloadSdkSession?.();
         },
-        { label },
+        { label, ifEarlierRefused },
       );
     },
     [
@@ -289,9 +294,13 @@ export function useTimelineClipTimingEditing({
           sdkGsap,
         }).finally(() => invalidateGsapCache?.());
       const resizeFallback = () =>
-        enqueueEdit(element, "Resize timeline clip", buildResizePatches, step).then(() =>
-          finishResizeGsapSync(),
-        );
+        enqueueEdit(
+          element,
+          "Resize timeline clip",
+          buildResizePatches,
+          step,
+          keepUnlessItOverlaps([{ element, ...updates }]),
+        ).then(() => finishResizeGsapSync());
       const persistDone =
         sdkSession && element.hfId && !element.link && !hasPbsAdjustment && !needsExtension
           ? sdkTimingPersist(
@@ -318,7 +327,7 @@ export function useTimelineClipTimingEditing({
       return persistDone.catch((error) => {
         // Failed persist: revert the optimistic duration readout + live root.
         rollbackDuration();
-        showToast(getStudioSaveErrorMessage(error), "error");
+        showToast(getStudioSaveErrorMessage(error), getStudioSaveErrorTone(error));
         throw error;
       });
     },

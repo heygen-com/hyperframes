@@ -11,7 +11,8 @@ import {
 } from "@hyperframes/studio-server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Root } from "react-dom/client";
-import type { TimelineElement } from "../player";
+import { usePlayerStore, type TimelineElement } from "../player";
+import { LANE_OVERLAP_NOTICE } from "../player/components/timelineCollision";
 import { persistTimelineMoveEditsAtomically } from "./timelineMoveAdapter";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
 import {
@@ -164,8 +165,8 @@ it.each([false, true])(
   },
 );
 
-// fails without the fix: the shift ran and wrote though the edit queued before it was refused.
-it("refuses a ripple shift before it writes when an edit queued before it is refused", async () => {
+// The real group commits on a queue whose first edit was refused.
+function mountBehindRefusedEdit(showToast = vi.fn()) {
   const editQueueRef: TimelineEditQueue = { current: Promise.resolve() };
   const earlier = enqueueTimelineEdit(editQueueRef, () =>
     Promise.reject(new Error("delete refused")),
@@ -182,15 +183,25 @@ it("refuses a ripple shift before it writes when an edit queued before it is ref
       projectIdRef: { current: "fixture" },
       recordEdit: vi.fn(),
       reloadPreview: vi.fn(),
-      showToast: vi.fn(),
+      showToast,
       writeProjectFile: vi.fn(),
     });
     return null;
   }
   const root = mountReactHarness(<Harness />);
+  const unmount = () => {
+    act(() => root.unmount());
+    vi.unstubAllGlobals();
+  };
+  return { earlier, fetchMock, getHook: () => hook!, unmount };
+}
+
+// fails without the fix: the shift ran and wrote though the edit queued before it was refused.
+it("refuses a ripple shift before it writes when an edit queued before it is refused", async () => {
+  const { earlier, fetchMock, getHook, unmount } = mountBehindRefusedEdit();
   try {
     await act(async () => {
-      const shift = hook!.handleTimelineGroupMove([{ element: el("a", 2, 2), start: 0 }], {
+      const shift = getHook().handleTimelineGroupMove([{ element: el("a", 2, 2), start: 0 }], {
         ifEarlierRefused: refuseWithEarlier,
         suppressFailureToast: true,
       });
@@ -199,8 +210,30 @@ it("refuses a ripple shift before it writes when an edit queued before it is ref
     });
     expect(fetchMock.mock.calls).toEqual([]);
   } finally {
-    act(() => root.unmount());
-    vi.unstubAllGlobals();
+    unmount();
+  }
+});
+
+// fails without the fix: the refused drag said the same words as a refused drop, but as an error.
+it("a drag refused for landing on a restored clip shows the refused-drop notice, as info", async () => {
+  usePlayerStore.getState().setElements([el("restored", 0, 2)]);
+  const showToast = vi.fn();
+  const { earlier, getHook, unmount } = mountBehindRefusedEdit(showToast);
+  try {
+    await act(async () => {
+      const drag = persistTimelineMoveEditsAtomically(
+        [{ element: el("a", 4, 2), updates: { start: 1, track: 0 } }],
+        undefined,
+        "timing",
+        { handleTimelineGroupMove: getHook().handleTimelineGroupMove },
+      );
+      await expect(earlier).rejects.toThrow("delete refused");
+      await expect(drag).rejects.toThrow(LANE_OVERLAP_NOTICE);
+    });
+    expect(showToast.mock.calls).toEqual([[LANE_OVERLAP_NOTICE, "info"]]);
+  } finally {
+    unmount();
+    usePlayerStore.getState().setElements([]);
   }
 });
 
