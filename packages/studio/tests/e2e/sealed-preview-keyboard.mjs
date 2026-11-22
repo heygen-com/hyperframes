@@ -1,6 +1,6 @@
 // A sealed preview never keeps the keyboard: when its own script focuses an input in it, the next real key still
 // reaches Studio; a real Delete after a canvas click deletes the picked clip; a text edit Studio opens keeps the keys
-// until it ends, then gives them back. STUDIO_URL: a Studio started with
+// until it ends, or until Studio takes focus back, then gives them back. STUDIO_URL: a Studio started with
 // VITE_STUDIO_OPAQUE_PREVIEW_ENABLED=1 on the sealed-keyboard fixture, whose folder is STUDIO_PROJECT_DIR.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -89,6 +89,24 @@ try {
     await new Promise((r) => setTimeout(r, 100));
   assert.ok(saved().includes("Hi again"), "typing in the sealed text edit is saved");
   await keyboardBackInStudio();
+
+  // An edit the film never ends: the person moves to a Studio field, then the film focuses itself.
+  await page.keyboard.press("Enter");
+  await frame.waitForFunction(() => document.getElementById("head").isContentEditable);
+  await page.keyboard.press("End");
+  await page.keyboard.type(" more");
+  await page.evaluate(() => document.body.appendChild(document.createElement("input")).focus());
+  await frame.evaluate(() => document.getElementById("field").focus());
+  await keyboardBackInStudio();
+  for (let i = 0; i < 100 && !saved().includes("Hi again more"); i++)
+    await new Promise((r) => setTimeout(r, 100));
+  assert.ok(saved().includes("Hi again more"), "Studio taking focus back saves the edit");
+  await page.keyboard.press("z");
+  assert.equal(
+    await frame.evaluate(() => document.getElementById("field").value),
+    "",
+    "the film got no key after Studio took focus back",
+  );
   console.log(JSON.stringify({ studioKeys: await page.evaluate(() => window.__studioKeys) }));
 } finally {
   await browser.close();
