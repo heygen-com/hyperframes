@@ -276,7 +276,7 @@ describe("a press held across a preview change on an opaque frame", () => {
       activeCompositionPathRef: { current: "index.html" },
       selectionRef: { current: selection },
       overlayRectRef: { current: overlayRect },
-      setOverlayRect: vi.fn(),
+      setOverlayRect: vi.fn((rect: OverlayRect | null) => (opts.overlayRectRef.current = rect)),
     } as unknown as UseDomEditOverlayGesturesOptions;
     const { startGesture } = createPreviewGestureStarts(opts, vi.fn(), vi.fn());
     const down = {
@@ -347,6 +347,46 @@ describe("a press held across a preview change on an opaque frame", () => {
       { selection: DomEditSelection; rect: OverlayRect },
     ];
     expect(started).toMatchObject({ selection: turned, rect: drawn });
+  });
+
+  // fails without the fix: the waiting box's redraws had already moved the box the drag started from.
+  it("starts from the box as it was at the press, though the pointer moved while it waited", async () => {
+    const turned = makeSelection("turned", document.getElementById("turned")!);
+    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
+    await pressDuringChange(turned, {
+      iframe: silentFrame(),
+      overlayRect: drawn,
+      whileWaiting: (opts) => opts.waitingPressRef.current!.draw!(30, 0),
+    });
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce(), { timeout: 3000 });
+    const [, , , started] = press.start.mock.calls[0] as [
+      unknown,
+      unknown,
+      unknown,
+      { rect: OverlayRect },
+    ];
+    expect(started.rect).toEqual(drawn);
+  });
+
+  it("asks the frame shown again when a swap comes after its first ask", async () => {
+    const turned = document.getElementById("turned")!;
+    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
+    const { opts, overlay } = await pressDuringChange(makeSelection("turned", turned), {
+      iframe: silentFrame(),
+      overlayRect: drawn,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    opts.iframeRef.current = opaqueFrame();
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce(), { timeout: 3000 });
+    const [, , , started] = press.start.mock.calls[0] as [
+      unknown,
+      unknown,
+      unknown,
+      { rect: OverlayRect },
+    ];
+    expect(close(started.rect)).toEqual(
+      close(orientedGroupAwareOverlayRect(overlay, liveFrame(), turned)),
+    );
   });
 
   it("drops the press when the page shown no longer has the element", async () => {

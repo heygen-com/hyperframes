@@ -323,13 +323,11 @@ export function createPreviewGestureStarts(
   ) => {
     // A replay edits what was pressed, though another element may be selected by then.
     const target = options?.selection ?? opts.selectionRef.current;
+    const pressedRect = opts.overlayRectRef.current;
     let draw: WaitingPressState["draw"] = null;
-    if (kind === "drag") draw = drawPressedBox(opts.overlayRectRef.current);
+    if (kind === "drag") draw = drawPressedBox(pressedRect);
     if (kind === "resize")
-      draw = drawResizedBox(
-        opts.overlayRectRef.current,
-        options?.resizeCorner ?? { x: e.clientX, y: e.clientY },
-      );
+      draw = drawResizedBox(pressedRect, options?.resizeCorner ?? { x: e.clientX, y: e.clientY });
     return startOnShownPreview(
       e,
       () => {
@@ -354,10 +352,7 @@ export function createPreviewGestureStarts(
       },
       draw,
       () => (target ? [target] : []),
-      () => {
-        const rect = opts.overlayRectRef.current;
-        return target && rect ? { shown: [{ selection: target, rect }] } : null;
-      },
+      () => (target && pressedRect ? { shown: [{ selection: target, rect: pressedRect }] } : null),
     );
   };
 
