@@ -1163,3 +1163,22 @@ it("lets a held reload go and reports when the sealed end never answers", async 
   await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
   expect(onLost).toHaveBeenCalledOnce();
 });
+
+it("keeps a reload held until the save of an edit the frame ended on blur has read the frame", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  const { saved, persist } = fileWrites();
+  const lookup = held();
+  const { controls } = wiredEditor(iframe, selection, persist, [lookup.lookup]);
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.innerHTML = "Draft";
+  let savedAtReload: string[] | null = null;
+  const reload = vi.fn(() => void (savedAtReload = [...saved]));
+  afterStudioManualEditGestures(gestureDocumentOf(iframe)!, reload);
+  title.dispatchEvent(new FocusEvent("blur"));
+  await lookup.reached;
+  expect(reload).not.toHaveBeenCalled();
+  lookup.release();
+  await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+  expect(savedAtReload).toEqual(["title=Draft"]);
+});
