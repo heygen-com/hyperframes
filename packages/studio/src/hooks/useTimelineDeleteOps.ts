@@ -42,6 +42,21 @@ export function applyRippleShifts(
   });
 }
 
+/** Move the clips one delete's ripple shifted back on the timeline as it is now and put
+ *  `restore` back, so a later delete still saving stays gone. */
+function undoRippleShift(changes: TimelineGroupMoveChange[] | null, restore: TimelineElement[]) {
+  const keyOf = (te: TimelineElement) => te.key ?? te.id;
+  const back = new Map<string, number>(
+    changes?.map((c) => [keyOf(c.element), c.element.start - c.start]),
+  );
+  const { elements, setElements } = usePlayerStore.getState();
+  const unshifted = elements.map((te) => {
+    const by = back.get(keyOf(te));
+    return by ? { ...te, start: te.start + by } : te;
+  });
+  setElements([...unshifted, ...restore]);
+}
+
 interface UseTimelineDeleteOpsOptions {
   projectIdRef: MutableRefObject<string | null>;
   activeCompPath: string | null;
@@ -200,7 +215,7 @@ export function useTimelineDeleteOps({
           await deleted;
         } catch (error) {
           rollbackDuration();
-          usePlayerStore.getState().setElements(elements);
+          undoRippleShift(rippleChanges, sameFile);
           void shifted?.catch(() => undefined);
           reloadPreview();
           throw error;
@@ -214,7 +229,7 @@ export function useTimelineDeleteOps({
             // toggle-off behaviour would have left anyway — not worth undoing
             // an otherwise-successful delete over.
             rippleFailed = true;
-            usePlayerStore.getState().setElements(survivors);
+            undoRippleShift(rippleChanges, []);
             console.error("[Timeline] ripple-edit failed to persist after delete", error);
             showToast("Clip deleted, but the gap could not be closed.", "error");
           }
