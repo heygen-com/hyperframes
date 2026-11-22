@@ -14,6 +14,7 @@ vi.mock("../utils/studioApiFetch", () => ({ studioApiFetch }));
 
 import {
   markScenesStale,
+  notePreviewSceneSwap,
   onPreviewContentReplaced,
   SCENE_SWAP_MS,
   sceneSwapFor,
@@ -59,6 +60,22 @@ it.each([
     "the preview did not swap its scenes",
   );
   expect(replaced).not.toHaveBeenCalled();
+});
+
+// fails without the fix: Studio fetched the preview and asked anyway, and the refusal came 0.1-0.5 s later.
+it("asks no swap of a sealed load that said it cannot swap, so the film reloads at once", () => {
+  const frame = document.createElement("iframe");
+  notePreviewSceneSwap(frame, false);
+  expect(sceneSwapFor(frame)).toBeNull();
+  expect(studioApiFetch).not.toHaveBeenCalled();
+});
+
+it("still asks a load that said it can swap, and an older runtime that said nothing", () => {
+  const [said, silent] = [document.createElement("iframe"), document.createElement("iframe")];
+  notePreviewSceneSwap(said, true);
+  notePreviewSceneSwap(silent, undefined);
+  expect(sceneSwapFor(said)).not.toBeNull();
+  expect(sceneSwapFor(silent)).not.toBeNull();
 });
 
 it("sends nothing when a newer edit superseded the fetched document", async () => {

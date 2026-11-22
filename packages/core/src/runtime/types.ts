@@ -126,6 +126,7 @@ export type RuntimeTimelineMessage = RuntimeProtocolV1 & {
    * the composition's assets have settled yet. Absent on older runtimes, whose
    * parents must not wait for a message that never comes. */
   assetsReady?: boolean;
+  sceneSwap?: boolean;
 };
 
 export type RuntimeDiagnosticMessage = {
