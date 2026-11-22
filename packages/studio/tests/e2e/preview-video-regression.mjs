@@ -153,6 +153,18 @@ async function collectGarbage(host) {
   await session.detach();
 }
 
+// The preview server's own CORS answer to `request`: a sealed frame plays its media only with that grant.
+async function serverCorsFor(request) {
+  const origin = request.headers().origin;
+  if (!origin) return {};
+  const res = await fetch(request.url(), {
+    headers: { origin, "sec-fetch-dest": "video", range: "bytes=0-0" },
+  });
+  await res.body?.cancel();
+  const cors = /^(access-control-|vary$|x-content-type-options$)/;
+  return Object.fromEntries([...res.headers].filter(([header]) => cors.test(header)));
+}
+
 async function withBlockedNative(test) {
   const assets = new Map(
     await Promise.all(
@@ -168,17 +180,18 @@ async function withBlockedNative(test) {
   const host = await open(async (page) => {
     await page.setRequestInterception(true);
     page.on("requestfailed", (request) => held.delete(request));
-    const respondPrefix = (request, name, data) => {
+    const respondPrefix = async (request, name, data) => {
       if (prefixed.has(name)) {
         held.add(request);
         return;
       }
       prefixed.add(name);
       const prefix = data.subarray(0, 16 * 1024);
-      void request.respond({
+      await request.respond({
         status: 206,
         contentType: "video/mp4",
         headers: {
+          ...(await serverCorsFor(request)),
           "Content-Range": `bytes 0-${prefix.length - 1}/${data.length}`,
           "Content-Length": String(prefix.length),
           "Accept-Ranges": "bytes",
@@ -189,7 +202,8 @@ async function withBlockedNative(test) {
     page.on("request", (request) => {
       const name = new URL(request.url()).pathname.split("/").at(-1);
       const data = assets.get(name);
-      if (request.resourceType() === "media" && data && blocked) respondPrefix(request, name, data);
+      if (request.resourceType() === "media" && data && blocked)
+        void respondPrefix(request, name, data);
       else void request.continue();
     });
   });
