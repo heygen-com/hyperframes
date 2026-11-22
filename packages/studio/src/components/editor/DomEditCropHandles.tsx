@@ -151,6 +151,31 @@ function insetsAfterDrag(gesture: CropGestureState, x: number, y: number): ClipP
   return resolveCropInsetFromEdgeDrag({ ...drag, edge, width, height });
 }
 
+type StartReads = { token: number; busy: boolean; again: boolean; element: HTMLElement };
+
+/** A stand-in has no size of its own: the frame measures it while it is selected and whenever its overlay size changes,
+ * so its insets draw at the element's own scale before any press, as an unsealed crop reads it live. One read at a time,
+ * and one more when it lands if anything changed meanwhile; a new selection or a press (a new `token`) drops one out. */
+function readStandInStart(
+  r: StartReads,
+  take: (element: HTMLElement, start: CropFrameStart) => void,
+): void {
+  const el = r.element;
+  const standIn = previewStandIn(el);
+  if (!standIn) return;
+  if (r.busy) return void (r.again = true);
+  r.busy = true;
+  const token = r.token;
+  void readCropFrameStart(standIn.iframe, standIn.handle).then((start) => {
+    r.busy = false;
+    if (start && token === r.token) take(el, start);
+    if (r.again) {
+      r.again = false;
+      readStandInStart(r, take);
+    }
+  });
+}
+
 function letGoOf(ref: { current: CropGestureState | null }, gesture: CropGestureState): void {
   if (ref.current === gesture) ref.current = null;
 }
@@ -252,6 +277,23 @@ export function DomEditCropHandles({
     return () => dropElementCropLift(el);
   }, [selection.element]);
 
+  const reads = useRef<StartReads>({
+    token: 0,
+    busy: false,
+    again: false,
+    element: selection.element,
+  });
+  const shownSize = `${Math.round(overlayRect.width)}x${Math.round(overlayRect.height)}`;
+  useEffect(() => {
+    const r = reads.current;
+    if (r.element !== selection.element) r.token++;
+    r.element = selection.element;
+    if (!dragging)
+      readStandInStart(r, (el, start) =>
+        setState((prev) => (prev.element === el ? { ...prev, start } : prev)),
+      );
+  }, [selection.element, shownSize, dragging]);
+
   // The crop applies in the element's LOCAL frame (clip-path precedes the
   // transform), so all crop UI is drawn inside a container rotated with the
   // element — on a rotated element an axis-aligned dim visually "straightens"
@@ -296,6 +338,7 @@ export function DomEditCropHandles({
     setState((prev) => ({ ...prev, insets: pressed }));
     setDragging(true);
     const { element } = selection;
+    reads.current.token++;
     void measurePressOnFrame(element, overlayRect, gesture).then((start) =>
       settleMeasuredPress(start, gesture, gestureRef.current, {
         refuse: refuseCropPress,
