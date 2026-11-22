@@ -46,7 +46,7 @@ function machineId(): string | undefined {
             ["-rd1", "-c", "IOPlatformExpertDevice"],
             /"IOPlatformUUID" = "([^"]+)"/,
           )
-        : process.platform === "win32" && systemRoot && win32.isAbsolute(systemRoot)
+        : process.platform === "win32" && systemRoot && /^[A-Za-z]:\\/.test(systemRoot)
           ? read(
               win32.join(systemRoot, "System32", "reg.exe"),
               ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"],

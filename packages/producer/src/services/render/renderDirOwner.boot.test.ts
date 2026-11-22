@@ -104,12 +104,14 @@ it.each([
 });
 
 // fails without the fix: the tools ran by bare name, which Windows can resolve from the project folder, and a
-// root on the current drive (\\Windows) passed as a system path.
+// root that is not a fully qualified drive path (current drive, UNC share, drive-relative) passed as a system one.
 it.each([
   ["darwin", undefined, ["/usr/sbin/ioreg"]],
   ["win32", "C:\\Windows", ["C:\\Windows\\System32\\reg.exe"]],
   ["win32", "Windows", []],
   ["win32", "\\Windows", []],
+  ["win32", "\\\\server\\share", []],
+  ["win32", "C:Windows", []],
 ])("asks %s's own tool by its absolute path (system root %s)", async (os, systemRoot, expected) => {
   Object.defineProperty(process, "platform", { value: os });
   vi.stubEnv("SystemRoot", systemRoot);
