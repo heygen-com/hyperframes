@@ -357,7 +357,8 @@ export type RenderPath =
  * stage's progress label (`Layered composite`).
  */
 export function classifyRenderLog(log: string): RenderPath {
-  const off = /HDR passthrough off: ([a-z_]+)(?: \((.*)\))?[ \t]*$/m.exec(log);
+  // The CLI logger appends the job context as JSON after the message.
+  const off = /HDR passthrough off: ([a-z_]+)(?: \((.*?)\))?(?:[ \t]+\{.*\})?[ \t]*$/m.exec(log);
   if (off?.[1]) return { kind: "ineligible", reason: off[1], detail: off[2] };
   const failed = /HDR passthrough failed[^\n]*/.exec(log);
   if (failed) {

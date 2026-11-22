@@ -50,8 +50,9 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   boundary. Flag on must take the passthrough.
 - `transformed/` (negative): identical, except the video carries
   `transform: scale(0.9) rotate(1.5deg)`. Flag on must fall back with
-  `HDR passthrough off: transform_or_filter`, and both sides then render
-  through the layered path.
+  `HDR passthrough off: not_full_canvas` (the transformed box no longer
+  covers the canvas, which the layout probe checks before the transform
+  itself), and both sides then render through the layered path.
 
 `fixtures.json` in the output directory records the projects and what each
 expects; `parity.ts --fixtures` reads it.
@@ -93,7 +94,7 @@ Layered (flag off) is the reference.
 | Check                                                                        | Threshold                                                                                 |
 | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | both renders exit 0                                                          | required                                                                                  |
-| flag-on route (`on.path`)                                                    | `captions`: passthrough completed. `transformed`: fallback with `transform_or_filter`     |
+| flag-on route (`on.path`)                                                    | `captions`: passthrough completed. `transformed`: fallback with `not_full_canvas`         |
 | HDR tags on each output                                                      | `bt2020` / `arib-std-b67` (`smpte2084` with `--transfer pq`) / `bt2020nc` / `yuv420p10le` |
 | codec, profile, size, rate, tag, colour range, audio codec / rate / channels | identical                                                                                 |
 | video packet count                                                           | identical, and equal to duration x fps                                                    |

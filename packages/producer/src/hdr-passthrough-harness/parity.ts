@@ -398,8 +398,12 @@ interface FixtureManifest {
   projects: Array<{ name: string; expect: Expectation; dir: string }>;
 }
 
-/** Ineligibility reason the negative (transformed video) fixture must report. */
-const TRANSFORMED_REASON = "transform_or_filter";
+/**
+ * Ineligibility reason the negative (transformed video) fixture must report.
+ * The scaled, rotated video no longer covers the canvas, and the layout probe
+ * checks coverage before it looks at the transform.
+ */
+const TRANSFORMED_REASON = "not_full_canvas";
 
 function numberOption(value: string | undefined, fallback: number, name: string): number {
   if (value === undefined) return fallback;
