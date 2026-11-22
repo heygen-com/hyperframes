@@ -1,4 +1,5 @@
 import { CompositionProbe, type ProbeResult, readPositiveDimension } from "./composition-probe.js";
+import type { StaticComposition } from "@hyperframes/core/runtime/composition-length";
 import { isControlsClick, setupControls, setupPoster } from "./controls-setup.js";
 import { adoptShadowStyles, createCompositionIframe, scaleIframeToFit } from "./iframe-dom.js";
 import { DirectTimelineClock } from "./direct-timeline-clock.js";
@@ -131,6 +132,7 @@ class HyperframesPlayer extends HTMLElement {
   private probe: CompositionProbe;
 
   private _ready = false;
+  private _readyBeforeRuntime = false;
   private _readyDocument: Document | null = null;
   private _connected = false;
   private _assetsReady = false;
@@ -1288,6 +1290,7 @@ class HyperframesPlayer extends HTMLElement {
         this._rejectRuntimeDataDelivery(channel, requestId, message),
       onRuntimeTimelineReady: (duration, assetsReady) =>
         this._onRuntimeTimelineReady(duration, assetsReady),
+      onStaticComposition: (read) => this._onStaticComposition(read),
       setBuffering: (buffering) => this._setBuffering(buffering),
       setRuntimeFps: (fps) => {
         this._runtimeFps = fps;
@@ -1312,13 +1315,15 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onRuntimeTimelineReady(duration: number, assetsReady: boolean | undefined) {
-    if (this._ready) return;
+    if (this._ready && !this._readyBeforeRuntime) return;
+    const alreadyReady = this._readyBeforeRuntime;
+    this._readyBeforeRuntime = false;
     this.probe.stop();
     this._setDuration(duration);
     this._directTimelineAdapter = null;
     this._ready = true;
     this.controlsApi?.updateTime(this._currentTime, duration);
-    this._dispatchReady();
+    if (!alreadyReady) this._dispatchReady();
 
     const doc = this._getSameOriginIframeDocument();
     if (doc) this._media.setupFromIframe(doc);
@@ -1327,6 +1332,19 @@ class HyperframesPlayer extends HTMLElement {
     this._setIframeMediaMuted(this.muted);
     this._waitForAssetsReady(doc, assetsReady);
     this._playWhenWanted();
+  }
+
+  /** A sealed frame's length and size from its document, as the probe reads an open frame's; play waits for the runtime. */
+  private _onStaticComposition({ durationSeconds, compositionSize }: StaticComposition) {
+    // An open frame's own poll reads the same thing.
+    if (this._ready || this._getSameOriginIframeDocument()) return;
+    this.probe.stop();
+    this._setDuration(durationSeconds);
+    if (compositionSize) this._setCompositionSize(compositionSize.width, compositionSize.height);
+    this._ready = true;
+    this._readyBeforeRuntime = true;
+    this.controlsApi?.updateTime(0, durationSeconds);
+    this._dispatchReady();
   }
 
   private _onProbeReady(result: ProbeResult) {
@@ -1464,6 +1482,7 @@ class HyperframesPlayer extends HTMLElement {
     this.probe.latchUntilNextLoad();
     this.probe.stop();
     this._ready = false;
+    this._readyBeforeRuntime = false;
     this._readyDocument = null;
     this._invalidateAssetsWait();
     this._releaseDocument();
@@ -1616,6 +1635,7 @@ class HyperframesPlayer extends HTMLElement {
     }
 
     this._ready = false;
+    this._readyBeforeRuntime = false;
     // The runtime installs its bridge once its scripts ran and posts `ready`, which can come before
     // the iframe's load event. Do not erase that authoritative handshake here: doing so strands
     // retained data set after load until a second `ready` that never comes. Source setters and
