@@ -75,9 +75,11 @@ function shadowPlayerReachable(iframe: HTMLIFrameElement | null): boolean {
 }
 
 function shadowPagePhase(iframe: HTMLIFrameElement | null): string {
-  const doc = iframe?.contentDocument;
-  if (!doc || doc.URL === "about:blank") return "no-page";
-  const win = iframe!.contentWindow as unknown as Record<string, unknown>;
+  if (!iframe?.isConnected) return "no-frame";
+  const doc = iframe.contentDocument;
+  if (!doc) return "unreadable";
+  if (doc.URL === "about:blank") return "blank";
+  const win = iframe.contentWindow as unknown as Record<string, unknown>;
   if (doc.readyState === "loading") return "page-loading";
   if (win.__hfStartupError) return "startup-error";
   if (!win.__hyperframes) return "runtime-not-run";
@@ -85,8 +87,15 @@ function shadowPagePhase(iframe: HTMLIFrameElement | null): string {
   return "no-player";
 }
 
-const pageGotTo = (iframe: HTMLIFrameElement | null) =>
-  shadowPlayerReachable(iframe) ? "" : ` Its page had got to: ${shadowPagePhase(iframe)}.`;
+function pageGotTo(iframe: HTMLIFrameElement | null, addedAt: number | null): string {
+  if (shadowPlayerReachable(iframe)) return "";
+  const phase = shadowPagePhase(iframe);
+  const got = ` Its page had got to: ${phase}.`;
+  if ((phase !== "blank" && phase !== "unreadable") || addedAt === null) return got;
+  const src = iframe!.getAttribute("src");
+  const given = src && src !== "about:blank" ? "was given" : "was never given";
+  return `${got} Its frame ${given} a page address and was added ${Math.round(Date.now() - addedAt)} ms ago.`;
+}
 
 function hyperframesPlayerOf(iframe: HTMLIFrameElement): Element | null {
   const root = iframe.getRootNode();
@@ -135,6 +144,7 @@ export function useShadowPreviewReload({
   holdStill,
 }: UseShadowPreviewReloadParams) {
   const shadowIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const shadowAddedAtRef = useRef<number | null>(null);
   const shadowProbeIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   // Invalidation counter, separate from the live slot's key: bumping it never remounts the live Player.
   const shadowGenRef = useRef(0);
@@ -220,7 +230,7 @@ export function useShadowPreviewReload({
               : sealed
                 ? "its runtime to report a timeline"
                 : "its timeline to be ready";
-      const got = sealed ? "" : pageGotTo(shadow);
+      const got = sealed ? "" : pageGotTo(shadow, shadowAddedAtRef.current);
       shadowGenRef.current += 1;
       const failedGen = shadowGenRef.current;
       stopPendingShadow();
@@ -422,6 +432,7 @@ export function useShadowPreviewReload({
 
   const setShadowIframeNode = useCallback((node: HTMLIFrameElement | null) => {
     shadowIframeRef.current = node;
+    shadowAddedAtRef.current = node ? Date.now() : null;
     if (node) hyperframesPlayerOf(node)?.toggleAttribute("inert", true);
     const gen = budgetGenRef.current;
     if (!node || !shadowFrameLeftPageRef.current || gen == null || gen !== shadowGenRef.current)
