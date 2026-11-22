@@ -14,6 +14,11 @@ import type { Root } from "react-dom/client";
 import type { TimelineElement } from "../player";
 import { persistTimelineMoveEditsAtomically } from "./timelineMoveAdapter";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
+import {
+  enqueueTimelineEdit,
+  refuseWithEarlier,
+  type TimelineEditQueue,
+} from "./timelineEditQueue";
 import { usePersistentEditHistory } from "./usePersistentEditHistory";
 import { installReactActEnvironment, mountReactHarness } from "./domSelectionTestHarness";
 
@@ -158,6 +163,46 @@ it.each([false, true])(
     }
   },
 );
+
+// fails without the fix: the shift ran and wrote though the edit queued before it was refused.
+it("refuses a ripple shift before it writes when an edit queued before it is refused", async () => {
+  const editQueueRef: TimelineEditQueue = { current: Promise.resolve() };
+  const earlier = enqueueTimelineEdit(editQueueRef, () =>
+    Promise.reject(new Error("delete refused")),
+  );
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ content: "" })));
+  vi.stubGlobal("fetch", fetchMock);
+  let hook: ReturnType<typeof useTimelineGroupEditing>;
+  function Harness() {
+    hook = useTimelineGroupEditing({
+      activeCompPath: "index.html",
+      editQueueRef,
+      pendingTimelineEditPathRef: { current: new Set() },
+      previewIframeRef: { current: null },
+      projectIdRef: { current: "fixture" },
+      recordEdit: vi.fn(),
+      reloadPreview: vi.fn(),
+      showToast: vi.fn(),
+      writeProjectFile: vi.fn(),
+    });
+    return null;
+  }
+  const root = mountReactHarness(<Harness />);
+  try {
+    await act(async () => {
+      const shift = hook!.handleTimelineGroupMove([{ element: el("a", 2, 2), start: 0 }], {
+        ifEarlierRefused: refuseWithEarlier,
+        suppressFailureToast: true,
+      });
+      await expect(earlier).rejects.toThrow("delete refused");
+      await expect(shift).rejects.toThrow("delete refused");
+    });
+    expect(fetchMock.mock.calls).toEqual([]);
+  } finally {
+    act(() => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});
 
 const SLOWER_THAN_THE_DEFAULT_WINDOW_MS = 400;
 

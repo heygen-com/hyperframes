@@ -25,6 +25,7 @@ import { serializeZLaneGesture } from "../components/nle/zLaneGesture";
 import { cutoverCommittedOrThrow, sdkTimingPersist } from "../utils/sdkCutover";
 import type { TimelineMoveUpdates, UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
+import { enqueueTimelineEdit, type TimelineEditQueue } from "./timelineEditQueue";
 
 type UseTimelineClipTimingEditingOptions = Pick<
   UseTimelineEditingOptions,
@@ -43,7 +44,7 @@ type UseTimelineClipTimingEditingOptions = Pick<
   | "invalidateGsapCache"
   | "handleDomZIndexReorderCommitRef"
 > & {
-  editQueueRef: MutableRefObject<Promise<unknown>>;
+  editQueueRef: TimelineEditQueue;
   projectIdRef: MutableRefObject<string | null>;
 };
 
@@ -79,9 +80,10 @@ export function useTimelineClipTimingEditing({
       }
       const pid = projectIdRef.current;
       if (!pid) return Promise.resolve();
-      const queued = editQueueRef.current
-        .then(() =>
-          persistTimelineEdit({
+      return enqueueTimelineEdit(
+        editQueueRef,
+        async () => {
+          await persistTimelineEdit({
             projectId: pid,
             element,
             activeCompPath,
@@ -91,15 +93,11 @@ export function useTimelineClipTimingEditing({
             recordEdit,
             pendingTimelineEditPathRef,
             ...step,
-          }),
-        )
-        .then(() => {
+          });
           forceReloadSdkSession?.();
-        });
-      editQueueRef.current = queued.catch((error) => {
-        console.error(`[Timeline] Failed to persist: ${label}`, error);
-      });
-      return queued;
+        },
+        { label },
+      );
     },
     [
       activeCompPath,

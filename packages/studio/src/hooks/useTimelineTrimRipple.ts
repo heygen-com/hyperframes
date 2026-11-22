@@ -3,6 +3,7 @@ import { usePlayerStore, type TimelineElement } from "../player";
 import { batchElementUpdates } from "../player/store/batchElementUpdates";
 import { resolveMainTrackTrimRipple } from "../player/components/timelineGapCommit";
 import { timingGestureStep } from "./timelineTimingSync";
+import { refuseWithEarlier } from "./timelineEditQueue";
 import type {
   TimelineGroupCommitOptions,
   TimelineGroupMoveChange,
@@ -50,14 +51,22 @@ export function useTimelineTrimRipple({
       const ripple = resolveMainTrackTrimRipple(elements, trims, rippleEditEnabled);
       if (!ripple) return persistTrimAlone();
       const { coalesceKey } = timingGestureStep("timeline-resize", given);
-      const undoRipple = () =>
-        setStarts(ripple.map(({ element }) => ({ element, start: element.start })));
+      const undoRipple = () => {
+        const now = new Map(usePlayerStore.getState().elements.map((e) => [e.key ?? e.id, e]));
+        setStarts(
+          ripple.map(({ element, start }) => ({
+            element,
+            start: (now.get(element.key ?? element.id)?.start ?? start) + element.start - start,
+          })),
+        );
+      };
       setStarts(ripple);
       // Both join the edit queue in this call, so no later edit can land between the trim and
       // its shift and be overwritten by it.
       const trimmed = handleTimelineGroupResize(trims, { ...given, coalesceKey });
       const shifted = handleTimelineGroupMove(ripple, {
         beforeTiming: trimmed,
+        ifEarlierRefused: refuseWithEarlier,
         coalesceKey,
         label,
         suppressFailureToast: true,
