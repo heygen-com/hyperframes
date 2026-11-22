@@ -6,7 +6,11 @@ import { usePlayerStore, type TimelineElement } from "../player";
 import { sdkTimingPersist, type CutoverResult } from "../utils/sdkCutover";
 import { persistTimelineEdit } from "./timelineEditingHelpers";
 import { finishClipTimingFallback } from "./timelineTimingSync";
-import { enqueueTimelineEdit, type TimelineEditQueue } from "./timelineEditQueue";
+import {
+  enqueueTimelineEdit,
+  useTimelineEditQueue,
+  type TimelineEditQueue,
+} from "./timelineEditQueue";
 import { LANE_OVERLAP_NOTICE } from "../player/components/timelineCollision";
 import { useTimelineClipTimingEditing } from "./useTimelineClipTimingEditing";
 import { installReactActEnvironment, mountReactHarness } from "./domSelectionTestHarness";
@@ -31,9 +35,9 @@ const sdkWrites = vi.mocked(sdkTimingPersist);
 const fileWrites = vi.mocked(persistTimelineEdit);
 const gsapSyncs = vi.mocked(finishClipTimingFallback);
 
-function mountClipTiming(projectIdRef = { current: "project" as string | null }) {
+function mountClipTiming() {
   usePlayerStore.getState().setDuration(10);
-  const queue: TimelineEditQueue = { current: Promise.resolve() };
+  const queue: TimelineEditQueue = { current: Promise.resolve(), projectId: "project" };
   const showToast = vi.fn();
   let hook: ReturnType<typeof useTimelineClipTimingEditing> | null = null;
   function Harness() {
@@ -48,7 +52,6 @@ function mountClipTiming(projectIdRef = { current: "project" as string | null })
       pendingTimelineEditPathRef: { current: new Set() },
       sdkSession: {} as never,
       editQueueRef: queue,
-      projectIdRef,
     });
     return null;
   }
@@ -136,26 +139,44 @@ describe.each<[string, CutoverResult]>([
   });
 });
 
-describe("a single-clip SDK trim queued behind another save", () => {
+describe("a single-clip trim queued before a project switch", () => {
   afterEach(() => vi.clearAllMocks());
 
-  // fails without the fix: after a project switch the queued trim read the newly opened project's file.
-  it("reads the project it was made in, as it did before it joined the queue", async () => {
+  // fails without the fix: the queued SDK trim read index.html from the newly opened project.
+  it("reads and writes only the project it was queued in", async () => {
+    usePlayerStore.getState().setDuration(10);
     sdkWrites.mockResolvedValue({ status: "committed", version: "1", before: "", after: "" });
-    const projectIdRef = { current: "old" as string | null };
-    const { queue, getHook, unmount } = mountClipTiming(projectIdRef);
+    let hook: ReturnType<typeof useTimelineClipTimingEditing> | null = null;
+    let queue: TimelineEditQueue | null = null;
+    function Harness({ projectId }: { projectId: string }) {
+      queue = useTimelineEditQueue(projectId);
+      hook = useTimelineClipTimingEditing({
+        activeCompPath: "index.html",
+        timelineElements: [],
+        showToast: vi.fn(),
+        writeProjectFile: vi.fn(),
+        recordEdit: vi.fn(),
+        reloadPreview: vi.fn(),
+        previewIframeRef: { current: null },
+        pendingTimelineEditPathRef: { current: new Set() },
+        sdkSession: {} as never,
+        editQueueRef: queue,
+      });
+      return null;
+    }
+    const root = mountReactHarness(<Harness projectId="old" />);
     let release: () => void = () => {};
     const held = new Promise<void>((done) => (release = done));
-    void enqueueTimelineEdit(queue, () => held);
-    const trim = getHook().handleTimelineElementResize(clipB, { start: 2, duration: 3 });
+    void enqueueTimelineEdit(queue!, () => held);
+    const trim = hook!.handleTimelineElementResize(clipB, { start: 2, duration: 3 });
 
-    projectIdRef.current = "new";
+    act(() => root.render(<Harness projectId="new" />));
     release();
     await act(() => trim);
 
     const sdkDeps = sdkWrites.mock.calls[0]?.[4];
     await expect(sdkDeps?.readProjectFile?.("index.html")).resolves.toBe("old:index.html");
     expect(gsapSyncs.mock.calls.map(([sync]) => sync.projectId)).toEqual(["old"]);
-    unmount();
+    act(() => root.unmount());
   });
 });

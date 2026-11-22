@@ -47,10 +47,9 @@ describe("useTimelineGroupEditing: handleTimelineGroupMove suppressFailureToast"
     function Harness() {
       hook = useTimelineGroupEditing({
         activeCompPath: "index.html",
-        editQueueRef: { current: Promise.resolve() },
+        editQueueRef: { current: Promise.resolve(), projectId: null },
         pendingTimelineEditPathRef: { current: new Set() },
         previewIframeRef: { current: null },
-        projectIdRef: { current: null },
         recordEdit: vi.fn().mockResolvedValue(undefined),
         reloadPreview: vi.fn(),
         showToast,
@@ -116,10 +115,9 @@ it.each([false, true])(
     function Harness() {
       hook = useTimelineGroupEditing({
         activeCompPath: "index.html",
-        editQueueRef: { current: Promise.resolve() },
+        editQueueRef: { current: Promise.resolve(), projectId: "fixture" },
         pendingTimelineEditPathRef: { current: new Set() },
         previewIframeRef: { current: iframe },
-        projectIdRef: { current: "fixture" },
         recordEdit,
         writeProjectFile,
         reloadPreview: vi.fn(),
@@ -167,11 +165,9 @@ it.each([false, true])(
 
 // The real group commits on a queue whose first edit was refused.
 function mountBehindRefusedEdit(showToast = vi.fn()) {
-  const editQueueRef: TimelineEditQueue = { current: Promise.resolve() };
-  const earlier = enqueueTimelineEdit(
-    editQueueRef,
-    () => Promise.reject(new Error("delete refused")),
-    { projectId: "fixture" },
+  const editQueueRef: TimelineEditQueue = { current: Promise.resolve(), projectId: "fixture" };
+  const earlier = enqueueTimelineEdit(editQueueRef, () =>
+    Promise.reject(new Error("delete refused")),
   );
   const fetchMock = vi.fn(async () => new Response(JSON.stringify({ content: "" })));
   vi.stubGlobal("fetch", fetchMock);
@@ -182,7 +178,6 @@ function mountBehindRefusedEdit(showToast = vi.fn()) {
       editQueueRef,
       pendingTimelineEditPathRef: { current: new Set() },
       previewIframeRef: { current: null },
-      projectIdRef: { current: "fixture" },
       recordEdit: vi.fn(),
       reloadPreview: vi.fn(),
       showToast,
@@ -290,10 +285,9 @@ it("undoes each group move with its GSAP rewrite in one step, however long the r
     editHistory = usePersistentEditHistory({ projectId: "demo" });
     editing = useTimelineGroupEditing({
       activeCompPath: "index.html",
-      editQueueRef: { current: Promise.resolve() },
+      editQueueRef: { current: Promise.resolve(), projectId: "demo" },
       pendingTimelineEditPathRef: { current: new Set() },
       previewIframeRef: { current: null },
-      projectIdRef: { current: "demo" },
       recordEdit: editHistory.recordEdit,
       reloadPreview: vi.fn(),
       showToast: vi.fn(),
