@@ -20,6 +20,7 @@ import {
   getShaderModeFromElement,
   prepareSrcForElement,
   prepareSrcdocForElement,
+  prepareSealedSrcdocForElement,
   runtimeSrcFromElement,
 } from "./shader-options.js";
 import { createShaderLoader } from "./shader-loader-element.js";
@@ -41,9 +42,19 @@ import {
 // timeline itself respects. Clamping here also shields the native
 // HTMLMediaElement.playbackRate setter, which throws for extreme values in
 // production browsers.
+/** `src` resolved against the page, or null when it is not a URL (URL.parse is too new for older Safari). */
+function parseUrl(src: string): URL | null {
+  try {
+    return new URL(src, document.baseURI);
+  } catch {
+    return null;
+  }
+}
+
 const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
 const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
+const SEALED_RUNTIME_LOAD_FAILED = "The HyperFrames runtime this player ships with failed to load";
 const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
 // Bounds how long the player waits on a same-origin composition's readiness
 // inputs (media, compute, paint-and-idle) before playing anyway — a stuck
@@ -131,6 +142,10 @@ class HyperframesPlayer extends HTMLElement {
   private probe: CompositionProbe;
 
   private _ready = false;
+  /** Bumped by every navigation, so a sealed load that resolves late shows nothing stale. */
+  private _documentLoad = 0;
+  /** The absolute URL of the composition the frame shows; null for a srcdoc or a video. */
+  private _compositionUrl: string | null = null;
   private _readyDocument: Document | null = null;
   private _connected = false;
   private _assetsReady = false;
@@ -240,8 +255,7 @@ class HyperframesPlayer extends HTMLElement {
     if (this.hasAttribute("poster"))
       this.posterEl = setupPoster(this.shadow, this.getAttribute("poster"), this.posterEl);
     if (this.hasAttribute("audio-src")) this._media.setupFromUrl(this.getAttribute("audio-src")!);
-    if (this.hasAttribute("srcdoc"))
-      this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc")!);
+    if (this.hasAttribute("srcdoc")) this._showDocument(this.getAttribute("srcdoc")!);
     if (this.hasAttribute("src")) this._loadSrc(this.getAttribute("src")!);
 
     // Host-environment audio lock: when the embedding host (e.g. Claude
@@ -296,11 +310,14 @@ class HyperframesPlayer extends HTMLElement {
         if (val !== null) {
           this._pauseForVideoSwitch();
           this._teardownVideo();
-          this.iframe.srcdoc = prepareSrcdocForElement(this, val);
+          this._showDocument(val);
         } else {
+          this._documentLoad++;
           this.iframe.removeAttribute("srcdoc");
           const src = this.getAttribute("src");
-          if (src !== null && this._wantsVideo()) this._navigateSrc(src);
+          // A sealed frame shows a URL only through the sealed load, which adds the runtime.
+          if (src !== null && (this._wantsVideo() || this.hasAttribute(SANDBOX_ORIGIN_ATTR)))
+            this._navigateSrc(src);
         }
         break;
       case SANDBOX_ORIGIN_ATTR:
@@ -389,7 +406,7 @@ class HyperframesPlayer extends HTMLElement {
     this._abandonComposition("Sandbox policy changed before runtime data was applied");
     const srcdoc = this.getAttribute("srcdoc");
     if (srcdoc !== null) {
-      this.iframe.srcdoc = prepareSrcdocForElement(this, srcdoc);
+      this._showDocument(srcdoc);
       return;
     }
     const src = this.getAttribute("src");
@@ -1039,7 +1056,7 @@ class HyperframesPlayer extends HTMLElement {
     // explanatory rejection the caller gets from every other navigating path.
     this._abandonComposition("Shader options changed before runtime data was applied");
     if (this.hasAttribute("srcdoc")) {
-      this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc") || "");
+      this._showDocument(this.getAttribute("srcdoc") || "");
       return;
     }
     if (this.hasAttribute("src")) this._loadSrc(this.getAttribute("src") || "");
@@ -1067,12 +1084,63 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _loadSrc(src: string): void {
+    this._documentLoad++;
+    this._compositionUrl = null;
     if (this._wantsVideo()) {
       this._loadVideo(src);
       return;
     }
     this._teardownVideo();
+    if (this.hasAttribute("srcdoc")) {
+      this.iframe.src = prepareSrcForElement(this, src);
+      return;
+    }
+    const url = parseUrl(src);
+    this._compositionUrl = url?.href ?? null;
+    if (url && this.hasAttribute(SANDBOX_ORIGIN_ATTR) && url.origin === location.origin) {
+      this._showSealedSrc(src, url.href);
+      return;
+    }
+    this.iframe.removeAttribute("srcdoc");
     this.iframe.src = prepareSrcForElement(this, src);
+  }
+
+  /** The frame shows `html`. A sealed frame gets the runtime as text, so it is shown once that loads. */
+  private _showDocument(html: string): void {
+    const load = ++this._documentLoad;
+    this._compositionUrl = null;
+    if (!this.hasAttribute(SANDBOX_ORIGIN_ATTR)) {
+      this.iframe.srcdoc = prepareSrcdocForElement(this, html);
+      return;
+    }
+    this._showSealedDocument(html, undefined, load).catch(() => {
+      if (load !== this._documentLoad) return;
+      this._emit(new CustomEvent("error", { detail: { message: SEALED_RUNTIME_LOAD_FAILED } }));
+    });
+  }
+
+  private _showSealedDocument(html: string, base: string | undefined, load: number): Promise<void> {
+    return prepareSealedSrcdocForElement(this, html, base).then((doc) => {
+      if (load === this._documentLoad) this.iframe.srcdoc = doc;
+    });
+  }
+
+  /**
+   * A sealed frame cannot be reached once it loads, so the player fetches a same-site composition
+   * and shows it as srcdoc carrying the runtime. Failing that, it loads `src` as before.
+   */
+  private _showSealedSrc(src: string, href: string): void {
+    const load = ++this._documentLoad;
+    fetch(href, { credentials: "same-origin" })
+      .then((response) =>
+        response.ok ? response.text() : Promise.reject(new Error(`HTTP ${response.status}`)),
+      )
+      .then((html) => this._showSealedDocument(html, href, load))
+      .catch(() => {
+        if (load !== this._documentLoad) return;
+        this.iframe.removeAttribute("srcdoc");
+        this.iframe.src = prepareSrcForElement(this, src);
+      });
   }
 
   private _loadVideo(src: string): void {

@@ -205,6 +205,9 @@ composition because browser sandbox changes take effect only on navigation. Opaq
 parent DOM. Direct `contentDocument`, `__player`, and `__timelines` access is intentionally
 unavailable in that mode.
 
+An opaque player adds the HyperFrames runtime itself, the version it was built with, so the embedder adds nothing. A composition from the embedding page's own site is fetched and shown with the runtime inlined, so the frame loads nothing from another origin and a composition that already carries the runtime gets no second copy. Inside, `location` reads `about:srcdoc` while relative paths still resolve against the composition's URL. A composition from another site loads as before and must include the runtime script.
+Hosting the player's script or CommonJS build yourself, serve the runtime file from the package's `dist` folder beside it: an opaque player loads it from next to its own script. The ES module build carries it as a chunk your bundler emits.
+
 An opaque composition loads the videos and audio served from its own host with CORS, so colour grading, canvas reads and audio effects can use them. Serve them with `Access-Control-Allow-Origin` (for example `*`). From a host that sends no CORS headers, each one plays anyway: it is loaded again once without CORS, those effects are off for it, and the console names it.
 
 If you are building a trusted editor integration that needs direct access, use the `iframeElement` getter:

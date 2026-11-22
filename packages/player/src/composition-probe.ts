@@ -25,8 +25,8 @@ import { RUNTIME_CDN_URL, runtimeCdnUrlForVersion } from "./runtime-url.js";
 
 const TIMELINE_NOT_FOUND = "Composition timeline not found after 8s";
 export const SEALED_TIMELINE_NOT_FOUND =
-  `${TIMELINE_NOT_FOUND}. A sealed player cannot add the HyperFrames runtime to a composition: ` +
-  "include the runtime script in the composition, or play a composition you trust without sandbox-origin.";
+  `${TIMELINE_NOT_FOUND}. A sealed player adds the HyperFrames runtime only to a composition from its own site: ` +
+  "include the runtime script in a composition from another site, or play a composition you trust without sandbox-origin.";
 
 export { runtimeCdnUrlForVersion };
 

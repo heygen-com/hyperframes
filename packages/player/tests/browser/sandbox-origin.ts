@@ -47,10 +47,19 @@ try {
     true,
     "removing the policy must reload into the documented trusted mode",
   );
+  // A sealed player adds the runtime to a composition from its own site, so the missing-runtime
+  // error belongs to one from another origin (localhost against 127.0.0.1).
   const direct = await browser.newPage();
   await direct.goto(`${server.origin}/host.html?fixture=direct-timeline&sealed=1`, {
     waitUntil: "domcontentloaded",
   });
+  await direct.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
+  await direct.evaluate(
+    (url) => {
+      document.querySelector("hyperframes-player")!.setAttribute("src", url);
+    },
+    `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
+  );
   await direct.waitForFunction(() => window.__playerError !== undefined, { timeout: 15_000 });
   const sealedError = String(await direct.evaluate(() => window.__playerError));
   assert.match(
