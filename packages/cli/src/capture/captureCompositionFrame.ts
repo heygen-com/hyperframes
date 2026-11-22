@@ -277,7 +277,6 @@ async function waitForCompositionSettle(
   return runtimeReady;
 }
 
-/** The sources are the page's own image addresses, read back from the page: printed escaped. */
 export function unloadedImagesWarning(timeoutMs: number, sources: string): string {
   return `   ${c.warn("⚠")} Some images did not load within ${timeoutMs}ms: ${terminalText(sources)}. They may show blank.`;
 }

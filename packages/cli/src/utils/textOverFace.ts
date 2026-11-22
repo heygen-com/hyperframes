@@ -190,7 +190,6 @@ export async function findTextOverFace(
   const { faces, unread } = await readFaces(timesByFile, facesIn, onFile, stop);
   const reason = unread[0];
   if (reason !== undefined) {
-    // The reason carries the project's file name and the decoder's own text: escaped, never raw.
     console.error(
       terminalLines(
         `[hyperframes] check: text over a face was not looked for in ${unread.length} of ${timesByFile.size} video(s): ${reason}`,
