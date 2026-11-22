@@ -28,6 +28,8 @@ import { studioApiFetch } from "../utils/studioApiFetch";
 import { countOf } from "../utils/countOf";
 import {
   enqueueTimelineEdit,
+  isClosed,
+  whileShown,
   refuseWithEarlier,
   type TimelineEditQueue,
 } from "./timelineEditQueue";
@@ -63,7 +65,6 @@ function undoRippleShift(changes: TimelineGroupMoveChange[] | null, restore: Tim
 }
 
 interface UseTimelineDeleteOpsOptions {
-  projectIdRef: MutableRefObject<string | null>;
   activeCompPath: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
@@ -88,7 +89,6 @@ function unlinkInSource(source: string, survivors: readonly TimelineElement[]): 
 }
 
 export function useTimelineDeleteOps({
-  projectIdRef,
   activeCompPath,
   showToast,
   writeProjectFile,
@@ -112,8 +112,7 @@ export function useTimelineDeleteOps({
         showToast("Cannot edit timeline while recording", "error");
         return;
       }
-      const pid = projectIdRef.current;
-      if (!pid) throw new Error("No active project");
+      if (!editQueueRef.projectId) throw new Error("No active project");
       const [element] = selection;
       if (!element) return;
       const label =
@@ -148,9 +147,7 @@ export function useTimelineDeleteOps({
         usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleChanges));
         removeIframeTimelineElements(previewIframeRef.current, sameFile, activeCompPath);
         let rollbackDuration = () => {};
-        const inThisProject = <T>(run: () => Promise<T>) =>
-          enqueueTimelineEdit(editQueueRef, run, { projectId: pid });
-        const deleted = inThisProject(async () => {
+        const deleted = enqueueTimelineEdit(editQueueRef, async (pid) => {
           await saveServerRewriteWithHistory({
             projectId: pid,
             path: targetPath,
@@ -195,10 +192,12 @@ export function useTimelineDeleteOps({
               const patchedContent = unlinkInSource(synced.source, alsoUnlink);
               // Optimistically reflect the shrunk length in the readout/seek bar,
               // rolling it back if the persist below fails (see captureDurationRollback).
-              rollbackDuration = captureDurationRollback(previewIframeRef.current);
-              if (synced.contentEnd > 0 && targetPath === (activeCompPath || "index.html")) {
-                usePlayerStore.getState().setDuration(synced.contentEnd);
-              }
+              whileShown(editQueueRef, () => {
+                rollbackDuration = captureDurationRollback(previewIframeRef.current);
+                if (synced.contentEnd > 0 && targetPath === (activeCompPath || "index.html")) {
+                  usePlayerStore.getState().setDuration(synced.contentEnd);
+                }
+              });
               return { disk: removedContent, after: patchedContent };
             },
           });
@@ -221,10 +220,12 @@ export function useTimelineDeleteOps({
         try {
           await deleted;
         } catch (error) {
-          rollbackDuration();
-          undoRippleShift(rippleChanges, sameFile);
           void shifted?.catch(() => undefined);
-          reloadPreview();
+          whileShown(editQueueRef, () => {
+            rollbackDuration();
+            undoRippleShift(rippleChanges, sameFile);
+            reloadPreview();
+          });
           throw error;
         }
         let rippleFailed = false;
@@ -236,12 +237,13 @@ export function useTimelineDeleteOps({
             // toggle-off behaviour would have left anyway — not worth undoing
             // an otherwise-successful delete over.
             rippleFailed = true;
-            undoRippleShift(rippleChanges, []);
+            whileShown(editQueueRef, () => undoRippleShift(rippleChanges, []));
             console.error("[Timeline] ripple-edit failed to persist after delete", error);
             showToast("Clip deleted, but the gap could not be closed.", "error");
           }
         }
 
+        if (isClosed(editQueueRef)) return;
         usePlayerStore.getState().setSelectedElementId(null);
         usePlayerStore.getState().setSelectedElementIds(new Set());
         forceReloadSdkSession?.();
@@ -269,7 +271,6 @@ export function useTimelineDeleteOps({
     },
     [
       activeCompPath,
-      projectIdRef,
       recordEdit,
       showToast,
       writeProjectFile,
