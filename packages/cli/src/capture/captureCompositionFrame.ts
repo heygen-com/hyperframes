@@ -650,8 +650,8 @@ async function waitForCompositionImages(
   const unsettled = await page.evaluate(
     // fallow-ignore-next-line complexity
     async (ms: number) => {
-      const layers = new Map<string, HTMLImageElement>();
-      const add = (src: string, image?: HTMLImageElement): void => {
+      const layers = new Map<string, { decode(): Promise<void> }>();
+      const add = (src: string, image?: { decode(): Promise<void> }): void => {
         if (src && !layers.has(src)) layers.set(src, image ?? Object.assign(new Image(), { src }));
       };
       const absolute = (href: string): string => new URL(href, document.baseURI).href;
@@ -660,7 +660,13 @@ async function waitForCompositionImages(
         if (style.display === "none" || style.visibility === "hidden") continue;
         if (element instanceof HTMLImageElement) add(element.currentSrc || element.src, element);
         if (element instanceof SVGImageElement && element.href.baseVal) {
-          add(absolute(element.href.baseVal));
+          const elementDecode: unknown = Reflect.get(element, "decode");
+          add(
+            absolute(element.href.baseVal),
+            typeof elementDecode === "function"
+              ? { decode: () => elementDecode.call(element) }
+              : undefined,
+          );
         }
         for (const match of style.backgroundImage.matchAll(
           /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/g,
