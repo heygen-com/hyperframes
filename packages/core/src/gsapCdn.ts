@@ -9,6 +9,9 @@ export const namesMotionPath = (script: string) => /motionPath["']?\s*[:{]/.test
 const pathOf = (src: string) =>
   URL.canParse(src, "http://localhost/") ? new URL(src, "http://localhost/").pathname : null;
 
+export const GSAP_ON_ITS_CDN =
+  /^https:\/\/cdn\.jsdelivr\.net\/npm\/gsap@[\d.]+\/dist\/[\w.-]+\.js$/;
+
 export function isGsapCoreUrl(src: string): boolean {
   return /\/gsap(-\d+(\.\d+)*)?(\.min)?\.js$/i.test(pathOf(src) ?? "");
 }
@@ -66,12 +69,14 @@ export function motionPathPluginUrl(gsapVersion?: string, baseUrl?: string): str
   return `${gsapCdnDist(gsapVersion, baseUrl)}MotionPathPlugin.min.js`;
 }
 
-/** MotionPathPlugin from a configured mirror, else from beside the page's own GSAP file; null with neither. */
+/** MotionPathPlugin from a configured mirror (a local root has one version), else beside the page GSAP. */
 export function motionPathPluginFor(page: {
   gsapFile: string | null;
   mirror?: string | null;
   version?: string;
 }) {
+  if (page.mirror?.trim().startsWith("/"))
+    return motionPathPluginUrl(GSAP_CDN_VERSION, page.mirror);
   const version = page.version ?? page.gsapFile?.match(/gsap@([\d.]+)/)?.[1];
   if (page.mirror) return motionPathPluginUrl(version, page.mirror);
   return page.gsapFile ? motionPathBesideGsap(page.gsapFile) : null;

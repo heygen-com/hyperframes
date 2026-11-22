@@ -3,6 +3,7 @@
 // with the script Studio saved and the authored styles Studio read from that file.
 import {
   GSAP_BASE_URL_META,
+  GSAP_ON_ITS_CDN,
   GSAP_PLUGIN_LOAD_ATTR,
   NO_PATH_TWEEN_META,
   isGsapCoreUrl,
@@ -10,6 +11,7 @@ import {
   namesMotionPath,
 } from "../../gsapCdn";
 import { INLINED_FILE_ATTR } from "../../compiler/scriptRuns";
+import { RUNTIME_BOOTSTRAP_ATTR } from "../../compiler/htmlDocument";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { escapeCssString } from "../editingElement";
 import { applyAuthoredTiming } from "../../studioPreviewMark";
@@ -339,15 +341,38 @@ export function finalizeSoftReload(win: SoftReloadWindow, currentTime: number): 
   if (wasPlaying) win.__player?.play?.();
 }
 
+const scriptFile = (script: Element) =>
+  script.getAttribute("src") ?? script.getAttribute(INLINED_FILE_ATTR);
+
+function pageGsapFile(doc: Document): string | null {
+  for (const script of doc.querySelectorAll(`script[src], script[${INLINED_FILE_ATTR}]`)) {
+    const file = scriptFile(script);
+    if (file && isGsapCoreUrl(file)) return file;
+  }
+  return null;
+}
+
 function previewMotionPathUrl(doc: Document, version?: string): string | null {
   const mirror = doc.head.querySelector<HTMLMetaElement>(
     `meta[name="${GSAP_BASE_URL_META}"]`,
   )?.content;
-  const gsap = [...doc.querySelectorAll(`script[src], script[${INLINED_FILE_ATTR}]`)]
-    .map((script) => script.getAttribute("src") ?? script.getAttribute(INLINED_FILE_ATTR) ?? "")
-    .find(isGsapCoreUrl);
-  const src = motionPathPluginFor({ gsapFile: gsap ?? null, mirror, version });
+  const src = motionPathPluginFor({ gsapFile: pageGsapFile(doc), mirror, version });
   return src && new URL(src, doc.baseURI).href;
+}
+
+/** The runtime's half of the server's path-free proof: every script readable here, GSAP's own or the runtime's. */
+function pageProvesNoPathTween(doc: Document): boolean {
+  if (doc.querySelector("[data-composition-src]")) return false;
+  const gsap = pageGsapFile(doc);
+  const gsapFolder = gsap && new URL(".", new URL(gsap, doc.baseURI)).href;
+  return [...doc.querySelectorAll("script")].every((script) => {
+    if (script.hasAttribute(RUNTIME_BOOTSTRAP_ATTR)) return true;
+    if (script.type === "module") return false;
+    const src = script.getAttribute("src");
+    if (src === null) return !namesMotionPath(script.textContent ?? "");
+    if (GSAP_ON_ITS_CDN.test(src)) return true;
+    return gsapFolder !== null && new URL(".", new URL(src, doc.baseURI)).href === gsapFolder;
+  });
 }
 
 function runSuppressed(win: SoftReloadWindow, reload: () => void): boolean {
@@ -476,7 +501,7 @@ export function preloadMotionPath(
   doc: Document = document,
 ): void {
   if (win.MotionPathPlugin || win.__hfMotionPathWaiters || !win.gsap) return;
-  if (doc.querySelector(`meta[name="${NO_PATH_TWEEN_META}"]`)) return;
+  if (doc.querySelector(`meta[name="${NO_PATH_TWEEN_META}"]`) || pageProvesNoPathTween(doc)) return;
   const register = () => win.MotionPathPlugin && win.gsap?.registerPlugin?.(win.MotionPathPlugin);
   whenMotionPathLoaded(win, doc, register, () => {});
 }
