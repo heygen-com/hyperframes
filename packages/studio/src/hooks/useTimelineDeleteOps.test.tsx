@@ -72,12 +72,14 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     alsoMount?: () => void;
   }) {
     const elements = [el("hf-a", 0, 2), el("hf-b", 2, 2), el("hf-c", 4, 2)];
-    const editQueueRef = overrides.editQueueRef ?? { current: Promise.resolve() };
+    const editQueueRef = overrides.editQueueRef ?? {
+      current: Promise.resolve(),
+      projectId: "test-project",
+    };
     usePlayerStore.getState().setElements(elements);
     let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
     function Harness() {
       hook = useTimelineDeleteOps({
-        projectIdRef: { current: "test-project" },
         activeCompPath: "index.html",
         showToast: overrides.showToast ?? vi.fn(),
         writeProjectFile: overrides.writeProjectFile ?? vi.fn().mockResolvedValue(undefined),
@@ -171,7 +173,10 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
       }),
     );
     // Stands in for the editor's group commits: each joins the edit queue, then writes the file.
-    const editQueueRef: TimelineEditQueue = { current: Promise.resolve() };
+    const editQueueRef: TimelineEditQueue = {
+      current: Promise.resolve(),
+      projectId: "test-project",
+    };
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);
     const save = (write: string, options?: TimelineGroupCommitOptions) =>
       enqueueTimelineEdit(
@@ -204,6 +209,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
           handleTimelineGroupMove,
           showToast: vi.fn(),
           reloadPreview: vi.fn(),
+          editQueueRef,
         });
       },
     });
@@ -434,14 +440,13 @@ describe("useTimelineDeleteOps: undo race", () => {
     function Harness() {
       const track = useTrackPendingTimelineEdit();
       const hook = useTimelineDeleteOps({
-        projectIdRef: { current: "test-project" },
         activeCompPath: "index.html",
         showToast: vi.fn(),
         writeProjectFile: vi.fn().mockResolvedValue(undefined),
         recordEdit,
         reloadPreview: vi.fn(),
         previewIframeRef: { current: null },
-        editQueueRef: { current: Promise.resolve() },
+        editQueueRef: { current: Promise.resolve(), projectId: "test-project" },
         handleTimelineGroupMove: vi.fn().mockResolvedValue(undefined),
       });
       tracked = track(hook.handleTimelineElementsDelete);
@@ -536,14 +541,13 @@ describe("useTimelineDeleteOps: live preview", () => {
     let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
     function Harness() {
       hook = useTimelineDeleteOps({
-        projectIdRef: { current: "test-project" },
         activeCompPath: "index.html",
         showToast: vi.fn(),
         writeProjectFile: vi.fn().mockResolvedValue(undefined),
         recordEdit: vi.fn().mockResolvedValue(undefined),
         reloadPreview: vi.fn(),
         previewIframeRef: { current: iframe },
-        editQueueRef: { current: Promise.resolve() },
+        editQueueRef: { current: Promise.resolve(), projectId: "test-project" },
         handleTimelineGroupMove: vi.fn().mockResolvedValue(undefined),
       });
       return null;

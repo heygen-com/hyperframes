@@ -1,4 +1,4 @@
-import { useCallback, type MutableRefObject } from "react";
+import { useCallback } from "react";
 import type { TimelineElement } from "../player";
 import { toAuthoredStart, toCompositionTime } from "../player/store/timelineElement";
 import {
@@ -30,6 +30,9 @@ import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
 import {
   enqueueTimelineEdit,
   refuseWithEarlier,
+  isClosed,
+  shownPreview,
+  whileShown,
   type TimelineEditQueue,
 } from "./timelineEditQueue";
 
@@ -51,7 +54,6 @@ type UseTimelineClipTimingEditingOptions = Pick<
   | "handleDomZIndexReorderCommitRef"
 > & {
   editQueueRef: TimelineEditQueue;
-  projectIdRef: MutableRefObject<string | null>;
 };
 
 /** One clip's move and resize: the timing write, then its tween rewrite, as one undo step. */
@@ -71,7 +73,6 @@ export function useTimelineClipTimingEditing({
   invalidateGsapCache,
   handleDomZIndexReorderCommitRef,
   editQueueRef,
-  projectIdRef,
 }: UseTimelineClipTimingEditingOptions) {
   const enqueueEdit = useCallback(
     (
@@ -84,19 +85,18 @@ export function useTimelineClipTimingEditing({
         trySdk,
       }: {
         ifEarlierRefused?: (error: unknown) => void;
-        trySdk?: () => Promise<CutoverResult>;
+        trySdk?: (projectId: string) => Promise<CutoverResult>;
       } = {},
     ): Promise<SdkCommit | undefined> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return Promise.resolve(undefined);
       }
-      const pid = projectIdRef.current;
-      if (!pid) return Promise.resolve(undefined);
+      if (!editQueueRef.projectId) return Promise.resolve(undefined);
       return enqueueTimelineEdit(
         editQueueRef,
-        async () => {
-          const sdk = await trySdk?.();
+        async (pid) => {
+          const sdk = await trySdk?.(pid);
           if (sdk && cutoverCommittedOrThrow(sdk)) return sdk;
           await persistTimelineEdit({
             projectId: pid,
@@ -106,13 +106,15 @@ export function useTimelineClipTimingEditing({
             buildPatches,
             writeProjectFile,
             recordEdit,
-            pendingTimelineEditPathRef,
+            pendingTimelineEditPathRef: isClosed(editQueueRef)
+              ? { current: new Set<string>() }
+              : pendingTimelineEditPathRef,
             ...step,
           });
-          forceReloadSdkSession?.();
+          whileShown(editQueueRef, () => forceReloadSdkSession?.());
           return undefined;
         },
-        { label, ifEarlierRefused, projectId: pid },
+        { label, ifEarlierRefused },
       );
     },
     [
@@ -124,13 +126,11 @@ export function useTimelineClipTimingEditing({
       isRecordingRef,
       forceReloadSdkSession,
       editQueueRef,
-      projectIdRef,
     ],
   );
   const handleTimelineElementMove = useCallback(
     // fallow-ignore-next-line complexity
     (element: TimelineElement, updates: TimelineMoveUpdates) => {
-      const projectId = projectIdRef.current;
       // fallow-ignore-next-line complexity
       const commitMove = () => {
         const targetPath = element.sourceFile || activeCompPath || "index.html";
@@ -180,12 +180,17 @@ export function useTimelineClipTimingEditing({
           );
         };
         const step = timingGestureStep("timeline-move");
+        const shown = shownPreview(editQueueRef, {
+          iframeRef: previewIframeRef,
+          reloadPreview,
+          publishSdkSession,
+        });
         const finishMoveGsapSync = (sdkGsap?: ReturnType<typeof sdkTimingGsapSync>) =>
           // One GSAP sync per edit: the SDK commit's own (sdkGsap), else the server rewrite here.
           finishClipTimingFallback({
-            iframe: previewIframeRef.current,
-            reloadPreview,
-            projectId,
+            iframe: shown.iframe(),
+            reloadPreview: shown.reload,
+            projectId: editQueueRef.projectId,
             targetPath,
             domId: element.domId,
             label: "Move timeline clip",
@@ -194,12 +199,12 @@ export function useTimelineClipTimingEditing({
             writeProjectFile,
             edit: { kind: "shift", delta: updates.start - element.start },
             sdkGsap,
-          }).finally(() => invalidateGsapCache?.());
+          }).finally(() => whileShown(editQueueRef, () => invalidateGsapCache?.()));
         const hfId = element.hfId;
         // SDK setTiming writes start only; a lane change needs the fallback's track patch.
         const sdkMove =
           sdkSession && hfId && !element.link && !needsExtension && !trackChanged
-            ? () =>
+            ? (projectId: string) =>
                 sdkTimingPersist(
                   hfId,
                   targetPath,
@@ -208,12 +213,12 @@ export function useTimelineClipTimingEditing({
                   {
                     editHistory: { recordEdit },
                     writeProjectFile,
-                    reloadPreview,
+                    reloadPreview: shown.reload,
                     compositionPath: activeCompPath,
                     // Capture on-disk bytes as the undo `before` so undoing a timing move
                     // restores the file verbatim, not a normalized full-DOM re-emit.
-                    readProjectFile: (path) => readFileContent(projectId ?? "", path),
-                    publishSession: publishSdkSession,
+                    readProjectFile: (path) => readFileContent(projectId, path),
+                    publishSession: shown.publish,
                   },
                   { label: "Move timeline clip", ...step, skipRefresh: true },
                 )
@@ -225,7 +230,7 @@ export function useTimelineClipTimingEditing({
           .then((sdk) => finishMoveGsapSync(sdk && sdkTimingGsapSync(sdk)))
           .catch((error) => {
             // Failed persist: revert the optimistic duration readout + live root.
-            rollbackDuration();
+            whileShown(editQueueRef, rollbackDuration);
             showToast(getStudioSaveErrorMessage(error), "error");
             throw error;
           });
@@ -245,7 +250,7 @@ export function useTimelineClipTimingEditing({
       handleDomZIndexReorderCommitRef,
       showToast,
       invalidateGsapCache,
-      projectIdRef,
+      editQueueRef,
     ],
   );
 
@@ -255,7 +260,6 @@ export function useTimelineClipTimingEditing({
       element: TimelineElement,
       updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
     ) => {
-      const projectId = projectIdRef.current;
       const authoredStart = toAuthoredStart(element, updates.start);
       const liveAttrs: Array<[string, string]> = [
         ["data-start", formatTimelineAttributeNumber(authoredStart)],
@@ -285,11 +289,16 @@ export function useTimelineClipTimingEditing({
       // script (timing-only resize) — same no-flash path as move; full reload is
       // the fallback.
       const step = timingGestureStep("timeline-resize");
+      const shown = shownPreview(editQueueRef, {
+        iframeRef: previewIframeRef,
+        reloadPreview,
+        publishSdkSession,
+      });
       const finishResizeGsapSync = (sdkGsap?: ReturnType<typeof sdkTimingGsapSync>) =>
         finishClipTimingFallback({
-          iframe: previewIframeRef.current,
-          reloadPreview,
-          projectId,
+          iframe: shown.iframe(),
+          reloadPreview: shown.reload,
+          projectId: editQueueRef.projectId,
           targetPath,
           domId: element.domId,
           label: "Resize timeline clip",
@@ -302,11 +311,11 @@ export function useTimelineClipTimingEditing({
             to: { start: toCompositionTime(element, updates.start), duration: updates.duration },
           },
           sdkGsap,
-        }).finally(() => invalidateGsapCache?.());
+        }).finally(() => whileShown(editQueueRef, () => invalidateGsapCache?.()));
       const hfId = element.hfId;
       const sdkResize =
         sdkSession && hfId && !element.link && !hasPbsAdjustment && !needsExtension
-          ? () =>
+          ? (projectId: string) =>
               sdkTimingPersist(
                 hfId,
                 targetPath,
@@ -315,12 +324,12 @@ export function useTimelineClipTimingEditing({
                 {
                   editHistory: { recordEdit },
                   writeProjectFile,
-                  reloadPreview,
+                  reloadPreview: shown.reload,
                   compositionPath: activeCompPath,
                   // Capture on-disk bytes as the undo `before` so undoing a timing
                   // resize restores the file verbatim, not a normalized full-DOM re-emit.
-                  readProjectFile: (path) => readFileContent(projectId ?? "", path),
-                  publishSession: publishSdkSession,
+                  readProjectFile: (path) => readFileContent(projectId, path),
+                  publishSession: shown.publish,
                 },
                 { label: "Resize timeline clip", ...step, skipRefresh: true },
               )
@@ -331,7 +340,7 @@ export function useTimelineClipTimingEditing({
       }).then((sdk) => finishResizeGsapSync(sdk && sdkTimingGsapSync(sdk)));
       return persistDone.catch((error) => {
         // Failed persist: revert the optimistic duration readout + live root.
-        rollbackDuration();
+        whileShown(editQueueRef, rollbackDuration);
         showToast(getStudioSaveErrorMessage(error), "error");
         throw error;
       });
@@ -347,7 +356,7 @@ export function useTimelineClipTimingEditing({
       reloadPreview,
       showToast,
       invalidateGsapCache,
-      projectIdRef,
+      editQueueRef,
     ],
   );
 

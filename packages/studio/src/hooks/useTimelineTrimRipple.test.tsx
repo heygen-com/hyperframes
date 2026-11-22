@@ -50,6 +50,7 @@ function mountTrimRipple(rippleOn: boolean, elements: TimelineElement[]) {
       handleTimelineGroupMove,
       showToast: vi.fn(),
       reloadPreview,
+      editQueueRef: { current: Promise.resolve(), projectId: "project" },
     });
     return null;
   }
