@@ -1334,7 +1334,7 @@ class HyperframesPlayer extends HTMLElement {
     this._playWhenWanted();
   }
 
-  /** A sealed frame's length and size from its document, as the probe reads an open frame's; play waits for the runtime. */
+  /** A sealed frame's length and size from its document, as the probe reads them; play waits for the runtime. */
   private _onStaticComposition({ durationSeconds, compositionSize }: StaticComposition) {
     // An open frame's own poll reads the same thing.
     if (this._ready || this._getSameOriginIframeDocument()) return;

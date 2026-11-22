@@ -218,7 +218,7 @@ export type StaticComposition = {
   compositionSize: { width: number; height: number } | null;
 };
 
-/** What the document alone says of its composition: the probe's read of an open frame, posted by a sealed one's runtime. */
+/** What the document alone says of its composition: the probe reads it, a sealed frame's runtime posts it. */
 export function readStaticComposition(doc: Document): StaticComposition | null {
   const durationSeconds = readStaticCompositionMeta(doc)?.durationSeconds ?? 0;
   if (!(durationSeconds > 0)) return null;
