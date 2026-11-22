@@ -75,6 +75,33 @@ it("reports the failed attempt on stderr without calling the previous version re
   expect(out).toHaveBeenCalledWith("Previous shared version: https://hyperframes.dev/r/previous");
   expect(out.mock.calls.flat().join(" ")).not.toContain("still processing");
 });
+it("escapes dynamic text for terminal output and preserves failure fields in JSON", async () => {
+  const raw = "detail" + String.fromCharCode(27, 13, 7, 155, 9, 10);
+  const shown = "detail\\x1b\\x0d\\x07\\x9b\\x09\\x0a";
+  const out = vi.spyOn(console, "log").mockImplementation(() => {});
+  const err = vi.spyOn(console, "error").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "failed",
+    source: {},
+    version: { failure: raw },
+    previousUrl: raw,
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(err).toHaveBeenCalledWith(shown);
+  expect(out).toHaveBeenCalledWith(`Previous shared version: ${shown}`);
+  await runCommand(command, { rawArgs: ["--status", "--json"] });
+  expect(JSON.parse(String(out.mock.calls.at(-1)?.[0]))).toMatchObject({
+    error: { message: raw },
+    version: { failure: raw },
+    previousUrl: raw,
+  });
+  err.mockClear();
+  mocks.run.mockRejectedValue(new Error(raw));
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(err).toHaveBeenCalledWith(shown);
+  await runCommand(command, { rawArgs: ["--status", "--json"] });
+  expect(JSON.parse(String(out.mock.calls.at(-1)?.[0])).error.message).toBe(raw);
+});
 it("still opens management when the latest export failed", async () => {
   const out = vi.spyOn(console, "log").mockImplementation(() => {});
   await runCommand(command, { rawArgs: ["--manage", "--json"] });
@@ -126,7 +153,7 @@ it("prints a failure's control characters as visible escapes", async () => {
   vi.spyOn(console, "log").mockImplementation(() => {});
   mocks.run.mockRejectedValue(new Error(`Sharing blocked${esc}[2J.\nTry again`));
   await runCommand(command, { rawArgs: ["--private", "-y"] });
-  expect(friendly).toHaveBeenLastCalledWith("Sharing blocked\\x1b[2J.\nTry again");
+  expect(friendly).toHaveBeenLastCalledWith("Sharing blocked\\x1b[2J.\\x0aTry again");
 });
 
 // fails without the fix: a failed export's reason reached the terminal with its control characters live.

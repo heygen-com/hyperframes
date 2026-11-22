@@ -96,6 +96,7 @@ import {
 import { resolveCommandUsage, type ResolvedCommandUsage } from "./utils/commandUsageResolution.js";
 import { closestMatch, closestNames, commandRedirect, fileHint } from "./utils/didYouMean.js";
 import { errorBox } from "./ui/format.js";
+import { renderExitDiagnostic } from "./ui/renderDiagnostic.js";
 import { failureShown, jsonErrorBody, watchOutput, writeJsonFailure } from "./utils/jsonError.js";
 import { isDevMode } from "./utils/env.js";
 import { terminalLines, terminalText } from "@hyperframes/core";
@@ -527,6 +528,11 @@ function sayCrash(error: Error): void {
   errorBox("The command stopped on an unexpected error", words.filter(Boolean).join("\n"));
 }
 
+const quietRun = argv.includes("--quiet");
+function sayRenderCode(error: unknown, fallback: string): void {
+  if (command === "render" && !quietRun && !hasJsonFlag) renderExitDiagnostic(error, fallback);
+}
+
 /** The first caller line of a stack, past the Error's own line and the result bookkeeping that recorded it. */
 const firstFrameOf = (stack: string | undefined) =>
   stack
@@ -555,6 +561,7 @@ function exitAfterCliFailure(
   commandFailed = true;
   sayCrash(error);
   emitCliErrorEvent(kind, error);
+  sayRenderCode(error, kind.toUpperCase());
   _flushSync?.();
   process.exit(1);
 }
@@ -590,6 +597,7 @@ process.on("unhandledRejection", (reason) => {
   process.exitCode = 1;
   sayCrash(error);
   emitCliErrorEvent("unhandled_rejection", error);
+  sayRenderCode(error, "UNHANDLED_REJECTION");
 });
 
 // Lazy-load help renderer — avoids allocating help data on non-help invocations
@@ -706,6 +714,7 @@ async function executeCli(): Promise<void> {
       commandFailed = true;
       errorReported = true;
       await reportCommandFailure(command, error);
+      if (result.kind !== "usage_error") sayRenderCode(error, "RENDER_FAILED");
       const typed = error instanceof CliUsageError || error instanceof CliRuntimeError;
       const usage = error instanceof CliUsageError && !error.result.presented;
       if (usage && !error.hint) await showRequestedUsage(console.error);
