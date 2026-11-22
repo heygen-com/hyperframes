@@ -544,7 +544,8 @@ describe("runtime entry", () => {
       later.setAttribute("src", "later.mp4");
 
       await evaluateRuntime();
-      expect(armed(now, soon, later)).toEqual([true, true, false]);
+      expect(armed(now, soon)).toEqual([true, true]);
+      // A clip the window arms loads whole ("auto"); this one only its length.
       expect(later.preload).toBe("metadata");
       expect(loadsOf(later)).toEqual([1]);
 
@@ -684,7 +685,7 @@ describe("runtime entry", () => {
       window.__player?.seek(3.6);
       window.__player?.seek(0.5);
       window.__player?.seek(7.5);
-      expect(armed(untrimmed, later)).toEqual([true, false]);
+      expect(untrimmed.preload).toBe("auto");
       expect(later.preload).toBe("metadata");
       expect(loadsOf(untrimmed, later)).toEqual([1, 1]);
     });
