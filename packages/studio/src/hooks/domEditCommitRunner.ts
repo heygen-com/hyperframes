@@ -61,6 +61,8 @@ export type TextWriteClaim = DomEditCommitVersionGuard & {
   landed: (markup: string) => void;
   /** What the file holds for the key, as far as this pipeline saw it reach the file since the preview last changed. */
   saved: () => string | undefined;
+  /** Whether an earlier save on the key could have drawn after this save's caller read the element. */
+  followed: () => boolean;
 };
 
 /**
@@ -79,6 +81,7 @@ export function claimTextWrite(
   if (!composes && newest > number) return null;
   order.claims.set(key, Math.max(newest, number));
   const changes = previewChangesOutsideTextSaves();
+  const followed = order.chains.has(key);
   const before = order.chains.get(key) ?? Promise.resolve();
   let open!: () => void;
   const slot = new Promise<void>((resolve) => (open = resolve));
@@ -108,6 +111,7 @@ export function claimTextWrite(
       order.landed.set(key, { number, markup, changes });
     },
     saved: () => savedTextIn(order, key),
+    followed: () => followed || savedTextIn(order, key) !== undefined,
   });
 }
 

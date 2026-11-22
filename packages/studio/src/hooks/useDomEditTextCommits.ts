@@ -233,7 +233,9 @@ export function useDomEditTextCommits({
       );
       if (!claim) return { ok: true, changed: false };
       await claim.turn();
-      const landed = await selectionAsLanded(selection, buildDomSelectionFromTarget);
+      const landed = claim.followed()
+        ? await selectionAsLanded(selection, buildDomSelectionFromTarget)
+        : selection;
       const nextTextFields = buildNextDomTextFields(landed.textFields, value, fieldKey);
       const textCommit = planDomTextCommit(landed.textFields, nextTextFields, value);
       const write = textWriteSteps({
@@ -421,7 +423,9 @@ export function useDomEditTextCommits({
       );
       if (!claim) return;
       await claim.turn();
-      const selection = await selectionAsLanded(snapshot, buildDomSelectionFromTarget);
+      const selection = claim.followed()
+        ? await selectionAsLanded(snapshot, buildDomSelectionFromTarget)
+        : snapshot;
       const nextTextFields = change(selection.textFields);
       const textCommit = planDomTextCommit(
         selection.textFields,
