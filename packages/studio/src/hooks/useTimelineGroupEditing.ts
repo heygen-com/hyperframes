@@ -32,7 +32,7 @@ import {
   syncPreviewContentDuration,
 } from "./timelineTimingSync";
 import type { GsapMutationStatus } from "./gsapMutationClient";
-import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
+import { getStudioSaveErrorMessage, getStudioSaveErrorTone } from "../utils/studioSaveDiagnostics";
 import {
   enqueueTimelineEdit,
   refuseWithEarlier,
@@ -368,7 +368,7 @@ export function useTimelineGroupEditing({
         if (options?.suppressFailureToast) {
           console.error("[Timeline] group move failed to persist", error);
         } else {
-          showToast(getStudioSaveErrorMessage(error), "error");
+          showToast(getStudioSaveErrorMessage(error), getStudioSaveErrorTone(error));
         }
         throw error;
       });
@@ -483,7 +483,7 @@ export function useTimelineGroupEditing({
         // Failed persist: revert the optimistic duration readout + live root
         // alongside the gesture owner's store rollback.
         whileShown(editQueueRef, rollbackDuration);
-        showToast(getStudioSaveErrorMessage(error), "error");
+        showToast(getStudioSaveErrorMessage(error), getStudioSaveErrorTone(error));
         throw error;
       });
     },
