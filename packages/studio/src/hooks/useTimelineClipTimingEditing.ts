@@ -29,6 +29,7 @@ import type { TimelineMoveUpdates, UseTimelineEditingOptions } from "./useTimeli
 import { getStudioSaveErrorMessage, getStudioSaveErrorTone } from "../utils/studioSaveDiagnostics";
 import {
   enqueueTimelineEdit,
+  keepUnlessItOverlaps,
   refuseWithEarlier,
   type TimelineEditQueue,
 } from "./timelineEditQueue";
@@ -219,13 +220,18 @@ export function useTimelineClipTimingEditing({
             : undefined;
         return reorderDone
           .then(() =>
-            enqueueEdit(element, "Move timeline clip", buildMovePatches, step, { trySdk: sdkMove }),
+            enqueueEdit(element, "Move timeline clip", buildMovePatches, step, {
+              ifEarlierRefused: keepUnlessItOverlaps([
+                { element, start: updates.start, track: updates.track },
+              ]),
+              trySdk: sdkMove,
+            }),
           )
           .then((sdk) => finishMoveGsapSync(sdk && sdkTimingGsapSync(sdk)))
           .catch((error) => {
             // Failed persist: revert the optimistic duration readout + live root.
             rollbackDuration();
-            showToast(getStudioSaveErrorMessage(error), "error");
+            showToast(getStudioSaveErrorMessage(error), getStudioSaveErrorTone(error));
             throw error;
           });
       };
