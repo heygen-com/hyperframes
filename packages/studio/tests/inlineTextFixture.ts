@@ -151,6 +151,8 @@ async function gesture(studioPage: Page, frame: Frame, step: Step, random: () =>
     return frame.evaluate(() =>
       document.getElementById("t")!.dispatchEvent(new FocusEvent("blur")),
     );
+  // A person clicks a frame that shows: a reload in flight lands first.
+  await loaded(studioPage, frame);
   // The person's click selects with the frame answering; the edit's own requests then wait on the test.
   await unheld(studioPage, () =>
     studioPage.evaluate(async () => {
