@@ -82,7 +82,7 @@ export function createTimelineElementFromManifestClip(params: {
   hostEl?: Element | null;
 }): TimelineElement {
   const { clip, fallbackIndex, doc } = params;
-  const numericTrack = finiteNumber(clip.track) ?? 0;
+  const numericTrack = Number.isSafeInteger(clip.track) ? clip.track : 0;
   let hostEl = params.hostEl ?? null;
   const transitionLabels = doc
     ? transitionLabelsForDocument(doc, (doc.defaultView as IframeWindow | null)?.__timelines)
