@@ -9,7 +9,7 @@ import {
 } from "../../gsapCdn";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { escapeCssString } from "../editingElement";
-import { applyAuthoredTiming } from "../../studioPreviewMark";
+import { RUNTIME_BOOTSTRAP_ATTR, applyAuthoredTiming } from "../../studioPreviewMark";
 import {
   applyRestorePlan,
   parseRestoreAttributes,
@@ -461,22 +461,22 @@ export function swapWaiting(win: SoftReloadWindow = window as SoftReloadWindow):
   return (win.__hfSwapsWaiting ?? 0) > 0;
 }
 
-const timelinesTweenAlongPath = (win: SoftReloadWindow) =>
-  Object.values(win.__timelines ?? {}).some((tl) =>
-    ((tl as TweenLike | undefined)?.getChildren?.(true) ?? []).some(
-      (tween) => tween.vars?.motionPath !== undefined,
-    ),
+const GSAP_LIBRARY_FILE = /(?:^|\/)(?:gsap@[^/]+\/dist\/[^/]+|gsap(?:\.min)?\.js)$/;
+const buildsNoPathTween = (script: HTMLScriptElement) => {
+  const src = script.getAttribute("src");
+  if (src === null) return !namesMotionPath(script.textContent ?? "");
+  return (
+    script.hasAttribute(RUNTIME_BOOTSTRAP_ATTR) || GSAP_LIBRARY_FILE.test(src.split(/[?#]/)[0]!)
   );
+};
 
-/** Loads and registers MotionPathPlugin ahead of the first re-run that needs it, when the page tweens along a path. */
+/** Loads and registers MotionPathPlugin ahead of a re-run that needs it, unless no script can build a path tween. */
 export function preloadMotionPath(
   win: SoftReloadWindow = window as SoftReloadWindow,
   doc: Document = document,
 ): void {
   if (win.MotionPathPlugin || win.__hfMotionPathWaiters || !win.gsap) return;
-  const scripts = [...doc.querySelectorAll<HTMLScriptElement>("script:not([src])")];
-  const inline = scripts.some((script) => namesMotionPath(script.textContent ?? ""));
-  if (!inline && !timelinesTweenAlongPath(win)) return;
+  if ([...doc.querySelectorAll<HTMLScriptElement>("script")].every(buildsNoPathTween)) return;
   const register = () => win.MotionPathPlugin && win.gsap?.registerPlugin?.(win.MotionPathPlugin);
   whenMotionPathLoaded(win, doc, register, () => {});
 }

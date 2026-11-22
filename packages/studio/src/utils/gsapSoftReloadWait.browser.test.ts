@@ -356,6 +356,42 @@ it.each(MODES)(
   },
 );
 
+const LATE_PATH_TWEEN = `(function () {
+  window.__timelines = window.__timelines || {};
+  var tl = gsap.timeline({ paused: true });
+  window.__timelines["main"] = tl;
+  window.buildPathTween = function () {
+    tl.to("#target", { motionPath: { path: [{ x: 0, y: 0 }, { x: 50, y: 0 }] }, duration: 4, ease: "none" }, 0);
+  };
+})();`;
+
+// fails without the fix: an external script that builds its first path tween after connect got no plugin and stayed at 0.
+it.each(MODES)("a path tween an external script builds after connect plays (%s)", async (mode) => {
+  const preview = await openSharedPreview(
+    browser,
+    studioBundle,
+    previewHtml(`<script src="${PATH_TWEEN_URL}"></script>`),
+    mode,
+    { [PATH_TWEEN_URL]: LATE_PATH_TWEEN },
+  );
+  await preview.release(200);
+  await connect(preview.page);
+  await preview.frame.waitForFunction(() => "MotionPathPlugin" in window, { timeout: 5_000 });
+  await preview.frame.evaluate(() =>
+    (window as unknown as { buildPathTween(): void }).buildPathTween(),
+  );
+  await preview.seek(4);
+  const x = await preview.frame.evaluate(() =>
+    Number(
+      (
+        window as unknown as { gsap: { getProperty(t: string, p: string): unknown } }
+      ).gsap.getProperty("#target", "x"),
+    ),
+  );
+  expect(x).toBeCloseTo(50, 0);
+  await preview.page.close();
+});
+
 // fails without the fix: every preview Studio connected to requested the plugin.
 it.each(MODES)("a page with no path tween requests no plugin (%s)", async (mode) => {
   const preview = await openPreview(mode);

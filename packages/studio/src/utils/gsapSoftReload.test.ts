@@ -4,6 +4,7 @@
 import { patchRuntimeTweenInPlace } from "../hooks/gsapRuntimePatch";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { GSAP_PLUGIN_LOAD_ATTR } from "@hyperframes/core/gsap-cdn";
+import { RUNTIME_BOOTSTRAP_ATTR } from "@hyperframes/core/studio-preview-mark";
 import {
   readNestedFiles,
   applySoftReload,
@@ -459,10 +460,11 @@ describe("applySoftReloadFinalization", () => {
   });
 });
 
-/** A preview frame for the plugin preload; its inline scripts tween along a path unless `scripts` says otherwise. */
+/** A preview frame for the plugin preload: an inline script's text, or an external script's `src` (`runtime`: the
+ * HyperFrames runtime's tag); one inline path tween unless `scripts` says otherwise. */
 function buildBootstrapIframe(
   overrides: Record<string, unknown> = {},
-  scripts: string[] = [MOTION_PATH_SCRIPT_TEXT],
+  scripts: (string | { src: string; runtime?: true })[] = [MOTION_PATH_SCRIPT_TEXT],
 ) {
   const head = document.createElement("div");
   const appendedScripts: HTMLScriptElement[] = [];
@@ -479,12 +481,16 @@ function buildBootstrapIframe(
     __hfMotionPathWaiters: undefined as unknown[] | undefined,
     ...overrides,
   };
-  const inline = scripts.map((text) =>
-    Object.assign(document.createElement("script"), { textContent: text }),
-  );
+  const tags = scripts.map((script) => {
+    const tag = document.createElement("script");
+    if (typeof script === "string") tag.textContent = script;
+    else tag.setAttribute("src", script.src);
+    if (typeof script !== "string" && script.runtime) tag.setAttribute(RUNTIME_BOOTSTRAP_ATTR, "1");
+    return tag;
+  });
   const contentDocument = {
     createElement: (tag: string) => document.createElement(tag),
-    querySelectorAll: (sel: string) => (sel === "script:not([src])" ? inline : []),
+    querySelectorAll: (sel: string) => (sel === "script" ? tags : []),
     head,
   };
   return {
@@ -565,15 +571,22 @@ describe("ensureMotionPathPluginLoaded", () => {
     expect(appendedScripts).toHaveLength(0);
   });
 
-  // fails without the fix: a path tween built by an external script (no inline text names it) got no plugin.
-  it("loads the plugin when a registered timeline holds a path tween from an external script", () => {
-    const fromFile = { getChildren: () => [{ vars: { motionPath: { path: [] } } }] };
-    const { iframe, appendedScripts } = buildBootstrapIframe(
-      { __timelines: { main: fromFile } },
-      [],
-    );
+  // fails without the fix: an author's external script, which can build a path tween at any time, got no plugin.
+  it("loads the plugin when an author's external script could build a path tween", () => {
+    const { iframe, appendedScripts } = buildBootstrapIframe({}, [{ src: "animations.js" }]);
     ensureMotionPathPluginLoaded(iframe);
     expect(appendedScripts).toHaveLength(1);
+  });
+
+  it("loads no plugin for inline scripts beside GSAP's own files and the HyperFrames runtime", () => {
+    const { iframe, appendedScripts } = buildBootstrapIframe({}, [
+      'gsap.timeline({ paused: true }).to("#box", { opacity: 0.5 });',
+      { src: "gsap.min.js" },
+      { src: "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js?v=1" },
+      { src: "/api/runtime.js", runtime: true },
+    ]);
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts).toHaveLength(0);
   });
 
   // fails without the fix: a quoted "motionPath" property was not read as a path tween.
