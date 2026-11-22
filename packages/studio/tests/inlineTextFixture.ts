@@ -76,6 +76,8 @@ export function generated(seed: number): Step[] {
     else if (roll < 0.93) steps.push({ pastDeadline: true });
     else steps.push({ reloadFrame: true });
   }
+  // The person finishes: an edit still open at the end is saved.
+  if (open) steps.push({ end: "save" });
   return steps;
 }
 
@@ -181,7 +183,19 @@ export async function playText(
   await studioPage.evaluate(
     (sealed, saved) => {
       const w = window as unknown as Editing;
-      w.__text = w.hfStudio.mountTextEditing(document.querySelector("iframe"), sealed, saved, "t");
+      const page = window as unknown as { __saved: string };
+      const landed = (markup: string) =>
+        (page.__saved = page.__saved.replace(
+          /(<h1 id="t"[^>]*>)[\s\S]*?(<\/h1>)/,
+          (_, a, b) => a + markup + b,
+        ));
+      w.__text = w.hfStudio.mountTextEditing(
+        document.querySelector("iframe"),
+        sealed,
+        saved,
+        "t",
+        landed,
+      );
     },
     mode === "sealed",
     file(ORIGINAL),

@@ -41,6 +41,8 @@ export function mountTextEditing(
   sealed: boolean,
   fileHtml: string,
   id: string,
+  /** Called with the element's markup each time a write lands, so a full reload loads the new file. */
+  onLanded: (markup: string) => void,
 ): TextEditing {
   let file = fileHtml;
   const writes: string[] = [];
@@ -53,6 +55,7 @@ export function mountTextEditing(
     if (fate === "fail") throw new Error("write refused");
     file = patchElementInHtml(file, { id: selection.id }, operations).html;
     writes.push(String(operations[0]?.value));
+    onLanded(saved());
   };
   const select = async () => {
     if (!sealed) {
@@ -88,11 +91,14 @@ export function mountTextEditing(
       }),
     ),
   );
+  function saved() {
+    return new DOMParser().parseFromString(file, "text/html").getElementById(id)!.innerHTML;
+  }
   return {
     select: async () => (selection = await select()),
     controls: () => controls,
     commits: () => commits,
-    saved: () => new DOMParser().parseFromString(file, "text/html").getElementById(id)!.innerHTML,
+    saved,
     writes,
     fates,
     releaseWaiting: () => waiting.splice(0).forEach((go) => go()),
