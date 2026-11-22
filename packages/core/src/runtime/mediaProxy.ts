@@ -1,4 +1,5 @@
 import { wallClearInterval, wallSetInterval, wallSetTimeout } from "./wallClock";
+import { runtimeLoad } from "./runtimeLoad";
 import { postRuntimeMessage } from "./bridge";
 import { swallow } from "./diagnostics";
 import {
@@ -237,7 +238,7 @@ function restoreOriginal(el: HTMLMediaElement): void {
     holdShownFrame(el);
     el.setAttribute("src", original);
   }
-  el.load();
+  runtimeLoad(el);
 }
 
 // Wide enough to stand in for the picture for the moment a swap takes; small enough to encode in a few ms.
@@ -304,7 +305,7 @@ function loadProxy(
   holdShownFrame(el);
   keepFileSize(el, href, originalSrc);
   el.src = href;
-  el.load();
+  runtimeLoad(el);
 }
 
 // Each size this page pinned, keyed by mark and copy address, so a video given any other file is sized as before.

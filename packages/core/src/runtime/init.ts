@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication complexity
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { runtimeLoad } from "./runtimeLoad";
 import { setPreviewRasterScale } from "./previewRasterHints";
 import { createFarSceneSkip } from "./farScenes";
 import {
@@ -5115,7 +5116,7 @@ export function initSandboxRuntimeModular(): void {
         for (const { el } of clips) {
           if (!isVideoElement(el) || el.videoWidth > 0) continue;
           if (el.preload === "none") setRuntimePreload(el, "metadata");
-          if (el.networkState !== 2) el.load();
+          if (el.networkState !== 2) runtimeLoad(el);
         }
         const requests = clips.flatMap((clip) =>
           isVideoElement(clip.el)

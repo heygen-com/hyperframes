@@ -1,4 +1,5 @@
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { runtimeLoad } from "./runtimeLoad";
 import { swallow } from "./diagnostics";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
 import { isWebKit, mediaElementTime, startsSoundOnlyInsideATap } from "./mediaClock";
@@ -853,7 +854,7 @@ export function syncRuntimeMedia(params: {
           else heldTailSeekedTo.delete(el);
           if (Math.abs(el.currentTime - relTime) > 0.5 && !seekLoadRetried.has(el)) {
             seekLoadRetried.add(el);
-            el.load();
+            runtimeLoad(el);
             try {
               el.currentTime = mediaElementTime(relTime);
             } catch (err) {
