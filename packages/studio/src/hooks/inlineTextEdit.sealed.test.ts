@@ -1244,7 +1244,9 @@ it("keeps a panel remove that ended an edit when a newer save on another field c
   const [first, second] = selection.textFields.map((field) => field.key);
   const saves: Array<Promise<unknown>> = [];
   act(() => void saves.push(commits().handleDomRemoveTextField(second!)));
+  await vi.waitFor(() => expect(controls().session).toBeNull());
   act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(controls().session).not.toBeNull());
   act(() => controls().commit());
   act(() => void saves.push(commits().handleDomTextCommitForSelection(selection, "Blue", first)));
   release(true);
@@ -1263,7 +1265,9 @@ it("keeps a panel remove that ended an edit when a newer save on the same field 
   const [, second] = selection.textFields.map((field) => field.key);
   const saves: Array<Promise<unknown>> = [];
   act(() => void saves.push(commits().handleDomRemoveTextField(second!)));
+  await vi.waitFor(() => expect(controls().session).toBeNull());
   act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(controls().session).not.toBeNull());
   act(() => controls().commit());
   act(() => void saves.push(commits().handleDomTextCommitForSelection(selection, "Red", second)));
   release(true);
