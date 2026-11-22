@@ -75,9 +75,12 @@ function walkNow(walk: LinkWalk): string[] {
   return step.value;
 }
 
-async function walkOff(walk: LinkWalk): Promise<string[]> {
+async function walkOff(
+  walk: LinkWalk,
+  readLink: (path: string) => Promise<string | null>,
+): Promise<string[]> {
   let step = walk.next();
-  while (!step.done) step = walk.next(await readLinkOff(step.value));
+  while (!step.done) step = walk.next(await readLink(step.value));
   return step.value;
 }
 
@@ -99,13 +102,32 @@ export function recordPreviewRead(projectDir: string, filePath: string): void {
   remember(realProject, read, walkNow(linksOnTheWay(read)));
 }
 
-/** `recordPreviewRead` for a route that reads its project off the event loop. */
-export async function recordPreviewReadOff(projectDir: string, filePath: string): Promise<void> {
-  if (filePath.length > MAX_PREVIEW_PATH_LENGTH) return;
-  const realProject = await realFilePathOff(resolve(projectDir));
-  const read = inReal(realProject, projectDir, filePath);
-  if (read.length > MAX_PREVIEW_PATH_LENGTH) return;
-  remember(realProject, read, await walkOff(linksOnTheWay(read)));
+/** `recordPreviewRead` for each of `filePaths`, off the event loop; a folder they share is read once per call. */
+export async function recordPreviewReadsOff(
+  projectDir: string,
+  filePaths: Iterable<string>,
+): Promise<void> {
+  const realProject = await realFilePathOff(resolve(projectDir)).catch(() =>
+    realFilePath(resolve(projectDir)),
+  );
+  const links = new Map<string, Promise<string | null>>();
+  const readLinkOnce = (path: string) => {
+    let target = links.get(path);
+    if (!target) links.set(path, (target = readLinkOff(path)));
+    return target;
+  };
+  const pending = filePaths[Symbol.iterator]();
+  const recordNext = async () => {
+    for (let next = pending.next(); !next.done; next = pending.next()) {
+      const filePath = next.value;
+      if (filePath.length > MAX_PREVIEW_PATH_LENGTH) continue;
+      const read = inReal(realProject, projectDir, filePath);
+      if (read.length > MAX_PREVIEW_PATH_LENGTH) continue;
+      remember(realProject, read, await walkOff(linksOnTheWay(read), readLinkOnce));
+    }
+  };
+  // Enough walks in flight to keep the fs thread pool (4 threads by default) busy.
+  await Promise.all(Array.from({ length: 16 }, recordNext));
 }
 
 export function previewReferences(html: string): Set<string> {
