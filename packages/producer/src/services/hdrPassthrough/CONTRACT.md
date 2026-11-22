@@ -66,14 +66,18 @@ Fallback rules (keep these in the final design):
 - `CompositeRequest { video, plan, overlays, encoder, hdr, outputPath, workDir, abortSignal, onFramesEncoded }` and `CompositeResult { encodeMs, framesEncoded, fileSize }`.
 - `buildCompositeArgs(request, concatListPath): string[]` is pure, so it can be unit-tested at the argument level.
 - Import types from `./types.js`. `index.ts` exports only `attemptHdrPassthrough` and `createLazyOverlaySession`, and `runHdrPassthrough` is internal.
-- `DEFAULT_MAX_OVERLAY_STATES`, `analyzeOverlayTiming` and `buildCompositeArgs` carry a `fallow-ignore-next-line unused-export` until their first consumer lands. Remove it in the same change, otherwise fallow reports a stale suppression.
 
 Pixel contract (overlay capture ↔ composite): each PNG is 16-bit RGBA at canvas
 size. RGB is `getSrgbToSignalLut(transfer)[srgb8]`, the same LUT
 `blitRgba8OverRgb48le` uses. Alpha is `a8 * 257`, straight (not
-premultiplied). ffmpeg `overlay` in `gbrp16le` then computes
+premultiplied). The composite blends with `maskedmerge` in `gbrp16le`
+(ffmpeg `overlay` blends RGB at 8 bits only), computing
 `out = signal * a + video * (1 - a)`, the layered blend
-(`alphaBlit.ts:429-486`). Target: within 1 LSB at 16 bit.
+(`alphaBlit.ts:429-486`), within 1 LSB at 16 bit. The video enters and leaves
+the blend through packed `rgb48le`, the format the layered path extracts to
+and pipes into its encoder: swscale's planar and packed RGB paths round chroma
+differently, and only the packed path keeps the video pixels bit-identical to
+the layered path where the overlay is transparent.
 
 Progress and stall contract: overlay capture calls `noteStaticDedupActivity(job)`
 for each state, which keeps the stall window open without counting as frame

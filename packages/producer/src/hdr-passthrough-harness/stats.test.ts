@@ -225,6 +225,19 @@ describe("classifyRenderLog", () => {
     expect(isFallback(path)).toBe(true);
   });
 
+  it("reads a reason followed by the logger's JSON context", () => {
+    expect(
+      classifyRenderLog(
+        '[INFO] [Render] HDR passthrough off: not_full_canvas {"renderJobId":"001cc61e"}\n',
+      ),
+    ).toEqual({ kind: "ineligible", reason: "not_full_canvas", detail: undefined });
+    expect(
+      classifyRenderLog(
+        '[INFO] [Render] HDR passthrough off: video_animated (wrap: x) {"renderJobId":"1"}\n',
+      ),
+    ).toEqual({ kind: "ineligible", reason: "video_animated", detail: "wrap: x" });
+  });
+
   it("reads a reason with no detail", () => {
     expect(classifyRenderLog("[Render] HDR passthrough off: video_count\n")).toEqual({
       kind: "ineligible",

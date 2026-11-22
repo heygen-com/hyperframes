@@ -108,11 +108,11 @@ function request(overrides: RequestOverrides = {}): CompositeRequest {
 }
 
 const GRAPH_1080 = [
-  "[0:v]fps=30:start_time=0,format=gbrp16le[v]",
-  "[1:v]fps=30:start_time=0,format=rgba64le,split[oc][oa]",
-  "[oc]format=gbrp16le[o]",
-  "[oa]extractplanes=a,mergeplanes=0x000000:gbrp16le[m]",
-  "[v][o][m]maskedmerge,setparams=color_primaries=bt2020:color_trc=arib-std-b67:colorspace=bt2020nc:range=tv[vout]",
+  "[0:v]fps=30:start_time=0,scale=threads=4,format=rgb48le,scale=threads=4,format=gbrp16le[v]",
+  "[1:v]format=rgba64le,split[oc][oa]",
+  "[oc]format=gbrp16le,fps=30:start_time=0[o]",
+  "[oa]extractplanes=a,mergeplanes=0x000000:gbrp16le,fps=30:start_time=0[m]",
+  "[v][o][m]maskedmerge,scale=threads=4,format=rgb48le,setparams=color_primaries=bt2020:color_trc=arib-std-b67:colorspace=bt2020nc:range=tv,scale=threads=4[vout]",
 ].join(";");
 
 describe("buildCompositeArgs", () => {
@@ -160,7 +160,7 @@ describe("buildCompositeArgs", () => {
       "/w/list.ffconcat",
     );
     expect(args[args.indexOf("-filter_complex") + 1]).toStartWith(
-      "[0:v]fps=30:start_time=0,scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,format=gbrp16le[v];",
+      "[0:v]fps=30:start_time=0,scale=1920:1080:force_original_aspect_ratio=increase:threads=4,crop=1920:1080,format=rgb48le,scale=threads=4,format=gbrp16le[v];",
     );
   });
 

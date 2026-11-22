@@ -24,6 +24,15 @@ const CONCAT_LIST_NAME = "hdr-passthrough-overlays.ffconcat";
 
 const MICROS_PER_SECOND = 1_000_000;
 
+/**
+ * Slice threads for the swscale format conversions in the composite graph.
+ * Each 1080p 16-bit conversion is otherwise single-threaded and caps the
+ * graph below the encoder's speed. Slice threading does not change the
+ * output pixels.
+ */
+const SWS_THREADS = 4;
+const THREADED_SCALE = `scale=threads=${SWS_THREADS}`;
+
 /** GPU encoder resolved by the caller (`getCachedGpuEncoder`), so the builder stays pure. */
 export interface CompositeGpuSelection {
   encoder: GpuEncoder;
@@ -76,10 +85,17 @@ function quoteConcatPath(path: string): string {
 
 /**
  * Filter graph for the composite. Both inputs are resampled onto the output
- * frame grid, the video is converted to signal-space `gbrp16le` (the rgb48le
- * the layered blend works in) and the overlay's straight 16-bit alpha drives
- * a `maskedmerge`: `out = (video * (65535 - a) + signal * a) / 65535`, which
- * is `blitRgba8OverRgb48le`'s blend for `a = alpha8 * 257`. ffmpeg's
+ * frame grid. The video is converted YUV → packed `rgb48le` exactly as the
+ * layered path's HDR frame extraction does (`-pix_fmt rgb48le`), then
+ * repacked losslessly to planar `gbrp16le` for the blend, and the overlay's
+ * straight 16-bit alpha drives a `maskedmerge`:
+ * `out = video + (a * (signal - video) + 32768) >> 16`, which is
+ * `blitRgba8OverRgb48le`'s blend for `a = alpha8 * 257` within 1 LSB at
+ * 16 bits. The result is repacked to `rgb48le` before `tail`, so the
+ * RGB → YUV conversion is the one the layered encoder runs on its rgb48le
+ * stdin. Swscale's planar and packed RGB paths round chroma differently;
+ * going through `rgb48le` on both sides keeps the video pixels bit-identical
+ * to the layered path wherever the overlay is transparent. ffmpeg's
  * `overlay` filter blends RGB at 8 bits only, so it cannot be used here.
  * `tail` is the encoder-side frame filter `buildStreamingArgs` emits for the
  * HDR raw-input path (colour tags, even-dimension pad, vaapi upload).
@@ -87,22 +103,41 @@ function quoteConcatPath(path: string): string {
 function buildCompositeFilterGraph(request: CompositeRequest, tail: string): string {
   const { video, plan } = request;
   const fpsFilter = `fps=${fpsToFfmpegArg(plan.fps)}:start_time=0`;
+  const convert = (pixFmt: string): string => `${THREADED_SCALE},format=${pixFmt}`;
   const videoChain = [fpsFilter];
   if (video.width !== plan.width || video.height !== plan.height) {
-    // Same scale/crop as the layered path's HDR frame extraction.
+    // Same scale/crop as the layered path's HDR frame extraction, which also
+    // converts to rgb48le in that one swscale pass.
     videoChain.push(
-      `scale=${plan.width}:${plan.height}:force_original_aspect_ratio=increase`,
+      `scale=${plan.width}:${plan.height}:force_original_aspect_ratio=increase:threads=${SWS_THREADS}`,
       `crop=${plan.width}:${plan.height}`,
+      "format=rgb48le",
     );
+  } else {
+    videoChain.push(convert("rgb48le"));
   }
-  videoChain.push("format=gbrp16le");
+  videoChain.push(convert("gbrp16le"));
   return [
     `[0:v]${videoChain.join(",")}[v]`,
-    `[1:v]${fpsFilter},format=rgba64le,split[oc][oa]`,
-    `[oc]format=gbrp16le[o]`,
-    `[oa]extractplanes=a,mergeplanes=0x000000:gbrp16le[m]`,
-    `[v][o][m]maskedmerge,${tail}[vout]`,
+    // Overlay frames are converted once per concat entry, before `fps`
+    // repeats them onto the output grid.
+    `[1:v]format=rgba64le,split[oc][oa]`,
+    `[oc]format=gbrp16le,${fpsFilter}[o]`,
+    `[oa]extractplanes=a,mergeplanes=0x000000:gbrp16le,${fpsFilter}[m]`,
+    `[v][o][m]maskedmerge,${convert("rgb48le")},${withThreadedOutputConversion(tail)}[vout]`,
   ].join(";");
+}
+
+/**
+ * The encoder tail is a single `setparams` (colour tags) on the software and
+ * nvenc paths; the RGB → YUV conversion ffmpeg inserts after it runs on one
+ * thread. Ending the graph on a threaded `scale` moves that conversion into
+ * it (same swscale path, so the same pixels). Tails that pad or upload are
+ * left as they are, so their format negotiation is the layered encoder's.
+ */
+function withThreadedOutputConversion(tail: string): string {
+  if (tail === "" || tail.includes(",")) return tail;
+  return `${tail},${THREADED_SCALE}`;
 }
 
 /**
