@@ -63,6 +63,7 @@ function undoRippleShift(changes: TimelineGroupMoveChange[] | null, restore: Tim
 }
 
 interface UseTimelineDeleteOpsOptions {
+  projectIdRef: MutableRefObject<string | null>;
   activeCompPath: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
@@ -87,6 +88,7 @@ function unlinkInSource(source: string, survivors: readonly TimelineElement[]): 
 }
 
 export function useTimelineDeleteOps({
+  projectIdRef,
   activeCompPath,
   showToast,
   writeProjectFile,
@@ -110,7 +112,8 @@ export function useTimelineDeleteOps({
         showToast("Cannot edit timeline while recording", "error");
         return;
       }
-      if (!editQueueRef.projectId) throw new Error("No active project");
+      const pid = projectIdRef.current;
+      if (!pid) throw new Error("No active project");
       const [element] = selection;
       if (!element) return;
       const label =
@@ -145,7 +148,7 @@ export function useTimelineDeleteOps({
         usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleChanges));
         removeIframeTimelineElements(previewIframeRef.current, sameFile, activeCompPath);
         let rollbackDuration = () => {};
-        const deleted = enqueueTimelineEdit(editQueueRef, async (pid) => {
+        const deleted = enqueueTimelineEdit(editQueueRef, async () => {
           await saveServerRewriteWithHistory({
             projectId: pid,
             path: targetPath,
@@ -264,6 +267,7 @@ export function useTimelineDeleteOps({
     },
     [
       activeCompPath,
+      projectIdRef,
       recordEdit,
       showToast,
       writeProjectFile,

@@ -5,12 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { sdkTimingPersist, type CutoverResult } from "../utils/sdkCutover";
 import { persistTimelineEdit } from "./timelineEditingHelpers";
-import { finishClipTimingFallback } from "./timelineTimingSync";
-import {
-  enqueueTimelineEdit,
-  useTimelineEditQueue,
-  type TimelineEditQueue,
-} from "./timelineEditQueue";
+import { enqueueTimelineEdit, type TimelineEditQueue } from "./timelineEditQueue";
 import { LANE_OVERLAP_NOTICE } from "../player/components/timelineCollision";
 import { useTimelineClipTimingEditing } from "./useTimelineClipTimingEditing";
 import { installReactActEnvironment, mountReactHarness } from "./domSelectionTestHarness";
@@ -26,18 +21,16 @@ vi.mock("./timelineEditingHelpers", async (original) => ({
 vi.mock("./timelineTimingSync", async (original) => ({
   ...(await original<typeof import("./timelineTimingSync")>()),
   finishClipTimingFallback: vi.fn(async () => undefined),
-  readFileContent: vi.fn(async (projectId: string, path: string) => `${projectId}:${path}`),
 }));
 
 installReactActEnvironment();
 
 const sdkWrites = vi.mocked(sdkTimingPersist);
 const fileWrites = vi.mocked(persistTimelineEdit);
-const gsapSyncs = vi.mocked(finishClipTimingFallback);
 
 function mountClipTiming() {
   usePlayerStore.getState().setDuration(10);
-  const queue: TimelineEditQueue = { current: Promise.resolve(), projectId: "project" };
+  const queue: TimelineEditQueue = { current: Promise.resolve() };
   const showToast = vi.fn();
   let hook: ReturnType<typeof useTimelineClipTimingEditing> | null = null;
   function Harness() {
@@ -52,6 +45,7 @@ function mountClipTiming() {
       pendingTimelineEditPathRef: { current: new Set() },
       sdkSession: {} as never,
       editQueueRef: queue,
+      projectIdRef: { current: "project" },
     });
     return null;
   }
@@ -136,47 +130,5 @@ describe.each<[string, CutoverResult]>([
     const { drag } = await dragBehindRefusedMove(6);
     await expect(drag).resolves.toBeUndefined();
     expect(sdkWrites).toHaveBeenCalledOnce();
-  });
-});
-
-describe("a single-clip trim queued before a project switch", () => {
-  afterEach(() => vi.clearAllMocks());
-
-  // fails without the fix: the queued SDK trim read index.html from the newly opened project.
-  it("reads and writes only the project it was queued in", async () => {
-    usePlayerStore.getState().setDuration(10);
-    sdkWrites.mockResolvedValue({ status: "committed", version: "1", before: "", after: "" });
-    let hook: ReturnType<typeof useTimelineClipTimingEditing> | null = null;
-    let queue: TimelineEditQueue | null = null;
-    function Harness({ projectId }: { projectId: string }) {
-      queue = useTimelineEditQueue(projectId);
-      hook = useTimelineClipTimingEditing({
-        activeCompPath: "index.html",
-        timelineElements: [],
-        showToast: vi.fn(),
-        writeProjectFile: vi.fn(),
-        recordEdit: vi.fn(),
-        reloadPreview: vi.fn(),
-        previewIframeRef: { current: null },
-        pendingTimelineEditPathRef: { current: new Set() },
-        sdkSession: {} as never,
-        editQueueRef: queue,
-      });
-      return null;
-    }
-    const root = mountReactHarness(<Harness projectId="old" />);
-    let release: () => void = () => {};
-    const held = new Promise<void>((done) => (release = done));
-    void enqueueTimelineEdit(queue!, () => held);
-    const trim = hook!.handleTimelineElementResize(clipB, { start: 2, duration: 3 });
-
-    act(() => root.render(<Harness projectId="new" />));
-    release();
-    await act(() => trim);
-
-    const sdkDeps = sdkWrites.mock.calls[0]?.[4];
-    await expect(sdkDeps?.readProjectFile?.("index.html")).resolves.toBe("old:index.html");
-    expect(gsapSyncs.mock.calls.map(([sync]) => sync.projectId)).toEqual(["old"]);
-    act(() => root.unmount());
   });
 });

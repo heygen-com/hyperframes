@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, type MutableRefObject } from "react";
 import type { TimelineElement } from "../player";
 import { toAuthoredStart, toCompositionTime } from "../player/store/timelineElement";
 import {
@@ -52,6 +52,7 @@ type UseTimelineClipTimingEditingOptions = Pick<
   | "handleDomZIndexReorderCommitRef"
 > & {
   editQueueRef: TimelineEditQueue;
+  projectIdRef: MutableRefObject<string | null>;
 };
 
 /** One clip's move and resize: the timing write, then its tween rewrite, as one undo step. */
@@ -71,6 +72,7 @@ export function useTimelineClipTimingEditing({
   invalidateGsapCache,
   handleDomZIndexReorderCommitRef,
   editQueueRef,
+  projectIdRef,
 }: UseTimelineClipTimingEditingOptions) {
   const enqueueEdit = useCallback(
     (
@@ -83,18 +85,19 @@ export function useTimelineClipTimingEditing({
         trySdk,
       }: {
         ifEarlierRefused?: (error: unknown) => void;
-        trySdk?: (projectId: string) => Promise<CutoverResult>;
+        trySdk?: () => Promise<CutoverResult>;
       } = {},
     ): Promise<SdkCommit | undefined> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return Promise.resolve(undefined);
       }
-      if (!editQueueRef.projectId) return Promise.resolve(undefined);
+      const pid = projectIdRef.current;
+      if (!pid) return Promise.resolve(undefined);
       return enqueueTimelineEdit(
         editQueueRef,
-        async (pid) => {
-          const sdk = await trySdk?.(pid);
+        async () => {
+          const sdk = await trySdk?.();
           if (sdk && cutoverCommittedOrThrow(sdk)) return sdk;
           await persistTimelineEdit({
             projectId: pid,
@@ -122,6 +125,7 @@ export function useTimelineClipTimingEditing({
       isRecordingRef,
       forceReloadSdkSession,
       editQueueRef,
+      projectIdRef,
     ],
   );
   const handleTimelineElementMove = useCallback(
@@ -181,7 +185,7 @@ export function useTimelineClipTimingEditing({
           finishClipTimingFallback({
             iframe: previewIframeRef.current,
             reloadPreview,
-            projectId: editQueueRef.projectId,
+            projectId: projectIdRef.current,
             targetPath,
             domId: element.domId,
             label: "Move timeline clip",
@@ -195,7 +199,7 @@ export function useTimelineClipTimingEditing({
         // SDK setTiming writes start only; a lane change needs the fallback's track patch.
         const sdkMove =
           sdkSession && hfId && !element.link && !needsExtension && !trackChanged
-            ? (projectId: string) =>
+            ? () =>
                 sdkTimingPersist(
                   hfId,
                   targetPath,
@@ -208,7 +212,7 @@ export function useTimelineClipTimingEditing({
                     compositionPath: activeCompPath,
                     // Capture on-disk bytes as the undo `before` so undoing a timing move
                     // restores the file verbatim, not a normalized full-DOM re-emit.
-                    readProjectFile: (path) => readFileContent(projectId, path),
+                    readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
                     publishSession: publishSdkSession,
                   },
                   { label: "Move timeline clip", ...step, skipRefresh: true },
@@ -246,7 +250,7 @@ export function useTimelineClipTimingEditing({
       handleDomZIndexReorderCommitRef,
       showToast,
       invalidateGsapCache,
-      editQueueRef,
+      projectIdRef,
     ],
   );
 
@@ -289,7 +293,7 @@ export function useTimelineClipTimingEditing({
         finishClipTimingFallback({
           iframe: previewIframeRef.current,
           reloadPreview,
-          projectId: editQueueRef.projectId,
+          projectId: projectIdRef.current,
           targetPath,
           domId: element.domId,
           label: "Resize timeline clip",
@@ -306,7 +310,7 @@ export function useTimelineClipTimingEditing({
       const hfId = element.hfId;
       const sdkResize =
         sdkSession && hfId && !element.link && !hasPbsAdjustment && !needsExtension
-          ? (projectId: string) =>
+          ? () =>
               sdkTimingPersist(
                 hfId,
                 targetPath,
@@ -319,7 +323,7 @@ export function useTimelineClipTimingEditing({
                   compositionPath: activeCompPath,
                   // Capture on-disk bytes as the undo `before` so undoing a timing
                   // resize restores the file verbatim, not a normalized full-DOM re-emit.
-                  readProjectFile: (path) => readFileContent(projectId, path),
+                  readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
                   publishSession: publishSdkSession,
                 },
                 { label: "Resize timeline clip", ...step, skipRefresh: true },
@@ -347,7 +351,7 @@ export function useTimelineClipTimingEditing({
       reloadPreview,
       showToast,
       invalidateGsapCache,
-      editQueueRef,
+      projectIdRef,
     ],
   );
 

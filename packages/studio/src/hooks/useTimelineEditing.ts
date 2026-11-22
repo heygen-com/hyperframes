@@ -24,7 +24,6 @@ import {
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
 import { useTimelineClipTimingEditing } from "./useTimelineClipTimingEditing";
 import { useTimelineTrimRipple } from "./useTimelineTrimRipple";
-import { useTimelineEditQueue } from "./timelineEditQueue";
 import { useBlockedTimelineEditToast } from "./useBlockedTimelineEditToast";
 import { useTimelineEditGate, type TimelineEditOutcome } from "./timelineEditPermission";
 import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
@@ -51,7 +50,7 @@ export function useTimelineEditing({
 }: UseTimelineEditingOptions) {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
-  const editQueueRef = useTimelineEditQueue(projectId);
+  const editQueueRef = useRef(Promise.resolve());
   const track = useTrackPendingTimelineEdit();
   const checkEditable = useTimelineEditGate(canEdit, showToast);
   const guard = useTimelineEditGuard(canEdit, showToast);
@@ -64,6 +63,7 @@ export function useTimelineEditing({
     isRecordingRef,
     pendingTimelineEditPathRef,
     previewIframeRef,
+    projectIdRef,
     recordEdit,
     reloadPreview,
     sdkSession,
@@ -87,6 +87,7 @@ export function useTimelineEditing({
     invalidateGsapCache,
     handleDomZIndexReorderCommitRef,
     editQueueRef,
+    projectIdRef,
   });
 
   const { handleTrimElement, handleTrimElements } = useTimelineTrimRipple({
@@ -168,6 +169,7 @@ export function useTimelineEditing({
   });
 
   const { handleTimelineElementsDelete } = useTimelineDeleteOps({
+    projectIdRef,
     activeCompPath,
     showToast,
     writeProjectFile,
