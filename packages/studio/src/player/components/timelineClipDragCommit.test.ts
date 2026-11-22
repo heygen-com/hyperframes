@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, type Mock } from "vitest";
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./useTimelineClipDrag";
 import {
   commitDraggedClipMove,
@@ -1667,5 +1667,50 @@ describe("commitDraggedClipMove: drop onto main-track clips", () => {
     const onDropRefused = vi.fn();
     runClipMove({ ...backHome, aimStart: 4 }, { elements, trackOrder: [0], onDropRefused });
     expect(onDropRefused).not.toHaveBeenCalled();
+  });
+});
+
+// A delete still saving rippled C from 4 to 2; C is dragged to 2.5; the refused delete's rollback moves C
+// back by its ripple to 4.5, and then the drag is refused too.
+describe("a refused drag after an earlier edit's rollback moved its clip", () => {
+  const startOf = (id: string) =>
+    usePlayerStore.getState().elements.find((e) => e.id === id)?.start;
+  function setUp() {
+    const store = usePlayerStore.getState();
+    store.setElements([el("a", 0, 0, 2), el("c", 0, 2, 2)]);
+    let refuse: (error: Error) => void = () => {};
+    const save = new Promise<void>((_, fail) => (refuse = fail));
+    const deps = {
+      elements: usePlayerStore.getState().elements,
+      trackOrder: [0],
+      updateElement: store.updateElement,
+    };
+    const rollBackRipple = () => store.updateElement("c", { start: startOf("c")! + 2 });
+    return { c: deps.elements[1]!, save, refuse, deps, rollBackRipple };
+  }
+
+  // fails without the fix: C went back to its rippled 2, on top of the restored B.
+  it("takes back only its own shift on the single-clip path", async () => {
+    const { c, save, refuse, deps, rollBackRipple } = setUp();
+    commitDraggedClipMove(drag(c, { previewStart: 2.5, previewTrack: 0 }), {
+      ...deps,
+      onMoveElement: () => save,
+    });
+    rollBackRipple();
+    refuse(new Error("lands on B"));
+    await flushMicrotasks();
+    expect(startOf("c")).toBe(4);
+  });
+
+  it("takes back only its own shift on the multi-clip path", async () => {
+    const { c, save, refuse, deps, rollBackRipple } = setUp();
+    const moved = persistMoveEdits([{ element: c, updates: { start: 2.5, track: 0 } }], {
+      ...deps,
+      onMoveElements: () => save,
+    });
+    rollBackRipple();
+    refuse(new Error("lands on B"));
+    await expect(moved).resolves.toBe(false);
+    expect(startOf("c")).toBe(4);
   });
 });

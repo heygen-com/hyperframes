@@ -42,6 +42,7 @@ try {
   /** RGB at fractions of the film's width and height, read from a screenshot of the preview at `time`. */
   const sample = async (name, time, points) => {
     await frame.evaluate((t) => window.__player.seek(t, { settled: true }), time);
+    await frame.evaluate(() => window.__hfWaitForSeekCompletion?.());
     await frame.evaluate(
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );

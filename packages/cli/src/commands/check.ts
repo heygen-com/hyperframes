@@ -371,7 +371,9 @@ export function createCheckCommand(
           if (report.saved) {
             console.log(terminalText(`Report: ${report.saved.report}`));
             console.log(
-              `Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`,
+              terminalText(
+                `Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`,
+              ),
             );
           }
         }

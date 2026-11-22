@@ -3,6 +3,7 @@ import { usePlayerStore, type TimelineElement } from "../player";
 import { batchElementUpdates } from "../player/store/batchElementUpdates";
 import { resolveMainTrackTrimRipple } from "../player/components/timelineGapCommit";
 import { timingGestureStep } from "./timelineTimingSync";
+import { isClosed, refuseWithEarlier, type TimelineEditQueue } from "./timelineEditQueue";
 import type {
   TimelineGroupCommitOptions,
   TimelineGroupMoveChange,
@@ -22,6 +23,8 @@ interface UseTimelineTrimRippleOptions {
     options?: TimelineGroupCommitOptions,
   ) => Promise<void>;
   showToast: (message: string, tone?: "error" | "info") => void;
+  reloadPreview: () => void;
+  editQueueRef: TimelineEditQueue;
 }
 
 function setStarts(changes: ReadonlyArray<{ element: TimelineElement; start: number }>) {
@@ -38,6 +41,8 @@ export function useTimelineTrimRipple({
   handleTimelineGroupResize,
   handleTimelineGroupMove,
   showToast,
+  reloadPreview,
+  editQueueRef,
 }: UseTimelineTrimRippleOptions) {
   const persistWithRipple = useCallback(
     async (
@@ -50,14 +55,24 @@ export function useTimelineTrimRipple({
       const ripple = resolveMainTrackTrimRipple(elements, trims, rippleEditEnabled);
       if (!ripple) return persistTrimAlone();
       const { coalesceKey } = timingGestureStep("timeline-resize", given);
-      const undoRipple = () =>
-        setStarts(ripple.map(({ element }) => ({ element, start: element.start })));
+      const undoRipple = () => {
+        if (isClosed(editQueueRef)) return;
+        const now = new Map(usePlayerStore.getState().elements.map((e) => [e.key ?? e.id, e]));
+        setStarts(
+          ripple.map(({ element, start }) => ({
+            element,
+            start: (now.get(element.key ?? element.id)?.start ?? start) + element.start - start,
+          })),
+        );
+        reloadPreview();
+      };
       setStarts(ripple);
       // Both join the edit queue in this call, so no later edit can land between the trim and
       // its shift and be overwritten by it.
       const trimmed = handleTimelineGroupResize(trims, { ...given, coalesceKey });
       const shifted = handleTimelineGroupMove(ripple, {
         beforeTiming: trimmed,
+        ifEarlierRefused: refuseWithEarlier,
         coalesceKey,
         label,
         suppressFailureToast: true,
@@ -77,7 +92,7 @@ export function useTimelineTrimRipple({
         showToast("Clip trimmed, but the gap could not be closed.", "error");
       }
     },
-    [handleTimelineGroupResize, handleTimelineGroupMove, showToast],
+    [handleTimelineGroupResize, handleTimelineGroupMove, showToast, reloadPreview, editQueueRef],
   );
 
   const handleTrimElement = useCallback(

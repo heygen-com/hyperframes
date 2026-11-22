@@ -65,6 +65,7 @@ import { documentMarkup } from "./editing/documentMarkup";
 import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
 import { editElement } from "./editing/editElement";
 import { endTextEdit, textEdit } from "./editing/textEdit";
+import { portPausedVideoProvider } from "./editing/pausedFrames";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -236,6 +237,15 @@ const HANDLERS: Handlers = {
   "swap-scenes": swapScenes,
   "live-retime": liveRetime,
   "assets-unloaded": () => ({ unloaded: previewAssetsUnloaded(document, window.__hfLottie) }),
+  "serve-paused-frames": ({ channel }) => {
+    const install = window.__hf?.setPausedVideoFrameProvider;
+    if (!install) {
+      channel.close();
+      return { served: false };
+    }
+    install(portPausedVideoProvider(channel));
+    return { served: true };
+  },
   "text-edit": (params, port) => textEdit(params, port, EDITING_PROTOCOL_VERSION),
 };
 

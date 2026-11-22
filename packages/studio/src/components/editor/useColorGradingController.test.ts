@@ -810,8 +810,12 @@ describe("useColorGradingController after the preview iframe is replaced", () =>
     const initialElement = makeElement({
       dataAttributes: { "color-grading": JSON.stringify({ preset: "bright-pop", intensity: 1 }) },
     });
-    const { root } = renderHook(vi.fn(), initialElement, ref);
+    const { root, getState } = renderHook(vi.fn(), initialElement, ref);
     act(() => vi.advanceTimersByTime(100));
+    // A drag not saved yet: the one grade a new frame cannot read from the file.
+    const draft = normalizeHfColorGrading({ adjust: { exposure: 1.5 } });
+    if (!draft) throw new Error("expected a grading");
+    act(() => getState().commitColorGrading(draft));
 
     const postToA = vi.spyOn(a.contentWindow, "postMessage");
     const postToB = vi.spyOn(b.contentWindow, "postMessage");
@@ -855,6 +859,66 @@ describe("useColorGradingController after the preview iframe is replaced", () =>
       makeElement({ dataAttributes: { "color-grading": '{"adjust":{"exposure":0.1}}' } }),
     );
     expect(getState().grading.adjust.exposure).toBe(0.1);
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
+
+  it("sends a reloaded preview no grade once the grade is saved, so an undo's file grade shows", () => {
+    vi.useFakeTimers();
+    const { contentWindow, iframe } = createPreviewFrame();
+    const onSetAttributeQuiet = vi.fn(
+      (_attr: string, _value: string | null, onSettled?: (ok: boolean) => void) =>
+        onSettled?.(true),
+    );
+    const before = makeElement({
+      dataAttributes: { "color-grading": '{"adjust":{"exposure":0.1}}' },
+    });
+    const { root, getState, rerenderWithElement } = renderHook(onSetAttributeQuiet, before, {
+      current: iframe,
+    });
+    const brighter = normalizeHfColorGrading({ adjust: { exposure: 1.5 } });
+    if (!brighter) throw new Error("expected a grading");
+    act(() => getState().commitColorGrading(brighter));
+    act(() => vi.advanceTimersByTime(400));
+    rerenderWithElement(
+      makeElement({ dataAttributes: { "color-grading": onSetAttributeQuiet.mock.calls[0]![1] } }),
+    );
+    const postMessage = vi.spyOn(contentWindow, "postMessage");
+    // An undo wrote the file back to 0.1; the reloaded preview is ready before the timeline says so.
+    const ready = { source: "hf-preview", type: "ready", ...runtimeProtocolMetadata(30) };
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", { data: ready, source: contentWindow }));
+    });
+
+    expect(colorGradingMessages(postMessage.mock.calls)).toEqual([]);
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
+
+  it("keeps a drag on a preview reloaded before the drag is saved, and while it is being saved", () => {
+    vi.useFakeTimers();
+    const { contentWindow, iframe } = createPreviewFrame();
+    const before = makeElement({
+      dataAttributes: { "color-grading": '{"adjust":{"exposure":0.1}}' },
+    });
+    const { root, getState } = renderHook(vi.fn(), before, { current: iframe });
+    const brighter = normalizeHfColorGrading({ adjust: { exposure: 1.5 } });
+    if (!brighter) throw new Error("expected a grading");
+    const ready = { source: "hf-preview", type: "ready", ...runtimeProtocolMetadata(30) };
+    const reloadedGrade = () => {
+      const postMessage = vi.spyOn(contentWindow, "postMessage");
+      act(() => {
+        window.dispatchEvent(new MessageEvent("message", { data: ready, source: contentWindow }));
+      });
+      const sent = colorGradingMessages(postMessage.mock.calls).at(-1)?.grading;
+      postMessage.mockRestore();
+      return sent;
+    };
+
+    act(() => getState().commitColorGrading(brighter));
+    expect(reloadedGrade(), "waiting to save").toMatchObject({ adjust: { exposure: 1.5 } });
+    act(() => vi.advanceTimersByTime(400));
+    expect(reloadedGrade(), "being saved").toMatchObject({ adjust: { exposure: 1.5 } });
     act(() => root.unmount());
     vi.useRealTimers();
   });

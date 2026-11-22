@@ -521,6 +521,37 @@ describe("check --prepare-media", () => {
     consumeCommandResult();
   });
 
+  // fails without the fix: the revision read from the project's history reached stdout raw
+  it("prints the saved report's revision with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const { report } = await runScenario(fakeDriver());
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => PROJECT,
+        runPipeline: async () => ({
+          ...report,
+          saved: {
+            id: "check-1",
+            revision: `r1${esc}]0;owned${String.fromCharCode(7)}`,
+            report: "/work/.hyperframes/artifacts/checks/check-1.json",
+            attribution: "recorded-revision",
+          },
+        }),
+        prepareMedia: vi.fn(),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: [] },
+    );
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(human).toContain("Revision: r1\\x1b]0;owned\\x07 (recorded-revision)");
+    expect(human).toContain("Report: /work/.hyperframes/artifacts/checks/check-1.json");
+    consumeCommandResult();
+  });
+
   it("prints a folder name with control characters as visible escapes", async () => {
     // Built rather than written: a literal control character in the source is a lint error.
     const esc = String.fromCharCode(27);
