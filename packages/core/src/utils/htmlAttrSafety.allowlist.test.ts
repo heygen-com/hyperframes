@@ -23,6 +23,7 @@ const ALLOWED = [
   '<div id="card" class="clip" data-start="1" data-duration="2" style="left: 4px"><h1>Title</h1></div>',
   '<video id="v" class="clip" src="clip.mp4" muted playsinline data-start="0" data-duration="3"></video>',
   '<div class="clip"><svg viewBox="0 0 10 10"><path d="M0 0L10 10" fill="red"></path></svg></div>',
+  '<div class="clip"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><use xlink:href="#a"></use></svg></div>',
 ];
 
 // fails without the fix: each of these passed the old denylist, and the first runs a handler once scripting is on.
