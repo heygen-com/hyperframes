@@ -521,6 +521,13 @@ describe("where the MotionPath plugin loads from", () => {
     expect(preloadOn(tag + PATH_TWEEN)).toBe(new URL(plugin, document.baseURI).href);
   });
 
+  // fails without the fix: Desktop's walk film (project gsap.min.js at 3.12.5, no server meta) asked jsDelivr.
+  it("asks the page's own origin for a project GSAP's plugin, whatever its version", () => {
+    const src = preloadOn(`<script src="gsap.min.js"></script>${PATH_TWEEN}`, "3.12.5");
+    expect(src).toBe(new URL("MotionPathPlugin.min.js", document.baseURI).href);
+    expect(new URL(src!).origin).toBe(new URL(document.baseURI).origin);
+  });
+
   it("requests nothing when the page names no GSAP file", () => {
     expect(preloadOn(`<script>/* gsap inlined by hand */</script>${PATH_TWEEN}`)).toBeNull();
   });
