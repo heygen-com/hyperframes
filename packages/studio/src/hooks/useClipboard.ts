@@ -29,7 +29,8 @@ import {
   savedMarkupElseLive,
 } from "../utils/authoredSource";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
-import { refuseUnlistedMarkup } from "../utils/clipboardMarkup";
+import { copiedFile, refuseUnlistedMarkup } from "../utils/clipboardMarkup";
+import { knownCompositionFile } from "../components/editor/domEditingDom";
 
 type InPlace = { inPlace?: boolean };
 
@@ -328,7 +329,7 @@ export function useClipboard({
       targets: { elements: TimelineElement[]; lives: Element[] },
       pid: string | null,
     ): Promise<TimelineClipboardClip[]> => {
-      const paths = targets.elements.map((el) => el.sourceFile || activeCompPath || "index.html");
+      const paths = targets.elements.map((el) => copiedFile(el.sourceFile, activeCompPath));
       const markup = await readSavedMarkup((path) => readSaved(path, pid), paths, targets.lives);
       return targets.elements.map((element, index) => ({
         ...(markup[index] as MarkedMarkup),
@@ -351,13 +352,12 @@ export function useClipboard({
       findSelectedClips(selected, doc),
     );
     const copy = (targets: { elements: TimelineElement[]; lives: Element[] }) => {
-      const sourceFile = targets.elements[0]?.sourceFile || activeCompPath || "index.html";
       return readClips(targets, pid).then((clips): ClipboardPayload => {
         showToast(clips.length > 1 ? `Copied ${clips.length} clips` : "Copied clip", "info");
         return {
           kind: "timeline-clip",
           clips,
-          sourceFile,
+          sourceFile: copiedFile(targets.elements[0]?.sourceFile, activeCompPath),
           projectId: pid ?? undefined,
           copiedInComposition: activeCompPath || "index.html",
         };
@@ -373,19 +373,19 @@ export function useClipboard({
         const live = doc && findElementForSelection(doc, domSelection, activeCompPath);
         return live ?? { refused: "Unable to copy this element." };
       });
-      const sourceFile = domSelection.sourceFile || activeCompPath || "index.html";
-      const copy = (live: Element) =>
-        readSaved(sourceFile, pid).then((content): ClipboardPayload => {
-          showToast("Copied element", "info");
-          return {
-            kind: "dom-element",
-            ...savedMarkupElseLive(parseSavedSource(content), live, sourceFile),
-            sourceFile,
-            projectId: pid ?? undefined,
-            originSelector: domSelection.selector,
-            originSelectorIndex: domSelection.selectorIndex,
-          };
-        });
+      const copy = async (live: Element): Promise<ClipboardPayload> => {
+        const sourceFile = copiedFile(domSelection.sourceFile, activeCompPath);
+        const content = await readSaved(sourceFile, pid);
+        showToast("Copied element", "info");
+        return {
+          kind: "dom-element",
+          ...savedMarkupElseLive(parseSavedSource(content), live, sourceFile),
+          sourceFile,
+          projectId: pid ?? undefined,
+          originSelector: domSelection.selector,
+          originSelectorIndex: domSelection.selectorIndex,
+        };
+      };
       return copyFound(found, copy, showToast);
     },
     [activeCompPath, previewIframeRef, readSaved, showToast],
@@ -497,8 +497,7 @@ export function useClipboard({
       if (!targets || !pid || projectIdRef.current !== pid) return false;
 
       const { elements } = targets;
-      const pathOf = (el: TimelineElement) => el.sourceFile || activeCompPath || "index.html";
-      const targetPath = pathOf(elements[0]!);
+      const pathOf = (el: TimelineElement) => knownCompositionFile(el.sourceFile, activeCompPath);
       // The copy lands in targetPath's own clock, so anchor and lane check are local to it.
       const anchorTime = toAuthoredStart(
         elements[0]!,
@@ -509,6 +508,7 @@ export function useClipboard({
 
       try {
         const clips = await readClips(targets, pid);
+        const targetPath = copiedFile(elements[0]!.sourceFile, activeCompPath);
         let ids: string[] = [];
         const duplicate = (originalContent: string) => {
           const liveElements = usePlayerStore
