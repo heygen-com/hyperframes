@@ -26,6 +26,14 @@ function findTimedElement(doc: Document, markerId: string): Element | null {
   );
 }
 
+function labelsOf(timeline: TimelineWithLabels | undefined): Record<string, number> {
+  try {
+    return timeline?.getLabels?.() ?? timeline?.labels ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export function transitionLabelsForDocument(
   doc: Document,
   timelines: Readonly<Record<string, object | undefined>> | undefined,
@@ -34,8 +42,7 @@ export function transitionLabelsForDocument(
   if (!timelines) return labels;
 
   for (const timeline of Object.values(timelines) as Array<TimelineWithLabels | undefined>) {
-    const timelineLabels = timeline?.getLabels?.() ?? timeline?.labels ?? {};
-    for (const label of Object.keys(timelineLabels)) {
+    for (const label of Object.keys(labelsOf(timeline))) {
       const pair = transitionParts(label);
       if (!pair) continue;
       const outgoing = findTimedElement(doc, pair[0]);
