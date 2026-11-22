@@ -222,9 +222,7 @@ export function useTimelineClipTimingEditing({
         return reorderDone
           .then(() =>
             enqueueEdit(element, "Move timeline clip", buildMovePatches, step, {
-              ifEarlierRefused: keepUnlessItOverlaps([
-                { element, start: updates.start, track: updates.track },
-              ]),
+              ifEarlierRefused: keepUnlessItOverlaps([{ element, start: updates.start }]),
               trySdk: sdkMove,
             }),
           )

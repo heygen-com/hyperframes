@@ -16,15 +16,16 @@ export const refuseWithEarlier = (error: unknown): never => {
 };
 
 /** For an edit the user placed, such as a drop: kept unless it now overlaps a lane clip. */
-export const keepUnlessItOverlaps = (changes: readonly LaneLanding[]) => () => {
-  const { elements } = usePlayerStore.getState();
-  const shown = new Map(elements.map((e) => [e.key ?? e.id, e]));
-  const placed = changes.map(({ element, start }) => ({
-    element: shown.get(element.key ?? element.id) ?? element,
-    start,
-  }));
-  if (landsOnLaneClip(elements, placed)) throw laneOverlapRefusal();
-};
+export const keepUnlessItOverlaps =
+  (changes: ReadonlyArray<Pick<LaneLanding, "element" | "start">>) => () => {
+    const { elements } = usePlayerStore.getState();
+    const shown = new Map(elements.map((e) => [e.key ?? e.id, e]));
+    const placed = changes.map(({ element, start }) => ({
+      element: shown.get(element.key ?? element.id) ?? element,
+      start,
+    }));
+    if (landsOnLaneClip(elements, placed)) throw laneOverlapRefusal();
+  };
 
 /** Runs `run` after every edit queued before it. When one of those was refused, `ifEarlierRefused`
  *  runs first, and throwing refuses this edit too. */

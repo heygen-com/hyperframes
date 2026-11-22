@@ -1,4 +1,4 @@
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { clampToHostStart } from "../store/timelineElement";
 import type { DraggedClipState } from "./useTimelineClipDrag";
 // Type-only: erased at runtime, so the timelineZMirror → timelineClipDragCommit
@@ -89,6 +89,12 @@ export interface DragCommitDeps {
 }
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
+
+/** Where `key` sits now, minus this drag's own shift: an earlier edit's rollback may have moved it since. */
+function startBeforeDrag(key: string, from: number, to: number): number {
+  const now = usePlayerStore.getState().elements.find((e) => keyOf(e) === key)?.start ?? to;
+  return now - (to - from);
+}
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 // One deterministic coalesce key shared by both records in a lane-change gesture.
 let laneChangeGestureSeq = 0;
@@ -191,13 +197,15 @@ export function persistMoveEdits(
       ? e
       : { element: e.element, updates: { ...e.updates, track: e.persistTrack } },
   );
+  const movedTo = new Map(edits.map((e) => [keyOf(e.element), e.updates.start]));
   const restorePrev = () =>
     batchElementUpdates(() => {
       for (const p of prev) {
         const { audioGroup, ...timing } = p.updates;
         const updates: Partial<TimelineElement> = {};
         if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
-          Object.assign(updates, timing);
+          const to = movedTo.get(p.key) ?? timing.start;
+          Object.assign(updates, timing, { start: startBeforeDrag(p.key, timing.start, to) });
         }
         if (
           isLatestTimelineOptimisticGesture(updateElement, membershipRevision, p.key, "membership")
@@ -312,7 +320,10 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
     updateElement(dragKey, updates);
     Promise.resolve(onMoveElement?.(drag.element, updates)).catch((error) => {
       if (isLatestTimelineOptimisticGesture(updateElement, revision, dragKey)) {
-        updateElement(dragKey, prev);
+        updateElement(dragKey, {
+          ...prev,
+          start: startBeforeDrag(dragKey, prev.start, updates.start),
+        });
       }
       console.error("[Timeline] Failed to persist clip edit", error);
     });

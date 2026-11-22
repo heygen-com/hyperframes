@@ -68,7 +68,7 @@ const clipB: TimelineElement = {
 describe.each<[string, CutoverResult]>([
   ["the SDK path", { status: "committed", version: "1", before: "<p></p>", after: "<p></p>" }],
   ["the file-write fallback", { status: "declined", reason: "feature_disabled" }],
-])("a single-clip trim saved through %s", (_path, sdkResult) => {
+])("a single-clip edit saved through %s", (_path, sdkResult) => {
   afterEach(() => vi.clearAllMocks());
 
   it("saves when nothing queued before it was refused", async () => {
