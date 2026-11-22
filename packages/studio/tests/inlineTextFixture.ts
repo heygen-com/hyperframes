@@ -82,17 +82,6 @@ export function generated(seed: number): Step[] {
 }
 
 /** Each write's fate by the order writes reach the file, so both modes fail the same writes: even seeds all land. */
-/** A frame reload while an inline edit is open: Studio holds it only for an unsealed edit (parity row 41). */
-export function reloadsDuringEdit(steps: Step[]): boolean {
-  let open = false;
-  for (const step of steps) {
-    if ("open" in step) open = true;
-    else if ("end" in step || "cancel" in step || "panel" in step) open = false;
-    else if ("reloadFrame" in step && open) return true;
-  }
-  return false;
-}
-
 /** A frame reply held past its deadline: a sealed-only fault, so the file may differ from unsealed's. */
 export const passesDeadline = (steps: Step[]) => steps.some((step) => "pastDeadline" in step);
 

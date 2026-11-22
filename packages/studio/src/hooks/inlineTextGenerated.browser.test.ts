@@ -8,7 +8,6 @@ import {
   generated,
   passesDeadline,
   playText,
-  reloadsDuringEdit,
   wordsFromGestures,
   writeFates,
 } from "../../tests/inlineTextFixture";
@@ -62,7 +61,6 @@ it.each(seeds)("generated text sequence %i", async (seed) => {
   const trace = (r: typeof sealed) =>
     JSON.stringify({ writes: r.writes, skipped: r.skipped, reported: r.reported });
   const writes = `seed ${seed} sealed ${trace(sealed)} unsealed ${trace(unsealed)}`;
-  if (reloadsDuringEdit(steps)) return void console.info(`seed ${seed}: parity waits on row 41`);
   if (passesDeadline(steps)) {
     const lostQuietly = sealed.saved !== unsealed.saved && sealed.reported.length === 0;
     return void expect
