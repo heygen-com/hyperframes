@@ -1,3 +1,5 @@
+import { RUNTIME_BOOTSTRAP_ATTR } from "@hyperframes/core/compiler/html-tokens";
+
 /**
  * Put the runtime in the document's head, before anything in the body runs.
  *
@@ -28,19 +30,20 @@
 function alreadyHasRuntime(html: string, runtimeUrl: string | null): boolean {
   if (runtimeUrl && html.includes(runtimeUrl)) return true;
   // The engine inlines the runtime rather than linking it, and it assigns this global on the way in.
-  return /__hyperframes\s*=(?!=)/.test(html) || linksRuntimeFile(html);
+  return /__hyperframes\s*=(?!=)/.test(html) || linksRuntime(html);
 }
 
 /** A page that brings the runtime itself, which a sealed player then loads by `src` as before. */
 export const carriesRuntime = (html: string): boolean => alreadyHasRuntime(html, null);
 
-function linksRuntimeFile(html: string): boolean {
+function linksRuntime(html: string): boolean {
   for (
     let tag = findOpeningTag(html, "script");
     tag;
     tag = findOpeningTag(html, "script", tag.end)
   ) {
     const text = html.slice(tag.index, tag.end);
+    if (text.toLowerCase().includes(RUNTIME_BOOTSTRAP_ATTR)) return true;
     if (/\bsrc\s*=/i.test(text) && text.includes("hyperframe.runtime.iife.js")) return true;
   }
   return false;
