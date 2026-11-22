@@ -687,6 +687,17 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
     return { mgr, events, setFrameMuted };
   }
 
+  // A copy's own state, as the browser reports it, then the event that says it changed.
+  function becomes(el: HTMLMediaElement, state: "playing" | "pause" | "ended" | "error") {
+    const define = (key: string, value: unknown) =>
+      Object.defineProperty(el, key, { configurable: true, get: () => value });
+    define("paused", state !== "playing");
+    define("readyState", state === "playing" ? 4 : 1);
+    define("ended", state === "ended");
+    if (state === "error") define("error", { code: 2 });
+    el.dispatchEvent(new Event(state));
+  }
+
   it("copies only files under the composition's own folder, without credentials, and reports the rest", () => {
     const { mgr, events } = makeSealedManager();
 
@@ -777,7 +788,7 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
     mgr.promoteToParentProxy();
     expect(setFrameMuted).not.toHaveBeenCalled();
 
-    mgr.entries[0]!.el.dispatchEvent(new Event("playing"));
+    becomes(mgr.entries[0]!.el, "playing");
     expect(setFrameMuted.mock.calls).toEqual([[true]]);
   });
 
@@ -789,10 +800,10 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
     );
     mgr.promoteToParentProxy();
     const [a, b] = mgr.entries.map((m) => m.el);
-    a!.dispatchEvent(new Event("playing"));
-    b!.dispatchEvent(new Event("playing"));
+    becomes(a!, "playing");
+    becomes(b!, "playing");
 
-    a!.dispatchEvent(new Event("error"));
+    becomes(a!, "error");
     expect(setFrameMuted.mock.calls).toEqual([[true]]);
 
     mgr.setupFromList([clip("https://films.test/f/a.m4a")], film);
@@ -807,15 +818,62 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
     );
     mgr.promoteToParentProxy();
     const [a, b, c] = mgr.entries.map((m) => m.el);
-    a!.dispatchEvent(new Event("playing"));
-    a!.dispatchEvent(new Event("ended"));
-    b!.dispatchEvent(new Event("playing"));
-    b!.dispatchEvent(new Event("pause"));
-    c!.dispatchEvent(new Event("playing"));
+    becomes(a!, "playing");
+    becomes(b!, "playing");
+    becomes(a!, "ended");
+    becomes(c!, "playing");
+    becomes(b!, "pause");
 
-    c!.dispatchEvent(new Event("error"));
+    becomes(c!, "error");
     expect(setFrameMuted.mock.calls).toEqual([[true], [false]]);
   });
+
+  it.each([
+    ["before", true],
+    ["after", false],
+  ])(
+    "gives the film its sound back when the next copy's play is refused, the old copy's pause event arriving %s the refusal",
+    async (_order, pauseEventFirst) => {
+      let now = 1;
+      const setFrameMuted = vi.fn();
+      const mgr = new ParentMediaManager({
+        dispatchEvent: () => {},
+        getMuted: () => false,
+        getVolume: () => 1,
+        getPlaybackRate: () => 1,
+        getCurrentTime: () => now,
+        isPaused: () => false,
+        setFrameMuted,
+      });
+      mgr.setupFromList(
+        [clip("https://films.test/f/a.m4a", 0), clip("https://films.test/f/b.m4a", 5)],
+        film,
+      );
+      const [a, b] = mgr.entries.map((m) => m.el);
+      let aPaused = true;
+      Object.defineProperty(a, "paused", { get: () => aPaused });
+      Object.defineProperty(a, "readyState", { get: () => 4 });
+      a!.play = async () => {
+        aPaused = false;
+      };
+      a!.pause = () => {
+        aPaused = true;
+      };
+      b!.play = () => Promise.reject(new DOMException("refused", "NotAllowedError"));
+      b!.pause = () => {};
+
+      mgr.promoteToParentProxy();
+      a!.dispatchEvent(new Event("playing"));
+      now = 6;
+      mgr.mirrorTime(now, { force: true });
+      if (pauseEventFirst) a!.dispatchEvent(new Event("pause"));
+      await vi.waitFor(() => expect(setFrameMuted.mock.calls.length).toBeGreaterThan(1));
+      if (!pauseEventFirst) a!.dispatchEvent(new Event("pause"));
+
+      expect(setFrameMuted.mock.calls).toEqual([[true], [false]]);
+      mgr.destroy();
+    },
+  );
 
   it("mutes an unsealed film's own media once a copy of it is playing", () => {
     const { mgr, setFrameMuted } = makeSealedManager();
@@ -824,7 +882,7 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
     mgr.promoteToParentProxy();
     expect(setFrameMuted).not.toHaveBeenCalled();
 
-    mgr.entries[0]!.el.dispatchEvent(new Event("playing"));
+    becomes(mgr.entries[0]!.el, "playing");
     expect(setFrameMuted.mock.calls).toEqual([[true]]);
     expect(document.querySelector("audio")!.muted).toBe(true);
     mgr.destroy();
@@ -844,7 +902,7 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
     const { mgr, setFrameMuted } = makeSealedManager();
     mgr.setupFromUrl("https://cdn.test/narration.mp3");
     mgr.promoteToParentProxy();
-    mgr.entries[0]!.el.dispatchEvent(new Event("playing"));
+    becomes(mgr.entries[0]!.el, "playing");
     expect(setFrameMuted).not.toHaveBeenCalled();
   });
 
