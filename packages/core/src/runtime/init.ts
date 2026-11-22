@@ -2754,7 +2754,6 @@ export function initSandboxRuntimeModular(): void {
   // Chromium's software decoders cost threads per loaded video; WebKit's reload of a shared file stalls audio.
   const freesBufferedVideo = (el: unknown): el is HTMLVideoElement =>
     isVideoElement(el) && !isWebKit();
-  // A far clip can finish a load the parser started before its window was decided.
   // A preview's video with no set length loads its length first; once known, the window decides it.
   const learnsLength = (el: unknown): el is HTMLVideoElement =>
     mediaDeferred &&
@@ -2762,8 +2761,9 @@ export function initSandboxRuntimeModular(): void {
     freesBufferedVideo(el) &&
     el.hasAttribute("data-start") &&
     !lengthIsAuthored(el);
-  // Its length is kept by the document's timing listener (sourceLength.ts), which runs before this one.
+  // Clips that loaded their length; the document's timing listener (sourceLength.ts) keeps it, and runs first.
   const learned = new WeakSet<HTMLMediaElement>();
+  // A far clip can finish a load the parser started before its window was decided.
   const onMediaLoadedWhileFar = (event: Event) => {
     const el = event.currentTarget;
     if (learnsLength(el) && !learned.has(el)) {
