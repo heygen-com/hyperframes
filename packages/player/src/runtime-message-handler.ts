@@ -13,6 +13,11 @@ import {
 import type { ShaderLoaderState } from "./shader-loader-state.js";
 import type { ShaderTransitionState } from "./shader-options.js";
 import { inspectRuntimeProtocol } from "@hyperframes/core/runtime/protocol";
+import {
+  parseStaticComposition,
+  STATIC_COMPOSITION,
+  type StaticComposition,
+} from "@hyperframes/core/runtime/composition-length";
 
 type SceneRecord = { id: string; start: number; duration: number };
 
@@ -48,6 +53,8 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
    *  player uses this as the cross-origin readiness signal because the
    *  same-origin composition probe cannot inspect CDN iframes. */
   onRuntimeTimelineReady: (duration: number, assetsReady: boolean | undefined) => void;
+  /** The frame's own static read, posted before its runtime boots, for a player that can't read the frame. */
+  onStaticComposition?: (read: StaticComposition) => void;
   setBuffering?: (buffering: boolean) => void;
   setRuntimeFps?: (fps: number) => void;
   setRuntimeOwnsPlayRange?: (owns: boolean) => void;
@@ -93,6 +100,12 @@ export function handleRuntimeMessage(
         detail: { compositionId: data["compositionId"], state },
       }),
     );
+    return;
+  }
+
+  if (data["type"] === STATIC_COMPOSITION) {
+    const read = parseStaticComposition(data);
+    if (read) callbacks.onStaticComposition?.(read);
     return;
   }
 

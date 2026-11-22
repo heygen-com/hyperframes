@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication complexity
+import { rememberSourceLength, sourceLengthOf } from "./sourceLength";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { setPreviewRasterScale } from "./previewRasterHints";
 import { createFarSceneSkip } from "./farScenes";
@@ -1557,6 +1558,7 @@ export function initSandboxRuntimeModular(): void {
 
   const invalidateOnMediaTimingEvent = (event: Event) => {
     const target = event.target;
+    if (isMediaElement(target)) rememberSourceLength(target);
     if (isMediaElement(target) && lengthIsAuthored(target)) return;
     invalidateCompositionTimingCaches();
   };
@@ -3655,8 +3657,8 @@ export function initSandboxRuntimeModular(): void {
           context.inheritedDuration > 0
             ? Math.max(0, context.inheritedStart + context.inheritedDuration - start)
             : null;
-        const sourceDuration = Number.isFinite(element.duration)
-          ? resolveNaturalMediaTimelineDuration(element, element.duration)
+        const sourceDuration = Number.isFinite(sourceLengthOf(element))
+          ? resolveNaturalMediaTimelineDuration(element, sourceLengthOf(element))
           : null;
         // The element's own data-duration is an explicit clip-length trim
         // (the studio writes it when you drag the clip edge). It must bound
@@ -5061,6 +5063,7 @@ export function initSandboxRuntimeModular(): void {
       transport.play();
       return;
     }
+    colorGrading.holdSeekUntilDrawn();
     colorGrading.redraw();
     paintVfx(state.currentTime);
     const blurred = paintCaptureMotionBlur(state.currentTime);

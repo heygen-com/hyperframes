@@ -34,6 +34,7 @@ import {
   type ZOrderPatch,
 } from "./canvasContextMenuZOrder";
 import { menuClasses } from "../ui/menuStyle";
+import { placeMenu, pointAnchor } from "../ui/menuPosition";
 
 interface CanvasContextMenuProps {
   /** Viewport x of the right-click event. */
@@ -157,14 +158,10 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   const hasDelete = Boolean(onDelete);
   const hasDivider = hasZActions && hasDelete;
 
-  // Overflow correction — match ClipContextMenu approach. Only the rendered
-  // groups contribute height (keeps positioning correct when a group is hidden).
-  const menuWidth = 200;
+  // Only the rendered groups contribute height (keeps placement correct when a group is hidden).
   const menuHeight =
     8 + (hasZActions ? Z_ACTIONS.length * 28 : 0) + (hasDivider ? 1 : 0) + (hasDelete ? 28 : 0) + 8; // padding + items + divider + delete + padding
-  const overflowY = y + menuHeight - window.innerHeight;
-  const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
-  const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
+  const { left, top } = placeMenu(pointAnchor(x, y), { width: 200, height: menuHeight });
 
   const el = selection.element;
 
@@ -211,7 +208,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
     <div
       ref={menuRef}
       className={`${menuClasses.panel} fixed z-200 min-w-[180px]`}
-      style={{ left: adjustedX, top: adjustedY }}
+      style={{ left, top }}
       onPointerDown={stopBubble}
       onMouseDown={stopBubble}
       onClick={stopBubble}

@@ -223,6 +223,7 @@ export const EDITING_REQUEST_KINDS = [
   "live-retime",
   "assets-unloaded",
   "text-edit",
+  "serve-paused-frames",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -259,7 +260,9 @@ export type EditingKeyMessage = {
 };
 
 /** The `rotate` property's whole value in degrees, or GSAP's rotation; null takes the drawn turn back. */
-export type EditingDraftRotate = { angle: number; route: "css" | "gsap" };
+export type EditingDraftRotate =
+  | { angle: number; route: "css" | "gsap" }
+  | { angle: number; route: "transform"; value: string };
 export type { EditingDraftEnd };
 /** A gesture's draft on one element: null puts that part back; an end keeps what is drawn or restores. */
 export type EditingDraft =
@@ -378,6 +381,8 @@ export interface EditingRequests {
   "live-retime": { params: LiveRetimeParams; result: { result: LiveRetimeResult } };
   "assets-unloaded": { params: NoParams; result: { unloaded: boolean } };
   "text-edit": { params: TextEditParams; result: TextEditResult };
+  /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
+  "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -479,10 +484,33 @@ function draftPart(value: unknown, keys: string, min: number): boolean {
   return keys.split(",").every((key) => isDraftPx(value[key], min));
 }
 
+const TRANSFORM_CALL =
+  /^(?:(?:translate|scale|rotate)(?:[XYZ]|3d)?|skew[XY]?|matrix(?:3d)?|perspective|calc|var|min|max|clamp)$/;
+
+const INNER_CALL = /([\w-]+)\(([\w\s.,%+\-*/]*)\)/g;
+
+// Innermost known calls fold to a token until none is left: an unclosed paren or a comment never folds.
+export function isTransformList(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 512 || value.includes("/*")) return false;
+  let rest = value;
+  for (let last = ""; rest !== last; ) {
+    last = rest;
+    rest = rest.replace(INNER_CALL, (call, name: string) =>
+      TRANSFORM_CALL.test(name) ? "0" : call,
+    );
+  }
+  return /^[\s0]*$/.test(rest);
+}
+
+const isRotateRoute = (value: unknown): value is Record<string, unknown> =>
+  (hasKeys(value, "angle,route") && (value.route === "css" || value.route === "gsap")) ||
+  (hasKeys(value, "angle,route,value") &&
+    value.route === "transform" &&
+    isTransformList(value.value));
+
 function draftRotate(value: unknown): boolean {
   if (value === undefined || value === null) return true;
-  if (!hasKeys(value, "angle,route") || (value.route !== "css" && value.route !== "gsap"))
-    return false;
+  if (!isRotateRoute(value)) return false;
   return Number.isFinite(value.angle) && Math.abs(value.angle as number) <= MAX_DRAFT_DEG;
 }
 
@@ -611,6 +639,10 @@ const PARAM_PARSERS: {
   "live-retime": parseLiveRetime,
   "assets-unloaded": noParams,
   "text-edit": parseTextEdit,
+  "serve-paused-frames": (params) =>
+    hasKeys(params, "channel") && params.channel instanceof MessagePort
+      ? { channel: params.channel }
+      : null,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
@@ -646,7 +678,7 @@ export interface EditingPortClient {
   request<K extends EditingRequestKind>(
     kind: K,
     params: EditingParams<K>,
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; transfer?: Transferable[] },
   ): Promise<EditingResult<K>>;
   /** Calls `listener` with each key the frame forwards for `watch-keys`; returns the unsubscribe. */
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
@@ -787,7 +819,10 @@ export function createEditingPortClient(options: {
       const send = () => {
         if (!pending.has(id)) return;
         try {
-          port?.postMessage({ v: EDITING_PROTOCOL_VERSION, id, kind, params });
+          port?.postMessage(
+            { v: EDITING_PROTOCOL_VERSION, id, kind, params },
+            requestOptions?.transfer ?? [],
+          );
         } catch (err) {
           settle(id, { error: new EditingPortError("failed", String(err)) });
         }
@@ -830,3 +865,13 @@ export function createEditingPortClient(options: {
 
 export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";
 export type { TextEditEndedEvent } from "./editing/textEdit";
+export {
+  parsePausedFrameAsk,
+  PAUSED_FRAME_BYTES,
+  PAUSED_FRAME_PARAMS,
+  PAUSED_FRAME_SOURCES,
+  type PausedFrameAsk,
+  type PausedFrameAskMessage,
+  type PausedFrameImage,
+  type PausedFrameReply,
+} from "./editing/pausedFrames";

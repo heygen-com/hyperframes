@@ -12,6 +12,7 @@ import {
   SIZE_PROPERTIES,
   writeDrawnSize,
 } from "./editingDraft";
+import { readCssRotationStart, type CssRotationStart } from "./editing/cssRotation";
 import {
   boxOf,
   elementGeometry,
@@ -32,6 +33,7 @@ export interface EditingGestureStart extends EditingElementGeometry {
   gsap: { x: number; y: number; moving: boolean } | null;
   /** GSAP's rotation now when it owns the element's turn; null when it turns by its own CSS `rotate`. */
   gsapRotation: number | null;
+  cssRotation: CssRotationStart | null;
   planar: { a: number; b: number; c: number; d: number } | null;
 }
 
@@ -189,12 +191,14 @@ export function gestureStart(handles: readonly EditingElementHandle[]): {
   const starts = elements.map((geometry, i) => {
     const element = pressed[i];
     if (!geometry || !isStylableElement(element)) return null;
+    const rotation = gsapRotation(element);
     return {
       ...geometry,
       move: measureMoveResponse(element),
       grow: measureGrowResponse(element, geometry.layout),
       gsap: gsapPosition(element),
-      gsapRotation: gsapRotation(element),
+      gsapRotation: rotation,
+      cssRotation: rotation === null ? readCssRotationStart(element as HTMLElement) : null,
       planar: planarOf(element),
     };
   });
