@@ -1,4 +1,5 @@
 /** A gesture on a frame Studio cannot script starts from one `gesture-start` read (core `editingGestureStart.ts`). */
+import type { EditingGestureStart } from "@hyperframes/core/runtime/editing-port";
 import { previewGestureStart } from "../../player/lib/previewElements";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
 import type { DomEditSelection } from "./domEditing";
@@ -18,6 +19,7 @@ export interface PreviewGestureStart {
   gsap: { x: number; y: number; moving: boolean } | null;
   gsapRotation?: number | null;
   grow?: { a: number; b: number; c: number; d: number };
+  cssRotation?: EditingGestureStart["cssRotation"];
 }
 
 export interface PreviewGestureStarts {
@@ -79,6 +81,7 @@ export async function measurePreviewGestureStart(
                   d: start.grow.d * sy,
                 }
               : undefined,
+            cssRotation: start.cssRotation,
           },
         },
     ),
