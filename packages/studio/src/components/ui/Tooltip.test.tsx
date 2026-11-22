@@ -140,3 +140,27 @@ it("wraps a long label at a reading width and cuts it at its lines", async () =>
   expect(text?.className).toBe("line-clamp-(--tooltip-lines)");
   expect(text?.style.getPropertyValue("--tooltip-lines")).toBe("3");
 });
+
+it("shows a shortcut as a keycap after the label", async () => {
+  const host = mountHost(
+    <Tooltip label="Snapping on" shortcut="N" delay={0}>
+      <button type="button" data-testid="snap">
+        M
+      </button>
+    </Tooltip>,
+  );
+  act(() => host.querySelector<HTMLElement>('[data-testid="snap"]')?.focus());
+  await settle();
+
+  const tip = bubble();
+  expect(tip?.querySelector("kbd")?.textContent).toBe("N");
+  expect(tip?.textContent).toBe("Snapping onN");
+});
+
+it("renders no keycap when there is no shortcut", async () => {
+  const trigger = mount();
+  act(() => trigger.focus());
+  await settle();
+
+  expect(bubble()?.querySelector("kbd")).toBeNull();
+});

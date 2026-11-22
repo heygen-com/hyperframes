@@ -642,14 +642,21 @@ describe("TimelineToolbar split hint", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    const label = document.querySelector('[role="tooltip"]')?.textContent;
+    const tip = document.querySelector('[role="tooltip"]');
+    const shortcut = tip?.querySelector("kbd")?.textContent ?? null;
+    const label = tip?.textContent;
     act(() => root.unmount());
     usePlayerStore.setState({ elements: [], selectedElementId: null, currentTime: 0 });
-    return label;
+    return { label, shortcut };
   }
 
   it("names S unless the host binds Split to another key", async () => {
-    expect(await splitTooltip({})).toBe("Split at playhead (S)");
-    expect(await splitTooltip({ splitShortcut: "⌘B" })).toBe("Split at playhead (⌘B)");
+    const def = await splitTooltip({});
+    expect(def.shortcut).toBe("S");
+    expect(def.label?.startsWith("Split at playhead")).toBe(true);
+
+    const bound = await splitTooltip({ splitShortcut: "⌘B" });
+    expect(bound.shortcut).toBe("⌘B");
+    expect(bound.label?.startsWith("Split at playhead")).toBe(true);
   });
 });

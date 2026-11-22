@@ -113,7 +113,7 @@ const FullscreenButton = memo(function FullscreenButton({
 }) {
   const fsKey = keyHint("fullscreen", useStudioKeys());
   return (
-    <Tooltip label={isFullscreen ? `Exit fullscreen (${fsKey})` : `Enter fullscreen (${fsKey})`}>
+    <Tooltip label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"} shortcut={fsKey}>
       <button
         type="button"
         onClick={() => {
