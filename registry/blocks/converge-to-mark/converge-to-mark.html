@@ -1,0 +1,2753 @@
+<!doctype html>
+<html lang="en" data-resolution="landscape">
+  <head>
+    <!--
+      Converge to Mark: a Motionboard shot recipe, https://motionboard.app/recipes/converge-logo-reveal/
+      By Motionboard, https://motionboard.app. MIT License, Copyright (c) 2026 Motionboard.
+      Brand names, people and copy in this file are invented placeholders.
+    -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --accent: #5b5bf0;
+        --ink: #1d1d1f;
+        --font-ui: "Inter", sans-serif;
+        --font-mono: "JetBrains Mono", monospace;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f5f5f7;
+      }
+      #ctm-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f5f5f7;
+        font-family: var(--font-ui);
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
+      }
+      .full {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .ic {
+        flex: none;
+        display: block;
+      }
+      .ci {
+        display: flex;
+        flex: none;
+      }
+      .grow {
+        flex: 1;
+        min-width: 0;
+      }
+
+      /* ---------- wallpaper ---------- */
+      #ctm-bg {
+        z-index: 0;
+        background:
+          radial-gradient(
+            900px 620px at 12% 92%,
+            rgba(255, 190, 150, 0.95) 0%,
+            rgba(255, 190, 150, 0) 70%
+          ),
+          radial-gradient(
+            900px 700px at 62% 108%,
+            rgba(255, 170, 205, 0.9) 0%,
+            rgba(255, 170, 205, 0) 70%
+          ),
+          radial-gradient(
+            1000px 700px at 100% 0%,
+            rgba(170, 205, 255, 0.95) 0%,
+            rgba(170, 205, 255, 0) 70%
+          ),
+          radial-gradient(
+            800px 600px at 0% 0%,
+            rgba(214, 203, 255, 0.95) 0%,
+            rgba(214, 203, 255, 0) 70%
+          ),
+          #ebe6f5;
+      }
+      #ctm-stage {
+        z-index: 1;
+        overflow: hidden;
+      }
+      #ctm-cam {
+        z-index: 1;
+      }
+      .pc {
+        position: absolute;
+      }
+
+      /* ---------- menu bar ---------- */
+      #ctm-menubar {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 28px;
+        z-index: 30;
+        display: flex;
+        align-items: center;
+        padding: 0 18px;
+        gap: 20px;
+        background: rgba(247, 247, 250, 0.82);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+        font-size: 13px;
+        font-weight: 500;
+        color: #1d1d1f;
+        opacity: 0;
+      }
+      #ctm-menubar b {
+        font-weight: 700;
+      }
+      #ctm-menubar .r {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        color: #2b2b30;
+      }
+
+      /* ---------- windows ---------- */
+      .win {
+        border-radius: 12px;
+        overflow: hidden;
+        background: #fff;
+        font-size: 13px;
+        color: #3b3e44;
+        box-shadow:
+          0 0 0 1px rgba(0, 0, 0, 0.12),
+          0 28px 64px rgba(40, 25, 90, 0.24),
+          0 4px 14px rgba(0, 0, 0, 0.08);
+        display: flex;
+        flex-direction: column;
+        font-variant-numeric: tabular-nums;
+      }
+      .tbar {
+        height: 40px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 14px 0 14px;
+        background: #f6f6f7;
+        border-bottom: 1px solid #e4e4e7;
+      }
+      .lights {
+        display: flex;
+        gap: 8px;
+        margin-right: 8px;
+      }
+      .lights i {
+        display: block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.2);
+      }
+      .ib {
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        color: #6c7078;
+        flex: none;
+      }
+      .btn {
+        height: 26px;
+        padding: 0 10px 0 8px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        border-radius: 6px;
+        font-size: 12.5px;
+        font-weight: 600;
+        background: var(--accent);
+        color: #fff;
+        box-shadow:
+          inset 0 0 0 1px rgba(0, 0, 0, 0.1),
+          0 1px 2px rgba(60, 60, 200, 0.3);
+        flex: none;
+        white-space: nowrap;
+      }
+      .btn2 {
+        height: 26px;
+        padding: 0 10px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        border-radius: 6px;
+        font-size: 12.5px;
+        font-weight: 500;
+        background: #fff;
+        color: #3b3e44;
+        border: 1px solid #dcdce0;
+        flex: none;
+        white-space: nowrap;
+      }
+      .chip {
+        height: 24px;
+        padding: 0 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid #e4e4e7;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        color: #3b3e44;
+        white-space: nowrap;
+        flex: none;
+        background: #fff;
+      }
+      .mu {
+        color: #8b8f97;
+        font-weight: 400;
+      }
+      .av {
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        color: #fff;
+        flex: none;
+      }
+      .stack {
+        display: flex;
+      }
+      .stack .av {
+        margin-left: -7px;
+        box-shadow: 0 0 0 2px #f6f6f7;
+      }
+      .stack .av:first-child {
+        margin-left: 0;
+      }
+      .tile {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+        flex: none;
+      }
+      .kbd {
+        font-size: 11px;
+        font-weight: 500;
+        color: #6c7078;
+        background: #f1f1f3;
+        border: 1px solid #e4e4e7;
+        border-radius: 4px;
+        padding: 0 5px;
+        height: 18px;
+        display: inline-flex;
+        align-items: center;
+      }
+      .lb {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 20px;
+        padding: 0 8px;
+        border: 1px solid #e7e7ea;
+        border-radius: 10px;
+        font-size: 11.5px;
+        font-weight: 500;
+        color: #555a62;
+        white-space: nowrap;
+        flex: none;
+        background: #fff;
+      }
+      .lb i {
+        display: block;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+      }
+      .si {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 28px;
+        margin: 0 8px;
+        padding: 0 8px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        color: #3b3e44;
+        white-space: nowrap;
+      }
+      .si > .ic {
+        color: #6c7078;
+      }
+      .si.on {
+        background: rgba(0, 0, 0, 0.06);
+        color: #16171a;
+      }
+      .si.sub {
+        padding-left: 30px;
+      }
+      .si b {
+        margin-left: auto;
+        font-size: 12px;
+        font-weight: 500;
+        color: #8b8f97;
+      }
+      .sh {
+        height: 26px;
+        margin: 12px 8px 0;
+        padding: 0 8px;
+        display: flex;
+        align-items: center;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: #8b8f97;
+      }
+      .dot {
+        display: block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex: none;
+      }
+
+      /* inbox */
+      #ctm-inbox .body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      #ctm-inbox .side {
+        width: 188px;
+        flex: none;
+        background: #f7f7f9;
+        border-right: 1px solid #e8e8eb;
+        padding-top: 8px;
+      }
+      #ctm-inbox .ws {
+        height: 32px;
+        margin: 0 8px 8px;
+        padding: 0 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #1b1c1f;
+      }
+      #ctm-inbox .lst {
+        width: 340px;
+        flex: none;
+        border-right: 1px solid #e8e8eb;
+        position: relative;
+      }
+      #ctm-inbox .lh {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 340px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 0 12px;
+        border-bottom: 1px solid #ececee;
+        background: #fff;
+        z-index: 2;
+      }
+      #ctm-inbox .lh .t {
+        font-size: 14px;
+        font-weight: 600;
+        color: #1b1c1f;
+        margin-right: 8px;
+      }
+      #ctm-inbox .tab {
+        height: 24px;
+        padding: 0 9px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        color: #6c7078;
+      }
+      #ctm-inbox .tab.on {
+        background: #f1f1f3;
+        color: #1f2023;
+      }
+      #ctm-mclip {
+        position: absolute;
+        left: 0;
+        top: 40px;
+        width: 340px;
+        height: 390px;
+        overflow: hidden;
+      }
+      #ctm-mlist {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 340px;
+        height: 600px;
+      }
+      .mr {
+        position: absolute;
+        left: 0;
+        width: 340px;
+        height: 60px;
+        display: flex;
+        gap: 10px;
+        padding: 8px 12px 0 14px;
+        border-bottom: 1px solid #f0f0f2;
+        background: #fff;
+      }
+      .mr.sel {
+        background: #eff0fe;
+        box-shadow: inset 2px 0 0 var(--accent);
+      }
+      .mr .mc {
+        flex: 1;
+        min-width: 0;
+      }
+      .mr .l1 {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 16px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #1f2023;
+      }
+      .mr .l1 .tm {
+        margin-left: auto;
+        font-size: 11.5px;
+        font-weight: 400;
+        color: #8b8f97;
+      }
+      .mr .l2 {
+        height: 16px;
+        font-size: 12.5px;
+        font-weight: 500;
+        color: #2a2c31;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .mr .l3 {
+        height: 16px;
+        font-size: 12px;
+        color: #8b8f97;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .mr.rd .l1,
+      .mr.rd .l2 {
+        font-weight: 500;
+        color: #5f636b;
+      }
+      .ud {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent);
+        flex: none;
+      }
+      #ctm-inbox .read {
+        flex: 1;
+        min-width: 0;
+        position: relative;
+        padding: 0 16px;
+      }
+      #ctm-inbox .read .acts {
+        height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        margin: 0 -8px;
+      }
+      #ctm-inbox .read h3 {
+        font-size: 15px;
+        line-height: 20px;
+        font-weight: 600;
+        color: #1b1c1f;
+        margin-top: 2px;
+      }
+      #ctm-inbox .read .snd {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-top: 10px;
+        height: 34px;
+      }
+      #ctm-inbox .read .snd .n {
+        font-size: 13px;
+        font-weight: 600;
+        color: #1f2023;
+        line-height: 16px;
+      }
+      #ctm-inbox .read .snd .e {
+        font-size: 11.5px;
+        color: #8b8f97;
+        line-height: 15px;
+      }
+      #ctm-inbox .read .bd {
+        margin-top: 12px;
+        font-size: 13px;
+        line-height: 20px;
+        color: #3b3e44;
+      }
+      #ctm-inbox .read .bd p {
+        margin-bottom: 8px;
+      }
+      #ctm-inbox .read .att {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        height: 40px;
+        padding: 0 10px;
+        border: 1px solid #e4e4e7;
+        border-radius: 8px;
+        margin-top: 4px;
+        font-size: 12.5px;
+        font-weight: 500;
+        color: #1f2023;
+      }
+      #ctm-inbox .read .att span {
+        font-size: 11.5px;
+        font-weight: 400;
+        color: #8b8f97;
+      }
+      #ctm-inbox .read .rep {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 10px;
+        height: 34px;
+        border: 1px solid #dcdce0;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 6px 0 10px;
+        color: #8b8f97;
+        font-size: 12.5px;
+        background: #fff;
+      }
+
+      /* board */
+      #ctm-board .bbar {
+        height: 40px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 14px;
+        border-bottom: 1px solid #ececee;
+        background: #fff;
+      }
+      #ctm-board .vt {
+        height: 26px;
+        padding: 0 9px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 6px;
+        font-size: 12.5px;
+        font-weight: 500;
+        color: #6c7078;
+      }
+      #ctm-board .vt.on {
+        background: #f1f1f3;
+        color: #1f2023;
+        box-shadow: inset 0 0 0 1px #e6e6e9;
+      }
+      #ctm-board .sep {
+        width: 1px;
+        height: 18px;
+        background: #e4e4e7;
+        margin: 0 4px;
+        flex: none;
+      }
+      #ctm-bbody {
+        position: relative;
+        width: 884px;
+        height: 390px;
+        overflow: hidden;
+        background: #fff;
+        flex: none;
+      }
+      .kcol {
+        position: absolute;
+        top: 10px;
+        width: 208px;
+        height: 420px;
+        background: #f6f6f8;
+        border-radius: 9px;
+      }
+      .kcol .ch {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 208px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 0 8px 0 10px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #1f2023;
+      }
+      .kcol .ch .ct {
+        font-weight: 500;
+        color: #8b8f97;
+        font-size: 12px;
+      }
+      #ctm-cards {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 884px;
+        height: 390px;
+      }
+      .kc {
+        position: absolute;
+        width: 190px;
+        height: 102px;
+        padding: 9px 10px;
+        background: #fff;
+        border: 1px solid #e4e4e7;
+        border-radius: 8px;
+        box-shadow: 0 1px 2px rgba(20, 20, 30, 0.05);
+      }
+      .kc .kt {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 16px;
+      }
+      .kc .kid {
+        font-size: 11.5px;
+        color: #8b8f97;
+      }
+      .kc .kd {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        font-size: 11px;
+        color: #8b8f97;
+      }
+      .kc .kh {
+        margin-top: 4px;
+        height: 36px;
+        overflow: hidden;
+        font-size: 13px;
+        line-height: 18px;
+        font-weight: 500;
+        color: #1f2023;
+      }
+      .kc .kb {
+        margin-top: 5px;
+        height: 22px;
+        display: flex;
+        align-items: center;
+      }
+
+      /* docs */
+      #ctm-docs .dbody {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      #ctm-docs .dside {
+        width: 190px;
+        flex: none;
+        background: #f8f8fa;
+        border-right: 1px solid #e8e8eb;
+        padding-top: 10px;
+      }
+      #ctm-docs .dmain {
+        flex: 1;
+        min-width: 0;
+        position: relative;
+      }
+      #ctm-docs .dtool {
+        height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 0 14px;
+        border-bottom: 1px solid #f0f0f2;
+      }
+      #ctm-docs .dtool .sv {
+        margin-left: auto;
+        font-size: 11.5px;
+        color: #8b8f97;
+      }
+      #ctm-docs .dpage {
+        position: absolute;
+        left: 0;
+        top: 36px;
+        width: 570px;
+        height: 364px;
+        overflow: hidden;
+        padding: 20px 28px 0 28px;
+      }
+      #ctm-docs .tg {
+        display: flex;
+        gap: 6px;
+        height: 22px;
+        align-items: center;
+      }
+      #ctm-docs h1 {
+        margin-top: 10px;
+        font-size: 28px;
+        line-height: 34px;
+        font-weight: 700;
+        color: #1b1c1f;
+        letter-spacing: -0.02em;
+      }
+      #ctm-docs .pp {
+        margin-top: 8px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: #8b8f97;
+      }
+      #ctm-docs .pp b {
+        font-weight: 500;
+        color: #3b3e44;
+      }
+      #ctm-docs .para {
+        margin-top: 12px;
+        font-size: 14px;
+        line-height: 22px;
+        color: #34373d;
+      }
+      #ctm-docs h2 {
+        margin-top: 12px;
+        font-size: 17px;
+        line-height: 26px;
+        font-weight: 600;
+        color: #1b1c1f;
+      }
+      #ctm-docs .ck {
+        height: 26px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        color: #34373d;
+        white-space: nowrap;
+      }
+      #ctm-docs .ck .bx {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        border: 1.5px solid #c4c7cd;
+        flex: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+      }
+      #ctm-docs .ck.dn .bx {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      #ctm-docs .ck.dn .tx {
+        color: #9a9ea6;
+        text-decoration: line-through;
+      }
+      .mn {
+        background: #eeeefe;
+        color: #4747d6;
+        border-radius: 4px;
+        padding: 0 5px;
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .dd {
+        color: #8b8f97;
+        font-size: 12px;
+      }
+      #ctm-dcaret {
+        display: inline-block;
+        width: 1.5px;
+        height: 17px;
+        background: var(--accent);
+        margin-left: 1px;
+        vertical-align: -3px;
+      }
+
+      /* calendar */
+      #ctm-cal .cbody {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      #ctm-cal .cside {
+        width: 190px;
+        flex: none;
+        border-right: 1px solid #ececee;
+        background: #fafafb;
+        padding: 12px 12px 0;
+      }
+      #ctm-cal .mh {
+        display: flex;
+        align-items: center;
+        height: 24px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #1f2023;
+      }
+      #ctm-cal .mg {
+        display: grid;
+        grid-template-columns: repeat(7, 23px);
+        margin-top: 6px;
+        font-size: 11px;
+        color: #3b3e44;
+        text-align: center;
+      }
+      #ctm-cal .mg span {
+        height: 24px;
+        line-height: 24px;
+        border-radius: 12px;
+      }
+      #ctm-cal .mg .l {
+        color: #8b8f97;
+        font-size: 10.5px;
+        height: 20px;
+        line-height: 20px;
+      }
+      #ctm-cal .mg .o {
+        color: #b4b7be;
+      }
+      #ctm-cal .mg .td {
+        background: var(--accent);
+        color: #fff;
+        font-weight: 600;
+      }
+      #ctm-cal .cl {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 26px;
+        font-size: 12.5px;
+        font-weight: 500;
+        color: #3b3e44;
+      }
+      #ctm-cal .cl i {
+        display: flex;
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+      }
+      #ctm-cal .cmain {
+        flex: 1;
+        min-width: 0;
+        position: relative;
+      }
+      #ctm-cal .dh {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 854px;
+        height: 30px;
+        border-bottom: 1px solid #ececee;
+        display: flex;
+        align-items: center;
+      }
+      #ctm-cal .dh div {
+        width: 115px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 500;
+        color: #8b8f97;
+        letter-spacing: 0.03em;
+      }
+      #ctm-cal .dh div b {
+        font-size: 14px;
+        font-weight: 500;
+        color: #1f2023;
+        letter-spacing: 0;
+      }
+      #ctm-cal .dh div.td b {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+      }
+      #ctm-cal .dh div.td {
+        color: var(--accent);
+      }
+      #ctm-grid {
+        position: absolute;
+        left: 0;
+        top: 30px;
+        width: 854px;
+        height: 364px;
+        overflow: hidden;
+      }
+      #ctm-grid .hl {
+        position: absolute;
+        left: 48px;
+        width: 806px;
+        height: 1px;
+        background: #efeff2;
+      }
+      #ctm-grid .vl {
+        position: absolute;
+        top: 0;
+        width: 1px;
+        height: 364px;
+        background: #efeff2;
+      }
+      #ctm-grid .hr {
+        position: absolute;
+        left: 0;
+        width: 42px;
+        text-align: right;
+        font-size: 10.5px;
+        color: #8b8f97;
+      }
+      .ev {
+        position: absolute;
+        width: 111px;
+        border-radius: 5px;
+        padding: 3px 6px 0 8px;
+        overflow: hidden;
+        font-size: 11.5px;
+        line-height: 14px;
+        font-weight: 600;
+        border-left: 3px solid;
+        white-space: nowrap;
+      }
+      .ev span {
+        display: block;
+        font-size: 10.5px;
+        font-weight: 500;
+        opacity: 0.8;
+      }
+      #ctm-nowline {
+        position: absolute;
+        left: 44px;
+        width: 810px;
+        height: 2px;
+        background: #ef4444;
+        z-index: 3;
+      }
+      #ctm-nowline i {
+        position: absolute;
+        left: 380px;
+        top: -4px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #ef4444;
+      }
+      #ctm-nowline em {
+        position: absolute;
+        left: -44px;
+        top: -8px;
+        font-style: normal;
+        font-size: 10px;
+        font-weight: 600;
+        color: #fff;
+        background: #ef4444;
+        border-radius: 4px;
+        padding: 0 4px;
+        height: 16px;
+        line-height: 16px;
+      }
+
+      /* floating pieces */
+      .pal {
+        background: #fff;
+        border: 1px solid #e0e0e5;
+        border-radius: 14px;
+        overflow: hidden;
+        font-size: 13px;
+        color: #3b3e44;
+        box-shadow:
+          0 30px 80px rgba(30, 20, 80, 0.3),
+          0 4px 14px rgba(0, 0, 0, 0.1);
+      }
+      .pal .in {
+        height: 52px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 16px;
+        border-bottom: 1px solid #ececee;
+        font-size: 15px;
+        color: #1f2023;
+      }
+      .pal .ph {
+        color: #a0a3ab;
+      }
+      .pal .sec {
+        height: 28px;
+        padding: 8px 16px 0;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: #8b8f97;
+      }
+      .pal .it {
+        height: 36px;
+        margin: 0 8px;
+        padding: 0 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        color: #1f2023;
+        white-space: nowrap;
+      }
+      .pal .it.on {
+        background: #eff0fe;
+      }
+      .pal .it .ti {
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        flex: none;
+      }
+      .pal .it .su {
+        margin-left: auto;
+        font-size: 12px;
+        font-weight: 400;
+        color: #8b8f97;
+      }
+      .pal .ft {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        width: 558px;
+        height: 34px;
+        background: #f7f7f9;
+        border-top: 1px solid #ececee;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 16px;
+        font-size: 11.5px;
+        color: #8b8f97;
+      }
+      #ctm-pcaret {
+        display: inline-block;
+        width: 1.5px;
+        height: 18px;
+        background: var(--accent);
+        margin-left: 1px;
+        vertical-align: -4px;
+      }
+      .notif {
+        border-radius: 16px;
+        background: rgba(250, 250, 252, 0.96);
+        display: flex;
+        gap: 12px;
+        padding: 12px 14px;
+        align-items: flex-start;
+        box-shadow:
+          0 0 0 1px rgba(0, 0, 0, 0.08),
+          0 16px 40px rgba(20, 15, 60, 0.28);
+      }
+      .notif .n1 {
+        display: flex;
+        align-items: center;
+        height: 16px;
+        font-size: 13px;
+        font-weight: 700;
+        color: #1d1d1f;
+      }
+      .notif .n1 span {
+        margin-left: auto;
+        font-size: 12px;
+        font-weight: 400;
+        color: #8b8f97;
+      }
+      .notif .n2 {
+        margin-top: 3px;
+        font-size: 13px;
+        line-height: 17px;
+        font-weight: 600;
+        color: #1d1d1f;
+      }
+      .notif .n3 {
+        font-size: 13px;
+        line-height: 17px;
+        color: #5f636b;
+        white-space: nowrap;
+      }
+      .pov {
+        background: #fff;
+        border-radius: 12px;
+        padding: 14px;
+        box-shadow:
+          0 0 0 1px rgba(0, 0, 0, 0.1),
+          0 22px 56px rgba(30, 20, 80, 0.26);
+        font-size: 13px;
+        color: #3b3e44;
+      }
+      .pov .hd {
+        display: flex;
+        gap: 10px;
+        height: 40px;
+      }
+      .pov .hd i {
+        width: 4px;
+        height: 38px;
+        border-radius: 2px;
+        background: #8e6fe3;
+        flex: none;
+      }
+      .pov .hd .t {
+        font-size: 15px;
+        line-height: 20px;
+        font-weight: 600;
+        color: #1b1c1f;
+      }
+      .pov .hd .s {
+        font-size: 12px;
+        line-height: 17px;
+        color: #8b8f97;
+      }
+      .pov .rw {
+        height: 30px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 12.5px;
+        color: #3b3e44;
+      }
+      .pov .rw .ic {
+        color: #8b8f97;
+      }
+      .pov .stack .av {
+        box-shadow: 0 0 0 2px #fff;
+      }
+      .pov .bt {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        margin-top: 8px;
+        height: 28px;
+        font-size: 12px;
+        color: #8b8f97;
+      }
+      .pov .bt .c {
+        height: 24px;
+        padding: 0 10px;
+        border: 1px solid #dcdce0;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        font-weight: 500;
+        color: #3b3e44;
+      }
+      .pov .bt .c.on {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+      .toast {
+        border-radius: 9px;
+        background: #1f2023;
+        color: #f4f4f5;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 0 12px;
+        font-size: 12.5px;
+        font-weight: 500;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+        white-space: nowrap;
+      }
+      .toast u {
+        text-decoration: none;
+        color: #a9a9ff;
+        font-weight: 600;
+        margin-left: 6px;
+      }
+      .timer {
+        border-radius: 22px;
+        background: #fff;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 0 8px 0 12px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #1f2023;
+        box-shadow:
+          0 0 0 1px rgba(0, 0, 0, 0.1),
+          0 14px 34px rgba(30, 20, 80, 0.24);
+        white-space: nowrap;
+      }
+      .timer .mu {
+        font-weight: 500;
+      }
+      .timer .tm {
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        font-weight: 500;
+        color: #1f2023;
+      }
+      .mpi {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 90px;
+        height: 40px;
+      }
+      .mpi .fl {
+        position: absolute;
+        left: 12px;
+        top: 18px;
+        height: 20px;
+        padding: 0 8px;
+        border-radius: 4px 10px 10px 10px;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 20px;
+        white-space: nowrap;
+      }
+      .mpi svg {
+        position: absolute;
+        left: 0;
+        top: 0;
+      }
+
+      /* dock + app icons */
+      .app {
+        position: relative;
+        overflow: hidden;
+      }
+      .app svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      #ctm-dockbg {
+        position: absolute;
+        left: 729px;
+        top: 998px;
+        width: 462px;
+        height: 68px;
+        z-index: 2;
+        border-radius: 22px;
+        opacity: 0;
+        background: rgba(255, 255, 255, 0.46);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.65),
+          0 10px 30px rgba(40, 20, 90, 0.18);
+      }
+      #ctm-dockbg i {
+        position: absolute;
+        bottom: 3px;
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.55);
+      }
+
+      /* cursor */
+      #ctm-cur {
+        position: absolute;
+        left: 0;
+        top: 0;
+        z-index: 40;
+        opacity: 0;
+      }
+
+      /* ---------- final lockup ---------- */
+      #ctm-final {
+        z-index: 3;
+      }
+      #ctm-glow {
+        position: absolute;
+        left: 700px;
+        top: 280px;
+        width: 520px;
+        height: 520px;
+        border-radius: 50%;
+        opacity: 0;
+        background: radial-gradient(
+          circle,
+          rgba(110, 110, 255, 0.55) 0%,
+          rgba(110, 110, 255, 0) 68%
+        );
+      }
+      #ctm-lock {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 44px;
+      }
+      #ctm-bigicon {
+        width: 200px;
+        height: 200px;
+        position: relative;
+        z-index: 2;
+        opacity: 0;
+        flex: none;
+      }
+      #ctm-wm {
+        position: relative;
+        z-index: 1;
+        width: 430px;
+        flex: none;
+        font-size: 150px;
+        line-height: 170px;
+        font-weight: 600;
+        letter-spacing: -0.035em;
+        color: var(--ink);
+        white-space: nowrap;
+        opacity: 0;
+      }
+      #ctm-tag {
+        position: absolute;
+        left: 0;
+        top: 664px;
+        width: 1920px;
+        text-align: center;
+        font-size: 26px;
+        font-weight: 400;
+        color: #86868b;
+        letter-spacing: -0.005em;
+        opacity: 0;
+      }
+      #ctm-vig {
+        z-index: 4;
+        pointer-events: none;
+        background: radial-gradient(
+          ellipse at center,
+          rgba(30, 20, 70, 0) 60%,
+          rgba(30, 20, 70, 0.1) 100%
+        );
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="ctm-root"
+      data-composition-id="converge-to-mark"
+      data-start="0"
+      data-duration="10.6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+        <defs>
+          <linearGradient id="ctm-gT" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#8a8cff" />
+            <stop offset="1" stop-color="#3d31d6" />
+          </linearGradient>
+          <linearGradient id="ctm-gHi" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#fff" stop-opacity="0.32" />
+            <stop offset="0.55" stop-color="#fff" stop-opacity="0" />
+          </linearGradient>
+          <linearGradient id="ctm-gRim" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#fff" stop-opacity="0.6" />
+            <stop offset="1" stop-color="#000" stop-opacity="0.2" />
+          </linearGradient>
+          <linearGradient id="ctm-gAm" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffd96e" />
+            <stop offset="1" stop-color="#ff9d1c" />
+          </linearGradient>
+          <linearGradient id="ctm-gF" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#72d2ff" />
+            <stop offset="1" stop-color="#1c76f0" />
+          </linearGradient>
+          <linearGradient id="ctm-gB" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#f6faff" />
+            <stop offset="1" stop-color="#b4d6ff" />
+          </linearGradient>
+          <linearGradient id="ctm-gM" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#72f08c" />
+            <stop offset="1" stop-color="#12b04a" />
+          </linearGradient>
+          <linearGradient id="ctm-gN" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffe680" />
+            <stop offset="1" stop-color="#ffb000" />
+          </linearGradient>
+          <linearGradient id="ctm-gMu" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ff82a0" />
+            <stop offset="1" stop-color="#e21f4b" />
+          </linearGradient>
+          <linearGradient id="ctm-gS" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#d0d3da" />
+            <stop offset="1" stop-color="#787d8c" />
+          </linearGradient>
+          <filter id="ctm-fSh" x="-30%" y="-30%" width="160%" height="170%">
+            <feDropShadow
+              dx="0"
+              dy="2"
+              stdDeviation="2"
+              flood-color="#1b0f80"
+              flood-opacity="0.4"
+            />
+          </filter>
+        </defs>
+      </svg>
+
+      <div
+        id="ctm-bg"
+        class="clip full"
+        data-start="0"
+        data-duration="10.6"
+        data-track-index="0"
+      ></div>
+
+      <div
+        id="ctm-stage"
+        class="clip full"
+        data-start="0"
+        data-duration="10.6"
+        data-track-index="1"
+      >
+        <div id="ctm-cam" class="full" data-layout-allow-overlap data-layout-ignore></div>
+      </div>
+
+      <div
+        id="ctm-final"
+        class="clip full"
+        data-start="0"
+        data-duration="10.6"
+        data-track-index="2"
+        data-layout-allow-overlap
+      >
+        <div id="ctm-glow"></div>
+        <div id="ctm-lock" class="full" data-layout-allow-overlap>
+          <div id="ctm-bigicon"></div>
+          <div id="ctm-wm">Tessel</div>
+        </div>
+        <div id="ctm-tag">Mail, docs, boards and calendar in one workspace.</div>
+      </div>
+
+      <div
+        id="ctm-vig"
+        class="clip full"
+        data-start="0"
+        data-duration="10.6"
+        data-track-index="3"
+      ></div>
+    </div>
+
+    <script>
+      const S = '[data-composition-id="converge-to-mark"] ';
+      const EXPO = "expo.out";
+
+      /* ---------- brand: Tessel. Four tiles on an indigo squircle, one amber ---------- */
+      const GLYPHS = {
+        tessel:
+          '<g filter="url(#ctm-fSh)"><rect x="25" y="25" width="23" height="23" rx="7" fill="#fff"/><rect x="52" y="25" width="23" height="23" rx="7" fill="#fff" fill-opacity=".8"/><rect x="25" y="52" width="23" height="23" rx="7" fill="#fff" fill-opacity=".6"/><rect x="52" y="52" width="23" height="23" rx="7" fill="url(#ctm-gAm)"/></g>',
+        files:
+          '<path filter="url(#ctm-fSh)" d="M22 35a6 6 0 0 1 6-6h15l8 8h21a6 6 0 0 1 6 6v24a6 6 0 0 1-6 6H28a6 6 0 0 1-6-6z" fill="#fff"/>',
+        browser:
+          '<circle cx="50" cy="50" r="27" fill="none" stroke="#2a7ff0" stroke-width="5"/><path d="M63 37L55 55 37 63 45 45z" fill="#2a7ff0"/><path d="M45 45L55 55" stroke="#fff" stroke-width="2"/>',
+        msg: '<path filter="url(#ctm-fSh)" d="M50 27c-14 0-25 8.6-25 19.3 0 5.8 3.2 11 8.2 14.4L30 72l11-5.6c2.8.8 5.8 1.2 9 1.2 14 0 25-8.6 25-19.3S64 27 50 27z" fill="#fff"/>',
+        notes:
+          '<rect filter="url(#ctm-fSh)" x="27" y="22" width="46" height="56" rx="7" fill="#fff"/><path d="M36 38h28M36 49h28M36 60h17" stroke="#ffb000" stroke-width="4" stroke-linecap="round"/>',
+        music:
+          '<path d="M44 68V36l25-6v30" fill="none" stroke="#fff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="38" cy="69" r="8" fill="#fff"/><circle cx="63" cy="62" r="8" fill="#fff"/>',
+        gear: '<circle cx="50" cy="50" r="27" fill="none" stroke="#fff" stroke-width="9" stroke-dasharray="8.6 12.5"/><circle cx="50" cy="50" r="15" fill="none" stroke="#fff" stroke-width="6.5"/>',
+      };
+      const APPBG = {
+        tessel: "ctm-gT",
+        files: "ctm-gF",
+        browser: "ctm-gB",
+        msg: "ctm-gM",
+        notes: "ctm-gN",
+        music: "ctm-gMu",
+        gear: "ctm-gS",
+      };
+      const appIcon = (k, size, id) =>
+        '<div class="app" ' +
+        (id ? 'id="ctm-' + id + '" ' : "") +
+        'style="width:' +
+        size +
+        "px;height:" +
+        size +
+        "px;border-radius:22.4%;box-shadow:0 " +
+        size * 0.045 +
+        "px " +
+        size * 0.12 +
+        "px rgba(30,20,100," +
+        (size > 100 ? 0.28 : 0.3) +
+        '),0 0 0 0.5px rgba(0,0,0,.22)">' +
+        '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="url(#' +
+        APPBG[k] +
+        ')"/>' +
+        (k === "tessel" ||
+        k === "files" ||
+        k === "msg" ||
+        k === "notes" ||
+        k === "music" ||
+        k === "gear"
+          ? '<rect width="100" height="100" fill="url(#ctm-gHi)"/>'
+          : "") +
+        GLYPHS[k] +
+        '<rect x=".5" y=".5" width="99" height="99" rx="22" fill="none" stroke="url(#ctm-gRim)" stroke-width="1"/></svg></div>';
+
+      /* ---------- icons (16px grid, 1.5px stroke) ---------- */
+      const IC = {
+        search: '<circle cx="7" cy="7" r="4.25"/><path d="M10.2 10.2l3 3"/>',
+        chev: '<path d="M4.5 6.5L8 10l3.5-3.5"/>',
+        chevr: '<path d="M6.5 4.5L10 8l-3.5 3.5"/>',
+        chevl: '<path d="M9.5 4.5L6 8l3.5 3.5"/>',
+        plus: '<path d="M8 3.5v9M3.5 8h9"/>',
+        inbox:
+          '<path d="M2.5 9.5h3l1 1.5h3l1-1.5h3"/><path d="M2.5 9.5l1.8-5.2a1 1 0 0 1 .9-.7h5.6a1 1 0 0 1 .9.7l1.8 5.2v3a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/>',
+        star: '<path d="M8 2.8l1.6 3.3 3.6.5-2.6 2.5.6 3.6L8 11l-3.2 1.7.6-3.6L2.8 6.6l3.6-.5z"/>',
+        clock: '<circle cx="8" cy="8" r="5.75"/><path d="M8 4.8V8l2.2 1.4"/>',
+        send: '<path d="M13.5 2.5L2.5 7l4.2 1.9L8.6 13.5z"/><path d="M6.7 8.9l3-3.1"/>',
+        file: '<path d="M4.5 2h4.8l3.2 3.2V13a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M9 2v3.5h3.5"/>',
+        doc: '<path d="M4.5 2h4.8l3.2 3.2V13a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M5.5 8.5h5M5.5 11h5"/>',
+        compose:
+          '<path d="M7 3H4.5A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13h7a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M11.2 2.8a1.2 1.2 0 0 1 1.7 1.7L8 9.4 5.8 10l.6-2.2z"/>',
+        archive:
+          '<path d="M2.5 3.5h11v2.8h-11z"/><path d="M3.5 6.3V12a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V6.3"/><path d="M6.5 9h3"/>',
+        trash:
+          '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8"/>',
+        more: '<path d="M3.5 8h.5M7.75 8h.5M12 8h.5"/>',
+        filter: '<path d="M2.5 4h11M4.5 8h7M6.5 12h3"/>',
+        calendar:
+          '<path d="M3 4.5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 6.8h10M5.5 2.5v2M10.5 2.5v2"/>',
+        check: '<path d="M3.5 8.5l3 3 6-6.5"/>',
+        paperclip:
+          '<path d="M12.5 7.5l-4.6 4.6a2.6 2.6 0 0 1-3.7-3.7l5-5a1.7 1.7 0 0 1 2.4 2.4l-5 5a.8.8 0 0 1-1.2-1.2L9.6 5"/>',
+        reply: '<path d="M6.5 4L2.5 8l4 4"/><path d="M2.5 8h6a4.5 4.5 0 0 1 4.5 4.5"/>',
+        list: '<path d="M3.5 4.5h9M3.5 8h9M3.5 11.5h6"/>',
+        board:
+          '<rect x="2.5" y="3" width="3" height="10" rx=".8"/><rect x="6.5" y="3" width="3" height="6.5" rx=".8"/><rect x="10.5" y="3" width="3" height="8" rx=".8"/>',
+        timeline: '<path d="M3 4.5h6M6 8h7M4 11.5h5"/>',
+        user: '<circle cx="8" cy="6" r="2.2"/><path d="M3.8 13c.5-2.2 2.2-3.2 4.2-3.2s3.7 1 4.2 3.2"/>',
+        users:
+          '<circle cx="6" cy="6" r="2.2"/><path d="M2 13c.4-2.2 2-3.3 4-3.3s3.6 1.1 4 3.3"/><circle cx="11.5" cy="6.5" r="1.7"/><path d="M11.5 9.8c1.4 0 2.2.9 2.5 2.6"/>',
+        tag: '<path d="M2.5 8.2V3.5h4.7l6 6a1 1 0 0 1 0 1.4l-3.3 3.3a1 1 0 0 1-1.4 0z"/><path d="M5.2 5.7h.01"/>',
+        video: '<rect x="2" y="4" width="8" height="8" rx="1.8"/><path d="M10 7l4-2v6l-4-2"/>',
+        pin: '<path d="M8 14s4.5-3.9 4.5-7.3a4.5 4.5 0 1 0-9 0C3.5 10.1 8 14 8 14z"/><circle cx="8" cy="6.7" r="1.5"/>',
+        bell: '<path d="M4 11V7.5a4 4 0 0 1 8 0V11l1 1.5H3z"/><path d="M6.7 14h2.6"/>',
+        spark: '<path d="M8 2.5l1.3 3.2 3.2 1.3-3.2 1.3L8 11.5 6.7 8.3 3.5 7l3.2-1.3z"/>',
+        home: '<path d="M2.5 7.5L8 3l5.5 4.5"/><path d="M4 6.8V13h3V9.5h2V13h3V6.8"/>',
+        folder:
+          '<path d="M2.5 5a1 1 0 0 1 1-1h3l1.5 1.5h4.5a1 1 0 0 1 1 1V11.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/>',
+        share:
+          '<path d="M8 2.5v7M5.2 5.2L8 2.5l2.8 2.7M3.5 8.5V12a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V8.5"/>',
+        bold: '<path d="M5 3.5h3.3a2.2 2.2 0 0 1 0 4.5H5zM5 8h3.8a2.2 2.2 0 0 1 0 4.5H5z"/>',
+        italic: '<path d="M9.5 3.5h-3M9.5 12.5h-3M9 3.5l-2 9"/>',
+        underline: '<path d="M4.5 3v4.5a3.5 3.5 0 0 0 7 0V3M3.5 13.5h9"/>',
+        link: '<path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 0 0-3.7-3.7l-.8.8"/><path d="M9.2 6.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 0 0 3.7 3.7l.8-.8"/>',
+        checksq:
+          '<rect x="3" y="3" width="10" height="10" rx="2.5"/><path d="M5.8 8.2l1.6 1.6 3-3.2"/>',
+        at: '<circle cx="8" cy="8" r="2.2"/><path d="M10.2 8v1a1.6 1.6 0 0 0 3.2 0V8a5.4 5.4 0 1 0-2.2 4.3"/>',
+        comment:
+          '<path d="M3 4a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7.5L4.5 13.5V11H4a1 1 0 0 1-1-1z"/>',
+        pause: '<path d="M5.5 3.5v9M10.5 3.5v9"/>',
+        mail: '<rect x="2" y="3.5" width="12" height="9" rx="1.6"/><path d="M2.5 5l5.5 4 5.5-4"/>',
+        cmd: '<path d="M5.5 5.5v5h5v-5z"/><path d="M5.5 5.5v-1A1.5 1.5 0 1 0 4 6h1.5M10.5 5.5v-1A1.5 1.5 0 1 1 12 6h-1.5M5.5 10.5v1A1.5 1.5 0 1 1 4 10h1.5M10.5 10.5v1A1.5 1.5 0 1 0 12 10h-1.5"/>',
+        wifi: '<path d="M2 6.2a8 8 0 0 1 12 0M4 8.6a5 5 0 0 1 8 0M6.2 11a2 2 0 0 1 3.6 0"/>',
+        batt: '<rect x="1.5" y="5" width="11" height="6" rx="1.5"/><path d="M14 7v2"/><path d="M3.5 7v2"/>',
+        undo: '<path d="M6 4L3 7l3 3"/><path d="M3 7h6a4 4 0 0 1 0 8"/>',
+      };
+      const ic = (n, s, w) =>
+        '<svg class="ic" viewBox="0 0 16 16" width="' +
+        (s || 16) +
+        '" height="' +
+        (s || 16) +
+        '" fill="none" stroke="currentColor" stroke-width="' +
+        (w || 1.5) +
+        '" stroke-linecap="round" stroke-linejoin="round">' +
+        IC[n] +
+        "</svg>";
+      const cic = (n, c, s) => '<span class="ci" style="color:' + c + '">' + ic(n, s) + "</span>";
+      const tile = (c, l) => '<span class="tile" style="background:' + c + '">' + l + "</span>";
+      const lights =
+        '<div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>';
+
+      const PEOPLE = {
+        mc: ["MC", "#7c66dc"],
+        lo: ["LO", "#2f9e8f"],
+        pr: ["PR", "#e07a3f"],
+        nf: ["NF", "#3b82c4"],
+        sr: ["SR", "#c2548f"],
+        ep: ["EP", "#5b8c3a"],
+        ac: ["AC", "#b8862b"],
+        lg: ["LG", "#4b5563"],
+        me: ["RY", "#3d6fd9"],
+      };
+      const av = (k, s) =>
+        '<span class="av" style="width:' +
+        s +
+        "px;height:" +
+        s +
+        "px;font-size:" +
+        Math.round(s * 0.38) +
+        "px;background:" +
+        PEOPLE[k][1] +
+        '">' +
+        PEOPLE[k][0] +
+        "</span>";
+      const LABELS = {
+        Bug: "#e5484d",
+        Feature: "#8e6fe3",
+        Improvement: "#3e8ef7",
+        Infra: "#f08a30",
+        Design: "#1fb0c4",
+        Performance: "#e2a400",
+      };
+      const label = (k) =>
+        '<span class="lb"><i style="background:' + LABELS[k] + '"></i>' + k + "</span>";
+      const STATUS = {
+        b: '<circle cx="8" cy="8" r="5.25" fill="none" stroke="#9a9ea6" stroke-width="1.5" stroke-dasharray="2 2.12"/>',
+        p: '<circle cx="8" cy="8" r="5.25" fill="none" stroke="#e8a900" stroke-width="1.5"/><path d="M8 8V5.25A2.75 2.75 0 0 1 8 10.75Z" fill="#e8a900"/>',
+        r: '<circle cx="8" cy="8" r="5.25" fill="none" stroke="#3fae73" stroke-width="1.5"/><path d="M8 8V5.25A2.75 2.75 0 1 1 5.25 8Z" fill="#3fae73"/>',
+        d: '<circle cx="8" cy="8" r="6.25" fill="#5e6ad2"/><path d="M5.2 8.2l1.9 1.9 3.6-3.8" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>',
+      };
+      const st = (c, s) =>
+        '<svg class="ic" viewBox="0 0 16 16" width="' +
+        (s || 16) +
+        '" height="' +
+        (s || 16) +
+        '">' +
+        STATUS[c] +
+        "</svg>";
+      const bars = (a, b, c) =>
+        '<rect x="2.5" y="9" width="2.5" height="4" rx=".6" fill="' +
+        a +
+        '"/><rect x="6.75" y="6" width="2.5" height="7" rx=".6" fill="' +
+        b +
+        '"/><rect x="11" y="3" width="2.5" height="10" rx=".6" fill="' +
+        c +
+        '"/>';
+      const PRIO = {
+        u: '<rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="#f2663f"/><rect x="7.25" y="4.2" width="1.5" height="5.3" rx=".75" fill="#fff"/><circle cx="8" cy="11.5" r=".95" fill="#fff"/>',
+        h: bars("#5f6369", "#5f6369", "#5f6369"),
+        m: bars("#5f6369", "#5f6369", "#d3d5d9"),
+        l: bars("#5f6369", "#d3d5d9", "#d3d5d9"),
+      };
+      const pr = (c) =>
+        '<svg class="ic" viewBox="0 0 16 16" width="14" height="14">' + PRIO[c] + "</svg>";
+      const si = (icon, text, badge, cls, bid) =>
+        '<div class="si' +
+        (cls ? " " + cls : "") +
+        '">' +
+        icon +
+        "<span>" +
+        text +
+        "</span>" +
+        (badge ? "<b" + (bid ? ' id="ctm-' + bid + '"' : "") + ">" + badge + "</b>" : "") +
+        "</div>";
+
+      /* ---------- window 1: Inbox ---------- */
+      const MAIL = [
+        [
+          "lo",
+          "Liam Ortiz",
+          "Re: Fix WebSocket reconnect on chat nav",
+          "Pushed a fix to the reconnect backoff. Can you review before standup?",
+          "11:18 AM",
+          1,
+          0,
+        ],
+        [
+          "mc",
+          "Maya Chen",
+          "Q3 pricing review — final numbers",
+          "Attaching v4 of the model. Enterprise moves to $48 per seat and…",
+          "9:41 AM",
+          1,
+          1,
+        ],
+        [
+          "pr",
+          "Priya Raman",
+          "Invitation: Launch review · Thu Oct 29, 10:30 AM",
+          "Priya Raman invited you to a video call with 6 other guests.",
+          "9:12 AM",
+          1,
+          0,
+        ],
+        [
+          "nf",
+          "Noah Fischer",
+          "Offline mode: spike results",
+          "TL;DR the CRDT merge works for tasks. Comments need more work…",
+          "Yesterday",
+          0,
+          0,
+        ],
+        [
+          "sr",
+          "Sofia Reyes",
+          "Candidate packet: Sr. Mobile Engineer",
+          "Three finalists this week. Scorecards are in the shared doc.",
+          "Yesterday",
+          0,
+          0,
+        ],
+        [
+          "ac",
+          "Ava Collins",
+          "Customer call notes — Acme Corp",
+          "Main asks: SSO, audit logs, and a faster mobile app. Follow-ups…",
+          "Tue",
+          0,
+          0,
+        ],
+        [
+          "ep",
+          "Ethan Park",
+          "Design crit moved to Tue 1:30 PM",
+          "Moving it to make room for the launch review on Thursday.",
+          "Tue",
+          0,
+          0,
+        ],
+        [
+          "lg",
+          "Ledgerly",
+          "Your October invoice is ready",
+          "Invoice #LG-20418 for $1,284.00 is now available to download.",
+          "Mon",
+          0,
+          0,
+        ],
+      ];
+      let mrows = "";
+      MAIL.forEach((m, i) => {
+        mrows +=
+          '<div class="mr' +
+          (m[6] ? " sel" : "") +
+          (m[5] ? "" : " rd") +
+          '" style="top:' +
+          i * 60 +
+          'px">' +
+          av(m[0], 30) +
+          '<div class="mc"><div class="l1">' +
+          (m[5] ? '<span class="ud"></span>' : "") +
+          m[1] +
+          '<span class="tm">' +
+          m[4] +
+          '</span></div><div class="l2">' +
+          m[2] +
+          '</div><div class="l3">' +
+          m[3] +
+          "</div></div></div>";
+      });
+      let side =
+        '<div class="ws">' + tile("#5b5bf0", "N") + "Northwind" + ic("chev", 12) + "</div>";
+      side +=
+        si(ic("inbox"), "Inbox", "12", "on", "mbadge") +
+        si(ic("star"), "Starred") +
+        si(ic("clock"), "Snoozed") +
+        si(ic("send"), "Sent") +
+        si(ic("file"), "Drafts", "2") +
+        si(ic("archive"), "Archive");
+      side +=
+        '<div class="sh">Labels</div>' +
+        si('<span class="dot" style="background:#8e6fe3;margin:0 4px"></span>', "Product") +
+        si('<span class="dot" style="background:#2fa77a;margin:0 4px"></span>', "Finance") +
+        si('<span class="dot" style="background:#f08a30;margin:0 4px"></span>', "Hiring") +
+        si('<span class="dot" style="background:#3e8ef7;margin:0 4px"></span>', "Customers");
+      const inboxHTML =
+        '<div class="tbar">' +
+        lights +
+        '<div class="chip" style="width:300px;margin:0 auto 0 24px;color:#8b8f97;font-weight:400;background:#fff">' +
+        ic("search", 13) +
+        'Search mail, docs, people<span class="grow"></span><span class="kbd">⌘K</span></div>' +
+        '<div class="btn">' +
+        ic("compose", 14) +
+        "Compose</div></div>" +
+        '<div class="body"><div class="side">' +
+        side +
+        "</div>" +
+        '<div class="lst"><div class="lh"><span class="t">Inbox</span><span class="tab on">Focused</span><span class="tab">Other</span><span class="grow"></span><div class="ib" style="width:22px;height:22px">' +
+        ic("filter", 14) +
+        '</div></div><div id="ctm-mclip"><div id="ctm-mlist">' +
+        mrows +
+        "</div></div></div>" +
+        '<div class="read"><div class="acts"><div class="ib">' +
+        ic("archive", 15) +
+        '</div><div class="ib">' +
+        ic("trash", 15) +
+        '</div><div class="ib">' +
+        ic("clock", 15) +
+        '</div><div class="grow"></div><div class="ib">' +
+        ic("more", 15) +
+        "</div></div>" +
+        "<h3>Q3 pricing review — final numbers</h3>" +
+        '<div class="snd">' +
+        av("mc", 32) +
+        '<div><div class="n">Maya Chen</div><div class="e">maya.chen@northwind.co · to me, Liam, Priya</div></div></div>' +
+        '<div class="bd"><p>Hi team,</p><p>Attaching v4 of the pricing model. Enterprise moves to $48 per seat, Team stays at $12, and audit logs become a $4 add-on.</p><p>Finance signed off yesterday. Can we lock this at Thursday\'s launch review?</p></div>' +
+        '<div class="att">' +
+        cic("file", "#2fa77a", 18) +
+        "Q3-pricing-v4.xlsx <span>248 KB</span></div>" +
+        '<div class="rep">' +
+        ic("reply", 14) +
+        'Reply to Maya…<span class="grow"></span><span class="kbd">⌘↵</span></div></div></div>';
+
+      /* ---------- window 2: Board ---------- */
+      const COLS = [
+        [
+          "b",
+          "Backlog",
+          "9",
+          [
+            [329, "Support iPad split view in editor", "Feature", "sr", "Nov 14", "m"],
+            [327, "Localize onboarding for DE and FR", "Improvement", "ac", "", "l"],
+            [324, "Spike: CRDT merge for offline edits", "Infra", "nf", "Nov 18", "h"],
+            [322, "Export board as CSV", "Feature", "ep", "", "l"],
+          ],
+        ],
+        [
+          "p",
+          "In progress",
+          "3",
+          [
+            [321, "Fix card flicker during fast drag", "Bug", "mc", "Oct 30", "u"],
+            [318, "Offline mode: queue edits when offline", "Feature", "lo", "", "h"],
+            [316, "Redesign empty state for new boards", "Design", "ep", "Nov 3", "m"],
+          ],
+        ],
+        [
+          "r",
+          "In review",
+          "3",
+          [
+            [312, "Deep links in push notifications", "Feature", "pr", "Oct 31", "h"],
+            [309, "Cut cold start to under 1.8 seconds", "Performance", "nf", "", "m"],
+            [307, "Fix timezone offset on recurring tasks", "Bug", "sr", "Nov 2", "h"],
+          ],
+        ],
+        [
+          "d",
+          "Done",
+          "21",
+          [
+            [304, "Ship dark mode for settings", "Design", "ac", "", "m"],
+            [301, "Migrate analytics events to v2 schema", "Infra", "lo", "", "m"],
+            [298, "Fix crash opening archived boards", "Bug", "mc", "", "u"],
+            [295, "Add keyboard shortcuts cheat sheet", "Improvement", "pr", "", "l"],
+          ],
+        ],
+      ];
+      let colsHTML = "",
+        cardsHTML = "";
+      COLS.forEach((c, ci) => {
+        colsHTML +=
+          '<div class="kcol" style="left:' +
+          (10 + ci * 218) +
+          'px"><div class="ch">' +
+          st(c[0], 15) +
+          c[1] +
+          '<span class="ct" ' +
+          (ci === 1 ? 'id="ctm-cnt1"' : ci === 2 ? 'id="ctm-cnt2"' : "") +
+          ">" +
+          c[2] +
+          '</span><span class="grow"></span><span class="ci" style="color:#8b8f97">' +
+          ic("plus", 14) +
+          "</span></div></div>";
+        c[3].forEach((k, si2) => {
+          cardsHTML +=
+            '<div class="kc" id="ctm-k' +
+            k[0] +
+            '" style="left:' +
+            (19 + ci * 218) +
+            "px;top:" +
+            (46 + si2 * 110) +
+            'px"><div class="kt">' +
+            pr(k[5]) +
+            '<span class="kid">TES-' +
+            k[0] +
+            '</span><span class="grow"></span>' +
+            (k[4] ? '<span class="kd">' + ic("calendar", 11) + k[4] + "</span>" : "") +
+            '</div><div class="kh">' +
+            k[1] +
+            '</div><div class="kb">' +
+            label(k[2]) +
+            '<span class="grow"></span>' +
+            av(k[3], 20) +
+            "</div></div>";
+        });
+      });
+      const boardHTML =
+        '<div class="tbar">' +
+        lights +
+        tile("#f08a30", "M") +
+        '<span style="font-size:13px;font-weight:600;color:#1b1c1f">Mobile app v2</span><div class="ib" style="width:22px;height:22px">' +
+        ic("star", 14) +
+        '</div><div class="grow"></div>' +
+        '<div class="stack">' +
+        av("mc", 24) +
+        av("lo", 24) +
+        av("pr", 24) +
+        av("nf", 24) +
+        '</div><div class="btn2">' +
+        ic("share", 13) +
+        "Share</div></div>" +
+        '<div class="bbar"><div class="vt on">' +
+        ic("board", 14) +
+        'Board</div><div class="vt">' +
+        ic("list", 14) +
+        'List</div><div class="vt">' +
+        ic("timeline", 14) +
+        'Timeline</div><div class="sep"></div>' +
+        '<div class="chip">' +
+        ic("user", 12) +
+        'Assignee <span class="mu">is</span> Anyone</div><div class="chip">' +
+        ic("tag", 12) +
+        'Label <span class="mu">is</span> Any</div><div class="grow"></div><div class="ib">' +
+        ic("search", 15) +
+        '</div><div class="ib">' +
+        ic("filter", 15) +
+        '</div><div class="btn">' +
+        ic("plus", 14) +
+        "New task</div></div>" +
+        '<div id="ctm-bbody">' +
+        colsHTML +
+        '<div id="ctm-cards">' +
+        cardsHTML +
+        "</div></div>";
+
+      /* ---------- window 3: Docs ---------- */
+      const tree = (icon, text, cls) =>
+        '<div class="si' + (cls ? " " + cls : "") + '">' + icon + "<span>" + text + "</span></div>";
+      let dside =
+        tree(ic("search"), "Search") +
+        tree(ic("home"), "Home") +
+        '<div class="sh">Product</div>' +
+        tree(ic("chev", 12) + ic("folder"), "Roadmap") +
+        tree(ic("doc"), "Q4 launch plan", "sub on") +
+        tree(ic("doc"), "Q3 retro", "sub") +
+        tree(ic("doc"), "Pricing tiers", "sub") +
+        tree(ic("doc"), "Meeting notes") +
+        '<div class="sh">Shared with you</div>' +
+        tree(ic("doc"), "Acme onboarding") +
+        tree(ic("doc"), "Press kit");
+      const ck = (done, html) =>
+        '<div class="ck' +
+        (done ? " dn" : "") +
+        '"><span class="bx">' +
+        (done ? ic("check", 12, 2) : "") +
+        '</span><span class="tx">' +
+        html +
+        "</span></div>";
+      const TYPED = "Send press kit to 12 outlets";
+      let typed = "";
+      for (let i = 0; i < TYPED.length; i++)
+        typed += '<span class="tc" style="display:none">' + TYPED[i] + "</span>";
+      const docsHTML =
+        '<div class="tbar">' +
+        lights +
+        '<span class="ci" style="color:#8b8f97">' +
+        ic("home", 14) +
+        '</span><span style="font-size:12.5px;color:#6c7078">Product</span><span class="ci" style="color:#b4b7be">' +
+        ic("chevr", 11) +
+        '</span><span style="font-size:12.5px;color:#6c7078">Roadmap</span><span class="ci" style="color:#b4b7be">' +
+        ic("chevr", 11) +
+        '</span><span class="ci" style="color:#6c7078">' +
+        ic("doc", 14) +
+        '</span><span style="font-size:12.5px;font-weight:600;color:#1b1c1f">Q4 launch plan</span><div class="grow"></div><div class="stack">' +
+        av("mc", 22) +
+        av("lo", 22) +
+        av("pr", 22) +
+        '</div><div class="btn2">Share</div></div>' +
+        '<div class="dbody"><div class="dside">' +
+        dside +
+        '</div><div class="dmain"><div class="dtool"><span class="chip" style="border:0">Text ' +
+        ic("chev", 11) +
+        '</span><div class="ib">' +
+        ic("bold", 14) +
+        '</div><div class="ib">' +
+        ic("italic", 14) +
+        '</div><div class="ib">' +
+        ic("underline", 14) +
+        '</div><div class="ib">' +
+        ic("link", 14) +
+        '</div><div class="ib">' +
+        ic("list", 14) +
+        '</div><div class="ib">' +
+        ic("checksq", 14) +
+        '</div><div class="ib">' +
+        ic("at", 14) +
+        '</div><div class="ib">' +
+        ic("comment", 14) +
+        '</div><span class="sv">Saved</span></div>' +
+        '<div class="dpage"><div class="tg"><span class="lb"><i style="background:#8e6fe3"></i>Product</span><span class="lb"><i style="background:#3e8ef7"></i>Q4</span><span class="lb"><i style="background:#2fa77a"></i>Launch</span></div>' +
+        '<h1>Q4 launch plan</h1><div class="pp">' +
+        av("mc", 18) +
+        '<b>Maya Chen</b>Edited 2h ago<span class="lb"><i style="background:#e8a900"></i>In progress</span></div>' +
+        '<div class="para">Goal: ship Tessel 3.0 to every workspace by Nov 12, with the new pricing tiers live and offline mode in public beta.</div><h2>Milestones</h2>' +
+        ck(1, 'Finalize pricing tiers with Finance <span class="mn">@Maya Chen</span>') +
+        ck(1, 'Freeze scope for 3.0 <span class="dd">Oct 24</span>') +
+        ck(
+          0,
+          'Write launch announcement <span class="mn">@Liam Ortiz</span> <span class="dd">Nov 5</span>',
+        ) +
+        ck(0, "QA pass on offline mode, phone and tablet") +
+        ck(0, '<span id="ctm-dtyped">' + typed + '</span><span id="ctm-dcaret"></span>') +
+        "</div></div></div>";
+
+      /* ---------- window 4: Calendar ---------- */
+      const HH = 52,
+        H0 = 9;
+      const CC = {
+        blue: ["#dbe8ff", "#3e8ef7", "#1f4fa8"],
+        purple: ["#e9e0ff", "#8e6fe3", "#5b3fb8"],
+        green: ["#d9f3e5", "#2fa77a", "#1b6b49"],
+        orange: ["#ffe6cf", "#f08a30", "#9a4d0c"],
+        pink: ["#fde0ee", "#d6409f", "#8f1f66"],
+        teal: ["#d3f1f4", "#1fb0c4", "#0f6f7c"],
+        yellow: ["#fff1c2", "#e2a400", "#7a5a00"],
+        gray: ["#ececf0", "#9a9ea6", "#55585f"],
+      };
+      const EVENTS = [
+        [0, 9, 0, 30, "Standup", "blue", ""],
+        [0, 10, 0, 60, "Roadmap review", "purple", "10:00 AM"],
+        [0, 12, 0, 60, "Lunch with Ava", "green", "12:00 PM"],
+        [0, 14, 0, 90, "Sprint planning", "orange", "2:00 PM"],
+        [0, 15, 45, 15, "", "gray", ""],
+        [1, 9, 0, 30, "Standup", "blue", ""],
+        [1, 9, 30, 60, "1:1 · Liam", "teal", "9:30 AM"],
+        [1, 11, 0, 90, "Q3 pricing review", "purple", "11:00 AM"],
+        [1, 13, 30, 60, "Design crit", "pink", "1:30 PM"],
+        [1, 15, 0, 60, "Candidate: Sr. Mobile", "yellow", "3:00 PM"],
+        [2, 9, 0, 30, "Standup", "blue", ""],
+        [2, 10, 0, 120, "Focus time", "gray", "10:00 AM"],
+        [2, 13, 0, 60, "Acme customer call", "orange", "1:00 PM"],
+        [2, 14, 30, 60, "Eng sync", "blue", "2:30 PM"],
+        [2, 15, 30, 30, "Hiring debrief", "yellow", ""],
+        [3, 9, 0, 30, "Standup", "blue", ""],
+        [3, 10, 30, 60, "Launch review", "purple", "10:30 AM"],
+        [3, 12, 0, 45, "Lunch", "green", "12:00 PM"],
+        [3, 13, 30, 90, "Roadmap workshop", "blue", "1:30 PM"],
+        [3, 15, 15, 45, "1:1 · Priya", "teal", ""],
+        [4, 9, 0, 30, "Standup", "blue", ""],
+        [4, 10, 0, 60, "Demo day", "pink", "10:00 AM"],
+        [4, 11, 30, 60, "Sprint retro", "orange", "11:30 AM"],
+        [4, 13, 0, 60, "Team lunch", "green", "1:00 PM"],
+        [4, 14, 0, 120, "Focus time", "gray", "2:00 PM"],
+        [5, 11, 0, 60, "Farmers market", "green", "11:00 AM"],
+      ];
+      let gridHTML = "";
+      for (let h = 0; h < 7; h++) {
+        gridHTML += '<div class="hl" style="top:' + h * HH + 'px"></div>';
+        gridHTML +=
+          '<div class="hr" style="top:' +
+          (h === 0 ? 3 : h * HH - 7) +
+          'px">' +
+          (H0 + h > 12 ? H0 + h - 12 : H0 + h) +
+          (H0 + h >= 12 ? " PM" : " AM") +
+          "</div>";
+      }
+      for (let d = 0; d <= 7; d++)
+        gridHTML += '<div class="vl" style="left:' + (48 + d * 115) + 'px"></div>';
+      EVENTS.forEach((e) => {
+        const c = CC[e[5]],
+          top = ((e[1] - H0) * 60 + e[2]) * (HH / 60),
+          hh = e[3] * (HH / 60) - 2;
+        if (!e[4]) return;
+        gridHTML +=
+          '<div class="ev' +
+          (e[4] === "Launch review" ? " lr" : "") +
+          '" style="left:' +
+          (50 + e[0] * 115) +
+          "px;top:" +
+          (top + 1) +
+          "px;height:" +
+          hh +
+          "px;background:" +
+          c[0] +
+          ";border-color:" +
+          c[1] +
+          ";color:" +
+          c[2] +
+          '">' +
+          e[4] +
+          (e[3] >= 45 && e[6] ? "<span>" + e[6] + "</span>" : "") +
+          "</div>";
+      });
+      const nowY = (2 + 20 / 60) * HH + 0; // 11:20 AM
+      gridHTML +=
+        '<div id="ctm-nowline" style="top:' +
+        (nowY * 1 - 1 + 0) +
+        'px"><em>11:20</em><i></i></div>';
+      const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+      let dh = '<div style="width:48px"></div>';
+      DAYS.forEach((d, i) => {
+        dh +=
+          "<div" +
+          (i === 3 ? ' class="td"' : "") +
+          ">" +
+          d +
+          " <b>" +
+          (26 + i > 31 ? 1 : 26 + i) +
+          "</b></div>";
+      });
+      let mg = "";
+      ["M", "T", "W", "T", "F", "S", "S"].forEach((l) => {
+        mg += '<span class="l">' + l + "</span>";
+      });
+      const MON = [
+        28, 29, 30, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+        23, 24, 25, 26, 27, 28, 29, 30, 31, 1,
+      ];
+      MON.forEach((n, i) => {
+        mg +=
+          '<span class="' + (i < 3 || i === 34 ? "o" : i === 31 ? "td" : "") + '">' + n + "</span>";
+      });
+      const cl = (c, n) =>
+        '<div class="cl"><i style="background:' +
+        c +
+        '">' +
+        ic("check", 10, 2) +
+        "</i>" +
+        n +
+        "</div>";
+      const calHTML =
+        '<div class="tbar">' +
+        lights +
+        '<span style="font-size:15px;font-weight:600;color:#1b1c1f;margin-right:4px">October 2026</span><div class="ib" style="width:22px;height:22px">' +
+        ic("chevl", 14) +
+        '</div><div class="ib" style="width:22px;height:22px">' +
+        ic("chevr", 14) +
+        '</div><div class="btn2" style="height:24px">Today</div><div class="grow"></div>' +
+        '<div class="chip" style="border-color:#e4e4e7">Week ' +
+        ic("chev", 11) +
+        '</div><div class="ib">' +
+        ic("search", 15) +
+        '</div><div class="btn">' +
+        ic("plus", 14) +
+        'New event<span class="kbd" style="background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.25);color:#fff;margin-left:2px">N</span></div></div>' +
+        '<div class="cbody"><div class="cside"><div class="mh">October 2026<span class="grow"></span><span class="ci" style="color:#8b8f97">' +
+        ic("chevl", 13) +
+        ic("chevr", 13) +
+        '</span></div><div class="mg">' +
+        mg +
+        "</div>" +
+        '<div class="sh" style="margin:14px 0 2px;padding:0">My calendars</div>' +
+        cl("#5b5bf0", "Alex Rivera") +
+        cl("#2fa77a", "Northwind team") +
+        cl("#8e6fe3", "Product launches") +
+        cl("#f08a30", "US holidays") +
+        '<div class="sh" style="margin:12px 0 2px;padding:0">Up next</div><div style="font-size:12.5px;font-weight:600;color:#1f2023;line-height:17px">Lunch</div><div style="font-size:11.5px;color:#8b8f97">12:00 PM · in 40 min</div></div>' +
+        '<div class="cmain"><div class="dh">' +
+        dh +
+        '</div><div id="ctm-grid">' +
+        gridHTML +
+        "</div></div></div>";
+
+      /* ---------- floating pieces ---------- */
+      const PQ = "q4 launch";
+      let pq = "";
+      for (let i = 0; i < PQ.length; i++)
+        pq += '<span class="pc2" style="display:none">' + PQ[i] + "</span>";
+      const palItem = (sel, color, icon, title, sub, key) =>
+        '<div class="it' +
+        (sel ? " on" : "") +
+        '"><span class="ti" style="background:' +
+        color +
+        '">' +
+        ic(icon, 13) +
+        "</span>" +
+        title +
+        '<span class="su">' +
+        sub +
+        "</span>" +
+        (key ? '<span class="kbd">' + key + "</span>" : "") +
+        "</div>";
+      const palette =
+        '<div class="in">' +
+        ic("search", 17) +
+        '<span id="ctm-pph" class="ph">Search or run a command</span><span id="ctm-pq">' +
+        pq +
+        '</span><span id="ctm-pcaret"></span><span class="grow"></span><span class="kbd">esc</span></div>' +
+        '<div class="sec">Docs</div>' +
+        palItem(1, "#8e6fe3", "doc", "Q4 launch plan", "Product / Roadmap", "↵") +
+        palItem(0, "#8e6fe3", "doc", "Q4 launch checklist", "Product / Roadmap") +
+        '<div class="sec">Mail</div>' +
+        palItem(0, "#3e8ef7", "mail", "Re: Q4 launch checklist", "Liam Ortiz · Yesterday") +
+        '<div class="sec">Tasks</div>' +
+        palItem(0, "#2fa77a", "checksq", "TES-331 Write Q4 launch announcement", "Mobile app v2") +
+        '<div class="ft"><span><span class="kbd">↑↓</span> Navigate</span><span><span class="kbd">↵</span> Open</span><span><span class="kbd">⌘↵</span> Open in new window</span></div>';
+      const notifHTML =
+        appIcon("tessel", 40) +
+        '<div class="nt" style="flex:1;min-width:0"><div class="n1">Tessel<span>now</span></div><div class="n2">Maya Chen assigned you TES-318</div><div class="n3">Offline mode: queue edits when offline</div></div>';
+      const povHTML =
+        '<div class="hd"><i></i><div><div class="t">Launch review</div><div class="s">Thursday, Oct 29 · 10:30 – 11:30 AM</div></div></div>' +
+        '<div class="rw">' +
+        ic("video", 15) +
+        'Video call<span class="grow"></span><span class="btn" style="height:24px;font-size:12px">Join</span></div>' +
+        '<div class="rw">' +
+        ic("pin", 15) +
+        'Cascade, 4th floor</div><div class="rw">' +
+        ic("users", 15) +
+        '<span class="stack" style="margin-right:2px">' +
+        av("mc", 20) +
+        av("lo", 20) +
+        av("pr", 20) +
+        av("nf", 20) +
+        "</span>Maya, Liam +5</div>" +
+        '<div class="rw">' +
+        ic("bell", 15) +
+        "30 minutes before</div>" +
+        '<div class="bt">Going?<span class="c on">Yes</span><span class="c">No</span><span class="c">Maybe</span></div>';
+      const toastHTML =
+        ic("check", 14, 2) +
+        'Moved TES-318 to In review<u>Undo</u><span class="kbd" style="background:#34353a;border-color:#45464c;color:#b9bac0">⌘Z</span>';
+      const timerHTML =
+        '<svg class="ic" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke-width="3"><circle cx="12" cy="12" r="9" stroke="#e4e4e7"/><path d="M12 3a9 9 0 1 1-8.2 5.3" stroke="#5b5bf0" stroke-linecap="round"/></svg>Focus<span class="mu">Q4 launch plan</span><span class="tm">24:10</span><span class="ib" style="width:28px;height:28px;background:#f1f1f3;border-radius:14px;color:#3b3e44">' +
+        ic("pause", 13) +
+        "</span>";
+      const mpHTML = (name, color) =>
+        '<div class="mpi"><svg width="18" height="22" viewBox="0 0 18 22"><path d="M2 1.5v15l4.2-3.9 2.9 6.6 2.6-1.1-2.9-6.5H15z" fill="' +
+        color +
+        '" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/></svg><div class="fl" style="background:' +
+        color +
+        '">' +
+        name +
+        "</div></div>";
+
+      /* ---------- pieces (single source of geometry) ---------- */
+      const PIECES = [
+        {
+          id: "inbox",
+          l: 36,
+          t: 50,
+          w: 870,
+          h: 470,
+          z: 2,
+          cls: "win",
+          html: inboxHTML,
+          in: 0.0,
+          d: 0.0,
+          dur: 0.95,
+          ex: "power3.in",
+          ey: "power2.in",
+          rot: -9,
+          se: 0.08,
+          drift: 1,
+        },
+        {
+          id: "board",
+          l: 1000,
+          t: 44,
+          w: 884,
+          h: 470,
+          z: 2,
+          cls: "win",
+          html: boardHTML,
+          in: 0.08,
+          d: 0.06,
+          dur: 0.92,
+          ex: "power2.in",
+          ey: "power3.in",
+          rot: 8,
+          se: 0.08,
+          drift: 1,
+        },
+        {
+          id: "docs",
+          l: 36,
+          t: 546,
+          w: 760,
+          h: 440,
+          z: 2,
+          cls: "win",
+          html: docsHTML,
+          in: 0.16,
+          d: 0.12,
+          dur: 0.9,
+          ex: "power3.in",
+          ey: "power2.in",
+          rot: 7,
+          se: 0.09,
+          drift: 1,
+        },
+        {
+          id: "cal",
+          l: 840,
+          t: 546,
+          w: 1044,
+          h: 440,
+          z: 2,
+          cls: "win",
+          html: calHTML,
+          in: 0.24,
+          d: 0.02,
+          dur: 0.95,
+          ex: "power2.in",
+          ey: "power3.in",
+          rot: -6,
+          se: 0.07,
+          drift: 1,
+        },
+        {
+          id: "timer",
+          l: 300,
+          t: 940,
+          w: 310,
+          h: 44,
+          z: 7,
+          cls: "timer",
+          html: timerHTML,
+          in: 0.8,
+          d: 0.3,
+          dur: 0.75,
+          ex: "power3.in",
+          ey: "power2.in",
+          rot: -14,
+          se: 0.14,
+          drift: 1,
+        },
+        {
+          id: "notif",
+          l: 1478,
+          t: 38,
+          w: 390,
+          h: 84,
+          z: 9,
+          cls: "notif",
+          html: notifHTML,
+          in: 1.0,
+          d: 0.16,
+          dur: 0.85,
+          ex: "power2.in",
+          ey: "power3.in",
+          rot: 11,
+          se: 0.14,
+          drift: 1,
+        },
+        {
+          id: "liam",
+          l: 520,
+          t: 878,
+          w: 90,
+          h: 40,
+          z: 7,
+          cls: "",
+          html: mpHTML("Liam", "#2f9e8f"),
+          in: 1.2,
+          d: 0.22,
+          dur: 0.78,
+          ex: "power3.in",
+          ey: "power2.in",
+          rot: 25,
+          se: 0.3,
+          drift: 1,
+        },
+        {
+          id: "pov",
+          l: 1550,
+          t: 640,
+          w: 300,
+          h: 238,
+          z: 8,
+          cls: "pov",
+          html: povHTML,
+          in: 1.9,
+          d: 0.25,
+          dur: 0.8,
+          ex: "power2.in",
+          ey: "power3.in",
+          rot: -12,
+          se: 0.12,
+          drift: 1,
+        },
+        {
+          id: "priya",
+          l: 1340,
+          t: 780,
+          w: 90,
+          h: 40,
+          z: 7,
+          cls: "",
+          html: mpHTML("Priya", "#e07a3f"),
+          in: 2.2,
+          d: 0.3,
+          dur: 0.72,
+          ex: "power3.in",
+          ey: "power2.in",
+          rot: -22,
+          se: 0.3,
+          drift: 1,
+        },
+        {
+          id: "toast",
+          l: 1210,
+          t: 462,
+          w: 330,
+          h: 40,
+          z: 9,
+          cls: "toast",
+          html: toastHTML,
+          in: 3.62,
+          keep: 0,
+        },
+        {
+          id: "pal",
+          l: 680,
+          t: 322,
+          w: 560,
+          h: 316,
+          z: 12,
+          cls: "pal",
+          html: palette,
+          in: 4.4,
+          d: 0.2,
+          dur: 0.82,
+          ex: "power3.in",
+          ey: "power2.in",
+          rot: 6,
+          se: 0.1,
+          drift: 1,
+        },
+      ];
+      const DOCK = [
+        ["files", "dk0"],
+        ["browser", "dk1"],
+        ["msg", "dk2"],
+        ["tessel", "dk3"],
+        ["notes", "dk4"],
+        ["music", "dk5"],
+        ["gear", "dk6"],
+      ];
+      DOCK.forEach((k, i) => {
+        PIECES.push({
+          id: k[1],
+          l: 741 + i * 64,
+          t: 1005,
+          w: 54,
+          h: 54,
+          z: 4,
+          cls: "",
+          html: appIcon(k[0], 54),
+          in: 0.3 + i * 0.05,
+          d: [0.38, 0.5, 0.42, 0.47, 0.55, 0.44, 0.52][i],
+          dur: i === 3 ? 0.65 : 0.7,
+          ex: i % 2 ? "power3.in" : "power2.in",
+          ey: i % 2 ? "power2.in" : "power3.in",
+          rot: [-30, 20, -16, 0, 26, -24, 18][i],
+          se: i === 3 ? 1 : 0.4,
+          drift: 0,
+          dock: 1,
+          seed: i === 3,
+        });
+      });
+
+      const cam = document.getElementById("ctm-cam");
+      cam.innerHTML =
+        '<div id="ctm-menubar"><b>Tessel</b><span>File</span><span>Edit</span><span>View</span><span>Go</span><span>Window</span><span>Help</span><div class="grow"></div><div class="r">' +
+        ic("wifi", 16) +
+        ic("batt", 18) +
+        "<span>Thu Oct 29  11:20 AM</span></div></div>" +
+        '<div id="ctm-dockbg"><i style="left:' +
+        (12 + 27 - 2) +
+        'px"></i><i style="left:' +
+        (12 + 3 * 64 + 27 - 2) +
+        'px"></i></div>' +
+        '<svg id="ctm-cur" width="22" height="26" viewBox="0 0 22 26"><path d="M3 2v18l4.8-4.4 3.4 7.4 3.2-1.4-3.4-7.3H18z" fill="#111" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+      PIECES.forEach((p) => {
+        const d = document.createElement("div");
+        d.id = "ctm-" + p.id;
+        d.className = "pc " + p.cls;
+        d.style.cssText =
+          "left:" +
+          p.l +
+          "px;top:" +
+          p.t +
+          "px;width:" +
+          p.w +
+          "px;height:" +
+          p.h +
+          "px;z-index:" +
+          p.z +
+          ";opacity:0";
+        d.innerHTML = p.html;
+        cam.appendChild(d);
+      });
+      document.getElementById("ctm-bigicon").innerHTML = appIcon("tessel", 200);
+
+      /* ---------- timeline ---------- */
+      const tl = gsap.timeline({ paused: true });
+      function F(target, from, to, at) {
+        tl.fromTo(target, from, Object.assign({ immediateRender: false }, to), at);
+      }
+      gsap.set(S + "#ctm-cur", { x: 1120, y: 430 });
+      gsap.set(S + "#ctm-mlist", { y: -60 });
+      gsap.set(S + "#ctm-bigicon", { x: 237, scale: 0.27, opacity: 0 });
+      gsap.set(S + "#ctm-wm", { clipPath: "inset(-30px -30px -30px 193px)" });
+
+      /* --- entrance: windows tile in, dock rises, floating cards arrive one by one --- */
+      F(S + "#ctm-menubar", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 0);
+      PIECES.forEach((p) => {
+        if (p.dock) {
+          F(
+            S + "#ctm-" + p.id,
+            { opacity: 0, y: 26 },
+            { opacity: 1, y: 0, duration: 0.7, ease: EXPO },
+            p.in,
+          );
+        } else {
+          F(
+            S + "#ctm-" + p.id,
+            { opacity: 0, y: p.cls === "win" ? 18 : 14, scale: p.cls === "win" ? 0.97 : 0.94 },
+            { opacity: 1, y: 0, scale: 1, duration: p.cls === "win" ? 0.85 : 0.6, ease: EXPO },
+            p.in,
+          );
+        }
+      });
+      F(
+        S + "#ctm-dockbg",
+        { opacity: 0, y: 26 },
+        { opacity: 1, y: 0, duration: 0.7, ease: EXPO },
+        0.3,
+      );
+
+      /* --- slow camera push on the whole screen --- */
+      F(
+        S + "#ctm-cam",
+        { scale: 1, x: 0, y: 0 },
+        { scale: 1.035, x: -14, y: -6, duration: 6.2, ease: "none" },
+        0,
+      );
+
+      /* --- live detail: doc typing, caret, new mail, board drag, palette query --- */
+      for (let t = 0; t < 7; t += 1) {
+        tl.set(S + "#ctm-dcaret", { opacity: 1 }, t);
+        tl.set(S + "#ctm-dcaret", { opacity: 0 }, t + 0.5);
+      }
+      for (let i = 0; i < TYPED.length; i++)
+        tl.set(S + ".tc:nth-child(" + (i + 1) + ")", { display: "inline" }, 1.2 + i * 0.065);
+      F(
+        S + "#ctm-liam .mpi",
+        { x: 0, y: 0 },
+        { x: 26, y: -14, duration: 1.7, ease: "sine.inOut" },
+        1.6,
+      );
+      F(
+        S + "#ctm-liam .mpi",
+        { x: 26, y: -14 },
+        { x: 8, y: 6, duration: 1.8, ease: "sine.inOut" },
+        3.3,
+      );
+      F(
+        S + "#ctm-priya .mpi",
+        { x: 0, y: 0 },
+        { x: -22, y: 18, duration: 1.8, ease: "sine.inOut" },
+        2.4,
+      );
+      F(
+        S + "#ctm-priya .mpi",
+        { x: -22, y: 18 },
+        { x: 14, y: 4, duration: 1.8, ease: "sine.inOut" },
+        4.2,
+      );
+
+      // the Thursday event gets a selection ring when its popover opens
+      tl.to(
+        S + ".ev.lr",
+        { boxShadow: "0 0 0 2px #8e6fe3", duration: 0.3, ease: "power2.out" },
+        1.95,
+      );
+
+      // a new message lands: list slides down one row, unread count steps up on the same frame
+      tl.to(S + "#ctm-mlist", { y: 0, duration: 0.6, ease: EXPO }, 2.6);
+      tl.set(S + "#ctm-mbadge", { textContent: "13" }, 2.6);
+
+      // cursor drags TES-318 from In progress to In review
+      F(S + "#ctm-cur", { opacity: 0 }, { opacity: 1, duration: 0.25, ease: "power1.out" }, 2.0);
+      F(
+        S + "#ctm-cur",
+        { x: 1120, y: 430 },
+        { x: 1402, y: 292, duration: 0.75, ease: "power2.inOut" },
+        2.1,
+      );
+      tl.set(S + "#ctm-k318", { zIndex: 20 }, 2.9);
+      tl.to(
+        S + "#ctm-k318",
+        {
+          scale: 1.04,
+          rotation: 1.8,
+          boxShadow: "0 14px 30px rgba(30,30,80,0.26)",
+          duration: 0.15,
+          ease: "power2.out",
+        },
+        2.9,
+      );
+      F(
+        S + "#ctm-cur",
+        { x: 1402, y: 292 },
+        { x: 1620, y: 182, duration: 0.6, ease: "power2.inOut" },
+        3.0,
+      );
+      F(
+        S + "#ctm-k318",
+        { x: 0, y: 0 },
+        { x: 218, y: -110, duration: 0.6, ease: "power2.inOut" },
+        3.0,
+      );
+      tl.to(S + "#ctm-k316", { y: -110, duration: 0.45, ease: EXPO }, 3.2);
+      tl.to(
+        [S + "#ctm-k312", S + "#ctm-k309", S + "#ctm-k307"],
+        { y: 110, duration: 0.45, ease: EXPO, stagger: 0.04 },
+        3.15,
+      );
+      tl.to(
+        S + "#ctm-k318",
+        {
+          scale: 1,
+          rotation: 0,
+          boxShadow: "0 1px 2px rgba(20,20,30,0.05)",
+          duration: 0.2,
+          ease: "power2.out",
+        },
+        3.6,
+      );
+      tl.set(S + "#ctm-cnt1", { textContent: "2" }, 3.6);
+      tl.set(S + "#ctm-cnt2", { textContent: "4" }, 3.6);
+      F(
+        S + "#ctm-cur",
+        { x: 1620, y: 182 },
+        { x: 1760, y: 330, duration: 0.7, ease: "power2.inOut" },
+        3.8,
+      );
+      tl.to(S + "#ctm-cur", { opacity: 0, duration: 0.25, ease: "power1.out" }, 4.3);
+      tl.to(S + "#ctm-toast", { opacity: 0, y: 8, duration: 0.3, ease: "power1.in" }, 5.0);
+
+      // command palette: query typed, caret solid while typing
+      tl.set(S + "#ctm-pph", { display: "none" }, 4.85);
+      for (let i = 0; i < PQ.length; i++)
+        tl.set(S + ".pc2:nth-child(" + (i + 1) + ")", { display: "inline" }, 4.9 + i * 0.075);
+      for (let t = 4.4; t < 6.2; t += 0.5) {
+        tl.set(S + "#ctm-pcaret", { opacity: 1 }, t);
+        tl.set(S + "#ctm-pcaret", { opacity: 0 }, t + 0.25);
+      }
+
+      /* --- 6.2s: chrome leaves, wallpaper washes out to white, everything gathers on the centre --- */
+      const CX = 960,
+        CY = 540,
+        T0 = 6.2;
+      tl.to(S + "#ctm-menubar", { y: -30, opacity: 0, duration: 0.5, ease: "power2.in" }, T0);
+      tl.to(S + "#ctm-dockbg", { y: 30, opacity: 0, duration: 0.5, ease: "power2.in" }, T0);
+      tl.to(S + "#ctm-bg", { opacity: 0, duration: 1.0, ease: "power1.inOut" }, T0 + 0.2);
+      F(
+        S + "#ctm-cam",
+        { scale: 1.035, x: -14, y: -6 },
+        { scale: 1, x: 0, y: 0, duration: 0.9, ease: "power2.inOut" },
+        T0,
+      );
+
+      PIECES.forEach((p) => {
+        if (p.keep === 0) return;
+        const dx = CX - (p.l + p.w / 2),
+          dy = CY - (p.t + p.h / 2);
+        const s = T0 + p.d,
+          id = S + "#ctm-" + p.id;
+        // linear drift downward before the pull starts
+        const dp = p.drift ? 34 * (s - 5.0) : 0;
+        if (p.drift) F(id, { y: 0 }, { y: dp, duration: s - 5.0, ease: "none" }, 5.0);
+        F(id, { x: 0 }, { x: dx, duration: p.dur, ease: p.ex }, s);
+        F(id, { y: dp }, { y: dy, duration: p.dur, ease: p.ey }, s);
+        F(id, { scale: 1 }, { scale: p.se, duration: p.dur, ease: "power2.in" }, s);
+        if (p.rot)
+          F(id, { rotation: 0 }, { rotation: p.rot, duration: p.dur, ease: "power1.in" }, s);
+        if (p.seed) tl.set(id, { opacity: 0 }, s + p.dur);
+        else tl.to(id, { opacity: 0, duration: p.dur * 0.35, ease: "power1.in" }, s + p.dur * 0.65);
+      });
+
+      /* --- icon lands: the dock icon arrives at 54px, the large icon takes over at the same size and rebounds once --- */
+      const LAND = T0 + 0.47 + 0.65; // dock Tessel icon arrival, 7.32
+      tl.set(S + "#ctm-bigicon", { opacity: 1 }, LAND);
+      F(
+        S + "#ctm-bigicon",
+        { scale: 0.27 },
+        { scale: 1, duration: 0.65, ease: "back.out(2.1)" },
+        LAND,
+      );
+      tl.set(S + "#ctm-glow", { opacity: 0.8, scale: 0.4 }, LAND + 0.05);
+      tl.to(
+        S + "#ctm-glow",
+        { opacity: 0, scale: 1.5, duration: 0.9, ease: "power2.out" },
+        LAND + 0.05,
+      );
+
+      /* --- wordmark pulled out from behind the icon --- */
+      F(S + "#ctm-bigicon", { x: 237 }, { x: 0, duration: 1.25, ease: EXPO }, 8.05);
+      tl.set(S + "#ctm-wm", { opacity: 1 }, 8.05);
+      F(
+        S + "#ctm-wm",
+        { clipPath: "inset(-30px -30px -30px 193px)", filter: "blur(10px)" },
+        {
+          clipPath: "inset(-30px -30px -30px -44px)",
+          filter: "blur(0px)",
+          duration: 1.25,
+          ease: EXPO,
+        },
+        8.05,
+      );
+      F(
+        S + "#ctm-tag",
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.8, ease: EXPO },
+        8.9,
+      );
+
+      // residual push on the hold
+      F(S + "#ctm-lock", { scale: 1 }, { scale: 1.04, duration: 3.0, ease: "none" }, 7.6);
+
+      tl.set({}, {}, 10.6);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["converge-to-mark"] = tl;
+    </script>
+  </body>
+</html>

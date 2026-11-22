@@ -1,0 +1,23 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "converge-to-mark",
+  "type": "hyperframes:block",
+  "title": "Converge to Mark",
+  "description": "A workspace of windows, a command palette and dock icons drifts, then every piece compresses into the one app icon at the center, which settles and unfolds into the wordmark and a tagline.",
+  "tags": ["logo", "outro", "reveal", "showcase", "launch-film", "branding"],
+  "author": "Motionboard",
+  "authorUrl": "https://motionboard.app/recipes/converge-logo-reveal/",
+  "license": "MIT",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10.6,
+  "files": [
+    {
+      "path": "converge-to-mark.html",
+      "target": "compositions/converge-to-mark.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

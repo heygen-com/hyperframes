@@ -1,0 +1,23 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "avatar-match-cut",
+  "type": "hyperframes:block",
+  "title": "Avatar Match Cut",
+  "description": "One avatar stays fixed at the same point and size while six app scenes hard-cut around it, then it becomes the logo mark and a wordmark appears beside it.",
+  "tags": ["transition", "match-cut", "hard-cut", "showcase", "launch-film", "product"],
+  "author": "Motionboard",
+  "authorUrl": "https://motionboard.app/recipes/match-cut-transition/",
+  "license": "MIT",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "files": [
+    {
+      "path": "avatar-match-cut.html",
+      "target": "compositions/avatar-match-cut.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

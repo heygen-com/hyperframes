@@ -1,0 +1,1605 @@
+<!doctype html>
+<html lang="en" data-resolution="landscape">
+  <head>
+    <!--
+      Avatar Match Cut: a Motionboard shot recipe, https://motionboard.app/recipes/match-cut-transition/
+      By Motionboard, https://motionboard.app. MIT License, Copyright (c) 2026 Motionboard.
+      Brand names, people and copy in this file are invented placeholders.
+    -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --acc: #e8734a;
+        --inter: "Inter", sans-serif;
+        --mono: "JetBrains Mono", monospace;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0c0c0e;
+      }
+      #amc-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0c0c0e;
+        -webkit-font-smoothing: antialiased;
+        font-family: var(--inter);
+      }
+      #amc-stage {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+
+      .sc {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+        opacity: 0;
+        overflow: hidden;
+      }
+      .cam {
+        position: absolute;
+        left: 0;
+        top: 0;
+        overflow: visible;
+        font-family: var(--inter);
+      }
+      .win {
+        position: absolute;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+      }
+      .av {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        color: #fff;
+        font-weight: 600;
+        flex: none;
+      }
+      svg.i {
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .slot {
+        display: block;
+        flex: none;
+      }
+      .tl {
+        display: block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+      }
+      .nw {
+        white-space: nowrap;
+      }
+      .mono {
+        font-family: var(--mono);
+      }
+      .kr {
+        opacity: 0;
+      }
+      .stack {
+        display: grid;
+      }
+      .stack > * {
+        grid-area: 1 / 1;
+      }
+
+      /* the anchor: one avatar, same place and size in every scene */
+      #amc-av {
+        position: absolute;
+        left: 724px;
+        top: 394px;
+        width: 112px;
+        height: 112px;
+        border-radius: 50%;
+        background: var(--acc);
+        color: #fff;
+        z-index: 50;
+      }
+      #amc-avi {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 112px;
+        height: 112px;
+        text-align: center;
+        font: 600 45px/112px var(--inter);
+      }
+      #amc-avg {
+        position: absolute;
+        left: 28px;
+        top: 28px;
+        width: 56px;
+        height: 56px;
+        opacity: 0;
+      }
+      #amc-wm {
+        position: absolute;
+        left: 931px;
+        top: 468px;
+        font: 600 128px/144px var(--inter);
+        letter-spacing: -0.035em;
+        color: #f4f4f5;
+        opacity: 0;
+        white-space: nowrap;
+      }
+
+      #amc-s1 {
+        background: radial-gradient(1200px 800px at 20% 10%, #6d83c9 0%, #4a5aa8 38%, #2e2f6b 100%);
+      }
+      #amc-s2 {
+        background: #ffffff;
+      }
+      #amc-s3 {
+        background: #0b0c0d;
+      }
+      #amc-s4 {
+        background: #ffffff;
+      }
+      #amc-s5 {
+        background: #141416;
+      }
+      #amc-s6 {
+        background: radial-gradient(110% 90% at 72% 8%, #3a2219 0%, #17110f 45%, #09090a 100%);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="amc-root"
+      data-composition-id="avatar-match-cut"
+      data-start="0"
+      data-duration="10"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div
+        id="amc-stage"
+        class="clip"
+        data-start="0"
+        data-duration="10"
+        data-track-index="0"
+        data-layout-allow-overlap
+      >
+        <div id="amc-s1" class="sc" data-layout-allow-overlap>
+          <div class="cam" style="width: 1500px; height: 1000px"></div>
+        </div>
+        <div id="amc-s2" class="sc" data-layout-allow-overlap>
+          <div class="cam" style="width: 1600px; height: 1000px"></div>
+        </div>
+        <div id="amc-s3" class="sc" data-layout-allow-overlap>
+          <div class="cam" style="width: 1600px; height: 1000px"></div>
+        </div>
+        <div id="amc-s4" class="sc" data-layout-allow-overlap>
+          <div class="cam" style="width: 1600px; height: 1000px"></div>
+        </div>
+        <div id="amc-s5" class="sc" data-layout-allow-overlap>
+          <div class="cam" style="width: 1400px; height: 756px"></div>
+        </div>
+        <div id="amc-s6" class="sc" data-layout-allow-overlap>
+          <div class="cam" style="width: 1600px; height: 1000px"></div>
+        </div>
+
+        <div id="amc-av" data-layout-allow-overlap>
+          <div id="amc-avi">MC</div>
+          <svg
+            id="amc-avg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#fff"
+            stroke-width="1.6"
+            stroke-linejoin="round"
+            stroke-linecap="round"
+          >
+            <path d="M12 2.5 19 10 12 17.5 5 10Z" fill="#fff" fill-opacity="0.95" stroke="none" />
+            <path d="M12 2.5v15M5 10h14" stroke="#e8734a" stroke-width="1.3" />
+            <path d="M12 17.5c-1.6 1.6-2.4 2.6-1.4 4.1" />
+          </svg>
+        </div>
+        <div id="amc-wm">Kite</div>
+      </div>
+    </div>
+
+    <script>
+      const EXPO = "expo.out";
+      const S = '[data-composition-id="avatar-match-cut"] ';
+      const AX = 780,
+        AY = 450,
+        D = 112;
+
+      /* ---------- icons (lucide-style, 24 grid, 1.5 stroke) ---------- */
+      const ICONS = {
+        hash: '<line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/>',
+        search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+        chevDown: '<path d="m6 9 6 6 6-6"/>',
+        chevRight: '<path d="m9 18 6-6-6-6"/>',
+        chevLeft: '<path d="m15 18-6-6 6-6"/>',
+        arrowLeft: '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+        arrowRight: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+        home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+        msg: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+        msgSq: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+        bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+        clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+        star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+        plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+        more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+        x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+        check: '<path d="M20 6 9 17l-5-5"/>',
+        calendar:
+          '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
+        video:
+          '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
+        videoOff:
+          '<path d="M10.66 5H14a2 2 0 0 1 2 2v2.34l1 1L22 7v10"/><path d="M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2l10 10Z"/><line x1="2" x2="22" y1="2" y2="22"/>',
+        mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>',
+        micOff:
+          '<line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/>',
+        users:
+          '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+        user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+        link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+        pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+        pr: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/>',
+        branch:
+          '<line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
+        commit:
+          '<circle cx="12" cy="12" r="3"/><line x1="3" x2="9" y1="12" y2="12"/><line x1="15" x2="21" y1="12" y2="12"/>',
+        circleDot: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/>',
+        circleCheck: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+        inbox:
+          '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+        layers:
+          '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
+        send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+        smile:
+          '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/>',
+        bookmark: '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',
+        help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+        shield:
+          '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+        upload:
+          '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
+        monitor:
+          '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+        file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+        tag: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5"/>',
+        flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
+        cmd: '<path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/>',
+        edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+        panel: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>',
+        spark:
+          '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17v4M17 19h4"/>',
+        bars: '<line x1="6" x2="6" y1="20" y2="14"/><line x1="12" x2="12" y1="20" y2="9"/><line x1="18" x2="18" y1="20" y2="4"/>',
+        box: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+        lock: '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+        eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+        fork: '<circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/>',
+        headphones:
+          '<path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/>',
+        trash:
+          '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+        refresh:
+          '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+        settings:
+          '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>',
+      };
+      const ic = (n, s = 16, w = 1.5) =>
+        '<svg class="i" width="' +
+        s +
+        '" height="' +
+        s +
+        '" viewBox="0 0 24 24" stroke-width="' +
+        w +
+        '">' +
+        ICONS[n] +
+        "</svg>";
+
+      /* ---------- people ---------- */
+      const P = {
+        maya: ["MC", "#e8734a"],
+        liam: ["LO", "#3b82c4"],
+        priya: ["PN", "#2f9e77"],
+        daniel: ["DK", "#8b5cf6"],
+        sofia: ["SR", "#d6498b"],
+        ethan: ["EW", "#b7791f"],
+        hannah: ["HB", "#0e8f9c"],
+        omar: ["OH", "#64748b"],
+        aisha: ["AK", "#c2410c"],
+      };
+      const av = (k, s, x) =>
+        '<span class="av" style="width:' +
+        s +
+        "px;height:" +
+        s +
+        "px;background:" +
+        P[k][1] +
+        ";font-size:" +
+        Math.round(s * 0.4) +
+        "px;" +
+        (x || "") +
+        '">' +
+        P[k][0] +
+        "</span>";
+      const slot = (s, x) =>
+        '<i class="slot" style="width:' + s + "px;height:" + s + "px;" + (x || "") + '"></i>';
+      const dot = (c, s, x) =>
+        '<i style="display:block;flex:none;width:' +
+        s +
+        "px;height:" +
+        s +
+        "px;border-radius:50%;background:" +
+        c +
+        ";" +
+        (x || "") +
+        '"></i>';
+      const tool = (n, bg, s, r) =>
+        '<span class="row" style="width:' +
+        s +
+        "px;height:" +
+        s +
+        "px;border-radius:" +
+        (r || 6) +
+        "px;background:" +
+        bg +
+        ';color:#fff;justify-content:center;flex:none">' +
+        ic(n, Math.round(s * 0.58), 1.8) +
+        "</span>";
+
+      /* ================= scene 1: Slate (team chat) ================= */
+      const sbItem = (icon, text, o) => {
+        o = o || {};
+        return (
+          '<div class="row" style="height:28px;margin:0 8px;padding:0 8px;gap:8px;border-radius:6px;font-size:15px;line-height:28px;color:' +
+          (o.on || o.b ? "#fff" : "rgba(255,255,255,.72)") +
+          ";font-weight:" +
+          (o.b ? 700 : 400) +
+          ";background:" +
+          (o.on ? "#1264a3" : "transparent") +
+          '">' +
+          icon +
+          '<span class="nw" style="flex:1">' +
+          text +
+          "</span>" +
+          (o.n
+            ? '<span style="background:#e01e5a;color:#fff;font-size:11px;font-weight:700;border-radius:9px;padding:1px 6px;line-height:15px">' +
+              o.n +
+              "</span>"
+            : "") +
+          "</div>"
+        );
+      };
+      const ch = (t, o) => sbItem(ic("hash", 14, 2), t, o);
+      const dm = (k, t, on) =>
+        sbItem(
+          '<span style="position:relative;display:block;width:20px;height:20px;flex:none">' +
+            av(k, 20, "font-size:9px") +
+            '<i style="position:absolute;right:-3px;bottom:-3px;width:9px;height:9px;border-radius:50%;background:' +
+            (on ? "#2bac76" : "#4b2150") +
+            ";border:2px solid #4b2150;box-shadow:inset 0 0 0 1px " +
+            (on ? "#2bac76" : "rgba(255,255,255,.6)") +
+            '"></i></span>',
+          t,
+        );
+      const secHead = (t) =>
+        '<div class="row" style="height:28px;margin:6px 8px 0;padding:0 8px;gap:6px;font-size:15px;color:rgba(255,255,255,.72)">' +
+        ic("chevDown", 13, 2) +
+        t +
+        "</div>";
+      const rail = (i, t, on, badge) =>
+        '<div class="col" style="align-items:center;gap:3px;font-size:11px;color:rgba(255,255,255,.85);position:relative"><span class="row" style="width:36px;height:36px;border-radius:9px;justify-content:center;background:' +
+        (on ? "rgba(255,255,255,.22)" : "transparent") +
+        '">' +
+        ic(i, 20, 1.6) +
+        "</span>" +
+        t +
+        (badge
+          ? '<i style="position:absolute;right:11px;top:-2px;width:10px;height:10px;border-radius:50%;background:#e01e5a;border:2px solid #2f1034"></i>'
+          : "") +
+        "</div>";
+      const rxn = (inner, on) =>
+        '<span class="row nw" style="height:24px;padding:0 8px;gap:5px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid ' +
+        (on ? "#1264a3" : "#dddddd") +
+        ";background:" +
+        (on ? "#e8f5fa" : "#f8f8f8") +
+        ";color:" +
+        (on ? "#0b4c8c" : "#616061") +
+        '">' +
+        inner +
+        "</span>";
+      const mhead = (name, time) =>
+        '<div class="row nw" style="gap:8px;height:22px"><b style="font-size:15px;font-weight:700;color:#1d1c1d">' +
+        name +
+        '</b><span style="font-size:12px;color:#616061">' +
+        time +
+        "</span></div>";
+      const mrow = (h, left, body) =>
+        '<div class="row" style="align-items:flex-start;height:' +
+        h +
+        'px;padding:8px 20px;gap:10px;overflow:hidden">' +
+        left +
+        '<div class="col" style="flex:1;min-width:0">' +
+        body +
+        "</div></div>";
+      const mtext = (t) =>
+        '<div style="font-size:15px;line-height:22px;color:#1d1c1d;width:440px">' + t + "</div>";
+
+      document.querySelector(S + "#amc-s1 .cam").innerHTML =
+        '<div class="win" style="left:100px;top:40px;width:1300px;height:900px;border-radius:12px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 40px 90px rgba(10,8,40,.5)">' +
+        '<div class="row" style="height:44px;flex:none;background:#3a1840;padding:0 16px;gap:14px;color:rgba(255,255,255,.7)">' +
+        '<span class="row" style="gap:8px"><i class="tl" style="background:#ff5f57"></i><i class="tl" style="background:#febc2e"></i><i class="tl" style="background:#28c840"></i></span><span style="width:40px"></span>' +
+        ic("arrowLeft", 16) +
+        ic("arrowRight", 16) +
+        ic("clock", 16) +
+        '<div class="row" style="flex:1;max-width:560px;margin:0 auto;height:28px;border-radius:7px;background:rgba(255,255,255,.2);padding:0 10px;gap:8px;color:#fff;font-size:13px">' +
+        ic("search", 14) +
+        "Search Northwind</div>" +
+        ic("help", 17) +
+        "</div>" +
+        '<div class="row" style="flex:1;align-items:stretch;min-height:0">' +
+        /* rail */
+        '<div class="col" style="width:64px;flex:none;background:#2f1034;align-items:center;padding:12px 0;gap:16px"><span class="row" style="width:38px;height:38px;border-radius:10px;background:#fff;color:#3a1840;justify-content:center;font-weight:800;font-size:19px">N</span>' +
+        rail("home", "Home", true) +
+        rail("msg", "DMs", false, true) +
+        rail("bell", "Activity", false) +
+        rail("more", "More", false) +
+        '<div class="col" style="margin-top:auto;align-items:center;gap:14px"><span class="row" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.18);justify-content:center;color:#fff">' +
+        ic("plus", 18, 2) +
+        '</span><span style="position:relative;display:block;width:38px;height:38px">' +
+        av("maya", 38) +
+        '<i style="position:absolute;right:-3px;bottom:-3px;width:12px;height:12px;border-radius:50%;background:#2bac76;border:2px solid #2f1034"></i></span></div></div>' +
+        /* sidebar */
+        '<div class="col" style="width:250px;flex:none;background:#4b2150;padding-top:10px;overflow:hidden">' +
+        '<div class="row" style="height:36px;padding:0 16px;gap:6px;color:#fff;font-size:18px;font-weight:800;margin-bottom:6px">Northwind' +
+        ic("chevDown", 15, 2) +
+        '<span style="margin-left:auto" class="row">' +
+        ic("edit", 17, 1.8) +
+        "</span></div>" +
+        sbItem(ic("msgSq", 16), "Threads", { b: 1 }) +
+        sbItem(ic("headphones", 16), "Huddles") +
+        sbItem(ic("send", 16), "Drafts &amp; sent") +
+        sbItem(ic("bookmark", 16), "Saved items") +
+        secHead("Channels") +
+        ch("general") +
+        ch("announcements") +
+        ch("eng-platform", { on: 1 }) +
+        ch("eng-releases", { b: 1, n: 3 }) +
+        ch("design-crit") +
+        ch("launch-q4", { b: 1 }) +
+        ch("incidents") +
+        ch("random") +
+        sbItem(ic("plus", 14, 2), "Add channels") +
+        secHead("Direct messages") +
+        dm("maya", "Maya Chen (you)", 1) +
+        dm("liam", "Liam Ortiz", 1) +
+        dm("priya", "Priya Nair", 1) +
+        dm("daniel", "Daniel Kim", 0) +
+        dm("sofia", "Sofia Reyes", 1) +
+        "</div>" +
+        /* main */
+        '<div class="col" style="width:606px;flex:none;min-width:0;border-right:1px solid #e0e0e0">' +
+        '<div class="row" style="height:56px;flex:none;padding:0 20px;gap:10px;border-bottom:1px solid #e8e8e8"><b class="row" style="font-size:18px;font-weight:800;gap:5px">' +
+        ic("hash", 17, 2.2) +
+        "eng-platform</b>" +
+        ic("star", 16) +
+        '<span class="row" style="margin-left:auto;gap:12px"><span class="row" style="gap:0">' +
+        av("liam", 24, "border:2px solid #fff;font-size:10px") +
+        av("priya", 24, "border:2px solid #fff;margin-left:-6px;font-size:10px") +
+        av("daniel", 24, "border:2px solid #fff;margin-left:-6px;font-size:10px") +
+        '<span style="margin-left:6px;font-size:13px;color:#616061;font-weight:600">27</span></span><span class="row" style="height:28px;padding:0 10px;gap:6px;border:1px solid #c9c9c9;border-radius:7px;font-size:13px;font-weight:600;color:#1d1c1d">' +
+        ic("headphones", 15) +
+        "Huddle</span></span></div>" +
+        '<div class="row" style="height:38px;flex:none;padding:0 20px;gap:22px;font-size:13px;color:#616061;border-bottom:1px solid #eee"><b style="color:#1d1c1d;font-weight:600;height:38px;display:flex;align-items:center;box-shadow:inset 0 -2px 0 #1264a3">Messages</b><span>Pins 4</span><span>Files</span>' +
+        ic("plus", 14) +
+        "</div>" +
+        '<div style="flex:1;overflow:hidden;position:relative">' +
+        '<div class="row" style="height:40px;padding:0 20px"><i style="flex:1;height:1px;background:#e0e0e0"></i><span class="row" style="height:26px;padding:0 12px;gap:4px;border:1px solid #d6d6d6;border-radius:13px;font-size:12px;font-weight:700;color:#1d1c1d;margin:0 8px">Wednesday, October 28' +
+        ic("chevDown", 12, 2) +
+        '</span><i style="flex:1;height:1px;background:#e0e0e0"></i></div>' +
+        mrow(
+          88,
+          av("priya", 44),
+          mhead("Priya Nair", "9:31 AM") +
+            mtext(
+              "Heads up: the checkout e2e suite is flaky again on staging. Re-running the pipeline now, will post results here.",
+            ),
+        ) +
+        mrow(
+          272,
+          slot(44),
+          mhead("Maya Chen", "9:47 AM") +
+            mtext(
+              "Pushed the fix for the WebSocket reconnect on chat navigation. PR is up, could someone review before standup?",
+            ) +
+            '<div class="row" style="margin-top:8px;align-items:stretch;gap:10px;height:112px"><i style="display:block;width:4px;border-radius:2px;background:#ddd"></i><div class="col" style="gap:3px;width:420px"><div class="row" style="gap:6px;font-size:13px;font-weight:700;color:#1d1c1d;height:18px">' +
+            tool("pr", "#24292f", 16, 4) +
+            'Forge</div><div data-layout-allow-overflow style="font-size:15px;font-weight:700;color:#1264a3;line-height:20px;height:40px;overflow:hidden">Fix WebSocket reconnect on chat navigation by northwind-eng · Pull Request #4128 · northwind/web-app</div><div style="font-size:13px;line-height:18px;color:#616061;height:36px;overflow:hidden">Open · maya-chen wants to merge 3 commits into main · +47 −12 · 3 files changed</div></div></div>' +
+            '<div class="row" style="gap:6px;margin-top:10px">' +
+            rxn(
+              '<span class="stack"><span class="rx1a">👀 2</span><span class="rx1b" style="opacity:0">👀 3</span></span>',
+              1,
+            ) +
+            rxn("✅ 1") +
+            rxn("🚀 2") +
+            '<span class="row" style="width:34px;height:24px;border-radius:12px;border:1px solid #ddd;justify-content:center;color:#616061">' +
+            ic("smile", 14) +
+            "</span></div>" +
+            '<div class="row" style="gap:6px;margin-top:10px;height:24px">' +
+            av("daniel", 22, "font-size:9px") +
+            av("liam", 22, "font-size:9px") +
+            av("priya", 22, "font-size:9px") +
+            '<span style="font-size:13px;font-weight:700;color:#1264a3;margin-left:2px">3 replies</span><span style="font-size:12px;color:#616061;margin-left:4px">Last reply 4 minutes ago</span></div>',
+        ) +
+        mrow(
+          74,
+          av("daniel", 44),
+          mhead("Daniel Kim", "9:52 AM") + mtext("On it. I will leave comments in the PR."),
+        ) +
+        "</div>" +
+        '<div style="flex:none;padding:0 20px 18px"><div class="col" style="height:92px;border:1px solid #c9c9c9;border-radius:9px;padding:12px;justify-content:space-between"><span style="font-size:15px;color:#868686">Message #eng-platform</span><span class="row" style="gap:14px;color:#616061">' +
+        ic("plus", 16) +
+        ic("smile", 16) +
+        ic("user", 16) +
+        ic("video", 16) +
+        ic("mic", 16) +
+        '<span style="margin-left:auto;color:#b0b0b0">' +
+        ic("send", 17) +
+        "</span></span></div></div>" +
+        "</div>" +
+        /* thread */
+        '<div class="col" style="flex:1;min-width:0;background:#fff">' +
+        '<div class="row" style="height:56px;flex:none;padding:0 18px;gap:8px;border-bottom:1px solid #e8e8e8"><b style="font-size:16px;font-weight:800">Thread</b><span style="font-size:13px;color:#616061">#eng-platform</span><span style="margin-left:auto;color:#616061">' +
+        ic("x", 18) +
+        "</span></div>" +
+        '<div class="row" style="align-items:flex-start;height:132px;padding:12px 18px;gap:10px;overflow:hidden">' +
+        av("maya", 36) +
+        '<div class="col" style="min-width:0"><div class="row" style="gap:8px;height:20px"><b style="font-size:14px;font-weight:700">Maya Chen</b><span style="font-size:12px;color:#616061">9:47 AM</span></div><div style="font-size:14px;line-height:20px;color:#1d1c1d">Pushed the fix for the WebSocket reconnect on chat navigation. PR is up, could someone review before standup?</div></div></div>' +
+        '<div class="row" style="height:28px;padding:0 18px;gap:8px;font-size:12px;color:#616061"><span>3 replies</span><i style="flex:1;height:1px;background:#e0e0e0"></i></div>' +
+        '<div class="row" style="align-items:flex-start;height:96px;padding:10px 18px;gap:10px;overflow:hidden">' +
+        av("liam", 36) +
+        '<div class="col"><div class="row" style="gap:8px;height:20px"><b style="font-size:14px">Liam Ortiz</b><span style="font-size:12px;color:#616061">9:55 AM</span></div><div style="font-size:14px;line-height:20px">Nice, this also fixes the double subscribe we saw in the error log yesterday.</div></div></div>' +
+        '<div class="row" style="align-items:flex-start;height:116px;padding:10px 18px;gap:10px;overflow:hidden">' +
+        av("priya", 36) +
+        '<div class="col"><div class="row" style="gap:8px;height:20px"><b style="font-size:14px">Priya Nair</b><span style="font-size:12px;color:#616061">10:01 AM</span></div><div style="font-size:14px;line-height:20px">LGTM on the hook change. One question on the cleanup path, left a comment on line 31.</div></div></div>' +
+        '<div class="row" style="align-items:flex-start;height:80px;padding:10px 18px;gap:10px;overflow:hidden">' +
+        av("daniel", 36) +
+        '<div class="col"><div class="row" style="gap:8px;height:20px"><b style="font-size:14px">Daniel Kim</b><span style="font-size:12px;color:#616061">10:04 AM</span></div><div style="font-size:14px;line-height:20px">Approved. Merging once e2e is green.</div></div></div>' +
+        '<div style="margin-top:auto;padding:0 18px 18px"><div class="row" style="height:44px;border:1px solid #c9c9c9;border-radius:9px;padding:0 12px;font-size:14px;color:#868686">Reply...</div></div>' +
+        "</div></div></div>";
+
+      /* ================= scene 2: Cadence (calendar) ================= */
+      const CC = {
+        B: ["#dbe8ff", "#4c8bf5", "#1d3f82"],
+        G: ["#d9f2e2", "#34a853", "#17562c"],
+        P: ["#eadfff", "#8b5cf6", "#46267f"],
+        O: ["#ffe7d1", "#f08c2e", "#7a3d0a"],
+        R: ["#ffdde2", "#e5484d", "#7d1f26"],
+        Y: ["#fff2c2", "#e0a800", "#6b5000"],
+        K: ["#ececec", "#8e8e93", "#3c3c43"],
+      };
+      const EV = [
+        [0, 9, 0.5, "Daily standup", "B"],
+        [0, 10, 1, "Design crit", "P"],
+        [0, 11.5, 1, "Lunch with Rob", "O"],
+        [0, 13, 1, "Sprint planning", "B"],
+        [0, 14.5, 0.75, "1:1 with Priya", "G"],
+        [0, 16, 1, "Interview: Staff Engineer", "R"],
+        [1, 9, 0.5, "Daily standup", "B"],
+        [1, 9.75, 1, "API review", "G"],
+        [1, 11, 1, "Customer call: Acme Corp", "R"],
+        [1, 13, 1.5, "Deep work", "Y"],
+        [1, 15, 1, "Hiring sync", "P"],
+        [1, 16.5, 0.5, "Inbox zero", "K"],
+        [2, 9, 0.5, "Daily standup", "B"],
+        [2, 10, 1.5, "Roadmap offsite prep", "P"],
+        [2, 12, 1, "Lunch and learn", "O"],
+        [2, 13.5, 1, "Incident review: ws-gateway", "R"],
+        [2, 15, 0.75, "1:1 with Liam", "G"],
+        [2, 16, 1.5, "Focus: PR reviews", "Y"],
+        [3, 9, 0.5, "Daily standup", "B"],
+        [3, 11.5, 1, "Eng all-hands", "B"],
+        [3, 13, 0.5, "Coffee with Sofia", "O"],
+        [3, 14, 1, "Pricing review", "G"],
+        [3, 15.5, 1, "Design handoff", "P"],
+        [4, 9, 0.5, "Daily standup", "B"],
+        [4, 10, 1, "Demo day", "P"],
+        [4, 11.5, 0.5, "Retro", "B"],
+        [4, 13, 1, "Lunch with Hannah", "O"],
+        [4, 14.5, 1.5, "Deep work", "Y"],
+        [4, 16.5, 0.5, "Weekly update", "K"],
+        [5, 10, 1.5, "Climbing gym", "O"],
+        [6, 11, 1, "Brunch with Omar", "O"],
+      ];
+      const fmt = (h) => {
+        const hh = Math.floor(h),
+          mm = Math.round((h - hh) * 60);
+        const ap = hh >= 12 ? "PM" : "AM";
+        const h12 = hh > 12 ? hh - 12 : hh;
+        return h12 + ":" + (mm < 10 ? "0" : "") + mm + ap;
+      };
+      let evH = "";
+      EV.forEach((e) => {
+        const c = CC[e[4]],
+          top = (e[1] - 8) * 64,
+          h = e[2] * 64 - 2;
+        evH +=
+          '<div style="position:absolute;left:' +
+          (56 + e[0] * 187 + 3) +
+          "px;width:181px;top:" +
+          top +
+          "px;height:" +
+          h +
+          "px;background:" +
+          c[0] +
+          ";box-shadow:inset 3px 0 0 " +
+          c[1] +
+          ";border-radius:4px;padding:3px 7px 0 9px;overflow:hidden;color:" +
+          c[2] +
+          ';font-size:12px;line-height:15px;font-weight:600">' +
+          e[3] +
+          (e[2] >= 1
+            ? '<div style="font-weight:400;opacity:.75;font-size:11px">' +
+              fmt(e[1]) +
+              " – " +
+              fmt(e[1] + e[2]) +
+              "</div>"
+            : "") +
+          "</div>";
+      });
+      /* the selected event */
+      evH +=
+        '<div style="position:absolute;left:' +
+        (56 + 3 * 187 + 3) +
+        'px;width:181px;top:128px;height:46px;background:#3b82f6;border-radius:4px;padding:3px 7px 0 9px;color:#fff;font-size:12px;line-height:15px;font-weight:600;overflow:hidden;box-shadow:0 0 0 2px #fff,0 0 0 3.5px #3b82f6">Q4 roadmap review<div style="font-weight:400;opacity:.85;font-size:11px">10:00 – 10:45AM</div></div>';
+      let hrH = "";
+      for (let h = 8; h <= 18; h++) {
+        hrH +=
+          '<div style="position:absolute;left:0;right:0;top:' +
+          (h - 8) * 64 +
+          'px;height:1px;background:#eeeeee"></div><div style="position:absolute;left:0;width:48px;top:' +
+          ((h - 8) * 64 - 8) +
+          'px;text-align:right;font-size:11px;color:#8e8e93">' +
+          (h === 12 ? "12 PM" : h > 12 ? h - 12 + " PM" : h + " AM") +
+          "</div>";
+      }
+      let vlH = "";
+      for (let d = 0; d <= 7; d++)
+        vlH +=
+          '<div style="position:absolute;top:-84px;height:' +
+          (84 + 704) +
+          "px;left:" +
+          (56 + d * 187) +
+          'px;width:1px;background:#eeeeee"></div>';
+      const mini = (() => {
+        const days = [
+          28, 29, 30, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+          23, 24, 25, 26, 27, 28, 29, 30, 31, 1, 2, 3, 4, 5, 6,
+        ];
+        let s =
+          '<div style="display:grid;grid-template-columns:repeat(7,28px);gap:2px 4px;font-size:11px;text-align:center">';
+        ["M", "T", "W", "T", "F", "S", "S"].forEach(
+          (d) => (s += '<span style="color:#8e8e93;line-height:20px">' + d + "</span>"),
+        );
+        days.forEach((d, i) => {
+          const out = i < 3 || i >= 34,
+            today = i === 30 && d === 28 ? false : false;
+          const isToday = i === 30;
+          s +=
+            '<span style="line-height:26px;border-radius:50%;color:' +
+            (isToday ? "#fff" : out ? "#c4c4c8" : "#1c1c1e") +
+            ";background:" +
+            (isToday ? "#e5484d" : i >= 28 && i <= 34 ? "#f1f1f3" : "transparent") +
+            ";font-weight:" +
+            (isToday ? 600 : 400) +
+            '">' +
+            d +
+            "</span>";
+        });
+        return s + "</div>";
+      })();
+      const calRow = (c, t, on) =>
+        '<div class="row" style="height:28px;gap:10px;font-size:13px;color:#1c1c1e"><i style="display:block;width:14px;height:14px;border-radius:4px;background:' +
+        (on ? c : "transparent") +
+        ";box-shadow:inset 0 0 0 1.5px " +
+        c +
+        '"></i>' +
+        t +
+        "</div>";
+      const guest = (k, name, sub, rs, tagTxt) =>
+        '<div class="row" style="height:52px;padding:0 20px;gap:12px">' +
+        (k === "maya" ? slot(40) : av(k, 40)) +
+        '<div class="col" style="flex:1;min-width:0"><div class="row nw" style="gap:8px;font-size:14px;font-weight:500;color:#1c1c1e;line-height:18px">' +
+        name +
+        (tagTxt
+          ? '<span style="font-size:11px;font-weight:500;color:#6b6b72;background:#f1f1f3;border-radius:4px;padding:0 6px;line-height:17px">' +
+            tagTxt +
+            "</span>"
+          : "") +
+        '</div><div class="nw" style="font-size:12px;color:#8e8e93;line-height:17px">' +
+        sub +
+        '</div></div><span style="color:' +
+        rs +
+        '">' +
+        ic(rs === "#34a853" ? "circleCheck" : "help", 18) +
+        "</span></div>";
+      const dayHead = (n, d, today) =>
+        '<div style="position:absolute;left:' +
+        (56 + n * 187) +
+        'px;width:187px;top:-84px;height:84px;text-align:center"><div style="padding-top:12px;font-size:11px;color:#8e8e93;letter-spacing:.04em">' +
+        ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"][n] +
+        '</div><div style="margin:4px auto 0;width:34px;height:34px;border-radius:50%;line-height:34px;font-size:18px;font-weight:' +
+        (today ? 600 : 400) +
+        ";color:" +
+        (today ? "#fff" : n > 4 ? "#8e8e93" : "#1c1c1e") +
+        ";background:" +
+        (today ? "#e5484d" : "transparent") +
+        '">' +
+        d +
+        "</div></div>";
+      document.querySelector(S + "#amc-s2 .cam").innerHTML =
+        '<div style="position:absolute;left:0;top:0;width:232px;height:1000px;border-right:1px solid #ececee;background:#fafafb;padding:16px 18px">' +
+        '<div class="row" style="height:32px;gap:8px;margin-bottom:12px"><span class="row" style="width:24px;height:24px;border-radius:6px;background:#1c1c1e;color:#fff;justify-content:center">' +
+        ic("calendar", 14, 2) +
+        '</span><b style="font-size:15px;font-weight:600;color:#1c1c1e">Cadence</b><span style="margin-left:auto;color:#8e8e93">' +
+        ic("panel", 16) +
+        "</span></div>" +
+        '<div class="row" style="height:28px;justify-content:space-between;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:6px">October 2026<span class="row" style="gap:10px;color:#8e8e93">' +
+        ic("chevLeft", 14) +
+        ic("chevRight", 14) +
+        "</span></div>" +
+        mini +
+        '<div style="margin-top:26px;font-size:11px;color:#8e8e93;letter-spacing:.04em;height:24px">CALENDARS</div>' +
+        calRow("#3b82f6", "maya.chen@northwind.io", 1) +
+        calRow("#34a853", "Northwind Engineering", 1) +
+        calRow("#8b5cf6", "Product Roadmap", 1) +
+        calRow("#f08c2e", "Personal", 1) +
+        calRow("#8e8e93", "US Holidays", 0) +
+        '<div style="margin-top:26px;font-size:11px;color:#8e8e93;letter-spacing:.04em;height:24px">TEAMMATES</div>' +
+        '<div class="row" style="height:30px;gap:8px;font-size:13px">' +
+        av("liam", 20, "font-size:8px") +
+        'Liam Ortiz</div><div class="row" style="height:30px;gap:8px;font-size:13px">' +
+        av("priya", 20, "font-size:8px") +
+        'Priya Nair</div><div class="row" style="height:30px;gap:8px;font-size:13px">' +
+        av("sofia", 20, "font-size:8px") +
+        "Sofia Reyes</div></div>" +
+        '<div class="row" style="position:absolute;left:232px;top:0;width:1368px;height:56px;padding:0 20px;gap:12px;border-bottom:1px solid #ececee"><b style="font-size:20px;font-weight:600;color:#1c1c1e">October 2026</b><span style="font-size:13px;color:#8e8e93">Week 44</span>' +
+        '<span class="row" style="margin-left:auto;gap:12px;color:#6b6b72;font-size:13px"><span class="row" style="height:30px;padding:0 12px;border:1px solid #e2e2e6;border-radius:7px;color:#1c1c1e;font-weight:500">Today</span>' +
+        ic("chevLeft", 16) +
+        ic("chevRight", 16) +
+        '<span class="row" style="height:30px;padding:0 10px;gap:6px;border:1px solid #e2e2e6;border-radius:7px;color:#1c1c1e;font-weight:500">Week' +
+        ic("chevDown", 13) +
+        "</span>" +
+        ic("search", 17) +
+        ic("settings", 17) +
+        "</span></div>" +
+        '<div style="position:absolute;left:232px;top:138px;width:1368px;height:704px">' +
+        vlH +
+        dayHead(0, 26) +
+        dayHead(1, 27) +
+        dayHead(2, 28, 1) +
+        dayHead(3, 29) +
+        dayHead(4, 30) +
+        dayHead(5, 31) +
+        dayHead(6, 1) +
+        hrH +
+        evH +
+        '<div style="position:absolute;left:' +
+        (56 + 2 * 187) +
+        "px;width:187px;top:" +
+        1.8 * 64 +
+        'px;height:2px;background:#e5484d"></div><i style="position:absolute;left:' +
+        (56 + 2 * 187 - 5) +
+        "px;top:" +
+        (1.8 * 64 - 4) +
+        'px;width:10px;height:10px;border-radius:50%;background:#e5484d"></i></div>' +
+        '<div class="pop" style="position:absolute;left:1050px;top:168px;width:380px;height:520px;border-radius:12px;background:#fff;border:1px solid #e2e2e6;box-shadow:0 18px 50px rgba(20,20,40,.22),0 2px 6px rgba(20,20,40,.08);overflow:hidden">' +
+        '<div class="row" style="height:44px;padding:0 14px;gap:12px;color:#6b6b72"><i style="display:block;width:10px;height:10px;border-radius:3px;background:#3b82f6"></i><span style="font-size:12px">maya.chen@northwind.io</span><span class="row" style="margin-left:auto;gap:12px">' +
+        ic("link", 16) +
+        ic("trash", 16) +
+        ic("x", 17) +
+        "</span></div>" +
+        '<div class="row" style="height:44px;padding:0 20px;font-size:20px;font-weight:600;color:#1c1c1e">Q4 roadmap review</div>' +
+        '<div class="row" style="height:52px;padding:0 20px;gap:12px;color:#6b6b72">' +
+        ic("clock", 18) +
+        '<div class="col"><span style="font-size:14px;color:#1c1c1e;line-height:19px">Thu, Oct 29 · 10:00 – 10:45 AM</span><span style="font-size:12px;line-height:17px">Pacific Time · Every 2 weeks</span></div></div>' +
+        '<div class="row" style="height:56px;padding:0 20px;gap:12px;color:#6b6b72">' +
+        ic("video", 18) +
+        '<span class="row" style="height:32px;padding:0 14px;border-radius:7px;background:#2563eb;color:#fff;font-size:13px;font-weight:500">Join with Convene</span><span class="nw" style="font-size:12px">convene.link/q4-roadmap</span></div>' +
+        '<div class="row" style="height:48px;padding:0 20px;gap:12px;color:#6b6b72">' +
+        ic("users", 18) +
+        '<div class="col"><span style="font-size:14px;color:#1c1c1e;line-height:19px">6 guests</span><span style="font-size:12px;line-height:17px">5 yes · 1 awaiting</span></div></div>' +
+        guest("maya", "Maya Chen", "maya.chen@northwind.io", "#34a853", "Organizer") +
+        guest("liam", "Liam Ortiz", "liam.ortiz@northwind.io", "#34a853") +
+        guest("priya", "Priya Nair", "priya.nair@northwind.io", "#34a853") +
+        guest("daniel", "Daniel Kim", "daniel.kim@northwind.io", "#b0b0b6") +
+        '<div class="row" style="height:60px;padding:0 20px;gap:8px;border-top:1px solid #ececee;margin-top:8px"><span style="font-size:13px;color:#6b6b72;margin-right:auto">Going?</span><span class="row" style="height:30px;padding:0 14px;border-radius:7px;background:#1c1c1e;color:#fff;font-size:13px;font-weight:500">Yes</span><span class="row" style="height:30px;padding:0 14px;border-radius:7px;border:1px solid #e2e2e6;font-size:13px;color:#1c1c1e">Maybe</span><span class="row" style="height:30px;padding:0 14px;border-radius:7px;border:1px solid #e2e2e6;font-size:13px;color:#1c1c1e">No</span></div>' +
+        "</div>";
+
+      /* ================= scene 3: Tessel (issue tracker, dark) ================= */
+      const stI = (t) =>
+        ({
+          todo: '<svg width="14" height="14" viewBox="0 0 14 14" class="i"><circle cx="7" cy="7" r="5.5" stroke="#8a8f98" stroke-width="1.5"/></svg>',
+          prog: '<svg width="14" height="14" viewBox="0 0 14 14" class="i"><circle cx="7" cy="7" r="5.5" stroke="#f2c94c" stroke-width="1.5"/><path d="M7 3.6a3.4 3.4 0 0 1 0 6.8Z" fill="#f2c94c" stroke="none"/></svg>',
+          rev: '<svg width="14" height="14" viewBox="0 0 14 14" class="i"><circle cx="7" cy="7" r="5.5" stroke="#4cb782" stroke-width="1.5"/><path d="M7 3.6a3.4 3.4 0 1 1-3.4 3.4H7Z" fill="#4cb782" stroke="none"/></svg>',
+          done: '<svg width="14" height="14" viewBox="0 0 14 14" class="i"><circle cx="7" cy="7" r="7" fill="#6e79d6" stroke="none"/><path d="m4.2 7.2 2 2 3.6-3.8" stroke="#fff" stroke-width="1.5"/></svg>',
+        })[t];
+      const tsItem = (i, t, o) => {
+        o = o || {};
+        return (
+          '<div class="row" style="height:28px;margin:0 8px;padding:0 8px;gap:9px;border-radius:6px;font-size:13px;color:' +
+          (o.on ? "#f2f3f5" : "#9a9fa8") +
+          ";background:" +
+          (o.on ? "rgba(255,255,255,.08)" : "transparent") +
+          ";font-weight:" +
+          (o.on ? 500 : 400) +
+          '">' +
+          i +
+          '<span class="nw" style="flex:1">' +
+          t +
+          "</span>" +
+          (o.n ? '<span style="font-size:11px;color:#8a8f98">' + o.n + "</span>" : "") +
+          "</div>"
+        );
+      };
+      const tsHead = (t) =>
+        '<div style="height:30px;margin:8px 8px 0;padding:8px 8px 0;font-size:12px;color:#6b7078;font-weight:500">' +
+        t +
+        "</div>";
+      const subRow = (st, id, t, k) =>
+        '<div class="row" style="height:36px;gap:10px;border-top:1px solid rgba(255,255,255,.06);font-size:13px;color:#d2d4d9">' +
+        stI(st) +
+        '<span class="mono" style="font-size:12px;color:#7c818a;width:62px">' +
+        id +
+        '</span><span style="flex:1" class="nw">' +
+        t +
+        "</span>" +
+        av(k, 18, "font-size:7px") +
+        "</div>";
+      const actRow = (i, html) =>
+        '<div class="row" style="height:32px;gap:10px;font-size:13px;color:#8a8f98;padding-left:11px"><span style="width:18px;display:flex;justify-content:center">' +
+        i +
+        "</span><span>" +
+        html +
+        "</span></div>";
+      const prop = (l, v) =>
+        '<div class="row" style="height:34px;gap:10px;font-size:13px"><span style="width:76px;color:#7c818a">' +
+        l +
+        '</span><span class="row nw" style="gap:8px;color:#e6e7ea">' +
+        v +
+        "</span></div>";
+      document.querySelector(S + "#amc-s3 .cam").innerHTML =
+        '<div class="col" style="position:absolute;left:0;top:0;width:244px;height:1000px;background:#0a0b0c;border-right:1px solid rgba(255,255,255,.07);padding-top:12px">' +
+        '<div class="row" style="height:34px;padding:0 16px;gap:8px;color:#e6e7ea;font-size:13px;font-weight:600"><span class="row" style="width:20px;height:20px;border-radius:5px;background:#3d4350;justify-content:center;font-size:11px">N</span>Northwind' +
+        ic("chevDown", 13) +
+        '<span style="margin-left:auto" class="row">' +
+        ic("edit", 15) +
+        "</span></div>" +
+        tsItem(ic("search", 15), "Search", {}) +
+        tsItem(ic("inbox", 15), "Inbox", { n: 3 }) +
+        tsItem(ic("user", 15), "My issues") +
+        tsHead("Workspace") +
+        tsItem(ic("box", 15), "Projects") +
+        tsItem(ic("layers", 15), "Views") +
+        tsItem(ic("users", 15), "Members") +
+        tsHead("Your teams") +
+        tsItem(
+          '<span class="row" style="width:15px;height:15px;border-radius:4px;background:#6e79d6;justify-content:center;font-size:8px;font-weight:700;color:#fff">E</span>',
+          "Engineering",
+          {},
+        ) +
+        tsItem(ic("circleDot", 15), "Issues", { on: 1 }) +
+        tsItem(ic("refresh", 15), "Cycles") +
+        tsItem(ic("box", 15), "Projects") +
+        tsItem(
+          '<span class="row" style="width:15px;height:15px;border-radius:4px;background:#d6498b;justify-content:center;font-size:8px;font-weight:700;color:#fff">D</span>',
+          "Design",
+        ) +
+        tsItem(
+          '<span class="row" style="width:15px;height:15px;border-radius:4px;background:#2f9e77;justify-content:center;font-size:8px;font-weight:700;color:#fff">G</span>',
+          "Growth",
+        ) +
+        tsHead("Favorites") +
+        tsItem(ic("star", 15), "Chat reliability") +
+        tsItem(ic("star", 15), "Q4 launch board") +
+        "</div>" +
+        '<div class="row" style="position:absolute;left:244px;top:0;width:1356px;height:44px;padding:0 24px;gap:8px;border-bottom:1px solid rgba(255,255,255,.07);font-size:13px;color:#8a8f98">Engineering' +
+        ic("chevRight", 13) +
+        '<span class="mono" style="font-size:12px;color:#e6e7ea">ENG-2141</span><span style="margin-left:auto" class="row">' +
+        ic("chevDown", 15) +
+        "</span></div>" +
+        '<div style="position:absolute;left:244px;top:44px;width:1056px;height:956px;padding:28px 56px 0;overflow:hidden">' +
+        '<div style="height:44px;font-size:26px;line-height:34px;font-weight:600;color:#f2f3f5;letter-spacing:-.01em">Fix WebSocket reconnect on chat navigation</div>' +
+        '<div style="margin-top:16px;height:230px;overflow:hidden;font-size:14.5px;line-height:23px;color:#b6bac2;width:760px"><div style="height:70px">The chat socket reconnects every time the user switches conversations. The connection effect in <code class="mono" style="font-size:12.5px;background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;color:#e6e7ea">useChat</code> depends on <code class="mono" style="font-size:12.5px;background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;color:#e6e7ea">onMessage</code>, which changes with <code class="mono" style="font-size:12.5px;background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;color:#e6e7ea">chatId</code>.</div><div style="height:46px;margin-top:8px;color:#e6e7ea;font-weight:500">Expected</div><div style="height:24px">• One socket per session, stable across navigation</div><div style="height:24px">• No dropped messages while a new chat is created</div><div style="height:24px">• Reconnect with backoff only on network errors</div></div>' +
+        '<div class="row" style="margin-top:24px;height:34px;font-size:13px;color:#e6e7ea;font-weight:500;gap:8px;width:760px">Sub-issues<span style="color:#7c818a;font-weight:400">2/4</span><span style="margin-left:auto;color:#7c818a">' +
+        ic("plus", 15) +
+        "</span></div>" +
+        '<div style="width:760px">' +
+        subRow("done", "ENG-2142", "Move onMessage handler into a ref", "maya") +
+        subRow("prog", "ENG-2143", "Add reconnect backoff with jitter", "maya") +
+        subRow("todo", "ENG-2144", "Cover chat navigation in e2e suite", "liam") +
+        "</div>" +
+        '<div class="row" style="margin-top:24px;height:36px;width:760px;font-size:13px;color:#e6e7ea;font-weight:500">Activity<span style="margin-left:auto;font-size:12px;font-weight:400;color:#7c818a">Unsubscribe</span></div>' +
+        '<div style="width:760px;height:96px;overflow:hidden">' +
+        actRow(
+          ic("circleDot", 14),
+          '<b style="color:#c9ccd2;font-weight:500">Priya Nair</b> created the issue · 3d',
+        ) +
+        actRow(
+          stI("prog"),
+          '<b style="color:#c9ccd2;font-weight:500">Liam Ortiz</b> changed status from Todo to In Progress · 2d',
+        ) +
+        actRow(
+          stI("rev"),
+          '<b style="color:#c9ccd2;font-weight:500">Maya Chen</b> changed status to <span class="stk">In Review</span> · 1h',
+        ) +
+        "</div>" +
+        '<div class="row" style="margin-top:10px;align-items:flex-start;gap:12px;width:760px;height:170px">' +
+        slot(40) +
+        '<div class="col" style="flex:1;height:166px;border-radius:10px;background:#131416;border:1px solid rgba(255,255,255,.09);padding:12px 16px;overflow:hidden"><div class="row" style="height:22px;gap:8px;font-size:13px"><b style="color:#f2f3f5;font-weight:600">Maya Chen</b><span style="color:#7c818a">2h ago</span><span style="margin-left:auto;color:#7c818a">' +
+        ic("more", 16) +
+        '</span></div><div style="margin-top:6px;font-size:14px;line-height:22px;color:#c9ccd2;height:70px;overflow:hidden">Root cause is the effect depending on <code class="mono" style="font-size:12.5px;background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;color:#e6e7ea">onMessage</code>. Moved the handler into a ref so the socket stays open across chat navigation. PR is up: northwind/web-app#4128.</div><div class="row" style="margin-top:8px;gap:6px"><span class="row" style="height:24px;padding:0 8px;border-radius:12px;border:1px solid rgba(255,255,255,.12);font-size:12px;color:#c9ccd2">👍 3</span><span class="row" style="height:24px;padding:0 8px;border-radius:12px;border:1px solid rgba(255,255,255,.12);font-size:12px;color:#c9ccd2">🚀 1</span></div></div></div>' +
+        "</div>" +
+        '<div class="col" style="position:absolute;left:1300px;top:44px;width:300px;height:956px;border-left:1px solid rgba(255,255,255,.07);padding:20px 20px">' +
+        '<div style="height:28px;font-size:12px;color:#7c818a;font-weight:500">Properties</div>' +
+        prop(
+          "Status",
+          '<span class="stack"><span class="st1a row" style="gap:8px">' +
+            stI("prog") +
+            'In Progress</span><span class="st1b row" style="gap:8px;opacity:0">' +
+            stI("rev") +
+            "In Review</span></span>",
+        ) +
+        prop("Priority", ic("bars", 14) + "High") +
+        prop("Assignee", av("maya", 18, "font-size:7px") + "Maya Chen") +
+        prop("Estimate", ic("flag", 14) + "3 points") +
+        prop("Due date", ic("calendar", 14) + "Oct 30") +
+        '<div style="height:28px;margin-top:16px;font-size:12px;color:#7c818a;font-weight:500">Labels</div><div class="row" style="gap:6px"><span class="row" style="height:24px;padding:0 9px;gap:6px;border-radius:12px;border:1px solid rgba(255,255,255,.12);font-size:12px;color:#d2d4d9">' +
+        dot("#e5484d", 8) +
+        'Bug</span><span class="row" style="height:24px;padding:0 9px;gap:6px;border-radius:12px;border:1px solid rgba(255,255,255,.12);font-size:12px;color:#d2d4d9">' +
+        dot("#8b5cf6", 8) +
+        "Realtime</span></div>" +
+        '<div style="height:28px;margin-top:16px;font-size:12px;color:#7c818a;font-weight:500">Project</div><div class="row" style="height:30px;gap:8px;font-size:13px;color:#e6e7ea">' +
+        ic("box", 14) +
+        'Chat reliability</div><div class="row" style="height:30px;gap:8px;font-size:13px;color:#e6e7ea">' +
+        ic("refresh", 14) +
+        "Cycle 42</div></div>";
+
+      /* ================= scene 4: Forge (pull request review) ================= */
+      const GH = { bd: "#d0d7de", mut: "#59636e", ink: "#1f2328", link: "#0969da", hd: "#f6f8fa" };
+      const ghTab = (i, t, n, on) =>
+        '<div class="row" style="height:46px;padding:0 12px;gap:8px;font-size:14px;color:' +
+        GH.ink +
+        ";font-weight:" +
+        (on ? 600 : 400) +
+        ";box-shadow:" +
+        (on ? "inset 0 -2px 0 #fd8c73" : "none") +
+        '">' +
+        i +
+        t +
+        (n
+          ? '<span style="font-size:12px;background:#eaeef2;border-radius:10px;padding:0 6px;line-height:18px;font-weight:500">' +
+            n +
+            "</span>"
+          : "") +
+        "</div>";
+      const tlRow = (i, html, h) =>
+        '<div class="row" style="height:' +
+        (h || 40) +
+        "px;gap:10px;font-size:14px;color:" +
+        GH.mut +
+        ';padding-left:10px"><span class="row" style="width:32px;height:32px;border-radius:50%;background:#eaeef2;justify-content:center;color:' +
+        GH.mut +
+        ';margin-left:-1px">' +
+        i +
+        "</span><span>" +
+        html +
+        "</span></div>";
+      const code = (n, sign, txt, bg) =>
+        '<div class="row mono" style="height:22px;font-size:12px;line-height:22px;background:' +
+        (bg || "transparent") +
+        ";color:" +
+        GH.ink +
+        '"><span style="width:48px;text-align:right;padding-right:10px;color:#818b98;flex:none">' +
+        n +
+        '</span><span style="width:18px;flex:none;color:' +
+        GH.ink +
+        '">' +
+        sign +
+        '</span><span class="nw">' +
+        txt +
+        "</span></div>";
+      document.querySelector(S + "#amc-s4 .cam").innerHTML =
+        '<div class="row" style="position:absolute;left:0;top:0;width:1600px;height:64px;background:' +
+        GH.hd +
+        ";border-bottom:1px solid " +
+        GH.bd +
+        ";padding:0 32px;gap:16px;color:" +
+        GH.ink +
+        '"><span class="row" style="width:32px;height:32px;border-radius:50%;background:#1f2328;color:#fff;justify-content:center">' +
+        ic("branch", 18, 1.8) +
+        '</span><b style="font-size:14px;font-weight:600">northwind / web-app</b><span style="margin-left:auto" class="row"><span class="row" style="height:32px;width:300px;border:1px solid ' +
+        GH.bd +
+        ";border-radius:6px;padding:0 10px;gap:8px;font-size:13px;color:" +
+        GH.mut +
+        ';background:#fff">' +
+        ic("search", 14) +
+        'Type <b class="mono" style="border:1px solid ' +
+        GH.bd +
+        ';border-radius:4px;padding:0 5px;font-size:11px;font-weight:500">/</b> to search</span></span>' +
+        ic("plus", 18) +
+        ic("pr", 18) +
+        ic("bell", 18) +
+        av("maya", 32, "font-size:12px") +
+        "</div>" +
+        '<div style="position:absolute;left:160px;top:64px;width:1280px;height:936px">' +
+        '<div class="row" style="height:56px;gap:10px;font-size:16px;color:' +
+        GH.ink +
+        '">' +
+        ic("box", 18) +
+        '<span style="color:' +
+        GH.link +
+        '">northwind</span> / <b style="font-weight:600;color:' +
+        GH.link +
+        '">web-app</b><span style="font-size:12px;border:1px solid ' +
+        GH.bd +
+        ";border-radius:10px;padding:0 8px;line-height:20px;color:" +
+        GH.mut +
+        '">Private</span><span class="row" style="margin-left:auto;gap:8px;font-size:12px;font-weight:500">' +
+        '<span class="row" style="height:28px;padding:0 10px;gap:6px;border:1px solid ' +
+        GH.bd +
+        ";border-radius:6px;background:" +
+        GH.hd +
+        '">' +
+        ic("eye", 14) +
+        'Watch 41</span><span class="row" style="height:28px;padding:0 10px;gap:6px;border:1px solid ' +
+        GH.bd +
+        ";border-radius:6px;background:" +
+        GH.hd +
+        '">' +
+        ic("fork", 14) +
+        'Fork 118</span><span class="row" style="height:28px;padding:0 10px;gap:6px;border:1px solid ' +
+        GH.bd +
+        ";border-radius:6px;background:" +
+        GH.hd +
+        '">' +
+        ic("star", 14) +
+        "Star 2.3k</span></span></div>" +
+        '<div class="row" style="height:46px;border-bottom:1px solid ' +
+        GH.bd +
+        '">' +
+        ghTab(ic("file", 16), "Code") +
+        ghTab(ic("circleDot", 16), "Issues", "42") +
+        ghTab(ic("pr", 16), "Pull requests", "8", 1) +
+        ghTab(ic("circleCheck", 16), "Actions") +
+        ghTab(ic("layers", 16), "Projects") +
+        ghTab(ic("shield", 16), "Security") +
+        ghTab(ic("bars", 16), "Insights") +
+        "</div>" +
+        '<div class="row" style="height:68px;gap:10px;font-size:30px;color:' +
+        GH.ink +
+        ';letter-spacing:-.01em;padding-top:10px">Roll out token-bucket rate limiter to ws-gateway <span style="color:' +
+        GH.mut +
+        ';font-weight:300">#4119</span></div>' +
+        '<div class="row" style="height:48px;gap:10px;font-size:14px;color:' +
+        GH.mut +
+        ";border-bottom:1px solid " +
+        GH.bd +
+        '"><span class="row" style="height:32px;padding:0 12px;gap:6px;border-radius:16px;background:#1f883d;color:#fff;font-weight:500">' +
+        ic("pr", 16, 1.8) +
+        'Open</span><span><b style="color:' +
+        GH.ink +
+        ';font-weight:600">liam-ortiz</b> wants to merge 5 commits into <span class="mono" style="font-size:12px;background:#ddf4ff;color:' +
+        GH.link +
+        ';padding:1px 6px;border-radius:6px">main</span> from <span class="mono" style="font-size:12px;background:#ddf4ff;color:' +
+        GH.link +
+        ';padding:1px 6px;border-radius:6px">liam/ws-rate-limit</span></span></div>' +
+        '<div class="row" style="height:46px;border-bottom:1px solid ' +
+        GH.bd +
+        '">' +
+        ghTab(ic("msgSq", 16), "Conversation", "9", 1) +
+        ghTab(ic("commit", 16), "Commits", "5") +
+        ghTab(ic("circleCheck", 16), "Checks", "12") +
+        ghTab(ic("file", 16), "Files changed", "4") +
+        "</div>" +
+        '<div style="position:relative;padding:20px 0 0 0;height:640px;overflow:hidden"><i style="position:absolute;left:19px;top:0;bottom:0;width:2px;background:' +
+        GH.bd +
+        '"></i>' +
+        tlRow(
+          ic("commit", 16),
+          '<b style="color:' +
+            GH.ink +
+            ';font-weight:600">liam-ortiz</b> added 2 commits · yesterday',
+          40,
+        ) +
+        '<div style="padding-left:48px;height:84px"><div class="row mono" style="height:28px;gap:10px;font-size:12px;color:' +
+        GH.mut +
+        '"><span style="color:' +
+        GH.link +
+        '">a41f9c2</span><span style="color:' +
+        GH.ink +
+        ';font-family:var(--inter);font-size:13px">limiter: add burst config per tenant</span></div><div class="row mono" style="height:28px;gap:10px;font-size:12px;color:' +
+        GH.mut +
+        '"><span style="color:' +
+        GH.link +
+        '">7be03d1</span><span style="color:' +
+        GH.ink +
+        ';font-family:var(--inter);font-size:13px">gateway: reject with 429 and Retry-After</span></div></div>' +
+        '<div class="row" style="align-items:flex-start;gap:16px;margin-top:8px;height:420px">' +
+        slot(40) +
+        '<div class="col" style="width:820px;height:416px;border:1px solid ' +
+        GH.bd +
+        ';border-radius:6px;overflow:hidden;background:#fff"><div class="row" style="height:46px;flex:none;padding:0 16px;gap:8px;background:' +
+        GH.hd +
+        ";border-bottom:1px solid " +
+        GH.bd +
+        ";font-size:14px;color:" +
+        GH.mut +
+        '"><span class="row" style="width:22px;height:22px;border-radius:50%;background:#1f883d;color:#fff;justify-content:center">' +
+        ic("check", 13, 2.4) +
+        '</span><span><b style="color:' +
+        GH.ink +
+        ';font-weight:600">maya-chen</b> approved these changes <span style="color:' +
+        GH.mut +
+        '">12 minutes ago</span></span><span class="appr row" style="margin-left:auto;height:22px;padding:0 8px;border:1px solid #1f883d;color:#1a7f37;border-radius:11px;font-size:12px;font-weight:500">Approved</span></div>' +
+        '<div style="height:64px;flex:none;padding:12px 16px;font-size:14px;line-height:22px;color:' +
+        GH.ink +
+        '">Looks good. The burst size is conservative enough for a first rollout. Can we expose rejected requests as a metric before going to 100%?</div>' +
+        '<div style="margin:0 16px;border:1px solid ' +
+        GH.bd +
+        ';border-radius:6px;overflow:hidden;height:196px"><div class="row mono" style="height:34px;padding:0 12px;gap:8px;background:' +
+        GH.hd +
+        ";border-bottom:1px solid " +
+        GH.bd +
+        ";font-size:12px;color:" +
+        GH.ink +
+        '">gateway/limiter.go</div>' +
+        code(82, "", "func (l *Limiter) Allow(key string) bool {") +
+        code(83, "+", "    b := l.bucket(key)", "#dafbe1") +
+        code(84, "+", "    ok := b.take(1, l.burst)", "#dafbe1") +
+        code(85, "+", "    if !ok { metrics.Rejected.Inc() }", "#dafbe1") +
+        code(86, "", "    return ok") +
+        code(87, "", "}") +
+        '<div class="row" style="height:48px;padding:0 12px;gap:10px;border-top:1px solid ' +
+        GH.bd +
+        ";font-size:13px;color:" +
+        GH.ink +
+        '">' +
+        av("maya", 24, "font-size:9px") +
+        'Nit: name this <span class="mono" style="font-size:12px;background:#eaeef2;padding:1px 5px;border-radius:4px">gateway_rejected_total</span></div></div></div></div>' +
+        "</div></div>";
+
+      /* ================= scene 5: Convene (video call) ================= */
+      const TL = ["liam", "priya", "daniel", "sofia", "maya", "ethan", "hannah", "omar", "aisha"];
+      const NM = {
+        liam: "Liam Ortiz",
+        priya: "Priya Nair",
+        daniel: "Daniel Kim",
+        sofia: "Sofia Reyes",
+        maya: "Maya Chen (Host)",
+        ethan: "Ethan Walker",
+        hannah: "Hannah Brooks",
+        omar: "Omar Haddad",
+        aisha: "Aisha Khan",
+      };
+      let tiles = "";
+      TL.forEach((k, i) => {
+        const col = i % 3,
+          rw = Math.floor(i / 3),
+          left = 8 + col * 364,
+          top = 56 + rw * 208,
+          me = k === "maya";
+        tiles +=
+          '<div style="position:absolute;left:' +
+          left +
+          "px;top:" +
+          top +
+          "px;width:356px;height:200px;border-radius:8px;background:#2a2a2e;overflow:hidden" +
+          (me ? "" : "") +
+          '">' +
+          '<div class="row" style="position:absolute;left:143px;top:65px;width:70px;height:70px;justify-content:center">' +
+          (me ? slot(70) : av(k, 70)) +
+          "</div>" +
+          '<div class="row" style="position:absolute;left:8px;bottom:8px;height:24px;padding:0 8px;gap:6px;border-radius:5px;background:rgba(0,0,0,.55);font-size:12px;color:#fff">' +
+          (me
+            ? '<span class="stack"><span class="mic1a" style="color:#ff6b6b;display:flex">' +
+              ic("micOff", 13) +
+              '</span><span class="mic1b" style="opacity:0;display:flex;color:#fff">' +
+              ic("mic", 13) +
+              "</span></span>"
+            : '<span style="color:#ff6b6b;display:flex">' + ic("micOff", 13) + "</span>") +
+          NM[k] +
+          "</div></div>";
+      });
+      const prow = (k, mute) =>
+        '<div class="row" style="height:40px;padding:0 14px;gap:10px;font-size:13px;color:#e8e8ea">' +
+        av(k, 28) +
+        '<span class="nw" style="flex:1">' +
+        NM[k] +
+        '</span><span style="color:' +
+        (mute ? "#ff6b6b" : "#8e8e93") +
+        ';display:flex">' +
+        ic(mute ? "micOff" : "mic", 15) +
+        '</span><span style="color:#8e8e93;display:flex">' +
+        ic("videoOff", 15) +
+        "</span></div>";
+      const tbi = (i, t, c) =>
+        '<div class="col" style="align-items:center;gap:4px;font-size:11px;color:' +
+        (c || "#e8e8ea") +
+        '"><span style="display:flex">' +
+        ic(i, 22, 1.6) +
+        "</span>" +
+        t +
+        "</div>";
+      document.querySelector(S + "#amc-s5 .cam").innerHTML =
+        '<div class="row" style="position:absolute;left:0;top:0;width:1400px;height:48px;padding:0 16px;gap:12px;background:#1b1b1e;color:#e8e8ea;font-size:13px"><span class="row" style="height:28px;padding:0 10px;gap:6px;border-radius:6px;background:#2a2a2e"><span style="color:#3fd47a;display:flex">' +
+        ic("shield", 15) +
+        "</span>Meeting info</span>" +
+        '<span class="row" style="margin:0 auto;gap:10px"><b style="font-weight:600">Q4 roadmap review</b>' +
+        dot("#ff5f57", 8) +
+        '<span style="color:#b0b0b6">Recording 24:07</span></span><span class="row" style="height:28px;padding:0 10px;gap:6px;border-radius:6px;background:#2a2a2e">' +
+        ic("panel", 15) +
+        "View</span></div>" +
+        '<div style="position:absolute;left:0;top:48px;width:1100px;height:632px">' +
+        tiles.replace(
+          /top:(\d+)px;width:356px/g,
+          (m, t) => "top:" + (parseInt(t) - 48) + "px;width:356px",
+        ) +
+        "</div>" +
+        '<div class="col" style="position:absolute;left:1100px;top:48px;width:300px;height:632px;background:#1b1b1e;border-left:1px solid #2e2e32"><div class="row" style="height:48px;padding:0 14px;gap:8px;font-size:14px;font-weight:600;color:#fff">Participants (9)<span style="margin-left:auto;color:#8e8e93;display:flex">' +
+        ic("x", 16) +
+        '</span></div><div class="row" style="height:32px;margin:0 14px 6px;padding:0 10px;gap:8px;border-radius:6px;background:#2a2a2e;font-size:13px;color:#8e8e93">' +
+        ic("search", 14) +
+        "Find a participant</div>" +
+        prow("maya", 1) +
+        prow("liam", 1) +
+        prow("priya", 1) +
+        prow("daniel", 1) +
+        prow("sofia", 1) +
+        prow("ethan", 1) +
+        prow("hannah", 1) +
+        prow("omar", 1) +
+        prow("aisha", 1) +
+        '<div class="row" style="margin-top:auto;height:56px;padding:0 14px;gap:8px"><span class="row" style="height:30px;padding:0 12px;border-radius:6px;background:#2a2a2e;font-size:13px;color:#e8e8ea">Invite</span><span class="row" style="height:30px;padding:0 12px;border-radius:6px;background:#2a2a2e;font-size:13px;color:#e8e8ea">Mute all</span></div></div>' +
+        '<div class="row" style="position:absolute;left:0;top:680px;width:1400px;height:76px;padding:0 20px;gap:30px;background:#1b1b1e;border-top:1px solid #2e2e32">' +
+        tbi("micOff", "Unmute", "#ff6b6b") +
+        tbi("videoOff", "Start Video") +
+        '<span style="width:20px"></span>' +
+        tbi("users", "Participants") +
+        tbi("msgSq", "Chat") +
+        tbi("upload", "Share Screen", "#3fd47a") +
+        tbi("circleDot", "Record") +
+        tbi("smile", "Reactions") +
+        tbi("layers", "Apps") +
+        '<span class="row" style="margin-left:auto;height:36px;padding:0 20px;border-radius:8px;background:#e5484d;color:#fff;font-size:14px;font-weight:600">End</span></div>';
+
+      /* ================= scene 6: Kite (the product) ================= */
+      const kSide = (i, t, o) => {
+        o = o || {};
+        return (
+          '<div class="row" style="height:30px;margin:0 10px;padding:0 10px;gap:10px;border-radius:7px;font-size:13px;color:' +
+          (o.on ? "#f4f4f5" : "#a1a1aa") +
+          ";background:" +
+          (o.on ? "rgba(255,255,255,.07)" : "transparent") +
+          '">' +
+          i +
+          '<span class="nw" style="flex:1">' +
+          t +
+          "</span>" +
+          (o.n
+            ? '<span style="font-size:11px;color:#a1a1aa;background:rgba(255,255,255,.08);border-radius:9px;padding:0 6px;line-height:17px">' +
+              o.n +
+              "</span>"
+            : "") +
+          (o.dot ? dot("#3fd47a", 6) : "") +
+          "</div>"
+        );
+      };
+      const kHead = (t) =>
+        '<div style="height:32px;margin:12px 10px 0;padding:10px 10px 0;font-size:11px;color:#71717a;font-weight:500;letter-spacing:.02em">' +
+        t +
+        "</div>";
+      const kCard = (cls, ic1, bg, title, meta, btn) =>
+        '<div class="row kr ' +
+        cls +
+        '" style="height:72px;border-radius:10px;border:1px solid #26262b;background:#141417;padding:0 16px;gap:14px;margin-bottom:8px">' +
+        tool(ic1, bg, 34, 8) +
+        '<div class="col" style="flex:1;min-width:0;gap:3px"><span class="nw" style="font-size:14px;font-weight:500;color:#f4f4f5;line-height:19px;overflow:hidden">' +
+        title +
+        '</span><span class="nw" style="font-size:12px;color:#8b8b94;line-height:16px">' +
+        meta +
+        "</span></div>" +
+        btn +
+        "</div>";
+      const kBtn = (t, pri) =>
+        '<span class="row" style="height:30px;padding:0 14px;border-radius:7px;font-size:13px;font-weight:500;' +
+        (pri ? "background:#f4f4f5;color:#111113" : "border:1px solid #34343a;color:#e4e4e7") +
+        '">' +
+        t +
+        "</span>";
+      document.querySelector(S + "#amc-s6 .cam").innerHTML =
+        '<div class="win" style="left:0;top:0;width:1600px;height:1000px;border-radius:12px;background:#111113;box-shadow:0 0 0 1px rgba(255,255,255,.12),0 40px 100px rgba(0,0,0,.6);flex-direction:row">' +
+        '<div class="col" style="width:240px;flex:none;background:#0c0c0e;border-right:1px solid #1d1d21;height:100%">' +
+        '<div class="row" style="height:52px;padding:0 16px;gap:8px"><i class="tl" style="background:#ff5f57"></i><i class="tl" style="background:#febc2e"></i><i class="tl" style="background:#28c840"></i></div>' +
+        '<div class="row" style="height:36px;padding:0 20px;gap:9px;font-size:15px;font-weight:600;color:#f4f4f5"><span class="row" style="width:22px;height:22px;border-radius:50%;background:#e8734a;justify-content:center"><svg width="13" height="13" viewBox="0 0 24 24" fill="#fff"><path d="M12 2.5 19 10 12 17.5 5 10Z"/></svg></span>Kite</div>' +
+        '<div class="row" style="height:34px;margin:10px 12px 8px;padding:0 10px;gap:8px;border-radius:8px;border:1px solid #2a2a30;font-size:13px;color:#e4e4e7">' +
+        ic("plus", 15) +
+        'New chat<span class="mono" style="margin-left:auto;font-size:11px;color:#71717a">⌘N</span></div>' +
+        kSide(ic("home", 16), "Today", { on: 1 }) +
+        kSide(ic("inbox", 16), "Inbox", { n: 12 }) +
+        kSide(ic("clock", 16), "Scheduled") +
+        kHead("CONNECTED") +
+        kSide(tool("hash", "#5b2a86", 18, 5), "Slate", { dot: 1 }) +
+        kSide(tool("calendar", "#2f6fed", 18, 5), "Cadence", { dot: 1 }) +
+        kSide(tool("circleCheck", "#6e56cf", 18, 5), "Tessel", { dot: 1 }) +
+        kSide(tool("branch", "#2b3137", 18, 5), "Forge", { dot: 1 }) +
+        kSide(tool("video", "#1a73e8", 18, 5), "Convene", { dot: 1 }) +
+        kHead("RECENT") +
+        kSide(ic("msgSq", 15), "Catch up before 10:00", { on: 0 }) +
+        kSide(ic("msgSq", 15), "Draft Q4 update for leads") +
+        kSide(ic("msgSq", 15), "Summarize incident ENG-2087") +
+        '<div class="row" style="margin-top:auto;height:60px;padding:0 16px;gap:10px;border-top:1px solid #1d1d21">' +
+        av("maya", 30, "font-size:11px") +
+        '<div class="col"><span style="font-size:13px;color:#f4f4f5;line-height:17px;font-weight:500">Maya Chen</span><span style="font-size:11px;color:#71717a;line-height:15px">Northwind · Pro</span></div></div></div>' +
+        '<div class="col" style="flex:1;min-width:0;height:100%">' +
+        '<div class="row" style="height:52px;flex:none;padding:0 28px;gap:8px;border-bottom:1px solid #1d1d21;font-size:13px;color:#a1a1aa"><b style="font-weight:500;color:#f4f4f5">Catch up before 10:00</b><span style="margin-left:auto" class="row">' +
+        ic("upload", 16) +
+        "</span></div>" +
+        '<div style="padding:32px 48px 0;height:700px;overflow:hidden">' +
+        '<div class="row" style="align-items:flex-start;gap:16px;height:96px">' +
+        slot(56) +
+        '<div class="col" style="gap:4px;padding-top:2px"><div class="row" style="gap:8px;height:20px;font-size:14px;font-weight:600;color:#f4f4f5">Maya Chen<span style="font-size:12px;font-weight:400;color:#71717a">8:42 AM</span></div><div style="font-size:17px;line-height:26px;color:#e4e4e7">Catch me up before my 10:00. What needs me?</div></div></div>' +
+        '<div class="row" style="align-items:flex-start;gap:16px;height:84px"><span class="row" style="width:56px;height:56px;border-radius:50%;background:#1c1c20;border:1px solid #2a2a30;justify-content:center;flex:none"><svg width="26" height="26" viewBox="0 0 24 24" fill="#e8734a"><path d="M12 2.5 19 10 12 17.5 5 10Z"/></svg></span><div class="col kr" style="gap:4px;padding-top:2px"><div style="height:20px;font-size:14px;font-weight:600;color:#f4f4f5">Kite</div><div style="font-size:17px;line-height:26px;color:#e4e4e7">4 things need you. I checked Slate, Cadence, Tessel, Forge and Convene.</div></div></div>' +
+        '<div style="margin-left:72px;width:760px">' +
+        kCard(
+          "kc1",
+          "branch",
+          "#2b3137",
+          "Approve PR #4119: Roll out token-bucket rate limiter",
+          "Liam Ortiz · 2 approvals · 12 checks passing",
+          '<span class="stack"><span class="mg1">' +
+            kBtn("Approve", 1) +
+            '</span><span class="mg2" style="opacity:0"><span class="row" style="height:30px;padding:0 14px;gap:6px;border-radius:7px;font-size:13px;font-weight:500;background:#16351f;color:#4ade80">' +
+            ic("check", 14, 2) +
+            "Approved</span></span></span>",
+        ) +
+        kCard(
+          "kc2",
+          "hash",
+          "#5b2a86",
+          "Liam asked for sign-off in #eng-platform before the 2:00 PM rollout",
+          "Slate · 9:12 AM · 5 reactions",
+          kBtn("Reply"),
+        ) +
+        kCard(
+          "kc3",
+          "circleCheck",
+          "#6e56cf",
+          "ENG-2141 is assigned to you, due Fri Oct 30",
+          "Tessel · High · In Review",
+          kBtn("Open"),
+        ) +
+        kCard(
+          "kc4",
+          "calendar",
+          "#2f6fed",
+          "Q4 roadmap review starts at 10:00 AM, 6 guests",
+          "Cadence · Thu Oct 29 · Convene link ready",
+          kBtn("Join"),
+        ) +
+        "</div>" +
+        "</div>" +
+        '<div class="row" style="margin:0 48px 24px 120px;height:56px;flex:none;border-radius:12px;border:1px solid #2a2a30;background:#141417;padding:0 16px;gap:12px;font-size:14px;color:#71717a">' +
+        ic("plus", 18) +
+        'Ask Kite anything<span class="mono" style="margin-left:auto;font-size:11px;border:1px solid #34343a;border-radius:5px;padding:2px 6px">⌘K</span><span class="row" style="width:32px;height:32px;border-radius:8px;background:#f4f4f5;color:#111113;justify-content:center">' +
+        ic("arrowRight", 16, 2) +
+        "</span></div>" +
+        "</div></div>" +
+        '<svg class="cur" width="22" height="22" viewBox="0 0 24 24" style="position:absolute;left:0;top:0;opacity:0"><path d="M4 2.5 20 11l-7 2-3 7.5Z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+
+      /* ---------- place each cam: slot centre goes to the shared anchor ---------- */
+      function offs(el, root) {
+        let x = 0,
+          y = 0,
+          e = el;
+        while (e && e !== root) {
+          x += e.offsetLeft;
+          y += e.offsetTop;
+          e = e.offsetParent;
+        }
+        return [x, y];
+      }
+      function place(sel, mul) {
+        const cam = document.querySelector(sel + " .cam"),
+          sl = cam.querySelector(".slot");
+        const o = offs(sl, cam),
+          cx = o[0] + sl.offsetWidth / 2,
+          cy = o[1] + sl.offsetHeight / 2,
+          k = D / sl.offsetWidth;
+        cam.style.left = AX - cx + "px";
+        cam.style.top = AY - cy + "px";
+        gsap.set(cam, { transformOrigin: cx + "px " + cy + "px", scale: k * (mul || 1) });
+        return k;
+      }
+      const K = {
+        s1: place(S + "#amc-s1", 0.55),
+        s2: place(S + "#amc-s2"),
+        s3: place(S + "#amc-s3"),
+        s4: place(S + "#amc-s4"),
+        s5: place(S + "#amc-s5"),
+        s6: place(S + "#amc-s6"),
+      };
+
+      /* cursor target for the Approve button in scene 6 */
+      const cam6 = document.querySelector(S + "#amc-s6 .cam");
+      const btn6 = cam6.querySelector(".mg1");
+      const bo = offs(btn6, cam6),
+        bx = bo[0] + btn6.offsetWidth * 0.5,
+        by = bo[1] + btn6.offsetHeight * 0.62;
+      gsap.set(S + ".cur", { x: bx + 170, y: by + 120 });
+
+      /* ---------- timeline ---------- */
+      const tl = gsap.timeline({ paused: true });
+      function F(target, from, to, at) {
+        tl.fromTo(target, from, Object.assign({ immediateRender: false }, to), at);
+      }
+
+      /* hard cuts: scene opacity flips on one frame, nothing cross-fades */
+      const CUTS = [
+        ["s1", 0, 2.0],
+        ["s2", 2.0, 3.0],
+        ["s3", 3.0, 3.75],
+        ["s4", 3.75, 4.4],
+        ["s5", 4.4, 5.05],
+        ["s6", 5.05, 10],
+      ];
+      CUTS.forEach(([id, a, b]) => {
+        tl.set(S + "#amc-" + id, { opacity: 1 }, a);
+        if (b < 10) tl.set(S + "#amc-" + id, { opacity: 0 }, b);
+      });
+
+      /* ===== scene 1 (0 - 2.0): wide shot pushes in, the avatar grows into the anchor ===== */
+      F(S + "#amc-s1 .cam", { scale: K.s1 * 0.55 }, { scale: K.s1, duration: 1.3, ease: EXPO }, 0);
+      F(S + "#amc-av", { scale: 0.55 }, { scale: 1, duration: 1.3, ease: EXPO }, 0);
+      F(
+        S + "#amc-s1 .cam",
+        { scale: K.s1 },
+        { scale: K.s1 * 1.03, duration: 0.7, ease: "none" },
+        1.3,
+      );
+      tl.set(S + ".rx1a", { opacity: 0 }, 1.15);
+      tl.set(S + ".rx1b", { opacity: 1 }, 1.15);
+
+      /* ===== scene 2 (2.0 - 3.0): invite popover opens ===== */
+      F(
+        S + "#amc-s2 .cam",
+        { scale: K.s2 },
+        { scale: K.s2 * 1.03, duration: 1.0, ease: "none" },
+        2.0,
+      );
+      F(
+        S + "#amc-s2 .pop",
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.4, ease: EXPO },
+        2.0,
+      );
+
+      /* ===== scene 3 (3.0 - 3.75): status moves to In Review ===== */
+      F(
+        S + "#amc-s3 .cam",
+        { scale: K.s3 },
+        { scale: K.s3 * 1.03, duration: 0.75, ease: "none" },
+        3.0,
+      );
+      tl.set(S + ".st1a", { opacity: 0 }, 3.3);
+      tl.set(S + ".st1b", { opacity: 1 }, 3.3);
+
+      /* ===== scene 4 (3.75 - 4.4): approval badge lands ===== */
+      F(
+        S + "#amc-s4 .cam",
+        { scale: K.s4 },
+        { scale: K.s4 * 1.03, duration: 0.65, ease: "none" },
+        3.75,
+      );
+      F(
+        S + "#amc-s4 .appr",
+        { opacity: 0, scale: 0.6 },
+        { opacity: 1, scale: 1, duration: 0.35, ease: EXPO },
+        3.75,
+      );
+
+      /* ===== scene 5 (4.4 - 5.05): host unmutes ===== */
+      F(
+        S + "#amc-s5 .cam",
+        { scale: K.s5 },
+        { scale: K.s5 * 1.03, duration: 0.65, ease: "none" },
+        4.4,
+      );
+      tl.set(S + ".mic1a", { opacity: 0 }, 4.6);
+      tl.set(S + ".mic1b", { opacity: 1 }, 4.6);
+
+      /* ===== scene 6 (5.05 - 7.4): Kite pulls the day together, one click, then the end ===== */
+      F(
+        S + "#amc-s6 .cam",
+        { scale: K.s6 },
+        { scale: K.s6 * 1.05, duration: 2.35, ease: "none" },
+        5.05,
+      );
+      F(
+        S + "#amc-s6 .kr",
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.5, ease: EXPO, stagger: 0.16 },
+        5.2,
+      );
+      F(
+        S + ".cur",
+        { opacity: 0, x: bx + 170, y: by + 120 },
+        { opacity: 1, x: bx, y: by, duration: 0.55, ease: EXPO },
+        6.25,
+      );
+      F(S + ".cur", { scale: 1 }, { scale: 0.88, duration: 0.08, ease: "power2.out" }, 6.8);
+      tl.set(S + ".mg1", { opacity: 0 }, 6.85);
+      tl.set(S + ".mg2", { opacity: 1 }, 6.85);
+      F(S + ".cur", { scale: 0.88 }, { scale: 1, duration: 0.2, ease: "power2.out" }, 6.9);
+
+      /* ===== end (7.4 - 10): the product fades, the avatar moves to the centre and becomes the mark ===== */
+      tl.to(S + "#amc-s6 .cam", { opacity: 0, duration: 0.45, ease: "power2.out" }, 7.4);
+      F(
+        S + "#amc-av",
+        { x: 0, y: 0, scale: 1 },
+        { x: 40, y: 90, scale: 1.45, duration: 1.1, ease: EXPO },
+        7.45,
+      );
+      tl.to(S + "#amc-avi", { opacity: 0, duration: 0.25, ease: "power2.out" }, 7.7);
+      F(
+        S + "#amc-avg",
+        { opacity: 0, rotation: -12 },
+        { opacity: 1, rotation: 0, duration: 0.5, ease: EXPO },
+        7.8,
+      );
+      F(
+        S + "#amc-wm",
+        { opacity: 0, x: -30 },
+        { opacity: 1, x: 0, duration: 0.7, ease: EXPO },
+        8.1,
+      );
+      F(S + "#amc-av", { scale: 1.45 }, { scale: 1.5, duration: 1.4, ease: "none" }, 8.6);
+
+      tl.set({}, {}, 10);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["avatar-match-cut"] = tl;
+    </script>
+  </body>
+</html>
