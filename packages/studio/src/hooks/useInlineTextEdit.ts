@@ -143,6 +143,8 @@ function showLanded(open: InlineTextEditSession): void {
 }
 
 function sealedEditSettled(open: InlineTextEditSession): void {
+  // The draft lives in the frame until the end's reply, so a held reload waits for this, not the close.
+  endStudioManualEditGesture(open.element, open.gesture);
   if (openSealedEdit.get(open.element) === open) openSealedEdit.delete(open.element);
   if (isTextTargetWriting(open.element)) settledWhileSaving.set(open.element, open);
   else showLanded(open);
@@ -252,8 +254,8 @@ export function useInlineTextEdit({
     }
     openRef.current = null;
     setSession(null);
-    endStudioManualEditGesture(open.element, open.gesture);
     if (open.sealed) return open;
+    endStudioManualEditGesture(open.element, open.gesture);
     // Cleaned even when removed mid-session: a parked scene's element comes back.
     open.element.removeAttribute("contenteditable");
     // Restored rather than cleared: the composition may have authored one.
