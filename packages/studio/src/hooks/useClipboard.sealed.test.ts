@@ -178,6 +178,38 @@ it("pastes a sealed preview's own element only when its markup runs no code", as
   }
 });
 
+// The sealed path to the writes useClipboard.written.test.ts fails main on; jsdom keeps CSS escapes, so this one holds.
+it("writes no running code when a sealed preview's own element hides markup in a comment", async () => {
+  const hidden = [
+    '<div id="made" class="clip">Made<!-- x -- data-hf-id="1"><img src=x onerror=f()></div>',
+    '<div id="made" class="clip"><b id="title">Made</b>' +
+      '<!-- <style>#title{content:"\\2d\\2d\\3e"}</style><img src=x onerror=f()> --></div>',
+  ];
+  for (const markup of hidden) {
+    const selection = {
+      id: "made",
+      selector: "#made",
+      sourceFile: "index.html",
+    } as DomEditSelection;
+    const { clipboard, writes } = sealedClipboard(
+      selection,
+      markup,
+      SAVED.replace("<body>", "<head><style>#title{color:red}</style></head><body>"),
+    );
+    expect(clipboard().handleCopy()).toBe(true);
+    await clipboard().handlePaste();
+    for (const written of writes) {
+      const parsed = new DOMParser().parseFromString(written, "text/html");
+      const handlers = Array.from(parsed.querySelectorAll("*")).flatMap((el) =>
+        el.getAttributeNames().filter((name) => name.startsWith("on")),
+      );
+      expect(handlers).toEqual([]);
+    }
+    act(() => root?.unmount());
+    root = null;
+  }
+});
+
 // fails without the fix: markup the copy found in another file was taken as saved and pasted unchecked.
 it("checks a saved element read from another file before pasting it into this one", async () => {
   const received = `<!doctype html><html><body><div data-composition-id="recv" data-start="0" data-duration="5">
