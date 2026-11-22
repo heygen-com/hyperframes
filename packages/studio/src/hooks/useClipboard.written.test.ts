@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { pasteElementHtml, pasteTimelineClips } from "./useClipboard";
-import { prepareCopy } from "../utils/clipboardMarkup";
+import { prepareCopy, refuseAddedMarkup } from "../utils/clipboardMarkup";
 
 const FILE = `<!doctype html><html><head><style>
 #card { color: red; }
@@ -104,4 +104,47 @@ describe("prepareCopy", () => {
       ["hero-2", "hero-2-2"],
     ]);
   });
+});
+
+// fails without the fix: the check compared attribute names only and ran the allowlist on the copy, not on the file.
+describe("the final check reads what the saved file holds", () => {
+  const copy = '<a id="go" href="next.html" data-hf-id="hf-go">Go</a>';
+  const before = FILE;
+  const inserted = (html: string) => before.replace('<div id="card"', `${html}\n<div id="card"`);
+
+  it("refuses a saved copy whose link differs from the copy that was checked", () => {
+    const after = inserted('<a id="go" href="javascript:alert(1)" data-hf-id="hf-go">Go</a>');
+    expect(() =>
+      refuseAddedMarkup(before, after, [{ html: copy, readFrom: null }], "index.html"),
+    ).toThrow(/Couldn't paste/);
+  });
+
+  it("refuses a changed link even for a copy Studio read from this very file", () => {
+    const after = inserted('<a id="go" href="other.html" data-hf-id="hf-go">Go</a>');
+    expect(() =>
+      refuseAddedMarkup(before, after, [{ html: copy, readFrom: "index.html" }], "index.html"),
+    ).toThrow(/Couldn't paste/);
+  });
+
+  it("accepts the saved copy when it is the copy that was checked", () => {
+    expect(() =>
+      refuseAddedMarkup(before, inserted(copy), [{ html: copy, readFrom: null }], "index.html"),
+    ).not.toThrow();
+  });
+});
+
+// fails without the fix: the file's ids were read as raw text, so an entity-escaped id never matched the copy's.
+it("renames a pasted id the file already holds written with entities", () => {
+  const file = FILE.replace('<div id="card"', '<span id="left&amp;right">L</span>\n<div id="card"');
+  const pasted = pasteElementHtml(
+    file,
+    { html: '<span id="left&amp;right">R</span>', readFrom: null },
+    false,
+    "index.html",
+  );
+  const ids = Array.from(
+    new DOMParser().parseFromString(pasted, "text/html").querySelectorAll("span"),
+    (el) => el.id,
+  );
+  expect(ids.sort()).toEqual(["left&right", "left&right-2"]);
 });
