@@ -44,6 +44,7 @@ import {
   getCompositionDuration,
   getCompositionLengthSource,
   initializeSession,
+  isMemoryExhaustionError,
   isTransientBrowserError,
   probeBeginFrameLiveness,
   videoAudioId,
@@ -489,6 +490,23 @@ export function reportedLengthSource(
   return { from: "media", tag: source.tag, trimmed: source.trimmed, srcHash };
 }
 
+const STOPPED = "Preparing the render stopped while ";
+
+/** A failed page call says which probe step it was, so a hung one is named in the render's error. */
+async function probeStep<T>(step: string, call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      !error.message.startsWith(STOPPED) &&
+      !isMemoryExhaustionError(error)
+    )
+      error.message = `${STOPPED}${step}: ${error.message}`;
+    throw error;
+  }
+}
+
 export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageResult> {
   const {
     projectDir,
@@ -616,7 +634,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             log.info(`Still waiting for browser initialization... (${elapsed}s elapsed)`);
           }, 30_000);
           try {
-            await initializeSession(probeSession);
+            const opening = probeSession;
+            await probeStep("opening the film in the browser", () => initializeSession(opening));
           } finally {
             clearInterval(heartbeat);
           }
@@ -710,7 +729,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             null,
             { ...probeCfg, forceScreenshot: true },
           );
-          await initializeSession(probeSession);
+          const reopening = probeSession;
+          await probeStep("opening the film in the browser", () => initializeSession(reopening));
           assertNotAborted();
           lastBrowserConsole = probeSession.browserConsoleBuffer;
         }
@@ -725,8 +745,12 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       // Discover root composition duration
       if (composition.duration <= 0) {
         log.info("Discovering composition duration...");
-        const discoveredDuration = await getCompositionDuration(session);
-        lengthSource = reportedLengthSource(await getCompositionLengthSource(session));
+        const discoveredDuration = await probeStep("reading the film's length", () =>
+          getCompositionDuration(session),
+        );
+        lengthSource = reportedLengthSource(
+          await probeStep("reading the film's length", () => getCompositionLengthSource(session)),
+        );
         assertNotAborted();
         log.info("Probed composition duration from browser", {
           discoveredDuration,
@@ -742,9 +766,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
 
       // Resolve unresolved composition durations via window.__timelines
       if (compiled.unresolvedCompositions.length > 0) {
-        const resolutions = await resolveCompositionDurations(
-          session.page,
-          compiled.unresolvedCompositions,
+        const resolutions = await probeStep("reading each scene's length", () =>
+          resolveCompositionDurations(session.page, compiled.unresolvedCompositions),
         );
         assertNotAborted();
         if (resolutions.length > 0) {
@@ -767,7 +790,9 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
 
       // Discover media elements from browser DOM (catches dynamically-set src)
       log.info("Discovering media assets from browser DOM...");
-      const browserMedia = await discoverMediaFromBrowser(session.page);
+      const browserMedia = await probeStep("listing the film's videos, audio and images", () =>
+        discoverMediaFromBrowser(session.page),
+      );
       assertNotAborted();
       if (browserMedia.length > 0) {
         const existingVideoIds = new Set(composition.videos.map((v) => v.id));
@@ -921,11 +946,13 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         log.info("Discovering audio volume automation...", {
           audioCount: composition.audios.length,
         });
-        const automation = await discoverAudioVolumeAutomationFromTimeline(
-          session.page,
-          composition.audios.map((audio) => audio.id),
-          composition.duration,
-          fpsToNumber(job.config.fps),
+        const automation = await probeStep("reading the audio's volume changes", () =>
+          discoverAudioVolumeAutomationFromTimeline(
+            session.page,
+            composition.audios.map((audio) => audio.id),
+            composition.duration,
+            fpsToNumber(job.config.fps),
+          ),
         );
         assertNotAborted();
         if (automation.length > 0) {
@@ -947,9 +974,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         log.info("Discovering video visibility windows...", {
           videoCount: composition.videos.length,
         });
-        const visibilityWindows = await discoverVideoVisibilityFromTimeline(
-          session.page,
-          composition.duration,
+        const visibilityWindows = await probeStep("finding when each video is on screen", () =>
+          discoverVideoVisibilityFromTimeline(session.page, composition.duration),
         );
         assertNotAborted();
 

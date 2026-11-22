@@ -6,14 +6,10 @@ import {
   VideoSampleSink,
   type Rotation,
 } from "mediabunny";
-import type {
-  PausedVideoFrame,
-  PausedVideoFrameProvider,
-  PausedVideoFrameRequest,
-} from "@hyperframes/core";
+import type { PausedVideoFrame } from "@hyperframes/core";
+import { PAUSED_FRAME_SOURCES } from "@hyperframes/core/runtime/editing-port";
 import { untaggedVideoMatrix } from "@hyperframes/parsers/media-streams";
 import { mediaUrlSourceOptions } from "./mediaFetch";
-import type { IframeWindow } from "./playbackTypes";
 import {
   previewDecodeTime,
   previewPresentationTime,
@@ -21,7 +17,7 @@ import {
 } from "./previewVideoTime";
 
 const FRAME_BUDGET = 64 * 1024 * 1024;
-const MAX_READERS = 4;
+const MAX_READERS = PAUSED_FRAME_SOURCES;
 const NEARBY_FORWARD_SECONDS = 0.5;
 const ALPHA_DRAIN_WAIT_MS = 2000;
 
@@ -89,7 +85,20 @@ async function asBt601(sample: VideoSample): Promise<VideoSample> {
   });
 }
 
-export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideoFrameProvider {
+export interface PausedVideoDecodeAsk {
+  source: string;
+  time: number;
+  frameRate?: number;
+  variableFrameRate?: boolean;
+}
+
+export interface PausedVideoDecoder {
+  decode(asks: PausedVideoDecodeAsk[], signal: AbortSignal): Promise<PausedVideoFrame[]>;
+  suspend(): Promise<void>;
+  dispose(): void;
+}
+
+export function createPausedVideoDecoder(): PausedVideoDecoder {
   const readers = new Map<string, Promise<Reader>>();
   const opened = new Map<string, Reader>();
   const opening = new Map<Input, () => void>();
@@ -97,18 +106,6 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
   const cacheOrder = new Map<Cached, Reader>();
   let bytes = 0;
   let disposed = false;
-
-  const sourceFacts = (source: string) => {
-    let path = new URL(source, location.href).pathname;
-    try {
-      path = decodeURIComponent(path);
-    } catch {}
-    return Object.entries(
-      (iframe.contentWindow as IframeWindow | null)?.__HF_MEDIA_SOURCE_FACTS__ ?? {},
-    )
-      .filter(([suffix]) => path.endsWith(suffix))
-      .sort(([a], [b]) => b.length - a.length)[0]?.[1];
-  };
 
   const trim = (budget = FRAME_BUDGET) => {
     for (const [entry, reader] of cacheOrder) {
@@ -379,18 +376,17 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
       if (signal.aborted || disposed) await closeIterator(reader).catch(() => {});
     }
   };
-  const sourceTiming = (request: PausedVideoFrameRequest, reader: Reader) => {
-    const facts = sourceFacts(request.source);
+  const sourceTiming = (request: PausedVideoDecodeAsk, reader: Reader) => {
     return {
-      frameRate: facts?.frameRate,
-      variableFrameRate: facts?.variableFrameRate,
+      frameRate: request.frameRate,
+      variableFrameRate: request.variableFrameRate,
       sourceLead: reader.lead,
       inputLead: reader.lead,
       timeResolution: reader.ticks,
     };
   };
   const decodeOne = async (
-    request: PausedVideoFrameRequest,
+    request: PausedVideoDecodeAsk,
     signal: AbortSignal,
   ): Promise<PausedVideoFrame> => {
     signal.throwIfAborted();

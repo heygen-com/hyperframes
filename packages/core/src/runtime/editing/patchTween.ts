@@ -3,6 +3,9 @@
 // a sealed frame on itself through the editing port.
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { recordLiveSet, swapWaiting } from "./softReload";
+import { drawDrafts } from "../editingDraft";
+import { markRestingScenesForRedraw } from "../sceneRest";
+import { parseDraftEnd, type EditingDraftEnd } from "../editingDraftEnd";
 
 export interface SetPatchProps {
   x?: number;
@@ -279,16 +282,22 @@ function keyframeObject(
 const finiteStep = (props: KeyframeStep) =>
   Object.values(props).every((v) => typeof v === "number" && Number.isFinite(v));
 
-function rebuildKeyframeTween(tween: PatchableTween, pct: number, props: KeyframeStep): boolean {
-  if (!replaceable(tween) || !finiteStep(props)) return false;
+function rebuildKeyframeTween(
+  tween: PatchableTween,
+  pct: number,
+  props: KeyframeStep,
+): PatchableTween | null {
+  if (!replaceable(tween) || !finiteStep(props)) return null;
   const kf = keyframeObject(tween.vars);
   const targets = tween.targets?.();
-  if (!kf || !targets || targets.length === 0) return false;
+  if (!kf || !targets || targets.length === 0) return null;
   const next = mergeKeyframeStep(kf, pct, props);
   const position = tween.startTime();
+  const parent = tween.parent;
   tween.kill();
-  tween.parent.to(targets, { ...tween.vars, keyframes: next }, position);
-  return true;
+  const before = new Set(parent.getChildren?.(false));
+  parent.to(targets, { ...tween.vars, keyframes: next }, position);
+  return parent.getChildren?.(false).find((child) => !before.has(child)) ?? null;
 }
 
 function changeChannels(change: RuntimeTweenChange): string[] | undefined {
@@ -317,12 +326,28 @@ function restoreAuthoredOpacityForCapture(tween: PatchableTween): void {
   }
 }
 
-function applyChange(tween: PatchableTween, change: RuntimeTweenChange): boolean {
-  if (change.kind === "set") return patchSet(tween, change.props);
-  if (change.kind === "keyframes") return patchKeyframes(tween, change.keyframes);
+function applyChange(tween: PatchableTween, change: RuntimeTweenChange): PatchableTween | null {
+  if (change.kind === "set") return patchSet(tween, change.props) ? tween : null;
+  if (change.kind === "keyframes") return patchKeyframes(tween, change.keyframes) ? tween : null;
   if (change.kind === "keyframe-rebuild")
     return rebuildKeyframeTween(tween, change.pct, change.props);
-  return false;
+  return null;
+}
+
+type GsapInitFlag = { _initted?: unknown };
+
+/** Reads GSAP's internal `_initted`: invalidate() clears it and the tween's next render sets it. */
+const renderedOnceReached = (tween: PatchableTween): boolean => {
+  const now = tween.parent?.time?.();
+  const reached = typeof now === "number" && now >= (tween.startTime?.() ?? 0);
+  return !reached || Boolean((tween as GsapInitFlag)._initted);
+};
+
+function timelinesAbove(tween: PatchableTween): object[] {
+  const chain: object[] = [];
+  for (let parent = tween.parent; parent; parent = (parent as PatchableTween).parent)
+    chain.push(parent);
+  return chain;
 }
 
 function seekToCurrent(target: PatchTarget, timeline: PatchableTimeline): void {
@@ -343,6 +368,7 @@ export function patchTween(
   change: Exclude<RuntimeTweenChange, { kind: "global-set" }>,
   compositionId?: string,
   deferSeek = false,
+  patchedTweens: PatchableTween[] = [],
 ): boolean {
   try {
     const kind = change.kind === "set" ? "set" : "keyframe";
@@ -350,10 +376,13 @@ export function patchTween(
     if (!resolved) return false;
     const { tween, timeline } = resolved;
     if (changeTouchesOpacity(change)) restoreAuthoredOpacityForCapture(tween);
-    if (!applyChange(tween, change)) return false;
+    const patched = applyChange(tween, change);
+    if (!patched) return false;
+    patchedTweens.push(patched);
     // Only the edited tween: a timeline-wide invalidate re-captures every from() against
     // the grading engine's opacity-0 hide, and graded elements vanish.
     if (change.kind !== "keyframe-rebuild") tween.invalidate?.();
+    markRestingScenesForRedraw(timelinesAbove(patched));
     if (!deferSeek) seekToCurrent(target, timeline);
     return true;
   } catch {
@@ -375,6 +404,7 @@ export function lastTweenPatch(patches: ReadonlyArray<{ change: RuntimeTweenChan
 export type PatchTweensParams = {
   patches: Array<{ selector: string; change: RuntimeTweenChange }>;
   seek: boolean;
+  endsDrafts?: EditingDraftEnd[];
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -419,6 +449,13 @@ function parseChange(value: unknown): RuntimeTweenChange | null {
   return props ? { kind, props } : null;
 }
 
+function parseEnds(value: unknown): EditingDraftEnd[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_PATCHES) return null;
+  const ends = value.map(parseDraftEnd);
+  return ends.includes(null) ? null : (ends as EditingDraftEnd[]);
+}
+
 export function parsePatchTweens(params: unknown): PatchTweensParams | null {
   if (!isRecord(params) || Object.keys(params).sort().join() !== "patches,seek") return null;
   const { patches, seek } = params;
@@ -437,8 +474,19 @@ export function parsePatchTweens(params: unknown): PatchTweensParams | null {
   return { patches: parsed, seek };
 }
 
+export function parsePatchTweensRequest(params: unknown): PatchTweensParams | null {
+  if (!isRecord(params)) return null;
+  const { endsDrafts, ...rest } = params;
+  const parsed = parsePatchTweens(rest);
+  const ends = parseEnds(endsDrafts);
+  if (!parsed || !ends) return null;
+  return ends.length ? { ...parsed, endsDrafts: ends } : parsed;
+}
+
 /** The frame patching its own timelines: every patch must land, and it renders once at the end. */
-export function patchTweens({ patches, seek }: PatchTweensParams): { patched: boolean } {
+export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
+  patched: boolean;
+} {
   const win = window as unknown as {
     __timelines?: Record<string, PatchableTimeline>;
     gsap?: PatchTarget["gsap"];
@@ -452,10 +500,15 @@ export function patchTweens({ patches, seek }: PatchTweensParams): { patched: bo
   };
   if (swapWaiting()) return { patched: false };
   const renderAt = lastTweenPatch(patches);
+  const patchedTweens: PatchableTween[] = [];
   const missed = patches.find(({ selector, change }, index) => {
     if (change.kind === "global-set")
       return applyGlobalSet(target, selector, change.props) === null;
-    return !patchTween(target, selector, change, undefined, !(seek && index === renderAt));
+    const defer = !(seek && index === renderAt);
+    return !patchTween(target, selector, change, undefined, defer, patchedTweens);
   });
-  return { patched: missed === undefined };
+  const shown = !seek || patchedTweens.every(renderedOnceReached);
+  const patched = missed === undefined && shown;
+  if (patched && endsDrafts) drawDrafts(endsDrafts);
+  return { patched };
 }

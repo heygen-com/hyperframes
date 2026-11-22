@@ -33,7 +33,8 @@ describe("buildAtomicCutIntents", () => {
 
     expect(intents).toHaveLength(1);
     expect(intents[0].targets).toHaveLength(2);
-    expect(intents[0].targets.map((target) => target.originalId)).toEqual(["host-a", "host-b"]);
+    expect(intents[0].targets.map((cut) => cut.target.id)).toEqual(["host-a", "host-b"]);
+    expect(intents[0].targets.some((cut) => "originalId" in cut)).toBe(false);
   });
 
   it("carries the element's authored track onto the cut target, so both split halves stay pinned to it server-side", () => {

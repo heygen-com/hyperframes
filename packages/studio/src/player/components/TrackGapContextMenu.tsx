@@ -2,6 +2,7 @@ import { memo } from "react";
 import { createPortal } from "react-dom";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import { menuClasses } from "../../components/ui/menuStyle";
+import { placeMenu, pointAnchor } from "../../components/ui/menuPosition";
 
 interface TrackGapContextMenuProps {
   x: number;
@@ -47,11 +48,7 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
 }: TrackGapContextMenuProps) {
   const menuRef = useContextMenuDismiss(onClose);
 
-  const menuWidth = 200;
-  const menuHeight = 68;
-  const overflowY = y + menuHeight - window.innerHeight;
-  const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
-  const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
+  const { left, top } = placeMenu(pointAnchor(x, y), { width: 200, height: 68 });
 
   const itemClass = (enabled: boolean) =>
     `${menuClasses.row} flex items-center justify-between ${enabled ? menuClasses.rowEnabled : menuClasses.rowDisabled}`;
@@ -73,7 +70,7 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
     <div
       ref={menuRef}
       className={`${menuClasses.panel} fixed z-200 min-w-[180px]`}
-      style={{ left: adjustedX, top: adjustedY }}
+      style={{ left, top }}
       onPointerLeave={() => onHoverAction(null)}
     >
       <button

@@ -13,7 +13,7 @@ import { isIP } from "node:net";
 import { join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
 import { bindNodeRequestSignal } from "./vite.request-signal.js";
-import { watch } from "chokidar";
+import { type FSWatcher, watch } from "chokidar";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 import { previewConfigPayload } from "./vite.preview-config";
 import { loadStudioServerDevModule } from "./vite.studio-server-module";
@@ -111,9 +111,10 @@ function viteAllowsHost(host: string, allowedHosts: readonly string[]): boolean 
 
 // ── Vite plugin ──────────────────────────────────────────────────────────────
 
-function devProjectApi(): Plugin {
+export function devProjectApi(): Plugin {
   const dataDir = resolve(__dirname, "data/projects");
   const runtimePath = resolve(__dirname, "../core/dist/hyperframe.runtime.iife.js");
+  let watching: FSWatcher | undefined;
 
   return {
     name: "studio-dev-api",
@@ -139,12 +140,12 @@ function devProjectApi(): Plugin {
         /* dataDir doesn't exist yet */
       }
 
-      const projectWatcher = watch([...watchedProjects.keys()], {
+      const projectWatcher = (watching = watch([...watchedProjects.keys()], {
         ignoreInitial: true,
         // A project write is a whole-file replace; wait for it to settle so a
         // half-written composition is never announced.
         awaitWriteFinish: { stabilityThreshold: 40, pollInterval: 10 },
-      });
+      }));
 
       // This watcher, and not Vite's, is what clears the preview signature.
       // Vite's ignores `data/projects/**`, so subscribing the cache to it left
@@ -355,8 +356,8 @@ function devProjectApi(): Plugin {
           },
         });
       });
-      server.httpServer?.on("close", () => void projectWatcher.close());
     },
+    closeBundle: () => watching?.close(),
   };
 }
 

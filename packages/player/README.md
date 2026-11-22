@@ -137,6 +137,8 @@ The player handles this automatically for same-origin iframes (the default — `
 
 No changes are required by consumers — this works out of the box.
 
+A sealed player (`sandbox-origin`) cannot read the frame. When the frame's own play is refused, the runtime sends the player the list of clips to copy, and sends it again when it changes. The player copies only files under the composition's own folder, on its origin, with `crossorigin="anonymous"`. Any other file is refused and named in a `playbackerror` event (`detail.refused`). A composition loaded from `srcdoc` has no folder of its own, so it gets no copies. The frame is muted only while a copy plays instead.
+
 The optional `audio-src` attribute can be used to start preloading a primary audio track before the iframe loads (useful on slow connections), but is not required for mobile playback.
 
 ## JavaScript API

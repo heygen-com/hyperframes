@@ -78,7 +78,7 @@ describe("executeParallelCapture peer abort", () => {
         } as unknown as CaptureSession & { workerId: number };
       }),
       initializeSession: vi.fn(async (session: CaptureSession & { workerId: number }) => {
-        if (session.workerId === 0) throw new Error("Composition has zero duration.");
+        if (session.workerId === 1) throw new Error("Composition has zero duration.");
         await Promise.resolve();
       }),
       captureFrame: vi.fn().mockResolvedValue(undefined),

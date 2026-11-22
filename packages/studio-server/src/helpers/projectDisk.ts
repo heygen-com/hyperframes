@@ -1,6 +1,6 @@
 import type { Stats } from "node:fs";
 import { stat } from "node:fs/promises";
-import { realpathOff } from "@hyperframes/core/safe-path";
+import { realpathOff, resolveExistingWithinProjectOff } from "@hyperframes/core/safe-path";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { isPrivateProjectPath } from "./safePath.js";
 
@@ -36,4 +36,12 @@ export async function isPrivateProjectFileOff(
     () => unresolvable,
   );
   return real === unresolvable || isPrivateProjectPath(rel(real[0], real[1]));
+}
+
+export async function resolveExistingProjectFileOff(
+  base: string,
+  relativePath: string,
+): Promise<string | null> {
+  const file = await resolveExistingWithinProjectOff(base, relativePath);
+  return file === null || (await isPrivateProjectFileOff(base, file)) ? null : file;
 }

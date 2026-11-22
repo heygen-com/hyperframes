@@ -73,9 +73,20 @@ describe("publish transition guard", () => {
       expect.stringContaining("uses the legacy update workflow"),
     );
   });
-  it("keeps committed team project targets", () => {
+  it("keeps committed team project targets this machine linked the folder to", () => {
     writeTeamProject(dir, { projectId: "legacy-team", spaceId: "team" });
+    writeProjectLink(dir, { projectId: "legacy-team", url: "", spaceId: "team" });
     expect(() => checkPublishTransition({ dir }, start)).not.toThrow();
+  });
+  it("does not count a received team descriptor as this user's legacy update", () => {
+    writeTeamProject(dir, { projectId: "someone-elses", spaceId: "team" });
+    expect(() => checkPublishTransition({ dir }, start)).toThrowError(
+      expect.objectContaining({ code: "publish_replaced" }),
+    );
+    writeProjectLink(dir, { projectId: "mine", url: "" });
+    expect(() => checkPublishTransition({ dir }, start)).toThrowError(
+      expect.objectContaining({ code: "publish_replaced" }),
+    );
   });
   it("does not count an unused local identity or whitespace as a published project", () => {
     writeProjectLink(dir, { projectId: "unused", url: "" });

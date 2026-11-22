@@ -1,17 +1,14 @@
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { clampToHostStart } from "../store/timelineElement";
 import type { DraggedClipState } from "./useTimelineClipDrag";
 // Type-only: erased at runtime, so the timelineZMirror → timelineClipDragCommit
 // value-import edge stays acyclic.
 import type { ZMirrorLaneMove } from "./timelineZMirror";
 import { classifyZone } from "./timelineZones";
-import { layoutAfterTrackInsert } from "./timelineDragLanding";
+import { buildTrackInsertEdits } from "./timelineDragLanding";
 import type { TimelineTrackInsertLayout } from "./timelineTrackInsertLayout";
 import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
-import {
-  canMoveTimelineElement as canMoveElement,
-  resolveExpandedHostAlias,
-} from "./timelineAuthoredMoveTarget";
+import { resolveExpandedHostAlias } from "./timelineAuthoredMoveTarget";
 import type {
   TimelineMoveOperation,
   TimelineAtomicMoveUpdates,
@@ -89,6 +86,12 @@ export interface DragCommitDeps {
 }
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
+
+/** Where `key` sits now, minus this drag's own shift: an earlier edit's rollback may have moved it since. */
+function startBeforeDrag(key: string, from: number, to: number): number {
+  const now = usePlayerStore.getState().elements.find((e) => keyOf(e) === key)?.start ?? to;
+  return now - (to - from);
+}
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 // One deterministic coalesce key shared by both records in a lane-change gesture.
 let laneChangeGestureSeq = 0;
@@ -191,13 +194,15 @@ export function persistMoveEdits(
       ? e
       : { element: e.element, updates: { ...e.updates, track: e.persistTrack } },
   );
+  const movedTo = new Map(edits.map((e) => [keyOf(e.element), e.updates.start]));
   const restorePrev = () =>
     batchElementUpdates(() => {
       for (const p of prev) {
         const { audioGroup, ...timing } = p.updates;
         const updates: Partial<TimelineElement> = {};
         if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
-          Object.assign(updates, timing);
+          const to = movedTo.get(p.key) ?? timing.start;
+          Object.assign(updates, timing, { start: startBeforeDrag(p.key, timing.start, to) });
         }
         if (
           isLatestTimelineOptimisticGesture(updateElement, membershipRevision, p.key, "membership")
@@ -312,7 +317,10 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
     updateElement(dragKey, updates);
     Promise.resolve(onMoveElement?.(drag.element, updates)).catch((error) => {
       if (isLatestTimelineOptimisticGesture(updateElement, revision, dragKey)) {
-        updateElement(dragKey, prev);
+        updateElement(dragKey, {
+          ...prev,
+          start: startBeforeDrag(dragKey, prev.start, updates.start),
+        });
       }
       console.error("[Timeline] Failed to persist clip edit", error);
     });
@@ -376,77 +384,6 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
     }),
     deps,
   ).catch(() => undefined);
-}
-
-/** Build the one sanctioned multi-clip write: atomically insert and compact a
- * source-file zone, then let the caller sync the deliberate vertical stacking. */
-// fallow-ignore-next-line complexity
-function buildTrackInsertEdits(
-  element: TimelineElement,
-  previewStart: number,
-  insertRow: number,
-  multi: {
-    keys: ReadonlySet<string>;
-    movedStart: (e: TimelineElement) => number;
-  } | null,
-  deps: DragCommitDeps,
-): { candidate: TimelineElement[]; edits: TimelineMoveEdit[] } | null {
-  const { elements } = deps;
-  const editKey = keyOf(element);
-  const layout = layoutAfterTrackInsert(element, previewStart, insertRow, multi, deps);
-  if (!layout) return null;
-  const { normalized, targetTrack, writable } = layout;
-  const bySrc = new Map(elements.map((e) => [keyOf(e), e]));
-  // A partial zone renumber creates collisions; refuse a shifted locked row.
-  for (const norm of normalized) {
-    const src = bySrc.get(keyOf(norm));
-    if (
-      src &&
-      writable(src) &&
-      !canMoveElement(src) &&
-      norm.track !== (src.authoredTrack ?? src.track)
-    ) {
-      console.warn(
-        `[Timeline] Track insert refused: locked clip ${keyOf(src)} would need renumbering`,
-      );
-      return null;
-    }
-  }
-  const candidate = elements.map((e) => {
-    if (keyOf(e) === editKey) return { ...e, start: previewStart, track: targetTrack };
-    if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
-    return e;
-  });
-  const edits: TimelineMoveEdit[] = [];
-  if (multi) {
-    for (const src of elements) {
-      const srcKey = keyOf(src);
-      if (srcKey !== editKey && multi.keys.has(srcKey) && !writable(src) && canMoveElement(src)) {
-        edits.push({
-          element: src,
-          updates: { start: multi.movedStart(src), track: src.track },
-          persistTrack: src.authoredTrack,
-        });
-      }
-    }
-  }
-  for (const norm of normalized) {
-    const src = bySrc.get(keyOf(norm));
-    if (!src || !canMoveElement(src)) continue;
-    const normKey = keyOf(norm);
-    let start = src.start;
-    if (normKey === editKey) start = previewStart;
-    else if (multi?.keys.has(normKey)) start = multi.movedStart(src);
-    edits.push({
-      element: src,
-      updates: {
-        start,
-        track: norm.track,
-        ...(normKey === editKey && src.audioGroup ? { audioGroup: null } : {}),
-      },
-    });
-  }
-  return { candidate, edits };
 }
 
 function commitTrackInsert(

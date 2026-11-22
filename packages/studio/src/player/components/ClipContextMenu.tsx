@@ -11,8 +11,7 @@ import { ClipMenuLinkItems } from "./clipMenuLinkItems";
 import { menuClasses } from "../../components/ui/menuStyle";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { keyHint, useStudioKeys } from "./studioShortcuts";
-
-const MENU_MARGIN = 8;
+import { placeMenu, type MenuAnchor } from "../../components/ui/menuPosition";
 
 function useMeasuredHeight(ref: RefObject<HTMLDivElement | null>, anchorKey: string): number {
   const [height, setHeight] = useState(0);
@@ -29,8 +28,7 @@ function useMeasuredHeight(ref: RefObject<HTMLDivElement | null>, anchorKey: str
 }
 
 interface ClipContextMenuProps {
-  x: number;
-  y: number;
+  anchor: MenuAnchor;
   element: TimelineElement;
   currentTime: number;
   onClose: () => void;
@@ -85,8 +83,7 @@ function HostItems({
 // A menu with many independently gated items (Split/Delete/Copy/Paste/Duplicate).
 // fallow-ignore-next-line complexity
 export const ClipContextMenu = memo(function ClipContextMenu({
-  x,
-  y,
+  anchor,
   element,
   currentTime,
   onClose,
@@ -123,11 +120,11 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       ? `Split at ${currentTime.toFixed(2)}s`
       : "Split (move playhead inside clip)";
 
-  const menuWidth = 200;
-  const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
-  const menuHeight = useMeasuredHeight(menuRef, `${x},${y},${element.key ?? element.id}`);
-  const overflowY = y + menuHeight - window.innerHeight;
-  const adjustedY = overflowY > 0 ? Math.max(MENU_MARGIN, y - overflowY - MENU_MARGIN) : y;
+  const height = useMeasuredHeight(
+    menuRef,
+    `${anchor.left},${anchor.top},${anchor.bottom},${element.key ?? element.id}`,
+  );
+  const { left, top } = placeMenu(anchor, { width: 200, height });
 
   return createPortal(
     <div
@@ -135,7 +132,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       role="menu"
       aria-label="Clip actions"
       className={`${menuClasses.panel} fixed z-200 min-w-[180px]`}
-      style={{ left: adjustedX, top: adjustedY }}
+      style={{ left, top }}
     >
       {hostItems.length > 0 && (
         <div role="group" aria-label="Host" className={menuClasses.group}>
