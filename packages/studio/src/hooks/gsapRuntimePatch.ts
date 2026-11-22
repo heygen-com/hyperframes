@@ -30,10 +30,14 @@ const REPORTED_ERROR_NAMES = new Set([
   "NotFoundError",
   "DataCloneError",
 ]);
-// The error may come from the preview frame's realm, so its name is read, never checked with instanceof.
+// The film controls the thrown value and its realm: read its name (never instanceof); a throwing name is 'other'.
 function reportedErrorName(error: unknown): string {
-  const name = (error as { name?: unknown } | null)?.name;
-  return typeof name === "string" && REPORTED_ERROR_NAMES.has(name) ? name : "other";
+  try {
+    const name = (error as { name?: unknown } | null)?.name;
+    return typeof name === "string" && REPORTED_ERROR_NAMES.has(name) ? name : "other";
+  } catch {
+    return "other";
+  }
 }
 
 function reachablePreview(iframe: HTMLIFrameElement): PatchTarget {

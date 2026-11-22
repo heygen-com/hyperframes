@@ -1,7 +1,13 @@
 // A GSAP script edit re-runs the edited composition's script in the live preview, without a reload.
 // Studio runs it on a frame it can reach; a sealed frame runs it on itself through the editing port,
 // with the script Studio saved and the authored styles Studio read from that file.
-import { GSAP_BASE_URL_META, motionPathPluginUrl } from "../../gsapCdn";
+import {
+  GSAP_BASE_URL_META,
+  GSAP_PLUGIN_LOAD_ATTR,
+  NO_PATH_TWEEN_META,
+  motionPathPluginUrl,
+  namesMotionPath,
+} from "../../gsapCdn";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { escapeCssString } from "../editingElement";
 import { applyAuthoredTiming } from "../../studioPreviewMark";
@@ -407,6 +413,7 @@ function whenMotionPathLoaded(
   };
   const pluginScript = doc.createElement("script");
   pluginScript.src = previewMotionPathUrl(doc, win.gsap?.version);
+  pluginScript.setAttribute(GSAP_PLUGIN_LOAD_ATTR, "");
   pluginScript.onload = () => settle(Boolean(win.MotionPathPlugin));
   // Running the script without the plugin would leave a motionPath tween that cannot play.
   pluginScript.onerror = () => settle(false);
@@ -455,12 +462,13 @@ export function swapWaiting(win: SoftReloadWindow = window as SoftReloadWindow):
   return (win.__hfSwapsWaiting ?? 0) > 0;
 }
 
-/** Loads and registers MotionPathPlugin ahead of the first re-run that needs it, as Studio does same-origin. */
+/** Loads and registers MotionPathPlugin ahead of a re-run that needs it, unless the page is marked path-free. */
 export function preloadMotionPath(
   win: SoftReloadWindow = window as SoftReloadWindow,
   doc: Document = document,
 ): void {
   if (win.MotionPathPlugin || win.__hfMotionPathWaiters || !win.gsap) return;
+  if (doc.querySelector(`meta[name="${NO_PATH_TWEEN_META}"]`)) return;
   const register = () => win.MotionPathPlugin && win.gsap?.registerPlugin?.(win.MotionPathPlugin);
   whenMotionPathLoaded(win, doc, register, () => {});
 }
@@ -523,7 +531,7 @@ export function softReloadFrame(
     return ran && !builtDom;
   };
 
-  const needsMotionPath = /motionPath\s*[:{]/.test(script);
+  const needsMotionPath = namesMotionPath(script);
   if (!needsMotionPath || win.MotionPathPlugin || !win.gsap) {
     if (!swap(currentTime)) return "cannot-soft-reload";
     return verifyTimelinesPopulated(win, targetKeys) ? "applied" : "verify-failed";

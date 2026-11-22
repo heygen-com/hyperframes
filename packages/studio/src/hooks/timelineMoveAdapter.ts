@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { TimelineElement } from "../player";
+import { keepUnlessItOverlaps } from "./timelineEditQueue";
 import type {
   TimelineGroupCommitOptions,
   TimelineGroupMoveChange,
@@ -35,19 +36,20 @@ export function persistTimelineMoveEditsAtomically(
   operation: TimelineMoveOperation,
   deps: AtomicMoveDeps,
 ): Promise<void> {
-  return deps.handleTimelineGroupMove(
-    edits.map(({ element, updates }) => ({
-      element,
-      start: updates.start,
-      audioGroup: updates.audioGroup,
-      // Stable track lanes: a lane is the authored data-track-index, so every
-      // vertical gesture (lane-reorder AND track-insert) must persist the track;
-      // z is paint order only and is synced separately. Plain horizontal moves
-      // ("timing") omit it so they stay eligible for the SDK fast path.
-      track: operation === "timing" ? undefined : updates.track,
-    })),
-    { coalesceKey },
-  );
+  const changes = edits.map(({ element, updates }) => ({
+    element,
+    start: updates.start,
+    audioGroup: updates.audioGroup,
+    // Stable track lanes: a lane is the authored data-track-index, so every
+    // vertical gesture (lane-reorder AND track-insert) must persist the track;
+    // z is paint order only and is synced separately. Plain horizontal moves
+    // ("timing") omit it so they stay eligible for the SDK fast path.
+    track: operation === "timing" ? undefined : updates.track,
+  }));
+  return deps.handleTimelineGroupMove(changes, {
+    coalesceKey,
+    ifEarlierRefused: keepUnlessItOverlaps(changes),
+  });
 }
 
 export function useTimelineMoveEditsHandler(
