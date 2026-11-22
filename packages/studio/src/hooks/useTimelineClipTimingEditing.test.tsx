@@ -84,7 +84,7 @@ describe.each<[string, CutoverResult]>([
     const { queue, getHook, unmount } = mountClipTiming();
     let refuseMove: (error: Error) => void = () => {};
     const moveSave = new Promise<void>((_, fail) => (refuseMove = fail));
-    const move = enqueueTimelineEdit(queue, () => moveSave);
+    const move = enqueueTimelineEdit(queue, () => moveSave, { projectId: "project" });
     await act(async () => {
       const trim = getHook().handleTimelineElementResize(clipB, { start: 2, duration: 3 });
       refuseMove(new Error("move refused"));

@@ -112,7 +112,7 @@ export function useTimelineClipTimingEditing({
           forceReloadSdkSession?.();
           return undefined;
         },
-        { label, ifEarlierRefused },
+        { label, ifEarlierRefused, projectId: pid },
       );
     },
     [

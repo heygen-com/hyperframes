@@ -182,7 +182,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
             if (refuses(write)) throw new Error("refused");
           });
         },
-        { ifEarlierRefused: options?.ifEarlierRefused },
+        { ifEarlierRefused: options?.ifEarlierRefused, projectId: "test-project" },
       );
     const handleTimelineGroupMove: DeleteOpsOptions["handleTimelineGroupMove"] = (
       changes,

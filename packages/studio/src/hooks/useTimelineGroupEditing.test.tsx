@@ -167,8 +167,10 @@ it.each([false, true])(
 // The real group commits on a queue whose first edit was refused.
 function mountBehindRefusedEdit(showToast = vi.fn()) {
   const editQueueRef: TimelineEditQueue = { current: Promise.resolve() };
-  const earlier = enqueueTimelineEdit(editQueueRef, () =>
-    Promise.reject(new Error("delete refused")),
+  const earlier = enqueueTimelineEdit(
+    editQueueRef,
+    () => Promise.reject(new Error("delete refused")),
+    { projectId: "fixture" },
   );
   const fetchMock = vi.fn(async () => new Response(JSON.stringify({ content: "" })));
   vi.stubGlobal("fetch", fetchMock);
