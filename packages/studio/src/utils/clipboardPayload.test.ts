@@ -87,12 +87,12 @@ describe("serializeClipboardPayload / deserializeClipboardPayload", () => {
     expect(parsed).toEqual(payload);
   });
 
-  it("drops a 'saved' mark that arrives in clipboard text, for an element and for each clip", () => {
+  it("drops a 'readFrom' mark that arrives in clipboard text, for an element and for each clip", () => {
     const element = deserializeClipboardPayload(
       serializeClipboardPayload({
         kind: "dom-element",
         html: '<div onclick="x()"></div>',
-        saved: true,
+        readFrom: "index.html",
         sourceFile: "index.html",
       }),
     );
@@ -100,13 +100,19 @@ describe("serializeClipboardPayload / deserializeClipboardPayload", () => {
       serializeClipboardPayload({
         kind: "timeline-clip",
         clips: [
-          { html: '<div onclick="x()"></div>', saved: true, start: 0, duration: 1, track: 0 },
+          {
+            html: '<div onclick="x()"></div>',
+            readFrom: "index.html",
+            start: 0,
+            duration: 1,
+            track: 0,
+          },
         ],
         sourceFile: "index.html",
       }),
     );
     expect(element).toMatchObject({ kind: "dom-element", html: '<div onclick="x()"></div>' });
-    expect(element).not.toHaveProperty("saved");
+    expect(element).not.toHaveProperty("readFrom");
     expect(clips?.kind === "timeline-clip" && clips.clips[0]).toEqual({
       html: '<div onclick="x()"></div>',
       start: 0,
