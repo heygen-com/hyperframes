@@ -215,20 +215,17 @@ describe("pasteTimelineClips", () => {
     expect(hfIdsIn(content)).toHaveLength(1);
   });
 
-  it("still strips data-hf-id from bare text with no element root", () => {
+  it("refuses bare text with no element root", () => {
     const noRoot: TimelineClipboardClip = {
       html: 'text mentioning data-hf-id="hf-leak" with no tag at all',
       start: 0,
       duration: 1,
       track: 0,
     };
-    const { content } = pasteTimelineClips(ROOT, [noRoot], 0, []);
-    expect(content).not.toContain("data-hf-id");
+    expect(() => pasteTimelineClips(ROOT, [noRoot], 0, [])).toThrow(/^Couldn't paste/);
   });
 
-  it("still strips data-hf-id from a tag the HTML parser hoists out of body (e.g. title)", () => {
-    // A <title> never reaches DOMParser's body, so remintHfIds's DOM walk sees
-    // no root element here -- this exercises the regex fallback, not the walk.
+  it("gives a tag a document would hoist out of body (e.g. title) a fresh data-hf-id, never the copied one", () => {
     // Only an in-file copy gets that far: from anywhere else a <title> is refused.
     const hoisted: TimelineClipboardClip = {
       html: '<title data-hf-id="hf-leak">x</title>',
@@ -238,7 +235,7 @@ describe("pasteTimelineClips", () => {
       track: 0,
     };
     const { content } = pasteTimelineClips(ROOT, [hoisted], 0, [], true, "index.html");
-    expect(content).not.toContain("data-hf-id");
+    expect(content).not.toContain("hf-leak");
     expect(() => pasteTimelineClips(ROOT, [{ ...hoisted, readFrom: null }], 0, [])).toThrow(
       /^Couldn't paste/,
     );

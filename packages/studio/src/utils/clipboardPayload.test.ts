@@ -1,37 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
-  deduplicateIds,
   serializeClipboardPayload,
   deserializeClipboardPayload,
   insertAsSibling,
   type ClipboardPayload,
 } from "./clipboardPayload";
-
-describe("deduplicateIds", () => {
-  it("renames ids that collide with existing ids", () => {
-    const html = '<div id="hero"><img id="photo" src="a.png" /></div>';
-    const existingIds = ["hero", "other"];
-    const result = deduplicateIds(html, existingIds);
-    expect(result).not.toContain('id="hero"');
-    expect(result).toContain('id="photo"');
-    expect(result).toMatch(/id="hero-\d+"/);
-  });
-
-  it("returns html unchanged when no collisions", () => {
-    const html = '<div id="unique"><p>hello</p></div>';
-    const result = deduplicateIds(html, ["other"]);
-    expect(result).toBe(html);
-  });
-
-  it("does not rewrite data-composition-id or other data-*-id attributes", () => {
-    const html = '<div data-composition-id="hero" data-clip-id="hero" id="hero">content</div>';
-    const result = deduplicateIds(html, ["hero"]);
-    expect(result).toContain('data-composition-id="hero"');
-    expect(result).toContain('data-clip-id="hero"');
-    expect(result).toMatch(/\sid="hero-\d+"/);
-  });
-});
 
 describe("serializeClipboardPayload / deserializeClipboardPayload", () => {
   it("round-trips a single-clip timeline payload", () => {
