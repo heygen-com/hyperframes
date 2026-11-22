@@ -182,9 +182,11 @@ const FIXED: Sequence[] = [
     ],
   },
   {
-    name: "a host down with and without CORS, then back, the same element reloaded",
+    name: "a host down with and without CORS, then back, the same element reloaded twice",
+    // The second reload is the one every film's host answers, so the unsealed film always has a frame to compare.
     rounds: [
       [{ do: "create", el: 0, sources: [own("f6-a", "outage")] }],
+      [{ do: "reload", el: 0 }],
       [{ do: "reload", el: 0 }],
     ],
     keepsCors: [0],
