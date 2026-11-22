@@ -364,13 +364,14 @@ it("saves a newer blur-ended edit last when the older edit's end reply comes lat
   const release = holdEndReplies();
   act(() => controls().commit());
   act(() => void controls().start(selection.element));
-  await settled(iframe, selection);
+  release();
+  await vi.waitFor(() => expect(saved).toContain("title=First"));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
   title.innerHTML = "Second";
   title.dispatchEvent(new FocusEvent("blur"));
   await vi.waitFor(() => expect(saved).toContain("title=Second"));
-  release();
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
-  expect(saved.at(-1)).toBe("title=Second");
+  expect(saved).toEqual(["title=First", "title=Second"]);
 });
 
 it("keeps a Design panel save made while an older inline save was still looking up its target", async () => {

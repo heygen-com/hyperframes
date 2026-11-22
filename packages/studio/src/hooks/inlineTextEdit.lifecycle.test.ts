@@ -158,7 +158,7 @@ async function openEdit(mode: "unsealed" | "sealed", typed: string | null = "Typ
     act(() => void controls.start(title.target));
     await vi.waitFor(() => expect(controls.session).not.toBeNull());
     await title.caughtUp?.();
-    expect(title.shown.hasAttribute("contenteditable")).toBe(true);
+    await vi.waitFor(() => expect(title.shown.hasAttribute("contenteditable")).toBe(true));
     title.shown.innerHTML = typed;
   };
   return {
@@ -268,9 +268,10 @@ describe("a sealed inline text edit reopened before its first end settled", () =
     const edit = await openEdit("sealed");
     edit.silenceEnds!();
     act(() => edit.controls().commit());
-    await edit.reopen("Second");
+    const reopened = edit.reopen("Second");
     edit.frameReloads!();
     await vi.waitFor(() => expect(edit.onLost).toHaveBeenCalledOnce());
+    await reopened;
     await nextTask();
     expect([edit.shown.innerHTML, edit.shown.hasAttribute("contenteditable")]).toEqual([
       "Second",
@@ -283,10 +284,12 @@ describe("a sealed inline text edit reopened before its first end settled", () =
     const edit = await openEdit("sealed");
     const release = edit.holdEndReplies!();
     act(() => edit.controls().commit());
-    await edit.reopen("Second");
+    const reopened = edit.reopen("Second");
     release();
     await vi.waitFor(() => expect(edit.onCommit).toHaveBeenCalledOnce());
     expect(edit.onCommit).toHaveBeenCalledWith(expect.objectContaining({ html: "Typed" }));
+    edit.land();
+    await reopened;
     await nextTask();
     expect([edit.shown.innerHTML, edit.shown.hasAttribute("contenteditable")]).toEqual([
       "Second",
