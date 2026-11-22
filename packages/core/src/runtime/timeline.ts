@@ -638,6 +638,7 @@ export function collectRuntimeTimelinePayload(params: {
             timelineGroup: el.getAttribute("data-timeline-group"),
             timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
             text: readSentTextLayer(el),
+            transitionLabel: transitionLabels.get(el) ?? null,
           });
           gsapClipIds.add(el.id);
         }
@@ -696,6 +697,7 @@ export function collectRuntimeTimelinePayload(params: {
         timelineGroup: el.getAttribute("data-timeline-group"),
         timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
         text: readSentTextLayer(el),
+        transitionLabel: transitionLabels.get(el) ?? null,
       });
       gsapClipIds.add(el.id);
     }
