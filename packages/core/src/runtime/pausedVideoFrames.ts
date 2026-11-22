@@ -13,6 +13,7 @@ import {
   PREVIEW_VIDEO_SOURCE_ATTR,
   PREVIEW_VIDEO_CANVAS_ATTR,
 } from "../studioPreviewMark";
+import { PAUSED_FRAME_BYTES as SURFACE_BUDGET } from "./editing/pausedFrames";
 
 export interface PausedVideoFrameRequest {
   video: HTMLVideoElement;
@@ -44,7 +45,6 @@ export interface PreparedPausedVideoFrames {
   release(): void;
 }
 
-const SURFACE_BUDGET = 128 * 1024 * 1024;
 type Presented = {
   video: HTMLVideoElement;
   canvas: HTMLCanvasElement;

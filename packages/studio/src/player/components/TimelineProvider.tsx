@@ -30,6 +30,7 @@ import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineProviderState } from "./useTimelineProviderState";
 import { TimelineReadOnlyContext } from "./timelineReadOnly";
+import type { MenuAnchor } from "../../components/ui/menuPosition";
 import { LANE_OVERLAP_NOTICE, LANE_OVERLAP_TONE } from "./timelineCollision";
 import {
   TimelineEditProvider,
@@ -76,8 +77,7 @@ export type TimelineCanvasState = Omit<
 };
 
 export interface ClipContextMenuState {
-  x: number;
-  y: number;
+  anchor: MenuAnchor;
   element: TimelineElement;
   sessionEpoch: number;
 }

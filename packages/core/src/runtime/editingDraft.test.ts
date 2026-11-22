@@ -41,6 +41,17 @@ describe("rotation drafts", () => {
     expect([turned(element), shown(element)]).toEqual(["45deg", [5, 0]]);
   });
 
+  it("turns inside a translating transform and puts the transform back on a cancel", () => {
+    const { element, handle } = card("transform: translate(-50%, -50%); width: 50px");
+    const value = "translate(-50%, -50%) rotate(20deg)";
+    drawDrafts([
+      { handle, translate: null, size: null, rotate: { angle: 20, route: "transform", value } },
+    ]);
+    expect(element.style.transform).toBe(value);
+    drawDrafts([{ handle, end: "restore" }]);
+    expect(element.style.transform).toBe("translate(-50%, -50%)");
+  });
+
   it("turns by the frame's own GSAP and puts its rotation back on a cancel", () => {
     const { element, handle } = card("width: 50px");
     const rotation = new Map<Element, number>([[element, 12]]);
