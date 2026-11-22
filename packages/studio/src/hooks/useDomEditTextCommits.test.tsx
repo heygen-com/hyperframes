@@ -310,6 +310,48 @@ describe("useDomEditTextCommits", () => {
     expect(element.innerHTML).toBe("Newest");
   });
 
+  // fails without the fix: the newer save planned from the failed save's draw and wrote "Typo!" to the file.
+  it("takes back a failed fields save's draw before a newer save on the element plans from it", async () => {
+    const { iframe, element } = previewElement("<div id='card'>Original</div>", "card");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const failing = createDeferred<void>();
+    const persistDomEditOperations = vi
+      .fn()
+      .mockImplementationOnce(() => failing.promise)
+      .mockResolvedValueOnce(undefined);
+    const hook = renderTextCommitHook(
+      commitParams({
+        previewIframeRef: { current: iframe },
+        domEditSelection: selectionFor(element),
+        persistDomEditOperations,
+        buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) => selectionFor(target)),
+      }),
+    );
+
+    let failed: Promise<void> | undefined;
+    act(() => {
+      failed = hook.commitDomTextFields(selectionFor(element), () => [textField("Typo")]);
+    });
+    await vi.waitFor(() => expect(element.textContent).toBe("Typo"));
+    // The panel shows the element as the canvas draws it now.
+    let newer: Promise<void> | undefined;
+    act(() => {
+      newer = hook.commitDomTextFields(selectionFor(element), ([field]) => [
+        { ...field!, value: `${field!.value}!` },
+      ]);
+    });
+    failing.reject(new Error("disk full"));
+    await act(async () => {
+      await failed;
+      await newer;
+    });
+
+    expect(persistDomEditOperations.mock.calls[1]?.[1]).toEqual([
+      expect.objectContaining({ value: "Original!" }),
+    ]);
+    expect(element.textContent).toBe("Original!");
+  });
+
   it("reports persist failure from a style commit instead of resolving silently", async () => {
     const { iframe, element } = previewElement("<div id='card'>Original</div>", "card");
     const selection = selectionFor(element);
