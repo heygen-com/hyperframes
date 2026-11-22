@@ -491,7 +491,7 @@ export function preloadMotionPath(
   if (doc.querySelector(`meta[name="${NO_PATH_TWEEN_META}"]`)) return;
   // Ahead of any path tween, only a request that stays local: the page's origin or the host's mirror.
   const src = previewMotionPathUrl(doc, win.gsap.version);
-  if (!src || (!gsapMirror(doc) && new URL(src).origin !== new URL(doc.baseURI).origin)) return;
+  if (!src || (!gsapMirror(doc) && new URL(src).origin !== new URL(doc.URL).origin)) return;
   const register = () => win.MotionPathPlugin && win.gsap?.registerPlugin?.(win.MotionPathPlugin);
   whenMotionPathLoaded(win, doc, register, () => {});
 }

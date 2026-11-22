@@ -552,6 +552,13 @@ describe("where the MotionPath plugin loads from", () => {
     expect(preloadOn(cdn + tween, "3.14.2")).toBeNull();
   });
 
+  // fails without the fix: the check compared the plugin with the page's base, so a base on another site
+  // passed for a "local" plugin that was really on that site.
+  it("never preloads from a base on another site than the preview document", () => {
+    document.head.innerHTML = '<base href="https://assets.example/film/">';
+    expect(preloadOn(`<script src="gsap.min.js"></script>${PATH_TWEEN}`)).toBeNull();
+  });
+
   // fails without the fix: a data: script threw out of the preload, and a project script beside GSAP was
   // taken for GSAP's own and skipped it.
   it.each([
