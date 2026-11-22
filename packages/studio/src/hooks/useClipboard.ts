@@ -192,24 +192,21 @@ const hfIdsInFile = (content: string) =>
 
 export function pasteElementHtml(
   content: string,
-  payload: {
-    html: string;
-    readFrom?: string | null;
-    originSelector?: string;
-    originSelectorIndex?: number;
-  },
+  payload: { html: string; readFrom?: string | null },
   fromThisFile = false,
   writeTo: string | null = null,
 ): string {
+  const parser = new DOMParser();
   const check = (doc: Document) => refuseUnlistedMarkup(doc, payload.readFrom, writeTo);
-  const reminted = remintHfIds(payload.html, new DOMParser(), hfIdsInFile(content), check);
+  const reminted = remintHfIds(payload.html, parser, hfIdsInFile(content), check);
   const deduped = deduplicateIds(reminted, collectHtmlIds(content));
-  const result = insertAsSibling(
-    content,
-    deduped,
-    payload.originSelector,
-    payload.originSelectorIndex,
-  );
+  const anchorFromThisFile =
+    fromThisFile && !!payload.readFrom && payload.readFrom === writeTo
+      ? parser
+          .parseFromString(payload.html, "text/html")
+          .body.firstElementChild?.getAttribute("data-hf-id")
+      : null;
+  const result = insertAsSibling(content, deduped, anchorFromThisFile ?? undefined);
   return fromThisFile ? carryLook(result, renamedIds(reminted, deduped), 0) : result;
 }
 
@@ -382,8 +379,6 @@ export function useClipboard({
             ...savedMarkupElseLive(parseSavedSource(content), live, sourceFile),
             sourceFile,
             projectId: pid ?? undefined,
-            originSelector: domSelection.selector,
-            originSelectorIndex: domSelection.selectorIndex,
           };
         });
       return copyFound(found, copy, showToast);
