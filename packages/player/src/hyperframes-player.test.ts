@@ -4131,8 +4131,33 @@ describe("HyperframesPlayer asset-ready gate", () => {
         ([data]) => (data as { action?: string })?.action === "announce-timeline",
       );
 
-    // fails without the fix: the old document's timeline made the next sealed load skip its probe.
-    it("asks the new document again, and only its answer makes the player ready", async () => {
+    // fails without the fix: the old document's late timeline made the next sealed load skip its probe.
+    it("drops a late message the left document stamped, and takes the next document's before its load", async () => {
+      const { player, start } = await navigatedUnreadable();
+      const stamped = (documentId: string) => ({
+        type: "timeline",
+        durationInFrames: 60,
+        documentId,
+        ...protocol(["seconds-time", "announce-timeline"]),
+      });
+      post(player, stamped("old"));
+      player.iframe.dispatchEvent(new Event("load"));
+      post(player, stamped("old"));
+      expect(player._ready).toBe(true);
+      start.mockClear();
+
+      player._abandonComposition("navigated again");
+      post(player, stamped("old"));
+      expect(player._ready).toBe(false);
+      post(player, stamped("new"));
+      expect(player._ready).toBe(true);
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(start).not.toHaveBeenCalled();
+      player.remove();
+    });
+
+    it("asks a document that never stamped a message again, and only its answer makes it ready", async () => {
       const { player, start, sent } = await navigatedUnreadable();
       const capable = protocol(["seconds-time", "announce-timeline"]);
       post(player, { type: "timeline", durationInFrames: 60, ...capable });
