@@ -58,8 +58,8 @@ function withCopiedRules(css: string, from: string, to: string): string {
     if (selectors.length === 0) return [];
     const copied = selectors.map((selector) => selector.replace(id, `#${to}`)).join(", ");
     const text = `${copied}${rule.cssText.slice(rule.selectorText.length)}`;
-    // Raw <style> text ends at "</style" and a "-->" can end a surrounding comment: such a rule is not copied.
-    return /<|-->/.test(text) ? [] : [`\n${indent}${text}`];
+    // Raw <style> text ends at "</style": a rule holding "<" is not copied.
+    return text.includes("<") ? [] : [`\n${indent}${text}`];
   });
   if (copies.length === 0) return css;
   const body = css.trimEnd();
