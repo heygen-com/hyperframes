@@ -781,6 +781,7 @@ function history(sequence: Sequence, upTo = sequence.rounds.length - 1) {
 function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], open: Readings[]) {
   const budget = new Map<string, number>();
   const playback = { judged: 0, skipped: 0 };
+  const landings: string[] = [];
   const gaps: string[] = [];
   const reported = new Set<string>();
   const all = sequences.flatMap((sequence, index) =>
@@ -856,6 +857,10 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
       // Its seek won where the playhead sits between the target and what playback carried it to before seeked ran.
       const landed = ({ seekAt, seekCarry }: Reading) =>
         Number(seekAt) >= 0.5 - FRAME && Number(seekAt) <= 0.5 + Number(seekCarry) + FRAME;
+      // Past the target at seeked, and how far playback could carry it: sealed beside unsealed, the parity bar.
+      const past = ({ seekAt, seekCarry }: Reading) =>
+        `+${(Number(seekAt) - 0.5).toFixed(3)} of ${Number(seekCarry).toFixed(3)}`;
+      if (action === "seek") landings.push(`sealed ${past(seen)}, unsealed ${past(unsealed)}`);
       if (
         action === "seek" &&
         (!landed(seen) ||
@@ -907,7 +912,7 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
     all.push([
       `${playback.skipped} of ${playback.judged + playback.skipped} playback comparisons skipped`,
     ]);
-  return { problems: all.flat(), gaps, budget, playback };
+  return { problems: all.flat(), gaps, budget, playback, landings };
 }
 
 async function filmFrame(page: import("puppeteer-core").Page, query: string) {
@@ -946,7 +951,10 @@ try {
   const sealed = await run("&sealed=1", "s");
   const control = await run("&sealed=1", "c", true);
   const open = await run("", "o");
-  const { problems, gaps, budget, playback } = judge(sequences, sealed, control, open);
+  const { problems, gaps, budget, playback, landings } = judge(sequences, sealed, control, open);
+  console.log(
+    `[sealed-media-table] seek landings past 0.5 (of what playback carried): ${landings.join("; ")}`,
+  );
   const loops = (film: Readings[]) =>
     [...film.at(-1)!.values()].reduce((sum, reading) => sum + reading.loops, 0);
   const restores = (film: Readings[]) =>
