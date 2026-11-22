@@ -2777,7 +2777,7 @@ export function initSandboxRuntimeModular(): void {
       learnsLength(el) &&
       resolveAbsoluteMediaStartSeconds(el) > state.currentTime + LOOKAHEAD_SECONDS
     ) {
-      el.preload = "metadata";
+      setRuntimePreload(el, "metadata");
       el.load();
     } else preloadMedia(el);
   };
