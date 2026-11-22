@@ -1,0 +1,65 @@
+name: Probe snapshot SVG late image
+
+# Throwaway: the SVG late-image snapshot case, looped on windows-latest with main's wait and with the fix.
+on:
+  push:
+    branches: [probe/snapshot-svg-late]
+
+permissions:
+  contents: read
+
+jobs:
+  loop:
+    name: "SVG late image, ${{ matrix.side }}"
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        side: [main, fix]
+    steps:
+      - name: Disable Windows Defender real-time monitoring
+        shell: pwsh
+        continue-on-error: true
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/install-ffmpeg-windows
+      - name: Set FFMPEG_BIN for bun install
+        shell: pwsh
+        run: |
+          $path = (Get-Command ffmpeg.exe).Source
+          "FFMPEG_BIN=$path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        shell: pwsh
+        run: bun install --frozen-lockfile --linker=hoisted
+      - name: Build test prerequisites
+        shell: pwsh
+        run: |
+          bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+          bun run --cwd packages/core build
+      - name: Prepare browser for process tests
+        shell: pwsh
+        run: node --import tsx packages/cli/scripts/prepare-process-test-browser.mjs
+      - name: Use main's image wait
+        if: matrix.side == 'main'
+        shell: bash
+        run: git show origin/main:packages/cli/src/capture/captureCompositionFrame.ts > packages/cli/src/capture/captureCompositionFrame.ts
+      - name: SVG case, 20 runs
+        shell: pwsh
+        run: |
+          $failed = 0
+          foreach ($i in 1..20) {
+            bun run --cwd packages/cli test src/commands/snapshot.lateImages.browser.test.ts -t "SVG" --maxWorkers=2 *> "$env:RUNNER_TEMP\svg-$i.txt"
+            if ($LASTEXITCODE -ne 0) {
+              $failed++
+              "run $i failed:"
+              Get-Content "$env:RUNNER_TEMP\svg-$i.txt" | Select-String -Pattern "AssertionError|Tests |Error:" | Select-Object -First 4
+            }
+          }
+          "side=${{ matrix.side }} runs=20 failed=$failed"
