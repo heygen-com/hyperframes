@@ -272,6 +272,33 @@ export function useInlineTextEdit({
     return open;
   }, []);
 
+  const endSealed = useCallback(
+    (open: InlineTextEditSession, keep: boolean) => {
+      const sealed = open.sealed!;
+      const order = nextTextSaveOrder();
+      // A session the frame already closed (a blur) posted its outcome ahead of this end's reply.
+      let endedFirst: { html: string | null; previous: string } | null = null;
+      const stopListening = previewEditingClient(sealed.iframe).onTextEditEnded((ended) => {
+        if (ended.handle === sealed.handle) endedFirst ??= ended;
+      });
+      const params = { handle: sealed.handle, action: "end" as const, keep };
+      const ended = previewTextEdit(sealed.iframe, params).then((reply) => {
+        stopListening();
+        const outcome = reply?.applied ? reply : endedFirst;
+        if (!outcome) return reply === null && frameGone(open, keep, onLost);
+        const kept = keptMarkup(outcome);
+        if (!kept) return;
+        if (keep) return onCommit(orderedSave({ element: open.element, ...kept }, order));
+        if (outcome === endedFirst) {
+          const back = { html: kept.previousHtml, expect: kept.html };
+          void editPreviewElement(sealed.iframe, sealed.handle, back);
+        }
+      });
+      return trackStudioPendingEdit(ended.finally(() => sealedEditSettled(open)));
+    },
+    [onCommit, onLost],
+  );
+
   const start = useCallback(
     (element: HTMLElement, caretAt?: { x: number; y: number }): boolean => {
       if (openRef.current || readOnly) return false;
@@ -295,8 +322,9 @@ export function useInlineTextEdit({
           if (reply?.applied) open.original = reply.previous ?? "";
           else {
             teardown();
+            // A start that went unanswered may still have opened the edit: end it keeping what was typed.
+            if (reply === null) return void handedOff(open.element, endSealed(open, true));
             sealedEditSettled(open);
-            if (reply === null) endWithOriginal(sealed);
           }
         });
         return true;
@@ -335,34 +363,7 @@ export function useInlineTextEdit({
       framesRef.current = raf ?? null;
       return true;
     },
-    [onPause, readOnly, teardown],
-  );
-
-  const endSealed = useCallback(
-    (open: InlineTextEditSession, keep: boolean) => {
-      const sealed = open.sealed!;
-      const order = nextTextSaveOrder();
-      // A session the frame already closed (a blur) posted its outcome ahead of this end's reply.
-      let endedFirst: { html: string | null; previous: string } | null = null;
-      const stopListening = previewEditingClient(sealed.iframe).onTextEditEnded((ended) => {
-        if (ended.handle === sealed.handle) endedFirst ??= ended;
-      });
-      const params = { handle: sealed.handle, action: "end" as const, keep };
-      const ended = previewTextEdit(sealed.iframe, params).then((reply) => {
-        stopListening();
-        const outcome = reply?.applied ? reply : endedFirst;
-        if (!outcome) return reply === null && frameGone(open, keep, onLost);
-        const kept = keptMarkup(outcome);
-        if (!kept) return;
-        if (keep) return onCommit(orderedSave({ element: open.element, ...kept }, order));
-        if (outcome === endedFirst) {
-          const back = { html: kept.previousHtml, expect: kept.html };
-          void editPreviewElement(sealed.iframe, sealed.handle, back);
-        }
-      });
-      return trackStudioPendingEdit(ended.finally(() => sealedEditSettled(open)));
-    },
-    [onCommit, onLost],
+    [onPause, readOnly, teardown, endSealed],
   );
 
   const save = useCallback(() => {
