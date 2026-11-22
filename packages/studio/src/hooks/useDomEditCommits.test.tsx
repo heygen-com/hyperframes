@@ -1352,7 +1352,7 @@ describe("useDomEditCommits style persist handling", () => {
           else
             await rendered.hook.commitDomTextFields(
               selection,
-              [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
+              () => [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
               { importedFont },
             );
         });

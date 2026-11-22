@@ -53,6 +53,8 @@ export const textWriteOrder = (): TextWriteOrder => ({
 
 export type TextWriteClaim = DomEditCommitVersionGuard & {
   write: <T>(run: () => Promise<T>) => Promise<T>;
+  /** Settles once every earlier claim's write on the key has released. */
+  turn: () => Promise<void>;
   /** The persistence guard: a false answer also marks this write as skipped. */
   shouldSave: () => boolean;
   /** Records `markup` as what the file holds, unless the write was skipped or the preview changed since the claim. */
@@ -93,6 +95,7 @@ export function claimTextWrite(
   return Object.assign(isLatest, {
     release,
     write: <T>(run: () => Promise<T>) => before.then(run).finally(release),
+    turn: () => before,
     shouldSave: () => isLatest() || !(skipped = true),
     landed: (markup: string) => {
       const last = order.landed.get(key);

@@ -95,6 +95,18 @@ async function sealedInlineTextSelection(
   return canEditSealedTextInline(selection) ? selection : NOT_EDITABLE;
 }
 
+async function selectionAsLanded(
+  snapshot: DomEditSelection,
+  build: UseDomEditTextCommitsParams["buildDomSelectionFromTarget"],
+): Promise<DomEditSelection> {
+  const sealed = previewStandIn(snapshot.element);
+  const target = sealed
+    ? (await describePreviewElements(sealed.iframe, [sealed.handle]))?.[0]
+    : snapshot.element;
+  const fresh = target ? await build(target, { exactTarget: true, skipSourceProbe: true }) : null;
+  return fresh?.element === snapshot.element ? fresh : snapshot;
+}
+
 /** The edited node, not the current selection: a press can open an edit on a child of what is selected. */
 async function liveInlineTextSelection(
   element: HTMLElement,
@@ -311,14 +323,15 @@ export function useDomEditTextCommits({
           element.innerHTML = html;
         },
         persist: async () => {
-          const result = await claim.write(() =>
-            persistDomEditOperations(selection, operations, {
+          const result = await claim.write(async () => {
+            const saved = await persistDomEditOperations(selection, operations, {
               label: "Edit text",
               skipRefresh: true,
               shouldSave: claim.shouldSave,
-            }),
-          );
-          claim.landed(html);
+            });
+            claim.landed(html);
+            return saved;
+          });
           if (result?.changed) trackPreviewFeatureUsed("text_edit", "field");
         },
         shouldRevert: () => claim(),
@@ -364,20 +377,26 @@ export function useDomEditTextCommits({
 
   const commitDomTextFields = useCallback(
     async (
-      selection: DomEditSelection,
-      nextTextFields: DomEditTextField[],
+      snapshot: DomEditSelection,
+      change: (fields: DomEditTextField[]) => DomEditTextField[],
       options?: { importedFont?: ImportedFontAsset | null; fontFamily?: boolean },
     ) => {
-      const ending = endInlineEditOn(selection.element);
+      const ending = endInlineEditOn(snapshot.element);
       const number = nextTextSaveOrder();
       await ending;
       const claim = claimTextFor(
         textWritesRef.current,
-        selection.element,
-        getDomEditTargetKey(selection),
+        snapshot.element,
+        getDomEditTargetKey(snapshot),
         number,
       );
       if (!claim) return;
+      await claim.turn();
+      const selection =
+        claim.saved() === undefined
+          ? snapshot
+          : await selectionAsLanded(snapshot, buildDomSelectionFromTarget);
+      const nextTextFields = change(selection.textFields);
       const textCommit = planDomTextCommit(
         selection.textFields,
         nextTextFields,
@@ -449,23 +468,18 @@ export function useDomEditTextCommits({
           if (importedFont) injectPreviewImportedFont(doc, importedFont);
         }
       }
-      const nextTextFields = domEditSelection.textFields.map((entry) =>
-        entry.key === fieldKey
-          ? {
-              ...entry,
-              inlineStyles: {
-                ...entry.inlineStyles,
-                [property]: normalizedValue,
-              },
-              computedStyles: {
-                ...entry.computedStyles,
-                [property]: normalizedValue,
-              },
-            }
-          : entry,
-      );
+      const styled = (fields: DomEditTextField[]) =>
+        fields.map((entry) =>
+          entry.key === fieldKey
+            ? {
+                ...entry,
+                inlineStyles: { ...entry.inlineStyles, [property]: normalizedValue },
+                computedStyles: { ...entry.computedStyles, [property]: normalizedValue },
+              }
+            : entry,
+        );
 
-      await commitDomTextFields(domEditSelection, nextTextFields, {
+      await commitDomTextFields(domEditSelection, styled, {
         importedFont,
         fontFamily: property === "font-family",
       });
@@ -484,22 +498,18 @@ export function useDomEditTextCommits({
       if (!domEditSelection) return null;
       if (!domEditSelection.textFields.some((field) => field.source === "child")) return null;
 
-      const insertionIndex = domEditSelection.textFields.findIndex(
-        (field) => field.key === afterFieldKey,
-      );
-      const baseField =
-        domEditSelection.textFields[insertionIndex >= 0 ? insertionIndex : 0] ??
-        domEditSelection.textFields[0];
-      const nextField = buildDefaultDomEditTextField(baseField);
-      const nextTextFields = [...domEditSelection.textFields];
-      nextTextFields.splice(
-        insertionIndex >= 0 ? insertionIndex + 1 : nextTextFields.length,
-        0,
-        nextField,
-      );
-
-      await commitDomTextFields(domEditSelection, nextTextFields);
-      return nextField.key;
+      let added: string | null = null;
+      await commitDomTextFields(domEditSelection, (fields) => {
+        const insertionIndex = fields.findIndex((field) => field.key === afterFieldKey);
+        const nextField = buildDefaultDomEditTextField(
+          fields[insertionIndex >= 0 ? insertionIndex : 0] ?? fields[0],
+        );
+        added = nextField.key;
+        const next = [...fields];
+        next.splice(insertionIndex >= 0 ? insertionIndex + 1 : next.length, 0, nextField);
+        return next;
+      });
+      return added;
     },
     [commitDomTextFields, domEditSelection],
   );
@@ -515,8 +525,9 @@ export function useDomEditTextCommits({
         return;
       }
 
-      const nextTextFields = domEditSelection.textFields.filter((entry) => entry.key !== fieldKey);
-      await commitDomTextFields(domEditSelection, nextTextFields);
+      await commitDomTextFields(domEditSelection, (fields) =>
+        fields.filter((entry) => entry.key !== fieldKey),
+      );
     },
     [commitDomTextFields, domEditSelection, handleDomTextCommit],
   );

@@ -175,11 +175,21 @@ function takeDraft(open: InlineTextEditSession): string {
 }
 
 const openOn = new WeakMap<HTMLElement, () => unknown>();
+const savingOn = new WeakMap<HTMLElement, Promise<unknown>>();
 
-/** Ends the inline edit open on `element`, keeping its draft, so its save is asked for before the caller's. */
+/** A draft's save counts as in flight from its request until it settles, so every later save on it waits. */
+function handedOff<T>(element: HTMLElement, saving: T): T {
+  const run = Promise.resolve(saving);
+  savingOn.set(element, run);
+  const done = () => void (savingOn.get(element) === run && savingOn.delete(element));
+  run.then(done, done);
+  return saving;
+}
+
+/** Ends the inline edit open on `element`, keeping its draft, or waits for one already ending, before the caller. */
 export function endInlineEditOn(element: HTMLElement): Promise<void> {
   const end = openOn.get(element);
-  return Promise.resolve(end?.()).then(
+  return Promise.resolve(end ? end() : savingOn.get(element)).then(
     () => {},
     () => {},
   );
@@ -345,7 +355,7 @@ export function useInlineTextEdit({
     if (!open) return;
     if (open.sealed) {
       teardown();
-      return endSealed(open, true);
+      return handedOff(open.element, endSealed(open, true));
     }
     // Sanitised here, in the element, so the preview shows exactly what will be
     // saved rather than something the server will quietly cut down.
@@ -362,7 +372,7 @@ export function useInlineTextEdit({
       return onCommit(orderedSave({ element: open.element, html, previousHtml: open.original }));
     };
     settle(countStudioManualEditSave(open.element, commitText));
-    return saving;
+    return handedOff(open.element, saving);
   }, [onCommit, teardown, endSealed]);
   const commit = useCallback(() => void save(), [save]);
 
@@ -389,7 +399,10 @@ export function useInlineTextEdit({
       if (ended.html === null) endWithOriginal(sealed);
       else if (kept)
         trackStudioPendingEdit(
-          Promise.resolve(onCommit(orderedSave({ element: session.element, ...kept }))),
+          handedOff(
+            session.element,
+            Promise.resolve(onCommit(orderedSave({ element: session.element, ...kept }))),
+          ),
         );
       sealedEditSettled(session);
     });
