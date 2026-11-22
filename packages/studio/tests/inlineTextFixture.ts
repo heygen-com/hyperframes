@@ -205,11 +205,11 @@ async function settle(studioPage: Page, frame: Frame, random: () => number) {
       return waiting > 0 || text.pending();
     });
     quiet = busy ? 0 : quiet + 1;
-    // A request the released writes send is held like any other, so the loop drains it as the frame would answer.
+    // What the released writes start (a held request, a write that waits) goes round the loop again.
     if (busy)
       await studioPage.waitForFunction(() => {
         const w = window as unknown as Editing & { __held: unknown[] };
-        return !w.__text.pending() || w.__held.length > 0;
+        return !w.__text.pending() || w.__held.length > 0 || w.__text.waiting() > 0;
       });
   }
 }
