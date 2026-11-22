@@ -75,7 +75,7 @@ export function inspectVideoLayout(
 }
 
 /** Checks, at sampled times, that the video fills the canvas with nothing painting under or around it. */
-async function probeVideoLayout(
+export async function probeVideoLayout(
   page: ProbePage,
   videoId: string,
   canvas: { width: number; height: number },

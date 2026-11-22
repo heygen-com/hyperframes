@@ -166,6 +166,8 @@ export {
   buildZeroDurationDiagnostic,
   applyVideoMetadataHints,
   computeStaticFrameSet,
+  computeAuthoredClipBoundaryFrames,
+  staticFramesFromAnimated,
   type StaticDedupIneligibleCause,
 } from "./services/frameCapture.js";
 export {
