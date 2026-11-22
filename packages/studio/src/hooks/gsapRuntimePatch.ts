@@ -15,6 +15,24 @@ import { trackStudioEvent } from "../utils/studioTelemetry";
 
 export type { RuntimeTweenChange, SetPatchProps } from "@hyperframes/core/runtime/patch-tween";
 
+// A composition can name its own error class anything, so only these names leave the machine.
+const REPORTED_ERROR_NAMES = new Set([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "EvalError",
+  "URIError",
+  "AggregateError",
+  "SecurityError",
+  "InvalidStateError",
+  "NotFoundError",
+  "DataCloneError",
+]);
+const reportedErrorName = (error: unknown) =>
+  error instanceof Error && REPORTED_ERROR_NAMES.has(error.name) ? error.name : "other";
+
 function reachablePreview(iframe: HTMLIFrameElement): PatchTarget {
   const win = iframe.contentWindow as
     | (Window & {
@@ -51,7 +69,7 @@ export function patchRuntimeTweenInPlace(
     return applyGlobalSet(target, selector, change.props) !== null;
   } catch (error) {
     trackStudioEvent("gsap_instant_patch_threw", {
-      error_name: error instanceof Error ? error.name : typeof error,
+      error_name: reportedErrorName(error),
     });
     console.error("[Studio] An in-place tween patch threw; reloading the preview instead", error);
     return false;
