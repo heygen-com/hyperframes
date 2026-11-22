@@ -4,7 +4,9 @@ import { resolveElementHandle } from "../../webmcp/handles";
 import { collectStudioLookScene } from "../../webmcp/tools/lookTools";
 import type { DomEditLayerItem } from "./domEditingTypes";
 import { toVisibleOverlayRects, type OverlayRect } from "./domEditOverlayGeometry";
+import { describePreviewElements, type PreviewElement } from "../../player/lib/previewElements";
 import { measurePreviewVisibleRects } from "./previewOverlayRects";
+import { standInFor } from "./previewSelection";
 
 export interface TopologyLensNode {
   label: string;
@@ -48,35 +50,40 @@ function collectSourceContours(
   return contours;
 }
 
-const SOURCE_HOST = ["data-composition-file", "data-composition-src"];
-
-function sourceHostOf(items: readonly DomEditLayerItem[], targetIndex: number): HTMLElement | null {
-  const target = items[targetIndex]!;
-  if (!target.preview)
-    return target.element.closest<HTMLElement>(SOURCE_HOST.map((name) => `[${name}]`).join());
-  let depth = Number.POSITIVE_INFINITY;
-  for (let index = targetIndex; index >= 0; index--) {
-    const item = items[index]!;
-    if (item.depth >= depth) continue;
-    depth = item.depth;
-    if (SOURCE_HOST.some((name) => name in (item.preview?.dataAttributes ?? {})))
-      return item.element;
-  }
-  return null;
-}
+const SOURCE_HOST = ["data-composition-file", "data-composition-src"] as const;
+const SOURCE_HOST_SELECTOR = SOURCE_HOST.map((name) => `[${name}]`).join();
 
 type LensElements = { context: HTMLElement; target: HTMLElement; contours: HTMLElement[] };
 
-function lensElements(items: readonly DomEditLayerItem[], targetIndex: number): LensElements {
+function lensElements(
+  items: readonly DomEditLayerItem[],
+  targetIndex: number,
+  sourceHost: HTMLElement | null,
+): LensElements {
   const targetItem = items[targetIndex]!;
   const contextIndex = findSourceContextIndex(items, targetIndex);
   return {
-    context: sourceHostOf(items, targetIndex) ?? items[contextIndex]!.element,
+    context: sourceHost ?? items[contextIndex]!.element,
     target: targetItem.element,
     contours: collectSourceContours(items, contextIndex, targetItem),
   };
 }
 
+const MAX_HOST_DEPTH = 64;
+
+/** `closest(SOURCE_HOST_SELECTOR)` for an element of a frame Studio cannot script, one parent at a time. */
+async function sealedSourceHost(
+  iframe: HTMLIFrameElement,
+  element: PreviewElement,
+): Promise<PreviewElement | null> {
+  let at: PreviewElement | null = element;
+  for (let depth = 0; at && depth < MAX_HOST_DEPTH; depth++) {
+    if (at.attributes.some(([name]) => (SOURCE_HOST as readonly string[]).includes(name)))
+      return at;
+    at = at.parent ? ((await describePreviewElements(iframe, [at.parent]))?.[0] ?? null) : null;
+  }
+  return null;
+}
 /**
  * Resolve the same nested preorder used by studio_look. This keeps the lens on
  * the agent's source-safe scene model instead of guessing hierarchy from an
@@ -93,7 +100,7 @@ export function resolveTopologyLensElements(
   if (scene.status === "loading") return null;
   const targetIndex = scene.items.findIndex((item) => item.element === target);
   if (targetIndex < 0) return { context: target, target, contours: [] };
-  return lensElements(scene.items, targetIndex);
+  return lensElements(scene.items, targetIndex, target.closest<HTMLElement>(SOURCE_HOST_SELECTOR));
 }
 
 async function resolveSealedLensElements(
@@ -108,7 +115,10 @@ async function resolveSealedLensElements(
   if (targetIndex < 0) return null;
   const handles = new Map<HTMLElement, string>();
   for (const item of scene.items) if (item.preview) handles.set(item.element, item.preview.handle);
-  return { elements: lensElements(scene.items, targetIndex), handles };
+  const host = await sealedSourceHost(iframe, found);
+  const hostElement = host && standInFor(iframe, host);
+  if (host && hostElement) handles.set(hostElement, host.handle);
+  return { elements: lensElements(scene.items, targetIndex, hostElement), handles };
 }
 
 function isRenderableRect(rect: OverlayRect | null | undefined): rect is OverlayRect {
