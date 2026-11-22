@@ -9,7 +9,7 @@ import {
   insertAsSibling,
 } from "../utils/clipboardPayload";
 import { carryLook } from "../utils/clipboardLook";
-import { insertTimelineAssetIntoSource, writtenTrackIndex } from "../utils/timelineAssetDrop";
+import { placeUnderCompositionRoot, writtenTrackIndex } from "../utils/timelineAssetDrop";
 import { extendRootDurationInSource } from "../utils/rootDuration";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
@@ -216,16 +216,13 @@ export function pasteTimelineClips(
   });
   const base = extendRootDurationInSource(content, requiredEnd);
   let result = base;
-  for (const { copy, delta } of placed) {
-    result = insertTimelineAssetIntoSource(result, copy.html);
+  const written = placed.map(({ copy, readFrom, delta }) => {
+    const { insertAt, written: html } = placeUnderCompositionRoot(result, copy.html);
+    result = result.slice(0, insertAt) + html + result.slice(insertAt);
     if (fromThisFile) result = carryLook(result, copy.renames, delta);
-  }
-  refuseAddedMarkup(
-    base,
-    result,
-    placed.map(({ copy, readFrom }) => ({ html: copy.html, readFrom })),
-    writeTo,
-  );
+    return { html, readFrom };
+  });
+  refuseAddedMarkup(base, result, written, writeTo);
   const ids = placed.flatMap(({ copy }) => copy.root.getAttribute("id") ?? []);
   return { content: result, ids, requiredEnd };
 }

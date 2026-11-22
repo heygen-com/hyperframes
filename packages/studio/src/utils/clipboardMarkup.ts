@@ -1,3 +1,4 @@
+import { parseHTMLContent } from "@hyperframes/core/compiler/html-document";
 import { markupOutsideAllowlist } from "@hyperframes/core/html-attr-safety";
 import { EXCLUDED_TAGS, mintHfId, walkCompositionDescendants } from "@hyperframes/parsers/hf-ids";
 import { knownCompositionFile } from "../components/editor/domEditingDom";
@@ -59,24 +60,55 @@ export function prepareCopy(
 }
 
 const parsed = (html: string) => new DOMParser().parseFromString(html, "text/html");
+// The page as served: the preview server and render compiler re-read a file with linkedom before a browser does.
+const served = (html: string) => parsed(parseHTMLContent(html).toString());
+
+const htmlTemplate = (node: Node): node is HTMLTemplateElement =>
+  node instanceof Element && node.localName === "template" && node.namespaceURI === HTML_NS;
+const HTML_NS = "http://www.w3.org/1999/xhtml";
 
 function eachElement(nodes: ParentNode, visit: (el: Element) => void): void {
   for (const el of Array.from(nodes.querySelectorAll("*"))) {
     visit(el);
-    if (el.localName === "template") eachElement((el as HTMLTemplateElement).content, visit);
+    if (htmlTemplate(el)) eachElement(el.content, visit);
   }
 }
 
 const signature = (el: Element) =>
-  [
-    `${el.namespaceURI} ${el.localName}`,
-    ...Array.from(el.attributes, (a) => `${a.namespaceURI ?? ""} ${a.name}=${a.value}`).sort(),
-  ].join("\n");
+  JSON.stringify([
+    el.namespaceURI,
+    el.localName,
+    Array.from(el.attributes, (a) => JSON.stringify([a.namespaceURI, a.name, a.value])).sort(),
+  ]);
 
-function subtree(root: Element): string[] {
-  const shapes = [signature(root)];
-  eachElement(root, (el) => shapes.push(signature(el)));
-  return shapes;
+function subtree(root: Element): Element[] {
+  const elements = [root];
+  eachElement(root, (el) => elements.push(el));
+  return elements;
+}
+
+// Raw <style>/<script> text is the look copy's to extend; the allowlist reads it on the saved node.
+function withoutRawText(node: Node): Node {
+  const clone = node.cloneNode(true) as ParentNode & Node;
+  const scope: Element[] = clone instanceof Element ? [clone] : [];
+  eachElement(clone, (el) => scope.push(el));
+  for (const el of scope) {
+    if (el.namespaceURI === HTML_NS && (el.localName === "style" || el.localName === "script"))
+      el.textContent = "";
+  }
+  return clone;
+}
+
+/** Equal by the DOM's own isEqualNode, template contents included, which it does not compare. */
+function sameTree(a: Node, b: Node): boolean {
+  if (!withoutRawText(a).isEqualNode(withoutRawText(b))) return false;
+  const templates = (node: Node) =>
+    [node, ...Array.from((node as ParentNode).querySelectorAll("*"))].filter(htmlTemplate);
+  const left = templates(a);
+  const right = templates(b);
+  return (
+    left.length === right.length && left.every((t, i) => sameTree(t.content, right[i].content))
+  );
 }
 
 /** The file's ids and data-hf-ids as parsed values, so an id written with entities matches its copy's. */
@@ -99,25 +131,26 @@ export function refuseAddedMarkup(
   copies: ReadonlyArray<{ html: string; readFrom?: string | null }>,
   writeTo: string | null,
 ): void {
-  const saved = parsed(after);
+  const saved = served(after);
   const counts = new Map<string, number>();
   const tally = (shape: string, sign: number) => counts.set(shape, (counts.get(shape) ?? 0) + sign);
   eachElement(saved, (el) => tally(signature(el), 1));
-  eachElement(parsed(before), (el) => tally(signature(el), -1));
+  eachElement(served(before), (el) => tally(signature(el), -1));
   const claimed = new Set<Element>();
   for (const copy of copies) {
     const expected = fragment(copy.html).content.firstElementChild;
     if (!expected) throw new Error(REFUSED);
-    const shape = subtree(expected).join("\n\n");
     let found: Element | null = null;
     eachElement(saved, (el) => {
-      if (!found && !claimed.has(el) && subtree(el).join("\n\n") === shape) found = el;
+      if (!found && subtree(el).every((e) => !claimed.has(e)) && sameTree(el, expected)) found = el;
     });
     if (!found) throw new Error(REFUSED);
-    claimed.add(found);
     const exempt = !!copy.readFrom && copy.readFrom === writeTo;
     if (!exempt && markupOutsideAllowlist(found).length > 0) throw new Error(REFUSED);
-    for (const el of subtree(found)) tally(el, -1);
+    for (const el of subtree(found)) {
+      claimed.add(el);
+      tally(signature(el), -1);
+    }
   }
   if (Array.from(counts.values()).some((count) => count !== 0)) throw new Error(REFUSED);
 }
