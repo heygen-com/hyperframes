@@ -8,7 +8,7 @@ import { escapeHtmlText } from "../components/editor/domEditingLayers";
 import type { PreviewElementEdit } from "../player/lib/previewElements";
 import type { TextWriteClaim } from "./domEditCommitRunner";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
-import type { planDomTextCommit } from "./domEditTextCommitPlan";
+import { usesSerializedTextFields, type planDomTextCommit } from "./domEditTextCommitPlan";
 import { refreshTimelineRowText } from "./refreshTimelineRowText";
 import type { UseDomEditTextCommitsParams } from "./useDomEditTextCommits";
 import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
@@ -52,7 +52,7 @@ export function textWriteSteps(input: {
   let drawn = "";
   // What the element showed when this save's turn opened: what the file holds, since earlier saves settled first.
   let before: string | undefined = selection.textFields.length
-    ? selection.textFields.length > 1 || selection.textFields.some((f) => f.source === "child")
+    ? usesSerializedTextFields(selection.textFields)
       ? serializeDomEditTextFields(selection.textFields)
       : escapeHtmlText(selection.textFields[0]!.value)
     : undefined;

@@ -66,8 +66,8 @@ export type TextWriteClaim = DomEditCommitVersionGuard & {
 };
 
 /**
- * Claims `key` for a save numbered at its request; null when a later-numbered save already claimed it. Writes to one
- * key run one after another in claim order, so the newest claim also lands last.
+ * Claims `key` for a save numbered at its request; null when a later-numbered save already claimed it, unless the
+ * save composes. Writes to one key run one after another in claim order.
  */
 export function claimTextWrite(
   order: TextWriteOrder,

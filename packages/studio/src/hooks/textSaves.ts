@@ -61,8 +61,9 @@ export function queueTextSave<T>(element: HTMLElement, saving: Promise<T>): Prom
 export function textSavesSettled(element: HTMLElement): Promise<void> | null {
   const queued = queuedOn.get(element);
   if (!queued) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
     queued.then(() => {}),
-    new Promise<void>((resolve) => setTimeout(resolve, EDITING_REQUEST_TIMEOUT_MS)),
-  ]);
+    new Promise<void>((resolve) => (timer = setTimeout(resolve, EDITING_REQUEST_TIMEOUT_MS))),
+  ]).finally(() => clearTimeout(timer));
 }
