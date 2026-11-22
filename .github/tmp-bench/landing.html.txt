@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>capture repro: full-viewport CSS animations</title>
+    <style>
+      body { margin: 0; font: 18px/1.5 sans-serif; color: #fff; background: #101014; }
+      section { min-height: 100vh; padding: 12vh 10vw; box-sizing: border-box; }
+      h1 { font-size: 72px; margin: 0; }
+      .dots { position: fixed; inset: 0; z-index: -1; animation: fade 4s ease-in-out infinite;
+        background: radial-gradient(2px 2px at 20% 30%, #fff, transparent),
+          radial-gradient(2px 2px at 70% 20%, #fff, transparent),
+          radial-gradient(2px 2px at 40% 70%, #fff, transparent); }
+      .dots.b { animation-duration: 6s; transform: rotate(180deg); }
+      .blob { position: fixed; z-index: -1; width: 50vw; height: 50vh; border-radius: 50%; opacity: 0.4;
+        filter: blur(120px); animation: move 14s ease-in-out infinite; }
+      .blob.a { top: -10vh; left: -10vw; background: #7c3aed; }
+      .blob.b { bottom: -10vh; right: -10vw; background: #06b6d4; animation-duration: 18s; }
+      header { position: sticky; top: 0; height: 72px; backdrop-filter: blur(18px); background: #101014b8; }
+      .grad { background: linear-gradient(100deg, #7c3aed, #06b6d4, #f59e0b, #06b6d4, #7c3aed); background-size: 200% 100%;
+        -webkit-background-clip: text; background-clip: text; color: transparent; animation: slide 6s linear infinite; }
+      @keyframes fade { 50% { opacity: 0.3; } }
+      @keyframes move { 50% { transform: translate(6vw, 4vh); } }
+      @keyframes slide { to { background-position: 200%; } }
+    </style>
+  </head>
+  <body>
+    <div class="dots"></div>
+    <div class="dots b"></div>
+    <div class="blob a"></div>
+    <div class="blob b"></div>
+    <header></header>
+    <section><h1>No canvas, no script, only <span class="grad">animated CSS</span></h1></section>
+    <section><h1>Two</h1></section>
+    <section><h1>Three</h1></section>
+    <section><h1>Four</h1></section>
+    <section><h1>Five</h1></section>
+    <section><h1>Six</h1></section>
+  </body>
+</html>
