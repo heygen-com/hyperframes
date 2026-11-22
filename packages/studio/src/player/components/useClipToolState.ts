@@ -51,9 +51,9 @@ function toolStateFromElement(el: TimelineElement): ClipToolState {
     muted: el.muted === true,
     fxChain: el.fxChain ?? null,
     automation: el.automation ?? null,
-    colorGrading: null,
-    clipPath: null,
-    carve: null,
+    colorGrading: el.colorGrading ?? null,
+    clipPath: el.clipPath ?? null,
+    carve: el.carve ?? null,
   };
 }
 

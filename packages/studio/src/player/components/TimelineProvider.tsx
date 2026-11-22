@@ -31,10 +31,13 @@ import type { KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMe
 import { useTimelineProviderState } from "./useTimelineProviderState";
 import { TimelineReadOnlyContext } from "./timelineReadOnly";
 import type { MenuAnchor } from "../../components/ui/menuPosition";
+import { LANE_OVERLAP_NOTICE, LANE_OVERLAP_TONE } from "./timelineCollision";
 import {
   TimelineEditProvider,
+  useTimelineEditContextOptional,
   useTimelineEditContextValue,
 } from "../../contexts/TimelineEditContext";
+import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 
 export type TimelineCanvasState = Omit<
   TimelineLaneBaseProps,
@@ -212,7 +215,11 @@ export function TimelineProvider({
 }
 
 function TimelineProviderState({ children, ...props }: TimelineProps & { children: ReactNode }) {
-  const value = useTimelineProviderState(props);
+  const shell = useStudioShellContextOptional();
+  const { onNotice } = useTimelineEditContextOptional();
+  const notice = shell?.showToast ?? onNotice;
+  const onDropRefused = notice && (() => notice(LANE_OVERLAP_NOTICE, LANE_OVERLAP_TONE));
+  const value = useTimelineProviderState({ ...props, onDropRefused });
   return <TimelineContext.Provider value={value}>{children}</TimelineContext.Provider>;
 }
 

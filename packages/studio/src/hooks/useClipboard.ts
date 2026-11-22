@@ -13,7 +13,7 @@ import {
 } from "../utils/clipboardPayload";
 import { carryLook, renamedIds } from "../utils/clipboardLook";
 import { collectHtmlIds } from "../utils/studioHelpers";
-import { insertTimelineAssetIntoSource } from "../utils/timelineAssetDrop";
+import { insertTimelineAssetIntoSource, writtenTrackIndex } from "../utils/timelineAssetDrop";
 import { extendRootDurationInSource } from "../utils/rootDuration";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
@@ -158,16 +158,20 @@ export function resolveFreeTrack(preferred: PlacedClip, taken: readonly PlacedCl
   return maxTrack + 1;
 }
 
-/** Gives a clone's root and every descendant a fresh data-hf-id, clear of `taken`. Minted here,
- *  inside the edit, or the server stamps them on the next preview load, behind undo's back.
- *  DOMParser, not a regex, so a `>` inside an attribute value can't defeat it. */
-function remintHfIds(html: string, parser: DOMParser, taken: Set<string>, saved = false): string {
-  const doc = parser.parseFromString(html, "text/html");
+function refuseRunningCode(doc: Document, saved = false): void {
   if (!saved && unsafeMarkup(doc.documentElement).length > 0) {
     throw new Error(
       "Couldn't paste: the copied element runs code (a script, an event handler or a script link)",
     );
   }
+}
+
+/** Gives a clone's root and every descendant a fresh data-hf-id, clear of `taken`. Minted here,
+ *  inside the edit, or the server stamps them on the next preview load, behind undo's back.
+ *  DOMParser, not a regex, so a `>` inside an attribute value can't defeat it. */
+function remintHfIds(html: string, parser: DOMParser, taken: Set<string>, saved = false): string {
+  const doc = parser.parseFromString(html, "text/html");
+  refuseRunningCode(doc, saved);
   const root = doc.body.firstElementChild;
   if (!root) {
     // A tag the HTML parser hoists out of <body> (title/meta/style/base/link)
@@ -191,17 +195,19 @@ const hfIdsInFile = (content: string) =>
 
 export function pasteElementHtml(
   content: string,
-  payload: { html: string; saved?: boolean; originSelector?: string; originSelectorIndex?: number },
+  payload: { html: string; saved?: boolean },
   fromThisFile = false,
 ): string {
-  const reminted = remintHfIds(payload.html, new DOMParser(), hfIdsInFile(content), payload.saved);
+  const parser = new DOMParser();
+  const reminted = remintHfIds(payload.html, parser, hfIdsInFile(content), payload.saved);
   const deduped = deduplicateIds(reminted, collectHtmlIds(content));
-  const result = insertAsSibling(
-    content,
-    deduped,
-    payload.originSelector,
-    payload.originSelectorIndex,
-  );
+  const anchorFromThisFile =
+    fromThisFile && payload.saved
+      ? parser
+          .parseFromString(payload.html, "text/html")
+          .body.firstElementChild?.getAttribute("data-hf-id")
+      : null;
+  const result = insertAsSibling(content, deduped, anchorFromThisFile ?? undefined);
   return fromThisFile ? carryLook(result, renamedIds(reminted, deduped), 0) : result;
 }
 
@@ -219,7 +225,7 @@ export function pasteTimelineClips(
   const groupMinStart = Math.min(...clips.map((c) => c.start));
   let existingIds = collectHtmlIds(content);
   const taken: PlacedClip[] = liveElements.map((el) => ({
-    track: el.authoredTrack ?? el.track,
+    track: writtenTrackIndex(el.authoredTrack ?? el.track),
     start: el.start,
     duration: el.duration,
   }));
@@ -234,7 +240,7 @@ export function pasteTimelineClips(
     existingIds = existingIds.concat(collectHtmlIds(deduped));
     const newStart = anchorTime + (clip.start - groupMinStart);
     const newTrack = resolveFreeTrack(
-      { track: clip.track, start: newStart, duration: clip.duration },
+      { track: writtenTrackIndex(clip.track), start: newStart, duration: clip.duration },
       taken,
     );
     taken.push({ track: newTrack, start: newStart, duration: clip.duration });
@@ -249,6 +255,7 @@ export function pasteTimelineClips(
       .replace(/data-start="[^"]*"/, `data-start="${formatTimelineAttributeNumber(newStart)}"`)
       .replace(/data-track-index="[^"]*"/, `data-track-index="${newTrack}"`);
     const withPatched = patchedRootTag + deduped.slice(rootTagEnd + 1);
+    refuseRunningCode(domParser.parseFromString(withPatched, "text/html"), clip.saved);
     result = insertTimelineAssetIntoSource(result, withPatched);
     if (fromThisFile) {
       const authored = Number(rootTag.match(/data-start="([^"]*)"/)?.[1]);
@@ -371,8 +378,6 @@ export function useClipboard({
             ...savedMarkupElseLive(parseSavedSource(content), live, sourceFile),
             sourceFile,
             projectId: pid ?? undefined,
-            originSelector: domSelection.selector,
-            originSelectorIndex: domSelection.selectorIndex,
           };
         });
       return copyFound(found, copy, showToast);

@@ -19,7 +19,8 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-// Windows makes a link only with the right to (an admin, or Developer Mode); without it these cases can't be set up.
+// Windows makes a link only with the right to (an admin, or Developer Mode); without it these cases can't be set up,
+// and where a run must cover them (HF_LINKS_REQUIRED) that fails instead of skipping.
 const canLink = (() => {
   const dir = mkdtempSync(join(tmpdir(), "link-probe-"));
   try {
@@ -31,6 +32,10 @@ const canLink = (() => {
     rmSync(dir, { recursive: true, force: true });
   }
 })();
+if (!canLink && process.env.HF_LINKS_REQUIRED)
+  throw new Error(
+    "this machine cannot make links, which these tests need (HF_LINKS_REQUIRED is set)",
+  );
 
 describe.skipIf(!canLink)("the off-loop private-file check", () => {
   // fails without the fix: native realpath failed at every level, so the check compared the link's own spelling and

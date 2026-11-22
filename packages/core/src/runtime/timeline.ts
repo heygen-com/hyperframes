@@ -1,3 +1,4 @@
+import { sourceLengthOf } from "./sourceLength";
 import type {
   RuntimeTimelineClip,
   RuntimeTimelineMessage,
@@ -447,8 +448,8 @@ export function collectRuntimeTimelinePayload(params: {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
     if (duration == null && isMediaElement(node)) {
-      if (Number.isFinite(node.duration)) {
-        duration = resolveNaturalMediaTimelineDuration(node, node.duration);
+      if (Number.isFinite(sourceLengthOf(node))) {
+        duration = resolveNaturalMediaTimelineDuration(node, sourceLengthOf(node));
       }
     }
     if (duration == null) duration = resolveTimedImageDurationSeconds(node, start);

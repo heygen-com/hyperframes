@@ -2997,6 +2997,37 @@ describe("initSandboxRuntimeModular", () => {
     expect(overlay.style.visibility).toBe("");
   });
 
+  it("hides an element with no data-start once it is given data-hidden after the film loaded", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const image = document.createElement("img");
+    root.appendChild(image);
+
+    window.__timelines = {
+      main: createMockTimeline(10),
+    };
+
+    initSandboxRuntimeModular();
+
+    window.__player?.seek(1);
+    expect(image.style.display).toBe("");
+
+    image.setAttribute("data-hidden", "");
+    window.__player?.seek(2);
+    expect(image.style.display).toBe("none");
+
+    image.removeAttribute("data-hidden");
+    window.__player?.seek(3);
+    expect(image.style.display).toBe("");
+  });
+
   describe("a clip the visibility pass hides gets the author's inline display back", () => {
     // A relative clip under a plain wrapper stays in flow (applyClipLayout only touches
     // root children), so the pass hides it with display:none rather than visibility.

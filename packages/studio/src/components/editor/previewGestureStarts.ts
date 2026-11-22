@@ -22,12 +22,8 @@ import { setStudioWaitingPressCancel } from "../../utils/studioPendingEdits";
 import { playheadMoment } from "../../hooks/editMoment";
 import type { EditMoment } from "./manualEditsTypes";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
-import { findPreviewElementForSelection } from "./previewSelection";
-import { measurePreviewGestureStart, type PreviewGestureStart } from "./previewGestureStartRead";
-import type { SnapContext } from "./snapTargetCollection";
+import { readShownGestureStarts, type OverChannel, type Shown } from "./previewGestureStartRead";
 
-type Shown = { selection: DomEditSelection; rect: OverlayRect; start?: PreviewGestureStart };
-type OverChannel = { shown: Shown[]; snap: SnapContext };
 type ShownStart = (
   e: React.PointerEvent<HTMLElement>,
   at: EditMoment,
@@ -141,26 +137,6 @@ export function createPreviewGestureStarts(
     };
   };
 
-  /** An opaque frame's `selections` on the page it shows now and what a gesture on them starts from. */
-  const shownOverChannel = async (
-    iframe: HTMLIFrameElement,
-    selections: DomEditSelection[],
-  ): Promise<OverChannel | null> => {
-    const overlay = opts.overlayRef.current;
-    const path = opts.activeCompositionPathRef.current;
-    const found = await Promise.all(
-      selections.map((selection) => findPreviewElementForSelection(iframe, selection, path)),
-    );
-    const handles = found.map((element) => element?.handle);
-    if (!overlay || !handles.length || !handles.every(Boolean)) return null;
-    const read = await measurePreviewGestureStart(iframe, overlay, handles as string[]);
-    const shown = selections.flatMap((selection, i) => {
-      const element = read?.elements[i];
-      return element ? [{ selection: { ...selection, handle: handles[i] }, ...element }] : [];
-    });
-    return read && shown.length === selections.length ? { shown, snap: read.snap } : null;
-  };
-
   // A press on the page a reload is replacing would edit it by its old rules: it starts on the new page instead.
   const startOnShownPreview = (
     e: React.PointerEvent<HTMLElement>,
@@ -216,7 +192,12 @@ export function createPreviewGestureStarts(
       if (isPreviewChanging() && !overdue) return "wait";
       if (!asked) {
         asked = true;
-        void shownOverChannel(frame, targets()).then((shown) => (overChannel = shown));
+        void readShownGestureStarts(
+          frame,
+          opts.overlayRef.current,
+          opts.activeCompositionPathRef.current,
+          targets(),
+        ).then((shown) => (overChannel = shown));
       }
       if (overChannel === undefined) return "wait";
       return overChannel ? "run" : "lost";

@@ -28,3 +28,9 @@ export function decodableAudioStream(streams: readonly FfprobeStreamCodec[]): nu
     .findIndex((stream) => stream.codec_name !== undefined);
   return index < 0 ? null : index;
 }
+
+const BT601_UNTAGGED_CODECS = new Set(["vp9", "av1"]);
+
+export function untaggedVideoMatrix(codec: string, codedHeight: number): "bt709" | "smpte170m" {
+  return codedHeight >= 720 && !BT601_UNTAGGED_CODECS.has(codec) ? "bt709" : "smpte170m";
+}

@@ -149,6 +149,30 @@ describe("render diagnostic wire", () => {
       "CAPTURE_PROTOCOL_TIMEOUT",
     ],
     [new Error(PRIVATE), "RENDER_FAILED"],
+    [
+      Object.assign(new Error(PRIVATE), { name: "SegmentEncoderSpawnError" }),
+      "SEGMENT_ENCODER_SPAWN",
+    ],
+    [
+      Object.assign(new Error(`spawn ffmpeg ENOENT ${PRIVATE}`), {
+        name: "SegmentEncoderSpawnError",
+      }),
+      "SEGMENT_ENCODER_SPAWN",
+    ],
+    [new Error(`Faststart failed: FFmpeg exited with code 1 ${PRIVATE}`), "FASTSTART_FAILED"],
+    [new Error(`Audio muxing failed: ${PRIVATE}`), "AUDIO_MUX_FAILED"],
+    [new Error(`Encoding failed: FFmpeg exited with code 1 ${PRIVATE}`), "ENCODER_EXITED"],
+    [new Error(`Segment 2 encode failed: ${PRIVATE}`), "ENCODER_EXITED"],
+    [
+      new Error(`Streaming encoder exited before frame 0 was written: ${PRIVATE}`),
+      "ENCODER_EXITED",
+    ],
+    [new Error(`Faststart failed: ENOSPC: no space left on device ${PRIVATE}`), "ENOSPC"],
+    [new Error(`FFmpeg exited with code 1: ${PRIVATE}`), "RENDER_FAILED"],
+    [
+      new Error(`Animated GIF transcode failed: FFmpeg exited with code 1 ${PRIVATE}`),
+      "RENDER_FAILED",
+    ],
   ])("names a failed render's code without its words (%#)", (error, code) => {
     const line = capture(() => renderFailureDiagnostic(undefined, error, false));
     expect(JSON.parse(line.slice("@hf-diagnostic ".length))).toEqual({
@@ -157,6 +181,19 @@ describe("render diagnostic wire", () => {
       code,
     });
     expect(line).not.toContain(PRIVATE);
+  });
+
+  it("names a render that stopped outside its own report, once", async () => {
+    vi.resetModules();
+    const { renderExitDiagnostic } = await import("./renderDiagnostic.js");
+    const crash = Object.assign(new Error(PRIVATE), {
+      cause: Object.assign(new Error(PRIVATE), { name: "H264EncoderUnavailableError" }),
+    });
+    const line = capture(() => renderExitDiagnostic(crash, "UNCAUGHT_EXCEPTION"));
+    expect(line).toBe(
+      '@hf-diagnostic {"version":1,"operation":"render","code":"H264_ENCODER_UNAVAILABLE"}\n',
+    );
+    expect(capture(() => renderExitDiagnostic(new Error(PRIVATE), "UNCAUGHT_EXCEPTION"))).toBe("");
   });
 
   it("stays silent for a terminal or a container attached to a terminal", () => {

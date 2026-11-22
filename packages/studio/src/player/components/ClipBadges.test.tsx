@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { usePreviewIframeStore } from "../store/previewIframeStore";
+import { applyMediaMetadataFromElement } from "../lib/timelineElementHelpers";
 import { ClipBadges } from "./ClipBadges";
 
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
@@ -84,6 +85,19 @@ describe("ClipBadges", () => {
     });
     expect(labels()).toEqual(["volume:60%", "fx:fx"]);
     expect(fx()?.getAttribute("title")).toBe("Look: Warm daylight · Crop");
+  });
+
+  it("lights the fx badge from what discovery read when the preview's node is out of reach", () => {
+    const node = document.createElement("video");
+    node.setAttribute("data-color-grading", '{"preset":"warm-daylight","intensity":1}');
+    node.setAttribute("data-fx-carve", '{"enabled":true}');
+    node.setAttribute("style", "clip-path: inset(10px)");
+    const read: TimelineElement = { ...talk };
+    applyMediaMetadataFromElement(read, node);
+    render(read);
+    const fx = document.querySelector("[data-badge='fx']");
+    expect(fx?.getAttribute("data-fx-active")).toBe("true");
+    expect(fx?.getAttribute("title")).toBe("Look: Warm daylight · Crop · Ducked");
   });
 
   it("opens the clip menu from the fx badge without reaching the clip", () => {

@@ -1164,7 +1164,7 @@ async function executeLocalRender(
               ? "."
               : ", or render WebM instead: hyperframes render --format webm --output output.webm"),
         );
-        failCommand();
+        failCommand(1, error);
       }
       // Capability probing is advisory. Let the real encode surface the
       // authoritative FFmpeg error instead of failing here with a bare stack.
