@@ -125,10 +125,18 @@ function mirrorPost(mirror: PlaybackMirror, message: Record<string, unknown>, fp
   }
 }
 
-function mirrorRuntimePlayback(event: MessageEvent): void {
-  // Only a frame Studio built, posting from an origin that frame can have.
+function studioPreviewMirror(event: MessageEvent): PlaybackMirror | undefined {
   const mirror = event.source ? mirrors.get(event.source) : undefined;
-  if (!mirror || !frameOrigins(mirror.iframe).includes(event.origin)) return;
+  return mirror && frameOrigins(mirror.iframe).includes(event.origin) ? mirror : undefined;
+}
+
+/** Whether `event` came from a preview frame Studio built, a sealed one's opaque origin included. */
+export const fromStudioPreview = (event: MessageEvent): boolean =>
+  studioPreviewMirror(event) !== undefined;
+
+function mirrorRuntimePlayback(event: MessageEvent): void {
+  const mirror = studioPreviewMirror(event);
+  if (!mirror) return;
   const post = runtimePost(event.data);
   if (post) mirrorPost(mirror, post.message, post.fps);
 }
