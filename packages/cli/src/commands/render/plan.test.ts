@@ -335,6 +335,16 @@ describe("createRenderPlan", () => {
     ).toThrow(CliUsageError);
   });
 
+  it("maps --experimental-hdr-passthrough to HF_EXPERIMENTAL_HDR_PASSTHROUGH only when set", () => {
+    const on = createRenderPlan({ dir: projectDir, "experimental-hdr-passthrough": true });
+    expect(on.experimentalHdrPassthrough).toBe(true);
+    expect(on.environment.HF_EXPERIMENTAL_HDR_PASSTHROUGH).toBe("true");
+
+    const off = createRenderPlan({ dir: projectDir });
+    expect(off.experimentalHdrPassthrough).toBe(false);
+    expect(off.environment.HF_EXPERIMENTAL_HDR_PASSTHROUGH).toBeUndefined();
+  });
+
   it("keeps environment changes declarative until execution", () => {
     const previous = process.env.PRODUCER_LOW_MEMORY_MODE;
     delete process.env.PRODUCER_LOW_MEMORY_MODE;

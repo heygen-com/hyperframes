@@ -124,6 +124,7 @@ export interface RenderCommandArgs {
   "keep-segments"?: boolean;
   "low-memory-mode"?: boolean;
   "experimental-fast-capture"?: boolean;
+  "experimental-hdr-passthrough"?: boolean;
   "frames-cache-dir"?: string;
 }
 
@@ -189,6 +190,7 @@ export interface RenderPlan {
   hdrMode: HdrMode;
   pageSideCompositing: boolean;
   experimentalFastCapture: boolean;
+  experimentalHdrPassthrough: boolean;
   variablesArg?: string;
   variablesFileArg?: string;
   strictVariables: boolean;
@@ -496,6 +498,11 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
       ? "true"
       : "false";
   }
+  // Default-off opt-in: only an explicit flag touches the env, so an omitted
+  // flag leaves HF_EXPERIMENTAL_HDR_PASSTHROUGH from the shell untouched.
+  if (args["experimental-hdr-passthrough"] === true) {
+    environment.HF_EXPERIMENTAL_HDR_PASSTHROUGH = "true";
+  }
   // Sugar for HYPERFRAMES_EXTRACT_CACHE_DIR. Disabling aliases pass through
   // verbatim for the engine helper; positive paths become CWD-stable here.
   if (typeof args["frames-cache-dir"] === "string" && args["frames-cache-dir"].trim() !== "") {
@@ -691,6 +698,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
     pageSideCompositing: args["page-side-compositing"] !== false,
     experimentalFastCapture: args["experimental-fast-capture"] === true,
+    experimentalHdrPassthrough: args["experimental-hdr-passthrough"] === true,
     variablesArg: args.variables,
     variablesFileArg: args["variables-file"],
     strictVariables: args["strict-variables"] ?? false,

@@ -272,7 +272,8 @@ import {
   resolveCaptureStallTimeoutMs,
   runCaptureStreamingStage,
 } from "./render/stages/captureStreamingStage.js";
-import { runCaptureHdrStage } from "./render/stages/captureHdrStage.js";
+import { type CaptureHdrStageInput, runCaptureHdrStage } from "./render/stages/captureHdrStage.js";
+import { attemptHdrPassthrough } from "./hdrPassthrough/index.js";
 import {
   canEncodeWhileCapturing,
   encodeWhileCapturing,
@@ -5027,9 +5028,9 @@ async function executeRenderPipeline(input: {
         observability,
         "capture_hdr_layered",
         captureStageObservationData({ hasHdrContent }),
-        (openAttempt) => {
+        async (openAttempt) => {
           const attempt = openAttempt(executionSignal);
-          return runCaptureHdrStage({
+          const hdrStageInput: CaptureHdrStageInput = {
             job,
             cfg,
             plan: layeredPlan,
@@ -5063,7 +5064,16 @@ async function executeRenderPipeline(input: {
               attempt.throwIfAborted();
             },
             onProgress,
-          });
+          };
+          // Opt-in: one full-frame HDR video under statically timed overlays is
+          // composited by ffmpeg from cached overlay states. Ineligible or failed
+          // attempts fall back to the layered stage below, unchanged.
+          if (cfg.experimentalHdrPassthrough && hasHdrContent) {
+            const passthrough = await attemptHdrPassthrough(hdrStageInput);
+            if (passthrough.kind === "completed") return passthrough.result;
+            resetCaptureAttemptProgress(job);
+          }
+          return runCaptureHdrStage(hdrStageInput);
         },
         { stall: frameStallRule(job, totalFrames, perfStages.browserProbeMs) },
       );

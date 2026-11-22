@@ -70,6 +70,8 @@ export interface DockerRenderOptions {
   pageSideCompositing?: boolean;
   /** EXPERIMENTAL. drawElementImage frame capture; forwarded as `--experimental-fast-capture`. */
   experimentalFastCapture?: boolean;
+  /** EXPERIMENTAL. HDR video passthrough; forwarded as `--experimental-hdr-passthrough`. */
+  experimentalHdrPassthrough?: boolean;
   /**
    * Puppeteer page-navigation timeout, in milliseconds. Forwarded to the
    * in-container CLI as `--browser-timeout <seconds>` (the CLI takes
@@ -200,6 +202,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.outputResolution ? ["--resolution", options.outputResolution] : []),
     ...(options.pageSideCompositing === false ? ["--no-page-side-compositing"] : []),
     ...(options.experimentalFastCapture ? ["--experimental-fast-capture"] : []),
+    ...(options.experimentalHdrPassthrough ? ["--experimental-hdr-passthrough"] : []),
     ...(options.pageNavigationTimeoutMs != null
       ? ["--browser-timeout", String(options.pageNavigationTimeoutMs / 1000)]
       : []),
