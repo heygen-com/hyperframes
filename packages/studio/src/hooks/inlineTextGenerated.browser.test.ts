@@ -34,24 +34,28 @@ it.each(seeds)("generated text sequence %i", async (seed) => {
     ["sealed", sealed],
     ["unsealed", unsealed],
   ] as const) {
-    expect({ seed, mode, steps, canvas: result.canvas }).toEqual({
+    expect.soft({ seed, mode, steps, canvas: result.canvas }).toEqual({
       seed,
       mode,
       steps,
       canvas: result.freshCanvas,
     });
-    expect({
-      seed,
-      mode,
-      steps,
-      saved: result.saved,
-      words: wordsFromGestures(result.saved),
-    }).toMatchObject({
-      words: true,
-    });
+    expect
+      .soft({
+        seed,
+        mode,
+        steps,
+        saved: result.saved,
+        words: wordsFromGestures(result.saved),
+      })
+      .toMatchObject({
+        words: true,
+      });
   }
-  expect({ seed, steps, sealed: sealed.saved }).toEqual({ seed, steps, sealed: unsealed.saved });
+  expect
+    .soft({ seed, steps, sealed: sealed.saved })
+    .toEqual({ seed, steps, sealed: unsealed.saved });
   if (!allLand(steps)) return;
   const model = await run("unsealed", true);
-  expect({ seed, steps, saved: sealed.saved }).toEqual({ seed, steps, saved: model.saved });
+  expect.soft({ seed, steps, saved: sealed.saved }).toEqual({ seed, steps, saved: model.saved });
 });
