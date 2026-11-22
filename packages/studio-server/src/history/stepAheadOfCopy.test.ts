@@ -72,7 +72,8 @@ function project() {
   const opts = {
     projectDir: dir,
     historyRoot,
-    firstCopyFileMs: 100,
+    // No test holds index.html: its first copy always lands, however slow the runner; held files are owed at 100 ms.
+    firstCopyFileMs: (path: string) => (path === "index.html" ? 60_000 : 100),
     now: () => Date.now() + ahead,
   };
   // History trusts a stat it has seen unchanged for longer than a file system's time step.
