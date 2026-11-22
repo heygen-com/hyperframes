@@ -32,11 +32,16 @@ const BOOT_SLACK_MS = 60_000;
 const NO_FOLLOW = constants.O_NOFOLLOW ?? 0;
 const NON_BLOCK = constants.O_NONBLOCK ?? 0;
 const LINKED = new Set(["ELOOP", "EMLINK"]);
+const WRITE_REFUSED = new Set(["EPERM", "EACCES", "EROFS"]);
 
 function busyOnWindows(error: unknown): boolean {
   return (
     process.platform === "win32" && WINDOWS_BUSY.has((error as NodeJS.ErrnoException).code ?? "")
   );
+}
+
+function mayOnlyRead(error: unknown): boolean {
+  return !busyOnWindows(error) && WRITE_REFUSED.has((error as NodeJS.ErrnoException).code ?? "");
 }
 
 function alive(pid: number): boolean {
@@ -225,8 +230,18 @@ function servedBy(file: string, urlFile: string, pid: number): string | undefine
 
 type Attempt = "claimed" | "retry" | "wait";
 
+function claimOrBusy(file: string, urlFile: string): boolean {
+  try {
+    return claim(file);
+  } catch (error) {
+    const pid = mayOnlyRead(error) ? ownerOf(file) : null;
+    if (pid === null || deadHolder(file, pid)) throw error;
+    throw new HistoryBusyError(pid, servedBy(file, urlFile, pid));
+  }
+}
+
 function attemptClaim(file: string, urlFile: string, deadline: number): Attempt {
-  if (claim(file)) return "claimed";
+  if (claimOrBusy(file, urlFile)) return "claimed";
   const pid = ownerOf(file);
   if (pid === null) return "retry";
   if (deadHolder(file, pid) && evictDeadOwner(file)) return "retry";
