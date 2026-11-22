@@ -159,6 +159,7 @@ describe("a gesture's start on an opaque frame", () => {
       gsap: { x: 200, y: 5, moving: false },
       gsapRotation: 0,
       grow: { a: -0.25, b: 0, c: 0, d: 0.25 },
+      cssRotation: null,
     });
     const selection = { ...makeSelection("card", standIn), handle };
     const made = createManualOffsetDragMember({

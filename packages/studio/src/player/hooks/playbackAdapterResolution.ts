@@ -11,7 +11,7 @@ import {
   type StaticSeekCacheEntry,
 } from "../lib/playbackAdapter";
 import { readTimelineDurationFromDocument } from "../lib/timelineDOM";
-import { attachPausedVideoProvider } from "../lib/pausedVideoProvider";
+import { servePausedVideoFrames } from "../lib/pausedVideoProvider";
 import { previewFrameOpaque } from "../lib/previewChannel";
 import { bridgePlaybackAdapter } from "../lib/bridgePlayback";
 
@@ -105,9 +105,9 @@ export function resolveFramePlaybackAdapter(
   iframe: HTMLIFrameElement,
   refs: StaticSeekRefs,
 ): PlaybackAdapter | null {
+  servePausedVideoFrames(iframe);
   if (previewFrameOpaque(iframe)) return bridgePlaybackAdapter(iframe);
   const win = iframe.contentWindow as IframeWindow | null;
   if (!win) return null;
-  attachPausedVideoProvider(iframe, win);
   return resolvePlaybackAdapter(iframe, win, refs);
 }

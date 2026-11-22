@@ -11,6 +11,7 @@ import type { DomEditSelection } from "./domEditing";
 import { orientedGroupAwareOverlayRect, type OverlayRect } from "./domEditOverlayGeometry";
 import type { UseDomEditOverlayGesturesOptions } from "./domEditOverlayGestures";
 import { createPreviewGestureStarts } from "./previewGestureStarts";
+import { standInHandle } from "./previewSelection";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
 import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 
@@ -238,11 +239,34 @@ describe("overlay rects on an opaque frame match a scriptable one", () => {
   });
 });
 
+/** A sealed frame whose runtime never answers, as a frame the page has dropped. */
+function silentFrame() {
+  const frameWindow = new Proxy({ postMessage() {} } as Record<string, unknown>, {
+    get: (target, key) => {
+      if (key === "postMessage") return target.postMessage;
+      throw new DOMException("blocked", "SecurityError");
+    },
+  });
+  const iframe = detachedFakeIframe(frameWindow);
+  Object.defineProperty(iframe, "contentDocument", { value: null });
+  return sized(iframe, [100, 50, 960, 540]) as HTMLIFrameElement;
+}
+
 describe("a press held across a preview change on an opaque frame", () => {
-  async function pressDuringChange(selection: DomEditSelection) {
+  async function pressDuringChange(
+    selection: DomEditSelection,
+    {
+      iframe = opaqueFrame(),
+      overlayRect = null,
+      whileWaiting = () => {},
+    }: {
+      iframe?: HTMLIFrameElement;
+      overlayRect?: OverlayRect | null;
+      whileWaiting?: (opts: UseDomEditOverlayGesturesOptions) => void;
+    } = {},
+  ) {
     press.changing = true;
     press.start.mockClear();
-    const iframe = opaqueFrame();
     const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]) as HTMLDivElement;
     const opts = {
       waitingPressRef: { current: null },
@@ -252,8 +276,8 @@ describe("a press held across a preview change on an opaque frame", () => {
       overlayRef: { current: overlay },
       activeCompositionPathRef: { current: "index.html" },
       selectionRef: { current: selection },
-      overlayRectRef: { current: null },
-      setOverlayRect: vi.fn(),
+      overlayRectRef: { current: overlayRect },
+      setOverlayRect: vi.fn((rect: OverlayRect | null) => (opts.overlayRectRef.current = rect)),
     } as unknown as UseDomEditOverlayGesturesOptions;
     const { startGesture } = createPreviewGestureStarts(opts, vi.fn(), vi.fn());
     const down = {
@@ -267,6 +291,7 @@ describe("a press held across a preview change on an opaque frame", () => {
     startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(press.start).not.toHaveBeenCalled();
+    whileWaiting(opts);
     press.changing = false;
     return { opts, overlay };
   }
@@ -287,6 +312,86 @@ describe("a press held across a preview change on an opaque frame", () => {
     const live = orientedGroupAwareOverlayRect(overlay, liveFrame(), turned);
     expect(close(started.rect)).toEqual(close(live));
     expect(started.rect.angle).toBeCloseTo(36.87, 2);
+  });
+
+  // fails without the fix: the press read over the frame it was pressed on, which the change had removed, so no
+  // answer came and the drag was dropped.
+  it("reads over the frame shown once the change ends, when the change swapped frames", async () => {
+    const turned = document.getElementById("turned")!;
+    const pressedOn = opaqueFrame();
+    await pressDuringChange(makeSelection("turned", turned), {
+      iframe: pressedOn,
+      whileWaiting: (opts) => {
+        opts.iframeRef.current = opaqueFrame();
+        Object.defineProperty(pressedOn, "contentWindow", { value: null });
+      },
+    });
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce(), { timeout: 3000 });
+    const [, , , started] = press.start.mock.calls[0] as [
+      unknown,
+      unknown,
+      unknown,
+      { selection: DomEditSelection },
+    ];
+    expect(started.selection.id).toBe("turned");
+    // fails without the fix: the gesture drew through the stand-in of the frame it was pressed on, now removed.
+    expect(started.selection.element).not.toBe(turned);
+    expect(standInHandle(started.selection.element)).toBe(started.selection.handle);
+  });
+
+  it("starts from the box Studio drew when the frame shown never answers", async () => {
+    const turned = makeSelection("turned", document.getElementById("turned")!);
+    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
+    await pressDuringChange(turned, { iframe: silentFrame(), overlayRect: drawn });
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce(), { timeout: 3000 });
+    const [, , , started] = press.start.mock.calls[0] as [
+      unknown,
+      unknown,
+      unknown,
+      { selection: DomEditSelection; rect: OverlayRect },
+    ];
+    expect(started).toMatchObject({ selection: turned, rect: drawn });
+    expect(started.selection.element).toBe(turned.element);
+  });
+
+  // fails without the fix: the waiting box's redraws had already moved the box the drag started from.
+  it("starts from the box as it was at the press, though the pointer moved while it waited", async () => {
+    const turned = makeSelection("turned", document.getElementById("turned")!);
+    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
+    await pressDuringChange(turned, {
+      iframe: silentFrame(),
+      overlayRect: drawn,
+      whileWaiting: (opts) => opts.waitingPressRef.current!.draw!(30, 0),
+    });
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce(), { timeout: 3000 });
+    const [, , , started] = press.start.mock.calls[0] as [
+      unknown,
+      unknown,
+      unknown,
+      { rect: OverlayRect },
+    ];
+    expect(started.rect).toEqual(drawn);
+  });
+
+  it("asks the frame shown again when a swap comes after its first ask", async () => {
+    const turned = document.getElementById("turned")!;
+    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
+    const { opts, overlay } = await pressDuringChange(makeSelection("turned", turned), {
+      iframe: silentFrame(),
+      overlayRect: drawn,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    opts.iframeRef.current = opaqueFrame();
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce(), { timeout: 3000 });
+    const [, , , started] = press.start.mock.calls[0] as [
+      unknown,
+      unknown,
+      unknown,
+      { rect: OverlayRect },
+    ];
+    expect(close(started.rect)).toEqual(
+      close(orientedGroupAwareOverlayRect(overlay, liveFrame(), turned)),
+    );
   });
 
   it("drops the press when the page shown no longer has the element", async () => {

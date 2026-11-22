@@ -25,7 +25,7 @@ import {
   type PreviewTarget,
 } from "./timelineElementHelpers";
 import { postRuntimeControlMessage } from "./runtimeProtocol";
-import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
+import { transitionLabelsForDocument } from "@hyperframes/core/studio-preview-mark";
 
 // ---------------------------------------------------------------------------
 // Viewport / DOM normalisation

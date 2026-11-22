@@ -428,6 +428,30 @@ describe("a sealed preview's text rows", () => {
   });
 });
 
+describe("a sealed preview's transition labels", () => {
+  it("names a clip's transition from the runtime's clip message, with no page timelines to read", () => {
+    const row = createTimelineElementFromManifestClip({
+      clip: {
+        id: "a",
+        label: "A",
+        kind: "element",
+        tagName: "div",
+        start: 0,
+        duration: 3,
+        track: 0,
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: null,
+        transitionLabel: "hf:transition:a:b:fade",
+      },
+      fallbackIndex: 0,
+      doc: makeDoc(`<div id="a" data-start="0" data-duration="3"></div>`),
+    });
+    expect(row.transitionLabel).toBe("hf:transition:a:b:fade");
+  });
+});
+
 describe("group info cache", () => {
   const parseMember = (doc: Document) =>
     createTimelineElementFromManifestClip({

@@ -206,7 +206,11 @@ describe("TimelineOverlays context lifecycle", () => {
       currentElement: current,
       overlays: {
         kfContextMenu: null,
-        clipContextMenu: { x: 10, y: 10, sessionEpoch: 2, element: captured },
+        clipContextMenu: {
+          anchor: { left: 10, top: 10, bottom: 10 },
+          sessionEpoch: 2,
+          element: captured,
+        },
         clipMenuItems,
       },
     });
@@ -224,7 +228,11 @@ describe("TimelineOverlays context lifecycle", () => {
       currentElement: video,
       overlays: {
         kfContextMenu: null,
-        clipContextMenu: { x: 10, y: 10, sessionEpoch: 2, element: video },
+        clipContextMenu: {
+          anchor: { left: 10, top: 10, bottom: 10 },
+          sessionEpoch: 2,
+          element: video,
+        },
         currentTime: 2,
         splitShortcut: "⌥S",
       },
