@@ -552,11 +552,24 @@ describe("where the MotionPath plugin loads from", () => {
     expect(preloadOn(cdn + tween, "3.14.2")).toBeNull();
   });
 
-  // fails without the fix: the check compared the plugin with the page's base, so a base on another site
-  // passed for a "local" plugin that was really on that site.
-  it("never preloads from a base on another site than the preview document", () => {
-    document.head.innerHTML = '<base href="https://assets.example/film/">';
-    expect(preloadOn(`<script src="gsap.min.js"></script>${PATH_TWEEN}`)).toBeNull();
+  // fails without the fix: rows "nothing, other site" and "local root, other site". The check read the
+  // page's base, so a <base> on another site moved a "local" plugin there.
+  const LOCAL = "http://localhost:3000/api/vendor/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js";
+  const MIRROR = "https://mirror.example/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js";
+  it.each<[string, string, string, string | null]>([
+    ["nothing", "/film/", "", "http://localhost:3000/film/vendor/MotionPathPlugin.min.js"],
+    ["nothing", "https://assets.example/film/", "", null],
+    ["local root", "/film/", "/api/vendor/npm", LOCAL],
+    ["local root", "https://assets.example/film/", "/api/vendor/npm", LOCAL],
+    ["mirror", "/film/", "https://mirror.example/npm", MIRROR],
+    ["mirror", "https://assets.example/film/", "https://mirror.example/npm", MIRROR],
+  ])("preloads with %s configured under the base %s", (_, base, mirror, expected) => {
+    document.head.innerHTML =
+      `<base href="${base}">` +
+      (mirror ? `<meta name="hyperframes-gsap-base-url" content="${mirror}">` : "");
+    expect(preloadOn(`<script src="vendor/gsap.min.js"></script>${PATH_TWEEN}`, "3.12.5")).toBe(
+      expected,
+    );
   });
 
   // fails without the fix: a data: script threw out of the preload, and a project script beside GSAP was

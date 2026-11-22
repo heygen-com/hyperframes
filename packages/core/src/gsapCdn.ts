@@ -67,15 +67,25 @@ export function motionPathPluginUrl(gsapVersion?: string, baseUrl?: string): str
   return `${gsapCdnDist(gsapVersion, baseUrl)}MotionPathPlugin.min.js`;
 }
 
-/** MotionPathPlugin from a configured mirror (a local root has one version), else beside the page GSAP. */
-export function motionPathPluginFor(page: {
+const originOf = (url: string) => (URL.canParse(url) ? new URL(url).origin : "null");
+
+/** The plugin a preview may load: an absolute mirror, the document's own origin, or (`pageOwned`) the page's GSAP. */
+export function previewMotionPathSrc(page: {
   gsapFile: string | null;
   mirror?: string | null;
   version?: string;
-}) {
-  if (page.mirror?.trim().startsWith("/"))
-    return motionPathPluginUrl(GSAP_CDN_VERSION, page.mirror);
+  documentUrl: string;
+  baseUrl: string;
+  pageOwned: boolean;
+}): string | null {
+  const own = originOf(page.documentUrl);
+  const mirror = page.mirror?.trim();
+  if (mirror?.startsWith("/")) {
+    return own === "null" ? null : new URL(motionPathPluginUrl(GSAP_CDN_VERSION, mirror), own).href;
+  }
   const version = page.version ?? page.gsapFile?.match(/gsap@([\d.]+)/)?.[1];
-  if (page.mirror) return motionPathPluginUrl(version, page.mirror);
-  return page.gsapFile ? motionPathBesideGsap(page.gsapFile) : null;
+  if (mirror) return motionPathPluginUrl(version, mirror);
+  if (!page.gsapFile || !URL.canParse(page.gsapFile, page.baseUrl)) return null;
+  const href = new URL(motionPathBesideGsap(page.gsapFile), page.baseUrl).href;
+  return page.pageOwned || (own !== "null" && originOf(href) === own) ? href : null;
 }

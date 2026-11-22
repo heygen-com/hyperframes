@@ -35,7 +35,7 @@ import {
   GSAP_PLUGIN_LOAD_ATTR,
   NO_PATH_TWEEN_META,
   gsapCdnDist,
-  motionPathPluginFor,
+  previewMotionPathSrc,
   namesMotionPath,
   normalizeGsapBaseUrl,
   normalizeGsapLocalRoot,
@@ -313,12 +313,32 @@ function htmlHasMotionPathPlugin(html: string): boolean {
   );
 }
 
-// The plugin goes right after the page's GSAP, from the configured mirror or else from beside that GSAP file.
-// Unconfigured, a page that names no GSAP file gets none: its render would not have one either.
+// The plugin goes right after the page's GSAP. The cached tag is the same for every visitor, so the document's
+// origin is a stand-in: a same-origin plugin is written as a path, which holds only under a same-origin base.
+const PREVIEW_DOCUMENT = "http://preview.invalid/preview";
+
+function pluginTagSrc(html: string, gsapFile: string | null, mirror: string | null): string | null {
+  const baseHref = parseHTML(html).document.querySelector("base[href]")?.getAttribute("href");
+  const baseUrl = new URL(
+    baseHref && URL.canParse(baseHref, PREVIEW_DOCUMENT) ? baseHref : "",
+    PREVIEW_DOCUMENT,
+  );
+  const href = previewMotionPathSrc({
+    gsapFile,
+    mirror,
+    documentUrl: PREVIEW_DOCUMENT,
+    baseUrl: baseUrl.href,
+    pageOwned: true,
+  });
+  const own = new URL(PREVIEW_DOCUMENT).origin;
+  if (!href || new URL(href).origin !== own) return href;
+  return baseUrl.origin === own ? href.slice(own.length) : null;
+}
+
 function injectMotionPathPluginIfNeeded(html: string, mirror: string | null = null): string {
   if (!htmlUsesMotionPath(html) || htmlHasMotionPathPlugin(html)) return html;
   const gsap = findGsapCoreScript(html);
-  const src = motionPathPluginFor({ gsapFile: gsap?.src ?? null, mirror });
+  const src = pluginTagSrc(html, gsap?.src ?? null, mirror);
   if (!src) return html;
   if (!gsap) return injectScriptTagIntoHead(html, `<script src="${escapeGsapUrl(src)}"></script>`);
   const ordering = `${gsap.type ? ` type="${gsap.type}"` : ""}${gsap.defer ? " defer" : ""}`;

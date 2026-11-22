@@ -6,7 +6,7 @@ import {
   GSAP_PLUGIN_LOAD_ATTR,
   NO_PATH_TWEEN_META,
   isGsapCoreUrl,
-  motionPathPluginFor,
+  previewMotionPathSrc,
   namesMotionPath,
 } from "../../gsapCdn";
 import { INLINED_FILE_ATTR } from "../../compiler/scriptRuns";
@@ -353,13 +353,15 @@ function pageGsapFile(doc: Document): string | null {
 const gsapMirror = (doc: Document) =>
   doc.head.querySelector<HTMLMetaElement>(`meta[name="${GSAP_BASE_URL_META}"]`)?.content;
 
-function previewMotionPathUrl(doc: Document, version?: string): string | null {
-  const src = motionPathPluginFor({
+function previewMotionPathUrl(doc: Document, version?: string, pageOwned = true): string | null {
+  return previewMotionPathSrc({
     gsapFile: pageGsapFile(doc),
     mirror: gsapMirror(doc),
     version,
+    documentUrl: doc.URL,
+    baseUrl: doc.baseURI,
+    pageOwned,
   });
-  return src && new URL(src, doc.baseURI).href;
 }
 
 function runSuppressed(win: SoftReloadWindow, reload: () => void): boolean {
@@ -489,9 +491,8 @@ export function preloadMotionPath(
 ): void {
   if (win.MotionPathPlugin || win.__hfMotionPathWaiters || !win.gsap) return;
   if (doc.querySelector(`meta[name="${NO_PATH_TWEEN_META}"]`)) return;
-  // Ahead of any path tween, only a request that stays local: the page's origin or the host's mirror.
-  const src = previewMotionPathUrl(doc, win.gsap.version);
-  if (!src || (!gsapMirror(doc) && new URL(src).origin !== new URL(doc.URL).origin)) return;
+  // Ahead of any path tween, only a request that stays local: the document's origin or the host's mirror.
+  if (!previewMotionPathUrl(doc, win.gsap.version, false)) return;
   const register = () => win.MotionPathPlugin && win.gsap?.registerPlugin?.(win.MotionPathPlugin);
   whenMotionPathLoaded(win, doc, register, () => {});
 }

@@ -836,7 +836,7 @@ describe("registerPreviewRoutes", () => {
     async (_, tag, plugin) => {
       const scripts = await previewScriptSrcs(tag);
       const srcs = scripts.map((el) => el.getAttribute("src") ?? "");
-      expect(srcs).toContain(plugin);
+      expect(srcs.some((src) => src.startsWith("/") && src.endsWith(`/${plugin}`))).toBe(true);
       expect(srcs.filter((src) => /jsdelivr|^https?:/.test(src))).toEqual([]);
     },
   );
@@ -3383,7 +3383,9 @@ describe("GSAP mirror configuration", () => {
       const plugin = parseHTML(await again.text()).document.querySelector(
         'script[src*="MotionPathPlugin"]',
       );
-      expect(plugin?.getAttribute("src")).toBe("vendor/MotionPathPlugin.min.js");
+      expect(plugin?.getAttribute("src")).toMatch(
+        /^\/api\/projects\/demo\/.*\/vendor\/MotionPathPlugin\.min\.js$/,
+      );
     },
   );
 
@@ -3631,5 +3633,46 @@ describe("preview asset colour tags", () => {
     expect(body.includes("cICP")).toBe(false);
     expect(body.includes("IDAT")).toBe(true);
     expect(response.headers.get("Content-Length") ?? String(body.length)).toBe(String(body.length));
+  });
+});
+
+describe("where the preview's MotionPathPlugin tag points", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const pageUrl = "http://localhost/projects/demo/preview";
+  const LOCAL = "http://localhost/api/vendor/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js";
+  const MIRROR = "https://mirror.example/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js";
+
+  // fails without the fix: row "local root, other site". The bundled root was written as a path, which the
+  // page's <base> on another site resolved there; the runtime now loads it on demand from the document.
+  it.each<[string, string | null, string | null]>([
+    ["nothing", null, "http://localhost/api/projects/demo/preview/vendor/MotionPathPlugin.min.js"],
+    [
+      "nothing",
+      "https://assets.example/film/",
+      "https://assets.example/film/vendor/MotionPathPlugin.min.js",
+    ],
+    ["local root", null, LOCAL],
+    ["local root", "https://assets.example/film/", null],
+    ["mirror", null, MIRROR],
+    ["mirror", "https://assets.example/film/", MIRROR],
+  ])("writes the tag with %s configured under the base %s", async (setup, base, expected) => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head>${base ? `<base href="${base}">` : ""}</head><body><div id="card"></div>
+        <script src="vendor/gsap.min.js"></script>
+        <script>gsap.to("#card", { motionPath: { path: [{ x: 100, y: 50 }] } });</script>
+      </body></html>`,
+    );
+    vi.stubEnv("HYPERFRAMES_GSAP_BASE_URL", setup === "mirror" ? "https://mirror.example/npm" : "");
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, setup === "local root" ? { gsapLocalRoot: "/api/vendor/npm" } : {}),
+    );
+    const doc = parseHTML(await (await app.request(pageUrl)).text()).document;
+    const src = doc.querySelector('script[src*="MotionPathPlugin"]')?.getAttribute("src");
+    const baseUrl = new URL(doc.querySelector("base[href]")?.getAttribute("href") ?? "", pageUrl);
+    expect(src === undefined ? null : new URL(src, baseUrl).href).toBe(expected);
   });
 });
