@@ -69,6 +69,8 @@ export interface UseTimelineSyncCallbacksParams {
   /** Fires when no adapter appeared within the wait window. */
   onLoadGiveUp?: (context?: number) => void;
   hostOwnsDeadline?: boolean;
+  /** The frame on screen, when it is not this hook's own (a shadow, hidden until promoted). */
+  liveFrame?: () => HTMLIFrameElement | null;
 }
 
 /**
@@ -186,7 +188,12 @@ export function useTimelineSyncCallbacks({
   isCurrent,
   onLoadGiveUp,
   hostOwnsDeadline,
+  liveFrame,
 }: UseTimelineSyncCallbacksParams) {
+  const onScreen = useCallback(
+    () => (liveFrame ? liveFrame() : iframeRef.current),
+    [liveFrame, iframeRef],
+  );
   // Convert a runtime timeline message (from iframe postMessage) into TimelineElements
   const applyTimelineMessage = useCallback(
     (
@@ -197,7 +204,8 @@ export function useTimelineSyncCallbacks({
       previewDuration: number,
       revision: number,
     ) => {
-      if (!landTimelineRevision(revision)) return;
+      // A read lands only from the frame on screen, and only over nothing newer.
+      if (iframe !== onScreen() || !landTimelineRevision(revision)) return;
       usePlayerStore.getState().setClipManifest(data.clips);
       // Show root-level clips: no parentCompositionId, OR parent is a "phantom wrapper"
       const clipCompositionIds = new Set(data.clips.map((c) => c.compositionId).filter(Boolean));
@@ -243,7 +251,7 @@ export function useTimelineSyncCallbacks({
         syncTimelineElements,
       );
     },
-    [syncTimelineElements],
+    [onScreen, syncTimelineElements],
   );
 
   // A sealed frame's rows bind to its document copy and clip tree from the editing port.
@@ -360,7 +368,7 @@ export function useTimelineSyncCallbacks({
 
   const onIframeLoad = useCallback(
     (context?: number) => {
-      supersedeTimelineReads();
+      if (onScreen() === iframeRef.current) supersedeTimelineReads();
       const loadedDoc = safeContentDocument(iframeRef.current);
       if (loadedDoc) usePlayerStore.getState().markPreviewLoadStep(loadedDoc);
       applyPreviewAudioState();
@@ -417,6 +425,7 @@ export function useTimelineSyncCallbacks({
       applyPreviewAudioState,
       onLoadGiveUp,
       hostOwnsDeadline,
+      onScreen,
     ],
   );
 

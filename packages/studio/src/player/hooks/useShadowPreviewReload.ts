@@ -334,6 +334,7 @@ export function useShadowPreviewReload({
 
   const getShadowAdapter = useCallback(() => getAdapter(shadowIframeRef.current), [getAdapter]);
   const isCurrentShadow = useCallback((gen?: number) => gen === shadowGenRef.current, []);
+  const liveFrame = useCallback(() => iframeRef.current, [iframeRef]);
   const previewGeneration = useCallback(() => shadowGenRef.current, []);
   const markAdapterReady = useCallback(
     (iframe: HTMLIFrameElement | null, gen: number | undefined, commit: () => void) => {
@@ -368,6 +369,7 @@ export function useShadowPreviewReload({
     onAdapterReady: markAdapterReady,
     isCurrent: isCurrentShadow,
     hostOwnsDeadline: true,
+    liveFrame,
   });
   cancelPendingLoadRef.current = cancelPendingLoad;
 

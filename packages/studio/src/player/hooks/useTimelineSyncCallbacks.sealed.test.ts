@@ -21,6 +21,7 @@ function processWith(
   adapter: PlaybackAdapter | null = null,
   isCurrent?: () => boolean,
   sync = vi.fn<(els: TimelineElement[], duration?: number) => void>(),
+  liveFrame?: () => HTMLIFrameElement | null,
 ) {
   let callbacks: ReturnType<typeof useTimelineSyncCallbacks> | undefined;
   const iframeRef: { current: HTMLIFrameElement | null } = { current: iframe };
@@ -40,6 +41,7 @@ function processWith(
       applyPreviewAudioState: () => {},
       onAdapterReady: (_iframe, _context, commit) => commit(),
       isCurrent,
+      liveFrame,
     });
     return null;
   }
@@ -164,14 +166,19 @@ it("gives a sealed composition its row when the preview loads", async () => {
 it("keeps a sealed load's row when its frame is promoted before the reply", async () => {
   document.body.innerHTML = rootOnly;
   usePlayerStore.getState().setElements([]);
-  const { sync, iframeRef, initialize } = processWith(
-    sealedPreviewFrame().iframe,
+  const promoted = sealedPreviewFrame().iframe;
+  // The shadow's own ref lets go at promotion; the live ref, the one on screen, now holds its frame.
+  const sync = vi.fn<(els: TimelineElement[], duration?: number) => void>();
+  const shadow = processWith(
+    promoted,
     adapterOf(5),
     () => true,
+    sync,
+    () => promoted,
   );
 
-  initialize();
-  iframeRef.current = null;
+  shadow.initialize();
+  shadow.iframeRef.current = null;
 
   await vi.waitFor(() => expect(rootRow(sync)).toEqual(["scene5@0+5"]));
 });
@@ -303,4 +310,38 @@ it("keeps a sealed root row at the preview's length over an empty list's default
   process({ clips: [], durationInFrames: 30 });
 
   await vi.waitFor(() => expect(rootRow(sync)).toEqual(["scene5@0+4"]));
+});
+
+// fails without the fix: a replaced frame's reply still landed until the replacement's load callback ran.
+it("drops a reply from a frame once another is on screen, before that one loads", async () => {
+  document.body.innerHTML = `<div data-composition-id="main"><div id="stale" data-start="0" data-duration="2"></div></div>`;
+  const replaced = sealedPreviewFrame().iframe;
+  const { sync, iframeRef, process } = processWith(replaced, adapterOf(2));
+
+  process({ clips: [{ ...boxClip, id: "stale" }], durationInFrames: 60 });
+  iframeRef.current = detachedFakeIframe({ scrollTo() {} });
+  await previewDocumentCopy(replaced);
+  await previewClipParents(replaced);
+
+  expect(sync).not.toHaveBeenCalled();
+});
+
+// fails without the fix: the hidden reload's load cancelled the on-screen frame's read, so its rows never came.
+it("keeps the on-screen frame's read when a hidden reload starts loading", async () => {
+  document.body.innerHTML = `<div data-composition-id="main"><div id="fresh" data-start="0" data-duration="2"></div></div>`;
+  const onScreen = sealedPreviewFrame().iframe;
+  const sync = vi.fn<(els: TimelineElement[], duration?: number) => void>();
+  const live = processWith(onScreen, adapterOf(2), undefined, sync);
+  const hidden = processWith(
+    detachedFakeIframe({ scrollTo() {} }),
+    null,
+    () => true,
+    sync,
+    () => live.iframeRef.current,
+  );
+
+  live.process({ clips: [{ ...boxClip, id: "fresh" }], durationInFrames: 60 });
+  hidden.load();
+
+  await vi.waitFor(() => expect(rootRow(sync)).toEqual(["fresh@0+2"]));
 });
