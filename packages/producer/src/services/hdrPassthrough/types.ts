@@ -131,7 +131,10 @@ export type PassthroughIneligibleReason =
   | "frame_source"
   | "unresolvable_clip_start"
   | "analysis_limit"
-  | "too_many_states";
+  | "too_many_states"
+  // overlay capture (see overlayCapture.writeOverlayStates): a frame the
+  // planner called static rendered a different overlay
+  | "overlay_unverified";
 
 /** The single full-frame HDR video the overlays sit on. */
 export interface PassthroughVideo {
@@ -291,8 +294,13 @@ export interface CapturedOverlaySet {
   uniqueCount: number;
   /** Candidate states probed (the input plan's state count). */
   candidateCount: number;
-  /** Screenshots taken; at most one per distinct overlay fingerprint. */
+  /**
+   * Screenshots taken: at most one per distinct overlay fingerprint, plus
+   * any the verification pass needed for a fingerprint it had not seen.
+   */
   captureCount: number;
+  /** Verification probes of frames inside merged states (`verificationFrames`). */
+  verifyProbeCount: number;
   /** Directory holding the PNGs; owned by the render's workDir cleanup. */
   dir: string;
   /** Wall-clock ms spent seeking + capturing + mapping. */

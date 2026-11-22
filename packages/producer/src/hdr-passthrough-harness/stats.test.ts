@@ -6,6 +6,7 @@ import {
   checkPixelParity,
   classifyRenderLog,
   parseCaptureStats,
+  parseFfmpegVersion,
   compareProbes,
   describeRenderPath,
   expectedHdrTags,
@@ -269,6 +270,22 @@ describe("classifyRenderLog", () => {
   it("detects the layered stage and unknown logs", () => {
     expect(classifyRenderLog("Layered composite frame 10/600").kind).toBe("layered");
     expect(classifyRenderLog("nothing relevant").kind).toBe("unknown");
+  });
+});
+
+describe("parseFfmpegVersion", () => {
+  it("reads the version from the first line", () => {
+    expect(
+      parseFfmpegVersion(
+        "ffmpeg version 7.0.2-static https://johnvansickle.com/ffmpeg/  Copyright (c) 2000-2024\nbuilt with gcc 8",
+      ),
+    ).toBe("7.0.2-static");
+    expect(parseFfmpegVersion("ffmpeg version n8.0.1 Copyright (c) 2000-2025")).toBe("n8.0.1");
+  });
+
+  it("returns null for anything else", () => {
+    expect(parseFfmpegVersion("")).toBeNull();
+    expect(parseFfmpegVersion("command not found")).toBeNull();
   });
 });
 

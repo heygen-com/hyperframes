@@ -89,9 +89,10 @@ function quoteConcatPath(path: string): string {
  * layered path's HDR frame extraction does (`-pix_fmt rgb48le`), then
  * repacked losslessly to planar `gbrp16le` for the blend, and the overlay's
  * straight 16-bit alpha drives a `maskedmerge`:
- * `out = video + (a * (signal - video) + 32768) >> 16`, which is
- * `blitRgba8OverRgb48le`'s blend for `a = alpha8 * 257` within 1 LSB at
- * 16 bits. The result is repacked to `rgb48le` before `tail`, so the
+ * `out = round(video * (1 - a) + signal * a)` with `a = alpha8 * 257 / 65535`,
+ * `blitRgba8OverRgb48le`'s blend. ffmpeg 7 rounds it exactly that way (every
+ * alpha, 102400 random samples); 4.2 is 1 LSB off on about a sixth of the
+ * partial-alpha samples. The result is repacked to `rgb48le` before `tail`, so the
  * RGB → YUV conversion is the one the layered encoder runs on its rgb48le
  * stdin. Swscale's planar and packed RGB paths round chroma differently;
  * going through `rgb48le` on both sides keeps the video pixels bit-identical
@@ -145,7 +146,8 @@ function withThreadedOutputConversion(tail: string): string {
  * Pure; exported for argument-level unit tests.
  *
  *   - Input 0: the source video, seeked to `video.mediaStart` with the HDR
- *     extraction's seek normalization (`ffmpegSeekSeconds`), read for
+ *     extraction's seek normalization (`ffmpegSeekSeconds`, negative when the
+ *     streams start after 0, as in the layered extraction), read for
  *     `video.duration` plus one output frame of slack.
  *   - Input 1: the overlay PNGs through the concat demuxer
  *     (`buildOverlayConcatList`).
@@ -205,7 +207,14 @@ export function buildCompositeArgs(
     ...streaming.slice(outIndex),
   ];
 
-  const seek = Math.max(0, ffmpegSeekSeconds(video.metadata, video.mediaStart));
+  // Not clamped at 0: when every stream starts after 0 (an mp4 without an edit
+  // list, a remuxed transport stream) and `mediaStart` sits inside that offset,
+  // the seek is negative. ffmpeg then reads from the start and keeps the
+  // stream's own lead, which `fps=...:start_time=0` fills by holding the first
+  // frame, exactly as the layered extraction keeps the negative seek and holds
+  // its first frame until the stream starts. Clamping would play the video
+  // early by the offset.
+  const seek = ffmpegSeekSeconds(video.metadata, video.mediaStart);
   const readSeconds = video.duration + 1 / fpsToNumber(plan.fps);
   return [
     ...streaming.slice(0, inputStart),

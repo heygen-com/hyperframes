@@ -90,6 +90,7 @@ function request(overrides: RequestOverrides = {}): CompositeRequest {
       uniqueCount: 2,
       candidateCount: 2,
       captureCount: 2,
+      verifyProbeCount: 0,
       dir: "/w",
       captureMs: 1,
     },
@@ -157,6 +158,21 @@ describe("buildCompositeArgs", () => {
       "/w/list.ffconcat",
     );
     expect(args.slice(0, 4)).toEqual(["-ss", "12.000000", "-t", "3.033333"]);
+  });
+
+  it("keeps a negative seek when the streams start after mediaStart, like the layered extraction", () => {
+    // Streams starting 0.178 s into the file with mediaStart 0: ffmpeg must read from the start
+    // and keep the lead (the fps filter holds the first frame), not play the video early.
+    const args = buildCompositeArgs(
+      request({ mediaStart: 0, mediaTimeOffsetSeconds: 0.178 }),
+      "/w/list.ffconcat",
+    );
+    expect(args.slice(0, 4)).toEqual(["-ss", "-0.178000", "-t", "3.033333"]);
+    const partial = buildCompositeArgs(
+      request({ mediaStart: 0.1, mediaTimeOffsetSeconds: 0.178 }),
+      "/w/list.ffconcat",
+    );
+    expect(partial[1]).toBe("-0.078000");
   });
 
   it("scales and crops a same-aspect source like the HDR frame extraction", () => {

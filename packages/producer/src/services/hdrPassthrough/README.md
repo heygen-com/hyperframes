@@ -26,11 +26,13 @@ capture_hdr_layered stage (renderOrchestrator)
   └─ flag on and HDR content: attemptHdrPassthrough            index.ts
        ├─ checkPassthroughEligibility                           eligibility.ts
        │    render / video gates, in-page layout gates, animation gates,
-       │    analyzeOverlayTiming → frames where the overlay can change
+       │    analyzeOverlayTiming → frames where the overlay can change,
+       │    hf-seek listeners on window (DevTools listener lookup)
        ├─ planOverlayStates → candidate states                  planner.ts
        ├─ captureOverlayStates → one PNG per distinct overlay   overlayCapture.ts
        │    probe each candidate (seek + overlayFingerprint.ts),
-       │    screenshot only unseen fingerprints, merge identical neighbours
+       │    screenshot only unseen fingerprints, merge identical neighbours,
+       │    re-probe each candidate's ends and every 0.5 s inside it
        └─ compositeAndEncode → videoOnlyPath                    ffmpegComposite.ts
      completed → assemble muxes audio as usual
      fallback  → (extract deferred video frames) → runCaptureHdrStage
@@ -40,7 +42,10 @@ Fallback rules:
 
 - An ineligible composition logs `[Render] HDR passthrough off: <reason> (<detail>)`
   at info level and takes the layered path.
-- Any error inside the passthrough logs `HDR passthrough failed; falling back
+- A frame the planner called static that renders a different overlay
+  (overlay capture's verification probes) logs `HDR passthrough off:
+overlay_unverified (...)` and takes the layered path.
+- Any other error inside the passthrough logs `HDR passthrough failed; falling back
 to the layered HDR composite` and takes the layered path. The layered
   encoder overwrites any partial output.
 - An abort is rethrown, never turned into a fallback.
@@ -62,8 +67,11 @@ The passthrough runs only when it can reproduce the layered output:
   GSAP tweens or `set()` calls. Anything animating on its own clock declines
   (CSS / Web Animations, canvas, iframes, frame sources, timeline callbacks,
   Lottie and other adapters, three.js / WebGPU, SVG SMIL, animated GIF / WebP /
-  APNG / AVIF), as does a run of per-frame changes longer than a short
-  transition, or more states than the analysis limit.
+  APNG / AVIF, `hf-seek` listeners on `window`), as does a run of per-frame
+  changes longer than a short transition, or more states than the analysis
+  limit. A seek-driven writer none of these name (a setter on a runtime
+  global, a wrapped runtime function) is caught by capture's verification
+  probes when it changes the overlay on a probed frame.
 
 `PassthroughIneligibleReason` in `types.ts` lists every reason.
 
@@ -76,10 +84,13 @@ the layered path:
   `getSrgbToSignalLut(transfer)[srgb8]`, the LUT the layered blend
   (`blitRgba8OverRgb48le`) uses. Alpha is `a8 * 257`, straight, not
   premultiplied.
-- The composite converts the source video to packed `rgb48le` exactly as the
-  layered frame extraction does, blends at 16 bits with `maskedmerge` in
-  `gbrp16le` (`out = signal * a + video * (1 - a)`, the layered blend within
-  1 LSB), and converts back to `rgb48le` before the encoder's own frame
+- The composite seeks the source exactly as the layered frame extraction does
+  (`ffmpegSeekSeconds`, negative when every stream starts after 0 and
+  `mediaStart` sits inside that lead, so the first frame is held until the
+  stream starts), converts it to packed `rgb48le` exactly as that extraction
+  does, blends at 16 bits with `maskedmerge` in
+  `gbrp16le` (`out = round(signal * a + video * (1 - a))`, the layered blend),
+  and converts back to `rgb48le` before the encoder's own frame
   filter. ffmpeg's `overlay` filter blends RGB at 8 bits and is not used.
 - The encoder options are the ones the layered stage gives
   `spawnStreamingEncoder` (codec, preset, CRF or bitrate, delivery caps, GOP
@@ -87,7 +98,10 @@ the layered path:
   stdin input and `-vf` are replaced by the file inputs and the composite
   graph.
 
-On the generated fixtures the result is bit-identical to the layered render.
+On the generated fixtures the result is bit-identical to the layered render
+with ffmpeg 7. `maskedmerge` rounds differently on older ffmpeg (4.2 is 1 LSB
+off on about a sixth of partial-alpha samples), which the parity thresholds
+absorb; the harness records the ffmpeg version in each report.
 
 ## Capture dedup
 
@@ -103,6 +117,13 @@ unchanged layered capture path; a repeated one reuses its PNG; a candidate
 whose fingerprint or captured pixels match the state before it is merged into
 it. A candidate whose overlay differs in any way starts its own state, so a
 one-frame change is never merged away.
+
+The frames between capture frames are the planner's word. When a merged
+state closes, each of its candidates is probed again at its first and last
+frame and at least every 0.5 s in between. A fingerprint the state has not
+seen is screenshotted; pixels that differ from the state's fall back
+(`overlay_unverified`) rather than ship a stale overlay. On the caption
+fixtures this adds about two probes (about 20 ms each) per cue.
 
 ## Video frame extraction
 
@@ -128,6 +149,11 @@ reports 35–80%.
   stats are not collected on the passthrough path.
 - mp4 only; no alpha, HDR images or shader transitions.
 - The fingerprint cannot see inside closed shadow roots.
+- Verification samples frames: an undetected driver that changes the overlay
+  only between probes (a blip shorter than 0.5 s inside a long candidate,
+  away from its ends) is not caught.
+- `hf-seek` listeners are read once, after the page loads; one added later
+  is left to the verification probes.
 - With a warm extraction cache, deferral costs a probe (about 0.3 s) that a
   cache hit would not.
 

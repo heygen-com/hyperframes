@@ -148,6 +148,77 @@ function states(): OverlayState[] {
   });
 }
 
+function hlgSource(path: string): void {
+  ffmpeg([
+    ...["-f", "lavfi", "-i", `testsrc2=s=${WIDTH}x${HEIGHT}:r=30:d=2`],
+    ...["-c:v", "libx265", "-preset", "ultrafast", "-pix_fmt", "yuv420p10le"],
+    ...[
+      "-x265-params",
+      "log-level=error:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
+    ],
+    ...["-color_primaries", "bt2020", "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc"],
+    path,
+  ]);
+}
+
+async function compositeRequest(args: {
+  srcPath: string;
+  mediaStart: number;
+  overlays: CapturedOverlay[];
+  totalFrames: number;
+  outputPath: string;
+  onFramesEncoded?: (frames: number) => void;
+}): Promise<CompositeRequest> {
+  const metadata = await extractMediaMetadata(args.srcPath);
+  const states = args.overlays.map((o) => o.state);
+  const plan = {
+    states,
+    fps: FPS,
+    totalFrames: args.totalFrames,
+    width: WIDTH,
+    height: HEIGHT,
+  };
+  return {
+    video: {
+      id: "bg",
+      srcPath: args.srcPath,
+      mediaStart: args.mediaStart,
+      duration: args.totalFrames / 30,
+      fps: FPS,
+      width: WIDTH,
+      height: HEIGHT,
+      fit: "fill",
+      transfer: "hlg",
+      primaries: "bt2020",
+      colorSpace: metadata.colorSpace,
+      metadata,
+    },
+    plan,
+    overlays: {
+      overlays: args.overlays,
+      plan,
+      uniqueCount: new Set(args.overlays.map((o) => o.pngPath)).size,
+      candidateCount: states.length,
+      captureCount: states.length,
+      verifyProbeCount: 0,
+      dir,
+      captureMs: 0,
+    },
+    encoder: {
+      preset: getEncoderPreset("high", "mp4", { transfer: "hlg" }),
+      effectiveQuality: 10,
+      effectiveBitrate: undefined,
+      deliveryEncoder: { lockGopForChunkConcat: false, gopSize: undefined },
+      useGpu: false,
+    },
+    hdr: { transfer: "hlg" },
+    outputPath: args.outputPath,
+    workDir: join(dir, "work"),
+    abortSignal: undefined,
+    onFramesEncoded: args.onFramesEncoded,
+  };
+}
+
 describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
   let outputPath: string;
   let out: Buffer;
@@ -158,16 +229,7 @@ describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
   beforeAll(async () => {
     dir = mkdtempSync(join(tmpdir(), "hdr-passthrough-composite-"));
     const srcPath = join(dir, "hlg.mp4");
-    ffmpeg([
-      ...["-f", "lavfi", "-i", `testsrc2=s=${WIDTH}x${HEIGHT}:r=30:d=2`],
-      ...["-c:v", "libx265", "-preset", "ultrafast", "-pix_fmt", "yuv420p10le"],
-      ...[
-        "-x265-params",
-        "log-level=error:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
-      ],
-      ...["-color_primaries", "bt2020", "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc"],
-      srcPath,
-    ]);
+    hlgSource(srcPath);
     const clear = join(dir, "clear.png");
     const opaque = join(dir, "box.png");
     const half = join(dir, "half.png");
@@ -181,54 +243,16 @@ describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
       pngPath: pngs[i]!,
       hash: String(i),
     }));
-    const plan = {
-      states: planned,
-      fps: FPS,
-      totalFrames: TOTAL_FRAMES,
-      width: WIDTH,
-      height: HEIGHT,
-    };
-    const metadata = await extractMediaMetadata(srcPath);
     outputPath = join(dir, "out", "video-only.mp4");
     framesReported = [];
-    const request: CompositeRequest = {
-      video: {
-        id: "bg",
-        srcPath,
-        mediaStart: MEDIA_START,
-        duration: TOTAL_FRAMES / 30,
-        fps: FPS,
-        width: WIDTH,
-        height: HEIGHT,
-        fit: "fill",
-        transfer: "hlg",
-        primaries: "bt2020",
-        colorSpace: metadata.colorSpace,
-        metadata,
-      },
-      plan,
-      overlays: {
-        overlays,
-        plan,
-        uniqueCount: 3,
-        candidateCount: planned.length,
-        captureCount: 3,
-        dir,
-        captureMs: 0,
-      },
-      encoder: {
-        preset: getEncoderPreset("high", "mp4", { transfer: "hlg" }),
-        effectiveQuality: 10,
-        effectiveBitrate: undefined,
-        deliveryEncoder: { lockGopForChunkConcat: false, gopSize: undefined },
-        useGpu: false,
-      },
-      hdr: { transfer: "hlg" },
+    const request = await compositeRequest({
+      srcPath,
+      mediaStart: MEDIA_START,
+      overlays,
+      totalFrames: TOTAL_FRAMES,
       outputPath,
-      workDir: join(dir, "work"),
-      abortSignal: undefined,
       onFramesEncoded: (frames) => framesReported.push(frames),
-    };
+    });
     framesEncoded = (await compositeAndEncode(request)).framesEncoded;
     out = decodeRgb48(outputPath);
     src = decodeRgb48(srcPath);
@@ -306,6 +330,72 @@ describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
       if (frame + MEDIA_START_FRAMES + 1 < src.length / FRAME_BYTES) {
         expect(error(MEDIA_START_FRAMES)).toBeLessThan(error(MEDIA_START_FRAMES + 1));
       }
+    }
+  });
+});
+
+// An mp4 whose streams all start after 0 (no edit list, a transport-stream remux). The browser
+// plays it from timestamp 0, so the engine's media-time offset is the stream start and the seek
+// for mediaStart 0 is negative. The composite must keep that lead, holding the first frame until
+// the stream starts, as the layered HDR extraction does; a seek clamped to 0 plays it early.
+const STREAM_OFFSET_SECONDS = 0.2;
+const STREAM_OFFSET_FRAMES = 6;
+const OFFSET_TOTAL_FRAMES = 30;
+
+describe.skipIf(!HAS_X265)("compositeAndEncode with a source that starts after 0", () => {
+  let out: Buffer;
+  let src: Buffer;
+  let framesEncoded: number;
+  let seekSeconds: number;
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), "hdr-passthrough-composite-offset-"));
+    const plainPath = join(dir, "offset-plain.mp4");
+    const srcPath = join(dir, "offset.mp4");
+    hlgSource(plainPath);
+    ffmpeg([
+      ...["-i", plainPath, "-map", "0", "-c", "copy"],
+      ...["-output_ts_offset", String(STREAM_OFFSET_SECONDS), srcPath],
+    ]);
+    const clear = join(dir, "offset-clear.png");
+    writeBoxPng(clear, 0);
+    const state: OverlayState = {
+      index: 0,
+      startFrame: 0,
+      endFrame: OFFSET_TOTAL_FRAMES,
+      captureFrame: OFFSET_TOTAL_FRAMES / 2,
+    };
+    const outputPath = join(dir, "out", "offset-video-only.mp4");
+    const request = await compositeRequest({
+      srcPath,
+      mediaStart: 0,
+      overlays: [{ state, pngPath: clear, hash: "clear" }],
+      totalFrames: OFFSET_TOTAL_FRAMES,
+      outputPath,
+    });
+    seekSeconds = Number(request.video.metadata.mediaTimeOffsetSeconds);
+    framesEncoded = (await compositeAndEncode(request)).framesEncoded;
+    out = decodeRgb48(outputPath);
+    src = decodeRgb48(plainPath);
+  }, 120_000);
+
+  afterAll(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("probes the stream start as a media-time offset", () => {
+    expect(seekSeconds).toBeCloseTo(STREAM_OFFSET_SECONDS, 3);
+    expect(framesEncoded).toBe(OFFSET_TOTAL_FRAMES);
+  });
+
+  it("holds the first frame until the stream starts, then plays on its own timestamps", () => {
+    const whole = { x: 0, y: 0, w: WIDTH, h: HEIGHT };
+    for (let frame = 0; frame < OFFSET_TOTAL_FRAMES; frame++) {
+      const expected = Math.max(0, frame - STREAM_OFFSET_FRAMES);
+      const error = (sourceFrame: number) => meanAbsDiff(out, frame, src, sourceFrame, whole);
+      expect(error(expected)).toBeLessThan(800);
+      // A clamped seek shows `frame` itself: the stream played early by the offset.
+      if (frame >= STREAM_OFFSET_FRAMES) expect(error(expected)).toBeLessThan(error(frame));
     }
   });
 });

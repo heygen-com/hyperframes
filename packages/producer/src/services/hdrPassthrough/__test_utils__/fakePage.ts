@@ -175,6 +175,35 @@ export interface FakePageOptions {
   globals?: Record<string, unknown>;
   /** Results for functions that need a real layout engine (e.g. `inspectVideoLayout`). */
   stubs?: Map<unknown, (...args: unknown[]) => unknown>;
+  /** Event types of the listeners on `window`, as `DOMDebugger.getEventListeners` lists them. */
+  windowListeners?: readonly string[];
+  /** Make the DevTools listener lookup fail. */
+  listenersUnreadable?: boolean;
+}
+
+/** The DevTools calls the planner's listener lookup sends, answered from the options. */
+interface FakeCdpSession {
+  send(method: string, params?: Record<string, unknown>): Promise<unknown>;
+  detach(): Promise<void>;
+}
+
+function fakeCdpSession(options: FakePageOptions): FakeCdpSession {
+  return {
+    async send(method) {
+      if (options.listenersUnreadable) throw new Error(`${method}: target closed`);
+      switch (method) {
+        case "Runtime.evaluate":
+          return { result: { type: "object", objectId: "window-1" } };
+        case "DOMDebugger.getEventListeners":
+          return { listeners: (options.windowListeners ?? []).map((type) => ({ type })) };
+        case "Runtime.releaseObjectGroup":
+          return {};
+        default:
+          throw new Error(`fake CDP session: unexpected ${method}`);
+      }
+    },
+    async detach() {},
+  };
 }
 
 function allElements(root: FakeElement): FakeElement[] {
@@ -234,7 +263,10 @@ function defaultClipWindow(el: FakeElement): { start: number; end: number } | nu
 }
 
 export function createFakePage(options: FakePageOptions): {
-  page: { evaluate: (fn: unknown, ...args: unknown[]) => Promise<unknown> };
+  page: {
+    evaluate: (fn: unknown, ...args: unknown[]) => Promise<unknown>;
+    createCDPSession: () => Promise<FakeCdpSession>;
+  };
   seeks: number[];
 } {
   const seeks: number[] = [];
@@ -268,6 +300,7 @@ export function createFakePage(options: FakePageOptions): {
   };
   const g = globalThis as Record<string, unknown>;
   const page = {
+    createCDPSession: async (): Promise<FakeCdpSession> => fakeCdpSession(options),
     evaluate: async (fn: unknown, ...args: unknown[]): Promise<unknown> => {
       const stub = options.stubs?.get(fn);
       if (stub) return stub(...args);

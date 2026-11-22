@@ -6,6 +6,7 @@
  *
  *   assets/<transfer>-<duration>s.mp4   10-bit HEVC HLG (or PQ) / BT.2020 source clip + AAC audio
  *   captions/                           full-bleed HDR video on track 0, N caption cues on track 1
+ *   captions-offset/                    the captions fixture on a remux whose streams start 0.2 s in
  *   transformed/                        negative fixture: same, but the video carries a CSS transform
  *   ineligible-<case>/                  with `--ineligible`: one negative fixture per fallback class
  *
@@ -135,6 +136,40 @@ export function buildSourceClipArgs(options: SourceClipOptions): string[] {
     "-t",
     String(durationSec),
     options.outputPath,
+  ];
+}
+
+/**
+ * Seconds the `captions-offset` source's streams start into the file. Under
+ * the 1 s at which the layered path hides the video before its first frame,
+ * so the passthrough must hold the first frame for the lead, as layered does.
+ */
+export const STREAM_OFFSET_SECONDS = 0.2;
+
+/**
+ * ffmpeg arguments that remux `inputPath` (no re-encode) with every stream's
+ * timestamps shifted `offsetSec` later: the file a camera or a transport
+ * stream remux without an edit list gives, whose first frame is not at 0.
+ */
+export function buildStreamOffsetArgs(
+  inputPath: string,
+  outputPath: string,
+  offsetSec: number,
+): string[] {
+  return [
+    "-hide_banner",
+    "-v",
+    "error",
+    "-y",
+    "-i",
+    inputPath,
+    "-map",
+    "0",
+    "-c",
+    "copy",
+    "-output_ts_offset",
+    String(offsetSec),
+    outputPath,
   ];
 }
 
@@ -465,6 +500,27 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     },
   },
   {
+    // The runtime dispatches `hf-seek` on window on every seek; a listener can
+    // rewrite the overlay on any frame, which no static walk sees.
+    name: "hf-seek-listener",
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      headHtml: `<script>window.addEventListener("hf-seek", (e) => { const el = document.getElementById("seek-counter"); if (el) el.textContent = "t=" + Math.floor(e.detail.time * 4) / 4; });</script>`,
+      overlayHtml: `<div id="seek-counter" style="${BADGE_STYLE};color:#fff;font:700 40px sans-serif">t=0</div>`,
+    },
+  },
+  {
+    // A seek-driven write with no listener at all: a setter on the seek-time
+    // global the WebGPU adapter assigns on every seek. Only the capture's
+    // verification probes can see it.
+    name: "seek-time-setter",
+    reason: "overlay_unverified",
+    composition: {
+      headHtml: `<script>(() => { let time; Object.defineProperty(window, "__hfTypegpuTime", { configurable: true, get: () => time, set(t) { time = t; const el = document.getElementById("seek-counter"); if (el) el.textContent = "t=" + Math.floor(t * 4) / 4; } }); })();</script>`,
+      overlayHtml: `<div id="seek-counter" style="${BADGE_STYLE};color:#fff;font:700 40px sans-serif">t=0</div>`,
+    },
+  },
+  {
     name: "canvas",
     reason: "canvas",
     composition: {
@@ -576,30 +632,41 @@ function negativeAssetSources(
   return { gsap: { source: gsapPath, name: "gsap.min.js" }, ...images };
 }
 
+/** Run ffmpeg to write `path` unless it already exists (non-empty) and `--force` is off. */
+function ensureGenerated(
+  options: Pick<GenerateOptions, "ffmpegPath" | "force">,
+  path: string,
+  args: () => string[],
+): void {
+  if (!options.force && existsSync(path) && statSync(path).size > 0) {
+    console.log(`asset: ${path} (reused)`);
+    return;
+  }
+  const started = Date.now();
+  runFfmpegOrThrow(options.ffmpegPath, args(), path);
+  console.log(`asset: ${path} (${((Date.now() - started) / 1000).toFixed(1)} s)`);
+}
+
 function generateFixtures(options: GenerateOptions): GeneratedFixtures {
   const { outDir, durationSec, cueCount, transfer, ffmpegPath } = options;
   const fps = FIXTURE_FPS;
   mkdirSync(join(outDir, "assets"), { recursive: true });
   const sourcePath = join(outDir, "assets", `${transfer}-${durationSec}s.mp4`);
-  if (options.force || !existsSync(sourcePath) || statSync(sourcePath).size === 0) {
-    const started = Date.now();
-    runFfmpegOrThrow(
-      ffmpegPath,
-      buildSourceClipArgs({
-        outputPath: sourcePath,
-        durationSec,
-        width: FIXTURE_WIDTH,
-        height: FIXTURE_HEIGHT,
-        fps,
-        crf: 12,
-        transfer,
-      }),
-      sourcePath,
-    );
-    console.log(`source clip: ${sourcePath} (${((Date.now() - started) / 1000).toFixed(1)} s)`);
-  } else {
-    console.log(`source clip: ${sourcePath} (reused)`);
-  }
+  ensureGenerated(options, sourcePath, () =>
+    buildSourceClipArgs({
+      outputPath: sourcePath,
+      durationSec,
+      width: FIXTURE_WIDTH,
+      height: FIXTURE_HEIGHT,
+      fps,
+      crf: 12,
+      transfer,
+    }),
+  );
+  const offsetSourcePath = join(outDir, "assets", `${transfer}-${durationSec}s-offset.mp4`);
+  ensureGenerated(options, offsetSourcePath, () =>
+    buildStreamOffsetArgs(sourcePath, offsetSourcePath, STREAM_OFFSET_SECONDS),
+  );
 
   const cues = buildCaptionCues(durationSec, cueCount, fps);
   const assetName = `${transfer}-source.mp4`;
@@ -619,6 +686,16 @@ function generateFixtures(options: GenerateOptions): GeneratedFixtures {
         ...project,
         name: "captions",
         html: buildCompositionHtml({ ...base, compositionId: "hdr-passthrough-captions" }),
+      }),
+    },
+    {
+      name: "captions-offset",
+      expect: "passthrough",
+      dir: writeProject({
+        ...project,
+        sourcePath: offsetSourcePath,
+        name: "captions-offset",
+        html: buildCompositionHtml({ ...base, compositionId: "hdr-passthrough-captions-offset" }),
       }),
     },
     {

@@ -2,10 +2,12 @@ import { describe, expect, it } from "bun:test";
 import {
   FIXTURE_FPS,
   INELIGIBLE_CASES,
+  STREAM_OFFSET_SECONDS,
   buildAnimatedImageArgs,
   buildCaptionCues,
   buildCompositionHtml,
   buildSourceClipArgs,
+  buildStreamOffsetArgs,
   isFixtureTransfer,
 } from "./fixture.js";
 
@@ -186,6 +188,7 @@ describe("INELIGIBLE_CASES", () => {
       "overlay_continuous_animation",
       "canvas",
       "video_count",
+      "overlay_unverified",
     ]) {
       expect(reasons.has(reason)).toBe(true);
     }
@@ -198,9 +201,20 @@ describe("INELIGIBLE_CASES", () => {
       "animated-webp",
       "animated-apng",
       "animated-avif",
+      "hf-seek-listener",
+      "seek-time-setter",
     ]) {
       expect(names).toContain(name);
     }
+  });
+
+  it("drives the seek-hook cases from the runtime's seek, not from GSAP", () => {
+    const listener = INELIGIBLE_CASES.find((c) => c.name === "hf-seek-listener")!;
+    expect(listener.composition.headHtml).toContain('addEventListener("hf-seek"');
+    const setter = INELIGIBLE_CASES.find((c) => c.name === "seek-time-setter")!;
+    expect(setter.composition.headHtml).toContain("__hfTypegpuTime");
+    expect(setter.composition.headHtml).not.toContain("addEventListener");
+    for (const c of [listener, setter]) expect(c.composition.timelineScript).toBeUndefined();
   });
 
   it("ships the assets each case references", () => {
@@ -210,6 +224,22 @@ describe("INELIGIBLE_CASES", () => {
     for (const c of INELIGIBLE_CASES.filter((c) => c.name.startsWith("animated-"))) {
       expect(c.assets).toHaveLength(1);
     }
+  });
+});
+
+describe("buildStreamOffsetArgs", () => {
+  it("remuxes every stream without re-encoding, shifted by the offset", () => {
+    const args = buildStreamOffsetArgs("/in.mp4", "/out.mp4", STREAM_OFFSET_SECONDS);
+    expect(argAfter(args, "-i")).toBe("/in.mp4");
+    expect(argAfter(args, "-map")).toBe("0");
+    expect(argAfter(args, "-c")).toBe("copy");
+    expect(argAfter(args, "-output_ts_offset")).toBe("0.2");
+    expect(args.at(-1)).toBe("/out.mp4");
+  });
+
+  it("stays under the lead at which the layered path hides the video", () => {
+    expect(STREAM_OFFSET_SECONDS).toBeGreaterThan(0);
+    expect(STREAM_OFFSET_SECONDS).toBeLessThan(1);
   });
 });
 

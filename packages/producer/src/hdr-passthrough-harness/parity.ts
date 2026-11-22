@@ -33,6 +33,7 @@ import {
   describeRenderPath,
   isFallback,
   parseCaptureStats,
+  parseFfmpegVersion,
   parsePsnrStats,
   parseSsimStats,
   summarizeProbe,
@@ -306,6 +307,8 @@ export function checkExpectedPath(
 
 interface ProjectReport {
   project: string;
+  /** `ffmpeg -version` of the binary the harness (and, by default, both renders) run. */
+  ffmpegVersion: string | null;
   expect: Expectation;
   runs: Array<Omit<RenderRun, "probe"> & { probe: ProbeSummary | null }>;
   metrics?: { psnr: PsnrSummary; ssim: SeriesSummary; ms: number };
@@ -324,6 +327,11 @@ interface ProjectOptions {
   renderArgs: Omit<RenderArgsOptions, "side" | "outputPath" | "projectDir">;
   expected: ExpectedOutput;
   thresholds: ParityThresholds;
+}
+
+function readFfmpegVersion(tools: Tools): string | null {
+  const result = spawnSync(tools.ffmpeg, ["-hide_banner", "-version"], { encoding: "utf-8" });
+  return result.status === 0 ? parseFfmpegVersion(result.stdout) : null;
 }
 
 function runProject(tools: Tools, options: ProjectOptions): ProjectReport {
@@ -361,6 +369,7 @@ function runProject(tools: Tools, options: ProjectOptions): ProjectReport {
   }
   return {
     project: options.projectDir,
+    ffmpegVersion: readFfmpegVersion(tools),
     expect: options.expect,
     runs,
     metrics,
@@ -372,6 +381,7 @@ function runProject(tools: Tools, options: ProjectOptions): ProjectReport {
 
 function printReport(report: ProjectReport): void {
   console.log(`\n=== ${basename(report.project)} (flag on: expect ${report.expect}) ===`);
+  console.log(`  ffmpeg ${report.ffmpegVersion ?? "version unknown"}`);
   for (const run of report.runs) {
     const wall = Number.isFinite(run.wallMs) ? `${(run.wallMs / 1000).toFixed(1)} s` : "skipped";
     console.log(

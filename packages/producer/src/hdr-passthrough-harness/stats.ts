@@ -370,6 +370,16 @@ export function classifyRenderLog(log: string): RenderPath {
   return { kind: "unknown" };
 }
 
+/**
+ * The version string from `ffmpeg -version` output ("7.0.2-static"), or null.
+ * Recorded with every report: `maskedmerge`'s 16-bit rounding matches the
+ * layered blend exactly on ffmpeg 7 but is 1 LSB off on some partial-alpha
+ * pixels on older releases, so "bit-identical" depends on it.
+ */
+export function parseFfmpegVersion(output: string): string | null {
+  return /^ffmpeg version (\S+)/m.exec(output)?.[1] ?? null;
+}
+
 /** Overlay capture counts the passthrough logs once it has captured its states. */
 export interface CaptureStats {
   states: number;

@@ -143,6 +143,8 @@ async function analyze(opts: {
     timelines?: Record<string, FakeTimeline>;
     globalTimeline?: FakeTimeline;
     globals?: Record<string, unknown>;
+    windowListeners?: readonly string[];
+    listenersUnreadable?: boolean;
   };
   maxStates?: number;
   totalFrames?: number;
@@ -507,6 +509,47 @@ async function analyzeWithImage(src: string, as: "img" | "background" = "img") {
     },
   });
 }
+
+describe("analyzeOverlayTiming: seek-hook listeners", () => {
+  it("declines an hf-seek listener on window, with or without GSAP", async () => {
+    // The listener can rewrite the overlay on any seek; neither the tween walk nor the clip
+    // windows see it, and the overlay is only probed at candidate frames.
+    for (const withGsap of [false, true]) {
+      const result = await analyze({
+        duration: 10,
+        clips: CAPTION,
+        build: (els) => ({
+          ...(withGsap ? gsapCaptions(els) : {}),
+          windowListeners: ["resize", "hf-seek", "hf-seek"],
+        }),
+      });
+      expect(result).toEqual({
+        ok: false,
+        reason: "overlay_non_gsap_animation",
+        detail: "hf-seek listeners (2)",
+      });
+    }
+  });
+
+  it("accepts window listeners for other events", async () => {
+    const result = await analyze({
+      duration: 10,
+      clips: CAPTION,
+      build: () => ({ windowListeners: ["resize", "message", "hf-after-fonts-modules"] }),
+    });
+    expectOk(result);
+  });
+
+  it("declines when the listeners cannot be read", async () => {
+    const result = await analyze({
+      duration: 10,
+      clips: CAPTION,
+      build: () => ({ listenersUnreadable: true }),
+    });
+    expect(result).toMatchObject({ ok: false, reason: "overlay_non_gsap_animation" });
+    expect(result.ok ? "" : result.detail).toContain("seek listeners unreadable");
+  });
+});
 
 describe("analyzeOverlayTiming: non-GSAP drivers", () => {
   it("still accepts GSAP captions with empty adapter registries and static images", async () => {

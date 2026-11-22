@@ -145,14 +145,53 @@ export function overlayElementIdsAboveVideo(
 }
 
 /**
- * Where a state's overlay pixels come from. `probe(state, time)` puts the
- * page at `time` and returns the overlay fingerprint there (equal
- * fingerprints render equal pixels); `capture(state, time)` returns the 8-bit
- * RGBA pixels (`width * height * 4` bytes) at `time`, the state just probed.
+ * Longest run of frames inside one candidate state that the verification
+ * pass leaves unprobed, in seconds of composition time. Every candidate is
+ * also probed at its first and last frame.
+ */
+const VERIFY_MAX_GAP_SECONDS = 0.5;
+
+/**
+ * Where the overlay pixels come from. `probe(frame, time)` puts the page at
+ * `time` (`frame / fps`) and returns the overlay fingerprint there (equal
+ * fingerprints render equal pixels); `capture(frame, time)` returns the 8-bit
+ * RGBA pixels (`width * height * 4` bytes) at `time`, the frame just probed.
  */
 export interface OverlayStateSource {
-  probe(state: OverlayState, time: number): Promise<string>;
-  capture(state: OverlayState, time: number): Promise<Uint8Array>;
+  probe(frame: number, time: number): Promise<string>;
+  capture(frame: number, time: number): Promise<Uint8Array>;
+}
+
+/**
+ * Frames of one candidate state `[startFrame, endFrame)` the verification
+ * pass probes: the first and last frame, plus interior frames so that no two
+ * probed frames (`alreadyProbed` included) are more than `maxGapFrames`
+ * apart. Excludes frames in `alreadyProbed`. Sorted ascending.
+ */
+export function verificationFrames(
+  startFrame: number,
+  endFrame: number,
+  alreadyProbed: ReadonlySet<number>,
+  maxGapFrames: number,
+): number[] {
+  if (endFrame <= startFrame) return [];
+  const gap = Math.max(1, Math.floor(maxGapFrames));
+  const anchors = [
+    ...new Set([
+      startFrame,
+      endFrame - 1,
+      ...[...alreadyProbed].filter((f) => f >= startFrame && f < endFrame),
+    ]),
+  ].sort((a, b) => a - b);
+  const frames: number[] = [];
+  for (let i = 0; i < anchors.length; i++) {
+    const at = anchors[i] as number;
+    if (!alreadyProbed.has(at)) frames.push(at);
+    const next = anchors[i + 1];
+    if (next === undefined) break;
+    for (let f = at + gap; f < next; f += gap) frames.push(f);
+  }
+  return frames;
 }
 
 /**
@@ -240,6 +279,22 @@ interface OpenState extends CapturedPixels {
   captureFrame: number;
   /** Fingerprint of the last candidate folded in. */
   key: string;
+  /** Every fingerprint seen inside this state; all render its pixels. */
+  keys: Set<string>;
+  /** The candidate states folded into this one, in order. */
+  candidates: OverlayState[];
+}
+
+/** Thrown when a frame inside a merged state renders a different overlay. */
+export class OverlayStateMismatchError extends Error {
+  constructor(frame: number, state: { startFrame: number; endFrame: number }) {
+    super(
+      `hdrPassthrough: overlay at frame ${frame} differs from its state ` +
+        `[${state.startFrame}, ${state.endFrame}); something the static analysis ` +
+        `cannot see changes the overlay`,
+    );
+    this.name = "OverlayStateMismatchError";
+  }
 }
 
 /**
@@ -251,8 +306,16 @@ interface OpenState extends CapturedPixels {
  *
  * Every candidate is probed: its fingerprint is read at its own capture
  * frame, so a change on any candidate frame (a one-frame state inside a clip
- * cut, a frame of a short tween) is seen and starts a new state. Only the
- * frames inside one candidate are taken on the planner's word, as before.
+ * cut, a frame of a short tween) is seen and starts a new state.
+ *
+ * The other frames of a candidate are the planner's claim, which holds only
+ * for drivers its static analysis sees. Once a merged state is closed, each
+ * of its candidates is probed again at its first and last frame and at least
+ * every `VERIFY_MAX_GAP_SECONDS` in between (`verificationFrames`). A
+ * fingerprint not seen in the state is screenshotted; pixels that differ
+ * from the state's throw `OverlayStateMismatchError`, which the caller turns
+ * into a fallback to the layered path instead of a render with stale
+ * overlays.
  */
 export async function writeOverlayStates(
   args: CaptureOverlayStatesArgs,
@@ -262,46 +325,29 @@ export async function writeOverlayStates(
   const startedAt = Date.now();
   await mkdir(outDir, { recursive: true });
 
-  const pathByHash = new Map<string, string>();
-  const pixelsByKey = new Map<string, CapturedPixels>();
-  const merged: OpenState[] = [];
-  let captureCount = 0;
+  const run: StateRun = {
+    args,
+    source,
+    pathByHash: new Map(),
+    pixelsByKey: new Map(),
+    merged: [],
+    maxGapFrames: Math.ceil((VERIFY_MAX_GAP_SECONDS * plan.fps.num) / plan.fps.den),
+    captureCount: 0,
+    verifyProbeCount: 0,
+  };
   let framesCovered = 0;
   let candidatesDone = 0;
   for (const candidate of plan.states) {
     input.assertNotAborted();
-    const time = (candidate.captureFrame * plan.fps.den) / plan.fps.num;
-    const key = await source.probe(candidate, time);
-    const open = merged.at(-1);
-    if (open && open.key === key) {
-      open.endFrame = candidate.endFrame;
-    } else {
-      let pixels = pixelsByKey.get(key);
-      if (pixels === undefined) {
-        const rgba8 = await source.capture(candidate, time);
-        captureCount += 1;
-        pixels = await storeOverlayPixels(rgba8, args, merged.length, pathByHash);
-        pixelsByKey.set(key, pixels);
-      }
-      if (open && open.hash === pixels.hash) {
-        open.endFrame = candidate.endFrame;
-        open.key = key;
-      } else {
-        merged.push({
-          ...pixels,
-          startFrame: candidate.startFrame,
-          endFrame: candidate.endFrame,
-          captureFrame: candidate.captureFrame,
-          key,
-        });
-      }
-    }
+    await foldCandidate(run, candidate);
     framesCovered += candidate.endFrame - candidate.startFrame;
     candidatesDone += 1;
     onStateCaptured?.(framesCovered, candidatesDone, plan.states.length);
   }
+  const last = run.merged.at(-1);
+  if (last) await verifyMergedState(run, last);
 
-  const overlays: CapturedOverlay[] = merged.map((s, index) => ({
+  const overlays: CapturedOverlay[] = run.merged.map((s, index) => ({
     state: {
       index,
       startFrame: s.startFrame,
@@ -314,12 +360,115 @@ export async function writeOverlayStates(
   return {
     overlays,
     plan: { ...plan, states: overlays.map((o) => o.state) },
-    uniqueCount: pathByHash.size,
+    uniqueCount: run.pathByHash.size,
     candidateCount: plan.states.length,
-    captureCount,
+    captureCount: run.captureCount,
+    verifyProbeCount: run.verifyProbeCount,
     dir: outDir,
     captureMs: Date.now() - startedAt,
   };
+}
+
+/** What `writeOverlayStates` carries from one candidate to the next. */
+interface StateRun {
+  args: CaptureOverlayStatesArgs;
+  source: OverlayStateSource;
+  /** PNG written for each distinct 8-bit pixel hash. */
+  pathByHash: Map<string, string>;
+  /** Pixels each fingerprint seen so far renders to. */
+  pixelsByKey: Map<string, CapturedPixels>;
+  merged: OpenState[];
+  maxGapFrames: number;
+  captureCount: number;
+  verifyProbeCount: number;
+}
+
+function frameTime(plan: { fps: { num: number; den: number } }, frame: number): number {
+  return (frame * plan.fps.den) / plan.fps.num;
+}
+
+/**
+ * Probe one candidate and fold it into the open merged state (same
+ * fingerprint, or same pixels), or close that state, verify it and open a
+ * new one.
+ */
+async function foldCandidate(run: StateRun, candidate: OverlayState): Promise<void> {
+  const { source, merged, pixelsByKey } = run;
+  const time = frameTime(run.args.plan, candidate.captureFrame);
+  const key = await source.probe(candidate.captureFrame, time);
+  const open = merged.at(-1);
+  if (open && open.key === key) {
+    open.endFrame = candidate.endFrame;
+    open.candidates.push(candidate);
+    return;
+  }
+  let pixels = pixelsByKey.get(key);
+  if (pixels === undefined) {
+    const rgba8 = await source.capture(candidate.captureFrame, time);
+    run.captureCount += 1;
+    pixels = await storeOverlayPixels(rgba8, run.args, merged.length, run.pathByHash);
+    pixelsByKey.set(key, pixels);
+  }
+  if (open && open.hash === pixels.hash) {
+    open.endFrame = candidate.endFrame;
+    open.key = key;
+    open.keys.add(key);
+    open.candidates.push(candidate);
+    return;
+  }
+  if (open) await verifyMergedState(run, open);
+  merged.push({
+    ...pixels,
+    startFrame: candidate.startFrame,
+    endFrame: candidate.endFrame,
+    captureFrame: candidate.captureFrame,
+    key,
+    keys: new Set([key]),
+    candidates: [candidate],
+  });
+}
+
+/**
+ * Probe each candidate of a closed merged state at its `verificationFrames`.
+ * A fingerprint the state has not seen is screenshotted (unless its pixels
+ * are already known); pixels other than the state's throw
+ * `OverlayStateMismatchError`.
+ */
+async function verifyMergedState(run: StateRun, state: OpenState): Promise<void> {
+  const { args, source, pixelsByKey } = run;
+  const frames = state.candidates.flatMap((c) =>
+    verificationFrames(c.startFrame, c.endFrame, new Set([c.captureFrame]), run.maxGapFrames),
+  );
+  for (const frame of frames) {
+    args.input.assertNotAborted();
+    const time = frameTime(args.plan, frame);
+    const key = await source.probe(frame, time);
+    run.verifyProbeCount += 1;
+    if (state.keys.has(key)) continue;
+    let hash = pixelsByKey.get(key)?.hash;
+    if (hash === undefined) {
+      const rgba8 = await source.capture(frame, time);
+      run.captureCount += 1;
+      assertOverlaySize(rgba8, args.plan, run.merged.length);
+      hash = hashOverlayPixels(rgba8);
+      if (hash === state.hash) pixelsByKey.set(key, { hash, pngPath: state.pngPath });
+    }
+    if (hash !== state.hash) throw new OverlayStateMismatchError(frame, state);
+    state.keys.add(key);
+  }
+}
+
+function assertOverlaySize(
+  rgba8: Uint8Array,
+  plan: { width: number; height: number },
+  stateIndex: number,
+): void {
+  const expected = plan.width * plan.height * 4;
+  if (rgba8.length !== expected) {
+    throw new Error(
+      `hdrPassthrough: overlay state ${stateIndex} has ${rgba8.length} bytes, expected ${expected}`,
+    );
+  }
 }
 
 /**
@@ -333,12 +482,7 @@ async function storeOverlayPixels(
   pathByHash: Map<string, string>,
 ): Promise<CapturedPixels> {
   const { plan, video, outDir } = args;
-  const expected = plan.width * plan.height * 4;
-  if (rgba8.length !== expected) {
-    throw new Error(
-      `hdrPassthrough: overlay state ${stateIndex} has ${rgba8.length} bytes, expected ${expected}`,
-    );
-  }
+  assertOverlaySize(rgba8, plan, stateIndex);
   const hash = hashOverlayPixels(rgba8);
   let pngPath = pathByHash.get(hash);
   if (pngPath === undefined) {
@@ -371,6 +515,10 @@ async function storeOverlayPixels(
  *   5. A candidate whose pixels equal the state before it folds into it too.
  *   6. Call `onStateCaptured(framesCovered, i + 1, states.length)` with the
  *      cumulative `endFrame - startFrame` of candidates done so far.
+ *   7. When a merged state closes, re-probe each of its candidates at its
+ *      first and last frame and at least every `VERIFY_MAX_GAP_SECONDS` in
+ *      between; a frame whose overlay renders different pixels throws
+ *      `OverlayStateMismatchError`.
  *
  * The result's `plan` holds the merged states (one per run of identical
  * overlay output, tiling `[0, totalFrames)` like the input) and `overlays`
@@ -385,7 +533,7 @@ export async function captureOverlayStates(
 ): Promise<CapturedOverlaySet> {
   const { session, plan, video } = args;
   return writeOverlayStates(args, {
-    probe: (_state, time) => probeOverlay(session, time, video.id),
-    capture: (_state, time) => captureOverlayRgba(session, time, video.id, plan.width, plan.height),
+    probe: (_frame, time) => probeOverlay(session, time, video.id),
+    capture: (_frame, time) => captureOverlayRgba(session, time, video.id, plan.width, plan.height),
   });
 }

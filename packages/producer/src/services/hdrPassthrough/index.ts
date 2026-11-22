@@ -20,7 +20,7 @@ import {
 import { noteStaticDedupActivity, reportFrameProgress } from "../render/shared.js";
 import { checkPassthroughEligibility } from "./eligibility.js";
 import { planOverlayStates } from "./planner.js";
-import { captureOverlayStates } from "./overlayCapture.js";
+import { OverlayStateMismatchError, captureOverlayStates } from "./overlayCapture.js";
 import { compositeAndEncode } from "./ffmpegComposite.js";
 import type {
   EligiblePassthrough,
@@ -144,6 +144,7 @@ async function runHdrPassthrough(
     states: overlays.overlays.length,
     candidates: overlays.candidateCount,
     captures: overlays.captureCount,
+    verifyProbes: overlays.verifyProbeCount,
     unique: overlays.uniqueCount,
     captureMs: overlays.captureMs,
   });
@@ -208,6 +209,9 @@ export async function attemptHdrPassthrough(
   const session = createLazyOverlaySession(input);
   try {
     const eligibility = await checkPassthroughEligibility({ input, session });
+    // The analysis can run for a while on a long composition before the first
+    // overlay state ticks the stall watcher.
+    noteStaticDedupActivity(input.job);
     if (!eligibility.eligible) {
       log.info(
         `[Render] HDR passthrough off: ${eligibility.reason}` +
@@ -219,6 +223,10 @@ export async function attemptHdrPassthrough(
     return { kind: "completed", result };
   } catch (error) {
     if (isAbort(input, error)) throw error;
+    if (error instanceof OverlayStateMismatchError) {
+      log.info(`[Render] HDR passthrough off: overlay_unverified (${error.message})`);
+      return { kind: "fallback", reason: "overlay_unverified", detail: error.message };
+    }
     const detail = error instanceof Error ? error.message : String(error);
     log.warn("[Render] HDR passthrough failed; falling back to the layered HDR composite", {
       error: detail,

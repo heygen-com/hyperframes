@@ -55,6 +55,11 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   soft box shadow, so the overlays carry partial alpha on every edge. No
   timeline script (`data-no-timeline`): every overlay change is a clip
   boundary. Flag on must take the passthrough.
+- `captions-offset/` (positive): `captions` on a stream-copy remux of the
+  source whose streams all start 0.2 s into the file (`-output_ts_offset`,
+  like a file without an edit list or a transport-stream remux). The layered
+  path holds the first frame until the stream starts; flag on must take the
+  passthrough and match it.
 - `transformed/` (negative): identical, except the video carries
   `transform: scale(0.9) rotate(1.5deg)`. Flag on must fall back with
   `HDR passthrough off: not_full_canvas` (the transformed box no longer
@@ -67,8 +72,11 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   enlarged video (`not_full_canvas`), a mirrored or filtered video
   (`transform_or_filter`), a rounded video or rounded clipping ancestor
   (`clip_or_mask`), a CSS animation, a Lottie player
-  element, three.js, a WebGPU element, SVG SMIL and animated WebP / APNG /
-  AVIF images (`overlay_non_gsap_animation`), an animated GIF (`video_count`:
+  element, three.js, a WebGPU element, SVG SMIL, animated WebP / APNG /
+  AVIF images and an `hf-seek` listener that rewrites a counter
+  (`overlay_non_gsap_animation`), the same counter driven by a setter on the
+  runtime's seek-time global, which no static check names
+  (`overlay_unverified`: capture's verification probes catch it), an animated GIF (`video_count`:
   the compiler turns it into a second video), a canvas (`canvas`), and
   a GSAP tween that changes the overlay on every frame
   (`overlay_continuous_animation`). Run these with `--only on`: the check is
@@ -86,8 +94,8 @@ cd packages/producer
 
 Per project it writes `<fixtures>/parity/<project>/{off,on}.{mp4,log}`,
 `psnr.log`, `ssim.log` and `report.json`, and prints a summary, including the
-passthrough's overlay capture counts (states, candidates, screenshots, unique
-PNGs, capture time) read from its log. The exit code
+ffmpeg version and the passthrough's overlay capture counts (states,
+candidates, screenshots, unique PNGs, capture time) read from its log. The exit code
 is 0 only when every check passes.
 
 Useful options:
@@ -115,20 +123,20 @@ passthrough renders.
 
 Layered (flag off) is the reference.
 
-| Check                                                                        | Threshold                                                                                 |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| both renders exit 0                                                          | required                                                                                  |
-| flag-on route (`on.path`)                                                    | `captions`: passthrough completed. `transformed`: fallback with `not_full_canvas`         |
-| HDR tags on each output                                                      | `bt2020` / `arib-std-b67` (`smpte2084` with `--transfer pq`) / `bt2020nc` / `yuv420p10le` |
-| codec, profile, size, rate, tag, colour range, audio codec / rate / channels | identical                                                                                 |
-| video packet count                                                           | identical, and equal to duration x fps                                                    |
-| container duration                                                           | within 1 frame                                                                            |
-| HDR side data on the first frame                                             | same set (the HDR encode path writes mastering display + CLL for HLG too)                 |
-| audio stream                                                                 | present on both                                                                           |
-| PSNR, mean of per-frame `psnr_avg`                                           | >= 45 dB                                                                                  |
-| PSNR, worst frame                                                            | >= 40 dB                                                                                  |
-| SSIM, mean of per-frame `All`                                                | >= 0.990                                                                                  |
-| SSIM, worst frame                                                            | >= 0.980                                                                                  |
+| Check                                                                        | Threshold                                                                                            |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| both renders exit 0                                                          | required                                                                                             |
+| flag-on route (`on.path`)                                                    | `captions`, `captions-offset`: passthrough completed. `transformed`: fallback with `not_full_canvas` |
+| HDR tags on each output                                                      | `bt2020` / `arib-std-b67` (`smpte2084` with `--transfer pq`) / `bt2020nc` / `yuv420p10le`            |
+| codec, profile, size, rate, tag, colour range, audio codec / rate / channels | identical                                                                                            |
+| video packet count                                                           | identical, and equal to duration x fps                                                               |
+| container duration                                                           | within 1 frame                                                                                       |
+| HDR side data on the first frame                                             | same set (the HDR encode path writes mastering display + CLL for HLG too)                            |
+| audio stream                                                                 | present on both                                                                                      |
+| PSNR, mean of per-frame `psnr_avg`                                           | >= 45 dB                                                                                             |
+| PSNR, worst frame                                                            | >= 40 dB                                                                                             |
+| SSIM, mean of per-frame `All`                                                | >= 0.990                                                                                             |
+| SSIM, worst frame                                                            | >= 0.980                                                                                             |
 
 PSNR and SSIM run on `yuv420p10le` for both inputs (peak 1023), after
 `setpts=PTS-STARTPTS`, so they measure the 10-bit planes the HDR encoder

@@ -10,9 +10,11 @@ import { fpsToNumber } from "@hyperframes/core";
 import {
   computeAuthoredClipBoundaryFrames,
   computeStaticFrameSet,
+  getCdpSession,
   staticFramesFromAnimated,
   type StaticDedupIneligibleCause,
 } from "@hyperframes/engine";
+import type { Page } from "puppeteer-core";
 import type {
   AnalyzeOverlayTimingArgs,
   OverlayPlan,
@@ -41,10 +43,22 @@ const MAX_FRAME_COUNT_DRIFT = 1;
 const TOLERATED_CAUSES: ReadonlySet<StaticDedupIneligibleCause> = new Set([
   // Captions driven only by clip windows have no GSAP tweens at all. Static dedup
   // reads "no tweens" as "animated some other way". The engine itself rejects
-  // CSS/WAAPI, canvas, frame sources and iframes; `findUnseekedAnimationDrivers`
-  // and `findAnimatedImages` reject the rest, whether or not GSAP is present.
+  // CSS/WAAPI, canvas, frame sources and iframes; `findUnseekedAnimationDrivers`,
+  // `findAnimatedImages` and `findSeekHookListeners` reject the drivers that can
+  // be named, whether or not GSAP is present. For any other script that writes
+  // the DOM on its own schedule, overlay capture re-probes every merged state
+  // and falls back on a mismatch (`writeOverlayStates`).
   "no_gsap_tweens",
 ]);
+
+/**
+ * Events the runtime dispatches on `window` on every seek. A listener can
+ * rewrite the overlay at any time, which no static walk sees.
+ */
+const SEEK_HOOK_EVENTS: readonly string[] = ["hf-seek"];
+
+/** CDP object group the listener lookup releases when it is done. */
+const LISTENER_OBJECT_GROUP = "hf-hdr-passthrough-listeners";
 
 const CAUSE_REASONS: Record<StaticDedupIneligibleCause, PassthroughIneligibleReason> = {
   zero_duration: "analysis_limit",
@@ -426,6 +440,47 @@ async function findAnimatedImages(): Promise<string[]> {
   return found;
 }
 
+/**
+ * Seek-hook listeners on `window` (`SEEK_HOOK_EVENTS`), read through the
+ * DevTools protocol so listeners added before the probe are all seen,
+ * sub-composition scripts included (their `window` proxy binds
+ * `addEventListener` to the real window). Returns one driver description per
+ * event type with listeners; a lookup that fails is reported too, since an
+ * unknown listener set is not an empty one. Read-only.
+ *
+ * Uses the page's cached engine CDP session and never detaches it: attaching
+ * and detaching a second session clears the transparent default background
+ * `initTransparentBackground` set, and every overlay screenshot after that
+ * comes out opaque.
+ */
+async function findSeekHookListeners(page: Page): Promise<string[]> {
+  try {
+    const client = await getCdpSession(page);
+    try {
+      const { result } = await client.send("Runtime.evaluate", {
+        expression: "window",
+        objectGroup: LISTENER_OBJECT_GROUP,
+      });
+      if (!result.objectId) return ["seek listeners (window unreadable)"];
+      const { listeners } = await client.send("DOMDebugger.getEventListeners", {
+        objectId: result.objectId,
+      });
+      const counts = new Map<string, number>();
+      for (const { type } of listeners) {
+        if (SEEK_HOOK_EVENTS.includes(type)) counts.set(type, (counts.get(type) ?? 0) + 1);
+      }
+      return [...counts].map(([type, n]) => `${type} listener${n === 1 ? "" : "s"} (${n})`);
+    } finally {
+      await client
+        .send("Runtime.releaseObjectGroup", { objectGroup: LISTENER_OBJECT_GROUP })
+        .catch(() => undefined);
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return [`seek listeners unreadable (${detail})`];
+  }
+}
+
 /** The engine's static-frame analysis, reduced to what the planner reads. */
 export interface StaticFrameFacts {
   totalFrames: number;
@@ -540,7 +595,7 @@ export function deriveOverlayTiming(args: DeriveOverlayTimingArgs): OverlayTimin
  * analysis-limit disqualifiers) plus the runtime's resolved clip windows
  * (`window.__hf.clipWindow`, the window render and preview use). Any driver
  * that walk cannot see (non-GSAP adapters with instances, SVG SMIL, animated
- * images) → `overlay_non_gsap_animation`.
+ * images, `hf-seek` listeners) → `overlay_non_gsap_animation`.
  *
  * Rules:
  *   - A frame `f` in `[1, totalFrames)` is a change frame iff it is not
@@ -565,9 +620,10 @@ export async function analyzeOverlayTiming(
   const facts = await page.evaluate(collectOverlayPageFacts, args.videoId);
   const drivers = await page.evaluate(findUnseekedAnimationDrivers);
   const images = await page.evaluate(findAnimatedImages);
+  const seekHooks = await findSeekHookListeners(page);
   return deriveOverlayTiming({
     stats,
-    page: { ...facts, unseekedDrivers: [...drivers, ...images] },
+    page: { ...facts, unseekedDrivers: [...drivers, ...seekHooks, ...images] },
     fps,
     totalFrames: args.totalFrames,
     maxStates: args.maxStates,

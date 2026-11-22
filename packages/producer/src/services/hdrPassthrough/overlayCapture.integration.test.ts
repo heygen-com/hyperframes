@@ -66,7 +66,15 @@ const HELD_SCRIPT = [
   `tl.set("#held", { opacity: 0.99 }, ${FADE_FRAME / FPS});`,
 ].join("\n");
 
-function compositionHtml(cues: readonly Cue[], script: string): string {
+/** A counter rewritten by an `hf-seek` listener: changes no static analysis can see. */
+const SEEK_LISTENER_HTML = `<div id="seek-counter" style="position:absolute;top:8px;right:8px;color:#fff;font:700 20px sans-serif">t=0</div>
+  <script>
+    window.addEventListener("hf-seek", (e) => {
+      document.getElementById("seek-counter").textContent = "t=" + Math.floor(e.detail.time * 4) / 4;
+    });
+  </script>`;
+
+function compositionHtml(cues: readonly Cue[], script: string, extraHtml = ""): string {
   const captions = cues
     .map(
       ({ id, start, duration }) =>
@@ -97,6 +105,7 @@ function compositionHtml(cues: readonly Cue[], script: string): string {
     <video id="bg" src="assets/hlg.mp4" data-start="0" data-duration="${DURATION}"
       data-media-start="0" data-track-index="0" playsinline></video>
     ${captions}
+    ${extraHtml}
   </div>
   <script>
     const tl = gsap.timeline({ paused: true });
@@ -218,7 +227,8 @@ describe.skipIf(!HAS_X265)("HDR passthrough capture dedup through real renders",
     if (clip.status !== 0) throw new Error(`HLG clip failed: ${clip.stderr}`);
     writeProject("multi", compositionHtml(MULTI_TWEEN_CUES, MULTI_TWEEN_SCRIPT));
     writeProject("held", compositionHtml([HELD_CUE], HELD_SCRIPT));
-    for (const project of ["multi", "held"]) {
+    writeProject("seek", compositionHtml([HELD_CUE], HELD_SCRIPT, SEEK_LISTENER_HTML));
+    for (const project of ["multi", "held", "seek"]) {
       for (const passthrough of [false, true]) {
         results.set(`${project}-${passthrough}`, await render(project, passthrough));
       }
@@ -259,8 +269,16 @@ describe.skipIf(!HAS_X265)("HDR passthrough capture dedup through real renders",
     expect(frames[FLIP_FRAME]!.equals(frames[FLIP_FRAME + 1]!)).toBe(false);
   });
 
+  it("declines a composition whose hf-seek listener rewrites the overlay", () => {
+    const on = results.get("seek-true")!;
+    expect(on.capture).toBeUndefined();
+    expect(on.messages).toContain(
+      "[Render] HDR passthrough off: overlay_non_gsap_animation (hf-seek listener (1))",
+    );
+  });
+
   it("matches the layered HDR path bit for bit", () => {
-    for (const project of ["multi", "held"]) {
+    for (const project of ["multi", "held", "seek"]) {
       const off = results.get(`${project}-false`)!.output;
       const on = results.get(`${project}-true`)!.output;
       expect(sameVideo(off, on)).toBe(true);
