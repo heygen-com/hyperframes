@@ -3531,7 +3531,7 @@ function placeCanvas(
 function markDrawn(entry: ColorGradingEntry): void {
   entry.hasDrawn = true;
   entry.drawError = null;
-  for (const drawn of entry.seeksAwaitingDraw.splice(0)) drawn();
+  releaseSeeks(entry);
 }
 
 function drawEntry(entry: ColorGradingEntry): boolean {
@@ -3790,6 +3790,8 @@ function installEntryListeners(entry: ColorGradingEntry): void {
   addListener(entry, entry.element, "loadedmetadata", redraw);
   addListener(entry, entry.element, "loadeddata", redrawOnPresentedFrame);
   addListener(entry, entry.element, "seeked", redrawOnPresentedFrame);
+  addListener(entry, entry.element, "error", () => releaseSeeks(entry));
+  addListener(entry, entry.element, "emptied", () => releaseSeeks(entry));
   addListener(entry, entry.element, "timeupdate", redraw);
   addListener(entry, window, "resize", redraw);
   if (isVideoElement(entry.element)) {
@@ -3832,18 +3834,28 @@ const SEEK_DRAW_LIMIT_MS = 2_000;
 
 function nextDraw(entry: ColorGradingEntry): Promise<void> {
   return new Promise((resolve) => {
-    const timer = wallSetTimeout(resolve, SEEK_DRAW_LIMIT_MS);
-    entry.seeksAwaitingDraw.push(() => {
+    const release = () => {
       wallClearTimeout(timer);
+      const at = entry.seeksAwaitingDraw.indexOf(release);
+      if (at >= 0) entry.seeksAwaitingDraw.splice(at, 1);
       resolve();
-    });
+    };
+    const timer = wallSetTimeout(release, SEEK_DRAW_LIMIT_MS);
+    entry.seeksAwaitingDraw.push(release);
   });
 }
+
+const releaseSeeks = (entry: ColorGradingEntry) => {
+  for (const release of entry.seeksAwaitingDraw.splice(0)) release();
+};
+
+const canDraw = (video: HTMLVideoElement) =>
+  !video.error && video.readyState >= HTMLMediaElement.HAVE_METADATA && video.videoWidth > 0;
 
 function detachEntry(entry: ColorGradingEntry): ColorGradingRenderer | null {
   if (entry.destroyed) return null;
   entry.destroyed = true;
-  for (const gone of entry.seeksAwaitingDraw.splice(0)) gone();
+  releaseSeeks(entry);
   cancelScheduledFrame(entry);
   entry.resizeObserver?.disconnect();
   for (const cleanup of entry.cleanup) cleanup();
@@ -4134,7 +4146,9 @@ export function createColorGradingRuntime(pausedMediaLease?: {
   };
 
   const holdSeekUntilDrawn = (): void => {
-    const videos = trackedEntries().filter((entry) => isVideoElement(entry.element));
+    const videos = trackedEntries().filter(
+      (entry) => isVideoElement(entry.element) && canDraw(entry.element),
+    );
     if (videos.length) registerSeekCompletion(Promise.all(videos.map(nextDraw)), "video-frame");
   };
 
