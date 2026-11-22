@@ -143,6 +143,13 @@ jobs:
           PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: bun run test:browser-box
 
+      - name: Verify a sealed player's sound plays where its frame may not start it (load shard only)
+        if: matrix.shard == 'load'
+        working-directory: packages/player
+        env:
+          PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+        run: bun run test:browser-sealed-audio
+
       - name: Run player perf — ${{ matrix.shard }} (measure mode)
         working-directory: packages/player
         env:
