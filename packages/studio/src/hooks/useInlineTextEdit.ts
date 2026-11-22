@@ -252,8 +252,8 @@ export function useInlineTextEdit({
     }
     openRef.current = null;
     setSession(null);
-    if (open.sealed) return open;
     endStudioManualEditGesture(open.element, open.gesture);
+    if (open.sealed) return open;
     // Cleaned even when removed mid-session: a parked scene's element comes back.
     open.element.removeAttribute("contenteditable");
     // Restored rather than cleared: the composition may have authored one.
@@ -274,7 +274,8 @@ export function useInlineTextEdit({
       if (openRef.current || readOnly) return false;
       const sealed = previewStandIn(element);
       if (sealed) {
-        const open = { element, original: "", outline: "", outlineOffset: "", sealed };
+        const gesture = beginStudioManualEditGesture(element, "edit");
+        const open = { element, original: "", outline: "", outlineOffset: "", sealed, gesture };
         openRef.current = open;
         latestEdit.set(element, open);
         openSealedEdit.set(element, open);
