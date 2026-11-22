@@ -1,3 +1,4 @@
+import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 import { patchRuntimeTweenInPlace } from "./gsapRuntimePatch";
 import { trackStudioEvent } from "../utils/studioTelemetry";
@@ -594,6 +595,31 @@ describe("patchRuntimeTweenInPlace — a throw inside the patch", () => {
       error_name: "TypeError",
     });
     expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
+  });
+
+  // fails without the fix: a TypeError from the preview frame's realm is not instanceof this realm's Error, so every
+  // real throw reported 'other'.
+  it("reports a built-in error thrown in the preview frame's realm by its name", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const el = { id: "box" };
+    const iframe = {
+      contentWindow: {
+        gsap: {
+          set: () => {
+            throw runInNewContext("new TypeError('user script text')");
+          },
+        },
+      },
+      contentDocument: { querySelector: (sel: string) => (sel === "#box" ? el : null) },
+    } as unknown as HTMLIFrameElement;
+
+    expect(patchRuntimeTweenInPlace(iframe, "#box", { kind: "global-set", props: { x: 1 } })).toBe(
+      false,
+    );
+    expect(trackStudioEvent).toHaveBeenLastCalledWith("gsap_instant_patch_threw", {
+      error_name: "TypeError",
+    });
     logged.mockRestore();
   });
 
