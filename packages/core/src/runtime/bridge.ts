@@ -71,7 +71,7 @@ let markedForAnotherSite = false;
 const forAnotherSite = (): boolean =>
   (markedForAnotherSite ||= typeof document !== "undefined" && servedToAnotherSite(document));
 
-const UNSEEDED_DOCUMENT_ID = String(performance.timeOrigin);
+const UNSEEDED_DOCUMENT_ID = crypto.randomUUID?.() ?? String(performance.timeOrigin);
 
 export function postRuntimeMessage(payload: RuntimeOutboundMessage): void {
   if (forAnotherSite() && !ANOTHER_SITE_SEES.has(payload.type)) return;
