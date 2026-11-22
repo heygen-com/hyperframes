@@ -15,7 +15,10 @@ import {
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 const require = createRequire(import.meta.url);
-const STUDIO_MARK = '<meta name="hyperframes-studio-preview" content="1" />';
+// A srcdoc preview has no origin of its own, so its plugin comes from a configured mirror, as Studio configures one.
+const STUDIO_MARK =
+  '<meta name="hyperframes-studio-preview" content="1" />' +
+  '<meta name="hyperframes-gsap-base-url" content="https://fixture.hyperframes.test/npm" />';
 const MODES = process.env.HF_PARITY_MODE ? [process.env.HF_PARITY_MODE] : ["unsealed", "sealed"];
 let browser: Browser;
 let studioBundle: string;

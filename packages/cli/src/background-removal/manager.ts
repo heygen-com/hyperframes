@@ -4,7 +4,8 @@ import { ensurePinnedFile } from "../utils/pinnedFile.js";
 import type { ModelFile } from "../whisper/modelFile.js";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
-export const MODELS_DIR = hyperframesCacheDir("background-removal", "models");
+const CACHE_ROOT = hyperframesCacheDir();
+export const MODELS_DIR = join(CACHE_ROOT, "background-removal", "models");
 
 export const DEFAULT_MODEL = "u2net_human_seg" as const;
 export type ModelId = typeof DEFAULT_MODEL;
@@ -91,7 +92,7 @@ export async function ensureModel(
   model: ModelId = DEFAULT_MODEL,
   options?: { onProgress?: (message: string) => void },
 ): Promise<string> {
-  return ensurePinnedFile(MODEL_URLS[model], modelPath(model), MODEL_PINS[model], {
+  return ensurePinnedFile(MODEL_URLS[model], modelPath(model), CACHE_ROOT, MODEL_PINS[model], {
     downloading: `Downloading ${model} weights (~168 MB)...`,
     onProgress: options?.onProgress,
   });

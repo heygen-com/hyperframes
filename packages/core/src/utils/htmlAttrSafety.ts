@@ -6,6 +6,7 @@
  */
 
 import { SVG_ATTRIBUTES, SVG_ELEMENTS } from "./svgAllowlist";
+import { CODE_LOADING_ATTRS } from "../compositionSource";
 
 export const ALLOWED_HTML_ATTRS = new Set([
   "id",
@@ -99,6 +100,7 @@ function linkAsBrowsersReadIt(value: string): string {
 }
 
 export function isSafeAttributeValue(name: string, value: string): boolean {
+  if (CODE_LOADING_ATTRS.has(name.toLowerCase())) return false;
   if (URI_BEARING_ATTRS.has(name.toLowerCase())) {
     const trimmed = linkAsBrowsersReadIt(value);
     if (DANGEROUS_URI_SCHEMES.test(trimmed)) return false;

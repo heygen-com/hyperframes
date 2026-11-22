@@ -13,6 +13,11 @@ const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
 // jsdom has neither; the 2D slice of each is all the geometry reads.
 class FakeDOMMatrix {
   a = 1;
+  m13 = 0;
+  m23 = 0;
+  m14 = 0;
+  m24 = 0;
+  m44 = 1;
   b = 0;
   c = 0;
   d = 1;

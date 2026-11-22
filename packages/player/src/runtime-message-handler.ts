@@ -41,6 +41,7 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
   setCompositionSize: (width: number, height: number) => void;
   sendControl: (action: string, extra?: Record<string, unknown>) => void;
   getIframeDoc: () => Document | null;
+  getCompositionUrl: () => string | null;
   /** Invoked when the iframe runtime posts `{type: "ready"}` — the player
    *  uses it to replay current bridge state (mute, volume, playback rate) so
    *  control messages sent before the iframe's listener registered aren't lost. */
@@ -58,6 +59,7 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
   setBuffering?: (buffering: boolean) => void;
   setRuntimeFps?: (fps: number) => void;
   setRuntimeOwnsPlayRange?: (owns: boolean) => void;
+  setRuntimeAnnounces?: (announces: boolean) => void;
   /** Called with the scene list whenever a "timeline" message is received. */
   setScenes: (scenes: SceneRecord[]) => void;
   /** Return false to ignore the iframe runtime's audible-media autoplay fallback.
@@ -88,6 +90,9 @@ export function handleRuntimeMessage(
   const ownsPlayRange =
     protocol.status === "supported" && protocol.metadata.capabilities.includes("play-range");
   callbacks.setRuntimeOwnsPlayRange?.(ownsPlayRange);
+  callbacks.setRuntimeAnnounces?.(
+    protocol.status === "supported" && protocol.metadata.capabilities.includes("announce-timeline"),
+  );
 
   if (data["type"] === "shader-transition-state") {
     const state: ShaderTransitionState =
@@ -156,10 +161,8 @@ export function handleRuntimeMessage(
     } catch {
       /* cross-origin */
     }
-    callbacks.media.promoteToParentProxy(iframeDoc, (t, opts) =>
-      callbacks.media.mirrorTime(t, opts),
-    );
-    callbacks.sendControl("set-media-output-muted", { muted: true });
+    if (!iframeDoc) callbacks.media.setupFromList(data["media"], callbacks.getCompositionUrl());
+    callbacks.media.promoteToParentProxy((t, opts) => callbacks.media.mirrorTime(t, opts));
     return;
   }
 

@@ -254,7 +254,7 @@ import {
   type VideoFrameCoverageReport,
 } from "./render/videoFrameCoverage.js";
 import { runCompileStage } from "./render/stages/compileStage.js";
-import { runProbeStage } from "./render/stages/probeStage.js";
+import { probeHoldFitsCapture, runProbeStage } from "./render/stages/probeStage.js";
 import { validateRenderDuration } from "./render/planValidation.js";
 import {
   resolveVideoExtractionPolicy,
@@ -3722,6 +3722,14 @@ async function executeRenderPipeline(input: {
       failureToEnforce,
     } = extractResult;
     perfStages.videoExtractMs = extractResult.videoExtractMs;
+    if (
+      probeSession &&
+      !probeHoldFitsCapture(probeSession.options.skipReadinessVideoIds, videoReadinessSkipIds)
+    ) {
+      const held = probeSession;
+      probeSession = null;
+      await closeCaptureSession(held);
+    }
 
     // ── Parity gate: per-clip captured-vs-expected-frame coverage ───────
     // Fail loudly BEFORE encode if any clip's delivered frames fall below

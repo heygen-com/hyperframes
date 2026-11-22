@@ -33,6 +33,7 @@ import { parseHTML } from "linkedom";
 import {
   type CaptureOptions,
   type CaptureSession,
+  type CaptureVideoMetadataHint,
   type CompositionLengthSource,
   type EngineConfig,
   type SubTimelineWaitMemo,
@@ -41,11 +42,14 @@ import {
   compositionRequiresWebGpu,
   createCaptureSession,
   deriveBeginFrameProbeTimeTicks,
+  extractMediaMetadata,
   getCompositionDuration,
   getCompositionLengthSource,
   initializeSession,
+  isMemoryExhaustionError,
   isTransientBrowserError,
   probeBeginFrameLiveness,
+  resolveProjectRelativeSrc,
   videoAudioId,
 } from "@hyperframes/engine";
 import {
@@ -264,6 +268,48 @@ export function hasVariableBoundMedia(
       variableId && variableHasValue(scan, element, variableId, variables, variablesByComp),
     );
   });
+}
+
+/**
+ * Videos the probe page holds at preload none with their FFmpeg size, as capture pages hold extracted ones:
+ * live, 40 clips of one 4K file stop Chrome answering. A runtime-set or sizeless source stays live.
+ */
+export async function probeVideoHold(
+  videos: readonly { id: string; src: string }[],
+  html: string,
+  projectDir: string,
+  compiledDir: string,
+): Promise<Pick<CaptureOptions, "skipReadinessVideoIds" | "videoMetadataHints">> {
+  const { document } = parseHTML(html);
+  const bound = new Set<string>();
+  for (const video of document.querySelectorAll("video")) {
+    if (!video.matches("[data-var-src]") && !video.querySelector("source[data-var-src]")) continue;
+    const id = video.getAttribute(MEDIA_RENDER_ID_ATTR) || video.getAttribute("id");
+    if (id) bound.add(id);
+  }
+  const hints = await Promise.all(
+    videos.map(async ({ id, src }): Promise<CaptureVideoMetadataHint | null> => {
+      if (bound.has(id) || /^https?:\/\//i.test(src)) return null;
+      try {
+        const path = resolveProjectRelativeSrc(src, projectDir, compiledDir);
+        const { width, height } = await extractMediaMetadata(path);
+        return width > 0 && height > 0 ? { id, width, height } : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const held = hints.filter((hint): hint is CaptureVideoMetadataHint => hint !== null);
+  return { skipReadinessVideoIds: held.map((hint) => hint.id), videoMetadataHints: held };
+}
+
+/** A probe page can serve capture only when capture holds every video it held: an unextracted one needs Chrome. */
+export function probeHoldFitsCapture(
+  probeHeld: readonly string[] | undefined,
+  captureHeld: readonly string[],
+): boolean {
+  const held = new Set(captureHeld);
+  return (probeHeld ?? []).every((id) => held.has(id));
 }
 
 /** Each clip's own start point as the compiled markup gives it, keyed like the browser probe. */
@@ -496,7 +542,11 @@ async function probeStep<T>(step: string, call: () => Promise<T>): Promise<T> {
   try {
     return await call();
   } catch (error) {
-    if (error instanceof Error && !error.message.startsWith(STOPPED))
+    if (
+      error instanceof Error &&
+      !error.message.startsWith(STOPPED) &&
+      !isMemoryExhaustionError(error)
+    )
       error.message = `${STOPPED}${step}: ${error.message}`;
     throw error;
   }
@@ -590,6 +640,12 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       // is on disk.
       const motionBlur = job.config.motionBlur;
       const captureOpts: CaptureOptions = {
+        ...(await probeVideoHold(
+          composition.videos,
+          compiled.html,
+          projectDir,
+          join(workDir, "compiled"),
+        )),
         recordReferenceBackground: input.recordReferenceBackground,
         width,
         height,

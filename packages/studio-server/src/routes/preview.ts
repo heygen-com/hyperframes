@@ -8,6 +8,7 @@ import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
   AFTER_FONTS_SCRIPT_TYPE,
+  INLINED_FILE_ATTR,
   RUNTIME_BOOTSTRAP_ATTR,
   insertBeforeCloseTag,
   insertRuntimeTag,
@@ -34,7 +35,8 @@ import {
   GSAP_PLUGIN_LOAD_ATTR,
   NO_PATH_TWEEN_META,
   gsapCdnDist,
-  motionPathPluginUrl,
+  motionPathBesideGsap,
+  previewMotionPathSrc,
   namesMotionPath,
   normalizeGsapBaseUrl,
   normalizeGsapLocalRoot,
@@ -209,45 +211,49 @@ const PROJECT_PREVIEW_BASE =
 
 const MAX_READ_SCRIPT_BYTES = 4 * 1024 * 1024;
 const SCRIPT_SCAN_MS = 1000;
+// A page with more script tags than this is unsure, and unsure already means it preloads the plugin.
+const MAX_SCANNED_SCRIPTS = 64;
+const SCRIPT_READS_IN_FLIGHT = 8;
 
 /** How the scan reaches a project's files: both off the event loop. */
 interface ScriptFiles {
   resolve: (base: string, relativePath: string) => Promise<string | null>;
-  read: (file: string) => Promise<string>;
+  read: (file: string, signal: AbortSignal) => Promise<string>;
 }
 const projectFiles: ScriptFiles = {
   resolve: resolveExistingProjectFileOff,
-  read: (file) => readFile(file, "utf-8"),
+  read: (file, signal) => readFile(file, { encoding: "utf-8", signal }),
 };
 
-async function projectScriptNamesNoPath(
-  src: string,
-  projectDir: string,
-  files: ScriptFiles,
-): Promise<boolean> {
-  if (/^(?:[a-z][\w+.-]*:|\/)/i.test(src)) return false;
-  try {
-    const file = await files.resolve(projectDir, decodeURIComponent(src.split(/[?#]/)[0]!));
-    if (file === null) return false;
-    const info = await statFile(file);
-    if (!info.isFile() || info.size > MAX_READ_SCRIPT_BYTES) return false;
-    return !namesMotionPath(await files.read(file));
-  } catch {
-    return false;
-  }
+async function fileNamesNoPath(file: string, files: ScriptFiles, signal: AbortSignal) {
+  const info = await statFile(file);
+  if (!info.isFile() || info.size > MAX_READ_SCRIPT_BYTES || signal.aborted) return false;
+  return !namesMotionPath(await files.read(file, signal));
 }
 
-async function scriptCannotTweenAlongPath(
-  tag: string,
-  projectDir: string,
-  files: ScriptFiles,
-): Promise<boolean> {
+function scriptTagAnswer(tag: string): boolean | { src: string } {
   if (tag.includes(RUNTIME_BOOTSTRAP_ATTR)) return true;
   if (/\stype\s*=\s*["']?module\b/i.test(tag)) return false;
   const match = SCRIPT_SRC_ATTR.exec(tag);
   if (!match) return true;
   const src = (match[1] ?? match[2] ?? match[3] ?? "").replace(/&amp;/gi, "&");
-  return GSAP_ON_ITS_CDN.test(src) || projectScriptNamesNoPath(src, projectDir, files);
+  if (GSAP_ON_ITS_CDN.test(src)) return true;
+  return /^(?:[a-z][\w+.-]*:|\/)/i.test(src) ? false : { src };
+}
+
+async function inPool<T>(
+  items: Iterable<T>,
+  size: number,
+  signal: AbortSignal,
+  work: (item: T) => Promise<void>,
+): Promise<void> {
+  const pending = items[Symbol.iterator]();
+  const worker = async () => {
+    for (let next = pending.next(); !next.done && !signal.aborted; next = pending.next()) {
+      await work(next.value);
+    }
+  };
+  await Promise.all(Array.from({ length: size }, worker));
 }
 
 /** True only when no script the page loads can tween along a path: the page's text and each project script it loads
@@ -265,14 +271,38 @@ export async function provesNoPathTween(
   const now = performance.now();
   const deadline = now + Math.min(SCRIPT_SCAN_MS, (requestDeadline - now) / 2);
   if (deadline <= now) return false;
-  const scripts = findStartTags(html, "script").map((start) =>
-    scriptCannotTweenAlongPath(html.slice(start, html.indexOf(">", start) + 1), projectDir, files),
-  );
+  const tags = findStartTags(html, "script");
+  if (tags.length > MAX_SCANNED_SCRIPTS) return false;
+  const srcs = new Set<string>();
+  for (const start of tags) {
+    const answer = scriptTagAnswer(html.slice(start, html.indexOf(">", start) + 1));
+    if (answer === false) return false;
+    if (answer !== true) srcs.add(answer.src);
+  }
+  // Aborted when a script names a path or the scan ends, so it stops every read it started.
+  const scan = new AbortController();
+  const byFile = new Map<string, Promise<boolean>>();
+  const check = async (src: string) => {
+    const file = await files.resolve(projectDir, decodeURIComponent(src.split(/[?#]/)[0]!));
+    if (file === null) return false;
+    let answer = byFile.get(file);
+    if (!answer) byFile.set(file, (answer = fileNamesNoPath(file, files, scan.signal)));
+    return answer;
+  };
+  const stopUnlessNoPath = async (src: string) => {
+    if (!(await check(src).catch(() => false))) scan.abort();
+  };
   try {
-    const answers = await withinDeadline(Promise.all(scripts), deadline, "scripts");
-    return answers.every(Boolean);
+    await withinDeadline(
+      inPool(srcs, SCRIPT_READS_IN_FLIGHT, scan.signal, stopUnlessNoPath),
+      deadline,
+      "scripts",
+    );
+    return !scan.signal.aborted;
   } catch {
     return false;
+  } finally {
+    scan.abort();
   }
 }
 
@@ -284,20 +314,38 @@ function htmlHasMotionPathPlugin(html: string): boolean {
   );
 }
 
-function injectMotionPathPluginIfNeeded(html: string, baseUrl: string): string {
+// The plugin goes right after the page's GSAP, beside it as the page wrote it. The cached tag is the same for every
+// visitor, so a local root's origin is a stand-in: written as a path, it holds only under a same-origin base.
+const PREVIEW_DOCUMENT = "http://preview.invalid/preview";
+
+function pluginTagSrc(html: string, gsapFile: string | null, mirror: string | null): string | null {
+  const baseHref = parseHTML(html).document.querySelector("base[href]")?.getAttribute("href");
+  const baseUrl = new URL(
+    baseHref && URL.canParse(baseHref, PREVIEW_DOCUMENT) ? baseHref : "",
+    PREVIEW_DOCUMENT,
+  );
+  const href = previewMotionPathSrc({
+    gsapFile,
+    mirror,
+    documentUrl: PREVIEW_DOCUMENT,
+    baseUrl: baseUrl.href,
+    pageOwned: true,
+  });
+  if (!href || !mirror) return href && gsapFile && motionPathBesideGsap(gsapFile);
+  const own = new URL(PREVIEW_DOCUMENT).origin;
+  if (new URL(href).origin !== own) return href;
+  return baseUrl.origin === own ? href.slice(own.length) : null;
+}
+
+function injectMotionPathPluginIfNeeded(html: string, mirror: string | null = null): string {
   if (!htmlUsesMotionPath(html) || htmlHasMotionPathPlugin(html)) return html;
-  // The plugin registers onto an already-loaded gsap, so it must come AFTER the
-  // core gsap script — which often lives at body-end, not <head>. Insert it
-  // directly after the gsap script tag; only fall back to <head> if none is found
-  // (e.g. gsap is inlined).
   const gsap = findGsapCoreScript(html);
-  if (gsap) {
-    const version = gsap.src.match(/gsap@([\d.]+)/)?.[1];
-    const ordering = `${gsap.type ? ` type="${gsap.type}"` : ""}${gsap.defer ? " defer" : ""}`;
-    const pluginTag = `<script${ordering} src="${escapeGsapUrl(motionPathPluginUrl(version, baseUrl))}"></script>`;
-    return html.slice(0, gsap.end) + "\n" + pluginTag + html.slice(gsap.end);
-  }
-  return injectScriptTagIntoHead(html, gsapScriptTag("MotionPathPlugin.min.js", baseUrl));
+  const src = pluginTagSrc(html, gsap?.src ?? null, mirror);
+  if (!src) return html;
+  if (!gsap) return injectScriptTagIntoHead(html, `<script src="${escapeGsapUrl(src)}"></script>`);
+  const ordering = `${gsap.type ? ` type="${gsap.type}"` : ""}${gsap.defer ? " defer" : ""}`;
+  const pluginTag = `<script${ordering} src="${escapeGsapUrl(src)}"></script>`;
+  return html.slice(0, gsap.end) + "\n" + pluginTag + html.slice(gsap.end);
 }
 
 type GsapCoreScript = { src: string; type: string | null; defer: boolean; end: number };
@@ -307,15 +355,15 @@ function findGsapCoreScript(html: string): GsapCoreScript | null {
   // The scanner skips comments, raw text and templates, so its `<script` offsets line up with the DOM's scripts.
   const starts = findStartTags(html, "script");
   if (starts.length !== scripts.length) return null;
-  const at = scripts.findIndex((script) =>
-    isGsapCoreUrl(lowerCaseAttributes(script).get("src") ?? ""),
-  );
+  const fileOf = (attributes: Map<string, string>) =>
+    attributes.get("src") ?? attributes.get(INLINED_FILE_ATTR) ?? "";
+  const at = scripts.findIndex((script) => isGsapCoreUrl(fileOf(lowerCaseAttributes(script))));
   if (at === -1) return null;
   const attributes = lowerCaseAttributes(scripts[at]!);
   const end = scriptCloseEnd(html, starts[at]!);
   if (end === 0) return null;
   return {
-    src: attributes.get("src")!,
+    src: fileOf(attributes),
     type: attributes.get("type") ?? null,
     defer: attributes.has("defer"),
     end,
@@ -471,7 +519,13 @@ export function injectStudioPreviewAugmentations(
   signature: string,
   projectDir: string,
   activeCompositionPath: string,
-  options: { capture: boolean; gsapBaseUrl: string; sandboxedCapture: boolean; pathFree?: boolean },
+  options: {
+    capture: boolean;
+    gsapBaseUrl: string;
+    gsapMirror?: string | null;
+    sandboxedCapture: boolean;
+    pathFree?: boolean;
+  },
 ): string {
   const studioMotion = readStudioMotion(projectDir, activeCompositionPath);
   const noTimelineToCome =
@@ -491,8 +545,9 @@ export function injectStudioPreviewAugmentations(
     injectProjectSignature(
       injectTagsAtHeadStart(
         marked,
-        `<meta name="${GSAP_BASE_URL_META}" content="${escapeGsapUrl(options.gsapBaseUrl)}">` +
-          (!studioMotion && options.pathFree ? `<meta name="${NO_PATH_TWEEN_META}">` : ""),
+        (options.gsapMirror
+          ? `<meta name="${GSAP_BASE_URL_META}" content="${escapeGsapUrl(options.gsapMirror)}">`
+          : "") + (!studioMotion && options.pathFree ? `<meta name="${NO_PATH_TWEEN_META}">` : ""),
       ),
       signature,
     ),
@@ -506,7 +561,10 @@ export function injectStudioPreviewAugmentations(
         options.gsapBaseUrl,
       )
     : withFallback;
-  const withPlugin = injectMotionPathPluginIfNeeded(withMotionDependencies, options.gsapBaseUrl);
+  const withPlugin = injectMotionPathPluginIfNeeded(
+    withMotionDependencies,
+    options.gsapMirror ?? null,
+  );
   return studioMotion ? injectStudioMotionScript(withPlugin, studioMotion.script) : withPlugin;
 }
 
@@ -573,11 +631,16 @@ export const withPreviewBase = (html: string, projectId: string) => {
   return hasBaseElement(mapped) ? mapped : injectTagsAtHeadStart(mapped, `<base href="${base}">`);
 };
 
-function resolvePreviewGsapBaseUrl(adapter: PreviewApiAdapter): string {
+/** The GSAP root the preview rewrites to, and the same root when someone configured it (else null). */
+function resolvePreviewGsap(adapter: PreviewApiAdapter): {
+  gsapBaseUrl: string;
+  gsapMirror: string | null;
+} {
   const configured = process.env.HYPERFRAMES_GSAP_BASE_URL;
   if (configured?.trim() || !adapter.gsapLocalRoot) {
     try {
-      return normalizeGsapBaseUrl(configured);
+      const gsapBaseUrl = normalizeGsapBaseUrl(configured);
+      return { gsapBaseUrl, gsapMirror: configured?.trim() ? gsapBaseUrl : null };
     } catch (cause) {
       throw new Error(
         "Invalid HYPERFRAMES_GSAP_BASE_URL: use an absolute HTTPS npm mirror root (plain HTTP only for localhost) without credentials, query, or fragment",
@@ -585,7 +648,8 @@ function resolvePreviewGsapBaseUrl(adapter: PreviewApiAdapter): string {
       );
     }
   }
-  return normalizeGsapLocalRoot(adapter.gsapLocalRoot);
+  const gsapBaseUrl = normalizeGsapLocalRoot(adapter.gsapLocalRoot);
+  return { gsapBaseUrl, gsapMirror: gsapBaseUrl };
 }
 
 export function registerPreviewRoutes(
@@ -596,8 +660,9 @@ export function registerPreviewRoutes(
     subCompositionDeadlineMs,
   }: { sandboxThumbnailCaptures?: boolean; subCompositionDeadlineMs?: number } = {},
 ): void {
-  const gsapBaseUrl = resolvePreviewGsapBaseUrl(adapter);
-  const gsapEtagSalt = `:gsap:${createHash("sha1").update(gsapBaseUrl).digest("hex").slice(0, 12)}`;
+  const { gsapBaseUrl, gsapMirror } = resolvePreviewGsap(adapter);
+  const gsapSource = `${gsapBaseUrl}|${gsapMirror ?? "unset"}`;
+  const gsapEtagSalt = `:gsap:${createHash("sha1").update(gsapSource).digest("hex").slice(0, 12)}`;
   const previewCacheHeaders = (etag: string) => ({
     "Cache-Control": "private, no-cache",
     ETag: etag,
@@ -667,6 +732,7 @@ export function registerPreviewRoutes(
       const options = {
         capture,
         gsapBaseUrl,
+        gsapMirror,
         sandboxedCapture: sandboxThumbnailCaptures,
         pathFree: await provesNoPathTween(transformed, project.dir, rootDeadline),
       };
@@ -731,6 +797,7 @@ export function registerPreviewRoutes(
           {
             capture,
             gsapBaseUrl,
+            gsapMirror,
             sandboxedCapture: sandboxThumbnailCaptures,
             pathFree: await provesNoPathTween(fallbackPage, project.dir),
           },
@@ -848,6 +915,7 @@ export function registerPreviewRoutes(
       const options = {
         capture,
         gsapBaseUrl,
+        gsapMirror,
         sandboxedCapture: sandboxThumbnailCaptures,
         pathFree: await provesNoPathTween(transformed, project.dir, deadline),
       };

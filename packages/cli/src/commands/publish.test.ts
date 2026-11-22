@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -240,6 +240,8 @@ describe("publish visibility messaging", () => {
     vi.stubEnv("HYPERFRAMES_CONFIG_DIR", config);
     vi.stubEnv("HEYGEN_API_KEY", "");
     vi.stubEnv("HYPERFRAMES_API_KEY", "");
+    // This machine published the folder there, so the descriptor is its own link.
+    writeProjectLink(project, { projectId: "existing-\u001b[2Kproject", url: "", spaceId: "" });
     publishState.publish.mockReset();
     publishState.confirm.mockReset();
     publishState.confirm.mockResolvedValue(false);
@@ -619,6 +621,158 @@ describe("publish --update / --space ownership preflight", () => {
     } finally {
       error.mockRestore();
     }
+  });
+});
+
+describe("publish with a committed team descriptor (SECOPS-2048)", () => {
+  // `.hyperframes/project.json` travels with every copy of a folder; only this machine's own
+  // record (outside the folder, keyed by its path) may make it pick the project to overwrite.
+  async function runWithDescriptor(options: {
+    team: { projectId: string; spaceId?: string };
+    record?: { projectId: string; spaceId?: string };
+    args?: Record<string, unknown>;
+    answers?: boolean[];
+  }): Promise<{ output: string; error: unknown; exitCode: number; descriptor: string }> {
+    const project = mkdtempSync(join(tmpdir(), "hf-publish-received-"));
+    const config = mkdtempSync(join(tmpdir(), "hf-publish-received-config-"));
+    writeFileSync(join(project, "index.html"), VISIBLE_INDEX);
+    vi.stubEnv("HYPERFRAMES_CONFIG_DIR", config);
+    vi.stubEnv("HEYGEN_API_KEY", "");
+    vi.stubEnv("HYPERFRAMES_API_KEY", "");
+    writeTeamProject(project, options.team);
+    if (options.record) {
+      writeProjectLink(project, {
+        projectId: options.record.projectId,
+        url: `https://hyperframes.dev/p/${options.record.projectId}`,
+        ...(options.record.spaceId !== undefined ? { spaceId: options.record.spaceId } : {}),
+      });
+    }
+    publishState.publish.mockReset();
+    publishState.publish.mockImplementation(async (_dir: string, opts: { projectId?: string }) => ({
+      title: "test",
+      fileCount: 1,
+      claimed: true,
+      // The server updates a project the user can write, so it echoes the requested id.
+      projectId: opts.projectId,
+      url: `https://hyperframes.dev/p/${String(opts.projectId)}`,
+    }));
+    publishState.confirm.mockReset();
+    for (const answer of options.answers ?? []) publishState.confirm.mockResolvedValueOnce(answer);
+    let error: unknown;
+    try {
+      await writeStore({ oauth: { access_token: "token" } }, join(config, "credentials"));
+      consumeCommandResult();
+      const output = await captureLog(async () => {
+        try {
+          await publishCommand.run?.({
+            args: { dir: project, public: false, proxy: false, ...options.args },
+          } as never);
+        } catch (err) {
+          error = err;
+        }
+      });
+      const descriptor = readFileSync(join(project, ".hyperframes", "project.json"), "utf-8");
+      return { output, error, exitCode: consumeCommandResult().exitCode, descriptor };
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(project, { recursive: true, force: true });
+      rmSync(config, { recursive: true, force: true });
+    }
+  }
+
+  it("refuses --yes for a received descriptor instead of updating the project it names", async () => {
+    const { error, descriptor } = await runWithDescriptor({
+      team: { projectId: "victim-project", spaceId: "victim-space" },
+      args: { yes: true },
+    });
+
+    expect(publishState.publish).not.toHaveBeenCalled();
+    expect(error).toMatchObject({
+      name: "CliUsageError",
+      code: "publish_target_unconfirmed",
+      message:
+        ".hyperframes/project.json names project victim-project in team space victim-space, but this machine has not published this folder to it, so --yes will not update it.",
+      hint: "To update that project, run again with --update victim-project --space victim-space. To publish this folder as its own project, delete .hyperframes/project.json and run again.",
+    });
+    expect(descriptor).toContain("victim-project");
+  });
+
+  it("asks before updating a received descriptor's project, defaulting to a new project", async () => {
+    const { output, descriptor } = await runWithDescriptor({
+      team: { projectId: "victim-project", spaceId: "victim-space" },
+      answers: [false, true],
+    });
+
+    expect(output).toContain(
+      ".hyperframes/project.json names project victim-project in team space victim-space, but this machine has not published this folder to it.",
+    );
+    expect(publishState.confirm).toHaveBeenNthCalledWith(1, {
+      message:
+        "Update project victim-project in place? No publishes this folder as its own project.",
+      initialValue: false,
+    });
+    expect(publishState.publish).toHaveBeenCalledTimes(1);
+    const [, opts] = publishState.publish.mock.calls[0] as [string, Record<string, unknown>];
+    expect(opts.projectId).not.toBe("victim-project");
+    expect(opts.spaceId).toBeUndefined();
+    // The folder is now its own project, so its descriptor names the new one.
+    expect(descriptor).not.toContain("victim-project");
+    expect(descriptor).toContain(String(opts.projectId));
+  });
+
+  it("updates a received descriptor's project and space once the user confirms", async () => {
+    await runWithDescriptor({
+      team: { projectId: "team-project", spaceId: "team-space" },
+      answers: [true, true],
+    });
+
+    expect(publishState.publish).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ projectId: "team-project", spaceId: "team-space" }),
+    );
+  });
+
+  it("does not take the space from a received descriptor when --update names the project", async () => {
+    await runWithDescriptor({
+      team: { projectId: "team-project", spaceId: "team-space" },
+      args: { yes: true, update: "team-project" },
+    });
+
+    expect(publishState.publish).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ projectId: "team-project", spaceId: undefined }),
+    );
+  });
+
+  it("refuses --yes when the descriptor's space differs from the one this machine published to", async () => {
+    const { error } = await runWithDescriptor({
+      team: { projectId: "own-project", spaceId: "other-space" },
+      record: { projectId: "own-project", spaceId: "" },
+      args: { yes: true },
+    });
+
+    expect(error).toMatchObject({ code: "publish_target_unconfirmed" });
+    expect(publishState.publish).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: "a record that keeps the space", record: { projectId: "own", spaceId: "team" } },
+    { name: "a record from before the space was kept", record: { projectId: "own" } },
+  ])("re-publishes in place without asking from $name", async ({ record }) => {
+    const { output, error, exitCode } = await runWithDescriptor({
+      team: { projectId: "own", spaceId: "team" },
+      record,
+      args: { yes: true },
+    });
+
+    expect(error).toBeUndefined();
+    expect(exitCode).toBe(0);
+    expect(publishState.confirm).not.toHaveBeenCalled();
+    expect(publishState.publish).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ projectId: "own", spaceId: "team" }),
+    );
+    expect(output).toContain("Updated existing project");
   });
 });
 

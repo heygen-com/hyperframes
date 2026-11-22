@@ -35,7 +35,11 @@ function ownScaleOf(scale: OverlayRootScale, box: EditingElementBox) {
   const height = corners
     ? cornerEdgeLength(corners.nw, corners.sw)
     : box.rect.height * scale.rootScaleY;
-  return { x: width / layout.width, y: height / layout.height };
+  return {
+    x: width / layout.width,
+    y: height / layout.height,
+    ...(corners && { corners }),
+  };
 }
 
 /** `toOverlayRect`. */

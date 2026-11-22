@@ -1,5 +1,4 @@
 import { useCallback, useRef } from "react";
-import { EXCLUDED_TAGS, mintHfId, walkCompositionDescendants } from "@hyperframes/parsers/hf-ids";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { toAuthoredStart } from "../player/store/timelineElement";
@@ -7,13 +6,10 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import {
   type ClipboardPayload,
   type TimelineClipboardClip,
-  ID_ATTR_RE,
-  deduplicateIds,
   insertAsSibling,
 } from "../utils/clipboardPayload";
-import { carryLook, renamedIds } from "../utils/clipboardLook";
-import { collectHtmlIds } from "../utils/studioHelpers";
-import { insertTimelineAssetIntoSource, writtenTrackIndex } from "../utils/timelineAssetDrop";
+import { carryLook } from "../utils/clipboardLook";
+import { placeUnderCompositionRoot, writtenTrackIndex } from "../utils/timelineAssetDrop";
 import { extendRootDurationInSource } from "../utils/rootDuration";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
@@ -29,7 +25,7 @@ import {
   savedMarkupElseLive,
 } from "../utils/authoredSource";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
-import { copiedFile, refuseUnlistedMarkup } from "../utils/clipboardMarkup";
+import { copiedFile, idsInFile, prepareCopy, refuseAddedMarkup } from "../utils/clipboardMarkup";
 import { knownCompositionFile } from "../components/editor/domEditingDom";
 
 type InPlace = { inPlace?: boolean };
@@ -159,61 +155,28 @@ export function resolveFreeTrack(preferred: PlacedClip, taken: readonly PlacedCl
   return maxTrack + 1;
 }
 
-/** Gives a clone's root and every descendant a fresh data-hf-id, clear of `taken`. Minted here,
- *  inside the edit, or the server stamps them on the next preview load, behind undo's back.
- *  DOMParser, not a regex, so a `>` inside an attribute value can't defeat it. */
-function remintHfIds(
-  html: string,
-  parser: DOMParser,
-  taken: Set<string>,
-  check: (doc: Document) => void,
-): string {
-  const doc = parser.parseFromString(html, "text/html");
-  check(doc);
-  const root = doc.body.firstElementChild;
-  if (!root) {
-    // A tag the HTML parser hoists out of <body> (title/meta/style/base/link)
-    // never reaches the walk above — fall back to a direct strip so
-    // data-hf-id still can't survive, even though no real clip root is one
-    // of these tags today.
-    return html.replace(/\sdata-hf-id=("[^"]*"|'[^']*')/g, "");
-  }
-  const elements = [root];
-  walkCompositionDescendants(root, (el) => elements.push(el));
-  for (const el of elements) {
-    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) el.removeAttribute("data-hf-id");
-    else el.setAttribute("data-hf-id", mintHfId(el, taken));
-  }
-  return root.outerHTML;
-}
-
-const HF_ID_ATTR_RE = /\bdata-hf-id\s*=\s*["']?([^"'\s>]+)/gi;
-const hfIdsInFile = (content: string) =>
-  new Set(Array.from(content.matchAll(HF_ID_ATTR_RE), (match) => match[1]));
-
 export function pasteElementHtml(
   content: string,
   payload: { html: string; readFrom?: string | null },
   fromThisFile = false,
   writeTo: string | null = null,
 ): string {
-  const parser = new DOMParser();
-  const check = (doc: Document) => refuseUnlistedMarkup(doc, payload.readFrom, writeTo);
-  const reminted = remintHfIds(payload.html, parser, hfIdsInFile(content), check);
-  const deduped = deduplicateIds(reminted, collectHtmlIds(content));
-  const anchorFromThisFile =
-    fromThisFile && !!payload.readFrom && payload.readFrom === writeTo
-      ? parser
-          .parseFromString(payload.html, "text/html")
-          .body.firstElementChild?.getAttribute("data-hf-id")
-      : null;
-  const result = insertAsSibling(content, deduped, anchorFromThisFile ?? undefined);
-  return fromThisFile ? carryLook(result, renamedIds(reminted, deduped), 0) : result;
+  const taken = idsInFile(content);
+  const copy = prepareCopy(payload.html, taken.hfIds, taken.ids);
+  const fromItsFile = fromThisFile && !!payload.readFrom && payload.readFrom === writeTo;
+  const inserted = insertAsSibling(
+    content,
+    copy.html,
+    (fromItsFile && copy.originalHfId) || undefined,
+  );
+  const result = fromThisFile ? carryLook(inserted, copy.renames, 0) : inserted;
+  refuseAddedMarkup(content, result, [{ html: copy.html, readFrom: payload.readFrom }], writeTo);
+  return result;
 }
 
 /** Shared insertion path for paste and duplicate, anchored at the playhead or the selection's end. Returns the
- *  final ids so the caller can select what it placed, and the furthest end any clip lands at so it can grow the
- *  root duration to cover it. `fromThisFile`: the clips came from `content`, so a renamed copy takes its
+ *  final ids so the caller can select what it placed; the root's data-duration grows to the furthest end, since a
+ *  clip past it never plays or exports. `fromThisFile`: the clips came from `content`, so a renamed copy takes its
  *  original's look. */
 export function pasteTimelineClips(
   content: string,
@@ -224,22 +187,14 @@ export function pasteTimelineClips(
   writeTo: string | null = null,
 ): { content: string; ids: string[]; requiredEnd: number } {
   const groupMinStart = Math.min(...clips.map((c) => c.start));
-  let existingIds = collectHtmlIds(content);
   const taken: PlacedClip[] = liveElements.map((el) => ({
     track: writtenTrackIndex(el.authoredTrack ?? el.track),
     start: el.start,
     duration: el.duration,
   }));
-  const ids: string[] = [];
-  let result = content;
+  const { hfIds: takenHfIds, ids: takenIds } = idsInFile(content);
   let requiredEnd = 0;
-  const domParser = new DOMParser();
-  const takenHfIds = hfIdsInFile(content);
-  for (const clip of clips) {
-    const check = (doc: Document) => refuseUnlistedMarkup(doc, clip.readFrom, writeTo);
-    const reminted = remintHfIds(clip.html, domParser, takenHfIds, check);
-    const deduped = deduplicateIds(reminted, existingIds);
-    existingIds = existingIds.concat(collectHtmlIds(deduped));
+  const placed = clips.map((clip) => {
     const newStart = anchorTime + (clip.start - groupMinStart);
     const newTrack = resolveFreeTrack(
       { track: writtenTrackIndex(clip.track), start: newStart, duration: clip.duration },
@@ -247,27 +202,28 @@ export function pasteTimelineClips(
     );
     taken.push({ track: newTrack, start: newStart, duration: clip.duration });
     requiredEnd = Math.max(requiredEnd, newStart + clip.duration);
-
-    // Only rewrite the outermost opening tag. The non-global regex matches
-    // the first occurrence, which is always in the root tag since outerHTML
-    // starts with it. Nested clips keep their own timing and track.
-    const rootTagEnd = deduped.indexOf(">");
-    const rootTag = rootTagEnd >= 0 ? deduped.slice(0, rootTagEnd + 1) : deduped;
-    const patchedRootTag = rootTag
-      .replace(/data-start="[^"]*"/, `data-start="${formatTimelineAttributeNumber(newStart)}"`)
-      .replace(/data-track-index="[^"]*"/, `data-track-index="${newTrack}"`);
-    const withPatched = patchedRootTag + deduped.slice(rootTagEnd + 1);
-    check(domParser.parseFromString(withPatched, "text/html"));
-    result = insertTimelineAssetIntoSource(result, withPatched);
-    if (fromThisFile) {
-      const authored = Number(rootTag.match(/data-start="([^"]*)"/)?.[1]);
-      const authoredStart = Number.isFinite(authored) ? authored : clip.start;
-      result = carryLook(result, renamedIds(reminted, deduped), newStart - authoredStart);
-    }
-
-    const id = patchedRootTag.match(ID_ATTR_RE)?.[1];
-    if (id) ids.push(id);
-  }
+    let authoredStart = clip.start;
+    // Only the root moves: nested clips keep their own timing and track.
+    const copy = prepareCopy(clip.html, takenHfIds, takenIds, (root) => {
+      const authored = Number(root.getAttribute("data-start"));
+      if (root.hasAttribute("data-start") && Number.isFinite(authored)) authoredStart = authored;
+      if (root.hasAttribute("data-start"))
+        root.setAttribute("data-start", formatTimelineAttributeNumber(newStart));
+      if (root.hasAttribute("data-track-index"))
+        root.setAttribute("data-track-index", String(newTrack));
+    });
+    return { copy, readFrom: clip.readFrom, delta: newStart - authoredStart };
+  });
+  const base = extendRootDurationInSource(content, requiredEnd);
+  let result = base;
+  const written = placed.map(({ copy, readFrom, delta }) => {
+    const { insertAt, written: html } = placeUnderCompositionRoot(result, copy.html);
+    result = result.slice(0, insertAt) + html + result.slice(insertAt);
+    if (fromThisFile) result = carryLook(result, copy.renames, delta);
+    return { html, readFrom };
+  });
+  refuseAddedMarkup(base, result, written, writeTo);
+  const ids = placed.flatMap(({ copy }) => copy.root.getAttribute("id") ?? []);
   return { content: result, ids, requiredEnd };
 }
 
@@ -443,10 +399,7 @@ export function useClipboard({
             writeTo,
           );
           pastedIds = pasted.ids;
-          // A clip pasted past the current composition end would exist in the
-          // file but never appear on the timeline or in playback/export (the
-          // root's data-duration is what actually bounds the render).
-          return extendRootDurationInSource(pasted.content, pasted.requiredEnd);
+          return pasted.content;
         };
 
         const { label, toast } = pasteWords(payload);
@@ -519,7 +472,7 @@ export function useClipboard({
             targetPath,
           );
           ids = pasted.ids;
-          return extendRootDurationInSource(pasted.content, pasted.requiredEnd);
+          return pasted.content;
         };
 
         await saveProjectFilesWithHistory({

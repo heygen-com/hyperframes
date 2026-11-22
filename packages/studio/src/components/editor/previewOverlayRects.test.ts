@@ -39,6 +39,11 @@ installReactActEnvironment();
 // The 2D slice of each that the overlay reads; one set for both frames, which share this window.
 class FakeDOMMatrix {
   a = 1;
+  m13 = 0;
+  m23 = 0;
+  m14 = 0;
+  m24 = 0;
+  m44 = 1;
   b = 0;
   c = 0;
   d = 1;
@@ -57,9 +62,6 @@ class FakeDOMMatrix {
     out.e = this.a * o.e + this.c * o.f + this.e;
     out.f = this.b * o.e + this.d * o.f + this.f;
     return out;
-  }
-  rotateSelf() {
-    return this;
   }
   transformPoint(p: { x: number; y: number }) {
     return { x: this.a * p.x + this.c * p.y + this.e, y: this.b * p.x + this.d * p.y + this.f };
@@ -231,8 +233,8 @@ describe("overlay rects on an opaque frame match a scriptable one", () => {
     }
   });
 
-  // fails without the fix: the cut took the turned layer's wider upright box as its scale, 167.4 px, not 173.2.
-  it("cuts a turned, scaled layer's crop at its own scale, not its upright box's, the same in both", async () => {
+  // fails without the fix: the cut took the turned layer's upright box, 167.4 or 173.2 px wide, not 179.9.
+  it("cuts a turned, scaled layer's crop at its own scale, along its own edges, the same in both", async () => {
     const [cos, sin] = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)];
     const [width, height] = [2 * (200 * cos + 100 * sin), 2 * (200 * sin + 100 * cos)];
     const spun = sized(document.createElement("div"), [1000, 100, width, height]);
@@ -249,7 +251,69 @@ describe("overlay rects on an opaque frame match a scriptable one", () => {
       const { group } = await settled(
         await overlayOn(frame(), { selection: null, group: ["grp", "spun"] }),
       );
-      expect(group[1]!.width).toBeCloseTo((width - 100) / 2, 6);
+      const [cutW, cutH] = [2 * 150, 2 * 100];
+      expect(group[1]!.width).toBeCloseTo((cutW * cos + cutH * sin) / 2, 6);
+      expect(group[1]!.height).toBeCloseTo((cutW * sin + cutH * cos) / 2, 6);
+    }
+  });
+
+  // fails without the fix: the crop was cut out of the upright box, 81.1 x 106.1 where the cut is 88.4 square.
+  const layer = (id: string, transform: string, clip: string, box = [1000, 100, 200, 100]) => {
+    const element = sized(document.createElement("div"), box);
+    element.id = id;
+    if (clip) element.style.setProperty("clip-path", clip);
+    if (transform) element.style.setProperty("transform", transform);
+    Object.defineProperty(element, "offsetWidth", { value: 200, configurable: true });
+    Object.defineProperty(element, "offsetHeight", { value: 100, configurable: true });
+    document.querySelector("[data-composition-id]")!.append(element);
+  };
+  const pairIn = async (frame: () => HTMLIFrameElement, ids: [string, string]) => {
+    const { group } = await settled(await overlayOn(frame(), { selection: null, group: ids }));
+    return [group[0]!, group[1]!] as const;
+  };
+
+  // fails without the fix: a scaled layer's insets crossing past its width drew a box live, none sealed.
+  it("shrinks crossed insets until they meet, as CSS does, the same in both", async () => {
+    const half = "matrix(0.5, 0, 0, 0.5, 0, 0)";
+    layer("whole", half, "", [1050, 125, 100, 50]);
+    layer("met", half, "inset(0px 300px 0px 100px)", [1050, 125, 100, 50]);
+    for (const frame of [liveFrame, opaqueFrame]) {
+      const [whole, met] = await pairIn(frame, ["whole", "met"]);
+      expect(met.width).toBeCloseTo(0, 6);
+      expect(met.left - whole.left).toBeCloseTo(((200 * 100) / 400) * 0.5 * 0.5, 6);
+    }
+  });
+
+  // fails without the fix: a mirrored layer's right inset cut its visual left live and its visual right sealed.
+  it("cuts a mirrored layer's right inset off its visual left, the same in both", async () => {
+    layer("plain", "", "inset(0px 50px 0px 0px)");
+    layer("mirrored", "matrix(-1, 0, 0, 1, 0, 0)", "inset(0px 50px 0px 0px)");
+    for (const frame of [liveFrame, opaqueFrame]) {
+      const [plain, mirrored] = await pairIn(frame, ["plain", "mirrored"]);
+      expect(mirrored.width).toBeCloseTo(plain.width, 6);
+      expect(mirrored.left - plain.left).toBeCloseTo(50 / 2, 6);
+    }
+  });
+
+  it("bounds a turned layer's cropped box by its cut corners, the same in both", async () => {
+    const half = Math.SQRT1_2;
+    const side = (200 + 100) * half;
+    const spun = sized(document.createElement("div"), [1000, 100, side, side]);
+    spun.id = "spun";
+    spun.style.setProperty("clip-path", "inset(0px 50px 0px 0px)");
+    spun.style.setProperty("transform", `matrix(${half}, ${half}, ${-half}, ${half}, 0, 0)`);
+    Object.defineProperty(spun, "offsetWidth", { value: 200, configurable: true });
+    Object.defineProperty(spun, "offsetHeight", { value: 100, configurable: true });
+    document.querySelector("[data-composition-id]")!.append(spun);
+    for (const frame of [liveFrame, opaqueFrame]) {
+      const { group } = await settled(
+        await overlayOn(frame(), { selection: null, group: ["grp", "spun"] }),
+      );
+      const cut = ((150 + 100) * half) / 2;
+      expect(group[1]).toMatchObject({
+        width: expect.closeTo(cut, 6),
+        height: expect.closeTo(cut, 6),
+      });
     }
   });
 
