@@ -134,16 +134,22 @@ export function refuseAddedMarkup(
   const saved = served(after);
   const counts = new Map<string, number>();
   const tally = (shape: string, sign: number) => counts.set(shape, (counts.get(shape) ?? 0) + sign);
-  eachElement(saved, (el) => tally(signature(el), 1));
+  const candidatesBySignatureOfMintedRoot = new Map<string, Element[]>();
+  eachElement(saved, (el) => {
+    const shape = signature(el);
+    tally(shape, 1);
+    const bucket = candidatesBySignatureOfMintedRoot.get(shape);
+    if (bucket) bucket.push(el);
+    else candidatesBySignatureOfMintedRoot.set(shape, [el]);
+  });
   eachElement(served(before), (el) => tally(signature(el), -1));
   const claimed = new Set<Element>();
   for (const copy of copies) {
     const expected = fragment(copy.html).content.firstElementChild;
     if (!expected) throw new Error(REFUSED);
-    let found: Element | null = null;
-    eachElement(saved, (el) => {
-      if (!found && subtree(el).every((e) => !claimed.has(e)) && sameTree(el, expected)) found = el;
-    });
+    const found = (candidatesBySignatureOfMintedRoot.get(signature(expected)) ?? []).find(
+      (el) => subtree(el).every((e) => !claimed.has(e)) && sameTree(el, expected),
+    );
     if (!found) throw new Error(REFUSED);
     const exempt = !!copy.readFrom && copy.readFrom === writeTo;
     if (!exempt && markupOutsideAllowlist(found).length > 0) throw new Error(REFUSED);
