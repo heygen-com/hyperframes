@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TimelineElement } from "../player";
+import { usePlayerStore, type TimelineElement } from "../player";
 import { sdkTimingPersist, type CutoverResult } from "../utils/sdkCutover";
 import { persistTimelineEdit } from "./timelineEditingHelpers";
 import { enqueueTimelineEdit, type TimelineEditQueue } from "./timelineEditQueue";
@@ -28,6 +28,7 @@ const sdkWrites = vi.mocked(sdkTimingPersist);
 const fileWrites = vi.mocked(persistTimelineEdit);
 
 function mountClipTiming() {
+  usePlayerStore.getState().setDuration(10);
   const queue: TimelineEditQueue = { current: Promise.resolve() };
   let hook: ReturnType<typeof useTimelineClipTimingEditing> | null = null;
   function Harness() {
