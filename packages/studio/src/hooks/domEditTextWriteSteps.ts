@@ -1,4 +1,8 @@
-import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
+import {
+  findElementForSelection,
+  serializeDomEditTextFields,
+  type DomEditSelection,
+} from "../components/editor/domEditing";
 import { editSealedSelection } from "../components/editor/previewSelection";
 import { escapeHtmlText } from "../components/editor/domEditingLayers";
 import type { PreviewElementEdit } from "../player/lib/previewElements";
@@ -46,10 +50,19 @@ export function textWriteSteps(input: {
   let editedElement: HTMLElement | null = null;
   let sealedEdit: PreviewElementEdit | null = null;
   let drawn = "";
+  // What the element showed when this save's turn opened: what the file holds, since earlier saves settled first.
+  let before: string | undefined = selection.textFields.length
+    ? selection.textFields.length > 1 || selection.textFields.some((f) => f.source === "child")
+      ? serializeDomEditTextFields(selection.textFields)
+      : escapeHtmlText(selection.textFields[0]!.value)
+    : undefined;
   const steps = {
     capture: () => {
       const el = doc ? findElementForSelection(doc, selection, activeCompPath) : null;
-      if (el) editedElement = el;
+      if (el) {
+        editedElement = el;
+        before = el.innerHTML;
+      }
     },
     apply: () => {
       const serialized = textCommit.usesSerializedTextFields;
@@ -62,13 +75,12 @@ export function textWriteSteps(input: {
       else editedElement.textContent = text;
       drawn = editedElement.innerHTML;
     },
-    shouldRevert: () => isLatest(),
-    // Back to what reached the file, only over this save's own draft; with nothing saved yet, the file drawn again.
+    // A failed save takes back its own draw, newest or not, so no later save plans from text that never landed.
+    shouldRevert: () => true,
     revert: () => {
-      const back = isLatest.saved();
-      if (back === undefined) return input.reloadFromFile();
-      if (sealedEdit) void editSealedSelection(iframe, selection, { html: back, expect: drawn });
-      else if (editedElement?.innerHTML === drawn) editedElement.innerHTML = back;
+      if (before === undefined) return input.reloadFromFile();
+      if (sealedEdit) void editSealedSelection(iframe, selection, { html: before, expect: drawn });
+      else if (editedElement?.innerHTML === drawn) editedElement.innerHTML = before;
     },
     onError: (error: unknown) =>
       reportDomEditPersistFailure(selection, textCommit.operations, error, input.showToast),

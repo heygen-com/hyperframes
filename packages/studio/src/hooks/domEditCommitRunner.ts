@@ -97,7 +97,8 @@ export function claimTextWrite(
   const isLatest = () => order.claims.get(key) === number;
   return Object.assign(isLatest, {
     release,
-    write: <T>(run: () => Promise<T>) => before.then(run).finally(release),
+    // The commit's onFinally releases, after its revert, so the next turn never sees a failed draw.
+    write: <T>(run: () => Promise<T>) => before.then(run),
     turn: () => before,
     shouldSave: () => isLatest() || !(skipped = true),
     landed: (markup: string) => {
