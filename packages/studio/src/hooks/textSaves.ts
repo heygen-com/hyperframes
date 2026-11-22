@@ -67,3 +67,14 @@ export function textSavesSettled(element: HTMLElement): Promise<void> | null {
     new Promise<void>((resolve) => (timer = setTimeout(resolve, EDITING_REQUEST_TIMEOUT_MS))),
   ]).finally(() => clearTimeout(timer));
 }
+
+/** A panel save is skipped only when a newer panel save targets the same field. */
+export function fieldSave(newestOn: Map<string, number>, field: string, number: number) {
+  let skipped = false;
+  const newest = () => newestOn.get(field) === number;
+  return {
+    shouldSave: () => newest() || !(skipped = true),
+    landed: () => !skipped,
+    done: () => void (newest() && newestOn.delete(field)),
+  };
+}

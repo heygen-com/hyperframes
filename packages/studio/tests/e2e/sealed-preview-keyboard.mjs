@@ -35,20 +35,22 @@ try {
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => document.querySelector("hyperframes-player")?.painted === true);
   const frame = page.frames().find((f) => /\/preview\/~[\w-]{43}/.test(f.url()));
-  // A save can reload the preview, so later steps run in the frame it shows now, again if it is replaced mid-step.
-  const inPreview = async (run) => {
-    for (let tries = 0; ; tries++) {
-      const shown = page
-        .frames()
-        .find((f) => !f.isDetached() && /\/preview\/~[\w-]{43}/.test(f.url()));
-      try {
-        if (shown) return await run(shown);
-      } catch (error) {
-        if (!/detached/.test(String(error)) || tries > 50) throw error;
-      }
-      await new Promise((r) => setTimeout(r, 100));
-    }
+  const shownPreview = () => {
+    const shown = page
+      .frames()
+      .find((f) => !f.isDetached() && /\/preview\/~[\w-]{43}/.test(f.url()));
+    if (!shown) throw new Error("preview detached while it reloads");
+    return shown;
   };
+  // A save can reload the preview, so later steps run in the frame it shows now, again if it is replaced mid-step.
+  const inPreview = (run, tries = 50) =>
+    Promise.resolve()
+      .then(() => run(shownPreview()))
+      .catch(async (error) => {
+        if (tries === 0 || !/detached/.test(String(error))) throw error;
+        await new Promise((r) => setTimeout(r, 100));
+        return inPreview(run, tries - 1);
+      });
   assert.ok(frame, "the preview loads under its frame token");
   assert.equal(
     await frame.evaluate(() => String(window.origin)),
@@ -88,40 +90,36 @@ try {
     await new Promise((r) => setTimeout(r, 100));
   assert.ok(!saved().includes('id="plain"'), "a real Delete after a canvas click deletes the clip");
 
-  // A heading picked on the canvas, Enter opens its text edit in the frame; typing and Enter save it.
-  await clickInPreview(page, frame, "#head");
-  await page.waitForFunction(
-    () => new URLSearchParams(location.hash.split("?")[1]).get("selId") === "head",
-  );
-  await keyboardBackInStudio();
+  // The heading picked on the canvas, Enter opens its text edit in the frame, typing goes on at its end.
+  const typeInHeading = async (text) => {
+    await inPreview((f) => clickInPreview(page, f, "#head"));
+    await page.waitForFunction(
+      () => new URLSearchParams(location.hash.split("?")[1]).get("selId") === "head",
+    );
+    await keyboardBackInStudio();
+    await page.keyboard.press("Enter");
+    await inPreview((f) =>
+      f.waitForFunction(() => document.getElementById("head").isContentEditable),
+    );
+    await page.keyboard.press("End");
+    await page.keyboard.type(text);
+  };
+  const untilSaved = async (text) => {
+    for (let i = 0; i < 100 && !saved().includes(text); i++)
+      await new Promise((r) => setTimeout(r, 100));
+    return saved().includes(text);
+  };
+  await typeInHeading(" again");
   await page.keyboard.press("Enter");
-  await frame.waitForFunction(() => document.getElementById("head").isContentEditable);
-  await page.keyboard.press("End");
-  await page.keyboard.type(" again");
-  await page.keyboard.press("Enter");
-  for (let i = 0; i < 100 && !saved().includes("Hi again"); i++)
-    await new Promise((r) => setTimeout(r, 100));
-  assert.ok(saved().includes("Hi again"), "typing in the sealed text edit is saved");
+  assert.ok(await untilSaved("Hi again"), "typing in the sealed text edit is saved");
   await keyboardBackInStudio();
 
   // An edit the film never ends: the person moves to a Studio field, then the film focuses itself.
-  await inPreview((f) => clickInPreview(page, f, "#head"));
-  await page.waitForFunction(
-    () => new URLSearchParams(location.hash.split("?")[1]).get("selId") === "head",
-  );
-  await keyboardBackInStudio();
-  await page.keyboard.press("Enter");
-  await inPreview((f) =>
-    f.waitForFunction(() => document.getElementById("head").isContentEditable),
-  );
-  await page.keyboard.press("End");
-  await page.keyboard.type(" more");
+  await typeInHeading(" more");
   await page.evaluate(() => document.body.appendChild(document.createElement("input")).focus());
   await inPreview((f) => f.evaluate(() => document.getElementById("field").focus()));
   await keyboardBackInStudio();
-  for (let i = 0; i < 100 && !saved().includes("Hi again more"); i++)
-    await new Promise((r) => setTimeout(r, 100));
-  assert.ok(saved().includes("Hi again more"), "Studio taking focus back saves the edit");
+  assert.ok(await untilSaved("Hi again more"), "Studio taking focus back saves the edit");
   await page.keyboard.press("z");
   assert.equal(
     await inPreview((f) => f.evaluate(() => document.getElementById("field").value)),

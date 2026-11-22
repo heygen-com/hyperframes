@@ -50,7 +50,7 @@ const ready = (frame: Frame) =>
   frame.waitForFunction(() => "__player" in window && "__timelines" in window);
 
 /** Seeks the `index`th frame of `studioPage` to `at` and waits for the render. */
-export async function seekTo(studioPage: Page, frame: Frame, index: number, at: number) {
+async function seekTo(studioPage: Page, frame: Frame, index: number, at: number) {
   await studioPage.evaluate(
     (i, t) => {
       document
@@ -176,7 +176,7 @@ export async function openStudio(
 
 type Pending = { kind: string; refused: boolean };
 
-export const pending = (studioPage: Page) =>
+const pending = (studioPage: Page) =>
   studioPage.evaluate(() => {
     const w = window as unknown as {
       __held: unknown[];

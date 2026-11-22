@@ -12,7 +12,7 @@ const GSAP = readFileSync(require.resolve("gsap/dist/gsap.min.js"), "utf8");
 const RUNTIME = readFileSync(require.resolve("@hyperframes/core/runtime"), "utf8");
 const MARK = '<meta name="hyperframes-studio-preview" content="1" />';
 
-export const ORIGINAL = '<span data-hf-id="a">One</span> <span data-hf-id="b">Two</span>';
+const ORIGINAL = '<span data-hf-id="a">One</span> <span data-hf-id="b">Two</span>';
 const TYPED = ["Uno", "Dos", "Tres"];
 const PANEL = ["Red", "Blue"];
 const WORDS = new Set(["One", "Two", "New", "text", ...TYPED, ...PANEL]);
@@ -23,9 +23,9 @@ const root = (markup: string) =>
 const TIMELINE = `window.__timelines = window.__timelines || {};
   window.__timelines["main"] = gsap.timeline({ paused: true }).to("#t", { opacity: 1, duration: 4 }, 0);`;
 /** The saved file as Studio reads it. */
-export const file = (markup: string) => `<html><body>${root(markup)}</body></html>`;
+const file = (markup: string) => `<html><body>${root(markup)}</body></html>`;
 /** The saved file as the preview loads it. */
-export const page = (markup: string) =>
+const page = (markup: string) =>
   `<!doctype html><html><head><meta charset="UTF-8" />${MARK}</head><body>${root(markup)}` +
   `<script>${GSAP}</script><script>${TIMELINE}</script><script>${RUNTIME}</script></body></html>`;
 
@@ -47,34 +47,40 @@ const isGesture = (step: Step) =>
 /** Steps that only move when replies and writes arrive; the one-at-a-time model leaves them out. */
 const isTiming = (step: Step) => "answer" in step || "release" in step || "pastDeadline" in step;
 
+type Draw = { random: () => number; pick: <T>(list: readonly T[]) => T };
+
+const editStep = (open: boolean, roll: number, { random, pick }: Draw): Step | null => {
+  if (open && roll < 0.3) return { type: { field: pick([0, 1] as const), text: pick(TYPED) } };
+  if (open && roll < 0.4)
+    return random() < 0.15 ? { cancel: true } : { end: pick(["save", "blur"] as const) };
+  return !open && roll < 0.3 ? { open: true } : null;
+};
+
+const panelStep = ({ pick }: Draw): Step => {
+  const kind = pick(["text", "text", "add", "remove"] as const);
+  if (kind === "text") return { panel: "text", field: pick([0, 1] as const), value: pick(PANEL) };
+  return kind === "add" ? { panel: "add" } : { panel: "remove", field: pick([0, 1] as const) };
+};
+
+const timingStep = (roll: number): Step => {
+  if (roll < 0.8) return { answer: true };
+  if (roll < 0.87) return { release: true };
+  return roll < 0.93 ? { pastDeadline: true } : { reloadFrame: true };
+};
+
 /** A seeded sequence a person could make: typing only into an open edit, a panel save ending one that is open. */
 export function generated(seed: number): Step[] {
   let state = seed;
   const random = () => (state = (state * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
-  const pick = <T>(list: readonly T[]) => list[Math.floor(random() * list.length)]!;
+  const draw: Draw = { random, pick: (list) => list[Math.floor(random() * list.length)]! };
   const steps: Step[] = [];
   let open = false;
   while (steps.length < 10) {
     const roll = random();
-    if (open && roll < 0.3)
-      steps.push({ type: { field: pick([0, 1] as const), text: pick(TYPED) } });
-    else if (open && roll < 0.4) {
-      steps.push(random() < 0.15 ? { cancel: true } : { end: pick(["save", "blur"] as const) });
-      open = false;
-    } else if (!open && roll < 0.3) {
-      steps.push({ open: true });
-      open = true;
-    } else if (roll < 0.5) {
-      const kind = pick(["text", "text", "add", "remove"] as const);
-      if (kind === "text")
-        steps.push({ panel: "text", field: pick([0, 1] as const), value: pick(PANEL) });
-      else if (kind === "add") steps.push({ panel: "add" });
-      else steps.push({ panel: "remove", field: pick([0, 1] as const) });
-      open = false;
-    } else if (roll < 0.8) steps.push({ answer: true });
-    else if (roll < 0.87) steps.push({ release: true });
-    else if (roll < 0.93) steps.push({ pastDeadline: true });
-    else steps.push({ reloadFrame: true });
+    const step = editStep(open, roll, draw) ?? (roll < 0.5 ? panelStep(draw) : timingStep(roll));
+    steps.push(step);
+    if ("open" in step) open = true;
+    else if ("end" in step || "cancel" in step || "panel" in step) open = false;
   }
   // The person finishes: an edit still open at the end is saved.
   if (open) steps.push({ end: "save" });

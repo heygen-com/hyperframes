@@ -207,6 +207,22 @@ export function endInlineEditOn(element: HTMLElement): Promise<void> {
   );
 }
 
+// A frame may never say its edit ended: Studio taking focus back ends it, saving, as the frame's blur would.
+function useSealedSessionEnds(
+  session: InlineTextEditSession | null,
+  openRef: { current: InlineTextEditSession | null },
+  save: { current: () => unknown },
+) {
+  useEffect(() => () => session?.keyboard?.(), [session]);
+  useEffect(() => {
+    const studioWindow = session?.sealed?.iframe.ownerDocument.defaultView;
+    if (!studioWindow) return undefined;
+    const backInStudio = () => openRef.current === session && save.current();
+    studioWindow.addEventListener("focus", backInStudio);
+    return () => studioWindow.removeEventListener("focus", backInStudio);
+  }, [session, openRef, save]);
+}
+
 function settleWhileOpen(
   session: InlineTextEditSession | null,
   openRef: { current: InlineTextEditSession | null },
@@ -489,15 +505,7 @@ export function useInlineTextEdit({
   const saveRef = useRef(save);
   saveRef.current = save;
   useEffect(() => settleWhileOpen(session, openRef, saveRef), [session]);
-  useEffect(() => () => session?.keyboard?.(), [session]);
-  // A frame may never say its edit ended: Studio taking focus back ends it, saving, as the frame's blur would.
-  useEffect(() => {
-    const studioWindow = session?.sealed?.iframe.ownerDocument.defaultView;
-    if (!studioWindow) return undefined;
-    const backInStudio = () => openRef.current === session && saveRef.current();
-    studioWindow.addEventListener("focus", backInStudio);
-    return () => studioWindow.removeEventListener("focus", backInStudio);
-  }, [session]);
+  useSealedSessionEnds(session, openRef, saveRef);
 
   return { session, start, commit, cancel };
 }

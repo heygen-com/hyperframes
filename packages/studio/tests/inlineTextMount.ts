@@ -66,13 +66,18 @@ export function mountTextEditing(
   const reported: string[] = [];
   const fates: WriteFate[] = [];
   const waiting: Array<() => void> = [];
-  const persist: PersistDomEditOperations = async (selection, operations, options) => {
-    if (options?.shouldSave?.() === false) return void skipped.push(String(operations[0]?.value));
+  const valueOf = (operations: Parameters<PersistDomEditOperations>[1]) =>
+    String(operations[0]?.value);
+  const takeFate = async () => {
     const fate = fates.shift() ?? "land";
     if (fate === "wait") await new Promise<void>((resolve) => waiting.push(resolve));
     if (fate === "fail") throw new Error("write refused");
+  };
+  const persist: PersistDomEditOperations = async (selection, operations, options) => {
+    if (options?.shouldSave?.() === false) return void skipped.push(valueOf(operations));
+    await takeFate();
     file = patchElementInHtml(file, { id: selection.id }, operations).html;
-    writes.push(String(operations[0]?.value));
+    writes.push(valueOf(operations));
     onLanded(saved());
   };
   const select = async () => {

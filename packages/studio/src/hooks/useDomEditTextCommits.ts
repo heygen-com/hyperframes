@@ -27,6 +27,7 @@ import {
 import {
   claimTextWrite,
   textWriteOrder,
+  type TextWriteClaim,
   type TextWriteOrder,
   domEditCommitDeclined,
   runDomEditCommit,
@@ -42,6 +43,7 @@ import {
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
 import { endInlineEditOn, textSaveEnded, type InlineTextEditCommit } from "./useInlineTextEdit";
 import {
+  fieldSave,
   landedTextFor,
   nextTextSaveOrder,
   queueTextSave,
@@ -106,6 +108,13 @@ async function sealedInlineTextSelection(
   if (selection?.element !== element) return NOT_FOUND;
   return canEditSealedTextInline(selection) ? selection : NOT_EDITABLE;
 }
+
+/** At its turn, a save that followed another on the element reads it as that save left it. */
+const selectionAtTurn = (
+  claim: TextWriteClaim,
+  snapshot: DomEditSelection,
+  build: UseDomEditTextCommitsParams["buildDomSelectionFromTarget"],
+) => (claim.followed() ? selectionAsLanded(snapshot, build) : snapshot);
 
 async function selectionAsLanded(
   snapshot: DomEditSelection,
@@ -233,9 +242,7 @@ export function useDomEditTextCommits({
       );
       if (!claim) return { ok: true, changed: false };
       await claim.turn();
-      const landed = claim.followed()
-        ? await selectionAsLanded(selection, buildDomSelectionFromTarget)
-        : selection;
+      const landed = await selectionAtTurn(claim, selection, buildDomSelectionFromTarget);
       const nextTextFields = buildNextDomTextFields(landed.textFields, value, fieldKey);
       const textCommit = planDomTextCommit(landed.textFields, nextTextFields, value);
       const write = textWriteSteps({
@@ -258,17 +265,16 @@ export function useDomEditTextCommits({
         ...write.steps,
         persist: () =>
           claim.write(async () => {
-            const newest = () => newestFieldSaveRef.current.get(field) === number;
-            let skipped = false;
+            const save = fieldSave(newestFieldSaveRef.current, field, number);
             const result = await afterSealedDraw(write.sealedEdit(), (drawn) =>
               persistDomEditOperations(landed, textCommit.operations, {
                 label: "Edit text",
                 skipRefresh: drawn,
-                shouldSave: () => newest() || !(skipped = true),
+                shouldSave: save.shouldSave,
               }),
             );
-            if (!skipped) claim.landed(write.drawn());
-            if (newest()) newestFieldSaveRef.current.delete(field);
+            if (save.landed()) claim.landed(write.drawn());
+            save.done();
             return result;
           }),
       });
@@ -423,9 +429,7 @@ export function useDomEditTextCommits({
       );
       if (!claim) return;
       await claim.turn();
-      const selection = claim.followed()
-        ? await selectionAsLanded(snapshot, buildDomSelectionFromTarget)
-        : snapshot;
+      const selection = await selectionAtTurn(claim, snapshot, buildDomSelectionFromTarget);
       const nextTextFields = change(selection.textFields);
       const textCommit = planDomTextCommit(
         selection.textFields,
