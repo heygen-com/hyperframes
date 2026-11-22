@@ -268,6 +268,7 @@ import {
   type StylableElement,
 } from "./domRealm";
 import { audibleVideoNeedsWebAudio, isAudibleVideoElement, parentCopyOf } from "../audibleVideo";
+import { setRuntimePreload } from "./runtimeAttributes";
 
 /**
  * A `window.__timelines` entry is authored content and may be a PARTIAL
@@ -2776,7 +2777,7 @@ export function initSandboxRuntimeModular(): void {
       learnsLength(el) &&
       resolveAbsoluteMediaStartSeconds(el) > state.currentTime + LOOKAHEAD_SECONDS
     ) {
-      el.preload = "metadata";
+      setRuntimePreload(el, "metadata");
       el.load();
     } else preloadMedia(el);
   };
@@ -2792,7 +2793,7 @@ export function initSandboxRuntimeModular(): void {
     }
     if (!freesBufferedVideo(el) || mediaNearPlayhead.get(el) !== false || el.readyState === 0)
       return;
-    el.preload = "none";
+    setRuntimePreload(el, "none");
     withoutOwnTimingRecords(el, () => releaseMedia(el, true));
   };
   const onMediaErrorForProxy = (event: Event) => {
@@ -3379,7 +3380,7 @@ export function initSandboxRuntimeModular(): void {
     mediaNearPlayhead.set(el, near);
     if (!near) {
       const wasPreloading = el.preload !== "none";
-      el.preload = "none";
+      setRuntimePreload(el, "none");
       const video = freesBufferedVideo(el);
       const holdsPipeline = video
         ? decided || el.readyState > 0 || el.networkState === 2
@@ -5193,7 +5194,7 @@ export function initSandboxRuntimeModular(): void {
         moveMediaWindow(time, clips);
         for (const { el } of clips) {
           if (!isVideoElement(el) || el.videoWidth > 0) continue;
-          if (el.preload === "none") el.preload = "metadata";
+          if (el.preload === "none") setRuntimePreload(el, "metadata");
           if (el.networkState !== 2) runtimeLoad(el);
         }
         const requests = clips.flatMap((clip) =>
@@ -5248,7 +5249,7 @@ export function initSandboxRuntimeModular(): void {
       moveMediaWindow(time, clips);
       for (const clip of clips) {
         const { el } = clip;
-        if (el.preload !== "auto") el.preload = "auto";
+        if (el.preload !== "auto") setRuntimePreload(el, "auto");
         if (el.readyState === 1 && !el.seeking)
           el.currentTime = mediaElementTime(mediaSourceTimeAt(clip, time));
       }
@@ -6215,7 +6216,7 @@ export function initSandboxRuntimeModular(): void {
       )
       .map((clip) => {
         const { el } = clip;
-        el.preload = "metadata";
+        setRuntimePreload(el, "metadata");
         withoutOwnTimingRecords(el, () => releaseMedia(el));
         if (el.readyState === 0)
           el.addEventListener(

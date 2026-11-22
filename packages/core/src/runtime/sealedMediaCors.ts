@@ -1,4 +1,5 @@
 import { mediaElementTime } from "./mediaClock";
+import { forgetRuntimeAttribute, recordRuntimeAttribute } from "./runtimeAttributes";
 import { loadedByRuntime, runtimeLoad } from "./runtimeLoad";
 
 // A sealed preview's document has an opaque origin, so its own server's media is cross-origin to it. Without
@@ -66,14 +67,22 @@ const allHome = (urls: string[], home: string) =>
 
 function write(media: HTMLMediaElement, value: string | null): void {
   pendingWrites.set(media, (pendingWrites.get(media) ?? 0) + 1);
-  if (value === null) media.removeAttribute("crossorigin");
-  else media.setAttribute("crossorigin", value);
+  if (value === null) {
+    media.removeAttribute("crossorigin");
+    forgetRuntimeAttribute(media, "crossorigin");
+  } else {
+    media.setAttribute("crossorigin", value);
+    recordRuntimeAttribute(media, "crossorigin");
+  }
 }
 
 function crossOriginChanged(media: HTMLMediaElement): void {
   const pending = pendingWrites.get(media) ?? 0;
   if (pending > 0) pendingWrites.set(media, pending - 1);
-  else authored.add(media);
+  else {
+    authored.add(media);
+    forgetRuntimeAttribute(media, "crossorigin");
+  }
 }
 
 function setCors(media: HTMLMediaElement, want: boolean): void {
