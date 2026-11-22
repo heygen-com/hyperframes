@@ -490,6 +490,14 @@ export function useInlineTextEdit({
   saveRef.current = save;
   useEffect(() => settleWhileOpen(session, openRef, saveRef), [session]);
   useEffect(() => () => session?.keyboard?.(), [session]);
+  // A frame may never say its edit ended: Studio taking focus back ends it, saving, as the frame's blur would.
+  useEffect(() => {
+    const studioWindow = session?.sealed?.iframe.ownerDocument.defaultView;
+    if (!studioWindow) return undefined;
+    const backInStudio = () => openRef.current === session && saveRef.current();
+    studioWindow.addEventListener("focus", backInStudio);
+    return () => studioWindow.removeEventListener("focus", backInStudio);
+  }, [session]);
 
   return { session, start, commit, cancel };
 }
