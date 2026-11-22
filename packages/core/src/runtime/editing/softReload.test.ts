@@ -4,6 +4,7 @@ import { parseRestoreAttributes } from "./restoreAttributes";
 import {
   parseRestoreAttributesRerun,
   parseSoftReload,
+  preloadMotionPath,
   restoreAttributesOrRerun,
   softReload,
   type SoftReloadParams,
@@ -167,6 +168,7 @@ describe("a re-run that waits for the MotionPath plugin", () => {
     document.body.innerHTML =
       `<div data-composition-id="main"><div id="a" data-hf-id="a" style="left: 0px"></div></div>` +
       `<div data-composition-id="other"></div>` +
+      `<script src="gsap.min.js"></script>` +
       `<script>${run("main", "file")}</script><script>${run("other", "file")}</script>`;
     delete document.body.dataset.main;
     delete document.body.dataset.other;
@@ -489,5 +491,95 @@ describe("parseSoftReload", () => {
     ["a restore element keyed by neither id", params({ restore: [restoreOf("a", [])] })],
   ])("refuses %s", (_label, request) => {
     expect(parseSoftReload(request)).toBeNull();
+  });
+});
+
+describe("where the MotionPath plugin loads from", () => {
+  const pluginSrc = () =>
+    document.head.querySelector<HTMLScriptElement>("script[data-hf-gsap-plugin]")?.src ?? null;
+  const PATH_TWEEN = '<script>gsap.to("#a", { motionPath: { path: "#p" } });</script>';
+  function preloadOn(markup: string, version?: string) {
+    document.body.innerHTML = markup;
+    win.gsap = { version, registerPlugin: () => {} };
+    preloadMotionPath(win, document);
+    return pluginSrc();
+  }
+
+  // fails without the fix: the plugin came from jsDelivr whatever the page's GSAP was, so a preview with no
+  // network asked a third party for a script the page never named.
+  it.each([
+    ['<script src="vendor/gsap.min.js"></script>', "vendor/MotionPathPlugin.min.js"],
+    [
+      '<script data-hf-inlined-src="vendor/gsap.min.js"></script>',
+      "vendor/MotionPathPlugin.min.js",
+    ],
+  ])("loads it from beside the page's own GSAP: %s", (tag, plugin) => {
+    expect(preloadOn(tag + PATH_TWEEN)).toBe(new URL(plugin, document.baseURI).href);
+  });
+
+  // fails without the fix: Desktop's walk film (project gsap.min.js at 3.12.5, no server meta) asked jsDelivr.
+  it("asks the page's own origin for a project GSAP's plugin, whatever its version", () => {
+    const src = preloadOn(`<script src="gsap.min.js"></script>${PATH_TWEEN}`, "3.12.5");
+    expect(src).toBe(new URL("MotionPathPlugin.min.js", document.baseURI).href);
+    expect(new URL(src!).origin).toBe(new URL(document.baseURI).origin);
+  });
+
+  it("requests nothing when the page names no GSAP file", () => {
+    expect(preloadOn(`<script>/* gsap inlined by hand */</script>${PATH_TWEEN}`)).toBeNull();
+  });
+
+  // fails without the fix: a host's bundled root holds only its own GSAP version, so for another version the
+  // plugin came from jsDelivr though the page and the host named only same-origin files.
+  it("takes the host's bundled plugin for a page on another GSAP version, never the CDN", () => {
+    const meta = '<meta name="hyperframes-gsap-base-url" content="/api/vendor/npm">';
+    document.head.innerHTML = meta;
+    const src = preloadOn(
+      `<script src="vendor/gsap@3.12.5/dist/gsap.min.js"></script>${PATH_TWEEN}`,
+      "3.12.5",
+    );
+    expect(src).toBe(
+      new URL("/api/vendor/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js", document.baseURI).href,
+    );
+  });
+
+  // fails without the fix: with no server meta (Desktop), a film with GSAP from jsDelivr preloaded the plugin
+  // from there ahead of any path tween; an edit that adds one still loads it beside that GSAP.
+  it.each([
+    ["no path tween", ""],
+    ["a path tween", PATH_TWEEN],
+  ])("never preloads from a CDN the host did not configure, with %s", (_, tween) => {
+    const cdn = '<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>';
+    expect(preloadOn(cdn + tween, "3.14.2")).toBeNull();
+  });
+
+  // fails without the fix: rows "nothing, other site" and "local root, other site". The check read the
+  // page's base, so a <base> on another site moved a "local" plugin there.
+  const LOCAL = "http://localhost:3000/api/vendor/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js";
+  const MIRROR = "https://mirror.example/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js";
+  it.each<[string, string, string, string | null]>([
+    ["nothing", "/film/", "", "http://localhost:3000/film/vendor/MotionPathPlugin.min.js"],
+    ["nothing", "https://assets.example/film/", "", null],
+    ["local root", "/film/", "/api/vendor/npm", LOCAL],
+    ["local root", "https://assets.example/film/", "/api/vendor/npm", LOCAL],
+    ["mirror", "/film/", "https://mirror.example/npm", MIRROR],
+    ["mirror", "https://assets.example/film/", "https://mirror.example/npm", MIRROR],
+  ])("preloads with %s configured under the base %s", (_, base, mirror, expected) => {
+    document.head.innerHTML =
+      `<base href="${base}">` +
+      (mirror ? `<meta name="hyperframes-gsap-base-url" content="${mirror}">` : "");
+    expect(preloadOn(`<script src="vendor/gsap.min.js"></script>${PATH_TWEEN}`, "3.12.5")).toBe(
+      expected,
+    );
+  });
+
+  // fails without the fix: a data: script threw out of the preload, and a project script beside GSAP was
+  // taken for GSAP's own and skipped it.
+  it.each([
+    ["a project script beside GSAP", '<script src="vendor/scene.js"></script>'],
+    ["a data: script", '<script src="data:text/javascript,window.x=1"></script>'],
+  ])("preloads the local plugin whatever else the page loads: %s", (_, other) => {
+    expect(preloadOn(`<script src="vendor/gsap.min.js"></script>${other}`)).toBe(
+      new URL("vendor/MotionPathPlugin.min.js", document.baseURI).href,
+    );
   });
 });
