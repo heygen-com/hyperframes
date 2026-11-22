@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
 
-import { readFileSync } from "node:fs";
 import React, { act, useRef } from "react";
 import type { Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,8 +8,7 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { useAppHotkeys } from "./useAppHotkeys";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { APP_HOTKEY_ACTIONS } from "./appHotkeysDispatch";
-import { PLAYBACK_ACTIONS } from "../player/hooks/usePlaybackKeyboard";
+import { letSealedFrameHoldKeyboard } from "../player/lib/sealedFrameKeyboard";
 import { DEFAULT_STUDIO_KEYS } from "../player/components/studioShortcuts";
 import {
   detachedFakeIframe,
@@ -205,48 +203,31 @@ describe("preview iframe hotkey forwarding", () => {
     afterEach(() => closers.splice(0).forEach((close) => close()));
 
     // A frame whose document refuses Studio, reached only over the editing port it hands out per connect.
-    async function sealedFrame(
-      focus = { inPreview: true },
-      {
-        inPlayer = false,
-        activation = { queued: [] as boolean[], otherwise: true, reads: 0 },
-      } = {},
-    ) {
+    async function sealedFrame() {
       const frame: Record<string, unknown> = {};
       const iframe = detachedFakeIframe(frame);
       const loaded = new Promise((resolve) =>
         iframe.addEventListener("load", resolve, { once: true }),
       );
-      const hasFocus = vi.spyOn(document, "hasFocus").mockImplementation(() => focus.inPreview);
       const player = document.createElement("div");
       document.body.append(player);
-      if (!inPlayer) document.body.append(iframe);
-      if (inPlayer) {
-        const shadow = player.attachShadow({ mode: "open" });
-        shadow.append(iframe);
-        Object.defineProperty(shadow, "activeElement", {
-          get: () => (focus.inPreview ? iframe : null),
-        });
-      }
-      Object.defineProperty(document, "activeElement", {
-        configurable: true,
-        get: () => (!focus.inPreview ? document.body : inPlayer ? player : iframe),
+      const shadow = player.attachShadow({ mode: "open" });
+      shadow.append(iframe);
+      const focus = { inPreview: true };
+      Object.defineProperty(shadow, "activeElement", {
+        get: () => (focus.inPreview ? iframe : null),
       });
-      // Studio's own window: active only after a real press or click, in the frame or out of it.
+      const blur = vi.spyOn(iframe, "blur").mockImplementation(() => {
+        focus.inPreview = false;
+      });
+      // A real press or click just happened: Studio's window holds transient activation throughout.
       Object.defineProperty(window.navigator, "userActivation", {
         configurable: true,
-        get: () => {
-          activation.reads += 1;
-          const isActive = activation.queued.shift() ?? activation.otherwise;
-          return { isActive, hasBeenActive: isActive };
-        },
+        get: () => ({ isActive: true, hasBeenActive: true }),
       });
       closers.push(() => {
         delete (window.navigator as { userActivation?: unknown }).userActivation;
-        hasFocus.mockRestore();
-        delete (document as { activeElement?: unknown }).activeElement;
         player.remove();
-        iframe.remove();
       });
       Object.defineProperty(iframe, "contentDocument", { value: null });
       Object.defineProperty(frame, "document", {
@@ -270,89 +251,27 @@ describe("preview iframe hotkey forwarding", () => {
       );
       const report = (combo: string) => {
         const { mod, meta, ctrl, shift, alt, key } = parseCombo(combo)!;
-        ports.at(-1)!.postMessage({
-          v: 1,
-          event: "key",
-          key: {
-            type: "keydown",
-            key,
-            code: "",
-            altKey: alt,
-            ctrlKey: ctrl,
-            metaKey: mod || meta,
-            shiftKey: shift,
-            repeat: false,
-          },
-        });
+        for (const port of ports) {
+          port.postMessage({
+            v: 1,
+            event: "key",
+            key: {
+              type: "keydown",
+              key,
+              code: "",
+              altKey: alt,
+              ctrlKey: ctrl,
+              metaKey: mod || meta,
+              shiftKey: shift,
+              repeat: false,
+            },
+          });
+        }
       };
-      const keyDown = (key: string, code: string) =>
-        ports.at(-1)!.postMessage({
-          v: 1,
-          event: "key",
-          key: {
-            type: "keydown",
-            key,
-            code,
-            altKey: false,
-            ctrlKey: false,
-            metaKey: false,
-            shiftKey: false,
-            repeat: false,
-          },
-        });
+      const answered = () => previewRequest(iframe, "max-z-index", {}, 1_000);
       await loaded;
-      return { iframe, watched, ports, keyDown, report, hasFocus };
+      return { iframe, focus, blur, watched, report, answered };
     }
-
-    it("leaves Studio's own reads of the preview answered while it forwards keys", async () => {
-      root = mountReactHarness(<Harness />);
-      const { iframe, watched } = await sealedFrame();
-      let read: Promise<unknown> | undefined;
-      act(() => {
-        sync?.(iframe);
-        read = previewRequest(iframe, "max-z-index", {}, 1_000);
-      });
-      await vi.waitFor(() => expect(watched).toHaveLength(1));
-      await expect(read).resolves.toEqual({ zIndex: 7 });
-    });
-
-    it("deletes the selection on a Delete pressed inside the preview", async () => {
-      root = mountReactHarness(<Harness />);
-      const { iframe, watched, keyDown } = await sealedFrame();
-      act(() => sync?.(iframe));
-      await vi.waitFor(() => expect(watched).toHaveLength(1));
-      expect(new Set(watched[0])).toEqual(
-        new Set(APP_HOTKEY_ACTIONS.map((action) => DEFAULT_STUDIO_KEYS[action])),
-      );
-      keyDown("Delete", "Delete");
-      await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(1));
-    });
-
-    it("deletes the selection on a Delete pressed inside a preview held in the player's shadow root", async () => {
-      root = mountReactHarness(<Harness />);
-      const { iframe, watched, keyDown } = await sealedFrame(
-        { inPreview: true },
-        { inPlayer: true },
-      );
-      act(() => sync?.(iframe));
-      await vi.waitFor(() => expect(watched).toHaveLength(1));
-      keyDown("Delete", "Delete");
-      await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(1));
-    });
-
-    it("ignores a key the preview reports while the person is not in the preview", async () => {
-      root = mountReactHarness(<Harness />);
-      const focus = { inPreview: false };
-      const { iframe, watched, keyDown, hasFocus } = await sealedFrame(focus);
-      act(() => sync?.(iframe));
-      await vi.waitFor(() => expect(watched).toHaveLength(1));
-      keyDown("Delete", "Delete");
-      await vi.waitFor(() => expect(hasFocus).toHaveBeenCalledTimes(1));
-      focus.inPreview = true;
-      keyDown("Delete", "Delete");
-      await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(1));
-      expect(hasFocus).toHaveBeenCalledTimes(2);
-    });
 
     const changesMade = () =>
       [domDelete, historyUndo, historyRedo, ...Object.values(changes)].reduce(
@@ -360,79 +279,62 @@ describe("preview iframe hotkey forwarding", () => {
         0,
       );
 
-    // fails without the fix: focus in the frame was taken as a person's press, so every report below acted.
-    it.each([false, true])(
-      "acts on no app shortcut the frame reports with no real press (read-only preview: %s)",
-      async (readOnly) => {
-        readOnlyPreview = readOnly;
-        usePlayerStore.setState({
-          selectedElementIds: new Set(["clip-a"]),
-          selectedElementId: "clip-a",
-        });
-        root = mountReactHarness(<Harness />);
-        // Each report Studio reads is unpressed, then the real Delete after them is pressed.
-        const activation = {
-          queued: APP_HOTKEY_ACTIONS.map(() => false),
-          otherwise: true,
-          reads: 0,
-        };
-        const { iframe, watched, report, keyDown } = await sealedFrame(
-          { inPreview: true },
-          { inPlayer: true, activation },
-        );
-        act(() => sync?.(iframe));
-        await vi.waitFor(() => expect(watched).toHaveLength(1));
-        for (const action of APP_HOTKEY_ACTIONS) report(DEFAULT_STUDIO_KEYS[action]);
-        keyDown("Delete", "Delete");
-        await vi.waitFor(() => expect(activation.reads).toBe(APP_HOTKEY_ACTIONS.length + 1));
-        await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(readOnly ? 0 : 1));
-        expect(changesMade()).toBe(readOnly ? 0 : 1);
-        expect(usePlayerStore.getState().selectedElementId).toBe("clip-a");
-      },
-    );
-
-    // Known gap, by decision: a report forged within a real press's activation window (about 5 s) still acts.
-    it("still acts on a forged report while a real press's activation lasts", async () => {
+    // fails without the fix: a report the frame forged while a real press's activation lasted (about 5 s) acted.
+    it("acts on no key the frame reports, even right after a real press", async () => {
+      usePlayerStore.setState({
+        selectedElementIds: new Set(["clip-a"]),
+        selectedElementId: "clip-a",
+      });
       root = mountReactHarness(<Harness />);
-      const { iframe, watched, report } = await sealedFrame(
-        { inPreview: true },
-        { inPlayer: true },
-      );
+      const { iframe, watched, report, answered } = await sealedFrame();
       act(() => sync?.(iframe));
-      await vi.waitFor(() => expect(watched).toHaveLength(1));
-      report(DEFAULT_STUDIO_KEYS.undo);
-      await vi.waitFor(() => expect(historyUndo).toHaveBeenCalledTimes(1));
+      await answered();
+      for (const combo of Object.values(DEFAULT_STUDIO_KEYS)) report(combo);
+      await answered();
+      expect(watched).toEqual([]);
+      expect(changesMade()).toBe(0);
     });
 
-    it("stops watching on the preview's next load, from a new port", async () => {
+    // fails without the fix: focus could stay in the frame, where Studio only had the frame's word for a key.
+    it("takes the keyboard back whenever focus moves into the frame", async () => {
       root = mountReactHarness(<Harness />);
-      const { iframe, watched, ports } = await sealedFrame();
+      const { iframe, focus, blur } = await sealedFrame();
       act(() => sync?.(iframe));
-      await vi.waitFor(() => expect(watched).toHaveLength(1));
-      act(() => sync?.(iframe));
-      await vi.waitFor(() => expect(watched).toHaveLength(3));
-      expect(watched.slice(1)).toContainEqual([]);
-      expect(ports).toHaveLength(2);
+      expect(focus.inPreview).toBe(false);
+      focus.inPreview = true;
+      window.dispatchEvent(new Event("blur"));
+      expect(focus.inPreview).toBe(false);
+      expect(blur).toHaveBeenCalledTimes(2);
     });
 
-    it("watches every action the app's key dispatchers answer, so none is dead in a sealed preview", () => {
-      const read = (file: string) => readFileSync(new URL(file, import.meta.url), "utf8");
-      const answered = new Set([
-        ...[...read("./appHotkeysDispatch.ts").matchAll(/matchesKey\(\w+, "(\w+)"\)/g)].map(
-          (m) => m[1],
-        ),
-        ...[...read("./linkShortcuts.ts").matchAll(/\["(\w+)", "\w+"\]/g)].map((m) => m[1]),
-      ]);
-      expect(answered.size).toBeGreaterThan(20);
-      expect(new Set(APP_HOTKEY_ACTIONS)).toEqual(answered);
+    it("leaves the keyboard in the frame while Studio's own text edit there holds it", async () => {
+      root = mountReactHarness(<Harness />);
+      const { iframe, focus } = await sealedFrame();
+      const release = letSealedFrameHoldKeyboard(iframe);
+      act(() => sync?.(iframe));
+      window.dispatchEvent(new Event("blur"));
+      expect(focus.inPreview).toBe(true);
+      release();
+      window.dispatchEvent(new Event("blur"));
+      expect(focus.inPreview).toBe(false);
     });
 
-    it("watches no key the playback keys also watch, so the frame forwards each press once", () => {
-      const app = new Set(APP_HOTKEY_ACTIONS.map((action) => DEFAULT_STUDIO_KEYS[action]));
-      const shared = PLAYBACK_ACTIONS.map((action) => DEFAULT_STUDIO_KEYS[action]).filter((combo) =>
-        app.has(combo),
-      );
-      expect(shared).toEqual([]);
+    it("deletes the selection on a real Delete once Studio holds the keyboard", async () => {
+      root = mountReactHarness(<Harness />);
+      const { iframe } = await sealedFrame();
+      act(() => sync?.(iframe));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", code: "Delete" }));
+      await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(1));
+    });
+
+    it("stops taking focus from the frame once the preview is gone", async () => {
+      root = mountReactHarness(<Harness />);
+      const { iframe, focus, blur } = await sealedFrame();
+      act(() => sync?.(iframe));
+      act(() => sync?.(null));
+      focus.inPreview = true;
+      window.dispatchEvent(new Event("blur"));
+      expect(blur).toHaveBeenCalledTimes(1);
     });
   });
 });
