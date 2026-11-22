@@ -168,11 +168,6 @@ export {
   type EditingStackingSibling,
   type LayerKind,
 } from "./editingLayers";
-export {
-  composeElementTransform,
-  individualRotateDegrees,
-  type PlanarTransformOps,
-} from "./elementTransform";
 
 export const EDITING_PROTOCOL_VERSION = 1 as const;
 /** Parent to frame, on the window: asks the runtime for the port. */
