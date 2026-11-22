@@ -75,12 +75,13 @@ export function textWriteSteps(input: {
       else editedElement.textContent = text;
       drawn = editedElement.innerHTML;
     },
-    // A failed save takes back its own draw, newest or not, so no later save plans from text that never landed.
     shouldRevert: () => true,
+    // The newest save goes back to what reached the file, or draws it again; an older one takes back only its own draw.
     revert: () => {
-      if (before === undefined) return input.reloadFromFile();
-      if (sealedEdit) void editSealedSelection(iframe, selection, { html: before, expect: drawn });
-      else if (editedElement?.innerHTML === drawn) editedElement.innerHTML = before;
+      const back = isLatest() ? isLatest.saved() : before;
+      if (back === undefined) return input.reloadFromFile();
+      if (sealedEdit) void editSealedSelection(iframe, selection, { html: back, expect: drawn });
+      else if (editedElement?.innerHTML === drawn) editedElement.innerHTML = back;
     },
     onError: (error: unknown) =>
       reportDomEditPersistFailure(selection, textCommit.operations, error, input.showToast),

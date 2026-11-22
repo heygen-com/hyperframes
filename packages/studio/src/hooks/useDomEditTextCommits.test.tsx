@@ -324,7 +324,7 @@ describe("useDomEditTextCommits", () => {
         previewIframeRef: { current: iframe },
         domEditSelection: selectionFor(element),
         persistDomEditOperations,
-        buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) => selectionFor(target)),
+        buildDomSelectionFromTarget: async (target) => selectionFor(target as HTMLElement),
       }),
     );
 
