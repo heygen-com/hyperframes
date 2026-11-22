@@ -36,6 +36,7 @@ let mediaPreflightComposition: unknown;
 let afterMediaPreflight: (() => void) | null = null;
 let fileServerCloseCallCount = 0;
 let browserMediaResults: unknown[] = [];
+let browserMediaError: Error | null = null;
 
 type MockSession = {
   id: number;
@@ -207,7 +208,10 @@ mock.module("../../fileServer.js", () => ({
 }));
 
 mock.module("../../htmlCompiler.js", () => ({
-  discoverMediaFromBrowser: async () => browserMediaResults,
+  discoverMediaFromBrowser: async () => {
+    if (browserMediaError) throw browserMediaError;
+    return browserMediaResults;
+  },
   discoverAudioVolumeAutomationFromTimeline: async () => [],
   discoverVideoVisibilityFromTimeline: async () => [],
   recompileWithResolutions: async (c: unknown) => c,
@@ -1868,5 +1872,22 @@ describe("reportedLengthSource", () => {
     expect(JSON.stringify(reported)).not.toMatch(/customer|secret|Full Source/);
     expect(reportedLengthSource({ from: "timeline" })).toEqual({ from: "timeline" });
     expect(reportedLengthSource(null)).toBeNull();
+  });
+});
+
+describe("runProbeStage — a page call that never answers", () => {
+  it("says which probe step stopped, keeping the browser's own words", async () => {
+    resetRetryMocks();
+    browserMediaError = new Error(
+      "Runtime.callFunctionOn timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
+    );
+    const { runProbeStage } = await import("./probeStage.js");
+    try {
+      await expect(runProbeStage(makeProbeInput({}))).rejects.toThrow(
+        "Preparing the render stopped while listing the film's videos, audio and images: Runtime.callFunctionOn timed out.",
+      );
+    } finally {
+      browserMediaError = null;
+    }
   });
 });
