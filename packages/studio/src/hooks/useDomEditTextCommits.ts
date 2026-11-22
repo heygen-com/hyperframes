@@ -145,6 +145,8 @@ export function useDomEditTextCommits({
   const latestSelectionRef = useRef(domEditSelection);
   latestSelectionRef.current = domEditSelection;
   const textWritesRef = useRef<TextWriteOrder>(textWriteOrder());
+  /** The newest panel save per element field: an older one on the same field is superseded, another field's is not. */
+  const newestFieldSaveRef = useRef(new Map<string, number>());
   const domStyleCommitVersionRef = useRef(new Map<string, symbol>());
 
   const {
@@ -213,6 +215,8 @@ export function useDomEditTextCommits({
       }
       const ending = endInlineEditOn(selection.element);
       const number = nextTextSaveOrder();
+      const field = `${getDomEditTargetKey(selection)}|${fieldKey ?? ""}`;
+      newestFieldSaveRef.current.set(field, number);
       await ending;
       const claim = claimTextFor(
         textWritesRef.current,
@@ -248,13 +252,17 @@ export function useDomEditTextCommits({
         ...write.steps,
         persist: () =>
           claim.write(async () => {
+            const newest = () => newestFieldSaveRef.current.get(field) === number;
+            let skipped = false;
             const result = await afterSealedDraw(write.sealedEdit(), (drawn) =>
               persistDomEditOperations(landed, textCommit.operations, {
                 label: "Edit text",
                 skipRefresh: drawn,
+                shouldSave: () => newest() || !(skipped = true),
               }),
             );
-            claim.landed(write.drawn());
+            if (!skipped) claim.landed(write.drawn());
+            if (newest()) newestFieldSaveRef.current.delete(field);
             return result;
           }),
       });
