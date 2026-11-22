@@ -108,7 +108,7 @@ describe("the preview builder's proof that no script can tween along a path", ()
     ],
   ])("fails when %s does not answer within the budget", async (_, files) => {
     const { html, dir } = page('<script src="gsap.min.js"></script>', { "gsap.min.js": GSAP_FILE });
-    expect(await provesNoPathTween(html, dir, 50, files)).toBe(false);
+    expect(await provesNoPathTween(html, dir, performance.now() + 100, files)).toBe(false);
   });
 
   it("fails for a page whose own text names a path", async () => {

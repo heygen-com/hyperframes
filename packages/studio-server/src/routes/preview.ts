@@ -251,17 +251,20 @@ async function scriptCannotTweenAlongPath(
 }
 
 /** True only when no script the page loads can tween along a path: the page's text and each project script it loads
- * name no `motionPath`, and any other script is GSAP on its CDN. Unsure or late is false, and the page preloads. */
+ * name no `motionPath`, and any other script is GSAP on its CDN. Unsure or late is false, and the page preloads. The
+ * scan takes at most half of the time left before `requestDeadline`, so the preview itself keeps the rest. */
 export async function provesNoPathTween(
   html: string,
   projectDir: string,
-  budgetMs = SCRIPT_SCAN_MS,
+  requestDeadline = Number.POSITIVE_INFINITY,
   files = projectFiles,
 ): Promise<boolean> {
   if (namesMotionPath(html) || /\sdata-composition-src\s*=/i.test(html)) return false;
   if ((html.match(/<base\b/gi) ?? []).length !== 1 || !PROJECT_PREVIEW_BASE.test(html))
     return false;
-  const deadline = performance.now() + budgetMs;
+  const now = performance.now();
+  const deadline = now + Math.min(SCRIPT_SCAN_MS, (requestDeadline - now) / 2);
+  if (deadline <= now) return false;
   const scripts = findStartTags(html, "script").map((start) =>
     scriptCannotTweenAlongPath(html.slice(start, html.indexOf(">", start) + 1), projectDir, files),
   );
@@ -662,7 +665,7 @@ export function registerPreviewRoutes(
         capture,
         gsapBaseUrl,
         sandboxedCapture: sandboxThumbnailCaptures,
-        pathFree: await provesNoPathTween(transformed, project.dir),
+        pathFree: await provesNoPathTween(transformed, project.dir, rootDeadline),
       };
       const job = {
         runtimeUrl: adapter.runtimeUrl,
@@ -844,7 +847,7 @@ export function registerPreviewRoutes(
         capture,
         gsapBaseUrl,
         sandboxedCapture: sandboxThumbnailCaptures,
-        pathFree: await provesNoPathTween(transformed, project.dir),
+        pathFree: await provesNoPathTween(transformed, project.dir, deadline),
       };
       const finish = { kind: "finish" as const, ...job, html: transformed, signature, options };
       const html = await runOffThread(
