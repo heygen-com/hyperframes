@@ -135,7 +135,9 @@ async function unheld(studioPage: Page, run: () => Promise<unknown>) {
   }
 }
 
-async function gesture(studioPage: Page, frame: Frame, step: Step) {
+async function gesture(studioPage: Page, frame: Frame, step: Step, random: () => number) {
+  // A person types once the caret shows: an edit still opening waits for what it waits on.
+  if ("type" in step && (await opening(studioPage, frame))) await settle(studioPage, frame, random);
   if ("type" in step)
     return frame.evaluate(({ field, text }) => {
       // Keys reach only an element in an edit.
@@ -176,6 +178,12 @@ async function gesture(studioPage: Page, frame: Frame, step: Step) {
     step as Exclude<Step, { type: unknown }>,
   );
 }
+
+const opening = async (studioPage: Page, frame: Frame) =>
+  !(await frame.evaluate(() => document.getElementById("t")!.isContentEditable)) &&
+  (await studioPage.evaluate(
+    () => (window as unknown as Editing).__text.controls().session !== null,
+  ));
 
 /** Answers, releases and passes deadlines until nothing is pending and the frame shows its last load. */
 async function settle(studioPage: Page, frame: Frame, random: () => number) {
@@ -231,7 +239,7 @@ export async function playText(
     );
   for (const step of steps) {
     if (serial && isTiming(step)) continue;
-    if (isGesture(step)) await gesture(studioPage, frame, step);
+    if (isGesture(step)) await gesture(studioPage, frame, step, random);
     else if ("answer" in step) await answer(studioPage, Math.floor(random() * 1000), null);
     else if ("release" in step)
       await studioPage.evaluate(() => (window as unknown as Editing).__text.releaseWaiting());

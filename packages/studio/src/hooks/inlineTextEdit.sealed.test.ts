@@ -1044,3 +1044,47 @@ it("redraws the last saved text when a newer draft is cancelled before that save
   await vi.waitFor(() => expect(title.innerHTML).toBe("First"));
   act(unmounts.pop()!);
 });
+
+it("lands a draft and the panel save that ended it before a new edit on the element opens", async () => {
+  const { title, iframe, selection, holdEndReplies } = await sealedTitleHoldingEnds(SPANS);
+  const { persist, text } = sourceFile(undefined, SPANS);
+  const { controls, commits } = wiredEditor(iframe, selection, persist);
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.querySelectorAll("span")[1]!.textContent = "Dos";
+  const release = holdEndReplies();
+  const second = selection.textFields[1]!.key;
+  let panel!: Promise<unknown>;
+  act(() => void (panel = commits().handleDomTextCommitForSelection(selection, "Blue", second)));
+  act(() => void controls().start(selection.element));
+  await nextTask();
+  release();
+  await act(() => panel);
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.querySelector("span")!.textContent = "Tres";
+  act(() => controls().commit());
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+  expect(text("title")).toBe("<span>Tres</span> <span>Blue</span>");
+});
+
+it("saves a queued panel change without the draft of an edit opened after it", async () => {
+  const { title, iframe, selection, holdEndReplies } = await sealedTitleHoldingEnds(SPANS);
+  const { persist, text } = sourceFile(undefined, SPANS);
+  const { controls, commits } = wiredEditor(iframe, selection, persist);
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.querySelector("span")!.textContent = "Uno";
+  const release = holdEndReplies();
+  let removing!: Promise<unknown>;
+  act(() => void (removing = commits().handleDomRemoveTextField(selection.textFields[1]!.key)));
+  act(() => void controls().start(selection.element));
+  await nextTask();
+  // A person types once the caret shows.
+  if (title.isContentEditable) title.querySelector("span")!.textContent = "Dos";
+  release();
+  await act(() => removing);
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  act(() => controls().cancel());
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+  expect(text("title")).toBe("<span>Uno</span>");
+});
