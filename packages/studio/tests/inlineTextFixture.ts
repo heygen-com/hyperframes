@@ -172,10 +172,13 @@ async function gesture(studioPage: Page, frame: Frame, step: Step, random: () =>
       if ("open" in s) return void text.controls().start(selection.element);
       if ("end" in s) return void text.controls().commit();
       if ("cancel" in s) return void text.controls().cancel();
-      if (s.panel === "text")
-        return void text
-          .commits()
-          .handleDomTextCommitForSelection(selection, s.value, field(s.field));
+      // The panel shows only the fields the element has.
+      if (s.panel === "text") {
+        const shown = field(s.field);
+        return void (
+          shown && text.commits().handleDomTextCommitForSelection(selection, s.value, shown)
+        );
+      }
       if (s.panel === "add") return void text.commits().handleDomAddTextField(field(1));
       const key = field(s.field);
       if (key) void text.commits().handleDomRemoveTextField(key);
@@ -185,6 +188,7 @@ async function gesture(studioPage: Page, frame: Frame, step: Step, random: () =>
 }
 
 const opening = async (studioPage: Page, frame: Frame) =>
+  (await loaded(studioPage, frame)) === undefined &&
   !(await frame.evaluate(() => document.getElementById("t")!.isContentEditable)) &&
   (await studioPage.evaluate(
     () => (window as unknown as Editing).__text.controls().session !== null,
