@@ -116,9 +116,20 @@ async function resolveSealedLensElements(
   const handles = new Map<HTMLElement, string>();
   for (const item of scene.items) if (item.preview) handles.set(item.element, item.preview.handle);
   const host = await sealedSourceHost(iframe, found);
-  const hostElement = host && standInFor(iframe, host);
-  if (host && hostElement) handles.set(hostElement, host.handle);
-  return { elements: lensElements(scene.items, targetIndex, hostElement), handles };
+  return {
+    elements: lensElements(scene.items, targetIndex, host && heldStandIn(iframe, host, handles)),
+    handles,
+  };
+}
+
+function heldStandIn(
+  iframe: HTMLIFrameElement,
+  element: PreviewElement,
+  handles: Map<HTMLElement, string>,
+) {
+  const standIn = standInFor(iframe, element);
+  handles.set(standIn, element.handle);
+  return standIn;
 }
 
 function isRenderableRect(rect: OverlayRect | null | undefined): rect is OverlayRect {

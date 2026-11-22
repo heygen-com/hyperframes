@@ -82,30 +82,19 @@ function useTopologyLensState(): TopologyLensState {
   return state;
 }
 
-/** Studio-parent chrome driven by the same invocation and receipt as WebMCP. */
-export function TopologyLens({ iframeRef, activeCompositionPath }: TopologyLensProps) {
-  const overlayRef = useRef<HTMLDivElement | null>(null);
-  const state = useTopologyLensState();
-  const reducedMotion = useSyncExternalStore(subscribeReducedMotion, getReducedMotion, () => false);
+function useLensGeometry(
+  overlayRef: RefObject<HTMLDivElement | null>,
+  iframeRef: TopologyLensProps["iframeRef"],
+  activeCompositionPath: string | null,
+  callId: string | null,
+  handle: string | null,
+  phase: TopologyLensState["phase"],
+): TopologyLensGeometry | null {
   const [measured, setMeasured] = useState<MeasuredLens | null>(null);
-  const callId = state.phase === "hidden" ? null : state.callId;
-  const handle = state.phase === "hidden" ? null : state.target.handle;
-  const phase = state.phase;
-  const ownedCallIdRef = useRef(callId);
-  const pendingUnmountDismissRef = useRef<number | null>(null);
-  ownedCallIdRef.current = callId;
-
   useLayoutEffect(() => {
-    if (!callId || !handle) {
-      setMeasured(null);
-      return;
-    }
     const overlay = overlayRef.current;
     const iframe = iframeRef.current;
-    if (!overlay || !iframe) {
-      setMeasured(null);
-      return;
-    }
+    if (!callId || !handle || !overlay || !iframe) return setMeasured(null);
     let current = true;
     void measureTopologyLensGeometry({ overlay, iframe, activeCompositionPath, handle }).then(
       (geometry) => current && setMeasured(geometry ? { callId, geometry } : null),
@@ -113,7 +102,21 @@ export function TopologyLens({ iframeRef, activeCompositionPath }: TopologyLensP
     return () => {
       current = false;
     };
-  }, [activeCompositionPath, callId, handle, iframeRef, phase]);
+  }, [activeCompositionPath, callId, handle, iframeRef, overlayRef, phase]);
+  return measured?.callId === callId ? measured.geometry : null;
+}
+
+/** Studio-parent chrome driven by the same invocation and receipt as WebMCP. */
+export function TopologyLens({ iframeRef, activeCompositionPath }: TopologyLensProps) {
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const state = useTopologyLensState();
+  const reducedMotion = useSyncExternalStore(subscribeReducedMotion, getReducedMotion, () => false);
+  const callId = state.phase === "hidden" ? null : state.callId;
+  const handle = state.phase === "hidden" ? null : state.target.handle;
+  const phase = state.phase;
+  const ownedCallIdRef = useRef(callId);
+  const pendingUnmountDismissRef = useRef<number | null>(null);
+  ownedCallIdRef.current = callId;
 
   const livePreviewIframe = useLivePreviewIframe();
   useEffect(() => {
@@ -138,7 +141,14 @@ export function TopologyLens({ iframeRef, activeCompositionPath }: TopologyLensP
     };
   }, []);
 
-  const geometry = measured?.callId === callId ? measured.geometry : null;
+  const geometry = useLensGeometry(
+    overlayRef,
+    iframeRef,
+    activeCompositionPath,
+    callId,
+    handle,
+    phase,
+  );
   const visible = state.phase !== "hidden" && geometry;
   return (
     <div
