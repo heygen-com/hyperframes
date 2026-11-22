@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { hostname, uptime } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, win32 } from "node:path";
 import { RENDER_TEMP_DIR } from "@hyperframes/core/project-folders";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
 
@@ -21,7 +21,7 @@ export const RENDER_JOB_DIR = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 
 let machineIdRead: { platform: string; id: string | undefined } | undefined;
 
-/** This machine's own id where there is no /proc boot id: the platform UUID (macOS) or MachineGuid (Windows). */
+/** This machine's own id where there is no /proc boot id, from the system's own tool at its fixed path. */
 function machineId(): string | undefined {
   const read = (file: string, args: string[], pattern: RegExp) => {
     try {
@@ -36,14 +36,19 @@ function machineId(): string | undefined {
     }
   };
   if (machineIdRead?.platform === process.platform) return machineIdRead.id;
+  const systemRoot = process.env.SystemRoot;
   machineIdRead = {
     platform: process.platform,
     id:
       process.platform === "darwin"
-        ? read("ioreg", ["-rd1", "-c", "IOPlatformExpertDevice"], /"IOPlatformUUID" = "([^"]+)"/)
-        : process.platform === "win32"
+        ? read(
+            "/usr/sbin/ioreg",
+            ["-rd1", "-c", "IOPlatformExpertDevice"],
+            /"IOPlatformUUID" = "([^"]+)"/,
+          )
+        : process.platform === "win32" && systemRoot && win32.isAbsolute(systemRoot)
           ? read(
-              "reg",
+              win32.join(systemRoot, "System32", "reg.exe"),
               ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"],
               /MachineGuid\s+REG_SZ\s+(\S+)/,
             )
