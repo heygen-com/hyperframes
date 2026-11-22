@@ -11,7 +11,11 @@ afterEach(() => {
   usePlayerStore.getState().reset();
 });
 
-const PORT_MANIFEST = { clips: [{ id: "a" }], durationInFrames: 60, scenes: [] };
+const PORT_MANIFEST = {
+  clips: [{ id: "a", start: 0, duration: 2, track: 0 }],
+  durationInFrames: 60,
+  scenes: [],
+};
 const GLOBAL_MANIFEST = { clips: [{ id: "x" }], durationInFrames: 30, scenes: [] };
 
 /** A frame whose globals and editing port carry different manifests, so a test sees which was read. */
