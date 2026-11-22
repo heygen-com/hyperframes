@@ -6,6 +6,9 @@ export type EditingDraftEnd =
   | { handle: EditingElementHandle; end: "keep" | "restore" }
   | { handle: EditingElementHandle; end: "keep" | "restore" | "keep-size"; draft: number };
 
+/** `drafts` numbers each element still drawn, for the end that names its draft. */
+export type EditingDraftReply = { drawn: number; drafts: Record<EditingElementHandle, number> };
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Object.prototype.toString.call(value) === "[object Object]";
 

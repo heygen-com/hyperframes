@@ -5,7 +5,7 @@
  */
 import { isStylableElement, type StylableElement as Styled } from "./domRealm";
 import { elementForHandle } from "./editingHandles";
-import type { EditingDraftEnd } from "./editingDraftEnd";
+import type { EditingDraftEnd, EditingDraftReply } from "./editingDraftEnd";
 import type { EditingDraft, EditingDraftRotate } from "./editingPort";
 
 const SIZE_PROPERTIES = [
@@ -166,10 +166,7 @@ function apply(element: Styled, draft: EditingDraft): void {
 }
 
 /** Applies each draft in order; one for an element this load no longer has is skipped. */
-export function drawDrafts(drafts: readonly EditingDraft[]): {
-  drawn: number;
-  drafts: Record<string, number>;
-} {
+export function drawDrafts(drafts: readonly EditingDraft[]): EditingDraftReply {
   let drawn = 0;
   const numbers: Record<string, number> = {};
   for (const draft of drafts) {

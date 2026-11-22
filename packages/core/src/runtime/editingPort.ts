@@ -31,7 +31,7 @@ import type { MotionPathFrameHome } from "./editing/motionPathHome";
 import type { EditingLayer, EditingStackingSibling } from "./editingLayers";
 import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
 import { parsePatchTweensRequest, type PatchTweensParams } from "./editing/patchTween";
-import { parseDraftEnd, type EditingDraftEnd } from "./editingDraftEnd";
+import { parseDraftEnd, type EditingDraftEnd, type EditingDraftReply } from "./editingDraftEnd";
 import {
   parseRestoreAttributesRerun,
   parseSoftReload,
@@ -325,11 +325,8 @@ export interface EditingRequests {
     params: { group?: EditingElementHandle; offset?: number };
     result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
-  /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drafts` numbers each one still drawn. */
-  draft: {
-    params: { drafts: EditingDraft[] };
-    result: { drawn: number; drafts: Record<EditingElementHandle, number> };
-  };
+  /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here. */
+  draft: { params: { drafts: EditingDraft[] }; result: EditingDraftReply };
   "gesture-start": {
     params: { handles: EditingElementHandle[] };
     result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
