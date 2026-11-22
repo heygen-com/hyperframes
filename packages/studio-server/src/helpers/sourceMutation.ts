@@ -4,6 +4,7 @@ import { removeElementWithGsapCascade } from "@hyperframes/parsers";
 import { readMediaOffsetSeconds, readPlaybackRate } from "@hyperframes/parsers/media-duration";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
+import { escapeCssIdentifier } from "@hyperframes/core/compiler/selector-id-tokens";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import {
@@ -88,7 +89,7 @@ function duplicateCssRulesForId(document: Document, originalId: string, newId: s
   const idToken = `#${originalId}`;
   const transform = selectorParser((selectors) => {
     selectors.walkIds((node) => {
-      if (node.value === originalId) node.value = newId;
+      if (node.value === originalId) node.value = escapeCssIdentifier(newId);
     });
   });
   for (const styleEl of document.querySelectorAll("style")) {
@@ -429,6 +430,7 @@ export interface SplitElementResult {
   html: string;
   matched: boolean;
   newId: string | null;
+  originalId?: string | null;
   refusal?: SplitRefusal;
 }
 
@@ -477,7 +479,7 @@ export function splitElementInHtml(
   source: string,
   target: SourceMutationTarget,
   splitTime: number,
-  newId: string,
+  newId: string | null,
   fallbackTiming?: {
     start: number;
     duration: number;
@@ -533,7 +535,7 @@ export function splitElementInHtml(
     return refused(source, "outside-clip");
   }
 
-  newId = nextUniqueId(document, newId);
+  newId = nextUniqueId(document, newId ?? `${el.getAttribute("id") || "clip"}-split`);
 
   const firstDuration = splitTime - start;
   const secondDuration = duration - firstDuration;
@@ -616,6 +618,7 @@ export function splitElementInHtml(
     html: ensureHfIds(html),
     matched: true,
     newId,
+    originalId,
   };
 }
 

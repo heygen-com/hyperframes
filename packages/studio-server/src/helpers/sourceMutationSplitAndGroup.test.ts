@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { parseHTML } from "linkedom";
+import postcss from "postcss";
 import { describe, expect, it } from "vitest";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import {
@@ -97,6 +98,13 @@ describe("splitElementInHtml", () => {
     expect(result.html).toContain("background: red");
     const cssMatches = result.html.match(/#box-split\s*\{/g);
     expect(cssMatches?.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("writes a new id into the stylesheet only as one escaped id selector", () => {
+    const result = splitElementInHtml(source, { id: "box" }, 3, "x{} body { display: none } #q");
+    const css = parseHTML(result.html).document.querySelector("style")!.textContent!;
+    const selectors = postcss.parse(css).nodes.map((rule) => (rule as postcss.Rule).selector);
+    expect(selectors).toEqual(["#box", String.raw`#x\{\}\ body\ \{\ display\:\ none\ \}\ \#q`]);
   });
 
   it("deduplicates IDs when the requested newId already exists", () => {

@@ -548,6 +548,12 @@
       "types": "./dist/compiler/htmlDocument.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./compiler/selector-id-tokens": {
+      "source": "./src/compiler/selectorIdTokens.ts",
+      "runtime": "./dist/compiler/selectorIdTokens.js",
+      "types": "./dist/compiler/selectorIdTokens.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./compiler/png-colour-tags": {
       "source": "./src/compiler/pngColourTags.ts",
       "runtime": "./dist/compiler/pngColourTags.js",
