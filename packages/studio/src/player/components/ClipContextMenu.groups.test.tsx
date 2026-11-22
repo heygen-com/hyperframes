@@ -3,6 +3,7 @@ import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { createHappyDomRootHarness } from "./testRootHarness";
 import { ClipContextMenu } from "./ClipContextMenu";
+import { pointAnchor } from "../../components/ui/menuPosition";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 
@@ -59,8 +60,7 @@ function renderMenu(element: TimelineElement) {
         }}
       >
         <ClipContextMenu
-          x={10}
-          y={10}
+          anchor={pointAnchor(10, 10)}
           element={element}
           currentTime={2}
           onClose={noop}

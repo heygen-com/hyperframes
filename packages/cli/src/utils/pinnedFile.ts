@@ -1,5 +1,6 @@
-import { mkdirSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { dirname } from "node:path";
+import { ensurePrivateCacheDir } from "@hyperframes/core/cache-dir";
 import { verifies, type ModelFile } from "../whisper/modelFile.js";
 import { downloadFile } from "./download.js";
 
@@ -10,13 +11,14 @@ import { downloadFile } from "./download.js";
 export async function ensurePinnedFile(
   url: string,
   dest: string,
+  cacheRoot: string,
   pin: ModelFile,
   progress: { downloading: string; onProgress?: (message: string) => void },
 ): Promise<string> {
+  ensurePrivateCacheDir(dirname(dest), cacheRoot);
   const cached = statSync(dest, { throwIfNoEntry: false }) !== undefined;
   if (cached && (await verifies(dest, pin))) return dest;
 
-  mkdirSync(dirname(dest), { recursive: true });
   progress.onProgress?.(
     cached
       ? `The cached ${pin.name} does not match its pinned sha256; downloading it again...`

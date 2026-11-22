@@ -1,6 +1,5 @@
 import { escapeInlineScriptSource } from "@hyperframes/core/compiler/html-tokens";
 
-/** The script this bundle ran from, read while it runs: the only moment `currentScript` names it. */
 export const bundleScriptUrl =
   typeof document !== "undefined" && document.currentScript instanceof HTMLScriptElement
     ? document.currentScript.src

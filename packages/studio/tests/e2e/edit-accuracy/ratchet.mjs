@@ -197,18 +197,18 @@ function main(argv) {
   }
   const cases = runs.flatMap((r) => r.cases);
   const full = gridOf(runs) === "full";
+  // A shard that died uploads nothing, so the count of first runs is what shows it.
+  const firstRuns = runs.filter((r) => !r.meta.rerun).length;
+  const shortfall =
+    shards !== null && firstRuns !== shards && `${firstRuns} of ${shards} shards reported results`;
+  // A case that ran and fell is a drop; a shard that did not report is not one, so only the cases that ran count.
   const g = gate(
     base,
     readJson(headPath),
     cases,
     QUARANTINED,
-    full ? null : new Set(cases.map((c) => c.id)),
+    full && !shortfall ? null : new Set(cases.map((c) => c.id)),
   );
-  // A shard that died uploads nothing, so the count of first runs is what shows it.
-  const firstRuns = runs.filter((r) => !r.meta.rerun).length;
-  const shortfall =
-    shards !== null && firstRuns !== shards && `${firstRuns} of ${shards} shards reported results`;
-  // A case that ran and fell is a drop; a shard that did not report is not one.
   const code = g.ok ? (shortfall ? 2 : 0) : 1;
   if (shortfall) g.reasons.push(shortfall);
   g.ok = code === 0;

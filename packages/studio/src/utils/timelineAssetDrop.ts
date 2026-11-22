@@ -164,6 +164,14 @@ export function setCompositionDurationToContent(
 }
 
 export function insertTimelineAssetIntoSource(source: string, assetHtml: string): string {
+  const { insertAt, written } = placeUnderCompositionRoot(source, assetHtml);
+  return `${source.slice(0, insertAt)}${written}${source.slice(insertAt)}`;
+}
+
+export function placeUnderCompositionRoot(
+  source: string,
+  assetHtml: string,
+): { insertAt: number; written: string } {
   const match = COMPOSITION_ROOT_OPEN_TAG_RE.exec(source);
   if (!match || match.index == null) {
     throw new Error("No composition root found in target source");
@@ -176,5 +184,5 @@ export function insertTimelineAssetIntoSource(source: string, assetHtml: string)
     .split("\n")
     .map((line, i) => (i === 0 ? line : childIndent + line))
     .join("\n");
-  return `${source.slice(0, insertAt)}\n${childIndent}${indented}${source.slice(insertAt)}`;
+  return { insertAt, written: `\n${childIndent}${indented}` };
 }

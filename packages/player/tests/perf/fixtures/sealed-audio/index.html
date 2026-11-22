@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>perf fixture: sealed-audio</title>
+    <script src="/vendor/gsap.min.js"></script>
+    <script data-hyperframes-runtime="1" src="/vendor/hyperframe.runtime.iife.js"></script>
+  </head>
+  <body style="margin: 0; background: #050714">
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="640"
+      data-height="360"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div id="card" style="width: 640px; height: 360px; background: #2a6"></div>
+      <audio id="tone" src="tone.m4a" data-start="0" data-duration="4" preload="auto"></audio>
+    </div>
+    <script>
+      var tl = gsap.timeline({ paused: true });
+      tl.fromTo("#card", { opacity: 0.5 }, { opacity: 1, duration: 4 }, 0);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

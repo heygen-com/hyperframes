@@ -49,7 +49,6 @@ async function readReturnAddress(origin: string): Promise<Record<string, string>
     expect(await page.evaluate(() => location.origin)).toBe(origin);
     return await page.evaluate(
       async (back, viaAuthorize) => {
-        const settle = () => new Promise((done) => setTimeout(done, 1000));
         const read = (w: Window | null) => {
           if (!w) return "no window";
           if (w.closed) return "severed";
@@ -69,13 +68,19 @@ async function readReturnAddress(origin: string): Promise<Record<string, string>
         const frameViaAuthorize = framed(viaAuthorize);
         const popup = open(back);
         const popupViaAuthorize = open(viaAuthorize);
-        await settle();
-        const seen = {
+        const readAll = () => ({
           frame: read(frame.contentWindow),
           frameViaAuthorize: read(frameViaAuthorize.contentWindow),
           popup: read(popup),
           popupViaAuthorize: read(popupViaAuthorize),
-        };
+        });
+        // Each window starts on about:blank, which this page can read; wait until every navigation has landed.
+        const deadline = Date.now() + 20_000;
+        let seen = readAll();
+        while (Object.values(seen).includes("about:blank") && Date.now() < deadline) {
+          await new Promise((done) => setTimeout(done, 50));
+          seen = readAll();
+        }
         popup?.close();
         popupViaAuthorize?.close();
         return seen;

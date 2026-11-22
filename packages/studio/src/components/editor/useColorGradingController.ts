@@ -378,7 +378,10 @@ export function useColorGradingController({
     const refreshAndReplay = () => {
       const nextGrading = latestGradingRef.current;
       const active = isHfColorGradingActive(nextGrading);
-      if (active) postColorGrading(nextGrading);
+      const notInTheFileYet =
+        serializeHfColorGrading(nextGrading) !==
+        serializeHfColorGrading(confirmedGradingRef.current);
+      if (notInTheFileYet) postColorGrading(nextGrading);
       postCompare(compareEnabledRef.current && active);
       scheduleRuntimeStatusRefresh();
     };

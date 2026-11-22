@@ -14,6 +14,7 @@ import { capturePageIn, inPlayerFrame, servedToStudio } from "../studioPreviewMa
 import { swallow } from "./diagnostics";
 import { runtimeLoad } from "./runtimeLoad";
 import { isChromium, isWebKit, mediaElementTime } from "./mediaClock";
+import { setRuntimePreload } from "./runtimeAttributes";
 
 const MEDIA_EDGE_SECONDS = 0.1;
 
@@ -58,7 +59,7 @@ export function isRenderFrameVideo(
 
 export function preloadMedia(media: PreloadableMedia): void {
   if (isRenderFrameVideo(media)) return;
-  if (media.preload !== "auto") media.preload = "auto";
+  if (media.preload !== "auto") setRuntimePreload(media, "auto");
   // load() resets an in-flight video fetch, discarding its selected resource and buffered data.
   const videoAlreadyLoading = media.tagName === "VIDEO" && media.networkState === 2;
   if (media.readyState < 3 && !videoAlreadyLoading) loadOncePerList(media, "auto");
@@ -67,7 +68,7 @@ export function preloadMedia(media: PreloadableMedia): void {
 export function prefetchMedia(media: PreloadableMedia): void {
   if (!isChromium()) return preloadMedia(media);
   if (isRenderFrameVideo(media)) return;
-  if (media.preload !== "metadata") media.preload = "metadata";
+  if (media.preload !== "metadata") setRuntimePreload(media, "metadata");
   if (media.readyState === 0 && media.networkState !== 2) loadOncePerList(media, "metadata");
 }
 
@@ -262,8 +263,8 @@ export function deferMediaUntilDue(): void {
     const media = el as HTMLMediaElement;
     const authoredPreload = media.preload;
     const later = startInFilm(el) > 0;
-    if (later) media.preload = "none";
-    const restore = () => (media.preload = authoredPreload);
+    if (later) setRuntimePreload(media, "none");
+    const restore = () => setRuntimePreload(media, authoredPreload);
     openLongSourceAtInPoint(media, later, restore, later && parsedEarly ? restore : undefined);
   };
   win.__hfMediaDeferral = new MutationObserver((records) => {
