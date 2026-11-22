@@ -218,6 +218,25 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     }
   });
 
+  it("writes a numeric start and duration on an asset drop when a row's timing is not a number", async () => {
+    const title = rowClip("title", 0, 10);
+    const rows = [
+      { ...title, start: '0" onload="x' as unknown as number },
+      { ...title, duration: '10" onclick="y' as unknown as number },
+      { ...title, duration: Number.POSITIVE_INFINITY },
+    ];
+    for (const row of rows) {
+      const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+      const getDrop = renderDropHook(rowSource([title]), writeProjectFile, [row]);
+      await act(async () => {
+        await getDrop()("pic.png", { start: 2, track: 0 }, 3);
+      });
+      const img = writtenClip(writeProjectFile.mock.calls[0][1] as string, "img");
+      expect(img).toMatch(/ data-start="-?\d+(\.\d+)?" data-duration="3" /);
+      expect(img).not.toMatch(/onload|onclick|Infinity|NaN/);
+    }
+  });
+
   // Drops two files (3 s images by default) onto `clips`; returns each written clip's start and track.
   async function twoFileDrop(
     clips: TimelineElement[],

@@ -5,7 +5,6 @@ const OPTIONAL_NUMBERS = ["zIndex", "playbackStart", "playbackRate"] as const;
 const finiteNumber = (value: unknown): boolean =>
   typeof value === "number" && Number.isFinite(value);
 
-/** Studio stores these fields and writes them back into the composition, so they must be numbers. */
 function wellFormedClip(clip: unknown): clip is ClipManifestClip {
   if (typeof clip !== "object" || clip === null) return false;
   const fields = clip as Record<string, unknown>;
