@@ -105,6 +105,11 @@ try {
   await keyboardBackInStudio();
 
   // An edit the film never ends: the person moves to a Studio field, then the film focuses itself.
+  await inPreview((f) => clickInPreview(page, f, "#head"));
+  await page.waitForFunction(
+    () => new URLSearchParams(location.hash.split("?")[1]).get("selId") === "head",
+  );
+  await keyboardBackInStudio();
   await page.keyboard.press("Enter");
   await inPreview((f) =>
     f.waitForFunction(() => document.getElementById("head").isContentEditable),
