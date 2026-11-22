@@ -575,3 +575,19 @@ describe("flash-elements", () => {
     expect(document.querySelector(".target")?.classList.contains("__hf-flash")).toBe(true);
   });
 });
+
+describe("the runtime's document id", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  // fails without the fix: a render seeds crypto.getRandomValues, so an id drawn there shifted the film's random draws.
+  it("draws nothing from the page's random sources when the runtime loads", async () => {
+    const values = vi.spyOn(crypto, "getRandomValues");
+    const random = vi.spyOn(Math, "random");
+    vi.resetModules();
+    await import("./bridge");
+    expect({ values: values.mock.calls.length, random: random.mock.calls.length }).toEqual({
+      values: 0,
+      random: 0,
+    });
+  });
+});
