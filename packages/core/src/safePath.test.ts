@@ -197,7 +197,10 @@ describe("resolveWithinProject", () => {
     writeFileSync(join(base, "in.js"), "in");
     writeFileSync(join(external, "secret.txt"), "top secret");
     expect(await resolveExistingWithinProjectOff(base, "in.js")).toBe(join(base, "in.js"));
-    expect(await resolveExistingWithinProjectOff(base, "../../etc/passwd")).toBeNull();
+    // fails without the fix: a path that does not resolve threw instead of answering null.
+    expect(await resolveExistingWithinProjectOff(base, "missing.js")).toBeNull();
+    const escape = join("..", basename(external), "secret.txt");
+    expect(await resolveExistingWithinProjectOff(base, escape)).toBeNull();
     if (!tryCreateSymlink(external, join(base, "link"), "dir")) return;
     expect(await resolveExistingWithinProjectOff(base, "link/secret.txt")).toBeNull();
   });

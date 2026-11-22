@@ -113,18 +113,17 @@ export function isSafePath(base: string, resolved: string): boolean {
 export const realPathWithin = (baseReal: string, targetReal: string): boolean =>
   targetReal === baseReal || targetReal.startsWith(baseReal + sep);
 
-/** `resolveWithinProject` off the event loop, for a path that exists: the absolute path, or null outside `base`. */
+/** `resolveWithinProject` off the event loop: the absolute path of an existing entry inside `base`, else null. */
 export async function resolveExistingWithinProjectOff(
   base: string,
   relativePath: string,
 ): Promise<string | null> {
   const resolved = resolve(base, relativePath);
   if (namesAnotherNetworkRoot(resolve(base), resolved)) return null;
-  const [baseReal, targetReal] = await Promise.all([
-    realpathOff(resolve(base)),
-    realpathOff(resolved),
-  ]);
-  return realPathWithin(baseReal, targetReal) ? resolved : null;
+  const real = await Promise.all([realpathOff(resolve(base)), realpathOff(resolved)]).catch(
+    () => null,
+  );
+  return real !== null && realPathWithin(real[0], real[1]) ? resolved : null;
 }
 
 /**
