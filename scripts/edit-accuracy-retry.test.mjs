@@ -59,17 +59,29 @@ test("a shard is marked for a re-run when it timed out or its bench stopped on a
 test("the retry plan lists exactly the marked shards", () => {
   const plan = step("studio-edit-accuracy-retry-plan", "List the shards marked for a re-run").run;
   withTree((root) => {
-    for (const shard of [7, 12, 3])
+    for (let shard = 1; shard <= 12; shard++)
       mkdirSync(join(root, `edit-accuracy-shards/edit-accuracy-shard-${shard}`), {
         recursive: true,
       });
     writeFileSync(join(root, "edit-accuracy-shards/edit-accuracy-shard-7/retry"), "");
     writeFileSync(join(root, "edit-accuracy-shards/edit-accuracy-shard-12/retry"), "");
-    assert.equal(runStep(plan, root), "shards=[7,12]\n");
+    assert.equal(runStep(plan, root, { SHARDS: "12" }), "shards=[7,12]\n");
   });
   withTree((root) => {
     mkdirSync(join(root, "edit-accuracy-shards/edit-accuracy-shard-1"), { recursive: true });
-    assert.equal(runStep(plan, root), "shards=[]\n");
+    assert.equal(runStep(plan, root, { SHARDS: "1" }), "shards=[]\n");
+  });
+});
+
+test("the retry plan also re-runs a shard whose evidence never uploaded", () => {
+  const plan = step("studio-edit-accuracy-retry-plan", "List the shards marked for a re-run").run;
+  withTree((root) => {
+    for (const shard of [1, 2, 4])
+      mkdirSync(join(root, `edit-accuracy-shards/edit-accuracy-shard-${shard}`), {
+        recursive: true,
+      });
+    writeFileSync(join(root, "edit-accuracy-shards/edit-accuracy-shard-2/retry"), "");
+    assert.equal(runStep(plan, root, { SHARDS: "5" }), "shards=[2,3,5]\n");
   });
 });
 

@@ -1337,11 +1337,18 @@ jobs:
         with:
           pattern: edit-accuracy-shard-*
           path: /tmp/edit-accuracy-shards
+      # A shard whose evidence never uploaded (its upload failed, or the job died first) has nothing to mark, so it
+      # is re-run too.
       - name: List the shards marked for a re-run
         id: plan
+        env:
+          SHARDS: ${{ github.event_name == 'merge_group' && 30 || 15 }}
         run: |
-          shards=$(find /tmp/edit-accuracy-shards -path '*/edit-accuracy-shard-*/retry' |
-            sed -E 's#.*/edit-accuracy-shard-([0-9]+)/retry$#\1#' | sort -n | paste -sd, -)
+          shards=$( {
+            find /tmp/edit-accuracy-shards -path '*/edit-accuracy-shard-*/retry' |
+              sed -E 's#.*/edit-accuracy-shard-([0-9]+)/retry$#\1#'
+            for n in $(seq 1 "$SHARDS"); do [ -d "/tmp/edit-accuracy-shards/edit-accuracy-shard-$n" ] || echo "$n"; done
+          } | sort -n | paste -sd, -)
           echo "shards=[${shards}]" >> "$GITHUB_OUTPUT"
 
   # Each marked shard runs once more on a fresh runner and replaces its evidence before the gate reads it.
