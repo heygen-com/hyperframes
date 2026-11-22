@@ -30,8 +30,7 @@ const REPORTED_ERROR_NAMES = new Set([
   "NotFoundError",
   "DataCloneError",
 ]);
-// The error may come from the preview frame's realm and the film controls it: read its name, never instanceof, and
-// a name that throws is 'other'.
+// The film controls the thrown value and its realm: read its name (never instanceof); a throwing name is 'other'.
 function reportedErrorName(error: unknown): string {
   try {
     const name = (error as { name?: unknown } | null)?.name;
