@@ -3,6 +3,8 @@ const GSAP_CDN_BASE_URL = "https://cdn.jsdelivr.net/npm";
 export const GSAP_BASE_URL_META = "hyperframes-gsap-base-url";
 export const GSAP_PLUGIN_LOAD_ATTR = "data-hf-gsap-plugin";
 
+export const namesMotionPath = (script: string) => /motionPath["']?\s*[:{]/.test(script);
+
 function isLoopbackHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "[::1]" || /^127\.\d+\.\d+\.\d+$/.test(hostname);
 }

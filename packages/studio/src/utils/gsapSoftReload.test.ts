@@ -565,6 +565,26 @@ describe("ensureMotionPathPluginLoaded", () => {
     expect(appendedScripts).toHaveLength(0);
   });
 
+  // fails without the fix: a path tween built by an external script (no inline text names it) got no plugin.
+  it("loads the plugin when a registered timeline holds a path tween from an external script", () => {
+    const fromFile = { getChildren: () => [{ vars: { motionPath: { path: [] } } }] };
+    const { iframe, appendedScripts } = buildBootstrapIframe(
+      { __timelines: { main: fromFile } },
+      [],
+    );
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts).toHaveLength(1);
+  });
+
+  // fails without the fix: a quoted "motionPath" property was not read as a path tween.
+  it("loads the plugin for a quoted motionPath property", () => {
+    const { iframe, appendedScripts } = buildBootstrapIframe({}, [
+      'gsap.timeline().to("#box", { "motionPath": { path: [] } });',
+    ]);
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts).toHaveLength(1);
+  });
+
   // fails without the fix: the page's GSAP fallback took the plugin's failure for the film's and reported it.
   it("marks the plugin script as the preview's own load, so the page's GSAP fallback leaves it alone", () => {
     const { iframe, appendedScripts } = buildBootstrapIframe();

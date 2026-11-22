@@ -34,6 +34,7 @@ import {
   GSAP_PLUGIN_LOAD_ATTR,
   gsapCdnDist,
   motionPathPluginUrl,
+  namesMotionPath,
   normalizeGsapBaseUrl,
   normalizeGsapLocalRoot,
 } from "@hyperframes/core/gsap-cdn";
@@ -193,7 +194,7 @@ function htmlHasCustomEase(html: string): boolean {
 // throws "Invalid property motionPath ... Missing plugin?". Detect it anywhere in
 // the bundle (the plugin registers globally, so sub-composition usage counts too).
 function htmlUsesMotionPath(html: string): boolean {
-  return /motionPath\s*[:{]/.test(html);
+  return namesMotionPath(html);
 }
 
 function htmlHasMotionPathPlugin(html: string): boolean {
