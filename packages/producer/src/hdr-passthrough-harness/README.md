@@ -112,12 +112,14 @@ wrote rather than an 8-bit downconvert. A frame with MSE 0 counts as 100 dB.
 
 ### Why these numbers
 
-The two sides cannot be bit-identical even when the overlay blend is exact:
-the layered path encodes `rgb48le` frames it blended in Node, while the
-passthrough decodes the source, blends in `gbrp16le` inside ffmpeg and
-encodes again, so the encoder sees inputs that differ by rounding in the
-YUV->RGB->YUV round trip, and two CRF encodes of nearly identical inputs
-still make different decisions. 45 dB mean / 40 dB worst is the level where
+On the generated fixtures the two sides come out bit-identical: the
+passthrough converts the source to `rgb48le` exactly as the layered frame
+extraction does, blends the same LUT-mapped overlay pixels at 16 bits, and
+hands the encoder the same `rgb48le` frames, so x265 makes the same
+decisions. The thresholds leave room for what can still differ on other
+content: the 16-bit `maskedmerge` rounds 1 LSB away from the Node blend on
+some partial-alpha pixels, and one changed input pixel makes the CRF encoder
+diverge for the rest of the GOP. 45 dB mean / 40 dB worst is the level where
 that encoder noise sits and a real defect does not: a caption shown on the
 wrong frame, a missing overlay state or an 8-bit (banded) blend costs a
 frame well below 40 dB, and a wrong transfer mapping (overlays in SDR
@@ -126,27 +128,22 @@ index (`psnr.min ... at frame N`) against the cue boundaries before
 loosening a threshold: a dip exactly at a boundary is the off-by-one this
 gate exists to catch.
 
-These are starting values, to be confirmed on the first full passthrough
-run; record measured numbers below when they change.
-
 ## Measured
 
-2026-11-22, Linux x64, 32 cores shared with other jobs (load average ~100
-during the run, so wall times are inflated 2-3x), 20 s fixture, skeleton
-branch: the passthrough stages are still stubs, so the flag-on side logs
-`HDR passthrough failed ... checkPassthroughEligibility not implemented`,
-falls back, and both sides are layered. This validates the harness and the
-flag plumbing end to end, not the passthrough itself.
+2026-11-22, Linux x64, 32 cores shared with other jobs (load average 50-100
+during the runs, so absolute wall times are inflated), `--quality standard`,
+`--workers 1`, software libx265.
 
-| Project       | off wall (layered stage) | on wall | on path                      | PSNR mean / min           | SSIM mean / min |
-| ------------- | ------------------------ | ------- | ---------------------------- | ------------------------- | --------------- |
-| `captions`    | 285.7 s (274.6 s)        | 295.2 s | fallback (stage threw, stub) | identical, 600/600 frames | 1.0 / 1.0       |
-| `transformed` | 486.9 s (475.9 s)        | 362.5 s | fallback (stage threw, stub) | identical, 600/600 frames | 1.0 / 1.0       |
+| Fixture            | off wall (layered stage)      | on wall (passthrough stage)               | speedup | PSNR / SSIM                 |
+| ------------------ | ----------------------------- | ----------------------------------------- | ------- | --------------------------- |
+| `captions` 20 s    | 324.0 s                       | 61.4 s (84 states, 11 unique)             | 5.3x    | identical, 600/600 frames   |
+| `captions` 60 s    | 640.8 s (634.7 s)             | 87.5 s (81.4 s: 23.6 s capture, 244/31)   | 7.3x    | identical, 1800/1800 frames |
+| `captions` 180 s   | not run, ~1920 s at 60 s rate | 170.9 s (160.0 s: 75.5 s capture, 724/91) | ~11x    | (flag-on side only)         |
+| `transformed` 20 s | 319.9 s                       | 437.9 s, fallback `not_full_canvas`       | -       | identical, 600/600 frames   |
 
-Every other check passed on both projects: HEVC Main10 `yuv420p10le`,
-BT.2020 / ARIB STD-B67 / bt2020nc / tv, `hvc1`, 600 frames, 20.000 s, AAC
-48 kHz stereo, same first-frame side data. The layered path is
-deterministic, so a fallback render is bit-identical to the flag-off one;
-`on.path` is the only failing check on either project until the passthrough
-lands: `captions` wants a completed passthrough, and `transformed` wants the
-eligibility gate's `transform_or_filter` rather than a stage error.
+Every other check passed: HEVC Main10 `yuv420p10le`, BT.2020 / ARIB STD-B67
+/ bt2020nc / tv, `hvc1`, exact frame count and duration, AAC 48 kHz stereo,
+same first-frame side data (mastering display, content light level). On the
+passthrough side the stage is overlay capture (about 100 ms per planned
+state) followed by one ffmpeg composite + encode (about 60 fps at 1080p
+here); the layered stage runs at about 350 ms per frame on the same host.

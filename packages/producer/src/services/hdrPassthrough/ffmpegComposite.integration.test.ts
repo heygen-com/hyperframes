@@ -232,7 +232,7 @@ describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
       [
         ...["-v", "error", "-count_frames", "-select_streams", "v:0"],
         ...["-show_entries", "stream=nb_read_frames,pix_fmt,codec_name,r_frame_rate"],
-        ...["-of", "json", outputPath],
+        ...["-of", "json", "--", outputPath],
       ],
       { encoding: "utf-8" },
     );
@@ -251,7 +251,7 @@ describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
       [
         ...["-v", "error", "-select_streams", "v:0"],
         ...["-show_entries", "stream=color_primaries,color_transfer,color_space,codec_tag_string"],
-        ...["-of", "json", outputPath],
+        ...["-of", "json", "--", outputPath],
       ],
       { encoding: "utf-8" },
     );

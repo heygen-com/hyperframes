@@ -159,7 +159,7 @@ function tailOf(path: string, lines: number): string {
 function probe(tools: Tools, file: string): ProbeSummary {
   const streams = spawnSync(
     tools.ffprobe,
-    ["-v", "error", "-count_packets", "-show_streams", "-show_format", "-of", "json", file],
+    ["-v", "error", "-count_packets", "-show_streams", "-show_format", "-of", "json", "--", file],
     { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
   );
   if (streams.status !== 0) throw new Error(`ffprobe failed on ${file}: ${streams.stderr}`);
@@ -177,6 +177,7 @@ function probe(tools: Tools, file: string): ProbeSummary {
       "frame=side_data_list",
       "-of",
       "json",
+      "--",
       file,
     ],
     { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
