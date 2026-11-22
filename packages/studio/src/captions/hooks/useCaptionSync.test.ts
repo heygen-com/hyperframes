@@ -8,12 +8,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStudioApi, type StudioApiAdapter } from "@hyperframes/studio-server";
 import { useCaptionStore } from "../store";
 import type { CaptionModel } from "../types";
+import { useProjectFileWriter } from "../../hooks/useProjectFileWriter";
 import { useCaptionSync } from "./useCaptionSync";
 
 afterEach(() => vi.unstubAllGlobals());
 
 function Harness() {
-  useCaptionSync("p");
+  useCaptionSync(useProjectFileWriter({ projectId: "p" }));
   return null;
 }
 
