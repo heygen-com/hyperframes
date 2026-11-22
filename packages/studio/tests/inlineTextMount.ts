@@ -6,6 +6,7 @@ import { flushSync } from "react-dom";
 import { patchElementInHtml } from "@hyperframes/studio-server/source-mutation";
 import {
   findPreviewElementForSelection,
+  gestureDocumentOf,
   resolveFoundSelection,
   resolvePreviewSelection,
 } from "../src/components/editor/previewSelection";
@@ -41,7 +42,7 @@ export interface TextEditing {
   /** Lets every write still waiting go on, landing. */
   releaseWaiting(): void;
   waiting(): number;
-  /** Runs `load` as Studio's preview reload does: after any edit gesture live in a readable frame. */
+  /** Runs `load` as Studio's preview reload does: after any edit gesture live in the preview. */
   reloadWhenFree(load: () => void): void;
   pending(): boolean;
 }
@@ -127,7 +128,7 @@ export function mountTextEditing(
     releaseWaiting: () => waiting.splice(0).forEach((go) => go()),
     waiting: () => waiting.length,
     reloadWhenFree: (load) => {
-      const doc = sealed ? null : iframe.contentDocument;
+      const doc = gestureDocumentOf(iframe);
       if (doc && isStudioManualEditGestureLiveIn(doc)) afterStudioManualEditGestures(doc, load);
       else load();
     },
