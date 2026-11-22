@@ -121,7 +121,7 @@ function takeFrameValuesForSavedStyles(standIn: HTMLElement, frameInline: Record
   savedOnStandIn.delete(standIn);
 }
 const standInHandles = new WeakMap<Element, string>();
-const standInAncestors = new WeakMap<Element, Array<{ handle: string; id: string }>>();
+const standInAncestors = new WeakMap<Element, Array<{ handle: string; id: string | null }>>();
 
 export function standInFor(iframe: HTMLIFrameElement, element: PreviewElement): HTMLElement {
   const client = previewEditingClient(iframe);
@@ -488,7 +488,7 @@ export const standInHandle = (element: Element) => standInHandles.get(element);
 
 export function ancestorIds(element: Element): string[] {
   const described = standInAncestors.get(element);
-  if (described) return described.map((node) => node.id);
+  if (described) return described.map((node) => node.id ?? "");
   const ids: string[] = [];
   for (let node = element.parentElement; node; node = node.parentElement) ids.push(node.id);
   return ids;
