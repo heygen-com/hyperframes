@@ -112,9 +112,16 @@ try {
         () => document.querySelector("hyperframes-player")?.painted === true,
       );
       await inPreview((f) => clickInPreview(page, f, "#head"));
-      await page.waitForFunction(
-        () => new URLSearchParams(location.hash.split("?")[1]).get("selId") === "head",
-      );
+      const picked = await page
+        .waitForFunction(
+          () => new URLSearchParams(location.hash.split("?")[1]).get("selId") === "head",
+          { timeout: 10_000 },
+        )
+        .then(
+          () => true,
+          () => false,
+        );
+      if (!picked) continue;
       await keyboardBackInStudio();
       await page.keyboard.press("Enter");
       open = await opened();
