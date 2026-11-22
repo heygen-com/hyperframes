@@ -196,6 +196,67 @@ describe("checkPassthroughEligibility", () => {
     expect(result).toMatchObject({ eligible: false, reason: "transform_or_filter" });
   });
 
+  it("rejects a border radius the layered path would clip the video to", async () => {
+    const own = await check(makeInput(), {
+      build: (ctx) => {
+        ctx.video.style.borderTopLeftRadius = "48px";
+        return captions(ctx);
+      },
+    });
+    expect(own).toMatchObject({
+      eligible: false,
+      reason: "clip_or_mask",
+      detail: "border-radius on #v",
+    });
+
+    const percent = await check(makeInput(), {
+      build: (ctx) => {
+        ctx.video.style.borderBottomRightRadius = "5%";
+        return captions(ctx);
+      },
+    });
+    expect(percent).toMatchObject({ eligible: false, reason: "clip_or_mask" });
+
+    // An elliptical radius whose first value is 0 still rounds the corner.
+    const elliptical = await check(makeInput(), {
+      build: (ctx) => {
+        ctx.video.style.borderTopRightRadius = "0px 24px";
+        return captions(ctx);
+      },
+    });
+    expect(elliptical).toMatchObject({ eligible: false, reason: "clip_or_mask" });
+
+    const wrapper = await check(makeInput(), {
+      build: (ctx) => {
+        Object.assign(ctx.wrap.style, { overflow: "hidden", borderTopLeftRadius: "48px" });
+        return captions(ctx);
+      },
+    });
+    expect(wrapper).toMatchObject({
+      eligible: false,
+      reason: "clip_or_mask",
+      detail: "border-radius on #wrap",
+    });
+
+    const outer = await check(makeInput(), {
+      build: (ctx) => {
+        Object.assign(ctx.root.style, { overflow: "clip", borderBottomLeftRadius: "12px" });
+        return captions(ctx);
+      },
+    });
+    expect(outer).toMatchObject({ eligible: false, reason: "clip_or_mask" });
+  });
+
+  it("ignores a radius on an ancestor that does not clip", async () => {
+    const result = await check(makeInput(), {
+      build: (ctx) => {
+        ctx.wrap.style.borderTopLeftRadius = "48px";
+        return captions(ctx);
+      },
+    });
+    expect(result.eligible).toBe(true);
+  });
+
   it("rejects a GSAP tween on the video or anything containing it", async () => {
     const onVideo = await check(makeInput(), {
       build: ({ video }) => {
@@ -359,6 +420,22 @@ describe("checkSourceMetadata", () => {
     ).toMatchObject({
       eligible: false,
       reason,
+    });
+  });
+
+  it("rejects a video stream that starts a second or more after mediaStart", () => {
+    const late = metadata({ videoStreamLeadSeconds: 1.5, videoStreamDurationSeconds: 18.5 });
+    expect(checkSourceMetadata({ ...base, metadata: late })).toMatchObject({
+      eligible: false,
+      reason: "source_unsupported",
+    });
+    // Trimmed past most of the lead, or a sub-second lead: the layered path shows the video.
+    expect(checkSourceMetadata({ ...base, mediaStart: 1, metadata: late })).toBeNull();
+    const slight = metadata({ videoStreamLeadSeconds: 0.5, videoStreamDurationSeconds: 19.5 });
+    expect(checkSourceMetadata({ ...base, metadata: slight })).toBeNull();
+    const offset = metadata({ mediaTimeOffsetSeconds: 1 });
+    expect(checkSourceMetadata({ ...base, metadata: offset })).toMatchObject({
+      reason: "source_unsupported",
     });
   });
 

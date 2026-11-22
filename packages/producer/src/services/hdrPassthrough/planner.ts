@@ -40,8 +40,9 @@ const MAX_FRAME_COUNT_DRIFT = 1;
 /** Static-dedup causes that are not a problem once the video is excluded. */
 const TOLERATED_CAUSES: ReadonlySet<StaticDedupIneligibleCause> = new Set([
   // Captions driven only by clip windows have no GSAP tweens at all. Static dedup
-  // reads "no tweens" as "animated some other way"; the visible non-GSAP drivers
-  // (CSS/WAAPI, canvas, frame sources, iframes) are still checked individually.
+  // reads "no tweens" as "animated some other way". The engine itself rejects
+  // CSS/WAAPI, canvas, frame sources and iframes; `findUnseekedAnimationDrivers`
+  // and `findAnimatedImages` reject the rest, whether or not GSAP is present.
   "no_gsap_tweens",
 ]);
 
@@ -80,6 +81,11 @@ export interface OverlayPageFacts {
    * unregistered root, time scaling, tweens outside every registered timeline).
    */
   timelineProblems: string[];
+  /**
+   * Animation the engine's tween walk cannot see: seek-driven runtime adapters
+   * with live instances, self-clocked libraries, SVG SMIL, animated images.
+   */
+  unseekedDrivers: string[];
 }
 
 /**
@@ -93,7 +99,7 @@ export interface OverlayPageFacts {
  * under an unregistered root. Those cases are reported, not corrected.
  */
 // fallow-ignore-next-line complexity
-function collectOverlayPageFacts(videoId: string): OverlayPageFacts {
+function collectOverlayPageFacts(videoId: string): Omit<OverlayPageFacts, "unseekedDrivers"> {
   type Node = {
     parent?: Node | null;
     startTime?: () => number;
@@ -236,6 +242,190 @@ function collectOverlayPageFacts(videoId: string): OverlayPageFacts {
   return { hasClipResolver, clipWindows, unresolvedClipIds, timelineProblems };
 }
 
+/**
+ * Runs in the page; must stay self-contained. Read-only.
+ *
+ * Non-GSAP drivers that move the overlay DOM while the engine's analysis sees
+ * nothing: runtime adapters that seek lottie-web, anime.js or three.js on
+ * every frame (lottie's SVG renderer and three's CSS3DRenderer write the DOM,
+ * not a canvas), adapter registries whose instances run on their own clock
+ * (d3 transitions, maps), lottie web components, WebGPU scenes, and SVG SMIL,
+ * which no adapter seeks at all. Each is reported by name.
+ */
+// fallow-ignore-next-line complexity
+function findUnseekedAnimationDrivers(): string[] {
+  const w = window as unknown as Record<string, unknown> & {
+    lottie?: { getRegisteredAnimations?: () => unknown };
+    anime?: { running?: unknown };
+  };
+  const found: string[] = [];
+  const registries: Array<[string, string]> = [
+    ["__hfLottie", "lottie"],
+    ["__hfAnime", "anime.js"],
+    ["__hfD3", "d3"],
+    ["__hfLeaflet", "leaflet"],
+    ["__hfGoogleMaps", "google maps"],
+    ["__hfMapbox", "mapbox"],
+    ["__hfMaplibre", "maplibre"],
+  ];
+  for (const [key, name] of registries) {
+    const instances = w[key];
+    if (Array.isArray(instances) && instances.length > 0) {
+      found.push(`${name} (${instances.length} registered)`);
+    }
+  }
+  // The adapters copy these into their registries on discovery; read them too
+  // in case discovery has not run yet.
+  try {
+    const loaded = w.lottie?.getRegisteredAnimations?.();
+    if (Array.isArray(loaded) && loaded.length > 0) found.push(`lottie (${loaded.length} loaded)`);
+  } catch {
+    found.push("lottie (registry unreadable)");
+  }
+  const running = w.anime?.running;
+  if (Array.isArray(running) && running.length > 0) {
+    found.push(`anime.js (${running.length} running)`);
+  }
+  if (w.THREE !== undefined && w.THREE !== null) found.push("three.js");
+  if (document.querySelector("[data-requires-webgpu]")) found.push("WebGPU");
+
+  const SMIL = new Set(["animate", "animateColor", "animateMotion", "animateTransform", "set"]);
+  const PLAYERS = new Set(["lottie-player", "dotlottie-player", "dotlottie-wc"]);
+  let smil = 0;
+  for (const el of Array.from(document.querySelectorAll("*"))) {
+    if (SMIL.has(el.localName)) smil++;
+    else if (PLAYERS.has(el.localName)) found.push(`<${el.localName}>`);
+  }
+  if (smil > 0) found.push(`SVG SMIL (${smil} element${smil === 1 ? "" : "s"})`);
+  return [...new Set(found)];
+}
+
+/**
+ * Runs in the page; must stay self-contained. Read-only (fetches only).
+ *
+ * Images that animate on the browser's own clock, which no adapter seeks:
+ * animated GIF, APNG, animated WebP, AVIF/HEIF sequences, and SVG documents
+ * with SMIL or CSS animation. Reads every `<img>`, SVG `<image>` and CSS
+ * `background-image` URL and sniffs the bytes, not the extension. An image
+ * that cannot be read is reported too: unknown is not static.
+ */
+// fallow-ignore-next-line complexity
+async function findAnimatedImages(): Promise<string[]> {
+  const urls = new Set<string>();
+  const add = (raw: string | null | undefined) => {
+    const url = (raw ?? "").trim();
+    if (url !== "") urls.add(url);
+  };
+  for (const el of Array.from(document.querySelectorAll("img"))) {
+    const img = el as Element & { currentSrc?: string; src?: string };
+    add(img.currentSrc || img.src || el.getAttribute("src"));
+  }
+  for (const el of Array.from(document.querySelectorAll("image"))) {
+    add(el.getAttribute("href") ?? el.getAttribute("xlink:href"));
+  }
+  for (const el of Array.from(document.querySelectorAll("*"))) {
+    const bg = window.getComputedStyle(el).backgroundImage ?? "";
+    for (const m of bg.matchAll(/url\(\s*(["']?)(.*?)\1\s*\)/g)) add(m[2]);
+  }
+
+  const ascii = (b: Uint8Array, at: number, n: number) =>
+    String.fromCharCode(...Array.from(b.subarray(at, at + n)));
+  const u32be = (b: Uint8Array, at: number) =>
+    (((b[at] ?? 0) << 24) |
+      ((b[at + 1] ?? 0) << 16) |
+      ((b[at + 2] ?? 0) << 8) |
+      (b[at + 3] ?? 0)) >>>
+    0;
+  const u32le = (b: Uint8Array, at: number) =>
+    ((b[at] ?? 0) |
+      ((b[at + 1] ?? 0) << 8) |
+      ((b[at + 2] ?? 0) << 16) |
+      ((b[at + 3] ?? 0) << 24)) >>>
+    0;
+  const gifFrames = (b: Uint8Array): number => {
+    const colorTable = (flags: number) => (flags & 0x80 ? 3 * (1 << ((flags & 7) + 1)) : 0);
+    let p = 13 + colorTable(b[10] ?? 0);
+    const skipSubBlocks = () => {
+      while (p < b.length) {
+        const n = b[p++] ?? 0;
+        if (n === 0) return;
+        p += n;
+      }
+    };
+    let frames = 0;
+    while (p < b.length && frames < 2) {
+      const tag = b[p++];
+      if (tag === 0x21) {
+        p++;
+        skipSubBlocks();
+      } else if (tag === 0x2c) {
+        frames++;
+        p += 9 + colorTable(b[p + 8] ?? 0) + 1;
+        skipSubBlocks();
+      } else break;
+    }
+    return frames;
+  };
+  const pngAnimated = (b: Uint8Array): boolean => {
+    for (let p = 8; p + 8 <= b.length; p += 12 + u32be(b, p)) {
+      const type = ascii(b, p + 4, 4);
+      if (type === "acTL") return u32be(b, p + 8) > 1;
+      if (type === "IDAT") return false;
+    }
+    return false;
+  };
+  const webpAnimated = (b: Uint8Array): boolean => {
+    for (let p = 12; p + 8 <= b.length; p += 8 + u32le(b, p + 4) + (u32le(b, p + 4) & 1)) {
+      const type = ascii(b, p, 4);
+      if (type === "ANIM" || type === "ANMF") return true;
+      if (type === "VP8X" && ((b[p + 8] ?? 0) & 0x02) !== 0) return true;
+    }
+    return false;
+  };
+  const isoSequence = (b: Uint8Array): boolean => {
+    const end = Math.min(b.length, u32be(b, 0));
+    for (let p = 8; p + 4 <= end; p += p === 8 ? 8 : 4) {
+      if (["avis", "msf1", "hevs", "avcs"].includes(ascii(b, p, 4))) return true;
+    }
+    return false;
+  };
+  const svgAnimated = (text: string): boolean =>
+    /<svg[\s>]/i.test(text) &&
+    /<(animate|animateColor|animateMotion|animateTransform|set)[\s/>]|@keyframes|animation\s*:/i.test(
+      text,
+    );
+  // [kind, recognises the format, is animated]; the first format that matches decides.
+  const formats: Array<[string, (b: Uint8Array) => boolean, (b: Uint8Array) => boolean]> = [
+    ["animated GIF", (b) => ascii(b, 0, 4) === "GIF8", (b) => gifFrames(b) > 1],
+    ["APNG", (b) => b[0] === 0x89 && ascii(b, 1, 3) === "PNG", pngAnimated],
+    ["animated WebP", (b) => ascii(b, 0, 4) === "RIFF" && ascii(b, 8, 4) === "WEBP", webpAnimated],
+    ["image sequence", (b) => ascii(b, 4, 4) === "ftyp", isoSequence],
+    [
+      "animated SVG",
+      () => true,
+      (b) => svgAnimated(new TextDecoder().decode(b.subarray(0, 1 << 20))),
+    ],
+  ];
+  const animatedKind = (b: Uint8Array): string | null => {
+    const format = formats.find(([, recognises]) => recognises(b));
+    return format && format[2](b) ? format[0] : null;
+  };
+
+  const found: string[] = [];
+  const short = (url: string) => (url.startsWith("data:") ? url.slice(0, 32) : url);
+  for (const url of urls) {
+    try {
+      const response = await window.fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const kind = animatedKind(new Uint8Array(await response.arrayBuffer()));
+      if (kind) found.push(`${kind} ${short(url)}`);
+    } catch {
+      found.push(`unreadable image ${short(url)}`);
+    }
+  }
+  return found;
+}
+
 /** The engine's static-frame analysis, reduced to what the planner reads. */
 export interface StaticFrameFacts {
   totalFrames: number;
@@ -268,6 +458,10 @@ function analysisVerdict(args: DeriveOverlayTimingArgs): Rejection | null {
   if (page.unresolvedClipIds.length > 0) {
     const detail = page.unresolvedClipIds.slice(0, 5).join(", ");
     return { ok: false, reason: "unresolvable_clip_start", detail };
+  }
+  if (page.unseekedDrivers.length > 0) {
+    const detail = page.unseekedDrivers.slice(0, 5).join(", ");
+    return { ok: false, reason: "overlay_non_gsap_animation", detail };
   }
   if (page.timelineProblems.length > 0) {
     return { ok: false, reason: "analysis_limit", detail: page.timelineProblems.join("; ") };
@@ -344,7 +538,9 @@ export function deriveOverlayTiming(args: DeriveOverlayTimingArgs): OverlayTimin
  * (`computeStaticFrameSet(page, fps, [videoId])`: tween intervals, clip cuts
  * and the timeline-callback / canvas / iframe / frame-source / CSS-WAAPI /
  * analysis-limit disqualifiers) plus the runtime's resolved clip windows
- * (`window.__hf.clipWindow`, the window render and preview use).
+ * (`window.__hf.clipWindow`, the window render and preview use). Any driver
+ * that walk cannot see (non-GSAP adapters with instances, SVG SMIL, animated
+ * images) → `overlay_non_gsap_animation`.
  *
  * Rules:
  *   - A frame `f` in `[1, totalFrames)` is a change frame iff it is not
@@ -367,9 +563,11 @@ export async function analyzeOverlayTiming(
   const fps = fpsToNumber(args.fps);
   const stats = await computeStaticFrameSet(page, fps, [args.videoId]);
   const facts = await page.evaluate(collectOverlayPageFacts, args.videoId);
+  const drivers = await page.evaluate(findUnseekedAnimationDrivers);
+  const images = await page.evaluate(findAnimatedImages);
   return deriveOverlayTiming({
     stats,
-    page: facts,
+    page: { ...facts, unseekedDrivers: [...drivers, ...images] },
     fps,
     totalFrames: args.totalFrames,
     maxStates: args.maxStates,

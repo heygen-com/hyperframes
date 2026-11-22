@@ -11,6 +11,8 @@ export class FakeElement {
   parentElement: FakeElement | null = null;
   readonly children: FakeElement[] = [];
   animations: unknown[] = [];
+  /** Computed-style overrides; unset properties read as the CSS initial value. */
+  style: Record<string, string> = {};
   readonly nodeType = 1;
 
   constructor(
@@ -27,6 +29,11 @@ export class FakeElement {
       }
     }
     return out;
+  }
+
+  /** Fake elements are created with their case-sensitive local name (e.g. `animateTransform`). */
+  get localName(): string {
+    return this.tagName;
   }
 
   getAttribute(name: string): string | null {
@@ -164,6 +171,8 @@ export interface FakePageOptions {
   clipWindow?: (el: FakeElement) => { start: number; end: number } | null;
   hasClipResolver?: boolean;
   transitions?: unknown[];
+  /** Extra `window` properties (runtime adapter registries, library globals). */
+  globals?: Record<string, unknown>;
   /** Results for functions that need a real layout engine (e.g. `inspectVideoLayout`). */
   stubs?: Map<unknown, (...args: unknown[]) => unknown>;
 }
@@ -183,10 +192,36 @@ function matches(el: FakeElement, selector: string): boolean {
     .split(",")
     .map((s) => s.trim())
     .some((s) => {
+      if (s === "*") return true;
       const attr = /^\[([a-z-]+)\]$/.exec(s);
       if (attr) return el.hasAttribute(attr[1] as string);
       return el.tagName.toLowerCase() === s;
     });
+}
+
+/** The computed values the in-page closures read, at their CSS initial values. */
+const INITIAL_STYLE: Record<string, string> = {
+  overflow: "visible",
+  borderTopLeftRadius: "0px",
+  borderTopRightRadius: "0px",
+  borderBottomRightRadius: "0px",
+  borderBottomLeftRadius: "0px",
+  backgroundImage: "none",
+};
+
+function computedStyle(el: FakeElement): Record<string, string> {
+  return { ...INITIAL_STYLE, ...el.style };
+}
+
+/** `window.fetch` for `data:` URLs only, so image sniffing runs without a network. */
+async function dataUrlFetch(url: string): Promise<Response> {
+  const match = /^data:[^,]*?(;base64)?,(.*)$/s.exec(url);
+  if (!match) throw new TypeError(`fake page fetch: not a data: URL: ${url}`);
+  const payload = match[2] as string;
+  const bytes = match[1]
+    ? Buffer.from(payload, "base64")
+    : Buffer.from(decodeURIComponent(payload), "utf8");
+  return new Response(new Uint8Array(bytes));
 }
 
 function defaultClipWindow(el: FakeElement): { start: number; end: number } | null {
@@ -227,6 +262,9 @@ export function createFakePage(options: FakePageOptions): {
     },
     __hfHasFrameSources: () => false,
     gsap: options.globalTimeline ? { globalTimeline: options.globalTimeline } : undefined,
+    getComputedStyle: computedStyle,
+    fetch: dataUrlFetch,
+    ...options.globals,
   };
   const g = globalThis as Record<string, unknown>;
   const page = {
@@ -238,7 +276,7 @@ export function createFakePage(options: FakePageOptions): {
       g.window = win;
       g.document = doc;
       try {
-        return (fn as (...a: unknown[]) => unknown)(...args);
+        return await (fn as (...a: unknown[]) => unknown)(...args);
       } finally {
         g.window = prevWindow;
         g.document = prevDocument;
