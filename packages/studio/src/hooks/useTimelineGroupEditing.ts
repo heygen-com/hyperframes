@@ -149,6 +149,7 @@ export function useTimelineGroupEditing({
       return enqueueTimelineEdit(editQueueRef, () => operation(projectId), {
         label,
         ifEarlierRefused,
+        projectId,
       });
     },
     [editQueueRef, isRecordingRef, projectIdRef, showToast],

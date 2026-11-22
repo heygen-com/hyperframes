@@ -148,7 +148,9 @@ export function useTimelineDeleteOps({
         usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleChanges));
         removeIframeTimelineElements(previewIframeRef.current, sameFile, activeCompPath);
         let rollbackDuration = () => {};
-        const deleted = enqueueTimelineEdit(editQueueRef, async () => {
+        const inThisProject = <T>(run: () => Promise<T>) =>
+          enqueueTimelineEdit(editQueueRef, run, { projectId: pid });
+        const deleted = inThisProject(async () => {
           await saveServerRewriteWithHistory({
             projectId: pid,
             path: targetPath,

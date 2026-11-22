@@ -6,9 +6,10 @@ import {
   type LaneLanding,
 } from "../player/components/timelineCollision";
 
-/** The editor's one timeline edit queue. `placed` rejects when an edit still pending is refused. */
+/** The editor's one timeline edit queue. `placed` holds, per project, a promise that rejects
+ *  when an edit of that project still pending is refused. */
 export interface TimelineEditQueue extends MutableRefObject<Promise<void>> {
-  placed?: Promise<void>;
+  placed?: Map<string | null, Promise<void>>;
 }
 
 export const refuseWithEarlier = (error: unknown): never => {
@@ -27,14 +28,23 @@ export const keepUnlessItOverlaps =
     if (landsOnLaneClip(elements, placed)) throw laneOverlapRefusal();
   };
 
-/** Runs `run` after every edit queued before it. When one of those was refused, `ifEarlierRefused`
- *  runs first, and throwing refuses this edit too. */
+/** Runs `run` after every edit queued before it. When one of those, in the same project, was
+ *  refused, `ifEarlierRefused` runs first, and throwing refuses this edit too. */
 export function enqueueTimelineEdit<T>(
   queue: TimelineEditQueue,
   run: () => Promise<T>,
-  { label, ifEarlierRefused }: { label?: string; ifEarlierRefused?: (error: unknown) => void } = {},
+  {
+    label,
+    ifEarlierRefused,
+    projectId = null,
+  }: {
+    label?: string;
+    ifEarlierRefused?: (error: unknown) => void;
+    projectId?: string | null;
+  } = {},
 ): Promise<T> {
-  const earlier = queue.placed ?? Promise.resolve();
+  const byProject = (queue.placed ??= new Map());
+  const earlier = byProject.get(projectId) ?? Promise.resolve();
   const task = queue.current.then(async () => {
     if (ifEarlierRefused) await earlier.catch(ifEarlierRefused);
     return run();
@@ -42,7 +52,7 @@ export function enqueueTimelineEdit<T>(
   const placed = Promise.allSettled([earlier, task]).then((settled) => {
     for (const result of settled) if (result.status === "rejected") throw result.reason;
   });
-  queue.placed = placed;
+  byProject.set(projectId, placed);
   queue.current = task.then(
     () => undefined,
     (error) => {
@@ -52,7 +62,7 @@ export function enqueueTimelineEdit<T>(
   void placed
     .catch(() => undefined)
     .then(() => {
-      if (queue.placed === placed) queue.placed = undefined;
+      if (byProject.get(projectId) === placed) byProject.delete(projectId);
     });
   return task;
 }
