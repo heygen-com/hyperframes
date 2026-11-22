@@ -6,7 +6,7 @@ const CLIPBOARD_MARKER = "hyperframes-clipboard:v1";
  *  relative offsets and tracks across a group paste. */
 export interface TimelineClipboardClip {
   html: string;
-  saved?: boolean;
+  readFrom?: string | null;
   start: number;
   duration: number;
   track: number;
@@ -23,7 +23,7 @@ export type ClipboardPayload =
   | {
       kind: "dom-element";
       html: string;
-      saved?: boolean;
+      readFrom?: string | null;
       sourceFile: string;
       projectId?: string;
       originSelector?: string;

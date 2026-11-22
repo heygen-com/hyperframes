@@ -5,6 +5,8 @@
  * used by sourceMutation (core), sdkCutover (studio), and mutate (sdk).
  */
 
+import { SVG_ATTRIBUTES, SVG_ELEMENTS } from "./svgAllowlist";
+
 export const ALLOWED_HTML_ATTRS = new Set([
   "id",
   "class",
@@ -154,5 +156,43 @@ function unsafeIn(element: Element, found: string[]): void {
 export function unsafeMarkup(root: Element): string[] {
   const found: string[] = [];
   unsafeIn(root, found);
+  return found;
+}
+
+const ELEMENTS_PARSED_ALIKE_WITH_SCRIPTING_ON = new Set(
+  (
+    "html head body div span p a abbr address article aside b bdi bdo blockquote br button caption cite code col " +
+    "colgroup data dd del details dfn dl dt em figcaption figure footer h1 h2 h3 h4 h5 h6 header hgroup hr i img " +
+    "ins kbd label li main mark nav ol picture pre q rp rt ruby s samp section small source strong sub summary sup " +
+    "table tbody td template tfoot th thead time tr track u ul var video audio canvas wbr"
+  ).split(" "),
+);
+const SVG_NS = "http://www.w3.org/2000/svg";
+const isSvg = (element: Element) => element.namespaceURI === SVG_NS;
+
+function elementAllowed(element: Element, tag: string): boolean {
+  if (isSvg(element)) return tag !== "style" && SVG_ELEMENTS.has(element.tagName);
+  return ELEMENTS_PARSED_ALIKE_WITH_SCRIPTING_ON.has(tag) || /^hf-[a-z0-9-]+$/.test(tag);
+}
+
+function attributeAllowed(element: Element, name: string, value: string): boolean {
+  if (!isSafeAttributeValue(name, value) || name.toLowerCase().startsWith("on")) return false;
+  if (isAllowedHtmlAttribute(name)) return true;
+  return isSvg(element) && SVG_ATTRIBUTES.has(name.replace(/^[^:]*:/, ""));
+}
+
+function outsideIn(element: Element, found: string[]): void {
+  const tag = element.localName;
+  if (!elementAllowed(element, tag)) found.push(tag);
+  for (const { name, value } of Array.from(element.attributes))
+    if (!attributeAllowed(element, name, value)) found.push(`${tag}[${name}]`);
+  found.push(...animationFindings(element, tag));
+  for (const child of childrenOf(element, tag)) outsideIn(child, found);
+}
+
+/** No raw-text or head element, so markup that passes parses to the same tree with scripting on as here. */
+export function markupOutsideAllowlist(root: Element): string[] {
+  const found: string[] = [];
+  outsideIn(root, found);
   return found;
 }
