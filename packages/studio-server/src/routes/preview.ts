@@ -203,25 +203,34 @@ const GSAP_ON_ITS_CDN = /^https:\/\/cdn\.jsdelivr\.net\/npm\/gsap@[\d.]+\/dist\/
 const PROJECT_PREVIEW_BASE =
   /<base\b[^>]*\shref\s*=\s*["']\/api\/projects\/[^/"']+\/preview\/["']/i;
 
+function projectScriptNamesNoPath(src: string, projectDir: string): boolean {
+  if (/^(?:[a-z][\w+.-]*:|\/)/i.test(src)) return false;
+  const file = resolve(projectDir, src.split(/[?#]/)[0]!);
+  return (
+    isWithinProjectRoot(projectDir, file) &&
+    existsSync(file) &&
+    !namesMotionPath(readFileSync(file, "utf-8"))
+  );
+}
+
+function scriptCannotTweenAlongPath(tag: string, projectDir: string): boolean {
+  if (tag.includes(RUNTIME_BOOTSTRAP_ATTR)) return true;
+  if (/\stype\s*=\s*["']?module\b/i.test(tag)) return false;
+  const match = SCRIPT_SRC_ATTR.exec(tag);
+  if (!match) return true;
+  const src = (match[1] ?? match[2] ?? match[3] ?? "").replace(/&amp;/gi, "&");
+  return GSAP_ON_ITS_CDN.test(src) || projectScriptNamesNoPath(src, projectDir);
+}
+
 /** True only when no script the page loads can tween along a path: the page's text and each project script it loads
  * name no `motionPath`, and any other script is GSAP on its CDN. Unsure is false, and the preview then preloads. */
 function provesNoPathTween(html: string, projectDir: string): boolean {
   if (namesMotionPath(html) || /\sdata-composition-src\s*=/i.test(html)) return false;
   if ((html.match(/<base\b/gi) ?? []).length !== 1 || !PROJECT_PREVIEW_BASE.test(html))
     return false;
-  return findStartTags(html, "script").every((start) => {
-    const tag = html.slice(start, html.indexOf(">", start) + 1);
-    if (tag.includes(RUNTIME_BOOTSTRAP_ATTR)) return true;
-    if (/\stype\s*=\s*["']?module\b/i.test(tag)) return false;
-    const match = SCRIPT_SRC_ATTR.exec(tag);
-    if (!match) return true;
-    const src = (match[1] ?? match[2] ?? match[3] ?? "").replace(/&amp;/gi, "&");
-    if (GSAP_ON_ITS_CDN.test(src)) return true;
-    if (/^(?:[a-z][\w+.-]*:|\/)/i.test(src)) return false;
-    const file = resolve(projectDir, src.split(/[?#]/)[0]!);
-    if (!isWithinProjectRoot(projectDir, file) || !existsSync(file)) return false;
-    return !namesMotionPath(readFileSync(file, "utf-8"));
-  });
+  return findStartTags(html, "script").every((start) =>
+    scriptCannotTweenAlongPath(html.slice(start, html.indexOf(">", start) + 1), projectDir),
+  );
 }
 
 function htmlHasMotionPathPlugin(html: string): boolean {
