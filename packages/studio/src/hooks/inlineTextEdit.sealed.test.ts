@@ -351,10 +351,10 @@ async function sealedTitleHoldingEnds(markup = ORIGINAL, action: "end" | "start"
   )) as Awaited<ReturnType<typeof sealedTitle>>;
   const holdEndReplies = () => {
     holding = [];
-    return () => {
+    return (newestFirst = false) => {
       const events = holding ?? [];
       holding = null;
-      events.forEach((event) => deliver(event));
+      (newestFirst ? events.reverse() : events).forEach((event) => deliver(event));
     };
   };
   return { ...title, holdEndReplies };
@@ -1247,7 +1247,7 @@ it("keeps a panel remove that ended an edit when a newer save on another field c
   act(() => void controls().start(selection.element));
   act(() => controls().commit());
   act(() => void saves.push(commits().handleDomTextCommitForSelection(selection, "Blue", first)));
-  release();
+  release(true);
   await act(() => Promise.allSettled(saves));
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
   expect(text("title")).toBe("<span>Blue</span>");
@@ -1266,7 +1266,7 @@ it("keeps a panel remove that ended an edit when a newer save on the same field 
   act(() => void controls().start(selection.element));
   act(() => controls().commit());
   act(() => void saves.push(commits().handleDomTextCommitForSelection(selection, "Red", second)));
-  release();
+  release(true);
   await act(() => Promise.allSettled(saves));
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
   // In gesture order the save targets a field the remove already took out.
