@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync, renameSync, rmSync, realpathSync } from "node:fs";
-import { resolve, join, extname, basename, relative, isAbsolute, sep } from "node:path";
+import { existsSync, statSync, renameSync, rmSync } from "node:fs";
+import { resolve, join, extname, basename, sep } from "node:path";
 import { parseArgs } from "node:util";
 import {
   AGENT_SOURCES,
@@ -19,6 +19,7 @@ import {
   withReservedFileSync,
 } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
+import { insideProject, recordAvailable } from "./lib/record-path.mjs";
 import { cacheGet, cacheGetByEntity, importFromCache, cachePut } from "./lib/cache.mjs";
 import {
   runCapability,
@@ -337,24 +338,6 @@ if (args.provider && !providerMatches(args.type, args.provider)) {
     ),
   );
   process.exit(2);
-}
-
-// The path of `path` inside the project once links are followed, or null when it is the project itself or leaves it.
-function insideProject(projectDir, path) {
-  const real = (at) => (existsSync(at) ? realpathSync(at) : at);
-  const inside = relative(real(projectDir), real(path));
-  return inside && inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)
-    ? inside
-    : null;
-}
-
-function recordAvailable(projectDir, record) {
-  if (!record) return false;
-  if (record.path) {
-    const path = resolve(projectDir, record.path);
-    return insideProject(projectDir, path) !== null && existsSync(path);
-  }
-  return record.type === "grade" && record.grading;
 }
 
 // Sparse `{ authMethod }` for a heygen-family provider name (e.g. "heygen.tts"),

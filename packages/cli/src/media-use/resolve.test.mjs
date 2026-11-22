@@ -592,6 +592,62 @@ for (const [name, place] of [
   });
 }
 
+// Node args that log, into `log`, every path naming evil-host that resolve asks the file system about.
+function fsProbeLog(log) {
+  const spy = `import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+const append = fs.appendFileSync;
+for (const name of ["existsSync", "statSync", "lstatSync", "realpathSync", "openSync", "accessSync", "readFileSync"]) {
+  const real = fs[name];
+  const spied = function (path, ...rest) {
+    if (String(path).includes("evil-host")) append(${JSON.stringify(log)}, String(path) + "\\n");
+    return real.call(this, path, ...rest);
+  };
+  Object.assign(spied, real);
+  fs[name] = spied;
+}
+syncBuiltinESMExports();`;
+  return [`--import=data:text/javascript,${encodeURIComponent(spy)}`];
+}
+
+// fails without the fix: resolve asked the file system whether //evil-host/share/boom.mp3 exists, which on
+// Windows signs in to that host.
+for (const path of [
+  "//evil-host/share/boom.mp3",
+  "\\\\evil-host\\share\\boom.mp3",
+  "//?/UNC/evil-host/share/boom.mp3",
+  "\\\\?\\UNC\\evil-host\\share\\boom.mp3",
+]) {
+  test(`a manifest record naming the share ${JSON.stringify(path)} is refused without looking at it`, () => {
+    setup();
+    try {
+      const log = join(tmp, "probes.log");
+      writeFileSync(log, "");
+      appendRecord(
+        tmp,
+        makeRecord({ id: "sfx_001", type: "sfx", path, provenance: { prompt: "whoosh" } }),
+      );
+      const result = spawnResolve(
+        ["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"],
+        {
+          env: { HOME: tmp, PATH: tmp },
+          nodeArgs: [...fsProbeLog(log), ...openverseImport([OPENVERSE_BY_WHOOSH])],
+        },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.notEqual(parsed._source, "cached");
+      assert.notEqual(parsed.path, path);
+      assert.equal(readFileSync(log, "utf8"), "");
+      assert.ok(
+        !readFileSync(join(tmp, ".media/audio/sfx/CREDITS.md"), "utf8").includes("evil-host"),
+      );
+    } finally {
+      cleanup();
+    }
+  });
+}
+
 // fails without the fix: the manifest's own provider claim wrote "Sam Sound" into the credits file.
 test("a manifest record inside the project is reused, but its provider claim writes no credit", () => {
   setup();
