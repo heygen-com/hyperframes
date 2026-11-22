@@ -4,6 +4,7 @@ import {
   deduplicateIds,
   serializeClipboardPayload,
   deserializeClipboardPayload,
+  insertAsSibling,
   type ClipboardPayload,
 } from "./clipboardPayload";
 
@@ -126,5 +127,36 @@ describe("serializeClipboardPayload / deserializeClipboardPayload", () => {
       sourceFile: "index.html",
     });
     expect(deserializeClipboardPayload(json)).toBeNull();
+  });
+});
+
+describe("insertAsSibling", () => {
+  const ROOT = '<div data-composition-id="main" data-hf-id="r0">';
+  const PASTED = '<b data-hf-id="n1">new</b>';
+
+  it("places the paste right after the element the file names by that id", () => {
+    const source = `${ROOT}<p data-hf-id="a1">one <i>two</i></p><p data-hf-id="a2">three</p></div>`;
+    expect(insertAsSibling(source, PASTED, "a1")).toBe(
+      `${ROOT}<p data-hf-id="a1">one <i>two</i></p>\n${PASTED}<p data-hf-id="a2">three</p></div>`,
+    );
+  });
+
+  it("never anchors on tag text inside a script, style or comment", () => {
+    const script = `<script>const word = '<span data-hf-id="w1">' + w + "</span>";</script>`;
+    const style =
+      '<style>/* <div data-composition-id="x"> */</style><!-- <span data-hf-id="w1"> -->';
+    const source = `${script}${style}${ROOT}<p data-hf-id="a1">one</p></div>`;
+    expect(insertAsSibling(source, PASTED, "w1")).toBe(
+      `${script}${style}${ROOT}${PASTED}<p data-hf-id="a1">one</p></div>`,
+    );
+  });
+
+  it("takes an anchor that is not an id as no anchor, at once", () => {
+    const source = `${ROOT}${"a".repeat(5000)}!</div>`;
+    const started = performance.now();
+    expect(insertAsSibling(source, PASTED, "(a+)+$")).toBe(
+      `${ROOT}${PASTED}${"a".repeat(5000)}!</div>`,
+    );
+    expect(performance.now() - started).toBeLessThan(500);
   });
 });

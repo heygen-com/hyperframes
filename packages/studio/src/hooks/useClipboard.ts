@@ -195,17 +195,19 @@ const hfIdsInFile = (content: string) =>
 
 export function pasteElementHtml(
   content: string,
-  payload: { html: string; saved?: boolean; originSelector?: string; originSelectorIndex?: number },
+  payload: { html: string; saved?: boolean },
   fromThisFile = false,
 ): string {
-  const reminted = remintHfIds(payload.html, new DOMParser(), hfIdsInFile(content), payload.saved);
+  const parser = new DOMParser();
+  const reminted = remintHfIds(payload.html, parser, hfIdsInFile(content), payload.saved);
   const deduped = deduplicateIds(reminted, collectHtmlIds(content));
-  const result = insertAsSibling(
-    content,
-    deduped,
-    payload.originSelector,
-    payload.originSelectorIndex,
-  );
+  const anchorFromThisFile =
+    fromThisFile && payload.saved
+      ? parser
+          .parseFromString(payload.html, "text/html")
+          .body.firstElementChild?.getAttribute("data-hf-id")
+      : null;
+  const result = insertAsSibling(content, deduped, anchorFromThisFile ?? undefined);
   return fromThisFile ? carryLook(result, renamedIds(reminted, deduped), 0) : result;
 }
 
@@ -376,8 +378,6 @@ export function useClipboard({
             ...savedMarkupElseLive(parseSavedSource(content), live, sourceFile),
             sourceFile,
             projectId: pid ?? undefined,
-            originSelector: domSelection.selector,
-            originSelectorIndex: domSelection.selectorIndex,
           };
         });
       return copyFound(found, copy, showToast);

@@ -304,7 +304,8 @@ describe("pasteElementHtml", () => {
       ROOT.replace("</div>", '<p id="title" class="t">Hello <b>there</b></p></div>'),
     );
     const copied = stamped.match(/<p[^>]*id="title"[^>]*>.*?<\/p>/)![0];
-    const content = pasteElementHtml(stamped, { html: copied, originSelector: "#title" });
+    const content = pasteElementHtml(stamped, { html: copied, saved: true }, true);
+    expect(content.indexOf("</p>") + 4).toBe(content.indexOf("\n<p"));
     const ids = hfIdsIn(content);
     expect(ids).toHaveLength(hfIdsIn(stamped).length + 2);
     expect(new Set(ids).size).toBe(ids.length);
