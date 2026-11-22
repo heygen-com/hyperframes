@@ -403,6 +403,32 @@ export function buildDoctorReport(outcomes: CheckOutcome[], options: { redact?: 
   });
 }
 
+export function printDoctorOutcomes(outcomes: CheckOutcome[]): void {
+  const allOk = outcomes.every((o) => o.ok);
+  console.log();
+  console.log(c.bold("hyperframes doctor"));
+  console.log();
+
+  for (const outcome of outcomes) {
+    const icon = outcome.ok ? c.success("\u2713") : c.error("\u2717");
+    const name = terminalText(outcome.name).padEnd(16);
+    console.log(
+      `  ${icon} ${c.bold(name)} ${outcome.ok ? c.dim(terminalLines(outcome.detail)) : c.error(terminalLines(outcome.detail))}`,
+    );
+    if (!outcome.ok && outcome.hint) {
+      console.log(`  ${" ".repeat(19)}${c.accent(terminalLines(outcome.hint))}`);
+    }
+  }
+
+  console.log();
+  if (allOk) {
+    console.log(`  ${c.success("\u25C7")}  ${c.success("All checks passed")}`);
+  } else {
+    console.log(`  ${c.warn("\u25C7")}  ${c.warn("Some checks failed \u2014 see hints above")}`);
+  }
+  console.log();
+}
+
 export default defineCommand({
   meta: { name: "doctor", description: "Check system dependencies and environment" },
   args: {
@@ -466,8 +492,6 @@ export default defineCommand({
         ...(result.hint ? { hint: result.hint } : {}),
       });
     }
-    const allOk = outcomes.every((o) => o.ok);
-
     if (args.json) {
       // Exit code intentionally reflects command success, not environment
       // health — `checkVersion` returns ok:false when an npm update is
@@ -479,27 +503,6 @@ export default defineCommand({
       return;
     }
 
-    console.log();
-    console.log(c.bold("hyperframes doctor"));
-    console.log();
-
-    for (const outcome of outcomes) {
-      const icon = outcome.ok ? c.success("\u2713") : c.error("\u2717");
-      const name = terminalText(outcome.name).padEnd(16);
-      console.log(
-        `  ${icon} ${c.bold(name)} ${outcome.ok ? c.dim(terminalLines(outcome.detail)) : c.error(terminalLines(outcome.detail))}`,
-      );
-      if (!outcome.ok && outcome.hint) {
-        console.log(`  ${" ".repeat(19)}${c.accent(terminalLines(outcome.hint))}`);
-      }
-    }
-
-    console.log();
-    if (allOk) {
-      console.log(`  ${c.success("\u25C7")}  ${c.success("All checks passed")}`);
-    } else {
-      console.log(`  ${c.warn("\u25C7")}  ${c.warn("Some checks failed \u2014 see hints above")}`);
-    }
-    console.log();
+    printDoctorOutcomes(outcomes);
   },
 });

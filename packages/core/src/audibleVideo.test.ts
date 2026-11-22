@@ -3,6 +3,7 @@ import {
   AUDIBLE_MEDIA_SELECTOR,
   audibleVideoNeedsWebAudio,
   isAudibleVideoElement,
+  parentCopyOf,
 } from "./audibleVideo";
 
 const el = (tagName: string, attrs: Record<string, string>) => ({
@@ -64,5 +65,58 @@ describe("audibleVideoNeedsWebAudio", () => {
     { volume: 1, masterChain: '{"version":1,"nodes":[]}' },
   ])("routes a video carrying %o", (fields) => {
     expect(audibleVideoNeedsWebAudio(fields)).toBe(true);
+  });
+});
+
+describe("parentCopyOf", () => {
+  const media = (html: string) => {
+    document.body.innerHTML = html;
+    return document.body.firstElementChild as HTMLMediaElement;
+  };
+
+  it("names a timed clip's file at the document's address, its window and where in the file it begins", () => {
+    expect(
+      parentCopyOf(
+        media(
+          '<audio src="music/a.m4a" data-start="2" data-duration="5" data-media-start="1.5"></audio>',
+        ),
+      ),
+    ).toEqual({
+      kind: "audio",
+      src: new URL("music/a.m4a", document.baseURI).href,
+      start: 2,
+      duration: 5,
+      mediaStart: 1.5,
+    });
+  });
+
+  it("reads a <source> child and gives an open-ended clip no end", () => {
+    expect(parentCopyOf(media('<video data-start="0"><source src="b.mp4"></video>'))).toMatchObject(
+      { kind: "video", src: new URL("b.mp4", document.baseURI).href, duration: Infinity },
+    );
+  });
+
+  it("copies nothing a render would not hear, or a clip the preloader has put off", () => {
+    expect(parentCopyOf(media('<video src="v.mp4" data-start="0" muted></video>'))).toBeNull();
+    expect(
+      parentCopyOf(media('<video src="v.mp4" data-start="0" data-has-audio="false"></video>')),
+    ).toBeNull();
+    expect(
+      parentCopyOf(media('<audio src="a.m4a" data-start="0" preload="metadata"></audio>')),
+    ).toBeNull();
+    expect(
+      parentCopyOf(media('<audio src="a.m4a" data-start="0" preload="none"></audio>')),
+    ).toBeNull();
+    expect(parentCopyOf(media('<audio data-start="0"></audio>'))).toBeNull();
+  });
+
+  it("gives a clip whose file address is invalid no copy, and leaves the others alone", () => {
+    document.body.innerHTML =
+      '<audio src="https://[" data-start="0"></audio><audio src="b.m4a" data-start="0"></audio>';
+    const copies = [...document.querySelectorAll("audio")].map((el) => parentCopyOf(el));
+    expect(copies.map((c) => c?.src ?? null)).toEqual([
+      null,
+      new URL("b.m4a", document.baseURI).href,
+    ]);
   });
 });

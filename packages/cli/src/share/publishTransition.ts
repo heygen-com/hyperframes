@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { CliUsageError } from "../utils/commandResult.js";
 import { asNotice } from "../utils/jsonError.js";
-import { readProjectLink, readTeamProject } from "../utils/projectLink.js";
+import { readProjectLink, readTeamProject, teamProjectLinkedHere } from "../utils/projectLink.js";
 
 /** Set to the announced notice release's UTC timestamp in the release PR, after launch gates pass. */
 const PUBLISH_NOTICE_RELEASE: string | null = null;
@@ -30,9 +30,9 @@ export function checkPublishTransition(
 ): ReturnType<typeof publishPhase> {
   const dir = resolve(args.dir ?? ".");
   const prior = readProjectLink(dir);
-  const legacyUpdate = Boolean(
-    args.update?.trim() || prior?.url || readTeamProject(dir)?.projectId,
-  );
+  const team = readTeamProject(dir);
+  const teamLinkedHere = team !== null && teamProjectLinkedHere(dir, team);
+  const legacyUpdate = Boolean(args.update?.trim() || prior?.url || teamLinkedHere);
   const phase = publishPhase(noticeRelease);
   asNotice(() => process.stderr.write(publishNotice(phase, legacyUpdate) + "\n"));
   if (publishTransitionDecision(phase, legacyUpdate) === "guide_to_share") {

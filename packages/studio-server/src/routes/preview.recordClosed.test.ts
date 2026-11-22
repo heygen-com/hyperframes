@@ -8,7 +8,7 @@ import type { StudioApiAdapter } from "../types";
 // A path that stops resolving between the private-file check and the read's record (a link swapped for a loop).
 vi.mock("../helpers/previewReads.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../helpers/previewReads.js")>()),
-  recordPreviewReadOff: () => Promise.reject(Object.assign(new Error("ELOOP"), { code: "ELOOP" })),
+  recordPreviewReadsOff: () => Promise.reject(Object.assign(new Error("ELOOP"), { code: "ELOOP" })),
 }));
 
 const { createStudioApi } = await import("../createStudioApi");

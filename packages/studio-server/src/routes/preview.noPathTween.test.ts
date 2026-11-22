@@ -11,6 +11,8 @@ import {
   withPreviewRuntime,
 } from "./preview";
 
+type ScriptFiles = NonNullable<Parameters<typeof provesNoPathTween>[3]>;
+
 const GSAP_FILE = "/*! GSAP 3.12.5 */ window.gsap = { timeline: function () {} };";
 const PLAIN_TWEEN = '<script>gsap.timeline({ paused: true }).to("#card", { x: 300 });</script>';
 const LATE_PATH_TWEEN =
@@ -113,6 +115,104 @@ describe("the preview builder's proof that no script can tween along a path", ()
 
   it("fails for a page whose own text names a path", async () => {
     expect(await pathFree('<script>gsap.to("#card", { "motionPath": {} });</script>')).toBe(false);
+  });
+});
+
+describe("the script scan's bounds", () => {
+  const tags = (srcs: string[]) => srcs.map((src) => `<script src="${src}"></script>`).join("");
+  const counting = (read: ScriptFiles["read"]) => {
+    const calls = { resolves: 0, reads: [] as string[] };
+    const files: ScriptFiles = {
+      resolve: async (base, rel) => (calls.resolves++, join(base, rel)),
+      read: (file, signal) => (calls.reads.push(file), read(file, signal)),
+    };
+    return { calls, files };
+  };
+  // As `readFile` does with its signal.
+  const untilAborted = (signal: AbortSignal) =>
+    new Promise<never>((_, reject) =>
+      signal.addEventListener("abort", () => reject(signal.reason)),
+    );
+  const scripts = (count: number) =>
+    Object.fromEntries(Array.from({ length: count }, (_, i) => [`s${i}.js`, GSAP_FILE]));
+
+  // fails without the fix: the scan resolved, stat'ed and read the one file once per tag.
+  it("answers false for a page with more script tags than it scans, reading nothing", async () => {
+    const { html, dir } = page(tags(Array(30_000).fill("gsap.min.js")), {
+      "gsap.min.js": GSAP_FILE,
+    });
+    const { calls, files } = counting(async () => GSAP_FILE);
+    const answer = await provesNoPathTween(html, dir, Number.POSITIVE_INFINITY, files);
+    expect(calls.resolves).toBe(0);
+    expect(calls.reads).toHaveLength(0);
+    expect(answer).toBe(false);
+  });
+
+  // fails without the fix: each tag read its file again.
+  it("reads each script file once, however many tags and spellings name it", async () => {
+    const srcs = Array.from({ length: 40 }, (_, i) => ["a.js", "./a.js", "b.js", "c.js"][i % 4]!);
+    const { html, dir } = page(tags(srcs), {
+      "a.js": GSAP_FILE,
+      "b.js": GSAP_FILE,
+      "c.js": GSAP_FILE,
+    });
+    const { calls, files } = counting(async () => GSAP_FILE);
+    expect(await provesNoPathTween(html, dir, Number.POSITIVE_INFINITY, files)).toBe(true);
+    expect(calls.reads.map((file) => file.slice(dir.length + 1)).sort()).toEqual([
+      "a.js",
+      "b.js",
+      "c.js",
+    ]);
+  });
+
+  // fails without the fix: every tag's read started at once.
+  it("has at most 8 reads in flight", async () => {
+    const waiting: (() => void)[] = [];
+    let inFlight = 0;
+    let most = 0;
+    const { calls, files } = counting(
+      () =>
+        new Promise<string>((resolve) => {
+          most = Math.max(most, ++inFlight);
+          waiting.push(() => (inFlight--, resolve(GSAP_FILE)));
+        }),
+    );
+    const { html, dir } = page(tags(Object.keys(scripts(20))), scripts(20));
+    let answer: boolean | undefined;
+    void provesNoPathTween(html, dir, Number.POSITIVE_INFINITY, files).then((a) => (answer = a));
+    while (answer === undefined) {
+      waiting.shift()?.();
+      await new Promise(setImmediate);
+    }
+    expect(answer).toBe(true);
+    expect(calls.reads).toHaveLength(20);
+    expect(most).toBeLessThanOrEqual(8);
+  });
+
+  // fails without the fix: a read went on after the scan gave up on it.
+  it("aborts a read still in flight when the scan's time runs out", async () => {
+    const signals: (AbortSignal | undefined)[] = [];
+    const { files } = counting((_, signal) => {
+      signals.push(signal);
+      return untilAborted(signal);
+    });
+    const { html, dir } = page(tags(["gsap.min.js"]), { "gsap.min.js": GSAP_FILE });
+    expect(await provesNoPathTween(html, dir, performance.now() + 100, files)).toBe(false);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(true);
+  });
+
+  // fails without the fix: every script was read even after one named a path.
+  it("starts no read after a script names a path, and aborts the ones in flight", async () => {
+    const signals: AbortSignal[] = [];
+    const { calls, files } = counting((file, signal) => {
+      signals.push(signal);
+      return file.endsWith("s0.js") ? Promise.resolve(LATE_PATH_TWEEN) : untilAborted(signal);
+    });
+    const { html, dir } = page(tags(Object.keys(scripts(20))), scripts(20));
+    expect(await provesNoPathTween(html, dir, Number.POSITIVE_INFINITY, files)).toBe(false);
+    expect(calls.reads.length).toBeLessThanOrEqual(8);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
   });
 });
 

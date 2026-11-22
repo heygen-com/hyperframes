@@ -43,6 +43,7 @@ import {
   readRenderOverrides,
 } from "./getVariables";
 import { isElementNode, isHtmlElement, isLinkElement, isStyleElement } from "./domRealm";
+import { COMPOSITION_SRC_ATTR } from "../compositionSource";
 
 type LoadCompositionsParams = {
   injectedStyles: HTMLStyleElement[];
@@ -745,11 +746,11 @@ async function mountExternalCompositions(
   cleanupDetachedScopedVariables();
   if (trackedHosts.length === 0) return [];
   const hostIdentityByElement = assignRuntimeCompositionIds(trackedHosts, new Set());
-  const hosts = trackedHosts.filter((host) => host.hasAttribute("data-composition-src"));
+  const hosts = trackedHosts.filter((host) => host.hasAttribute(COMPOSITION_SRC_ATTR));
 
   const mounted = await Promise.all(
     hosts.map(async (host): Promise<MountedComposition | null> => {
-      const src = host.getAttribute("data-composition-src");
+      const src = host.getAttribute(COMPOSITION_SRC_ATTR);
       if (!src) return null;
       const hostIdentity = hostIdentityByElement.get(host);
       const authoredCompositionId = hostIdentity?.authoredCompositionId || null;

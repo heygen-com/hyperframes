@@ -86,7 +86,7 @@ import { settledFileTag } from "../helpers/fileVersion.js";
 import {
   recordPreviewBuilt,
   recordPreviewRead,
-  recordPreviewReadOff,
+  recordPreviewReadsOff,
 } from "../helpers/previewReads.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { injectPreviewVariables } from "../helpers/previewVariables.js";
@@ -209,45 +209,49 @@ const PROJECT_PREVIEW_BASE =
 
 const MAX_READ_SCRIPT_BYTES = 4 * 1024 * 1024;
 const SCRIPT_SCAN_MS = 1000;
+// A page with more script tags than this is unsure, and unsure already means it preloads the plugin.
+const MAX_SCANNED_SCRIPTS = 64;
+const SCRIPT_READS_IN_FLIGHT = 8;
 
 /** How the scan reaches a project's files: both off the event loop. */
 interface ScriptFiles {
   resolve: (base: string, relativePath: string) => Promise<string | null>;
-  read: (file: string) => Promise<string>;
+  read: (file: string, signal: AbortSignal) => Promise<string>;
 }
 const projectFiles: ScriptFiles = {
   resolve: resolveExistingProjectFileOff,
-  read: (file) => readFile(file, "utf-8"),
+  read: (file, signal) => readFile(file, { encoding: "utf-8", signal }),
 };
 
-async function projectScriptNamesNoPath(
-  src: string,
-  projectDir: string,
-  files: ScriptFiles,
-): Promise<boolean> {
-  if (/^(?:[a-z][\w+.-]*:|\/)/i.test(src)) return false;
-  try {
-    const file = await files.resolve(projectDir, decodeURIComponent(src.split(/[?#]/)[0]!));
-    if (file === null) return false;
-    const info = await statFile(file);
-    if (!info.isFile() || info.size > MAX_READ_SCRIPT_BYTES) return false;
-    return !namesMotionPath(await files.read(file));
-  } catch {
-    return false;
-  }
+async function fileNamesNoPath(file: string, files: ScriptFiles, signal: AbortSignal) {
+  const info = await statFile(file);
+  if (!info.isFile() || info.size > MAX_READ_SCRIPT_BYTES || signal.aborted) return false;
+  return !namesMotionPath(await files.read(file, signal));
 }
 
-async function scriptCannotTweenAlongPath(
-  tag: string,
-  projectDir: string,
-  files: ScriptFiles,
-): Promise<boolean> {
+function scriptTagAnswer(tag: string): boolean | { src: string } {
   if (tag.includes(RUNTIME_BOOTSTRAP_ATTR)) return true;
   if (/\stype\s*=\s*["']?module\b/i.test(tag)) return false;
   const match = SCRIPT_SRC_ATTR.exec(tag);
   if (!match) return true;
   const src = (match[1] ?? match[2] ?? match[3] ?? "").replace(/&amp;/gi, "&");
-  return GSAP_ON_ITS_CDN.test(src) || projectScriptNamesNoPath(src, projectDir, files);
+  if (GSAP_ON_ITS_CDN.test(src)) return true;
+  return /^(?:[a-z][\w+.-]*:|\/)/i.test(src) ? false : { src };
+}
+
+async function inPool<T>(
+  items: Iterable<T>,
+  size: number,
+  signal: AbortSignal,
+  work: (item: T) => Promise<void>,
+): Promise<void> {
+  const pending = items[Symbol.iterator]();
+  const worker = async () => {
+    for (let next = pending.next(); !next.done && !signal.aborted; next = pending.next()) {
+      await work(next.value);
+    }
+  };
+  await Promise.all(Array.from({ length: size }, worker));
 }
 
 /** True only when no script the page loads can tween along a path: the page's text and each project script it loads
@@ -265,14 +269,38 @@ export async function provesNoPathTween(
   const now = performance.now();
   const deadline = now + Math.min(SCRIPT_SCAN_MS, (requestDeadline - now) / 2);
   if (deadline <= now) return false;
-  const scripts = findStartTags(html, "script").map((start) =>
-    scriptCannotTweenAlongPath(html.slice(start, html.indexOf(">", start) + 1), projectDir, files),
-  );
+  const tags = findStartTags(html, "script");
+  if (tags.length > MAX_SCANNED_SCRIPTS) return false;
+  const srcs = new Set<string>();
+  for (const start of tags) {
+    const answer = scriptTagAnswer(html.slice(start, html.indexOf(">", start) + 1));
+    if (answer === false) return false;
+    if (answer !== true) srcs.add(answer.src);
+  }
+  // Aborted when a script names a path or the scan ends, so it stops every read it started.
+  const scan = new AbortController();
+  const byFile = new Map<string, Promise<boolean>>();
+  const check = async (src: string) => {
+    const file = await files.resolve(projectDir, decodeURIComponent(src.split(/[?#]/)[0]!));
+    if (file === null) return false;
+    let answer = byFile.get(file);
+    if (!answer) byFile.set(file, (answer = fileNamesNoPath(file, files, scan.signal)));
+    return answer;
+  };
+  const stopUnlessNoPath = async (src: string) => {
+    if (!(await check(src).catch(() => false))) scan.abort();
+  };
   try {
-    const answers = await withinDeadline(Promise.all(scripts), deadline, "scripts");
-    return answers.every(Boolean);
+    await withinDeadline(
+      inPool(srcs, SCRIPT_READS_IN_FLIGHT, scan.signal, stopUnlessNoPath),
+      deadline,
+      "scripts",
+    );
+    return !scan.signal.aborted;
   } catch {
     return false;
+  } finally {
+    scan.abort();
   }
 }
 
@@ -631,11 +659,14 @@ export function registerPreviewRoutes(
     const diskMain = resolveProjectMainHtml(project.dir, project.id);
 
     try {
-      let bundled = await adapter.bundle(project.dir, {
-        stampHfIds: true,
-        onRead: (filePath) => recordPreviewRead(project.dir, filePath),
-        privateFiles: "studio",
-      });
+      const reads: string[] = [];
+      let bundled = await adapter
+        .bundle(project.dir, {
+          stampHfIds: true,
+          onRead: (filePath) => reads.push(filePath),
+          privateFiles: "studio",
+        })
+        .finally(() => recordPreviewReadsOff(project.dir, reads));
       let mainCompositionPath = "index.html";
       if (!bundled) {
         if (!diskMain) return null;
@@ -650,7 +681,7 @@ export function registerPreviewRoutes(
         mainCompositionPath,
       );
       bundled = based.html;
-      for (const path of based.references) recordPreviewRead(project.dir, path);
+      await recordPreviewReadsOff(project.dir, based.references);
       recordPreviewBuilt(project.dir);
 
       // The passes that parse the page run on the build worker (a capture page builds while a film plays); the
@@ -802,9 +833,8 @@ export function registerPreviewRoutes(
       project.dir,
       requestSubPath(c.req.url, "projects/:id/preview/comp"),
     );
-    if (compFile) recordPreviewRead(project.dir, compFile);
     // The sub-composition document takes its head from the root.
-    recordPreviewRead(project.dir, "index.html");
+    await recordPreviewReadsOff(project.dir, compFile ? [compFile, "index.html"] : ["index.html"]);
     if (!compFile || !existsSync(compFile) || !statSync(compFile).isFile()) {
       return c.text("not found", 404);
     }
@@ -837,7 +867,7 @@ export function registerPreviewRoutes(
       );
       if (!built) return c.text("not found", 404);
       if ("refused" in built) return c.html(previewRefusalPage(built.refused), 200);
-      for (const path of built.references) recordPreviewRead(project.dir, path);
+      await recordPreviewReadsOff(project.dir, built.references);
       const transformed = await withinDeadline(
         transformPreviewHtml(built.html, adapter, project, compPath),
         deadline,
@@ -888,7 +918,7 @@ export function registerPreviewRoutes(
     if (!file || (await isPrivateProjectFileOff(project.dir, file))) {
       return c.text("not found", 404);
     }
-    const recorded = await recordPreviewReadOff(project.dir, file).then(
+    const recorded = await recordPreviewReadsOff(project.dir, [file]).then(
       () => true,
       () => false,
     );

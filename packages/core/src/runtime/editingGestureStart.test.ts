@@ -59,6 +59,11 @@ const GSAP_RENDERS = { _gsap: { renderTransform: () => {} } };
 /** jsdom has no DOMMatrix: a 2D one reading `matrix(...)` and composing as the browser's does. */
 class Matrix2D {
   a = 1;
+  m13 = 0;
+  m23 = 0;
+  m14 = 0;
+  m24 = 0;
+  m44 = 1;
   b = 0;
   c = 0;
   d = 1;
@@ -171,6 +176,18 @@ describe("gesture start", () => {
     const getProperty = gsapWith(make(card), { x: 0, y: 0, rotation: 12 });
     expect(gestureStart([handleFor(card)]).elements[0]!.gsapRotation).toBe(turn);
     expect(getProperty.mock.calls.some(([, name]) => name === "rotation")).toBe(turn !== null);
+  });
+
+  // fails without the fix: a sealed stand-in has no stylesheet, so a rotate started at 0 instead of 30.
+  it("reads the CSS turn a layer GSAP does not turn shows, for a stand-in that cannot", () => {
+    Object.assign(window, { DOMMatrix: Matrix2D });
+    const card = turnedCard("transform: matrix(0.866025, 0.5, -0.5, 0.866025, 0, 0)");
+    gsapWith([tween(card, { opacity: 0 }, 2)]);
+    const { cssRotation } = gestureStart([handleFor(card)]).elements[0]!;
+    expect(cssRotation!.angle).toBeCloseTo(30, 3);
+    expect(cssRotation!.target).toMatchObject({ property: "transform", before: "" });
+    gsapWith([tween(card, { rotation: 20 }, 2)], { x: 0, y: 0, rotation: 12 });
+    expect(gestureStart([handleFor(card)]).elements[0]!.cssRotation).toBeNull();
   });
 
   it("does not own a box that only fades", () => {
