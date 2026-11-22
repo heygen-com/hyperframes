@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
+import { usePlayerStore } from "../../player/store/playerStore";
 import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
 import { answerTap, sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 import type { DomEditSelection } from "./domEditing";
@@ -13,6 +14,7 @@ import { standInFor } from "./previewSelection";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
+  usePlayerStore.getState().setCurrentTime(0);
   document.body.innerHTML = "";
 });
 
@@ -180,6 +182,25 @@ it("re-reads a sealed card's size when it changes while selected, before any pre
   show({ left: 0, top: 0, width: 600, height: 200 });
 
   await vi.waitFor(() => expect(outline()).toBe("560px"));
+  act(() => root.unmount());
+});
+
+// fails without the fix: a seek that changed the card's own size and scale together left its painted box, and so the
+// re-read's key, the same: the crop kept the old scale (360 px where 380 px is right).
+it("re-reads a sealed card's size after a seek that keeps its painted box, before any press", async () => {
+  const standIn = await sealedCard(
+    "matrix(2, 0, 0, 2, 0, 0)",
+    [0, 0, 400, 200],
+    "inset(0px 20px 0px 0px)",
+  );
+  const { root, show, outline } = cropHandles(standIn);
+  show({ left: 0, top: 0, width: 400, height: 200 });
+  await vi.waitFor(() => expect(outline()).toBe("360px"));
+
+  paint(document.getElementById("card")!, [400, 200], [0, 0, 400, 200]);
+  act(() => usePlayerStore.getState().setCurrentTime(3.5));
+
+  await vi.waitFor(() => expect(outline()).toBe("380px"));
   act(() => root.unmount());
 });
 
