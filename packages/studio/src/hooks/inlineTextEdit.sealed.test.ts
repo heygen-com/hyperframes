@@ -1279,3 +1279,18 @@ it("keeps a panel remove that ended an edit when a newer save on the same field 
   // In gesture order the save targets a field the remove already took out.
   expect(text("title")).toBe("<span>One</span>");
 });
+
+// fails without the fix: the failed add was not the newest save, so its field stayed drawn though no file had it.
+it("takes back a failed field add's draw when a newer save on another field lands", async () => {
+  const { title, iframe, selection } = await sealedTitleHoldingEnds(SPANS);
+  const { persist, text } = sourceFile((value) => value.includes("New text"), SPANS);
+  const { commits } = wiredEditor(iframe, selection, persist);
+  const [first, second] = selection.textFields.map((field) => field.key);
+  const saves: Array<Promise<unknown>> = [];
+  act(() => void saves.push(commits().handleDomAddTextField(second)));
+  act(() => void saves.push(commits().handleDomTextCommitForSelection(selection, "Blue", first)));
+  await act(() => Promise.allSettled(saves));
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+  expect(text("title")).toBe("<span>Blue</span> <span>Two</span>");
+  await vi.waitFor(() => expect(title.textContent).toBe("Blue Two"));
+});
