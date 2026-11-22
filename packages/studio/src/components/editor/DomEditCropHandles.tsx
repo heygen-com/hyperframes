@@ -29,7 +29,7 @@ import { isCropBarTarget, useCropPresetBarStore } from "./cropPresetStore";
 import { CropPresetBar } from "./CropPresetBar";
 import { movesGesture } from "./domEditOverlayGestures";
 import { previewStandIn } from "./previewDrafts";
-import { usePlayerStore } from "../../player/store/playerStore";
+import { onFrameShowsTime } from "../../player/lib/bridgePlayback";
 import { gestureStartLayout, readCropFrameStart } from "./previewGestureStartRead";
 
 interface CropGestureState {
@@ -184,7 +184,18 @@ function readStandInStart(
   });
 }
 
-/** `readStandInStart` while `element` is selected and not dragged: again when its box or the playhead moves. */
+/** `readStandInStart` while `element` is selected and not dragged: again when its box moves or a seek lands. */
+/** Counts the seeks `element`'s sealed frame has applied, as its runtime reports them. */
+function useFrameSeeks(element: HTMLElement): number {
+  const [seeks, setSeeks] = useState(0);
+  useEffect(() => {
+    const frame = previewStandIn(element)?.iframe;
+    if (!frame) return;
+    return onFrameShowsTime((iframe) => iframe === frame && setSeeks((n) => n + 1));
+  }, [element]);
+  return seeks;
+}
+
 function useStandInStart<S extends { element: HTMLElement; start?: CropFrameStart }>(
   element: HTMLElement,
   overlayRect: { width: number; height: number },
@@ -193,7 +204,7 @@ function useStandInStart<S extends { element: HTMLElement; start?: CropFrameStar
 ) {
   const reads = useRef<StartReads>({ token: 0, busy: false, again: false, element });
   const shownSize = `${Math.round(overlayRect.width)}x${Math.round(overlayRect.height)}`;
-  const playhead = usePlayerStore((s) => s.currentTime);
+  const seeks = useFrameSeeks(element);
   useEffect(() => {
     const r = reads.current;
     if (r.element !== element) r.token++;
@@ -202,7 +213,7 @@ function useStandInStart<S extends { element: HTMLElement; start?: CropFrameStar
       readStandInStart(r, (el, start) =>
         setState((prev) => (prev.element === el ? { ...prev, start } : prev)),
       );
-  }, [element, shownSize, playhead, dragging, setState]);
+  }, [element, shownSize, seeks, dragging, setState]);
   return reads;
 }
 

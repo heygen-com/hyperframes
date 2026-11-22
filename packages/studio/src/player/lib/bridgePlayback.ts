@@ -15,6 +15,8 @@ interface PlaybackMirror {
   seekUntil: number;
   /** The composition's declared size from the runtime's `stage-size` post. */
   stageSize: { width: number; height: number } | null;
+  /** The paused time the runtime last said it shows. */
+  shown: number | null;
 }
 
 const SEEK_CONFIRM_MS = 500;
@@ -37,6 +39,7 @@ function mirrorOf(iframe: HTMLIFrameElement): PlaybackMirror | null {
       seekTo: null,
       seekUntil: 0,
       stageSize: null,
+      shown: null,
     };
     mirrors.set(frame, mirror);
   }
@@ -112,6 +115,17 @@ function mirrorState(
   mirror.seekTo = null;
   mirror.time = currentTime;
   mirror.playing = playing;
+  if (playing || mirror.shown === currentTime) return;
+  mirror.shown = currentTime;
+  for (const listener of shownListeners) listener(mirror.iframe);
+}
+
+const shownListeners = new Set<(iframe: HTMLIFrameElement) => void>();
+
+/** Calls `listener` with a registered frame each time its runtime says it shows a new paused time: a seek applied. */
+export function onFrameShowsTime(listener: (iframe: HTMLIFrameElement) => void): () => void {
+  shownListeners.add(listener);
+  return () => void shownListeners.delete(listener);
 }
 
 function mirrorPost(mirror: PlaybackMirror, message: Record<string, unknown>, fps: number | null) {
