@@ -1,9 +1,9 @@
 // fallow-ignore-file code-duplication
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { runCommand, type CommandDef } from "citty";
 
 import type { RegistryItem } from "@hyperframes/core";
-import { catalogRow, countUnindexed, pickByName, searchMissCommand } from "./catalog.js";
+import { catalogRow, countUnindexed, pickByName, searchMissReport } from "./catalog.js";
 
 /** The whole registry, which is what "in this registry" has to be measured against. */
 const registryNames = new Set(["fade-through", "whip-pan", "count-up"]);
@@ -205,6 +205,7 @@ const component = (name: string): { name: string; type: string } => ({
 });
 
 interface Envelope {
+  query: string;
   tier: string;
   dropped: number;
   unindexed: number;
@@ -326,6 +327,43 @@ describe("catalog on a terminal", () => {
 
     expect(output).not.toContain(esc);
     expect(output).toContain("odd\\x1b]52;c;cA==\\x07");
+  });
+});
+
+describe("catalog lines that repeat outside text", () => {
+  const ODD = `od${String.fromCharCode(27)}[2Jd\x07`;
+  const SHOWN = "od\\x1b[2Jd\\x07";
+
+  // fails without the fix: an item's name is printed as the registry sent it.
+  it("shows control characters in an item name as text", async () => {
+    state.registry = [block(`count-${ODD}`)];
+
+    const output = await runCatalog({});
+
+    expect(output).toContain(`count-${SHOWN}`);
+    expect(output).not.toContain("\x07");
+  });
+
+  // fails without the fix: the query is repeated as it was typed.
+  it("shows control characters in a query that matched nothing as text", async () => {
+    state.ranking = [];
+    state.modelStatus = "declined";
+
+    const { err } = await runForExit({ query: `quantum ${ODD}` });
+
+    expect(err).toContain(`No items match query "quantum ${SHOWN}".`);
+    expect(err).not.toContain("\x07");
+  });
+
+  // fails without the fix: the query is repeated as it was typed.
+  it("shows control characters in a query with no searchable words as text", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const { err } = await runForExit({ query: "実写\x07写真" });
+
+    expect(err).toContain('No searchable words in query "実写\\x07写真".');
+    expect(err).not.toContain("\x07");
   });
 });
 
@@ -499,6 +537,21 @@ describe("catalog --json meaning search", () => {
     );
   });
 
+  // fails without the fix: on Windows the envelope carried a bash-escaped line that runs "$(calc)" in PowerShell.
+  it("on Windows, hands back how to report the gap, not a line that would run the query", async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    onTestFinished(() => {
+      Object.defineProperty(process, "platform", platform);
+    });
+
+    const envelope = await runEnvelope({ query: "count up $(calc)" });
+
+    expect(envelope.query).toBe("count up $(calc)");
+    expect(envelope.report_gap).not.toContain("$(calc)");
+    expect(envelope.report_gap).toContain("--search-miss");
+  });
+
   it("names the tier that actually answered in the gap-report command", async () => {
     state.modelStatus = "declined";
     state.ranking = null;
@@ -639,19 +692,51 @@ describe("a zero-result search", () => {
   });
 });
 
-describe("searchMissCommand", () => {
-  it("keeps a non-ASCII query intact", () => {
+// Each one keeps a shell meaning in PowerShell or cmd.exe however it is double-quoted.
+const WINDOWS_LIVE_QUERIES = [
+  "$(calc)",
+  "a`b",
+  "o'neil $x",
+  "x\u201D;calc;\u201Dy",
+  "x\u2019;calc;\u2018 $y",
+  "$(calc)&calc",
+  "\u201Cquoted\u201D",
+  "%USERPROFILE%",
+  "50% off, 20% more",
+  "Hello!",
+  "a!b",
+  'say "hi" & calc',
+];
+
+describe("searchMissReport", () => {
+  it("keeps a non-ASCII query intact, on Windows and elsewhere", () => {
     // Half of the gap reports received so far were CJK. A query mangled on the
     // way into the command is a report nobody can act on.
-    expect(searchMissCommand("実写写真のみ 9:16 生活ハック", "on-device")).toContain(
-      '--search-miss "実写写真のみ 9:16 生活ハック"',
-    );
+    for (const platform of ["win32", "linux"] as const) {
+      expect(searchMissReport("実写写真のみ 9:16 生活ハック", "on-device", platform)).toBe(
+        'npx hyperframes feedback --search-miss "実写写真のみ 9:16 生活ハック" ' +
+          '--wanted "<the move you needed>" --tier on-device',
+      );
+    }
   });
 
-  it("escapes shell metacharacters so the printed line is safe to paste", () => {
-    const cmd = searchMissCommand('a "quoted" $VAR `sub` \\ thing', "words");
+  // fails without the fix: the query was put in a bash-escaped line on every platform, where a backslash escapes
+  // nothing in PowerShell or cmd.exe, so running the line ran part of the query.
+  it("never puts a query PowerShell or cmd.exe would read as code into a line on Windows", () => {
+    for (const query of WINDOWS_LIVE_QUERIES) {
+      const report = searchMissReport(query, "words", "win32");
+      expect(report, query).not.toContain(query);
+      expect(report, query).not.toMatch(/^npx /);
+      expect(report, query).toContain("--tier words");
+    }
+  });
 
-    expect(cmd).toContain('--search-miss "a \\"quoted\\" \\$VAR \\`sub\\` \\\\ thing"');
+  it("quotes a query with shell syntax as one literal word for sh, bash and zsh", () => {
+    expect(searchMissReport('a "quoted" $VAR `sub` \\ thing!', "words", "linux")).toBe(
+      "npx hyperframes feedback --search-miss 'a \"quoted\" $VAR `sub` \\ thing!' " +
+        '--wanted "<the move you needed>" --tier words',
+    );
+    expect(searchMissReport("o'neil", "words", "darwin")).toContain(`--search-miss "o'neil"`);
   });
 });
 
@@ -682,7 +767,27 @@ describe("catalog meaning search, on a terminal", () => {
 
     expect(output).toContain("None of these do it?");
     expect(output).toContain("--tier words");
+    expect(output).toContain('--search-miss "count up"');
   });
+
+  // fails without the fix: the command was printed with the query rewritten, so pasting it reported other text.
+  it.each([
+    ["some results", "count\nup"],
+    ["no result", "zzqx\nyyqx"],
+  ])(
+    "explains the gap report in words when the query cannot be shown as typed: %s",
+    async (_n, query) => {
+      state.modelStatus = "declined";
+      state.ranking = null;
+
+      const output = await runCatalog({ query });
+
+      expect(output).toContain(
+        "Run hyperframes feedback with your query as --search-miss, the move you needed as --wanted, and --tier words.",
+      );
+      expect(output).not.toContain('--search-miss "');
+    },
+  );
 
   it("offers the gap report on the on-device tier too", async () => {
     const output = await runCatalog({ query: "make a number count up" });

@@ -50,6 +50,14 @@ function tempDir(prefix: string): string {
   return dir;
 }
 
+/** The drive stamps the turn marker by the same clock as the project's files: here, the test's. */
+function stampTurnMarker(dir: string) {
+  const marker = join(dir, ".hyperframes", "history-turn.json");
+  if (!existsSync(marker)) return;
+  const { writtenAt } = JSON.parse(readFileSync(marker, "utf-8")) as { writtenAt?: number };
+  if (writtenAt) utimesSync(marker, writtenAt / 1000, writtenAt / 1000);
+}
+
 /** A project of index.html "A" and notes.html "N", its history kept in a temp root, no preview running. */
 function project() {
   const dir = tempDir("hf-history-cli-");
@@ -72,6 +80,7 @@ function project() {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       await runCommand(historyCommand, { rawArgs: [...args, "--dir", dir] });
+      stampTurnMarker(dir);
       const out = log.mock.calls.map((call) => call.join(" ")).join("\n");
       const err = error.mock.calls.map((call) => call.join(" ")).join("\n");
       return { out, err, code: consumeCommandResult().exitCode };
@@ -153,7 +162,12 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
       held.noteChange(path);
       await vi.waitFor(() => expect(held.list().at(-1)?.files[0]?.path).toBe(path));
     }
-    return { ...p, personWrites };
+    /** Preview takes in an agent's write when its watcher reports it, as a scan does here. */
+    const agentWrites = async (path: string, text: string) => {
+      p.write(path, text);
+      await held?.claim({ kind: "person", name: "You" }, "scan", []);
+    };
+    return { ...p, personWrites, agentWrites };
   }
 
   it("refuses an empty start restore with exit 2 and leaves files intact", async () => {
@@ -203,10 +217,10 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
   });
 
   it("a turn left open ends after the idle limit: a person's later edit stays theirs through undo of the turn", async () => {
-    const { write, hf, personWrites, files } = await setup();
+    const { agentWrites, hf, personWrites, files } = await setup();
     historyDeps.turnIdleMs = 300;
     await hf("begin", "--who", "claude", "--label", "Retitle");
-    write("index.html", "A2");
+    await agentWrites("index.html", "A2");
     advance(600);
     await personWrites("notes.html", "N2");
 
@@ -902,3 +916,21 @@ describe.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     });
   },
 );
+
+// fails without the fix: a refusal reached the terminal with its control characters live.
+it("prints a refusal's control characters as visible escapes", async () => {
+  const { hf } = project();
+  const refused = await hf("--since", "20\u001b[2J26");
+  expect([refused.code, refused.err]).toEqual([2, 'No entry "20\\x1b[2J26" in this history']);
+});
+
+// fails without the fix: a changed file's text reached the terminal with its control characters live.
+it("prints a diff's control characters as visible escapes", async () => {
+  const { hf, turn } = project();
+  await hf("begin", "--who", "claude", "--label", "Start");
+  await hf("end");
+  const entry = await turn("claude", "Retitle", "index.html", "A\u001b[2J2");
+  const diff = (await hf("show", entry.id, "--diff")).out;
+  expect(diff).toContain("+A\\x1b[2J2");
+  expect(diff).not.toContain("\u001b");
+});

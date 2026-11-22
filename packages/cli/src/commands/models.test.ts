@@ -208,3 +208,37 @@ describe("models list", () => {
     });
   });
 });
+
+describe("models list for people", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    consumeCommandResult();
+    sherpa.sherpaUnsupportedReason.mockReturnValue(null);
+    sherpa.sherpaParakeetInstalled.mockReturnValue(true);
+    findParakeet.mockReturnValue(undefined);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  // fails without the fix: a model file's name is printed as it is on disk.
+  it("shows control characters in a model name as text", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    manager.listWhisperModels.mockReturnValue([
+      { model: "sm\u001b[2J\u0007all", path: "/cache/whisper/models/ggml-odd.bin" },
+    ]);
+    await runCommand(modelsCmd, { rawArgs: ["list"] });
+    const printed = log.mock.calls.flat().join("\n");
+    expect(printed).toContain("sm\\x1b[2J\\x07all");
+    expect(printed).not.toContain("\u001b[2J");
+  });
+
+  // fails without the fix: the words after `models` are printed as they were typed.
+  it("shows control characters in an unknown action as text", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(
+      modelsCmd.run!({ args: { action: "li\u001b[2J\u0007st", json: false } } as never),
+    ).rejects.toThrow();
+    const printed = error.mock.calls.flat().join("\n");
+    expect(printed).toContain("li\\x1b[2J\\x07st");
+    expect(printed).not.toContain("\u001b[2J");
+  });
+});

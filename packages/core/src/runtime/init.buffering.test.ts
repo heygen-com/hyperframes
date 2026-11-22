@@ -55,7 +55,8 @@ function playPodcast(voiceStart = 0, voiceTag = "audio", extraHtml = "", voiceDu
     extraHtml +
     "</div>";
   const voiceReady: { value: number; bufferedTo?: number } = { value: 1 };
-  const music = audio("music", 10, { value: 4 });
+  const musicReady = { value: 4 };
+  const music = audio("music", 10, musicReady);
   const voice = audio("voice", voiceDuration, voiceReady);
   window.__timelines = { main: createMockTimeline(10) };
 
@@ -82,7 +83,7 @@ function playPodcast(voiceStart = 0, voiceTag = "audio", extraHtml = "", voiceDu
   const playFor = (seconds: number) => {
     for (let ms = 0; ms < seconds * 1000; ms += 1000 / 60) step(1000 / 60);
   };
-  return { music, voice, voiceReady, states, playFor, step };
+  return { music, musicReady, voice, voiceReady, states, playFor, step };
 }
 
 it("a track not ready pauses everything with Buffering, and resumes when it can play", () => {
@@ -252,6 +253,68 @@ it("the film waits for a playing video stuck waiting, even with the bytes buffer
   expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
 });
 
+it("a hold reloads each clip on screen that has played at preload metadata, and waits for it too", () => {
+  const { music, voice, voiceReady, playFor } = playPodcast();
+  for (const el of [music, voice])
+    Object.defineProperty(el, "played", { get: () => ({ length: 1 }), configurable: true });
+  voiceReady.value = 4;
+  playFor(1);
+  const srcWrites = new MutationObserver(() => {});
+  srcWrites.observe(music, { attributeFilter: ["src"] });
+
+  voiceReady.value = 1;
+  playFor(0.5);
+  expect(srcWrites.takeRecords().length).toBeGreaterThan(0);
+  expect([music.preload, music.getAttribute("src")]).toEqual(["metadata", "/music.m4a"]);
+  const heldAt = window.__player!.getTime();
+  music.dispatchEvent(new Event("loadedmetadata"));
+  expect(music.currentTime).toBeCloseTo(heldAt, 1);
+
+  voiceReady.value = 4;
+  playFor(1);
+  expect(window.__player!.getTime()).toBeGreaterThan(heldAt + 0.9);
+});
+
+it("a hold leaves the clip it waits for alone, so a video that stalls mid-clip keeps its buffer and picture", () => {
+  const { voice, voiceReady, states, playFor } = playPodcast(0, "video", "", 30);
+  Object.defineProperty(voice, "played", { get: () => ({ length: 1 }), configurable: true });
+  voiceReady.value = 4;
+  playFor(2);
+  const srcWrites = new MutationObserver(() => {});
+  srcWrites.observe(voice, { attributeFilter: ["src"] });
+  const loads = vi.mocked(voice.load).mock.calls.length;
+
+  voiceReady.value = 1;
+  playFor(0.5);
+
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+  expect(srcWrites.takeRecords()).toHaveLength(0);
+  expect(vi.mocked(voice.load).mock.calls.length).toBe(loads);
+});
+
+it("a seek during a hold is not undone when a clip the hold reloaded loads later", () => {
+  const { music, musicReady, voice, voiceReady, playFor } = playPodcast(0, "audio", "", 10);
+  for (const el of [music, voice])
+    Object.defineProperty(el, "played", { get: () => ({ length: 1 }), configurable: true });
+  const setAttribute = music.setAttribute.bind(music);
+  music.setAttribute = (name: string, value: string) => {
+    if (name === "src") musicReady.value = 0;
+    setAttribute(name, value);
+  };
+  voiceReady.value = 4;
+  playFor(1);
+  voiceReady.value = 1;
+  playFor(0.5);
+  expect(musicReady.value).toBe(0);
+
+  window.__player!.seek(6);
+  const landed = music.currentTime;
+  musicReady.value = 1;
+  music.dispatchEvent(new Event("loadedmetadata"));
+
+  expect(music.currentTime).toBe(landed);
+});
+
 it("a hold for data does not reload a later clip", () => {
   const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
   const mark = document.createElement("meta");
@@ -273,7 +336,7 @@ it("a hold for data does not reload a later clip", () => {
   playFor(0.5);
 
   mark.remove();
-  expect(armed).toBe("auto");
+  expect(armed).toBe("metadata");
   expect(later.preload).toBe(armed);
   expect(load.mock.contexts.filter((el) => el === later).length).toBe(before);
 });

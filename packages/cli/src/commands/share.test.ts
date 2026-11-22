@@ -75,6 +75,33 @@ it("reports the failed attempt on stderr without calling the previous version re
   expect(out).toHaveBeenCalledWith("Previous shared version: https://hyperframes.dev/r/previous");
   expect(out.mock.calls.flat().join(" ")).not.toContain("still processing");
 });
+it("escapes dynamic text for terminal output and preserves failure fields in JSON", async () => {
+  const raw = "detail" + String.fromCharCode(27, 13, 7, 155, 9, 10);
+  const shown = "detail\\x1b\\x0d\\x07\\x9b\\x09\\x0a";
+  const out = vi.spyOn(console, "log").mockImplementation(() => {});
+  const err = vi.spyOn(console, "error").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "failed",
+    source: {},
+    version: { failure: raw },
+    previousUrl: raw,
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(err).toHaveBeenCalledWith(shown);
+  expect(out).toHaveBeenCalledWith(`Previous shared version: ${shown}`);
+  await runCommand(command, { rawArgs: ["--status", "--json"] });
+  expect(JSON.parse(String(out.mock.calls.at(-1)?.[0]))).toMatchObject({
+    error: { message: raw },
+    version: { failure: raw },
+    previousUrl: raw,
+  });
+  err.mockClear();
+  mocks.run.mockRejectedValue(new Error(raw));
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(err).toHaveBeenCalledWith(shown);
+  await runCommand(command, { rawArgs: ["--status", "--json"] });
+  expect(JSON.parse(String(out.mock.calls.at(-1)?.[0])).error.message).toBe(raw);
+});
 it("still opens management when the latest export failed", async () => {
   const out = vi.spyOn(console, "log").mockImplementation(() => {});
   await runCommand(command, { rawArgs: ["--manage", "--json"] });
@@ -117,6 +144,33 @@ it("deduplicates progress and terminates each message before the friendly error"
     "Sharing: uploading\n",
   ]);
   expect(friendly).toHaveBeenCalledWith("Sharing blocked.");
+});
+
+// fails without the fix: the failure line reached the terminal with its control characters live.
+it("prints a failure's control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  const friendly = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  mocks.run.mockRejectedValue(new Error(`Sharing blocked${esc}[2J.\nTry again`));
+  await runCommand(command, { rawArgs: ["--private", "-y"] });
+  expect(friendly).toHaveBeenLastCalledWith("Sharing blocked\\x1b[2J.\\x0aTry again");
+});
+
+// fails without the fix: a failed export's reason reached the terminal with its control characters live.
+it("prints a failed export's control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  const friendly = vi.spyOn(console, "error").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "failed",
+    ready: false,
+    url: null,
+    previousUrl: null,
+    manageUrl: "https://hyperframes.dev/shares",
+    source: { at: "not_checked" },
+    version: { failure: `Export stopped${esc}]0;t${String.fromCharCode(7)}` },
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(friendly).toHaveBeenLastCalledWith("Export stopped\\x1b]0;t\\x07");
 });
 
 it.each(["owner@example.com", "another@example.com"])(
@@ -270,11 +324,27 @@ describe("a received folder whose record names an existing review", () => {
     expect(mocks.run).not.toHaveBeenCalled();
   });
 
-  it("returns the existing link without asking when nothing would change", async () => {
+  it("returns the existing link without asking, held to the review it read", async () => {
+    mocks.status
+      .mockResolvedValueOnce(linked)
+      .mockResolvedValue({ ...linked, reviewId: "rev_other" });
     vi.spyOn(console, "log").mockImplementation(() => {});
     await runCommand(command, { rawArgs: ["--json"] });
+    expect(mocks.confirm).not.toHaveBeenCalled();
     expect(mocks.run).toHaveBeenCalledWith(
-      expect.not.objectContaining({ confirmedReview: expect.anything() }),
+      expect.objectContaining({ confirmedReview: "rev_theirs" }),
+    );
+  });
+
+  it("holds a first share to a new review when the record names none at the read", async () => {
+    mocks.status
+      .mockResolvedValueOnce({ ...linked, reviewId: null, share: null, ready: false, url: null })
+      .mockResolvedValue(linked);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, { rawArgs: ["--public", "--json"] });
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.run).toHaveBeenCalledWith(
+      expect.objectContaining({ audience: "public", confirmedReview: null }),
     );
   });
 
@@ -300,4 +370,43 @@ describe("a received folder whose record names an existing review", () => {
       expect.not.objectContaining({ confirmedReview: expect.anything() }),
     );
   });
+});
+
+// fails without the fix: the finished share's link reached the terminal with its control characters live.
+it("prints a ready share's link with control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "shared",
+    ready: true,
+    url: `https://hyperframes.dev/review/a${esc}[2J`,
+    previousUrl: null,
+    manageUrl: "https://hyperframes.dev/shares",
+    source: { at: "not_checked" },
+    version: {},
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(log).toHaveBeenLastCalledWith(
+    "Shared video ready: https://hyperframes.dev/review/a\\x1b[2J",
+  );
+});
+
+// fails without the fix: the earlier version's link reached the terminal with its control characters live.
+it("prints the earlier version's link with control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "failed",
+    ready: false,
+    url: null,
+    previousUrl: `https://hyperframes.dev/review/b${esc}[2J`,
+    manageUrl: "https://hyperframes.dev/shares",
+    source: { at: "not_checked" },
+    version: { failure: "Export stopped" },
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(log).toHaveBeenLastCalledWith(
+    "Previous shared version: https://hyperframes.dev/review/b\\x1b[2J",
+  );
 });

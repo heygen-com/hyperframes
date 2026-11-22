@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import {
   writeConfigWithResult,
@@ -8,6 +9,7 @@ import {
 import { effectiveTelemetryStatus, type TelemetryStatusSource } from "../telemetry/policy.js";
 import { c } from "../ui/colors.js";
 import { CliUsageError, failCommand, failUsage } from "../utils/commandResult.js";
+import { printFailureLine } from "../utils/jsonError.js";
 import type { Example } from "./_examples.js";
 
 export const examples: Example[] = [
@@ -35,9 +37,10 @@ function setTelemetryEnabled(enabled: boolean): void {
   config.telemetryEnabled = enabled;
   const result = writeConfigWithResult(config);
   if (!result.ok) {
-    console.error(
-      `\n  ${c.error("\u2717")}  Could not persist telemetry preference to ${c.accent(CONFIG_PATH)}\n` +
-        `  ${c.dim("Reason:")} ${result.error}\n`,
+    printFailureLine(
+      (show) =>
+        `\n  ${c.error("\u2717")}  Could not persist telemetry preference to ${c.accent(show(CONFIG_PATH))}\n` +
+        `  ${c.dim("Reason:")} ${show(String(result.error))}\n`,
     );
     failCommand();
   }
@@ -75,10 +78,10 @@ function runStatus(json: boolean): void {
   console.log();
   console.log(`  ${c.dim("Status:")}     ${status}`);
   console.log(`  ${c.dim("Source:")}     ${effective.source}`);
-  console.log(`  ${c.dim("Config:")}     ${c.accent(CONFIG_PATH)}`);
+  console.log(`  ${c.dim("Config:")}     ${c.accent(terminalText(CONFIG_PATH))}`);
   // Machine-local safety state (no identity): survives a config wipe so a
   // tripped experiment circuit breaker stays tripped. Listed for transparency.
-  console.log(`  ${c.dim("State:")}      ${c.accent(STATE_PATH)}`);
+  console.log(`  ${c.dim("State:")}      ${c.accent(terminalText(STATE_PATH))}`);
   console.log(`  ${c.dim("Tracked commands:")} ${c.bold(String(config.commandCount))}`);
   console.log();
   console.log(`  ${c.dim("Disable:")}    ${c.accent("hyperframes telemetry disable")}`);
@@ -140,8 +143,9 @@ ${c.dim("You can also set")} ${c.accent("HYPERFRAMES_NO_TELEMETRY=1")} ${c.dim("
       case "status":
         return runStatus(args.json);
       default:
-        console.error(
-          `${c.error("Unknown subcommand:")} ${subcommand}\n\nRun ${c.accent("hyperframes telemetry --help")} for usage.`,
+        printFailureLine(
+          (show) =>
+            `${c.error("Unknown subcommand:")} ${show(String(subcommand))}\n\nRun ${c.accent("hyperframes telemetry --help")} for usage.`,
         );
         failUsage();
     }

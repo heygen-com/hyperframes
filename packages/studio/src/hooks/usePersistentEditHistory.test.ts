@@ -83,6 +83,7 @@ it("an edit Studio saved is undone and redone by the project's history, with the
     undoes: expect.any(String),
     paths: ["index.html"],
     files: { "index.html": { previous: "B", restored: "A" } },
+    revision: expect.any(Number),
   });
   expect(file()).toBe("A");
 

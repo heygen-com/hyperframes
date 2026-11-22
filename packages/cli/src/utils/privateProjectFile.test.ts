@@ -29,6 +29,7 @@ import {
 
 const zeroFileIds = vi.hoisted(() => ({ on: false }));
 const opens = vi.hoisted(() => ({ path: "", seen: 0, replacing: 0 }));
+const refusals = vi.hoisted(() => ({ ending: "", left: 0 }));
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -37,6 +38,12 @@ vi.mock("node:fs", async (importOriginal) => {
     return zeroFileIds.on && stat ? Object.assign(stat, { dev: 0n, ino: 0n }) : stat;
   }) as typeof actual.lstatSync;
   const openSync = ((...args: Parameters<typeof actual.openSync>) => {
+    const opened = String(args[0]).replaceAll("\\", "/");
+    if (refusals.left > 0 && refusals.ending && opened.endsWith(refusals.ending)) {
+      refusals.left -= 1;
+      const code = process.platform === "win32" ? "EPERM" : "EBUSY";
+      throw Object.assign(new Error(`${code}: open '${opened}'`), { code });
+    }
     const fd = actual.openSync(...args);
     if (args[0] !== opens.path) return fd;
     opens.seen += 1;
@@ -55,6 +62,7 @@ let dir: string | undefined;
 afterEach(() => {
   zeroFileIds.on = false;
   Object.assign(opens, { path: "", seen: 0, replacing: 0 });
+  Object.assign(refusals, { ending: "", left: 0 });
   vi.unstubAllEnvs();
   if (dir) rmSync(dir, { recursive: true, force: true });
   dir = undefined;
@@ -549,6 +557,17 @@ describe("recordReceivedFiles", () => {
     recordReceivedFiles(root, ["mine.html"]);
     await new Promise((resolve) => other.once("exit", resolve));
     expect(listed(root)).toEqual(["hyperframes.json", "mine.html", "theirs.html"]);
+  });
+
+  // fails without the fix: Windows refuses a new lock with EPERM while the last writer's is still being deleted, and
+  // that failed the write instead of waiting (CI: a Windows run of the test above).
+  it("waits while the lock file is held (EPERM on Windows, EBUSY elsewhere), then takes it", () => {
+    const root = project();
+    // Matched by its ending: Windows may spell the temp folder short (RUNNER~1) where the code resolves it long.
+    Object.assign(refusals, { ending: "/.hyperframes/received-files.json.lock", left: 2 });
+    expect(recordReceivedFiles(root, ["mine.html"])).toEqual(["mine.html"]);
+    expect(refusals.left).toBe(0);
+    expect(listed(root)).toEqual(["hyperframes.json", "mine.html"]);
   });
 
   it("takes a project folder however its path is spelled", () => {

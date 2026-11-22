@@ -47,7 +47,7 @@ it.skipIf(process.platform === "win32")(
     for (let turn = 0; turn < 5; turn++) await new Promise((next) => setImmediate(next));
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(5000);
-    expect(await outcome).toMatch(/did not answer within 5000 ms/);
+    expect(await outcome).toMatch(/did not answer within 5000 ms\. The save may still land later/);
     vi.useRealTimers();
 
     // The drive answers: the given-up write finishes and frees the lock, so the next write takes it (one still held

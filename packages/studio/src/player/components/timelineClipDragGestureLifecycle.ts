@@ -80,6 +80,7 @@ interface TimelineClipDragGestureLifecycleInput {
     ((patches: StackingPatch[]) => Promise<unknown> | void) | undefined
   >;
   refreshAfterLaneMoveRef: RefObject<(() => void) | undefined>;
+  dropOptionsRef?: RefObject<Pick<DragCommitDeps, "insertOnClipDrop" | "onDropRefused">>;
 }
 
 export function mountTimelineClipDragGestureLifecycle({
@@ -118,6 +119,7 @@ export function mountTimelineClipDragGestureLifecycle({
   readZIndexRef,
   onStackingPatchesRef,
   refreshAfterLaneMoveRef,
+  dropOptionsRef,
 }: TimelineClipDragGestureLifecycleInput): () => void {
   const clearSuppressedClick = () => {
     requestAnimationFrame(() => {
@@ -308,6 +310,7 @@ export function mountTimelineClipDragGestureLifecycle({
       readZIndex: readZIndexRef.current,
       onStackingPatches: onStackingPatchesRef.current,
       refreshAfterLaneMove: refreshAfterLaneMoveRef.current,
+      ...dropOptionsRef?.current,
     });
     unlinkAltEdited(drag);
   };

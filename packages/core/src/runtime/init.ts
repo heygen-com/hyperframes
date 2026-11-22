@@ -23,6 +23,7 @@ import {
   giveBackWhenDue,
   isLongSource,
   preloadMedia,
+  prefetchMedia,
   prepareUpcomingMedia,
   releaseMedia,
   lengthIsAuthored,
@@ -246,7 +247,7 @@ import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } fro
 import { cutToHostSlots, MEDIA_START_BASIS_ATTR } from "../mediaTiming";
 import { settleFirstFrameCompositionReadiness } from "../compositionReadiness";
 import { AUTHORED_DURATION_ATTR, AUTHORED_END_ATTR } from "./authoredTiming";
-import { createTimingRecordFilter } from "./mutationRecords";
+import { createRecordFilter, createTimingRecordFilter } from "./mutationRecords";
 import {
   clearRuntimeData,
   setRuntimeData,
@@ -1479,6 +1480,10 @@ export function initSandboxRuntimeModular(): void {
     "data-height",
   ];
   const recordsMoveTiming = createTimingRecordFilter(COMPOSITION_TIMING_ATTRIBUTES);
+  const MEMBERSHIP_ATTRIBUTES = ["data-hidden"];
+  const recordsMoveMembership = createRecordFilter(
+    MEMBERSHIP_ATTRIBUTES.map((name) => `[${name}]`).join(","),
+  );
   const COMPOSITION_TIMING_MEDIA_EVENTS = ["loadedmetadata", "durationchange", "emptied"] as const;
   let durationFloorsCache: DurationFloors | null = null;
   let durationFloorsRevision = -1;
@@ -1497,8 +1502,7 @@ export function initSandboxRuntimeModular(): void {
   const queryForTransport = (selector: string): Element[] => {
     if (!compositionTimingObserver || renderCaptureSeekStarted)
       return Array.from(document.querySelectorAll(selector));
-    if (recordsMoveTiming(compositionTimingObserver.takeRecords()))
-      invalidateCompositionTimingCaches();
+    takeTimingRecords(compositionTimingObserver.takeRecords());
     const cached = queryCache.get(selector);
     if (cached) return cached;
     const nodes = Array.from(document.querySelectorAll(selector));
@@ -1520,6 +1524,15 @@ export function initSandboxRuntimeModular(): void {
     // transport is waiting for: a timing attribute edited, a sub-composition
     // mounted, media metadata arriving. One signal, two readers.
     wakeTransport();
+  };
+
+  const takeTimingRecords = (records: readonly MutationRecord[]) => {
+    const timing = records.filter(
+      (record) =>
+        record.type !== "attributes" || !MEMBERSHIP_ATTRIBUTES.includes(record.attributeName ?? ""),
+    );
+    if (recordsMoveTiming(timing)) invalidateCompositionTimingCaches();
+    else if (recordsMoveMembership(records)) queryCache.clear();
   };
 
   const deriveDurationFloors = (): DurationFloors => {
@@ -1552,30 +1565,24 @@ export function initSandboxRuntimeModular(): void {
     const pending = compositionTimingObserver?.takeRecords() ?? [];
     write();
     const ours = compositionTimingObserver?.takeRecords() ?? [];
-    if (
-      recordsMoveTiming(pending) ||
-      recordsMoveTiming(ours.filter((record) => record.target !== el))
-    )
-      invalidateCompositionTimingCaches();
+    takeTimingRecords([...pending, ...ours.filter((record) => record.target !== el)]);
   };
 
   const withoutOwnCompositionRecords = (write: () => void) => {
     const pending = compositionTimingObserver?.takeRecords() ?? [];
     write();
     compositionTimingObserver?.takeRecords();
-    if (recordsMoveTiming(pending)) invalidateCompositionTimingCaches();
+    takeTimingRecords(pending);
   };
 
   const watchCompositionTimingInputs = () => {
     if (compositionTimingObserver || typeof MutationObserver === "undefined") return;
-    compositionTimingObserver = new MutationObserver((records) => {
-      if (recordsMoveTiming(records)) invalidateCompositionTimingCaches();
-    });
+    compositionTimingObserver = new MutationObserver(takeTimingRecords);
     compositionTimingObserver.observe(document.documentElement, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: COMPOSITION_TIMING_ATTRIBUTES,
+      attributeFilter: [...COMPOSITION_TIMING_ATTRIBUTES, ...MEMBERSHIP_ATTRIBUTES],
     });
     // Media duration changes are published as events, not DOM mutations, and
     // they do not bubble — so listen in the capture phase, which reaches every
@@ -1607,9 +1614,7 @@ export function initSandboxRuntimeModular(): void {
     // here makes the caches correct within a task, not just across tasks.
     // Taking the records suppresses the callback for them, which is exactly
     // equivalent since the callback only bumps the revision.
-    if (compositionTimingObserver && recordsMoveTiming(compositionTimingObserver.takeRecords())) {
-      invalidateCompositionTimingCaches();
-    }
+    if (compositionTimingObserver) takeTimingRecords(compositionTimingObserver.takeRecords());
     // `window.__timelines` is a plain object: no MutationObserver and no event
     // can see a composition script registering into it or lengthening what it
     // already registered, so its shape is polled like everything else no
@@ -2752,6 +2757,7 @@ export function initSandboxRuntimeModular(): void {
     const el = event.currentTarget;
     if (!freesBufferedVideo(el) || mediaNearPlayhead.get(el) !== false || el.readyState === 0)
       return;
+    el.preload = "none";
     withoutOwnTimingRecords(el, () => releaseMedia(el, true));
   };
   const onMediaErrorForProxy = (event: Event) => {
@@ -2944,7 +2950,7 @@ export function initSandboxRuntimeModular(): void {
     if (before.value) el.style.setProperty("display", before.value, before.priority);
     else el.style.removeProperty("display");
   };
-  const dataHiddenDisplayNodes = new WeakSet<StylableElement>();
+  const dataHiddenDisplayNodes = new Set<StylableElement>();
   // A data-hidden toggle on (or affecting) an audio element must re-schedule
   // WebAudio playback so the hidden clip's source is dropped/restored mid-
   // playback. Batched to one call per syncTimedElementVisibility pass, not
@@ -3222,7 +3228,7 @@ export function initSandboxRuntimeModular(): void {
     compactWaitingForSlot();
   };
   const startPrefetch = (el: HTMLMediaElement) => {
-    preloadMedia(el);
+    prefetchMedia(el);
     prepareInWindow(el);
     if (prefetching.has(el) || el.readyState >= 3) return;
     prefetching.add(el);
@@ -3311,6 +3317,19 @@ export function initSandboxRuntimeModular(): void {
       else startPrefetch(el);
     }
   };
+  const moveMediaWindow = (time: number, clips: RuntimeMediaClip[]) =>
+    withTimingResolver(() => {
+      const visibleAt = timedVisibilityAt();
+      for (const el of metadataBoundMedia) armedFrom.delete(el);
+      for (const el of metadataBoundMedia) {
+        if (mediaNearPlayhead.get(el) !== true || clips.some((clip) => clip.el === el)) continue;
+        if (visibleAt(el, time) || dueSoon(el, visibleAt, time, RELEASE_LOOKAHEAD_SECONDS))
+          continue;
+        preloadNearPlayhead(el, false, false, time, false);
+      }
+      for (const { el } of clips)
+        if (mediaNearPlayhead.get(el) === false) mediaNearPlayhead.set(el, true);
+    });
   // Held past the look-ahead so a scrub across its edge does not refetch, and while playing when
   // due at the loop start.
   const dueAtLoopStart = (el: HTMLMediaElement, visibleAt: ReturnType<typeof timedVisibilityAt>) =>
@@ -3430,6 +3449,7 @@ export function initSandboxRuntimeModular(): void {
     if (timingRevision !== undefined) refreshWaitingForSlotOrder(timingRevision);
     // While the scene the playhead landed in mounts, the page keeps what it last drew.
     if (moveSceneWindow(currentTime)) return;
+    const seekOwnsMedia = previewSeek?.targetTime !== undefined && !previewSeek.committing;
     const rootComp = resolveRootCompositionElement();
     let decidedTimedClip = false;
     const visibleAt = timedVisibilityAt(timingRevision);
@@ -3437,6 +3457,12 @@ export function initSandboxRuntimeModular(): void {
       playedFromSeconds === undefined || timingRevision === undefined
         ? null
         : unchangedSincePlayedFrom(playedFromSeconds, currentTime, rootComp, timingRevision);
+    for (const node of dataHiddenDisplayNodes) {
+      if (node.isConnected && node.hasAttribute("data-hidden")) continue;
+      restoreDisplay(node);
+      dataHiddenDisplayNodes.delete(node);
+      if (nodeAffectsAudio(node)) hiddenAudioDirty = true;
+    }
     for (const rawNode of visibilityNodes) {
       if (!isStylableElement(rawNode)) continue;
 
@@ -3450,12 +3476,6 @@ export function initSandboxRuntimeModular(): void {
           colorGradingRuntime?.setSourceVisibility(rawNode, false);
         }
         continue;
-      }
-
-      if (dataHiddenDisplayNodes.has(rawNode)) {
-        restoreDisplay(rawNode);
-        dataHiddenDisplayNodes.delete(rawNode);
-        if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
       }
 
       const hasClipWindow = rawNode.hasAttribute("data-start");
@@ -3503,7 +3523,12 @@ export function initSandboxRuntimeModular(): void {
       if (upcoming && !rawNode.hasAttribute(STUDIO_PREVIEW_UPCOMING_ATTR))
         loadPreviewImagesIn(rawNode);
       rawNode.toggleAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, upcoming);
-      if (isMediaElement(rawNode) && metadataBoundMedia.has(rawNode) && inPreloadWindow(rawNode))
+      if (
+        !seekOwnsMedia &&
+        isMediaElement(rawNode) &&
+        metadataBoundMedia.has(rawNode) &&
+        inPreloadWindow(rawNode)
+      )
         preloadNearPlayhead(
           rawNode,
           isVisibleNow,
@@ -5089,6 +5114,7 @@ export function initSandboxRuntimeModular(): void {
       },
       prepare: (clips, time, signal, settled) => {
         moveSceneWindow(time);
+        moveMediaWindow(time, clips);
         for (const { el } of clips) {
           if (!isVideoElement(el) || el.videoWidth > 0) continue;
           if (el.preload === "none") el.preload = "metadata";
@@ -5143,6 +5169,7 @@ export function initSandboxRuntimeModular(): void {
     clipsAt: previewVideoClipsAt,
     prepare: (clips, time) => {
       moveSceneWindow(time);
+      moveMediaWindow(time, clips);
       for (const clip of clips) {
         const { el } = clip;
         if (el.preload !== "auto") el.preload = "auto";
@@ -6097,6 +6124,41 @@ export function initSandboxRuntimeModular(): void {
     requestTransportTick();
   };
 
+  // A held film plays nothing, yet a clip that has played keeps its response open once it has buffered
+  // enough, and the bytes it has not read count against the connection every file shares: the clip the
+  // hold waits for then gets none. Each such clip reloads at preload metadata, which the browser ends
+  // once the clip can play, and the hold waits for it too. WebKit keeps its own hold-back.
+  const reloadPlayedClipsForHold = (
+    time: number,
+    waitingFor: HTMLMediaElement[],
+  ): HTMLMediaElement[] =>
+    mediaClipsInWindow
+      .filter(
+        ({ el, start, end }) =>
+          !isWebKit() &&
+          !waitingFor.includes(el) &&
+          isInClipWindow(time, start, end) &&
+          isPlayableTrack(el) &&
+          el.played.length > 0 &&
+          !webAudio.ownsElement(el),
+      )
+      .map((clip) => {
+        const { el } = clip;
+        el.preload = "metadata";
+        withoutOwnTimingRecords(el, () => releaseMedia(el));
+        if (el.readyState === 0)
+          el.addEventListener(
+            "loadedmetadata",
+            () => {
+              const sameHold =
+                bufferingFor.includes(el) && Math.abs(state.currentTime - time) < 1e-3;
+              if (sameHold) el.currentTime = mediaElementTime(mediaSourceTimeAt(clip, time));
+            },
+            { once: true },
+          );
+        return el;
+      });
+
   const isPlayableTrack = (el: HTMLMediaElement): boolean =>
     el.isConnected &&
     !isSilencedByHidden(el) &&
@@ -6418,6 +6480,7 @@ export function initSandboxRuntimeModular(): void {
       if (clock.isPlaying() && notReady.length > 0) {
         bufferingFor = notReady;
         haltPlayback(true);
+        bufferingFor = [...notReady, ...reloadPlayedClipsForHold(state.currentTime, notReady)];
       } else if (
         bufferingFor.length > 0 &&
         !mediaNotReadyAt(state.currentTime, canResumeFrom).some((el) => bufferingFor.includes(el))

@@ -25,6 +25,14 @@ export const examples: Example[] = [
   ["Open sharing settings on the web", "hyperframes share --manage"],
 ];
 
+function escapeTabs(text: string): string {
+  return text.replaceAll("\t", "\\x09");
+}
+
+function shareLine(text: string): string {
+  return terminalText(escapeTabs(text));
+}
+
 export default defineCommand({
   meta: {
     name: "share",
@@ -78,7 +86,7 @@ export default defineCommand({
       let lastProgress = "";
       const service: ShareService = createShareService(project.dir, (value) => {
         if (!value || args.json) return;
-        const message = `Sharing: ${value.step}${value.slow ? " (still processing)" : ""}`;
+        const message = `Sharing: ${shareLine(value.step)}${value.slow ? " (still processing)" : ""}`;
         if (message !== lastProgress) process.stderr.write(`${message}\n`);
         lastProgress = message;
       });
@@ -92,7 +100,7 @@ export default defineCommand({
         console.log(
           JSON.stringify({ ...jsonFailure(failure.code, failure.message), error: failure }),
         );
-      else console.error(failure.message);
+      else console.error(terminalText(escapeTabs(failure.message)));
       setCommandExitCode(error instanceof CliUsageError ? 2 : 1);
     }
   },
@@ -189,9 +197,10 @@ async function confirmNamedReview(
     input.confirmedReview = args.review;
     return;
   }
-  if (!changesNamedReview(current, input)) return;
-  if (!canAsk(args)) throw reviewConfirmationRequired(current);
-  await askToChangeReview(current);
+  if (changesNamedReview(current, input)) {
+    if (!canAsk(args)) throw reviewConfirmationRequired(current);
+    await askToChangeReview(current);
+  }
   input.confirmedReview = current.reviewId;
 }
 
@@ -210,8 +219,8 @@ async function askToChangeReview(current: ShareState) {
   console.log(
     `  ${c.bold("Sharing changes that review under your account: who can open it, its link or its versions.")}`,
   );
-  console.log(`  ${c.dim(`Review: ${namedReview(current)}`)}`);
-  if (current.share?.url) console.log(`  ${c.dim(`Link: ${terminalText(current.share.url)}`)}`);
+  console.log(`  ${c.dim(`Review: ${shareLine(namedReview(current))}`)}`);
+  if (current.share?.url) console.log(`  ${c.dim(`Link: ${shareLine(current.share.url)}`)}`);
   console.log(`  ${c.dim("If you did not share this review before, cancel.")}`);
   console.log();
   const approved = await prompts.confirm({ message: "Share to this review?", initialValue: false });
@@ -276,13 +285,13 @@ async function presentSuccessfulResult(result: ShareState, input: ShareAction, j
   if (json) console.log(JSON.stringify({ ok: true, ...result }));
   else if (result.activity)
     console.log(
-      `Sharing: ${result.activity.step.replaceAll("_", " ")}. Run hyperframes share --status to check progress.`,
+      `Sharing: ${shareLine(result.activity.step.replaceAll("_", " "))}. Run hyperframes share --status to check progress.`,
     );
   else if (result.upToDate) console.log("Already up to date.");
   else if (input.action === "manage") {
-    console.log(result.manageUrl);
+    console.log(shareLine(result.manageUrl));
     if (!isUnattended()) await (await import("open")).default(result.manageUrl);
-  } else if (result.ready) console.log(`Shared video ready: ${result.url}`);
+  } else if (result.ready) console.log(shareLine(`Shared video ready: ${result.url}`));
   else if (result.state === "not_shared") console.log("This project has not been shared yet.");
   else if (result.state === "link_off")
     console.log("This share's link is off. Run hyperframes share --manage to turn it on.");
@@ -294,8 +303,9 @@ function presentFailure(result: ShareState, json: boolean) {
   if (json)
     console.log(JSON.stringify({ ...result, ...jsonFailure("share_export_failed", message) }));
   else {
-    console.error(message);
-    if (result.previousUrl) console.log(`Previous shared version: ${result.previousUrl}`);
+    console.error(shareLine(message));
+    if (result.previousUrl)
+      console.log(`Previous shared version: ${shareLine(result.previousUrl)}`);
   }
   setCommandExitCode(1);
 }

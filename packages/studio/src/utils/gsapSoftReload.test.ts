@@ -3,6 +3,7 @@
 
 import { patchRuntimeTweenInPlace } from "../hooks/gsapRuntimePatch";
 import { afterEach, describe, it, expect, vi } from "vitest";
+import { GSAP_PLUGIN_LOAD_ATTR, NO_PATH_TWEEN_META } from "@hyperframes/core/gsap-cdn";
 import {
   readNestedFiles,
   applySoftReload,
@@ -316,7 +317,7 @@ window.__timelines["root"] = tl;`;
     await Promise.resolve();
     expect(onAsyncFailure).toHaveBeenCalledTimes(1);
     expect(contentWindow.__hfForceTimelineRebind).not.toHaveBeenCalled();
-    expect(contentWindow.__hfMotionPathPluginLoading).toBe(false);
+    expect(contentWindow.__hfMotionPathWaiters).toBeUndefined();
   });
 
   it("loads a missing soft-reload plugin from the iframe mirror and reports its failure", async () => {
@@ -338,7 +339,7 @@ window.__timelines["root"] = tl;`;
     await Promise.resolve();
     expect(onAsyncFailure).toHaveBeenCalledTimes(1);
     expect(contentWindow.__hfForceTimelineRebind).not.toHaveBeenCalled();
-    expect(contentWindow.__hfMotionPathPluginLoading).toBe(false);
+    expect(contentWindow.__hfMotionPathWaiters).toBeUndefined();
     expect(head.querySelectorAll("script")).toHaveLength(1);
   });
 
@@ -458,7 +459,9 @@ describe("applySoftReloadFinalization", () => {
   });
 });
 
-function buildBootstrapIframe(overrides: Record<string, unknown> = {}) {
+/** A preview frame for the plugin preload; `pathFree` is the preview builder's mark that no script can tween along
+ * a path. */
+function buildBootstrapIframe(overrides: Record<string, unknown> = {}, pathFree = false) {
   const head = document.createElement("div");
   const appendedScripts: HTMLScriptElement[] = [];
   const realHeadAppend = head.appendChild.bind(head);
@@ -471,11 +474,15 @@ function buildBootstrapIframe(overrides: Record<string, unknown> = {}) {
   const contentWindow = {
     gsap: { registerPlugin } as Record<string, unknown> | undefined,
     MotionPathPlugin: undefined as unknown,
-    __hfMotionPathPluginLoading: undefined as boolean | undefined,
+    __hfMotionPathWaiters: undefined as unknown[] | undefined,
     ...overrides,
   };
   const contentDocument = {
     createElement: (tag: string) => document.createElement(tag),
+    querySelector: (sel: string) =>
+      pathFree && sel === `meta[name="${NO_PATH_TWEEN_META}"]`
+        ? document.createElement("meta")
+        : null,
     head,
   };
   return {
@@ -547,6 +554,26 @@ describe("ensureMotionPathPluginLoaded", () => {
     });
   });
 
+  // fails without the fix: every GSAP preview fetched the plugin, so an offline one reported its animations broken.
+  it("loads no plugin for a page the preview builder marked as unable to tween along a path", () => {
+    const { iframe, appendedScripts } = buildBootstrapIframe({}, true);
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts).toHaveLength(0);
+  });
+
+  it("loads the plugin for any page without that mark", () => {
+    const { iframe, appendedScripts } = buildBootstrapIframe();
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts).toHaveLength(1);
+  });
+
+  // fails without the fix: the page's GSAP fallback took the plugin's failure for the film's and reported it.
+  it("marks the plugin script as the preview's own load, so the page's GSAP fallback leaves it alone", () => {
+    const { iframe, appendedScripts } = buildBootstrapIframe();
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts[0]!.hasAttribute(GSAP_PLUGIN_LOAD_ATTR)).toBe(true);
+  });
+
   it("loads the plugin at the composition's own gsap version", () => {
     const { iframe, appendedScripts } = buildBootstrapIframe({
       gsap: { version: "3.14.2", registerPlugin: vi.fn() },
@@ -572,7 +599,7 @@ describe("ensureMotionPathPluginLoaded", () => {
       "http://localhost:8080/vendor/npm/gsap@3.14.2/dist/MotionPathPlugin.min.js",
     );
     appendedScripts[0]!.onerror?.(new Event("error"));
-    expect(contentWindow.__hfMotionPathPluginLoading).toBe(false);
+    expect(contentWindow.__hfMotionPathWaiters).toBeUndefined();
     expect(registerPlugin).not.toHaveBeenCalled();
     expect(appendedScripts).toHaveLength(1);
   });
@@ -601,13 +628,13 @@ describe("ensureMotionPathPluginLoaded", () => {
     ensureMotionPathPluginLoaded(iframe);
     expect(appendedScripts).toHaveLength(1);
     expect(appendedScripts[0]!.src).toContain("MotionPathPlugin");
-    expect(contentWindow.__hfMotionPathPluginLoading).toBe(true);
+    expect(contentWindow.__hfMotionPathWaiters).toBeDefined();
 
     // Simulate the CDN load completing; the plugin is now present.
     contentWindow.MotionPathPlugin = {};
     appendedScripts[0]!.onload?.(new Event("load"));
     expect(registerPlugin).toHaveBeenCalledWith(contentWindow.MotionPathPlugin);
-    expect(contentWindow.__hfMotionPathPluginLoading).toBe(false);
+    expect(contentWindow.__hfMotionPathWaiters).toBeUndefined();
   });
 
   it("is idempotent: a second call while loading does not append a second script", () => {
@@ -631,7 +658,7 @@ describe("ensureMotionPathPluginLoaded", () => {
     const { iframe, contentWindow, appendedScripts } = buildBootstrapIframe();
     ensureMotionPathPluginLoaded(iframe);
     appendedScripts[0]!.onerror?.(new Event("error"));
-    expect(contentWindow.__hfMotionPathPluginLoading).toBe(false);
+    expect(contentWindow.__hfMotionPathWaiters).toBeUndefined();
     // A subsequent call can retry (plugin still absent, flag cleared).
     ensureMotionPathPluginLoaded(iframe);
     expect(appendedScripts).toHaveLength(2);

@@ -1,5 +1,6 @@
 import { appendFileSync } from "node:fs";
 import { extname, isAbsolute, resolve } from "node:path";
+import { terminalText } from "@hyperframes/core/terminal-text";
 
 const TOOL_CONTEXT_VERSION = 1;
 
@@ -95,6 +96,8 @@ export function reportArtifacts(
   try {
     appendFileSync(context.events.path, lines.join(""));
   } catch (error) {
-    console.error(`HF_TOOL_CONTEXT events could not be written: ${(error as Error).message}`);
+    console.error(
+      `HF_TOOL_CONTEXT events could not be written: ${terminalText((error as Error).message)}`,
+    );
   }
 }

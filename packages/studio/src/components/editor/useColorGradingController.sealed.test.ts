@@ -52,13 +52,13 @@ const target = { id: "s1-bg", hfId: "hf-bg", selector: "#s1-bg", selectorIndex: 
 function renderController(iframe: HTMLIFrameElement) {
   let latest: ReturnType<typeof useColorGradingController> | undefined;
   const previewIframeRef = { current: iframe };
-  const onSetAttributeLive = vi.fn();
+  const onSetAttributeQuiet = vi.fn();
   function Host() {
     latest = useColorGradingController({
       projectId: "proj",
       element,
       previewIframeRef,
-      onSetAttributeLive,
+      onSetAttributeQuiet,
     });
     return null;
   }

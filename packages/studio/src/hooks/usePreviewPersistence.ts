@@ -40,6 +40,7 @@ import {
 interface HistoryPreviewRestore {
   paths?: string[];
   files?: RestoreFiles;
+  revision?: number;
 }
 
 // ── Types ──
@@ -259,6 +260,7 @@ export function usePreviewPersistence({
         usePlayerStore.getState().currentTime,
         reloadPreview,
         nestedFiles,
+        restore.revision,
       );
       if (strategy === "full") return;
       // A soft restore patched the reverted attributes onto the live preview, but the

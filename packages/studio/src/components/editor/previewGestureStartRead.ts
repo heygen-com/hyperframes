@@ -1,10 +1,12 @@
 /** A gesture on a frame Studio cannot script starts from one `gesture-start` read (core `editingGestureStart.ts`). */
 import { previewGestureStart } from "../../player/lib/previewElements";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
+import type { DomEditSelection } from "./domEditing";
 import type { CropFrameStart } from "./domEditOverlayCrop";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 import { invertManualOffsetDragMatrix, type ManualOffsetDragMatrix } from "./manualOffsetDrag";
 import { flatVisibleRect, groupAwareRect } from "./previewOverlayRects";
+import { findPreviewElementForSelection } from "./previewSelection";
 import { snapContextFromRects, type SnapContext } from "./snapTargetCollection";
 
 export interface PreviewGestureStart {
@@ -15,6 +17,7 @@ export interface PreviewGestureStart {
   /** GSAP's x/y when it owns the element's position, and whether a tween with a duration moves it. */
   gsap: { x: number; y: number; moving: boolean } | null;
   gsapRotation?: number | null;
+  grow?: { a: number; b: number; c: number; d: number };
 }
 
 export interface PreviewGestureStarts {
@@ -68,6 +71,14 @@ export async function measurePreviewGestureStart(
             screenToOffset: screenToOffset(start.move),
             gsap: start.gsap,
             gsapRotation: start.gsapRotation,
+            grow: start.grow
+              ? {
+                  a: start.grow.a * sx,
+                  b: start.grow.b * sy,
+                  c: start.grow.c * sx,
+                  d: start.grow.d * sy,
+                }
+              : undefined,
           },
         },
     ),
@@ -76,6 +87,29 @@ export async function measurePreviewGestureStart(
       reply.snap.map((box) => flatVisibleRect(scale, box)),
     ),
   };
+}
+
+export type Shown = { selection: DomEditSelection; rect: OverlayRect; start?: PreviewGestureStart };
+export type OverChannel = { shown: Shown[]; snap: SnapContext };
+
+/** An opaque frame's `selections` on the page it shows now and what a gesture on them starts from. */
+export async function readShownGestureStarts(
+  iframe: HTMLIFrameElement,
+  overlay: HTMLDivElement | null,
+  path: string | null,
+  selections: DomEditSelection[],
+): Promise<OverChannel | null> {
+  const found = await Promise.all(
+    selections.map((selection) => findPreviewElementForSelection(iframe, selection, path)),
+  );
+  const handles = found.map((element) => element?.handle);
+  if (!overlay || !handles.length || !handles.every(Boolean)) return null;
+  const read = await measurePreviewGestureStart(iframe, overlay, handles as string[]);
+  const shown = selections.flatMap((selection, i) => {
+    const element = read?.elements[i];
+    return element ? [{ selection: { ...selection, handle: handles[i] }, ...element }] : [];
+  });
+  return read && shown.length === selections.length ? { shown, snap: read.snap } : null;
 }
 
 export async function readCropFrameStart(
