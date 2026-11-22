@@ -15,6 +15,7 @@ import {
   hashOverlayPixels,
   mapOverlayToSignalRgba16,
   overlayElementIdsAboveVideo,
+  type OverlayStateSource,
   writeOverlayStates,
 } from "./overlayCapture.js";
 import type {
@@ -295,22 +296,46 @@ describe("writeOverlayStates", () => {
     return { args, progress };
   }
 
+  /** A source over per-candidate fingerprints and pixels, recording what it was asked for. */
+  function fakeSource(keys: string[], pixels: Uint8Array[]) {
+    const probed: number[] = [];
+    const captured: number[] = [];
+    const times: number[] = [];
+    let last: OverlayState | undefined;
+    const source: OverlayStateSource = {
+      async probe(s, time) {
+        probed.push(s.index);
+        times.push(time);
+        last = s;
+        return keys[s.index]!;
+      },
+      async capture(s) {
+        expect(s).toBe(last);
+        captured.push(s.index);
+        return pixels[s.index]!;
+      },
+    };
+    return { source, probed, captured, times };
+  }
+
   it("dedupes identical states onto one PNG and reports cumulative progress", async () => {
     const caption = syntheticRgba(width * height, 21);
     const empty = new Uint8Array(width * height * 4);
     const pixels = [empty, caption, empty, new Uint8Array(caption)];
     const states = [state(0, 0, 10), state(1, 10, 25), state(2, 25, 26), state(3, 26, 40)];
     const { args, progress } = makeArgs(states);
-    const times: number[] = [];
+    // The last state has a new fingerprint but the same pixels as the second: captured, not written.
+    const { source, captured, times } = fakeSource(["gap", "cue", "gap", "cue'"], pixels);
 
-    const result = await writeOverlayStates(args, async (s, time) => {
-      times.push(time);
-      return pixels[s.index]!;
-    });
+    const result = await writeOverlayStates(args, source);
 
     expect(result.uniqueCount).toBe(2);
+    expect(result.candidateCount).toBe(4);
+    expect(captured).toEqual([0, 1, 3]);
+    expect(result.captureCount).toBe(3);
     expect(result.dir).toBe(join(dir, "overlays"));
     expect(result.overlays.map((o) => o.state)).toEqual(states);
+    expect(result.plan.states).toEqual(states);
     expect(result.overlays.map((o) => o.pngPath)).toEqual([
       join(dir, "overlays", "overlay-0.png"),
       join(dir, "overlays", "overlay-1.png"),
@@ -336,26 +361,91 @@ describe("writeOverlayStates", () => {
     expect(written.data.equals(mapOverlayToSignalRgba16(caption, "hlg"))).toBe(true);
   });
 
+  it("folds the candidates of one clip cut into the states on either side of the real flip", async () => {
+    // A cue from frame 30 to 60: each cut claims round(t * fps) +/- 1, so the planner cuts at
+    // 29, 30, 31, 32 and 59, 60, 61, 62. The caption really shows on frames 30..59.
+    const cuts = [0, 29, 30, 31, 32, 59, 60, 61, 62, 90];
+    const states = cuts.slice(0, -1).map((start, i) => state(i, start, cuts[i + 1]!));
+    const shown = (s: OverlayState) => s.captureFrame >= 30 && s.captureFrame < 60;
+    const caption = syntheticRgba(width * height, 4);
+    const empty = new Uint8Array(width * height * 4);
+    const { args } = makeArgs(states);
+    const { source, probed, captured } = fakeSource(
+      states.map((s) => (shown(s) ? "cue" : "gap")),
+      states.map((s) => (shown(s) ? caption : empty)),
+    );
+
+    const result = await writeOverlayStates(args, source);
+
+    expect(probed).toEqual(states.map((s) => s.index));
+    // One screenshot per distinct overlay: the gap after the cue reuses the first gap's capture.
+    expect(captured).toEqual([0, 2]);
+    expect(result.plan.states).toEqual([
+      { index: 0, startFrame: 0, endFrame: 30, captureFrame: 14 },
+      { index: 1, startFrame: 30, endFrame: 60, captureFrame: 30 },
+      { index: 2, startFrame: 60, endFrame: 90, captureFrame: 60 },
+    ]);
+    expect(result.overlays.map((o) => o.state)).toEqual(result.plan.states);
+    expect(result.overlays.map((o) => o.hash)).toEqual([
+      hashOverlayPixels(empty),
+      hashOverlayPixels(caption),
+      hashOverlayPixels(empty),
+    ]);
+    expect(result.plan).toMatchObject({ totalFrames: 90, width, height, fps: args.plan.fps });
+  });
+
+  it("keeps a one-frame change inside a held overlay as its own state", async () => {
+    const states = [state(0, 0, 10), state(1, 10, 11), state(2, 11, 20)];
+    const base = syntheticRgba(width * height, 8);
+    const nudged = new Uint8Array(base);
+    nudged[5] = (nudged[5]! + 1) & 0xff;
+    const { args } = makeArgs(states);
+    const { source, captured } = fakeSource(["a", "b", "a"], [base, nudged, base]);
+
+    const result = await writeOverlayStates(args, source);
+
+    // The return to "a" reuses the first capture: same fingerprint, same pixels.
+    expect(captured).toEqual([0, 1]);
+    expect(result.plan.states.map((s) => [s.startFrame, s.endFrame])).toEqual([
+      [0, 10],
+      [10, 11],
+      [11, 20],
+    ]);
+    expect(result.overlays[1]!.hash).toBe(hashOverlayPixels(nudged));
+    expect(result.uniqueCount).toBe(2);
+  });
+
+  it("merges candidates whose fingerprints differ but whose pixels are identical", async () => {
+    const states = [state(0, 0, 5), state(1, 5, 6), state(2, 6, 12)];
+    const pixels = syntheticRgba(width * height, 2);
+    const { args } = makeArgs(states);
+    const { source, captured } = fakeSource(["a", "b", "b"], [pixels, pixels, pixels]);
+
+    const result = await writeOverlayStates(args, source);
+
+    expect(captured).toEqual([0, 1]);
+    expect(result.plan.states).toEqual([
+      { index: 0, startFrame: 0, endFrame: 12, captureFrame: 2 },
+    ]);
+    expect(result.captureCount).toBe(2);
+    expect(result.uniqueCount).toBe(1);
+  });
+
   it("checks for abort before every state", async () => {
     let calls = 0;
     const { args } = makeArgs([state(0, 0, 5), state(1, 5, 9)], () => {
       calls += 1;
       if (calls === 2) throw new DOMException("aborted", "AbortError");
     });
-    let captured = 0;
-    await expect(
-      writeOverlayStates(args, async () => {
-        captured += 1;
-        return new Uint8Array(width * height * 4);
-      }),
-    ).rejects.toThrow("aborted");
-    expect(captured).toBe(1);
+    const empty = new Uint8Array(width * height * 4);
+    const { source, probed } = fakeSource(["a", "b"], [empty, empty]);
+    await expect(writeOverlayStates(args, source)).rejects.toThrow("aborted");
+    expect(probed).toEqual([0]);
   });
 
   it("rejects a capture of the wrong size", async () => {
     const { args } = makeArgs([state(0, 0, 5)]);
-    await expect(writeOverlayStates(args, async () => new Uint8Array(4))).rejects.toThrow(
-      /expected 16/,
-    );
+    const { source } = fakeSource(["a"], [new Uint8Array(4)]);
+    await expect(writeOverlayStates(args, source)).rejects.toThrow(/expected 16/);
   });
 });

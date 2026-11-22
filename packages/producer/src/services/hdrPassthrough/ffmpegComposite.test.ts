@@ -84,7 +84,10 @@ function request(overrides: RequestOverrides = {}): CompositeRequest {
     plan,
     overlays: {
       overlays: [overlay(states[0]!, "/w/o0.png"), overlay(states[1]!, "/w/o1.png")],
+      plan,
       uniqueCount: 2,
+      candidateCount: 2,
+      captureCount: 2,
       dir: "/w",
       captureMs: 1,
     },

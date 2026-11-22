@@ -113,7 +113,7 @@ async function runHdrPassthrough(
   });
   log.info("[Render] HDR passthrough: compositing cached overlays onto the source video", {
     videoId: eligible.video.id,
-    states: plan.states.length,
+    candidates: plan.states.length,
     totalFrames,
     transfer,
   });
@@ -142,6 +142,8 @@ async function runHdrPassthrough(
   });
   log.info("[Render] HDR passthrough: overlay states captured", {
     states: overlays.overlays.length,
+    candidates: overlays.candidateCount,
+    captures: overlays.captureCount,
     unique: overlays.uniqueCount,
     captureMs: overlays.captureMs,
   });
@@ -150,7 +152,7 @@ async function runHdrPassthrough(
 
   const composite = await compositeAndEncode({
     video: eligible.video,
-    plan,
+    plan: overlays.plan,
     overlays,
     encoder: {
       preset: input.preset,

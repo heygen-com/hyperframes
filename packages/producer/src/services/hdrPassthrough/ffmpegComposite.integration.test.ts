@@ -181,6 +181,13 @@ describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
       pngPath: pngs[i]!,
       hash: String(i),
     }));
+    const plan = {
+      states: planned,
+      fps: FPS,
+      totalFrames: TOTAL_FRAMES,
+      width: WIDTH,
+      height: HEIGHT,
+    };
     const metadata = await extractMediaMetadata(srcPath);
     outputPath = join(dir, "out", "video-only.mp4");
     framesReported = [];
@@ -199,8 +206,16 @@ describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
         colorSpace: metadata.colorSpace,
         metadata,
       },
-      plan: { states: planned, fps: FPS, totalFrames: TOTAL_FRAMES, width: WIDTH, height: HEIGHT },
-      overlays: { overlays, uniqueCount: 3, dir, captureMs: 0 },
+      plan,
+      overlays: {
+        overlays,
+        plan,
+        uniqueCount: 3,
+        candidateCount: planned.length,
+        captureCount: 3,
+        dir,
+        captureMs: 0,
+      },
       encoder: {
         preset: getEncoderPreset("high", "mp4", { transfer: "hlg" }),
         effectiveQuality: 10,
