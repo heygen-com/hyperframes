@@ -25,7 +25,8 @@ const linkMocks = vi.hoisted(() => ({
   writeProjectLink: vi.fn(),
 }));
 
-vi.mock("./projectLink.js", () => ({
+vi.mock("./projectLink.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./projectLink.js")>()),
   writeProjectLink: linkMocks.writeProjectLink,
 }));
 
