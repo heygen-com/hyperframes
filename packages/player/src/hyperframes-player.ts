@@ -201,6 +201,7 @@ class HyperframesPlayer extends HTMLElement {
       getPlaybackRate: () => this.playbackRate,
       getCurrentTime: () => this._currentTime,
       isPaused: () => this._paused,
+      muteFrame: () => this._sendControl("set-media-output-muted", { muted: true }),
     });
 
     this._directTimelineClock = new DirectTimelineClock({
@@ -1339,6 +1340,7 @@ class HyperframesPlayer extends HTMLElement {
       setCompositionSize: (w, h) => this._setCompositionSize(w, h),
       sendControl: (action, extra) => this._sendControl(action, extra),
       getIframeDoc: () => this.iframe.contentDocument,
+      getCompositionUrl: () => this._compositionUrl,
       onRuntimeReady: () => {
         this._runtimeBridgeReady = true;
         this._replayBridgeState();
@@ -1742,7 +1744,6 @@ class HyperframesPlayer extends HTMLElement {
       /* x-origin */
     }
     this._media.promoteToParentProxy(d, (t, o) => this._mirrorParentMediaTime(t, o));
-    this._sendControl("set-media-output-muted", { muted: true });
   }
   _observeDynamicMedia(doc: Document) {
     this._media.setupFromIframe(doc);

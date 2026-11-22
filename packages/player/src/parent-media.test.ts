@@ -29,6 +29,7 @@ function makeManager(overrides: Partial<{ isPaused: boolean; owner: "runtime" | 
     getPlaybackRate: () => 1,
     getCurrentTime: () => 0,
     isPaused: () => overrides.isPaused ?? true,
+    muteFrame: () => {},
   });
   return mgr;
 }
@@ -646,15 +647,137 @@ describe("proxy crossorigin", () => {
     const parent = Object.create(ParentMediaManager.prototype) as ParentMediaManager;
     Object.assign(parent, {
       _entries: [],
-      _urlTaken: () => false,
       _getMuted: () => false,
       _getVolume: () => 1,
       _getPlaybackRate: () => 1,
     });
-    (parent as any)._createEntry("https://x/a.mp3", tag, 0, 5, source);
+    (parent as any)._createEntry(
+      { kind: tag, src: "https://x/a.mp3", start: 0, duration: 5, mediaStart: 0 },
+      source,
+    );
     const proxy = created.find((e) => e.tagName.toLowerCase() === tag)!;
     globalThis.Audio = OrigAudio;
     vi.restoreAllMocks();
     expect(proxy.getAttribute("crossorigin")).toBe("anonymous");
+  });
+});
+
+describe("ParentMediaManager for a sealed film, from its runtime's list", () => {
+  const film = "https://films.test/f/index.html";
+  const clip = (src: string, start = 0) => ({
+    kind: "audio",
+    src,
+    start,
+    duration: 5,
+    mediaStart: 0,
+  });
+
+  function makeSealedManager() {
+    const events: CustomEvent[] = [];
+    const muteFrame = vi.fn();
+    const mgr = new ParentMediaManager({
+      dispatchEvent: (e) => events.push(e as CustomEvent),
+      getMuted: () => false,
+      getVolume: () => 1,
+      getPlaybackRate: () => 1,
+      getCurrentTime: () => 0,
+      isPaused: () => true,
+      muteFrame,
+    });
+    return { mgr, events, muteFrame };
+  }
+
+  it("copies only files under the composition's own folder, without credentials, and reports the rest", () => {
+    const { mgr, events } = makeSealedManager();
+
+    mgr.setupFromList(
+      [
+        clip("https://films.test/f/music/a.m4a"),
+        clip("https://other.test/f/a.m4a"),
+        clip("https://films.test/g/a.m4a"),
+        clip("https://films.test/f/../secret.m4a"),
+        clip("data:audio/mp4;base64,AAAA"),
+      ],
+      film,
+    );
+
+    expect(mgr.entries.map((m) => m.el.src)).toEqual(["https://films.test/f/music/a.m4a"]);
+    expect(mgr.entries[0]!.el.getAttribute("crossorigin")).toBe("anonymous");
+    const refusal = events.find((e) => e.type === "playbackerror");
+    expect(refusal?.detail.refused).toEqual([
+      "https://other.test/f/a.m4a",
+      "https://films.test/g/a.m4a",
+      "https://films.test/f/../secret.m4a",
+      "data:audio/mp4;base64,AAAA",
+    ]);
+  });
+
+  it("copies nothing when the composition has no address of its own", () => {
+    const { mgr } = makeSealedManager();
+    mgr.setupFromList([clip("https://films.test/f/a.m4a")], null);
+    expect(mgr.entries).toHaveLength(0);
+  });
+
+  it("skips a list entry that is not a well-formed clip", () => {
+    const { mgr } = makeSealedManager();
+    mgr.setupFromList(
+      [
+        { kind: "audio", start: 0 },
+        { ...clip("https://films.test/f/a.m4a"), start: Number.NaN },
+        "x",
+        null,
+      ],
+      film,
+    );
+    expect(mgr.entries).toHaveLength(0);
+  });
+
+  it("gives each clip on one file its own copy, and follows the list as it changes", () => {
+    const { mgr } = makeSealedManager();
+    mgr.setupFromList(
+      [clip("https://films.test/f/a.m4a", 0), clip("https://films.test/f/a.m4a", 4)],
+      film,
+    );
+    expect(mgr.entries.map((m) => m.start)).toEqual([0, 4]);
+    const kept = mgr.entries[1];
+
+    mgr.setupFromList([clip("https://films.test/f/a.m4a", 4)], film);
+    expect(mgr.entries).toEqual([kept]);
+  });
+
+  it("mutes the film only once a copy can play instead", () => {
+    const { mgr, muteFrame } = makeSealedManager();
+
+    mgr.promoteToParentProxy(null);
+    expect(muteFrame).not.toHaveBeenCalled();
+
+    mgr.setupFromList([clip("https://films.test/f/a.m4a")], film);
+    expect(muteFrame).toHaveBeenCalled();
+  });
+
+  it("mutes an unsealed film when it takes over with copies of the film's media", () => {
+    const { mgr, muteFrame } = makeSealedManager();
+    document.body.innerHTML = '<audio src="https://films.test/f/a.m4a" data-start="0"></audio>';
+    mgr.setupFromIframe(document);
+    mgr.promoteToParentProxy(document);
+    expect(muteFrame).toHaveBeenCalled();
+    mgr.destroy();
+  });
+
+  it("copies only what a render hears: no copy for a video marked as having no sound", () => {
+    const { mgr } = makeSealedManager();
+    document.body.innerHTML =
+      '<video src="https://films.test/f/v.mp4" data-start="0" data-has-audio="false"></video>' +
+      '<video src="https://films.test/f/w.mp4" data-start="0"></video>';
+    mgr.setupFromIframe(document);
+    expect(mgr.entries.map((m) => m.el.src)).toEqual(["https://films.test/f/w.mp4"]);
+    mgr.destroy();
+  });
+
+  it("never mutes the film for the player's own audio-src track alone", () => {
+    const { mgr, muteFrame } = makeSealedManager();
+    mgr.setupFromUrl("https://cdn.test/narration.mp3");
+    mgr.promoteToParentProxy(null);
+    expect(muteFrame).not.toHaveBeenCalled();
   });
 });
