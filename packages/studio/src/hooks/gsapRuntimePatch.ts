@@ -11,6 +11,7 @@ import {
   type RuntimeTweenChange,
 } from "@hyperframes/core/runtime/patch-tween";
 import { swapWaiting, type SoftReloadWindow } from "@hyperframes/core/runtime/soft-reload";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 
 export type { RuntimeTweenChange, SetPatchProps } from "@hyperframes/core/runtime/patch-tween";
 
@@ -48,7 +49,11 @@ export function patchRuntimeTweenInPlace(
     if (change.kind !== "global-set")
       return patchTween(target, selector, change, compositionId, deferSeek);
     return applyGlobalSet(target, selector, change.props) !== null;
-  } catch {
+  } catch (error) {
+    trackStudioEvent("gsap_instant_patch_threw", {
+      error_name: error instanceof Error ? error.name : typeof error,
+    });
+    console.error("[Studio] An in-place tween patch threw; reloading the preview instead", error);
     return false;
   }
 }
