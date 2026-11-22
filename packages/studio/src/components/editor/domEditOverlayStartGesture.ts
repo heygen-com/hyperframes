@@ -264,9 +264,11 @@ export function startGesture(
     const plain =
       !!pathOffsetMember?.plainTranslate ||
       (frameRotation !== undefined ? frameRotation === null : editsPlainCss(sel.element, "rotate"));
-    const plainRotation = plain && kind === "rotate" ? readCssRotationTarget(sel.element) : null;
+    const frameCss = plain ? start?.cssRotation : undefined;
+    const plainRotation =
+      plain && kind === "rotate" ? (frameCss?.target ?? readCssRotationTarget(sel.element)) : null;
     const rotation = {
-      angle: readRotationBase(sel.element, plain, frameRotation ?? undefined),
+      angle: frameCss?.angle ?? readRotationBase(sel.element, plain, frameRotation ?? undefined),
     };
     const overlayBounds = overlayEl?.getBoundingClientRect();
     const centerX = (overlayBounds?.left ?? 0) + rect.left + rect.width / 2;

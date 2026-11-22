@@ -1,6 +1,12 @@
 import { useLayoutEffect, useRef, type MutableRefObject, type RefObject } from "react";
 import type { PublishSdkSession } from "../utils/sdkCutover";
 import { forgetTimelineOptimisticGestures } from "../player/components/timelineOptimisticRevision";
+import { usePlayerStore } from "../player";
+import {
+  landsOnLaneClip,
+  laneOverlapRefusal,
+  type LaneLanding,
+} from "../player/components/timelineCollision";
 
 /** The editor's one timeline edit queue. `placed` holds, per project, a promise that rejects
  *  when an edit of that project still pending is refused. */
@@ -55,8 +61,20 @@ export const refuseWithEarlier = (error: unknown): never => {
   throw error;
 };
 
-/** Runs `run` after every edit queued before it. When one of those, in the same project, was
- *  refused, `ifEarlierRefused` runs first, and throwing refuses this edit too. */
+/** For an edit the user placed, such as a drop: kept unless it now overlaps a lane clip. */
+export const keepUnlessItOverlaps =
+  (changes: ReadonlyArray<Pick<LaneLanding, "element" | "start">>) => () => {
+    const { elements } = usePlayerStore.getState();
+    const shown = new Map(elements.map((e) => [e.key ?? e.id, e]));
+    const placed = changes.map(({ element, start }) => ({
+      element: shown.get(element.key ?? element.id) ?? element,
+      start,
+    }));
+    if (landsOnLaneClip(elements, placed)) throw laneOverlapRefusal();
+  };
+
+/** Runs `run` after every edit queued before it. When one in its project was refused, `ifEarlierRefused`
+ *  decides (throw to refuse too); with that project no longer shown, the edit is refused outright. */
 export function enqueueTimelineEdit<T>(
   queue: TimelineEditQueue,
   run: (projectId: string) => Promise<T>,
@@ -73,7 +91,8 @@ export function enqueueTimelineEdit<T>(
   const byProject = (queue.placed ??= new Map());
   const earlier = byProject.get(projectId) ?? Promise.resolve();
   const task = queue.current.then(async () => {
-    if (ifEarlierRefused) await earlier.catch(ifEarlierRefused);
+    if (ifEarlierRefused)
+      await earlier.catch(isClosed(queue) ? refuseWithEarlier : ifEarlierRefused);
     if (!projectId) throw new Error("No project to save this edit to");
     return run(projectId);
   });

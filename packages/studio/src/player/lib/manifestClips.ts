@@ -1,4 +1,7 @@
+import { TRANSITION_LABEL_PREFIX } from "@hyperframes/core/studio-preview-mark";
 import type { ClipManifestClip } from "./playbackTypes";
+
+const MAX_TRANSITION_LABEL = 200;
 
 const OPTIONAL_NUMBERS = ["zIndex", "playbackStart", "playbackRate"] as const;
 
@@ -18,7 +21,17 @@ function wellFormedClip(clip: unknown): clip is ClipManifestClip {
   );
 }
 
+const transitionLabelOf = (value: unknown): string | undefined =>
+  typeof value === "string" &&
+  value.length <= MAX_TRANSITION_LABEL &&
+  value.startsWith(TRANSITION_LABEL_PREFIX)
+    ? value
+    : undefined;
+
 /** A preview frame's clip list, keeping only clips whose timing and track are numbers. */
 export function wellFormedClips(clips: readonly unknown[]): ClipManifestClip[] {
-  return clips.filter(wellFormedClip);
+  return clips.filter(wellFormedClip).map(({ transitionLabel, ...clip }) => {
+    const label = transitionLabelOf(transitionLabel);
+    return label ? { ...clip, transitionLabel: label } : clip;
+  });
 }

@@ -5,6 +5,7 @@
  */
 import { isStylableElement, type StylableElement as Styled } from "./domRealm";
 import { elementForHandle } from "./editingHandles";
+import type { EditingDraftEnd, EditingDraftReply } from "./editingDraftEnd";
 import type { EditingDraft, EditingDraftRotate } from "./editingPort";
 
 export const SIZE_PROPERTIES = [
@@ -16,9 +17,10 @@ export const SIZE_PROPERTIES = [
   "max-width",
   "max-height",
 ] as const;
-const DRAWN = ["translate", "rotate", ...SIZE_PROPERTIES] as const;
+const DRAWN = ["translate", "rotate", "transform", ...SIZE_PROPERTIES] as const;
 
 interface Before {
+  draft: number;
   inline: Array<[name: string, value: string, priority: string]>;
   /** The computed translate, split into its axes with each % as px, that a draft's translate adds to. */
   translate: string[];
@@ -33,6 +35,7 @@ type Gsap = {
 const frameGsap = () => (window as unknown as { gsap?: Gsap }).gsap;
 
 const before = new WeakMap<Element, Before>();
+let lastDraft = 0;
 
 /** "calc(50% + 2px) 4px" as its top-level parts. */
 function axes(value: string): string[] {
@@ -82,6 +85,7 @@ function beforeOf(element: Styled): Before {
   if (!saved) {
     const { style } = element;
     saved = {
+      draft: ++lastDraft,
       inline: DRAWN.map((name) => [
         name,
         style.getPropertyValue(name),
@@ -137,25 +141,31 @@ function restoreGsapRotation(element: Styled): void {
 function drawRotate(element: Styled, rotate: EditingDraftRotate | null): void {
   const saved = beforeOf(element);
   if (!rotate) {
-    restore(element, ["rotate"]);
+    restore(element, ["rotate", "transform"]);
     return restoreGsapRotation(element);
   }
   if (rotate.route === "css") return void element.style.setProperty("rotate", `${rotate.angle}deg`);
+  if (rotate.route === "transform")
+    return void element.style.setProperty("transform", rotate.value);
   const gsap = frameGsap();
   saved.gsapRotation ??= Number(gsap?.getProperty?.(element, "rotation")) || 0;
   element.style.setProperty("rotate", "none");
   gsap?.set?.(element, { rotation: rotate.angle });
 }
 
-function apply(element: Styled, draft: EditingDraft): void {
-  if ("end" in draft) {
-    if (draft.end === "restore") {
-      restore(element, DRAWN);
-      restoreGsapRotation(element);
-    }
-    before.delete(element);
-    return;
+function end(element: Styled, ending: EditingDraftEnd): void {
+  const saved = before.get(element);
+  if (!saved || ("draft" in ending && ending.draft !== saved.draft)) return;
+  if (ending.end === "restore") {
+    restore(element, DRAWN);
+    restoreGsapRotation(element);
   }
+  if (ending.end === "keep-size") restore(element, ["translate"]);
+  before.delete(element);
+}
+
+function apply(element: Styled, draft: EditingDraft): void {
+  if ("end" in draft) return end(element, draft);
   if ("rotate" in draft) drawRotate(element, draft.rotate ?? null);
   if (draft.translate) drawTranslate(element, draft.translate);
   else restore(element, ["translate"]);
@@ -164,13 +174,16 @@ function apply(element: Styled, draft: EditingDraft): void {
 }
 
 /** Applies each draft in order; one for an element this load no longer has is skipped. */
-export function drawDrafts(drafts: readonly EditingDraft[]): { drawn: number } {
+export function drawDrafts(drafts: readonly EditingDraft[]): EditingDraftReply {
   let drawn = 0;
+  const numbers: Record<string, number> = {};
   for (const draft of drafts) {
     const element = elementForHandle(draft.handle);
     if (!isStylableElement(element)) continue;
     apply(element, draft);
     drawn++;
+    const saved = before.get(element);
+    if (saved) numbers[draft.handle] = saved.draft;
   }
-  return { drawn };
+  return { drawn, drafts: numbers };
 }

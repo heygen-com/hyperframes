@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { ClipContextMenu } from "./ClipContextMenu";
+import { pointAnchor } from "../../components/ui/menuPosition";
 import type { TimelineClipMenuItem } from "./TimelineTypes";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 
@@ -28,8 +29,7 @@ function renderMenu(hostItems: readonly TimelineClipMenuItem[], onClose = vi.fn(
   act(() =>
     root.render(
       <ClipContextMenu
-        x={10}
-        y={10}
+        anchor={pointAnchor(10, 10)}
         element={element}
         currentTime={1}
         onClose={onClose}
@@ -61,7 +61,10 @@ describe("ClipContextMenu host items", () => {
     unmount();
   });
 
-  it("keeps the menu, host rows included, inside the window by its measured height", () => {
+  it.each([
+    ["a pointer near the window's bottom", pointAnchor(10, 550), 400],
+    ["an anchor element near the window's bottom", { left: 10, top: 540, bottom: 564 }, 390],
+  ])("opens the menu, host rows included, above %s by its measured height", (_, anchor, top) => {
     const innerHeight = Object.getOwnPropertyDescriptor(window, "innerHeight");
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
     const offsetHeight = vi
@@ -77,8 +80,7 @@ describe("ClipContextMenu host items", () => {
       act(() =>
         root.render(
           <ClipContextMenu
-            x={10}
-            y={550}
+            anchor={anchor}
             element={element}
             currentTime={1}
             onClose={vi.fn()}
@@ -92,8 +94,8 @@ describe("ClipContextMenu host items", () => {
           />,
         ),
       );
-      // 150 px measured from y 550 ends 100 px below the window, kept 8 px off its edge.
-      expect(document.body.querySelector<HTMLElement>("[role=menu]")!.style.top).toBe("442px");
+      // 150 px does not fit below, so its bottom lands on the anchor's top, never over it.
+      expect(document.body.querySelector<HTMLElement>("[role=menu]")!.style.top).toBe(`${top}px`);
       act(() => root.unmount());
     } finally {
       offsetHeight.mockRestore();
@@ -144,8 +146,7 @@ describe("ClipContextMenu tools", () => {
           }}
         >
           <ClipContextMenu
-            x={10}
-            y={10}
+            anchor={pointAnchor(10, 10)}
             element={video}
             currentTime={1}
             onClose={vi.fn()}
@@ -166,8 +167,7 @@ describe("ClipContextMenu tools", () => {
     act(() =>
       root.render(
         <ClipContextMenu
-          x={10}
-          y={10}
+          anchor={pointAnchor(10, 10)}
           element={video}
           currentTime={1}
           onClose={vi.fn()}
@@ -223,8 +223,7 @@ function FocusHost({ focus }: { focus: "existing" | "mounted" }) {
       {asked && <input data-testid="mounted" autoFocus />}
       {open && (
         <ClipContextMenu
-          x={10}
-          y={10}
+          anchor={pointAnchor(10, 10)}
           element={element}
           currentTime={1}
           onClose={() => setOpen(false)}

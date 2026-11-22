@@ -1,102 +1,39 @@
-import { readCssRotation } from "../../hooks/draggedGsapPosition";
+import {
+  readCssRotation,
+  readCssRotationTarget,
+  type CssRotationTarget,
+} from "@hyperframes/core/runtime/css-rotation";
 import { roundTo3 } from "../../utils/rounding";
 import type { PatchOperation } from "../../utils/sourcePatcher";
+import type { EditingDraftRotate } from "@hyperframes/core/runtime/editing-port";
 import {
   readStudioRotation,
   restoreStudioRotation,
   type StudioRotationSnapshot,
 } from "./manualEdits";
 import { getOffsetDragGsap } from "./manualOffsetDrag";
-import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
 import { endStudioManualEditGesture, isStudioManualEditGestureCurrent } from "./manualEditGesture";
 import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
 
-function lastRuleTransform(element: HTMLElement): string {
-  let value = "";
-  for (const sheet of Array.from(element.ownerDocument.styleSheets)) {
-    let rules: CSSStyleRule[] = [];
-    try {
-      rules = Array.from(sheet.cssRules) as CSSStyleRule[];
-    } catch {
-      // a cross-origin sheet
-    }
-    for (const rule of rules) {
-      const declared = rule.style?.getPropertyValue("transform");
-      if (declared && element.matches(rule.selectorText)) value = declared;
-    }
-  }
-  return value;
-}
-
-// ponytail: the authored transform if it moves the box, from the last matching rule in sheet order;
-// specificity, !important and @media are not weighed. Weigh them when a film's rule is missed.
-function translatingTransform(element: HTMLElement): string {
-  const view = element.ownerDocument.defaultView;
-  const computed = view?.getComputedStyle(element).transform ?? "none";
-  const m = computed === "none" ? null : new view!.DOMMatrix(computed);
-  if (!m || (m.m41 === 0 && m.m42 === 0)) return "";
-  const value = element.style.getPropertyValue("transform") || lastRuleTransform(element);
-  return value === "none" ? "" : value;
-}
-
-/** Where a plain rotate draws its turn, read once at press: the element's own `rotate`, or, when its
- *  transform translates it (often the translate(-50%, -50%) centring), a rotate() right after that
- *  translate, so the box turns in place in screen space. `share` is what the rest already turns. */
-export interface CssRotationTarget {
-  property: "rotate" | "transform";
-  before: string;
-  after: string;
-  share: number;
-  /** -1 when a mirroring `scale` property flips a turn made inside the transform. */
-  sign: number;
-  /** An inline box does not transform, so the turn makes it inline-block. */
-  inline: boolean;
-}
-
+export type { CssRotationTarget };
 export type PressChoseGsap = null;
 export type RotationCommit = { angle: number; plain?: CssRotationTarget | PressChoseGsap };
 
-const TRANSLATE = /^translate(?:3d|X|Y|Z)?\(/i;
-const OWN_TURN = /^rotate\(\s*-?[\d.]+(?:e[+-]?\d+)?deg\s*\)$/i;
-
-export function readCssRotationTarget(element: HTMLElement): CssRotationTarget {
-  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
-  const inline = style?.display === "inline";
-  const transform = translatingTransform(element);
-  if (!transform) {
-    const share = readCssRotation(element, false);
-    return { property: "rotate", before: "", after: "", share, sign: 1, inline };
-  }
-  const parts = splitTopLevelWhitespace(transform);
-  const lead = parts.findIndex((part) => !TRANSLATE.test(part));
-  const split = lead < 0 ? parts.length : lead;
-  const rest = parts.slice(split);
-  if (OWN_TURN.test(rest[0] ?? "")) rest.shift();
-  const [before, after] = [parts.slice(0, split).join(" "), rest.join(" ")];
-  const [sx = 1, sy = sx] = splitTopLevelWhitespace(style?.getPropertyValue("scale") ?? "").map(
-    Number.parseFloat,
-  );
-  const inlineStyle = element.style;
-  const saved = [
-    inlineStyle.getPropertyValue("transform"),
-    inlineStyle.getPropertyPriority("transform"),
-  ];
-  inlineStyle.setProperty("transform", `${before} ${after}`.trim() || "none");
-  const share = readCssRotation(element);
-  inlineStyle.setProperty("transform", saved[0] ?? "", saved[1] ?? "");
-  return { property: "transform", before, after, share, sign: sx * sy < 0 ? -1 : 1, inline };
-}
+export { readCssRotationTarget };
 
 const cssTurn = (angle: number, target: CssRotationTarget) =>
   roundTo3(target.sign * (angle - target.share));
 
-// ponytail: a turn drawn inside a translating `transform` stays Studio-side; a sealed frame shows it on save.
-const frameTurn = (angle: number, plain: CssRotationTarget | null) => {
-  if (!plain) return { angle, route: "gsap" as const };
+const frameTurn = (angle: number, plain: CssRotationTarget | null): EditingDraftRotate => {
+  if (!plain) return { angle, route: "gsap" };
+  const turn = cssTurn(angle, plain);
   return plain.property === "rotate"
-    ? { angle: cssTurn(angle, plain), route: "css" as const }
-    : null;
+    ? { angle: turn, route: "css" }
+    : { angle: turn, route: "transform", value: turnedTransform(turn, plain) };
 };
+
+const turnedTransform = (turn: number, target: CssRotationTarget) =>
+  [target.before, `rotate(${turn}deg)`, target.after].filter(Boolean).join(" ");
 
 /** Draws `angle` where `target` says, and returns the source patches that save it as drawn. */
 export function applyCssRotation(
@@ -104,11 +41,8 @@ export function applyCssRotation(
   angle: number,
   target = readCssRotationTarget(element),
 ): Array<PatchOperation & { value: string }> {
-  const turn = `${cssTurn(angle, target)}deg`;
-  const value =
-    target.property === "rotate"
-      ? turn
-      : [target.before, `rotate(${turn})`, target.after].filter(Boolean).join(" ");
+  const turn = cssTurn(angle, target);
+  const value = target.property === "rotate" ? `${turn}deg` : turnedTransform(turn, target);
   const patches: Array<PatchOperation & { value: string }> = [
     { type: "inline-style", property: target.property, value },
   ];
@@ -132,8 +66,7 @@ export function applyRotationDraft(
   angle: number,
   plain: CssRotationTarget | null,
 ): void {
-  const rotate = frameTurn(angle, plain);
-  if (rotate) drawPreviewDraft(element, { rotate });
+  drawPreviewDraft(element, { rotate: frameTurn(angle, plain) });
   if (plain) return void applyCssRotation(element, angle, plain);
   element.style.setProperty("rotate", "none");
   getOffsetDragGsap(element)?.set(element, { rotation: angle });
