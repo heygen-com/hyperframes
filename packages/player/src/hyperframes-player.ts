@@ -134,6 +134,12 @@ class HyperframesPlayer extends HTMLElement {
   private _ready = false;
   private _readyBeforeRuntime = false;
   private _readyDocument: Document | null = null;
+  private _awaitingLoad = false;
+  private _documentId: string | null = null;
+  private _leftDocumentId: string | null = null;
+  private _leftDocumentUnknown = false;
+  private _runtimeAnnounces = false;
+  private _timelineHeldForLoad = false;
   private _connected = false;
   private _assetsReady = false;
   private _painted = false;
@@ -1248,8 +1254,18 @@ class HyperframesPlayer extends HTMLElement {
 
   private _onMessage(e: MessageEvent) {
     // The iframe window outlives its documents: a late composition message must not reach a video.
-    if (this._videoSource || this.probe.failed) return;
+    if (this._videoSource || this.probe.failed || this._fromLeftDocument(e)) return;
     this._applyThenEmit(() => this._handleRuntimeMessage(e));
+  }
+
+  /** True for a message the document a host navigation left stamped; another stamp becomes the current document's. */
+  private _fromLeftDocument(e: MessageEvent): boolean {
+    const id =
+      e.source === this.iframe.contentWindow && (e.data as { documentId?: unknown })?.documentId;
+    if (typeof id !== "string") return false;
+    if (id === this._leftDocumentId) return true;
+    this._documentId = id;
+    return false;
   }
 
   private _handleRuntimeMessage(e: MessageEvent) {
@@ -1298,6 +1314,9 @@ class HyperframesPlayer extends HTMLElement {
       setRuntimeOwnsPlayRange: (owns) => {
         this._runtimeOwnsPlayRange = owns;
       },
+      setRuntimeAnnounces: (announces) => {
+        this._runtimeAnnounces = announces;
+      },
       shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
       setScenes: (scenes) => {
         this._scenes = scenes;
@@ -1315,6 +1334,11 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onRuntimeTimelineReady(duration: number, assetsReady: boolean | undefined) {
+    const mayBeLeft = this._awaitingLoad && this._leftDocumentUnknown;
+    if (mayBeLeft && this._runtimeAnnounces && !this._getSameOriginIframeDocument()) {
+      this._timelineHeldForLoad = true;
+      return;
+    }
     if (this._ready && !this._readyBeforeRuntime) return;
     const alreadyReady = this._readyBeforeRuntime;
     this._readyBeforeRuntime = false;
@@ -1483,6 +1507,11 @@ class HyperframesPlayer extends HTMLElement {
     this.probe.stop();
     this._ready = false;
     this._readyBeforeRuntime = false;
+    this._awaitingLoad = true;
+    this._timelineHeldForLoad = false;
+    this._leftDocumentUnknown = this._documentId === null;
+    this._leftDocumentId = this._documentId ?? this._leftDocumentId;
+    this._documentId = null;
     this._readyDocument = null;
     this._invalidateAssetsWait();
     this._releaseDocument();
@@ -1624,13 +1653,17 @@ class HyperframesPlayer extends HTMLElement {
   private _onIframeLoad() {
     // In video mode the iframe only ever loads about:blank; its load must not reset the video.
     if (!this._connected || this._videoSource) return;
-    // The runtime posts its timeline once its scripts ran, before or after `load`, and every
-    // host-initiated navigation clears `_ready` first. So a ready player already holds this
-    // document's handshake (an opaque origin reads as null); a paused runtime never posts it again.
+    // A runtime posts its timeline before or after `load`. One seen since a host navigation from a document that never
+    // stamped a message may be that document's: an unreadable frame's runtime that can be asked again held it, and is
+    // asked below; else it stands, as a paused runtime never posts again (an opaque origin reads null on both sides).
+    const askAgain = this._timelineHeldForLoad;
+    this._awaitingLoad = false;
+    this._timelineHeldForLoad = false;
     const doc = this._getSameOriginIframeDocument();
     if (this._ready && doc === this._readyDocument) {
       // Its asset wait scanned at DOMContentLoaded; a script may have added first-frame media since.
       if (doc && this._hasPendingFirstFrameAssets(doc)) this._waitForAssetsReady(doc);
+      if (askAgain) this._sendControl("announce-timeline");
       return;
     }
 
@@ -1643,6 +1676,7 @@ class HyperframesPlayer extends HTMLElement {
     this._invalidateAssetsWait();
     this._releaseDocument();
     this.probe.start();
+    if (askAgain) this._sendControl("announce-timeline");
   }
 
   private _setupControls() {
