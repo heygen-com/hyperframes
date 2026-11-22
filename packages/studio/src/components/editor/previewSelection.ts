@@ -121,7 +121,7 @@ function takeFrameValuesForSavedStyles(standIn: HTMLElement, frameInline: Record
   savedOnStandIn.delete(standIn);
 }
 const standInHandles = new WeakMap<Element, string>();
-const standInAncestors = new WeakMap<Element, string[]>();
+const standInAncestors = new WeakMap<Element, Array<{ handle: string; id: string }>>();
 
 export function standInFor(iframe: HTMLIFrameElement, element: PreviewElement): HTMLElement {
   const client = previewEditingClient(iframe);
@@ -365,7 +365,7 @@ export async function resolvePreviewSelection(
   const element = standInFor(iframe, current);
   standInAncestors.set(
     element,
-    chain.slice(index + 1).map((node) => node.handle),
+    chain.slice(index + 1).map(({ handle, id }) => ({ handle, id })),
   );
   const identity = previewIdentity(current, options.activeCompositionPath);
   const compositionSrc = compositionSourceOf(current);
@@ -486,6 +486,14 @@ export async function findOpaqueTimelineElement(
 
 export const standInHandle = (element: Element) => standInHandles.get(element);
 
+export function ancestorIds(element: Element): string[] {
+  const described = standInAncestors.get(element);
+  if (described) return described.map((node) => node.id);
+  const ids: string[] = [];
+  for (let node = element.parentElement; node; node = node.parentElement) ids.push(node.id);
+  return ids;
+}
+
 export function gestureDocumentOf(iframe: HTMLIFrameElement | null): Document | null {
   if (!iframe) return null;
   return previewFrameOpaque(iframe) ? inert() : iframe.contentDocument;
@@ -494,7 +502,10 @@ export function gestureDocumentOf(iframe: HTMLIFrameElement | null): Document | 
 export function elementWithin(container: HTMLElement, element: HTMLElement): boolean {
   const handle = standInHandles.get(container);
   if (handle === undefined) return container.contains(element);
-  return element === container || (standInAncestors.get(element)?.includes(handle) ?? false);
+  return (
+    element === container ||
+    (standInAncestors.get(element)?.some((node) => node.handle === handle) ?? false)
+  );
 }
 
 /** A `data-` attribute of the selection's element; a stand-in's comes from its description. */
