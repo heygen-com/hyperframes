@@ -497,7 +497,6 @@ async function probeStep<T>(step: string, call: () => Promise<T>): Promise<T> {
   try {
     return await call();
   } catch (error) {
-    // Memory exhaustion keeps its own words: its classifier and guidance read the bare message.
     if (
       error instanceof Error &&
       !error.message.startsWith(STOPPED) &&
