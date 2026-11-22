@@ -37,13 +37,6 @@ HyperFrames is HeyGen's AI video editor for people and agents. Describe a video,
 
 Underneath, HyperFrames is a free, open-source framework (Apache 2.0) for turning HTML, CSS, JavaScript, media and seekable animations into deterministic MP4 videos. Use it locally with the CLI, from AI coding agents like Claude Code, Codex and Cursor with skills, or as the rendering core behind hosted authoring workflows. No React required.
 
-> [!IMPORTANT]
-> **New in HyperFrames** · [full changelog](https://hyperframes.studio/changelog?utm_source=github&utm_medium=readme)
->
-> - **The HyperFrames Studio app** for [macOS](https://hyperframes.studio/studio/download?os=mac&src=github-readme), [Windows](https://hyperframes.studio/studio/download?os=windows&src=github-readme) and [Linux](https://hyperframes.studio/studio/download?os=deb&src=github-readme), with a free plan; Pro adds a built-in agent, so no Claude plan is needed.
-> - **Make videos inside Claude:** HyperFrames by HeyGen is in [Claude's connector directory](https://claude.com/connectors/hyperframes-heygen).
-> - **[Reverse any video](skills/reverse-any-video)**: rebuild a video as a project you can edit.
-
 ## Three ways to use it
 
 |                                    | Best for                                                                                                                                                     | Start                                                                                                          |
