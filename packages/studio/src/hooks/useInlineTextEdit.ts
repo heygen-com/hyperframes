@@ -142,9 +142,10 @@ function showLanded(open: InlineTextEditSession): void {
   void editPreviewElement(sealed.iframe, sealed.handle, { html: saved, expect: original });
 }
 
-function sealedEditSettled(open: InlineTextEditSession): void {
-  // The draft lives in the frame until the end's reply, so a held reload waits for this, not the close.
-  endStudioManualEditGesture(open.element, open.gesture);
+function sealedEditSettled(open: InlineTextEditSession, saving?: Promise<unknown>): void {
+  // The draft lives in the frame until its save has read it, so a held reload waits for that save.
+  const endGesture = () => endStudioManualEditGesture(open.element, open.gesture);
+  void Promise.resolve(saving).then(endGesture, endGesture);
   if (openSealedEdit.get(open.element) === open) openSealedEdit.delete(open.element);
   if (isTextTargetWriting(open.element)) settledWhileSaving.set(open.element, open);
   else showLanded(open);
@@ -411,14 +412,15 @@ export function useInlineTextEdit({
       teardown();
       const kept = keptMarkup(ended);
       if (ended.html === null) endWithOriginal(sealed);
-      else if (kept)
-        trackStudioPendingEdit(
-          handedOff(
-            session.element,
-            Promise.resolve(onCommit(orderedSave({ element: session.element, ...kept }))),
-          ),
-        );
-      sealedEditSettled(session);
+      const saving = kept
+        ? trackStudioPendingEdit(
+            handedOff(
+              session.element,
+              Promise.resolve(onCommit(orderedSave({ element: session.element, ...kept }))),
+            ),
+          )
+        : undefined;
+      sealedEditSettled(session, saving);
     });
     return () => {
       stopEnded();
