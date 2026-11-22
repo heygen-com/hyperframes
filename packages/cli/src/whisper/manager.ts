@@ -1,7 +1,7 @@
 // fallow-ignore-file code-duplication complexity
 import { runsWithoutInstallPrompt } from "../utils/appleStubs.js";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { platform } from "node:os";
 import { dirname, join } from "node:path";
 import { findFFmpeg } from "../browser/ffmpeg.js";
@@ -344,10 +344,12 @@ export async function ensureModel(
 ): Promise<string> {
   const modelPath = join(MODELS_DIR, `ggml-${model}.bin`);
   const pin = PINNED_MODELS.get(model);
+  // Private before anything is read from it or written to it: a folder another account can change, or a link
+  // redirects, is refused instead of receiving the download or vouching for a cached copy.
+  ensurePrivateCacheDir(MODELS_DIR, hyperframesCacheDir());
   const cachedBytes = statSync(modelPath, { throwIfNoEntry: false })?.size;
   if (cachedBytes !== undefined && (!pin || cachedBytes === pin.bytes)) return modelPath;
 
-  mkdirSync(MODELS_DIR, { recursive: true });
   rmSync(modelPath, { force: true });
   options?.onProgress?.(
     cachedBytes === undefined
