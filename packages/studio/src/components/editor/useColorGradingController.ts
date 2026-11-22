@@ -191,13 +191,13 @@ export function useColorGradingController({
   projectId,
   element,
   previewIframeRef,
-  onSetAttributeLive,
+  onSetAttributeQuiet,
   onApplyScope,
 }: {
   projectId: string;
   element: DomEditSelection;
   previewIframeRef?: RefObject<HTMLIFrameElement | null>;
-  onSetAttributeLive: (
+  onSetAttributeQuiet: (
     attr: string,
     value: string | null,
     onSettled?: (ok: boolean) => void,
@@ -266,7 +266,7 @@ export function useColorGradingController({
       pendingPersistValueRef.current = undefined;
       pendingPersistGradingRef.current = null;
       pendingPersistIdentityRef.current = null;
-      trackStudioPendingEdit(onSetAttributeLive(COLOR_GRADING_DATA_KEY, value));
+      trackStudioPendingEdit(onSetAttributeQuiet(COLOR_GRADING_DATA_KEY, value));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- identityKey is the intended trigger; see comment above
   }, [identityKey]);
@@ -339,7 +339,7 @@ export function useColorGradingController({
       attemptedGrading: NormalizedHfColorGrading,
       attemptIdentityKey: string,
       isLatestAttempt: () => boolean,
-      setAttributeLive: (
+      setAttribute: (
         attr: string,
         value: string | null,
         onSettled?: (ok: boolean) => void,
@@ -358,8 +358,8 @@ export function useColorGradingController({
         setRuntimeStatus({ state: "unavailable", message: "Save failed, changes reverted" });
       };
       // The callback is the primary result signal; the rejection path supports
-      // other setAttributeLive implementations.
-      const result = setAttributeLive(COLOR_GRADING_DATA_KEY, value ?? null, applySettled);
+      // other setter implementations.
+      const result = setAttribute(COLOR_GRADING_DATA_KEY, value ?? null, applySettled);
       return trackStudioPendingEdit(
         Promise.resolve(result).then(
           () => undefined,
@@ -388,9 +388,9 @@ export function useColorGradingController({
       attemptedGrading,
       attemptIdentityKey,
       isLatestAttempt,
-      onSetAttributeLive,
+      onSetAttributeQuiet,
     );
-  }, [onSetAttributeLive, persistColorGradingValue]);
+  }, [onSetAttributeQuiet, persistColorGradingValue]);
 
   useEffect(() => addStudioPendingEditFlushListener(flushPendingPersist), [flushPendingPersist]);
 
@@ -506,12 +506,12 @@ export function useColorGradingController({
           attemptedGrading,
           attemptIdentityKey,
           isLatestAttempt,
-          onSetAttributeLive,
+          onSetAttributeQuiet,
         );
       }, 350);
     },
     [
-      onSetAttributeLive,
+      onSetAttributeQuiet,
       persistColorGradingValue,
       postColorGrading,
       postCompare,
