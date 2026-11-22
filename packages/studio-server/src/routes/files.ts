@@ -287,7 +287,6 @@ interface ElementPatchBatchFileResult {
 
 interface AtomicCutTarget {
   target: MutationTarget;
-  originalId?: string;
   splitTime: number;
   elementStart: number;
   elementDuration: number;
@@ -2305,8 +2304,7 @@ async function foldAtomicCutFile(
     })
     .map(({ cut }) => cut);
   for (const cut of orderedTargets) {
-    const baseId = cut.originalId || cut.target.id || "clip";
-    const split = splitElementInHtml(after, cut.target, cut.splitTime, `${baseId}-split`, {
+    const split = splitElementInHtml(after, cut.target, cut.splitTime, null, {
       start: cut.elementStart,
       duration: cut.elementDuration,
       playbackStart: cut.playbackStart,
@@ -2323,13 +2321,13 @@ async function foldAtomicCutFile(
     splitCount++;
     rightHalfIds.push(split.newId);
 
-    if (!cut.originalId) continue;
+    if (!split.originalId) continue;
     const block = extractGsapScriptBlock(after);
     if (!block) continue;
     const result = await executeGsapMutation(
       {
         type: "split-animations",
-        originalId: cut.originalId,
+        originalId: split.originalId,
         newId: split.newId,
         splitTime: cut.splitTime,
         elementStart: cut.elementStart,
