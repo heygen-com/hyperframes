@@ -92,6 +92,7 @@
     "@types/fontkit": "^2.0.9",
     "@types/node": "^25.0.10",
     "ajv": "^8.20.0",
+    "gsap-3.14.2": "npm:gsap@3.14.2",
     "linkedom": "^0.18.12",
     "onnxruntime-node": "1.21.1",
     "picocolors": "^1.1.1",
