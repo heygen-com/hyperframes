@@ -1,5 +1,12 @@
 import { trackPreviewEditResult, type PreviewMethod } from "../../utils/previewFeatureUsage";
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type PointerEvent as ReactPointerEvent,
+  type SetStateAction,
+} from "react";
 import type { DomEditSelection } from "./domEditing";
 import { type OverlayRect, RESIZE_HANDLE_HIT_PX } from "./domEditOverlayGeometry";
 import {
@@ -176,6 +183,27 @@ function readStandInStart(
   });
 }
 
+/** `readStandInStart` while `element` is selected and not dragged: again when its overlay size changes. */
+function useStandInStart<S extends { element: HTMLElement; start?: CropFrameStart }>(
+  element: HTMLElement,
+  overlayRect: { width: number; height: number },
+  dragging: boolean,
+  setState: Dispatch<SetStateAction<S>>,
+) {
+  const reads = useRef<StartReads>({ token: 0, busy: false, again: false, element });
+  const shownSize = `${Math.round(overlayRect.width)}x${Math.round(overlayRect.height)}`;
+  useEffect(() => {
+    const r = reads.current;
+    if (r.element !== element) r.token++;
+    r.element = element;
+    if (!dragging)
+      readStandInStart(r, (el, start) =>
+        setState((prev) => (prev.element === el ? { ...prev, start } : prev)),
+      );
+  }, [element, shownSize, dragging, setState]);
+  return reads;
+}
+
 function letGoOf(ref: { current: CropGestureState | null }, gesture: CropGestureState): void {
   if (ref.current === gesture) ref.current = null;
 }
@@ -277,22 +305,7 @@ export function DomEditCropHandles({
     return () => dropElementCropLift(el);
   }, [selection.element]);
 
-  const reads = useRef<StartReads>({
-    token: 0,
-    busy: false,
-    again: false,
-    element: selection.element,
-  });
-  const shownSize = `${Math.round(overlayRect.width)}x${Math.round(overlayRect.height)}`;
-  useEffect(() => {
-    const r = reads.current;
-    if (r.element !== selection.element) r.token++;
-    r.element = selection.element;
-    if (!dragging)
-      readStandInStart(r, (el, start) =>
-        setState((prev) => (prev.element === el ? { ...prev, start } : prev)),
-      );
-  }, [selection.element, shownSize, dragging]);
+  const reads = useStandInStart(selection.element, overlayRect, dragging, setState);
 
   // The crop applies in the element's LOCAL frame (clip-path precedes the
   // transform), so all crop UI is drawn inside a container rotated with the
