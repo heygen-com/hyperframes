@@ -44,6 +44,7 @@ import {
   getCompositionDuration,
   getCompositionLengthSource,
   initializeSession,
+  isMemoryExhaustionError,
   isTransientBrowserError,
   probeBeginFrameLiveness,
   videoAudioId,
@@ -496,7 +497,11 @@ async function probeStep<T>(step: string, call: () => Promise<T>): Promise<T> {
   try {
     return await call();
   } catch (error) {
-    if (error instanceof Error && !error.message.startsWith(STOPPED))
+    if (
+      error instanceof Error &&
+      !error.message.startsWith(STOPPED) &&
+      !isMemoryExhaustionError(error)
+    )
       error.message = `${STOPPED}${step}: ${error.message}`;
     throw error;
   }

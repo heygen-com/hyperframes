@@ -185,6 +185,8 @@ mock.module("@hyperframes/engine", () => ({
   },
   // Mirror of the real engine classifier. Canonical tests + pattern list
   // live in frameCapture-transientErrors.test.ts — update both if patterns change.
+  isMemoryExhaustionError: (error: unknown) =>
+    /^out of memory\.?$/i.test(error instanceof Error ? error.message.trim() : ""),
   isTransientBrowserError: (error: unknown) => {
     const msg = error instanceof Error ? error.message : String(error);
     if (/Composition has zero duration[\s\S]*Runtime ready: false/.test(msg)) return true;
@@ -1886,6 +1888,17 @@ describe("runProbeStage — a page call that never answers", () => {
       await expect(runProbeStage(makeProbeInput({}))).rejects.toThrow(
         "Preparing the render stopped while listing the film's videos, audio and images: Runtime.callFunctionOn timed out.",
       );
+    } finally {
+      browserMediaError = null;
+    }
+  });
+
+  it("leaves a bare out-of-memory message as it is, so it is still read as memory exhaustion", async () => {
+    resetRetryMocks();
+    browserMediaError = new Error("Out of memory");
+    const { runProbeStage } = await import("./probeStage.js");
+    try {
+      await expect(runProbeStage(makeProbeInput({}))).rejects.toThrow(/^Out of memory$/);
     } finally {
       browserMediaError = null;
     }
