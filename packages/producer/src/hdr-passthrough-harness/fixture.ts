@@ -9,6 +9,7 @@
  *   captions-offset/                    the captions fixture on a remux whose streams start 0.2 s in
  *   transformed/                        negative fixture: same, but the video carries a CSS transform
  *   ineligible-<case>/                  with `--ineligible`: one negative fixture per fallback class
+ *   edge-<case>/                        with `--edge`: frame-rate, size, duration and seek edge cases
  *
  * Each composition directory is a HyperFrames project (`index.html` +
  * `hyperframes.json`) that `hyperframes render <dir>` accepts. Media is
@@ -19,6 +20,7 @@
  *   ../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts --duration 180 --out /tmp/hdrpt-bench
  *   ../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts --transfer pq --out /tmp/hdrpt-pq
  *   ../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts --duration 3 --ineligible --out /tmp/hdrpt-neg
+ *   ../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts --duration 3 --edge --out /tmp/hdrpt-edge
  *
  * Nothing it writes is meant to be committed; the 3 min variant is ~150 MB.
  */
@@ -61,11 +63,14 @@ export interface SourceClipOptions {
   durationSec: number;
   width: number;
   height: number;
-  fps: number;
+  /** Frame rate as ffmpeg takes it: `30` or `30000/1001`. */
+  fps: number | string;
   /** libx265 CRF for the source. Low, so the source itself is near-lossless. */
   crf: number;
   /** Transfer function the clip is tagged with. Defaults to HLG. */
   transfer?: FixtureTransfer;
+  /** Fixed keyframe interval in frames (no scene-cut keyframes); x265's default when unset. */
+  gop?: number;
 }
 
 /**
@@ -84,6 +89,9 @@ export function buildSourceClipArgs(options: SourceClipOptions): string[] {
   const x265Params = [
     `colorprim=bt2020:transfer=${trc}:colormatrix=bt2020nc:range=limited`,
     ...(transfer === "pq" ? [PQ_STATIC_METADATA] : []),
+    ...(options.gop === undefined
+      ? []
+      : [`keyint=${options.gop}:min-keyint=${options.gop}:scenecut=0`]),
     "log-level=error",
   ].join(":");
   const insetW = Math.round(width / 2 / 2) * 2;
@@ -227,6 +235,8 @@ export interface CompositionOptions {
   cues: readonly CaptionCue[];
   /** Inline style on the video; set only for negative fixtures. */
   videoStyle?: string;
+  /** Seconds into the source the video starts (`data-media-start`). Defaults to 0. */
+  mediaStart?: number;
   /** When set, the video sits in a full-canvas `<div>` with this inline style. */
   videoWrapperStyle?: string;
   /** Raw markup appended to `<head>` (styles or scripts a negative fixture needs). */
@@ -273,7 +283,7 @@ export function buildCompositionHtml(options: CompositionOptions): string {
         src="${escapeHtml(videoSrc)}"
         data-start="0"
         data-duration="${durationSec}"
-        data-media-start="0"
+        data-media-start="${options.mediaStart ?? 0}"
         data-track-index="0"
         data-has-audio="true"
         playsinline${videoStyle}
@@ -539,6 +549,114 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
   ),
 ];
 
+/**
+ * One composition that varies what the `captions` fixture holds fixed: the
+ * source's rate, size or keyframe interval, the composition's rate, canvas
+ * size, duration or `mediaStart`. Each must either decode to the same frames
+ * as the layered render or fall back with `expectReason`.
+ */
+export interface EdgeCase {
+  name: string;
+  source: {
+    width: number;
+    height: number;
+    /** ffmpeg rate: `30`, `30000/1001`, `24000/1001`. */
+    fps: string;
+    durationSec: number;
+    /** Fixed keyframe interval in frames. */
+    gop?: number;
+  };
+  canvas: { width: number; height: number };
+  /** Composition rate as the CLI takes it. */
+  fps: string;
+  durationSec: number;
+  mediaStart?: number;
+  expect: "passthrough" | "fallback";
+  expectReason?: string;
+}
+
+const FULL_HD = { width: FIXTURE_WIDTH, height: FIXTURE_HEIGHT };
+
+export const EDGE_CASES: readonly EdgeCase[] = [
+  {
+    // NTSC source on an integer grid: some output frames repeat a source frame.
+    name: "src2997-comp30",
+    source: { ...FULL_HD, fps: "30000/1001", durationSec: 6 },
+    canvas: FULL_HD,
+    fps: "30",
+    durationSec: 5,
+    expect: "passthrough",
+  },
+  {
+    name: "src2997-comp2997",
+    source: { ...FULL_HD, fps: "30000/1001", durationSec: 6 },
+    canvas: FULL_HD,
+    fps: "30000/1001",
+    durationSec: 5,
+    expect: "passthrough",
+  },
+  {
+    name: "src23976-comp30",
+    source: { ...FULL_HD, fps: "24000/1001", durationSec: 6 },
+    canvas: FULL_HD,
+    fps: "30",
+    durationSec: 5,
+    expect: "passthrough",
+  },
+  {
+    // A 4:2:0 source cannot be odd-sized; 1280x720 is within the aspect
+    // tolerance of 1279x719, so the video is scaled onto the canvas.
+    name: "odd-canvas",
+    source: { width: 1280, height: 720, fps: "30", durationSec: 6 },
+    canvas: { width: 1279, height: 719 },
+    fps: "30",
+    durationSec: 5,
+    expect: "passthrough",
+  },
+  {
+    // 4:3 under object-fit: cover on a 16:9 canvas crops the source.
+    name: "cover-4x3",
+    source: { width: 1440, height: 1080, fps: "30", durationSec: 6 },
+    canvas: FULL_HD,
+    fps: "30",
+    durationSec: 5,
+    expect: "fallback",
+    expectReason: "object_fit",
+  },
+  {
+    // 210.3 frames: the render writes 211, the last one only partly inside the duration.
+    name: "fractional-duration",
+    source: { ...FULL_HD, fps: "30", durationSec: 8 },
+    canvas: FULL_HD,
+    fps: "30",
+    durationSec: 7.01,
+    expect: "passthrough",
+  },
+  {
+    // A seek between frames, 13 s past the only earlier keyframe.
+    name: "deep-seek-long-gop",
+    source: { ...FULL_HD, fps: "30", durationSec: 20, gop: 300 },
+    canvas: FULL_HD,
+    fps: "30",
+    durationSec: 5,
+    mediaStart: 13.37,
+    expect: "passthrough",
+  },
+];
+
+/** Asset file name of an edge case's source, shared by cases with the same source. */
+export function edgeSourceName(transfer: FixtureTransfer, source: EdgeCase["source"]): string {
+  const rate = source.fps.replace("/", "-");
+  const gop = source.gop === undefined ? "" : `-g${source.gop}`;
+  return `${transfer}-${source.width}x${source.height}-${rate}fps-${source.durationSec}s${gop}.mp4`;
+}
+
+/** Frame rate value of a CLI / ffmpeg rate string (`30`, `30000/1001`). */
+function rateValue(rate: string): number {
+  const [num, den = "1"] = rate.split("/");
+  return Number(num) / Number(den);
+}
+
 /** Reason the `transformed` fixture must report (the layout probe runs before the transform gate). */
 const TRANSFORMED_REASON = "not_full_canvas";
 
@@ -549,6 +667,9 @@ interface FixtureProject {
   /** For `fallback`: the reason the flag-on render must log. */
   expectReason?: string;
   dir: string;
+  /** The project's own render rate and duration, when they differ from the manifest's. */
+  fps?: number | string;
+  durationSec?: number;
 }
 
 interface GeneratedFixtures {
@@ -574,7 +695,10 @@ interface ProjectSpec {
   sourcePath: string;
   assetName: string;
   html: string;
-  fps: number;
+  fps: number | string;
+  /** Canvas size written to `hyperframes.json`; the fixture's 1920x1080 when unset. */
+  width?: number;
+  height?: number;
   /** Files copied (or linked) into the project's `assets/`, by target name. */
   extraAssets?: ReadonlyArray<{ source: string; name: string }>;
 }
@@ -589,7 +713,7 @@ function writeProject(spec: ProjectSpec): string {
   writeFileSync(join(dir, "index.html"), spec.html);
   writeFileSync(
     join(dir, "hyperframes.json"),
-    `${JSON.stringify({ name: spec.name, fps: spec.fps, width: FIXTURE_WIDTH, height: FIXTURE_HEIGHT }, null, 2)}\n`,
+    `${JSON.stringify({ name: spec.name, fps: spec.fps, width: spec.width ?? FIXTURE_WIDTH, height: spec.height ?? FIXTURE_HEIGHT }, null, 2)}\n`,
   );
   return dir;
 }
@@ -600,6 +724,7 @@ interface GenerateOptions {
   cueCount: number;
   transfer: FixtureTransfer;
   ineligible: boolean;
+  edge: boolean;
   ffmpegPath: string;
   force: boolean;
 }
@@ -645,6 +770,55 @@ function ensureGenerated(
   const started = Date.now();
   runFfmpegOrThrow(options.ffmpegPath, args(), path);
   console.log(`asset: ${path} (${((Date.now() - started) / 1000).toFixed(1)} s)`);
+}
+
+function generateEdgeFixtures(options: GenerateOptions): FixtureProject[] {
+  const { outDir, transfer } = options;
+  return EDGE_CASES.map((edge) => {
+    const assetName = edgeSourceName(transfer, edge.source);
+    const sourcePath = join(outDir, "assets", assetName);
+    ensureGenerated(options, sourcePath, () =>
+      buildSourceClipArgs({
+        outputPath: sourcePath,
+        ...edge.source,
+        crf: 12,
+        transfer,
+      }),
+    );
+    const fps = rateValue(edge.fps);
+    const name = `edge-${edge.name}`;
+    const cues = buildCaptionCues(
+      edge.durationSec,
+      Math.max(2, Math.round(edge.durationSec / 2)),
+      fps,
+    );
+    const dir = writeProject({
+      root: outDir,
+      name,
+      sourcePath,
+      assetName,
+      fps: edge.fps,
+      width: edge.canvas.width,
+      height: edge.canvas.height,
+      html: buildCompositionHtml({
+        compositionId: `hdr-passthrough-${name}`,
+        videoSrc: `assets/${assetName}`,
+        durationSec: edge.durationSec,
+        width: edge.canvas.width,
+        height: edge.canvas.height,
+        cues,
+        mediaStart: edge.mediaStart,
+      }),
+    });
+    return {
+      name,
+      expect: edge.expect,
+      ...(edge.expectReason === undefined ? {} : { expectReason: edge.expectReason }),
+      dir,
+      fps: edge.fps,
+      durationSec: edge.durationSec,
+    };
+  });
 }
 
 function generateFixtures(options: GenerateOptions): GeneratedFixtures {
@@ -734,6 +908,7 @@ function generateFixtures(options: GenerateOptions): GeneratedFixtures {
       });
     }
   }
+  if (options.edge) projects.push(...generateEdgeFixtures(options));
   const manifest: GeneratedFixtures = { sourcePath, durationSec, fps, transfer, projects };
   writeFileSync(join(outDir, "fixtures.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   return manifest;
@@ -747,6 +922,7 @@ function main(): void {
       cues: { type: "string" },
       transfer: { type: "string", default: "hlg" },
       ineligible: { type: "boolean", default: false },
+      edge: { type: "boolean", default: false },
       ffmpeg: { type: "string", default: process.env.FFMPEG_PATH ?? "ffmpeg" },
       force: { type: "boolean", default: false },
     },
@@ -765,6 +941,7 @@ function main(): void {
     cueCount,
     transfer,
     ineligible: values.ineligible,
+    edge: values.edge,
     ffmpegPath: values.ffmpeg,
     force: values.force,
   });

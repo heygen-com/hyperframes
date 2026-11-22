@@ -373,7 +373,7 @@ export function classifyRenderLog(log: string): RenderPath {
 /**
  * The version string from `ffmpeg -version` output ("7.0.2-static"), or null.
  * Recorded with every report: `maskedmerge`'s 16-bit rounding matches the
- * layered blend exactly on ffmpeg 7 but is 1 LSB off on some partial-alpha
+ * layered blend exactly on ffmpeg 7 and 8 but is 1 LSB off on some partial-alpha
  * pixels on older releases, so "bit-identical" depends on it.
  */
 export function parseFfmpegVersion(output: string): string | null {
@@ -435,4 +435,111 @@ export function describeRenderPath(path: RenderPath): string {
 
 export function isFallback(path: RenderPath): boolean {
   return path.kind === "ineligible" || path.kind === "passthrough_error";
+}
+
+/**
+ * A frame rate as the CLI takes it (`30`, `30000/1001`): the string passed to
+ * `--fps` and its value. Decimals are rejected, as the CLI rejects them.
+ */
+export interface FrameRate {
+  arg: string;
+  value: number;
+}
+
+export function parseFrameRate(input: string | number): FrameRate {
+  const raw = String(input).trim();
+  const fraction = /^(\d+)\/(\d+)$/.exec(raw);
+  const value = fraction
+    ? Number(fraction[1]) / Number(fraction[2])
+    : /^\d+$/.test(raw)
+      ? Number(raw)
+      : Number.NaN;
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`frame rate must be an integer or num/den, got ${JSON.stringify(input)}`);
+  }
+  return { arg: raw, value };
+}
+
+/**
+ * Frames a render of `durationSec` writes: the nearest whole frame when the
+ * duration is within 1 ms of one, else rounded up (the probe stage's rule, so a
+ * 7.01 s composition at 30 fps has 211 frames).
+ */
+export function expectedFrameCount(durationSec: number, fps: number): number {
+  const raw = durationSec * fps;
+  const nearest = Math.round(raw);
+  return Math.abs(raw - nearest) <= 1e-3 ? nearest : Math.ceil(raw);
+}
+
+/** Per-frame hashes from `ffmpeg -f framemd5` output, in frame order. */
+export function parseFramemd5(output: string): string[] {
+  const hashes: string[] = [];
+  for (const line of output.split(/\r?\n/)) {
+    if (line === "" || line.startsWith("#")) continue;
+    const hash = line.split(",").at(-1)?.trim();
+    if (!hash || !/^[0-9a-f]{32}$/.test(hash)) {
+      throw new Error(`unexpected framemd5 line: ${JSON.stringify(line)}`);
+    }
+    hashes.push(hash);
+  }
+  return hashes;
+}
+
+/** How two outputs' decoded frames compare, frame by frame. */
+export interface FrameHashComparison {
+  referenceFrames: number;
+  candidateFrames: number;
+  identicalFrames: number;
+  /** First frame index whose hash differs (or that one side lacks); null when all match. */
+  firstDifference: number | null;
+  /** Every frame matches and both have the same count. */
+  identical: boolean;
+}
+
+export function compareFrameHashes(
+  reference: readonly string[],
+  candidate: readonly string[],
+): FrameHashComparison {
+  let identicalFrames = 0;
+  let firstDifference: number | null = null;
+  const frames = Math.max(reference.length, candidate.length);
+  for (let index = 0; index < frames; index += 1) {
+    if (reference[index] !== undefined && reference[index] === candidate[index]) {
+      identicalFrames += 1;
+    } else if (firstDifference === null) {
+      firstDifference = index;
+    }
+  }
+  return {
+    referenceFrames: reference.length,
+    candidateFrames: candidate.length,
+    identicalFrames,
+    firstDifference,
+    identical: firstDifference === null,
+  };
+}
+
+/**
+ * The render job's own time, compile through assemble, from the
+ * `[Render:trace]` lines: the `assemble` end checkpoint's `elapsedMs`. Wall
+ * time also counts the CLI start and any wait on the per-user render lock,
+ * which on a shared host can dwarf the render. Null when the log has no such
+ * line.
+ */
+export function parseJobMs(log: string): number | null {
+  let jobMs: number | null = null;
+  for (const match of log.matchAll(/\[Render:trace\][ \t]+(\{.*\})[ \t]*$/gm)) {
+    let trace: unknown;
+    try {
+      trace = JSON.parse(match[1] ?? "");
+    } catch {
+      continue;
+    }
+    if (typeof trace !== "object" || trace === null) continue;
+    const { phase, status, elapsedMs } = trace as Record<string, unknown>;
+    if (phase === "assemble" && status === "end" && typeof elapsedMs === "number") {
+      jobMs = elapsedMs;
+    }
+  }
+  return jobMs;
 }

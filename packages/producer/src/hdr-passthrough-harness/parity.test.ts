@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  buildFramemd5Args,
   buildMetricsArgs,
   buildRenderArgs,
   buildRenderEnv,
@@ -99,6 +100,7 @@ describe("checkSingleOutput", () => {
         outputPath: "/out/off.mp4",
         logPath: "/out/off.log",
         wallMs: 1,
+        jobMs: null,
         exitCode: 1,
         path: { kind: "unknown" },
         probe: null,
@@ -133,5 +135,30 @@ describe("selectProjects", () => {
 
   it("rejects unknown names", () => {
     expect(() => selectProjects(projects, "captions,nope")).toThrow("nope");
+  });
+});
+
+describe("buildFramemd5Args", () => {
+  it("hashes every decoded frame of the first video stream", () => {
+    const args = buildFramemd5Args("/out/on.mp4");
+    expect(args).toEqual([
+      "-hide_banner",
+      "-v",
+      "error",
+      "-i",
+      "/out/on.mp4",
+      "-map",
+      "0:v:0",
+      "-f",
+      "framemd5",
+      "-",
+    ]);
+  });
+});
+
+describe("buildRenderArgs with a rational rate", () => {
+  it("passes the rate to the CLI as given", () => {
+    const args = buildRenderArgs({ ...renderOptions, side: "on", fps: "30000/1001" });
+    expect(args[args.indexOf("--fps") + 1]).toBe("30000/1001");
   });
 });

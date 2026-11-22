@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  EDGE_CASES,
   FIXTURE_FPS,
   INELIGIBLE_CASES,
   STREAM_OFFSET_SECONDS,
@@ -8,6 +9,7 @@ import {
   buildCompositionHtml,
   buildSourceClipArgs,
   buildStreamOffsetArgs,
+  edgeSourceName,
   isFixtureTransfer,
 } from "./fixture.js";
 
@@ -262,5 +264,99 @@ describe("buildAnimatedImageArgs", () => {
       "/tmp/a.avif",
     ]);
     expect(argAfter(buildAnimatedImageArgs("apng", "/tmp/a.png"), "-plays")).toBe("0");
+  });
+});
+
+describe("buildSourceClipArgs with a rational rate and a fixed GOP", () => {
+  const args = buildSourceClipArgs({
+    outputPath: "/tmp/ntsc.mp4",
+    durationSec: 20,
+    width: 1920,
+    height: 1080,
+    fps: "30000/1001",
+    crf: 12,
+    gop: 300,
+  });
+
+  it("generates at the rational rate", () => {
+    const graph = argAfter(args, "-filter_complex") ?? "";
+    expect(graph).toContain("gradients=size=1920x1080:rate=30000/1001");
+    expect(graph).toContain("testsrc2=size=960x540:rate=30000/1001");
+  });
+
+  it("pins the keyframe interval without scene-cut keyframes", () => {
+    const x265 = argAfter(args, "-x265-params") ?? "";
+    expect(x265).toContain("keyint=300:min-keyint=300:scenecut=0");
+    expect(x265.endsWith("log-level=error")).toBe(true);
+  });
+
+  it("leaves x265's keyframe placement alone by default", () => {
+    const plain = buildSourceClipArgs({
+      outputPath: "/tmp/out.mp4",
+      durationSec: 3,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      crf: 12,
+    });
+    expect(argAfter(plain, "-x265-params")).not.toContain("keyint");
+  });
+});
+
+describe("buildCompositionHtml mediaStart", () => {
+  const base = {
+    compositionId: "c",
+    videoSrc: "assets/s.mp4",
+    durationSec: 5,
+    width: 1920,
+    height: 1080,
+    cues: [],
+  };
+
+  it("starts the video at 0 unless told otherwise", () => {
+    expect(buildCompositionHtml(base)).toContain('data-media-start="0"');
+    expect(buildCompositionHtml({ ...base, mediaStart: 13.37 })).toContain(
+      'data-media-start="13.37"',
+    );
+  });
+});
+
+describe("EDGE_CASES", () => {
+  it("has unique names and sources long enough for mediaStart + duration", () => {
+    const names = EDGE_CASES.map((edge) => edge.name);
+    expect(new Set(names).size).toBe(names.length);
+    for (const edge of EDGE_CASES) {
+      expect(edge.source.durationSec).toBeGreaterThanOrEqual(
+        (edge.mediaStart ?? 0) + edge.durationSec,
+      );
+      expect(edge.source.width % 2).toBe(0);
+      expect(edge.source.height % 2).toBe(0);
+      expect(edge.fps).toMatch(/^\d+(\/\d+)?$/);
+      if (edge.expect === "fallback") expect(edge.expectReason).toBeTruthy();
+    }
+  });
+
+  it("covers rational rates, an odd canvas, a crop, a partial last frame and a deep seek", () => {
+    expect(EDGE_CASES.some((e) => e.source.fps === "30000/1001" && e.fps === "30")).toBe(true);
+    expect(EDGE_CASES.some((e) => e.source.fps === "30000/1001" && e.fps === "30000/1001")).toBe(
+      true,
+    );
+    expect(EDGE_CASES.some((e) => e.source.fps === "24000/1001" && e.fps === "30")).toBe(true);
+    expect(EDGE_CASES.some((e) => e.canvas.width % 2 === 1 && e.canvas.height % 2 === 1)).toBe(
+      true,
+    );
+    expect(EDGE_CASES.find((e) => e.name === "cover-4x3")?.expectReason).toBe("object_fit");
+    expect(EDGE_CASES.some((e) => !Number.isInteger(e.durationSec * 30))).toBe(true);
+    const deep = EDGE_CASES.find((e) => e.source.gop !== undefined);
+    expect(deep?.mediaStart).toBeGreaterThan((deep?.source.gop ?? 0) / 30);
+  });
+
+  it("names one asset per distinct source", () => {
+    const sources = new Set(EDGE_CASES.map((edge) => edgeSourceName("hlg", edge.source)));
+    const distinct = new Set(EDGE_CASES.map((edge) => JSON.stringify(edge.source)));
+    expect(sources.size).toBe(distinct.size);
+    expect(
+      edgeSourceName("pq", { width: 1920, height: 1080, fps: "24000/1001", durationSec: 6 }),
+    ).toBe("pq-1920x1080-24000-1001fps-6s.mp4");
   });
 });

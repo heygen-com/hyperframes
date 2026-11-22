@@ -98,8 +98,10 @@ the layered path:
   stdin input and `-vf` are replaced by the file inputs and the composite
   graph.
 
-On the generated fixtures the result is bit-identical to the layered render
-with ffmpeg 7. `maskedmerge` rounds differently on older ffmpeg (4.2 is 1 LSB
+On the generated fixtures, including the rational-rate, odd-canvas,
+fractional-duration and deep-seek edge cases, the result is bit-identical to
+the layered render with ffmpeg 7.0 and with 8.0 (the version the Dockerfiles
+and CI pin). `maskedmerge` rounds differently on older ffmpeg (4.2 is 1 LSB
 off on about a sixth of partial-alpha samples), which the parity thresholds
 absorb; the harness records the ffmpeg version in each report.
 

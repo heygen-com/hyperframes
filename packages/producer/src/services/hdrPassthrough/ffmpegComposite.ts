@@ -90,8 +90,8 @@ function quoteConcatPath(path: string): string {
  * repacked losslessly to planar `gbrp16le` for the blend, and the overlay's
  * straight 16-bit alpha drives a `maskedmerge`:
  * `out = round(video * (1 - a) + signal * a)` with `a = alpha8 * 257 / 65535`,
- * `blitRgba8OverRgb48le`'s blend. ffmpeg 7 rounds it exactly that way (every
- * alpha, 102400 random samples); 4.2 is 1 LSB off on about a sixth of the
+ * `blitRgba8OverRgb48le`'s blend. ffmpeg 7 and 8 round it exactly that way (every
+ * alpha, 102400 random samples per plane); 4.2 is 1 LSB off on about a sixth of the
  * partial-alpha samples. The result is repacked to `rgb48le` before `tail`, so the
  * RGB → YUV conversion is the one the layered encoder runs on its rgb48le
  * stdin. Swscale's planar and packed RGB paths round chroma differently;

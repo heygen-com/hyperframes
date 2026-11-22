@@ -439,6 +439,19 @@ describe("checkSourceMetadata", () => {
     });
   });
 
+  it("scales a source within the aspect tolerance onto an odd canvas, and declines a crop", () => {
+    // 1280x720 on 1279x719 differs in aspect by 6e-4; the parity harness's
+    // `edge-odd-canvas` fixture renders it bit-identical to the layered path.
+    const odd = { ...base, canvas: { width: 1279, height: 719 } };
+    expect(
+      checkSourceMetadata({ ...odd, metadata: metadata({ width: 1280, height: 720 }) }),
+    ).toBeNull();
+    // 4:3 under cover on 16:9 is a crop, which the composite does not reproduce.
+    expect(
+      checkSourceMetadata({ ...base, metadata: metadata({ width: 1440, height: 1080 }) }),
+    ).toMatchObject({ reason: "object_fit", detail: "source 1440x1080 vs canvas 1920x1080" });
+  });
+
   it("rejects a trim offset the source cannot cover", () => {
     expect(checkSourceMetadata({ ...base, mediaStart: 10.5, metadata: metadata() })).toMatchObject({
       reason: "source_unsupported",

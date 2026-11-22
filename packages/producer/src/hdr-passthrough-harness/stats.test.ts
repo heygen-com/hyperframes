@@ -5,6 +5,11 @@ import {
   checkHdrTags,
   checkPixelParity,
   classifyRenderLog,
+  compareFrameHashes,
+  expectedFrameCount,
+  parseFrameRate,
+  parseFramemd5,
+  parseJobMs,
   parseCaptureStats,
   parseFfmpegVersion,
   compareProbes,
@@ -311,5 +316,83 @@ describe("parseCaptureStats", () => {
     expect(
       parseCaptureStats('HDR passthrough: overlay states captured {"states":3,"unique":2}'),
     ).toBeNull();
+  });
+});
+
+describe("parseFrameRate", () => {
+  it("takes integers and num/den as the CLI does", () => {
+    expect(parseFrameRate(30)).toEqual({ arg: "30", value: 30 });
+    expect(parseFrameRate("30000/1001")).toEqual({ arg: "30000/1001", value: 30000 / 1001 });
+  });
+
+  it("rejects decimals, zero and junk", () => {
+    expect(() => parseFrameRate("29.97")).toThrow();
+    expect(() => parseFrameRate("0")).toThrow();
+    expect(() => parseFrameRate("30/0")).toThrow();
+    expect(() => parseFrameRate("fast")).toThrow();
+  });
+});
+
+describe("expectedFrameCount", () => {
+  it("rounds up a partial last frame and absorbs float noise at a whole frame", () => {
+    expect(expectedFrameCount(7.01, 30)).toBe(211);
+    expect(expectedFrameCount(5, 30)).toBe(150);
+    expect(expectedFrameCount(5, 30000 / 1001)).toBe(150);
+    expect(expectedFrameCount(0.1 + 0.2, 10)).toBe(3);
+  });
+});
+
+describe("framemd5", () => {
+  const output = [
+    "#format: frame checksums",
+    "#version: 2",
+    "#tb 0: 1/30",
+    "#stream#, dts,        pts, duration,     size, hash",
+    "0,          0,          0,        1,  6220800, 0123456789abcdef0123456789abcdef",
+    "0,          1,          1,        1,  6220800, fedcba9876543210fedcba9876543210",
+    "",
+  ].join("\n");
+
+  it("reads one hash per frame, skipping the header", () => {
+    expect(parseFramemd5(output)).toEqual([
+      "0123456789abcdef0123456789abcdef",
+      "fedcba9876543210fedcba9876543210",
+    ]);
+  });
+
+  it("rejects a line without a hash", () => {
+    expect(() => parseFramemd5("0, 0, 0, 1, 10, nope\n")).toThrow();
+  });
+
+  it("finds the first differing frame and counts a missing frame as different", () => {
+    expect(compareFrameHashes(["a", "b"], ["a", "b"])).toEqual({
+      referenceFrames: 2,
+      candidateFrames: 2,
+      identicalFrames: 2,
+      firstDifference: null,
+      identical: true,
+    });
+    expect(compareFrameHashes(["a", "b", "c"], ["a", "x", "c"]).firstDifference).toBe(1);
+    const short = compareFrameHashes(["a", "b"], ["a"]);
+    expect(short.identical).toBe(false);
+    expect(short.firstDifference).toBe(1);
+    expect(short.identicalFrames).toBe(1);
+  });
+});
+
+describe("parseJobMs", () => {
+  it("reads the assemble end checkpoint's elapsed time", () => {
+    const log = [
+      '[INFO] [Render:trace] {"renderJobId":"j","phase":"compile","status":"end","elapsedMs":136}',
+      '[INFO] [Render:trace] {"renderJobId":"j","phase":"assemble","status":"start","elapsedMs":7383}',
+      '[INFO] [Render:trace] {"renderJobId":"j","phase":"assemble","status":"end","elapsedMs":7634,"durationMs":251}',
+      '[INFO] [Render:trace] {"renderJobId":"j","phase":"pipeline","status":"checkpoint","elapsedMs":7659}',
+    ].join("\n");
+    expect(parseJobMs(log)).toBe(7634);
+  });
+
+  it("is null without an assemble end line", () => {
+    expect(parseJobMs("[INFO] [Render:trace] {broken\n")).toBeNull();
+    expect(parseJobMs("")).toBeNull();
   });
 });

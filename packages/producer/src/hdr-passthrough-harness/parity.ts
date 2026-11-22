@@ -29,11 +29,17 @@ import {
   checkPixelParity,
   classifyRenderLog,
   type CaptureStats,
+  compareFrameHashes,
   compareProbes,
   describeRenderPath,
+  expectedFrameCount,
+  type FrameHashComparison,
   isFallback,
   parseCaptureStats,
   parseFfmpegVersion,
+  parseFrameRate,
+  parseFramemd5,
+  parseJobMs,
   parsePsnrStats,
   parseSsimStats,
   summarizeProbe,
@@ -60,7 +66,8 @@ export interface RenderArgsOptions {
   projectDir: string;
   outputPath: string;
   side: RenderSide;
-  fps: number;
+  /** As the CLI takes it: `30` or `30000/1001`. */
+  fps: number | string;
   workers: number;
   quality: "draft" | "standard" | "high";
   extraArgs: readonly string[];
@@ -137,11 +144,18 @@ export function buildMetricsArgs(
   ];
 }
 
+/** ffmpeg arguments that hash every decoded frame of the first video stream. */
+export function buildFramemd5Args(path: string): string[] {
+  return ["-hide_banner", "-v", "error", "-i", path, "-map", "0:v:0", "-f", "framemd5", "-"];
+}
+
 export interface RenderRun {
   side: RenderSide;
   outputPath: string;
   logPath: string;
   wallMs: number;
+  /** The job's own time from its trace (compile through assemble); null when not logged. */
+  jobMs: number | null;
   exitCode: number | null;
   path: RenderPath;
   /** Passthrough capture counts, when the log has them. */
@@ -230,7 +244,17 @@ function render(
   const path = classifyRenderLog(log);
   const capture = parseCaptureStats(log);
   const output = existsSync(outputPath) && exitCode === 0 ? probe(tools, outputPath) : null;
-  return { side, outputPath, logPath, wallMs, exitCode, path, capture, probe: output };
+  const jobMs = parseJobMs(log);
+  return { side, outputPath, logPath, wallMs, jobMs, exitCode, path, capture, probe: output };
+}
+
+function frameHashes(tools: Tools, file: string): string[] {
+  const result = spawnSync(tools.ffmpeg, buildFramemd5Args(file), {
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (result.status !== 0) throw new Error(`ffmpeg framemd5 failed on ${file}: ${result.stderr}`);
+  return parseFramemd5(result.stdout);
 }
 
 function computeMetrics(
@@ -277,7 +301,7 @@ export function checkSingleOutput(run: RenderRun, expected: ExpectedOutput): Che
     detail: run.probe.hasAudio ? `${run.probe.audioCodec}` : "no audio stream",
   });
   if (expected.durationSec !== null) {
-    const frames = Math.round(expected.durationSec * expected.fps);
+    const frames = expectedFrameCount(expected.durationSec, expected.fps);
     results.push({
       name: `${run.side}.frames`,
       ok: run.probe.videoFrames === frames,
@@ -312,7 +336,11 @@ interface ProjectReport {
   expect: Expectation;
   runs: Array<Omit<RenderRun, "probe"> & { probe: ProbeSummary | null }>;
   metrics?: { psnr: PsnrSummary; ssim: SeriesSummary; ms: number };
+  /** Decoded-frame hashes of the two outputs compared frame by frame. */
+  framemd5?: FrameHashComparison;
+  /** off / on, by job time when both renders logged it, else by wall time. */
   speedup?: number;
+  speedupBasis?: "job" | "wall";
   checks: CheckResult[];
   ok: boolean;
 }
@@ -327,6 +355,8 @@ interface ProjectOptions {
   renderArgs: Omit<RenderArgsOptions, "side" | "outputPath" | "projectDir">;
   expected: ExpectedOutput;
   thresholds: ParityThresholds;
+  /** Fail unless every decoded frame of the two outputs is identical. */
+  requireIdentical: boolean;
 }
 
 function readFfmpegVersion(tools: Tools): string | null {
@@ -352,7 +382,9 @@ function runProject(tools: Tools, options: ProjectOptions): ProjectReport {
   if (on) checks.push(checkExpectedPath(on.path, options.expect, options.expectReason));
 
   let metrics: ProjectReport["metrics"];
+  let framemd5: FrameHashComparison | undefined;
   let speedup: number | undefined;
+  let speedupBasis: ProjectReport["speedupBasis"];
   if (off?.probe && on?.probe) {
     checks.push(
       ...compareProbes(off.probe, on.probe, options.expected.fps, options.thresholds).map(
@@ -363,8 +395,23 @@ function runProject(tools: Tools, options: ProjectOptions): ProjectReport {
     checks.push(
       ...checkPixelParity(metrics.psnr, metrics.ssim, off.probe.videoFrames, options.thresholds),
     );
-    if (Number.isFinite(off.wallMs) && Number.isFinite(on.wallMs) && on.wallMs > 0) {
+    framemd5 = compareFrameHashes(
+      frameHashes(tools, off.outputPath),
+      frameHashes(tools, on.outputPath),
+    );
+    if (options.requireIdentical) {
+      checks.push({
+        name: "parity.framemd5",
+        ok: framemd5.identical,
+        detail: describeFrameHashes(framemd5),
+      });
+    }
+    if (off.jobMs !== null && on.jobMs !== null && on.jobMs > 0) {
+      speedup = off.jobMs / on.jobMs;
+      speedupBasis = "job";
+    } else if (Number.isFinite(off.wallMs) && Number.isFinite(on.wallMs) && on.wallMs > 0) {
       speedup = off.wallMs / on.wallMs;
+      speedupBasis = "wall";
     }
   }
   return {
@@ -373,10 +420,23 @@ function runProject(tools: Tools, options: ProjectOptions): ProjectReport {
     expect: options.expect,
     runs,
     metrics,
+    framemd5,
     speedup,
+    speedupBasis,
     checks,
     ok: checks.every((check) => check.ok),
   };
+}
+
+function describeFrameHashes(comparison: FrameHashComparison): string {
+  const { identicalFrames, referenceFrames, candidateFrames, firstDifference } = comparison;
+  const counts =
+    referenceFrames === candidateFrames
+      ? `${identicalFrames}/${referenceFrames} identical`
+      : `${identicalFrames} identical, layered ${referenceFrames} frames, passthrough ${candidateFrames}`;
+  return firstDifference === null
+    ? counts
+    : `${counts}, first difference at frame ${firstDifference}`;
 }
 
 function printReport(report: ProjectReport): void {
@@ -384,8 +444,9 @@ function printReport(report: ProjectReport): void {
   console.log(`  ffmpeg ${report.ffmpegVersion ?? "version unknown"}`);
   for (const run of report.runs) {
     const wall = Number.isFinite(run.wallMs) ? `${(run.wallMs / 1000).toFixed(1)} s` : "skipped";
+    const job = run.jobMs === null ? "-" : `${(run.jobMs / 1000).toFixed(1)} s`;
     console.log(
-      `  ${run.side.padEnd(3)} wall=${wall.padEnd(9)} path=${describeRenderPath(run.path)} ` +
+      `  ${run.side.padEnd(3)} job=${job.padEnd(9)} wall=${wall.padEnd(9)} path=${describeRenderPath(run.path)} ` +
         `frames=${run.probe?.videoFrames ?? "-"} dur=${run.probe?.durationSec?.toFixed(3) ?? "-"}s ` +
         `${run.probe ? `${run.probe.videoCodec}/${run.probe.pixFmt}/${run.probe.colorTransfer}` : ""}`,
     );
@@ -407,8 +468,9 @@ function printReport(report: ProjectReport): void {
       `  SSIM(10-bit) mean=${ssim.mean.toFixed(5)} min=${ssim.min.toFixed(5)} @${ssim.minIndex}`,
     );
   }
+  if (report.framemd5) console.log(`  framemd5 ${describeFrameHashes(report.framemd5)}`);
   if (report.speedup !== undefined)
-    console.log(`  speedup (off/on wall) = ${report.speedup.toFixed(2)}x`);
+    console.log(`  speedup (off/on ${report.speedupBasis}) = ${report.speedup.toFixed(2)}x`);
   for (const check of report.checks) {
     console.log(`  ${check.ok ? "PASS" : "FAIL"} ${check.name.padEnd(24)} ${check.detail}`);
   }
@@ -420,7 +482,15 @@ interface FixtureManifest {
   fps: number;
   /** Absent in manifests written before PQ fixtures existed: HLG. */
   transfer?: "hlg" | "pq";
-  projects: Array<{ name: string; expect: Expectation; expectReason?: string; dir: string }>;
+  projects: Array<{
+    name: string;
+    expect: Expectation;
+    expectReason?: string;
+    dir: string;
+    /** A project's own rate (`30000/1001`) and duration, when they differ from the manifest's. */
+    fps?: number | string;
+    durationSec?: number;
+  }>;
 }
 
 /**
@@ -481,6 +551,7 @@ function main(): void {
       ffprobe: { type: "string", default: process.env.FFPROBE_PATH ?? "ffprobe" },
       "timeout-min": { type: "string", default: "120" },
       "skip-render": { type: "boolean", default: false },
+      "require-identical": { type: "boolean", default: false },
       "min-mean-psnr": { type: "string" },
       "min-psnr": { type: "string" },
       "min-mean-ssim": { type: "string" },
@@ -524,9 +595,9 @@ function main(): void {
     ffprobe: values.ffprobe,
     timeoutMs: numberOption(values["timeout-min"], 120, "timeout-min") * 60_000,
   };
-  const fps = numberOption(values.fps, 30, "fps");
+  const fps = parseFrameRate(values.fps ?? "30");
   const renderArgs = {
-    fps,
+    fps: fps.arg,
     workers: numberOption(values.workers, 1, "workers"),
     quality,
     extraArgs: values["render-arg"],
@@ -542,6 +613,7 @@ function main(): void {
     const transfer = transferArg ?? manifest.transfer ?? "hlg";
     const selected = selectProjects(manifest.projects, values.projects);
     for (const project of selected) {
+      const rate = parseFrameRate(project.fps ?? manifest.fps);
       projects.push({
         projectDir: project.dir,
         outDir: join(outRoot, project.name),
@@ -549,9 +621,14 @@ function main(): void {
         expectReason: fixtureExpectReason(project),
         only,
         skipRender: values["skip-render"],
-        renderArgs: { ...renderArgs, fps: manifest.fps },
-        expected: { fps: manifest.fps, transfer, durationSec: manifest.durationSec },
+        renderArgs: { ...renderArgs, fps: rate.arg },
+        expected: {
+          fps: rate.value,
+          transfer,
+          durationSec: project.durationSec ?? manifest.durationSec,
+        },
         thresholds,
+        requireIdentical: values["require-identical"],
       });
     }
   } else if (values.project) {
@@ -566,11 +643,12 @@ function main(): void {
       skipRender: values["skip-render"],
       renderArgs,
       expected: {
-        fps,
+        fps: fps.value,
         transfer: transferArg ?? "hlg",
         durationSec: values.duration === undefined ? null : Number(values.duration),
       },
       thresholds,
+      requireIdentical: values["require-identical"],
     });
   } else {
     throw new Error("pass --fixtures <dir> (from fixture.ts) or --project <dir>");

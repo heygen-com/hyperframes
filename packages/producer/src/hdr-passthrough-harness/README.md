@@ -34,6 +34,8 @@ cd packages/producer
   --out /tmp/hf-hdr-passthrough-pq                                                      # PQ source
 ../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts --duration 3 --ineligible \
   --out /tmp/hf-hdr-passthrough-neg                                                     # one fixture per fallback class
+../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts --duration 3 --edge \
+  --out /tmp/hf-hdr-passthrough-edge                                                    # rate, size, duration, seek edge cases
 ```
 
 `--cues <n>` overrides the cue count (default one per 2 s).
@@ -82,6 +84,19 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   (`overlay_continuous_animation`). Run these with `--only on`: the check is
   the route and reason, and both sides would take the layered path.
 
+- `edge-<case>/` (with `--edge`): the `captions` layout with one thing
+  varied that the `captions` fixture holds fixed, each on its own source
+  clip (`EDGE_CASES` in `fixture.ts`): a 29.97 fps (30000/1001) source in a
+  30 fps and in a 30000/1001 composition, a 23.976 fps (24000/1001) source in
+  a 30 fps composition, a 1279x719 canvas over a 1280x720 source (scaled
+  onto the odd canvas), a 4:3 source under `object-fit: cover` on a 16:9
+  canvas (must fall back with `object_fit`), a 7.01 s composition (210.3
+  frames, so the render writes 211), and `mediaStart` 13.37 s into a 20 s
+  source with one keyframe every 300 frames. Each records its own rate and
+  duration in the manifest, which `parity.ts` renders and checks with.
+  Every positive case must decode to the same frames as the layered render
+  (run with `--require-identical`).
+
 `fixtures.json` in the output directory records the projects, the transfer
 and what each expects; `parity.ts --fixtures` reads it.
 
@@ -94,9 +109,12 @@ cd packages/producer
 
 Per project it writes `<fixtures>/parity/<project>/{off,on}.{mp4,log}`,
 `psnr.log`, `ssim.log` and `report.json`, and prints a summary, including the
-ffmpeg version and the passthrough's overlay capture counts (states,
-candidates, screenshots, unique PNGs, capture time) read from its log. The exit code
-is 0 only when every check passes.
+ffmpeg version, each side's job time (the `assemble` end checkpoint of its
+`[Render:trace]` lines, compile through assemble) and wall time, the
+`framemd5` comparison of the two outputs' decoded frames, and the
+passthrough's overlay capture counts (states, candidates, screenshots, unique
+PNGs, capture time) read from its log. The speedup is by job time when both
+logs have it. The exit code is 0 only when every check passes.
 
 Useful options:
 
@@ -105,6 +123,8 @@ Useful options:
 | `--projects a,b`         | Only these manifest projects (with `--fixtures`)                                                                                                   |
 | `--only off` / `on`      | Render one side only (single-output checks: render ok, HDR tags, audio, frames)                                                                    |
 | `--skip-render`          | Re-run the comparison on existing `off.mp4` / `on.mp4`                                                                                             |
+| `--require-identical`    | Also fail unless every decoded frame matches (`framemd5`), not just the PSNR / SSIM thresholds                                                     |
+| `--fps <rate>`           | Render rate for `--project`: `30` or `30000/1001` (manifest projects use their own)                                                                |
 | `--project <dir>`        | Any project instead of the generated fixtures (`--duration` enables the frame check, `--expect passthrough\|fallback`, `--expect-reason <reason>`) |
 | `--render-arg <arg>`     | Extra CLI argument for both sides, repeatable (for example `--render-arg=--gpu`)                                                                   |
 | `--quality`, `--workers` | Passed to both renders (defaults `standard`, `1`)                                                                                                  |
@@ -218,3 +238,32 @@ ends and every 0.5 s inside it. "verify" is the number of extra probes.
 All 18 `--ineligible` classes (3 s) fell back with their expected reason,
 including `hf-seek-listener` (`overlay_non_gsap_animation`) and
 `seek-time-setter` (`overlay_unverified`).
+
+### Edge cases
+
+Same host, 2026-11-22, after merging main, ffmpeg 7.0.2 unless noted,
+`--require-identical`. `--edge` fixtures are 5 s (7.01 s for the
+fractional duration) with a caption cue every 2 s; layered extraction reads
+1080p sources in 43-frame windows, so every case re-seeks the source between
+windows on the flag-off side.
+
+| Fixture                                      | off: job | on: job | overlay states (candidates / screenshots)                    | speedup (job) | off vs on          |
+| -------------------------------------------- | -------- | ------- | ------------------------------------------------------------ | ------------- | ------------------ |
+| 29.97 (30000/1001) source, 30 fps comp       | 47.7 s   | 8.1 s   | 7 (28 / 4)                                                   | 5.9x          | identical, 150/150 |
+| 29.97 source, 30000/1001 comp                | 53.5 s   | 8.8 s   | 7 (28 / 4)                                                   | 6.1x          | identical, 150/150 |
+| 23.976 (24000/1001) source, 30 fps comp      | 49.6 s   | 9.6 s   | 7 (28 / 4)                                                   | 5.2x          | identical, 150/150 |
+| 1280x720 source on a 1279x719 canvas         | 32.1 s   | 7.7 s   | 7 (28 / 4)                                                   | 4.2x          | identical, 150/150 |
+| 1440x1080 source, `cover` on 1920x1080       | 63.1 s   | 46.1 s  | fallback `object_fit` (source 1440x1080 vs canvas 1920x1080) | 1.4x          | identical, 150/150 |
+| 7.01 s composition (211 frames)              | 60.7 s   | 7.6 s   | 9 (37 / 5)                                                   | 8.0x          | identical, 211/211 |
+| `mediaStart` 13.37 in a 20 s source, GOP 300 | 43.2 s   | 6.0 s   | 7 (28 / 4)                                                   | 7.2x          | identical, 150/150 |
+| HLG `captions` 3 s (merge smoke)             | 30.6 s   | 7.0 s   | 5 (20 / 3)                                                   | 4.3x          | identical, 90/90   |
+| HLG `captions` 20 s, ffmpeg n8.0.1 (CI pin)  | 173.3 s  | 15.8 s  | 21 (84 / 11)                                                 | 11.0x         | identical, 600/600 |
+
+"Identical" is `framemd5` equality of every decoded frame. The cover-scaled
+fallback's speedup is load noise: both sides took the layered path. The
+ffmpeg 8 row ran both renders and the harness on the BtbN n8.0.1 build the
+Dockerfiles and CI pin (both outputs carry `Lavc62` / `Lavf62`). On that
+build `maskedmerge` in `gbrp16le` with `m = a8 * 257` matches the layered
+blend (`Math.round(dom * a + hdr * (1 - a))`, `a = a8 / 255`) on every one of
+307200 samples (all 256 alphas, 400 random pairs per alpha, three planes),
+as on 7.0.2; Ubuntu's 4.2.7 misses 51810 of them by 1 LSB.
