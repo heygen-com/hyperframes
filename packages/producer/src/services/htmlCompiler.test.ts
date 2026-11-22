@@ -1462,6 +1462,33 @@ describe("detectAncestorBackgroundImage", () => {
     expect(detectAncestorBackgroundImage(fewer)).toBe(false);
   });
 
+  it("decides :has() rules without letting one match scan the page", () => {
+    // Main ran each :has() over the whole 50,000-element page per ancestor; stripped, it widens to a yes.
+    const css = Array.from(
+      { length: 1_000 },
+      (_, i) => `:has(.n${i}) { background-image: url(x.png); }`,
+    );
+    const page = wrap(css.join("\n"), "", "<i></i>".repeat(50_000));
+    const started = performance.now();
+    expect(detectAncestorBackgroundImage(page)).toBe(true);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("still reads combinators exactly and pseudo parts only widening", () => {
+    const page = (css: string) =>
+      `<html><head><style>${css} { background-image: url(x.png); }</style></head><body>` +
+      '<div class="page"><div class="mid"><div class="wrap">' +
+      '<div data-composition-id="main"><div class="tile card"></div></div></div></div></div></body></html>';
+    expect(detectAncestorBackgroundImage(page(".page .wrap"))).toBe(true);
+    expect(detectAncestorBackgroundImage(page(".mid > .wrap"))).toBe(true);
+    expect(detectAncestorBackgroundImage(page(".page > .wrap"))).toBe(false);
+    expect(detectAncestorBackgroundImage(page(".tile::before, .card:hover"))).toBe(false);
+    expect(detectAncestorBackgroundImage(page(":is(.a, .b) .tile"))).toBe(false);
+    expect(detectAncestorBackgroundImage(page(".other ~ .wrap"))).toBe(true);
+    expect(detectAncestorBackgroundImage(page('.page[data-x="a]b"] .wrap:not(.z)'))).toBe(false);
+    expect(detectAncestorBackgroundImage(page(".page:not(.z"))).toBe(true);
+  });
+
   it("returns false without a composition root", () => {
     expect(
       detectAncestorBackgroundImage(
