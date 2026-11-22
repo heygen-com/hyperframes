@@ -197,10 +197,25 @@ function validateMetadata(data: Record<string, unknown>): LineViolation | null {
   );
 }
 
+// A link with no task picks the skill whose description claims it (#8530): name the task a link comes with instead.
+const LINK_ALONE_TRIGGER =
+  /\b(?:pastes?|drops?|shares?|sends?|gives?)\b(?:[^.;]|\.(?=\S)){0,40}?\b(?:link|url)s?\b/i;
+
+function validateTrigger(data: Record<string, unknown>): LineViolation | null {
+  const said = data.description;
+  if (typeof said !== "string" || !LINK_ALONE_TRIGGER.test(said)) return null;
+  return violation(
+    1,
+    `The description makes a pasted link alone pick this skill; say which task the link comes with instead.`,
+    said.match(LINK_ALONE_TRIGGER)?.[0] ?? said,
+  );
+}
+
 function validateShape(data: Record<string, unknown>): LineViolation[] {
   const fieldChecks = [
     validateStringField(data, "name", false),
     validateStringField(data, "description", false),
+    validateTrigger(data),
     validateStringField(data, "license", true),
     validateAllowedTools(data),
     validateMetadata(data),
