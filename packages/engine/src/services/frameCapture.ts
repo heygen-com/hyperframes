@@ -3815,6 +3815,21 @@ function addFrameRanges(target: Set<number>, ranges: Array<[number, number]>): v
  */
 type StaticFrameStats = Awaited<ReturnType<typeof computeStaticFrameSet>>;
 
+/**
+ * The static-frame rule on its own: frame `f` in `[1, totalFrames)` is static iff neither
+ * `f` nor `f - 1` is animated. Frame 0 is never static (nothing precedes it).
+ */
+export function staticFramesFromAnimated(
+  animated: ReadonlySet<number>,
+  totalFrames: number,
+): Set<number> {
+  const staticFrames = new Set<number>();
+  for (let f = 1; f < totalFrames; f++) {
+    if (!animated.has(f) && !animated.has(f - 1)) staticFrames.add(f);
+  }
+  return staticFrames;
+}
+
 /** Why a composition cannot be predicted static: the key goes to telemetry, the value to the log. */
 const STATIC_DEDUP_INELIGIBLE_CAUSES = {
   zero_duration: "unknown/zero duration",
@@ -3845,6 +3860,9 @@ export async function computeStaticFrameSet(
   /** Frames whose only active motion is non-spatial (opacity, colour); safe to skip
    * the adaptive probe. Empty (not meaningful) when `!eligible`. */
   nonSpatialOnlyFrameSet: Set<number>;
+  /** Frames inside a tween interval or within one frame of a clip cut, whatever the
+   * verdict. Empty when the analysis bailed out on `frame_limit` / `interval_limit`. */
+  animatedFrameSet: Set<number>;
   hasVideo: boolean;
   hasCanvas: boolean;
   hasNonGsapAnim: boolean;
@@ -3999,6 +4017,7 @@ export async function computeStaticFrameSet(
       totalFrames,
       staticFrameSet: new Set<number>(),
       nonSpatialOnlyFrameSet: new Set<number>(),
+      animatedFrameSet: new Set<number>(),
       hasVideo,
       hasCanvas,
       hasNonGsapAnim,
@@ -4013,6 +4032,7 @@ export async function computeStaticFrameSet(
       totalFrames,
       staticFrameSet: new Set<number>(),
       nonSpatialOnlyFrameSet: new Set<number>(),
+      animatedFrameSet: new Set<number>(),
       hasVideo,
       hasCanvas,
       hasNonGsapAnim,
@@ -4052,12 +4072,9 @@ export async function computeStaticFrameSet(
   if (hasTimelineCall) causes.push("timeline_call");
   if (hasUnresolvableClipStart) causes.push("unresolvable_clip_start");
   const eligible = causes.length === 0;
-  const staticFrameSet = new Set<number>();
-  if (eligible) {
-    for (let f = 1; f < totalFrames; f++) {
-      if (!animated.has(f) && !animated.has(f - 1)) staticFrameSet.add(f);
-    }
-  }
+  const staticFrameSet = eligible
+    ? staticFramesFromAnimated(animated, totalFrames)
+    : new Set<number>();
   const nonSpatialOnlyFrameSet = new Set<number>();
   if (eligible) {
     for (const f of animated) if (!spatialFrameSet.has(f)) nonSpatialOnlyFrameSet.add(f);
@@ -4066,6 +4083,7 @@ export async function computeStaticFrameSet(
     totalFrames,
     staticFrameSet,
     nonSpatialOnlyFrameSet,
+    animatedFrameSet: animated,
     hasVideo,
     hasCanvas,
     hasNonGsapAnim,
