@@ -65,11 +65,11 @@ test("the retry plan lists exactly the marked shards", () => {
       });
     writeFileSync(join(root, "edit-accuracy-shards/edit-accuracy-shard-7/retry"), "");
     writeFileSync(join(root, "edit-accuracy-shards/edit-accuracy-shard-12/retry"), "");
-    assert.equal(runStep(plan, root, { SHARDS: "12" }), "shards=[7,12]\n");
+    assert.equal(runStep(plan, root, { EDIT_ACCURACY_SHARDS: "12" }), "shards=[7,12]\n");
   });
   withTree((root) => {
     mkdirSync(join(root, "edit-accuracy-shards/edit-accuracy-shard-1"), { recursive: true });
-    assert.equal(runStep(plan, root, { SHARDS: "1" }), "shards=[]\n");
+    assert.equal(runStep(plan, root, { EDIT_ACCURACY_SHARDS: "1" }), "shards=[]\n");
   });
 });
 
@@ -81,7 +81,7 @@ test("the retry plan also re-runs a shard whose evidence never uploaded", () => 
         recursive: true,
       });
     writeFileSync(join(root, "edit-accuracy-shards/edit-accuracy-shard-2/retry"), "");
-    assert.equal(runStep(plan, root, { SHARDS: "5" }), "shards=[2,3,5]\n");
+    assert.equal(runStep(plan, root, { EDIT_ACCURACY_SHARDS: "5" }), "shards=[2,3,5]\n");
   });
 });
 
@@ -104,6 +104,15 @@ test("each marked shard re-runs once and replaces its evidence before the gate r
   assert.equal(upload.with.overwrite, true);
   assert.ok(jobs["studio-edit-accuracy-gate"].needs.includes("studio-edit-accuracy-retry"));
   assert.match(jobs["studio-edit-accuracy-gate"].if, /!cancelled\(\)/);
+});
+
+test("the shard matrix runs exactly the shards the count names, for the merge queue and for pull requests", () => {
+  const [, queue, pr] = ci.env.EDIT_ACCURACY_SHARDS.match(/&& (\d+) \|\| (\d+)/);
+  const lists = [...jobs["studio-edit-accuracy"].strategy.matrix.shard.matchAll(/'(\[[^']*\])'/g)];
+  assert.deepEqual(
+    lists.map((m) => JSON.parse(m[1])),
+    [Number(queue), Number(pr)].map((n) => Array.from({ length: n }, (_, k) => k + 1)),
+  );
 });
 
 test("a cancelled shard and its re-run both fit in the merge queue's 60 minute check wait", () => {
