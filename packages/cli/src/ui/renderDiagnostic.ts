@@ -77,9 +77,9 @@ function renderFailureCode(error: unknown, fallback = "RENDER_FAILED"): string {
     return error.warnings[0].code.toUpperCase();
   return (
     producerCodeOf(error) ??
+    encoderCodeOf(error) ??
     fileErrorOf(error, message) ??
     captureCodeOf(error, message) ??
-    encoderCodeOf(error) ??
     fallback
   );
 }

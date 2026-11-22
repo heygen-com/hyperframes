@@ -153,6 +153,12 @@ describe("render diagnostic wire", () => {
       Object.assign(new Error(PRIVATE), { name: "SegmentEncoderSpawnError" }),
       "SEGMENT_ENCODER_SPAWN",
     ],
+    [
+      Object.assign(new Error(`spawn ffmpeg ENOENT ${PRIVATE}`), {
+        name: "SegmentEncoderSpawnError",
+      }),
+      "SEGMENT_ENCODER_SPAWN",
+    ],
     [new Error(`Faststart failed: FFmpeg exited with code 1 ${PRIVATE}`), "FASTSTART_FAILED"],
     [new Error(`Audio muxing failed: ${PRIVATE}`), "AUDIO_MUX_FAILED"],
     [new Error(`encoder exited before the last frame ${PRIVATE}`), "ENCODER_EXITED"],
