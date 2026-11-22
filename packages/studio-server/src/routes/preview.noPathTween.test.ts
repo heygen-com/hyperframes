@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NO_PATH_TWEEN_META } from "@hyperframes/core/gsap-cdn";
@@ -11,7 +11,11 @@ const LATE_PATH_TWEEN =
   'window.buildPathTween = function () { gsap.to("#card", { motionPath: { path: [{ x: 50, y: 0 }] } }); };';
 
 /** The main preview page for a project holding `files`, as the preview route assembles it. */
-function servedPage(scripts: string, files: Record<string, string> = {}): string {
+function servedPage(
+  scripts: string,
+  files: Record<string, string> = {},
+  links: Record<string, string> = {},
+): string {
   const index = `<!doctype html><html><head>${scripts}</head><body><div id="card"></div>${PLAIN_TWEEN}</body></html>`;
   const dir = mkdtempSync(join(tmpdir(), "hf-no-path-tween-"));
   onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
@@ -19,6 +23,7 @@ function servedPage(scripts: string, files: Record<string, string> = {}): string
     mkdirSync(join(dir, rel, ".."), { recursive: true });
     writeFileSync(join(dir, rel), content, "utf-8");
   }
+  for (const [rel, target] of Object.entries(links)) symlinkSync(target, join(dir, rel));
   return injectStudioPreviewAugmentations(
     withPreviewRuntime(withPreviewBase(index, "film"), "/api/runtime.js"),
     "/api/runtime.js",
@@ -56,6 +61,28 @@ describe("the preview's mark that no script can tween along a path", () => {
     expect(marked(servedPage('<script src="missing.js"></script>'))).toBe(false);
     const module = '<script type="module" src="gsap.min.js"></script>';
     expect(marked(servedPage(module, { "gsap.min.js": GSAP_FILE }))).toBe(false);
+  });
+
+  // fails without the fix: a folder named as a script threw and the preview was not built.
+  it("leaves unmarked, and still builds, a page whose script source is a folder", () => {
+    expect(marked(servedPage('<script src="assets"></script>', { "assets/a.txt": "a" }))).toBe(
+      false,
+    );
+  });
+
+  // fails without the fix: a link out of the project was read as a project script.
+  it("leaves unmarked a script that links out of the project", () => {
+    const outside = mkdtempSync(join(tmpdir(), "hf-outside-"));
+    onTestFinished(() => rmSync(outside, { recursive: true, force: true }));
+    writeFileSync(join(outside, "gsap.min.js"), GSAP_FILE, "utf-8");
+    const linked = servedPage(
+      '<script src="gsap.min.js"></script>',
+      {},
+      {
+        "gsap.min.js": join(outside, "gsap.min.js"),
+      },
+    );
+    expect(marked(linked)).toBe(false);
   });
 
   it("leaves unmarked a page whose own text names a path", () => {

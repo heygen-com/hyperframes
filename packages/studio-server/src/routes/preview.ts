@@ -203,14 +203,18 @@ const GSAP_ON_ITS_CDN = /^https:\/\/cdn\.jsdelivr\.net\/npm\/gsap@[\d.]+\/dist\/
 const PROJECT_PREVIEW_BASE =
   /<base\b[^>]*\shref\s*=\s*["']\/api\/projects\/[^/"']+\/preview\/["']/i;
 
+const MAX_READ_SCRIPT_BYTES = 4 * 1024 * 1024;
+
 function projectScriptNamesNoPath(src: string, projectDir: string): boolean {
   if (/^(?:[a-z][\w+.-]*:|\/)/i.test(src)) return false;
-  const file = resolve(projectDir, src.split(/[?#]/)[0]!);
-  return (
-    isWithinProjectRoot(projectDir, file) &&
-    existsSync(file) &&
-    !namesMotionPath(readFileSync(file, "utf-8"))
-  );
+  try {
+    const file = resolveWithinProject(projectDir, decodeURIComponent(src.split(/[?#]/)[0]!));
+    const info = file === null ? null : statSync(file);
+    if (file === null || !info?.isFile() || info.size > MAX_READ_SCRIPT_BYTES) return false;
+    return !namesMotionPath(readFileSync(file, "utf-8"));
+  } catch {
+    return false;
+  }
 }
 
 function scriptCannotTweenAlongPath(tag: string, projectDir: string): boolean {
