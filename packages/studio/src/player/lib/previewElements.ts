@@ -14,6 +14,7 @@ import {
   MAX_QUERY_MATCHES,
   MAX_SNAP_TARGETS,
   MAX_SOURCE_GROUPS,
+  isTransformList,
   type EditingElementBox,
   type EditingElementDescription,
   type EditingElementGeometry,
@@ -199,13 +200,20 @@ const isSourceBox = (value: unknown) =>
 
 const isClipPath = isValueOrNull;
 
+const isLayout = (value: unknown) =>
+  isFields(value) &&
+  [value.width, value.height].every(
+    (side) => Number.isFinite(side) && (side as number) >= 0 && (side as number) <= MAX_DRAFT_PX,
+  );
+
 const isBox = (value: unknown): value is EditingElementBox =>
   isFields(value) &&
   isRect(value.rect) &&
   Number.isFinite(value.angle) &&
   isCorners(value.corners) &&
   isSourceBox(value.source) &&
-  isClipPath(value.clipPath);
+  isClipPath(value.clipPath) &&
+  isLayout(value.layout);
 
 const readGeometry = (value: unknown): EditingElementGeometry | null => {
   if (!isBox(value) || !isFields(value) || typeof value.visible !== "boolean") return null;
@@ -247,27 +255,38 @@ const isFlag = (value: unknown) => typeof value === "boolean";
 const isFiniteFields = (value: unknown, keys: string[]) =>
   isFields(value) && keys.every((key) => Number.isFinite(value[key]));
 
-const isLayout = (value: unknown) =>
-  isFields(value) &&
-  [value.width, value.height].every(
-    (side) => Number.isFinite(side) && (side as number) >= 0 && (side as number) <= MAX_DRAFT_PX,
-  );
-
 const isTurnOrNull = (value: unknown) =>
   value === null || (Number.isFinite(value) && Math.abs(value as number) <= MAX_DRAFT_DEG);
 
 const kept = <T>(value: T, valid: boolean) => (valid ? value : undefined);
 
-export type ReadGestureStart = Omit<EditingGestureStart, "gsapRotation" | "planar" | "grow"> & {
+const isTurn = (value: unknown) => value !== null && isTurnOrNull(value);
+
+const isRotationTarget = (target: unknown) =>
+  isFields(target) &&
+  (target.property === "rotate" || target.property === "transform") &&
+  isTransformList(target.before) &&
+  isTransformList(target.after) &&
+  isTurn(target.share) &&
+  (target.sign === 1 || target.sign === -1) &&
+  isFlag(target.inline);
+
+const isCssRotation = (value: unknown) =>
+  value === null || (isFields(value) && isTurn(value.angle) && isRotationTarget(value.target));
+
+export type ReadGestureStart = Omit<
+  EditingGestureStart,
+  "gsapRotation" | "cssRotation" | "planar" | "grow"
+> & {
   gsapRotation?: number | null;
   grow?: EditingGestureStart["grow"];
+  cssRotation?: EditingGestureStart["cssRotation"];
 };
 
 const readGestureStart = (value: unknown): ReadGestureStart | null => {
   if (!readGeometry(value) || !isFields(value)) return null;
-  const { layout, move, gsap, gsapRotation, grow } = value;
+  const { move, gsap, gsapRotation, grow, cssRotation } = value;
   const valid = [
-    isLayout(layout),
     move === null || isFiniteFields(move, ["a", "b", "c", "d"]),
     gsap === null || (isFields(gsap) && isFiniteFields(gsap, ["x", "y"]) && isFlag(gsap.moving)),
   ];
@@ -277,6 +296,7 @@ const readGestureStart = (value: unknown): ReadGestureStart | null => {
     ...start,
     gsapRotation: kept(start.gsapRotation, isTurnOrNull(gsapRotation)),
     grow: kept(start.grow, isFiniteFields(grow, ["a", "b", "c", "d"])),
+    cssRotation: kept(start.cssRotation, isCssRotation(cssRotation)),
   };
 };
 

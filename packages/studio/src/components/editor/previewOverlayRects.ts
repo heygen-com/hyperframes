@@ -14,6 +14,7 @@ import { previewGeometry } from "../../player/lib/previewElements";
 import { computeOverlayRootScale, type OverlayRootScale } from "./domEditOverlayBasis";
 import { hugRectForClipPath } from "./domEditOverlayCrop";
 import {
+  cornerEdgeLength,
   frameCornersToOverlay,
   frameRectToOverlay,
   orientOverlayRect,
@@ -23,9 +24,23 @@ import {
 
 const clientRect = ({ x, y, width, height }: EditingRect) => ({ left: x, top: y, width, height });
 
+/** Overlay px per CSS px along the element's own edges, which a turn does not lengthen; undefined without a size. */
+function ownScaleOf(scale: OverlayRootScale, box: EditingElementBox) {
+  const { layout } = box;
+  if (!(layout.width > 0 && layout.height > 0)) return undefined;
+  const corners = box.corners && frameCornersToOverlay(scale, box.corners);
+  const width = corners
+    ? cornerEdgeLength(corners.nw, corners.ne)
+    : box.rect.width * scale.rootScaleX;
+  const height = corners
+    ? cornerEdgeLength(corners.nw, corners.sw)
+    : box.rect.height * scale.rootScaleY;
+  return { x: width / layout.width, y: height / layout.height };
+}
+
 /** `toOverlayRect`. */
 const baseRect = (scale: OverlayRootScale, box: EditingElementBox) =>
-  frameRectToOverlay(scale, clientRect(box.rect), box.source);
+  frameRectToOverlay(scale, clientRect(box.rect), box.source, ownScaleOf(scale, box));
 
 /** `orientedOverlayRect`. */
 function orientedRect(scale: OverlayRootScale, box: EditingElementBox): OverlayRect {

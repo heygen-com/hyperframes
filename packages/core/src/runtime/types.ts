@@ -100,6 +100,7 @@ export type RuntimeTimelineClip = RuntimeTimelineClipIdentity & {
   timelineGroup: string | null;
   timelinePriority: number | null;
   text: TextLayerRead | null;
+  transitionLabel: string | null;
 };
 
 export type RuntimeTimelineScene = {
@@ -165,6 +166,15 @@ export type RuntimePickerPickedManyMessage = {
 export type RuntimePickerCancelledMessage = {
   source: "hf-preview";
   type: "pick-mode-cancelled";
+};
+
+/** The document's own length and size, posted before the runtime boots (`compositionLength.readStaticComposition`). */
+export type RuntimeStaticCompositionMessage = {
+  source: "hf-preview";
+  type: "static-composition";
+  durationSeconds: number;
+  width: number | null;
+  height: number | null;
 };
 
 export type RuntimeStageSizeMessage = {
@@ -339,6 +349,7 @@ export type RuntimeOutboundMessage =
   | RuntimePickerPickedManyMessage
   | RuntimePickerCancelledMessage
   | RuntimeStageSizeMessage
+  | RuntimeStaticCompositionMessage
   | RuntimeMediaAutoplayBlockedMessage
   | RuntimeReadyMessage
   | RuntimeAssetsReadyMessage

@@ -17,7 +17,7 @@ export const SIZE_PROPERTIES = [
   "max-width",
   "max-height",
 ] as const;
-const DRAWN = ["translate", "rotate", ...SIZE_PROPERTIES] as const;
+const DRAWN = ["translate", "rotate", "transform", ...SIZE_PROPERTIES] as const;
 
 interface Before {
   draft: number;
@@ -141,10 +141,12 @@ function restoreGsapRotation(element: Styled): void {
 function drawRotate(element: Styled, rotate: EditingDraftRotate | null): void {
   const saved = beforeOf(element);
   if (!rotate) {
-    restore(element, ["rotate"]);
+    restore(element, ["rotate", "transform"]);
     return restoreGsapRotation(element);
   }
   if (rotate.route === "css") return void element.style.setProperty("rotate", `${rotate.angle}deg`);
+  if (rotate.route === "transform")
+    return void element.style.setProperty("transform", rotate.value);
   const gsap = frameGsap();
   saved.gsapRotation ??= Number(gsap?.getProperty?.(element, "rotation")) || 0;
   element.style.setProperty("rotate", "none");

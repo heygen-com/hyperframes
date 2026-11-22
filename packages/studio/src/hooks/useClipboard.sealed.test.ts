@@ -7,6 +7,7 @@ import { useClipboard } from "./useClipboard";
 import { usePlayerStore, type TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
+import { setCompositionSourceMap } from "../components/editor/domEditingDom";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -21,19 +22,30 @@ afterEach(() => {
   act(() => root?.unmount());
   root = null;
   vi.unstubAllGlobals();
+  setCompositionSourceMap(new Map());
   usePlayerStore.getState().reset();
   document.body.innerHTML = "";
 });
 
 /** A sealed preview of SAVED, with the runtime's hide on the clip, and the saved file served. */
-function sealedClipboard(domSelection: DomEditSelection | null, scriptMade = "", saved = SAVED) {
+function sealedClipboard(
+  domSelection: DomEditSelection | null,
+  scriptMade = "",
+  saved = SAVED,
+  otherFiles: Record<string, string> = {},
+) {
   const preview = new DOMParser().parseFromString(ensureHfIds(saved), "text/html");
   document.body.innerHTML = preview.body.innerHTML;
   document.querySelector("[data-composition-id]")!.insertAdjacentHTML("beforeend", scriptMade);
   document.getElementById("title")!.style.cssText = "visibility: hidden; display: none";
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => new Response(JSON.stringify({ content: saved }))),
+    vi.fn(async (url: string) => {
+      const other = Object.keys(otherFiles).find((path) =>
+        decodeURIComponent(String(url)).endsWith(`/files/${path}`),
+      );
+      return new Response(JSON.stringify({ content: other ? otherFiles[other] : saved }));
+    }),
   );
   const { iframe } = sealedPreviewFrame();
   const writes: string[] = [];
@@ -130,6 +142,18 @@ const SCRIPT_MADE = [
   ['<a id="made" class="clip" href="javascript:alert(1)">Made</a>', true],
   ['<div id="made" class="clip"><script>alert(1)</script>Made</div>', true],
   ['<iframe id="made" class="clip" srcdoc="<b>x</b>"></iframe>', true],
+  // fails without the fix: inert in the check's scripting-off parse, live in a preview that runs scripts.
+  [
+    '<div id="made" class="clip"><noscript><p title="</noscript><img src=x onerror=alert(1)>"></p></noscript></div>',
+    true,
+  ],
+  ['<div id="made" class="clip"><base href="https://elsewhere.example/"></div>', true],
+  ['<div id="made" class="clip"><meta http-equiv="refresh" content="0;url=x"></div>', true],
+  [
+    '<div id="made" class="clip"><link rel="stylesheet" href="https://elsewhere.example/a.css"></div>',
+    true,
+  ],
+  ['<div id="made" class="clip"><style>p{}</style><p>Made</p></div>', true],
   ['<video id="made" class="clip" src="clip.mp4" data-start="1" data-duration="2"></video>', false],
 ] as const;
 
@@ -152,6 +176,54 @@ it("pastes a sealed preview's own element only when its markup runs no code", as
     act(() => root?.unmount());
     root = null;
   }
+});
+
+// fails without the fix: markup the copy found in another file was taken as saved and pasted unchecked.
+it("checks a saved element read from another file before pasting it into this one", async () => {
+  const received = `<!doctype html><html><body><div data-composition-id="recv" data-start="0" data-duration="5">
+<button id="go" class="clip" onclick="steal()" data-start="1" data-duration="1" data-track-index="2">Go</button>
+</div></body></html>`;
+  const selection = {
+    id: "go",
+    selector: "#go",
+    sourceFile: "compositions/recv.html",
+  } as DomEditSelection;
+  // A received sub-composition of this project, and one of the person's own clips shown under its file and id.
+  setCompositionSourceMap(new Map([["recv", "compositions/recv.html"]]));
+  const relabelled =
+    '<div data-composition-file="compositions/recv.html"><button id="go" class="clip">Go</button></div>';
+  const { clipboard, writes, toasts } = sealedClipboard(selection, relabelled, SAVED, {
+    "compositions/recv.html": received,
+  });
+  expect(clipboard().handleCopy()).toBe(true);
+  await clipboard().handlePaste();
+  expect(writes).toEqual([]);
+  expect(toasts.at(-1)).toMatch(/^Couldn't paste/);
+});
+
+// fails without the fix: the file the frame named for a clip or a selection was read and written as given.
+it("copies and duplicates nothing from a file Studio does not know as one of this project's compositions", async () => {
+  const elsewhere = { ...clipOf("go", "button", 1, 2), sourceFile: "compositions/elsewhere.html" };
+  const shown =
+    '<div data-composition-file="compositions/elsewhere.html"><button id="go" class="clip">Go</button></div>';
+  usePlayerStore.setState({ elements: [elsewhere] });
+  selectClip("go");
+  const duplicated = sealedClipboard(null, shown);
+  expect(await duplicated.clipboard().handleDuplicate()).toBe(false);
+  expect(duplicated.writes).toEqual([]);
+  act(() => root?.unmount());
+  root = null;
+
+  usePlayerStore.setState({ selectedElementId: null, selectedElementIds: new Set() });
+  const selection = {
+    id: "go",
+    selector: "#go",
+    sourceFile: "compositions/elsewhere.html",
+  } as DomEditSelection;
+  const copied = sealedClipboard(selection, shown);
+  copied.clipboard().handleCopy();
+  await copied.clipboard().handlePaste();
+  expect(copied.writes).toEqual([]);
 });
 
 it("pastes and duplicates a saved element with its own handler, as saved", async () => {

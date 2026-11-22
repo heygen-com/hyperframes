@@ -10,7 +10,10 @@
  * `stop()` on disconnect or src change.
  */
 
-import { readStaticCompositionMeta } from "@hyperframes/core/runtime/composition-length";
+import {
+  readCompositionSizeFromDocument,
+  readStaticCompositionMeta,
+} from "@hyperframes/core/runtime/composition-length";
 import { STUDIO_PREVIEW_ERRORS } from "@hyperframes/core/studio-preview-mark";
 import { shouldInjectRuntime } from "./shouldInjectRuntime.js";
 import {
@@ -55,17 +58,7 @@ export function readPositiveDimension(value: string | null): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-export function readCompositionSizeFromDocument(
-  doc: Document | null | undefined,
-): { width: number; height: number } | null {
-  const root =
-    doc?.querySelector("[data-composition-id][data-width][data-height]") ??
-    doc?.querySelector("[data-width][data-height]");
-  if (!root) return null;
-  const width = readPositiveDimension(root.getAttribute("data-width"));
-  const height = readPositiveDimension(root.getAttribute("data-height"));
-  return width !== null && height !== null ? { width, height } : null;
-}
+export { readCompositionSizeFromDocument };
 
 type ProbeOutcome =
   | { kind: "ready"; result: ProbeResult }

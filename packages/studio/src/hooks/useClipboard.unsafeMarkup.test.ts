@@ -7,9 +7,9 @@ vi.mock("@hyperframes/core/html-attr-safety", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@hyperframes/core/html-attr-safety")>();
   return {
     ...actual,
-    unsafeMarkup: (root: Element) => {
+    markupOutsideAllowlist: (root: Element) => {
       checked.push(root.outerHTML);
-      return actual.unsafeMarkup(root);
+      return actual.markupOutsideAllowlist(root);
     },
   };
 });

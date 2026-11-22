@@ -13,6 +13,11 @@ import {
 import type { ShaderLoaderState } from "./shader-loader-state.js";
 import type { ShaderTransitionState } from "./shader-options.js";
 import { inspectRuntimeProtocol } from "@hyperframes/core/runtime/protocol";
+import {
+  parseStaticComposition,
+  STATIC_COMPOSITION,
+  type StaticComposition,
+} from "@hyperframes/core/runtime/composition-length";
 
 type SceneRecord = { id: string; start: number; duration: number };
 
@@ -49,9 +54,12 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
    *  player uses this as the cross-origin readiness signal because the
    *  same-origin composition probe cannot inspect CDN iframes. */
   onRuntimeTimelineReady: (duration: number, assetsReady: boolean | undefined) => void;
+  /** The frame's own static read, posted before its runtime boots, for a player that can't read the frame. */
+  onStaticComposition?: (read: StaticComposition) => void;
   setBuffering?: (buffering: boolean) => void;
   setRuntimeFps?: (fps: number) => void;
   setRuntimeOwnsPlayRange?: (owns: boolean) => void;
+  setRuntimeAnnounces?: (announces: boolean) => void;
   /** Called with the scene list whenever a "timeline" message is received. */
   setScenes: (scenes: SceneRecord[]) => void;
   /** Return false to ignore the iframe runtime's audible-media autoplay fallback.
@@ -82,6 +90,9 @@ export function handleRuntimeMessage(
   const ownsPlayRange =
     protocol.status === "supported" && protocol.metadata.capabilities.includes("play-range");
   callbacks.setRuntimeOwnsPlayRange?.(ownsPlayRange);
+  callbacks.setRuntimeAnnounces?.(
+    protocol.status === "supported" && protocol.metadata.capabilities.includes("announce-timeline"),
+  );
 
   if (data["type"] === "shader-transition-state") {
     const state: ShaderTransitionState =
@@ -94,6 +105,12 @@ export function handleRuntimeMessage(
         detail: { compositionId: data["compositionId"], state },
       }),
     );
+    return;
+  }
+
+  if (data["type"] === STATIC_COMPOSITION) {
+    const read = parseStaticComposition(data);
+    if (read) callbacks.onStaticComposition?.(read);
     return;
   }
 

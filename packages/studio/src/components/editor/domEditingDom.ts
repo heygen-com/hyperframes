@@ -102,6 +102,18 @@ export function getCompositionSourceMapRevision(): number {
   return compositionSourceMapRevision;
 }
 
+export function knownCompositionFile(
+  claimed: string | undefined,
+  activeCompositionPath: string | null,
+): string | null {
+  const file = claimed || activeCompositionPath || "index.html";
+  const known =
+    file === "index.html" ||
+    file === activeCompositionPath ||
+    [...compositionSourceMap.values()].includes(file);
+  return known ? file : null;
+}
+
 /** The source file `source` names (see `EditingElementSource`), with this project's composition map. */
 export function resolveElementSourceFile(
   source: EditingElementSource,

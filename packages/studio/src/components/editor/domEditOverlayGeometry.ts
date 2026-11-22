@@ -26,6 +26,7 @@ export interface OverlayRect {
   height: number;
   editScaleX: number;
   editScaleY: number;
+  ownScale?: { x: number; y: number };
   /** Live screen-space rotation; omitted for axis-aligned group bounds. */
   angle?: number;
 }
@@ -184,6 +185,7 @@ export function frameRectToOverlay(
   scale: OverlayRootScale,
   elementRect: { left: number; top: number; width: number; height: number },
   source: FrameSource,
+  ownScale?: { x: number; y: number },
 ): OverlayRect {
   const { iframeRect, overlayRect, rootScaleX, rootScaleY } = scale;
   const editScale = resolveDomEditCoordinateScale({
@@ -202,6 +204,7 @@ export function frameRectToOverlay(
     height: elementRect.height * rootScaleY,
     editScaleX: editScale.scaleX,
     editScaleY: editScale.scaleY,
+    ...(ownScale && { ownScale }),
   };
 }
 
@@ -345,6 +348,7 @@ export function orientOverlayRect(
     height,
     editScaleX: base.editScaleX,
     editScaleY: base.editScaleY,
+    ...(base.ownScale && { ownScale: base.ownScale }),
     angle,
   };
 }
