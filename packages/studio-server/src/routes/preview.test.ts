@@ -3380,7 +3380,10 @@ describe("GSAP mirror configuration", () => {
         headers: { "If-None-Match": etag! },
       });
       expect(again.status).toBe(200);
-      expect(await again.text()).not.toContain("jsdelivr");
+      const plugin = parseHTML(await again.text()).document.querySelector(
+        'script[src*="MotionPathPlugin"]',
+      );
+      expect(plugin?.getAttribute("src")).toBe("vendor/MotionPathPlugin.min.js");
     },
   );
 

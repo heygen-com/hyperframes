@@ -17,7 +17,8 @@ export function isGsapCoreUrl(src: string): boolean {
 }
 
 function motionPathBesideGsap(gsapFile: string): string {
-  return `${gsapFile.replace(/[?#].*$/, "").replace(/[^/]*$/, "")}MotionPathPlugin.min.js`;
+  const path = gsapFile.split(/[?#]/, 1)[0]!;
+  return `${path.slice(0, path.lastIndexOf("/") + 1)}MotionPathPlugin.min.js`;
 }
 
 function isLoopbackHost(hostname: string): boolean {
