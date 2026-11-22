@@ -32,7 +32,6 @@ import {
 } from "@hyperframes/core";
 import {
   GSAP_BASE_URL_META,
-  GSAP_ON_ITS_CDN,
   GSAP_PLUGIN_LOAD_ATTR,
   NO_PATH_TWEEN_META,
   gsapCdnDist,
@@ -205,6 +204,7 @@ function htmlUsesMotionPath(html: string): boolean {
 }
 
 const SCRIPT_SRC_ATTR = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
+const GSAP_ON_ITS_CDN = /^https:\/\/cdn\.jsdelivr\.net\/npm\/gsap@[\d.]+\/dist\/[\w.-]+\.js$/;
 const PROJECT_PREVIEW_BASE =
   /<base\b[^>]*\shref\s*=\s*["']\/api\/projects\/[^/"']+\/preview\/["']/i;
 

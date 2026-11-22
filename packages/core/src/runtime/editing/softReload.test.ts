@@ -513,10 +513,6 @@ describe("where the MotionPath plugin loads from", () => {
       '<script data-hf-inlined-src="vendor/gsap.min.js"></script>',
       "vendor/MotionPathPlugin.min.js",
     ],
-    [
-      '<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>',
-      "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js",
-    ],
   ])("loads it from beside the page's own GSAP: %s", (tag, plugin) => {
     expect(preloadOn(tag + PATH_TWEEN)).toBe(new URL(plugin, document.baseURI).href);
   });
@@ -546,36 +542,23 @@ describe("where the MotionPath plugin loads from", () => {
     );
   });
 
-  // fails without the fix: with no server meta (Desktop), every page preloaded the plugin, so a film with
-  // GSAP from jsDelivr and no path tween still asked jsDelivr for it.
+  // fails without the fix: with no server meta (Desktop), a film with GSAP from jsDelivr preloaded the plugin
+  // from there ahead of any path tween; an edit that adds one still loads it beside that GSAP.
   it.each([
-    [
-      "inline scripts and GSAP's own files",
-      '<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script><script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/CustomEase.min.js"></script><script>gsap.to("#a", { x: 10 });</script>',
-    ],
-    [
-      "the runtime's own script",
-      '<script data-hyperframes-preview-runtime="1" src="/api/runtime.js"></script><script src="vendor/gsap.min.js"></script><script>gsap.to("#a", { x: 10 });</script>',
-    ],
-  ])("preloads nothing when the page proves no path tween: %s", (_, markup) => {
-    expect(preloadOn(markup)).toBeNull();
+    ["no path tween", ""],
+    ["a path tween", PATH_TWEEN],
+  ])("never preloads from a CDN the host did not configure, with %s", (_, tween) => {
+    const cdn = '<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>';
+    expect(preloadOn(cdn + tween, "3.14.2")).toBeNull();
   });
 
+  // fails without the fix: a data: script threw out of the preload, and a project script beside GSAP was
+  // taken for GSAP's own and skipped it.
   it.each([
-    [
-      "a script it cannot read",
-      '<script src="vendor/gsap.min.js"></script><script src="scene.js"></script>',
-    ],
-    [
-      "a module script",
-      '<script src="vendor/gsap.min.js"></script><script type="module">import "./scene.js";</script>',
-    ],
-    [
-      "a sub-composition still to load",
-      '<script src="vendor/gsap.min.js"></script><div data-composition-src="scene.html"></div>',
-    ],
-  ])("still preloads for %s", (_, markup) => {
-    expect(preloadOn(markup)).toBe(
+    ["a project script beside GSAP", '<script src="vendor/scene.js"></script>'],
+    ["a data: script", '<script src="data:text/javascript,window.x=1"></script>'],
+  ])("preloads the local plugin whatever else the page loads: %s", (_, other) => {
+    expect(preloadOn(`<script src="vendor/gsap.min.js"></script>${other}`)).toBe(
       new URL("vendor/MotionPathPlugin.min.js", document.baseURI).href,
     );
   });

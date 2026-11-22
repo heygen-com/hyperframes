@@ -9,9 +9,6 @@ export const namesMotionPath = (script: string) => /motionPath["']?\s*[:{]/.test
 const pathOf = (src: string) =>
   URL.canParse(src, "http://localhost/") ? new URL(src, "http://localhost/").pathname : null;
 
-export const GSAP_ON_ITS_CDN =
-  /^https:\/\/cdn\.jsdelivr\.net\/npm\/gsap@[\d.]+\/dist\/[\w.-]+\.js$/;
-
 export function isGsapCoreUrl(src: string): boolean {
   return /\/gsap(-\d+(\.\d+)*)?(\.min)?\.js$/i.test(pathOf(src) ?? "");
 }

@@ -303,7 +303,6 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     const port = channel.port1;
     ports.add(port);
     serve(port);
-    preloadMotionPath();
     try {
       // "*" as every runtime post does (bridge.ts): the frame is not told its parent's origin.
       parent.postMessage(
@@ -315,7 +314,9 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       swallow("editingAgent.handoff", err);
       port.close();
       ports.delete(port);
+      return;
     }
+    preloadMotionPath();
   };
   window.addEventListener("message", onMessage);
   return {
