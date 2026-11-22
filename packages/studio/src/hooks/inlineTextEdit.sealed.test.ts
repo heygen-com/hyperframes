@@ -839,6 +839,7 @@ it("wakes the selection box as the frame's text grows, and stops watching when t
       corners: null,
       source: null,
       clipPath: null,
+      layout: { width, height: 40 },
       visible: true,
       members: null,
     };
