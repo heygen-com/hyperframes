@@ -168,3 +168,61 @@ describe.each(["lands", "is refused"])(
     });
   },
 );
+
+describe.each<
+  [string, (hook: ReturnType<typeof useTimelineEditing>, c: TimelineElement) => unknown]
+>([
+  ["a single-clip drag", (hook, c) => hook.handleTimelineElementMove(c, { start: 2.5, track: 0 })],
+  ["a group drag", (hook, c) => hook.handleTimelineGroupMove([{ element: c, start: 2.5 }])],
+])("%s queued behind a delete that is refused after a project switch", (_kind, drag) => {
+  // fails without the fix: the drag was checked against the shown project's clips, kept, and saved
+  // on top of the restored clip in its own project.
+  it("is refused with the delete, since its own project's timeline is not shown", async () => {
+    stubFetch([]);
+    usePlayerStore.getState().setDuration(10);
+    usePlayerStore.getState().setElements([clip("a", 0), clip("b", 2), clip("c", 4)]);
+    let refuseDelete: (error: Error) => void = () => {};
+    const deleteSave = new Promise<void>((_, fail) => (refuseDelete = fail));
+    const oldWrite = vi.fn().mockReturnValueOnce(deleteSave).mockResolvedValue(undefined);
+    let hook: ReturnType<typeof useTimelineEditing> | null = null;
+    function Harness({ projectId }: { projectId: "old" | "new" }) {
+      hook = useTimelineEditing({
+        projectId,
+        activeCompPath: "index.html",
+        timelineElements: usePlayerStore.getState().elements,
+        showToast: vi.fn(),
+        writeProjectFile: projectId === "old" ? oldWrite : vi.fn(),
+        recordEdit: vi.fn(),
+        reloadPreview: vi.fn(),
+        previewIframeRef: { current: null },
+        pendingTimelineEditPathRef: { current: new Set<string>() },
+        uploadProjectFiles: vi.fn(),
+      });
+      return null;
+    }
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => root.render(<Harness projectId="old" />));
+    const [, b, c] = usePlayerStore.getState().elements;
+    let deleted: Promise<unknown> = Promise.resolve();
+    let dragged: Promise<unknown> = Promise.resolve();
+    act(() => {
+      deleted = Promise.resolve(hook!.handleTimelineElementsDelete([b!]));
+      dragged = Promise.resolve(drag(hook!, c!));
+    });
+    act(() => {
+      usePlayerStore.getState().setElements([clip("a", 0)]);
+      root.render(<Harness projectId="new" />);
+    });
+
+    await act(async () => {
+      refuseDelete(new Error("refused"));
+      await Promise.allSettled([deleted, dragged]);
+    });
+
+    await expect(dragged).rejects.toThrow("refused");
+    expect(oldWrite).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+  });
+});

@@ -73,8 +73,8 @@ export const keepUnlessItOverlaps =
     if (landsOnLaneClip(elements, placed)) throw laneOverlapRefusal();
   };
 
-/** Runs `run` after every edit queued before it. When one of those, in the same project, was
- *  refused, `ifEarlierRefused` runs first, and throwing refuses this edit too. */
+/** Runs `run` after every edit queued before it. When one in its project was refused, `ifEarlierRefused`
+ *  decides (throw to refuse too); with that project no longer shown, the edit is refused outright. */
 export function enqueueTimelineEdit<T>(
   queue: TimelineEditQueue,
   run: (projectId: string) => Promise<T>,
@@ -91,7 +91,8 @@ export function enqueueTimelineEdit<T>(
   const byProject = (queue.placed ??= new Map());
   const earlier = byProject.get(projectId) ?? Promise.resolve();
   const task = queue.current.then(async () => {
-    if (ifEarlierRefused) await earlier.catch(ifEarlierRefused);
+    if (ifEarlierRefused)
+      await earlier.catch(isClosed(queue) ? refuseWithEarlier : ifEarlierRefused);
     if (!projectId) throw new Error("No project to save this edit to");
     return run(projectId);
   });
