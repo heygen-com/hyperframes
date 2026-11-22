@@ -20,6 +20,10 @@ let cwd: string;
 let previousCwd: string;
 let quiet: { mockRestore(): void };
 
+const ESC = String.fromCharCode(27);
+const ODD = `od${ESC}[2Jd\x07`;
+const SHOWN = "od\\x1b[2Jd\\x07";
+
 beforeEach(() => {
   cwd = mkdtempSync(join(tmpdir(), "hf-lambda-destroy-"));
   previousCwd = process.cwd();
@@ -67,4 +71,21 @@ describe("runDestroy", () => {
       expect.objectContaining({ repositoryName: "demo-video" }),
     );
   });
+
+  // fails without the fix: the stack name, in the progress lines, is printed as it is stored.
+  it.skipIf(process.platform === "win32")(
+    "shows control characters in the stack and repository names as text",
+    async () => {
+      const stackName = `De${ODD}mo`;
+      writeStackOutputs({ ...stack, stackName, videoRepository: "repo" }, cwd);
+
+      await runDestroy({ stackName });
+
+      const printed = vi.mocked(console.log).mock.calls.flat().join("\n");
+      expect(printed).toContain(`sam delete (stack=De${SHOWN}mo region=us-east-1)`);
+      expect(printed).toContain(`Deleting ECR repository de${SHOWN.toLowerCase()}mo-video`);
+      expect(printed).not.toContain(ESC);
+      expect(samDelete).toHaveBeenCalledWith(expect.objectContaining({ stackName }));
+    },
+  );
 });

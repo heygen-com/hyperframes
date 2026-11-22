@@ -270,6 +270,7 @@ function executeAction(sharing: ShareService, input: LocalShareAction) {
     space: input.space,
     videoOnly: input.videoOnly,
     includeSource: input.includeSource,
+    confirmedReview: input.confirmedReview,
   });
 }
 

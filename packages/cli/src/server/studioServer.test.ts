@@ -23,6 +23,7 @@ import {
   HistoryBusyError,
   HistoryClosedError,
 } from "@hyperframes/studio-server";
+import { thumbnailSeekReadyInBrowser } from "@hyperframes/studio-server/screenshot-clip";
 import { loadHyperframeRuntimeSource } from "@hyperframes/core";
 import { loadRuntimeSource } from "./runtimeSource.js";
 import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
@@ -719,11 +720,14 @@ describe("Studio thumbnail capture", () => {
   afterEach(async () => {
     await server?.shutdown();
   });
-  function fakePageBrowser(onEvaluate = () => {}) {
+  function fakePageBrowser(
+    onEvaluate = () => {},
+    waitForFunction = async (_ready: () => boolean) => {},
+  ) {
     const screenshot = vi.fn(async () => Buffer.from("jpeg"));
     const evaluate = vi.fn(async () => onEvaluate());
     const page = new Proxy(
-      { screenshot, evaluate },
+      { screenshot, evaluate, waitForFunction },
       {
         get: (target, key) =>
           key === "then"
@@ -749,6 +753,18 @@ describe("Studio thumbnail capture", () => {
     outputHeight: 360,
     previewUrl: "http://localhost/preview",
     signal,
+  });
+
+  it("holds a thumbnail's shot on the thumbnail readiness rule", async () => {
+    const waits: unknown[] = [];
+    const { screenshot } = fakePageBrowser(undefined, async (ready) => {
+      expect(screenshot).not.toHaveBeenCalled();
+      waits.push(ready);
+    });
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    await expect(server.adapter.generateThumbnail?.(opts(dir))).resolves.toBeInstanceOf(Buffer);
+    expect(waits[0]).toBe(thumbnailSeekReadyInBrowser);
   });
 
   it("stops a thumbnail whose request is aborted before its screenshot", async () => {

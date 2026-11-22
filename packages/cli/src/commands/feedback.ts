@@ -1,6 +1,7 @@
 import { failUsage } from "../utils/commandResult.js";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import * as clack from "../ui/prompts.js";
 import open from "open";
@@ -91,7 +92,7 @@ function printIssueConsent(dir: string): void {
   console.log(
     `  ${c.bold("Filing an issue will publish this project publicly and open a GitHub issue draft.")}`,
   );
-  console.log(`  ${c.dim(`Project at ${dir} will be uploaded to a public URL.`)}`);
+  console.log(`  ${c.dim(`Project at ${terminalText(dir)} will be uploaded to a public URL.`)}`);
   console.log(
     `  ${c.dim("The issue draft will contain that public link plus your feedback; you review and submit it.")}`,
   );
@@ -160,16 +161,16 @@ async function publishRepro(
     trackUploadLeftOut("feedback", references);
     if (outsideFiles.length > 0) {
       spinner.stop("Repro prepared");
-      clack.log.info(outsideFilesNotice(outsideFiles));
+      clack.log.info(terminalLines(outsideFilesNotice(outsideFiles)));
       spinner.start("Publishing minimal repro...");
     }
     const published = await publishProjectArchive(dir, { archive });
     spinner.stop(c.success("Repro published"));
-    for (const warning of leftOut) clack.log.warn(c.warn(warning));
+    for (const warning of leftOut) clack.log.warn(c.warn(terminalLines(warning)));
     return published.url;
   } catch (err: unknown) {
     spinner.stop(c.error("Publish failed"));
-    console.error(`  ${(err as Error).message}`);
+    console.error(`  ${terminalLines((err as Error).message)}`);
     console.log(`  ${c.dim("Filing the issue without a repro link.")}`);
     return undefined;
   }
@@ -183,7 +184,7 @@ async function publishRepro(
  */
 function printFeedbackLintWarnings(input: FeedbackLintInput): void {
   for (const warning of lintFeedbackComment(input)) {
-    console.log(c.warn(`⚠ ${warning.message}`));
+    console.log(c.warn(`⚠ ${terminalLines(warning.message)}`));
   }
 }
 
@@ -197,7 +198,7 @@ async function openAndPrintIssue(url: string): Promise<void> {
   }
   console.log();
   console.log(`  ${c.dim("Review and submit the pre-filled issue (it is not auto-submitted):")}`);
-  console.log(`  ${c.accent(url)}`);
+  console.log(`  ${c.accent(terminalText(url))}`);
   console.log();
 }
 

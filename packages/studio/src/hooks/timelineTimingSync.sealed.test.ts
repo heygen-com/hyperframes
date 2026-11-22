@@ -2,10 +2,13 @@
 import { expect, it, vi } from "vitest";
 
 const { previewRequest } = vi.hoisted(() => ({ previewRequest: vi.fn() }));
+const PREVIEW_LOAD = vi.hoisted(() => ({}));
 vi.mock("../player/lib/previewChannel", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../player/lib/previewChannel")>()),
   previewFrameOpaque: () => true,
+  previewEditingClient: () => PREVIEW_LOAD,
   previewRequest,
+  previewAnswer: previewRequest,
 }));
 
 import { finishTimelineTimingFallback } from "./timelineTimingSync";
@@ -37,8 +40,12 @@ it("takes a sealed timing edit's saved clip and film timing to the frame with th
   });
   await new Promise((resolve) => setTimeout(resolve, 0));
 
+  const retime = previewRequest.mock.calls.find(([, kind]) => kind === "live-retime");
   const softReload = previewRequest.mock.calls.find(([, kind]) => kind === "soft-reload");
-  if (!softReload) throw new Error("no soft-reload request was sent");
+  if (!retime || !softReload) throw new Error("the live retime and soft reload were not both sent");
+  expect((retime[2] as { timing: unknown }).timing).toEqual(
+    (softReload[2] as { timing: unknown }).timing,
+  );
   const timing = (softReload[2] as { timing: Array<[string, string[][]]> }).timing;
   expect(timing.map(([, attributes]) => attributes)).toEqual([
     [["data-duration", "6"]],

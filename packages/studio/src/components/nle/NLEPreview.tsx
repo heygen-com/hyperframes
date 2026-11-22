@@ -56,6 +56,7 @@ interface NLEPreviewProps extends Pick<
   fillBox?: boolean;
   compositionSizeHint?: PreviewCompositionSize;
   sandboxOrigin?: "opaque";
+  noLoadTimeout?: boolean;
 }
 
 export function getPreviewPlayerKey({
@@ -91,6 +92,7 @@ export const NLEPreview = memo(function NLEPreview({
   fillBox,
   compositionSizeHint,
   sandboxOrigin,
+  noLoadTimeout,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -518,6 +520,7 @@ export const NLEPreview = memo(function NLEPreview({
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
                   loadingUi={loadingUi}
+                  noLoadTimeout={noLoadTimeout}
                   sandboxOrigin={sandboxOrigin}
                   style={
                     directUrl?.includes("/components/")

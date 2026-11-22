@@ -1,4 +1,5 @@
 import { failCommand, failUsage } from "../utils/commandResult.js";
+import { printFailureLine } from "../utils/jsonError.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { readFileSync, existsSync } from "node:fs";
@@ -134,7 +135,7 @@ export default defineCommand({
     // Look up the topic
     const entry = TOPICS[topic];
     if (entry === undefined) {
-      console.error(c.error(`Unknown topic: ${topic}`));
+      printFailureLine((show) => c.error(`Unknown topic: ${show(topic)}`));
       console.error();
       console.error("Available topics:");
       for (const name of Object.keys(TOPICS)) {
@@ -145,7 +146,7 @@ export default defineCommand({
 
     const filePath = join(docsDir(), entry.file);
     if (!existsSync(filePath)) {
-      console.error(c.error(`Doc file not found: ${filePath}`));
+      printFailureLine((show) => c.error(`Doc file not found: ${show(filePath)}`));
       failCommand();
     }
 

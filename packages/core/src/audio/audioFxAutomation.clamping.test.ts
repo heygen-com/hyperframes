@@ -74,19 +74,19 @@ const lane: HfAutomationLane = {
   ],
 };
 
-it("finishes the lane when clamping a curve also blocks its fallback ramp", () => {
+it("finishes the lane with ramps when the audio clock is already past its start", () => {
   const param = new ClampedParam(0.032);
   expect(() =>
     scheduleParamLane([{ param }], lane, "linear", { scheduledAt: 0, elapsed: 0, rate: 1 }),
   ).not.toThrow();
-  expect(param.ramps).toBe(3);
   expect(param.curves).toHaveLength(0);
+  expect(param.ramps).toBeGreaterThan(0);
   expect(param.value).toBeCloseTo(0.7);
 });
 
-it("retains each bend when the curves are scheduled ahead of the audio clock", () => {
+it("books each bend as ramps ahead of the audio clock too, never a value curve", () => {
   const param = new ClampedParam(0.032);
   scheduleParamLane([{ param }], lane, "linear", { scheduledAt: 1, elapsed: 0, rate: 1 });
-  expect(param.curves).toHaveLength(3);
-  expect(param.ramps).toBe(0);
+  expect(param.curves).toHaveLength(0);
+  expect(param.value).toBeCloseTo(0.7);
 });

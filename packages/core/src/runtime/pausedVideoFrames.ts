@@ -1,4 +1,4 @@
-import { MEDIA_ELEMENT_LEAD_SECONDS } from "./mediaClock";
+import { isWebKit, MEDIA_ELEMENT_LEAD_SECONDS } from "./mediaClock";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
 import { applyNativeVideoLook } from "./nativeVideoLook";
 import {
@@ -91,7 +91,10 @@ export function captureNativeVideoFrame(video: HTMLVideoElement): HTMLCanvasElem
   }
 }
 
+const videoFrameOfAVideoCanHangThePage = isWebKit;
+
 function videoFrameOf(video: HTMLVideoElement): VideoFrame | null {
+  if (videoFrameOfAVideoCanHangThePage()) return null;
   try {
     return new VideoFrame(video);
   } catch {

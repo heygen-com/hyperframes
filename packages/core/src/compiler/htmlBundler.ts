@@ -71,6 +71,7 @@ import {
 import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
+import { assertCompositionFileSize, CompositionExpansionBudget } from "./compositionSizeLimit";
 import {
   ensureExternalLinkTag,
   inlineSubCompositions,
@@ -1110,6 +1111,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     throw new Error(`${entryFile} not found in project directory`);
   }
   noteRead(indexPath);
+  assertCompositionFileSize(indexPath, entryFile);
   const entryHtml = readTextFile(indexPath);
   const mountedShell = readMountedSceneShell(projectDir, entryFile, entryHtml);
   const sourceDir = mountedShell ? projectDir : dirname(indexPath);
@@ -1205,6 +1207,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     host.hasAttribute("data-composition-src"),
   );
   const sceneSources = new Map<string, string | null>();
+  const budget = new CompositionExpansionBudget();
   const subCompResult = inlineSubCompositions(document, subCompositionHosts, {
     resolveHtml: (srcPath: string) => {
       if (!isRelativeUrl(srcPath)) return null;
@@ -1212,14 +1215,18 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
       if (!compPath) return null;
       let source = sceneSources.get(compPath);
       if (source === undefined) {
+        if (readAllowed(compPath)) assertCompositionFileSize(compPath, srcPath);
         const html = safeReadFile(compPath);
         source = html === null ? null : readSource(html);
         sceneSources.set(compPath, source);
       } else {
         noteRead(compPath);
       }
+      if (source !== null) budget.charge(srcPath, Buffer.byteLength(source));
       return source;
     },
+    chargeEmitted: (srcPath: string, bytes: number) => budget.chargeGenerated(srcPath, bytes),
+    chargeElements: (srcPath: string, count: number) => budget.chargeElements(srcPath, count),
     parseHtml: parseHTMLContent,
     hostIdentityMap: hostIdentityByElement,
     rewriteInlineStyles: true,

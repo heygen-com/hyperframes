@@ -17,6 +17,7 @@ import {
   normalizeHfColorGrading,
   parseCubeLut,
   serializeHfColorGrading,
+  terminalText,
 } from "@hyperframes/core";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { defineCommand } from "../utils/defineCommand.js";
@@ -148,7 +149,9 @@ export function warnInactiveGradingCells(cells: readonly GradeCompareCell[]): vo
     const normalized = normalizeHfColorGrading(cell.grading);
     if (!isHfColorGradingActive(normalized)) {
       console.error(
-        c.warn(`Warning: grading for "${cell.label}" is inactive/no-op — it will render ungraded`),
+        c.warn(
+          `Warning: grading for "${terminalText(cell.label)}" is inactive/no-op — it will render ungraded`,
+        ),
       );
     }
   }
@@ -654,7 +657,7 @@ export default defineCommand({
 
       if (!parsed.json) {
         console.log(
-          `${c.accent("◆")}  Rendering ${cells.length} grade candidates from ${c.accent(basename(parsed.framePath))}`,
+          `${c.accent("◆")}  Rendering ${cells.length} grade candidates from ${c.accent(terminalText(basename(parsed.framePath)))}`,
         );
       }
 
@@ -688,7 +691,7 @@ export default defineCommand({
       if (parsed.json) {
         printJson(buildGradeCompareSuccessPayload(sheet, prepared.cells.length, capResult));
       } else {
-        console.log(`\n${c.success("◇")}  Grade comparison saved to ${sheet}`);
+        console.log(`\n${c.success("◇")}  Grade comparison saved to ${terminalText(sheet)}`);
       }
     } catch (err) {
       failCaught(

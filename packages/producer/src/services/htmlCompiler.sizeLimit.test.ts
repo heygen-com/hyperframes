@@ -9,7 +9,8 @@ import {
   CompositionExpansionBudget,
   MAX_COMPOSITION_HTML_BYTES,
   MAX_EXPANDED_COMPOSITION_BYTES,
-} from "./compositionSizeLimit.js";
+  MAX_EXPANDED_ELEMENTS,
+} from "@hyperframes/core/compiler";
 import {
   compileForRender,
   inlineExternalScripts,
@@ -139,6 +140,25 @@ describe("composition expansion budget", () => {
     const budget = new CompositionExpansionBudget();
     for (let i = 0; i < 4; i += 1) budget.charge("scene.html", MAX_COMPOSITION_HTML_BYTES);
     expect(() => budget.charge("scene.html", 1)).toThrow(/64\.0 MB of composition HTML/);
+  });
+
+  // fails without the fix: the budget counted bytes, so a small scene mounted many times copied any number of elements.
+  it("refuses mounts whose copied elements pass the cap, before copying past it", async () => {
+    const perScene = 1000;
+    const scene = `<template><div data-composition-id="scene">${"<i></i>".repeat(perScene - 2)}</div></template>`;
+    const mounts = Math.floor(MAX_EXPANDED_ELEMENTS / perScene) + 1;
+    const entry = rootMounting("scene.html", mounts);
+    const entryElements = parseHTML(entry).document.querySelectorAll("*").length;
+    const copied = Math.floor((MAX_EXPANDED_ELEMENTS - entryElements) / perScene) + 1;
+    const error = await compileError(project({ "index.html": entry, "scene.html": scene }));
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(error).toMatchObject({
+      publicMetadata: {
+        elements: entryElements + copied * perScene,
+        limitElements: MAX_EXPANDED_ELEMENTS,
+        exceeded: "elements",
+      },
+    });
   });
 
   it("refuses one large file mounted many times", async () => {

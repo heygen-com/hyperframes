@@ -279,7 +279,7 @@ function findTagByClass(html: string, target: PatchTarget): TagMatch | null {
 }
 
 export function servedSource(html: string, target: PatchTarget): string {
-  if (!target.hfId || findTagByTarget(html, target)) return html;
+  if (!target.hfId || findTagByAttribute(html, "data-hf-id", target.hfId)) return html;
   const stamped = stampHfIdsInPlace(html);
   return findTagByTarget(stamped, target) ? stamped : html;
 }

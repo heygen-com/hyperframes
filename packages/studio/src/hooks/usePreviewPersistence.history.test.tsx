@@ -83,7 +83,10 @@ describe("undo that re-runs the top-level script over an element of a nested com
       __hfStudioManualEditsApply: vi.fn(),
     };
     return {
-      iframe: { contentWindow, contentDocument: doc } as unknown as HTMLIFrameElement,
+      iframe: Object.assign(new EventTarget(), {
+        contentWindow,
+        contentDocument: doc,
+      }) as unknown as HTMLIFrameElement,
       nwid,
     };
   }
@@ -159,7 +162,10 @@ describe("undo that lands while a newer gesture holds an element", () => {
       __player: { getTime: () => 1, seek: vi.fn() },
       __hfStudioManualEditsApply: vi.fn(),
     };
-    const iframe = { contentWindow, contentDocument: doc } as unknown as HTMLIFrameElement;
+    const iframe = Object.assign(new EventTarget(), {
+      contentWindow,
+      contentDocument: doc,
+    }) as unknown as HTMLIFrameElement;
     const reloadPreview = vi.fn();
     let hook: ReturnType<typeof usePreviewPersistence> | null = null;
     function Harness() {

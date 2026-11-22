@@ -656,7 +656,10 @@ describe("an undo that lands while a text edit is open", () => {
       controls().start(element);
     });
     const contentWindow = { __player: { seek: vi.fn() }, __hfStudioManualEditsApply: vi.fn() };
-    const iframe = { contentWindow, contentDocument: document } as unknown as HTMLIFrameElement;
+    const iframe = Object.assign(new EventTarget(), {
+      contentWindow,
+      contentDocument: document,
+    }) as unknown as HTMLIFrameElement;
     const files = {
       "index.html": { previous: wrap(moved), restored: wrap(`<h1 id="t">Title</h1>`) },
     };

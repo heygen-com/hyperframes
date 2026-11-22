@@ -70,12 +70,14 @@ function expectSoftReloadedWith(
   onAsyncFailure: unknown,
   authoredHtml: string | undefined,
   previousHtml?: string,
+  version?: unknown,
 ) {
   expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", {
     onAsyncFailure,
     currentTimeOverride: 0,
     authoredHtml,
     previousHtml,
+    version,
   });
 }
 
@@ -712,7 +714,8 @@ describe("runCommit — instantPatch wiring", () => {
       );
     });
 
-    expectSoftReloadedWith(deps.reloadPreview, "AFTER", "BEFORE");
+    // The save's own revision, taken when its request went out.
+    expectSoftReloadedWith(deps.reloadPreview, "AFTER", "BEFORE", expect.any(Number));
     expect(deps.reloadPreview).not.toHaveBeenCalled();
   });
 
@@ -907,7 +910,8 @@ describe("runCommit — instantPatch wiring", () => {
     });
 
     expect(fetch).toHaveBeenCalledTimes(1);
-    expectSoftReloadedWith(deps.reloadPreview, "AFTER", "BEFORE");
+    // The save's own revision, taken when its request went out.
+    expectSoftReloadedWith(deps.reloadPreview, "AFTER", "BEFORE", expect.any(Number));
     expect(deps.reloadPreview).not.toHaveBeenCalled();
     expect(deps.onCacheInvalidate).toHaveBeenCalledTimes(1);
   });
@@ -922,7 +926,8 @@ describe("runCommit — instantPatch wiring", () => {
     });
 
     expect(patchRuntimeTweenInPlace).not.toHaveBeenCalled();
-    expectSoftReloadedWith(deps.reloadPreview, "AFTER", "BEFORE");
+    // The save's own revision, taken when its request went out.
+    expectSoftReloadedWith(deps.reloadPreview, "AFTER", "BEFORE", expect.any(Number));
     expect(deps.reloadPreview).not.toHaveBeenCalled();
   });
 
