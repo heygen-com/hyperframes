@@ -27,7 +27,14 @@ async function play(cors: boolean) {
   await page.evaluate(() =>
     (document.getElementById("player") as HTMLElement & { play: () => void }).play(),
   );
-  const frame = page.frames().find((candidate) => candidate.url().includes("/10-video-grid/"));
+  // A sealed same-site film is shown as srcdoc: reach its frame through the player, not by URL.
+  const frame = await (
+    await page.evaluateHandle(
+      () => document.getElementById("player")!.shadowRoot!.querySelector("iframe")!,
+    )
+  )
+    .asElement()!
+    .contentFrame();
   assert.ok(frame, "the film's frame must load");
   await frame.waitForFunction(
     () => [...document.querySelectorAll("video")].every((v) => v.readyState >= 2 || v.error),

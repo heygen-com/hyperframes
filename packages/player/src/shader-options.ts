@@ -4,7 +4,12 @@
  * URLs and srcdoc HTML.
  */
 
-import { ensureRuntimeBeforeBodyScripts } from "./runtime-in-srcdoc.js";
+import {
+  ensureRuntimeBeforeBodyScripts,
+  inlineRuntimeBeforeBodyScripts,
+  withBaseHref,
+} from "./runtime-in-srcdoc.js";
+import { sealedRuntimeSource } from "./sealed-runtime.js";
 import { RUNTIME_CDN_URL } from "./runtime-url.js";
 
 export const SHADER_CAPTURE_SCALE_ATTR = "shader-capture-scale";
@@ -156,6 +161,29 @@ export function prepareSrcdocForElement(el: Element, srcdoc: string): string {
     ),
     runtimeSrcFromElement(el),
   );
+}
+
+/**
+ * `prepareSrcdocForElement` for a sealed frame, which the player cannot reach into after it loads:
+ * the runtime goes in as text, unless the embedder named its own `runtime-src`.
+ */
+export async function prepareSealedSrcdocForElement(
+  el: Element,
+  html: string,
+  base?: string,
+): Promise<string> {
+  const doc =
+    runtimeSrcFromElement(el) !== RUNTIME_CDN_URL
+      ? prepareSrcdocForElement(el, html)
+      : inlineRuntimeBeforeBodyScripts(
+          injectShaderOptionsIntoSrcdoc(
+            html,
+            normalizeShaderCaptureScale(el.getAttribute(SHADER_CAPTURE_SCALE_ATTR)),
+            getShaderModeFromElement(el),
+          ),
+          await sealedRuntimeSource(),
+        );
+  return base ? withBaseHref(doc, base) : doc;
 }
 
 export function runtimeSrcFromElement(el: Element): string {

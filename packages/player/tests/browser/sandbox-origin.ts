@@ -47,10 +47,19 @@ try {
     true,
     "removing the policy must reload into the documented trusted mode",
   );
+  // A sealed player adds the runtime to a composition from its own site, so the missing-runtime
+  // error belongs to one from another origin (localhost against 127.0.0.1).
   const direct = await browser.newPage();
   await direct.goto(`${server.origin}/host.html?fixture=direct-timeline&sealed=1`, {
     waitUntil: "domcontentloaded",
   });
+  await direct.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
+  await direct.evaluate(
+    (url) => {
+      document.querySelector("hyperframes-player")!.setAttribute("src", url);
+    },
+    `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
+  );
   await direct.waitForFunction(() => window.__playerError !== undefined, { timeout: 15_000 });
   const sealedError = String(await direct.evaluate(() => window.__playerError));
   assert.match(
@@ -122,20 +131,24 @@ try {
     () => (window as { __lastTimeline?: unknown }).__lastTimeline !== undefined,
     { timeout: 15_000 },
   );
-  const lateError = await switched.evaluate(async () => {
-    const w = window as { __lastTimeline?: unknown; __playerError?: string };
-    const player = document.querySelector("hyperframes-player")!;
-    const frame = player.shadowRoot!.querySelector("iframe")!;
-    w.__playerError = undefined;
-    player.setAttribute("src", "/fixtures/sandbox-probe/index.html");
-    dispatchEvent(
-      new MessageEvent("message", { data: w.__lastTimeline, source: frame.contentWindow }),
-    );
-    const started = performance.now();
-    while (performance.now() - started < 14_000 && w.__playerError === undefined)
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    return w.__playerError ?? null;
-  });
+  // From another origin, since a same-site film gets the runtime added.
+  const lateError = await switched.evaluate(
+    async (url) => {
+      const w = window as { __lastTimeline?: unknown; __playerError?: string };
+      const player = document.querySelector("hyperframes-player")!;
+      const frame = player.shadowRoot!.querySelector("iframe")!;
+      w.__playerError = undefined;
+      player.setAttribute("src", url);
+      dispatchEvent(
+        new MessageEvent("message", { data: w.__lastTimeline, source: frame.contentWindow }),
+      );
+      const started = performance.now();
+      while (performance.now() - started < 14_000 && w.__playerError === undefined)
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      return w.__playerError ?? null;
+    },
+    `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/sandbox-probe/index.html`,
+  );
   assert.ok(
     lateError,
     "a sealed player switched to a film with no runtime must fail, even after a late old timeline",

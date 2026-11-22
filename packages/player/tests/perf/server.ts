@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
  *   /host.html?...&sealed=1            → the same with sandbox-origin="opaque"
  *   /host.html?...&cors=0              → the film from /fixtures-no-cors/, a host that sends no CORS headers
  *   /player/hyperframes-player.global.js
+ *   /player/hyperframe.runtime.iife.js   → the runtime file shipped beside it
  *   /vendor/gsap.min.js
  *   /vendor/hyperframe.runtime.iife.js
  *   /fixtures/<name>/<file>            → fixture HTML + assets
@@ -39,6 +40,7 @@ function firstExisting(candidates: string[]): string {
 
 const PATHS = {
   player: join(PLAYER_PKG, "dist/hyperframes-player.global.js"),
+  playerRuntime: join(PLAYER_PKG, "dist/hyperframe.runtime.iife.js"),
   runtime: join(REPO_ROOT, "packages/core/dist/hyperframe.runtime.iife.js"),
   // bun installs gsap into the package's node_modules in workspace mode, but
   // hoists it to the repo root if multiple packages share the same version.
@@ -205,6 +207,11 @@ export function startServer(options: ServeOptions = {}): RunningServer {
 
       if (path === "/player/hyperframes-player.global.js") {
         return applyCacheHeaders(await readBunFile(PATHS.player), noCache);
+      }
+
+      // Beside the bundle, as an embedder hosting the player's dist serves it: a sealed player loads it.
+      if (path === "/player/hyperframe.runtime.iife.js") {
+        return applyCacheHeaders(await readBunFile(PATHS.playerRuntime), noCache);
       }
 
       if (path === "/vendor/hyperframe.runtime.iife.js") {

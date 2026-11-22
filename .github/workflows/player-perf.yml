@@ -136,6 +136,13 @@ jobs:
           PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: bun run test:browser-sealed-media
 
+      - name: Verify a sealed same-site film plays with the runtime the player ships (load shard only)
+        if: matrix.shard == 'load'
+        working-directory: packages/player
+        env:
+          PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+        run: bun run test:browser-sealed-runtime
+
       - name: Verify the preview rasters at its shown size (load shard only)
         if: matrix.shard == 'load'
         working-directory: packages/player

@@ -992,7 +992,14 @@ async function filmFrame(page: import("puppeteer-core").Page, query: string) {
   await page.waitForFunction(() => window.__playerReady || window.__playerError, {
     timeout: 60_000,
   });
-  const frame = page.frames().find((candidate) => candidate.url().includes("/10-video-grid/"));
+  // A sealed same-site film is shown as srcdoc: reach its frame through the player, not by URL.
+  const frame = await (
+    await page.evaluateHandle(
+      () => document.getElementById("player")!.shadowRoot!.querySelector("iframe")!,
+    )
+  )
+    .asElement()!
+    .contentFrame();
   assert.ok(frame, "the film's frame must load");
   return frame;
 }
