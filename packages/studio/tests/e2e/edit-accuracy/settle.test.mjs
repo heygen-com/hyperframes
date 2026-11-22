@@ -13,7 +13,7 @@ import {
   swapPending,
   unsettledBy,
 } from "./case.mjs";
-import { heldSize, keyedBy } from "./sequences.mjs";
+import { heldSize, keyedBy, restedFor } from "./sequences.mjs";
 
 describe("settling on the shown preview", () => {
   const read = (pending, x = 0, frames = "a") => ({
@@ -287,5 +287,28 @@ describe("the box a press is measured against", () => {
       quad(260),
     );
     expect(shown.m.visible[0][0]).toBe(0);
+  });
+});
+
+// fails without the fix: the sequence read the file once its write count was met, while a sealed press that waited for
+// the previous save was still saving, so the last gesture's edit looked lost.
+describe("the end of a sequence", () => {
+  const reads = (states) => {
+    let at = 0;
+    const busy = async () => states[Math.min(at++, states.length - 1)];
+    return { busy, read: () => at };
+  };
+
+  it("waits until no press waits and no edit saves, two reads in a row", async () => {
+    const { busy, read } = reads([true, true, false, true, false, false, true]);
+    await restedFor(busy, async () => {});
+    expect(read()).toBe(6);
+  });
+
+  it("gives up with a reason when an edit never stops saving", async () => {
+    const { busy } = reads([true]);
+    await expect(restedFor(busy, async () => {}, { timeout: 30 })).rejects.toThrow(
+      /still waiting or saving/,
+    );
   });
 });

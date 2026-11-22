@@ -439,6 +439,24 @@ export function heldSize(sizeKeys, time) {
 const sizeError = (a, b) =>
   a && b ? Math.max(Math.abs(a.width - b.width), Math.abs(a.height - b.height)) : 0;
 
+/** Resolves once `busy()` has read false `frames` reads in a row, a `frame()` apart; throws at `timeout` ms. */
+export async function restedFor(busy, frame, { frames = 2, timeout = 20_000 } = {}) {
+  let clear = 0;
+  for (const deadline = Date.now() + timeout; Date.now() < deadline; await frame()) {
+    clear = (await busy()) ? 0 : clear + 1;
+    if (clear >= frames) return;
+  }
+  throw new Error("an edit was still waiting or saving");
+}
+
+// A sealed press waits for the previous save, then replays: the file is final once none waits and no edit saves.
+const editsBusy = (page) =>
+  page.evaluate(
+    () =>
+      Boolean(document.querySelector("[data-dom-edit-press-waiting]")) ||
+      document.documentElement.hasAttribute("data-studio-edits-saving"),
+  );
+
 async function untilSaved(watcher, owed) {
   for (const deadline = Date.now() + 10_000; Date.now() < deadline; await sleep(50))
     if (watcher.versions.length - 1 >= owed) return;
@@ -517,6 +535,11 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
     backSince = back ? (backSince ?? Date.now()) : null;
     if (backSince !== null && Date.now() - backSince >= UNDONE_QUIET_MS) break;
   }
+  // The write count is a floor: one gesture may write twice, so it can be met before the last gesture saves.
+  await restedFor(
+    () => editsBusy(page),
+    () => nextFrame(page),
+  );
   await page.waitForFunction(
     // Asked over each preview's editing port: a preview that cannot answer yet is not clear.
     async () =>
