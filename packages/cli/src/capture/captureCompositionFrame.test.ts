@@ -19,6 +19,7 @@ import {
   seekCompositionTimeline,
   seekCompositionTimelineOnly,
   settleCompositionSeek,
+  unloadedImagesWarning,
   waitForRuntimeReady,
   type CompositionSeekPage,
 } from "./captureCompositionFrame.js";
@@ -100,6 +101,28 @@ describe("waitForRuntimeReady", () => {
       expect(source.indexOf(sample), name).toBeGreaterThan(wait);
       expect(source, name).not.toContain("__timelines?: unknown }).__timelines");
     }
+  });
+});
+
+describe("unloadedImagesWarning", () => {
+  // Built rather than written: a literal control character in the source is a lint error.
+  const esc = String.fromCharCode(27);
+  const sgr = new RegExp(`${esc}\\[[0-9;]*m`, "g");
+
+  // fails without the fix: the page's image address reached the terminal with its ESC and BEL raw
+  it("prints the page's image addresses with control characters as visible escapes", () => {
+    const line = unloadedImagesWarning(
+      5000,
+      `http://127.0.0.1/hero${esc}]0;owned${String.fromCharCode(7)}.png`,
+    ).replace(sgr, "");
+    expect(line).not.toContain(esc);
+    expect(line).toContain("http://127.0.0.1/hero\\x1b]0;owned\\x07.png. They may show blank.");
+  });
+
+  it("prints plain addresses as they are", () => {
+    expect(unloadedImagesWarning(5000, "http://127.0.0.1/a.png, b.png").replace(sgr, "")).toBe(
+      "   ⚠ Some images did not load within 5000ms: http://127.0.0.1/a.png, b.png. They may show blank.",
+    );
   });
 });
 

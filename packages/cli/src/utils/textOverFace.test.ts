@@ -364,6 +364,91 @@ describe("findTextOverFace on a shipped playlist", () => {
   );
 });
 
+describe("findTextOverFace's stderr note on a hostile file name", () => {
+  afterEach(() => vi.restoreAllMocks());
+  // Built rather than written: a literal control character in the source is a lint error.
+  const ESC = String.fromCharCode(27);
+  const BEL = String.fromCharCode(7);
+  const CR = String.fromCharCode(13);
+
+  // fails without the fix: the file name the candidate names reached stderr with its ESC, BEL and CR raw
+  it("prints a project file name with control characters as visible escapes", async () => {
+    const file = `/project/take${ESC}]0;owned${BEL}${ESC}[2K${CR}clean.mp4`;
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const facesIn = vi.fn<FaceFinder>(async (named) => {
+      throw new Error(`could not read every frame of ${named}`);
+    });
+
+    const { faceCheck } = await findTextOverFace(
+      [candidate({ video: { ...candidate().video, file } })],
+      facesIn,
+    );
+
+    expect(facesIn).toHaveBeenCalledWith(file, [7], expect.anything());
+    const line = String(errors.mock.calls[0]?.[0]);
+    for (const raw of [ESC, BEL, CR]) expect(line).not.toContain(raw);
+    expect(line).toBe(
+      "[hyperframes] check: text over a face was not looked for in 1 of 1 video(s): could not read every frame of /project/take\\x1b]0;owned\\x07\\x1b[2K\\x0dclean.mp4",
+    );
+    // The report keeps the reason as it was: JSON output escapes it on its own.
+    expect(faceCheck).toEqual({ ran: false, reason: `could not read every frame of ${file}` });
+  });
+
+  // Windows refuses control characters in a file name, so only other systems can ship one.
+  // fails without the fix: the real reader's refusal reached stderr with the name's ESC, BEL and CR raw
+  it.skipIf(process.platform === "win32")(
+    "escapes a hostile name the real reader refuses",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-face-escape-"));
+      try {
+        // A playlist naming a file outside its folder is refused before ffprobe runs, by its name.
+        const file = join(dir, `take${ESC}]0;owned${BEL}${ESC}[2K${CR}clean.m3u8`);
+        writeFileSync(file, "#EXTM3U\n#EXTINF:1,\n../outside.ts\n#EXT-X-ENDLIST\n");
+        const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+        const { faceCheck } = await findTextOverFace([
+          candidate({ video: { ...candidate().video, file } }),
+        ]);
+
+        expect(errors).toHaveBeenCalledTimes(1);
+        const line = String(errors.mock.calls[0]?.[0]);
+        for (const raw of [ESC, BEL, CR]) expect(line).not.toContain(raw);
+        expect(line).toContain(`take\\x1b]0;owned\\x07\\x1b[2K\\x0dclean.m3u8 is not media`);
+        expect(faceCheck).toMatchObject({ ran: false, reason: expect.stringContaining(file) });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("keeps a plain reason, its line breaks included, exactly as before", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const facesIn = vi.fn<FaceFinder>(async () => {
+      throw new Error("ffmpeg cannot read /project/take.mp4:\nInvalid data found");
+    });
+
+    await findTextOverFace([candidate()], facesIn);
+
+    expect(errors).toHaveBeenCalledWith(
+      "[hyperframes] check: text over a face was not looked for in 1 of 1 video(s): ffmpeg cannot read /project/take.mp4:\nInvalid data found",
+    );
+  });
+
+  // fails without the fix: an error text the decoder wrote reached stderr with its ESC raw
+  it("escapes control characters in the error text as well as the file name", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const facesIn = vi.fn<FaceFinder>(async () => {
+      throw new Error(`decoder said ${ESC}[31mred${BEL}`);
+    });
+
+    await findTextOverFace([candidate()], facesIn);
+
+    expect(String(errors.mock.calls[0]?.[0])).toBe(
+      "[hyperframes] check: text over a face was not looked for in 1 of 1 video(s): decoder said \\x1b[31mred\\x07",
+    );
+  });
+});
+
 describe.skipIf(!findFFprobe())("findTextOverFace on a source the time limit stops", () => {
   afterEach(() => {
     stalled.file = "";
