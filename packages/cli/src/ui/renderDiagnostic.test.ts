@@ -161,7 +161,18 @@ describe("render diagnostic wire", () => {
     ],
     [new Error(`Faststart failed: FFmpeg exited with code 1 ${PRIVATE}`), "FASTSTART_FAILED"],
     [new Error(`Audio muxing failed: ${PRIVATE}`), "AUDIO_MUX_FAILED"],
-    [new Error(`encoder exited before the last frame ${PRIVATE}`), "ENCODER_EXITED"],
+    [new Error(`Encoding failed: FFmpeg exited with code 1 ${PRIVATE}`), "ENCODER_EXITED"],
+    [new Error(`Segment 2 encode failed: ${PRIVATE}`), "ENCODER_EXITED"],
+    [
+      new Error(`Streaming encoder exited before frame 0 was written: ${PRIVATE}`),
+      "ENCODER_EXITED",
+    ],
+    [new Error(`Faststart failed: ENOSPC: no space left on device ${PRIVATE}`), "ENOSPC"],
+    [new Error(`FFmpeg exited with code 1: ${PRIVATE}`), "RENDER_FAILED"],
+    [
+      new Error(`Animated GIF transcode failed: FFmpeg exited with code 1 ${PRIVATE}`),
+      "RENDER_FAILED",
+    ],
   ])("names a failed render's code without its words (%#)", (error, code) => {
     const line = capture(() => renderFailureDiagnostic(undefined, error, false));
     expect(JSON.parse(line.slice("@hf-diagnostic ".length))).toEqual({
