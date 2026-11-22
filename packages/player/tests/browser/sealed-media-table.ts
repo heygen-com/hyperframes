@@ -494,10 +494,12 @@ async function installDriver(frame: Frame) {
           sources: Array<{ src: string; type?: string; media?: string }>,
           attr?: boolean,
           duringRetry?: string,
+          seekOnReload?: boolean,
         ) {
           const video = document.createElement("video");
           video.dataset.table = key;
           if (duringRetry) video.dataset.authorDuringRetry = duringRetry;
+          if (seekOnReload) pending.set(video, { action: "seekPlaying" });
           video.muted = true;
           video.loop = true;
           // The runtime binds new media with preload auto and a load() of its own, at a time of its choosing.
@@ -679,7 +681,13 @@ async function installDriver(frame: Frame) {
 }
 
 type Table = {
-  create: (key: string, sources: SourceAttrs[], attr: boolean, duringRetry?: string) => void;
+  create: (
+    key: string,
+    sources: SourceAttrs[],
+    attr: boolean,
+    duringRetry?: string,
+    seekOnReload?: boolean,
+  ) => void;
   edit: (key: string, step: object) => unknown;
   settled: () => boolean;
   flush: () => boolean;
@@ -703,21 +711,27 @@ async function runAll(frame: Frame, sequences: Sequence[], run: string) {
       // A write during the retry is registered with its element: as a later call, a fast failure could beat it.
       const duringRetry = (el: number) =>
         steps.find((step) => step.do === "author" && step.duringRetry && step.el === el);
+      // So is a seek on a reload past 0: that reload can come while the play step waits for the runtime.
+      const seekOnReload = (el: number) =>
+        steps.some(
+          (step) => step.do === "interrupt" && step.action === "seekPlaying" && step.el === el,
+        );
       for (const step of steps) {
         const key = `${index}-${step.el}`;
         if (step.do === "recover") server.recover(`${run}.${step.source.id}`);
         if (step.do === "create") {
           const during = duringRetry(step.el);
           await frame.evaluate(
-            (k, s, a, d) => window.__table.create(k, s, a, d),
+            (k, s, a, d, o) => window.__table.create(k, s, a, d, o),
             key,
             step.sources.map((source) => urlFor(source, run)),
             step.attr ?? false,
             during?.do === "author" ? during.value : undefined,
+            seekOnReload(step.el),
           );
         } else if (
-          step.do === "author" &&
-          step.duringRetry &&
+          ((step.do === "author" && step.duringRetry) ||
+            (step.do === "interrupt" && step.action === "seekPlaying")) &&
           steps.some((s) => s.do === "create" && s.el === step.el)
         )
           continue;
