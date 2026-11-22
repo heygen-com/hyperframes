@@ -127,7 +127,8 @@ describe("a single-clip trim queued before a project switch", () => {
     }
     const root = mountReactHarness(<Harness projectId="old" />);
     let release: () => void = () => {};
-    void enqueueTimelineEdit(queue!, () => new Promise<void>((done) => (release = done)));
+    const held = new Promise<void>((done) => (release = done));
+    void enqueueTimelineEdit(queue!, () => held);
     const trim = hook!.handleTimelineElementResize(clipB, { start: 2, duration: 3 });
 
     act(() => root.render(<Harness projectId="new" />));
