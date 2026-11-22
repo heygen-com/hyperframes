@@ -198,8 +198,11 @@ function validateMetadata(data: Record<string, unknown>): LineViolation | null {
 }
 
 // A link with no task picks the skill whose description claims it (#8530): name the task a link comes with instead.
-const LINK_ALONE_TRIGGER =
-  /\b(?:pastes?|drops?|shares?|sends?|gives?)\b(?:[^.;]|\.(?=\S)){0,40}?\b(?:link|url)s?\b/i;
+// Any tense, active or passive, verb before or after the link; a dot inside "figma.com" does not end the clause.
+const SHARING = String.raw`\b(?:past(?:e|es|ed|ing)|shar(?:e|es|ed|ing)|drop(?:s|ped|ping)?|sen(?:d|ds|ding|t)|g(?:ive|ives|iven|iving|ave)|provid(?:e|es|ed|ing))\b`;
+const LINK = String.raw`\b(?:links?|urls?)\b`;
+const CLAUSE = String.raw`(?:[^.;]|\.(?=\S)){0,40}?`;
+const LINK_ALONE_TRIGGER = new RegExp(`${SHARING}${CLAUSE}${LINK}|${LINK}${CLAUSE}${SHARING}`, "i");
 
 function validateTrigger(data: Record<string, unknown>): LineViolation | null {
   const said = data.description;
