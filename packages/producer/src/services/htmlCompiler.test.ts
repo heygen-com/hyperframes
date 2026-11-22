@@ -1489,6 +1489,15 @@ describe("detectAncestorBackgroundImage", () => {
     expect(detectAncestorBackgroundImage(page(".page:not(.z"))).toBe(true);
   });
 
+  it("reads CSS escapes in a wrapper's selector, hex escapes with their closing space included", () => {
+    const page = (css: string, cls: string) =>
+      `<html><head><style>${css} { background-image: url(x.png); }</style></head><body>` +
+      `<div class="${cls}"><div data-composition-id="main"></div></div></body></html>`;
+    expect(detectAncestorBackgroundImage(page(".\\31 23", "123"))).toBe(true);
+    expect(detectAncestorBackgroundImage(page(".md\\:bg", "md:bg"))).toBe(true);
+    expect(detectAncestorBackgroundImage(page(".\\31 23 .x", "123"))).toBe(false);
+  });
+
   it("returns false without a composition root", () => {
     expect(
       detectAncestorBackgroundImage(

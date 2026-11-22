@@ -565,6 +565,7 @@ export function detectThreeDTransformUsage(html: string): boolean {
 }
 
 type AncestorStep = { compound: string; child: boolean };
+const CSS_ESCAPE = /\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^])?/y;
 
 /**
  * Each selector of a list as plain compounds, pseudo-classes, pseudo-elements and sibling steps dropped:
@@ -612,7 +613,10 @@ function ancestorSelectorSteps(list: string): AncestorStep[][] | null {
       combinators = [];
       combinator = null;
     } else if (ch === "\\") {
-      compound += ch + (list[++i] ?? "");
+      CSS_ESCAPE.lastIndex = i;
+      const escape = CSS_ESCAPE.exec(list)![0];
+      compound += escape;
+      i += escape.length - 1;
       open = true;
     } else if (ch === "[") {
       const end = skipGroup(i, "]");
