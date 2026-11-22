@@ -32,7 +32,7 @@ function pidScope(): { host: string; boot?: string; pidns?: string } {
   };
   return {
     host: hostname(),
-    // Without /proc (macOS, Windows) the boot time, to the minute, stands in for the boot id.
+    // Without /proc (macOS, Windows) the boot time, to the minute, stands in for the boot id: it can round either way.
     boot:
       attempt(() => readFileSync("/proc/sys/kernel/random/boot_id", "utf-8").trim()) ??
       attempt(() => String(Math.round(Date.now() / 60_000 - uptime() / 60))),
@@ -66,12 +66,20 @@ function knownPidScope(): ReturnType<typeof pidScope> | undefined {
   return unknown ? undefined : scope;
 }
 
+function sameBoot(stamped: unknown, current: string | undefined): boolean {
+  const estimatedMinute = /^\d+$/;
+  if (stamped === current) return true;
+  if (typeof stamped !== "string" || !current) return false;
+  if (!estimatedMinute.test(stamped) || !estimatedMinute.test(current)) return false;
+  return Math.abs(Number(stamped) - Number(current)) <= 1;
+}
+
 function inThisPidScope(owner: OwnerRecord): boolean {
   const scope = knownPidScope();
   return (
     scope !== undefined &&
     owner.host === scope.host &&
-    owner.boot === scope.boot &&
+    sameBoot(owner.boot, scope.boot) &&
     owner.pidns === scope.pidns
   );
 }
