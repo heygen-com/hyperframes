@@ -1231,7 +1231,6 @@ async function launchWithinMemory(
     const browserRssMb = session.chromeMemory?.stats().rssLastMb;
     const keep = workersWithinMemory(requested, browserRssMb);
     if (shrinkTasks(tasks, keep)) {
-      session.options.staticDedupFrameRange = { start: first.startFrame, end: first.endFrame };
       console.warn("[Parallel] capture workers capped to fit memory", {
         requested,
         keep,
