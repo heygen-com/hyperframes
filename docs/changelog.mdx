@@ -9,6 +9,28 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.83"
+  description="Released - 2026-11-22"
+  tags={["Release", "CLI", "Producer"]}
+>
+Compiling a page with thousands of clips or style rules stays fast. The notes also list a fix that shipped in v0.9.82: a sandboxed app reads project history again.
+
+## Fixes
+
+- **Studio Server:** A sandboxed history read no longer fails with EPERM while the app holds it, shipped in v0.9.82 ([02450e3e2](https://github.com/heygen-com/hyperframes/commit/02450e3e2e9f9792589399d3a10b7a4ae34f6f2e), [#8529](https://github.com/heygen-com/hyperframes/pull/8529))
+
+## Performance
+
+- **Producer:** Compile time stays linear on pages with thousands of clips or style rules ([60c0f9e27](https://github.com/heygen-com/hyperframes/commit/60c0f9e27940001bdbb0126a291d2a9bebe5ba17), [#8528](https://github.com/heygen-com/hyperframes/pull/8528)).
+
+## Internal
+
+- **CLI:** Snapshot, render and check capture skip a held history this run cannot write ([0d624100c](https://github.com/heygen-com/hyperframes/commit/0d624100c7bf097177b2ff02700b90f89f14e4f0), [#8532](https://github.com/heygen-com/hyperframes/pull/8532)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.82...v0.9.83).
+</Update>
+
+<Update
   label="HyperFrames v0.9.82"
   description="Released - 2026-11-22"
   tags={["Release", "Producer", "Core", "Studio"]}
