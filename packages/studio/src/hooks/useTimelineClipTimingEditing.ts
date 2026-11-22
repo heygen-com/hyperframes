@@ -131,6 +131,7 @@ export function useTimelineClipTimingEditing({
   const handleTimelineElementMove = useCallback(
     // fallow-ignore-next-line complexity
     (element: TimelineElement, updates: TimelineMoveUpdates) => {
+      const projectId = projectIdRef.current;
       // fallow-ignore-next-line complexity
       const commitMove = () => {
         const targetPath = element.sourceFile || activeCompPath || "index.html";
@@ -185,7 +186,7 @@ export function useTimelineClipTimingEditing({
           finishClipTimingFallback({
             iframe: previewIframeRef.current,
             reloadPreview,
-            projectId: projectIdRef.current,
+            projectId,
             targetPath,
             domId: element.domId,
             label: "Move timeline clip",
@@ -212,7 +213,7 @@ export function useTimelineClipTimingEditing({
                     compositionPath: activeCompPath,
                     // Capture on-disk bytes as the undo `before` so undoing a timing move
                     // restores the file verbatim, not a normalized full-DOM re-emit.
-                    readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
+                    readProjectFile: (path) => readFileContent(projectId ?? "", path),
                     publishSession: publishSdkSession,
                   },
                   { label: "Move timeline clip", ...step, skipRefresh: true },
@@ -260,6 +261,7 @@ export function useTimelineClipTimingEditing({
       element: TimelineElement,
       updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
     ) => {
+      const projectId = projectIdRef.current;
       const authoredStart = toAuthoredStart(element, updates.start);
       const liveAttrs: Array<[string, string]> = [
         ["data-start", formatTimelineAttributeNumber(authoredStart)],
@@ -293,7 +295,7 @@ export function useTimelineClipTimingEditing({
         finishClipTimingFallback({
           iframe: previewIframeRef.current,
           reloadPreview,
-          projectId: projectIdRef.current,
+          projectId,
           targetPath,
           domId: element.domId,
           label: "Resize timeline clip",
@@ -323,7 +325,7 @@ export function useTimelineClipTimingEditing({
                   compositionPath: activeCompPath,
                   // Capture on-disk bytes as the undo `before` so undoing a timing
                   // resize restores the file verbatim, not a normalized full-DOM re-emit.
-                  readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
+                  readProjectFile: (path) => readFileContent(projectId ?? "", path),
                   publishSession: publishSdkSession,
                 },
                 { label: "Resize timeline clip", ...step, skipRefresh: true },
