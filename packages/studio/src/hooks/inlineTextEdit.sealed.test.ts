@@ -3,7 +3,10 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
-import { EDITING_PROTOCOL_VERSION } from "@hyperframes/core/runtime/editing-port";
+import {
+  EDITING_PROTOCOL_VERSION,
+  EDITING_REQUEST_TIMEOUT_MS,
+} from "@hyperframes/core/runtime/editing-port";
 import {
   findPreviewElementForSelection,
   resolveFoundSelection,
@@ -1116,4 +1119,47 @@ it("holds a preview reload while a sealed text edit is open and runs it once the
   act(() => controls().cancel());
   await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
   expect(isStudioManualEditGestureLiveIn(doc)).toBe(false);
+});
+
+it("keeps a reload held until the sealed end's reply lands, so the draft is saved first", async () => {
+  const { title, iframe, selection, holdEndReplies } = await sealedTitleHoldingEnds();
+  const { saved, persist } = fileWrites();
+  const { controls } = wiredEditor(iframe, selection, persist);
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.innerHTML = "Draft";
+  let savedAtReload: string[] | null = null;
+  const reload = vi.fn(() => void (savedAtReload = [...saved]));
+  afterStudioManualEditGestures(gestureDocumentOf(iframe)!, reload);
+  const release = holdEndReplies();
+  act(() => controls().commit());
+  await nextTask();
+  expect(reload).not.toHaveBeenCalled();
+  release();
+  await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+  expect(savedAtReload).toEqual(["title=Draft"]);
+});
+
+it("lets a held reload go and reports when the sealed end never answers", async () => {
+  const { title, iframe, selection, holdEndReplies } = await sealedTitleHoldingEnds();
+  const onLost = vi.fn<(reason: string) => void>();
+  let controls!: ReturnType<typeof useInlineTextEdit>;
+  mount(() => {
+    controls = useInlineTextEdit({ onCommit: vi.fn(), onLost });
+  });
+  act(() => void controls.start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.innerHTML = "Draft";
+  const reload = vi.fn();
+  afterStudioManualEditGestures(gestureDocumentOf(iframe)!, reload);
+  holdEndReplies();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    act(() => controls.commit());
+    await vi.advanceTimersByTimeAsync(EDITING_REQUEST_TIMEOUT_MS);
+  } finally {
+    vi.useRealTimers();
+  }
+  await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+  expect(onLost).toHaveBeenCalledOnce();
 });
