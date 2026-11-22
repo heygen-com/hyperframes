@@ -26,6 +26,11 @@ import type {
 } from "./useTimelineGroupEditing";
 import { studioApiFetch } from "../utils/studioApiFetch";
 import { countOf } from "../utils/countOf";
+import {
+  enqueueTimelineEdit,
+  refuseWithEarlier,
+  type TimelineEditQueue,
+} from "./timelineEditQueue";
 import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 
 /** Apply already-resolved ripple changes to the surviving elements for the
@@ -67,7 +72,7 @@ interface UseTimelineDeleteOpsOptions {
   isRecordingRef?: MutableRefObject<boolean>;
   forceReloadSdkSession?: () => void;
   previewIframeRef: RefObject<HTMLIFrameElement | null>;
-  editQueueRef: MutableRefObject<Promise<void>>;
+  editQueueRef: TimelineEditQueue;
   /** The same atomic multi-clip move commit the track-gap menu uses, reused
    *  to ripple the main track after a delete, folded into the delete's own
    *  undo entry via a shared coalesceKey. */
@@ -99,8 +104,6 @@ export function useTimelineDeleteOps({
   // toast system has no action buttons, so Undo and the toggle location are
   // named in words instead.
   const rippleNoticeShownRef = useRef(false);
-  // Rejects once a pending delete or its shift is refused: shifts queued behind it were placed after it.
-  const placedRef = useRef<Promise<void>>(Promise.resolve());
   // fallow-ignore-next-line complexity
   const handleTimelineElementsDelete = useCallback(
     // fallow-ignore-next-line complexity
@@ -145,7 +148,9 @@ export function useTimelineDeleteOps({
         usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleChanges));
         removeIframeTimelineElements(previewIframeRef.current, sameFile, activeCompPath);
         let rollbackDuration = () => {};
-        const deleted = editQueueRef.current.then(async () => {
+        const inThisProject = <T>(run: () => Promise<T>) =>
+          enqueueTimelineEdit(editQueueRef, run, { projectId: pid });
+        const deleted = inThisProject(async () => {
           await saveServerRewriteWithHistory({
             projectId: pid,
             path: targetPath,
@@ -198,13 +203,12 @@ export function useTimelineDeleteOps({
             },
           });
         });
-        editQueueRef.current = deleted.catch(() => undefined);
         // One call queues both, so no later edit can land between the delete and its shift.
-        const placed = Promise.all([deleted, placedRef.current]).then(() => undefined);
         const shifted =
           rippleChanges &&
           handleTimelineGroupMove(rippleChanges, {
-            beforeTiming: placed,
+            beforeTiming: deleted,
+            ifEarlierRefused: refuseWithEarlier,
             coalesceKey: step.coalesceKey,
             // Coalescing keeps the LAST entry's label; without this the undo
             // toast reads "Undid Move timeline clips" after a delete, naming
@@ -213,13 +217,6 @@ export function useTimelineDeleteOps({
             // This call gets its own, more specific failure toast below —
             // the generic one would tell the user about one action twice.
             suppressFailureToast: true,
-          });
-        const mine = shifted ?? placed;
-        placedRef.current = mine;
-        void mine
-          .catch(() => undefined)
-          .then(() => {
-            if (placedRef.current === mine) placedRef.current = Promise.resolve();
           });
         try {
           await deleted;

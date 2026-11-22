@@ -41,7 +41,8 @@ function forwardSealedFrameKeys(iframe: HTMLIFrameElement, onKeyDown: (e: Keyboa
   const stopRebinds = subscribeStudioKeys(watchApp);
   // The frame can report keys nobody pressed: act only while the person is in the preview.
   const focused = () =>
-    iframe.ownerDocument.hasFocus() && iframe.ownerDocument.activeElement === iframe;
+    iframe.ownerDocument.hasFocus() &&
+    (iframe.getRootNode() as Document | ShadowRoot).activeElement === iframe;
   const stopKeys = client.onKey((key) => {
     if (key.type === "keydown" && focused()) onKeyDown(new KeyboardEvent(key.type, key));
   });

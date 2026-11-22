@@ -247,7 +247,7 @@ import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } fro
 import { cutToHostSlots, MEDIA_START_BASIS_ATTR } from "../mediaTiming";
 import { settleFirstFrameCompositionReadiness } from "../compositionReadiness";
 import { AUTHORED_DURATION_ATTR, AUTHORED_END_ATTR } from "./authoredTiming";
-import { createTimingRecordFilter } from "./mutationRecords";
+import { createRecordFilter, createTimingRecordFilter } from "./mutationRecords";
 import {
   clearRuntimeData,
   setRuntimeData,
@@ -1480,6 +1480,10 @@ export function initSandboxRuntimeModular(): void {
     "data-height",
   ];
   const recordsMoveTiming = createTimingRecordFilter(COMPOSITION_TIMING_ATTRIBUTES);
+  const MEMBERSHIP_ATTRIBUTES = ["data-hidden"];
+  const recordsMoveMembership = createRecordFilter(
+    MEMBERSHIP_ATTRIBUTES.map((name) => `[${name}]`).join(","),
+  );
   const COMPOSITION_TIMING_MEDIA_EVENTS = ["loadedmetadata", "durationchange", "emptied"] as const;
   let durationFloorsCache: DurationFloors | null = null;
   let durationFloorsRevision = -1;
@@ -1498,8 +1502,7 @@ export function initSandboxRuntimeModular(): void {
   const queryForTransport = (selector: string): Element[] => {
     if (!compositionTimingObserver || renderCaptureSeekStarted)
       return Array.from(document.querySelectorAll(selector));
-    if (recordsMoveTiming(compositionTimingObserver.takeRecords()))
-      invalidateCompositionTimingCaches();
+    takeTimingRecords(compositionTimingObserver.takeRecords());
     const cached = queryCache.get(selector);
     if (cached) return cached;
     const nodes = Array.from(document.querySelectorAll(selector));
@@ -1521,6 +1524,15 @@ export function initSandboxRuntimeModular(): void {
     // transport is waiting for: a timing attribute edited, a sub-composition
     // mounted, media metadata arriving. One signal, two readers.
     wakeTransport();
+  };
+
+  const takeTimingRecords = (records: readonly MutationRecord[]) => {
+    const timing = records.filter(
+      (record) =>
+        record.type !== "attributes" || !MEMBERSHIP_ATTRIBUTES.includes(record.attributeName ?? ""),
+    );
+    if (recordsMoveTiming(timing)) invalidateCompositionTimingCaches();
+    else if (recordsMoveMembership(records)) queryCache.clear();
   };
 
   const deriveDurationFloors = (): DurationFloors => {
@@ -1553,30 +1565,24 @@ export function initSandboxRuntimeModular(): void {
     const pending = compositionTimingObserver?.takeRecords() ?? [];
     write();
     const ours = compositionTimingObserver?.takeRecords() ?? [];
-    if (
-      recordsMoveTiming(pending) ||
-      recordsMoveTiming(ours.filter((record) => record.target !== el))
-    )
-      invalidateCompositionTimingCaches();
+    takeTimingRecords([...pending, ...ours.filter((record) => record.target !== el)]);
   };
 
   const withoutOwnCompositionRecords = (write: () => void) => {
     const pending = compositionTimingObserver?.takeRecords() ?? [];
     write();
     compositionTimingObserver?.takeRecords();
-    if (recordsMoveTiming(pending)) invalidateCompositionTimingCaches();
+    takeTimingRecords(pending);
   };
 
   const watchCompositionTimingInputs = () => {
     if (compositionTimingObserver || typeof MutationObserver === "undefined") return;
-    compositionTimingObserver = new MutationObserver((records) => {
-      if (recordsMoveTiming(records)) invalidateCompositionTimingCaches();
-    });
+    compositionTimingObserver = new MutationObserver(takeTimingRecords);
     compositionTimingObserver.observe(document.documentElement, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: COMPOSITION_TIMING_ATTRIBUTES,
+      attributeFilter: [...COMPOSITION_TIMING_ATTRIBUTES, ...MEMBERSHIP_ATTRIBUTES],
     });
     // Media duration changes are published as events, not DOM mutations, and
     // they do not bubble — so listen in the capture phase, which reaches every
@@ -1608,9 +1614,7 @@ export function initSandboxRuntimeModular(): void {
     // here makes the caches correct within a task, not just across tasks.
     // Taking the records suppresses the callback for them, which is exactly
     // equivalent since the callback only bumps the revision.
-    if (compositionTimingObserver && recordsMoveTiming(compositionTimingObserver.takeRecords())) {
-      invalidateCompositionTimingCaches();
-    }
+    if (compositionTimingObserver) takeTimingRecords(compositionTimingObserver.takeRecords());
     // `window.__timelines` is a plain object: no MutationObserver and no event
     // can see a composition script registering into it or lengthening what it
     // already registered, so its shape is polled like everything else no
@@ -2946,7 +2950,7 @@ export function initSandboxRuntimeModular(): void {
     if (before.value) el.style.setProperty("display", before.value, before.priority);
     else el.style.removeProperty("display");
   };
-  const dataHiddenDisplayNodes = new WeakSet<StylableElement>();
+  const dataHiddenDisplayNodes = new Set<StylableElement>();
   // A data-hidden toggle on (or affecting) an audio element must re-schedule
   // WebAudio playback so the hidden clip's source is dropped/restored mid-
   // playback. Batched to one call per syncTimedElementVisibility pass, not
@@ -3453,6 +3457,12 @@ export function initSandboxRuntimeModular(): void {
       playedFromSeconds === undefined || timingRevision === undefined
         ? null
         : unchangedSincePlayedFrom(playedFromSeconds, currentTime, rootComp, timingRevision);
+    for (const node of dataHiddenDisplayNodes) {
+      if (node.isConnected && node.hasAttribute("data-hidden")) continue;
+      restoreDisplay(node);
+      dataHiddenDisplayNodes.delete(node);
+      if (nodeAffectsAudio(node)) hiddenAudioDirty = true;
+    }
     for (const rawNode of visibilityNodes) {
       if (!isStylableElement(rawNode)) continue;
 
@@ -3466,12 +3476,6 @@ export function initSandboxRuntimeModular(): void {
           colorGradingRuntime?.setSourceVisibility(rawNode, false);
         }
         continue;
-      }
-
-      if (dataHiddenDisplayNodes.has(rawNode)) {
-        restoreDisplay(rawNode);
-        dataHiddenDisplayNodes.delete(rawNode);
-        if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
       }
 
       const hasClipWindow = rawNode.hasAttribute("data-start");

@@ -3,10 +3,7 @@ import type { Context, Hono, Next } from "hono";
 import { getMimeType } from "./mime.js";
 import { fetchAgain } from "./fetchAgain.js";
 import { insertBeforeCloseTag } from "@hyperframes/core/compiler";
-import {
-  createSealedPreviewSeekReapplyScript,
-  htmlHasStudioPositionEdits,
-} from "./manualEditsRenderScript.js";
+import { createSealedPreviewSeekReapplyScript } from "./manualEditsRenderScript.js";
 import {
   isProxyWait,
   PREVIEW_EXPOSED_HEADERS,
@@ -85,8 +82,7 @@ const PROXY_PREFLIGHT_ANSWER = {
   Vary: "Origin",
 };
 
-function withStudioEditsReappliedAfterSeeks(html: string): string {
-  if (!htmlHasStudioPositionEdits(html)) return html;
+function withSeekReapplyArmedForAnyEdit(html: string): string {
   const tag = `<script>${createSealedPreviewSeekReapplyScript()}\n//# sourceURL=hyperframes://position-seek-reapply</script>`;
   return insertBeforeCloseTag(html, "body", tag) ?? `${html}${tag}`;
 }
@@ -97,7 +93,7 @@ async function underToken(res: Response, headers: Headers, projectId: string, to
   const base = previewBase(projectId);
   headers.delete("content-length");
   const rebased = (await res.text()).replaceAll(base, `${base}~${token}/`);
-  const html = withStudioEditsReappliedAfterSeeks(rebased);
+  const html = withSeekReapplyArmedForAnyEdit(rebased);
   return new Response(html, { status: res.status, headers });
 }
 

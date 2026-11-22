@@ -95,6 +95,7 @@ export function useTimelineEditing({
     handleTimelineGroupResize: groupEditing.handleTimelineGroupResize,
     handleTimelineGroupMove: groupEditing.handleTimelineGroupMove,
     showToast,
+    reloadPreview,
   });
 
   const handleToggleTrackHidden = useTimelineTrackVisibilityEditing({
