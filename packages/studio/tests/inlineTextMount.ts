@@ -34,6 +34,8 @@ export interface TextEditing {
   writes: string[];
   /** Writes Studio dropped as superseded before they reached the file. */
   skipped: string[];
+  /** What Studio told the person failed: error toasts and lost edits. */
+  reported: string[];
   /** The fate the next writes take, in the order they reach the file; `land` once it runs out. */
   fates: WriteFate[];
   /** Lets every write still waiting go on, landing. */
@@ -55,6 +57,7 @@ export function mountTextEditing(
   let file = fileHtml;
   const writes: string[] = [];
   const skipped: string[] = [];
+  const reported: string[] = [];
   const fates: WriteFate[] = [];
   const waiting: Array<() => void> = [];
   const persist: PersistDomEditOperations = async (selection, operations, options) => {
@@ -86,7 +89,7 @@ export function mountTextEditing(
         commits = useDomEditTextCommits({
           activeCompPath: PATH,
           previewIframeRef: { current: iframe },
-          showToast: () => {},
+          showToast: (message, kind) => void (kind === "error" && reported.push(String(message))),
           reloadPreview: () => (window as unknown as { __reload: () => void }).__reload(),
           domEditSelection: selection,
           applyDomSelection: () => {},
@@ -97,7 +100,10 @@ export function mountTextEditing(
           resolveImportedFontAsset: () => null,
           readOnlyPreview: false,
         });
-        controls = useInlineTextEdit({ onCommit: commits.handleDomRichTextCommit });
+        controls = useInlineTextEdit({
+          onCommit: commits.handleDomRichTextCommit,
+          onLost: (reason) => void reported.push(reason),
+        });
         return null;
       }),
     ),
@@ -116,6 +122,7 @@ export function mountTextEditing(
     saved,
     writes,
     skipped,
+    reported,
     fates,
     releaseWaiting: () => waiting.splice(0).forEach((go) => go()),
     waiting: () => waiting.length,

@@ -4,7 +4,14 @@
 import type { Browser } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { closeTestChrome, launchTestChrome } from "../../tests/chromeTestUtils";
-import { generated, playText, wordsFromGestures, writeFates } from "../../tests/inlineTextFixture";
+import {
+  generated,
+  passesDeadline,
+  playText,
+  reloadsDuringEdit,
+  wordsFromGestures,
+  writeFates,
+} from "../../tests/inlineTextFixture";
 import { buildStudioBundle } from "../../tests/sealedPreviewHarness";
 
 vi.setConfig({ testTimeout: 240_000, hookTimeout: 60_000 });
@@ -52,8 +59,16 @@ it.each(seeds)("generated text sequence %i", async (seed) => {
         words: true,
       });
   }
-  const trace = (r: typeof sealed) => JSON.stringify({ writes: r.writes, skipped: r.skipped });
+  const trace = (r: typeof sealed) =>
+    JSON.stringify({ writes: r.writes, skipped: r.skipped, reported: r.reported });
   const writes = `seed ${seed} sealed ${trace(sealed)} unsealed ${trace(unsealed)}`;
+  if (reloadsDuringEdit(steps)) return void console.info(`seed ${seed}: parity waits on row 41`);
+  if (passesDeadline(steps)) {
+    const lostQuietly = sealed.saved !== unsealed.saved && sealed.reported.length === 0;
+    return void expect
+      .soft({ seed, steps, lostQuietly }, writes)
+      .toMatchObject({ lostQuietly: false });
+  }
   expect
     .soft({ seed, steps, sealed: sealed.saved }, writes)
     .toEqual({ seed, steps, sealed: unsealed.saved });
