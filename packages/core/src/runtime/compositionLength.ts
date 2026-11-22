@@ -210,8 +210,8 @@ export function readStaticCompositionMeta(
 }
 
 export const STATIC_COMPOSITION = "static-composition";
-export const MAX_STATIC_DURATION_SECONDS = 86_400;
-export const MAX_STATIC_DIMENSION = 16_384;
+const MAX_STATIC_DURATION_SECONDS = 86_400;
+const MAX_STATIC_DIMENSION = 16_384;
 
 export type StaticComposition = {
   durationSeconds: number;
