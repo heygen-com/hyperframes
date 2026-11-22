@@ -30,8 +30,11 @@ const REPORTED_ERROR_NAMES = new Set([
   "NotFoundError",
   "DataCloneError",
 ]);
-const reportedErrorName = (error: unknown) =>
-  error instanceof Error && REPORTED_ERROR_NAMES.has(error.name) ? error.name : "other";
+// The error may come from the preview frame's realm, so its name is read, never checked with instanceof.
+function reportedErrorName(error: unknown): string {
+  const name = (error as { name?: unknown } | null)?.name;
+  return typeof name === "string" && REPORTED_ERROR_NAMES.has(name) ? name : "other";
+}
 
 function reachablePreview(iframe: HTMLIFrameElement): PatchTarget {
   const win = iframe.contentWindow as
