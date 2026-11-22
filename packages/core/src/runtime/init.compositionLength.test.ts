@@ -126,6 +126,27 @@ describe("runtime composition length and size", () => {
     expect(window.__hf?.durationSource).toEqual({ source: "derived", seconds: 4, pendingClips: 0 });
   });
 
+  // fails without the fix: letting go of a far clip emptied its length, so the film fell back to its other clips.
+  it("keeps a far clip's measured length after the player lets go of it", () => {
+    const html =
+      `<div data-composition-id="main" data-root="true">` +
+      `<video id="talk" src="talk.mp4" data-start="0" data-duration="37.43"></video>` +
+      `<video id="far" src="far.mp4" data-start="300"></video></div>`;
+    document.body.innerHTML = html;
+    const far = document.getElementById("far") as HTMLMediaElement;
+    const length = stubDuration(far, Number.NaN);
+    window.__timelines = {};
+    initSandboxRuntimeModular();
+    length.set(600);
+    far.dispatchEvent(new Event("durationchange"));
+    expect(window.__player?.getDuration()).toBe(900);
+
+    length.set(Number.NaN);
+    far.dispatchEvent(new Event("emptied"));
+    far.dispatchEvent(new Event("durationchange"));
+    expect(window.__player?.getDuration()).toBe(900);
+  });
+
   it("reports 0 while a clip's length is pending", () => {
     const html =
       `<div data-composition-id="main" data-root="true">` +
