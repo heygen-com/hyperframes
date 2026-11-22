@@ -399,6 +399,13 @@ try {
     await picture(host, `drag-${fraction}`);
   }
   await host.page.mouse.up();
+  // A sealed frame gets the release's seek as a posted message: let it land before this script seeks in the frame.
+  const released = await slider.evaluate((input) => input.valueAsNumber);
+  await host.frame.waitForFunction(
+    (time) => Math.abs(window.__player.getTime() - time) <= 1 / 30 + 0.002,
+    {},
+    released,
+  );
   await seek(host, 7);
   await picture(host, "paused-b");
   await seek(host, 5.5);
