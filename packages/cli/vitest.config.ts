@@ -2,6 +2,7 @@ import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { defineConfig } from "vitest/config";
+import { TimedShards } from "./vitest.shards";
 // Before workers fork, as below: the test run gets a home folder of its own.
 import "./scripts/test-home.mjs";
 
@@ -62,6 +63,7 @@ export default defineConfig({
     testTimeout: 20_000,
     hookTimeout: 30_000,
     setupFiles: ["./scripts/test-file-home.mjs"],
+    sequence: { sequencer: TimedShards },
     // Tests that drive a real Chrome (the four *.process.test.ts named here start one) run alone, after
     // everything else: a Chrome beside hundreds of parallel files was starved past its 30 s launch limit.
     projects: [
@@ -92,7 +94,7 @@ export default defineConfig({
           sequence: { groupOrder: 2 },
         },
       },
-      // Spawns the CLI over and over (72 s alone on a Windows runner): beside the audio and ffmpeg files in its
+      // Spawns the CLI over and over (about 8 min alone on a Windows runner): beside the audio and ffmpeg files in its
       // shard it starved them past their 20 s limits, and its own --help cases timed out.
       {
         extends: true,
