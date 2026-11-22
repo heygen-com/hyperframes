@@ -8,8 +8,13 @@ import {
   findPreviewElementForSelection,
   resolveFoundSelection,
   resolvePreviewSelection,
+  gestureDocumentOf,
 } from "../components/editor/previewSelection";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import {
+  afterStudioManualEditGestures,
+  isStudioManualEditGestureLiveIn,
+} from "../components/editor/manualEditGesture";
 import { canEditSealedTextInline } from "../components/editor/domEditInlineText";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
 import { describePreviewElements, previewTextEdit } from "../player/lib/previewElements";
@@ -1097,4 +1102,18 @@ it("saves a queued panel change without the draft of an edit opened after it", a
   act(() => controls().cancel());
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
   expect(text("title")).toBe("<span>Uno</span>");
+});
+
+// fails without the fix: a sealed text edit began no gesture, so a preview reload ran over it and dropped the draft.
+it("holds a preview reload while a sealed text edit is open and runs it once the edit ends", async () => {
+  const { iframe, selection } = await sealedTitle();
+  const { controls } = inlineEditor();
+  act(() => void controls().start(selection.element));
+  const doc = gestureDocumentOf(iframe)!;
+  const reload = vi.fn();
+  afterStudioManualEditGestures(doc, reload);
+  expect(isStudioManualEditGestureLiveIn(doc)).toBe(true);
+  act(() => controls().cancel());
+  await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+  expect(isStudioManualEditGestureLiveIn(doc)).toBe(false);
 });
