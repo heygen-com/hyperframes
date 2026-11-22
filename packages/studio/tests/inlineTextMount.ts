@@ -14,6 +14,10 @@ import type { PersistDomEditOperations } from "../src/hooks/domEditCommitTypes";
 import { useDomEditTextCommits } from "../src/hooks/useDomEditTextCommits";
 import { useInlineTextEdit } from "../src/hooks/useInlineTextEdit";
 import { hasStudioPendingEdits } from "../src/utils/studioPendingEdits";
+import {
+  afterStudioManualEditGestures,
+  isStudioManualEditGestureLiveIn,
+} from "../src/components/editor/manualEditGesture";
 
 const PATH = "index.html";
 const OPTIONS = { activeCompositionPath: PATH, isMasterView: false, skipSourceProbe: true };
@@ -35,6 +39,8 @@ export interface TextEditing {
   /** Lets every write still waiting go on, landing. */
   releaseWaiting(): void;
   waiting(): number;
+  /** Runs `load` as Studio's preview reload does: after any edit gesture live in a readable frame. */
+  reloadWhenFree(load: () => void): void;
   pending(): boolean;
 }
 
@@ -113,6 +119,11 @@ export function mountTextEditing(
     fates,
     releaseWaiting: () => waiting.splice(0).forEach((go) => go()),
     waiting: () => waiting.length,
+    reloadWhenFree: (load) => {
+      const doc = sealed ? null : iframe.contentDocument;
+      if (doc && isStudioManualEditGestureLiveIn(doc)) afterStudioManualEditGestures(doc, load);
+      else load();
+    },
     pending: () => hasStudioPendingEdits() || waiting.length > 0,
   };
 }

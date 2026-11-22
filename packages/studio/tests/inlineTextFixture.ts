@@ -245,7 +245,10 @@ export async function playText(
       await studioPage.evaluate(() => (window as unknown as Editing).__text.releaseWaiting());
     else if ("pastDeadline" in step) await passDeadlines(studioPage, false);
     else {
-      await studioPage.evaluate(() => (window as unknown as { __load: () => void }).__load());
+      await studioPage.evaluate(() => {
+        const w = window as unknown as Editing & { __load: () => void };
+        w.__text.reloadWhenFree(() => w.__load());
+      });
       await loaded(studioPage, frame);
     }
     if (serial) await settle(studioPage, frame, random);
