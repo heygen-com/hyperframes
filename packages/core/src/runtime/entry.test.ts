@@ -672,6 +672,38 @@ describe("runtime entry", () => {
       expect(armed(now, soon)).toEqual([true, false]);
     });
 
+    // A src set on a clip already freed left it at preload="none" with no length for the new src: out of its window,
+    // the timeline lost its length until the playhead reached it.
+    it("a far clip whose src is swapped after its length was learned learns the new length, then is freed again", async () => {
+      spyLoad();
+      servePreview();
+      const clips = videos(mountRoot(), "0", "6");
+      for (const clip of clips) clip.removeAttribute("data-duration");
+      const later = clips[1] as HTMLVideoElement;
+      later.setAttribute("src", "later.mp4");
+      await evaluateRuntime();
+      const metadata = (seconds: number) => {
+        Object.defineProperty(later, "readyState", { value: 1, configurable: true });
+        Object.defineProperty(later, "duration", { value: seconds, configurable: true });
+        later.dispatchEvent(new Event("loadedmetadata"));
+      };
+      metadata(2);
+      expect([later.preload, loadsOf(later)[0]]).toEqual(["none", 2]);
+
+      Object.defineProperty(later, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(later, "duration", { value: Number.NaN, configurable: true });
+      later.setAttribute("src", "other.mp4");
+      window.__player?.seek(0.5);
+      expect([later.preload, loadsOf(later)[0]]).toEqual(["metadata", 3]);
+
+      metadata(3);
+      expect([later.preload, loadsOf(later)[0]]).toEqual(["none", 4]);
+      expect(later.getAttribute("src")).toBe("other.mp4");
+      const { resolveMediaElementDurationSeconds } = await import("./playbackRate");
+      Object.defineProperty(later, "duration", { value: Number.NaN, configurable: true });
+      expect(resolveMediaElementDurationSeconds(later)).toBe(3);
+    });
+
     it("loads a due clip with no authored length whole and a far one's length only, so no reload drops a duration", async () => {
       spyLoad();
       servePreview();

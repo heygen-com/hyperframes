@@ -2761,13 +2761,25 @@ export function initSandboxRuntimeModular(): void {
     freesBufferedVideo(el) &&
     el.hasAttribute("data-start") &&
     !lengthIsAuthored(el);
-  // Clips that loaded their length; the document's timing listener (sourceLength.ts) keeps it, and runs first.
-  const learned = new WeakSet<HTMLMediaElement>();
+  // The src each clip loaded its length for; the document's timing listener (sourceLength.ts) keeps it, and runs first.
+  const learned = new WeakMap<HTMLMediaElement, string>();
+  const knowsLength = (el: HTMLMediaElement) => learned.get(el) === el.src;
+  const armLength = (el: HTMLMediaElement) => {
+    if (
+      learnsLength(el) &&
+      resolveAbsoluteMediaStartSeconds(el) > state.currentTime + LOOKAHEAD_SECONDS
+    ) {
+      el.preload = "metadata";
+      el.load();
+    } else preloadMedia(el);
+  };
+  const swappedAfterLearning = (el: HTMLMediaElement) =>
+    learnsLength(el) && learned.has(el) && !knowsLength(el) && el.preload === "none";
   // A far clip can finish a load the parser started before its window was decided.
   const onMediaLoadedWhileFar = (event: Event) => {
     const el = event.currentTarget;
-    if (learnsLength(el) && !learned.has(el)) {
-      learned.add(el);
+    if (learnsLength(el) && !knowsLength(el)) {
+      learned.set(el, el.src);
       syncTimedElementVisibility(state.currentTime, [el]);
       return;
     }
@@ -2875,13 +2887,7 @@ export function initSandboxRuntimeModular(): void {
 
       // Studio's preview loads a timed clip only near the playhead; the visibility pass decides.
       if (inPreloadWindow(mediaEl)) nearPlayheadPending.push(mediaEl);
-      else if (
-        learnsLength(mediaEl) &&
-        resolveAbsoluteMediaStartSeconds(mediaEl) > state.currentTime + LOOKAHEAD_SECONDS
-      ) {
-        mediaEl.preload = "metadata";
-        mediaEl.load();
-      } else preloadMedia(mediaEl);
+      else armLength(mediaEl);
 
       // Probe volume automation from the GSAP timeline — same approach as the
       // renderer (see discoverAudioVolumeAutomationFromTimeline / audioMixer).
@@ -3155,7 +3161,7 @@ export function initSandboxRuntimeModular(): void {
     mediaDeferred &&
     el.hasAttribute("data-start") &&
     (lengthIsAuthored(el) ||
-      (learnsLength(el) && learned.has(el) && Number.isFinite(sourceLengthOf(el))) ||
+      (learnsLength(el) && knowsLength(el) && Number.isFinite(sourceLengthOf(el))) ||
       (!loadsAhead && el.readyState === HTMLMediaElement.HAVE_NOTHING));
 
   // Media on screen or due within the look-ahead loads; the rest stops holding a connection to
@@ -3547,12 +3553,11 @@ export function initSandboxRuntimeModular(): void {
       if (upcoming && !rawNode.hasAttribute(STUDIO_PREVIEW_UPCOMING_ATTR))
         loadPreviewImagesIn(rawNode);
       rawNode.toggleAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, upcoming);
-      if (
-        !seekOwnsMedia &&
-        isMediaElement(rawNode) &&
-        metadataBoundMedia.has(rawNode) &&
-        inPreloadWindow(rawNode)
-      )
+      const managed = !seekOwnsMedia && isMediaElement(rawNode) && metadataBoundMedia.has(rawNode);
+      if (managed && swappedAfterLearning(rawNode)) {
+        mediaNearPlayhead.delete(rawNode);
+        armLength(rawNode);
+      } else if (managed && inPreloadWindow(rawNode))
         preloadNearPlayhead(
           rawNode,
           isVisibleNow,
