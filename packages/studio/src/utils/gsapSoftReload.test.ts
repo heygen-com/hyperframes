@@ -3,6 +3,7 @@
 
 import { patchRuntimeTweenInPlace } from "../hooks/gsapRuntimePatch";
 import { afterEach, describe, it, expect, vi } from "vitest";
+import { GSAP_PLUGIN_LOAD_ATTR } from "@hyperframes/core/gsap-cdn";
 import {
   readNestedFiles,
   applySoftReload,
@@ -458,7 +459,11 @@ describe("applySoftReloadFinalization", () => {
   });
 });
 
-function buildBootstrapIframe(overrides: Record<string, unknown> = {}) {
+/** A preview frame for the plugin preload; its inline scripts tween along a path unless `scripts` says otherwise. */
+function buildBootstrapIframe(
+  overrides: Record<string, unknown> = {},
+  scripts: string[] = [MOTION_PATH_SCRIPT_TEXT],
+) {
   const head = document.createElement("div");
   const appendedScripts: HTMLScriptElement[] = [];
   const realHeadAppend = head.appendChild.bind(head);
@@ -474,8 +479,12 @@ function buildBootstrapIframe(overrides: Record<string, unknown> = {}) {
     __hfMotionPathWaiters: undefined as unknown[] | undefined,
     ...overrides,
   };
+  const inline = scripts.map((text) =>
+    Object.assign(document.createElement("script"), { textContent: text }),
+  );
   const contentDocument = {
     createElement: (tag: string) => document.createElement(tag),
+    querySelectorAll: (sel: string) => (sel === "script:not([src])" ? inline : []),
     head,
   };
   return {
@@ -545,6 +554,22 @@ describe("ensureMotionPathPluginLoaded", () => {
       post(contentWindow);
       expect(appendedScripts).toHaveLength(0);
     });
+  });
+
+  // fails without the fix: every GSAP preview fetched the plugin, so an offline one reported its animations broken.
+  it("loads no plugin for a page whose scripts never tween along a path", () => {
+    const { iframe, appendedScripts } = buildBootstrapIframe({}, [
+      'gsap.timeline({ paused: true }).to("#box", { opacity: 0.5 });',
+    ]);
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts).toHaveLength(0);
+  });
+
+  // fails without the fix: the page's GSAP fallback took the plugin's failure for the film's and reported it.
+  it("marks the plugin script as the preview's own load, so the page's GSAP fallback leaves it alone", () => {
+    const { iframe, appendedScripts } = buildBootstrapIframe();
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts[0]!.hasAttribute(GSAP_PLUGIN_LOAD_ATTR)).toBe(true);
   });
 
   it("loads the plugin at the composition's own gsap version", () => {

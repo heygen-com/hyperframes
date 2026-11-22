@@ -31,6 +31,7 @@ import {
 } from "@hyperframes/core";
 import {
   GSAP_BASE_URL_META,
+  GSAP_PLUGIN_LOAD_ATTR,
   gsapCdnDist,
   motionPathPluginUrl,
   normalizeGsapBaseUrl,
@@ -303,7 +304,7 @@ function gsapCdnFallbackScript(baseUrl: string): string {
   }
   document.addEventListener("error",function(e){
     var t=e.target;
-    if(!t||t.tagName!=="SCRIPT"||!t.src||t.hfGsapFallback)return;
+    if(!t||t.tagName!=="SCRIPT"||!t.src||t.hfGsapFallback||(t.hasAttribute&&t.hasAttribute(${scriptJson(GSAP_PLUGIN_LOAD_ATTR)})))return;
     var m=t.src.match(/gsap[^/]*\\/dist\\/(.+\\.js)/);
     if(m)loadFallback(m[1]).catch(function(){
       reportError(new Error("GSAP could not load from "+t.src+" or "+cdnBase+m[1]+", so this preview's animations will not play."));
