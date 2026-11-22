@@ -116,7 +116,7 @@ describe.each<[string, CutoverResult]>([
               previewIframeRef: { current: null },
               pendingTimelineEditPathRef: { current: new Set<string>() },
               uploadProjectFiles: vi.fn(),
-              sdkSession: {} as never,
+              sdkSession: { getElement: () => null } as never,
             });
             return null;
           }
