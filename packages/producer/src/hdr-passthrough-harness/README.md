@@ -30,14 +30,21 @@ cd packages/producer
 ../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts                     # 20 s, 10 cues
 ../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts --duration 180 \
   --out /tmp/hf-hdr-passthrough-3min                                                    # benchmark, 90 cues
+../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts --transfer pq \
+  --out /tmp/hf-hdr-passthrough-pq                                                      # PQ source
+../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts --duration 3 --ineligible \
+  --out /tmp/hf-hdr-passthrough-neg                                                     # one fixture per fallback class
 ```
+
+`--cues <n>` overrides the cue count (default one per 2 s).
 
 Default output is `$TMPDIR/hf-hdr-passthrough/`. Nothing it writes belongs in
 git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
 
-- `assets/hlg-<n>s.mp4`: 1920x1080, 30 fps, HEVC Main10 `yuv420p10le`,
-  tagged BT.2020 / ARIB STD-B67 / bt2020nc / limited range in both the
-  container and the HEVC VUI, with a 48 kHz AAC tone. The picture is a slow
+- `assets/<transfer>-<n>s.mp4`: 1920x1080, 30 fps, HEVC Main10 `yuv420p10le`,
+  tagged BT.2020 / ARIB STD-B67 (or SMPTE ST 2084 with HDR10 mastering
+  display and content light level metadata for `--transfer pq`) / bt2020nc /
+  limited range in both the container and the HEVC VUI, with a 48 kHz AAC tone. The picture is a slow
   four-colour `gradients` field (smooth ramps, where 8-bit handling bands)
   with a `testsrc2` inset in the middle (motion, hard edges, a frame counter).
 - `captions/` (positive): the clip full-bleed on track 0
@@ -54,8 +61,21 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   covers the canvas, which the layout probe checks before the transform
   itself), and both sides then render through the layered path.
 
-`fixtures.json` in the output directory records the projects and what each
-expects; `parity.ts --fixtures` reads it.
+- `ineligible-<case>/` (with `--ineligible`): the `captions` fixture with one
+  thing changed that the passthrough cannot reproduce, each with the reason
+  the flag-on render must log (`INELIGIBLE_CASES` in `fixture.ts`): an
+  enlarged video (`not_full_canvas`), a mirrored or filtered video
+  (`transform_or_filter`), a rounded video or rounded clipping ancestor
+  (`clip_or_mask`), a CSS animation, a Lottie player
+  element, three.js, a WebGPU element, SVG SMIL and animated WebP / APNG /
+  AVIF images (`overlay_non_gsap_animation`), an animated GIF (`video_count`:
+  the compiler turns it into a second video), a canvas (`canvas`), and
+  a GSAP tween that changes the overlay on every frame
+  (`overlay_continuous_animation`). Run these with `--only on`: the check is
+  the route and reason, and both sides would take the layered path.
+
+`fixtures.json` in the output directory records the projects, the transfer
+and what each expects; `parity.ts --fixtures` reads it.
 
 ## Running the parity check
 
@@ -65,19 +85,23 @@ cd packages/producer
 ```
 
 Per project it writes `<fixtures>/parity/<project>/{off,on}.{mp4,log}`,
-`psnr.log`, `ssim.log` and `report.json`, and prints a summary. The exit code
+`psnr.log`, `ssim.log` and `report.json`, and prints a summary, including the
+passthrough's overlay capture counts (states, candidates, screenshots, unique
+PNGs, capture time) read from its log. The exit code
 is 0 only when every check passes.
 
 Useful options:
 
 | Option                   | Effect                                                                                                                                             |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--projects a,b`         | Only these manifest projects (with `--fixtures`)                                                                                                   |
 | `--only off` / `on`      | Render one side only (single-output checks: render ok, HDR tags, audio, frames)                                                                    |
 | `--skip-render`          | Re-run the comparison on existing `off.mp4` / `on.mp4`                                                                                             |
 | `--project <dir>`        | Any project instead of the generated fixtures (`--duration` enables the frame check, `--expect passthrough\|fallback`, `--expect-reason <reason>`) |
 | `--render-arg <arg>`     | Extra CLI argument for both sides, repeatable (for example `--render-arg=--gpu`)                                                                   |
 | `--quality`, `--workers` | Passed to both renders (defaults `standard`, `1`)                                                                                                  |
 | `--cli "<cmd>"`          | CLI to run instead of the worktree source                                                                                                          |
+| `--transfer hlg\|pq`     | Expected output transfer; defaults to the manifest's (`hlg` for `--project`)                                                                       |
 | `--min-mean-psnr` etc.   | Override a threshold                                                                                                                               |
 
 Do not pass `--start` / `--end`: a range render is always SDR, so it never
@@ -130,20 +154,38 @@ gate exists to catch.
 
 ## Measured
 
-2026-11-22, Linux x64, 32 cores shared with other jobs (load average 50-100
-during the runs, so absolute wall times are inflated), `--quality standard`,
-`--workers 1`, software libx265.
+2026-11-22, Linux x64, 32 cores shared with other jobs (load average 15-45
+during the runs), `--quality standard`, `--workers 1`, software libx265, no
+GPU encoder. Renders share one lock per user account, so wall time can
+include waiting for an unrelated render; "job" is the render's own elapsed
+time from its trace (compile through assemble), the fair comparison.
 
-| Fixture            | off wall (layered stage)      | on wall (passthrough stage)               | speedup | PSNR / SSIM                 |
-| ------------------ | ----------------------------- | ----------------------------------------- | ------- | --------------------------- |
-| `captions` 20 s    | 324.0 s                       | 61.4 s (84 states, 11 unique)             | 5.3x    | identical, 600/600 frames   |
-| `captions` 60 s    | 640.8 s (634.7 s)             | 87.5 s (81.4 s: 23.6 s capture, 244/31)   | 7.3x    | identical, 1800/1800 frames |
-| `captions` 180 s   | not run, ~1920 s at 60 s rate | 170.9 s (160.0 s: 75.5 s capture, 724/91) | ~11x    | (flag-on side only)         |
-| `transformed` 20 s | 319.9 s                       | 437.9 s, fallback `not_full_canvas`       | -       | identical, 600/600 frames   |
+| Fixture                           | off: job (wall)       | on: job (wall)     | overlay states (candidates / screenshots) | capture | speedup (job) | off vs on            |
+| --------------------------------- | --------------------- | ------------------ | ----------------------------------------- | ------- | ------------- | -------------------- |
+| HLG `captions` 20 s, 10 cues      | 174.7 s (179.5 s)     | 13.8 s (18.0 s)    | 21 (84 / 11)                              | 2.8 s   | 12.6x         | identical, 600/600   |
+| HLG `captions` 60 s, 30 cues      | 529.4 s (545.1 s)     | 37.2 s (56.8 s)    | 61 (244 / 31)                             | 7.8 s   | 14.2x         | identical, 1800/1800 |
+| HLG `captions` 180 s, 90 cues     | 1592.1 s (1597.0 s)   | 182.6 s (213.9 s)  | 181 (724 / 91)                            | 30.2 s  | 8.7x          | identical, 5400/5400 |
+| PQ `captions` 20 s, 10 cues       | 164.1 s (174.5 s)     | 13.4 s (31.5 s)    | 21 (84 / 11)                              | 2.4 s   | 12.3x         | identical, 600/600   |
+| HLG 120 s, a cue every 3 s        | 1087.9 s (2262.2 s)   | 84.8 s (113.3 s)   | 81 (324 / 41)                             | 13.4 s  | 12.8x         | identical, 3600/3600 |
+| HLG 16 min, a cue every 3 s       | ~8790 s, extrapolated | 758.1 s (1673.6 s) | 641 (2564 / 321)                          | 142.6 s | ~11.6x        | flag-on side only    |
+| HLG `transformed` 20 s (fallback) | 326.0 s (330.1 s)     | 334.3 s (359.1 s)  | fallback `not_full_canvas`                | -       | 0.98x         | identical, 600/600   |
+| PQ `transformed` 20 s (fallback)  | 272.6 s (288.1 s)     | 289.9 s (315.2 s)  | fallback `not_full_canvas`                | -       | 0.94x         | identical, 600/600   |
 
-Every other check passed: HEVC Main10 `yuv420p10le`, BT.2020 / ARIB STD-B67
-/ bt2020nc / tv, `hvc1`, exact frame count and duration, AAC 48 kHz stereo,
-same first-frame side data (mastering display, content light level). On the
-passthrough side the stage is overlay capture (about 100 ms per planned
-state) followed by one ffmpeg composite + encode (about 60 fps at 1080p
-here); the layered stage runs at about 350 ms per frame on the same host.
+"Identical" means every decoded frame matched (PSNR 100 dB / SSIM 1.0 on
+every frame, and the same `framemd5`). The 16 min flag-off side was not
+rendered: at the 120 s run's 0.302 s per frame it would take about 2.4 h, so
+the figure is 28800 frames at that rate plus extraction. Every other check
+passed on every output: HEVC Main10 `yuv420p10le`, BT.2020 / ARIB STD-B67 or
+SMPTE ST 2084 / bt2020nc / tv, `hvc1`, exact frame count and duration, AAC
+48 kHz stereo, same first-frame side data (mastering display, content light
+level).
+
+On the passthrough side, overlay capture costs about 20 ms per candidate
+probe plus about 110 ms per screenshot; the rest of the stage is one ffmpeg
+composite and encode (35-50 fps at 1080p on this host), which is what bounds
+the speedup on long renders. The layered stage runs at about 0.3 s per frame.
+A fallback costs a few seconds over a flag-off render: the eligibility check
+plus the deferred video frame extraction (1.2-1.8 s at 20 s), which the
+flag-off render does earlier instead.
+
+Every `--ineligible` class (3 s fixtures) fell back with its expected reason.

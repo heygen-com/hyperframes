@@ -17,7 +17,7 @@
  * muxed afterwards by the normal pipeline, unchanged. Any ineligibility or
  * error falls back to the layered path (`index.ts`).
  *
- * See CONTRACT.md in this directory for data flow and ownership.
+ * See README.md in this directory for the design, eligibility and pixel contract.
  */
 
 import type { Fps } from "@hyperframes/core";
