@@ -252,6 +252,21 @@ export function useColorGradingController({
     setMediaMetadata(null);
   }
 
+  const authoredGrading = element.dataAttributes[COLOR_GRADING_DATA_KEY] ?? null;
+  const authoredGradingRef = useRef(authoredGrading);
+  if (authoredGradingRef.current !== authoredGrading) {
+    authoredGradingRef.current = authoredGrading;
+    const fromElement = readColorGradingFromElement(element);
+    if (
+      pendingPersistValueRef.current === undefined &&
+      serializeHfColorGrading(fromElement) !== serializeHfColorGrading(latestGradingRef.current)
+    ) {
+      latestGradingRef.current = fromElement;
+      confirmedGradingRef.current = fromElement;
+      setGrading(fromElement);
+    }
+  }
+
   // Flush a pending write through the outgoing selection's committed callback.
   useEffect(() => {
     return () => {
