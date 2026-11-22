@@ -38,6 +38,22 @@ vi.mock("node:fs", async (actual) => {
   };
 });
 
+// A Mac names itself by its platform UUID.
+vi.mock("node:child_process", async (actual) => {
+  const cp = await actual<typeof import("node:child_process")>();
+  const ioreg = '    "IOPlatformUUID" = "11111111-2222-3333-4444-555555555555"\n';
+  return {
+    ...cp,
+    execFileSync: ((file: string, ...rest: unknown[]) =>
+      file === "ioreg"
+        ? ioreg
+        : (cp.execFileSync as (...args: unknown[]) => unknown)(
+            file,
+            ...rest,
+          )) as typeof cp.execFileSync,
+  };
+});
+
 const { createOwnedRenderDir, createRenderWorkDir } = await import("./renderDirOwner.js");
 
 const JOB = "0f8c2b1e-5d3a-4c7b-9e21-6a4f0d8b3c19";
