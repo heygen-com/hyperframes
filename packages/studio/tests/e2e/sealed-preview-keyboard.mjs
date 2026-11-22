@@ -68,19 +68,19 @@ try {
       return el?.tagName !== "IFRAME";
     });
   // The frame's own script puts focus on an ordinary input in it, as a composition may.
-  await frame.evaluate(() => document.getElementById("field").focus());
+  await inPreview((f) => f.evaluate(() => document.getElementById("field").focus()));
   await keyboardBackInStudio();
   await page.keyboard.press("y");
   await page.waitForFunction(() => window.__studioKeys.includes("y"));
   assert.equal(
-    await frame.evaluate(() => document.getElementById("field").value),
+    await inPreview((f) => f.evaluate(() => document.getElementById("field").value)),
     "",
     "the frame got no key",
   );
 
   // A clip picked on the canvas, then a real Delete: Studio deletes it.
   assert.ok(saved().includes('id="plain"'));
-  await clickInPreview(page, frame, "#plain");
+  await inPreview((f) => clickInPreview(page, f, "#plain"));
   await page.waitForFunction(
     () => new URLSearchParams(location.hash.split("?")[1]).get("selId") === "plain",
   );
@@ -92,14 +92,31 @@ try {
 
   // The heading picked on the canvas, Enter opens its text edit in the frame, typing goes on at its end.
   const typeInHeading = async (text) => {
-    await inPreview((f) => clickInPreview(page, f, "#head"));
-    await page.waitForFunction(
-      () => new URLSearchParams(location.hash.split("?")[1]).get("selId") === "head",
-    );
+    const picked = () =>
+      page
+        .waitForFunction(
+          () => new URLSearchParams(location.hash.split("?")[1]).get("selId") === "head",
+          { timeout: 10_000 },
+        )
+        .then(
+          () => true,
+          () => false,
+        );
+    for (let tries = 0; tries < 3; tries++) {
+      await page.waitForFunction(
+        () => document.querySelector("hyperframes-player")?.painted === true,
+      );
+      await inPreview((f) => clickInPreview(page, f, "#head"));
+      if (await picked()) break;
+    }
+    assert.ok(await picked(), "the heading is picked on the canvas");
     await keyboardBackInStudio();
     await page.keyboard.press("Enter");
     await inPreview((f) =>
-      f.waitForFunction(() => document.getElementById("head").isContentEditable),
+      f.waitForFunction(() => {
+        const head = document.getElementById("head");
+        return head.isContentEditable && document.activeElement === head;
+      }),
     );
     await page.keyboard.press("End");
     await page.keyboard.type(text);
