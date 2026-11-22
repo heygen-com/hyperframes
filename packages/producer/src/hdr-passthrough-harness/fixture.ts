@@ -4,9 +4,10 @@
  *
  * Writes, under `--out` (default `$TMPDIR/hf-hdr-passthrough/`):
  *
- *   assets/hlg-<duration>s.mp4   10-bit HEVC HLG / BT.2020 source clip + AAC audio
- *   captions/                    full-bleed HLG video on track 0, N caption cues on track 1
- *   transformed/                 negative fixture: same, but the video carries a CSS transform
+ *   assets/<transfer>-<duration>s.mp4   10-bit HEVC HLG (or PQ) / BT.2020 source clip + AAC audio
+ *   captions/                           full-bleed HDR video on track 0, N caption cues on track 1
+ *   transformed/                        negative fixture: same, but the video carries a CSS transform
+ *   ineligible-<case>/                  with `--ineligible`: one negative fixture per fallback class
  *
  * Each composition directory is a HyperFrames project (`index.html` +
  * `hyperframes.json`) that `hyperframes render <dir>` accepts. Media is
@@ -15,12 +16,15 @@
  * Usage (from packages/producer):
  *   ../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts                  # 20 s, 10 cues
  *   ../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts --duration 180 --out /tmp/hdrpt-bench
+ *   ../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts --transfer pq --out /tmp/hdrpt-pq
+ *   ../../node_modules/.bin/tsx src/hdr-passthrough-harness/fixture.ts --duration 3 --ineligible --out /tmp/hdrpt-neg
  *
  * Nothing it writes is meant to be committed; the 3 min variant is ~150 MB.
  */
 
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, linkSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +35,26 @@ const FIXTURE_HEIGHT = 1080;
 export const FIXTURE_FPS = 30;
 const DEFAULT_DURATION_SEC = 20;
 
+export type FixtureTransfer = "hlg" | "pq";
+
+/** ffmpeg / x265 names of each transfer function. */
+const TRANSFER_TAGS: Record<FixtureTransfer, string> = {
+  hlg: "arib-std-b67",
+  pq: "smpte2084",
+};
+
+/**
+ * Static HDR10 metadata for the PQ source: BT.2020 primaries and D65 in
+ * x265's 0.00002 units, a 1000 nit / 0.0001 nit mastering display, and
+ * MaxCLL / MaxFALL of 1000 / 400 nits.
+ */
+const PQ_STATIC_METADATA =
+  "master-display=G(8500,39850)B(6550,2300)R(35400,14600)WP(15635,16450)L(10000000,1):max-cll=1000,400";
+
+export function isFixtureTransfer(value: string): value is FixtureTransfer {
+  return value === "hlg" || value === "pq";
+}
+
 export interface SourceClipOptions {
   outputPath: string;
   durationSec: number;
@@ -39,18 +63,28 @@ export interface SourceClipOptions {
   fps: number;
   /** libx265 CRF for the source. Low, so the source itself is near-lossless. */
   crf: number;
+  /** Transfer function the clip is tagged with. Defaults to HLG. */
+  transfer?: FixtureTransfer;
 }
 
 /**
  * ffmpeg arguments for the HLG source: a moving colour gradient (smooth
  * ramps, where 10-bit vs 8-bit handling shows) with `testsrc2` (motion,
  * hard edges, a frame counter) inset in the middle, and a 440 Hz tone.
- * The pixels are generated in signal space and tagged BT.2020 / ARIB
- * STD-B67 at both the container and the HEVC VUI level, so the producer's
- * HDR probe classifies it exactly like a camera HLG clip.
+ * The pixels are generated in signal space and tagged BT.2020 plus ARIB
+ * STD-B67 (HLG) or SMPTE ST 2084 (PQ, with static HDR10 metadata) at both
+ * the container and the HEVC VUI level, so the producer's HDR probe
+ * classifies it exactly like a camera clip of that transfer.
  */
 export function buildSourceClipArgs(options: SourceClipOptions): string[] {
   const { width, height, fps, durationSec, crf } = options;
+  const transfer = options.transfer ?? "hlg";
+  const trc = TRANSFER_TAGS[transfer];
+  const x265Params = [
+    `colorprim=bt2020:transfer=${trc}:colormatrix=bt2020nc:range=limited`,
+    ...(transfer === "pq" ? [PQ_STATIC_METADATA] : []),
+    "log-level=error",
+  ].join(":");
   const insetW = Math.round(width / 2 / 2) * 2;
   const insetH = Math.round(height / 2 / 2) * 2;
   const filter = [
@@ -81,11 +115,11 @@ export function buildSourceClipArgs(options: SourceClipOptions): string[] {
     "-profile:v",
     "main10",
     "-x265-params",
-    "colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc:range=limited:log-level=error",
+    x265Params,
     "-color_primaries",
     "bt2020",
     "-color_trc",
-    "arib-std-b67",
+    trc,
     "-colorspace",
     "bt2020nc",
     "-color_range",
@@ -156,8 +190,20 @@ export interface CompositionOptions {
   width: number;
   height: number;
   cues: readonly CaptionCue[];
-  /** CSS transform on the video; set only for the negative fixture. */
-  videoTransform?: string;
+  /** Inline style on the video; set only for negative fixtures. */
+  videoStyle?: string;
+  /** When set, the video sits in a full-canvas `<div>` with this inline style. */
+  videoWrapperStyle?: string;
+  /** Raw markup appended to `<head>` (styles or scripts a negative fixture needs). */
+  headHtml?: string;
+  /** Raw markup on track 2, after the captions (extra overlay content). */
+  overlayHtml?: string;
+  /**
+   * Body of a GSAP timeline script: `tl` is a paused timeline registered as
+   * the composition's timeline, and `assets/gsap.min.js` is loaded. Without
+   * it the composition has no timeline (`data-no-timeline`).
+   */
+  timelineScript?: string;
 }
 
 function escapeHtml(text: string): string {
@@ -174,14 +220,48 @@ function escapeHtml(text: string): string {
  * track 1. No timeline script: every overlay change is a clip boundary.
  */
 export function buildCompositionHtml(options: CompositionOptions): string {
-  const { compositionId, videoSrc, durationSec, width, height, cues, videoTransform } = options;
-  const videoStyle = videoTransform ? ` style="transform: ${escapeHtml(videoTransform)}"` : "";
+  const { compositionId, videoSrc, durationSec, width, height, cues, timelineScript } = options;
+  const videoStyle = options.videoStyle ? ` style="${escapeHtml(options.videoStyle)}"` : "";
   const captions = cues
     .map(
       (cue) =>
         `      <div id="${cue.id}" class="clip caption" data-start="${cue.startSec}" data-duration="${cue.durationSec}" data-track-index="1"><span>${escapeHtml(cue.text)}</span></div>`,
     )
     .join("\n");
+  const headExtra = [
+    timelineScript === undefined ? "" : `    <script src="assets/gsap.min.js"></script>\n`,
+    options.headHtml === undefined ? "" : `    ${options.headHtml}\n`,
+  ].join("");
+  const video = `<video
+        id="hdr-source"
+        class="clip"
+        src="${escapeHtml(videoSrc)}"
+        data-start="0"
+        data-duration="${durationSec}"
+        data-media-start="0"
+        data-track-index="0"
+        data-has-audio="true"
+        playsinline${videoStyle}
+      ></video>`;
+  const videoBlock =
+    options.videoWrapperStyle === undefined
+      ? video
+      : `<div id="hdr-frame" style="${escapeHtml(options.videoWrapperStyle)}">\n      ${video}\n      </div>`;
+  const overlay =
+    options.overlayHtml === undefined
+      ? ""
+      : `      <div id="extra-overlay" class="clip" data-start="0" data-duration="${durationSec}" data-track-index="2">${options.overlayHtml}</div>\n`;
+  const noTimeline = timelineScript === undefined ? "\n      data-no-timeline" : "";
+  const timeline =
+    timelineScript === undefined
+      ? ""
+      : `    <script>
+      const tl = gsap.timeline({ paused: true });
+      ${timelineScript}
+      window.__timelines = window.__timelines || {};
+      window.__timelines[${JSON.stringify(compositionId)}] = tl;
+    </script>
+`;
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -232,7 +312,7 @@ export function buildCompositionHtml(options: CompositionOptions): string {
         text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
       }
     </style>
-  </head>
+${headExtra}  </head>
   <body>
     <div
       id="root"
@@ -240,31 +320,178 @@ export function buildCompositionHtml(options: CompositionOptions): string {
       data-start="0"
       data-duration="${durationSec}"
       data-width="${width}"
-      data-height="${height}"
-      data-no-timeline
+      data-height="${height}"${noTimeline}
     >
-      <video
-        id="hdr-source"
-        class="clip"
-        src="${escapeHtml(videoSrc)}"
-        data-start="0"
-        data-duration="${durationSec}"
-        data-media-start="0"
-        data-track-index="0"
-        data-has-audio="true"
-        playsinline${videoStyle}
-      ></video>
+      ${videoBlock}
 ${captions}
-    </div>
-  </body>
+${overlay}    </div>
+${timeline}  </body>
 </html>
 `;
 }
 
+/** Animated image formats the negative fixtures embed, by file extension. */
+export type AnimatedImageFormat = "gif" | "webp" | "apng" | "avif";
+
+const ANIMATED_IMAGE_FILES: Record<AnimatedImageFormat, string> = {
+  gif: "animated.gif",
+  webp: "animated.webp",
+  apng: "animated.png",
+  avif: "animated.avif",
+};
+
+/**
+ * ffmpeg arguments for a small 2 s, 10 fps looping animated image: the
+ * negative fixtures need an image that animates on the browser's own clock.
+ */
+export function buildAnimatedImageArgs(format: AnimatedImageFormat, outputPath: string): string[] {
+  const codec: Record<AnimatedImageFormat, string[]> = {
+    gif: ["-c:v", "gif", "-loop", "0"],
+    webp: ["-c:v", "libwebp_anim", "-loop", "0", "-lossless", "1"],
+    apng: ["-c:v", "apng", "-plays", "0", "-f", "apng"],
+    avif: ["-c:v", "libaom-av1", "-cpu-used", "8", "-still-picture", "0", "-f", "avif"],
+  };
+  return [
+    "-hide_banner",
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=128x128:rate=10:duration=2",
+    ...(format === "avif" ? ["-pix_fmt", "yuv420p"] : format === "gif" ? [] : ["-pix_fmt", "rgba"]),
+    ...codec[format],
+    outputPath,
+  ];
+}
+
+/** Extra project content a negative fixture needs beyond its composition options. */
+type NegativeAsset = "gsap" | AnimatedImageFormat;
+
+/** One class of composition the passthrough must decline, and the reason it must log. */
+export interface IneligibleCase {
+  name: string;
+  /** `PassthroughIneligibleReason` the flag-on render must log. */
+  reason: string;
+  composition: Pick<
+    CompositionOptions,
+    "videoStyle" | "videoWrapperStyle" | "headHtml" | "overlayHtml" | "timelineScript"
+  >;
+  assets?: readonly NegativeAsset[];
+}
+
+const BADGE_STYLE = "position:absolute;top:48px;right:48px;width:128px;height:128px";
+
+function imageBadge(format: AnimatedImageFormat): string {
+  return `<img src="assets/${ANIMATED_IMAGE_FILES[format]}" alt="" style="${BADGE_STYLE}" />`;
+}
+
+/**
+ * One negative fixture per class the passthrough cannot reproduce: each
+ * changes one thing about the `captions` fixture. The video-geometry cases
+ * fail the layout gates; the animation cases have overlay pixels that change
+ * on a clock the planner cannot see (or on every frame).
+ */
+export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
+  {
+    // The layout probe wants the video's box to be exactly the canvas, so an
+    // enlarged video fails coverage before the transform gate looks at it.
+    name: "video-scaled",
+    reason: "not_full_canvas",
+    composition: { videoStyle: "transform: scale(1.1)" },
+  },
+  {
+    // A mirror keeps the box on the canvas, so the transform gate catches it.
+    name: "video-mirrored",
+    reason: "transform_or_filter",
+    composition: { videoStyle: "transform: scaleX(-1)" },
+  },
+  {
+    name: "video-filter",
+    reason: "transform_or_filter",
+    composition: { videoStyle: "filter: saturate(1.4)" },
+  },
+  {
+    name: "rounded-video",
+    reason: "clip_or_mask",
+    composition: { videoStyle: "border-radius: 48px" },
+  },
+  {
+    name: "rounded-ancestor",
+    reason: "clip_or_mask",
+    composition: {
+      videoWrapperStyle: "position:absolute;inset:0;overflow:hidden;border-radius:48px",
+    },
+  },
+  {
+    name: "css-animation",
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      headHtml:
+        "<style>@keyframes hf-pulse { from { opacity: 1 } to { opacity: 0.2 } } .pulse { animation: hf-pulse 0.5s infinite alternate; }</style>",
+      overlayHtml: `<div class="pulse" style="${BADGE_STYLE};background:#e33"></div>`,
+    },
+  },
+  {
+    name: "gsap-continuous",
+    reason: "overlay_continuous_animation",
+    composition: {
+      overlayHtml: `<div id="spinner" style="${BADGE_STYLE};background:#3a6"></div>`,
+      timelineScript: 'tl.to("#spinner", { rotation: 360, duration: 2, ease: "none" }, 0);',
+    },
+    assets: ["gsap"],
+  },
+  {
+    name: "lottie-player",
+    reason: "overlay_non_gsap_animation",
+    composition: { overlayHtml: `<dotlottie-player style="${BADGE_STYLE}"></dotlottie-player>` },
+  },
+  {
+    name: "three",
+    reason: "overlay_non_gsap_animation",
+    composition: { headHtml: '<script>window.THREE = { REVISION: "fixture" };</script>' },
+  },
+  {
+    name: "webgpu",
+    reason: "overlay_non_gsap_animation",
+    composition: { overlayHtml: `<div data-requires-webgpu style="${BADGE_STYLE}"></div>` },
+  },
+  {
+    name: "svg-smil",
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      overlayHtml: `<svg viewBox="0 0 10 10" style="${BADGE_STYLE}"><circle cx="5" cy="5" r="4" fill="#fc0"><animate attributeName="r" values="1;4;1" dur="1s" repeatCount="indefinite" /></circle></svg>`,
+    },
+  },
+  {
+    name: "canvas",
+    reason: "canvas",
+    composition: {
+      overlayHtml: `<canvas width="128" height="128" style="${BADGE_STYLE}"></canvas>`,
+    },
+  },
+  ...(["gif", "webp", "apng", "avif"] as const).map(
+    (format): IneligibleCase => ({
+      name: `animated-${format}`,
+      // The compiler turns an animated GIF into a video, so a GIF overlay
+      // makes a second video; the other formats stay images and are sniffed.
+      reason: format === "gif" ? "video_count" : "overlay_non_gsap_animation",
+      composition: { overlayHtml: imageBadge(format) },
+      assets: [format],
+    }),
+  ),
+];
+
+/** Reason the `transformed` fixture must report (the layout probe runs before the transform gate). */
+const TRANSFORMED_REASON = "not_full_canvas";
+
 interface FixtureProject {
-  name: "captions" | "transformed";
+  name: string;
   /** What the flag-on render is expected to do. */
   expect: "passthrough" | "fallback";
+  /** For `fallback`: the reason the flag-on render must log. */
+  expectReason?: string;
   dir: string;
 }
 
@@ -272,6 +499,7 @@ interface GeneratedFixtures {
   sourcePath: string;
   durationSec: number;
   fps: number;
+  transfer: FixtureTransfer;
   projects: FixtureProject[];
 }
 
@@ -284,22 +512,28 @@ function linkOrCopy(source: string, destination: string): void {
   }
 }
 
-function writeProject(
-  root: string,
-  name: FixtureProject["name"],
-  sourcePath: string,
-  html: string,
-  fps: number,
-): string {
-  const dir = join(root, name);
+interface ProjectSpec {
+  root: string;
+  name: string;
+  sourcePath: string;
+  assetName: string;
+  html: string;
+  fps: number;
+  /** Files copied (or linked) into the project's `assets/`, by target name. */
+  extraAssets?: ReadonlyArray<{ source: string; name: string }>;
+}
+
+function writeProject(spec: ProjectSpec): string {
+  const dir = join(spec.root, spec.name);
   mkdirSync(join(dir, "assets"), { recursive: true });
-  const assetName = "hlg-source.mp4";
-  const target = join(dir, "assets", assetName);
-  linkOrCopy(sourcePath, target);
-  writeFileSync(join(dir, "index.html"), html);
+  linkOrCopy(spec.sourcePath, join(dir, "assets", spec.assetName));
+  for (const asset of spec.extraAssets ?? []) {
+    linkOrCopy(asset.source, join(dir, "assets", asset.name));
+  }
+  writeFileSync(join(dir, "index.html"), spec.html);
   writeFileSync(
     join(dir, "hyperframes.json"),
-    `${JSON.stringify({ name, fps, width: FIXTURE_WIDTH, height: FIXTURE_HEIGHT }, null, 2)}\n`,
+    `${JSON.stringify({ name: spec.name, fps: spec.fps, width: FIXTURE_WIDTH, height: FIXTURE_HEIGHT }, null, 2)}\n`,
   );
   return dir;
 }
@@ -308,18 +542,48 @@ interface GenerateOptions {
   outDir: string;
   durationSec: number;
   cueCount: number;
+  transfer: FixtureTransfer;
+  ineligible: boolean;
   ffmpegPath: string;
   force: boolean;
 }
 
+function runFfmpegOrThrow(ffmpegPath: string, args: string[], what: string): void {
+  const result = spawnSync(ffmpegPath, args, { stdio: ["ignore", "inherit", "inherit"] });
+  if (result.status !== 0) {
+    throw new Error(`ffmpeg failed generating ${what} (exit ${result.status ?? "signal"})`);
+  }
+}
+
+/** Source path of each negative-fixture asset, generating the animated images once. */
+function negativeAssetSources(
+  outDir: string,
+  ffmpegPath: string,
+): Record<NegativeAsset, { source: string; name: string }> {
+  const require = createRequire(import.meta.url);
+  const gsapPath = require.resolve("gsap/dist/gsap.min.js", {
+    paths: [resolve(fileURLToPath(new URL("../../../core", import.meta.url)))],
+  });
+  const images = {} as Record<AnimatedImageFormat, { source: string; name: string }>;
+  for (const format of ["gif", "webp", "apng", "avif"] as const) {
+    const name = ANIMATED_IMAGE_FILES[format];
+    const source = join(outDir, "assets", name);
+    if (!existsSync(source) || statSync(source).size === 0) {
+      runFfmpegOrThrow(ffmpegPath, buildAnimatedImageArgs(format, source), source);
+    }
+    images[format] = { source, name };
+  }
+  return { gsap: { source: gsapPath, name: "gsap.min.js" }, ...images };
+}
+
 function generateFixtures(options: GenerateOptions): GeneratedFixtures {
-  const { outDir, durationSec, cueCount, ffmpegPath } = options;
+  const { outDir, durationSec, cueCount, transfer, ffmpegPath } = options;
   const fps = FIXTURE_FPS;
   mkdirSync(join(outDir, "assets"), { recursive: true });
-  const sourcePath = join(outDir, "assets", `hlg-${durationSec}s.mp4`);
+  const sourcePath = join(outDir, "assets", `${transfer}-${durationSec}s.mp4`);
   if (options.force || !existsSync(sourcePath) || statSync(sourcePath).size === 0) {
     const started = Date.now();
-    const result = spawnSync(
+    runFfmpegOrThrow(
       ffmpegPath,
       buildSourceClipArgs({
         outputPath: sourcePath,
@@ -328,54 +592,72 @@ function generateFixtures(options: GenerateOptions): GeneratedFixtures {
         height: FIXTURE_HEIGHT,
         fps,
         crf: 12,
+        transfer,
       }),
-      { stdio: ["ignore", "inherit", "inherit"] },
+      sourcePath,
     );
-    if (result.status !== 0) {
-      throw new Error(`ffmpeg failed generating ${sourcePath} (exit ${result.status ?? "signal"})`);
-    }
     console.log(`source clip: ${sourcePath} (${((Date.now() - started) / 1000).toFixed(1)} s)`);
   } else {
     console.log(`source clip: ${sourcePath} (reused)`);
   }
 
   const cues = buildCaptionCues(durationSec, cueCount, fps);
+  const assetName = `${transfer}-source.mp4`;
   const base = {
-    videoSrc: "assets/hlg-source.mp4",
+    videoSrc: `assets/${assetName}`,
     durationSec,
     width: FIXTURE_WIDTH,
     height: FIXTURE_HEIGHT,
     cues,
   };
+  const project = { root: outDir, sourcePath, assetName, fps };
   const projects: FixtureProject[] = [
     {
       name: "captions",
       expect: "passthrough",
-      dir: writeProject(
-        outDir,
-        "captions",
-        sourcePath,
-        buildCompositionHtml({ ...base, compositionId: "hdr-passthrough-captions" }),
-        fps,
-      ),
+      dir: writeProject({
+        ...project,
+        name: "captions",
+        html: buildCompositionHtml({ ...base, compositionId: "hdr-passthrough-captions" }),
+      }),
     },
     {
       name: "transformed",
       expect: "fallback",
-      dir: writeProject(
-        outDir,
-        "transformed",
-        sourcePath,
-        buildCompositionHtml({
+      expectReason: TRANSFORMED_REASON,
+      dir: writeProject({
+        ...project,
+        name: "transformed",
+        html: buildCompositionHtml({
           ...base,
           compositionId: "hdr-passthrough-transformed",
-          videoTransform: "scale(0.9) rotate(1.5deg)",
+          videoStyle: "transform: scale(0.9) rotate(1.5deg)",
         }),
-        fps,
-      ),
+      }),
     },
   ];
-  const manifest: GeneratedFixtures = { sourcePath, durationSec, fps, projects };
+  if (options.ineligible) {
+    const assets = negativeAssetSources(outDir, ffmpegPath);
+    for (const negative of INELIGIBLE_CASES) {
+      const name = `ineligible-${negative.name}`;
+      projects.push({
+        name,
+        expect: "fallback",
+        expectReason: negative.reason,
+        dir: writeProject({
+          ...project,
+          name,
+          html: buildCompositionHtml({
+            ...base,
+            ...negative.composition,
+            compositionId: `hdr-passthrough-${name}`,
+          }),
+          extraAssets: (negative.assets ?? []).map((asset) => assets[asset]),
+        }),
+      });
+    }
+  }
+  const manifest: GeneratedFixtures = { sourcePath, durationSec, fps, transfer, projects };
   writeFileSync(join(outDir, "fixtures.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   return manifest;
 }
@@ -386,6 +668,8 @@ function main(): void {
       out: { type: "string", default: join(tmpdir(), "hf-hdr-passthrough") },
       duration: { type: "string", default: String(DEFAULT_DURATION_SEC) },
       cues: { type: "string" },
+      transfer: { type: "string", default: "hlg" },
+      ineligible: { type: "boolean", default: false },
       ffmpeg: { type: "string", default: process.env.FFMPEG_PATH ?? "ffmpeg" },
       force: { type: "boolean", default: false },
     },
@@ -394,17 +678,24 @@ function main(): void {
   if (!Number.isFinite(durationSec) || durationSec <= 1) {
     throw new Error(`--duration must be a number > 1, got ${values.duration}`);
   }
+  const transfer = values.transfer;
+  if (!isFixtureTransfer(transfer)) throw new Error(`--transfer must be hlg|pq, got ${transfer}`);
   // ~1 cue per 2 s: 10 cues for the 20 s fixture, 90 for the 3 min one.
   const cueCount = values.cues ? Number(values.cues) : Math.max(1, Math.round(durationSec / 2));
   const manifest = generateFixtures({
     outDir: resolve(values.out),
     durationSec,
     cueCount,
+    transfer,
+    ineligible: values.ineligible,
     ffmpegPath: values.ffmpeg,
     force: values.force,
   });
   for (const project of manifest.projects) {
-    console.log(`${project.name.padEnd(12)} ${project.dir} (flag on: expect ${project.expect})`);
+    const expectation = project.expectReason
+      ? `${project.expect} (${project.expectReason})`
+      : project.expect;
+    console.log(`${project.name.padEnd(28)} ${project.dir} (flag on: expect ${expectation})`);
   }
 }
 

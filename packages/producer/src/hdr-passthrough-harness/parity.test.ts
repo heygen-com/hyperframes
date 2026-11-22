@@ -6,6 +6,8 @@ import {
   checkExpectedPath,
   checkSingleOutput,
   defaultCliCommand,
+  fixtureExpectReason,
+  selectProjects,
 } from "./parity.js";
 
 const renderOptions = {
@@ -104,5 +106,32 @@ describe("checkSingleOutput", () => {
       { fps: 30, transfer: "hlg", durationSec: 20 },
     );
     expect(results).toEqual([{ name: "off.render", ok: false, detail: "exit 1" }]);
+  });
+});
+
+describe("fixtureExpectReason", () => {
+  it("uses the manifest reason, defaults old fallback manifests to not_full_canvas", () => {
+    expect(fixtureExpectReason({ expect: "passthrough" })).toBeUndefined();
+    expect(fixtureExpectReason({ expect: "passthrough", expectReason: "canvas" })).toBeUndefined();
+    expect(fixtureExpectReason({ expect: "fallback" })).toBe("not_full_canvas");
+    expect(fixtureExpectReason({ expect: "fallback", expectReason: "clip_or_mask" })).toBe(
+      "clip_or_mask",
+    );
+  });
+});
+
+describe("selectProjects", () => {
+  const projects = [{ name: "captions" }, { name: "transformed" }, { name: "ineligible-canvas" }];
+
+  it("keeps every project without a filter and manifest order with one", () => {
+    expect(selectProjects(projects, undefined)).toEqual(projects);
+    expect(selectProjects(projects, "ineligible-canvas, captions").map((p) => p.name)).toEqual([
+      "captions",
+      "ineligible-canvas",
+    ]);
+  });
+
+  it("rejects unknown names", () => {
+    expect(() => selectProjects(projects, "captions,nope")).toThrow("nope");
   });
 });

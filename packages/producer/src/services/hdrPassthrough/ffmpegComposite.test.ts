@@ -2,9 +2,11 @@ import { describe, expect, it } from "bun:test";
 import type { Fps } from "@hyperframes/core";
 import {
   appendSoftwareEncoderThreadsArg,
+  buildStreamingArgs,
   getEncoderPreset,
   getHdrEncoderColorParams,
   renderProvenanceArgs,
+  type GpuEncoder,
   type HdrTransfer,
 } from "@hyperframes/engine";
 import { buildCompositeArgs, buildOverlayConcatList } from "./ffmpegComposite.js";
@@ -202,6 +204,77 @@ describe("buildCompositeArgs", () => {
     const args = buildCompositeArgs(request({ useGpu: true }), "/w/list.ffconcat");
     expect(args[args.indexOf("-c:v") + 1]).toBe("libx265");
   });
+});
+
+/** Removes `count` tokens starting at the first `token` (after `from`). */
+function without(args: readonly string[], token: string, count: number, from = 0): string[] {
+  const at = args.indexOf(token, from);
+  if (at < 0) throw new Error(`${token} not found`);
+  return [...args.slice(0, at), ...args.slice(at + count)];
+}
+
+describe("encoder parity with the layered HDR encoder", () => {
+  const cases: ReadonlyArray<{
+    name: string;
+    useGpu: boolean;
+    encoder: GpuEncoder;
+    nvencPresets?: ReadonlySet<string>;
+  }> = [
+    { name: "software", useGpu: false, encoder: null },
+    { name: "GPU requested, none detected", useGpu: true, encoder: null },
+    { name: "nvenc", useGpu: true, encoder: "nvenc", nvencPresets: new Set(["p4"]) },
+    { name: "vaapi", useGpu: true, encoder: "vaapi" },
+  ];
+  for (const c of cases) {
+    it(`${c.name}: every encoder option is the layered stage's`, () => {
+      const req = request({ useGpu: c.useGpu, effectiveBitrate: "20M", maxBitrate: "25M" });
+      const { preset } = req.encoder;
+      // The options `captureHdrStage` passes to `spawnStreamingEncoder`.
+      const layered = buildStreamingArgs(
+        {
+          fps: req.plan.fps,
+          width: req.plan.width,
+          height: req.plan.height,
+          codec: preset.codec,
+          useGpu: c.useGpu,
+          preset: preset.preset,
+          quality: req.encoder.effectiveQuality,
+          bitrate: req.encoder.effectiveBitrate,
+          ...req.encoder.deliveryEncoder,
+          pixelFormat: preset.pixelFormat,
+          hdr: preset.hdr,
+          rawInputFormat: "rgb48le",
+        },
+        req.outputPath,
+        c.encoder,
+        c.nvencPresets as Set<string> | undefined,
+      );
+      const composite = buildCompositeArgs(req, "/w/list.ffconcat", {
+        encoder: c.encoder,
+        nvencPresets: c.nvencPresets as Set<string> | undefined,
+      });
+
+      // Layered: global options, raw stdin input, encoder options, `-vf <tail>`, output.
+      const rawStart = layered.indexOf("-f");
+      const rawEnd = layered.indexOf("-", rawStart) + 1;
+      const vf = layered.indexOf("-vf");
+      const tail = layered[vf + 1] ?? "";
+      const layeredEncoder = [...layered.slice(0, rawStart), ...layered.slice(rawEnd)];
+      // Composite: the same, with the two file inputs, the composite graph and the frame cap.
+      const global = layered.slice(0, rawStart).length;
+      let stripped = [...composite.slice(0, global), ...composite.slice(global + 12)];
+      const graph = stripped[stripped.indexOf("-filter_complex") + 1] ?? "";
+      stripped = without(stripped, "-filter_complex", 4);
+      stripped = without(stripped, "-frames:v", 3);
+      expect(stripped).toEqual(without(layeredEncoder, "-vf", 2));
+      expect(composite.slice(global, global + 12)).toEqual([
+        ...["-ss", "0.000000", "-t", "3.033333", "-i", "/media/vlog.mp4"],
+        ...["-f", "concat", "-safe", "0", "-i", "/w/list.ffconcat"],
+      ]);
+      // The layered encoder's frame filter ends the composite graph unchanged.
+      expect(graph.includes(tail)).toBe(true);
+    });
+  }
 });
 
 describe("buildOverlayConcatList", () => {

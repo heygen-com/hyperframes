@@ -5,6 +5,7 @@ import {
   checkHdrTags,
   checkPixelParity,
   classifyRenderLog,
+  parseCaptureStats,
   compareProbes,
   describeRenderPath,
   expectedHdrTags,
@@ -268,5 +269,30 @@ describe("classifyRenderLog", () => {
   it("detects the layered stage and unknown logs", () => {
     expect(classifyRenderLog("Layered composite frame 10/600").kind).toBe("layered");
     expect(classifyRenderLog("nothing relevant").kind).toBe("unknown");
+  });
+});
+
+describe("parseCaptureStats", () => {
+  it("reads the counts from the CLI log line's JSON meta", () => {
+    const log = [
+      "[INFO] HDR passthrough: something else",
+      '[INFO] [Render] HDR passthrough: overlay states captured {"states":21,"candidates":84,"captures":11,"unique":11,"captureMs":2778}',
+      "[INFO] done",
+    ].join("\n");
+    expect(parseCaptureStats(log)).toEqual({
+      states: 21,
+      candidates: 84,
+      captures: 11,
+      unique: 11,
+      captureMs: 2778,
+    });
+  });
+
+  it("is null without the line, with broken JSON, or with a missing count", () => {
+    expect(parseCaptureStats("[INFO] Layered composite frame 1/600")).toBeNull();
+    expect(parseCaptureStats("HDR passthrough: overlay states captured {nope}")).toBeNull();
+    expect(
+      parseCaptureStats('HDR passthrough: overlay states captured {"states":3,"unique":2}'),
+    ).toBeNull();
   });
 });

@@ -28,9 +28,11 @@ import {
   checkHdrTags,
   checkPixelParity,
   classifyRenderLog,
+  type CaptureStats,
   compareProbes,
   describeRenderPath,
   isFallback,
+  parseCaptureStats,
   parsePsnrStats,
   parseSsimStats,
   summarizeProbe,
@@ -141,6 +143,8 @@ export interface RenderRun {
   wallMs: number;
   exitCode: number | null;
   path: RenderPath;
+  /** Passthrough capture counts, when the log has them. */
+  capture: CaptureStats | null;
   probe: ProbeSummary | null;
 }
 
@@ -223,8 +227,9 @@ function render(
   }
   const log = existsSync(logPath) ? readFileSync(logPath, "utf8") : "";
   const path = classifyRenderLog(log);
+  const capture = parseCaptureStats(log);
   const output = existsSync(outputPath) && exitCode === 0 ? probe(tools, outputPath) : null;
-  return { side, outputPath, logPath, wallMs, exitCode, path, probe: output };
+  return { side, outputPath, logPath, wallMs, exitCode, path, capture, probe: output };
 }
 
 function computeMetrics(
@@ -374,6 +379,13 @@ function printReport(report: ProjectReport): void {
         `frames=${run.probe?.videoFrames ?? "-"} dur=${run.probe?.durationSec?.toFixed(3) ?? "-"}s ` +
         `${run.probe ? `${run.probe.videoCodec}/${run.probe.pixFmt}/${run.probe.colorTransfer}` : ""}`,
     );
+    if (run.capture) {
+      const { states, candidates, captures, unique, captureMs } = run.capture;
+      console.log(
+        `      overlay states=${states} candidates=${candidates} captures=${captures} ` +
+          `unique=${unique} capture=${(captureMs / 1000).toFixed(1)} s`,
+      );
+    }
   }
   if (report.metrics) {
     const { psnr, ssim } = report.metrics;
@@ -396,15 +408,40 @@ function printReport(report: ProjectReport): void {
 interface FixtureManifest {
   durationSec: number;
   fps: number;
-  projects: Array<{ name: string; expect: Expectation; dir: string }>;
+  /** Absent in manifests written before PQ fixtures existed: HLG. */
+  transfer?: "hlg" | "pq";
+  projects: Array<{ name: string; expect: Expectation; expectReason?: string; dir: string }>;
 }
 
 /**
- * Ineligibility reason the negative (transformed video) fixture must report.
- * The scaled, rotated video no longer covers the canvas, and the layout probe
- * checks coverage before it looks at the transform.
+ * Reason a fixture's fallback must log. Manifests written before per-project
+ * reasons existed have one negative fixture, the transformed video, which the
+ * layout probe rejects as `not_full_canvas` before it reaches the transform.
  */
-const TRANSFORMED_REASON = "not_full_canvas";
+export function fixtureExpectReason(project: {
+  expect: Expectation;
+  expectReason?: string;
+}): string | undefined {
+  if (project.expect !== "fallback") return undefined;
+  return project.expectReason ?? "not_full_canvas";
+}
+
+/** `--projects a,b`: only the named manifest projects, in manifest order; all when omitted. */
+export function selectProjects<T extends { name: string }>(
+  projects: readonly T[],
+  filter: string | undefined,
+): T[] {
+  if (filter === undefined) return [...projects];
+  const wanted = new Set(
+    filter
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean),
+  );
+  const unknown = [...wanted].filter((name) => !projects.some((p) => p.name === name));
+  if (unknown.length > 0) throw new Error(`--projects: unknown project(s) ${unknown.join(", ")}`);
+  return projects.filter((project) => wanted.has(project.name));
+}
 
 function numberOption(value: string | undefined, fallback: number, name: string): number {
   if (value === undefined) return fallback;
@@ -422,7 +459,8 @@ function main(): void {
       only: { type: "string", default: "both" },
       expect: { type: "string", default: "passthrough" },
       "expect-reason": { type: "string" },
-      transfer: { type: "string", default: "hlg" },
+      transfer: { type: "string" },
+      projects: { type: "string" },
       duration: { type: "string" },
       fps: { type: "string", default: "30" },
       workers: { type: "string", default: "1" },
@@ -446,8 +484,10 @@ function main(): void {
   if (quality !== "draft" && quality !== "standard" && quality !== "high") {
     throw new Error("--quality must be draft|standard|high");
   }
-  const transfer = values.transfer;
-  if (transfer !== "hlg" && transfer !== "pq") throw new Error("--transfer must be hlg|pq");
+  const transferArg = values.transfer;
+  if (transferArg !== undefined && transferArg !== "hlg" && transferArg !== "pq") {
+    throw new Error("--transfer must be hlg|pq");
+  }
   const expectArg = values.expect;
   if (expectArg !== "passthrough" && expectArg !== "fallback") {
     throw new Error("--expect must be passthrough|fallback");
@@ -489,12 +529,14 @@ function main(): void {
       readFileSync(join(fixturesDir, "fixtures.json"), "utf8"),
     ) as FixtureManifest;
     const outRoot = resolve(values.out ?? join(fixturesDir, "parity"));
-    for (const project of manifest.projects) {
+    const transfer = transferArg ?? manifest.transfer ?? "hlg";
+    const selected = selectProjects(manifest.projects, values.projects);
+    for (const project of selected) {
       projects.push({
         projectDir: project.dir,
         outDir: join(outRoot, project.name),
         expect: project.expect,
-        expectReason: project.expect === "fallback" ? TRANSFORMED_REASON : undefined,
+        expectReason: fixtureExpectReason(project),
         only,
         skipRender: values["skip-render"],
         renderArgs: { ...renderArgs, fps: manifest.fps },
@@ -515,7 +557,7 @@ function main(): void {
       renderArgs,
       expected: {
         fps,
-        transfer,
+        transfer: transferArg ?? "hlg",
         durationSec: values.duration === undefined ? null : Number(values.duration),
       },
       thresholds,

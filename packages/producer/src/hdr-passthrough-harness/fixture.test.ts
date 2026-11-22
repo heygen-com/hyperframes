@@ -1,9 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import {
   FIXTURE_FPS,
+  INELIGIBLE_CASES,
+  buildAnimatedImageArgs,
   buildCaptionCues,
   buildCompositionHtml,
   buildSourceClipArgs,
+  isFixtureTransfer,
 } from "./fixture.js";
 
 function argAfter(args: readonly string[], flag: string): string | undefined {
@@ -33,6 +36,11 @@ describe("buildSourceClipArgs", () => {
     expect(argAfter(args, "-tag:v")).toBe("hvc1");
   });
 
+  it("adds no HDR10 static metadata to the HLG clip", () => {
+    expect(argAfter(args, "-x265-params")).not.toContain("master-display");
+    expect(argAfter(args, "-x265-params")).not.toContain("max-cll");
+  });
+
   it("generates motion + gradients at the requested size and rate, with audio", () => {
     const graph = argAfter(args, "-filter_complex") ?? "";
     expect(graph).toContain("gradients=size=1920x1080:rate=30");
@@ -41,6 +49,36 @@ describe("buildSourceClipArgs", () => {
     expect(argAfter(args, "-c:a")).toBe("aac");
     expect(argAfter(args, "-t")).toBe("20");
     expect(args.at(-1)).toBe("/tmp/out.mp4");
+  });
+});
+
+describe("buildSourceClipArgs with transfer pq", () => {
+  const args = buildSourceClipArgs({
+    outputPath: "/tmp/pq.mp4",
+    durationSec: 20,
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    crf: 12,
+    transfer: "pq",
+  });
+
+  it("tags SMPTE ST 2084 at container and VUI level and writes HDR10 static metadata", () => {
+    expect(argAfter(args, "-color_trc")).toBe("smpte2084");
+    expect(argAfter(args, "-color_primaries")).toBe("bt2020");
+    expect(argAfter(args, "-colorspace")).toBe("bt2020nc");
+    const x265 = argAfter(args, "-x265-params") ?? "";
+    expect(x265).toContain("transfer=smpte2084");
+    expect(x265).not.toContain("arib-std-b67");
+    expect(x265).toContain("master-display=G(8500,39850)");
+    expect(x265).toContain("max-cll=1000,400");
+    expect(x265.endsWith("log-level=error")).toBe(true);
+  });
+
+  it("accepts only hlg and pq", () => {
+    expect(isFixtureTransfer("hlg")).toBe(true);
+    expect(isFixtureTransfer("pq")).toBe(true);
+    expect(isFixtureTransfer("sdr")).toBe(false);
   });
 });
 
@@ -92,8 +130,38 @@ describe("buildCompositionHtml", () => {
   });
 
   it("adds the transform only on the negative fixture", () => {
-    const html = buildCompositionHtml({ ...base, videoTransform: "scale(0.9) rotate(1.5deg)" });
+    const html = buildCompositionHtml({
+      ...base,
+      videoStyle: "transform: scale(0.9) rotate(1.5deg)",
+    });
     expect(html).toContain('style="transform: scale(0.9) rotate(1.5deg)"');
+  });
+
+  it("has no wrapper, extra overlay or timeline unless asked", () => {
+    const html = buildCompositionHtml(base);
+    expect(html).toContain("data-no-timeline");
+    expect(html).not.toContain('id="hdr-frame"');
+    expect(html).not.toContain('id="extra-overlay"');
+    expect(html).not.toContain("gsap");
+  });
+
+  it("wraps the video, adds a track-2 overlay and registers a GSAP timeline on request", () => {
+    const html = buildCompositionHtml({
+      ...base,
+      videoWrapperStyle: "position:absolute;inset:0;overflow:hidden;border-radius:48px",
+      headHtml: "<style>.x{}</style>",
+      overlayHtml: '<div id="spinner"></div>',
+      timelineScript: 'tl.to("#spinner", { rotation: 360, duration: 2 }, 0);',
+    });
+    expect(html).toMatch(/<div id="hdr-frame" style="[^"]*border-radius:48px">\s*<video/s);
+    expect(html).toContain('<script src="assets/gsap.min.js"></script>');
+    expect(html).toContain("<style>.x{}</style>");
+    expect(html).toMatch(
+      /id="extra-overlay" class="clip"[^>]*data-track-index="2"><div id="spinner">/,
+    );
+    expect(html).not.toContain("data-no-timeline");
+    expect(html).toContain('window.__timelines["hdr-passthrough-captions"] = tl;');
+    expect(html.indexOf("gsap.min.js")).toBeLessThan(html.indexOf("gsap.timeline"));
   });
 
   it("escapes cue text", () => {
@@ -102,5 +170,67 @@ describe("buildCompositionHtml", () => {
       cues: [{ id: "cue-001", text: "<b>&</b>", startSec: 1, durationSec: 1 }],
     });
     expect(html).toContain("&lt;b&gt;&amp;&lt;/b&gt;");
+  });
+});
+
+describe("INELIGIBLE_CASES", () => {
+  it("has unique names and covers every fallback class the passthrough declines", () => {
+    const names = INELIGIBLE_CASES.map((c) => c.name);
+    expect(new Set(names).size).toBe(names.length);
+    const reasons = new Set(INELIGIBLE_CASES.map((c) => c.reason));
+    for (const reason of [
+      "not_full_canvas",
+      "transform_or_filter",
+      "clip_or_mask",
+      "overlay_non_gsap_animation",
+      "overlay_continuous_animation",
+      "canvas",
+      "video_count",
+    ]) {
+      expect(reasons.has(reason)).toBe(true);
+    }
+    for (const name of [
+      "lottie-player",
+      "three",
+      "webgpu",
+      "svg-smil",
+      "animated-gif",
+      "animated-webp",
+      "animated-apng",
+      "animated-avif",
+    ]) {
+      expect(names).toContain(name);
+    }
+  });
+
+  it("ships the assets each case references", () => {
+    const gsap = INELIGIBLE_CASES.filter((c) => c.composition.timelineScript !== undefined);
+    expect(gsap.length).toBeGreaterThan(0);
+    for (const c of gsap) expect(c.assets).toContain("gsap");
+    for (const c of INELIGIBLE_CASES.filter((c) => c.name.startsWith("animated-"))) {
+      expect(c.assets).toHaveLength(1);
+    }
+  });
+});
+
+describe("buildAnimatedImageArgs", () => {
+  it("writes a looping 2 s animation in each format", () => {
+    for (const [format, codec] of [
+      ["gif", "gif"],
+      ["webp", "libwebp_anim"],
+      ["apng", "apng"],
+      ["avif", "libaom-av1"],
+    ] as const) {
+      const args = buildAnimatedImageArgs(format, `/tmp/a.${format}`);
+      expect(argAfter(args, "-c:v")).toBe(codec);
+      expect(argAfter(args, "-i")).toContain("duration=2");
+      expect(args.at(-1)).toBe(`/tmp/a.${format}`);
+    }
+    expect(buildAnimatedImageArgs("avif", "/tmp/a.avif").slice(-3)).toEqual([
+      "-f",
+      "avif",
+      "/tmp/a.avif",
+    ]);
+    expect(argAfter(buildAnimatedImageArgs("apng", "/tmp/a.png"), "-plays")).toBe("0");
   });
 });

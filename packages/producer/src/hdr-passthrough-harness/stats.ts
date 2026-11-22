@@ -370,6 +370,44 @@ export function classifyRenderLog(log: string): RenderPath {
   return { kind: "unknown" };
 }
 
+/** Overlay capture counts the passthrough logs once it has captured its states. */
+export interface CaptureStats {
+  states: number;
+  candidates: number;
+  captures: number;
+  unique: number;
+  captureMs: number;
+}
+
+/**
+ * Reads the `HDR passthrough: overlay states captured {...}` line, whose JSON
+ * meta the CLI logger appends after the message. Null when the line is
+ * missing or its meta does not carry every count.
+ */
+export function parseCaptureStats(log: string): CaptureStats | null {
+  const line = /HDR passthrough: overlay states captured[ \t]+(\{.*\})[ \t]*$/m.exec(log);
+  if (!line?.[1]) return null;
+  let meta: unknown;
+  try {
+    meta = JSON.parse(line[1]);
+  } catch {
+    return null;
+  }
+  if (typeof meta !== "object" || meta === null) return null;
+  const record = meta as Record<string, unknown>;
+  const keys = ["states", "candidates", "captures", "unique", "captureMs"] as const;
+  const values = keys.map((key) => record[key]);
+  if (!values.every((value): value is number => typeof value === "number")) return null;
+  const [states, candidates, captures, unique, captureMs] = values as [
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  return { states, candidates, captures, unique, captureMs };
+}
+
 export function describeRenderPath(path: RenderPath): string {
   switch (path.kind) {
     case "passthrough":
