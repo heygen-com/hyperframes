@@ -986,6 +986,6 @@ describe("createTimelineElementFromManifestClip — received clip numbers", () =
     expect([honest.track, honest.authoredTrack, honest.start, honest.duration]).toEqual([
       3, 3, 1.5, 2,
     ]);
-    expect(clip(Number.NaN).track).toBe(0);
+    expect([clip(Number.NaN).track, clip(1.5).track, clip(-1).track]).toEqual([0, 0, -1]);
   });
 });
