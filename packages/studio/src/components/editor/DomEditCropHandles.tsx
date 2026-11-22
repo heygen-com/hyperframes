@@ -29,6 +29,7 @@ import { isCropBarTarget, useCropPresetBarStore } from "./cropPresetStore";
 import { CropPresetBar } from "./CropPresetBar";
 import { movesGesture } from "./domEditOverlayGestures";
 import { previewStandIn } from "./previewDrafts";
+import { usePlayerStore } from "../../player/store/playerStore";
 import { gestureStartLayout, readCropFrameStart } from "./previewGestureStartRead";
 
 interface CropGestureState {
@@ -183,7 +184,7 @@ function readStandInStart(
   });
 }
 
-/** `readStandInStart` while `element` is selected and not dragged: again when its overlay size changes. */
+/** `readStandInStart` while `element` is selected and not dragged: again when its box or the playhead moves. */
 function useStandInStart<S extends { element: HTMLElement; start?: CropFrameStart }>(
   element: HTMLElement,
   overlayRect: { width: number; height: number },
@@ -192,6 +193,7 @@ function useStandInStart<S extends { element: HTMLElement; start?: CropFrameStar
 ) {
   const reads = useRef<StartReads>({ token: 0, busy: false, again: false, element });
   const shownSize = `${Math.round(overlayRect.width)}x${Math.round(overlayRect.height)}`;
+  const playhead = usePlayerStore((s) => s.currentTime);
   useEffect(() => {
     const r = reads.current;
     if (r.element !== element) r.token++;
@@ -200,7 +202,7 @@ function useStandInStart<S extends { element: HTMLElement; start?: CropFrameStar
       readStandInStart(r, (el, start) =>
         setState((prev) => (prev.element === el ? { ...prev, start } : prev)),
       );
-  }, [element, shownSize, dragging, setState]);
+  }, [element, shownSize, playhead, dragging, setState]);
   return reads;
 }
 
