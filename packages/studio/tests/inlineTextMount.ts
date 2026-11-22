@@ -1,0 +1,102 @@
+// Studio's inline text editing and text saves, mounted in the test page as the canvas wires them, over a file whose
+// writes the test decides: each lands, fails or waits, in the order they reach it.
+import { createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
+import { patchElementInHtml } from "@hyperframes/studio-server/source-mutation";
+import {
+  findPreviewElementForSelection,
+  resolveFoundSelection,
+  resolvePreviewSelection,
+} from "../src/components/editor/previewSelection";
+import type { DomEditSelection } from "../src/components/editor/domEditing";
+import type { PersistDomEditOperations } from "../src/hooks/domEditCommitTypes";
+import { useDomEditTextCommits } from "../src/hooks/useDomEditTextCommits";
+import { useInlineTextEdit } from "../src/hooks/useInlineTextEdit";
+import { hasStudioPendingEdits } from "../src/utils/studioPendingEdits";
+
+const PATH = "index.html";
+const OPTIONS = { activeCompositionPath: PATH, isMasterView: false, skipSourceProbe: true };
+
+export type WriteFate = "land" | "fail" | "wait";
+
+export interface TextEditing {
+  select(): Promise<DomEditSelection>;
+  controls: () => ReturnType<typeof useInlineTextEdit>;
+  commits: () => ReturnType<typeof useDomEditTextCommits>;
+  /** The element's markup in the file, as the patcher left it. */
+  saved(): string;
+  /** Every write that reached the file, in order, with its value. */
+  writes: string[];
+  /** The fate the next writes take, in the order they reach the file; `land` once it runs out. */
+  fates: WriteFate[];
+  /** Lets every write still waiting go on, landing. */
+  releaseWaiting(): void;
+  waiting(): number;
+  pending(): boolean;
+}
+
+export function mountTextEditing(
+  iframe: HTMLIFrameElement,
+  sealed: boolean,
+  fileHtml: string,
+  id: string,
+): TextEditing {
+  let file = fileHtml;
+  const writes: string[] = [];
+  const fates: WriteFate[] = [];
+  const waiting: Array<() => void> = [];
+  const persist: PersistDomEditOperations = async (selection, operations, options) => {
+    if (options?.shouldSave?.() === false) return;
+    const fate = fates.shift() ?? "land";
+    if (fate === "wait") await new Promise<void>((resolve) => waiting.push(resolve));
+    if (fate === "fail") throw new Error("write refused");
+    file = patchElementInHtml(file, { id: selection.id }, operations).html;
+    writes.push(String(operations[0]?.value));
+  };
+  const select = async () => {
+    if (!sealed) {
+      const element = iframe.contentDocument!.getElementById(id)!;
+      return (await resolveFoundSelection(iframe, element, OPTIONS))!;
+    }
+    const found = await findPreviewElementForSelection(iframe, { id, sourceFile: PATH }, PATH);
+    return (await resolvePreviewSelection(iframe, found!, OPTIONS))!;
+  };
+  let selection: DomEditSelection | null = null;
+  let controls!: ReturnType<typeof useInlineTextEdit>;
+  let commits!: ReturnType<typeof useDomEditTextCommits>;
+  const root = createRoot(document.createElement("div"));
+  flushSync(() =>
+    root.render(
+      createElement(() => {
+        commits = useDomEditTextCommits({
+          activeCompPath: PATH,
+          previewIframeRef: { current: iframe },
+          showToast: () => {},
+          reloadPreview: () => (window as unknown as { __reload: () => void }).__reload(),
+          domEditSelection: selection,
+          applyDomSelection: () => {},
+          refreshDomEditSelectionFromPreview: () => {},
+          buildDomSelectionFromTarget: (target, options) =>
+            resolveFoundSelection(iframe, target, { ...OPTIONS, ...options }),
+          persistDomEditOperations: persist,
+          resolveImportedFontAsset: () => null,
+          readOnlyPreview: false,
+        });
+        controls = useInlineTextEdit({ onCommit: commits.handleDomRichTextCommit });
+        return null;
+      }),
+    ),
+  );
+  return {
+    select: async () => (selection = await select()),
+    controls: () => controls,
+    commits: () => commits,
+    saved: () => new DOMParser().parseFromString(file, "text/html").getElementById(id)!.innerHTML,
+    writes,
+    fates,
+    releaseWaiting: () => waiting.splice(0).forEach((go) => go()),
+    waiting: () => waiting.length,
+    pending: () => hasStudioPendingEdits() || waiting.length > 0,
+  };
+}
