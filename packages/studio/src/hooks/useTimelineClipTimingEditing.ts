@@ -30,6 +30,7 @@ import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
 import {
   enqueueTimelineEdit,
   refuseWithEarlier,
+  isClosed,
   shownPreview,
   whileShown,
   type TimelineEditQueue,
@@ -105,7 +106,7 @@ export function useTimelineClipTimingEditing({
             buildPatches,
             writeProjectFile,
             recordEdit,
-            pendingTimelineEditPathRef: editQueueRef.closed
+            pendingTimelineEditPathRef: isClosed(editQueueRef)
               ? { current: new Set<string>() }
               : pendingTimelineEditPathRef,
             ...step,

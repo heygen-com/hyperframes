@@ -28,6 +28,7 @@ import { studioApiFetch } from "../utils/studioApiFetch";
 import { countOf } from "../utils/countOf";
 import {
   enqueueTimelineEdit,
+  isClosed,
   whileShown,
   refuseWithEarlier,
   type TimelineEditQueue,
@@ -242,7 +243,7 @@ export function useTimelineDeleteOps({
           }
         }
 
-        if (editQueueRef.closed) return;
+        if (isClosed(editQueueRef)) return;
         usePlayerStore.getState().setSelectedElementId(null);
         usePlayerStore.getState().setSelectedElementIds(new Set());
         forceReloadSdkSession?.();

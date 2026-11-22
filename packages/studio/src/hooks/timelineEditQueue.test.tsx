@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
 
-import { act } from "react";
-import { describe, expect, it } from "vitest";
+import { StrictMode, act } from "react";
+import { describe, expect, it, vi } from "vitest";
 import {
   enqueueTimelineEdit,
   refuseWithEarlier,
   useTimelineEditQueue,
+  whileShown,
   type TimelineEditQueue,
 } from "./timelineEditQueue";
 import { installReactActEnvironment, mountReactHarness } from "./domSelectionTestHarness";
@@ -45,6 +46,26 @@ describe("enqueueTimelineEdit", () => {
 });
 
 describe("useTimelineEditQueue", () => {
+  // fails without the fix: StrictMode's mount, cleanup and remount left the shown project's queue closed.
+  it("keeps the shown project's queue open under StrictMode, so its live steps run", () => {
+    let queue: TimelineEditQueue | null = null;
+    function Harness({ projectId }: { projectId: string }) {
+      queue = useTimelineEditQueue(projectId);
+      return null;
+    }
+    const root = mountReactHarness(
+      <StrictMode>
+        <Harness projectId="A" />
+      </StrictMode>,
+    );
+    const liveStep = vi.fn();
+
+    whileShown(queue!, liveStep);
+
+    expect(liveStep).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+  });
+
   // fails without the fix: back in A, A's next edit ran beside A's held save, which then wrote over it.
   it("keeps one order across a switch away and back, so a held save is never written over", async () => {
     const files: Record<string, string> = { A: "" };

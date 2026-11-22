@@ -3,7 +3,7 @@ import { usePlayerStore, type TimelineElement } from "../player";
 import { batchElementUpdates } from "../player/store/batchElementUpdates";
 import { resolveMainTrackTrimRipple } from "../player/components/timelineGapCommit";
 import { timingGestureStep } from "./timelineTimingSync";
-import { refuseWithEarlier, type TimelineEditQueue } from "./timelineEditQueue";
+import { isClosed, refuseWithEarlier, type TimelineEditQueue } from "./timelineEditQueue";
 import type {
   TimelineGroupCommitOptions,
   TimelineGroupMoveChange,
@@ -56,7 +56,7 @@ export function useTimelineTrimRipple({
       if (!ripple) return persistTrimAlone();
       const { coalesceKey } = timingGestureStep("timeline-resize", given);
       const undoRipple = () => {
-        if (editQueueRef.closed) return;
+        if (isClosed(editQueueRef)) return;
         const now = new Map(usePlayerStore.getState().elements.map((e) => [e.key ?? e.id, e]));
         setStarts(
           ripple.map(({ element, start }) => ({

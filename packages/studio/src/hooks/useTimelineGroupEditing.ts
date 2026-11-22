@@ -36,6 +36,7 @@ import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
 import {
   enqueueTimelineEdit,
   refuseWithEarlier,
+  isClosed,
   shownPreview,
   whileShown,
   type TimelineEditQueue,
@@ -168,7 +169,7 @@ export function useTimelineGroupEditing({
         changes: batchChanges,
         writeProjectFile,
         recordEdit,
-        pendingTimelineEditPathRef: editQueueRef.closed
+        pendingTimelineEditPathRef: isClosed(editQueueRef)
           ? { current: new Set<string>() }
           : pendingTimelineEditPathRef,
         coalesceKey,
