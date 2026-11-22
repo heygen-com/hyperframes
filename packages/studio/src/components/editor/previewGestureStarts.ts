@@ -22,7 +22,12 @@ import { setStudioWaitingPressCancel } from "../../utils/studioPendingEdits";
 import { playheadMoment } from "../../hooks/editMoment";
 import type { EditMoment } from "./manualEditsTypes";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
-import { readShownGestureStarts, type OverChannel, type Shown } from "./previewGestureStartRead";
+import {
+  askShownGestureStarts,
+  UNANSWERED,
+  type OverChannel,
+  type Shown,
+} from "./previewGestureStartRead";
 
 type ShownStart = (
   e: React.PointerEvent<HTMLElement>,
@@ -144,6 +149,7 @@ export function createPreviewGestureStarts(
     start: ShownStart,
     draw: WaitingPressState["draw"] = null,
     targets: () => DomEditSelection[] = () => [],
+    drawn: () => OverChannel | null = () => null,
   ): boolean => {
     const at = playheadMoment();
     const iframe = opts.iframeRef.current;
@@ -183,28 +189,31 @@ export function createPreviewGestureStarts(
       settledFrames = settled ? settledFrames + 1 : 0;
       return elements.length;
     };
-    // An opaque frame's pressed elements are found over its channel, once the preview settles.
-    let overChannel: OverChannel | null | undefined;
-    let asked = false;
-    const channelStep = (frame: HTMLIFrameElement): "wait" | "lost" | "run" => {
+    // An opaque frame's pressed elements are found over the channel of the frame shown once the preview settles.
+    let overChannel: OverChannel | null | typeof UNANSWERED | undefined;
+    let askedOf: HTMLIFrameElement | null = null;
+    let asks = 0;
+    const channelStep = (): "wait" | "lost" | "run" | "drawn" => {
       const overdue = performance.now() - since > PRESS_WAIT_MAX_MS;
       if (overdue) giveUpOnPreviewChange();
       if (isPreviewChanging() && !overdue) return "wait";
-      if (!asked) {
-        asked = true;
-        void readShownGestureStarts(
+      const frame = opts.iframeRef.current ?? channel!;
+      if (askedOf !== frame && asks < 2) {
+        [askedOf, asks, overChannel] = [frame, asks + 1, undefined];
+        void askShownGestureStarts(
           frame,
           opts.overlayRef.current,
           opts.activeCompositionPathRef.current,
           targets(),
-        ).then((shown) => (overChannel = shown));
+        ).then((answer) => askedOf === frame && (overChannel = answer));
       }
       if (overChannel === undefined) return "wait";
+      if (overChannel === UNANSWERED) return "drawn";
       return overChannel ? "run" : "lost";
     };
-    const waitStep = (): "wait" | "lost" | "run" => {
+    const waitStep = (): "wait" | "lost" | "run" | "drawn" => {
       if (press.after && !press.after.ended) return "wait";
-      if (channel) return channelStep(channel);
+      if (channel) return channelStep();
       const found = countFrame();
       // A change that never ends (a save with no reply) would hold every press: run on the page shown.
       const overdue = performance.now() - since > PRESS_WAIT_MAX_MS;
@@ -222,7 +231,10 @@ export function createPreviewGestureStarts(
       }
       endWaitingPress(press);
       const pointerDown = down as unknown as React.PointerEvent<HTMLElement>;
-      if (step === "lost" || !start(pointerDown, at, true, overChannel ?? undefined)) return;
+      const read =
+        step === "drawn" ? drawn() : typeof overChannel === "object" ? overChannel : null;
+      if (step === "lost" || (step === "drawn" && !read)) return;
+      if (!start(pointerDown, at, true, read ?? undefined)) return;
       if (press.moved) moveActiveGesture(press.moved);
       if (press.released) releaseActiveGesture(press.released);
     };
@@ -291,6 +303,7 @@ export function createPreviewGestureStarts(
           items.map((item) => ({ ...item, rect: shiftedOverlayRect(item.rect, dx, dy) })),
         ),
       () => items.map((item) => item.selection),
+      () => ({ shown: items.map(({ selection, rect }) => ({ selection, rect })) }),
     );
   };
   const startGesture = (
@@ -336,6 +349,10 @@ export function createPreviewGestureStarts(
       },
       draw,
       () => (target ? [target] : []),
+      () => {
+        const rect = opts.overlayRectRef.current;
+        return target && rect ? { shown: [{ selection: target, rect }] } : null;
+      },
     );
   };
 

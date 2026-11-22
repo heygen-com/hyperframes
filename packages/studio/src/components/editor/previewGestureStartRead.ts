@@ -90,7 +90,7 @@ export async function measurePreviewGestureStart(
 }
 
 export type Shown = { selection: DomEditSelection; rect: OverlayRect; start?: PreviewGestureStart };
-export type OverChannel = { shown: Shown[]; snap: SnapContext };
+export type OverChannel = { shown: Shown[]; snap?: SnapContext };
 
 /** An opaque frame's `selections` on the page it shows now and what a gesture on them starts from. */
 export async function readShownGestureStarts(
@@ -99,17 +99,31 @@ export async function readShownGestureStarts(
   path: string | null,
   selections: DomEditSelection[],
 ): Promise<OverChannel | null> {
+  const answer = await askShownGestureStarts(iframe, overlay, path, selections);
+  return answer === UNANSWERED ? null : answer;
+}
+
+export const UNANSWERED = "unanswered";
+
+export async function askShownGestureStarts(
+  iframe: HTMLIFrameElement,
+  overlay: HTMLDivElement | null,
+  path: string | null,
+  selections: DomEditSelection[],
+): Promise<OverChannel | null | typeof UNANSWERED> {
   const found = await Promise.all(
     selections.map((selection) => findPreviewElementForSelection(iframe, selection, path)),
   );
+  if (found.includes(undefined)) return UNANSWERED;
   const handles = found.map((element) => element?.handle);
   if (!overlay || !handles.length || !handles.every(Boolean)) return null;
   const read = await measurePreviewGestureStart(iframe, overlay, handles as string[]);
+  if (!read) return UNANSWERED;
   const shown = selections.flatMap((selection, i) => {
-    const element = read?.elements[i];
+    const element = read.elements[i];
     return element ? [{ selection: { ...selection, handle: handles[i] }, ...element }] : [];
   });
-  return read && shown.length === selections.length ? { shown, snap: read.snap } : null;
+  return shown.length === selections.length ? { shown, snap: read.snap } : null;
 }
 
 export async function readCropFrameStart(
