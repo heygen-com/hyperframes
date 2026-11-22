@@ -73,6 +73,16 @@ export interface EngineConfig {
   /** Opt-in `HF_VIDEO_LAYER_PASSTHROUGH`: ffmpeg composites a full-canvas source video under the page capture. */
   videoLayerPassthrough: boolean;
   /**
+   * EXPERIMENTAL, opt-in `HF_EXPERIMENTAL_HDR_PASSTHROUGH` (CLI
+   * `--experimental-hdr-passthrough`). When a render would take the HDR
+   * layered composite path and the composition is one full-frame HDR video
+   * under overlays that change only at statically known times, ffmpeg
+   * composites cached overlay states onto the source video instead of
+   * blending every frame in Node. Ineligible or failed attempts fall back to
+   * the layered path unchanged.
+   */
+  experimentalHdrPassthrough: boolean;
+  /**
    * Use drawElementImage for frame capture (requires the CanvasDrawElement
    * Chrome flag, added globally in buildChromeArgs). Default ON, clamped in
    * `resolveConfig` to hosts where it can actually engage (macOS or Windows +
@@ -305,6 +315,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   forceScreenshot: false,
   staticFrameDedup: true,
   videoLayerPassthrough: false,
+  experimentalHdrPassthrough: false,
   useDrawElement: true,
   enableDrawElementWorkerEncode: true,
   useInPageEncode: false,
@@ -360,6 +371,7 @@ const BOOLEAN_ENGINE_CONFIG_FIELDS = [
   "forceScreenshot",
   "staticFrameDedup",
   "videoLayerPassthrough",
+  "experimentalHdrPassthrough",
   "useDrawElement",
   "enableDrawElementWorkerEncode",
   "useInPageEncode",
@@ -910,6 +922,10 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     videoLayerPassthrough: envBool(
       "HF_VIDEO_LAYER_PASSTHROUGH",
       DEFAULT_CONFIG.videoLayerPassthrough,
+    ),
+    experimentalHdrPassthrough: envBool(
+      "HF_EXPERIMENTAL_HDR_PASSTHROUGH",
+      DEFAULT_CONFIG.experimentalHdrPassthrough,
     ),
     useDrawElement: envBool("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", DEFAULT_CONFIG.useDrawElement),
     enableDrawElementWorkerEncode: envBool(

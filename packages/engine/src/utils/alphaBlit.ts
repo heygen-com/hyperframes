@@ -398,8 +398,13 @@ const SRGB_TO_SRGB_16 = buildSrgbToSignalLut("srgb");
 const SRGB_TO_HLG = buildSrgbToSignalLut("hlg");
 const SRGB_TO_PQ = buildSrgbToSignalLut("pq");
 
-/** Select the correct sRGB→HDR LUT for the given transfer function. */
-function getSrgbToSignalLut(transfer: "hlg" | "pq" | "srgb"): Uint16Array {
+/**
+ * Select the correct sRGB→HDR LUT for the given transfer function: 256
+ * entries mapping an 8-bit sRGB channel to a 16-bit signal value. Exported so
+ * callers that pre-map DOM overlays outside `blitRgba8OverRgb48le` use exactly
+ * the same mapping.
+ */
+export function getSrgbToSignalLut(transfer: "hlg" | "pq" | "srgb"): Uint16Array {
   if (transfer === "pq") return SRGB_TO_PQ;
   if (transfer === "hlg") return SRGB_TO_HLG;
   return SRGB_TO_SRGB_16;

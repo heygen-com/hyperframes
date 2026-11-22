@@ -271,6 +271,23 @@ describe("buildDockerRunArgs", () => {
     expect(strict).toContain("--no-best-effort");
   });
 
+  it("forwards --experimental-hdr-passthrough only when enabled", () => {
+    const on = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, experimentalHdrPassthrough: true },
+    });
+    expect(on).toContain("--experimental-hdr-passthrough");
+
+    const off = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, experimentalHdrPassthrough: false },
+    });
+    expect(off).not.toContain("--experimental-hdr-passthrough");
+
+    const absent = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
+    expect(absent).not.toContain("--experimental-hdr-passthrough");
+  });
+
   it("forwards --experimental-fast-capture only when enabled", () => {
     const on = buildDockerRunArgs({
       ...FIXED_INPUT,

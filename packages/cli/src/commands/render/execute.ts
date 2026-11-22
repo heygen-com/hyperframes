@@ -223,6 +223,7 @@ export function renderOptionsFromPlan(
   if (plan.useDocker) {
     options.pageSideCompositing = plan.pageSideCompositing;
     options.experimentalFastCapture = plan.experimentalFastCapture;
+    options.experimentalHdrPassthrough = plan.experimentalHdrPassthrough;
   }
   return options;
 }

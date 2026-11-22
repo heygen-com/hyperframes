@@ -496,6 +496,15 @@ export default defineCommand({
       // guard below leaves PRODUCER_EXPERIMENTAL_FAST_CAPTURE untouched and the
       // env fallback survives (matches the --low-memory-mode idiom).
     },
+    "experimental-hdr-passthrough": {
+      type: "boolean",
+      description:
+        "EXPERIMENTAL. For HDR (HLG/PQ) renders of one full-frame video under " +
+        "overlays that change only at fixed times (e.g. captions), render each " +
+        "overlay state once and let ffmpeg composite it onto the source video " +
+        "instead of blending every frame. Ineligible compositions fall back to " +
+        "the standard HDR path. Default: off. Env: HF_EXPERIMENTAL_HDR_PASSTHROUGH.",
+    },
     "frames-cache-dir": {
       type: "string",
       description:
@@ -627,6 +636,8 @@ export interface RenderOptions {
   pageSideCompositing?: boolean;
   /** EXPERIMENTAL. drawElementImage frame capture (--experimental-fast-capture). */
   experimentalFastCapture?: boolean;
+  /** EXPERIMENTAL. HDR video passthrough with cached overlays (--experimental-hdr-passthrough). */
+  experimentalHdrPassthrough?: boolean;
   /**
    * Puppeteer `page.goto()` timeout for the entry HTML, in milliseconds.
    * When omitted, the engine default (60s) applies. Surfaced as
@@ -928,6 +939,7 @@ export function dockerRenderOptions(
     debug: options.debug,
     bestEffort: options.bestEffort,
     experimentalFastCapture: options.experimentalFastCapture,
+    experimentalHdrPassthrough: options.experimentalHdrPassthrough,
     pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
     protocolTimeoutMs: options.protocolTimeout,
     playerReadyTimeoutMs: options.playerReadyTimeout,

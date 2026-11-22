@@ -223,6 +223,26 @@ describe("resolveConfig", () => {
     });
   });
 
+  describe("experimentalHdrPassthrough (HF_EXPERIMENTAL_HDR_PASSTHROUGH)", () => {
+    it("defaults to false", () => {
+      unsetEnv("HF_EXPERIMENTAL_HDR_PASSTHROUGH");
+      const config = resolveConfig();
+      expect(config.experimentalHdrPassthrough).toBe(false);
+    });
+
+    it("enabled when HF_EXPERIMENTAL_HDR_PASSTHROUGH=true", () => {
+      setEnv("HF_EXPERIMENTAL_HDR_PASSTHROUGH", "true");
+      const config = resolveConfig();
+      expect(config.experimentalHdrPassthrough).toBe(true);
+    });
+
+    it("explicit override wins over the env var", () => {
+      setEnv("HF_EXPERIMENTAL_HDR_PASSTHROUGH", "true");
+      const config = resolveConfig({ experimentalHdrPassthrough: false });
+      expect(config.experimentalHdrPassthrough).toBe(false);
+    });
+  });
+
   describe("extraction cache env", () => {
     it("defaults the extract cache directory to tmpdir plus uid when env is unset", () => {
       unsetEnv("HYPERFRAMES_EXTRACT_CACHE_DIR");

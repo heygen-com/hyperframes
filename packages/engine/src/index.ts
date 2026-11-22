@@ -165,6 +165,8 @@ export {
   evaluateHfDiagnostic,
   buildZeroDurationDiagnostic,
   applyVideoMetadataHints,
+  computeStaticFrameSet,
+  type StaticDedupIneligibleCause,
 } from "./services/frameCapture.js";
 export {
   CaptureFailure,
@@ -492,6 +494,7 @@ export {
   decodePng,
   decodePngToRgb48le,
   blitRgba8OverRgb48le,
+  getSrgbToSignalLut,
   blitRgb48leRegion,
   blitRgb48leAffine,
   parseTransformMatrix,
