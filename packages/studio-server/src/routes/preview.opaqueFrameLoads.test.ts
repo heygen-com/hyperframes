@@ -210,7 +210,9 @@ describe("an opaque preview frame's loads under its token", () => {
     expect(html.replaceAll(tokened, "")).not.toContain("/api/projects/demo/preview/");
   });
 
-  it("puts Studio's seek reapply last in a sealed document with a Studio edit, and only there", async () => {
+  // fails without the fix: a sealed document with no Studio edit yet got no reapply, so the first edit an undo or redo
+  // put back on it could not be kept in place.
+  it("puts Studio's seek reapply last in every sealed document, edited or not, and in no plain one", async () => {
     const reapply = "//# sourceURL=hyperframes://position-seek-reapply</script>";
     const sealed = await (await load("comp/sized.html", { "sec-fetch-dest": "iframe" })).text();
     expect(sealed).toContain(reapply);
@@ -220,7 +222,7 @@ describe("an opaque preview frame's loads under its token", () => {
     });
     expect(await plain.text()).not.toContain(reapply);
     const unedited = await (await load("comp/scene.html", { "sec-fetch-dest": "iframe" })).text();
-    expect(unedited).not.toContain(reapply);
+    expect(unedited).toContain(reapply);
   });
 
   it("serves the main preview under the token, re-based", async () => {

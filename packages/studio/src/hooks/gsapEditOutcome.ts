@@ -65,6 +65,7 @@ export type GsapEditOutcome =
        * and the element snapped back to its authored position on every drag.
        */
       ownsDragOffset?: boolean;
+      savedAsScale?: true;
     }
   | { status: "blocked"; reason: GsapEditBlockReason; detail?: GsapEditBlockDetail }
   | { status: "element-offset" }
