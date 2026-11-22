@@ -27,6 +27,7 @@ import {
   STUDIO_PREVIEW_MARK_META,
 } from "@hyperframes/core/studio-preview-mark";
 import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
+import { GSAP_PLUGIN_LOAD_ATTR } from "@hyperframes/core/gsap-cdn";
 import {
   PREVIEW_BUNDLE_OPTIONS,
   PREVIEW_CAPTURE_PARAM,
@@ -40,9 +41,13 @@ import type { StudioApiAdapter } from "../types";
 import {
   affectsPreview,
   recordPreviewBuilt,
+  previewReferences,
   recordPreviewRead,
-  recordPreviewReferences,
 } from "../helpers/previewReads";
+
+const recordPreviewReferences = (projectDir: string, html: string) => {
+  for (const path of previewReferences(html)) recordPreviewRead(projectDir, path);
+};
 
 const tempDirs: string[] = [];
 
@@ -369,6 +374,38 @@ describe("registerPreviewRoutes", () => {
     const message = reported[0] instanceof Error ? reported[0].message : "";
     expect(message).toContain(authored);
     expect(message).toContain(appended[0]?.src);
+  });
+
+  // fails without the fix: a failed MotionPath preload was loaded again from the CDN and reported as the film's GSAP.
+  it("leaves the preview's own plugin load to its loader: no fallback load, no report", async () => {
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(createProjectDir()));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    const fallback = /<script data-hf-gsap-fallback>([\s\S]*?)<\/script>/.exec(html)?.[1] ?? "";
+    let onDocumentError: (event: { target: unknown }) => void = () => undefined;
+    const appended: unknown[] = [];
+    const reported: unknown[] = [];
+    new Function("document", "reportError", fallback)(
+      {
+        addEventListener: (_type: string, listener: typeof onDocumentError) => {
+          onDocumentError = listener;
+        },
+        createElement: () => ({ tagName: "SCRIPT", src: "" }),
+        head: { appendChild: (script: unknown) => appended.push(script) },
+      },
+      (error: unknown) => reported.push(error),
+    );
+
+    onDocumentError({
+      target: {
+        tagName: "SCRIPT",
+        src: "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js",
+        hasAttribute: (name: string) => name === GSAP_PLUGIN_LOAD_ATTR,
+      },
+    });
+    await new Promise((settle) => setTimeout(settle, 0));
+    expect(appended).toHaveLength(0);
+    expect(reported).toHaveLength(0);
   });
 
   it("keeps every error a Studio preview raises from its first script, and leaves captures without it", async () => {
@@ -2113,7 +2150,9 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       }
       expect((await second).status).toBe(200);
       for (const res of await Promise.all(busy)) expect(res.status).toBe(200);
-      expect(made).toEqual([1, 2, 3, 4, 10]);
+      // The four busy requests reach their slots in whichever order their file checks settle.
+      expect(made.slice(0, 4).sort()).toEqual([1, 2, 3, 4]);
+      expect(made.slice(4)).toEqual([10]);
     });
 
     it("honors If-None-Match on a repeat request with a 304, without re-invoking resolveProxy", async () => {

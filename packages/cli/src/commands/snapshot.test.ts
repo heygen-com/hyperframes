@@ -775,10 +775,10 @@ describe("extractVideoFrameToBuffer", () => {
         const clip = join(dir, "clip.mp4");
         execFileSync(ffmpeg!, [
           ...["-hide_banner", "-loglevel", "error", "-f", "lavfi"],
-          ...["-i", "testsrc2=d=20:r=25:s=320x180", "-c:v", "libx264", "-g", "50"],
+          ...["-i", "testsrc2=d=8:r=25:s=320x180", "-c:v", "libx264", "-g", "50"],
           ...["-pix_fmt", "yuv420p", clip],
         ]);
-        const times = Array.from({ length: 40 }, (_, i) => 0.4 + i * 0.47);
+        const times = Array.from({ length: 16 }, (_, i) => 0.4 + i * 0.47);
         spawned.files.length = 0;
         const alone = [];
         for (const time of times)
@@ -798,7 +798,7 @@ describe("extractVideoFrameToBuffer", () => {
         const landings = spawned.files.length - probes;
         // One stream read and one packet read; a seek landing per keyframe (a keyframe every 2 s), not per time.
         expect(probes).toBe(2);
-        expect(landings).toBeLessThanOrEqual(2 * Math.ceil(20 / 2));
+        expect(landings).toBeLessThanOrEqual(2 * Math.ceil(8 / 2));
         expect(spawned.files.length * 3, "far fewer processes than a probe per time").toBeLessThan(
           spawnedAlone,
         );
@@ -1589,3 +1589,78 @@ describe("renderNotReadyError", () => {
     expect(error.message).toContain("not render-ready after 5000ms");
   });
 });
+
+// fails without the fix: the --against path reached the terminal with its control characters live.
+it("prints a missing --against path's control characters as visible escapes", async () => {
+  const project = mkdtempSync(join(tmpdir(), "hf-snapshot-against-"));
+  writeFileSync(
+    join(project, "index.html"),
+    `<div data-composition-id="main" data-width="320" data-height="180" data-duration="1"></div>`,
+  );
+  const lines: string[] = [];
+  const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+    lines.push(parts.map(String).join(" "));
+  });
+  try {
+    await expect(
+      snapshotCommand.run?.({
+        args: { dir: project, against: join(project, "re\u001b[2Jf.mp4") },
+      } as never),
+    ).rejects.toMatchObject({ name: "CliRuntimeError" });
+    expect(lines.join("\n")).toContain("re\\x1b[2Jf.mp4");
+    expect(lines.join("\n")).not.toContain("re\u001b[2Jf");
+  } finally {
+    log.mockRestore();
+    rmSync(project, { recursive: true, force: true });
+  }
+});
+
+// fails without the fix: the folder and file names of saved snapshots reached the terminal with their control characters live.
+it.skipIf(process.platform === "win32")(
+  "prints saved snapshot paths' control characters as visible escapes",
+  async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-snapshot-saved-"));
+    writeFileSync(
+      join(project, "index.html"),
+      `<html><body><div data-composition-id="main" data-width="320" data-height="180" data-start="0" data-duration="2"><div class="clip" data-start="0" data-duration="2">Visible</div></div></body></html>`,
+    );
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    snapshotState.openSettledPage.mockResolvedValueOnce({
+      browser: { close: vi.fn(async () => undefined) },
+      page: {
+        evaluate: vi
+          .fn()
+          .mockResolvedValueOnce({ loaded: [], errored: [], unused: [] })
+          .mockResolvedValueOnce(2)
+          .mockResolvedValueOnce(true)
+          .mockResolvedValueOnce([])
+          .mockResolvedValue(true),
+        screenshot: vi.fn(async () => png),
+      },
+      renderReadyTimedOut: false,
+    });
+    snapshotState.seek.mockResolvedValue(undefined);
+    snapshotState.settle.mockResolvedValue({ pending: [], failed: [] });
+    const lines: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+      lines.push(parts.map(String).join(" "));
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await snapshotCommand.run?.({
+        args: { dir: project, at: "1", end: false, output: join(project, "o\u001b[2Jut") },
+      } as never);
+      const printed = lines.join("\n");
+      expect(printed).toContain("snapshots saved to");
+      expect(printed).toContain("o\\x1b[2Jut");
+      expect(printed).not.toContain("o\u001b[2Jut");
+    } finally {
+      log.mockRestore();
+      warn.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  },
+);

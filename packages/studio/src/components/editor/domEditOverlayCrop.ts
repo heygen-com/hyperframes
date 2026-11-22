@@ -45,6 +45,23 @@ export function cropRectFromInsets(
 // A frame lift is kept until the frame says it is gone, so a lost reply never leaves the crop hidden there.
 type CropLift = { rule: HTMLStyleElement | null; sheetClip?: string; dropped?: boolean };
 const cropLifts = new WeakMap<HTMLElement, CropLift>();
+const liftListeners = new Set<() => void>();
+let liftVersion = 0;
+function liftsChanged() {
+  liftVersion += 1;
+  for (const listener of liftListeners) listener();
+}
+function setLift(element: HTMLElement, lift: CropLift | null) {
+  if (lift) cropLifts.set(element, lift);
+  else cropLifts.delete(element);
+  liftsChanged();
+}
+/** For `useSyncExternalStore`: the overlay redraws its crop hug when a lift starts, lands, is refused or drops. */
+export function subscribeCropLifts(listener: () => void): () => void {
+  liftListeners.add(listener);
+  return () => liftListeners.delete(listener);
+}
+export const cropLiftsVersion = () => liftVersion;
 const UNLIFT_TRIES = 3;
 
 function liftSelector(element: HTMLElement): string | null {
@@ -60,7 +77,7 @@ function unliftInFrame(element: HTMLElement, record: CropLift, tries = UNLIFT_TR
   void previewRequest(target.iframe, "crop-lift", { handle: target.handle, lift: false }).then(
     (reply) => {
       if (cropLifts.get(element) !== record) return;
-      if (reply?.lifted === false) cropLifts.delete(element);
+      if (reply?.lifted === false) setLift(element, null);
       else if (tries > 1) unliftInFrame(element, record, tries - 1);
     },
   );
@@ -71,11 +88,11 @@ function liftInFrame(element: HTMLElement): boolean {
   if (!target) return false;
   // Until the frame answers, the clip it last reported is the one under the lift.
   const record: CropLift = { rule: null, sheetClip: frameClipPaths.get(element)?.computed ?? "" };
-  cropLifts.set(element, record);
+  setLift(element, record);
   void previewRequest(target.iframe, "crop-lift", { handle: target.handle, lift: true }).then(
     (reply) => {
       if (cropLifts.get(element) !== record || !reply) return;
-      if (!reply.lifted) cropLifts.delete(element);
+      if (!reply.lifted) setLift(element, null);
       else if (typeof reply.clipPath === "string" && reply.clipPath.length <= MAX_ELEMENT_VALUE)
         record.sheetClip = reply.clipPath.trim();
     },
@@ -92,7 +109,7 @@ export function liftElementCrop(element: HTMLElement): void {
   const rule = doc.createElement("style");
   rule.textContent = `${selector}{clip-path:none!important}`;
   (doc.head ?? doc.documentElement).append(rule);
-  cropLifts.set(element, { rule });
+  setLift(element, { rule });
 }
 
 export function dropElementCropLift(element: HTMLElement): void {
@@ -100,10 +117,11 @@ export function dropElementCropLift(element: HTMLElement): void {
   if (!lift || lift.dropped) return;
   if (lift.rule) {
     lift.rule.remove();
-    cropLifts.delete(element);
+    setLift(element, null);
     return;
   }
   lift.dropped = true;
+  liftsChanged();
   unliftInFrame(element, lift);
 }
 
@@ -365,22 +383,39 @@ function readPlanarTransform(element: HTMLElement): Planar2D | null {
   return acc && !isIdentity(acc) ? acc : null;
 }
 
-/** What the frame measured of a stand-in's element at the press: a stand-in has no transform or box of its own. */
+/** What the frame measured of a stand-in's element at the press: a stand-in has no box of its own. */
 export interface CropFrameStart {
-  planar: Planar2D | null;
   layout: { width: number; height: number };
 }
 
-const measuredPlanar = ({ planar }: CropFrameStart) =>
-  planar && !isIdentity(planar) ? planar : null;
+/** A stand-in's crop frame: the frame's live oriented box of its element, scaled by the layout a press measured. */
+function standInCropFrame(
+  overlayRect: CropScreenRect & { angle?: number },
+  layout: { width: number; height: number } | null,
+  edit: { x: number; y: number },
+): CropFrame {
+  const { left, top, width, height } = overlayRect;
+  return {
+    angleDeg: overlayRect.angle ?? 0,
+    left,
+    top,
+    width,
+    height,
+    scaleX: layout && layout.width > 0 ? width / layout.width : edit.x,
+    scaleY: layout && layout.height > 0 ? height / layout.height : edit.y,
+  };
+}
 
 export function readElementCropFrame(
   element: HTMLElement,
-  overlayRect: CropScreenRect & { editScaleX: number; editScaleY: number },
+  overlayRect: CropScreenRect & { editScaleX: number; editScaleY: number; angle?: number },
   start?: CropFrameStart,
 ): CropFrame {
   const editX = overlayRect.editScaleX > 0 ? overlayRect.editScaleX : 1;
   const editY = overlayRect.editScaleY > 0 ? overlayRect.editScaleY : 1;
+  if (previewStandIn(element)) {
+    return standInCropFrame(overlayRect, start?.layout ?? null, { x: editX, y: editY });
+  }
   const aabb: CropFrame = {
     angleDeg: 0,
     left: overlayRect.left,
@@ -390,7 +425,7 @@ export function readElementCropFrame(
     scaleX: editX,
     scaleY: editY,
   };
-  const planar = start ? measuredPlanar(start) : readPlanarTransform(element);
+  const planar = readPlanarTransform(element);
   if (!planar) return aabb;
   const { a, b, c, d } = planar;
   const elScaleX = Math.hypot(a, b);
@@ -401,7 +436,7 @@ export function readElementCropFrame(
   const angleDeg = (Math.atan2(b, a) * 180) / Math.PI;
   const scaleX = elScaleX * editX;
   const scaleY = elScaleY * editY;
-  const size = start?.layout ?? { width: element.offsetWidth, height: element.offsetHeight };
+  const size = { width: element.offsetWidth, height: element.offsetHeight };
   const width = size.width * scaleX;
   const height = size.height * scaleY;
   if (!(width > 0) || !(height > 0)) return aabb;

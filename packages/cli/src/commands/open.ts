@@ -102,7 +102,7 @@ function printPreview(preview: PreviewBeforeOpen, opened: boolean): void {
 function printResult(project: ProjectDir, result: DesktopOpenResult): void {
   if (result.opened) {
     console.log(
-      `${c.success("◇")}  Opening ${c.accent(terminalText(project.name))} in ${result.app}`,
+      `${c.success("◇")}  Opening ${c.accent(terminalText(project.name))} in ${terminalText(result.app)}`,
     );
     if (result.handedOver) {
       const agent = { claude: "Claude Code", codex: "Codex", grok: "Grok" }[

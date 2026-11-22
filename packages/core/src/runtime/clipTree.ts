@@ -10,10 +10,10 @@
  * absolute start) when a caller needs them.
  */
 
+import { sourceLengthOf } from "./sourceLength";
 import type { RuntimeTimelineLike } from "./types";
 import {
   parseStrictFiniteTimingNumber,
-  mediaSourceDuration,
   resolveNaturalMediaTimelineDuration,
   resolveTimedImageDurationSeconds,
 } from "./playbackRate";
@@ -75,8 +75,9 @@ function durationFromTimeline(
 
 function durationFromMedia(el: Element): number | null {
   if (isMediaElement(el)) {
-    const source = mediaSourceDuration(el);
-    return Number.isFinite(source) ? resolveNaturalMediaTimelineDuration(el, source) : null;
+    return Number.isFinite(sourceLengthOf(el))
+      ? resolveNaturalMediaTimelineDuration(el, sourceLengthOf(el))
+      : null;
   }
   return resolveTimedImageDurationSeconds(el);
 }

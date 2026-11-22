@@ -9,7 +9,7 @@
  * otherwise takes straight off the frame's window, which an opaque-origin
  * preview does not allow.
  */
-import { parseRestoreAttributes, type RestoreAttributesParams } from "./editing/restoreAttributes";
+import type { RestoreAttributesParams } from "./editing/restoreAttributes";
 import {
   geometryEvent,
   parseWatchGeometry,
@@ -30,8 +30,10 @@ import type { GsapSnapshot } from "./editing/gsapSnapshot";
 import type { MotionPathFrameHome } from "./editing/motionPathHome";
 import type { EditingLayer, EditingStackingSibling } from "./editingLayers";
 import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
-import { parsePatchTweens, type PatchTweensParams } from "./editing/patchTween";
+import { parsePatchTweensRequest, type PatchTweensParams } from "./editing/patchTween";
+import { parseDraftEnd, type EditingDraftEnd, type EditingDraftReply } from "./editingDraftEnd";
 import {
+  parseRestoreAttributesRerun,
   parseSoftReload,
   type SoftReloadParams,
   type SoftReloadResult,
@@ -45,6 +47,11 @@ import {
   type SwapScenesParams,
   type SwapScenesResult,
 } from "./editing/scenes";
+import {
+  parseLiveRetime,
+  type LiveRetimeParams,
+  type LiveRetimeResult,
+} from "./editing/liveRetime";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { parseCombo } from "../keyCombo";
@@ -81,6 +88,13 @@ import {
   type EditElementParams,
   type EditElementResult,
 } from "./editing/editElement";
+import {
+  parseTextEdit,
+  textEditEndedEvent,
+  type TextEditEndedEvent,
+  type TextEditParams,
+  type TextEditResult,
+} from "./editing/textEdit";
 
 export {
   buildStableSelector,
@@ -205,7 +219,10 @@ export const EDITING_REQUEST_KINDS = [
   "hold-scenes",
   "mark-scenes-stale",
   "swap-scenes",
+  "live-retime",
   "assets-unloaded",
+  "text-edit",
+  "serve-paused-frames",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -243,7 +260,8 @@ export type EditingKeyMessage = {
 
 /** The `rotate` property's whole value in degrees, or GSAP's rotation; null takes the drawn turn back. */
 export type EditingDraftRotate = { angle: number; route: "css" | "gsap" };
-/** A gesture's draft on one element: null puts that part back; `end` keeps what is drawn or restores. */
+export type { EditingDraftEnd };
+/** A gesture's draft on one element: null puts that part back; an end keeps what is drawn or restores. */
 export type EditingDraft =
   | {
       handle: EditingElementHandle;
@@ -251,7 +269,7 @@ export type EditingDraft =
       size: { width: number; height: number } | null;
       rotate?: EditingDraftRotate | null;
     }
-  | { handle: EditingElementHandle; end: "keep" | "restore" };
+  | EditingDraftEnd;
 
 type NoParams = Record<string, never>;
 export interface EditingRequests {
@@ -309,7 +327,7 @@ export interface EditingRequests {
     result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
   /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here. */
-  draft: { params: { drafts: EditingDraft[] }; result: { drawn: number } };
+  draft: { params: { drafts: EditingDraft[] }; result: EditingDraftReply };
   "gesture-start": {
     params: { handles: EditingElementHandle[] };
     result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
@@ -318,7 +336,10 @@ export interface EditingRequests {
   /** The frame cancels these combos outside the elements that own keys, and forwards them and their
    * keyups to this port; an empty list stops. */
   "watch-keys": { params: { combos: string[] }; result: { watching: number } };
-  "restore-attributes": { params: RestoreAttributesParams; result: { applied: boolean } };
+  "restore-attributes": {
+    params: RestoreAttributesParams;
+    result: { applied: boolean; reran?: boolean };
+  };
   /** Boxes of the words of visible caption groups; a group written as plain text is split into word spans. */
   "caption-words": { params: CaptionWordsParams; result: { boxes: CaptionWordBox[] } };
   "caption-transform": { params: CaptionTransformParams; result: { words: CaptionWordState[] } };
@@ -354,7 +375,11 @@ export interface EditingRequests {
   "hold-scenes": { params: HoldScenesParams; result: { held: boolean } };
   "mark-scenes-stale": { params: MarkScenesStaleParams; result: { marked: true } };
   "swap-scenes": { params: SwapScenesParams; result: SwapScenesResult };
+  "live-retime": { params: LiveRetimeParams; result: { result: LiveRetimeResult } };
   "assets-unloaded": { params: NoParams; result: { unloaded: boolean } };
+  "text-edit": { params: TextEditParams; result: TextEditResult };
+  /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
+  "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -465,9 +490,7 @@ function draftRotate(value: unknown): boolean {
 
 function draftEntry(value: unknown): EditingDraft | null {
   if (!isPlainRecord(value) || !isHandle(value.handle)) return null;
-  const { handle, end } = value;
-  if (hasKeys(value, "end,handle"))
-    return end === "keep" || end === "restore" ? { handle, end } : null;
+  if ("end" in value) return parseDraftEnd(value);
   return drawnParts(value) ? (value as EditingDraft) : null;
 }
 
@@ -557,7 +580,7 @@ const PARAM_PARSERS: {
   "console-errors": (params) =>
     hasKeys(params, "from") && isOffset(params.from) ? { from: params.from } : null,
   "watch-keys": comboList,
-  "restore-attributes": parseRestoreAttributes,
+  "restore-attributes": parseRestoreAttributesRerun,
   "caption-words": captionWordsParams,
   "caption-transform": captionTransformParams,
   "color-grading-status": parseColorGradingStatusParams,
@@ -582,12 +605,18 @@ const PARAM_PARSERS: {
   "stacking-family": (params) =>
     hasKeys(params, "handle") && isHandle(params.handle) ? { handle: params.handle } : null,
   "gsap-set": parseGsapSet,
-  "patch-tweens": parsePatchTweens,
+  "patch-tweens": parsePatchTweensRequest,
   "soft-reload": parseSoftReload,
   "hold-scenes": parseHoldScenes,
   "mark-scenes-stale": parseMarkScenesStale,
   "swap-scenes": parseSwapScenes,
+  "live-retime": parseLiveRetime,
   "assets-unloaded": noParams,
+  "text-edit": parseTextEdit,
+  "serve-paused-frames": (params) =>
+    hasKeys(params, "channel") && params.channel instanceof MessagePort
+      ? { channel: params.channel }
+      : null,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
@@ -623,11 +652,12 @@ export interface EditingPortClient {
   request<K extends EditingRequestKind>(
     kind: K,
     params: EditingParams<K>,
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; transfer?: Transferable[] },
   ): Promise<EditingResult<K>>;
   /** Calls `listener` with each key the frame forwards for `watch-keys`; returns the unsubscribe. */
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
   onGeometry(listener: (event: EditingGeometryEvent) => void): () => void;
+  onTextEditEnded(listener: (event: TextEditEndedEvent) => void): () => void;
   /** Rejects every pending request with `disposed` and closes the port. */
   dispose(): void;
 }
@@ -688,6 +718,7 @@ export function createEditingPortClient(options: {
   const pending = new Map<number, Pending>();
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
+  const textEditListeners = new Set<(event: TextEditEndedEvent) => void>();
   let watchedGeometry = false;
   let port: MessagePort | null = null;
   let disposed = false;
@@ -712,7 +743,9 @@ export function createEditingPortClient(options: {
     const key = data.v === EDITING_PROTOCOL_VERSION && data.event === "key" && keyEvent(data.key);
     if (key) return keyListeners.forEach((listener) => listener(key));
     const geometry = geometryEvent(data, EDITING_PROTOCOL_VERSION);
-    if (geometry) geometryListeners.forEach((listener) => listener(geometry));
+    if (geometry) return geometryListeners.forEach((listener) => listener(geometry));
+    const ended = textEditEndedEvent(data, EDITING_PROTOCOL_VERSION);
+    if (ended) textEditListeners.forEach((listener) => listener(ended));
   };
   const onReply = (event: MessageEvent<unknown>) => {
     const data = event.data;
@@ -760,7 +793,10 @@ export function createEditingPortClient(options: {
       const send = () => {
         if (!pending.has(id)) return;
         try {
-          port?.postMessage({ v: EDITING_PROTOCOL_VERSION, id, kind, params });
+          port?.postMessage(
+            { v: EDITING_PROTOCOL_VERSION, id, kind, params },
+            requestOptions?.transfer ?? [],
+          );
         } catch (err) {
           settle(id, { error: new EditingPortError("failed", String(err)) });
         }
@@ -777,11 +813,16 @@ export function createEditingPortClient(options: {
       geometryListeners.add(listener);
       return () => geometryListeners.delete(listener);
     },
+    onTextEditEnded(listener) {
+      textEditListeners.add(listener);
+      return () => textEditListeners.delete(listener);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
       keyListeners.clear();
       geometryListeners.clear();
+      textEditListeners.clear();
       host.removeEventListener("message", onWindowMessage);
       if (watchedGeometry) {
         const stop = { kind: "watch-geometry", params: { handles: [] } };
@@ -797,3 +838,14 @@ export function createEditingPortClient(options: {
 }
 
 export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";
+export type { TextEditEndedEvent } from "./editing/textEdit";
+export {
+  parsePausedFrameAsk,
+  PAUSED_FRAME_BYTES,
+  PAUSED_FRAME_PARAMS,
+  PAUSED_FRAME_SOURCES,
+  type PausedFrameAsk,
+  type PausedFrameAskMessage,
+  type PausedFrameImage,
+  type PausedFrameReply,
+} from "./editing/pausedFrames";

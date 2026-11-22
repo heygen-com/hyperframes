@@ -250,6 +250,20 @@ describe("pasteTimelineClips", () => {
     expect(ids).toEqual(["sfx-23"]);
   });
 
+  it("writes a whole-number track when the copied or the live clips' tracks are not numbers", () => {
+    const textTrack = '0" onload="x' as unknown as number;
+    const live = [
+      { ...liveElement(5, 0, 1), authoredTrack: "$' onclick=\"y" as unknown as number },
+    ];
+    for (const saved of [false, true]) {
+      const copied = { ...clip("sfx-23", 21.61, 0.57, 132), track: textTrack, saved };
+      const { content } = pasteTimelineClips(ROOT, [copied], 40, live);
+      expect(content).toMatch(/<audio id="sfx-23"[^>]* data-track-index="0"/);
+      expect(content).not.toContain("onload");
+      expect(content).not.toContain("onclick");
+    }
+  });
+
   it("reports the furthest clip end across the whole batch as requiredEnd, not just the last clip's", () => {
     // The batch is placed in order sfx-23, sfx-24, sfx-25, but sfx-24 ends up
     // the furthest forward once offsets are applied; requiredEnd must track
@@ -279,12 +293,19 @@ describe("pasteTimelineClips + extendRootDurationInSource", () => {
 });
 
 describe("pasteElementHtml", () => {
+  it("refuses code the parser hoists out of the body unless the markup came from the saved file", () => {
+    const html = "<script>alert(1)</script>";
+    expect(() => pasteElementHtml(ROOT, { html })).toThrow(/^Couldn't paste/);
+    expect(pasteElementHtml(ROOT, { html, saved: true })).toContain(html);
+  });
+
   it("gives a pasted element and its children ids of their own, so an edit to the copy stays on it", () => {
     const stamped = ensureHfIds(
       ROOT.replace("</div>", '<p id="title" class="t">Hello <b>there</b></p></div>'),
     );
     const copied = stamped.match(/<p[^>]*id="title"[^>]*>.*?<\/p>/)![0];
-    const content = pasteElementHtml(stamped, { html: copied, originSelector: "#title" });
+    const content = pasteElementHtml(stamped, { html: copied, saved: true }, true);
+    expect(content.indexOf("</p>") + 4).toBe(content.indexOf("\n<p"));
     const ids = hfIdsIn(content);
     expect(ids).toHaveLength(hfIdsIn(stamped).length + 2);
     expect(new Set(ids).size).toBe(ids.length);

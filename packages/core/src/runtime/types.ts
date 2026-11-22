@@ -166,6 +166,15 @@ export type RuntimePickerCancelledMessage = {
   type: "pick-mode-cancelled";
 };
 
+/** The document's own length and size, posted before the runtime boots (`compositionLength.readStaticComposition`). */
+export type RuntimeStaticCompositionMessage = {
+  source: "hf-preview";
+  type: "static-composition";
+  durationSeconds: number;
+  width: number | null;
+  height: number | null;
+};
+
 export type RuntimeStageSizeMessage = {
   source: "hf-preview";
   type: "stage-size";
@@ -337,6 +346,7 @@ export type RuntimeOutboundMessage =
   | RuntimePickerPickedManyMessage
   | RuntimePickerCancelledMessage
   | RuntimeStageSizeMessage
+  | RuntimeStaticCompositionMessage
   | RuntimeMediaAutoplayBlockedMessage
   | RuntimeReadyMessage
   | RuntimeAssetsReadyMessage

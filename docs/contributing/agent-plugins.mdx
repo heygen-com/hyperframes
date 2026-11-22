@@ -18,6 +18,10 @@ bun run package:agent-plugin
 bun run package:codex-plugin
 ```
 
+The Codex builder writes `dist/hyperframes-plugin.zip` with a `hyperframes/` root
+folder from the committed `HEAD` and fails if the archive exceeds Codex's 100 MB
+upload limit.
+
 The portable builder writes these files under `dist/`:
 
 - `hyperframes-agent-plugin.zip`: a `hyperframes/` root with manifests, skills,

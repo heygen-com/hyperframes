@@ -18,6 +18,7 @@ import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
 import { assetRootsRefusal } from "../utils/assetRoots.js";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
+import { untaggedVideoMatrix } from "@hyperframes/parsers/media-streams";
 import {
   MEDIA_RENDER_ID_ATTR,
   isAudibleVideoElement,
@@ -1032,14 +1033,10 @@ function readFirstFrameColour(videoPath: string, codec: string) {
   return probe;
 }
 
-/** Chrome plays untagged VP9 and AV1 as BT.601, H.264 and VP8 as BT.709 from 720 coded lines (assumed for the rest). */
-const CHROME_BT601_UNTAGGED_CODECS = new Set(["vp9", "av1"]);
-
 function chromeGuessForUntaggedMatrix(metadata: VideoMetadata): string[] {
   const matrix = metadata.colorSpace?.colorSpace;
   if (matrix && matrix !== "unknown") return [];
-  const hd = metadata.height >= 720 && !CHROME_BT601_UNTAGGED_CODECS.has(metadata.videoCodec);
-  return [`setparams=colorspace=${hd ? "bt709" : "smpte170m"}`];
+  return [`setparams=colorspace=${untaggedVideoMatrix(metadata.videoCodec, metadata.height)}`];
 }
 
 export function sdrCanvasColourFilters(metadata: VideoMetadata, toneMappedToSdr = false): string[] {
@@ -1417,7 +1414,7 @@ async function extractVideoFramesRangeUnredacted(
 
   let metadata: VideoMetadata;
   try {
-    metadata = await extractMediaMetadata(videoPath);
+    metadata = await extractMediaMetadata(videoPath, { signal });
   } catch (error) {
     throw classifyVideoExtractionError(error);
   }
@@ -2460,8 +2457,8 @@ export async function extractAllVideoFrames(
         const attempted =
           !options.collectProbeFailures &&
           boundedTransientRetryBudget(options.maxTransientRetries) === 0
-            ? { result: await extractMediaMetadata(videoPath), retries: 0 }
-            : await runVideoExtractionWithRetry(() => extractMediaMetadata(videoPath), {
+            ? { result: await extractMediaMetadata(videoPath, { signal }), retries: 0 }
+            : await runVideoExtractionWithRetry(() => extractMediaMetadata(videoPath, { signal }), {
                 signal,
                 maxTransientRetries: options.maxTransientRetries,
                 onRetry: () => recordTransientRetries(1),
@@ -2965,7 +2962,8 @@ export async function extractAllVideoFrames(
         throw new Error("Video frame extraction cancelled");
       }
       try {
-        const metadata = videoMetadata[index] ?? (await extractMediaMetadata(videoPath));
+        const metadata =
+          videoMetadata[index] ?? (await extractMediaMetadata(videoPath, { signal }));
         alignClipStartToFirstOutputFrame(video, fps);
         const initialWindow = resolveVideoExtractionWindow(video, metadata, options.timelineEnd);
         const window = await resolveFinalFrameExtractionWindow(

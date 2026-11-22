@@ -1,3 +1,4 @@
+import { sourceLengthOf } from "./sourceLength";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { swallow } from "./diagnostics";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
@@ -6,12 +7,7 @@ import { sameInstant } from "../clipFacts";
 import { interpolateVolumeGain } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
 import { fadeGain, NO_FADES, readElementFades } from "../audioFade.js";
-import {
-  mediaSourceDuration,
-  readElementPlaybackRate,
-  readElementRateSpec,
-  readMediaStart,
-} from "./playbackRate.js";
+import { readElementPlaybackRate, readElementRateSpec, readMediaStart } from "./playbackRate.js";
 import { rateAt, sourceTimeAt, timeAtSourceTime } from "../speedRamp.js";
 import type { RuntimeMediaClip } from "./types.js";
 import { clampAudioGain, clipGain, gainTimesLane } from "../audioGain.js";
@@ -34,7 +30,6 @@ export type { RuntimeMediaClip } from "./types.js";
 export {
   readElementPlaybackRate,
   readElementRateSpec,
-  mediaSourceDuration,
   resolveNaturalMediaTimelineDuration,
 } from "./playbackRate.js";
 
@@ -155,8 +150,8 @@ export function refreshRuntimeMediaCache(params?: {
     const playbackRate = readElementPlaybackRate(el);
     const rate = readElementRateSpec(el);
     const loop = el.loop;
-    const reported = mediaSourceDuration(el);
-    const sourceDuration = Number.isFinite(reported) && reported > 0 ? reported : null;
+    const length = sourceLengthOf(el);
+    const sourceDuration = Number.isFinite(length) && length > 0 ? length : null;
     let duration =
       params?.resolveDurationSeconds?.(el) ?? Number.parseFloat(el.dataset.duration ?? "");
     if ((!Number.isFinite(duration) || duration < 0) && sourceDuration != null) {

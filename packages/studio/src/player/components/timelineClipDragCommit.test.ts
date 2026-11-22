@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, type Mock } from "vitest";
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./useTimelineClipDrag";
 import {
   commitDraggedClipMove,
@@ -1626,5 +1626,91 @@ describe("persistMoveEdits convergence", () => {
     await expect(persisted).resolves.toBe(true);
     expect([liveTrack, liveAuthoredTrack]).toEqual([0, 0]);
     expect(updateElement).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("commitDraggedClipMove: drop onto main-track clips", () => {
+  const elements = [el("a", 0, 0, 2), el("b", 0, 2, 2), el("c", 0, 4, 2)];
+  // The full main track sends the dragged clip back to its own start.
+  const backHome = { ...drag(elements[2]!, { previewStart: 4, previewTrack: 0 }), aimStart: 0 };
+
+  it("inserts the clip and moves the others right when drops insert", () => {
+    const onDropRefused = vi.fn();
+    const { onMoveElements } = runClipMove(backHome, {
+      elements,
+      trackOrder: [0],
+      insertOnClipDrop: true,
+      onDropRefused,
+    });
+    const [edits] = onMoveElements.mock.calls[0] as [TimelineMoveEdit[]];
+    expect(editMap(edits)).toEqual({
+      c: { start: 0, track: 0 },
+      a: { start: 2, track: 0 },
+      b: { start: 4, track: 0 },
+    });
+    expect(onDropRefused).not.toHaveBeenCalled();
+  });
+
+  it("moves nothing and says why when drops do not insert", () => {
+    const onDropRefused = vi.fn();
+    const { onMoveElement, onMoveElements } = runClipMove(backHome, {
+      elements,
+      trackOrder: [0],
+      onDropRefused,
+    });
+    expect(onMoveElement).not.toHaveBeenCalled();
+    expect(onMoveElements).not.toHaveBeenCalled();
+    expect(onDropRefused).toHaveBeenCalledWith(elements[2]);
+  });
+
+  it("says nothing when the clip was put back where it was", () => {
+    const onDropRefused = vi.fn();
+    runClipMove({ ...backHome, aimStart: 4 }, { elements, trackOrder: [0], onDropRefused });
+    expect(onDropRefused).not.toHaveBeenCalled();
+  });
+});
+
+// A delete still saving rippled C from 4 to 2; C is dragged to 2.5; the refused delete's rollback moves C
+// back by its ripple to 4.5, and then the drag is refused too.
+describe("a refused drag after an earlier edit's rollback moved its clip", () => {
+  const startOf = (id: string) =>
+    usePlayerStore.getState().elements.find((e) => e.id === id)?.start;
+  function setUp() {
+    const store = usePlayerStore.getState();
+    store.setElements([el("a", 0, 0, 2), el("c", 0, 2, 2)]);
+    let refuse: (error: Error) => void = () => {};
+    const save = new Promise<void>((_, fail) => (refuse = fail));
+    const deps = {
+      elements: usePlayerStore.getState().elements,
+      trackOrder: [0],
+      updateElement: store.updateElement,
+    };
+    const rollBackRipple = () => store.updateElement("c", { start: startOf("c")! + 2 });
+    return { c: deps.elements[1]!, save, refuse, deps, rollBackRipple };
+  }
+
+  // fails without the fix: C went back to its rippled 2, on top of the restored B.
+  it("takes back only its own shift on the single-clip path", async () => {
+    const { c, save, refuse, deps, rollBackRipple } = setUp();
+    commitDraggedClipMove(drag(c, { previewStart: 2.5, previewTrack: 0 }), {
+      ...deps,
+      onMoveElement: () => save,
+    });
+    rollBackRipple();
+    refuse(new Error("lands on B"));
+    await flushMicrotasks();
+    expect(startOf("c")).toBe(4);
+  });
+
+  it("takes back only its own shift on the multi-clip path", async () => {
+    const { c, save, refuse, deps, rollBackRipple } = setUp();
+    const moved = persistMoveEdits([{ element: c, updates: { start: 2.5, track: 0 } }], {
+      ...deps,
+      onMoveElements: () => save,
+    });
+    rollBackRipple();
+    refuse(new Error("lands on B"));
+    await expect(moved).resolves.toBe(false);
+    expect(startOf("c")).toBe(4);
   });
 });

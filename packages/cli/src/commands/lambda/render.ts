@@ -13,6 +13,7 @@ import type {
 } from "@hyperframes/aws-lambda/sdk";
 import type { CanvasResolution, DistributedFps } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import type { DeliveryFlagValues } from "../../utils/deliveryFlags.js";
 import {
   reportVariableIssues,
@@ -121,7 +122,7 @@ export async function runRender(args: RenderArgs): Promise<void> {
       // doesn't quietly become a no-op.
       console.warn(
         c.warn(
-          `--strict-variables: no ${indexPath} on disk — schema validation skipped. ` +
+          `--strict-variables: no ${terminalText(indexPath)} on disk — schema validation skipped. ` +
             "Variables flow through unchecked. To enable strict checking, run from a project dir that contains the composition.",
         ),
       );
@@ -148,7 +149,7 @@ export async function runRender(args: RenderArgs): Promise<void> {
     executionName: args.executionName,
     outputKey: args.outputKey,
     includeOutsideFiles: args.includeOutsideFiles,
-    onNotice: (message) => console.error(c.dim(message)),
+    onNotice: (message) => console.error(c.dim(terminalLines(message))),
   });
 
   if (args.json) {
@@ -166,17 +167,17 @@ export async function runRender(args: RenderArgs): Promise<void> {
   }
 
   console.log(c.success("Render started."));
-  console.log(`  ${c.dim("Render ID:")}     ${handle.renderId}`);
-  console.log(`  ${c.dim("Execution ARN:")} ${handle.executionArn}`);
-  console.log(`  ${c.dim("Output S3 URI:")} ${handle.outputS3Uri}`);
-  console.log(`  ${c.dim("Project S3:")}    ${handle.projectS3Uri}`);
-  console.log(`  ${c.dim("Stack state:")}   ${stateFilePath(args.stackName)}`);
+  console.log(`  ${c.dim("Render ID:")}     ${terminalText(handle.renderId)}`);
+  console.log(`  ${c.dim("Execution ARN:")} ${terminalText(handle.executionArn)}`);
+  console.log(`  ${c.dim("Output S3 URI:")} ${terminalText(handle.outputS3Uri)}`);
+  console.log(`  ${c.dim("Project S3:")}    ${terminalText(handle.projectS3Uri)}`);
+  console.log(`  ${c.dim("Stack state:")}   ${terminalText(stateFilePath(args.stackName))}`);
   console.log();
   if (args.wait) {
     await waitForCompletion(handle.executionArn, stack, args.waitIntervalMs, args.json);
     return;
   }
-  console.log(c.dim(`Poll with: hyperframes lambda progress ${handle.renderId}`));
+  console.log(c.dim(`Poll with: hyperframes lambda progress ${terminalText(handle.renderId)}`));
 }
 
 async function waitForCompletion(
@@ -197,7 +198,7 @@ async function waitForCompletion(
       videoArchitecture: videoArchitecture(stack),
     });
     for (const warning of progress.warnings) {
-      if (!warned.has(warning)) console.warn(c.warn(warning));
+      if (!warned.has(warning)) console.warn(c.warn(terminalLines(warning)));
       warned.add(warning);
     }
     if (!json && progress.framesRendered !== lastRendered) {
@@ -205,7 +206,7 @@ async function waitForCompletion(
       const total = progress.totalFrames ?? "?";
       const pct = Math.round(progress.overallProgress * 100);
       console.log(
-        `  ${c.dim(`[${progress.status}]`)} ${pct}% • ${progress.framesRendered}/${total} frames • ${progress.costs.displayCost}`,
+        `  ${c.dim(`[${terminalText(progress.status)}]`)} ${pct}% • ${progress.framesRendered}/${total} frames • ${progress.costs.displayCost}`,
       );
     }
     if (progress.status !== "RUNNING") {
@@ -214,14 +215,16 @@ async function waitForCompletion(
       } else if (progress.status === "SUCCEEDED" && progress.outputFile) {
         console.log();
         console.log(c.success("Render complete."));
-        console.log(`  ${c.dim("Output:")}        ${progress.outputFile.s3Uri}`);
+        console.log(`  ${c.dim("Output:")}        ${terminalText(progress.outputFile.s3Uri)}`);
         console.log(`  ${c.dim("Size:")}          ${progress.outputFile.bytes ?? "?"} bytes`);
         console.log(`  ${c.dim("Total cost:")}    ${progress.costs.displayCost}`);
       } else {
         console.log();
-        console.log(c.error(`Render ended with status ${progress.status}.`));
+        console.log(c.error(`Render ended with status ${terminalText(progress.status)}.`));
         for (const err of progress.errors) {
-          console.log(`  ${c.dim(err.state)}: ${err.error} — ${err.cause}`);
+          console.log(
+            `  ${c.dim(terminalText(err.state))}: ${terminalLines(err.error)} — ${terminalLines(err.cause)}`,
+          );
         }
         setCommandExitCode(1);
       }

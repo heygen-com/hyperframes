@@ -208,12 +208,13 @@ async function installOne(name: string, context: InstallContext): Promise<Instal
     if (!context.json) {
       for (const warning of result.warnings)
         console.log(`  ${c.warn("Warning:")} ${terminalText(warning)}`);
-      console.log(`  ${c.success("✓")} ${result.name}`);
+      console.log(`  ${c.success("✓")} ${terminalText(result.name)}`);
     }
     return { result };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    if (!context.json) console.log(`  ${c.error("✗")} ${name} (skipped: ${terminalText(reason)})`);
+    if (!context.json)
+      console.log(`  ${c.error("✗")} ${terminalText(name)} (skipped: ${terminalText(reason)})`);
     return { name, error: reason };
   }
 }
@@ -662,13 +663,15 @@ export default defineCommand({
       }
 
       if (wroteConfig) {
-        console.log(c.dim(`Wrote default ${projectConfigPath(projectDir)}`));
+        console.log(c.dim(`Wrote default ${terminalText(projectConfigPath(projectDir))}`));
       }
       for (const warning of result.warnings) {
         console.warn(c.warn(`Warning: ${terminalText(warning)}`));
       }
       console.log("");
-      console.log(`${c.success("✓")} Added ${c.accent(result.name)} (${result.type})`);
+      console.log(
+        `${c.success("✓")} Added ${c.accent(terminalText(result.name))} (${terminalText(result.type)})`,
+      );
       const root = realpath(projectDir);
       for (const file of result.preserved) {
         console.log(
@@ -683,7 +686,9 @@ export default defineCommand({
         // Say it out loud. A component's values are baked into the file rather
         // than shown in the snippet, so without this the command looks
         // identical whether --vars worked or was thrown away.
-        console.log(`  ${c.dim(`variables applied: ${result.variablesApplied.join(", ")}`)}`);
+        console.log(
+          `  ${c.dim(`variables applied: ${terminalText(result.variablesApplied.join(", "))}`)}`,
+        );
       }
       if (result.snippet) {
         console.log("");
@@ -725,7 +730,7 @@ export default defineCommand({
       if (!json) {
         console.log("");
         console.log(
-          `${c.accent("◆")} Installing ${c.accent(String(items.length))} blocks tagged ${c.accent(args.name)}`,
+          `${c.accent("◆")} Installing ${c.accent(String(items.length))} blocks tagged ${c.accent(terminalText(args.name))}`,
         );
       }
 

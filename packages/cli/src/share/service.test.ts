@@ -205,6 +205,45 @@ describe("share operation consent and identity", () => {
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ spaceId: "space" }));
     expect(mocks.add).toHaveBeenCalledWith(expect.objectContaining({ projectId: "project" }));
   });
+  it("carries the confirmed review into a first share's registration", async () => {
+    mocks.create.mockImplementation(async () => {
+      mocks.status.mockResolvedValue(shared);
+      return shared;
+    });
+    mocks.add.mockResolvedValue(null);
+
+    await createShareService("/project").run({
+      action: "share",
+      audience: "public",
+      confirmedReview: null,
+    });
+
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ confirmed: null }));
+    expect(mocks.add).toHaveBeenCalledWith(expect.objectContaining({ projectId: "project" }));
+  });
+  it.each([
+    ["a first share confirmed as new, once the record names a review", null, "unopened"],
+    ["an audience change confirmed for another review", "another", "shared"],
+  ])("refuses %s before changing anything", async (_, confirmedReview, folder) => {
+    if (folder === "shared") mocks.status.mockResolvedValue(shared);
+    else
+      mocks.record.mockResolvedValue({ projectId: "linked", opened: false, studioProjectId: "s" });
+
+    await expect(
+      createShareService("/project").run({ action: "share", audience: "private", confirmedReview }),
+    ).rejects.toMatchObject({ reason: "review_binding_changed" });
+    for (const change of [mocks.render, mocks.create, mocks.setAccess, mocks.add])
+      expect(change).not.toHaveBeenCalled();
+  });
+  it("refuses a link read held to another review before changing anything", async () => {
+    mocks.status.mockResolvedValue(shared);
+
+    await expect(
+      createShareService("/project").run({ action: "share", confirmedReview: "another" }),
+    ).rejects.toMatchObject({ reason: "review_binding_changed" });
+    for (const change of [mocks.render, mocks.create, mocks.setAccess, mocks.add])
+      expect(change).not.toHaveBeenCalled();
+  });
   it("retries an unfinished first share in its saved workspace", async () => {
     mocks.record.mockResolvedValue({ spaceId: "saved", projectId: "project" });
     mocks.spaces.mockResolvedValue([

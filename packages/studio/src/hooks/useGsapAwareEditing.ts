@@ -211,7 +211,7 @@ export function useGsapAwareEditing({
       next: { width: number; height: number },
       offset?: { x: number; y: number },
       restore: () => void = () => undefined,
-      route?: { plainTranslate: boolean },
+      route?: { plainTranslate: boolean; sizeSavedAsScale?: boolean },
     ) => {
       const writes = observeGsapGesture(gsapCommitMutation);
       const routed = route?.plainTranslate ?? editsPlainCssSettled(selection.element, "resize");
@@ -315,6 +315,8 @@ export function useGsapAwareEditing({
                   stamp,
                 );
                 assertGsapEditPersisted(outcome);
+                if (route)
+                  route.sizeSavedAsScale = outcome.status === "persisted" && !!outcome.savedAsScale;
                 // Saved before the buffered GSAP writes, so their reload stays the gesture's last render.
                 if (outcome.status === "element-size") {
                   const result = await writes.drawKeepingUndone(() =>

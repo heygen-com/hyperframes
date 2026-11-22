@@ -3,7 +3,11 @@ import { batchElementUpdates } from "../store/batchElementUpdates";
 
 type UpdateElement = (key: string, updates: Partial<TimelineElement>) => void;
 type RevisionScope = "timing" | "membership";
-const revisionsByUpdater = new WeakMap<UpdateElement, Map<RevisionScope, Map<string, number>>>();
+let revisionsByUpdater = new WeakMap<UpdateElement, Map<RevisionScope, Map<string, number>>>();
+
+export function forgetTimelineOptimisticGestures(): void {
+  revisionsByUpdater = new WeakMap();
+}
 
 export function beginTimelineOptimisticGesture(
   updateElement: UpdateElement,

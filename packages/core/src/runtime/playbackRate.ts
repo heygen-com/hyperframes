@@ -1,3 +1,4 @@
+import { sourceLengthOf } from "./sourceLength";
 import {
   clampPlaybackRate,
   readAuthoredDurationSeconds,
@@ -39,34 +40,12 @@ export function readMediaStart(el: Pick<Element, "getAttribute">): number {
   return readMediaOffsetSeconds((name) => el.getAttribute(name));
 }
 
-// A preview frees far clips, which resets their length; the timeline still needs it, for the same src.
-const reportedLengths = new WeakMap<object, { src: string | null; seconds: number }>();
-
-export function rememberSourceDuration(
-  el: Pick<Element, "getAttribute"> & { duration: number },
-): void {
-  if (Number.isFinite(el.duration) && el.duration > 0)
-    reportedLengths.set(el, { src: el.getAttribute("src"), seconds: el.duration });
-}
-
-function sourceDurationOf(el: Pick<Element, "getAttribute">, sourceDuration: number): number {
-  if (Number.isFinite(sourceDuration)) return sourceDuration;
-  const reported = reportedLengths.get(el);
-  return reported && reported.src === el.getAttribute("src") ? reported.seconds : sourceDuration;
-}
-
-export const mediaSourceDuration = (el: Pick<Element, "getAttribute"> & { duration: number }) =>
-  sourceDurationOf(el, el.duration);
-
-export const hasRememberedSourceDuration = (el: Pick<Element, "getAttribute">): boolean =>
-  Number.isFinite(sourceDurationOf(el, Number.NaN));
-
 export function resolveNaturalMediaTimelineDuration(
   el: Pick<Element, "getAttribute">,
   sourceDuration: number,
 ): number | null {
   return resolveNaturalMediaTimelineDurationFromValues(
-    sourceDurationOf(el, sourceDuration),
+    sourceDuration,
     readMediaStart(el),
     readElementRateSpec(el),
   );
@@ -81,16 +60,15 @@ export function resolveNaturalMediaTimelineDuration(
 export function resolveMediaElementDurationSeconds(
   el: Pick<Element, "getAttribute"> & { duration: number },
 ): number | null {
-  const source = sourceDurationOf(el, el.duration);
   const resolved = resolveMediaDuration({
     tag: "video", // video and audio resolve identically
     authoredDurationSeconds: readDataDurationSeconds((name) => el.getAttribute(name)),
-    sourceDurationSeconds: Number.isFinite(source) ? source : null,
+    sourceDurationSeconds: Number.isFinite(sourceLengthOf(el)) ? sourceLengthOf(el) : null,
     mediaStartSeconds: readMediaStart(el),
     playbackRate: readElementPlaybackRate(el),
   });
   return resolved.source === "media"
-    ? resolveNaturalMediaTimelineDuration(el, el.duration)
+    ? resolveNaturalMediaTimelineDuration(el, sourceLengthOf(el))
     : resolved.seconds;
 }
 

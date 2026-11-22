@@ -26,6 +26,12 @@ export function sealedPreviewFrame(
   });
   const iframe = detachedFakeIframe(frame);
   Object.defineProperty(iframe, "contentDocument", { value: null });
+  let onPageUntilPlayerRemovesIt = true;
+  Object.defineProperty(iframe, "isConnected", {
+    configurable: true,
+    get: () => onPageUntilPlayerRemovesIt,
+  });
+  iframe.remove = () => void (onPageUntilPlayerRemovesIt = false);
   const wrap = options.wrapHandedOverPort ?? ((port: MessagePort) => port);
   const parent = {
     postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
@@ -35,4 +41,39 @@ export function sealedPreviewFrame(
   frame.postMessage = (data: unknown) => postLater({ source: parent, data });
   onTestFinished(() => agent.dispose());
   return { iframe, frame };
+}
+
+export type PortRequest = { id?: unknown; kind?: unknown; params?: unknown };
+
+/** Studio's end of the frame's port, for `wrapHandedOverPort`: `hold` keeps the frame's answers to the requests it
+ * picks until the call it returns hands them to Studio, in order. */
+export function answerTap() {
+  let pick: ((request: PortRequest) => boolean) | null = null;
+  const heldIds = new Set<unknown>();
+  const held: Array<() => void> = [];
+  const wrapHandedOverPort = (port: MessagePort) => {
+    const end = {
+      onmessage: null as ((event: MessageEvent) => void) | null,
+      postMessage(request: PortRequest) {
+        if (pick?.(request)) heldIds.add(request.id);
+        port.postMessage(request);
+      },
+      close: () => port.close(),
+    };
+    port.onmessage = (event) => {
+      const deliver = () => end.onmessage?.(event);
+      if (heldIds.has(event.data?.id)) held.push(deliver);
+      else deliver();
+    };
+    return end as unknown as MessagePort;
+  };
+  const hold = (match: (request: PortRequest) => boolean) => {
+    pick = match;
+    return () => {
+      pick = null;
+      heldIds.clear();
+      held.splice(0).forEach((deliver) => deliver());
+    };
+  };
+  return { wrapHandedOverPort, hold, held };
 }
