@@ -58,6 +58,7 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
   setBuffering?: (buffering: boolean) => void;
   setRuntimeFps?: (fps: number) => void;
   setRuntimeOwnsPlayRange?: (owns: boolean) => void;
+  setRuntimeAnnounces?: (announces: boolean) => void;
   /** Called with the scene list whenever a "timeline" message is received. */
   setScenes: (scenes: SceneRecord[]) => void;
   /** Return false to ignore the iframe runtime's audible-media autoplay fallback.
@@ -88,6 +89,9 @@ export function handleRuntimeMessage(
   const ownsPlayRange =
     protocol.status === "supported" && protocol.metadata.capabilities.includes("play-range");
   callbacks.setRuntimeOwnsPlayRange?.(ownsPlayRange);
+  callbacks.setRuntimeAnnounces?.(
+    protocol.status === "supported" && protocol.metadata.capabilities.includes("announce-timeline"),
+  );
 
   if (data["type"] === "shader-transition-state") {
     const state: ShaderTransitionState =

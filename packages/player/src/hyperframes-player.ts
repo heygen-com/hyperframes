@@ -134,6 +134,9 @@ class HyperframesPlayer extends HTMLElement {
   private _ready = false;
   private _readyBeforeRuntime = false;
   private _readyDocument: Document | null = null;
+  private _awaitingLoad = false;
+  private _runtimeAnnounces = false;
+  private _timelineHeldForLoad = false;
   private _connected = false;
   private _assetsReady = false;
   private _painted = false;
@@ -1298,6 +1301,9 @@ class HyperframesPlayer extends HTMLElement {
       setRuntimeOwnsPlayRange: (owns) => {
         this._runtimeOwnsPlayRange = owns;
       },
+      setRuntimeAnnounces: (announces) => {
+        this._runtimeAnnounces = announces;
+      },
       shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
       setScenes: (scenes) => {
         this._scenes = scenes;
@@ -1315,6 +1321,10 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onRuntimeTimelineReady(duration: number, assetsReady: boolean | undefined) {
+    if (this._awaitingLoad && this._runtimeAnnounces && !this._getSameOriginIframeDocument()) {
+      this._timelineHeldForLoad = true;
+      return;
+    }
     if (this._ready && !this._readyBeforeRuntime) return;
     const alreadyReady = this._readyBeforeRuntime;
     this._readyBeforeRuntime = false;
@@ -1483,6 +1493,8 @@ class HyperframesPlayer extends HTMLElement {
     this.probe.stop();
     this._ready = false;
     this._readyBeforeRuntime = false;
+    this._awaitingLoad = true;
+    this._timelineHeldForLoad = false;
     this._readyDocument = null;
     this._invalidateAssetsWait();
     this._releaseDocument();
@@ -1624,9 +1636,12 @@ class HyperframesPlayer extends HTMLElement {
   private _onIframeLoad() {
     // In video mode the iframe only ever loads about:blank; its load must not reset the video.
     if (!this._connected || this._videoSource) return;
-    // The runtime posts its timeline once its scripts ran, before or after `load`, and every
-    // host-initiated navigation clears `_ready` first. So a ready player already holds this
-    // document's handshake (an opaque origin reads as null); a paused runtime never posts it again.
+    // A runtime posts its timeline before or after `load`; one seen since a host navigation and before this load may be
+    // the old document's. An unreadable frame's runtime that can be asked again held it, and is asked below; else the
+    // timeline stands, as a paused runtime never posts it again (an opaque origin reads as null on both sides).
+    const askAgain = this._timelineHeldForLoad;
+    this._awaitingLoad = false;
+    this._timelineHeldForLoad = false;
     const doc = this._getSameOriginIframeDocument();
     if (this._ready && doc === this._readyDocument) {
       // Its asset wait scanned at DOMContentLoaded; a script may have added first-frame media since.
@@ -1643,6 +1658,7 @@ class HyperframesPlayer extends HTMLElement {
     this._invalidateAssetsWait();
     this._releaseDocument();
     this.probe.start();
+    if (askAgain) this._sendControl("announce-timeline");
   }
 
   private _setupControls() {

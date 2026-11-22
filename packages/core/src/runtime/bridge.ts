@@ -40,6 +40,7 @@ type BridgeDeps = {
   onSetCopiesAhead?: (on: boolean) => void;
   onRetryPreviewCopies?: () => void;
   onRequestPreviewFacts?: () => void;
+  onAnnounceTimeline?: () => void;
   onScrubAudio?: (target: PreviewTarget | null, time: number | null, volume: number) => void;
   getCanonicalFps: () => number;
 };
@@ -188,6 +189,7 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
     "set-copies-ahead": (data, deps) => deps.onSetCopiesAhead?.(data.on === true),
     "retry-preview-copies": (_d, deps) => deps.onRetryPreviewCopies?.(),
     "request-preview-facts": (_d, deps) => deps.onRequestPreviewFacts?.(),
+    "announce-timeline": (_d, deps) => deps.onAnnounceTimeline?.(),
     "set-root-duration": (data, deps) => {
       const durationSeconds = readNumber(data.durationSeconds, 0);
       if (durationSeconds !== null) deps.onSetRootDuration(durationSeconds);

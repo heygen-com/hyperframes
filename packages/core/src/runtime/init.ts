@@ -4035,6 +4035,7 @@ export function initSandboxRuntimeModular(): void {
   let assetsSettled = false;
   let liveRootDurationOverrideSeconds = 0;
   let lastPostedManifest = "";
+  let lastTimeline: ReturnType<typeof collectRuntimeTimelinePayload> | null = null;
   const computeClipTreeSignature = (): string => {
     let sig = "";
     for (const el of document.querySelectorAll("[data-start]")) {
@@ -4106,6 +4107,7 @@ export function initSandboxRuntimeModular(): void {
       clipTreeSignature = currentSignature;
     }
 
+    lastTimeline = payload;
     postRuntimeMessage({ ...payload, assetsReady: assetsSettled });
     if (!assetsReadyStarted) {
       assetsReadyStarted = true;
@@ -6819,6 +6821,9 @@ export function initSandboxRuntimeModular(): void {
       noteDisplayScale(scale);
     },
     onScrubAudio: scrubAudio.scrub,
+    onAnnounceTimeline: () => {
+      if (lastTimeline) postRuntimeMessage({ ...lastTimeline, assetsReady: assetsSettled });
+    },
     onRequestPreviewFacts: () =>
       postRuntimeMessage({
         source: "hf-preview",
