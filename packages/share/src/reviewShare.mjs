@@ -78,6 +78,22 @@ const isSavedIdentity = (record) =>
   isOptionalBoolean(record.removed) &&
   (!record.opened || isSavedId(record.projectId));
 
+// This is a display hint. Keep ordinary mailbox names, including internationalized ones.
+/** @param {unknown} value */
+function displayOwnerEmail(value) {
+  if (typeof value !== "string" || value.length > 254) return null;
+  const parts = value.split("@");
+  if (parts.length !== 2) return null;
+  const [local, domain] = parts;
+  const atom = /^[\p{L}\p{M}\p{N}!#$%&'*+/=?^`_{|}~-]+$/u;
+  const label = /^[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}-]{0,61}[\p{L}\p{M}\p{N}])?$/u;
+  return local.length <= 64 &&
+    local.split(".").every((part) => atom.test(part)) &&
+    domain.split(".").every((part) => label.test(part))
+    ? value
+    : null;
+}
+
 /** @param {unknown} value @param {string} studioProjectId @param {string} file */
 function savedRegistration(value, studioProjectId, file) {
   if (value == null) return undefined;
@@ -101,7 +117,7 @@ async function readRecord(projectPath, at = site()) {
     removed: record.removed === true,
     registration: savedRegistration(record.registration, record.studioProjectId, file),
     site: madeOn,
-    ownerEmail: typeof record.ownerEmail === "string" ? record.ownerEmail : null,
+    ownerEmail: displayOwnerEmail(record.ownerEmail),
   };
 }
 

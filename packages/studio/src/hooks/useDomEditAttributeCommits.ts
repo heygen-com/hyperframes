@@ -411,12 +411,13 @@ export function useDomEditAttributeCommits({
    * edit computes from a pre-edit value and appears to do nothing.
    */
   const handleDomAttributeQuietCommit = useCallback(
-    async (attr: string, value: string | null) => {
+    async (attr: string, value: string | null, onSettled?: (ok: boolean) => void) => {
       await commitDataAttribute(attr, value, {
         label: `Edit ${attr.replace(/^(data-)?/, "").replace(/-/g, " ")}`,
         coalescePrefix: "attr-quiet",
         skipRefresh: true,
         refreshAfter: true,
+        onSettled,
       });
     },
     [commitDataAttribute],

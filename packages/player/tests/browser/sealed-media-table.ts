@@ -26,7 +26,7 @@ type Kind =
   | "lapse"
   | "lapseCors"
   | "slowNocors";
-type Source = { id: string; kind: Kind };
+type Source = { id: string; kind: Kind; start?: number };
 type Step =
   | { do: "create"; el: number; sources: Source[]; attr?: true }
   | { do: "prepend" | "append"; el: number; source: Source }
@@ -133,7 +133,7 @@ function generated(seed: number): Sequence {
   return { name: `seed ${seed}`, rounds };
 }
 
-const own = (id: string, kind: Kind): Source => ({ id, kind });
+const own = (id: string, kind: Kind, start?: number): Source => ({ id, kind, start });
 // Earlier review repros, written in the same steps.
 const FIXED: Sequence[] = [
   {
@@ -182,9 +182,11 @@ const FIXED: Sequence[] = [
     ],
   },
   {
-    name: "a host down with and without CORS, then back, the same element reloaded",
+    name: "a host down with and without CORS, then back, the same element reloaded twice",
+    // The second reload is the one every film's host answers, so the unsealed film always has a frame to compare.
     rounds: [
       [{ do: "create", el: 0, sources: [own("f6-a", "outage")] }],
+      [{ do: "reload", el: 0 }],
       [{ do: "reload", el: 0 }],
     ],
     keepsCors: [0],
@@ -286,7 +288,7 @@ const FIXED: Sequence[] = [
         {
           do: "create",
           el: 0,
-          sources: [own("r7seekPlaying-a", "down"), own("r7seekPlaying-b", "cors")],
+          sources: [own("r7seekPlaying-a", "down"), own("r7seekPlaying-b", "cors", 1.5)],
         },
         { do: "play", el: 0, rate: 1.5 },
         { do: "interrupt", el: 0, action: "seekPlaying", source: own("r7seekPlaying-c", "cors") },
@@ -335,7 +337,13 @@ const foreignOrigin = server.origin.replace("127.0.0.1", "localhost");
 type SourceAttrs = { src: string; type?: string; media?: string };
 
 // Each run asks for its own URLs, so the server's per-URL failures and request counts stay apart.
+// A trimmed clip's source opens past 0 (#t=), as a media-start does.
 function urlFor(source: Source, run: string): SourceAttrs {
+  const attrs = urlForKind(source, run);
+  return source.start ? { ...attrs, src: `${attrs.src}#t=${source.start}` } : attrs;
+}
+
+function urlForKind(source: Source, run: string): SourceAttrs {
   const query = `?id=${run}.${source.id}&no-store`;
   const path = (dir: string) => `${dir}/10-video-grid/sample.mp4${query}`;
   switch (source.kind) {
@@ -488,10 +496,12 @@ async function installDriver(frame: Frame) {
           sources: Array<{ src: string; type?: string; media?: string }>,
           attr?: boolean,
           duringRetry?: string,
+          seekOnReload?: boolean,
         ) {
           const video = document.createElement("video");
           video.dataset.table = key;
           if (duringRetry) video.dataset.authorDuringRetry = duringRetry;
+          if (seekOnReload) pending.set(video, { action: "seekPlaying" });
           video.muted = true;
           video.loop = true;
           // The runtime binds new media with preload auto and a load() of its own, at a time of its choosing.
@@ -673,7 +683,13 @@ async function installDriver(frame: Frame) {
 }
 
 type Table = {
-  create: (key: string, sources: SourceAttrs[], attr: boolean, duringRetry?: string) => void;
+  create: (
+    key: string,
+    sources: SourceAttrs[],
+    attr: boolean,
+    duringRetry?: string,
+    seekOnReload?: boolean,
+  ) => void;
   edit: (key: string, step: object) => unknown;
   settled: () => boolean;
   flush: () => boolean;
@@ -697,21 +713,27 @@ async function runAll(frame: Frame, sequences: Sequence[], run: string) {
       // A write during the retry is registered with its element: as a later call, a fast failure could beat it.
       const duringRetry = (el: number) =>
         steps.find((step) => step.do === "author" && step.duringRetry && step.el === el);
+      // So is a seek on a reload past 0: that reload can come while the play step waits for the runtime.
+      const seekOnReload = (el: number) =>
+        steps.some(
+          (step) => step.do === "interrupt" && step.action === "seekPlaying" && step.el === el,
+        );
       for (const step of steps) {
         const key = `${index}-${step.el}`;
         if (step.do === "recover") server.recover(`${run}.${step.source.id}`);
         if (step.do === "create") {
           const during = duringRetry(step.el);
           await frame.evaluate(
-            (k, s, a, d) => window.__table.create(k, s, a, d),
+            (k, s, a, d, o) => window.__table.create(k, s, a, d, o),
             key,
             step.sources.map((source) => urlFor(source, run)),
             step.attr ?? false,
             during?.do === "author" ? during.value : undefined,
+            seekOnReload(step.el),
           );
         } else if (
-          step.do === "author" &&
-          step.duringRetry &&
+          ((step.do === "author" && step.duringRetry) ||
+            (step.do === "interrupt" && step.action === "seekPlaying")) &&
           steps.some((s) => s.do === "create" && s.el === step.el)
         )
           continue;

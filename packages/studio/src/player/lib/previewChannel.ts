@@ -8,6 +8,7 @@ import {
   type EditingResult,
 } from "@hyperframes/core/runtime/editing-port";
 import type { ClipManifest, IframeWindow } from "./playbackTypes";
+import { wellFormedClips } from "./manifestClips";
 
 const clients = new WeakMap<HTMLIFrameElement, { client: EditingPortClient; retire: () => void }>();
 const loopStarts = new WeakMap<EditingPortClient, number | null>();
@@ -128,7 +129,7 @@ export async function previewClipManifest(iframe: HTMLIFrameElement): Promise<Cl
   const { clips, durationInFrames } = manifest as Partial<ClipManifest>;
   if (!Array.isArray(clips) || typeof durationInFrames !== "number") return null;
   if (!Number.isFinite(durationInFrames)) return null;
-  return manifest as ClipManifest;
+  return { ...(manifest as ClipManifest), clips: wellFormedClips(clips) };
 }
 
 export async function previewClipParents(iframe: HTMLIFrameElement): Promise<Map<string, string>> {
