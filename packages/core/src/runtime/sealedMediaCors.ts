@@ -2,6 +2,8 @@
 // `crossorigin` the browser loads that media in no-cors mode: WebGL and canvases refuse its frames, Web Audio treats it
 // as foreign. The preview server answers CORS loads from an opaque origin, so its own media opts in; other hosts don't.
 
+import { forgetRuntimeAttribute, recordRuntimeAttribute } from "./runtimeAttributes";
+
 const isMedia = (el: Element): el is HTMLMediaElement =>
   el.localName === "video" || el.localName === "audio";
 
@@ -22,14 +24,12 @@ function originOf(url: string, base: string): string | null {
 }
 
 // Only a crossorigin added here is taken back when a src moves to a host that may not answer CORS.
-const optedIn = new WeakSet<HTMLMediaElement>();
-
 function sync(media: HTMLMediaElement, home: string): void {
   const own = servedHere(media, home);
   if (own && !media.hasAttribute("crossorigin")) {
     media.setAttribute("crossorigin", "anonymous");
-    optedIn.add(media);
-  } else if (!own && optedIn.delete(media)) {
+    recordRuntimeAttribute(media, "crossorigin");
+  } else if (!own && forgetRuntimeAttribute(media, "crossorigin")) {
     media.removeAttribute("crossorigin");
   }
 }

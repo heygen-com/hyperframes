@@ -11,6 +11,7 @@ import {
   serializeHfColorGrading,
 } from "../../colorGrading";
 import type { SoftReloadRerun } from "./softReload";
+import { isRuntimeAttribute } from "../runtimeAttributes";
 
 /** `hf:<data-hf-id>` or `id:<id>`, the key the parent's restore diff uses. */
 export type RestoreElementKey = string;
@@ -185,7 +186,9 @@ function planRoot(
     // The preview rewrites a sub-composition's own root, so its attributes are not the file's.
     if (!el || el.hasAttribute("data-hf-inner-root")) return false;
     const keep = new Set(attributes.map(([name]) => name));
-    const drop = el.getAttributeNames().filter((name) => !keep.has(name));
+    const drop = el
+      .getAttributeNames()
+      .filter((name) => !keep.has(name) && !isRuntimeAttribute(el, name));
     const set = attributes.filter(([name, value]) => el.getAttribute(name) !== value);
     const safeSet = settable(el, set);
     if (!drop.every(safeToDrop) || !safeSet) return false;
