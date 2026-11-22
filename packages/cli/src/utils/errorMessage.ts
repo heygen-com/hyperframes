@@ -40,6 +40,9 @@ export function splitStepsWrittenByCli(message: string): {
   };
 }
 
+export const stackOrMessage = (error: unknown): string =>
+  error instanceof Error ? (error.stack ?? error.message) : String(error);
+
 export function normalizeErrorMessage(error: unknown): string {
   if (error instanceof Error) return namedAfterCrash(error.message);
   if (typeof error === "string") return error;

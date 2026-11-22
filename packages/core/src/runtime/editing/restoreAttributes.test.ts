@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseRestoreAttributes, restoreAttributes } from "./restoreAttributes";
+import { parseRestoreAttributes, restoreInPlace } from "./restoreAttributes";
 
 type TestWindow = Window & Record<string, unknown>;
 const win = window as TestWindow;
@@ -38,7 +38,7 @@ describe("restore-attributes", () => {
       ["data-hf-id", "box"],
       ["style", "left: 0px"],
     ]);
-    expect(restoreAttributes(params)).toEqual({ applied: true });
+    expect(restoreInPlace(params)).toBe("applied");
     const box = document.querySelector('[data-hf-id="box"]')!;
     expect(box.getAttribute("style")).toBe("left: 0px");
     expect(box.hasAttribute("class")).toBe(false);
@@ -51,7 +51,7 @@ describe("restore-attributes", () => {
       .join("");
     player();
     const params = restore("hf:box", [["data-hf-id", "box"]], "sub.html");
-    expect(restoreAttributes(params)).toEqual({ applied: true });
+    expect(restoreInPlace(params)).toBe("applied");
     expect(document.querySelectorAll("[style]")).toHaveLength(0);
   });
 
@@ -61,7 +61,7 @@ describe("restore-attributes", () => {
       document.body.innerHTML = html;
       player();
       const before = document.body.innerHTML;
-      expect(restoreAttributes(params)).toEqual({ applied: false });
+      expect(restoreInPlace(params)).toBe("refused");
       expect(document.body.innerHTML).toBe(before);
     };
     refused('<div data-hf-id="other"></div>');
@@ -72,9 +72,9 @@ describe("restore-attributes", () => {
     const rebind = vi.fn();
     player();
     win.__hfForceTimelineRebind = rebind;
-    expect(restoreAttributes({ ...restore("hf:box", attributes), scripted: true })).toEqual({
-      applied: false,
-    });
+    expect(restoreInPlace({ ...restore("hf:box", attributes), scripted: true })).toBe(
+      "gsap-parsed",
+    );
     expect(rebind).not.toHaveBeenCalled();
   });
 
@@ -87,7 +87,7 @@ describe("restore-attributes", () => {
       ["data-hf-studio-original-inline-translate", ""],
       ["style", "translate: 130px 90px"],
     ]);
-    expect(restoreAttributes(params)).toEqual({ applied: true });
+    expect(restoreInPlace(params)).toBe("applied");
     const box = document.querySelector('[data-hf-id="box"]')!;
     expect(box.getAttribute("data-hf-studio-original-inline-translate")).toBe("");
     expect(box.getAttribute("style")).toBe("translate: 130px 90px");
@@ -98,24 +98,22 @@ describe("restore-attributes", () => {
     document.body.innerHTML = '<div data-hf-id="box"></div><i data-hf-studio-rotation="true"></i>';
     player();
     const sized = () =>
-      restoreAttributes(
+      restoreInPlace(
         restore("hf:box", [
           ["data-hf-id", "box"],
           ["data-hf-studio-box-size", "true"],
         ]),
       );
-    expect(sized()).toEqual({ applied: false });
+    expect(sized()).toBe("refused");
     win.__hfStudioSeekReapplyStarted = true;
-    expect(sized()).toEqual({ applied: true });
+    expect(sized()).toBe("applied");
   });
 
   // fails without the fix: dropping a motion mark in place left its timeline running.
   it("reloads to take a motion mark away", () => {
     document.body.innerHTML = '<div data-hf-id="box" data-hf-studio-motion="{}"></div>';
     player();
-    expect(restoreAttributes(restore("hf:box", [["data-hf-id", "box"]]))).toEqual({
-      applied: false,
-    });
+    expect(restoreInPlace(restore("hf:box", [["data-hf-id", "box"]]))).toBe("refused");
   });
 
   it("changes no handler, URL or sandbox-style attribute, and leaves an unchanged one alone", () => {
@@ -123,7 +121,7 @@ describe("restore-attributes", () => {
       document.body.innerHTML = html;
       player();
       const before = document.body.innerHTML;
-      expect(restoreAttributes(restore("hf:box", attributes))).toEqual({ applied: false });
+      expect(restoreInPlace(restore("hf:box", attributes))).toBe("refused");
       expect(document.body.innerHTML).toBe(before);
     };
     const box = '<div data-hf-id="box"></div>';
@@ -143,7 +141,7 @@ describe("restore-attributes", () => {
     const img = document.querySelector("img")!;
     const setAttribute = vi.spyOn(img, "setAttribute");
     const params = restore("hf:box", [id, ["src", "a.png"], ["style", "left: 0px"]]);
-    expect(restoreAttributes(params)).toEqual({ applied: true });
+    expect(restoreInPlace(params)).toBe("applied");
     expect(setAttribute.mock.calls).toEqual([["style", "left: 0px"]]);
     expect(img.hasAttribute("loading")).toBe(false);
   });

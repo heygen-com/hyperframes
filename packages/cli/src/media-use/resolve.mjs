@@ -339,9 +339,21 @@ if (args.provider && !providerMatches(args.type, args.provider)) {
   process.exit(2);
 }
 
+// The path of `path` inside the project once links are followed, or null when it is the project itself or leaves it.
+function insideProject(projectDir, path) {
+  const real = (at) => (existsSync(at) ? realpathSync(at) : at);
+  const inside = relative(real(projectDir), real(path));
+  return inside && inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)
+    ? inside
+    : null;
+}
+
 function recordAvailable(projectDir, record) {
   if (!record) return false;
-  if (record.path) return existsSync(join(projectDir, record.path));
+  if (record.path) {
+    const path = resolve(projectDir, record.path);
+    return insideProject(projectDir, path) !== null && existsSync(path);
+  }
   return record.type === "grade" && record.grading;
 }
 
@@ -935,16 +947,8 @@ async function ingest(src) {
     console.error("error: --source records media files; a LUT or grade is ingested without it");
     process.exit(2);
   }
-  const real = (path) => (existsSync(path) ? realpathSync(path) : path);
-  const inProject = args.source && !isUrl ? relative(real(projectDir), real(resolve(src))) : null;
-  if (
-    inProject &&
-    inProject !== ".." &&
-    !inProject.startsWith(`..${sep}`) &&
-    !isAbsolute(inProject)
-  ) {
-    return recordProjectFile(inProject.split(sep).join("/"));
-  }
+  const inProject = args.source && !isUrl ? insideProject(projectDir, resolve(src)) : null;
+  if (inProject) return recordProjectFile(inProject.split(sep).join("/"));
   const ext = extname(isUrl ? new URL(src).pathname : src) || defaultExt(type);
   const { id, localPath, fullPath } = await withReservedFile(
     projectDir,
@@ -1349,8 +1353,9 @@ function recordedMatch(record) {
 async function result(record, source, match = recordedMatch(record)) {
   warnLowConfidence(record, match);
   const { provider, license, credit, source_url: sourceUrl } = record.provenance ?? {};
-  // Under the media lock: two resolves at once each read, then rewrite, the whole credits file.
-  if (provider === OPENVERSE_SFX_PROVIDER)
+  // Under the media lock: two resolves at once each read, then rewrite, the whole credits file. A project
+  // manifest's record ("cached") is the project's own text, so its provider claim never writes a credit.
+  if (provider === OPENVERSE_SFX_PROVIDER && source !== "cached")
     withMediaLock(projectDir, () =>
       writeSfxCredit(join(ownTypeDir(projectDir, "sfx"), "CREDITS.md"), record.path, {
         license,

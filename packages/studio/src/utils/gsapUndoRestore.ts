@@ -9,15 +9,16 @@ import {
   findGsapScriptElements,
   readNestedFiles,
   repaintDroppedTweenStyle,
+  sealedRerun,
   timelineKeys,
 } from "./gsapSoftReload";
+import { restoredSnapshot, sendSealedRestore, type SealedRestore } from "./sealedRestoreSend";
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { findAuthoredElement, parseSavedSource } from "./authoredSource";
 import { STUDIO_EDIT_ATTRS } from "../components/editor/manualEditsSeekReapply";
 import { announcePreviewRestoredInPlace, markScenesStale } from "../player/sceneSwap";
-import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
-import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
 import { STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR } from "../components/editor/manualEditsTypes";
 import {
   countStudioPreviewChange,
@@ -370,8 +371,6 @@ function repaintWhileReloading(win: PreviewWindow, doc: Document, restored?: str
   );
 }
 
-type SealedRestore = Omit<EditingParams<"restore-attributes">, "time">;
-
 const restoredAttributes = (el: Element): [string, string][] =>
   el.getAttributeNames().map((name) => [name, el.getAttribute(name) ?? ""]);
 
@@ -409,7 +408,17 @@ function sealedRestore(activeDocPath: string, files: RestoreFiles): SealedRestor
   return restore;
 }
 
-/** Sends the restore to a sealed preview; a refusal, or no answer, reloads it. */
+function withRerun(
+  restore: SealedRestore,
+  active: UndoRestoreFile | undefined,
+  script: string | null,
+): SealedRestore {
+  if (!restore.scripted || !active || !script) return restore;
+  const files = { authoredHtml: active.restored, previousHtml: active.previous };
+  return { ...restore, rerun: sealedRerun(script, files) };
+}
+
+/** Sends the restore to a sealed preview, with the script re-run an element GSAP parsed needs; a refusal reloads. */
 function applySealedRestore(
   iframe: HTMLIFrameElement,
   activeDocPath: string,
@@ -417,6 +426,7 @@ function applySealedRestore(
   currentTime: number,
   reloadPreview: () => void,
   onShownInPlace?: () => void,
+  version?: number,
 ): "soft" | "full" {
   const restore = sealedRestore(activeDocPath, files);
   const active = files[activeDocPath];
@@ -431,29 +441,23 @@ function applySealedRestore(
         authoredHtml: active.restored,
         previousHtml: active.previous,
         restore: restore.scopes,
+        version,
       });
     if (rerun === "applied") return "soft";
   } else if (restore?.scopes.length) {
-    sendSealedRestore(iframe, restore, currentTime, reloadPreview, onShownInPlace);
+    const sent = withRerun(restore, active, script);
+    const snapshot = restoredSnapshot(sent, active, version);
+    sendSealedRestore(
+      iframe,
+      { sent, snapshot, version },
+      currentTime,
+      reloadPreview,
+      onShownInPlace,
+    );
     return "soft";
   }
   reloadPreview();
   return "full";
-}
-
-function sendSealedRestore(
-  iframe: HTMLIFrameElement,
-  restore: SealedRestore,
-  currentTime: number,
-  reloadPreview: () => void,
-  onShownInPlace?: () => void,
-): void {
-  void previewRequest(iframe, "restore-attributes", { ...restore, time: currentTime }).then(
-    (reply) => {
-      if (!reply?.applied) reloadPreview();
-      else onShownInPlace?.();
-    },
-  );
 }
 
 /**
@@ -491,6 +495,7 @@ export function applyUndoRestoreToPreview(
   currentTime: number,
   reload: () => void,
   nestedFiles?: Map<string, string> | null,
+  version?: number,
 ): "soft" | "full" {
   // The master view carries a NULL activeCompPath but the root iframe shows
   // index.html — the codebase-wide convention (`activeCompPath || "index.html"`).
@@ -503,8 +508,14 @@ export function applyUndoRestoreToPreview(
     reload();
   };
   if (iframe && files && previewFrameOpaque(iframe))
-    return applySealedRestore(iframe, activeDocPath, files, currentTime, reloadPreview, () =>
-      announcePreviewRestoredInPlace(iframe),
+    return applySealedRestore(
+      iframe,
+      activeDocPath,
+      files,
+      currentTime,
+      reloadPreview,
+      () => announcePreviewRestoredInPlace(iframe),
+      version,
     );
   const doc = iframe?.contentDocument;
   const win = iframe?.contentWindow as PreviewWindow | null;

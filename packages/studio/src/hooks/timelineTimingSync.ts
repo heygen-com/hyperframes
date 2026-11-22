@@ -150,6 +150,7 @@ async function syncTimingEditPreview(
     previousHtml: outcome.before,
     timingEdit: true,
     nestedFiles,
+    version: outcome.revision,
   });
   if (result === "cannot-soft-reload") reloadPreview();
 }

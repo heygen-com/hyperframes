@@ -90,9 +90,14 @@ export function ownMediaDir(projectDir) {
 
 /** The project's own folder for `type` under `.media`, made if missing; throws when any folder on the way is a link. */
 export function ownTypeDir(projectDir, type) {
-  let dir = ownMediaDir(projectDir);
+  return ownFolder(ownMediaDir(projectDir), typeSubdir(type));
+}
+
+/** Folder `rel` under `base`, made if missing; throws when any folder on the way is a link. */
+export function ownFolder(base, rel) {
+  let dir = base;
   // Each folder is looked at before it is made, so nothing is ever made through a link.
-  for (const part of typeSubdir(type).split("/")) {
+  for (const part of rel.split(/[\\/]/).filter(Boolean)) {
     dir = join(dir, part);
     if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) {
       throw new Error(

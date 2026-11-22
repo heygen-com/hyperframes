@@ -32,7 +32,6 @@ import { elementGeometry } from "./editingGeometry";
 import { pointerTargetsAt } from "./editingTargets";
 import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
-import { restoreAttributes } from "./editing/restoreAttributes";
 import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
 import { maxZIndex } from "./editing/maxZIndex";
 import { gestureStart } from "./editingGestureStart";
@@ -42,7 +41,7 @@ import { cropLift } from "./editing/cropLift";
 import { stackingFamily } from "./editingLayers";
 import { gsapSet } from "./editing/gsapSet";
 import { patchTweens } from "./editing/patchTween";
-import { softReload } from "./editing/softReload";
+import { preloadMotionPath, restoreAttributesOrRerun, softReload } from "./editing/softReload";
 import { holdScenes, markScenesStale, swapScenes } from "./editing/scenes";
 import { liveRetime } from "./editing/liveRetime";
 import { previewAssetsUnloaded } from "../lottieReadiness";
@@ -212,7 +211,7 @@ const HANDLERS: Handlers = {
     return { errors, truncated: from + errors.length < seen.length };
   },
   "watch-keys": ({ combos }, port) => watchKeys(port, combos),
-  "restore-attributes": (params) => restoreAttributes(params),
+  "restore-attributes": restoreAttributesOrRerun,
   "caption-words": captionWords,
   "caption-transform": captionTransform,
   "color-grading-status": colorGradingStatus,
@@ -294,6 +293,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     const port = channel.port1;
     ports.add(port);
     serve(port);
+    preloadMotionPath();
     try {
       // "*" as every runtime post does (bridge.ts): the frame is not told its parent's origin.
       parent.postMessage(

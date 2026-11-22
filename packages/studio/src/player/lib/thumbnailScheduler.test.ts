@@ -136,6 +136,54 @@ describe("ThumbnailScheduler", () => {
     });
   });
 
+  // fails without the fix: the preview poster rendered for the next open took the free slot beside a card's
+  // thumbnail, and the clip thumbnail asked for a moment later waited for the card's render to end.
+  it("starts work nobody reads only when its bucket is idle, so what is asked for next does not wait behind it", async () => {
+    const scheduler = new ThumbnailScheduler(
+      resolveTimelineViewportBudgets({ concurrentCompositionFetches: 2 }),
+    );
+    const card = deferred<ThumbnailLoadedResult>();
+    const clip = deferred<ThumbnailLoadedResult>();
+    const starts: string[] = [];
+    const load = (name: string, pending?: ReturnType<typeof deferred<ThumbnailLoadedResult>>) =>
+      vi.fn(() => {
+        starts.push(name);
+        return pending?.promise ?? Promise.resolve(result(name));
+      });
+    const composition = { kind: "composition" } as const;
+    const poster = request("poster", load("poster"), "overscan", {
+      ...composition,
+      discardWhenReleased: true,
+    });
+
+    scheduler.acquire(request("card", load("card", card), "visible", composition), vi.fn());
+    scheduler.acquire(poster, vi.fn());
+    await flush();
+    expect(starts).toEqual(["card"]);
+    scheduler.acquire(request("clip", load("clip", clip), "visible", composition), vi.fn());
+    await flush();
+    expect(starts).toEqual(["card", "clip"]);
+
+    card.resolve(result("card"));
+    await flush();
+    expect(starts).toEqual(["card", "clip"]);
+    clip.resolve(result("clip"));
+    await vi.waitFor(() => {
+      expect(starts).toEqual(["card", "clip", "poster"]);
+    });
+  });
+
+  it("starts work nobody reads at once in an idle bucket", async () => {
+    const scheduler = new ThumbnailScheduler();
+    const load = vi.fn(async () => result("poster"));
+    scheduler.acquire(
+      request("poster", load, "overscan", { kind: "composition", discardWhenReleased: true }),
+      vi.fn(),
+    );
+    await flush();
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
   it("suspends new rich work while scrolling but lets posters proceed", async () => {
     const scheduler = new ThumbnailScheduler();
     const richLoad = vi.fn(async () => result("rich"));

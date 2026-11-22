@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file
 import "./utils/hideChildConsoles.js";
 import "./utils/windowsExeSearch.js";
 import { injectDeterministicFontFaces } from "@hyperframes/producer";

@@ -39,7 +39,25 @@ it("still resolves paths on a volume whose native realpath refuses with EISDIR",
 
 // fails without the fix: off the event loop a link on such a volume never resolved, so the private-file check read it
 // under its innocuous spelling.
-it.skipIf(process.platform === "win32")(
+// Windows makes a link only with the right to (an admin, or Developer Mode); without it these cases can't be set up,
+// and where a run must cover them (HF_LINKS_REQUIRED) that fails instead of skipping.
+const canLink = (() => {
+  const dir = mkdtempSync(join(tmpdir(), "link-probe-"));
+  try {
+    symlinkSync(join(dir, "a"), join(dir, "b"));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+})();
+if (!canLink && process.env.HF_LINKS_REQUIRED)
+  throw new Error(
+    "this machine cannot make links, which these tests need (HF_LINKS_REQUIRED is set)",
+  );
+
+it.skipIf(!canLink)(
   "resolves a link off the event loop on a volume whose native realpath refuses with EISDIR",
   async () => {
     const base = mkdtempSync(join(tmpdir(), "safepath-eisdir-"));

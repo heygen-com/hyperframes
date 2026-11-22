@@ -16,7 +16,25 @@ function project(): string {
   return dir;
 }
 
-describe.skipIf(process.platform === "win32")("the off-loop private-file check", () => {
+// Windows makes a link only with the right to (an admin, or Developer Mode); without it these cases can't be set up,
+// and where a run must cover them (HF_LINKS_REQUIRED) that fails instead of skipping.
+const canLink = (() => {
+  const dir = mkdtempSync(join(tmpdir(), "link-probe-"));
+  try {
+    symlinkSync(join(dir, "a"), join(dir, "b"));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+})();
+if (!canLink && process.env.HF_LINKS_REQUIRED)
+  throw new Error(
+    "this machine cannot make links, which these tests need (HF_LINKS_REQUIRED is set)",
+  );
+
+describe.skipIf(!canLink)("the off-loop private-file check", () => {
   // fails without the fix: a path that is there but will not resolve (a link loop) was judged by its own spelling.
   it("refuses a path that is there but will not resolve", async () => {
     const dir = project();

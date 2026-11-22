@@ -208,6 +208,80 @@ test("the last release is found by its subject, not by a line in another commit'
   assert.match(result.stderr, /misses 2 commit\(s\)/);
 });
 
+/** A release v0.8.1 commit, a breaking change on main, then `later` commits; the release moves to `version`. */
+function repoWithBreakingChange(version, later = () => {}) {
+  const shas = [];
+  return repo(
+    (write) => {
+      bump(version)(write);
+      const links = shas.map((sha) => `- ([x](/commit/${sha}))`).join("\n");
+      write(`releases/v${version}.md`, NOTES(version, links));
+    },
+    (write, git) => {
+      git("commit", "-q", "--allow-empty", "-m", "chore: release v0.8.1 (#1)");
+      write("packages/cli/src/floor.ts", "export const node = 22;\n");
+      git("add", "-A");
+      git("commit", "-qm", "fix(cli)!: needs Node 22 (#2)");
+      shas.push(git("rev-parse", "HEAD").trim());
+      later(shas[0], (...message) => {
+        git("commit", "-q", "--allow-empty", ...message.flatMap((m) => ["-m", m]));
+        shas.push(git("rev-parse", "HEAD").trim());
+        return shas.at(-1);
+      });
+    },
+  );
+}
+
+// fails without the fix: a patch release carrying a "fix(cli)!:" commit passed the release checks.
+test("--verify refuses a patch release that carries a breaking change", () => {
+  const result = run(repoWithBreakingChange("0.8.2"), "--verify");
+  assert.equal(result.code, 1);
+  assert.match(
+    result.stderr,
+    /v0\.8\.2 is too small a bump for a breaking change: [0-9a-f]{9} fix\(cli\)!: needs Node 22 \(#2\)/,
+  );
+  assert.match(result.stderr, /Release it as v0\.9\.0/);
+});
+
+test("--verify passes a breaking change released as the next minor below 1.0", () => {
+  assert.equal(run(repoWithBreakingChange("0.9.0"), "--verify").code, 0);
+});
+
+test("--verify passes a patch release once the breaking change is reverted", () => {
+  const reverted = repoWithBreakingChange("0.8.2", (breaking, commit) => {
+    commit(
+      "revert(cli): hold the Node floor (#3)",
+      `This reverts commit ${breaking.slice(0, 10)}.`,
+    );
+  });
+  assert.equal(run(reverted, "--verify").code, 0);
+});
+
+test("--verify refuses again once the revert is itself reverted", () => {
+  const relanded = repoWithBreakingChange("0.8.2", (breaking, commit) => {
+    const revert = commit(
+      "revert(cli): hold the Node floor (#3)",
+      `This reverts commit ${breaking}.`,
+    );
+    commit("feat(cli): bring back the Node floor (#4)", `This reverts commit ${revert}.`);
+  });
+  assert.match(run(relanded, "--verify").stderr, /too small a bump for a breaking change/);
+});
+
+test("--verify refuses manifests that move from different versions", () => {
+  const root = repo(
+    (write) => {
+      bump("0.8.2")(write);
+    },
+    (write, git) => {
+      write("plugin.json", manifest("0.8.0"));
+      git("add", "-A");
+      git("commit", "-qm", "chore: plugin.json was behind");
+    },
+  );
+  assert.match(run(root, "--verify").stderr, /move from different versions: 0\.8\.1, 0\.8\.0/);
+});
+
 test("the merge queue runs the release checks on a release diff", () => {
   const ci = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
   assert.match(ci, /release-checks:[\s\S]*merge_group[\s\S]*release_diff/);

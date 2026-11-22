@@ -9,7 +9,7 @@
  * otherwise takes straight off the frame's window, which an opaque-origin
  * preview does not allow.
  */
-import { parseRestoreAttributes, type RestoreAttributesParams } from "./editing/restoreAttributes";
+import type { RestoreAttributesParams } from "./editing/restoreAttributes";
 import {
   geometryEvent,
   parseWatchGeometry,
@@ -32,6 +32,7 @@ import type { EditingLayer, EditingStackingSibling } from "./editingLayers";
 import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
 import { parsePatchTweens, type PatchTweensParams } from "./editing/patchTween";
 import {
+  parseRestoreAttributesRerun,
   parseSoftReload,
   type SoftReloadParams,
   type SoftReloadResult,
@@ -332,7 +333,10 @@ export interface EditingRequests {
   /** The frame cancels these combos outside the elements that own keys, and forwards them and their
    * keyups to this port; an empty list stops. */
   "watch-keys": { params: { combos: string[] }; result: { watching: number } };
-  "restore-attributes": { params: RestoreAttributesParams; result: { applied: boolean } };
+  "restore-attributes": {
+    params: RestoreAttributesParams;
+    result: { applied: boolean; reran?: boolean };
+  };
   /** Boxes of the words of visible caption groups; a group written as plain text is split into word spans. */
   "caption-words": { params: CaptionWordsParams; result: { boxes: CaptionWordBox[] } };
   "caption-transform": { params: CaptionTransformParams; result: { words: CaptionWordState[] } };
@@ -573,7 +577,7 @@ const PARAM_PARSERS: {
   "console-errors": (params) =>
     hasKeys(params, "from") && isOffset(params.from) ? { from: params.from } : null,
   "watch-keys": comboList,
-  "restore-attributes": parseRestoreAttributes,
+  "restore-attributes": parseRestoreAttributesRerun,
   "caption-words": captionWordsParams,
   "caption-transform": captionTransformParams,
   "color-grading-status": parseColorGradingStatusParams,

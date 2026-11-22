@@ -1705,6 +1705,45 @@ describe("preResolveHostileMediaProxies", () => {
     }
   });
 
+  it("shows control characters in a copy's file name as visible escapes, on one line", async () => {
+    vi.useFakeTimers();
+    try {
+      const projectDir = mkProjectDir();
+      // Built rather than written: a literal control character in the source is a lint error.
+      const esc = String.fromCharCode(27);
+      mocks.scanProjectMediaCodecMap.mockResolvedValue({
+        [`/clip${esc}[2J\nx.mov`]: {
+          codecName: "hevc",
+          browserHostile: true,
+          representativeMime: null,
+          hasAlpha: false,
+        },
+      });
+      let finish: (() => void) | undefined;
+      mocks.resolveProxy.mockImplementation(
+        () => new Promise<string>((done) => (finish = () => done("/cache/clip.mp4"))),
+      );
+      mocks.proxyProgress.feed = (report) => report(0, { doneSeconds: 30, totalSeconds: 120 });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const pending = preResolveHostileMediaProxies(projectDir, "<html></html>");
+      await vi.advanceTimersByTimeAsync(10_000);
+      mocks.proxyProgress.feed = undefined;
+      finish?.();
+      await pending;
+
+      const heartbeat = errorSpy.mock.calls
+        .map(([line]) => String(line))
+        .filter((line) => line.startsWith("[hyperframes] making browser-playable copies:"));
+      expect(heartbeat).toEqual([
+        "[hyperframes] making browser-playable copies: 0 of 1 done. clip\\x1b[2J\\x0ax.mov: 25% (10s so far)",
+      ]);
+    } finally {
+      mocks.proxyProgress.feed = undefined;
+      vi.useRealTimers();
+    }
+  });
+
   it("copies only the stretch of a long video the composition plays", async () => {
     const projectDir = mkProjectDir();
     mocks.scanProjectMediaCodecMap.mockResolvedValue({

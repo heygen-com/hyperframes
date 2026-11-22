@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { inspect } from "node:util";
 import puppeteer, { TimeoutError, type Browser, type Page } from "puppeteer-core";
+import type { Plugin } from "esbuild";
 import { browserVersion, findSystemChrome } from "../vite.browser";
 
 const require = createRequire(import.meta.url);
@@ -86,3 +87,13 @@ export async function showWithRuntime(page: Page, html: string): Promise<void> {
   await page.evaluate(readFileSync(require.resolve("@hyperframes/core/runtime"), "utf8"));
   await page.waitForFunction(() => "__player" in window);
 }
+
+// recast imports these, and its code that uses them is dropped from the bundle. A new
+// built-in fails the build instead of turning into an empty module the way Vite makes it.
+export const emptyNodeBuiltins: Plugin = {
+  name: "empty-node-builtins",
+  setup(build) {
+    build.onResolve({ filter: /^(node:)?(fs|os)$/ }, ({ path }) => ({ path, namespace: "empty" }));
+    build.onLoad({ filter: /.*/, namespace: "empty" }, () => ({ contents: "module.exports = {}" }));
+  },
+};

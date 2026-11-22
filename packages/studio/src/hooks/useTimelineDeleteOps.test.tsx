@@ -7,6 +7,7 @@ import { applyRippleShifts, useTimelineDeleteOps } from "./useTimelineDeleteOps"
 import { installReactActEnvironment, mountReactHarness } from "./domSelectionTestHarness";
 import { useTrackPendingTimelineEdit } from "./useTrackPendingTimelineEdit";
 import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
+import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 
 installReactActEnvironment();
 
@@ -63,19 +64,23 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     handleTimelineGroupMove: DeleteOpsOptions["handleTimelineGroupMove"];
     showToast?: DeleteOpsOptions["showToast"];
     recordEdit?: DeleteOpsOptions["recordEdit"];
+    editQueueRef?: DeleteOpsOptions["editQueueRef"];
+    writeProjectFile?: DeleteOpsOptions["writeProjectFile"];
   }) {
     const elements = [el("hf-a", 0, 2), el("hf-b", 2, 2), el("hf-c", 4, 2)];
+    const editQueueRef = overrides.editQueueRef ?? { current: Promise.resolve() };
+    usePlayerStore.getState().setElements(elements);
     let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
     function Harness() {
       hook = useTimelineDeleteOps({
         projectIdRef: { current: "test-project" },
         activeCompPath: "index.html",
-        timelineElements: elements,
         showToast: overrides.showToast ?? vi.fn(),
-        writeProjectFile: vi.fn().mockResolvedValue(undefined),
+        writeProjectFile: overrides.writeProjectFile ?? vi.fn().mockResolvedValue(undefined),
         recordEdit: overrides.recordEdit ?? vi.fn().mockResolvedValue(undefined),
         reloadPreview: vi.fn(),
         previewIframeRef: { current: null },
+        editQueueRef,
         handleTimelineGroupMove: overrides.handleTimelineGroupMove,
       });
       return null;
@@ -89,8 +94,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     const handleTimelineGroupMove = vi.fn(
       () => new Promise<void>((resolve) => (finishRipple = resolve)),
     );
-    const { elements, b, getHook } = mountDeleteHarness({ handleTimelineGroupMove });
-    usePlayerStore.getState().setElements(elements);
+    const { b, getHook } = mountDeleteHarness({ handleTimelineGroupMove });
 
     let deleting = Promise.resolve();
     await act(async () => {
@@ -138,6 +142,81 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
       expect.objectContaining({ coalesceKey: deleted.coalesceKey }),
     );
   });
+
+  // Deletes hf-a, then hf-b once hf-a's ripple slid it to 0, both saving through one edit queue.
+  async function deleteTwoInARow(refused?: string) {
+    const writes: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).includes("/file-mutations/remove-elements/")) {
+          const { targets } = JSON.parse(String(init?.body)) as { targets: Array<{ id: string }> };
+          const write = `delete ${targets.map((t) => t.id).join(",")}`;
+          writes.push(write);
+          if (write === refused) return new Response("{}", { status: 500 });
+        }
+        return new Response(JSON.stringify({ content: html }), { status: 200 });
+      }),
+    );
+    // Stands in for the editor's group move: it joins the edit queue, then writes the file.
+    const editQueueRef = { current: Promise.resolve() };
+    const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+    const handleTimelineGroupMove: DeleteOpsOptions["handleTimelineGroupMove"] = (
+      changes,
+      options,
+    ) => {
+      const run = editQueueRef.current.then(async () => {
+        await options?.beforeTiming;
+        await serializeStudioFileMutations(writeProjectFile, ["index.html"], async () => {
+          const write = `move ${changes.map((c) => c.element.id).join(",")}`;
+          writes.push(write);
+          if (write === refused) throw new Error("refused");
+        });
+      });
+      editQueueRef.current = run.catch(() => undefined);
+      return run;
+    };
+    const { elements, getHook } = mountDeleteHarness({
+      handleTimelineGroupMove,
+      editQueueRef,
+      writeProjectFile,
+    });
+
+    await act(async () => {
+      const first = getHook().handleTimelineElementDelete(elements[0]);
+      const shiftedB = usePlayerStore.getState().elements.find((e) => e.id === "hf-b")!;
+      await Promise.all([first, getHook().handleTimelineElementDelete(shiftedB)]);
+    });
+    return writes;
+  }
+
+  // fails without the fix: the second delete saved between the first delete and its ripple.
+  it("saves a delete made right after another after the first one's ripple", async () => {
+    const writes = await deleteTwoInARow();
+
+    expect(writes).toEqual(["delete hf-a", "move hf-b,hf-c", "delete hf-b", "move hf-c"]);
+    expect(usePlayerStore.getState().elements).toEqual([el("hf-c", 0, 2)]);
+  });
+
+  // fails without the fix: the refused write restored the timeline from before it, so hf-b came back.
+  it.each([
+    [
+      "delete hf-a",
+      ["delete hf-a", "delete hf-b", "move hf-c"],
+      [el("hf-c", 2, 2), el("hf-a", 0, 2)],
+    ],
+    [
+      "move hf-b,hf-c",
+      ["delete hf-a", "move hf-b,hf-c", "delete hf-b", "move hf-c"],
+      [el("hf-c", 2, 2)],
+    ],
+  ])(
+    "a refused %s rolls back only itself, so the next delete stays gone",
+    async (refused, tried, after) => {
+      expect(await deleteTwoInARow(refused)).toEqual(tried);
+      expect(usePlayerStore.getState().elements).toEqual(after);
+    },
+  );
 
   it("removes a multi-clip selection with one request, however many clips it holds", async () => {
     const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
@@ -274,6 +353,7 @@ describe("useTimelineDeleteOps: undo race", () => {
 
   function mountRaceHarness() {
     const elements = [el("hf-a", 0, 2), el("hf-b", 2, 2), el("hf-c", 4, 2)];
+    usePlayerStore.getState().setElements(elements);
     const gate = deferred<void>();
     const recordEdit = vi.fn(() => gate.promise);
     let tracked: ((elements: TimelineElement[]) => Promise<void>) | null = null;
@@ -282,12 +362,12 @@ describe("useTimelineDeleteOps: undo race", () => {
       const hook = useTimelineDeleteOps({
         projectIdRef: { current: "test-project" },
         activeCompPath: "index.html",
-        timelineElements: elements,
         showToast: vi.fn(),
         writeProjectFile: vi.fn().mockResolvedValue(undefined),
         recordEdit,
         reloadPreview: vi.fn(),
         previewIframeRef: { current: null },
+        editQueueRef: { current: Promise.resolve() },
         handleTimelineGroupMove: vi.fn().mockResolvedValue(undefined),
       });
       tracked = track(hook.handleTimelineElementsDelete);
@@ -378,17 +458,18 @@ describe("useTimelineDeleteOps: live preview", () => {
       sourceFile: "index.html",
     });
     const elements = [clip("hf-a", 0), clip("hf-b", 2)];
+    usePlayerStore.getState().setElements(elements);
     let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
     function Harness() {
       hook = useTimelineDeleteOps({
         projectIdRef: { current: "test-project" },
         activeCompPath: "index.html",
-        timelineElements: elements,
         showToast: vi.fn(),
         writeProjectFile: vi.fn().mockResolvedValue(undefined),
         recordEdit: vi.fn().mockResolvedValue(undefined),
         reloadPreview: vi.fn(),
         previewIframeRef: { current: iframe },
+        editQueueRef: { current: Promise.resolve() },
         handleTimelineGroupMove: vi.fn().mockResolvedValue(undefined),
       });
       return null;
