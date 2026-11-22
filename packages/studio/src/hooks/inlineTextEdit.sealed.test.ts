@@ -2,7 +2,7 @@
 
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   EDITING_PROTOCOL_VERSION,
   EDITING_REQUEST_TIMEOUT_MS,
@@ -21,6 +21,7 @@ import {
 import { canEditSealedTextInline } from "../components/editor/domEditInlineText";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
 import { describePreviewElements, previewTextEdit } from "../player/lib/previewElements";
+import { keepKeyboardOutOfSealedFrame } from "../player/lib/sealedFrameKeyboard";
 import { retirePreviewEditingClient } from "../player/lib/previewChannel";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
@@ -1308,4 +1309,33 @@ it("takes back a failed field add's draw when a newer save on another field land
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
   expect(text("title")).toBe("<span>Blue</span> <span>Two</span>");
   await vi.waitFor(() => expect(title.textContent).toBe("Blue Two"));
+});
+
+type Edit = ReturnType<typeof inlineEditor> & { title: HTMLElement; reload: () => void };
+const ENDS: Array<[string, (edit: Edit) => void]> = [
+  ["is saved", (edit) => act(() => edit.controls().commit())],
+  ["is cancelled", (edit) => act(() => edit.controls().cancel())],
+  ["is ended by the frame on blur", (edit) => edit.title.dispatchEvent(new FocusEvent("blur"))],
+  ["unmounts mid-edit", () => act(unmounts.pop()!)],
+  ["has its frame reloaded and never ends", (edit) => edit.reload()],
+];
+
+// fails without the fix: the reclaim blurred the frame Studio had just focused for the edit.
+describe.each(ENDS)("a sealed text edit that %s", (_, end) => {
+  it("keeps the keyboard in the frame while open and hands it back to Studio", async () => {
+    const { title, iframe, selection, reload } = await sealedTitle();
+    const focus = { inFrame: false };
+    iframe.getRootNode = () => ({ activeElement: focus.inFrame ? iframe : document.body }) as never;
+    iframe.blur = vi.fn(() => void (focus.inFrame = false));
+    onTestFinished(keepKeyboardOutOfSealedFrame(iframe));
+    const editor = inlineEditor();
+    act(() => void editor.controls().start(selection.element));
+    await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+    focus.inFrame = true;
+    window.dispatchEvent(new Event("blur"));
+    await nextTask();
+    expect(focus.inFrame).toBe(true);
+    end({ ...editor, title, reload });
+    await vi.waitFor(() => expect(focus.inFrame).toBe(false));
+  });
 });
