@@ -203,6 +203,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
             ),
           handleTimelineGroupMove,
           showToast: vi.fn(),
+          reloadPreview: vi.fn(),
         });
       },
     });

@@ -1,8 +1,17 @@
-import type { MutableRefObject } from "react";
+import { useRef, type MutableRefObject } from "react";
 
 /** The editor's one timeline edit queue. `placed` rejects when an edit still pending is refused. */
 export interface TimelineEditQueue extends MutableRefObject<Promise<void>> {
   placed?: Promise<void>;
+}
+
+/** One queue per project, so a refusal in one project never touches another's edits. */
+export function useTimelineEditQueue(projectId: string | null): TimelineEditQueue {
+  const owner = useRef<{ projectId: string | null; queue: TimelineEditQueue } | null>(null);
+  if (owner.current?.projectId !== projectId) {
+    owner.current = { projectId, queue: { current: Promise.resolve() } };
+  }
+  return owner.current.queue;
 }
 
 export const refuseWithEarlier = (error: unknown): never => {
@@ -21,7 +30,9 @@ export function enqueueTimelineEdit<T>(
     if (ifEarlierRefused) await earlier.catch(ifEarlierRefused);
     return run();
   });
-  const placed = Promise.all([earlier, task]).then(() => undefined);
+  const placed = Promise.allSettled([earlier, task]).then((settled) => {
+    for (const result of settled) if (result.status === "rejected") throw result.reason;
+  });
   queue.placed = placed;
   queue.current = task.then(
     () => undefined,

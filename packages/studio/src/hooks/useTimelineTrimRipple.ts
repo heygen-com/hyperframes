@@ -23,6 +23,7 @@ interface UseTimelineTrimRippleOptions {
     options?: TimelineGroupCommitOptions,
   ) => Promise<void>;
   showToast: (message: string, tone?: "error" | "info") => void;
+  reloadPreview: () => void;
 }
 
 function setStarts(changes: ReadonlyArray<{ element: TimelineElement; start: number }>) {
@@ -39,6 +40,7 @@ export function useTimelineTrimRipple({
   handleTimelineGroupResize,
   handleTimelineGroupMove,
   showToast,
+  reloadPreview,
 }: UseTimelineTrimRippleOptions) {
   const persistWithRipple = useCallback(
     async (
@@ -59,6 +61,7 @@ export function useTimelineTrimRipple({
             start: (now.get(element.key ?? element.id)?.start ?? start) + element.start - start,
           })),
         );
+        reloadPreview();
       };
       setStarts(ripple);
       // Both join the edit queue in this call, so no later edit can land between the trim and
@@ -86,7 +89,7 @@ export function useTimelineTrimRipple({
         showToast("Clip trimmed, but the gap could not be closed.", "error");
       }
     },
-    [handleTimelineGroupResize, handleTimelineGroupMove, showToast],
+    [handleTimelineGroupResize, handleTimelineGroupMove, showToast, reloadPreview],
   );
 
   const handleTrimElement = useCallback(

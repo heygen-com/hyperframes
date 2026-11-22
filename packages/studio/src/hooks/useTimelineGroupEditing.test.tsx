@@ -164,8 +164,8 @@ it.each([false, true])(
   },
 );
 
-// fails without the fix: the shift ran and wrote though the edit queued before it was refused.
-it("refuses a ripple shift before it writes when an edit queued before it is refused", async () => {
+// The real group commits on a queue whose first edit was refused.
+function mountBehindRefusedEdit(showToast = vi.fn()) {
   const editQueueRef: TimelineEditQueue = { current: Promise.resolve() };
   const earlier = enqueueTimelineEdit(editQueueRef, () =>
     Promise.reject(new Error("delete refused")),
@@ -182,15 +182,25 @@ it("refuses a ripple shift before it writes when an edit queued before it is ref
       projectIdRef: { current: "fixture" },
       recordEdit: vi.fn(),
       reloadPreview: vi.fn(),
-      showToast: vi.fn(),
+      showToast,
       writeProjectFile: vi.fn(),
     });
     return null;
   }
   const root = mountReactHarness(<Harness />);
+  const unmount = () => {
+    act(() => root.unmount());
+    vi.unstubAllGlobals();
+  };
+  return { earlier, fetchMock, getHook: () => hook!, unmount };
+}
+
+// fails without the fix: the shift ran and wrote though the edit queued before it was refused.
+it("refuses a ripple shift before it writes when an edit queued before it is refused", async () => {
+  const { earlier, fetchMock, getHook, unmount } = mountBehindRefusedEdit();
   try {
     await act(async () => {
-      const shift = hook!.handleTimelineGroupMove([{ element: el("a", 2, 2), start: 0 }], {
+      const shift = getHook().handleTimelineGroupMove([{ element: el("a", 2, 2), start: 0 }], {
         ifEarlierRefused: refuseWithEarlier,
         suppressFailureToast: true,
       });
@@ -199,8 +209,24 @@ it("refuses a ripple shift before it writes when an edit queued before it is ref
     });
     expect(fetchMock.mock.calls).toEqual([]);
   } finally {
-    act(() => root.unmount());
-    vi.unstubAllGlobals();
+    unmount();
+  }
+});
+
+// fails without the fix: a trim of B, shifted to 0 by a delete that was then refused, wrote B at 0.
+it("refuses a trim before it writes when an edit queued before it is refused, so the clip keeps its start", async () => {
+  const { earlier, fetchMock, getHook, unmount } = mountBehindRefusedEdit();
+  try {
+    await act(async () => {
+      const trim = getHook().handleTimelineGroupResize([
+        { element: el("b", 0, 2), start: 0, duration: 1 },
+      ]);
+      await expect(earlier).rejects.toThrow("delete refused");
+      await expect(trim).rejects.toThrow("delete refused");
+    });
+    expect(fetchMock.mock.calls).toEqual([]);
+  } finally {
+    unmount();
   }
 });
 
