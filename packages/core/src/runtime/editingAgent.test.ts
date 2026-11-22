@@ -427,7 +427,13 @@ describe("installEditingAgent", () => {
           { handle: H, translate: null, size: null, rotate: { angle: 1, route: "transform" } },
         ],
       },
-      ...["url(x.png)", "rotate(1deg);color:red", "x".repeat(513)].map((value) => ({
+      ...[
+        "url(x.png)",
+        "rotate(1deg);color:red",
+        "translate(1px",
+        "scale(2) /* x",
+        "x".repeat(513),
+      ].map((value) => ({
         drafts: [
           {
             handle: H,

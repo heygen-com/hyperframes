@@ -176,8 +176,15 @@ describe("element requests over an opaque frame's port", () => {
     }));
     const read = async () => (await previewGestureStart(iframe, [h(1)]))!.elements[0]!.cssRotation;
     expect(await read()).toMatchObject({ target: { after: "scale(2)" } });
-    after = "url(https://example.com/x)";
-    expect(await read()).toBeUndefined();
+    for (after of [
+      "url(https://example.com/x)",
+      "translate(1px",
+      "scale(2) /* x",
+      "scale(2));color:red",
+    ])
+      expect(await read()).toBeUndefined();
+    after = "translateX(calc(10px + var(--a))) rotate(1deg)";
+    expect(await read()).toMatchObject({ target: { after } });
   });
 
   it("reads an element's stacking family, and refuses one that is not a family of it", async () => {

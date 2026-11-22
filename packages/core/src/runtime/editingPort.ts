@@ -481,11 +481,20 @@ function draftPart(value: unknown, keys: string, min: number): boolean {
 const TRANSFORM_CALL =
   /^(?:(?:translate|scale|rotate)(?:[XYZ]|3d)?|skew[XY]?|matrix(?:3d)?|perspective|calc|var|min|max|clamp)$/;
 
-export const isTransformList = (value: unknown): value is string =>
-  typeof value === "string" &&
-  value.length <= 512 &&
-  /^[\w\s().,%+\-*/]*$/.test(value) &&
-  [...value.matchAll(/([\w-]+)\s*\(/g)].every(([, name]) => TRANSFORM_CALL.test(name!));
+const INNER_CALL = /([\w-]+)\(([\w\s.,%+\-*/]*)\)/g;
+
+// Innermost known calls fold to a token until none is left: an unclosed paren or a comment never folds.
+export function isTransformList(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 512 || value.includes("/*")) return false;
+  let rest = value;
+  for (let last = ""; rest !== last; ) {
+    last = rest;
+    rest = rest.replace(INNER_CALL, (call, name: string) =>
+      TRANSFORM_CALL.test(name) ? "0" : call,
+    );
+  }
+  return /^[\s0]*$/.test(rest);
+}
 
 const isRotateRoute = (value: unknown): value is Record<string, unknown> =>
   (hasKeys(value, "angle,route") && (value.route === "css" || value.route === "gsap")) ||
