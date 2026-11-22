@@ -1,5 +1,9 @@
+import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 import { patchRuntimeTweenInPlace } from "./gsapRuntimePatch";
+import { trackStudioEvent } from "../utils/studioTelemetry";
+
+vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 /**
  * The helper patches ONE tween's values in `window.__timelines[compKey]` in place,
@@ -564,5 +568,84 @@ describe("patchRuntimeTweenInPlace — deferSeek", () => {
     expect(last).toBe(true);
     expect(seek).toHaveBeenCalledTimes(1);
     expect(rendered).toEqual({ a: 500, b: 600 });
+  });
+});
+
+describe("patchRuntimeTweenInPlace — a throw inside the patch", () => {
+  // fails without the fix: the reload fallback hid the error, so a broken patch path looked like a slow edit.
+  // The composition's GSAP throws here, so the edit still falls back to a reload.
+  it("falls back, and reports the error's name, never its message", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const el = { id: "box" };
+    const iframe = {
+      contentWindow: {
+        gsap: {
+          set: () => {
+            throw new TypeError("user script text");
+          },
+        },
+      },
+      contentDocument: { querySelector: (sel: string) => (sel === "#box" ? el : null) },
+    } as unknown as HTMLIFrameElement;
+
+    expect(patchRuntimeTweenInPlace(iframe, "#box", { kind: "global-set", props: { x: 1 } })).toBe(
+      false,
+    );
+    expect(trackStudioEvent).toHaveBeenCalledWith("gsap_instant_patch_threw", {
+      error_name: "TypeError",
+    });
+    expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
+  });
+
+  // fails without the fix: a TypeError from the preview frame's realm is not instanceof this realm's Error, so every
+  // real throw reported 'other'.
+  it("reports a built-in error thrown in the preview frame's realm by its name", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const el = { id: "box" };
+    const iframe = {
+      contentWindow: {
+        gsap: {
+          set: () => {
+            throw runInNewContext("new TypeError('user script text')");
+          },
+        },
+      },
+      contentDocument: { querySelector: (sel: string) => (sel === "#box" ? el : null) },
+    } as unknown as HTMLIFrameElement;
+
+    expect(patchRuntimeTweenInPlace(iframe, "#box", { kind: "global-set", props: { x: 1 } })).toBe(
+      false,
+    );
+    expect(trackStudioEvent).toHaveBeenLastCalledWith("gsap_instant_patch_threw", {
+      error_name: "TypeError",
+    });
+    logged.mockRestore();
+  });
+
+  it("reports a name the composition gave its own error class as 'other'", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    class FilmError extends Error {
+      override name = "user script text";
+    }
+    const el = { id: "box" };
+    const iframe = {
+      contentWindow: {
+        gsap: {
+          set: () => {
+            throw new FilmError();
+          },
+        },
+      },
+      contentDocument: { querySelector: (sel: string) => (sel === "#box" ? el : null) },
+    } as unknown as HTMLIFrameElement;
+
+    expect(patchRuntimeTweenInPlace(iframe, "#box", { kind: "global-set", props: { x: 1 } })).toBe(
+      false,
+    );
+    expect(trackStudioEvent).toHaveBeenLastCalledWith("gsap_instant_patch_threw", {
+      error_name: "other",
+    });
+    logged.mockRestore();
   });
 });
