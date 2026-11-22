@@ -1,7 +1,7 @@
 /**
  * The one matrix every overlay measure reads: each node's `rotate`, `scale` and `transform`, in CSS's
- * order, parsed and composed by the browser's `DOMMatrix`. `translate` never changes a shape (callers
- * re-anchor to the measured box), and `DOMMatrix` refuses its common `50%`, so it is left out.
+ * order, parsed and composed by the browser's `DOMMatrix`; null once a layer leaves its plane. `translate`
+ * never changes a shape (callers re-anchor to the measured box) and `DOMMatrix` refuses its `50%`.
  */
 
 /** The composition's own root; the walk stops there rather than at the document. */
@@ -34,11 +34,16 @@ function ownNodeTransform(
   const transform = style.transform && style.transform !== "none" ? style.transform : "";
   const list = [rotateFunction(style.rotate), scaleFunction(style.scale), transform];
   try {
-    return new Matrix(list.filter(Boolean).join(" "));
+    const own = new Matrix(list.filter(Boolean).join(" "));
+    return planar(own) ? own : null;
   } catch {
     return null;
   }
 }
+
+/** Keeps the layer's plane flat and unprojected; anything else is left to the box the browser paints. */
+const planar = (m: DOMMatrix) =>
+  [m.m13, m.m23, m.m14, m.m24, m.m44 - 1].every((v) => Math.abs(v) < 1e-9);
 
 /**
  * The element's transform composed with every ancestor's, up to the composition root; an ancestor

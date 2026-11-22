@@ -163,17 +163,19 @@ class ComputedMatrix {
   b = 0;
   c = 0;
   d = 1;
+  m13 = 0;
+  m23 = 0;
   m14 = 0;
   m24 = 0;
-  m34 = 0;
+  m44 = 1;
   constructor(list = "") {
     const flat = /^matrix\(([^)]+)\)$/.exec(list)?.[1]?.split(",").map(Number);
     const deep = /^matrix3d\(([^)]+)\)$/.exec(list)?.[1]?.split(",").map(Number);
     if (flat) [this.a, this.b, this.c, this.d] = flat;
     if (deep)
-      [this.a, this.b, this.c, this.d, this.m14, this.m24, this.m34] = [0, 1, 4, 5, 3, 7, 11].map(
-        (i) => deep[i]!,
-      );
+      [this.a, this.b, this.c, this.d, this.m13, this.m23, this.m14, this.m24, this.m44] = [
+        0, 1, 4, 5, 2, 6, 3, 7, 15,
+      ].map((i) => deep[i]!);
   }
   multiply(inner: ComputedMatrix) {
     const out = new ComputedMatrix();
@@ -181,11 +183,8 @@ class ComputedMatrix {
     out.b = this.b * inner.a + this.d * inner.b;
     out.c = this.a * inner.c + this.c * inner.d;
     out.d = this.b * inner.c + this.d * inner.d;
-    [out.m14, out.m24, out.m34] = [
-      this.m14 + inner.m14,
-      this.m24 + inner.m24,
-      this.m34 + inner.m34,
-    ];
+    for (const k of ["m13", "m23", "m14", "m24"] as const) out[k] = this[k] + inner[k];
+    out.m44 = this.m44 * inner.m44;
     return out;
   }
 }

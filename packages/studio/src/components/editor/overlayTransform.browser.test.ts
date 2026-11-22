@@ -13,20 +13,28 @@ afterEach(async () => {
   browser = undefined;
 });
 
-// Each layer is 200 x 100 CSS px; `own` is the size it paints at along its own edges.
-const LAYERS: Array<{ id: string; style: string; own: [number, number]; parent?: string }> = [
-  { id: "depthScaled", style: "transform: rotate(45deg); scale: 1 1 2", own: [200, 100] },
-  { id: "scaleProperty", style: "scale: 2", own: [400, 200] },
-  { id: "turnedScaleProperty", style: "rotate: 45deg; scale: 2", own: [400, 200] },
-  { id: "matrix", style: "transform: rotate(30deg) scale(2)", own: [400, 200] },
-  { id: "mirrored", style: "transform: scaleX(-1); rotate: 20deg", own: [200, 100] },
-  { id: "translated", style: "translate: 50% 10px; rotate: 10deg", own: [200, 100] },
-  { id: "tipped", style: "rotate: x 60deg", own: [200, 50] },
-  { id: "nested", style: "scale: 1.5; rotate: 15deg", own: [300, 150], parent: "rotate: 30deg" },
-];
+// Each layer is 200 x 100 CSS px; `own` is the size it paints at along its own edges, null for a layer
+// turned out of its plane, which the walk declines so callers use the box Chrome paints.
+const LAYERS: Array<{ id: string; style: string; own: [number, number] | null; parent?: string }> =
+  [
+    { id: "depthScaled", style: "transform: rotate(45deg); scale: 1 1 2", own: [200, 100] },
+    { id: "scaleProperty", style: "scale: 2", own: [400, 200] },
+    { id: "turnedScaleProperty", style: "rotate: 45deg; scale: 2", own: [400, 200] },
+    { id: "matrix", style: "transform: rotate(30deg) scale(2)", own: [400, 200] },
+    { id: "mirrored", style: "transform: scaleX(-1); rotate: 20deg", own: [200, 100] },
+    { id: "translated", style: "translate: 50% 10px; rotate: 10deg", own: [200, 100] },
+    { id: "tipped", style: "rotate: x 60deg", own: null },
+    { id: "tippedBack", style: "rotate: x -60deg", own: null, parent: "rotate: x 60deg" },
+    {
+      id: "spunFlat",
+      style: "transform: matrix3d(0.866, 0.5, 0, 0, -0.5, 0.866, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)",
+      own: [200, 100],
+    },
+    { id: "nested", style: "scale: 1.5; rotate: 15deg", own: [300, 150], parent: "rotate: 30deg" },
+  ];
 
-// fails without the fix: a depth-only scale (`scale: 1 1 2`) left the whole walk unreadable, and the
-// CSS `scale` property was left out of the corners, so a cropped layer was cut from the wrong box.
+// fails without the fix: a parent and child turned about x cancelled in the walk (200 x 100) where
+// Chrome flattens the child into its parent and paints it 200 x 25.
 it("reads every layer's painted corners as Chrome paints them", async () => {
   const bundle = await build({
     stdin: {
@@ -79,6 +87,10 @@ it("reads every layer's painted corners as Chrome paints them", async () => {
 
   for (const [i, { id, own }] of LAYERS.entries()) {
     const got = measured[i]!;
+    if (!own) {
+      expect(got.corners, `${id} is declined`).toBeNull();
+      continue;
+    }
     expect(got.corners, id).not.toBeNull();
     expect(got.own![0], `${id} own width`).toBeCloseTo(own[0], 1);
     expect(got.own![1], `${id} own height`).toBeCloseTo(own[1], 1);

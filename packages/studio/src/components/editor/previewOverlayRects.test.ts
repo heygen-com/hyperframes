@@ -39,6 +39,11 @@ installReactActEnvironment();
 // The 2D slice of each that the overlay reads; one set for both frames, which share this window.
 class FakeDOMMatrix {
   a = 1;
+  m13 = 0;
+  m23 = 0;
+  m14 = 0;
+  m24 = 0;
+  m44 = 1;
   b = 0;
   c = 0;
   d = 1;

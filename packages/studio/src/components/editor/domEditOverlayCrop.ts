@@ -353,30 +353,26 @@ export interface CropFrame {
   scaleY: number;
 }
 
-/** Perspective terms this far from zero mean the mapping is not affine. */
-const PERSPECTIVE_EPSILON = 1e-6;
+/** Components this close to the identity's count as the identity. */
+const IDENTITY_EPSILON = 1e-6;
 
 type Planar2D = { a: number; b: number; c: number; d: number };
 
 /** Whether the matrix leaves the box exactly as it found it. */
 function isIdentity(m: Planar2D): boolean {
   return (
-    Math.abs(m.a - 1) < PERSPECTIVE_EPSILON &&
-    Math.abs(m.b) < PERSPECTIVE_EPSILON &&
-    Math.abs(m.c) < PERSPECTIVE_EPSILON &&
-    Math.abs(m.d - 1) < PERSPECTIVE_EPSILON
+    Math.abs(m.a - 1) < IDENTITY_EPSILON &&
+    Math.abs(m.b) < IDENTITY_EPSILON &&
+    Math.abs(m.c) < IDENTITY_EPSILON &&
+    Math.abs(m.d - 1) < IDENTITY_EPSILON
   );
 }
-
-/** Affine: no perspective term, so one angle and one scale per axis describe the mapping. */
-const affine = (m: DOMMatrix) =>
-  [m.m14, m.m24, m.m34].every((v) => Math.abs(v) < PERSPECTIVE_EPSILON);
 
 /** The 2D components of the matrix the element paints under; null when upright and unscaled, or 3D. */
 function readPlanarTransform(element: HTMLElement): Planar2D | null {
   const win = element.ownerDocument.defaultView;
   const matrix = win && readElementTransformSnapshot(win, element)?.matrix;
-  if (!matrix || !affine(matrix)) return null;
+  if (!matrix) return null;
   const { a, b, c, d } = matrix;
   return isIdentity({ a, b, c, d }) ? null : { a, b, c, d };
 }
