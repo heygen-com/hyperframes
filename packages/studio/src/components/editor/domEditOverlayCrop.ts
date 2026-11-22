@@ -262,9 +262,13 @@ export function hugRectForElement(rect: HugRect, element: HTMLElement): CropScre
 type HugRect = CropScreenRect & {
   editScaleX: number;
   editScaleY: number;
-  ownScale?: { x: number; y: number };
+  ownScale?: OwnScale;
   angle?: number;
 };
+type Point = { x: number; y: number };
+type OwnCorners = Record<"nw" | "ne" | "se" | "sw", Point>;
+/** Overlay px per own CSS px along the layer's edges, and its own corners in overlay px when it is transformed. */
+export type OwnScale = { x: number; y: number; corners?: OwnCorners };
 
 /** A live element's own-axis scale: an oriented rect's edges, or its turned corners' edges over its upright box. */
 function liveOwnScale(rect: HugRect, element: HTMLElement): HugRect["ownScale"] {
@@ -277,12 +281,42 @@ function liveOwnScale(rect: HugRect, element: HTMLElement): HugRect["ownScale"] 
   const corners = transform && elementCornerPoints(win, element, transform);
   const box = element.getBoundingClientRect();
   if (!corners || !(box.width > 0 && box.height > 0)) return upright;
-  const edge = (a: { x: number; y: number }, b: { x: number; y: number }) =>
-    Math.hypot(b.x - a.x, b.y - a.y);
-  return {
-    x: (edge(corners.nw, corners.ne) / box.width) * upright.x,
-    y: (edge(corners.nw, corners.sw) / box.height) * upright.y,
+  const toOverlay = ({ x, y }: Point) => ({
+    x: rect.left + ((x - box.left) * rect.width) / box.width,
+    y: rect.top + ((y - box.top) * rect.height) / box.height,
+  });
+  const own = {
+    nw: toOverlay(corners.nw),
+    ne: toOverlay(corners.ne),
+    se: toOverlay(corners.se),
+    sw: toOverlay(corners.sw),
   };
+  return { x: edge(own.nw, own.ne) / w, y: edge(own.nw, own.sw) / h, corners: own };
+}
+
+const edge = (a: Point, b: Point) => Math.hypot(b.x - a.x, b.y - a.y);
+
+/** The bounds of a transformed layer's box with `insets` (own CSS px) cut along its own edges. */
+function cutCornersBounds(corners: OwnCorners, own: OwnScale, insets: ClipPathInsetSides) {
+  const { nw, ne, se, sw } = corners;
+  const along = (from: Point, to: Point, px: number) => {
+    const length = edge(from, to) || 1;
+    return { x: ((to.x - from.x) / length) * px, y: ((to.y - from.y) / length) * px };
+  };
+  const [l, r] = [insets.left * own.x, insets.right * own.x];
+  const [t, b] = [insets.top * own.y, insets.bottom * own.y];
+  const move = (p: Point, ...steps: Point[]) =>
+    steps.reduce((q, s) => ({ x: q.x + s.x, y: q.y + s.y }), p);
+  const cut = [
+    move(nw, along(nw, ne, l), along(nw, sw, t)),
+    move(ne, along(ne, nw, r), along(ne, se, t)),
+    move(se, along(se, sw, r), along(se, ne, b)),
+    move(sw, along(sw, se, l), along(sw, nw, b)),
+  ];
+  const xs = cut.map((p) => p.x);
+  const ys = cut.map((p) => p.y);
+  const [left, top] = [Math.min(...xs), Math.min(...ys)];
+  return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
 }
 
 const ownScaleXY = (own: HugRect["ownScale"], rect: HugRect): [number, number] => [
@@ -300,7 +334,9 @@ export function hugRectForClipPath(
   // Uneditable clip — show the full element rect.
   if (!insets || (insets.top <= 0 && insets.right <= 0 && insets.bottom <= 0 && insets.left <= 0))
     return rect;
-  return cropRectFromInsets(rect, insets, ...ownScaleXY(ownScaleOf(), rect));
+  const own = ownScaleOf();
+  if (own?.corners && rect.angle === undefined) return cutCornersBounds(own.corners, own, insets);
+  return cropRectFromInsets(rect, insets, ...ownScaleXY(own, rect));
 }
 
 /**

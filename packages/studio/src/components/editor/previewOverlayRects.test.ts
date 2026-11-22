@@ -230,8 +230,8 @@ describe("overlay rects on an opaque frame match a scriptable one", () => {
     }
   });
 
-  // fails without the fix: the cut took the turned layer's wider upright box as its scale, 167.4 px, not 173.2.
-  it("cuts a turned, scaled layer's crop at its own scale, not its upright box's, the same in both", async () => {
+  // fails without the fix: the cut took the turned layer's upright box, 167.4 or 173.2 px wide, not 179.9.
+  it("cuts a turned, scaled layer's crop at its own scale, along its own edges, the same in both", async () => {
     const [cos, sin] = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)];
     const [width, height] = [2 * (200 * cos + 100 * sin), 2 * (200 * sin + 100 * cos)];
     const spun = sized(document.createElement("div"), [1000, 100, width, height]);
@@ -248,7 +248,32 @@ describe("overlay rects on an opaque frame match a scriptable one", () => {
       const { group } = await settled(
         await overlayOn(frame(), { selection: null, group: ["grp", "spun"] }),
       );
-      expect(group[1]!.width).toBeCloseTo((width - 100) / 2, 6);
+      const [cutW, cutH] = [2 * 150, 2 * 100];
+      expect(group[1]!.width).toBeCloseTo((cutW * cos + cutH * sin) / 2, 6);
+      expect(group[1]!.height).toBeCloseTo((cutW * sin + cutH * cos) / 2, 6);
+    }
+  });
+
+  // fails without the fix: the crop was cut out of the upright box, 81.1 x 106.1 where the cut is 88.4 square.
+  it("bounds a turned layer's cropped box by its cut corners, the same in both", async () => {
+    const half = Math.SQRT1_2;
+    const side = (200 + 100) * half;
+    const spun = sized(document.createElement("div"), [1000, 100, side, side]);
+    spun.id = "spun";
+    spun.style.setProperty("clip-path", "inset(0px 50px 0px 0px)");
+    spun.style.setProperty("transform", `matrix(${half}, ${half}, ${-half}, ${half}, 0, 0)`);
+    Object.defineProperty(spun, "offsetWidth", { value: 200, configurable: true });
+    Object.defineProperty(spun, "offsetHeight", { value: 100, configurable: true });
+    document.querySelector("[data-composition-id]")!.append(spun);
+    for (const frame of [liveFrame, opaqueFrame]) {
+      const { group } = await settled(
+        await overlayOn(frame(), { selection: null, group: ["grp", "spun"] }),
+      );
+      const cut = ((150 + 100) * half) / 2;
+      expect(group[1]).toMatchObject({
+        width: expect.closeTo(cut, 6),
+        height: expect.closeTo(cut, 6),
+      });
     }
   });
 

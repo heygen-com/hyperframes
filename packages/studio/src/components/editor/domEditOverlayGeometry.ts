@@ -5,7 +5,7 @@ import {
   readPositiveDimension,
 } from "./domEditOverlayBasis";
 import { isElementVisibleThroughAncestors } from "./domEditingDom";
-import { hugRectForElement } from "./domEditOverlayCrop";
+import { hugRectForElement, type OwnScale } from "./domEditOverlayCrop";
 import {
   elementCornerPoints,
   readElementTransformSnapshot,
@@ -26,7 +26,7 @@ export interface OverlayRect {
   height: number;
   editScaleX: number;
   editScaleY: number;
-  ownScale?: { x: number; y: number };
+  ownScale?: OwnScale;
   /** Live screen-space rotation; omitted for axis-aligned group bounds. */
   angle?: number;
 }
@@ -185,7 +185,7 @@ export function frameRectToOverlay(
   scale: OverlayRootScale,
   elementRect: { left: number; top: number; width: number; height: number },
   source: FrameSource,
-  ownScale?: { x: number; y: number },
+  ownScale?: OwnScale,
 ): OverlayRect {
   const { iframeRect, overlayRect, rootScaleX, rootScaleY } = scale;
   const editScale = resolveDomEditCoordinateScale({
