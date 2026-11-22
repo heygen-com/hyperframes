@@ -32,6 +32,7 @@ export interface EditingElementBox {
   } | null;
   /** Inline `clip-path`, else the computed one; null when longer than MAX_ELEMENT_VALUE. */
   clipPath: string | null;
+  layout: { width: number; height: number };
 }
 
 export interface EditingElementGeometry extends EditingElementBox {
@@ -201,6 +202,11 @@ function clipPathOf(element: HTMLElement): string | null {
   return value.length <= MAX_ELEMENT_VALUE ? value : null;
 }
 
+function layoutOf(element: Element): EditingElementBox["layout"] {
+  const { offsetWidth = 0, offsetHeight = 0 } = element as Partial<HTMLElement>;
+  return { width: offsetWidth, height: offsetHeight };
+}
+
 const finiteCorners = (corners: EditingCorners | null) =>
   corners && Object.values(corners).every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
     ? corners
@@ -220,6 +226,7 @@ export function boxOf(
     corners: finiteCorners(corners),
     source: sourceOf(element),
     clipPath: clipPathOf(element),
+    layout: layoutOf(element),
   };
 }
 

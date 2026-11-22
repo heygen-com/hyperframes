@@ -1,5 +1,7 @@
 import {
   composeElementTransform,
+  elementCornerPoints,
+  readElementTransformSnapshot,
   type PlanarTransformOps,
 } from "@hyperframes/core/runtime/editing-port";
 import {
@@ -247,26 +249,58 @@ export function resolveCropInsetFromMoveDrag(input: {
 
 /** Display-only hug: shrink a projected rect by the element's inset crop.
  *  For rects nothing writes back to (e.g. the hover ring). */
-export function hugRectForElement(
-  rect: CropScreenRect & { editScaleX: number; editScaleY: number },
-  element: HTMLElement,
-): CropScreenRect {
+export function hugRectForElement(rect: HugRect, element: HTMLElement): CropScreenRect {
   // A lifted clip shows the full element rect.
-  return isElementCropLifted(element)
-    ? rect
-    : hugRectForClipPath(rect, readElementClipPath(element));
+  if (isElementCropLifted(element)) return rect;
+  return hugRectForClipPath(
+    rect,
+    readElementClipPath(element),
+    () => rect.ownScale ?? (previewStandIn(element) ? undefined : liveOwnScale(rect, element)),
+  );
 }
+
+type HugRect = CropScreenRect & {
+  editScaleX: number;
+  editScaleY: number;
+  ownScale?: { x: number; y: number };
+  angle?: number;
+};
+
+/** A live element's own-axis scale: an oriented rect's edges, or its turned corners' edges over its upright box. */
+function liveOwnScale(rect: HugRect, element: HTMLElement): HugRect["ownScale"] {
+  const { offsetWidth: w, offsetHeight: h } = element;
+  if (!(w > 0 && h > 0)) return undefined;
+  const upright = { x: rect.width / w, y: rect.height / h };
+  if (rect.angle !== undefined) return upright;
+  const win = element.ownerDocument.defaultView;
+  const transform = win && readElementTransformSnapshot(win, element);
+  const corners = transform && elementCornerPoints(win, element, transform);
+  const box = element.getBoundingClientRect();
+  if (!corners || !(box.width > 0 && box.height > 0)) return upright;
+  const edge = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    Math.hypot(b.x - a.x, b.y - a.y);
+  return {
+    x: (edge(corners.nw, corners.ne) / box.width) * upright.x,
+    y: (edge(corners.nw, corners.sw) / box.height) * upright.y,
+  };
+}
+
+const ownScaleXY = (own: HugRect["ownScale"], rect: HugRect): [number, number] => [
+  own?.x ?? rect.editScaleX,
+  own?.y ?? rect.editScaleY,
+];
 
 /** `hugRectForElement` for a clip-path read elsewhere; null is one that could not be read. */
 export function hugRectForClipPath(
-  rect: CropScreenRect & { editScaleX: number; editScaleY: number },
+  rect: HugRect,
   clipPath: string | null,
+  ownScaleOf: () => HugRect["ownScale"] = () => rect.ownScale,
 ): CropScreenRect {
   const insets = clipPath === null ? null : parseCropClipPath(clipPath);
   // Uneditable clip — show the full element rect.
   if (!insets || (insets.top <= 0 && insets.right <= 0 && insets.bottom <= 0 && insets.left <= 0))
     return rect;
-  return cropRectFromInsets(rect, insets, rect.editScaleX, rect.editScaleY);
+  return cropRectFromInsets(rect, insets, ...ownScaleXY(ownScaleOf(), rect));
 }
 
 /**

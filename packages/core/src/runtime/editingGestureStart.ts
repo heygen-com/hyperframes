@@ -25,8 +25,6 @@ import {
 import { elementForHandle } from "./editingHandles";
 
 export interface EditingGestureStart extends EditingElementGeometry {
-  /** The transform-free border box a resize grows from. */
-  layout: { width: number; height: number };
   /** Frame px its centre moves per px of translate, columns `a, b` (x) and `c, d` (y); null when it does not move measurably. */
   move: { a: number; b: number; c: number; d: number } | null;
   /** Frame px its centre moves per px of drawn width, `a, b`, and height, `c, d`; null when it has no box. */
@@ -193,14 +191,11 @@ export function gestureStart(handles: readonly EditingElementHandle[]): {
   const starts = elements.map((geometry, i) => {
     const element = pressed[i];
     if (!geometry || !isStylableElement(element)) return null;
-    const { offsetWidth = 0, offsetHeight = 0 } = element as Partial<HTMLElement>;
-    const layout = { width: offsetWidth, height: offsetHeight };
     const rotation = gsapRotation(element);
     return {
       ...geometry,
-      layout,
       move: measureMoveResponse(element),
-      grow: measureGrowResponse(element, layout),
+      grow: measureGrowResponse(element, geometry.layout),
       gsap: gsapPosition(element),
       gsapRotation: rotation,
       cssRotation: rotation === null ? readCssRotationStart(element as HTMLElement) : null,

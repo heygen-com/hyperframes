@@ -179,8 +179,18 @@ const settled = async (overlay: Awaited<ReturnType<typeof overlayOn>>) => {
   return { overlayRect, childRects, group: groupOverlayItems.map((item) => item.rect), hoverRect };
 };
 
-const close = (rect: OverlayRect | null) =>
-  rect && Object.fromEntries(Object.entries(rect).map(([key, value]) => [key, +value.toFixed(9)]));
+const rounded = (value: unknown): unknown =>
+  typeof value === "number"
+    ? +value.toFixed(9)
+    : value && typeof value === "object"
+      ? Object.fromEntries(Object.entries(value).map(([key, v]) => [key, rounded(v)]))
+      : value;
+// Drawn fields only: a live rect works out its own scale when it cuts a crop, a frame's arrives with it.
+const close = (rect: OverlayRect | null) => {
+  if (!rect) return rect;
+  const { ownScale: _ownScale, ...drawn } = rect;
+  return rounded(drawn);
+};
 const closeAll = (shown: Awaited<ReturnType<typeof settled>>) => ({
   overlayRect: close(shown.overlayRect),
   childRects: shown.childRects.map(close),
@@ -202,6 +212,45 @@ describe("overlay rects on an opaque frame match a scriptable one", () => {
     expect(closeAll(remote)).toEqual(closeAll(live));
     if (picked.selection === "gone") expect(live.overlayRect).toBeNull();
     else expect(live.overlayRect).not.toBeNull();
+  });
+
+  // fails without the fix: the hug cut the crop at the editor zoom alone, 175 px wide in both frames.
+  it("cuts a scaled layer's crop at its own scale, the same in both", async () => {
+    const grown = sized(document.createElement("div"), [1000, 100, 400, 200]);
+    grown.id = "grown";
+    grown.style.setProperty("clip-path", "inset(0px 50px 0px 0px)");
+    grown.style.setProperty("transform", "matrix(2, 0, 0, 2, 0, 0)");
+    Object.defineProperty(grown, "offsetWidth", { value: 200, configurable: true });
+    Object.defineProperty(grown, "offsetHeight", { value: 100, configurable: true });
+    document.querySelector("[data-composition-id]")!.append(grown);
+    for (const frame of [liveFrame, opaqueFrame]) {
+      const { group } = await settled(
+        await overlayOn(frame(), { selection: null, group: ["grp", "grown"] }),
+      );
+      expect(group[1]).toMatchObject({ width: 150, height: 100 });
+    }
+  });
+
+  // fails without the fix: the cut took the turned layer's wider upright box as its scale, 167.4 px, not 173.2.
+  it("cuts a turned, scaled layer's crop at its own scale, not its upright box's, the same in both", async () => {
+    const [cos, sin] = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)];
+    const [width, height] = [2 * (200 * cos + 100 * sin), 2 * (200 * sin + 100 * cos)];
+    const spun = sized(document.createElement("div"), [1000, 100, width, height]);
+    spun.id = "spun";
+    spun.style.setProperty("clip-path", "inset(0px 50px 0px 0px)");
+    spun.style.setProperty(
+      "transform",
+      `matrix(${2 * cos}, ${2 * sin}, ${-2 * sin}, ${2 * cos}, 0, 0)`,
+    );
+    Object.defineProperty(spun, "offsetWidth", { value: 200, configurable: true });
+    Object.defineProperty(spun, "offsetHeight", { value: 100, configurable: true });
+    document.querySelector("[data-composition-id]")!.append(spun);
+    for (const frame of [liveFrame, opaqueFrame]) {
+      const { group } = await settled(
+        await overlayOn(frame(), { selection: null, group: ["grp", "spun"] }),
+      );
+      expect(group[1]!.width).toBeCloseTo((width - 100) / 2, 6);
+    }
   });
 
   it("covers what each case decides", async () => {

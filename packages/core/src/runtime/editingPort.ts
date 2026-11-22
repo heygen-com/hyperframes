@@ -19,6 +19,7 @@ import {
 import {
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
+  MAX_DRAFT_PX,
   type EditingElementDescription,
   type EditingElementHandle,
   type EditingElementHit,
@@ -237,7 +238,7 @@ export interface EditingRuntimeSnapshot {
   clipParents: Array<[string, string]>;
 }
 
-export const MAX_DRAFT_PX = 100_000;
+export { MAX_DRAFT_PX };
 export const MAX_DRAFT_DEG = 36_000;
 export const MAX_WATCHED_KEYS = 32;
 
