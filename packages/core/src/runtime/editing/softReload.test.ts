@@ -497,6 +497,13 @@ describe("parseSoftReload", () => {
 describe("where the MotionPath plugin loads from", () => {
   const pluginSrc = () =>
     document.head.querySelector<HTMLScriptElement>("script[data-hf-gsap-plugin]")?.src ?? null;
+  const PATH_TWEEN = '<script>gsap.to("#a", { motionPath: { path: "#p" } });</script>';
+  function preloadOn(markup: string, version?: string) {
+    document.body.innerHTML = markup;
+    win.gsap = { version, registerPlugin: () => {} };
+    preloadMotionPath(win, document);
+    return pluginSrc();
+  }
 
   // fails without the fix: the plugin came from jsDelivr whatever the page's GSAP was, so a preview with no
   // network asked a third party for a script the page never named.
@@ -511,16 +518,58 @@ describe("where the MotionPath plugin loads from", () => {
       "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js",
     ],
   ])("loads it from beside the page's own GSAP: %s", (tag, plugin) => {
-    document.body.innerHTML = tag;
-    win.gsap = { registerPlugin: () => {} };
-    preloadMotionPath(win, document);
-    expect(pluginSrc()).toBe(new URL(plugin, document.baseURI).href);
+    expect(preloadOn(tag + PATH_TWEEN)).toBe(new URL(plugin, document.baseURI).href);
   });
 
   it("requests nothing when the page names no GSAP file", () => {
-    document.body.innerHTML = "<script>/* gsap inlined by hand */</script>";
-    win.gsap = { registerPlugin: () => {} };
-    preloadMotionPath(win, document);
-    expect(document.head.querySelectorAll("script[src]")).toHaveLength(0);
+    expect(preloadOn(`<script>/* gsap inlined by hand */</script>${PATH_TWEEN}`)).toBeNull();
+  });
+
+  // fails without the fix: a host's bundled root holds only its own GSAP version, so for another version the
+  // plugin came from jsDelivr though the page and the host named only same-origin files.
+  it("takes the host's bundled plugin for a page on another GSAP version, never the CDN", () => {
+    const meta = '<meta name="hyperframes-gsap-base-url" content="/api/vendor/npm">';
+    document.head.innerHTML = meta;
+    const src = preloadOn(
+      `<script src="vendor/gsap@3.12.5/dist/gsap.min.js"></script>${PATH_TWEEN}`,
+      "3.12.5",
+    );
+    expect(src).toBe(
+      new URL("/api/vendor/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js", document.baseURI).href,
+    );
+  });
+
+  // fails without the fix: with no server meta (Desktop), every page preloaded the plugin, so a film with
+  // GSAP from jsDelivr and no path tween still asked jsDelivr for it.
+  it.each([
+    [
+      "inline scripts and GSAP's own files",
+      '<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script><script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/CustomEase.min.js"></script><script>gsap.to("#a", { x: 10 });</script>',
+    ],
+    [
+      "the runtime's own script",
+      '<script data-hyperframes-preview-runtime="1" src="/api/runtime.js"></script><script src="vendor/gsap.min.js"></script><script>gsap.to("#a", { x: 10 });</script>',
+    ],
+  ])("preloads nothing when the page proves no path tween: %s", (_, markup) => {
+    expect(preloadOn(markup)).toBeNull();
+  });
+
+  it.each([
+    [
+      "a script it cannot read",
+      '<script src="vendor/gsap.min.js"></script><script src="scene.js"></script>',
+    ],
+    [
+      "a module script",
+      '<script src="vendor/gsap.min.js"></script><script type="module">import "./scene.js";</script>',
+    ],
+    [
+      "a sub-composition still to load",
+      '<script src="vendor/gsap.min.js"></script><div data-composition-src="scene.html"></div>',
+    ],
+  ])("still preloads for %s", (_, markup) => {
+    expect(preloadOn(markup)).toBe(
+      new URL("vendor/MotionPathPlugin.min.js", document.baseURI).href,
+    );
   });
 });

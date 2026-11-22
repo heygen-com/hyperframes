@@ -3363,6 +3363,27 @@ describe("GSAP mirror configuration", () => {
     );
   });
 
+  // fails without the fix: an explicit jsDelivr mirror and no mirror shared an ETag, so after the mirror was
+  // removed a revalidation got a 304 and kept the cached page with the CDN plugin.
+  it.each(["", "/comp/scene.html"])(
+    "revalidates %s when the mirror setting changes",
+    async (suffix) => {
+      const projectDir = createProjectDir();
+      const source = `<html><head><script src="vendor/gsap.min.js"></script></head><body><script>gsap.to("#card", { motionPath: {} });</script></body></html>`;
+      writeFileSync(join(projectDir, "index.html"), source);
+      writeFileSync(join(projectDir, "scene.html"), source);
+      const url = previewUrl + suffix;
+      const first = await appForMirror(projectDir, "https://cdn.jsdelivr.net/npm").request(url);
+      const etag = first.headers.get("ETag");
+      expect(etag).toBeTruthy();
+      const again = await appForMirror(projectDir, "").request(url, {
+        headers: { "If-None-Match": etag! },
+      });
+      expect(again.status).toBe(200);
+      expect(await again.text()).not.toContain("jsdelivr");
+    },
+  );
+
   it("preserves authored plugins, and names no plugin base when the override is unset", async () => {
     const projectDir = createProjectDir();
     const plugin = "https://authored.example/MotionPathPlugin.min.js";
@@ -3540,7 +3561,8 @@ describe("bundled GSAP local root", () => {
     expect(withPath).not.toContain("jsdelivr");
   });
 
-  it("loads a plugin for another GSAP version from jsDelivr", async () => {
+  // fails without the fix: the plugin for another GSAP version came from jsDelivr, a host the page never named.
+  it("loads the bundled plugin for another GSAP version, never jsDelivr", async () => {
     const projectDir = createProjectDir();
     writeFileSync(
       join(projectDir, "index.html"),
@@ -3551,7 +3573,8 @@ describe("bundled GSAP local root", () => {
       parseHTML(html)
         .document.querySelector('script[src*="MotionPathPlugin"]')
         ?.getAttribute("src"),
-    ).toBe("https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/MotionPathPlugin.min.js");
+    ).toBe(`${localRoot}/gsap@3.15.0/dist/MotionPathPlugin.min.js`);
+    expect(html).not.toContain("jsdelivr");
   });
 
   it("prefers HYPERFRAMES_GSAP_BASE_URL over the bundled copy", async () => {
