@@ -1184,8 +1184,8 @@ it("keeps a reload held until the save of an edit the frame ended on blur has re
   expect(savedAtReload).toEqual(["title=Draft"]);
 });
 
-// fails without the fix: a start reply that missed its deadline put the original back over what the person typed.
-it("saves what was typed when the frame opened a sealed edit but its start reply missed the deadline", async () => {
+// fails without the fix: a start reply that missed its deadline closed the edit under the person's typing.
+it("keeps a sealed edit open when its start reply misses the deadline, and saves all of it at the end", async () => {
   const {
     title,
     iframe,
@@ -1199,11 +1199,18 @@ it("saves what was typed when the frame opened a sealed edit but its start reply
   try {
     act(() => void controls().start(selection.element));
     await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
-    title.innerHTML = "Draft";
+    title.innerHTML = "Dr";
     await vi.advanceTimersByTimeAsync(EDITING_REQUEST_TIMEOUT_MS);
   } finally {
     vi.useRealTimers();
   }
+  await settled(iframe, selection);
+  expect([controls().session !== null, title.getAttribute("contenteditable")]).toEqual([
+    true,
+    "true",
+  ]);
+  title.innerHTML = "Draft";
+  act(() => controls().commit());
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
   expect(saved).toEqual(["title=Draft"]);
 });
