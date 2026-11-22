@@ -5063,6 +5063,7 @@ export function initSandboxRuntimeModular(): void {
       transport.play();
       return;
     }
+    colorGrading.holdSeekUntilDrawn();
     colorGrading.redraw();
     paintVfx(state.currentTime);
     const blurred = paintCaptureMotionBlur(state.currentTime);
