@@ -77,7 +77,6 @@ interface UseTimelineGroupEditingOptions {
   isRecordingRef?: RefObject<boolean>;
   pendingTimelineEditPathRef: MutableRefObject<Set<string>>;
   previewIframeRef: RefObject<HTMLIFrameElement | null>;
-  projectIdRef: MutableRefObject<string | null>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   reloadPreview: () => void;
   sdkSession?: Composition | null;
@@ -125,7 +124,6 @@ export function useTimelineGroupEditing({
   isRecordingRef,
   pendingTimelineEditPathRef,
   previewIframeRef,
-  projectIdRef,
   recordEdit,
   reloadPreview,
   sdkSession,
@@ -143,15 +141,14 @@ export function useTimelineGroupEditing({
         showToast("Cannot edit timeline while recording", "error");
         return Promise.reject(new Error(`${label}: blocked while recording`));
       }
-      const projectId = projectIdRef.current;
-      if (!projectId) return Promise.reject(new Error(`${label}: no active project`));
+      if (!editQueueRef.projectId) return Promise.reject(new Error(`${label}: no active project`));
       // The raw (rejecting) promise lets the gesture owner roll back on a real failure.
-      return enqueueTimelineEdit(editQueueRef, () => operation(projectId), {
+      return enqueueTimelineEdit(editQueueRef, operation, {
         label,
         ifEarlierRefused,
       });
     },
-    [editQueueRef, isRecordingRef, projectIdRef, showToast],
+    [editQueueRef, isRecordingRef, showToast],
   );
 
   const persistServerBatch = useCallback(
@@ -190,6 +187,7 @@ export function useTimelineGroupEditing({
   // server syncs) when it handled the edit; null → caller falls through to the server.
   const trySdkBatchPersist = useCallback(
     async (input: {
+      projectId: string;
       changes: readonly { element: TimelineElement }[];
       sdkChanges: Array<{
         hfId: string;
@@ -217,7 +215,7 @@ export function useTimelineGroupEditing({
           writeProjectFile,
           reloadPreview,
           compositionPath: activeCompPath,
-          readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
+          readProjectFile: (path) => readFileContent(input.projectId, path),
           publishSession: publishSdkSession,
         },
         {
@@ -229,15 +227,7 @@ export function useTimelineGroupEditing({
       );
       return cutoverCommittedOrThrow(result) ? { sdkGsap: sdkTimingGsapSync(result) } : null;
     },
-    [
-      activeCompPath,
-      projectIdRef,
-      publishSdkSession,
-      recordEdit,
-      reloadPreview,
-      sdkSession,
-      writeProjectFile,
-    ],
+    [activeCompPath, publishSdkSession, recordEdit, reloadPreview, sdkSession, writeProjectFile],
   );
 
   const handleTimelineGroupMove = useCallback(
@@ -289,6 +279,7 @@ export function useTimelineGroupEditing({
       return enqueueGroupOperation(label, options?.ifEarlierRefused, async (projectId) => {
         await options?.beforeTiming;
         const sdk = await trySdkBatchPersist({
+          projectId,
           changes,
           sdkChanges: toSdkTimingChanges(changes, (change) => ({
             start: toAuthoredStart(change.element, change.start),
@@ -408,6 +399,7 @@ export function useTimelineGroupEditing({
       return enqueueGroupOperation("Resize timeline clips", derivedStarts, async (projectId) => {
         await options?.beforeTiming;
         const sdk = await trySdkBatchPersist({
+          projectId,
           changes,
           sdkChanges: toSdkTimingChanges(changes, (change) => ({
             start: toAuthoredStart(change.element, change.start),

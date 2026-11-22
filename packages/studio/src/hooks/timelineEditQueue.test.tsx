@@ -23,7 +23,7 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
 describe("enqueueTimelineEdit", () => {
   // fails without the fix: A's failure cleared the tracking of B's save still in flight.
   it("refuses a ripple queued during a save that then fails, after an earlier save already failed", async () => {
-    const queue: TimelineEditQueue = { current: Promise.resolve() };
+    const queue: TimelineEditQueue = { current: Promise.resolve(), projectId: "project" };
     const a = deferred();
     const b = deferred();
     const writes: string[] = [];
