@@ -64,6 +64,7 @@ export function pausedFrameHost(
   let decoder: Promise<PausedVideoDecoder> | null = null;
   let files: Promise<Set<string>> | null = null;
   const inFlight = new Map<number, AbortController>();
+  let lastSettled = Promise.resolve();
   let closed = false;
   const reply = (message: unknown, transfer: Transferable[] = []) => {
     if (!closed) port.postMessage(message, transfer);
@@ -95,28 +96,44 @@ export function pausedFrameHost(
     reply({ type: "frames", id, frames: wire }, images);
   };
 
-  const refusal = (asks: PausedFrameAsk[]) => {
-    if (inFlight.size > 0) return "Preview decoder busy";
-    return asks.length === 0 || asks.length > PAUSED_FRAME_SOURCES
-      ? "Preview decode over budget"
-      : null;
+  const replaceOlder = () => {
+    for (const [older, control] of inFlight) {
+      if (control.signal.aborted) continue;
+      control.abort();
+      reply({ type: "failed", id: older, message: "Preview decode replaced" });
+    }
+  };
+
+  const nextTurn = () => {
+    const previous = lastSettled;
+    let settled = () => {};
+    lastSettled = new Promise((resolve) => (settled = resolve));
+    return { previous, settled };
+  };
+
+  const decodeAndSend = async (id: number, asks: PausedFrameAsk[], signal: AbortSignal) => {
+    const resolved = await Promise.all(asks.map(resolveAsk));
+    decoder ??= (deps.decoder ?? loadDecoder)();
+    const frames = await (await decoder).decode(resolved, signal);
+    await send(id, frames, signal).finally(() => frames.forEach((f) => f.release()));
   };
 
   const decode = async (id: number, asks: PausedFrameAsk[]) => {
-    const refused = refusal(asks);
-    if (refused) return reply({ type: "failed", id, message: refused });
+    if (asks.length === 0 || asks.length > PAUSED_FRAME_SOURCES)
+      return reply({ type: "failed", id, message: "Preview decode over budget" });
+    replaceOlder();
     const control = new AbortController();
     inFlight.set(id, control);
+    const { previous, settled } = nextTurn();
     try {
-      const resolved = await Promise.all(asks.map(resolveAsk));
-      decoder ??= (deps.decoder ?? loadDecoder)();
-      const frames = await (await decoder).decode(resolved, control.signal);
-      await send(id, frames, control.signal).finally(() => frames.forEach((f) => f.release()));
+      await previous;
+      if (!control.signal.aborted) await decodeAndSend(id, asks, control.signal);
     } catch (error) {
       if (!control.signal.aborted)
         reply({ type: "failed", id, message: String((error as Error)?.message ?? error) });
     } finally {
       if (inFlight.get(id) === control) inFlight.delete(id);
+      settled();
     }
   };
 
