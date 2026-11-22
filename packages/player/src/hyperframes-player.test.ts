@@ -4126,7 +4126,7 @@ describe("HyperframesPlayer asset-ready gate", () => {
       player._abandonComposition("navigated");
       return { player, start, sent };
     }
-    const announced = (sent: ReturnType<typeof vi.spyOn>) =>
+    const announced = (sent: { mock: { calls: unknown[][] } }) =>
       sent.mock.calls.filter(
         ([data]) => (data as { action?: string })?.action === "announce-timeline",
       );
