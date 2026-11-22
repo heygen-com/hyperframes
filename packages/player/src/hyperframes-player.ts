@@ -135,6 +135,9 @@ class HyperframesPlayer extends HTMLElement {
   private _readyBeforeRuntime = false;
   private _readyDocument: Document | null = null;
   private _awaitingLoad = false;
+  private _documentId: string | null = null;
+  private _leftDocumentId: string | null = null;
+  private _leftDocumentUnknown = false;
   private _runtimeAnnounces = false;
   private _timelineHeldForLoad = false;
   private _connected = false;
@@ -1251,8 +1254,18 @@ class HyperframesPlayer extends HTMLElement {
 
   private _onMessage(e: MessageEvent) {
     // The iframe window outlives its documents: a late composition message must not reach a video.
-    if (this._videoSource || this.probe.failed) return;
+    if (this._videoSource || this.probe.failed || this._fromLeftDocument(e)) return;
     this._applyThenEmit(() => this._handleRuntimeMessage(e));
+  }
+
+  /** True for a message the document a host navigation left stamped; another stamp becomes the current document's. */
+  private _fromLeftDocument(e: MessageEvent): boolean {
+    const id =
+      e.source === this.iframe.contentWindow && (e.data as { documentId?: unknown })?.documentId;
+    if (typeof id !== "string") return false;
+    if (id === this._leftDocumentId) return true;
+    this._documentId = id;
+    return false;
   }
 
   private _handleRuntimeMessage(e: MessageEvent) {
@@ -1321,7 +1334,8 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onRuntimeTimelineReady(duration: number, assetsReady: boolean | undefined) {
-    if (this._awaitingLoad && this._runtimeAnnounces && !this._getSameOriginIframeDocument()) {
+    const mayBeLeft = this._awaitingLoad && this._leftDocumentUnknown;
+    if (mayBeLeft && this._runtimeAnnounces && !this._getSameOriginIframeDocument()) {
       this._timelineHeldForLoad = true;
       return;
     }
@@ -1495,6 +1509,9 @@ class HyperframesPlayer extends HTMLElement {
     this._readyBeforeRuntime = false;
     this._awaitingLoad = true;
     this._timelineHeldForLoad = false;
+    this._leftDocumentUnknown = this._documentId === null;
+    this._leftDocumentId = this._documentId ?? this._leftDocumentId;
+    this._documentId = null;
     this._readyDocument = null;
     this._invalidateAssetsWait();
     this._releaseDocument();
@@ -1636,9 +1653,9 @@ class HyperframesPlayer extends HTMLElement {
   private _onIframeLoad() {
     // In video mode the iframe only ever loads about:blank; its load must not reset the video.
     if (!this._connected || this._videoSource) return;
-    // A runtime posts its timeline before or after `load`; one seen since a host navigation and before this load may be
-    // the old document's. An unreadable frame's runtime that can be asked again held it, and is asked below; else the
-    // timeline stands, as a paused runtime never posts it again (an opaque origin reads as null on both sides).
+    // A runtime posts its timeline before or after `load`. One seen since a host navigation from a document that never
+    // stamped a message may be that document's: an unreadable frame's runtime that can be asked again held it, and is
+    // asked below; else it stands, as a paused runtime never posts again (an opaque origin reads null on both sides).
     const askAgain = this._timelineHeldForLoad;
     this._awaitingLoad = false;
     this._timelineHeldForLoad = false;

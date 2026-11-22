@@ -71,10 +71,15 @@ let markedForAnotherSite = false;
 const forAnotherSite = (): boolean =>
   (markedForAnotherSite ||= typeof document !== "undefined" && servedToAnotherSite(document));
 
+const THIS_DOCUMENT_ID = Array.from(crypto.getRandomValues(new Uint32Array(2)), (n) =>
+  n.toString(36),
+).join("-");
+
 export function postRuntimeMessage(payload: RuntimeOutboundMessage): void {
   if (forAnotherSite() && !ANOTHER_SITE_SEES.has(payload.type)) return;
   try {
-    window.parent.postMessage({ ...payload, ...runtimeProtocolMetadata(runtimeProtocolFps) }, "*");
+    const metadata = runtimeProtocolMetadata(runtimeProtocolFps);
+    window.parent.postMessage({ ...payload, ...metadata, documentId: THIS_DOCUMENT_ID }, "*");
   } catch (err) {
     // Cross-frame posting can throw if the parent is gone or origin-isolated.
     swallow("bridge.postMessage", err);
