@@ -105,7 +105,7 @@ describe.each<[string, CutoverResult]>([
     const h = mountClipTiming();
     let refuseMove: (error: Error) => void = () => {};
     const moveSave = new Promise<void>((_, fail) => (refuseMove = fail));
-    const move = enqueueTimelineEdit(h.queue, () => moveSave);
+    const move = enqueueTimelineEdit(h.queue, () => moveSave, { projectId: "project" });
     const onlyTheMove = h.queue.current;
     let drag: Promise<void> = Promise.resolve();
     await act(async () => {
