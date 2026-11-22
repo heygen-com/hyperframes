@@ -26,9 +26,10 @@ import { cutoverCommittedOrThrow, sdkTimingPersist, type CutoverResult } from ".
 
 type SdkCommit = Extract<CutoverResult, { status: "committed" }>;
 import type { TimelineMoveUpdates, UseTimelineEditingOptions } from "./useTimelineEditingTypes";
-import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
+import { getStudioSaveErrorMessage, getStudioSaveErrorTone } from "../utils/studioSaveDiagnostics";
 import {
   enqueueTimelineEdit,
+  keepUnlessItOverlaps,
   refuseWithEarlier,
   isClosed,
   shownPreview,
@@ -225,13 +226,16 @@ export function useTimelineClipTimingEditing({
             : undefined;
         return reorderDone
           .then(() =>
-            enqueueEdit(element, "Move timeline clip", buildMovePatches, step, { trySdk: sdkMove }),
+            enqueueEdit(element, "Move timeline clip", buildMovePatches, step, {
+              ifEarlierRefused: keepUnlessItOverlaps([{ element, start: updates.start }]),
+              trySdk: sdkMove,
+            }),
           )
           .then((sdk) => finishMoveGsapSync(sdk && sdkTimingGsapSync(sdk)))
           .catch((error) => {
             // Failed persist: revert the optimistic duration readout + live root.
             whileShown(editQueueRef, rollbackDuration);
-            showToast(getStudioSaveErrorMessage(error), "error");
+            showToast(getStudioSaveErrorMessage(error), getStudioSaveErrorTone(error));
             throw error;
           });
       };
@@ -341,7 +345,7 @@ export function useTimelineClipTimingEditing({
       return persistDone.catch((error) => {
         // Failed persist: revert the optimistic duration readout + live root.
         whileShown(editQueueRef, rollbackDuration);
-        showToast(getStudioSaveErrorMessage(error), "error");
+        showToast(getStudioSaveErrorMessage(error), getStudioSaveErrorTone(error));
         throw error;
       });
     },
