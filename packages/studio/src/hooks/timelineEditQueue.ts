@@ -1,4 +1,4 @@
-import { useRef, type MutableRefObject, type RefObject } from "react";
+import { useLayoutEffect, useRef, type MutableRefObject, type RefObject } from "react";
 import type { PublishSdkSession } from "../utils/sdkCutover";
 import { forgetTimelineOptimisticGestures } from "../player/components/timelineOptimisticRevision";
 
@@ -13,13 +13,17 @@ export interface TimelineEditQueue extends MutableRefObject<Promise<void>> {
 export function useTimelineEditQueue(projectId: string | null): TimelineEditQueue {
   const owner = useRef<TimelineEditQueue | null>(null);
   if (owner.current?.projectId !== projectId) {
-    if (owner.current) {
-      owner.current.closed = true;
-      forgetTimelineOptimisticGestures();
-    }
-    owner.current = { current: Promise.resolve(), projectId };
+    owner.current = { current: owner.current?.current ?? Promise.resolve(), projectId };
   }
-  return owner.current;
+  const queue = owner.current;
+  useLayoutEffect(
+    () => () => {
+      queue.closed = true;
+      forgetTimelineOptimisticGestures();
+    },
+    [queue],
+  );
+  return queue;
 }
 
 /** Runs a queued edit's live-preview or timeline-store side only while its project is shown. */

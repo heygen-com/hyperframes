@@ -45,6 +45,35 @@ describe("enqueueTimelineEdit", () => {
 });
 
 describe("useTimelineEditQueue", () => {
+  // fails without the fix: back in A, A's next edit ran beside A's held save, which then wrote over it.
+  it("keeps one order across a switch away and back, so a held save is never written over", async () => {
+    const files: Record<string, string> = { A: "" };
+    let queue: TimelineEditQueue | null = null;
+    function Harness({ projectId }: { projectId: string }) {
+      queue = useTimelineEditQueue(projectId);
+      return null;
+    }
+    const root = mountReactHarness(<Harness projectId="A" />);
+    let release: () => void = () => {};
+    const held = new Promise<void>((done) => (release = done));
+    const first = enqueueTimelineEdit(queue!, async (pid) => {
+      const before = files[pid];
+      await held;
+      files[pid] = `${before}1`;
+    });
+    act(() => root.render(<Harness projectId="B" />));
+    act(() => root.render(<Harness projectId="A" />));
+    const second = enqueueTimelineEdit(queue!, async (pid) => {
+      files[pid] = `${files[pid]}2`;
+    });
+
+    release();
+    await Promise.all([first, second]);
+
+    expect(files.A).toBe("12");
+    act(() => root.unmount());
+  });
+
   // fails without the fix: the old project's refused delete refused the new project's ripple.
   it("gives a new project its own queue, so a refusal in the old one never touches it", async () => {
     let queue: TimelineEditQueue | null = null;
