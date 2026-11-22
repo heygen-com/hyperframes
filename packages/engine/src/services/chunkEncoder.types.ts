@@ -37,7 +37,6 @@ export interface EncoderOptions {
    * for compression and break concat-copy seams.
    */
   lockGopForChunkConcat?: boolean;
-  softwareEncoderThreads?: number;
 
   /**
    * Required when `lockGopForChunkConcat` is `true`. Number of frames per
