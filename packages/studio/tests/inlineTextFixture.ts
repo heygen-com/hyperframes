@@ -103,12 +103,27 @@ export function wordsFromGestures(markup: string): boolean {
   return text.split(/\s+/).every((word) => word === "" || WORDS.has(word));
 }
 
+/** The element's markup as a viewer sees it, editing marks dropped and each style's declarations in one order. */
 const shown = (frame: Frame) =>
-  frame.evaluate(() =>
-    document
-      .getElementById("t")!
-      .innerHTML.replace(/ (data-hf-[a-z-]+|contenteditable|spellcheck)="[^"]*"/g, ""),
-  );
+  frame.evaluate(() => {
+    const copy = document.getElementById("t")!.cloneNode(true) as HTMLElement;
+    for (const el of [copy, ...copy.querySelectorAll<HTMLElement>("*")]) {
+      for (const name of [...el.getAttributeNames()])
+        if (/^data-hf-|^contenteditable$|^spellcheck$/.test(name)) el.removeAttribute(name);
+      const style = el.getAttribute("style");
+      if (style)
+        el.setAttribute(
+          "style",
+          style
+            .split(";")
+            .map((d) => d.trim())
+            .filter(Boolean)
+            .sort()
+            .join("; "),
+        );
+    }
+    return copy.innerHTML;
+  });
 
 /** Runs a user-side action with the frame's replies flowing, as a click or key press would. */
 async function unheld(studioPage: Page, run: () => Promise<unknown>) {
@@ -230,7 +245,11 @@ export async function playText(
   await settle(studioPage, frame, random);
   const result = await studioPage.evaluate(() => {
     const text = (window as unknown as Editing).__text;
-    return { saved: text.saved().replace(/ data-hf-[a-z-]+="[^"]*"/g, ""), writes: text.writes };
+    return {
+      saved: text.saved().replace(/ data-hf-[a-z-]+="[^"]*"/g, ""),
+      writes: text.writes,
+      skipped: text.skipped,
+    };
   });
   const canvas = await shown(frame);
   await studioPage.close();

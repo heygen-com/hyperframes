@@ -28,6 +28,8 @@ export interface TextEditing {
   saved(): string;
   /** Every write that reached the file, in order, with its value. */
   writes: string[];
+  /** Writes Studio dropped as superseded before they reached the file. */
+  skipped: string[];
   /** The fate the next writes take, in the order they reach the file; `land` once it runs out. */
   fates: WriteFate[];
   /** Lets every write still waiting go on, landing. */
@@ -46,10 +48,11 @@ export function mountTextEditing(
 ): TextEditing {
   let file = fileHtml;
   const writes: string[] = [];
+  const skipped: string[] = [];
   const fates: WriteFate[] = [];
   const waiting: Array<() => void> = [];
   const persist: PersistDomEditOperations = async (selection, operations, options) => {
-    if (options?.shouldSave?.() === false) return;
+    if (options?.shouldSave?.() === false) return void skipped.push(String(operations[0]?.value));
     const fate = fates.shift() ?? "land";
     if (fate === "wait") await new Promise<void>((resolve) => waiting.push(resolve));
     if (fate === "fail") throw new Error("write refused");
@@ -106,6 +109,7 @@ export function mountTextEditing(
     commits: () => commits,
     saved,
     writes,
+    skipped,
     fates,
     releaseWaiting: () => waiting.splice(0).forEach((go) => go()),
     waiting: () => waiting.length,

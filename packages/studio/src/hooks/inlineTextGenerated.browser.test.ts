@@ -52,7 +52,8 @@ it.each(seeds)("generated text sequence %i", async (seed) => {
         words: true,
       });
   }
-  const writes = `seed ${seed} writes sealed ${JSON.stringify(sealed.writes)} unsealed ${JSON.stringify(unsealed.writes)}`;
+  const trace = (r: typeof sealed) => JSON.stringify({ writes: r.writes, skipped: r.skipped });
+  const writes = `seed ${seed} sealed ${trace(sealed)} unsealed ${trace(unsealed)}`;
   expect
     .soft({ seed, steps, sealed: sealed.saved }, writes)
     .toEqual({ seed, steps, sealed: unsealed.saved });
