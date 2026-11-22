@@ -833,4 +833,48 @@ describe("useColorGradingController after the preview iframe is replaced", () =>
     act(() => root.unmount());
     vi.useRealTimers();
   });
+
+  it("follows the element back to its grade when an undo restores it", () => {
+    vi.useFakeTimers();
+    const onSetAttributeQuiet = vi.fn();
+    const before = makeElement({
+      dataAttributes: { "color-grading": '{"adjust":{"exposure":0.1}}' },
+    });
+    const { root, getState, rerenderWithElement } = renderHook(onSetAttributeQuiet, before);
+    const brighter = normalizeHfColorGrading({ adjust: { exposure: 1.5 } });
+    if (!brighter) throw new Error("expected a grading");
+
+    act(() => getState().commitColorGrading(brighter));
+    act(() => vi.advanceTimersByTime(400));
+    rerenderWithElement(
+      makeElement({ dataAttributes: { "color-grading": onSetAttributeQuiet.mock.calls[0]![1] } }),
+    );
+    expect(getState().grading.adjust.exposure).toBe(1.5);
+
+    rerenderWithElement(
+      makeElement({ dataAttributes: { "color-grading": '{"adjust":{"exposure":0.1}}' } }),
+    );
+    expect(getState().grading.adjust.exposure).toBe(0.1);
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
+
+  it("keeps an edit that is still waiting to save over an older value from the element", () => {
+    vi.useFakeTimers();
+    const before = makeElement({
+      dataAttributes: { "color-grading": '{"adjust":{"exposure":0.1}}' },
+    });
+    const { root, getState, rerenderWithElement } = renderHook(vi.fn(), before);
+    const brighter = normalizeHfColorGrading({ adjust: { exposure: 1.5 } });
+    if (!brighter) throw new Error("expected a grading");
+
+    act(() => getState().commitColorGrading(brighter));
+    rerenderWithElement(
+      makeElement({ dataAttributes: { "color-grading": '{"adjust":{"exposure":0.2}}' } }),
+    );
+
+    expect(getState().grading.adjust.exposure).toBe(1.5);
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
 });
