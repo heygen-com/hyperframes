@@ -90,9 +90,18 @@ function refuse(response: ServerResponse): void {
   response.end();
 }
 
-async function httpPeer(url: URL, proxy: UpstreamProxy | undefined) {
+async function resolveOrReportFailure(hostname: string, fail: () => void): Promise<string> {
+  try {
+    return await resolvePublicAddress(hostname);
+  } catch (error) {
+    if (!(error instanceof NonPublicHostError)) fail();
+    throw error;
+  }
+}
+
+async function httpPeer(url: URL, proxy: UpstreamProxy | undefined, fail: () => void) {
   if (!proxy) {
-    const hostname = await resolvePublicAddress(url.hostname);
+    const hostname = await resolveOrReportFailure(url.hostname, fail);
     return { hostname, family: 4, port: url.port || 80, path: url.pathname + url.search };
   }
   assertPublicHostname(url.hostname);
@@ -109,7 +118,7 @@ async function forwardHttp(
 ): Promise<void> {
   try {
     const url = destination(incoming.url ?? "", false);
-    const peer = await httpPeer(url, proxy);
+    const peer = await httpPeer(url, proxy, fail);
     if (incoming.destroyed || response.destroyed) return;
     const headers = forwardHeaders(incoming);
     headers.host = url.host;
@@ -198,7 +207,7 @@ async function forwardTunnel(
       assertPublicHostname(url.hostname);
       return await forwardTunnelViaUpstream(url, proxy, client, head, sockets, fail);
     }
-    const address = await resolvePublicAddress(url.hostname);
+    const address = await resolveOrReportFailure(url.hostname, fail);
     if (client.destroyed) return;
     const upstream = connect({ host: address, family: 4, port: Number(url.port || 443) });
     trackSocket(upstream, sockets);

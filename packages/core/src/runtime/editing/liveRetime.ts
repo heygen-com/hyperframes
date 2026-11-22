@@ -9,6 +9,7 @@ import {
   parseSavedTiming,
   planSavedTiming,
   scriptsRegistering,
+  swapWaiting,
   type SavedTiming,
   type SoftReloadWindow,
 } from "./softReload";
@@ -242,6 +243,7 @@ export function parseLiveRetime(params: unknown): LiveRetimeParams | null {
 /** The frame moving its own tweens to the plan Studio made from the saved scripts, then re-seeking. */
 export function liveRetime(params: LiveRetimeParams): { result: LiveRetimeResult } {
   const win = window as SoftReloadWindow;
+  if (swapWaiting(win)) return { result: "unchanged" };
   const [script, ...extra] = scriptsRegistering(findGsapScriptElements(document), [params.key]);
   if (!script || extra.length > 0) return { result: "unchanged" };
   const timing = planSavedTiming(document, compositionFile(document, [params.key]), params.timing);

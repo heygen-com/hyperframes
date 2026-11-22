@@ -592,7 +592,8 @@ for (const [name, place] of [
   });
 }
 
-test("a manifest record whose path is inside the project is reused and credited", () => {
+// fails without the fix: the manifest's own provider claim wrote "Sam Sound" into the credits file.
+test("a manifest record inside the project is reused, but its provider claim writes no credit", () => {
   setup();
   recordedSound("assets/sfx/boom.mp3", join(tmp, "assets", "sfx", "boom.mp3"));
   const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
@@ -601,9 +602,28 @@ test("a manifest record whose path is inside the project is reused and credited"
   });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout)._source, "cached");
+  assert.equal(existsSync(join(tmp, ".media/audio/sfx/CREDITS.md")), false);
+  cleanup();
+});
+
+test("an Openverse sound reused from the cache in another project is credited there", () => {
+  setup();
+  const first = join(tmp, "first");
+  const second = join(tmp, "second");
+  for (const project of [first, second]) mkdirSync(project);
+  const resolveIn = (project, sounds) =>
+    spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", project, "--json"], {
+      env: { HOME: tmp, PATH: tmp },
+      nodeArgs: openverseImport(sounds),
+    });
+  assert.equal(resolveIn(first, [OPENVERSE_BY_WHOOSH]).status, 0);
+  const reused = resolveIn(second, []);
+  assert.equal(reused.status, 0, reused.stderr);
+  const parsed = JSON.parse(reused.stdout);
+  assert.equal(parsed._source, "reused");
   assert.ok(
-    readFileSync(join(tmp, ".media/audio/sfx/CREDITS.md"), "utf8").includes(
-      "`assets/sfx/boom.mp3`: Sam Sound",
+    readFileSync(join(second, ".media/audio/sfx/CREDITS.md"), "utf8").includes(
+      `\`${parsed.path}\`: ${OPENVERSE_BY_WHOOSH.attribution}`,
     ),
   );
   cleanup();

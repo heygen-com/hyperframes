@@ -39,6 +39,7 @@ export interface HistoryEntry {
   /** Set on a restore: the point (an entry id, or START) the files were made equal to. */
   restoredTo?: string;
   keptInPlace?: Record<string, string>;
+  wentAheadOf?: string[];
 }
 
 /** The point before the first kept entry. */

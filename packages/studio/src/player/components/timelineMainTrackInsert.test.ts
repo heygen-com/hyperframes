@@ -41,6 +41,23 @@ describe("resolveMainTrackInsert", () => {
     expect(resolveMainTrackInsert([a, b, cLinked, cAudio, music], cLinked, 0, true)).toBeNull();
   });
 
+  // fails without the fix: each partner was checked only against clips that stay put.
+  it("is null when two moving linked partners would overlap each other in one lane", () => {
+    const aLinked = { ...a, link: "la" };
+    const aAudio = { ...el("a-audio", 0, 2, 1), tag: "audio", link: "la" };
+    const cLinked = { ...c, link: "lc" };
+    const cAudio = { ...el("c-audio", 4.5, 2, 1), tag: "audio", link: "lc" };
+    const all = [aLinked, b, cLinked, aAudio, cAudio];
+    expect(resolveMainTrackInsert(all, cLinked, 0, true)).toBeNull();
+  });
+
+  // fails without the fix: a partner's new start was never checked against 0.
+  it("is null when a linked partner would start before 0", () => {
+    const cLinked = { ...c, link: "l1" };
+    const cAudio = { ...el("c-audio", 3, 2, 1), tag: "audio", link: "l1" };
+    expect(resolveMainTrackInsert([a, b, cLinked, cAudio], cLinked, 0, true)).toBeNull();
+  });
+
   it("is null when a clip that would move is locked", () => {
     const lockedA = { ...a, timelineLocked: true };
     expect(resolveMainTrackInsert([lockedA, b, c], c, 0, true)).toBeNull();
