@@ -221,11 +221,16 @@ export function useDomEditTextCommits({
         number,
       );
       if (!claim) return { ok: true, changed: false };
-      const nextTextFields = buildNextDomTextFields(selection.textFields, value, fieldKey);
-      const textCommit = planDomTextCommit(selection.textFields, nextTextFields, value);
+      await claim.turn();
+      const landed =
+        claim.saved() === undefined
+          ? selection
+          : await selectionAsLanded(selection, buildDomSelectionFromTarget);
+      const nextTextFields = buildNextDomTextFields(landed.textFields, value, fieldKey);
+      const textCommit = planDomTextCommit(landed.textFields, nextTextFields, value);
       const write = textWriteSteps({
         iframe: previewIframeRef.current,
-        selection,
+        selection: landed,
         activeCompPath,
         textCommit,
         text: value,
@@ -244,10 +249,9 @@ export function useDomEditTextCommits({
         persist: () =>
           claim.write(async () => {
             const result = await afterSealedDraw(write.sealedEdit(), (drawn) =>
-              persistDomEditOperations(selection, textCommit.operations, {
+              persistDomEditOperations(landed, textCommit.operations, {
                 label: "Edit text",
                 skipRefresh: drawn,
-                shouldSave: claim.shouldSave,
               }),
             );
             claim.landed(write.drawn());
