@@ -18,8 +18,23 @@ const MEDIA_EDGE_SECONDS = 0.1;
 
 type PreloadableMedia = Pick<
   HTMLMediaElement,
-  "id" | "tagName" | "getAttribute" | "preload" | "readyState" | "networkState" | "load"
+  | "id"
+  | "tagName"
+  | "getAttribute"
+  | "querySelectorAll"
+  | "preload"
+  | "readyState"
+  | "networkState"
+  | "error"
+  | "load"
 >;
+
+const loadedList = new WeakMap<object, string>();
+const sourceList = (media: PreloadableMedia) =>
+  [
+    media.getAttribute("src"),
+    ...[...media.querySelectorAll("source")].map((el) => el.getAttribute("src")),
+  ].join(" ");
 
 export function isRenderFrameVideo(
   media: Pick<Element, "getAttribute" | "id" | "tagName">,
@@ -34,7 +49,12 @@ export function preloadMedia(media: PreloadableMedia): void {
   if (media.preload !== "auto") media.preload = "auto";
   // load() resets an in-flight video fetch, discarding its selected resource and buffered data.
   const videoAlreadyLoading = media.tagName === "VIDEO" && media.networkState === 2;
-  if (media.readyState < 3 && !videoAlreadyLoading) media.load();
+  if (media.readyState >= 3 || videoAlreadyLoading) return;
+  const list = sourceList(media);
+  const ended = media.error !== null || media.networkState === 3;
+  if (loadedList.get(media) === list && !ended) return;
+  loadedList.set(media, list);
+  media.load();
 }
 
 const pendingPlaybackStart = new WeakMap<HTMLMediaElement, () => void>();
@@ -79,6 +99,7 @@ export function prepareUpcomingMedia(media: HTMLMediaElement, isUpcoming: () => 
 /** Ends a fetch in flight for good, which preload none alone does not. */
 export function stopMediaDownload(media: HTMLMediaElement): void {
   cancelPlaybackStart(media);
+  loadedList.delete(media);
   for (const source of media.querySelectorAll("source")) source.remove();
   media.removeAttribute("src");
   media.load();
@@ -105,6 +126,7 @@ export function releaseMedia(media: HTMLMediaElement, whenBuffered = false): voi
     return;
   }
   cancelPlaybackStart(media);
+  loadedList.delete(media);
   media.removeAttribute("src");
   media.setAttribute("src", src);
 }
