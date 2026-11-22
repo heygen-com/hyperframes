@@ -64,6 +64,9 @@ try {
   // A clip picked on the canvas, then a real Delete: Studio deletes it.
   assert.ok(saved().includes('id="plain"'));
   await clickInPreview(page, frame, "#plain");
+  await page.waitForFunction(
+    () => new URLSearchParams(location.hash.split("?")[1]).get("selId") === "plain",
+  );
   await keyboardBackInStudio();
   await page.keyboard.press("Delete");
   for (let i = 0; i < 100 && saved().includes('id="plain"'); i++)
