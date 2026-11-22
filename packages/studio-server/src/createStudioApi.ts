@@ -26,7 +26,8 @@ import { registerMediaRoutes } from "./routes/media.js";
 import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 import { registerHistoryRoutes } from "./routes/history.js";
 import { replaceWithProjectDirMissing } from "./helpers/projectDirMissing.js";
-import { folderGone, isProjectRootMissing } from "./helpers/safePath.js";
+import { isProjectRootMissing } from "./helpers/safePath.js";
+import { folderGoneOff } from "./helpers/projectDisk.js";
 import {
   PREVIEW_ALLOWED_HOSTS_ENV,
   documentFromAnotherSite,
@@ -254,7 +255,7 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
         () => undefined,
       );
     await next();
-    if (c.res.status >= 403 && dirBeforeRoute && folderGone(dirBeforeRoute))
+    if (c.res.status >= 403 && dirBeforeRoute && (await folderGoneOff(dirBeforeRoute)))
       replaceWithProjectDirMissing(c, hostHeaders);
   });
   api.use("/projects/:id/*", async function forgetSignatureAfterWrite(c, next) {

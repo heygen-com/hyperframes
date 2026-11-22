@@ -3,6 +3,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createPausedVideoDecoder } from "./pausedVideoDecoder";
 
 const inputs: { source: string; dispose: ReturnType<typeof vi.fn> }[] = [];
+const rebuilt: {
+  init: { colorSpace?: { matrix?: string } };
+  drawWithFit: ReturnType<typeof vi.fn>;
+}[] = [];
 const getTrack = vi.fn();
 const getSample = vi.fn();
 const cancelReads = vi.fn();
@@ -26,6 +30,16 @@ vi.mock("mediabunny", () => ({
     }
     getPrimaryVideoTrack() {
       return getTrack(this.options.source.url);
+    }
+  },
+  VideoSample: class {
+    close = vi.fn();
+    drawWithFit = vi.fn();
+    constructor(
+      readonly data: ArrayBuffer,
+      readonly init: { colorSpace?: { matrix?: string } },
+    ) {
+      rebuilt.push(this);
     }
   },
   VideoSampleSink: class {
@@ -78,6 +92,15 @@ const signal = () => new AbortController().signal;
 const sample = (timestamp = 0) => ({
   timestamp,
   duration: 1 / 30,
+  format: "I420",
+  codedWidth: 100,
+  codedHeight: 100,
+  visibleRect: { left: 0, top: 0, width: 100, height: 100 },
+  rotation: 0,
+  flip: false,
+  colorSpace: { primaries: "bt709", transfer: "bt709", matrix: "bt709", fullRange: false },
+  allocationSize: () => 8,
+  copyTo: vi.fn(async () => []),
   close: vi.fn(),
   drawWithFit: vi.fn(),
 });
@@ -97,10 +120,14 @@ const track = (source: string) => ({
   getRotation: async () => 0,
   getFlip: async () => false,
   canBeTransparent: async () => false,
+  getCodec: async () => "avc",
+  getCodedHeight: async () => 100,
+  getColorSpace: async (): Promise<{ matrix?: string }> => ({ matrix: "bt709" }),
 });
 
 beforeEach(() => {
   inputs.length = 0;
+  rebuilt.length = 0;
   getTrack.mockReset().mockImplementation(async (source: string) => track(source));
   getSample.mockReset().mockImplementation(async () => sample());
   iterateSamples.mockReset();
@@ -714,4 +741,30 @@ it("closes the selected alpha sample when suspension cancels an in-flight read",
   expect(await decoding).toMatchObject({ name: "AbortError" });
   expect(selected.close).toHaveBeenCalledOnce();
   expect(inputs[0]!.dispose).toHaveBeenCalledOnce();
+});
+
+it("draws an untagged video the way the export reads it, not as the BT.709 mediabunny assumes", async () => {
+  const frames = async (height: number, matrix?: string) => {
+    getTrack.mockImplementationOnce(async (source: string) => ({
+      ...track(source),
+      getCodedHeight: async () => height,
+      getColorSpace: async () => (matrix ? { matrix } : {}),
+    }));
+    const decoded = sample();
+    getSample.mockImplementationOnce(async () => decoded);
+    const owner = provider();
+    (await owner.decode([request(`clip-${height}-${matrix ?? "none"}`)], signal()))[0]?.release();
+    return decoded;
+  };
+  const small = await frames(360);
+  expect(rebuilt.map((made) => made.init.colorSpace?.matrix)).toEqual(["smpte170m"]);
+  expect(rebuilt[0]!.drawWithFit).toHaveBeenCalledOnce();
+  expect(small.drawWithFit).not.toHaveBeenCalled();
+  expect(small.close).toHaveBeenCalled();
+  rebuilt.length = 0;
+  const hd = await frames(720);
+  const tagged = await frames(360, "bt709");
+  expect(rebuilt).toEqual([]);
+  expect(hd.drawWithFit).toHaveBeenCalledOnce();
+  expect(tagged.drawWithFit).toHaveBeenCalledOnce();
 });

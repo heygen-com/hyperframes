@@ -12,7 +12,7 @@ import { readMediaRenderId } from "./renderFrameSibling";
 import { defersMedia } from "./timedClipHide";
 import { capturePageIn, inPlayerFrame, servedToStudio } from "../studioPreviewMark";
 import { swallow } from "./diagnostics";
-import { isWebKit, mediaElementTime } from "./mediaClock";
+import { isChromium, isWebKit, mediaElementTime } from "./mediaClock";
 
 const MEDIA_EDGE_SECONDS = 0.1;
 
@@ -57,6 +57,13 @@ export function preloadMedia(media: PreloadableMedia): void {
   media.load();
 }
 
+export function prefetchMedia(media: PreloadableMedia): void {
+  if (!isChromium()) return preloadMedia(media);
+  if (isRenderFrameVideo(media)) return;
+  if (media.preload !== "metadata") media.preload = "metadata";
+  if (media.readyState === 0 && media.networkState !== 2) media.load();
+}
+
 const pendingPlaybackStart = new WeakMap<HTMLMediaElement, () => void>();
 
 function cancelPlaybackStart(media: HTMLMediaElement): void {
@@ -65,7 +72,7 @@ function cancelPlaybackStart(media: HTMLMediaElement): void {
 
 export function prepareUpcomingMedia(media: HTMLMediaElement, isUpcoming: () => boolean): void {
   cancelPlaybackStart(media);
-  if ((media.tagName !== "VIDEO" && !isWebKit()) || isRenderFrameVideo(media)) return;
+  if (isRenderFrameVideo(media)) return;
   const prepare = () => {
     if (!media.isConnected || !media.paused || media.seeking || !isUpcoming()) return;
     const start = readMediaStart(media);

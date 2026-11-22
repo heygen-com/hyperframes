@@ -15,8 +15,9 @@ const ALICE_USER_ID = "2bd806c9-7f0e-50af-9a1f-c3328fa763a9";
 //   - user:   the /v3/users/me identity returned on success
 const verifyState = vi.hoisted(
   () =>
-    ({ reject: false, user: { email: "alice@example.com" } }) as {
+    ({ reject: false, detail: "invalid token", user: { email: "alice@example.com" } }) as {
       reject: boolean;
+      detail: string;
       user: Record<string, unknown>;
     },
 );
@@ -72,7 +73,7 @@ vi.mock("../../auth/index.js", async (orig) => {
     async getCurrentUser(credential: { access_token?: string }): Promise<Record<string, unknown>> {
       if (verifyState.reject) {
         const { ErrUnauthenticated: rej } = await import("../../auth/errors.js");
-        throw rej("invalid token");
+        throw rej(verifyState.detail);
       }
       return (credential.access_token && usersByToken[credential.access_token]) || verifyState.user;
     }
@@ -128,6 +129,7 @@ describe("auth login", () => {
     envFixture = await setupTempAuthEnv("hf-login-");
     dir = envFixture.dir;
     verifyState.reject = false;
+    verifyState.detail = "invalid token";
     verifyState.user = { email: "alice@example.com" };
     deviceChallenge.verificationUriComplete = undefined;
     for (const token of Object.keys(usersByToken)) delete usersByToken[token];
@@ -459,5 +461,87 @@ describe("auth login", () => {
     Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: undefined });
     await runCommand({ device: true });
     expect(deviceAuth.start).toHaveBeenCalledOnce();
+  });
+
+  describe("lines printed for people", () => {
+    const ESC = String.fromCharCode(27);
+    const ODD = `od${ESC}[2Jd\x07`;
+    const SHOWN = "od\\x1b[2Jd\\x07";
+    const printed = (fn: typeof console.log): string =>
+      vi
+        .mocked(fn)
+        .mock.calls.map((call) => call.join(" "))
+        .join("\n")
+        .replace(new RegExp(`${ESC}\\[[0-9;]*m`, "g"), "");
+    const expectShown = (fn: typeof console.log, lead: string): void => {
+      const text = printed(fn);
+      expect(text).toContain(lead);
+      expect(text).toContain(SHOWN);
+      expect(text).not.toContain(ESC);
+      expect(text).not.toContain("\x07");
+    };
+
+    // fails without the fix: the address and the code reach the terminal as they arrived.
+    it("shows control characters in the device address and code as text", async () => {
+      deviceAuth.start.mockImplementationOnce(async (options) => {
+        options?.onChallenge?.({ verificationUri: `https://example.com/${ODD}`, userCode: ODD });
+        return { access_token: "device-at", refresh_token: "device-rt", token_type: "Bearer" };
+      });
+      await runCommand({ device: true });
+      expectShown(console.log, "Open https://example.com/");
+      expect(printed(console.log)).toContain(`Enter code ${SHOWN}.`);
+    });
+
+    // fails without the fix: the raw message is printed.
+    it("shows control characters in a failed device authorization as text", async () => {
+      deviceAuth.start.mockRejectedValueOnce(new Error(`refused ${ODD}`));
+      await expect(runCommand({ device: true })).rejects.toThrow(CliRuntimeError);
+      expectShown(console.error, "refused ");
+    });
+
+    // fails without the fix: the raw reason is printed.
+    it("shows control characters in an unverified device session's reason as text", async () => {
+      verifyState.reject = true;
+      verifyState.detail = ODD;
+      await expect(runCommand({ device: true })).rejects.toThrow(CliRuntimeError);
+      expectShown(console.error, "no credential was saved.");
+    });
+
+    // fails without the fix: the raw reason is printed.
+    it("shows control characters in an unsaved device session's reason as text", async () => {
+      deviceAuth.persist.mockRejectedValueOnce(new Error(`disk ${ODD}`));
+      await expect(runCommand({ device: true })).rejects.toThrow(CliRuntimeError);
+      expectShown(console.error, "it was revoked. disk ");
+    });
+
+    // fails without the fix: the account name is printed as it arrived.
+    it.each([
+      ["device", { device: true }, "Signed in as "],
+      ["browser", {}, "Signed in as "],
+      ["API key", { "api-key": "hg_goodkey456" }, "Authenticated as "],
+    ])(
+      "shows control characters in the %s sign-in's account name as text",
+      async (_, args, lead) => {
+        verifyState.user = { email: `${ODD}@example.com` };
+        await runCommand(args);
+        expectShown(console.log, `${lead}${SHOWN}@example.com.`);
+      },
+    );
+
+    // fails without the fix: the raw reason is printed.
+    it("shows control characters in a failed identity check after browser sign-in as text", async () => {
+      verifyState.reject = true;
+      verifyState.detail = ODD;
+      await runCommand({});
+      expectShown(console.error, "Identity check failed (transient):");
+    });
+
+    // fails without the fix: the raw reason is printed.
+    it("shows control characters in a rejected API key's reason as text", async () => {
+      verifyState.reject = true;
+      verifyState.detail = ODD;
+      await expect(runLogin("hg_badkey123")).rejects.toThrow(CliRuntimeError);
+      expectShown(console.error, "HeyGen rejected the API key.");
+    });
   });
 });

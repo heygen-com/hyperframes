@@ -8,6 +8,26 @@ export function commandWordIndex(argv: readonly string[]): number {
   return end >= 0 && index >= end ? -1 : index;
 }
 
+export function jsonFlagAfterCommand(argv: readonly string[]): readonly string[] {
+  const at = commandWordIndex(argv);
+  const isJson = (arg: string): boolean => arg === "--json" || arg.startsWith("--json=");
+  if (at < 0 || !argv.slice(0, at).some(isJson)) return argv;
+  const end = argv.indexOf("--", at);
+  const own = argv.slice(at, end < 0 ? argv.length : end);
+  const moved = [...new Set(argv.slice(0, at).filter(isJson))].filter((arg) => !own.includes(arg));
+  return [
+    ...argv.slice(0, at).filter((arg) => !isJson(arg)),
+    ...own,
+    ...moved,
+    ...argv.slice(at + own.length),
+  ];
+}
+
+export function jsonFlagBeforeSeparator(argv: readonly string[]): boolean {
+  const end = argv.indexOf("--");
+  return argv.slice(0, end < 0 ? argv.length : end).includes("--json");
+}
+
 /** `hyperframes <dir>` is `hyperframes open <dir>`; a known command wins over a folder of the same name. */
 export function openShortcutArgv(
   argv: readonly string[],

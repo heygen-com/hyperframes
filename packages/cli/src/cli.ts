@@ -52,6 +52,7 @@ import { existsSync } from "node:fs";
 // `hyperframes --version` near-instant (~10ms vs ~80ms).
 import { VERSION } from "./version.js";
 
+process.argv = [...process.argv.slice(0, 2), ...jsonFlagAfterCommand(process.argv.slice(2))];
 let argv = process.argv.slice(2);
 if (argv[0] === "help") {
   process.argv = [...process.argv.slice(0, 2), ...argv.slice(1), "--help"];
@@ -73,8 +74,9 @@ if (rootVersionRequested) {
 const { loadProjectDotEnv, yieldReceivedProviderKeys } = await import("./utils/dotEnv.js");
 const captureEnv = argv[commandWordIndex(argv)] === "capture";
 if (!captureEnv || process.env.HYPERFRAMES_NO_CAPTURE_DOTENV !== "1") {
-  loadProjectDotEnv(process.cwd(), process.env, (line) => console.error(line));
-  await yieldReceivedProviderKeys((line) => console.error(line));
+  const say = (line: string) => console.error(terminalText(line));
+  loadProjectDotEnv(process.cwd(), process.env, say);
+  await yieldReceivedProviderKeys(say);
 }
 
 // ── Lazy imports ────────────────────────────────────────────────────────────
@@ -112,7 +114,9 @@ import {
 } from "./utils/commandResult.js";
 import { registerRunningCli } from "./utils/runningCli.js";
 import {
+  jsonFlagBeforeSeparator,
   commandWordIndex,
+  jsonFlagAfterCommand,
   measureProbeShortcutArgv,
   openShortcutArgv,
   registryAliasArgv,
@@ -131,7 +135,7 @@ async function assertStudioWorkspaceBuilt(): Promise<void> {
     await import("./utils/workspaceBuildCheck.js");
   const problems = checkStudioWorkspaceBuild(repoRoot);
   if (problems.length === 0) return;
-  console.error(formatWorkspaceBuildProblems(problems));
+  console.error(terminalLines(formatWorkspaceBuildProblems(problems)));
   throw new CliRuntimeError("Studio workspace build check failed", {
     exitCode: 1,
     presented: true,
@@ -217,7 +221,7 @@ if (argv[commandWordIndex(argv)] === "measure") {
   if (rewritten !== argv) {
     const file = rewritten[rewritten.indexOf("probe") + 1];
     console.error(
-      `No measure op named: running 'probe ${JSON.stringify(file)}'. Ops: ${MEASURE_OPS.join(", ")}.`,
+      `No measure op named: running 'probe ${terminalText(JSON.stringify(file))}'. Ops: ${MEASURE_OPS.join(", ")}.`,
     );
     process.argv = [...process.argv.slice(0, 2), ...rewritten];
     argv = process.argv.slice(2);
@@ -246,7 +250,7 @@ const cliCommandArg = process.argv[2];
 // (in the failure reporter) and `command` references `subCommands` (the `in`
 // check), so its type can't be inferred from its own initializer.
 const command: string = cliCommandArg && cliCommandArg in subCommands ? cliCommandArg : "unknown";
-const hasJsonFlag = process.argv.includes("--json");
+const hasJsonFlag = jsonFlagBeforeSeparator(argv);
 // Under --json a failure always answers on stdout with the shared envelope (see executeCli).
 const jsonOutput = hasJsonFlag ? watchOutput() : undefined;
 
@@ -606,8 +610,8 @@ async function unknownCommandError(requested: ResolvedCommandUsage): Promise<Cli
   const subCommands = typeof declared === "function" ? await declared() : await declared;
   const names = Object.keys(subCommands ?? {});
   const hint = unknownCommandHint(word, requested.path, names);
-  console.error(`Unknown command: ${word}`);
-  if (hint) console.error(hint);
+  console.error(`Unknown command: ${terminalText(word)}`);
+  if (hint) console.error(terminalText(hint));
   console.error(`Run '${group} --help' to list every command.`);
   return new CliUsageError(`Unknown command: ${word}`, {
     presented: true,
@@ -706,9 +710,11 @@ async function executeCli(): Promise<void> {
       const usage = error instanceof CliUsageError && !error.result.presented;
       if (usage && !error.hint) await showRequestedUsage(console.error);
       if (!typed || !error.result.presented) {
-        console.error(terminalLines(error instanceof Error ? error.message : String(error)));
+        const message = error instanceof Error ? error.message : String(error);
+        const oneLine = error instanceof CliUsageError || isCittyUsageError(error);
+        console.error(oneLine ? terminalText(message) : terminalLines(message));
       }
-      if (usage && error.hint) console.error(error.hint);
+      if (usage && error.hint) console.error(terminalText(error.hint));
     }
   } finally {
     const pending = consumeCommandResult();

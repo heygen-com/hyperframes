@@ -2,15 +2,16 @@ import {
   ALL_FORMATS,
   Input,
   UrlSource,
+  VideoSample,
   VideoSampleSink,
   type Rotation,
-  type VideoSample,
 } from "mediabunny";
 import type {
   PausedVideoFrame,
   PausedVideoFrameProvider,
   PausedVideoFrameRequest,
 } from "@hyperframes/core";
+import { untaggedVideoMatrix } from "@hyperframes/parsers/media-streams";
 import { mediaUrlSourceOptions } from "./mediaFetch";
 import type { IframeWindow } from "./playbackTypes";
 import {
@@ -44,6 +45,7 @@ type Reader = {
   lead: number;
   ticks: number;
   transparent: boolean;
+  untaggedBt601: boolean;
   tail: Promise<void>;
   iterator: AsyncGenerator<VideoSample, void, unknown> | null;
   iteratorEnd: number;
@@ -67,6 +69,24 @@ async function readSingleSample(reader: Reader, query: number): Promise<VideoSam
     selected?.close();
     throw error;
   }
+}
+
+async function asBt601(sample: VideoSample): Promise<VideoSample> {
+  if (!sample.format) return sample;
+  const data = new ArrayBuffer(sample.allocationSize());
+  const layout = await sample.copyTo(data);
+  const { primaries, transfer, fullRange } = sample.colorSpace;
+  return new VideoSample(data, {
+    format: sample.format,
+    codedWidth: sample.visibleRect.width,
+    codedHeight: sample.visibleRect.height,
+    timestamp: sample.timestamp,
+    duration: sample.duration,
+    rotation: sample.rotation,
+    flip: sample.flip,
+    layout,
+    colorSpace: { primaries, transfer, fullRange, matrix: "smpte170m" },
+  });
 }
 
 export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideoFrameProvider {
@@ -162,6 +182,11 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
           track.getFlip(),
           track.canBeTransparent(),
         ]);
+      const [codec, codedHeight, colour] = await Promise.all([
+        track.getCodec(),
+        track.getCodedHeight(),
+        track.getColorSpace(),
+      ]);
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.ceil(width));
       const aspect = rotation % 180 === 0 ? squareWidth / squareHeight : squareHeight / squareWidth;
@@ -179,6 +204,8 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
         lead,
         ticks,
         transparent,
+        untaggedBt601:
+          !colour.matrix && untaggedVideoMatrix(codec ?? "", codedHeight) === "smpte170m",
         tail: Promise.resolve(),
         iterator: null,
         iteratorEnd: 0,
@@ -280,7 +307,12 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
     if (!context) throw new Error("Preview canvas unavailable");
     context.clearRect(0, 0, reader.canvas.width, reader.canvas.height);
     context.imageSmoothingQuality = "high";
-    sample.drawWithFit(context, { fit: "fill", rotation: reader.rotation, flip: reader.flip });
+    const drawn = reader.untaggedBt601 ? await asBt601(sample) : sample;
+    try {
+      drawn.drawWithFit(context, { fit: "fill", rotation: reader.rotation, flip: reader.flip });
+    } finally {
+      if (drawn !== sample) drawn.close();
+    }
     const image = await createImageBitmap(reader.canvas);
     if (signal.aborted || disposed || reader.disposed) {
       image.close();

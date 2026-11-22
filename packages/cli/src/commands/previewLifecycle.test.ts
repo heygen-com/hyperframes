@@ -9,8 +9,17 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ActiveServer } from "../server/portUtils.js";
+
+const realKills = vi.hoisted(() => [] as number[]);
+// fails without the fix: a case that faked spawn but not kill sent a real taskkill /T to its made-up pid, ending
+// whatever process held that number (a test worker on a Windows runner).
+vi.mock("../utils/processTree.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/processTree.js")>()),
+  terminateProcessTree: async (pid: number) => void realKills.push(pid),
+}));
+afterEach(() => expect(realKills.splice(0), "a real process kill").toEqual([]));
 import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 import {
   PreviewPortUnavailableError,
@@ -1585,5 +1594,30 @@ describe("where a preview's session is kept", () => {
     expect(previewSessionPath(projectDir).startsWith(cache)).toBe(true);
     expect(existsSync(previewSessionPath(projectDir))).toBe(true);
     expect(readdirSync(state)).toEqual([]);
+  });
+});
+
+describe("background preview log warning", () => {
+  it("shows control characters in a log path that cannot be opened as text", async () => {
+    const bell = String.fromCharCode(7);
+    // A file where the state folder should be, so the log's folder cannot be made.
+    const blocker = join(tempDir("hf-preview-state-"), "file");
+    writeFileSync(blocker, "");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    onTestFinished(() => warn.mockRestore());
+
+    await startBackgroundPreview(projectDir, 3002, {
+      forceNew: true,
+      scan: async () => [],
+      spawn: () => ({ pid: 5432, unref: vi.fn() }),
+      kill: vi.fn(),
+      sleep: async () => {},
+      stateHome: join(blocker, `state${bell}home`),
+    }).catch(() => {});
+
+    const printed = warn.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).toContain("background preview log not written: cannot open ");
+    expect(printed).toContain("state\\x07home");
+    expect(printed).not.toContain(bell);
   });
 });

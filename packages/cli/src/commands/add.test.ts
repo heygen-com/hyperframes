@@ -633,6 +633,25 @@ describe("add command run() — several names", () => {
     expect(printed).toContain("is deprecated: gone\\x1b]52;c;cA==\\x07");
   });
 
+  // fails without the fix: a name the registry does not have is repeated as it was typed.
+  it("shows control characters in a skipped name as text", async () => {
+    const esc = String.fromCharCode(27);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await expect(
+      runWrapped(["my-block", `no-${esc}[2Jsuch\x07`, "--dir", dir, "--no-clipboard"]),
+    ).rejects.toMatchObject({ result: { exitCode: 1 } });
+
+    const printed = log.mock.calls
+      .map((call) => call.join(" "))
+      .join("\n")
+      .replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
+    expect(printed).toContain("✓ my-block");
+    expect(printed).toContain("✗ no-\\x1b[2Jsuch\\x07 (skipped: ");
+    expect(printed).not.toContain(esc);
+    expect(printed).not.toContain("\x07");
+  });
+
   it("keeps the installs that worked when one name is unknown, and fails the call", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
 

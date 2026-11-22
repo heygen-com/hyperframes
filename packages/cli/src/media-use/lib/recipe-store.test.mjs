@@ -563,6 +563,49 @@ for (const linked of [".media", ".media/recipes", ".media/recipes/promo"]) {
   });
 }
 
+/** Every file under `dir`, read as text; an empty list when `dir` is missing. */
+function textsUnder(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { recursive: true })
+    .map((name) => join(dir, name))
+    .filter((path) => lstatSync(path).isFile())
+    .map((path) => readFileSync(path, "utf8"));
+}
+
+for (const source of ["frame.md", "STORYBOARD.md", "BRIEF.md"]) {
+  test(`freeze refuses a ${source} that links outside the project, copying nothing`, () => {
+    withSandbox(({ project, root, home }) => {
+      freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" });
+      const secret = join(root, "secret.txt");
+      writeFileSync(secret, "---\nworkflow: product-launch-video\n---\nTOP-SECRET-TOKEN\n");
+      rmSync(join(project, source), { force: true });
+      symlinkSync(secret, join(project, source));
+
+      assert.throws(
+        () =>
+          freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" }),
+        /is a link or not a regular file; nothing was frozen/,
+      );
+      const recipes = [join(project, ".media/recipes"), join(home, ".media/recipes")];
+      for (const text of recipes.flatMap(textsUnder)) assert.doesNotMatch(text, /TOP-SECRET/);
+      assert.deepEqual(readdirSync(join(project, ".media/recipes")), ["promo"]);
+    });
+  });
+}
+
+test("freeze refuses a frame.md that is not a regular file", () => {
+  withSandbox(({ project, home }) => {
+    rmSync(join(project, "frame.md"));
+    mkdirSync(join(project, "frame.md"));
+    assert.throws(
+      () => freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" }),
+      /is a link or not a regular file; nothing was frozen/,
+    );
+    assert.ok(!existsSync(join(project, ".media/recipes/promo")));
+    assert.ok(!existsSync(join(home, ".media/recipes/promo")));
+  });
+});
+
 test("use imports only regular recipe files from the user tier, never links or leftovers", () => {
   withSandbox(({ project, root, home }) => {
     freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" });

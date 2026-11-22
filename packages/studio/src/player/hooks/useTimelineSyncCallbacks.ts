@@ -19,6 +19,7 @@ import { previewClipParents, previewDocumentCopy, previewFrameOpaque } from "../
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import {
   buildTimelineElementsFromClips,
+  fallbackTimelineFromDom,
   syncManifestTimeline,
   clipTreeParentMap,
   collectSubCompositionDomChildren,
@@ -30,7 +31,13 @@ import {
   seekAdapterToRestorePoint,
   syncAdapterDuration,
   type RuntimeTimelineMessage,
+  type SealedTimelineRead,
 } from "./timelineSyncHydration";
+import {
+  landTimelineRevision,
+  nextTimelineRevision,
+  supersedeTimelineReads,
+} from "../lib/timelineRevision";
 
 // Re-exported for the tests and callers that have always imported it from here.
 export { resolveReloadSeekTime } from "./timelineSyncHydration";
@@ -62,6 +69,8 @@ export interface UseTimelineSyncCallbacksParams {
   /** Fires when no adapter appeared within the wait window. */
   onLoadGiveUp?: (context?: number) => void;
   hostOwnsDeadline?: boolean;
+  /** The frame on screen, when it is not this hook's own (a shadow, hidden until promoted). */
+  liveFrame?: () => HTMLIFrameElement | null;
 }
 
 /**
@@ -179,10 +188,25 @@ export function useTimelineSyncCallbacks({
   isCurrent,
   onLoadGiveUp,
   hostOwnsDeadline,
+  liveFrame,
 }: UseTimelineSyncCallbacksParams) {
+  const onScreen = useCallback(
+    () => (liveFrame ? liveFrame() : iframeRef.current),
+    [liveFrame, iframeRef],
+  );
   // Convert a runtime timeline message (from iframe postMessage) into TimelineElements
   const applyTimelineMessage = useCallback(
-    (data: RuntimeTimelineMessage, iframeDoc: Document | null, parentMap: Map<string, string>) => {
+    (
+      data: RuntimeTimelineMessage,
+      iframeDoc: Document | null,
+      parentMap: Map<string, string>,
+      iframe: HTMLIFrameElement | null,
+      previewDuration: number,
+      revision: number,
+    ) => {
+      // A read lands only from the frame on screen, and only over nothing newer.
+      if (iframe !== onScreen() || !landTimelineRevision(revision)) return;
+      usePlayerStore.getState().setClipManifest(data.clips);
       // Show root-level clips: no parentCompositionId, OR parent is a "phantom wrapper"
       const clipCompositionIds = new Set(data.clips.map((c) => c.compositionId).filter(Boolean));
       const filtered = data.clips.filter(
@@ -199,7 +223,6 @@ export function useTimelineSyncCallbacks({
         // A document the walk cannot read leaves the maps empty.
       }
 
-      const els = buildTimelineElementsFromClips(filtered, iframeDoc);
       // Clamp non-finite or absurdly large durations — the runtime can emit
       // Infinity when it detects a loop-inflated GSAP timeline without an
       // explicit data-duration on the root composition. Floor the manifest total
@@ -212,36 +235,52 @@ export function useTimelineSyncCallbacks({
         manifestDurationSeconds: data.durationInFrames / fps,
         authoredRootDurationSeconds: readTimelineDurationFromDocument(iframeDoc),
       });
+      // The composition's own row keeps its exact length; the transport total is frame-rounded.
+      const ownDuration =
+        sanitizeDurationSeconds(readTimelineDurationFromDocument(iframeDoc)) ||
+        sanitizeDurationSeconds(previewDuration) ||
+        newDuration;
+      const fallback = data.clips.length === 0 && iframeDoc !== null;
+      const els = fallback
+        ? fallbackTimelineFromDom(iframeDoc, iframe, ownDuration)
+        : buildTimelineElementsFromClips(filtered, iframeDoc);
       syncManifestTimeline(
         els,
-        newDuration,
+        fallback ? Math.max(newDuration, ownDuration) : newDuration,
         usePlayerStore.getState().duration,
         syncTimelineElements,
       );
     },
-    [syncTimelineElements],
+    [onScreen, syncTimelineElements],
   );
 
-  const timelineReads = useRef(0);
-  const processTimelineMessage = useCallback(
-    (data: RuntimeTimelineMessage) => {
-      if (!data.clips) return;
-      usePlayerStore.getState().setClipManifest(data.clips);
-      const iframe = iframeRef.current;
-      const read = ++timelineReads.current;
-      if (!iframe || !previewFrameOpaque(iframe)) {
-        applyTimelineMessage(data, safeContentDocument(iframe), openClipParents(iframe));
-        return;
-      }
-      // A sealed frame's rows bind to its document copy and clip tree from the editing port; the newest read wins.
-      void Promise.all([previewDocumentCopy(iframe), previewClipParents(iframe)]).then(
-        ([doc, parents]) => {
-          if (read === timelineReads.current && iframeRef.current === iframe)
-            applyTimelineMessage(data, doc, parents);
+  // A sealed frame's rows bind to its document copy and clip tree from the editing port.
+  const readSealedTimeline = useCallback<SealedTimelineRead>(
+    (iframe, manifest, previewDuration) => {
+      const revision = nextTimelineRevision();
+      void Promise.all([manifest, previewDocumentCopy(iframe), previewClipParents(iframe)]).then(
+        ([data, doc, parents]) => {
+          // A frame its player removed is gone: callback refs keep it (promotion repoints them), the page does not.
+          if (data && iframe.isConnected)
+            applyTimelineMessage(data, doc, parents, iframe, previewDuration, revision);
         },
       );
     },
-    [iframeRef, applyTimelineMessage],
+    [applyTimelineMessage],
+  );
+
+  const processTimelineMessage = useCallback(
+    (data: RuntimeTimelineMessage) => {
+      if (!data.clips) return;
+      const iframe = iframeRef.current;
+      const previewDuration = getAdapter()?.getDuration() ?? 0;
+      if (iframe && previewFrameOpaque(iframe))
+        return readSealedTimeline(iframe, Promise.resolve(data), previewDuration);
+      const doc = safeContentDocument(iframe);
+      const parents = openClipParents(iframe);
+      applyTimelineMessage(data, doc, parents, iframe, previewDuration, nextTimelineRevision());
+    },
+    [iframeRef, getAdapter, readSealedTimeline, applyTimelineMessage],
   );
 
   const enrichMissingCompositions = useCallback(() => {
@@ -296,6 +335,7 @@ export function useTimelineSyncCallbacks({
           iframe: iframeRef.current,
           adapter,
           processTimelineMessage,
+          readSealedTimeline,
           enrichMissingCompositions,
           applyPreviewAudioState,
           attachIframeShortcutListeners,
@@ -312,6 +352,7 @@ export function useTimelineSyncCallbacks({
       requestTimelineReady,
       setIsPlaying,
       processTimelineMessage,
+      readSealedTimeline,
       enrichMissingCompositions,
       syncTimelineElements,
       attachIframeShortcutListeners,
@@ -329,6 +370,7 @@ export function useTimelineSyncCallbacks({
 
   const onIframeLoad = useCallback(
     (context?: number) => {
+      if (onScreen() === iframeRef.current) supersedeTimelineReads();
       const loadedDoc = safeContentDocument(iframeRef.current);
       if (loadedDoc) usePlayerStore.getState().markPreviewLoadStep(loadedDoc);
       applyPreviewAudioState();
@@ -385,6 +427,7 @@ export function useTimelineSyncCallbacks({
       applyPreviewAudioState,
       onLoadGiveUp,
       hostOwnsDeadline,
+      onScreen,
     ],
   );
 

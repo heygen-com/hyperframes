@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import * as fs from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { withFileLock } from "./config-lock.mjs";
 import { globalMediaDir } from "./media-home.mjs";
+import { ownMediaDir, replaceFile } from "./manifest.mjs";
 
 /**
  * Remembered defaults — the lightweight tier of HyperFrames user memory.
@@ -70,17 +71,9 @@ function readPrefsFile(path) {
   }
 }
 
-/** Atomic write (tmp + rename) so a crash never leaves a torn file. */
+/** Atomic write (a new temp file under a random name, then rename), so a crash never leaves a torn file. */
 function writePrefsFile(path, file) {
-  const tmp = `${path}.${process.pid}.tmp`;
-  try {
-    writeFileSync(tmp, `${JSON.stringify(file, null, 2)}\n`);
-    renameSync(tmp, path);
-  } finally {
-    try {
-      fs.rmSync(tmp, { force: true });
-    } catch {}
-  }
+  replaceFile(path, `${JSON.stringify(file, null, 2)}\n`);
 }
 
 function updatePrefsFile(path, update) {
@@ -129,6 +122,7 @@ function dedupe(list) {
  * provenance over (the old confirmations vouched for the old value).
  */
 function recordProjectTier(projectDir, fullKey, value, projectName, now) {
+  ownMediaDir(projectDir);
   return updatePrefsFile(projectPrefsPath(projectDir), (file) => {
     const previous = file.preferences[fullKey];
     const keepProvenance = validEntry(previous) && previous.value === value;

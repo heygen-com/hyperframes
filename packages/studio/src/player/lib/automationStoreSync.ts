@@ -16,6 +16,8 @@
 
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
+import { HF_AUDIO_CARVE_ATTR } from "@hyperframes/core/audio-carve";
+import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core/color-grading";
 import {
   HF_AUDIO_FADE_IN_ATTR,
   HF_AUDIO_FADE_OUT_ATTR,
@@ -27,6 +29,7 @@ import { groupInfoFor } from "./timelineGroupInfo";
 import {
   getTimelineElementIdentity,
   previewElementFinder,
+  readBadgeFields,
   resolveMediaElement,
 } from "./timelineElementHelpers";
 import { elementVolume, parseStoredVolume } from "./storedVolume";
@@ -49,9 +52,9 @@ let syncs = 0;
  * reverted is only known by looking.
  */
 /**
- * What an element's seven synced fields SHOULD read, given the preview.
+ * What an element's ten synced fields SHOULD read, given the preview.
  *
- * Its own five come off its node; the other two are its copy of what its group
+ * Its own eight come off its node; the other two are its copy of what its group
  * carries. The timeline derives a group's lanes and chain from these mirrors,
  * never from the group element, and automating a group writes `data-automation`
  * on the group node through the ordinary element path, so both halves are re-read.
@@ -67,6 +70,7 @@ function syncedFields(doc: Document, element: TimelineElement, node: Element) {
     volume: elementVolume(node, resolveMediaElement(node) ?? node),
     audioGroupAutomation: group?.automation,
     audioGroupFxChain: group?.fxChain,
+    ...readBadgeFields(node),
   };
 }
 
@@ -112,6 +116,8 @@ const storedFade = (seconds: number) => (seconds > 0 ? seconds : undefined);
 const STORED_FIELD: Record<string, (value: string | null) => Partial<TimelineElement>> = {
   [HF_AUDIO_AUTOMATION_ATTR]: (value) => ({ automation: value ?? undefined }),
   [HF_AUDIO_FX_ATTR]: (value) => ({ fxChain: value ?? undefined }),
+  [HF_COLOR_GRADING_ATTR]: (value) => ({ colorGrading: value ?? undefined }),
+  [HF_AUDIO_CARVE_ATTR]: (value) => ({ carve: value ?? undefined }),
   [HF_AUDIO_FADE_IN_ATTR]: (value) => ({ fadeIn: storedFade(readFadeSeconds(value)) }),
   [HF_AUDIO_FADE_OUT_ATTR]: (value) => ({ fadeOut: storedFade(readFadeSeconds(value)) }),
   // A quick volume save writes no other field the store keeps: without this, a clip read its last load's volume.

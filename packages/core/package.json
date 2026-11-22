@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.73",
+  "version": "0.9.80",
   "description": "",
   "repository": {
     "type": "git",
@@ -127,6 +127,12 @@
       "node": "./dist/missingPath.js",
       "import": "./src/missingPath.ts",
       "types": "./src/missingPath.ts"
+    },
+    "./terminal-text": {
+      "bun": "./src/terminalText.ts",
+      "node": "./dist/terminalText.js",
+      "import": "./src/terminalText.ts",
+      "types": "./src/terminalText.ts"
     },
     "./rename-retry": {
       "bun": "./src/renameWithRetry.ts",
@@ -783,6 +789,10 @@
       "./missing-path": {
         "import": "./dist/missingPath.js",
         "types": "./dist/missingPath.d.ts"
+      },
+      "./terminal-text": {
+        "import": "./dist/terminalText.js",
+        "types": "./dist/terminalText.d.ts"
       },
       "./rename-retry": {
         "import": "./dist/renameWithRetry.js",

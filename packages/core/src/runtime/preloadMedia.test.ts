@@ -6,6 +6,7 @@ import {
   deferMediaUntilDue,
   giveBackWhenDue,
   isRenderFrameVideo,
+  prefetchMedia,
   preloadMedia,
   prepareUpcomingMedia,
   releaseMedia,
@@ -276,6 +277,33 @@ describe("releasing a clip's download", () => {
   });
 });
 
+describe("prefetching an upcoming clip", () => {
+  const CHROME = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36";
+  const EDGE = `${CHROME} Edg/120.0`;
+  const FIREFOX = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0";
+  const SAFARI = "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15";
+  const ANDROID_CHROME =
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36";
+  const IOS_CHROME =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 CriOS/120.0 Mobile/15E148 Safari/604.1";
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([
+    { engine: "Chrome", userAgent: CHROME, preload: "metadata" },
+    { engine: "Edge", userAgent: EDGE, preload: "metadata" },
+    { engine: "Android Chrome", userAgent: ANDROID_CHROME, preload: "metadata" },
+    { engine: "Firefox", userAgent: FIREFOX, preload: "auto" },
+    { engine: "Safari", userAgent: SAFARI, preload: "auto" },
+    { engine: "Chrome on iOS, which is WebKit,", userAgent: IOS_CHROME, preload: "auto" },
+  ])("$engine loads it at preload $preload", ({ userAgent, preload }) => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
+    const clip = { ...media("VIDEO", 0, 0), preload: "none" };
+    prefetchMedia(clip);
+    expect(clip.preload).toBe(preload);
+    expect(clip.load).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("preparing upcoming video playback", () => {
   afterEach(() => vi.restoreAllMocks());
   function video() {
@@ -337,7 +365,7 @@ describe("preparing upcoming video playback", () => {
     expect(element.currentTime).toBe(0);
   });
 
-  it("does not prepare an audio clip's source offset outside WebKit", () => {
+  it("prepares an upcoming audio clip's source offset outside WebKit, so it reads from its in-point, not the file's front", () => {
     const element = document.createElement("audio");
     element.setAttribute("data-media-start", "6");
     element.load = vi.fn();
@@ -345,7 +373,7 @@ describe("preparing upcoming video playback", () => {
 
     prepareUpcomingMedia(element, () => true);
     element.dispatchEvent(new Event("loadedmetadata"));
-    expect(element.currentTime).toBe(0);
+    expect(element.currentTime).toBe(mediaElementTime(6));
     element.remove();
   });
 

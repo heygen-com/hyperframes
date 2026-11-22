@@ -1,5 +1,7 @@
 import { resolve, sep, join, dirname, basename, relative, isAbsolute, parse } from "node:path";
-import { lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
+import { lstatSync, mkdirSync, realpath as realpathWalk, realpathSync, statSync } from "node:fs";
+import { realpath as realpathNative } from "node:fs/promises";
+import { promisify } from "node:util";
 import { projectPathSegments } from "@hyperframes/parsers/private-path";
 
 export {
@@ -10,12 +12,24 @@ export {
   projectPathSegments,
 } from "@hyperframes/parsers/private-path";
 
+// Some Windows volumes (RAM disks) refuse the native realpath with EISDIR; the JS walk still resolves there.
+const nativeRefused = (error: unknown) => (error as NodeJS.ErrnoException).code === "EISDIR";
+
 export function realpath(path: string): string {
   try {
     return realpathSync.native(path);
   } catch (error) {
-    // Some Windows volumes (RAM disks) refuse the native call with EISDIR.
-    if ((error as NodeJS.ErrnoException).code === "EISDIR") return realpathSync(path);
+    if (nativeRefused(error)) return realpathSync(path);
+    throw error;
+  }
+}
+
+/** `realpath` off the event loop: the same answer, the EISDIR fallback included. */
+export async function realpathOff(path: string): Promise<string> {
+  try {
+    return await realpathNative(path);
+  } catch (error) {
+    if (nativeRefused(error)) return promisify(realpathWalk)(path);
     throw error;
   }
 }

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { terminalLines, terminalText } from "@hyperframes/core/terminal-text";
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
@@ -336,7 +337,9 @@ export function sweepStaleStaging(dir: string): void {
       rmSync(stale, { recursive: true, force: true });
     } catch (err) {
       // Best effort: a locked stale dir must not block a viable install, but it stays visible.
-      console.error(`could not remove stale install dir ${stale}: ${(err as Error).message}`);
+      console.error(
+        `could not remove stale install dir ${terminalText(stale)}: ${terminalLines((err as Error).message)}`,
+      );
     }
   }
 }
@@ -387,5 +390,5 @@ const defaultDeps: OptionalPackageDeps = {
   loadBesideCli: (name) => (name === "sharp" ? null : loadBesideCli(name)),
   loadInstalled,
   install,
-  log: (line) => console.error(line),
+  log: (line) => console.error(terminalLines(line)),
 };

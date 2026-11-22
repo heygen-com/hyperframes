@@ -293,6 +293,7 @@ describe("downloads with the render-service setting off", () => {
 
 describe("downloads on a render service through the egress proxy in HYPERFRAMES_CAPTURE_PROXY", () => {
   const HOST = "cdn.egress-assets.com";
+  const HOST_WHOSE_TUNNEL_THE_PROXY_DROPS = "gone.egress-assets.com";
   const tunnels: string[] = [];
   const defaultCAs = getCACertificates("default");
   let origin: Server;
@@ -316,6 +317,7 @@ describe("downloads on a render service through the egress proxy in HYPERFRAMES_
     egress = createServer();
     egress.on("connect", (request, client) => {
       tunnels.push(request.url ?? "");
+      if (request.url === `${HOST_WHOSE_TUNNEL_THE_PROXY_DROPS}:443`) return void client.destroy();
       const upstream = connect(originPort, "127.0.0.1", () => {
         client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
         upstream.pipe(client).pipe(upstream);
@@ -339,6 +341,12 @@ describe("downloads on a render service through the egress proxy in HYPERFRAMES_
       `http://127.0.0.1:${(egress.address() as AddressInfo).port}`,
     );
   });
+
+  it("a tunnel the proxy drops fails the download without opening it again and again", async () => {
+    const url = `https://${HOST_WHOSE_TUNNEL_THE_PROXY_DROPS}/a.png`;
+    await expect(downloadToTemp(url, tempDir())).rejects.toMatchObject({ kind: "network" });
+    expect(tunnels).toEqual([0, 1].map(() => `${HOST_WHOSE_TUNNEL_THE_PROXY_DROPS}:443`));
+  }, 10_000);
 
   it("downloads by hostname through the proxy, with the usual headers, resolving no names", async () => {
     routes[`https://${HOST}/a.png`] = { status: 200, body: BODY };
