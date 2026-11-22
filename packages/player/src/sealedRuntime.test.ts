@@ -49,22 +49,67 @@ describe("a sealed player brings its own runtime", () => {
     expect(doc.indexOf("__hyperframes")).toBeLessThan(doc.indexOf("window.composition"));
   });
 
-  it("adds no second copy to a composition that carries the runtime", async () => {
+  it("loads a composition that brings its own runtime by src, under its own headers", async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response(page("<script>window.__hyperframes = {};</script>")),
+      new Response(page('<script src="/vendor/hyperframe.runtime.iife.js"></script>')),
+    );
+    const el = player({ "sandbox-origin": "", src: sameSite() });
+
+    await vi.waitFor(() => expect(el.iframeElement.src).toBe(sameSite()));
+    expect(el.iframeElement.hasAttribute("srcdoc")).toBe(false);
+  });
+
+  it("still adds the runtime when a page only compares or names it", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        page(
+          "<!-- needs hyperframe.runtime.iife.js --><script>if (window.__hyperframes === undefined) {}</script>",
+        ),
+      ),
+    );
+    expect(await srcdocOf(player({ "sandbox-origin": "", src: sameSite() }))).toContain("built:");
+  });
+
+  it("resolves paths at the URL a redirect landed on", async () => {
+    const landed = `${location.origin}/films/one/`;
+    const response = new Response(page());
+    Object.defineProperty(response, "url", { value: landed });
+    fetchMock.mockResolvedValueOnce(response);
+    const doc = await srcdocOf(
+      player({ "sandbox-origin": "", src: `${location.origin}/films/one` }),
+    );
+
+    expect(doc).toContain(`<base href="${landed}">`);
+  });
+
+  it("resolves the composition's own relative base against its URL, ahead of it", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(page('<base target="_blank"><base href="assets/">')),
     );
     const doc = await srcdocOf(player({ "sandbox-origin": "", src: sameSite() }));
 
-    expect(doc).not.toContain("built:");
-    expect(doc.match(/__hyperframes =/g)).toHaveLength(1);
+    const ours = doc.indexOf(`<base href="${location.origin}/films/one/assets/">`);
+    expect(ours).toBeGreaterThan(-1);
+    expect(ours).toBeLessThan(doc.indexOf('<base target="_blank">'));
   });
 
-  it("keeps the composition's own base", async () => {
-    fetchMock.mockResolvedValueOnce(new Response(page('<base href="https://assets.example/">')));
+  it("puts the runtime in the real head, not one named in a comment", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response("<!-- <head> --><html><head></head><body></body></html>"),
+    );
     const doc = await srcdocOf(player({ "sandbox-origin": "", src: sameSite() }));
 
-    expect(doc.match(/<base /g)).toHaveLength(1);
-    expect(doc).toContain('<base href="https://assets.example/">');
+    expect(doc.indexOf("built:")).toBeGreaterThan(doc.indexOf("<html><head>"));
+  });
+
+  it("reads the page in the charset its response names", async () => {
+    const encode = (text: string) => [...new TextEncoder().encode(text)];
+    const [before, after] = page("", "<p>caf\u00e9</p>").split("\u00e9");
+    const bytes = new Uint8Array([...encode(before!), 0xe9, ...encode(after!)]);
+    fetchMock.mockResolvedValueOnce(
+      new Response(bytes, { headers: { "content-type": "text/html; charset=windows-1252" } }),
+    );
+    expect(await srcdocOf(player({ "sandbox-origin": "", src: sameSite() }))).toContain("café");
   });
 
   it("carries the shader options a src would have carried in its query", async () => {

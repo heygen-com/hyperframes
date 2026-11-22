@@ -110,9 +110,11 @@ describe("withBaseHref", () => {
     );
   });
 
-  it("keeps a base the page names itself", () => {
-    const page = '<html><head><base href="https://cdn.example/"></head></html>';
+  it("resolves a base the page names itself and puts it first", () => {
+    const page = '<html><head><base href="media/"></head></html>';
 
-    expect(withBaseHref(page, "https://site.example/")).toBe(page);
+    expect(withBaseHref(page, "https://site.example/film/")).toBe(
+      '<html><head><base href="https://site.example/film/media/"><base href="media/"></head></html>',
+    );
   });
 });

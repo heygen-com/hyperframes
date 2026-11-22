@@ -23,6 +23,7 @@ import {
   prepareSealedSrcdocForElement,
   runtimeSrcFromElement,
 } from "./shader-options.js";
+import { carriesRuntime, decodePage } from "./runtime-in-srcdoc.js";
 import { createShaderLoader } from "./shader-loader-element.js";
 import { ShaderLoaderState } from "./shader-loader-state.js";
 import { PLAYER_STYLES } from "./styles.js";
@@ -143,7 +144,6 @@ class HyperframesPlayer extends HTMLElement {
   private _ready = false;
   /** Bumped by every navigation, so a sealed load that resolves late shows nothing stale. */
   private _documentLoad = 0;
-  private _compositionUrl: string | null = null;
   private _readyDocument: Document | null = null;
   private _connected = false;
   private _assetsReady = false;
@@ -1082,7 +1082,6 @@ class HyperframesPlayer extends HTMLElement {
 
   private _loadSrc(src: string): void {
     this._documentLoad++;
-    this._compositionUrl = null;
     if (this._wantsVideo()) {
       // A sealed composition shown as srcdoc would outlive the frame's about:blank.
       this.iframe.removeAttribute("srcdoc");
@@ -1095,11 +1094,14 @@ class HyperframesPlayer extends HTMLElement {
       return;
     }
     const url = parseUrl(src);
-    this._compositionUrl = url?.href ?? null;
     if (url && this.hasAttribute(SANDBOX_ORIGIN_ATTR) && url.origin === location.origin) {
       this._showSealedSrc(src, url.href);
       return;
     }
+    this._navigateFrame(src);
+  }
+
+  private _navigateFrame(src: string): void {
     this.iframe.removeAttribute("srcdoc");
     this.iframe.src = prepareSrcForElement(this, src);
   }
@@ -1107,39 +1109,48 @@ class HyperframesPlayer extends HTMLElement {
   /** The frame shows `html`. A sealed frame gets the runtime as text, so it is shown once that loads. */
   private _showDocument(html: string): void {
     const load = ++this._documentLoad;
-    this._compositionUrl = null;
     if (!this.hasAttribute(SANDBOX_ORIGIN_ATTR)) {
       this.iframe.srcdoc = prepareSrcdocForElement(this, html);
       return;
     }
-    this._showSealedDocument(html, undefined, load).catch(() => {
-      if (load !== this._documentLoad) return;
-      this._emit(new CustomEvent("error", { detail: { message: SEALED_RUNTIME_LOAD_FAILED } }));
-    });
+    this._showSealedDocument(html, undefined, load);
   }
 
-  private _showSealedDocument(html: string, base: string | undefined, load: number): Promise<void> {
-    return prepareSealedSrcdocForElement(this, html, base).then((doc) => {
-      if (load === this._documentLoad) this.iframe.srcdoc = doc;
-    });
+  private _showSealedDocument(html: string, base: string | undefined, load: number): void {
+    prepareSealedSrcdocForElement(this, html, base).then(
+      (doc) => {
+        if (load === this._documentLoad) this.iframe.srcdoc = doc;
+      },
+      () => {
+        if (load !== this._documentLoad) return;
+        this._emit(new CustomEvent("error", { detail: { message: SEALED_RUNTIME_LOAD_FAILED } }));
+      },
+    );
   }
 
   /**
-   * A sealed frame cannot be reached once it loads, so the player fetches a same-site composition
-   * and shows it as srcdoc carrying the runtime. Failing that, it loads `src` as before.
+   * A sealed frame cannot be reached once it loads, so a same-site composition without the runtime is
+   * fetched and shown as srcdoc carrying it. One that brings its own, or that can't be fetched, loads by
+   * `src` as before, under its own headers.
    */
   private _showSealedSrc(src: string, href: string): void {
     const load = ++this._documentLoad;
     fetch(href, { credentials: "same-origin" })
-      .then((response) =>
-        response.ok ? response.text() : Promise.reject(new Error(`HTTP ${response.status}`)),
-      )
-      .then((html) => this._showSealedDocument(html, href, load))
-      .catch(() => {
-        if (load !== this._documentLoad) return;
-        this.iframe.removeAttribute("srcdoc");
-        this.iframe.src = prepareSrcForElement(this, src);
-      });
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const html = decodePage(await response.arrayBuffer(), response.headers.get("content-type"));
+        return { html, url: response.url || href };
+      })
+      .then(
+        ({ html, url }) => {
+          if (load !== this._documentLoad) return;
+          if (carriesRuntime(html)) this._navigateFrame(src);
+          else this._showSealedDocument(html, url, load);
+        },
+        () => {
+          if (load === this._documentLoad) this._navigateFrame(src);
+        },
+      );
   }
 
   private _loadVideo(src: string): void {

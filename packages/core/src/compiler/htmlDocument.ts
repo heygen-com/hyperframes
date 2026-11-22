@@ -64,8 +64,6 @@ export function parseHTMLContent(html: string): Document {
   return parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`).document;
 }
 
-/** ASCII-only chunks bound match arrays; starting at uppercase preserves unchanged spans. */
-
 function lastIndexOfLower(text: string, token: string): number {
   for (
     let at = text.lastIndexOf(token.charAt(0));
