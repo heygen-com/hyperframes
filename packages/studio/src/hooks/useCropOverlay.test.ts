@@ -58,7 +58,7 @@ function drawn(element: HTMLElement) {
   return () => seen.at(-1);
 }
 
-// fails without the fix: the lift lives outside React, so the box kept hugging the crop after the crop handles lifted it.
+// fails without the fix: the lift lives outside React, so the box kept hugging the crop once the handles lifted it.
 it("a sealed layer picked with no press drops its crop hug once the crop handles lift it, and gets it back when the frame refuses", async () => {
   sealed = true;
   const element = document.createElement("div");
