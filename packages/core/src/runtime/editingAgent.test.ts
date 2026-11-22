@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "./editingAgent";
+import { handleFor } from "./editingHandles";
 import { PREVIEW_FOR_ANOTHER_SITE_META, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 
 const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
@@ -422,6 +423,27 @@ describe("installEditingAgent", () => {
       {
         drafts: [{ handle: H, translate: null, size: null, rotate: { angle: NaN, route: "gsap" } }],
       },
+      {
+        drafts: [
+          { handle: H, translate: null, size: null, rotate: { angle: 1, route: "transform" } },
+        ],
+      },
+      ...[
+        "url(x.png)",
+        "rotate(1deg);color:red",
+        "translate(1px",
+        "scale(2) /* x",
+        "x".repeat(513),
+      ].map((value) => ({
+        drafts: [
+          {
+            handle: H,
+            translate: null,
+            size: null,
+            rotate: { angle: 1, route: "transform", value },
+          },
+        ],
+      })),
     ].map((params, index) => [
       { v: 1, id: 150 + index, kind: "draft", params },
       150 + index,
@@ -618,6 +640,23 @@ describe("installEditingAgent", () => {
       ok: true,
       result: { result: "unchanged" },
     });
+  });
+
+  // fails without the fix: the frame refused a turn drawn inside a translating transform, so it never turned.
+  it("draws a turn inside a translating transform through the port", async () => {
+    const port = connectedPort();
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<div id="spun" style="transform: translate(-50%, -50%)"></div>',
+    );
+    const spun = document.getElementById("spun")!;
+    const value = "translate(-50%, -50%) rotate(20deg)";
+    const rotate = { angle: 20, route: "transform", value };
+    const drafts = [{ handle: handleFor(spun), translate: null, size: null, rotate }];
+    expect(await ask(port, { v: 1, id: 1, kind: "draft", params: { drafts } })).toMatchObject({
+      ok: true,
+    });
+    expect(spun.style.transform).toBe(value);
   });
 
   it("answers computed styles for the element a selector names", async () => {
