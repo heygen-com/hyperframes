@@ -188,6 +188,36 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     );
   });
 
+  it("writes a whole-number track on asset and file drops when a row's track is not a number", async () => {
+    const title = rowClip("title", 0, 10);
+    const textTrack = { ...title, authoredTrack: '0" onload="x' as unknown as number };
+    const dropOnto = async (
+      drop: (getDrop: ReturnType<typeof renderDropHook>) => Promise<unknown>,
+    ) => {
+      const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+      const uploadProjectFiles = vi.fn().mockResolvedValue(["one.png"]);
+      const getDrop = renderDropHook(
+        rowSource([title]),
+        writeProjectFile,
+        [textTrack],
+        undefined,
+        uploadProjectFiles,
+      );
+      await act(async () => {
+        await drop(getDrop);
+      });
+      return writtenClip(writeProjectFile.mock.calls[0][1] as string, "img");
+    };
+    const placement = { start: 12, track: 0 };
+    for (const img of [
+      await dropOnto((getDrop) => getDrop()("pic.png", placement, 3)),
+      await dropOnto((getDrop) => getDrop.file()([new File(["one"], "one.png")], placement)),
+    ]) {
+      expect(img).toContain('data-track-index="0"');
+      expect(img).not.toContain("onload");
+    }
+  });
+
   // Drops two files (3 s images by default) onto `clips`; returns each written clip's start and track.
   async function twoFileDrop(
     clips: TimelineElement[],

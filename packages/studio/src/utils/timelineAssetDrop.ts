@@ -93,6 +93,10 @@ export function fitTimelineAssetGeometry(
   };
 }
 
+export function writtenTrackIndex(track: unknown): number {
+  return typeof track === "number" && Number.isFinite(track) ? Math.trunc(track) : 0;
+}
+
 export function buildTimelineAssetInsertHtml(input: {
   id: string;
   hfId: string;
@@ -106,7 +110,7 @@ export function buildTimelineAssetInsertHtml(input: {
   /** Video only: true inserts `data-has-audio="true"` with no `muted`. Unknown or false stays muted. */
   hasAudio?: boolean;
 }): string {
-  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${encodeUrlPath(input.assetPath)}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"`;
+  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${encodeUrlPath(input.assetPath)}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${writtenTrackIndex(input.track)}"`;
   const geometry = input.geometry ?? { left: 0, top: 0, width: 640, height: 360 };
   const visualStyles = `position: absolute; left: ${geometry.left}px; top: ${geometry.top}px; width: ${geometry.width}px; height: ${geometry.height}px; object-fit: contain; z-index: ${input.zIndex}`;
 
