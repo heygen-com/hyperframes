@@ -4,6 +4,7 @@
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { recordLiveSet, swapWaiting } from "./softReload";
 import { drawDrafts } from "../editingDraft";
+import { forgetSceneRestsReturningRested, sceneRestingAt } from "../sceneRest";
 import { parseDraftEnd, type EditingDraftEnd } from "../editingDraftEnd";
 
 export interface SetPatchProps {
@@ -327,6 +328,13 @@ function applyChange(tween: PatchableTween, change: RuntimeTweenChange): boolean
   return false;
 }
 
+function timelinesAbove(tween: PatchableTween): object[] {
+  const chain: object[] = [];
+  for (let parent = tween.parent; parent; parent = (parent as PatchableTween).parent)
+    chain.push(parent);
+  return chain;
+}
+
 function seekToCurrent(target: PatchTarget, timeline: PatchableTimeline): void {
   const player = target.player;
   const currentTime =
@@ -345,6 +353,7 @@ export function patchTween(
   change: Exclude<RuntimeTweenChange, { kind: "global-set" }>,
   compositionId?: string,
   deferSeek = false,
+  unrestedScenes: object[] = [],
 ): boolean {
   try {
     const kind = change.kind === "set" ? "set" : "keyframe";
@@ -356,6 +365,7 @@ export function patchTween(
     // Only the edited tween: a timeline-wide invalidate re-captures every from() against
     // the grading engine's opacity-0 hide, and graded elements vanish.
     if (change.kind !== "keyframe-rebuild") tween.invalidate?.();
+    unrestedScenes.push(...forgetSceneRestsReturningRested(timelinesAbove(tween)));
     if (!deferSeek) seekToCurrent(target, timeline);
     return true;
   } catch {
@@ -473,11 +483,15 @@ export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
   };
   if (swapWaiting()) return { patched: false };
   const renderAt = lastTweenPatch(patches);
+  const unrested: object[] = [];
   const missed = patches.find(({ selector, change }, index) => {
     if (change.kind === "global-set")
       return applyGlobalSet(target, selector, change.props) === null;
-    return !patchTween(target, selector, change, undefined, !(seek && index === renderAt));
+    const defer = !(seek && index === renderAt);
+    return !patchTween(target, selector, change, undefined, defer, unrested);
   });
-  if (missed === undefined && endsDrafts) drawDrafts(endsDrafts);
-  return { patched: missed === undefined };
+  const shown = !seek || unrested.every((scene) => sceneRestingAt(scene) !== undefined);
+  const patched = missed === undefined && shown;
+  if (patched && endsDrafts) drawDrafts(endsDrafts);
+  return { patched };
 }

@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication complexity
 import { rememberSourceLength, sourceLengthOf } from "./sourceLength";
+import { restSceneAt, sceneRestingAt } from "./sceneRest";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { setPreviewRasterScale } from "./previewRasterHints";
 import { createFarSceneSkip } from "./farScenes";
@@ -5747,9 +5748,8 @@ export function initSandboxRuntimeModular(): void {
     sceneClocks.set(timeline, clock);
     return clock;
   };
-  const restingAt = new WeakMap<object, number>();
   const restsAt = (timeline: RuntimeTimelineLike, time: number): boolean => {
-    if (restingAt.get(timeline) !== time) return false;
+    if (sceneRestingAt(timeline) !== time) return false;
     try {
       return (
         (timeline.paused as () => unknown)() === true && Number(timeline.totalTime?.()) === time
@@ -5794,7 +5794,7 @@ export function initSandboxRuntimeModular(): void {
       // A scene before or after its clip rests where the last frame left it: no redraw.
       if (!renderCaptureSeekStarted && restsAt(timeline, localTime)) continue;
       seekSceneTimeline(compositionId, timeline, localTime, options);
-      restingAt.set(timeline, localTime);
+      restSceneAt(timeline, localTime);
     }
   };
 
