@@ -222,6 +222,7 @@ export const EDITING_REQUEST_KINDS = [
   "live-retime",
   "assets-unloaded",
   "text-edit",
+  "serve-paused-frames",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -377,6 +378,8 @@ export interface EditingRequests {
   "live-retime": { params: LiveRetimeParams; result: { result: LiveRetimeResult } };
   "assets-unloaded": { params: NoParams; result: { unloaded: boolean } };
   "text-edit": { params: TextEditParams; result: TextEditResult };
+  /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
+  "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -610,6 +613,10 @@ const PARAM_PARSERS: {
   "live-retime": parseLiveRetime,
   "assets-unloaded": noParams,
   "text-edit": parseTextEdit,
+  "serve-paused-frames": (params) =>
+    hasKeys(params, "channel") && params.channel instanceof MessagePort
+      ? { channel: params.channel }
+      : null,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
@@ -645,7 +652,7 @@ export interface EditingPortClient {
   request<K extends EditingRequestKind>(
     kind: K,
     params: EditingParams<K>,
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; transfer?: Transferable[] },
   ): Promise<EditingResult<K>>;
   /** Calls `listener` with each key the frame forwards for `watch-keys`; returns the unsubscribe. */
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
@@ -786,7 +793,10 @@ export function createEditingPortClient(options: {
       const send = () => {
         if (!pending.has(id)) return;
         try {
-          port?.postMessage({ v: EDITING_PROTOCOL_VERSION, id, kind, params });
+          port?.postMessage(
+            { v: EDITING_PROTOCOL_VERSION, id, kind, params },
+            requestOptions?.transfer ?? [],
+          );
         } catch (err) {
           settle(id, { error: new EditingPortError("failed", String(err)) });
         }
@@ -829,3 +839,13 @@ export function createEditingPortClient(options: {
 
 export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";
 export type { TextEditEndedEvent } from "./editing/textEdit";
+export {
+  parsePausedFrameAsk,
+  PAUSED_FRAME_BYTES,
+  PAUSED_FRAME_PARAMS,
+  PAUSED_FRAME_SOURCES,
+  type PausedFrameAsk,
+  type PausedFrameAskMessage,
+  type PausedFrameImage,
+  type PausedFrameReply,
+} from "./editing/pausedFrames";
