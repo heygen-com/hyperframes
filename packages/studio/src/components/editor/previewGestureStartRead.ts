@@ -6,7 +6,7 @@ import type { CropFrameStart } from "./domEditOverlayCrop";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 import { invertManualOffsetDragMatrix, type ManualOffsetDragMatrix } from "./manualOffsetDrag";
 import { flatVisibleRect, groupAwareRect } from "./previewOverlayRects";
-import { findPreviewElementForSelection } from "./previewSelection";
+import { findPreviewElementForSelection, standInFor } from "./previewSelection";
 import { snapContextFromRects, type SnapContext } from "./snapTargetCollection";
 
 export interface PreviewGestureStart {
@@ -120,8 +120,11 @@ export async function askShownGestureStarts(
   const read = await measurePreviewGestureStart(iframe, overlay, handles as string[]);
   if (!read) return UNANSWERED;
   const shown = selections.flatMap((selection, i) => {
-    const element = read.elements[i];
-    return element ? [{ selection: { ...selection, handle: handles[i] }, ...element }] : [];
+    const start = read.elements[i];
+    const onFrame = found[i];
+    if (!start || !onFrame) return [];
+    const element = standInFor(iframe, onFrame);
+    return [{ selection: { ...selection, handle: onFrame.handle, element }, ...start }];
   });
   return shown.length === selections.length ? { shown, snap: read.snap } : null;
 }

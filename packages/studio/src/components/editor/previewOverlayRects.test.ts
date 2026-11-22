@@ -11,6 +11,7 @@ import type { DomEditSelection } from "./domEditing";
 import { orientedGroupAwareOverlayRect, type OverlayRect } from "./domEditOverlayGeometry";
 import type { UseDomEditOverlayGesturesOptions } from "./domEditOverlayGestures";
 import { createPreviewGestureStarts } from "./previewGestureStarts";
+import { standInHandle } from "./previewSelection";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
 import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 
@@ -333,6 +334,9 @@ describe("a press held across a preview change on an opaque frame", () => {
       { selection: DomEditSelection },
     ];
     expect(started.selection.id).toBe("turned");
+    // fails without the fix: the gesture drew through the stand-in of the frame it was pressed on, now removed.
+    expect(started.selection.element).not.toBe(turned);
+    expect(standInHandle(started.selection.element)).toBe(started.selection.handle);
   });
 
   it("starts from the box Studio drew when the frame shown never answers", async () => {
@@ -347,6 +351,7 @@ describe("a press held across a preview change on an opaque frame", () => {
       { selection: DomEditSelection; rect: OverlayRect },
     ];
     expect(started).toMatchObject({ selection: turned, rect: drawn });
+    expect(started.selection.element).toBe(turned.element);
   });
 
   // fails without the fix: the waiting box's redraws had already moved the box the drag started from.
