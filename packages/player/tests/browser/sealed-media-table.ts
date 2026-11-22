@@ -593,6 +593,15 @@ async function installDriver(frame: Frame) {
           }
           return false;
         },
+        // Every film alike: a looping clip at its end has no frame until the loop's seek lands.
+        async loopRestart(key: string, loops: number) {
+          const { video } = state.get(key)!;
+          for (let waited = 0; waited < 2000; waited += 50) {
+            if (Number(video.dataset.loops ?? 0) > loops) return true;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          return false;
+        },
         keys: () => [...state.keys()],
         settled: () =>
           [...state.values()].every(
@@ -651,6 +660,7 @@ type Table = {
   flush: () => boolean;
   keys: () => string[];
   advancing: (key: string) => Promise<boolean>;
+  loopRestart: (key: string, loops: number) => Promise<boolean>;
   read: (key: string) => Seen;
 };
 declare global {
@@ -732,10 +742,18 @@ async function readAll(frame: Frame) {
   const readings: Readings = new Map();
   await Promise.all(
     keys.map(async (key) => {
-      const [seen, moves] = await Promise.all([
-        frame.evaluate((k) => window.__table.read(k), key),
-        frame.evaluate((k) => window.__table.advancing(k), key),
-      ]);
+      const readOnce = () =>
+        Promise.all([
+          frame.evaluate((k) => window.__table.read(k), key),
+          frame.evaluate((k) => window.__table.advancing(k), key),
+        ]);
+      let [seen, moves] = await readOnce();
+      const restarting = !seen.playing && !seen.paused;
+      if (
+        restarting &&
+        (await frame.evaluate((k, l) => window.__table.loopRestart(k, l), key, seen.loops))
+      )
+        [seen, moves] = await readOnce();
       readings.set(key, { ...seen, moves });
     }),
   );
