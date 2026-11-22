@@ -106,13 +106,13 @@ export function TopologyLens({ iframeRef, activeCompositionPath }: TopologyLensP
       setMeasured(null);
       return;
     }
-    const geometry = measureTopologyLensGeometry({
-      overlay,
-      iframe,
-      activeCompositionPath,
-      handle,
-    });
-    setMeasured(geometry ? { callId, geometry } : null);
+    let current = true;
+    void measureTopologyLensGeometry({ overlay, iframe, activeCompositionPath, handle }).then(
+      (geometry) => current && setMeasured(geometry ? { callId, geometry } : null),
+    );
+    return () => {
+      current = false;
+    };
   }, [activeCompositionPath, callId, handle, iframeRef, phase]);
 
   const livePreviewIframe = useLivePreviewIframe();
