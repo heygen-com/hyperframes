@@ -799,6 +799,31 @@ describe("installEditingAgent", () => {
       ]);
     });
 
+    it("leaves a key typed into a field inside a shadow root to the field", async () => {
+      const host = document.createElement("div");
+      document.body.append(host);
+      const field = host
+        .attachShadow({ mode: "open" })
+        .appendChild(document.createElement("input"));
+      field.focus();
+      const port = connectedPort();
+      await watch(port, ["b"]);
+      const seen = collect(port);
+
+      const event = new KeyboardEvent("keydown", {
+        key: "b",
+        code: "KeyB",
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      });
+      field.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(await received(port, seen)).toEqual([]);
+      host.remove();
+    });
+
     it("leaves a key the film cancelled before it", async () => {
       const film = (event: Event) => event.preventDefault();
       window.addEventListener("keydown", film, true);

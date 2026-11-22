@@ -331,6 +331,7 @@ export function startGesture(
           ? { x: e.clientX - options.resizeCorner.x, y: e.clientY - options.resizeCorner.y }
           : undefined,
       resizeFixedCenterStart,
+      resizeGrow: kind === "resize" ? start?.grow : undefined,
     };
     if (kind === "resize") {
       resetResizeMoveLog();

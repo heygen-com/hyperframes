@@ -7,7 +7,7 @@ import { isStylableElement, type StylableElement as Styled } from "./domRealm";
 import { elementForHandle } from "./editingHandles";
 import type { EditingDraft, EditingDraftRotate } from "./editingPort";
 
-const SIZE_PROPERTIES = [
+export const SIZE_PROPERTIES = [
   "box-sizing",
   "width",
   "height",
@@ -113,14 +113,20 @@ function drawTranslate(element: Styled, offset: { x: number; y: number }): void 
   element.style.setProperty("translate", movedTranslate(beforeOf(element).translate, offset));
 }
 
-function drawSize(element: Styled, size: { width: number; height: number }): void {
-  beforeOf(element);
-  const { style } = element;
+export function writeDrawnSize(
+  style: CSSStyleDeclaration,
+  size: { width: number; height: number },
+): void {
   style.setProperty("box-sizing", "border-box");
   style.setProperty("width", `${size.width}px`);
   style.setProperty("height", `${size.height}px`);
   for (const name of ["min-width", "min-height"]) style.setProperty(name, "0px");
   for (const name of ["max-width", "max-height"]) style.setProperty(name, "none");
+}
+
+function drawSize(element: Styled, size: { width: number; height: number }): void {
+  beforeOf(element);
+  writeDrawnSize(element.style, size);
 }
 
 function restoreGsapRotation(element: Styled): void {

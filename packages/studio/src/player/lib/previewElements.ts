@@ -275,15 +275,16 @@ const isCssRotation = (value: unknown) =>
 
 export type ReadGestureStart = Omit<
   EditingGestureStart,
-  "gsapRotation" | "cssRotation" | "planar"
+  "gsapRotation" | "cssRotation" | "planar" | "grow"
 > & {
   gsapRotation?: number | null;
+  grow?: EditingGestureStart["grow"];
   cssRotation?: EditingGestureStart["cssRotation"];
 };
 
 const readGestureStart = (value: unknown): ReadGestureStart | null => {
   if (!readGeometry(value) || !isFields(value)) return null;
-  const { layout, move, gsap, gsapRotation, cssRotation } = value;
+  const { layout, move, gsap, gsapRotation, grow, cssRotation } = value;
   const valid = [
     isLayout(layout),
     move === null || isFiniteFields(move, ["a", "b", "c", "d"]),
@@ -294,6 +295,7 @@ const readGestureStart = (value: unknown): ReadGestureStart | null => {
   return {
     ...start,
     gsapRotation: kept(start.gsapRotation, isTurnOrNull(gsapRotation)),
+    grow: kept(start.grow, isFiniteFields(grow, ["a", "b", "c", "d"])),
     cssRotation: kept(start.cssRotation, isCssRotation(cssRotation)),
   };
 };

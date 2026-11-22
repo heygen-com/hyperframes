@@ -8,6 +8,9 @@ import { installReactActEnvironment, mountReactHarness } from "./domSelectionTes
 import { useTrackPendingTimelineEdit } from "./useTrackPendingTimelineEdit";
 import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
+import { enqueueTimelineEdit, type TimelineEditQueue } from "./timelineEditQueue";
+import type { TimelineGroupCommitOptions } from "./useTimelineGroupEditing";
+import { useTimelineTrimRipple } from "./useTimelineTrimRipple";
 
 installReactActEnvironment();
 
@@ -66,6 +69,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     recordEdit?: DeleteOpsOptions["recordEdit"];
     editQueueRef?: DeleteOpsOptions["editQueueRef"];
     writeProjectFile?: DeleteOpsOptions["writeProjectFile"];
+    alsoMount?: () => void;
   }) {
     const elements = [el("hf-a", 0, 2), el("hf-b", 2, 2), el("hf-c", 4, 2)];
     const editQueueRef = overrides.editQueueRef ?? { current: Promise.resolve() };
@@ -83,6 +87,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
         editQueueRef,
         handleTimelineGroupMove: overrides.handleTimelineGroupMove,
       });
+      overrides.alsoMount?.();
       return null;
     }
     mountReactHarness(<Harness />);
@@ -143,58 +148,78 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     );
   });
 
-  // Deletes hf-a, then hf-b once hf-a's ripple slid it to 0, both saving through one edit queue.
-  async function deleteTwoInARow(refuseOnce?: string) {
+  // Deletes, trims and moves sharing one edit queue; `writes` is the save order, with each move's starts.
+  function mountQueuedEdits(refuseOnce?: string) {
     const writes: string[] = [];
     let refused = refuseOnce;
+    const refuses = (write: string) => {
+      writes.push(write);
+      if (write !== refused) return false;
+      refused = undefined;
+      return true;
+    };
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         if (String(input).includes("/file-mutations/remove-elements/")) {
           const { targets } = JSON.parse(String(init?.body)) as { targets: Array<{ id: string }> };
-          const write = `delete ${targets.map((t) => t.id).join(",")}`;
-          writes.push(write);
-          if (write === refused) {
-            refused = undefined;
+          if (refuses(`delete ${targets.map((t) => t.id).join(",")}`)) {
             return new Response("{}", { status: 500 });
           }
         }
         return new Response(JSON.stringify({ content: html }), { status: 200 });
       }),
     );
-    // Stands in for the editor's group move: it joins the edit queue, then writes the file.
-    const editQueueRef = { current: Promise.resolve() };
+    // Stands in for the editor's group commits: each joins the edit queue, then writes the file.
+    const editQueueRef: TimelineEditQueue = { current: Promise.resolve() };
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+    const save = (write: string, options?: TimelineGroupCommitOptions) =>
+      enqueueTimelineEdit(
+        editQueueRef,
+        async () => {
+          await options?.beforeTiming;
+          await serializeStudioFileMutations(writeProjectFile, ["index.html"], async () => {
+            if (refuses(write)) throw new Error("refused");
+          });
+        },
+        { ifEarlierRefused: options?.ifEarlierRefused, projectId: "test-project" },
+      );
     const handleTimelineGroupMove: DeleteOpsOptions["handleTimelineGroupMove"] = (
       changes,
       options,
-    ) => {
-      const run = editQueueRef.current.then(async () => {
-        await options?.beforeTiming;
-        await serializeStudioFileMutations(writeProjectFile, ["index.html"], async () => {
-          const write = `move ${changes.map((c) => `${c.element.id}@${c.start}`).join(",")}`;
-          writes.push(write);
-          if (write === refused) {
-            refused = undefined;
-            throw new Error("refused");
-          }
-        });
-      });
-      editQueueRef.current = run.catch(() => undefined);
-      return run;
-    };
+    ) => save(`move ${changes.map((c) => `${c.element.id}@${c.start}`).join(",")}`, options);
+    let trimRipple: ReturnType<typeof useTimelineTrimRipple> | null = null;
     const { elements, getHook } = mountDeleteHarness({
       handleTimelineGroupMove,
       editQueueRef,
       writeProjectFile,
+      alsoMount: () => {
+        trimRipple = useTimelineTrimRipple({
+          handleTimelineElementResize: vi.fn(),
+          handleTimelineGroupResize: (changes, options) =>
+            save(
+              `resize ${changes.map((c) => `${c.element.id}+${c.duration}`).join(",")}`,
+              options,
+            ),
+          handleTimelineGroupMove,
+          showToast: vi.fn(),
+          reloadPreview: vi.fn(),
+        });
+      },
     });
+    return { writes, elements, getHook, getTrim: () => trimRipple!, handleTimelineGroupMove };
+  }
 
+  // Deletes hf-a, then hf-b once hf-a's ripple slid it to 0.
+  async function deleteTwoInARow(refuseOnce?: string) {
+    const queued = mountQueuedEdits(refuseOnce);
+    const { elements, getHook } = queued;
     await act(async () => {
       const first = getHook().handleTimelineElementDelete(elements[0]);
       const shiftedB = usePlayerStore.getState().elements.find((e) => e.id === "hf-b")!;
       await Promise.all([first, getHook().handleTimelineElementDelete(shiftedB)]);
     });
-    return { writes, getHook };
+    return queued;
   }
 
   // fails without the fix: the second delete saved between the first delete and its ripple.
@@ -229,6 +254,42 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
 
     expect(writes.slice(2)).toEqual(["delete hf-a", "move hf-c@2"]);
     expect(usePlayerStore.getState().elements).toEqual([el("hf-c", 2, 2)]);
+  });
+
+  // fails without the fix: the trim's shift saved hf-c at 1, placed as if hf-b's refused delete had happened.
+  it("a trim ripple queued behind a refused delete is refused before it writes, and only its shift rolls back", async () => {
+    const { writes, elements, getHook, getTrim } = mountQueuedEdits("delete hf-b");
+    const [a, b] = elements;
+
+    await act(async () => {
+      const deleting = getHook().handleTimelineElementDelete(b);
+      const trim = getTrim().handleTrimElement(a, {
+        start: 0,
+        duration: 1,
+        playbackStart: undefined,
+      });
+      await Promise.all([deleting, trim]);
+    });
+
+    expect(writes).toEqual(["delete hf-b", "resize hf-a+1"]);
+    expect(usePlayerStore.getState().elements).toEqual([
+      el("hf-a", 0, 2),
+      el("hf-c", 4, 2),
+      el("hf-b", 2, 2),
+    ]);
+  });
+
+  // A drag's start is where the user dropped it, so it saves as before; it does not opt in.
+  it("a plain move queued behind a refused delete still saves", async () => {
+    const { writes, elements, getHook, handleTimelineGroupMove } = mountQueuedEdits("delete hf-a");
+
+    await act(async () => {
+      const deleting = getHook().handleTimelineElementDelete(elements[0]);
+      const c = usePlayerStore.getState().elements.find((e) => e.id === "hf-c")!;
+      await Promise.all([deleting, handleTimelineGroupMove([{ element: c, start: 8 }])]);
+    });
+
+    expect(writes).toEqual(["delete hf-a", "move hf-c@8"]);
   });
 
   it("removes a multi-clip selection with one request, however many clips it holds", async () => {

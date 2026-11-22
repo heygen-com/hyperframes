@@ -33,6 +33,11 @@ import {
 } from "./timelineTimingSync";
 import type { GsapMutationStatus } from "./gsapMutationClient";
 import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
+import {
+  enqueueTimelineEdit,
+  refuseWithEarlier,
+  type TimelineEditQueue,
+} from "./timelineEditQueue";
 
 export interface TimelineGroupMoveChange {
   element: TimelineElement;
@@ -50,6 +55,8 @@ export interface TimelineGroupResizeChange {
 
 export interface TimelineGroupCommitOptions {
   beforeTiming?: Promise<void>;
+  /** Runs before writing when an edit queued earlier was refused; throwing refuses this one. */
+  ifEarlierRefused?: (error: unknown) => void;
   coalesceKey?: string;
   /** Overrides the default "Move timeline clips" undo-history label. Coalescing
    *  keeps the LAST entry's label (editHistory.ts), so a mechanical follow-up
@@ -64,7 +71,7 @@ export interface TimelineGroupCommitOptions {
 
 interface UseTimelineGroupEditingOptions {
   activeCompPath: string | null;
-  editQueueRef: MutableRefObject<Promise<unknown>>;
+  editQueueRef: TimelineEditQueue;
   forceReloadSdkSession?: () => void;
   invalidateGsapCache?: () => void;
   isRecordingRef?: RefObject<boolean>;
@@ -127,23 +134,23 @@ export function useTimelineGroupEditing({
   writeProjectFile,
 }: UseTimelineGroupEditingOptions) {
   const enqueueGroupOperation = useCallback(
-    (label: string, operation: (projectId: string) => Promise<void>): Promise<void> => {
+    (
+      label: string,
+      ifEarlierRefused: ((error: unknown) => void) | undefined,
+      operation: (projectId: string) => Promise<void>,
+    ): Promise<void> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return Promise.reject(new Error(`${label}: blocked while recording`));
       }
       const projectId = projectIdRef.current;
       if (!projectId) return Promise.reject(new Error(`${label}: no active project`));
-      const run = editQueueRef.current.then(() => operation(projectId));
-      // Keep the shared edit queue from wedging on a rejection, but return the raw
-      // (rejecting) promise so the gesture owner can roll back on a real failure.
-      editQueueRef.current = run.then(
-        () => undefined,
-        (error) => {
-          console.error(`[Timeline] Failed to persist: ${label}`, error);
-        },
-      );
-      return run;
+      // The raw (rejecting) promise lets the gesture owner roll back on a real failure.
+      return enqueueTimelineEdit(editQueueRef, () => operation(projectId), {
+        label,
+        ifEarlierRefused,
+        projectId,
+      });
     },
     [editQueueRef, isRecordingRef, projectIdRef, showToast],
   );
@@ -280,7 +287,7 @@ export function useTimelineGroupEditing({
       syncPreviewContentDuration(previewIframeRef.current);
       const { coalesceKey, coalesceMs } = timingGestureStep("timeline-group-move", options);
       const label = options?.label ?? "Move timeline clips";
-      return enqueueGroupOperation(label, async (projectId) => {
+      return enqueueGroupOperation(label, options?.ifEarlierRefused, async (projectId) => {
         await options?.beforeTiming;
         const sdk = await trySdkBatchPersist({
           changes,
@@ -398,7 +405,8 @@ export function useTimelineGroupEditing({
       // the just-patched live DOM. See syncPreviewContentDuration.
       syncPreviewContentDuration(previewIframeRef.current);
       const { coalesceKey, coalesceMs } = timingGestureStep("timeline-group-resize", options);
-      return enqueueGroupOperation("Resize timeline clips", async (projectId) => {
+      const derivedStarts = refuseWithEarlier;
+      return enqueueGroupOperation("Resize timeline clips", derivedStarts, async (projectId) => {
         await options?.beforeTiming;
         const sdk = await trySdkBatchPersist({
           changes,

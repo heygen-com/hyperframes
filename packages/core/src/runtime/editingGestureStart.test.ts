@@ -80,7 +80,49 @@ const tween = (target: unknown, vars: Record<string, unknown>, duration = 0): Tw
   duration: () => duration,
 });
 
+/** A 200x100 box whose centre moves `share` of its drawn growth: 0.5 from its corner, 0 self-centred. */
+function growingCard(share: number): HTMLElement {
+  document.body.innerHTML = `<main data-composition-id="main"><div id="card" style="width: 200px"></div></main>`;
+  const card = document.getElementById("card")!;
+  Object.defineProperty(card, "offsetWidth", { value: 200 });
+  Object.defineProperty(card, "offsetHeight", { value: 100 });
+  card.getBoundingClientRect = () => {
+    const width = parseFloat(card.style.width) || 200;
+    const height = parseFloat(card.style.height) || 100;
+    const [cx, cy] = [200 + (width - 200) * share, 100 + (height - 100) * share];
+    const [x, y] = [cx - width / 2, cy - height / 2];
+    return {
+      x,
+      y,
+      width,
+      height,
+      left: x,
+      top: y,
+      right: x + width,
+      bottom: y + height,
+    } as DOMRect;
+  };
+  return card;
+}
+
 describe("gesture start", () => {
+  it("says how far a box's centre moves as its drawn size grows, and puts its size back", () => {
+    const plain = growingCard(0.5);
+    expect(gestureStart([handleFor(plain)]).elements[0]!.grow).toEqual({
+      a: 0.5,
+      b: 0,
+      c: 0,
+      d: 0.5,
+    });
+    expect(plain.getAttribute("style")).toBe("width: 200px;");
+    const centred = growingCard(0);
+    expect(gestureStart([handleFor(centred)]).elements[0]!.grow).toEqual({
+      a: 0,
+      b: 0,
+      c: 0,
+      d: 0,
+    });
+  });
   it("reads a GSAP-held element's x/y, its layout size and how it moves, and puts its translate back", () => {
     const card = turnedCard("translate: 10px 20px");
     Object.assign(card, { _gsap: { renderTransform: () => {} } });

@@ -22,9 +22,16 @@ import {
   timingGestureStep,
 } from "./timelineTimingSync";
 import { serializeZLaneGesture } from "../components/nle/zLaneGesture";
-import { cutoverCommittedOrThrow, sdkTimingPersist } from "../utils/sdkCutover";
+import { cutoverCommittedOrThrow, sdkTimingPersist, type CutoverResult } from "../utils/sdkCutover";
+
+type SdkCommit = Extract<CutoverResult, { status: "committed" }>;
 import type { TimelineMoveUpdates, UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
+import {
+  enqueueTimelineEdit,
+  refuseWithEarlier,
+  type TimelineEditQueue,
+} from "./timelineEditQueue";
 
 type UseTimelineClipTimingEditingOptions = Pick<
   UseTimelineEditingOptions,
@@ -43,7 +50,7 @@ type UseTimelineClipTimingEditingOptions = Pick<
   | "invalidateGsapCache"
   | "handleDomZIndexReorderCommitRef"
 > & {
-  editQueueRef: MutableRefObject<Promise<unknown>>;
+  editQueueRef: TimelineEditQueue;
   projectIdRef: MutableRefObject<string | null>;
 };
 
@@ -72,16 +79,26 @@ export function useTimelineClipTimingEditing({
       label: string,
       buildPatches: PersistTimelineEditInput["buildPatches"],
       step: ReturnType<typeof timingGestureStep>,
-    ): Promise<void> => {
+      {
+        ifEarlierRefused,
+        trySdk,
+      }: {
+        ifEarlierRefused?: (error: unknown) => void;
+        trySdk?: () => Promise<CutoverResult>;
+      } = {},
+    ): Promise<SdkCommit | undefined> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
-        return Promise.resolve();
+        return Promise.resolve(undefined);
       }
       const pid = projectIdRef.current;
-      if (!pid) return Promise.resolve();
-      const queued = editQueueRef.current
-        .then(() =>
-          persistTimelineEdit({
+      if (!pid) return Promise.resolve(undefined);
+      return enqueueTimelineEdit(
+        editQueueRef,
+        async () => {
+          const sdk = await trySdk?.();
+          if (sdk && cutoverCommittedOrThrow(sdk)) return sdk;
+          await persistTimelineEdit({
             projectId: pid,
             element,
             activeCompPath,
@@ -91,15 +108,12 @@ export function useTimelineClipTimingEditing({
             recordEdit,
             pendingTimelineEditPathRef,
             ...step,
-          }),
-        )
-        .then(() => {
+          });
           forceReloadSdkSession?.();
-        });
-      editQueueRef.current = queued.catch((error) => {
-        console.error(`[Timeline] Failed to persist: ${label}`, error);
-      });
-      return queued;
+          return undefined;
+        },
+        { label, ifEarlierRefused, projectId: pid },
+      );
     },
     [
       activeCompPath,
@@ -116,6 +130,7 @@ export function useTimelineClipTimingEditing({
   const handleTimelineElementMove = useCallback(
     // fallow-ignore-next-line complexity
     (element: TimelineElement, updates: TimelineMoveUpdates) => {
+      const projectId = projectIdRef.current;
       // fallow-ignore-next-line complexity
       const commitMove = () => {
         const targetPath = element.sourceFile || activeCompPath || "index.html";
@@ -170,7 +185,7 @@ export function useTimelineClipTimingEditing({
           finishClipTimingFallback({
             iframe: previewIframeRef.current,
             reloadPreview,
-            projectId: projectIdRef.current,
+            projectId,
             targetPath,
             domId: element.domId,
             label: "Move timeline clip",
@@ -180,37 +195,34 @@ export function useTimelineClipTimingEditing({
             edit: { kind: "shift", delta: updates.start - element.start },
             sdkGsap,
           }).finally(() => invalidateGsapCache?.());
-        const moveFallback = () =>
-          enqueueEdit(element, "Move timeline clip", buildMovePatches, step).then(() =>
-            finishMoveGsapSync(),
-          );
+        const hfId = element.hfId;
+        // SDK setTiming writes start only; a lane change needs the fallback's track patch.
+        const sdkMove =
+          sdkSession && hfId && !element.link && !needsExtension && !trackChanged
+            ? () =>
+                sdkTimingPersist(
+                  hfId,
+                  targetPath,
+                  { start: authoredStart },
+                  sdkSession,
+                  {
+                    editHistory: { recordEdit },
+                    writeProjectFile,
+                    reloadPreview,
+                    compositionPath: activeCompPath,
+                    // Capture on-disk bytes as the undo `before` so undoing a timing move
+                    // restores the file verbatim, not a normalized full-DOM re-emit.
+                    readProjectFile: (path) => readFileContent(projectId ?? "", path),
+                    publishSession: publishSdkSession,
+                  },
+                  { label: "Move timeline clip", ...step, skipRefresh: true },
+                )
+            : undefined;
         return reorderDone
-          .then(() => {
-            // SDK setTiming writes start only; a lane change needs the fallback's track patch.
-            if (sdkSession && element.hfId && !element.link && !needsExtension && !trackChanged) {
-              return sdkTimingPersist(
-                element.hfId,
-                targetPath,
-                { start: authoredStart },
-                sdkSession,
-                {
-                  editHistory: { recordEdit },
-                  writeProjectFile,
-                  reloadPreview,
-                  compositionPath: activeCompPath,
-                  // Capture on-disk bytes as the undo `before` so undoing a timing move
-                  // restores the file verbatim, not a normalized full-DOM re-emit.
-                  readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
-                  publishSession: publishSdkSession,
-                },
-                { label: "Move timeline clip", ...step, skipRefresh: true },
-              ).then((result) => {
-                if (!cutoverCommittedOrThrow(result)) return moveFallback();
-                return finishMoveGsapSync(sdkTimingGsapSync(result));
-              });
-            }
-            return moveFallback();
-          })
+          .then(() =>
+            enqueueEdit(element, "Move timeline clip", buildMovePatches, step, { trySdk: sdkMove }),
+          )
+          .then((sdk) => finishMoveGsapSync(sdk && sdkTimingGsapSync(sdk)))
           .catch((error) => {
             // Failed persist: revert the optimistic duration readout + live root.
             rollbackDuration();
@@ -243,6 +255,7 @@ export function useTimelineClipTimingEditing({
       element: TimelineElement,
       updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
     ) => {
+      const projectId = projectIdRef.current;
       const authoredStart = toAuthoredStart(element, updates.start);
       const liveAttrs: Array<[string, string]> = [
         ["data-start", formatTimelineAttributeNumber(authoredStart)],
@@ -276,7 +289,7 @@ export function useTimelineClipTimingEditing({
         finishClipTimingFallback({
           iframe: previewIframeRef.current,
           reloadPreview,
-          projectId: projectIdRef.current,
+          projectId,
           targetPath,
           domId: element.domId,
           label: "Resize timeline clip",
@@ -290,33 +303,32 @@ export function useTimelineClipTimingEditing({
           },
           sdkGsap,
         }).finally(() => invalidateGsapCache?.());
-      const resizeFallback = () =>
-        enqueueEdit(element, "Resize timeline clip", buildResizePatches, step).then(() =>
-          finishResizeGsapSync(),
-        );
-      const persistDone =
-        sdkSession && element.hfId && !element.link && !hasPbsAdjustment && !needsExtension
-          ? sdkTimingPersist(
-              element.hfId,
-              targetPath,
-              { start: authoredStart, duration: updates.duration },
-              sdkSession,
-              {
-                editHistory: { recordEdit },
-                writeProjectFile,
-                reloadPreview,
-                compositionPath: activeCompPath,
-                // Capture on-disk bytes as the undo `before` so undoing a timing
-                // resize restores the file verbatim, not a normalized full-DOM re-emit.
-                readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
-                publishSession: publishSdkSession,
-              },
-              { label: "Resize timeline clip", ...step, skipRefresh: true },
-            ).then((result) => {
-              if (!cutoverCommittedOrThrow(result)) return resizeFallback();
-              return finishResizeGsapSync(sdkTimingGsapSync(result));
-            })
-          : resizeFallback();
+      const hfId = element.hfId;
+      const sdkResize =
+        sdkSession && hfId && !element.link && !hasPbsAdjustment && !needsExtension
+          ? () =>
+              sdkTimingPersist(
+                hfId,
+                targetPath,
+                { start: authoredStart, duration: updates.duration },
+                sdkSession,
+                {
+                  editHistory: { recordEdit },
+                  writeProjectFile,
+                  reloadPreview,
+                  compositionPath: activeCompPath,
+                  // Capture on-disk bytes as the undo `before` so undoing a timing
+                  // resize restores the file verbatim, not a normalized full-DOM re-emit.
+                  readProjectFile: (path) => readFileContent(projectId ?? "", path),
+                  publishSession: publishSdkSession,
+                },
+                { label: "Resize timeline clip", ...step, skipRefresh: true },
+              )
+          : undefined;
+      const persistDone = enqueueEdit(element, "Resize timeline clip", buildResizePatches, step, {
+        ifEarlierRefused: refuseWithEarlier,
+        trySdk: sdkResize,
+      }).then((sdk) => finishResizeGsapSync(sdk && sdkTimingGsapSync(sdk)));
       return persistDone.catch((error) => {
         // Failed persist: revert the optimistic duration readout + live root.
         rollbackDuration();
