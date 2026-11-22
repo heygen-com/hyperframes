@@ -212,6 +212,8 @@ const finiteCorners = (corners: EditingCorners | null) =>
     ? corners
     : null;
 
+const turnedMirroredOrSkewed = ({ a, b, c, d }: DOMMatrix) => b !== 0 || c !== 0 || a < 0 || d < 0;
+
 export function boxOf(
   element: HTMLElement,
   memo: Map<HTMLElement, DOMMatrix | null>,
@@ -219,7 +221,10 @@ export function boxOf(
   const transform = readElementTransformSnapshot(window, element, memo);
   const turned = transform ? rotationDegreesFromMatrix(transform.matrix) : 0;
   const angle = Math.abs(turned) < ROTATION_GATE_EPSILON_DEG ? 0 : turned;
-  const corners = angle && transform ? elementCornerPoints(window, element, transform) : null;
+  const corners =
+    transform && turnedMirroredOrSkewed(transform.matrix)
+      ? elementCornerPoints(window, element, transform)
+      : null;
   return {
     rect: rectOf(element),
     angle,

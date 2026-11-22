@@ -22,24 +22,41 @@ export interface CropScreenRect {
   height: number;
 }
 
-/** Element-space insets → the cropped region in overlay (screen) space. */
+/**
+ * Element-space insets → the cropped region's bounds in overlay (screen) space. With `corners` (a transformed
+ * layer's own corners) the insets cut along its own edges; insets that cross shrink until they meet, as CSS does.
+ */
 export function cropRectFromInsets(
   rect: CropScreenRect,
   insets: ClipPathInsetSides,
   scaleX: number,
   scaleY: number,
+  corners?: OwnCorners,
 ): CropScreenRect {
   const sx = scaleX > 0 ? scaleX : 1;
   const sy = scaleY > 0 ? scaleY : 1;
-  const left = rect.left + insets.left * sx;
-  const top = rect.top + insets.top * sy;
-  return {
-    left,
-    top,
-    width: Math.max(0, rect.width - (insets.left + insets.right) * sx),
-    height: Math.max(0, rect.height - (insets.top + insets.bottom) * sy),
+  const { left: x, top: y, width: w, height: h } = rect;
+  const { nw, ne, sw } = corners ?? { nw: { x, y }, ne: { x: x + w, y }, sw: { x, y: y + h } };
+  const [width, height] = [edge(nw, ne), edge(nw, sw)];
+  const [l, r] = meet(insets.left * sx, insets.right * sx, width);
+  const [t, b] = meet(insets.top * sy, insets.bottom * sy, height);
+  const at = (u: number, v: number) => {
+    const [fu, fv] = [width > 0 ? u / width : 0, height > 0 ? v / height : 0];
+    return {
+      x: nw.x + (ne.x - nw.x) * fu + (sw.x - nw.x) * fv,
+      y: nw.y + (ne.y - nw.y) * fu + (sw.y - nw.y) * fv,
+    };
   };
+  const cut = [at(l, t), at(width - r, t), at(width - r, height - b), at(l, height - b)];
+  const xs = cut.map((p) => p.x);
+  const ys = cut.map((p) => p.y);
+  const [left, top] = [Math.min(...xs), Math.min(...ys)];
+  return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
 }
+
+const edge = (a: Point, b: Point) => Math.hypot(b.x - a.x, b.y - a.y);
+const meet = (a: number, b: number, side: number): [number, number] =>
+  a + b > side && a + b > 0 ? [(a * side) / (a + b), (b * side) / (a + b)] : [a, b];
 
 // A selected croppable element shows uncropped so the crop UI can dim what is cut away. A rule keyed on its
 // identity does that, so the element's own clip-path stays the one record undo, redo and panel edits rewrite.
@@ -294,31 +311,6 @@ function liveOwnScale(rect: HugRect, element: HTMLElement): HugRect["ownScale"] 
   return { x: edge(own.nw, own.ne) / w, y: edge(own.nw, own.sw) / h, corners: own };
 }
 
-const edge = (a: Point, b: Point) => Math.hypot(b.x - a.x, b.y - a.y);
-
-/** The bounds of a transformed layer's box with `insets` (own CSS px) cut along its own edges. */
-function cutCornersBounds(corners: OwnCorners, own: OwnScale, insets: ClipPathInsetSides) {
-  const { nw, ne, se, sw } = corners;
-  const along = (from: Point, to: Point, px: number) => {
-    const length = edge(from, to) || 1;
-    return { x: ((to.x - from.x) / length) * px, y: ((to.y - from.y) / length) * px };
-  };
-  const [l, r] = [insets.left * own.x, insets.right * own.x];
-  const [t, b] = [insets.top * own.y, insets.bottom * own.y];
-  const move = (p: Point, ...steps: Point[]) =>
-    steps.reduce((q, s) => ({ x: q.x + s.x, y: q.y + s.y }), p);
-  const cut = [
-    move(nw, along(nw, ne, l), along(nw, sw, t)),
-    move(ne, along(ne, nw, r), along(ne, se, t)),
-    move(se, along(se, sw, r), along(se, ne, b)),
-    move(sw, along(sw, se, l), along(sw, nw, b)),
-  ];
-  const xs = cut.map((p) => p.x);
-  const ys = cut.map((p) => p.y);
-  const [left, top] = [Math.min(...xs), Math.min(...ys)];
-  return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
-}
-
 const ownScaleXY = (own: HugRect["ownScale"], rect: HugRect): [number, number] => [
   own?.x ?? rect.editScaleX,
   own?.y ?? rect.editScaleY,
@@ -335,8 +327,8 @@ export function hugRectForClipPath(
   if (!insets || (insets.top <= 0 && insets.right <= 0 && insets.bottom <= 0 && insets.left <= 0))
     return rect;
   const own = ownScaleOf();
-  if (own?.corners && rect.angle === undefined) return cutCornersBounds(own.corners, own, insets);
-  return cropRectFromInsets(rect, insets, ...ownScaleXY(own, rect));
+  const corners = rect.angle === undefined ? own?.corners : undefined;
+  return cropRectFromInsets(rect, insets, ...ownScaleXY(own, rect), corners);
 }
 
 /**
