@@ -342,6 +342,7 @@ export function patchElementInHtml(
         {
           const fullAttr = op.property.startsWith("data-") ? op.property : `data-${op.property}`;
           if (op.value != null) {
+            if (!isSafeAttributeValue(fullAttr, op.value)) break;
             opTarget.setAttribute(fullAttr, op.value);
           } else {
             opTarget.removeAttribute(fullAttr);

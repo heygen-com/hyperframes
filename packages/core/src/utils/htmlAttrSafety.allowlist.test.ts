@@ -27,6 +27,7 @@ const ALLOWED = [
 ];
 
 // fails without the fix: each of these passed the old denylist, and the first runs a handler once scripting is on.
+// The last three passed the allowlist too: a composition source makes the runtime fetch and run another page.
 const REFUSED = [
   '<div class="clip"><noscript><p title="</noscript><img src=x onerror=alert(1)>"></p></noscript></div>',
   '<div class="clip"><style>p{}</style><p>Made</p></div>',
@@ -36,6 +37,9 @@ const REFUSED = [
   '<div class="clip"><link rel="stylesheet" href="https://elsewhere.example/a.css"></div>',
   '<div class="clip"><template><img src=x onerror=alert(1)></template></div>',
   '<div class="clip"><form action="https://elsewhere.example/"><button>Go</button></form></div>',
+  '<div class="clip" data-composition-src="https://elsewhere.example/scene.html"></div>',
+  '<div class="clip"><div data-composition-src="//elsewhere.example/scene.html"></div></div>',
+  '<div class="clip"><template><div data-composition-src="scenes/b.html"></div></template></div>',
 ];
 
 describe("markupOutsideAllowlist", () => {
