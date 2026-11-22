@@ -106,7 +106,7 @@ const VOID_TAGS = new Set([
   "track",
   "wbr",
 ]);
-const HF_ID = /^[\w-]+$/;
+const HF_ID_ATTRIBUTE = /\sdata-hf-id\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i;
 
 const tagText = (source: string, tag: SourceTag) => source.slice(tag.start, tag.endAfterBracket);
 const selfClosing = (source: string, tag: SourceTag) =>
@@ -132,9 +132,12 @@ function elementEnd(source: string, tags: SourceTag[], at: number): number {
  */
 export function insertAsSibling(source: string, newHtml: string, anchorHfId?: string): string {
   const tags = [...tagsOutsideCommentsAndRawText(source)];
-  if (anchorHfId && HF_ID.test(anchorHfId)) {
-    const attr = new RegExp(`\\sdata-hf-id\\s*=\\s*(["']?)${anchorHfId}\\1(?=[\\s/>])`, "i");
-    const at = tags.findIndex((tag) => !tag.closing && attr.test(tagText(source, tag)));
+  if (anchorHfId) {
+    const hfIdOf = (tag: SourceTag) => {
+      const match = HF_ID_ATTRIBUTE.exec(tagText(source, tag));
+      return match && (match[1] ?? match[2] ?? match[3]);
+    };
+    const at = tags.findIndex((tag) => !tag.closing && hfIdOf(tag) === anchorHfId);
     const end = at < 0 ? -1 : elementEnd(source, tags, at);
     if (end > 0) return source.slice(0, end) + "\n" + newHtml + source.slice(end);
   }

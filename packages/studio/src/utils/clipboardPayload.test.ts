@@ -151,7 +151,7 @@ describe("insertAsSibling", () => {
     );
   });
 
-  it("takes an anchor that is not an id as no anchor, at once", () => {
+  it("takes an anchor no element has, a pattern-like one too, as no anchor, at once", () => {
     const source = `${ROOT}${"a".repeat(5000)}!</div>`;
     const started = performance.now();
     expect(insertAsSibling(source, PASTED, "(a+)+$")).toBe(
