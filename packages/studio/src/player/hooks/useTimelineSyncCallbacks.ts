@@ -260,7 +260,9 @@ export function useTimelineSyncCallbacks({
       const revision = nextTimelineRevision();
       void Promise.all([manifest, previewDocumentCopy(iframe), previewClipParents(iframe)]).then(
         ([data, doc, parents]) => {
-          if (data) applyTimelineMessage(data, doc, parents, iframe, previewDuration, revision);
+          // A frame its player removed is gone: callback refs keep it (promotion repoints them), the page does not.
+          if (data && iframe.isConnected)
+            applyTimelineMessage(data, doc, parents, iframe, previewDuration, revision);
         },
       );
     },

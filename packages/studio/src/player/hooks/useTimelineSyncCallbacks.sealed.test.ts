@@ -345,3 +345,56 @@ it("keeps the on-screen frame's read when a hidden reload starts loading", async
 
   await vi.waitFor(() => expect(rootRow(sync)).toEqual(["fresh@0+2"]));
 });
+
+// fails without the fix: Studio left the player while the read was out, and its old rows still landed.
+it("drops a sealed read whose frame its player removed before the reply", async () => {
+  document.body.innerHTML = `<div data-composition-id="main"><div id="old" data-start="0" data-duration="2"></div></div>`;
+  (window as unknown as { __clipManifest: unknown }).__clipManifest = {
+    clips: [{ ...boxClip, id: "old" }],
+    durationInFrames: 60,
+  };
+  onTestFinished(() => delete (window as unknown as { __clipManifest?: unknown }).__clipManifest);
+  const replies = heldReplies();
+  const promoted = sealedPreviewFrame({ wrapHandedOverPort: replies.wrap }).iframe;
+  await previewDocumentCopy(promoted);
+  const sync = vi.fn<(els: TimelineElement[], duration?: number) => void>();
+  const shadow = processWith(
+    promoted,
+    adapterOf(2),
+    () => true,
+    sync,
+    () => promoted,
+  );
+
+  replies.hold();
+  shadow.initialize();
+  await vi.waitFor(() => expect(replies.held()).toBe(3));
+  promoted.remove();
+  replies.releaseNewestFirst();
+  await previewDocumentCopy(promoted);
+
+  expect(sync).not.toHaveBeenCalled();
+});
+
+// Pins the promotion path: the retiring live Player's removal must not take the promoted frame's read with it.
+it("lands a promoted frame's read after the old live player is removed", async () => {
+  document.body.innerHTML = rootOnly;
+  usePlayerStore.getState().setElements([]);
+  const retiring = sealedPreviewFrame().iframe;
+  const promoted = sealedPreviewFrame().iframe;
+  const sync = vi.fn<(els: TimelineElement[], duration?: number) => void>();
+  const live = processWith(retiring, adapterOf(5), undefined, sync);
+  const shadow = processWith(
+    promoted,
+    adapterOf(5),
+    () => true,
+    sync,
+    () => live.iframeRef.current,
+  );
+
+  live.iframeRef.current = promoted;
+  shadow.initialize();
+  retiring.remove();
+
+  await vi.waitFor(() => expect(rootRow(sync)).toEqual(["scene5@0+5"]));
+});

@@ -26,6 +26,12 @@ export function sealedPreviewFrame(
   });
   const iframe = detachedFakeIframe(frame);
   Object.defineProperty(iframe, "contentDocument", { value: null });
+  let onPageUntilPlayerRemovesIt = true;
+  Object.defineProperty(iframe, "isConnected", {
+    configurable: true,
+    get: () => onPageUntilPlayerRemovesIt,
+  });
+  iframe.remove = () => void (onPageUntilPlayerRemovesIt = false);
   const wrap = options.wrapHandedOverPort ?? ((port: MessagePort) => port);
   const parent = {
     postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
