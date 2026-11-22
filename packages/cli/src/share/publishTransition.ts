@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { CliUsageError } from "../utils/commandResult.js";
 import { asNotice } from "../utils/jsonError.js";
-import { readProjectLink, readTeamProject } from "../utils/projectLink.js";
+import { readProjectLink, readTeamProject, teamProjectLinkedHere } from "../utils/projectLink.js";
 
 /** Set to the announced notice release's UTC timestamp in the release PR, after launch gates pass. */
 const PUBLISH_NOTICE_RELEASE: string | null = null;
@@ -30,8 +30,11 @@ export function checkPublishTransition(
 ): ReturnType<typeof publishPhase> {
   const dir = resolve(args.dir ?? ".");
   const prior = readProjectLink(dir);
+  // A committed descriptor counts only when this machine linked the folder to it: one that came
+  // with a received project is not this user's earlier publication.
+  const team = readTeamProject(dir);
   const legacyUpdate = Boolean(
-    args.update?.trim() || prior?.url || readTeamProject(dir)?.projectId,
+    args.update?.trim() || prior?.url || (team && teamProjectLinkedHere(dir, team)),
   );
   const phase = publishPhase(noticeRelease);
   asNotice(() => process.stderr.write(publishNotice(phase, legacyUpdate) + "\n"));

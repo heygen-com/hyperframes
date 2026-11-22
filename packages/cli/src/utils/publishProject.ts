@@ -1240,9 +1240,22 @@ export async function publishProjectArchive(
     }
     throw error;
   }
-  // Remember the server's id + url so the next publish of this directory updates in place.
-  if (result.claimed) {
-    writeProjectLink(projectDir, { projectId: result.projectId, url: result.url });
-  }
+  if (result.claimed) rememberPublishedLink(projectDir, result, spaceId);
   return result;
+}
+
+/**
+ * Remember the server's id, url and the space published into ("" for the personal space), so
+ * the next publish of this directory updates in place and its committed descriptor counts as linked.
+ */
+function rememberPublishedLink(
+  projectDir: string,
+  result: PublishedProjectResponse,
+  spaceId: string | undefined,
+): void {
+  writeProjectLink(projectDir, {
+    projectId: result.projectId,
+    url: result.url,
+    spaceId: spaceId ?? "",
+  });
 }

@@ -1205,6 +1205,7 @@ describe("publishProjectArchive", () => {
       expect(linkMocks.writeProjectLink).toHaveBeenCalledWith(dir, {
         projectId: "hfp_stable",
         url: "https://hyperframes.dev/p/hfp_stable",
+        spaceId: "",
       });
     } finally {
       rmSync(dir, { recursive: true, force: true });
