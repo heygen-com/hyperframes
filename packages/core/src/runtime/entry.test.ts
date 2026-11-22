@@ -672,8 +672,8 @@ describe("runtime entry", () => {
       expect(armed(now, soon)).toEqual([true, false]);
     });
 
-    // A src swapped after the length was learned (the proxy fallback swaps one on its first metadata) left the clip
-    // with no length its window could use, so the timeline lost it until the playhead reached the clip.
+    // A src set on a clip already freed left it at preload="none" with no length for the new src: out of its window,
+    // the timeline lost its length until the playhead reached it.
     it("a far clip whose src is swapped after its length was learned learns the new length, then is freed again", async () => {
       spyLoad();
       servePreview();
