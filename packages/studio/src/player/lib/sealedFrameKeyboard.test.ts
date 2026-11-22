@@ -1,14 +1,14 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { holdSealedFrameKeyboard, keepKeyboardOutOfSealedFrame } from "./sealedFrameKeyboard";
 
 const nextTask = () => new Promise((resolve) => setTimeout(resolve));
 
-/** A frame on the page whose focus the test sets; Studio's blur takes it away. */
+/** A loaded frame on the page, kept out of the DOM so no load fires on its own; the test sets focus and placement. */
 function sealedFrame() {
   const iframe = document.createElement("iframe");
-  document.body.append(iframe);
-  const state = { focused: false };
+  const state = { focused: false, onPage: true };
+  Object.defineProperty(iframe, "isConnected", { get: () => state.onPage });
   iframe.getRootNode = () => ({ activeElement: state.focused ? iframe : document.body }) as never;
   iframe.blur = vi.fn(() => void (state.focused = false));
   const takesFocus = async () => {
@@ -18,8 +18,6 @@ function sealedFrame() {
   };
   return { iframe, state, takesFocus };
 }
-
-afterEach(() => document.body.replaceChildren());
 
 describe("a sealed frame's keyboard", () => {
   it("is taken back when the frame takes focus with no text edit holding it", async () => {
@@ -87,9 +85,9 @@ describe("a sealed frame's keyboard", () => {
     const { iframe, state } = sealedFrame();
     const detach = keepKeyboardOutOfSealedFrame(iframe);
     holdSealedFrameKeyboard(iframe);
-    iframe.remove();
+    state.onPage = false;
     detach();
-    document.body.append(iframe);
+    state.onPage = true;
     state.focused = true;
     keepKeyboardOutOfSealedFrame(iframe);
     await nextTask();
