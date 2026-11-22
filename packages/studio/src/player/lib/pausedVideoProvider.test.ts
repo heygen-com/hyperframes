@@ -58,7 +58,7 @@ it("ignores an ask carrying any option but the proxy's", async () => {
   expect(decoder.decode).not.toHaveBeenCalled();
 });
 
-it("refuses more sources than one decode may name, and a second decode while one runs", async () => {
+it("refuses more sources than one decode may name, and replaces a decode a newer one overtakes", async () => {
   const { replies, decode } = host();
   decode([at(A), at(A), at(A), at(A), at(A)]);
   await vi.waitFor(() => expect(replies).toHaveLength(1));
@@ -66,14 +66,17 @@ it("refuses more sources than one decode may name, and a second decode while one
 
   decoder.decode.mockReturnValue(new Promise(() => {}));
   decode([at(A)]);
+  const overtaken = lastId;
   await vi.waitFor(() => expect(decoder.decode).toHaveBeenCalledOnce());
   decode([at(A)]);
   await vi.waitFor(() => expect(replies).toHaveLength(2));
-  expect(replies[1]).toMatchObject({ type: "failed", message: "Preview decoder busy" });
+  expect(replies[1]).toEqual({ type: "failed", id: overtaken, message: "Preview decode replaced" });
+  expect(decoder.decode.mock.calls[0]![1].aborted).toBe(true);
   expect(decoder.decode).toHaveBeenCalledOnce();
 });
 
-it("keeps an aborted decode's slot until that decode settles", async () => {
+// fails without the fix: a scrub's newest frame was refused while the aborted one settled, so the preview showed black.
+it("decodes the newest ask once an aborted decode settles, never two at once", async () => {
   let settle = (_frames: unknown[]) => {};
   decoder.decode.mockReturnValueOnce(new Promise((resolve) => (settle = resolve)));
   const { replies, decode, port2 } = host();
@@ -81,17 +84,63 @@ it("keeps an aborted decode's slot until that decode settles", async () => {
   const first = lastId;
   await vi.waitFor(() => expect(decoder.decode).toHaveBeenCalledOnce());
   port2.postMessage({ type: "abort", id: first });
-  decode([at(A)]);
-  await vi.waitFor(() => expect(replies).toHaveLength(1));
-  expect(replies[0]).toMatchObject({ type: "failed", message: "Preview decoder busy" });
-
-  settle([]);
-  port2.postMessage({ type: "suspend", id: ++lastId });
-  await vi.waitFor(() => expect(replies.at(-1)).toEqual({ type: "suspended", id: lastId }));
   decoder.decode.mockResolvedValueOnce([]);
   decode([at(A)]);
-  await vi.waitFor(() => expect(replies.at(-1)).toMatchObject({ type: "frames", frames: [] }));
+  const newest = lastId;
+  port2.postMessage({ type: "suspend", id: ++lastId });
+  await vi.waitFor(() => expect(replies).toEqual([{ type: "suspended", id: lastId }]));
+  expect(decoder.decode).toHaveBeenCalledOnce();
+
+  settle([]);
+  await vi.waitFor(() =>
+    expect(replies.at(-1)).toEqual({ type: "frames", id: newest, frames: [] }),
+  );
   expect(decoder.decode).toHaveBeenCalledTimes(2);
+  expect(replies.filter((reply) => reply.id === first)).toEqual([]);
+});
+
+it("answers a flood of 20 asks with 19 replaced and decodes only the newest, one call at a time", async () => {
+  const held: Array<() => void> = [];
+  let running = 0;
+  let most = 0;
+  decoder.decode.mockImplementation(() => {
+    most = Math.max(most, ++running);
+    return new Promise((resolve) =>
+      held.push(() => {
+        running -= 1;
+        resolve([]);
+      }),
+    );
+  });
+  const { replies, decode } = host();
+  for (let i = 0; i < 20; i += 1) decode([at(A)]);
+  const newest = lastId;
+  await vi.waitFor(() => expect(replies).toHaveLength(19));
+  expect(replies.every((reply) => reply.message === "Preview decode replaced")).toBe(true);
+  await vi.waitFor(() => expect(held).toHaveLength(1));
+  held.shift()!();
+  await vi.waitFor(() => expect(held).toHaveLength(1));
+  held.shift()!();
+  await vi.waitFor(() =>
+    expect(replies.at(-1)).toEqual({ type: "frames", id: newest, frames: [] }),
+  );
+  expect(replies).toHaveLength(20);
+  expect(decoder.decode).toHaveBeenCalledTimes(2);
+  expect(most).toBe(1);
+});
+
+it("decodes the next ask after one whose decoder throws", async () => {
+  decoder.decode.mockRejectedValueOnce(new Error("decoder broke"));
+  const { replies, decode } = host();
+  decode([at(A)]);
+  const broken = lastId;
+  await vi.waitFor(() => expect(replies).toHaveLength(1));
+  expect(replies[0]).toEqual({ type: "failed", id: broken, message: "decoder broke" });
+  decoder.decode.mockResolvedValueOnce([]);
+  decode([at(A)]);
+  await vi.waitFor(() =>
+    expect(replies.at(-1)).toEqual({ type: "frames", id: lastId, frames: [] }),
+  );
 });
 
 it("refuses frames over the byte budget and releases them", async () => {
