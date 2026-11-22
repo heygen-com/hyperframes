@@ -99,6 +99,7 @@ export type RuntimeTimelineClip = RuntimeTimelineClipIdentity & {
   timelineGroup: string | null;
   timelinePriority: number | null;
   text: TextLayerRead | null;
+  transitionLabel: string | null;
 };
 
 export type RuntimeTimelineScene = {

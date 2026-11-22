@@ -1,8 +1,6 @@
-import type { TimelineLike } from "./playbackTypes";
+export const TRANSITION_LABEL_PREFIX = "hf:transition:";
 
-const TRANSITION_LABEL_PREFIX = "hf:transition:";
-
-type TimelineWithLabels = TimelineLike & {
+type TimelineWithLabels = {
   labels?: Record<string, number>;
   getLabels?: () => Record<string, number>;
 };
@@ -30,13 +28,13 @@ function findTimedElement(doc: Document, markerId: string): Element | null {
 
 export function transitionLabelsForDocument(
   doc: Document,
-  timelines: Readonly<Record<string, TimelineLike>> | undefined,
+  timelines: Readonly<Record<string, object | undefined>> | undefined,
 ): ReadonlyMap<Element, string> {
   const labels = new Map<Element, string>();
   if (!timelines) return labels;
 
-  for (const timeline of Object.values(timelines) as TimelineWithLabels[]) {
-    const timelineLabels = timeline.getLabels?.() ?? timeline.labels ?? {};
+  for (const timeline of Object.values(timelines) as Array<TimelineWithLabels | undefined>) {
+    const timelineLabels = timeline?.getLabels?.() ?? timeline?.labels ?? {};
     for (const label of Object.keys(timelineLabels)) {
       const pair = transitionParts(label);
       if (!pair) continue;

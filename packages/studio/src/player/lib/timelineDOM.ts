@@ -20,7 +20,7 @@ import { previewWithoutFrameToken } from "./frameToken";
 import { clipNumber, clipTrack } from "./manifestClips";
 import { groupInfoFor } from "./timelineGroupInfo";
 import { receivedTimelineText } from "./timelineText";
-import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
+import { transitionLabelsForDocument } from "@hyperframes/core/studio-preview-mark";
 import {
   resolveMediaElement,
   applyMediaMetadataFromElement,
@@ -84,9 +84,6 @@ export function createTimelineElementFromManifestClip(params: {
   const { clip, fallbackIndex, doc } = params;
   const numericTrack = clipTrack(clip.track) ?? 0;
   let hostEl = params.hostEl ?? null;
-  const transitionLabels = doc
-    ? transitionLabelsForDocument(doc, (doc.defaultView as IframeWindow | null)?.__timelines)
-    : new Map<Element, string>();
   const label = getTimelineElementDisplayLabel({
     id: clip.id,
     label: clip.label,
@@ -121,9 +118,7 @@ export function createTimelineElementFromManifestClip(params: {
     id: identity.id,
     label,
     transitionLabel:
-      (hostEl && transitionLabels.get(hostEl)) ||
-      hostEl?.getAttribute("data-transition-label") ||
-      undefined,
+      clip.transitionLabel || hostEl?.getAttribute("data-transition-label") || undefined,
     key: identity.key,
     kind: clip.kind,
     tag: resolveClipTag(clip),

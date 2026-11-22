@@ -4,6 +4,7 @@ import type {
   RuntimeTimelineScene,
   RuntimeTimelineLike,
 } from "./types";
+import { transitionLabelsForDocument } from "./transitionLabels";
 import { unproxiedSrc } from "./proxySrc";
 import { stableClipId } from "./clipTree";
 import { findRootCompositionElement, parseCompositionDimension } from "./compositionDimension";
@@ -269,6 +270,7 @@ export function collectRuntimeTimelinePayload(params: {
     __timelines?: Record<string, RuntimeTimelineLike | undefined>;
   };
   const timelineRegistry = runtimeWindow.__timelines ?? {};
+  const transitionLabels = transitionLabelsForDocument(document, timelineRegistry);
   const startResolver = createRuntimeStartTimeResolver({
     timelineRegistry,
     includeAuthoredTimingAttrs: true,
@@ -504,6 +506,7 @@ export function collectRuntimeTimelinePayload(params: {
       timelineGroup: node.getAttribute("data-timeline-group"),
       timelinePriority: parseNum(node.getAttribute("data-timeline-priority")),
       text: readSentTextLayer(node),
+      transitionLabel: transitionLabels.get(node) ?? null,
     };
   };
   const addClip = (clip: RuntimeTimelineClip) => {
