@@ -26,7 +26,7 @@ type Kind =
   | "lapse"
   | "lapseCors"
   | "slowNocors";
-type Source = { id: string; kind: Kind; start?: number };
+type Source = { id: string; kind: Kind; start?: number; delay?: number };
 type Step =
   | { do: "create"; el: number; sources: Source[]; attr?: true }
   | { do: "prepend" | "append"; el: number; source: Source }
@@ -133,7 +133,11 @@ function generated(seed: number): Sequence {
   return { name: `seed ${seed}`, rounds };
 }
 
-const own = (id: string, kind: Kind, start?: number): Source => ({ id, kind, start });
+const own = (id: string, kind: Kind, at: { start?: number; delay?: number } = {}): Source => ({
+  id,
+  kind,
+  ...at,
+});
 // Earlier review repros, written in the same steps.
 const FIXED: Sequence[] = [
   {
@@ -288,7 +292,10 @@ const FIXED: Sequence[] = [
         {
           do: "create",
           el: 0,
-          sources: [own("r7seekPlaying-a", "down"), own("r7seekPlaying-b", "cors", 1.5)],
+          sources: [
+            own("r7seekPlaying-a", "down"),
+            own("r7seekPlaying-b", "cors", { start: 1.5, delay: 4000 }),
+          ],
         },
         { do: "play", el: 0, rate: 1.5 },
         { do: "interrupt", el: 0, action: "seekPlaying", source: own("r7seekPlaying-c", "cors") },
@@ -337,10 +344,11 @@ const foreignOrigin = server.origin.replace("127.0.0.1", "localhost");
 type SourceAttrs = { src: string; type?: string; media?: string };
 
 // Each run asks for its own URLs, so the server's per-URL failures and request counts stay apart.
-// A trimmed clip's source opens past 0 (#t=), as a media-start does.
+// A trimmed clip's source opens past 0 (#t=), as a media-start does; a slow host answers its first request late.
 function urlFor(source: Source, run: string): SourceAttrs {
   const attrs = urlForKind(source, run);
-  return source.start ? { ...attrs, src: `${attrs.src}#t=${source.start}` } : attrs;
+  const slow = source.delay ? `&delay=${source.delay}` : "";
+  return { ...attrs, src: `${attrs.src}${slow}${source.start ? `#t=${source.start}` : ""}` };
 }
 
 function urlForKind(source: Source, run: string): SourceAttrs {
@@ -466,7 +474,9 @@ async function installDriver(frame: Frame) {
           data.savedRate = String(this.playbackRate);
           data.watch = "1";
         }
-        const races = pending.get(this)?.action !== "seekPlaying" || this.currentTime > 0;
+        const races =
+          pending.get(this)?.action !== "seekPlaying" ||
+          (this.currentTime > 0 && data.play !== undefined);
         if (pending.has(this) && corsReload && races) setTimeout(() => interrupt(this));
       }
       return load.call(this);
@@ -713,7 +723,7 @@ async function runAll(frame: Frame, sequences: Sequence[], run: string) {
       // A write during the retry is registered with its element: as a later call, a fast failure could beat it.
       const duringRetry = (el: number) =>
         steps.find((step) => step.do === "author" && step.duringRetry && step.el === el);
-      // So is a seek on a reload past 0: that reload can come while the play step waits for the runtime.
+      // So is a seek on a playing clip's reload past 0: that reload can come while the play step waits.
       const seekOnReload = (el: number) =>
         steps.some(
           (step) => step.do === "interrupt" && step.action === "seekPlaying" && step.el === el,
