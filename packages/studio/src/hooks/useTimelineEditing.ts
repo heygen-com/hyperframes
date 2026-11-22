@@ -64,7 +64,6 @@ export function useTimelineEditing({
     isRecordingRef,
     pendingTimelineEditPathRef,
     previewIframeRef,
-    projectIdRef,
     recordEdit,
     reloadPreview,
     sdkSession,
@@ -88,7 +87,6 @@ export function useTimelineEditing({
     invalidateGsapCache,
     handleDomZIndexReorderCommitRef,
     editQueueRef,
-    projectIdRef,
   });
 
   const { handleTrimElement, handleTrimElements } = useTimelineTrimRipple({
@@ -170,7 +168,6 @@ export function useTimelineEditing({
   });
 
   const { handleTimelineElementsDelete } = useTimelineDeleteOps({
-    projectIdRef,
     activeCompPath,
     showToast,
     writeProjectFile,
