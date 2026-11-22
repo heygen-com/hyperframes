@@ -987,10 +987,12 @@ it("keeps the inline text its handoff saved when a field added from the panel fo
   title.querySelector("span")!.textContent = "Uno";
   await act(() => commits().handleDomAddTextField(selection.textFields.at(-1)!.key));
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
-  expect(text("title")).toMatch(/^<span>Uno<\/span> ?<span>Two<\/span><span>/);
+  expect(text("title")).toMatch(
+    /^<span>Uno<\/span> ?<span>Two<\/span><span style="[^"]*">New text<\/span>$/,
+  );
 });
 
-it("saves the draft and the first panel save when the draft's end reply is late and a second panel save fails", async () => {
+it("saves the draft before both panel saves when its end reply is late and the newer panel save fails", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   const { iframe, holdEndReplies } = await sealedTitleHoldingEnds();
   const plain = await select(iframe, "other");
@@ -1012,7 +1014,7 @@ it("saves the draft and the first panel save when the draft's end reply is late 
     "First",
     "Second",
   ]);
-  expect(text("other")).toBe("First");
+  expect(text("other")).toBe("Draft");
 });
 
 it("redraws the last saved text when a newer draft is cancelled before that save's write completes", async () => {
