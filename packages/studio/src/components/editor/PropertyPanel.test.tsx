@@ -1030,3 +1030,42 @@ describe("PropertyPanel — Motion is for things that move", () => {
     act(() => root.unmount());
   });
 });
+
+describe("PropertyPanel — saving a grade (flag on)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("saves a 30-tick Exposure drag to the file once, through the saving setter", async () => {
+    vi.useFakeTimers();
+    const onSetAttributeLive = vi.fn();
+    const onSetAttributeQuiet = vi.fn();
+    const { host, root } = await renderPanel(true, videoElement(), {
+      onSetAttributeLive,
+      onSetAttributeQuiet,
+    });
+    openFlatGroup(host, "Grade");
+    const track = host.querySelector<HTMLElement>('[role="slider"][aria-label="Exposure"]');
+    if (!track) throw new Error("expected the Exposure slider");
+    track.getBoundingClientRect = () => ({ left: 0, width: 400, top: 0, height: 20 }) as DOMRect;
+    let captured = false;
+    track.setPointerCapture = () => void (captured = true);
+    track.hasPointerCapture = () => captured;
+    track.releasePointerCapture = () => void (captured = false);
+    const pointer = (type: string, clientX: number) =>
+      act(() => {
+        track.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX, pointerId: 1 }));
+      });
+
+    pointer("pointerdown", 200);
+    for (let tick = 1; tick <= 30; tick++) {
+      act(() => vi.advanceTimersByTime(16));
+      pointer("pointermove", 200 + tick * 5);
+    }
+    pointer("pointerup", 350);
+    act(() => vi.advanceTimersByTime(1000));
+
+    const saves = onSetAttributeQuiet.mock.calls.filter(([attr]) => attr === "color-grading");
+    expect(saves).toHaveLength(1);
+    expect(JSON.parse(saves[0]![1] as string)).toMatchObject({ adjust: { exposure: 1.5 } });
+    act(() => root.unmount());
+  });
+});
