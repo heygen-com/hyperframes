@@ -564,6 +564,9 @@ export function detectThreeDTransformUsage(html: string): boolean {
   return THREE_D_CONTEXT_PATTERN.test(html);
 }
 
+const MAX_ROOT_ANCESTORS = 256;
+const MAX_ANCESTOR_SELECTOR_CHECKS = 100_000;
+
 /**
  * Background-image signals on ancestors of the composition root.
  * drawElementImage only paints the captured subtree; drawElementService's
@@ -587,15 +590,16 @@ export function detectAncestorBackgroundImage(html: string): boolean {
   if (document.documentElement && !ancestors.includes(document.documentElement)) {
     ancestors.push(document.documentElement);
   }
+  // Past these bounds the answer is "yes": the baseline capture route paints any background.
+  if (ancestors.length > MAX_ROOT_ANCESTORS) return true;
+  let selectorChecks = 0;
   // Inline styles on the ancestor chain.
   for (const el of ancestors) {
     const style = el.getAttribute("style");
     if (style && hasBackgroundImageDeclaration(`{${style}}`)) return true;
   }
-  // <style> rules: any rule carrying an image-painting background declaration
-  // whose selector resolves to an ancestor of the root. Selector matching goes
-  // through querySelectorAll so class/id/compound selectors on wrappers are
-  // covered, not just literal `body`/`html`.
+  // <style> rules whose image background selects an ancestor of the root, by
+  // Element.matches, so class/id/compound selectors on wrappers count too.
   for (const styleEl of document.querySelectorAll("style")) {
     const css = styleEl.textContent ?? "";
     for (const { parts: rule } of cssRuleMatches(css)) {
@@ -605,10 +609,10 @@ export function detectAncestorBackgroundImage(html: string): boolean {
         const sel = selector.trim();
         if (!sel || sel.startsWith("@")) continue;
         if (/^(?:html|:root)$/i.test(sel)) return true;
+        selectorChecks += ancestors.length;
+        if (selectorChecks > MAX_ANCESTOR_SELECTOR_CHECKS) return true;
         try {
-          for (const matched of document.querySelectorAll(sel)) {
-            if (ancestors.includes(matched)) return true;
-          }
+          if (ancestors.some((ancestor) => ancestor.matches(sel))) return true;
         } catch {
           // Selector syntax linkedom can't parse (e.g. vendor pseudo) — skip.
         }

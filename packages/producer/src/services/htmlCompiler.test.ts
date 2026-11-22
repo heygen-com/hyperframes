@@ -1433,6 +1433,35 @@ describe("detectAncestorBackgroundImage", () => {
     expect(detectAncestorBackgroundImage(wrap("html, body { background: #0d1117; }"))).toBe(false);
   });
 
+  it("checks 5,000 background rules against a 50,000-element page in one pass", () => {
+    // Main matched each selector against the whole page: about 9 s for this one.
+    const css = Array.from(
+      { length: 5_000 },
+      (_, i) => `.c${i} div { background-image: url(x.png); }`,
+    ).join("\n");
+    const page = wrap(css, "", "<div></div>".repeat(50_000));
+    const started = performance.now();
+    expect(detectAncestorBackgroundImage(page)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("answers yes for a root nested deeper than any real page, without matching", () => {
+    const deep = `${"<div>".repeat(300)}<div data-composition-id="main"></div>${"</div>".repeat(300)}`;
+    const html = `<html><head><style>.x { background-image: url(x.png); }</style></head><body>${deep}</body></html>`;
+    expect(detectAncestorBackgroundImage(html)).toBe(true);
+  });
+
+  it("answers yes once background rules would take over 100,000 selector checks", () => {
+    // 3 ancestors (wrapper, body, html): 40,000 selectors is 120,000 checks.
+    const css = Array.from({ length: 40_000 }, (_, i) => `.c${i}`).join(",");
+    const html =
+      `<html><head><style>${css} { background-image: url(x.png); }</style></head>` +
+      '<body><div><div data-composition-id="main"></div></div></body></html>';
+    expect(detectAncestorBackgroundImage(html)).toBe(true);
+    const fewer = html.replace(css, Array.from({ length: 30_000 }, (_, i) => `.c${i}`).join(","));
+    expect(detectAncestorBackgroundImage(fewer)).toBe(false);
+  });
+
   it("returns false without a composition root", () => {
     expect(
       detectAncestorBackgroundImage(
