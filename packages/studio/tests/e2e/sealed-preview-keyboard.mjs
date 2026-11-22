@@ -35,16 +35,19 @@ try {
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => document.querySelector("hyperframes-player")?.painted === true);
   const frame = page.frames().find((f) => /\/preview\/~[\w-]{43}/.test(f.url()));
-  // A save can reload the preview, so later steps look up the frame it shows now.
-  const liveFrame = async () => {
-    await page.waitForFunction(
-      () => document.querySelector("hyperframes-player")?.painted === true,
-    );
-    const shown = page
-      .frames()
-      .find((f) => !f.isDetached() && /\/preview\/~[\w-]{43}/.test(f.url()));
-    assert.ok(shown, "the preview is shown");
-    return shown;
+  // A save can reload the preview, so later steps run in the frame it shows now, again if it is replaced mid-step.
+  const inPreview = async (run) => {
+    for (let tries = 0; ; tries++) {
+      const shown = page
+        .frames()
+        .find((f) => !f.isDetached() && /\/preview\/~[\w-]{43}/.test(f.url()));
+      try {
+        if (shown) return await run(shown);
+      } catch (error) {
+        if (!/detached/.test(String(error)) || tries > 50) throw error;
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
   };
   assert.ok(frame, "the preview loads under its frame token");
   assert.equal(
@@ -103,20 +106,20 @@ try {
 
   // An edit the film never ends: the person moves to a Studio field, then the film focuses itself.
   await page.keyboard.press("Enter");
-  await (
-    await liveFrame()
-  ).waitForFunction(() => document.getElementById("head").isContentEditable);
+  await inPreview((f) =>
+    f.waitForFunction(() => document.getElementById("head").isContentEditable),
+  );
   await page.keyboard.press("End");
   await page.keyboard.type(" more");
   await page.evaluate(() => document.body.appendChild(document.createElement("input")).focus());
-  await (await liveFrame()).evaluate(() => document.getElementById("field").focus());
+  await inPreview((f) => f.evaluate(() => document.getElementById("field").focus()));
   await keyboardBackInStudio();
   for (let i = 0; i < 100 && !saved().includes("Hi again more"); i++)
     await new Promise((r) => setTimeout(r, 100));
   assert.ok(saved().includes("Hi again more"), "Studio taking focus back saves the edit");
   await page.keyboard.press("z");
   assert.equal(
-    await (await liveFrame()).evaluate(() => document.getElementById("field").value),
+    await inPreview((f) => f.evaluate(() => document.getElementById("field").value)),
     "",
     "the film got no key after Studio took focus back",
   );
