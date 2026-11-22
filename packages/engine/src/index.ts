@@ -230,9 +230,11 @@ export {
   type PackageHlsOptions,
 } from "./services/chunkEncoder.js";
 export type { EncoderOptions, EncodeResult, MuxResult } from "./services/chunkEncoder.types.js";
+export { getCachedNvencPresets } from "./utils/gpuEncoder.js";
 
 export {
   spawnStreamingEncoder,
+  buildStreamingArgs,
   createFrameReorderBuffer,
   type StreamingEncoder,
   type StreamingEncoderOptions,
@@ -460,6 +462,8 @@ export type { RefusedHostClass } from "./services/publicNetwork/publicNetwork.js
 export {
   runFfmpeg,
   withFfmpegProgress,
+  ffmpegStatsReader,
+  type FfmpegStats,
   formatFfmpegError,
   describeFfmpegFailure,
   isExternalFfmpegInterruption,
