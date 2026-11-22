@@ -377,7 +377,7 @@ describe("createColorGradingRuntime", () => {
     try {
       const video = makeDrawableVideo();
       Object.defineProperty(video, "readyState", {
-        value: HTMLMediaElement.HAVE_NOTHING,
+        value: HTMLMediaElement.HAVE_METADATA,
         configurable: true,
       });
       startRuntimeWithVideo(video);
@@ -406,7 +406,7 @@ describe("createColorGradingRuntime", () => {
     try {
       const video = makeDrawableVideo();
       Object.defineProperty(video, "readyState", {
-        value: HTMLMediaElement.HAVE_NOTHING,
+        value: HTMLMediaElement.HAVE_METADATA,
         configurable: true,
       });
       startRuntimeWithVideo(video);
@@ -417,6 +417,49 @@ describe("createColorGradingRuntime", () => {
       expect(settled).toBe(false);
       await vi.advanceTimersByTimeAsync(2_000);
       await seek;
+      expect(settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not hold a seek for a graded video that has nothing to draw", async () => {
+    resetSeekDispatchState();
+    vi.useFakeTimers();
+    try {
+      const video = makeDrawableVideo();
+      Object.defineProperty(video, "readyState", {
+        value: HTMLMediaElement.HAVE_NOTHING,
+        configurable: true,
+      });
+      startRuntimeWithVideo(video);
+      runtime!.holdSeekUntilDrawn();
+      let settled = false;
+      void waitForSeekCompletion().then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets a held seek go as soon as its graded video fails", async () => {
+    resetSeekDispatchState();
+    vi.useFakeTimers();
+    try {
+      const video = makeDrawableVideo();
+      Object.defineProperty(video, "readyState", {
+        value: HTMLMediaElement.HAVE_METADATA,
+        configurable: true,
+      });
+      startRuntimeWithVideo(video);
+      runtime!.holdSeekUntilDrawn();
+      let settled = false;
+      void waitForSeekCompletion().then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false);
+      video.dispatchEvent(new Event("error"));
+      await vi.advanceTimersByTimeAsync(0);
       expect(settled).toBe(true);
     } finally {
       vi.useRealTimers();
