@@ -2334,6 +2334,32 @@ describe("check pipeline", () => {
     });
   });
 
+  it("warns when a motion sidecar sits next to a sub-composition", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-check-nested-motion-"));
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      mkdirSync(join(dir, "compositions"));
+      writeFileSync(
+        join(dir, "compositions", "scene-b.motion.json"),
+        JSON.stringify({ assertions: [{ kind: "appearsBy", selector: "#x", bySec: 1 }] }),
+      );
+      const { deps } = dependencies(fakeDriver());
+
+      const report = await runCheckPipeline(
+        { dir, name: "nested-motion", indexPath: join(dir, "index.html") },
+        DEFAULT_CHECK_OPTIONS,
+        deps,
+      );
+
+      const warning = report.motion.findings.find((f) => f.code === "motion_spec_ignored");
+      expect(warning?.severity).toBe("warning");
+      expect(warning?.message).toContain("compositions/scene-b.motion.json");
+      expect(report.motion.warningCount).toBeGreaterThanOrEqual(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("marks browserSkipped true when the linter itself crashes", async () => {
     const { deps } = dependencies(fakeDriver());
     deps.lintProject = vi.fn(async () => {
