@@ -6,6 +6,7 @@ import {
   resolveManagedGpuMode,
 } from "../browser/launch.js";
 import { spawn } from "node:child_process";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import type { Browser, Page } from "puppeteer-core";
 import type { InProcessRequest, InProcessResponse } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
@@ -271,11 +272,14 @@ async function waitForCompositionSettle(
   const { resolveConfig, waitForImagesReady } = await import("@hyperframes/engine");
   const imageTimeoutMs = resolveConfig().playerReadyTimeout;
   await waitForImagesReady(page, imageTimeoutMs, (sources) =>
-    console.warn(
-      `   ${c.warn("⚠")} Some images did not load within ${imageTimeoutMs}ms: ${sources}. They may show blank.`,
-    ),
+    console.warn(unloadedImagesWarning(imageTimeoutMs, sources)),
   );
   return runtimeReady;
+}
+
+/** The sources are the page's own image addresses, read back from the page: printed escaped. */
+export function unloadedImagesWarning(timeoutMs: number, sources: string): string {
+  return `   ${c.warn("⚠")} Some images did not load within ${timeoutMs}ms: ${terminalText(sources)}. They may show blank.`;
 }
 
 async function waitForLateSubresources(page: Page, timeoutMs: number): Promise<void> {

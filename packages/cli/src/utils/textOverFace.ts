@@ -7,6 +7,7 @@ import type {
   FaceCheck,
   TextOverVideoCandidate,
 } from "./checkTypes.js";
+import { terminalLines } from "@hyperframes/core/terminal-text";
 import { normalizeErrorMessage } from "./errorMessage.js";
 
 /** Below this share of the face a descender or a letter's corner touches it, which hides nothing. */
@@ -189,8 +190,11 @@ export async function findTextOverFace(
   const { faces, unread } = await readFaces(timesByFile, facesIn, onFile, stop);
   const reason = unread[0];
   if (reason !== undefined) {
+    // The reason carries the project's file name and the decoder's own text: escaped, never raw.
     console.error(
-      `[hyperframes] check: text over a face was not looked for in ${unread.length} of ${timesByFile.size} video(s): ${reason}`,
+      terminalLines(
+        `[hyperframes] check: text over a face was not looked for in ${unread.length} of ${timesByFile.size} video(s): ${reason}`,
+      ),
     );
     if (faces.size === 0) return { issues: [], faceCheck: { ran: false, reason } };
   }

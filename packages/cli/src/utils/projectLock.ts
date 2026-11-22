@@ -1,4 +1,5 @@
 import { readFileSync, unlinkSync } from "node:fs";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { createFileAtomically } from "@hyperframes/core/atomic-file";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -78,8 +79,11 @@ const NOTICE_EVERY_MS = 30_000;
 function sayWaiting(current: Holder | null, waitMs: number): void {
   if (!current) return;
   const running = Math.round((Date.now() - current.startedAt) / 1000);
+  // The holder is read from the project's own lock file, so what it names is printed escaped.
   console.error(
-    `[hyperframes] waiting for ${current.command} (pid ${current.pid}, running ${running}s) to finish with this project; waiting up to ${Math.round(waitMs / 1000)}s`,
+    terminalText(
+      `[hyperframes] waiting for ${current.command} (pid ${current.pid}, running ${running}s) to finish with this project; waiting up to ${Math.round(waitMs / 1000)}s`,
+    ),
   );
 }
 
