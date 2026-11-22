@@ -1,4 +1,5 @@
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { registerSeekCompletion } from "./adapters/seek-dispatch";
 import { PREVIEW_SEEK_HOLD_ATTR } from "../studioPreviewMark";
 import {
   HF_COLOR_GRADING_ADJUST_KEYS,
@@ -236,6 +237,7 @@ interface ColorGradingEntry extends ColorGradingRenderer {
   sourceOpacityForCanvas: string;
   sourceVisibleForCanvas: boolean;
   hasDrawn: boolean;
+  seeksAwaitingDraw: Array<() => void>;
   contextLost: boolean;
   grainSeed: number;
   destroyed: boolean;
@@ -260,6 +262,7 @@ export interface RuntimeColorGradingApi {
   refresh: () => number;
   redraw: () => number;
   redrawAnimated: () => number;
+  holdSeekUntilDrawn: () => void;
   waitForActiveLuts: () => Promise<number>;
   setGrading: (
     target: HfColorGradingTarget | string | null | undefined,
@@ -3525,6 +3528,12 @@ function placeCanvas(
   return { layout, uv };
 }
 
+function markDrawn(entry: ColorGradingEntry): void {
+  entry.hasDrawn = true;
+  entry.drawError = null;
+  for (const drawn of entry.seeksAwaitingDraw.splice(0)) drawn();
+}
+
 function drawEntry(entry: ColorGradingEntry): boolean {
   if (entry.destroyed || entry.contextLost) return false;
   const frame = drawableFrame(entry);
@@ -3540,8 +3549,7 @@ function drawEntry(entry: ColorGradingEntry): boolean {
     renderGradedFrame(entry, pixels, layout, uv);
     hideSourceElement(entry);
     if (injectedFrameSource) hideFrame(entry, source);
-    entry.hasDrawn = true;
-    entry.drawError = null;
+    markDrawn(entry);
     return true;
   } catch (err) {
     entry.drawError = err instanceof Error ? err.message : "Shader draw failed";
@@ -3820,9 +3828,22 @@ function installEntryListeners(entry: ColorGradingEntry): void {
   }
 }
 
+const SEEK_DRAW_LIMIT_MS = 2_000;
+
+function nextDraw(entry: ColorGradingEntry): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = wallSetTimeout(resolve, SEEK_DRAW_LIMIT_MS);
+    entry.seeksAwaitingDraw.push(() => {
+      wallClearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
 function detachEntry(entry: ColorGradingEntry): ColorGradingRenderer | null {
   if (entry.destroyed) return null;
   entry.destroyed = true;
+  for (const gone of entry.seeksAwaitingDraw.splice(0)) gone();
   cancelScheduledFrame(entry);
   entry.resizeObserver?.disconnect();
   for (const cleanup of entry.cleanup) cleanup();
@@ -4003,6 +4024,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
       sourceOpacityForCanvas: window.getComputedStyle(element).opacity || "1",
       sourceVisibleForCanvas: window.getComputedStyle(element).visibility !== "hidden",
       hasDrawn: false,
+      seeksAwaitingDraw: [],
       contextLost: false,
       grainSeed: seedForElement(element),
       destroyed: false,
@@ -4109,6 +4131,11 @@ export function createColorGradingRuntime(pausedMediaLease?: {
       if (drawEntry(entry)) drawn += 1;
     }
     return drawn;
+  };
+
+  const holdSeekUntilDrawn = (): void => {
+    const videos = trackedEntries().filter((entry) => isVideoElement(entry.element));
+    if (videos.length) registerSeekCompletion(Promise.all(videos.map(nextDraw)), "video-frame");
   };
 
   const waitForActiveLuts = async (): Promise<number> => {
@@ -4302,6 +4329,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     refresh,
     redraw,
     redrawAnimated,
+    holdSeekUntilDrawn,
     waitForActiveLuts,
     setGrading,
     setCompare,
