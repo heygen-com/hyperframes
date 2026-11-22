@@ -17,6 +17,7 @@ import {
   serveEditingRequests,
 } from "../player/hooks/timelinePlayerTestHarness";
 import { previewRequest } from "../player/lib/previewChannel";
+import { parseCombo } from "@hyperframes/core/key-combo";
 
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
@@ -26,6 +27,21 @@ const domDelete = vi.fn(async () => undefined);
 const historyUndo = vi.fn(async () => ({ ok: false }));
 const historyRedo = vi.fn(async () => ({ ok: false }));
 const settle = vi.fn(async () => undefined);
+const changes = {
+  timelineDelete: vi.fn(async () => undefined),
+  split: vi.fn(async () => undefined),
+  write: vi.fn(async () => undefined),
+  copy: vi.fn(() => false),
+  paste: vi.fn(() => false),
+  cut: vi.fn(() => false),
+  duplicate: vi.fn(async () => false),
+  group: vi.fn(),
+  ungroup: vi.fn(),
+  record: vi.fn(),
+  resetKeyframes: vi.fn(() => false),
+  deleteKeyframes: vi.fn(),
+};
+let readOnlyPreview = false;
 let root: Root | null = null;
 let sync: ((iframe: HTMLIFrameElement | null) => void) | null = null;
 
@@ -44,8 +60,8 @@ function selection(): DomEditSelection {
 function Harness() {
   const selectionRef = useRef<DomEditSelection | null>(selection());
   const hotkeys = useAppHotkeys({
-    handleTimelineElementsDelete: vi.fn(async () => undefined),
-    handleTimelineElementSplit: vi.fn(async () => undefined),
+    handleTimelineElementsDelete: changes.timelineDelete,
+    handleTimelineElementSplit: changes.split,
     handleDomEditElementDelete: domDelete,
     domEditSelectionRef: selectionRef,
     clearDomSelectionRef: useRef<() => void>(() => undefined),
@@ -56,15 +72,20 @@ function Harness() {
     },
     readOptionalProjectFile: vi.fn(async () => ""),
     readProjectFile: vi.fn(async () => ""),
-    writeProjectFile: vi.fn(async () => undefined),
+    writeProjectFile: changes.write,
     showToast: vi.fn(),
     syncHistoryPreviewAfterApply: vi.fn(async () => undefined),
     settlePendingEdits: settle,
-    handleCopy: vi.fn(() => false),
-    handlePaste: vi.fn(() => false),
-    handleCut: vi.fn(() => false),
-    onResetKeyframes: vi.fn(() => false),
-    onDeleteSelectedKeyframes: vi.fn(),
+    handleCopy: changes.copy,
+    handlePaste: changes.paste,
+    handleCut: changes.cut,
+    handleDuplicate: changes.duplicate,
+    onGroupSelection: changes.group,
+    onUngroupSelection: changes.ungroup,
+    onToggleRecording: changes.record,
+    onResetKeyframes: changes.resetKeyframes,
+    onDeleteSelectedKeyframes: changes.deleteKeyframes,
+    readOnlyPreview,
     onAfterUndoRedo: vi.fn(),
   } as unknown as Parameters<typeof useAppHotkeys>[0]);
   sync = hotkeys.syncPreviewHotkeys;
@@ -77,6 +98,8 @@ afterEach(() => {
   document.body.innerHTML = "";
   usePlayerStore.getState().reset();
   domDelete.mockClear();
+  for (const change of Object.values(changes)) change.mockClear();
+  readOnlyPreview = false;
   historyUndo.mockClear();
   historyRedo.mockClear();
   settle.mockReset();
@@ -182,7 +205,13 @@ describe("preview iframe hotkey forwarding", () => {
     afterEach(() => closers.splice(0).forEach((close) => close()));
 
     // A frame whose document refuses Studio, reached only over the editing port it hands out per connect.
-    async function sealedFrame(focus = { inPreview: true }, { inPlayer = false } = {}) {
+    async function sealedFrame(
+      focus = { inPreview: true },
+      {
+        inPlayer = false,
+        activation = { queued: [] as boolean[], otherwise: true, reads: 0 },
+      } = {},
+    ) {
       const frame: Record<string, unknown> = {};
       const iframe = detachedFakeIframe(frame);
       const loaded = new Promise((resolve) =>
@@ -203,7 +232,17 @@ describe("preview iframe hotkey forwarding", () => {
         configurable: true,
         get: () => (!focus.inPreview ? document.body : inPlayer ? player : iframe),
       });
+      // Studio's own window: active only after a real press or click, in the frame or out of it.
+      Object.defineProperty(window.navigator, "userActivation", {
+        configurable: true,
+        get: () => {
+          activation.reads += 1;
+          const isActive = activation.queued.shift() ?? activation.otherwise;
+          return { isActive, hasBeenActive: isActive };
+        },
+      });
       closers.push(() => {
+        delete (window.navigator as { userActivation?: unknown }).userActivation;
         hasFocus.mockRestore();
         delete (document as { activeElement?: unknown }).activeElement;
         player.remove();
@@ -229,6 +268,23 @@ describe("preview iframe hotkey forwarding", () => {
           (port) => ports.push(port),
         ),
       );
+      const report = (combo: string) => {
+        const { mod, meta, ctrl, shift, alt, key } = parseCombo(combo)!;
+        ports.at(-1)!.postMessage({
+          v: 1,
+          event: "key",
+          key: {
+            type: "keydown",
+            key,
+            code: "",
+            altKey: alt,
+            ctrlKey: ctrl,
+            metaKey: mod || meta,
+            shiftKey: shift,
+            repeat: false,
+          },
+        });
+      };
       const keyDown = (key: string, code: string) =>
         ports.at(-1)!.postMessage({
           v: 1,
@@ -245,7 +301,7 @@ describe("preview iframe hotkey forwarding", () => {
           },
         });
       await loaded;
-      return { iframe, watched, ports, keyDown, hasFocus };
+      return { iframe, watched, ports, keyDown, report, hasFocus };
     }
 
     it("leaves Studio's own reads of the preview answered while it forwards keys", async () => {
@@ -296,6 +352,56 @@ describe("preview iframe hotkey forwarding", () => {
       keyDown("Delete", "Delete");
       await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(1));
       expect(hasFocus).toHaveBeenCalledTimes(2);
+    });
+
+    const changesMade = () =>
+      [domDelete, historyUndo, historyRedo, ...Object.values(changes)].reduce(
+        (n, spy) => n + spy.mock.calls.length,
+        0,
+      );
+
+    // fails without the fix: focus in the frame was taken as a person's press, so every report below acted.
+    it.each([false, true])(
+      "acts on no app shortcut the frame reports with no real press (read-only preview: %s)",
+      async (readOnly) => {
+        readOnlyPreview = readOnly;
+        usePlayerStore.setState({
+          selectedElementIds: new Set(["clip-a"]),
+          selectedElementId: "clip-a",
+        });
+        root = mountReactHarness(<Harness />);
+        // Each report Studio reads is unpressed, then the real Delete after them is pressed.
+        const activation = {
+          queued: APP_HOTKEY_ACTIONS.map(() => false),
+          otherwise: true,
+          reads: 0,
+        };
+        const { iframe, watched, report, keyDown } = await sealedFrame(
+          { inPreview: true },
+          { inPlayer: true, activation },
+        );
+        act(() => sync?.(iframe));
+        await vi.waitFor(() => expect(watched).toHaveLength(1));
+        for (const action of APP_HOTKEY_ACTIONS) report(DEFAULT_STUDIO_KEYS[action]);
+        keyDown("Delete", "Delete");
+        await vi.waitFor(() => expect(activation.reads).toBe(APP_HOTKEY_ACTIONS.length + 1));
+        await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(readOnly ? 0 : 1));
+        expect(changesMade()).toBe(readOnly ? 0 : 1);
+        expect(usePlayerStore.getState().selectedElementId).toBe("clip-a");
+      },
+    );
+
+    // Known gap, by decision: a report forged within a real press's activation window (about 5 s) still acts.
+    it("still acts on a forged report while a real press's activation lasts", async () => {
+      root = mountReactHarness(<Harness />);
+      const { iframe, watched, report } = await sealedFrame(
+        { inPreview: true },
+        { inPlayer: true },
+      );
+      act(() => sync?.(iframe));
+      await vi.waitFor(() => expect(watched).toHaveLength(1));
+      report(DEFAULT_STUDIO_KEYS.undo);
+      await vi.waitFor(() => expect(historyUndo).toHaveBeenCalledTimes(1));
     });
 
     it("stops watching on the preview's next load, from a new port", async () => {
