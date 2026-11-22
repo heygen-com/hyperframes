@@ -6,55 +6,128 @@
   </picture>
 </p>
 
+<p align="center"><b>The open-source AI video editor: create, edit, remake.</b></p>
+
+<p align="center">Write HTML. Render video. Built for agents.</p>
+
 <p align="center">
+  <a href="https://www.npmjs.com/package/hyperframes"><img src="https://img.shields.io/npm/dm/hyperframes.svg?style=flat&label=npm%20downloads" alt="npm downloads"></a>
   <a href="https://skills.sh/heygen-com/hyperframes"><img src="https://img.shields.io/endpoint?style=flat&url=https%3A%2F%2Fskills.sh%2Fapi%2Fbadge%2Fheygen-com%2Fhyperframes" alt="Skills downloads"></a>
-  <a href="https://www.star-history.com/heygen-com/hyperframes"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=heygen-com/hyperframes&type=rank&theme=dark"><img alt="GitHub top repository global rank" src="https://api.star-history.com/badge?repo=heygen-com/hyperframes&type=rank" height="36"></picture></a>
-  <a href="https://www.npmjs.com/package/hyperframes"><img src="https://img.shields.io/npm/v/hyperframes.svg?style=flat" alt="npm version"></a>
-  <a href="https://www.npmjs.com/package/hyperframes"><img src="https://img.shields.io/npm/dm/hyperframes.svg?style=flat" alt="npm downloads"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
   <a href="https://discord.gg/fzbdWyjphr"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
-</p>
-
-<p align="center"><b>Write HTML. Render video. Built for agents.</b></p>
-
-<p align="center">
-  <a href="https://hyperframes.studio/studio?utm_source=github&utm_medium=readme">Studio</a> |
-  <a href="https://hyperframes.heygen.com/quickstart?utm_source=github&utm_medium=readme">Quickstart</a> |
-  <a href="https://hyperframes.heygen.com/examples?utm_source=github&utm_medium=readme">Showcase</a> |
-  <a href="https://hyperframes.studio/?utm_source=github&utm_medium=readme">Playground</a> |
-  <a href="https://hyperframes.heygen.com/catalog/blocks/data-chart?utm_source=github&utm_medium=readme">Catalog</a> |
-  <a href="https://hyperframes.heygen.com/introduction?utm_source=github&utm_medium=readme">Docs</a> |
-  <a href="https://discord.gg/fzbdWyjphr">Discord</a>
+  <a href="https://www.npmjs.com/package/hyperframes"><img src="https://img.shields.io/npm/v/hyperframes.svg?style=flat" alt="npm version"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22 or newer"></a>
+  <a href="https://www.star-history.com/heygen-com/hyperframes"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=heygen-com/hyperframes&type=rank&theme=dark"><img alt="GitHub top repository global rank" src="https://api.star-history.com/badge?repo=heygen-com/hyperframes&type=rank" height="36"></picture></a>
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f6ff9fae-f33d-4f68-bd54-f3ed4ba6473b" alt="The HyperFrames Studio app opening from the Dock: free for Mac, Windows and Linux" width="800">
+  <a href="https://hyperframes.studio/studio/download?utm_source=github&utm_medium=readme&src=github-readme">Download the app</a> ·
+  <a href="https://hyperframes.heygen.com/quickstart?utm_source=github&utm_medium=readme">Quickstart</a> ·
+  <a href="https://hyperframes.heygen.com/examples?utm_source=github&utm_medium=readme">Showcase</a> ·
+  <a href="https://hyperframes.heygen.com/catalog/blocks/data-chart?utm_source=github&utm_medium=readme">Catalog</a> ·
+  <a href="https://hyperframes.heygen.com/introduction?utm_source=github&utm_medium=readme">Docs</a> ·
+  <a href="https://discord.gg/fzbdWyjphr">Discord</a> ·
+  <a href="https://x.com/HyperFrames_">X</a> ·
+  <a href="https://www.youtube.com/@HyperFrames_Official">YouTube</a>
 </p>
 
-<p align="center">
-  <b>Download the desktop app:</b>
-  <a href="https://hyperframes.studio/studio/download?os=mac&src=github-readme&utm_source=github&utm_medium=readme">macOS</a> ·
-  <a href="https://hyperframes.studio/studio/download?os=windows&src=github-readme&utm_source=github&utm_medium=readme">Windows</a> ·
-  <a href="https://hyperframes.studio/studio/download?os=deb&src=github-readme&utm_source=github&utm_medium=readme">Linux (.deb)</a>
-</p>
+<p align="center"><a href="https://hyperframes.studio/studio/download?src=github-readme-hero"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/hero-studio-intro-v1.webp" width="800" alt="HyperFrames Studio, the AI video editor: a comment pinned on the word humans, then the agent changes just that word"></a></p>
 
-HyperFrames is a free, open-source framework for turning HTML, CSS, media, and seekable animations into deterministic MP4 videos. Use it locally with the CLI, from AI coding agents with skills, or as the rendering core behind hosted authoring workflows.
+<!-- Paste the uploaded MP4 (user-attachments URL) on its own line here; GitHub renders it as a player with sound. No caption needed. -->
 
-The [HyperFrames Studio app](https://hyperframes.heygen.com/studio-app) is free to use as well; its [Pro plan](https://hyperframes.studio/pricing) adds HeyGen's top video, image, voice and music models.
+HyperFrames is HeyGen's AI video editor for people and agents. Describe a video, bring your own footage, or remake a video you love (Pro), and get a real project you can change down to the frame: ask for a bigger title, a faster cut or new captions, and it changes just that.
 
-Using Claude Code, Codex, Cursor, or another coding agent? Run `npx hyperframes skills update` once, then ask your agent to make a video.
+Underneath, HyperFrames is a free, open-source framework (Apache 2.0) for turning HTML, CSS, JavaScript, media and seekable animations into deterministic MP4 videos. Use it locally with the CLI, from AI coding agents like Claude Code, Codex and Cursor with skills, or as the rendering core behind hosted authoring workflows. No React required.
 
-## Quick Start
+> [!IMPORTANT]
+> **New in HyperFrames** · [full changelog](https://hyperframes.studio/changelog?utm_source=github&utm_medium=readme)
+>
+> - **The HyperFrames Studio app** for [macOS](https://hyperframes.studio/studio/download?os=mac&src=github-readme), [Windows](https://hyperframes.studio/studio/download?os=windows&src=github-readme) and [Linux](https://hyperframes.studio/studio/download?os=deb&src=github-readme), with a free plan; Pro adds a built-in agent, so no Claude plan is needed.
+> - **Make videos inside Claude:** HyperFrames by HeyGen is in [Claude's connector directory](https://claude.com/connectors/hyperframes-heygen).
+> - **[Reverse any video](skills/reverse-any-video)** (Pro): rebuild a video as a project you can edit.
 
-### With an AI coding agent
+## Three ways to use it
 
-For Claude Code, install the versioned plugin:
+|                                    | Best for                                                                                                                                                     | Start                                                                                                          |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| **HyperFrames Studio app**         | Anyone, no code. Describe a video or drop in your footage, then edit by typing or pointing. Use the built-in agent on Pro, or your own Claude Code or Codex. | [Download for Mac, Windows or Linux](https://hyperframes.studio/studio/download?src=github-readme) (free plan) |
+| **Your coding agent**              | Claude Code, Codex, Cursor, Gemini CLI and other agents.                                                                                                     | `npx skills add heygen-com/hyperframes`                                                                        |
+| **Claude, ChatGPT or Grok** (beta) | Making a video in a chat, nothing to install. ChatGPT: Business, Enterprise and Edu workspaces.                                                              | Connect [HyperFrames by HeyGen](https://hyperframes.heygen.com/guides/mcp?utm_source=github&utm_medium=readme) |
+
+The [HyperFrames Studio app](https://hyperframes.heygen.com/studio-app?utm_source=github&utm_medium=readme) has a free plan. [Pro](https://hyperframes.studio/pricing?utm_source=github&utm_medium=readme) ($25 a month) adds top video, image, voice and music models (HeyGen Video 1, Seedance 2.5, Lyria 3 Pro and more), Reverse any video and 25,000 credits a month.
+
+## Made with HyperFrames
+
+<table>
+<tr><td align="center" valign="bottom"><a href="https://x.com/HyperFrames_/status/2113670541274144802"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/script-based-editing-v1.webp" width="195" alt="Editing a talking-head video by editing its script in HyperFrames Studio"></a><br><b>Script-based editing</b></td><td align="center" valign="bottom"><a href="https://x.com/liu8in/status/2123562606535565629"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/edit-your-own-footage-v1.webp" width="195" alt="A creator's own phone footage edited into a finished social video with HyperFrames"></a><br><b>Edit your own footage</b></td><td align="center" valign="bottom"><a href="https://x.com/HyperFrames_/status/2112960682526490691"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/captions-v1.webp" width="195" alt="Animated captions added to a talking-head video with HyperFrames"></a><br><b>Captions on your video</b></td><td align="center" valign="bottom"><a href="https://x.com/HyperFrames_/status/2110784695634178256"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/remake-any-video-v1.webp" width="195" alt="A video rebuilt as an editable HyperFrames project, then changed"></a><br><b>Remake any video (Pro)</b></td></tr>
+<tr><td align="center" valign="bottom"><a href="https://static.heygen.ai/hyperframes-oss/homepage/showcase/hq/website-to-launch-v1.mp4"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/launch-from-website-v1.webp" width="195" alt="Product launch video built from a company's website with HyperFrames"></a><br><b>Launch video from your website</b></td><td align="center" valign="bottom"><a href="https://x.com/WaterrrMiao/status/2114585876160455057"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/faceless-explainer-v1.webp" width="195" alt="Faceless YouTube explainer made with HyperFrames"></a><br><b>Faceless explainer</b></td><td align="center" valign="bottom"><a href="https://static.heygen.ai/hyperframes-oss/readme/2026-11/films/flat-cartoon-explainer-v1.mp4"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/flat-cartoon-explainer-v1.webp" width="195" alt="Flat cartoon explainer video about the Sun made with HyperFrames"></a><br><b>Flat cartoon explainer</b></td><td align="center" valign="bottom"><a href="https://static.heygen.ai/hyperframes-oss/homepage/showcase/hq/real-ui-newspaper-1969-v2.mp4"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/real-ui-newspaper-v1.webp" width="195" alt="Motion graphics built from a real 1969 newspaper front page with HyperFrames"></a><br><b>Real-UI motion graphics</b></td></tr>
+<tr><td align="center" valign="bottom"><a href="https://static.heygen.ai/hyperframes-oss/homepage/showcase/hq/cartoon-frameys-launch-one-take-v1.mp4"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/3d-one-take-trailer-v1.webp" width="195" alt="3D one-take launch trailer made with HyperFrames"></a><br><b>3D one-take trailer</b></td><td align="center" valign="bottom"><a href="https://static.heygen.ai/hyperframes-oss/readme/2026-11/films/3d-type-v1.mp4"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/3d-type-v1.webp" width="195" alt="Kinetic 3D typography made with HyperFrames"></a><br><b>3D type</b></td><td align="center" valign="bottom"><a href="https://static.heygen.ai/hyperframes-oss/homepage/showcase/hq/remotion-to-hyperframes-v1.mp4"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/remotion-ported-voxels-v1.webp" width="195" alt="A Remotion project with 3D voxels, ported to HyperFrames"></a><br><b>Remotion project, ported</b></td><td align="center" valign="bottom"><a href="https://static.heygen.ai/hyperframes-oss/homepage/showcase/hq/generative-replica-v1.mp4"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/generative-motion-v1.webp" width="195" alt="Generative motion design made with HyperFrames"></a><br><b>Generative motion</b></td></tr>
+</table>
+
+Click any clip to watch it with sound.
+
+## What you can make
+
+| Video                                                                                                                     | How                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branded UGC videos for TikTok and Instagram from your own phone clips: captions, music, text hooks, fast client revisions | The Studio app: drop in your footage, then edit by typing or pointing                                                                                 |
+| Video podcast episodes: line up a multi-camera recording, cut to whoever is talking, clean up the sound, add captions     | The Studio app's podcast edit                                                                                                                         |
+| Product demos, tutorials, launch videos and feature announcements, from your website or a screen recording                | Paste your URL into the Studio app, or ask your agent                                                                                                 |
+| Explainer and faceless YouTube episodes from your topic, script or voiceover                                              | Ask for one; [`/style-sampling`](skills/style-sampling) (Pro) for five proven series styles                                                           |
+| Remake a video you love, then make it yours                                                                               | [`/reverse-any-video`](skills/reverse-any-video) (Pro)                                                                                                |
+| Social videos with kinetic captions, overlays, and music                                                                  | [`/hyperframes`](skills/hyperframes) with the [catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart?utm_source=github&utm_medium=readme) |
+| Data visualizations, chart races, and map animations                                                                      | Catalog blocks for charts and maps                                                                                                                    |
+| PR walkthroughs and changelog videos with animated code diffs, narration, and captions                                    | Point your agent at the pull request                                                                                                                  |
+| Docs-to-video and site-tour explainers                                                                                    | Give your agent the document or link                                                                                                                  |
+| Motion graphics with code instead of After Effects, reusable in automated content pipelines                               | The CLI, cloud render or AWS Lambda                                                                                                                   |
+| Decks with presenter mode                                                                                                 | [`/slideshow`](skills/slideshow)                                                                                                                      |
+| Motion from a Figma file                                                                                                  | [`/figma`](skills/figma)                                                                                                                              |
+| A Remotion project, ported                                                                                                | [`/remotion-to-hyperframes`](skills/remotion-to-hyperframes)                                                                                          |
+
+By job: [AI video editor](https://hyperframes.heygen.com/tools/ai-video-editor?utm_source=github&utm_medium=readme) · [animated captions](https://hyperframes.heygen.com/tools/animated-captions?utm_source=github&utm_medium=readme) · [add text to video](https://hyperframes.heygen.com/tools/add-text-to-video?utm_source=github&utm_medium=readme) · [AI motion graphics](https://hyperframes.heygen.com/tools/ai-motion-graphics?utm_source=github&utm_medium=readme) · [HTML to MP4](https://hyperframes.heygen.com/tools/html-to-video?utm_source=github&utm_medium=readme) · [Lottie to MP4](https://hyperframes.heygen.com/tools/lottie-to-mp4?utm_source=github&utm_medium=readme) · [SVG to MP4](https://hyperframes.heygen.com/tools/svg-animation-to-mp4?utm_source=github&utm_medium=readme)
+
+**Community skills** ([hyperframes-community-skills](https://github.com/heygen-com/hyperframes-community-skills), community-maintained, review before use): `camera-3d-captions` (captions in 3D around a speaker), `vox-explainer` (collage explainers), `p5-paint-animation` (handwriting and paint-on), `prod-by-claude` (live-coded music videos), `session-story` and `day-in-my-life` (your agent sessions as films), `duo` (side-by-side phone memes), `x-posting-license` (an ID-card video for any X profile).
+
+## Quick start for developers
+
+Using Claude Code, Codex, Cursor, or another coding agent? Install the skills once, then ask your agent to make a video.
+
+### Give your coding agent the skills (recommended)
+
+```bash
+npx skills add heygen-com/hyperframes     # pick "Core Skills" in the picker
+# or, with no picker (scripts, CI):
+npx hyperframes skills update
+```
+
+Then try: _Using `/hyperframes`, create a 10-second product intro with a fade-in title, a background video, and subtle background music._
+
+### Claude Code plugin
 
 ```bash
 claude plugin marketplace add heygen-com/hyperframes
 claude plugin install hyperframes@hyperframes
 ```
+
+### Codex, Cursor, Gemini CLI, Copilot
+
+See the [plugin guide](https://hyperframes.heygen.com/guides/plugins?utm_source=github&utm_medium=readme).
+
+### By hand, with the CLI
+
+```bash
+npx hyperframes init my-video
+cd my-video
+npx hyperframes preview      # live preview in the browser
+npx hyperframes render       # render to MP4
+```
+
+Requirements: Node.js 22+ and FFmpeg. Render in the cloud with `hyperframes cloud render`, or on your own [AWS Lambda](https://hyperframes.heygen.com/deploy/aws-lambda?utm_source=github&utm_medium=readme).
+
+<details>
+<summary>Skill install options, updates and the core set (full details)</summary>
+
+### Claude Code plugin updates
 
 To enable auto-update for the **hyperframes** marketplace, run `claude` in a
 terminal in your project. In Claude Code's terminal UI, run `/plugin`, then select
@@ -62,11 +135,7 @@ terminal in your project. In Claude Code's terminal UI, run `/plugin`, then sele
 `/hyperframes:hyperframes`. See the [plugin guide](docs/guides/plugins.mdx)
 for Copilot, VS Code, Cursor, Gemini CLI, updates, and migration.
 
-For standalone skills (including OpenCode), use:
-
-```bash
-npx skills add heygen-com/hyperframes
-```
+### Standalone skills (including OpenCode)
 
 > The picker opens with nothing pre-selected — the **Core Skills** group is all you need; `/slideshow`, `/remotion-to-hyperframes` and `/figma` install on demand. Without the picker (a script or a CI job), `npx hyperframes skills update` installs exactly the core set, whereas `skills add --all` installs all 9 published skills. The six repo-internal skills under `.claude/skills` / `.agents/skills` are excluded by default. For the full published set use `npx hyperframes skills`.
 >
@@ -77,35 +146,23 @@ checkout, use `npx hyperframes skills update` for a global install instead: a
 project-local installer target can overlap the tracked `skills/` source and
 overwrite uncommitted edits. See [contributor setup](CONTRIBUTING.md#getting-started).
 
-Try a prompt like:
-
-> Using `/hyperframes`, create a 10-second product intro with a fade-in title, a background video, and subtle background music.
+</details>
 
 The skills teach agents the HyperFrames production loop: plan the video, write valid HTML, wire seekable animations, add media, lint, preview, and render. They work with Claude Code, Codex, Cursor, Gemini CLI, IBM Bob, and other coding agents that support skills.
+
+### Share a video for review
+
+Sign in with `npx hyperframes auth login`, then run `npx hyperframes share` to
+choose who can open the rendered review. Use `share --update` when edits should
+become a new version and `share --manage` for web settings. CLI and Desktop use
+the same sharing system and five free projects per workspace. Existing legacy
+published links remain reachable.
 
 ## Skills
 
 HyperFrames ships 9 skills. Make any video by asking for it; the `/hyperframes` skill carries the contract and the references (film, captions, overlays, motion, look). Read it first.
 
-For standalone installation, default to the **core set** (`/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, `/media-use`, `/reverse-any-video`, `/style-sampling`). `npx hyperframes skills update` installs exactly that from anywhere; the interactive picker (`npx skills add heygen-com/hyperframes`) lists it as the "Core Skills" group, nothing pre-selected. The picker is interactive-only — a non-interactive or agent run without `--skill` installs all 9. Use `npx skills add heygen-com/hyperframes --all` to install the complete published set deliberately (skips the picker), or `npx skills add heygen-com/hyperframes --skill <name>` for just one (bare name, no leading `/`).
-
-Standalone installs stay lean after that: `npx hyperframes init` installs the **core set** only when it is missing and never touches a skill you already have (`npx hyperframes skills update` refreshes them, and never removes one); `/figma`, `/slideshow` and `/remotion-to-hyperframes` install **on demand** with `npx hyperframes skills update <name>`. Nothing re-pulls the full set behind your back.
-
-### Plugin packages
-
-Plugins bundle the full skill catalog and use their agent's update manager.
-`bun run package:agent-plugin` builds the committed portable ZIP, source metadata,
-and SHA-256 checksum. See the [maintainer checklist](docs/contributing/agent-plugins.mdx).
-
-### Upload to Codex
-
-Build the upload-ready Codex plugin archive from the committed `HEAD` version of the manifest, brand assets, and skills:
-
-```bash
-bun run package:codex-plugin
-```
-
-This writes `dist/hyperframes-plugin.zip` with a `hyperframes/` root folder and fails if the archive exceeds Codex's 100 MB upload limit.
+The **core set** below is what `npx hyperframes skills update` installs and what the picker lists as "Core Skills". Install one skill with `npx skills add heygen-com/hyperframes --skill <name>`, or all 9 with `--all`. A non-interactive or agent run of `npx skills add` without `--skill` installs all 9. `npx hyperframes init` adds the core set only when it is missing and never touches a skill you already have; on-demand skills install with `npx hyperframes skills update <name>`.
 
 ### Core set
 
@@ -128,27 +185,7 @@ This writes `dist/hyperframes-plugin.zip` with a `hyperframes/` root folder and 
 
 For visual design handoff workflows, see the [Claude Design guide](https://hyperframes.heygen.com/guides/design-tools?utm_source=github&utm_medium=readme#start-from-claude-design-or-open-design) and [Open Design guide](https://hyperframes.heygen.com/guides/design-tools?utm_source=github&utm_medium=readme#start-from-claude-design-or-open-design).
 
-### Manually with the CLI
-
-```bash
-npx hyperframes init my-video
-cd my-video
-npx hyperframes preview      # preview in browser with live reload
-npx hyperframes render       # render to MP4
-```
-
-**Requirements:** Node.js 22+, FFmpeg
-
-## What You Can Build
-
-Need ideas? Browse the [Showcase](https://hyperframes.heygen.com/examples?utm_source=github&utm_medium=readme) for finished videos you can watch, read, run, and remix.
-
-- Product launch videos and feature announcements
-- PR walkthroughs with animated code diffs, narration, and captions
-- Data visualizations, chart races, and map animations
-- Social videos with kinetic captions, overlays, and music
-- Docs-to-video, PDF-to-video, and site-tour explainers
-- Reusable motion graphics for automated content pipelines
+More from the community: [hyperframes-community-skills](https://github.com/heygen-com/hyperframes-community-skills).
 
 ## Frame.md
 
@@ -177,36 +214,6 @@ The output is a `DESIGN.md` superset your whole toolchain can read. Atoms stay s
     <td width="50%" align="center">
       <a href="https://hyperframes.studio/design/bold-poster?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/bold-poster.png" alt="Bold Poster" width="100%"></a>
       <br><b><a href="https://hyperframes.studio/design/bold-poster?utm_source=github&utm_medium=readme">Bold Poster</a></b>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/broadside?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/broadside.png" alt="Broadside" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/broadside?utm_source=github&utm_medium=readme">Broadside</a></b>
-    </td>
-    <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/capsule?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/capsule.png" alt="Capsule" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/capsule?utm_source=github&utm_medium=readme">Capsule</a></b>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/cartesian?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/cartesian.png" alt="Cartesian" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/cartesian?utm_source=github&utm_medium=readme">Cartesian</a></b>
-    </td>
-    <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/cobalt-grid?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/cobalt-grid.png" alt="Cobalt Grid" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/cobalt-grid?utm_source=github&utm_medium=readme">Cobalt Grid</a></b>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/coral?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/coral.png" alt="Coral" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/coral?utm_source=github&utm_medium=readme">Coral</a></b>
-    </td>
-    <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/creative-mode?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/creative-mode.png" alt="Creative Mode" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/creative-mode?utm_source=github&utm_medium=readme">Creative Mode</a></b>
     </td>
   </tr>
 </table>
@@ -251,36 +258,9 @@ Define a video as HTML. Add data attributes for timing and tracks. Use GSAP, CSS
 
 Preview instantly in the browser. Render locally or in Docker. The renderer seeks each frame in headless Chrome and encodes the result with FFmpeg, so the same input produces the same video.
 
-## HyperFrames Stack
-
-HyperFrames is the open-source rendering engine, plus a growing set of tools around HTML-native video creation.
-
-| Piece                                                                                 | Status              | What it does                                                                                      |
-| ------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------- |
-| CLI                                                                                   | Available           | Scaffold, preview, lint, inspect, and render local video projects                                 |
-| Core / Engine / Producer                                                              | Available           | Parse compositions, drive headless Chrome, encode video, and mix audio                            |
-| Catalog                                                                               | Available           | Reusable blocks and components for transitions, overlays, captions, charts, maps, and effects     |
-| Agent skills                                                                          | Available           | Teach coding agents the video-production patterns that generic web docs miss                      |
-| Studio                                                                                | Available, evolving | Browser surface for previewing and editing compositions                                           |
-| AWS Lambda rendering                                                                  | Available           | Deploy a distributed render stack and drive renders from your laptop or CI                        |
-| [hyperframes.studio](https://hyperframes.studio/?utm_source=github&utm_medium=readme) | Available           | Community playground for previewing, iterating, sharing, and rendering HTML-native video projects |
-| [frame.md](https://hyperframes.studio/design?utm_source=github&utm_medium=readme)     | Available           | Invert your design system for the camera — a DESIGN.md superset an agent can compose video from   |
-
-## Catalog
-
-Install ready-to-use blocks and components:
-
-```bash
-npx hyperframes add flash-through-white   # shader transition
-npx hyperframes add instagram-follow      # social overlay
-npx hyperframes add data-chart            # animated chart
-```
-
-Browse the catalog at [hyperframes.heygen.com/catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart?utm_source=github&utm_medium=readme).
-
 ## Why HyperFrames?
 
-- **HTML-native:** compositions are HTML files with data attributes. No React requirement, no proprietary timeline format.
+- **HTML-native:** make videos programmatically with HTML, CSS and JavaScript; compositions are HTML files with data attributes. No React requirement, no proprietary timeline format.
 - **Agent-friendly:** agents already write HTML, and the CLI is non-interactive by default.
 - **Deterministic:** same input, same frames, same output. Built for CI, regression tests, and automated rendering.
 - **No build step:** an `index.html` composition plays as-is and can be previewed directly in the browser.
@@ -300,19 +280,34 @@ HyperFrames is inspired by [Remotion](https://www.remotion.dev). Both tools rend
 | Distributed rendering    | Local and AWS Lambda render paths     | Remotion Lambda, mature cloud renderer  |
 | License                  | Apache 2.0                            | Source-available Remotion License       |
 
-Read the full comparison in the [HyperFrames vs Remotion guide](https://hyperframes.heygen.com/guides/hyperframes-vs-remotion?utm_source=github&utm_medium=readme).
+Read the full comparison in the [HyperFrames vs Remotion guide](https://hyperframes.heygen.com/guides/hyperframes-vs-remotion?utm_source=github&utm_medium=readme), or the [side-by-side comparison page](https://hyperframes.heygen.com/vs/remotion?utm_source=github&utm_medium=readme).
 
-## Documentation
+## Catalog
 
-Full documentation: [hyperframes.heygen.com/introduction](https://hyperframes.heygen.com/introduction?utm_source=github&utm_medium=readme)
+Install ready-to-use blocks and components:
 
-- [Quickstart](https://hyperframes.heygen.com/quickstart?utm_source=github&utm_medium=readme)
-- [Showcase](https://hyperframes.heygen.com/examples?utm_source=github&utm_medium=readme)
-- [Guides](https://hyperframes.heygen.com/guides/gsap-animation?utm_source=github&utm_medium=readme)
-- [API Reference](https://hyperframes.heygen.com/packages/core?utm_source=github&utm_medium=readme)
-- [Catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart?utm_source=github&utm_medium=readme)
-- [Examples](https://hyperframes.heygen.com/examples?utm_source=github&utm_medium=readme)
-- [AWS Lambda rendering](https://hyperframes.heygen.com/deploy/aws-lambda?utm_source=github&utm_medium=readme)
+```bash
+npx hyperframes add flash-through-white   # shader transition
+npx hyperframes add instagram-follow      # social overlay
+npx hyperframes add data-chart            # animated chart
+```
+
+Browse the catalog at [hyperframes.heygen.com/catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart?utm_source=github&utm_medium=readme).
+
+## HyperFrames Stack
+
+HyperFrames is the open-source rendering engine, plus a growing set of tools around HTML-native video creation.
+
+| Piece                                                                                 | Status              | What it does                                                                                    |
+| ------------------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------- |
+| CLI                                                                                   | Available           | Scaffold, preview, lint, inspect, and render local video projects                               |
+| Core / Engine / Producer                                                              | Available           | Parse compositions, drive headless Chrome, encode video, and mix audio                          |
+| Catalog                                                                               | Available           | Reusable blocks and components for transitions, overlays, captions, charts, maps, and effects   |
+| Agent skills                                                                          | Available           | Teach coding agents the video-production patterns that generic web docs miss                    |
+| Browser editor (`hyperframes preview`)                                                | Available, evolving | Preview and edit compositions in the browser: canvas, timeline, keyframes                       |
+| AWS Lambda rendering                                                                  | Available           | Deploy a distributed render stack and drive renders from your laptop or CI                      |
+| [hyperframes.studio](https://hyperframes.studio/?utm_source=github&utm_medium=readme) | Available           | The HyperFrames Studio app for Mac, Windows and Linux, plans and community                      |
+| [frame.md](https://hyperframes.studio/design?utm_source=github&utm_medium=readme)     | Available           | Invert your design system for the camera — a DESIGN.md superset an agent can compose video from |
 
 ## Packages
 
@@ -327,6 +322,18 @@ Full documentation: [hyperframes.heygen.com/introduction](https://hyperframes.he
 | [`@hyperframes/shader-transitions`](packages/shader-transitions) | WebGL shader transitions for compositions                         |
 | [`@hyperframes/aws-lambda`](packages/aws-lambda)                 | AWS Lambda SDK and deployment surface for distributed renders     |
 
+## Documentation
+
+Full documentation: [hyperframes.heygen.com/introduction](https://hyperframes.heygen.com/introduction?utm_source=github&utm_medium=readme)
+
+- [Quickstart](https://hyperframes.heygen.com/quickstart?utm_source=github&utm_medium=readme)
+- [Showcase](https://hyperframes.heygen.com/examples?utm_source=github&utm_medium=readme)
+- [Guides](https://hyperframes.heygen.com/guides/gsap-animation?utm_source=github&utm_medium=readme)
+- [API Reference](https://hyperframes.heygen.com/packages/core?utm_source=github&utm_medium=readme)
+- [Catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart?utm_source=github&utm_medium=readme)
+- [Examples](https://hyperframes.heygen.com/examples?utm_source=github&utm_medium=readme)
+- [AWS Lambda rendering](https://hyperframes.heygen.com/deploy/aws-lambda?utm_source=github&utm_medium=readme)
+
 ## Community
 
 HyperFrames is used in production at [HeyGen](https://www.heygen.com?utm_source=github&utm_medium=readme), with community examples from teams like [tldraw](https://tldraw.com), [TanStack](https://tanstack.com), and others in [ADOPTERS.md](ADOPTERS.md). Open a PR if your team is using HyperFrames.
@@ -336,6 +343,9 @@ HyperFrames is used in production at [HeyGen](https://www.heygen.com?utm_source=
 - User research: [Book a casual 30-minute conversation with the HyperFrames team](https://calendar.google.com/calendar/u/0/appointments/schedules/AcZssZ2cSpKoDgmcmRrgekrnrgqmvPT8W6F2Zg6e7MY7IJqaZKwpn_I0NdTHkN390iguMepE_NVg8ezb?gv=true) — no preparation or sales pitch
 - Security reports: [SECURITY.md](SECURITY.md)
 - Contributions: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Follow along: [X](https://x.com/HyperFrames_) · [YouTube](https://www.youtube.com/@HyperFrames_Official)
+
+[![Star History Chart](https://api.star-history.com/svg?repos=heygen-com/hyperframes&type=Date)](https://www.star-history.com/#heygen-com/hyperframes&Date)
 
 ## Development Note
 
@@ -364,11 +374,3 @@ GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/heygen-com/hyperframes.git
 ## License
 
 [Apache 2.0](LICENSE)
-
-### Share a video for review
-
-Sign in with `npx hyperframes auth login`, then run `npx hyperframes share` to
-choose who can open the rendered review. Use `share --update` when edits should
-become a new version and `share --manage` for web settings. CLI and Desktop use
-the same sharing system and five free projects per workspace. Existing legacy
-published links remain reachable.
