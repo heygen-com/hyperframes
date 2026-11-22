@@ -204,37 +204,65 @@ const PROJECT_PREVIEW_BASE =
   /<base\b[^>]*\shref\s*=\s*["']\/api\/projects\/[^/"']+\/preview\/["']/i;
 
 const MAX_READ_SCRIPT_BYTES = 4 * 1024 * 1024;
+const SCRIPT_SCAN_MS = 1000;
 
-function projectScriptNamesNoPath(src: string, projectDir: string): boolean {
+type ReadScript = (file: string) => Promise<string>;
+const readScript: ReadScript = (file) => readFile(file, "utf-8");
+
+async function projectScriptNamesNoPath(
+  src: string,
+  projectDir: string,
+  read: ReadScript,
+): Promise<boolean> {
   if (/^(?:[a-z][\w+.-]*:|\/)/i.test(src)) return false;
   try {
     const file = resolveWithinProject(projectDir, decodeURIComponent(src.split(/[?#]/)[0]!));
-    const info = file === null ? null : statSync(file);
-    if (file === null || !info?.isFile() || info.size > MAX_READ_SCRIPT_BYTES) return false;
-    return !namesMotionPath(readFileSync(file, "utf-8"));
+    if (file === null) return false;
+    const info = await statFile(file);
+    if (!info.isFile() || info.size > MAX_READ_SCRIPT_BYTES) return false;
+    return !namesMotionPath(await read(file));
   } catch {
     return false;
   }
 }
 
-function scriptCannotTweenAlongPath(tag: string, projectDir: string): boolean {
+async function scriptCannotTweenAlongPath(
+  tag: string,
+  projectDir: string,
+  read: ReadScript,
+): Promise<boolean> {
   if (tag.includes(RUNTIME_BOOTSTRAP_ATTR)) return true;
   if (/\stype\s*=\s*["']?module\b/i.test(tag)) return false;
   const match = SCRIPT_SRC_ATTR.exec(tag);
   if (!match) return true;
   const src = (match[1] ?? match[2] ?? match[3] ?? "").replace(/&amp;/gi, "&");
-  return GSAP_ON_ITS_CDN.test(src) || projectScriptNamesNoPath(src, projectDir);
+  return GSAP_ON_ITS_CDN.test(src) || projectScriptNamesNoPath(src, projectDir, read);
 }
 
 /** True only when no script the page loads can tween along a path: the page's text and each project script it loads
- * name no `motionPath`, and any other script is GSAP on its CDN. Unsure is false, and the preview then preloads. */
-function provesNoPathTween(html: string, projectDir: string): boolean {
+ * name no `motionPath`, and any other script is GSAP on its CDN. Unsure or late is false, and the page preloads. */
+export async function provesNoPathTween(
+  html: string,
+  projectDir: string,
+  budgetMs = SCRIPT_SCAN_MS,
+  read = readScript,
+): Promise<boolean> {
   if (namesMotionPath(html) || /\sdata-composition-src\s*=/i.test(html)) return false;
   if ((html.match(/<base\b/gi) ?? []).length !== 1 || !PROJECT_PREVIEW_BASE.test(html))
     return false;
-  return findStartTags(html, "script").every((start) =>
-    scriptCannotTweenAlongPath(html.slice(start, html.indexOf(">", start) + 1), projectDir),
+  const scripts = findStartTags(html, "script").map((start) =>
+    scriptCannotTweenAlongPath(html.slice(start, html.indexOf(">", start) + 1), projectDir, read),
   );
+  try {
+    const answers = await withinDeadline(
+      Promise.all(scripts),
+      performance.now() + budgetMs,
+      "scripts",
+    );
+    return answers.every(Boolean);
+  } catch {
+    return false;
+  }
 }
 
 function htmlHasMotionPathPlugin(html: string): boolean {
@@ -432,7 +460,7 @@ export function injectStudioPreviewAugmentations(
   signature: string,
   projectDir: string,
   activeCompositionPath: string,
-  options: { capture: boolean; gsapBaseUrl: string; sandboxedCapture: boolean },
+  options: { capture: boolean; gsapBaseUrl: string; sandboxedCapture: boolean; pathFree?: boolean },
 ): string {
   const studioMotion = readStudioMotion(projectDir, activeCompositionPath);
   const noTimelineToCome =
@@ -453,9 +481,7 @@ export function injectStudioPreviewAugmentations(
       injectTagsAtHeadStart(
         marked,
         `<meta name="${GSAP_BASE_URL_META}" content="${escapeGsapUrl(options.gsapBaseUrl)}">` +
-          (!studioMotion && provesNoPathTween(html, projectDir)
-            ? `<meta name="${NO_PATH_TWEEN_META}">`
-            : ""),
+          (!studioMotion && options.pathFree ? `<meta name="${NO_PATH_TWEEN_META}">` : ""),
       ),
       signature,
     ),
@@ -624,7 +650,12 @@ export function registerPreviewRoutes(
         project,
         mainCompositionPath,
       );
-      const options = { capture, gsapBaseUrl, sandboxedCapture: sandboxThumbnailCaptures };
+      const options = {
+        capture,
+        gsapBaseUrl,
+        sandboxedCapture: sandboxThumbnailCaptures,
+        pathFree: await provesNoPathTween(transformed, project.dir),
+      };
       const job = {
         runtimeUrl: adapter.runtimeUrl,
         signature,
@@ -671,13 +702,24 @@ export function registerPreviewRoutes(
           withPreviewBase(ensureHfIds(fallback.html), project.id),
           adapter.runtimeUrl,
         );
+        const fallbackPage = await transformPreviewHtml(
+          fallbackHtml,
+          adapter,
+          project,
+          fallback.compositionPath,
+        );
         let fallbackAugmented = injectStudioPreviewAugmentations(
-          await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
+          fallbackPage,
           adapter.runtimeUrl,
           signature,
           project.dir,
           fallback.compositionPath,
-          { capture, gsapBaseUrl, sandboxedCapture: sandboxThumbnailCaptures },
+          {
+            capture,
+            gsapBaseUrl,
+            sandboxedCapture: sandboxThumbnailCaptures,
+            pathFree: await provesNoPathTween(fallbackPage, project.dir),
+          },
         );
         if (previewVariables) {
           fallbackAugmented = injectPreviewVariables(fallbackAugmented, previewVariables);
@@ -790,7 +832,12 @@ export function registerPreviewRoutes(
         deadline,
         compPath,
       );
-      const options = { capture, gsapBaseUrl, sandboxedCapture: sandboxThumbnailCaptures };
+      const options = {
+        capture,
+        gsapBaseUrl,
+        sandboxedCapture: sandboxThumbnailCaptures,
+        pathFree: await provesNoPathTween(transformed, project.dir),
+      };
       const finish = { kind: "finish" as const, ...job, html: transformed, signature, options };
       const html = await runOffThread(
         { ...finish, ...(previewVariables && { variables: previewVariables }) },

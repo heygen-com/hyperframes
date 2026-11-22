@@ -3,91 +3,105 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NO_PATH_TWEEN_META } from "@hyperframes/core/gsap-cdn";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { injectStudioPreviewAugmentations, withPreviewBase, withPreviewRuntime } from "./preview";
+import {
+  injectStudioPreviewAugmentations,
+  provesNoPathTween,
+  withPreviewBase,
+  withPreviewRuntime,
+} from "./preview";
 
 const GSAP_FILE = "/*! GSAP 3.12.5 */ window.gsap = { timeline: function () {} };";
 const PLAIN_TWEEN = '<script>gsap.timeline({ paused: true }).to("#card", { x: 300 });</script>';
 const LATE_PATH_TWEEN =
   'window.buildPathTween = function () { gsap.to("#card", { motionPath: { path: [{ x: 50, y: 0 }] } }); };';
 
-/** The main preview page for a project holding `files`, as the preview route assembles it. */
-function servedPage(
-  scripts: string,
-  files: Record<string, string> = {},
-  links: Record<string, string> = {},
-): string {
-  const index = `<!doctype html><html><head>${scripts}</head><body><div id="card"></div>${PLAIN_TWEEN}</body></html>`;
+function projectDir(files: Record<string, string>, links: Record<string, string> = {}): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-no-path-tween-"));
   onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
-  for (const [rel, content] of Object.entries({ "index.html": index, ...files })) {
+  for (const [rel, content] of Object.entries(files)) {
     mkdirSync(join(dir, rel, ".."), { recursive: true });
     writeFileSync(join(dir, rel), content, "utf-8");
   }
   for (const [rel, target] of Object.entries(links)) symlinkSync(target, join(dir, rel));
-  return injectStudioPreviewAugmentations(
-    withPreviewRuntime(withPreviewBase(index, "film"), "/api/runtime.js"),
-    "/api/runtime.js",
-    "signature",
-    dir,
-    "index.html",
-    { capture: false, gsapBaseUrl: "https://cdn.jsdelivr.net/npm", sandboxedCapture: false },
-  );
+  return dir;
 }
 
-const marked = (html: string) => html.includes(`<meta name="${NO_PATH_TWEEN_META}">`);
+/** The main preview page for `scripts` in the head, as the preview route builds it, and the project it reads. */
+function page(
+  scripts: string,
+  files: Record<string, string> = {},
+  links: Record<string, string> = {},
+) {
+  const index = `<!doctype html><html><head>${scripts}</head><body><div id="card"></div>${PLAIN_TWEEN}</body></html>`;
+  const dir = projectDir({ "index.html": index, ...files }, links);
+  return { html: withPreviewRuntime(withPreviewBase(index, "film"), "/api/runtime.js"), dir };
+}
 
-describe("the preview's mark that no script can tween along a path", () => {
+const pathFree = (
+  scripts: string,
+  files?: Record<string, string>,
+  links?: Record<string, string>,
+) => {
+  const { html, dir } = page(scripts, files, links);
+  return provesNoPathTween(html, dir);
+};
+
+describe("the preview builder's proof that no script can tween along a path", () => {
   // fails without the fix: no preview carried the mark, so every one loaded the plugin.
-  it("marks a page whose scripts are read and name no path: its own GSAP file and inline tweens", () => {
-    expect(
-      marked(servedPage('<script src="gsap.min.js"></script>', { "gsap.min.js": GSAP_FILE })),
-    ).toBe(true);
+  it("holds for a page whose scripts are read and name no path: its own GSAP file and inline tweens", async () => {
+    const own = '<script src="gsap.min.js"></script>';
+    expect(await pathFree(own, { "gsap.min.js": GSAP_FILE })).toBe(true);
   });
 
-  it("marks a page that loads GSAP from its CDN", () => {
+  it("holds for a page that loads GSAP from its CDN", async () => {
     const cdn = '<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>';
-    expect(marked(servedPage(cdn))).toBe(true);
+    expect(await pathFree(cdn)).toBe(true);
   });
 
-  it("leaves unmarked a project script that builds a path tween, whatever its name", () => {
+  it("fails for a project script that builds a path tween, whatever its name", async () => {
     const authored = '<script src="authored/gsap.js"></script>';
-    expect(marked(servedPage(authored, { "authored/gsap.js": LATE_PATH_TWEEN }))).toBe(false);
+    expect(await pathFree(authored, { "authored/gsap.js": LATE_PATH_TWEEN })).toBe(false);
   });
 
-  it("leaves unmarked a script it cannot read: another host, a missing file, a module", () => {
-    expect(marked(servedPage('<script src="https://example.com/gsap.min.js"></script>'))).toBe(
-      false,
-    );
-    expect(marked(servedPage('<script src="missing.js"></script>'))).toBe(false);
+  it("fails for a script it cannot read: another host, a missing file, a module, a folder", async () => {
+    expect(await pathFree('<script src="https://example.com/gsap.min.js"></script>')).toBe(false);
+    expect(await pathFree('<script src="missing.js"></script>')).toBe(false);
     const module = '<script type="module" src="gsap.min.js"></script>';
-    expect(marked(servedPage(module, { "gsap.min.js": GSAP_FILE }))).toBe(false);
+    expect(await pathFree(module, { "gsap.min.js": GSAP_FILE })).toBe(false);
+    expect(await pathFree('<script src="assets"></script>', { "assets/a.txt": "a" })).toBe(false);
   });
 
-  // fails without the fix: a folder named as a script threw and the preview was not built.
-  it("leaves unmarked, and still builds, a page whose script source is a folder", () => {
-    expect(marked(servedPage('<script src="assets"></script>', { "assets/a.txt": "a" }))).toBe(
-      false,
-    );
+  it("fails for a script that links out of the project", async () => {
+    const outside = projectDir({ "gsap.min.js": GSAP_FILE });
+    const own = '<script src="gsap.min.js"></script>';
+    expect(await pathFree(own, {}, { "gsap.min.js": join(outside, "gsap.min.js") })).toBe(false);
   });
 
-  // fails without the fix: a link out of the project was read as a project script.
-  it("leaves unmarked a script that links out of the project", () => {
-    const outside = mkdtempSync(join(tmpdir(), "hf-outside-"));
-    onTestFinished(() => rmSync(outside, { recursive: true, force: true }));
-    writeFileSync(join(outside, "gsap.min.js"), GSAP_FILE, "utf-8");
-    const linked = servedPage(
-      '<script src="gsap.min.js"></script>',
-      {},
-      {
-        "gsap.min.js": join(outside, "gsap.min.js"),
-      },
-    );
-    expect(marked(linked)).toBe(false);
+  // fails without the fix: the scan read the disk on the route's event loop, with no limit on a silent drive.
+  it("fails when a script's read does not answer within its budget", async () => {
+    const { html, dir } = page('<script src="never-answers.js"></script>', {
+      "never-answers.js": GSAP_FILE,
+    });
+    expect(await provesNoPathTween(html, dir, 50, () => new Promise<string>(() => {}))).toBe(false);
   });
 
-  it("leaves unmarked a page whose own text names a path", () => {
-    expect(marked(servedPage('<script>gsap.to("#card", { "motionPath": {} });</script>'))).toBe(
-      false,
-    );
+  it("fails for a page whose own text names a path", async () => {
+    expect(await pathFree('<script>gsap.to("#card", { "motionPath": {} });</script>')).toBe(false);
+  });
+});
+
+describe("the preview's path-free mark", () => {
+  it("is set only when the builder proved the page path-free", () => {
+    const { html, dir } = page("");
+    const augmented = (proved: boolean) =>
+      injectStudioPreviewAugmentations(html, "/api/runtime.js", "signature", dir, "index.html", {
+        capture: false,
+        gsapBaseUrl: "https://cdn.jsdelivr.net/npm",
+        sandboxedCapture: false,
+        pathFree: proved,
+      });
+    const mark = `<meta name="${NO_PATH_TWEEN_META}">`;
+    expect(augmented(true)).toContain(mark);
+    expect(augmented(false)).not.toContain(mark);
   });
 });
