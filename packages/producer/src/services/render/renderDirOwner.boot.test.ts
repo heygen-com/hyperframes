@@ -103,11 +103,13 @@ it.each([
   expect(listAbandonedRenderDirs(parent)).toEqual([]);
 });
 
-// fails without the fix: the tools ran by bare name, which Windows can resolve from the project folder.
+// fails without the fix: the tools ran by bare name, which Windows can resolve from the project folder, and a
+// root on the current drive (\\Windows) passed as a system path.
 it.each([
   ["darwin", undefined, ["/usr/sbin/ioreg"]],
   ["win32", "C:\\Windows", ["C:\\Windows\\System32\\reg.exe"]],
   ["win32", "Windows", []],
+  ["win32", "\\Windows", []],
 ])("asks %s's own tool by its absolute path (system root %s)", async (os, systemRoot, expected) => {
   Object.defineProperty(process, "platform", { value: os });
   vi.stubEnv("SystemRoot", systemRoot);
