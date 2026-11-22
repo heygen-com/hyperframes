@@ -223,7 +223,9 @@ iframeRef.current = resolveIframe(player);
 
 The composition runs in a sandboxed iframe inside the player's Shadow DOM. This
 isolates its styles, scales it to the player container, and lets the player
-communicate with the HyperFrames runtime through `postMessage`.
+communicate with the HyperFrames runtime through `postMessage`. Set
+`sandbox-origin="opaque"` to seal the frame, so the composition cannot read
+your page or its cookies; the composition must then load the runtime script.
 
 ## Related topics
 

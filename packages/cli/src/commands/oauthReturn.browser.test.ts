@@ -12,7 +12,7 @@ import { buildPlayApp } from "./play.js";
 import { buildPresentApp } from "./present.js";
 
 // HeyGen's sign-in sends a CLI sign-in code back to any local port, and the play and present pages
-// share their origin with the composition frame (`sandbox-origin="same-origin"`), so anything those
+// share their origin with the composition frame (the player's default), so anything those
 // pages can read, a project's script can read through `parent`. Each probe runs on the server's own
 // page and checks that a sign-in return address that landed on that server stays out of its reach.
 

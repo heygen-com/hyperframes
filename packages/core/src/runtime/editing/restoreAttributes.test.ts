@@ -100,7 +100,7 @@ describe("restore-attributes", () => {
       ["data-start", "1"],
     ]);
 
-    it("are kept when the runtime added them, and the restore applies", async () => {
+    it("are kept when the runtime added them (crossorigin through the sealed CORS writer), and the restore applies", async () => {
       document.head.innerHTML = '<base href="http://localhost:4817/api/projects/demo/preview/">';
       vi.stubGlobal("origin", "null");
       const observer = corsForSealedMedia();
@@ -115,6 +115,25 @@ describe("restore-attributes", () => {
       expect(video.getAttribute("data-start")).toBe("1");
       expect(video.getAttribute("crossorigin")).toBe("anonymous");
       expect(video.getAttribute("preload")).toBe("auto");
+      observer?.disconnect();
+      vi.unstubAllGlobals();
+      document.head.innerHTML = "";
+    });
+
+    it("stop being kept once the film changes the runtime's crossorigin itself", async () => {
+      document.head.innerHTML = '<base href="http://localhost:4817/api/projects/demo/preview/">';
+      vi.stubGlobal("origin", "null");
+      const observer = corsForSealedMedia();
+      document.body.innerHTML =
+        '<video data-hf-id="clip" src="media/clip.mp4" data-start="0"></video>';
+      await Promise.resolve();
+      const video = document.querySelector("video")!;
+      video.setAttribute("crossorigin", "use-credentials");
+      await Promise.resolve();
+      player();
+
+      expect(restoreInPlace(retimed)).toBe("refused");
+      expect(video.getAttribute("crossorigin")).toBe("use-credentials");
       observer?.disconnect();
       vi.unstubAllGlobals();
       document.head.innerHTML = "";

@@ -205,6 +205,8 @@ composition because browser sandbox changes take effect only on navigation. Opaq
 parent DOM. Direct `contentDocument`, `__player`, and `__timelines` access is intentionally
 unavailable in that mode.
 
+An opaque composition loads the videos and audio served from its own host with CORS, so colour grading, canvas reads and audio effects can use them. Serve them with `Access-Control-Allow-Origin` (for example `*`). From a host that sends no CORS headers, each one plays anyway: it is loaded again once without CORS, those effects are off for it, and the console names it.
+
 If you are building a trusted editor integration that needs direct access, use the `iframeElement` getter:
 
 ```js
@@ -346,7 +348,7 @@ The `width` and `height` attributes define the composition's native resolution f
 
 ## How it works
 
-The player renders compositions in a sandboxed `<iframe>` inside a Shadow DOM. It communicates with the HyperFrames runtime via `postMessage`. If the composition has GSAP timelines (`window.__timelines`) but no runtime, the player auto-injects it from CDN.
+The player renders compositions in a sandboxed `<iframe>` inside a Shadow DOM. It communicates with the HyperFrames runtime via `postMessage`. If the composition has GSAP timelines (`window.__timelines`) but no runtime, the player auto-injects it from CDN. An opaque player cannot add anything to the composition, so there the composition must load the runtime script itself; without it the player fires `error` after 8 seconds with a message naming both fixes.
 
 ## Distribution
 

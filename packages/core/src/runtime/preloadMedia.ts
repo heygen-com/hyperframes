@@ -19,8 +19,34 @@ const MEDIA_EDGE_SECONDS = 0.1;
 
 type PreloadableMedia = Pick<
   HTMLMediaElement,
-  "id" | "tagName" | "getAttribute" | "preload" | "readyState" | "networkState" | "load"
+  | "id"
+  | "tagName"
+  | "getAttribute"
+  | "querySelectorAll"
+  | "preload"
+  | "readyState"
+  | "networkState"
+  | "error"
+  | "load"
 >;
+
+type Loaded = { list: string; preload: "auto" | "metadata" };
+const loadedFor = new WeakMap<object, Loaded>();
+const sourceList = (media: PreloadableMedia) =>
+  [
+    media.getAttribute("src"),
+    ...[...media.querySelectorAll("source")].map((el) => el.getAttribute("src")),
+  ].join(" ");
+
+function loadOncePerList(media: PreloadableMedia, preload: Loaded["preload"]): void {
+  const list = sourceList(media);
+  const last = loadedFor.get(media);
+  const ended = media.error !== null || media.networkState === 3;
+  const covered = last?.list === list && (last.preload === "auto" || preload === "metadata");
+  if (covered && !ended) return;
+  loadedFor.set(media, { list, preload });
+  media.load();
+}
 
 export function isRenderFrameVideo(
   media: Pick<Element, "getAttribute" | "id" | "tagName">,
@@ -35,14 +61,14 @@ export function preloadMedia(media: PreloadableMedia): void {
   if (media.preload !== "auto") setRuntimePreload(media, "auto");
   // load() resets an in-flight video fetch, discarding its selected resource and buffered data.
   const videoAlreadyLoading = media.tagName === "VIDEO" && media.networkState === 2;
-  if (media.readyState < 3 && !videoAlreadyLoading) media.load();
+  if (media.readyState < 3 && !videoAlreadyLoading) loadOncePerList(media, "auto");
 }
 
 export function prefetchMedia(media: PreloadableMedia): void {
   if (!isChromium()) return preloadMedia(media);
   if (isRenderFrameVideo(media)) return;
   if (media.preload !== "metadata") setRuntimePreload(media, "metadata");
-  if (media.readyState === 0 && media.networkState !== 2) media.load();
+  if (media.readyState === 0 && media.networkState !== 2) loadOncePerList(media, "metadata");
 }
 
 const pendingPlaybackStart = new WeakMap<HTMLMediaElement, () => void>();
@@ -87,6 +113,7 @@ export function prepareUpcomingMedia(media: HTMLMediaElement, isUpcoming: () => 
 /** Ends a fetch in flight for good, which preload none alone does not. */
 export function stopMediaDownload(media: HTMLMediaElement): void {
   cancelPlaybackStart(media);
+  loadedFor.delete(media);
   for (const source of media.querySelectorAll("source")) source.remove();
   media.removeAttribute("src");
   media.load();
@@ -113,6 +140,7 @@ export function releaseMedia(media: HTMLMediaElement, whenBuffered = false): voi
     return;
   }
   cancelPlaybackStart(media);
+  loadedFor.delete(media);
   media.removeAttribute("src");
   media.setAttribute("src", src);
 }
