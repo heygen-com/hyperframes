@@ -453,13 +453,17 @@ const sizeError = (a, b) =>
  * Resolves once `busy()` has read false `frames` reads in a row, a `frame()` apart, with the ms until the first of
  * those reads; throws at `timeout` ms.
  */
-export async function restedFor(busy, frame, { frames = 2, timeout = 20_000 } = {}) {
-  const start = Date.now();
+export async function restedFor(
+  busy,
+  frame,
+  { frames = 2, timeout = 20_000, now = Date.now } = {},
+) {
+  const start = now();
   let [clear, clearSince] = [0, 0];
-  for (const deadline = start + timeout; Date.now() < deadline; await frame()) {
-    const now = Date.now();
+  for (const deadline = start + timeout; now() < deadline; await frame()) {
+    const readAt = now();
     clear = (await busy()) ? 0 : clear + 1;
-    if (clear === 1) clearSince = now;
+    if (clear === 1) clearSince = readAt;
     if (clear >= frames) return clearSince - start;
   }
   throw new Error("an edit was still waiting or saving");

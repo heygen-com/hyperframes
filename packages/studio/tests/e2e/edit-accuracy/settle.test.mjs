@@ -293,27 +293,31 @@ describe("the box a press is measured against", () => {
 // fails without the fix: the sequence read the file once its write count was met, while a sealed press that waited for
 // the previous save was still saving, so the last gesture's edit looked lost.
 describe("the end of a sequence", () => {
+  // Each frame advances a fake clock by 10 ms, so the times are exact.
   const reads = (states) => {
-    let at = 0;
-    const busy = async () => states[Math.min(at++, states.length - 1)];
-    return { busy, read: () => at };
+    let [at, ms] = [0, 0];
+    return {
+      busy: async () => states[Math.min(at++, states.length - 1)],
+      frame: async () => void (ms += 10),
+      now: () => ms,
+      read: () => at,
+    };
   };
 
   it("waits until no press waits and no edit saves, two reads in a row", async () => {
-    const { busy, read } = reads([true, true, false, true, false, false, true]);
-    await restedFor(busy, async () => {});
+    const { busy, frame, now, read } = reads([true, true, false, true, false, false, true]);
+    await restedFor(busy, frame, { now });
     expect(read()).toBe(6);
   });
 
   it("says how long until the first of the clear reads, the undo's time to show", async () => {
-    const { busy } = reads([true, true, false, false]);
-    const ms = await restedFor(busy, () => new Promise((r) => setTimeout(r, 10)));
-    expect(ms).toBeGreaterThanOrEqual(20);
+    const { busy, frame, now } = reads([true, true, false, false]);
+    expect(await restedFor(busy, frame, { now })).toBe(20);
   });
 
   it("gives up with a reason when an edit never stops saving", async () => {
-    const { busy } = reads([true]);
-    await expect(restedFor(busy, async () => {}, { timeout: 30 })).rejects.toThrow(
+    const { busy, frame, now } = reads([true]);
+    await expect(restedFor(busy, frame, { now, timeout: 30 })).rejects.toThrow(
       /still waiting or saving/,
     );
   });
