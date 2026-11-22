@@ -15,7 +15,7 @@
  * Space and arrow keys even when they do not accept text.
  */
 export function isTypingTarget(target: EventTarget | null): boolean {
-  const element = asElement(target);
+  const element = elementThroughShadowFocus(target);
   if (!element) return false;
   if (element.isContentEditable) return true;
   return element.closest(TYPING_SELECTOR) !== null;
@@ -23,7 +23,10 @@ export function isTypingTarget(target: EventTarget | null): boolean {
 
 /** Plain keys (arrows, Space, Delete) also belong to a focused slider or player; Cmd shortcuts still do not. */
 export function ownsPlainKeys(target: EventTarget | null): boolean {
-  return isTypingTarget(target) || asElement(target)?.closest(KEY_OWNING_CONTROLS) != null;
+  return (
+    isTypingTarget(target) ||
+    elementThroughShadowFocus(target)?.closest(KEY_OWNING_CONTROLS) != null
+  );
 }
 
 // A slider steps and a native player seeks and plays with these keys themselves.
@@ -49,10 +52,12 @@ const TYPING_SELECTOR = [
   ".cm-editor",
 ].join(",");
 
-function asElement(target: EventTarget | null): HTMLElement | null {
+function elementThroughShadowFocus(target: EventTarget | null): HTMLElement | null {
   if (!target || typeof target !== "object") return null;
-  const candidate = target as { closest?: unknown; isContentEditable?: unknown };
-  return typeof candidate.closest === "function" ? (target as HTMLElement) : null;
+  const candidate = target as { closest?: unknown; shadowRoot?: ShadowRoot | null };
+  if (typeof candidate.closest !== "function") return null;
+  const inner = candidate.shadowRoot?.activeElement;
+  return inner ? elementThroughShadowFocus(inner) : (target as HTMLElement);
 }
 
 const PLAYBACK_SHORTCUT_IGNORED_SELECTOR = [
@@ -71,13 +76,5 @@ export function shouldIgnorePlaybackShortcutTarget(target: EventTarget | null): 
   // Anything the user is typing into owns its keys outright, editable elements
   // included: a letter claimed here never reaches the text. So does a native player.
   if (ownsPlainKeys(target)) return true;
-  if (!target || typeof target !== "object") return false;
-  const candidate = target as { closest?: unknown };
-  if (typeof candidate.closest !== "function") return false;
-  return (
-    (candidate.closest as (selector: string) => Element | null).call(
-      target,
-      PLAYBACK_SHORTCUT_IGNORED_SELECTOR,
-    ) !== null
-  );
+  return elementThroughShadowFocus(target)?.closest(PLAYBACK_SHORTCUT_IGNORED_SELECTOR) != null;
 }
