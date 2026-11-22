@@ -42,6 +42,7 @@ interface PreviewMessage {
   source?: string;
   type?: string;
   clips?: unknown;
+  sceneSwap?: unknown;
   isPlaying?: unknown;
   copies?: unknown;
   health?: unknown;
