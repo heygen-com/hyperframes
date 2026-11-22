@@ -9,7 +9,18 @@ $log = Join-Path $env:RUNNER_TEMP "deadline-step.log"
 $null = New-Item $log -ItemType File
 $child = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', "$Command *>> '$log'" -PassThru -WindowStyle Hidden
 $read = 0
+$dumped = $false
 $stop = (Get-Date).AddMinutes($Minutes)
+# Out of socket buffers (one hf#8470 run): who held the TCP connections at that moment.
+function Show-SocketCounts {
+  Write-Host "::warning::the runner ran out of socket buffers; TCP connections by state, then by state and process:"
+  $names = @{}
+  Get-Process | ForEach-Object { $names[$_.Id] = $_.ProcessName }
+  $tcp = Get-NetTCPConnection
+  $tcp | Group-Object State | ForEach-Object { "{0,6} {1}" -f $_.Count, $_.Name }
+  $tcp | Group-Object State, OwningProcess | Sort-Object Count -Descending | Select-Object -First 15 |
+    ForEach-Object { "{0,6} {1} {2} ({3})" -f $_.Count, $_.Values[0], $names[[int]$_.Values[1]], $_.Values[1] }
+}
 function Show-NewOutput {
   $stream = [IO.File]::Open($log, 'Open', 'Read', 'ReadWrite')
   try {
@@ -17,6 +28,10 @@ function Show-NewOutput {
     $text = (New-Object IO.StreamReader($stream)).ReadToEnd()
     $script:read = $stream.Position
     if ($text) { [Console]::Out.Write($text) }
+    if (-not $script:dumped -and $text -match 'ERR_NO_BUFFER_SPACE|ENOBUFS') {
+      $script:dumped = $true
+      Show-SocketCounts
+    }
   } finally { $stream.Dispose() }
 }
 while (-not $child.HasExited -and (Get-Date) -lt $stop) { Show-NewOutput; Start-Sleep -Seconds 2 }
