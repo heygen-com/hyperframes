@@ -67,7 +67,7 @@ type ApplyScope = (
 
 function HookHost({
   onState,
-  onSetAttributeLive,
+  onSetAttributeQuiet,
   element,
   previewIframeRef,
   onApplyScope,
@@ -75,7 +75,7 @@ function HookHost({
 }: {
   projectId?: string;
   onState: (state: ReturnType<typeof useColorGradingController>) => void;
-  onSetAttributeLive: (attr: string, value: string | null) => void;
+  onSetAttributeQuiet: (attr: string, value: string | null) => void;
   element: DomEditSelection;
   previewIframeRef?: React.RefObject<HTMLIFrameElement | null>;
   onApplyScope?: ApplyScope;
@@ -84,7 +84,7 @@ function HookHost({
     projectId,
     element,
     previewIframeRef,
-    onSetAttributeLive,
+    onSetAttributeQuiet,
     onApplyScope,
   });
   onState(state);
@@ -92,7 +92,7 @@ function HookHost({
 }
 
 function renderHook(
-  onSetAttributeLive: (attr: string, value: string | null) => void,
+  onSetAttributeQuiet: (attr: string, value: string | null) => void,
   initialElement: DomEditSelection = makeElement(),
   previewIframeRef?: React.RefObject<HTMLIFrameElement | null>,
   onApplyScope?: ApplyScope,
@@ -107,7 +107,7 @@ function renderHook(
       root.render(
         React.createElement(HookHost, {
           onState: (s: ReturnType<typeof useColorGradingController>) => (latest = s),
-          onSetAttributeLive,
+          onSetAttributeQuiet,
           element,
           previewIframeRef,
           onApplyScope,
@@ -265,7 +265,7 @@ describe("useColorGradingController", () => {
 
   it("persists a disabled secondary even though it does not render pixels", () => {
     vi.useFakeTimers();
-    const onSetAttributeLive = vi.fn();
+    const onSetAttributeQuiet = vi.fn();
     const grading = normalizeHfColorGrading({
       secondaries: [
         {
@@ -276,13 +276,13 @@ describe("useColorGradingController", () => {
       ],
     });
     if (!grading) throw new Error("expected secondary grading");
-    const { root, getState } = renderHook(onSetAttributeLive);
+    const { root, getState } = renderHook(onSetAttributeQuiet);
 
     act(() => getState().commitColorGrading(grading));
     act(() => vi.advanceTimersByTime(400));
 
-    expect(onSetAttributeLive.mock.calls[0]?.[0]).toBe("color-grading");
-    expect(onSetAttributeLive.mock.calls[0]?.[1]).toContain('"enabled":false');
+    expect(onSetAttributeQuiet.mock.calls[0]?.[0]).toBe("color-grading");
+    expect(onSetAttributeQuiet.mock.calls[0]?.[1]).toContain('"enabled":false');
     act(() => root.unmount());
     vi.useRealTimers();
   });
@@ -354,18 +354,18 @@ describe("useColorGradingController", () => {
 
   it("commitColorGrading updates grading state synchronously and schedules a debounced persist", async () => {
     vi.useFakeTimers();
-    const onSetAttributeLive = vi.fn();
-    const { root, getState } = renderHook(onSetAttributeLive);
+    const onSetAttributeQuiet = vi.fn();
+    const { root, getState } = renderHook(onSetAttributeQuiet);
     act(() => {
       getState().commitColorGrading(brightPopGrading());
     });
     expect(getState().grading.preset).toBe("bright-pop");
-    expect(onSetAttributeLive).not.toHaveBeenCalled();
+    expect(onSetAttributeQuiet).not.toHaveBeenCalled();
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    expect(onSetAttributeLive).toHaveBeenCalledTimes(1);
-    const [attr, value] = onSetAttributeLive.mock.calls[0] as [string, string];
+    expect(onSetAttributeQuiet).toHaveBeenCalledTimes(1);
+    const [attr, value] = onSetAttributeQuiet.mock.calls[0] as [string, string];
     expect(attr).toBe("color-grading");
     expect(value).toContain("bright-pop");
     act(() => root.unmount());
@@ -374,10 +374,10 @@ describe("useColorGradingController", () => {
 
   it("previews through the runtime only and restores the committed grade without persisting", () => {
     vi.useFakeTimers();
-    const onSetAttributeLive = vi.fn();
+    const onSetAttributeQuiet = vi.fn();
     const { contentWindow, iframe } = createPreviewFrame();
     const postMessage = vi.spyOn(contentWindow, "postMessage");
-    const { root, getState } = renderHook(onSetAttributeLive, makeElement(), {
+    const { root, getState } = renderHook(onSetAttributeQuiet, makeElement(), {
       current: iframe,
     });
 
@@ -389,7 +389,7 @@ describe("useColorGradingController", () => {
     expect(gradingMessages[1]?.grading).toBeNull();
     expect(getState().grading.preset).toBe("neutral");
     act(() => vi.advanceTimersByTime(500));
-    expect(onSetAttributeLive).not.toHaveBeenCalled();
+    expect(onSetAttributeQuiet).not.toHaveBeenCalled();
 
     act(() => root.unmount());
     vi.useRealTimers();
@@ -481,13 +481,13 @@ describe("useColorGradingController", () => {
     // through the onSettled callback passed as the 3rd argument. A mock
     // that only rejects would validate a path the real callback never takes.
     vi.useFakeTimers();
-    const onSetAttributeLive = vi.fn(
+    const onSetAttributeQuiet = vi.fn(
       (_attr: string, _value: string | null, onSettled?: (ok: boolean) => void) => {
         onSettled?.(false);
         return Promise.resolve();
       },
     );
-    const { root, getState } = renderHook(onSetAttributeLive);
+    const { root, getState } = renderHook(onSetAttributeQuiet);
     act(() => {
       getState().commitColorGrading(brightPopGrading());
     });
@@ -507,8 +507,8 @@ describe("useColorGradingController", () => {
 
   it("reverts to the last confirmed-good grading when a persist rejects (fallback for a non-onSettled implementation)", async () => {
     vi.useFakeTimers();
-    const onSetAttributeLive = vi.fn().mockRejectedValue(new Error("disk full"));
-    const { root, getState } = renderHook(onSetAttributeLive);
+    const onSetAttributeQuiet = vi.fn().mockRejectedValue(new Error("disk full"));
+    const { root, getState } = renderHook(onSetAttributeQuiet);
     act(() => {
       getState().commitColorGrading(brightPopGrading());
     });
@@ -533,7 +533,7 @@ describe("useColorGradingController", () => {
     vi.useFakeTimers();
     let resolveA: (() => void) | undefined;
     let capturedOnSettledA: ((ok: boolean) => void) | undefined;
-    const onSetAttributeLive = vi.fn(
+    const onSetAttributeQuiet = vi.fn(
       (_attr: string, _value: string | null, onSettled?: (ok: boolean) => void) => {
         capturedOnSettledA = onSettled;
         return new Promise<void>((resolve) => {
@@ -542,7 +542,7 @@ describe("useColorGradingController", () => {
       },
     );
     const { root, getState, rerenderWithElement } = renderHook(
-      onSetAttributeLive,
+      onSetAttributeQuiet,
       makeElement({ id: "s1-bg" }),
     );
     act(() => {
@@ -553,7 +553,7 @@ describe("useColorGradingController", () => {
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    expect(onSetAttributeLive).toHaveBeenCalledTimes(1);
+    expect(onSetAttributeQuiet).toHaveBeenCalledTimes(1);
 
     // Selection moves twice more while s1-bg's persist is still pending.
     rerenderWithElement(makeElement({ id: "s2-bg" }));
@@ -581,7 +581,7 @@ describe("useColorGradingController", () => {
     vi.useFakeTimers();
     let resolveA: (() => void) | undefined;
     let capturedOnSettledA: ((ok: boolean) => void) | undefined;
-    const onSetAttributeLive = vi
+    const onSetAttributeQuiet = vi
       .fn()
       // Edit A (bright-pop): captures its onSettled and never resolves until
       // resolveA() is called below — simulates a slow persist.
@@ -600,7 +600,7 @@ describe("useColorGradingController", () => {
           return Promise.resolve();
         },
       );
-    const { root, getState } = renderHook(onSetAttributeLive);
+    const { root, getState } = renderHook(onSetAttributeQuiet);
 
     act(() => {
       getState().commitColorGrading(brightPopGrading());
@@ -608,7 +608,7 @@ describe("useColorGradingController", () => {
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    expect(onSetAttributeLive).toHaveBeenCalledTimes(1); // A's persist now in flight
+    expect(onSetAttributeQuiet).toHaveBeenCalledTimes(1); // A's persist now in flight
 
     // B commits on the SAME element before A's persist has settled.
     act(() => {
@@ -617,7 +617,7 @@ describe("useColorGradingController", () => {
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    expect(onSetAttributeLive).toHaveBeenCalledTimes(2); // B's persist has already settled (mock resolves sync)
+    expect(onSetAttributeQuiet).toHaveBeenCalledTimes(2); // B's persist has already settled (mock resolves sync)
     expect(getState().grading.preset).toBe("clean-studio");
 
     // NOW A's stale persist finally settles as a FAILURE — must not revert
@@ -699,9 +699,9 @@ describe("useColorGradingController", () => {
 
   it("flushes — rather than discards — a pending persist for the previous element when selection changes before it fires", () => {
     vi.useFakeTimers();
-    const onSetAttributeLive = vi.fn();
+    const onSetAttributeQuiet = vi.fn();
     const { root, getState, rerenderWithElement } = renderHook(
-      onSetAttributeLive,
+      onSetAttributeQuiet,
       makeElement({ id: "s1-bg" }),
     );
     act(() => {
@@ -715,8 +715,8 @@ describe("useColorGradingController", () => {
       vi.advanceTimersByTime(200);
     });
     rerenderWithElement(makeElement({ id: "s2-bg" }));
-    expect(onSetAttributeLive).toHaveBeenCalledTimes(1);
-    const [attr, value] = onSetAttributeLive.mock.calls[0] as [string, string];
+    expect(onSetAttributeQuiet).toHaveBeenCalledTimes(1);
+    const [attr, value] = onSetAttributeQuiet.mock.calls[0] as [string, string];
     expect(attr).toBe("color-grading");
     expect(value).toContain("bright-pop");
     // And it must not ALSO fire again once the (now-cleared) original timer
@@ -724,7 +724,7 @@ describe("useColorGradingController", () => {
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    expect(onSetAttributeLive).toHaveBeenCalledTimes(1);
+    expect(onSetAttributeQuiet).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
     vi.useRealTimers();
   });
@@ -830,6 +830,50 @@ describe("useColorGradingController after the preview iframe is replaced", () =>
 
     expect(colorGradingMessages(postToB.mock.calls)).toHaveLength(1);
     expect(postToA).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
+
+  it("follows the element back to its grade when an undo restores it", () => {
+    vi.useFakeTimers();
+    const onSetAttributeQuiet = vi.fn();
+    const before = makeElement({
+      dataAttributes: { "color-grading": '{"adjust":{"exposure":0.1}}' },
+    });
+    const { root, getState, rerenderWithElement } = renderHook(onSetAttributeQuiet, before);
+    const brighter = normalizeHfColorGrading({ adjust: { exposure: 1.5 } });
+    if (!brighter) throw new Error("expected a grading");
+
+    act(() => getState().commitColorGrading(brighter));
+    act(() => vi.advanceTimersByTime(400));
+    rerenderWithElement(
+      makeElement({ dataAttributes: { "color-grading": onSetAttributeQuiet.mock.calls[0]![1] } }),
+    );
+    expect(getState().grading.adjust.exposure).toBe(1.5);
+
+    rerenderWithElement(
+      makeElement({ dataAttributes: { "color-grading": '{"adjust":{"exposure":0.1}}' } }),
+    );
+    expect(getState().grading.adjust.exposure).toBe(0.1);
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
+
+  it("keeps an edit that is still waiting to save over an older value from the element", () => {
+    vi.useFakeTimers();
+    const before = makeElement({
+      dataAttributes: { "color-grading": '{"adjust":{"exposure":0.1}}' },
+    });
+    const { root, getState, rerenderWithElement } = renderHook(vi.fn(), before);
+    const brighter = normalizeHfColorGrading({ adjust: { exposure: 1.5 } });
+    if (!brighter) throw new Error("expected a grading");
+
+    act(() => getState().commitColorGrading(brighter));
+    rerenderWithElement(
+      makeElement({ dataAttributes: { "color-grading": '{"adjust":{"exposure":0.2}}' } }),
+    );
+
+    expect(getState().grading.adjust.exposure).toBe(1.5);
     act(() => root.unmount());
     vi.useRealTimers();
   });

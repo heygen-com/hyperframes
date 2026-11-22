@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { preloadMedia } from "./preloadMedia";
 import { corsForSealedMedia } from "./sealedMediaCors";
 
 const PREVIEW = "http://localhost:4817/api/projects/demo/preview/~token/";
@@ -375,10 +376,53 @@ describe("corsForSealedMedia", () => {
     down.dispatchEvent(new Event("error"));
     down.dispatchEvent(new Event("error"));
     playsFrom(video, `${PREVIEW}media/own.mp4`);
-    video.load();
+    preloadMedia(video);
     video.dispatchEvent(new Event("loadstart"));
     down.dispatchEvent(new Event("error"));
     expect([video.getAttribute("crossorigin"), load.mock.calls.length]).toEqual(["anonymous", 3]);
+  });
+
+  // fails without the fix: the runtime's binding preload mid-selection cleared the mark; the clip loaded twice more.
+  it("keeps a down mark through the runtime's preload in the middle of a selection", async () => {
+    vi.stubGlobal("origin", "null");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+    observer = corsForSealedMedia();
+    const video = add(
+      `<video><source src="media/down.mp4"><source src="media/own.mp4"></video>`,
+    ).querySelector("video")!;
+    await settled();
+    const down = video.querySelector("source")!;
+    down.dispatchEvent(new Event("error"));
+    down.dispatchEvent(new Event("error"));
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    video.dispatchEvent(new Event("loadstart"));
+    down.dispatchEvent(new Event("error"));
+    preloadMedia(video);
+    video.dispatchEvent(new Event("loadstart"));
+    down.dispatchEvent(new Event("error"));
+    expect([video.getAttribute("crossorigin"), load.mock.calls.length]).toEqual(["anonymous", 3]);
+  });
+
+  it("tries a down source again when the composition calls load() after the runtime's preload", async () => {
+    vi.stubGlobal("origin", "null");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+    observer = corsForSealedMedia();
+    const video = add(
+      `<video><source src="media/down.mp4"><source src="media/own.mp4"></video>`,
+    ).querySelector("video")!;
+    await settled();
+    const down = video.querySelector("source")!;
+    down.dispatchEvent(new Event("error"));
+    down.dispatchEvent(new Event("error"));
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    video.dispatchEvent(new Event("loadstart"));
+    preloadMedia(video);
+    video.load();
+    video.dispatchEvent(new Event("loadstart"));
+    down.dispatchEvent(new Event("error"));
+    expect([video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([false, 5]);
   });
 
   // fails if every load() before loadstart joined our selection: the author's swapped sources kept the old mark.

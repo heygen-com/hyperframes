@@ -12,6 +12,7 @@ import { readMediaRenderId } from "./renderFrameSibling";
 import { defersMedia } from "./timedClipHide";
 import { capturePageIn, inPlayerFrame, servedToStudio } from "../studioPreviewMark";
 import { swallow } from "./diagnostics";
+import { runtimeLoad } from "./runtimeLoad";
 import { isChromium, isWebKit, mediaElementTime } from "./mediaClock";
 
 const MEDIA_EDGE_SECONDS = 0.1;
@@ -44,7 +45,7 @@ function loadOncePerList(media: PreloadableMedia, preload: Loaded["preload"]): v
   const covered = last?.list === list && (last.preload === "auto" || preload === "metadata");
   if (covered && !ended) return;
   loadedFor.set(media, { list, preload });
-  media.load();
+  runtimeLoad(media);
 }
 
 export function isRenderFrameVideo(
@@ -115,7 +116,7 @@ export function stopMediaDownload(media: HTMLMediaElement): void {
   loadedFor.delete(media);
   for (const source of media.querySelectorAll("source")) source.remove();
   media.removeAttribute("src");
-  media.load();
+  runtimeLoad(media);
 }
 
 function wholeFileBuffered(media: HTMLMediaElement): boolean {
