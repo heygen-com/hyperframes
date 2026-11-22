@@ -6,19 +6,19 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="https://skills.sh/heygen-com/hyperframes"><img src="https://img.shields.io/endpoint?style=flat&url=https%3A%2F%2Fskills.sh%2Fapi%2Fbadge%2Fheygen-com%2Fhyperframes" alt="Skills downloads"></a>
+  <a href="https://www.star-history.com/heygen-com/hyperframes"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=heygen-com/hyperframes&type=rank&theme=dark"><img alt="GitHub top repository global rank" src="https://api.star-history.com/badge?repo=heygen-com/hyperframes&type=rank" height="36"></picture></a>
+  <a href="https://www.npmjs.com/package/hyperframes"><img src="https://img.shields.io/npm/v/hyperframes.svg?style=flat" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/hyperframes"><img src="https://img.shields.io/npm/dm/hyperframes.svg?style=flat" alt="npm downloads"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js"></a>
+  <a href="https://discord.gg/fzbdWyjphr"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
+</p>
+
 <p align="center"><b>The open-source AI video editor: create, edit, remake.</b></p>
 
 <p align="center">Write HTML. Render video. Built for agents.</p>
-
-<p align="center">
-  <a href="https://www.npmjs.com/package/hyperframes"><img src="https://img.shields.io/npm/dm/hyperframes.svg?style=flat&label=npm%20downloads" alt="npm downloads"></a>
-  <a href="https://skills.sh/heygen-com/hyperframes"><img src="https://img.shields.io/endpoint?style=flat&url=https%3A%2F%2Fskills.sh%2Fapi%2Fbadge%2Fheygen-com%2Fhyperframes" alt="Skills downloads"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
-  <a href="https://discord.gg/fzbdWyjphr"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
-  <a href="https://www.npmjs.com/package/hyperframes"><img src="https://img.shields.io/npm/v/hyperframes.svg?style=flat" alt="npm version"></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22 or newer"></a>
-  <a href="https://www.star-history.com/heygen-com/hyperframes"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=heygen-com/hyperframes&type=rank&theme=dark"><img alt="GitHub top repository global rank" src="https://api.star-history.com/badge?repo=heygen-com/hyperframes&type=rank" height="36"></picture></a>
-</p>
 
 <p align="center">
   <a href="https://hyperframes.studio/studio/download?utm_source=github&utm_medium=readme&src=github-readme">Download the app</a> ·
