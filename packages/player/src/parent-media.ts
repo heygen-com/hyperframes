@@ -407,7 +407,8 @@ export class ParentMediaManager {
     const wanted = new Map<string, ParentCopy>();
     const refused: string[] = [];
     for (const copy of readCopies(list)) {
-      if (underComposition(copy.src, compositionUrl)) wanted.set(JSON.stringify(copy), copy);
+      const src = underComposition(copy.src, compositionUrl);
+      if (src) wanted.set(JSON.stringify(copy), { ...copy, src });
       else refused.push(copy.src);
     }
     for (const [key, entry] of this._listed) {
@@ -621,15 +622,16 @@ function readCopies(list: unknown): ParentCopy[] {
   });
 }
 
-/** Whether a file is under the composition's own folder, on its origin. */
-function underComposition(src: string, compositionUrl: string | null): boolean {
-  if (!compositionUrl) return false;
+/** The file's address on the composition's own origin when it is under its folder; otherwise null. */
+function underComposition(src: string, compositionUrl: string | null): string | null {
+  if (!compositionUrl) return null;
   try {
     const file = new URL(src);
     const base = new URL(compositionUrl);
     const folder = base.pathname.slice(0, base.pathname.lastIndexOf("/") + 1);
-    return file.origin === base.origin && file.pathname.startsWith(folder);
+    if (file.origin !== base.origin || !file.pathname.startsWith(folder)) return null;
+    return base.origin + file.pathname + file.search;
   } catch {
-    return false;
+    return null;
   }
 }
