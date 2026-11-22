@@ -321,7 +321,8 @@ function wiredEditor(
 }
 
 /** A sealed heading whose frame answers `end` only when the test lets it. */
-async function sealedTitleHoldingEnds(markup = ORIGINAL) {
+/** `action` picks which text-edit replies the hold catches. */
+async function sealedTitleHoldingEnds(markup = ORIGINAL, action: "end" | "start" = "end") {
   let holding: MessageEvent[] | null = null;
   const ends = new Set<unknown>();
   let deliver: (event: MessageEvent) => void = () => {};
@@ -331,7 +332,7 @@ async function sealedTitleHoldingEnds(markup = ORIGINAL) {
       const send = port.postMessage.bind(port);
       port.postMessage = (data: unknown) => {
         const message = data as { id?: unknown; kind?: string; params?: { action?: string } };
-        if (message.kind === "text-edit" && message.params?.action === "end") ends.add(message.id);
+        if (message.kind === "text-edit" && message.params?.action === action) ends.add(message.id);
         send(data);
       };
       const accessor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(port), "onmessage")!;
@@ -1181,4 +1182,28 @@ it("keeps a reload held until the save of an edit the frame ended on blur has re
   lookup.release();
   await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
   expect(savedAtReload).toEqual(["title=Draft"]);
+});
+
+// fails without the fix: a start reply that missed its deadline put the original back over what the person typed.
+it("saves what was typed when the frame opened a sealed edit but its start reply missed the deadline", async () => {
+  const {
+    title,
+    iframe,
+    selection,
+    holdEndReplies: holdStartReplies,
+  } = await sealedTitleHoldingEnds(ORIGINAL, "start");
+  const { saved, persist } = fileWrites();
+  const { controls } = wiredEditor(iframe, selection, persist);
+  holdStartReplies();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    act(() => void controls().start(selection.element));
+    await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+    title.innerHTML = "Draft";
+    await vi.advanceTimersByTimeAsync(EDITING_REQUEST_TIMEOUT_MS);
+  } finally {
+    vi.useRealTimers();
+  }
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+  expect(saved).toEqual(["title=Draft"]);
 });
