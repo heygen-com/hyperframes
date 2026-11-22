@@ -78,9 +78,12 @@ it.each([true, false])(
     sealed = s;
     const element = document.body.appendChild(document.createElement("div"));
     element.id = "grown";
+    Object.defineProperty(element, "offsetWidth", { value: 200, configurable: true });
+    Object.defineProperty(element, "offsetHeight", { value: 100, configurable: true });
     if (s) rememberFrameClipPath(element, "inset(0px 150px 0px 0px)", "inset(0px 150px 0px 0px)");
     else element.style.setProperty("clip-path", "inset(0px 150px 0px 0px)");
-    const hug = drawn(element, { ...rect, layout: { width: 200, height: 100 } });
+    // A frame's rect arrives with its own scale; a live element's is read off the element.
+    const hug = drawn(element, s ? { ...rect, ownScale: { x: 2, y: 2 } } : rect);
     expect(hug()).toBe(300);
     element.remove();
   },
