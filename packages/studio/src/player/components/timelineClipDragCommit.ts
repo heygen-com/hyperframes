@@ -5,13 +5,10 @@ import type { DraggedClipState } from "./useTimelineClipDrag";
 // value-import edge stays acyclic.
 import type { ZMirrorLaneMove } from "./timelineZMirror";
 import { classifyZone } from "./timelineZones";
-import { layoutAfterTrackInsert } from "./timelineDragLanding";
+import { buildTrackInsertEdits } from "./timelineDragLanding";
 import type { TimelineTrackInsertLayout } from "./timelineTrackInsertLayout";
 import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
-import {
-  canMoveTimelineElement as canMoveElement,
-  resolveExpandedHostAlias,
-} from "./timelineAuthoredMoveTarget";
+import { resolveExpandedHostAlias } from "./timelineAuthoredMoveTarget";
 import type {
   TimelineMoveOperation,
   TimelineAtomicMoveUpdates,
@@ -387,77 +384,6 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
     }),
     deps,
   ).catch(() => undefined);
-}
-
-/** Build the one sanctioned multi-clip write: atomically insert and compact a
- * source-file zone, then let the caller sync the deliberate vertical stacking. */
-// fallow-ignore-next-line complexity
-function buildTrackInsertEdits(
-  element: TimelineElement,
-  previewStart: number,
-  insertRow: number,
-  multi: {
-    keys: ReadonlySet<string>;
-    movedStart: (e: TimelineElement) => number;
-  } | null,
-  deps: DragCommitDeps,
-): { candidate: TimelineElement[]; edits: TimelineMoveEdit[] } | null {
-  const { elements } = deps;
-  const editKey = keyOf(element);
-  const layout = layoutAfterTrackInsert(element, previewStart, insertRow, multi, deps);
-  if (!layout) return null;
-  const { normalized, targetTrack, writable } = layout;
-  const bySrc = new Map(elements.map((e) => [keyOf(e), e]));
-  // A partial zone renumber creates collisions; refuse a shifted locked row.
-  for (const norm of normalized) {
-    const src = bySrc.get(keyOf(norm));
-    if (
-      src &&
-      writable(src) &&
-      !canMoveElement(src) &&
-      norm.track !== (src.authoredTrack ?? src.track)
-    ) {
-      console.warn(
-        `[Timeline] Track insert refused: locked clip ${keyOf(src)} would need renumbering`,
-      );
-      return null;
-    }
-  }
-  const candidate = elements.map((e) => {
-    if (keyOf(e) === editKey) return { ...e, start: previewStart, track: targetTrack };
-    if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
-    return e;
-  });
-  const edits: TimelineMoveEdit[] = [];
-  if (multi) {
-    for (const src of elements) {
-      const srcKey = keyOf(src);
-      if (srcKey !== editKey && multi.keys.has(srcKey) && !writable(src) && canMoveElement(src)) {
-        edits.push({
-          element: src,
-          updates: { start: multi.movedStart(src), track: src.track },
-          persistTrack: src.authoredTrack,
-        });
-      }
-    }
-  }
-  for (const norm of normalized) {
-    const src = bySrc.get(keyOf(norm));
-    if (!src || !canMoveElement(src)) continue;
-    const normKey = keyOf(norm);
-    let start = src.start;
-    if (normKey === editKey) start = previewStart;
-    else if (multi?.keys.has(normKey)) start = multi.movedStart(src);
-    edits.push({
-      element: src,
-      updates: {
-        start,
-        track: norm.track,
-        ...(normKey === editKey && src.audioGroup ? { audioGroup: null } : {}),
-      },
-    });
-  }
-  return { candidate, edits };
 }
 
 function commitTrackInsert(
