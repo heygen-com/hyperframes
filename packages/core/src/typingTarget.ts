@@ -18,14 +18,14 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   const element = elementThroughShadowFocus(target);
   if (!element) return false;
   if (element.isContentEditable) return true;
-  return element.closest(TYPING_SELECTOR) !== null;
+  return closestAcrossShadow(element, TYPING_SELECTOR) !== null;
 }
 
 /** Plain keys (arrows, Space, Delete) also belong to a focused slider or player; Cmd shortcuts still do not. */
 export function ownsPlainKeys(target: EventTarget | null): boolean {
   return (
     isTypingTarget(target) ||
-    elementThroughShadowFocus(target)?.closest(KEY_OWNING_CONTROLS) != null
+    closestAcrossShadow(elementThroughShadowFocus(target), KEY_OWNING_CONTROLS) != null
   );
 }
 
@@ -60,6 +60,15 @@ function elementThroughShadowFocus(target: EventTarget | null): HTMLElement | nu
   return inner ? elementThroughShadowFocus(inner) : (target as HTMLElement);
 }
 
+function closestAcrossShadow(element: Element | null, selector: string): Element | null {
+  for (let at = element; at; ) {
+    const hit = at.closest(selector);
+    if (hit) return hit;
+    at = (at.getRootNode() as Partial<ShadowRoot>).host ?? null;
+  }
+  return null;
+}
+
 const PLAYBACK_SHORTCUT_IGNORED_SELECTOR = [
   "button",
   "a[href]",
@@ -76,5 +85,8 @@ export function shouldIgnorePlaybackShortcutTarget(target: EventTarget | null): 
   // Anything the user is typing into owns its keys outright, editable elements
   // included: a letter claimed here never reaches the text. So does a native player.
   if (ownsPlainKeys(target)) return true;
-  return elementThroughShadowFocus(target)?.closest(PLAYBACK_SHORTCUT_IGNORED_SELECTOR) != null;
+  return (
+    closestAcrossShadow(elementThroughShadowFocus(target), PLAYBACK_SHORTCUT_IGNORED_SELECTOR) !=
+    null
+  );
 }
