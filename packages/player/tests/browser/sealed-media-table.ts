@@ -428,8 +428,12 @@ async function installDriver(frame: Frame) {
     };
     const load = HTMLMediaElement.prototype.load;
     HTMLMediaElement.prototype.load = function (this: HTMLMediaElement) {
-      if (this.dataset.table && !driving) {
-        const data = this.dataset;
+      const data = this.dataset;
+      const cors = String(this.getAttribute("crossorigin"));
+      // The CORS handling writes crossorigin, then loads; the runtime's preload loads leave it as it was.
+      const corsReload = data.corsAtLoad !== undefined && data.corsAtLoad !== cors;
+      if (data.table) data.corsAtLoad = cors;
+      if (data.table && !driving) {
         data.ours = String(Number(data.ours ?? 0) + 1);
         data.loadedAt = String(this.currentTime);
         if (this.hasAttribute("crossorigin"))
@@ -440,7 +444,7 @@ async function installDriver(frame: Frame) {
           data.savedRate = String(this.playbackRate);
           data.watch = "1";
         }
-        if (pending.has(this)) setTimeout(() => interrupt(this));
+        if (pending.has(this) && corsReload) setTimeout(() => interrupt(this));
       }
       return load.call(this);
     };
