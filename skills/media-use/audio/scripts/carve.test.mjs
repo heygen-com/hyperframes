@@ -13,7 +13,13 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_STRENGTH, carveSources, groupSourceRefusal, parseArgs } from "./carve.mjs";
+import {
+  DEFAULT_STRENGTH,
+  carveSources,
+  clipStartResolver,
+  groupSourceRefusal,
+  parseArgs,
+} from "./carve.mjs";
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -279,4 +285,30 @@ test("the default strength is 0.8, and --strength still overrides it", () => {
   assert.equal(DEFAULT_STRENGTH, 0.8);
   assert.equal(parseArgs(["--comp", "x.html"]).strength, 0.8);
   assert.equal(parseArgs(["--comp", "x.html", "--strength", "0.25"]).strength, 0.25);
+});
+
+test("a data-start naming a clip starts when that clip ends, as the render plays it", () => {
+  // `data-start="intro"` puts the narration at 10 s on the render. Read as a number it is NaN,
+  // so carve measured the voice at 0 s and wrote every dip 10 s before the speech it was for.
+  const html = `
+    <div id="intro" class="clip" data-start="0" data-duration="10"></div>
+    <div id="title" class="clip" data-start="3" data-end="8"></div>
+    <div id="untimed" class="clip" data-start="4"></div>
+    <div id="loop" class="clip" data-start="loop" data-duration="1"></div>
+    <audio id="vo" src="vo.wav" data-start="intro"></audio>`;
+  const startOf = clipStartResolver(html);
+  const at = (start) => startOf(`<audio id="x" src="x.wav" data-start="${start}">`);
+  assert.equal(startOf(html.match(/<audio[^>]*>/)[0]), 10);
+  assert.equal(at("intro"), 10);
+  assert.equal(at("intro + 0.5"), 10.5);
+  assert.equal(at("intro - 0.5"), 9.5);
+  assert.equal(at("intro+2"), 12);
+  assert.equal(at("intro - 20"), 0);
+  assert.equal(at("title"), 8, "data-end gives the target its length");
+  assert.equal(at("untimed + 1"), 5, "a target with no known length adds nothing");
+  assert.equal(at("missing"), 0);
+  assert.equal(at("loop"), 2, "a self-reference stops instead of recursing");
+  assert.equal(at("12.5"), 12.5);
+  assert.equal(at(""), 0);
+  assert.equal(startOf(`<audio id="x" src="x.wav">`), 0);
 });
