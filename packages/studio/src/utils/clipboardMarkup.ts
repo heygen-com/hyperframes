@@ -58,35 +58,66 @@ export function prepareCopy(
   return { html: root.outerHTML, root, originalHfId, renames };
 }
 
-function countShapesWithTemplateContent(
-  nodes: ParentNode,
-  counts: Map<string, number>,
-  sign: 1 | -1,
-): void {
+const parsed = (html: string) => new DOMParser().parseFromString(html, "text/html");
+
+function eachElement(nodes: ParentNode, visit: (el: Element) => void): void {
   for (const el of Array.from(nodes.querySelectorAll("*"))) {
-    const shape = [el.localName, ...el.getAttributeNames().sort()].join(" ");
-    counts.set(shape, (counts.get(shape) ?? 0) + sign);
-    if (el.localName === "template")
-      countShapesWithTemplateContent((el as HTMLTemplateElement).content, counts, sign);
+    visit(el);
+    if (el.localName === "template") eachElement((el as HTMLTemplateElement).content, visit);
   }
 }
 
-/** Last step of every clipboard write: the file gains only the copies' own elements, each allowed or read here. */
+const signature = (el: Element) =>
+  [
+    `${el.namespaceURI} ${el.localName}`,
+    ...Array.from(el.attributes, (a) => `${a.namespaceURI ?? ""} ${a.name}=${a.value}`).sort(),
+  ].join("\n");
+
+function subtree(root: Element): string[] {
+  const shapes = [signature(root)];
+  eachElement(root, (el) => shapes.push(signature(el)));
+  return shapes;
+}
+
+/** The file's ids and data-hf-ids as parsed values, so an id written with entities matches its copy's. */
+export function idsInFile(content: string): { ids: Set<string>; hfIds: Set<string> } {
+  const ids = new Set<string>();
+  const hfIds = new Set<string>();
+  eachElement(parsed(content), (el) => {
+    const id = el.getAttribute("id");
+    const hfId = el.getAttribute("data-hf-id");
+    if (id) ids.add(id);
+    if (hfId) hfIds.add(hfId);
+  });
+  return { ids, hfIds };
+}
+
+/** Last step of every clipboard write: the saved file gains exactly the copies, each allowed or read here. */
 export function refuseAddedMarkup(
   before: string,
   after: string,
   copies: ReadonlyArray<{ html: string; readFrom?: string | null }>,
   writeTo: string | null,
 ): void {
-  const parser = new DOMParser();
+  const saved = parsed(after);
   const counts = new Map<string, number>();
-  countShapesWithTemplateContent(parser.parseFromString(after, "text/html"), counts, 1);
-  countShapesWithTemplateContent(parser.parseFromString(before, "text/html"), counts, -1);
+  const tally = (shape: string, sign: number) => counts.set(shape, (counts.get(shape) ?? 0) + sign);
+  eachElement(saved, (el) => tally(signature(el), 1));
+  eachElement(parsed(before), (el) => tally(signature(el), -1));
+  const claimed = new Set<Element>();
   for (const copy of copies) {
-    const template = fragment(copy.html);
+    const expected = fragment(copy.html).content.firstElementChild;
+    if (!expected) throw new Error(REFUSED);
+    const shape = subtree(expected).join("\n\n");
+    let found: Element | null = null;
+    eachElement(saved, (el) => {
+      if (!found && !claimed.has(el) && subtree(el).join("\n\n") === shape) found = el;
+    });
+    if (!found) throw new Error(REFUSED);
+    claimed.add(found);
     const exempt = !!copy.readFrom && copy.readFrom === writeTo;
-    if (!exempt && markupOutsideAllowlist(template).length > 0) throw new Error(REFUSED);
-    countShapesWithTemplateContent(template.content, counts, -1);
+    if (!exempt && markupOutsideAllowlist(found).length > 0) throw new Error(REFUSED);
+    for (const el of subtree(found)) tally(el, -1);
   }
   if (Array.from(counts.values()).some((count) => count !== 0)) throw new Error(REFUSED);
 }

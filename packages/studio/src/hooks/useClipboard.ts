@@ -9,7 +9,6 @@ import {
   insertAsSibling,
 } from "../utils/clipboardPayload";
 import { carryLook } from "../utils/clipboardLook";
-import { collectHtmlIds } from "../utils/studioHelpers";
 import { insertTimelineAssetIntoSource, writtenTrackIndex } from "../utils/timelineAssetDrop";
 import { extendRootDurationInSource } from "../utils/rootDuration";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
@@ -26,7 +25,7 @@ import {
   savedMarkupElseLive,
 } from "../utils/authoredSource";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
-import { copiedFile, prepareCopy, refuseAddedMarkup } from "../utils/clipboardMarkup";
+import { copiedFile, idsInFile, prepareCopy, refuseAddedMarkup } from "../utils/clipboardMarkup";
 import { knownCompositionFile } from "../components/editor/domEditingDom";
 
 type InPlace = { inPlace?: boolean };
@@ -156,17 +155,14 @@ export function resolveFreeTrack(preferred: PlacedClip, taken: readonly PlacedCl
   return maxTrack + 1;
 }
 
-const HF_ID_ATTR_RE = /\bdata-hf-id\s*=\s*["']?([^"'\s>]+)/gi;
-const hfIdsInFile = (content: string) =>
-  new Set(Array.from(content.matchAll(HF_ID_ATTR_RE), (match) => match[1]));
-
 export function pasteElementHtml(
   content: string,
   payload: { html: string; readFrom?: string | null },
   fromThisFile = false,
   writeTo: string | null = null,
 ): string {
-  const copy = prepareCopy(payload.html, hfIdsInFile(content), new Set(collectHtmlIds(content)));
+  const taken = idsInFile(content);
+  const copy = prepareCopy(payload.html, taken.hfIds, taken.ids);
   const fromItsFile = fromThisFile && !!payload.readFrom && payload.readFrom === writeTo;
   const inserted = insertAsSibling(
     content,
@@ -196,8 +192,7 @@ export function pasteTimelineClips(
     start: el.start,
     duration: el.duration,
   }));
-  const takenHfIds = hfIdsInFile(content);
-  const takenIds = new Set(collectHtmlIds(content));
+  const { hfIds: takenHfIds, ids: takenIds } = idsInFile(content);
   let requiredEnd = 0;
   const placed = clips.map((clip) => {
     const newStart = anchorTime + (clip.start - groupMinStart);
