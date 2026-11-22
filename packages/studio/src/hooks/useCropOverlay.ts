@@ -1,8 +1,11 @@
+import { useSyncExternalStore } from "react";
 import type { OverlayRect } from "../components/editor/domEditOverlayGeometry";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import {
+  cropLiftsVersion,
   isElementCropLifted,
   readElementCropInsets,
+  subscribeCropLifts,
 } from "../components/editor/domEditOverlayCrop";
 
 /** Selection-box crop hug: the outline that makes the selection box hug the
@@ -15,6 +18,7 @@ export function useCropOverlay(params: {
   overlayRect: OverlayRect | null;
 }) {
   const { selection, overlayRect } = params;
+  useSyncExternalStore(subscribeCropLifts, cropLiftsVersion);
 
   const cropInsets =
     selection && !isElementCropLifted(selection.element)

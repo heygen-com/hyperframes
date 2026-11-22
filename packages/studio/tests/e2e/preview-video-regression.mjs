@@ -235,7 +235,7 @@ async function nativeOnlyHandoff() {
     await host.frame.evaluate(() => window.__hf.setPausedVideoFrameProvider(null));
     await seek(host, 0);
     await host.frame.waitForFunction(
-      () => !document.querySelector("[data-hf-preview-video-canvas]"),
+      () => !document.querySelector("canvas[data-hf-preview-video-canvas]"),
     );
     const baseline = await picture(host, "native-only-paused");
     assert.equal(baseline.scene, "A");
@@ -312,7 +312,7 @@ async function delayedNativeRecovery() {
     const deliveredAt = performance.now();
     await release();
     await host.frame.waitForFunction(
-      () => !document.querySelector("[data-hf-preview-video-canvas]"),
+      () => !document.querySelector("canvas[data-hf-preview-video-canvas]"),
       { timeout: 5000 },
     );
     const recovery = await host.frame.evaluate(() => ({
@@ -423,7 +423,7 @@ try {
   assert.equal(await host.frame.evaluate(() => window.__player.isPlaying()), false);
   await play(host);
   await host.frame.waitForFunction(
-    () => document.querySelectorAll("[data-hf-preview-video-canvas]").length === 0,
+    () => document.querySelectorAll("canvas[data-hf-preview-video-canvas]").length === 0,
   );
   await collectGarbage(host);
   assert.deepEqual(errors, [], "Browser logged an error or unclosed VideoSample");
