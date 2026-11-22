@@ -114,6 +114,8 @@ export async function extractAllDeferredFrames(
     shownBoxes?: ReadonlyMap<string, ShownBox>;
     maxTransientRetries?: number;
     onProgress?: (framesDone: number, framesTotal: number) => void;
+    /** Per ffmpeg progress report while a video is being extracted (liveness, not counts). */
+    onFrameProgress?: () => void;
   },
 ): Promise<void> {
   const framesTotal = extracted.reduce(
@@ -136,6 +138,7 @@ export async function extractAllDeferredFrames(
             outputDir: dirname(video.outputDir),
             format: range.format,
             shownBox: input.shownBoxes?.get(video.videoId),
+            ...(input.onFrameProgress ? { onProgress: () => input.onFrameProgress?.() } : {}),
           },
           input.signal,
           input.cfg,
