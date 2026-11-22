@@ -207,7 +207,9 @@ describe("installEditingAgent", () => {
           "hold-scenes",
           "mark-scenes-stale",
           "swap-scenes",
+          "live-retime",
           "assets-unloaded",
+          "text-edit",
         ],
       },
     });
@@ -558,15 +560,17 @@ describe("installEditingAgent", () => {
       id: 1,
       ok: false,
     });
-    expect(document.querySelector("script")?.textContent).toBe(script);
+    expect(document.body.querySelector("script")?.textContent).toBe(script);
     // The sent script registers on a local, so the frame reads its timeline empty for now.
     expect(await ask(port, { v: 1, id: 2, kind: "soft-reload", params })).toMatchObject({
       id: 2,
       ok: true,
       result: { result: "verify-failed" },
     });
-    expect(document.querySelector("script")?.textContent).toBe(`(function(){${script}\n})();`);
-    for (const key of ["gsap", "__timelines", "__hfForceTimelineRebind"]) delete frame[key];
+    expect(document.body.querySelector("script")?.textContent).toBe(`(function(){${script}\n})();`);
+    for (const key of ["gsap", "__timelines", "__hfForceTimelineRebind", "__hfMotionPathWaiters"])
+      delete frame[key];
+    document.head.querySelector("script[src]")?.remove();
   });
 
   it("holds and swaps scenes through the port, and refuses a hold carrying anything extra", async () => {
@@ -596,6 +600,23 @@ describe("installEditingAgent", () => {
     });
     delete window.__hfHoldScenes;
     delete window.__hfSwapScenes;
+  });
+
+  it("answers a live retime through the port, and refuses one carrying anything extra", async () => {
+    const port = connectedPort();
+    const tween = { selector: "#a", start: 1, duration: 1, wasStart: 0, wasDuration: 1 };
+    const tweens = [{ ...tween, moved: true, source: 0 }];
+    const plan = { key: "t", after: "x", time: 0, tweens, timing: [] };
+
+    const extra = { ...plan, script: "x" };
+    expect(await ask(port, { v: 1, id: 1, kind: "live-retime", params: extra })).toMatchObject({
+      ok: false,
+    });
+    // No live script registers the timeline, so nothing can move.
+    expect(await ask(port, { v: 1, id: 2, kind: "live-retime", params: plan })).toMatchObject({
+      ok: true,
+      result: { result: "unchanged" },
+    });
   });
 
   it("answers computed styles for the element a selector names", async () => {

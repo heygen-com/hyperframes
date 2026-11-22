@@ -192,7 +192,13 @@ project. The five free shared-project allowance is the same allowance used by
 Desktop and the CLI. The workspace meter comes from the server; retries of an
 existing registration do not need an extra slot.
 
-Project files are included when available for the workspace. The panel reports
+Before Studio creates a link, uploads a version, or changes who can open a review or
+whether its link is on, it asks you to confirm and names the review and who can open
+it. A project folder remembers its review in `.hyperframes/review.json`,
+so a folder someone sent you can arrive already linked to their review. If the
+confirmation names a review you didn't share, cancel.
+
+Project files are included only when you choose **Include editable project files**. The panel reports
 whether the last Studio upload included files or was video only. If attaching
 files fails, retry the upload or explicitly choose **Retry with video only**.
 

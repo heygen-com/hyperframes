@@ -4,7 +4,7 @@ import { underBase } from "./rootPaths.js";
 type Entries = Record<string, string>;
 type ImportMap = { imports?: Entries; scopes?: Record<string, Entries> };
 
-const IMPORT_MAP_TYPE = /\btype\s*=\s*["']?importmap["']?(?=[\s/>])/i;
+export const IMPORT_MAP_TYPE = /\btype\s*=\s*["']?importmap["']?(?=[\s/>])/i;
 
 /** The first import map's JSON and where it sits; templates, comments and raw text are skipped. */
 function findImportMap(html: string): { start: number; end: number; json: string } | null {

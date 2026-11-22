@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { accessSync, constants } from "node:fs";
 import { join, resolve } from "node:path";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import {
   DEFAULT_HISTORY_ROOT,
   HistoryBusyError,
@@ -16,7 +17,7 @@ import {
 } from "@hyperframes/studio-server/history";
 
 import { resolveProject } from "./project.js";
-import { readRecord, removeRecord, writeRecord } from "./projectRecords.js";
+import { readRecord, recordChangedAt, removeRecord, writeRecord } from "./projectRecords.js";
 import { findPreviewServerForProject, studioApiUrl } from "./studioSelectionClient.js";
 
 export type { UndoMode };
@@ -29,6 +30,7 @@ export interface Turn {
   label: string;
   startedAt: number;
   lastWriteAt: number;
+  writtenAt?: number;
   /** Entries this turn already filed: without a preview, each command mid-turn files the turn so far. */
   parts: string[];
 }
@@ -99,7 +101,14 @@ function parseTurn(value: unknown): Turn | null {
   const parts = value.parts ?? [];
   if (!who || !isIds(parts)) return null;
   const { via, id, label, startedAt, lastWriteAt } = value as Omit<Turn, "who" | "parts">;
-  return { via, id, who, label, startedAt, lastWriteAt, parts };
+  const writtenAt = typeof value.writtenAt === "number" ? value.writtenAt : undefined;
+  return { via, id, who, label, startedAt, lastWriteAt, writtenAt, parts };
+}
+
+function lastWriteFileTime(dir: string, turn: Turn): number | undefined {
+  const markedAt = recordChangedAt(dir, TURN_FILE);
+  if (turn.writtenAt === undefined || !markedAt) return undefined;
+  return markedAt - (turn.writtenAt - turn.lastWriteAt);
 }
 
 /** The open turn, or null; a marker with no last write time cannot say when the turn ended, so it has. */
@@ -118,7 +127,7 @@ function writeRecordOrRefuse(dir: string, name: string, data: string): void {
 
 export function writeTurn(dir: string, turn: Turn | null): void {
   if (!turn) return void removeRecord(dir, TURN_FILE);
-  writeRecordOrRefuse(dir, TURN_FILE, JSON.stringify(turn));
+  writeRecordOrRefuse(dir, TURN_FILE, JSON.stringify({ ...turn, writtenAt: historyDeps.now() }));
 }
 
 /** Each agent's last ended turn, as the entries it filed; kept beside the marker, outside the history. */
@@ -215,7 +224,7 @@ async function relistWrites(projectDir: string, entry: HistoryEntry | null): Pro
   if (!entry?.files.length) return;
   const { relistHistoryWrites } = await import("./receivedRecordFollow.js");
   await relistHistoryWrites(projectDir, entry).catch((error: unknown) =>
-    console.warn(`Could not update the received-files record: ${String(error)}`),
+    console.warn(`Could not update the received-files record: ${terminalText(String(error))}`),
   );
 }
 
@@ -239,6 +248,7 @@ async function directOwner(
             label: turn.label,
             startedAt: turn.startedAt,
             lastWriteAt: turn.lastWriteAt,
+            lastWriteFileTime: lastWriteFileTime(projectDir, turn),
             idleMs: historyDeps.turnIdleMs,
           }
         : undefined;
@@ -364,7 +374,7 @@ export async function withReader<T>(
     if (ran || !(error instanceof HistoryBusyError || unwritable)) throw error;
     if (unwritable)
       console.error(
-        `[hyperframes] Could not write this project's history (${(error as Error).message}); showing it as last recorded.`,
+        `[hyperframes] Could not write this project's history (${terminalText((error as Error).message)}); showing it as last recorded.`,
       );
   }
   // Opening failed, so the task has not run; an open turn's marker is left as it is.

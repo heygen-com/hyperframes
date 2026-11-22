@@ -8,13 +8,14 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   headingSlugs,
   lintDocRefs,
   lintFrontmatter,
+  lintProjectCliRoutes,
   lintRegistryItemRefs,
   lintRelativeScriptRuns,
   lintVersionedCliRuns,
@@ -413,4 +414,40 @@ test("versioned CLI examples use the installed launcher", () => {
     ),
     [],
   );
+});
+
+test("project CLI routes: a project's scripts or a CLI installed into it are flagged", () => {
+  for (const text of [
+    "or the project's pinned `npm run` scripts",
+    "run `npm run render` in the project",
+    "`npm i hyperframes@0.9.0` then run it",
+    "`npm install --save-dev hyperframes`",
+    "then `node_modules/.bin/hyperframes render`",
+  ]) {
+    assert.equal(lintProjectCliRoutes(`intro\n${text}\n`)[0]?.line, 2, text);
+  }
+});
+
+test("project CLI routes: the launcher and plain prose pass", () => {
+  const ok = [
+    'node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" --cli-version 1.2.3 render',
+    "never a project's own scripts or wrapper unless the person names that command",
+    "`npx skills add heygen-com/hyperframes`",
+  ].join("\n");
+  assert.deepEqual(lintProjectCliRoutes(ok), []);
+});
+
+test("project CLI routes: no shipped SKILL.md offers a route through a project's files", () => {
+  const skillsDir = join(import.meta.dirname, "..", "skills");
+  for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const path = join(skillsDir, entry.name, "SKILL.md");
+    let content;
+    try {
+      content = readFileSync(path, "utf-8");
+    } catch {
+      continue;
+    }
+    assert.deepEqual(lintProjectCliRoutes(content), [], path);
+  }
 });

@@ -1628,3 +1628,44 @@ describe("persistMoveEdits convergence", () => {
     expect(updateElement).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("commitDraggedClipMove: drop onto main-track clips", () => {
+  const elements = [el("a", 0, 0, 2), el("b", 0, 2, 2), el("c", 0, 4, 2)];
+  // The full main track sends the dragged clip back to its own start.
+  const backHome = { ...drag(elements[2]!, { previewStart: 4, previewTrack: 0 }), aimStart: 0 };
+
+  it("inserts the clip and moves the others right when drops insert", () => {
+    const onDropRefused = vi.fn();
+    const { onMoveElements } = runClipMove(backHome, {
+      elements,
+      trackOrder: [0],
+      insertOnClipDrop: true,
+      onDropRefused,
+    });
+    const [edits] = onMoveElements.mock.calls[0] as [TimelineMoveEdit[]];
+    expect(editMap(edits)).toEqual({
+      c: { start: 0, track: 0 },
+      a: { start: 2, track: 0 },
+      b: { start: 4, track: 0 },
+    });
+    expect(onDropRefused).not.toHaveBeenCalled();
+  });
+
+  it("moves nothing and says why when drops do not insert", () => {
+    const onDropRefused = vi.fn();
+    const { onMoveElement, onMoveElements } = runClipMove(backHome, {
+      elements,
+      trackOrder: [0],
+      onDropRefused,
+    });
+    expect(onMoveElement).not.toHaveBeenCalled();
+    expect(onMoveElements).not.toHaveBeenCalled();
+    expect(onDropRefused).toHaveBeenCalledWith(elements[2]);
+  });
+
+  it("says nothing when the clip was put back where it was", () => {
+    const onDropRefused = vi.fn();
+    runClipMove({ ...backHome, aimStart: 4 }, { elements, trackOrder: [0], onDropRefused });
+    expect(onDropRefused).not.toHaveBeenCalled();
+  });
+});

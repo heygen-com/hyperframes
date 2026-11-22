@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { realFilePath } from "@hyperframes/studio-server/safe-path";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import * as clack from "../ui/prompts.js";
 import { hyperframesConfigDir } from "./configDir.js";
 import {
@@ -90,7 +91,9 @@ export async function stageWithOutsideFileApproval<T>(
   try {
     rememberOutsideFiles(projectDir, paths);
   } catch (error) {
-    clack.log.warn(`Could not remember the approval for next time: ${(error as Error).message}`);
+    clack.log.warn(
+      `Could not remember the approval for next time: ${terminalText((error as Error).message)}`,
+    );
   }
   return run();
 }

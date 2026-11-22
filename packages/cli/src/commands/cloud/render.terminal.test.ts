@@ -163,4 +163,72 @@ describe.skipIf(process.platform === "win32")("cloud render on a terminal", () =
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
+
+  // fails without the fix: the asset id, the render id, the status and the download path are printed as they arrived.
+  it("prints reply ids, the status and the download path with control characters as visible escapes", async () => {
+    const odd = `${esc}[2Jx${String.fromCharCode(7)}`;
+    const shown = "\\x1b[2Jx\\x07";
+    const renderId = `hfr${odd}`;
+    let polls = 0;
+    const server = createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        const path = request.url ?? "";
+        response.setHeader("content-type", "application/json");
+        if (path === "/v3/assets/direct-uploads") {
+          const data = {
+            asset_id: `asst${odd}`,
+            upload_url: `${baseUrl}/upload`,
+            upload_headers: {},
+          };
+          return response.end(JSON.stringify({ data }));
+        }
+        if (path === "/upload") return response.end("{}");
+        if (path.endsWith("/complete")) {
+          const data = { asset_id: `asst${odd}`, url: `${baseUrl}/project.zip` };
+          return response.end(JSON.stringify({ data }));
+        }
+        if (path === "/video") return response.end("video");
+        if (request.method === "POST") {
+          response.statusCode = 202;
+          return response.end(JSON.stringify({ data: { render_id: renderId } }));
+        }
+        const detail =
+          ++polls === 1
+            ? { render_id: renderId, status: `waiting${odd}`, format: "mp4" }
+            : {
+                render_id: renderId,
+                status: "completed",
+                format: "mp4",
+                video_url: `${baseUrl}/video`,
+              };
+        response.end(JSON.stringify({ data: detail }));
+      });
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected a TCP listener");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    vi.stubEnv("HEYGEN_API_URL", baseUrl);
+    try {
+      const human = await humanOutput([
+        dir,
+        "--poll-interval",
+        "1",
+        "--output",
+        join(dir, "out.mp4"),
+      ]);
+
+      expect(human.replace(colors, "")).not.toContain(esc);
+      expect(human).toContain(`asst${shown}`);
+      expect(human).toContain(`Polling hfr${shown} every 1s`);
+      expect(human).toContain(`waiting${shown}`);
+      expect(human).toContain("Downloading to ");
+      expect(human).toContain("video\\x1b]0;x\\x07\\x1b[2J/out.mp4");
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
 });

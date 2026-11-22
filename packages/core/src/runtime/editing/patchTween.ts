@@ -2,7 +2,7 @@
 // confidently returns false and the caller reloads. Studio runs it on a frame it can reach,
 // a sealed frame on itself through the editing port.
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
-import { recordLiveSet } from "./softReload";
+import { recordLiveSet, swapWaiting } from "./softReload";
 
 export interface SetPatchProps {
   x?: number;
@@ -450,6 +450,7 @@ export function patchTweens({ patches, seek }: PatchTweensParams): { patched: bo
     gsap: win.gsap,
     player: win.__player,
   };
+  if (swapWaiting()) return { patched: false };
   const renderAt = lastTweenPatch(patches);
   const missed = patches.find(({ selector, change }, index) => {
     if (change.kind === "global-set")

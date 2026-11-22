@@ -37,6 +37,8 @@ const state: ShareState = {
   url: "https://hyperframes.dev/r/test",
   previousUrl: null,
   manageUrl: "https://hyperframes.dev/shares",
+  reviewId: "project",
+  reviewTitle: null,
 };
 it.each([".media/voice.mp3", ".hyperframes/studio-manual-edits.json"])(
   "detects %s edits even while the Desktop watcher still says current",

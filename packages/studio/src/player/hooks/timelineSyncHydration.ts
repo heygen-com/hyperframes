@@ -30,6 +30,7 @@ import {
   normalizePreviewViewport,
 } from "../lib/timelineIframeHelpers";
 import { inspectStudioRuntimeMessage } from "../lib/runtimeProtocol";
+import { previewClipManifest, previewFrameOpaque } from "../lib/previewChannel";
 
 /** Reject non-finite, non-positive, and absurdly large (loop-inflated) values. */
 export function sanitizeDurationSeconds(value: number): number {
@@ -342,19 +343,15 @@ export function syncAdapterDuration(
  * Without it a composition the runtime never enumerated shows an empty timeline
  * rather than one row spanning its own duration.
  */
-function syncFallbackTimelineFromDom(
+export function fallbackTimelineFromDom(
   doc: Document,
   iframe: HTMLIFrameElement | null,
   rootDuration: number,
-  syncTimelineElements: (els: TimelineElement[], duration?: number) => void,
-): void {
+): TimelineElement[] {
   const els = parseTimelineFromDOM(doc, rootDuration);
-  if (els.length > 0) {
-    syncTimelineElements(els);
-    return;
-  }
+  if (els.length > 0) return els;
   const rootComp = doc.querySelector("[data-composition-id]");
-  if (!rootComp || rootDuration <= 0) return;
+  if (!rootComp || rootDuration <= 0) return [];
   const fallbackElement = buildStandaloneRootTimelineElement({
     compositionId: rootComp.getAttribute("data-composition-id") || "composition",
     tagName: (rootComp as HTMLElement).tagName || "div",
@@ -362,7 +359,7 @@ function syncFallbackTimelineFromDom(
     iframeSrc: iframe?.src || "",
     selector: getTimelineElementSelector(rootComp),
   });
-  if (fallbackElement) syncTimelineElements([fallbackElement]);
+  return fallbackElement ? [fallbackElement] : [];
 }
 
 /** The runtime's timeline message, as the preview posts it. */
@@ -400,10 +397,18 @@ export function isPreviewReadinessMessage(
   return inspectStudioRuntimeMessage(data).status !== "unsupported";
 }
 
+/** Reads a sealed frame's rows for a clip list still on its way; `null` from it commits nothing. */
+export type SealedTimelineRead = (
+  iframe: HTMLIFrameElement,
+  manifest: Promise<RuntimeTimelineMessage | null>,
+  previewDuration: number,
+) => void;
+
 export interface HydrateTimelineFromPreviewInput {
   iframe: HTMLIFrameElement | null;
   adapter: PlaybackAdapter;
   processTimelineMessage: (manifest: RuntimeTimelineMessage) => void;
+  readSealedTimeline: SealedTimelineRead;
   enrichMissingCompositions: () => void;
   applyPreviewAudioState: () => void;
   attachIframeShortcutListeners: () => void;
@@ -426,12 +431,20 @@ function normalizePreviewDom(doc: Document | null, iframeWin: IframeWindow | nul
 }
 
 /** Hand the runtime's own clip manifest to the timeline, if it published one. */
-function applyRuntimeClipManifest(
-  iframeWin: IframeWindow | null,
-  processTimelineMessage: (manifest: RuntimeTimelineMessage) => void,
-): void {
-  const manifest = iframeWin?.__clipManifest;
-  if (manifest && manifest.clips.length > 0) processTimelineMessage(manifest);
+function applyRuntimeClipManifest(input: HydrateTimelineFromPreviewInput): void {
+  const { iframe, adapter } = input;
+  if (iframe && previewFrameOpaque(iframe)) {
+    // The frame's own clip list decides, empty included; with none posted yet, only an empty timeline falls back.
+    const manifest = previewClipManifest(iframe).then((found) =>
+      found || usePlayerStore.getState().elements.length > 0
+        ? found
+        : { clips: [], durationInFrames: 0 },
+    );
+    input.readSealedTimeline(iframe, manifest, adapter.getDuration());
+    return;
+  }
+  const manifest = (iframe?.contentWindow as IframeWindow | null)?.__clipManifest;
+  if (manifest) input.processTimelineMessage(manifest);
 }
 
 export function hydrateTimelineFromPreview(input: HydrateTimelineFromPreviewInput): void {
@@ -441,11 +454,12 @@ export function hydrateTimelineFromPreview(input: HydrateTimelineFromPreviewInpu
     const iframeWin = (iframe?.contentWindow as IframeWindow | null) ?? null;
     normalizePreviewDom(doc, iframeWin);
     input.attachIframeShortcutListeners();
-    applyRuntimeClipManifest(iframeWin, input.processTimelineMessage);
+    applyRuntimeClipManifest(input);
     input.enrichMissingCompositions();
     input.applyPreviewAudioState();
     if (doc && usePlayerStore.getState().elements.length === 0) {
-      syncFallbackTimelineFromDom(doc, iframe, adapter.getDuration(), syncTimelineElements);
+      const els = fallbackTimelineFromDom(doc, iframe, adapter.getDuration());
+      if (els.length > 0) syncTimelineElements(els);
     }
   } catch {
     // Cross-origin or mid-navigation preview — the adapter is still initialised.

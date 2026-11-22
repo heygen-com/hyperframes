@@ -145,14 +145,7 @@ function ManageShare({ model, snapshot, url }: Props & { url: string | null }) {
           variant="ghost"
           className="h-8 rounded-full text-step-13"
           disabled={model.busy}
-          onClick={() => {
-            if (
-              window.confirm(
-                "Turn off this link? Everyone using the link loses access. Comments are kept.",
-              )
-            )
-              void model.run({ action: "off" });
-          }}
+          onClick={() => void model.run({ action: "off" })}
         >
           Turn link off
         </Button>

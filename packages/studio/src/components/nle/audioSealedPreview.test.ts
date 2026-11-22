@@ -181,6 +181,53 @@ it("groups clips in a sealed preview, and unwinds the preview when the save fail
   expect(document.querySelector("hf-audio-group#vo")).not.toBeNull();
 });
 
+it("ends a sealed group's undo cleanly when the frame's reply is not the shape it asked for", async () => {
+  document.body.innerHTML = `<main data-composition-id="root">
+    <audio id="voice-1"></audio><audio id="voice-2"></audio>
+  </main>`;
+  // Studio's end of the port, with the group reply's `previous` replaced as a broken frame might send it.
+  const brokenReplies = (port: MessagePort) =>
+    ({
+      postMessage: (data: unknown) => port.postMessage(data),
+      start: () => port.start(),
+      close: () => port.close(),
+      get onmessage() {
+        return port.onmessage;
+      },
+      set onmessage(listener: ((event: MessageEvent) => void) | null) {
+        port.onmessage =
+          listener &&
+          ((event) => {
+            const result = (event.data as { result?: Record<string, unknown> }).result;
+            if (result && "previous" in result) result.previous = null;
+            listener(event);
+          });
+      },
+    }) as unknown as MessagePort;
+  const iframe = sealedPreviewFrame({ wrapHandedOverPort: brokenReplies }).iframe;
+  stubProjectFiles(new Map([["index.html", document.body.innerHTML]]));
+  const elements = ["voice-1", "voice-2"].map((domId) => ({
+    ...member(domId),
+    key: `index.html#${domId}`,
+    audioGroup: undefined,
+  }));
+  await expect(
+    createAudioGroupAndAssignMembers({
+      projectId: "project-1",
+      activeCompPath: "index.html",
+      elements,
+      groupId: "vo",
+      groupLabel: "Voice",
+      previewIframe: iframe,
+      recordEdit: async () => {},
+      pendingTimelineEditPathRef: { current: new Set<string>() },
+      writeProjectFile: async () => {
+        throw new Error("disk full");
+      },
+    }),
+  ).rejects.toThrow("disk full");
+});
+
 it("reads a sealed preview's groups and ids off an inert copy", async () => {
   document.body.innerHTML = `<audio id="voiceover"></audio><audio id="music" src="bed.wav"></audio>`;
   const copy = await previewDocumentCopy(sealedPreviewFrame().iframe);

@@ -1,6 +1,6 @@
 import { fetchMedia, isPublicMediaUrl, readCappedBody } from "./media-fetch.mjs";
 import { sanitizeSvg } from "./svg-sanitize.mjs";
-import { writeFileSync, copyFileSync, mkdirSync, readFileSync } from "node:fs";
+import { writeFileSync, copyFileSync, mkdirSync, readFileSync, constants } from "node:fs";
 import { dirname } from "node:path";
 
 // ponytail: bound the download so a hostile/runaway URL can't fill the disk.
@@ -16,7 +16,8 @@ const isSvgPath = (destPath) => /\.svg$/i.test(destPath);
 function writeFrozen(destPath, buffer) {
   mkdirSync(dirname(destPath), { recursive: true });
   const bytes = isSvgPath(destPath) ? Buffer.from(sanitizeSvg(buffer.toString("utf8"))) : buffer;
-  writeFileSync(destPath, bytes);
+  // "wx": a new file only, so a link planted at the name fails the write instead of being followed.
+  writeFileSync(destPath, bytes, { flag: "wx" });
   return bytes.byteLength;
 }
 
@@ -47,7 +48,7 @@ export function freezeLocalFile(srcPath, destPath) {
     return;
   }
   mkdirSync(dirname(destPath), { recursive: true });
-  copyFileSync(srcPath, destPath);
+  copyFileSync(srcPath, destPath, constants.COPYFILE_EXCL);
 }
 
 // Ingest accepts a DIRECT public media URL only — not a platform page. yt-dlp is

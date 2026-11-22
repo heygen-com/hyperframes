@@ -15,6 +15,7 @@ import {
   type TrackGapShift,
 } from "./timelineGaps";
 import { isMainTrackElement } from "./timelineZones";
+import { sharesLinkGroup } from "./audioClipLink";
 
 /**
  * Commit layer for the track-gap context menu ("Close gap" / "Close all gaps").
@@ -145,4 +146,40 @@ export function resolveMainTrackDeleteRippleShifts(
   }
   if (shifts.length === 0 || !canShiftTrackGapClips(survivors, shifts)) return null;
   return shifts;
+}
+
+/** What a ripple-edit trim must shift: the head or tail each trim cut off a
+ *  main-track clip ripples out like a deleted span, and a linked partner
+ *  trimmed with it follows its clip. Null means nothing to ripple. */
+export function resolveMainTrackTrimRipple(
+  elements: readonly TimelineElement[],
+  trims: ReadonlyArray<{ element: TimelineElement; start: number; duration: number }>,
+  rippleEnabled: boolean,
+): Array<{ element: TimelineElement; start: number }> | null {
+  const trimByKey = new Map(trims.map((t) => [keyOf(t.element), t]));
+  const trimmed = elements.map((e) => {
+    const t = trimByKey.get(keyOf(e));
+    return t ? { ...e, start: t.start, duration: t.duration } : e;
+  });
+  const cutSpans = trims.flatMap(({ element, start, duration }) => {
+    const head = start - element.start;
+    const tail = element.start + element.duration - (start + duration);
+    const tailSpan = { ...element, start: start + duration, duration: tail };
+    return [
+      ...(head > TRACK_GAP_EPSILON_S ? [{ ...element, duration: head }] : []),
+      ...(tail > TRACK_GAP_EPSILON_S ? [tailSpan] : []),
+    ];
+  });
+  const shifts = resolveMainTrackDeleteRippleShifts(trimmed, cutSpans, rippleEnabled);
+  if (!shifts) return null;
+  const moved = resolveShiftedElements(trimmed, shifts);
+  const partners = trimmed.flatMap((partner) => {
+    if (!trimByKey.has(keyOf(partner)) || isMainTrackElement(partner)) return [];
+    const lead = moved.find(
+      (m) => trimByKey.has(keyOf(m.element)) && sharesLinkGroup(m.element, partner),
+    );
+    if (!lead) return [];
+    return [{ element: partner, start: round3(partner.start + lead.start - lead.element.start) }];
+  });
+  return [...moved, ...partners];
 }

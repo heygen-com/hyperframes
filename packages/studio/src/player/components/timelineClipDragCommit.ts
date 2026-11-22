@@ -27,6 +27,7 @@ import { authoredTrackForLane } from "./timelineAuthoredTrack";
 import { resolveGroupMovers } from "./timelineMultiDragPreview";
 import { beginStudioPendingEdit } from "../../utils/studioPendingEdits";
 import { batchElementUpdates } from "../store/batchElementUpdates";
+import { resolveMainTrackInsertEdits } from "./timelineMainTrackInsert";
 
 type StartTrack = TimelineAtomicMoveUpdates;
 export interface TimelineMoveEdit extends TimelineAtomicMoveEdit {
@@ -81,12 +82,19 @@ export interface DragCommitDeps {
   onStackingPatches?: (patches: StackingPatch[], coalesceKey?: string) => Promise<unknown> | void;
   /** Converge the preview manifest after the complete lane + z transaction. */
   refreshAfterLaneMove?: () => void;
+  /** A drop onto other main-track clips inserts there instead of landing in free space. */
+  insertOnClipDrop?: boolean;
+  /** The drop aimed somewhere else but the clip went back where it was. */
+  onDropRefused?: (element: TimelineElement) => void;
 }
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 // One deterministic coalesce key shared by both records in a lane-change gesture.
 let laneChangeGestureSeq = 0;
+let clipInsertGestureSeq = 0;
+// Studio saves starts to the centisecond, so a smaller aim is the clip's own place.
+const REFUSED_DROP_MIN_S = 0.01;
 
 function moveStoreUpdates(edit: TimelineMoveEdit) {
   const writtenTrack =
@@ -276,8 +284,17 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
 
   // ── Pure time-move (dragged clip keeps its lane, no insert) ─────────────────
   if (!isInsert && !laneChanged) {
+    const insert = deps.insertOnClipDrop && resolveMainTrackInsertEdits(drag, deps, multi?.keys);
+    if (insert) {
+      void persistMoveEdits(insert, deps, `clip-insert:${clipInsertGestureSeq++}`);
+      return;
+    }
     const delta = drag.previewStart - drag.element.start;
-    if (delta === 0) return;
+    if (delta === 0) {
+      const aimedAway = Math.abs((drag.aimStart ?? drag.element.start) - drag.element.start);
+      if (aimedAway >= REFUSED_DROP_MIN_S) deps.onDropRefused?.(drag.element);
+      return;
+    }
     if (multi) {
       const edits: TimelineMoveEdit[] = elements
         .filter((e) => multi.keys.has(keyOf(e)))

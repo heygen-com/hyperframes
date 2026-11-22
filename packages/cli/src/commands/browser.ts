@@ -2,6 +2,7 @@ import { failCommand, failUsage } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import * as clack from "../ui/prompts.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 
 export const examples: Example[] = [
@@ -22,17 +23,18 @@ import {
 } from "../browser/manager.js";
 import { trackBrowserInstall } from "../telemetry/events.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { printFailureLine } from "../utils/jsonError.js";
 
 function failSpinner(s: ReturnType<typeof clack.spinner>, label: string, err: unknown): never {
   s.stop(c.error(label));
-  clack.log.error(normalizeErrorMessage(err));
+  clack.log.error(terminalLines(normalizeErrorMessage(err)));
   failCommand(1, err);
 }
 
 function printBrowser(browser: BrowserResult): void {
   console.log();
   console.log(`   ${c.dim("Source:")}  ${c.bold(browser.source)}`);
-  console.log(`   ${c.dim("Path:")}    ${c.bold(browser.executablePath)}`);
+  console.log(`   ${c.dim("Path:")}    ${c.bold(terminalText(browser.executablePath))}`);
   console.log();
 }
 
@@ -65,7 +67,7 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
     } catch (err) {
       // The ARM64 auto-install failed: the browser is NOT ready, so this is a
       // real failure (exit 1), not a success. Report it and stop swallowing.
-      clack.log.error(err instanceof Error ? err.message : String(err));
+      clack.log.error(terminalLines(err instanceof Error ? err.message : String(err)));
       clack.outro(c.warn("Manual setup required (see instructions above)."));
       failCommand(1, err);
     }
@@ -113,7 +115,9 @@ async function runPath(): Promise<void> {
       const ensured = await ensureBrowser();
       process.stdout.write(ensured.executablePath + "\n");
     } catch (err: unknown) {
-      console.error(err instanceof Error ? err.message : "Failed to find browser");
+      printFailureLine((show) =>
+        show(err instanceof Error ? err.message : "Failed to find browser"),
+      );
       failCommand(1, err);
     }
     return;
@@ -126,7 +130,7 @@ function runClear(): void {
 
   const removed = clearBrowser();
   if (removed) {
-    clack.outro(c.success("Removed cached browser from ") + c.dim(CACHE_DIR));
+    clack.outro(c.success("Removed cached browser from ") + c.dim(terminalText(CACHE_DIR)));
   } else {
     clack.outro(c.dim("No cached browser to remove."));
   }
@@ -179,8 +183,9 @@ ${c.bold("EXAMPLES:")}
       case "clear":
         return runClear();
       default:
-        console.error(
-          `${c.error("Unknown subcommand:")} ${subcommand}\n\nRun ${c.accent("hyperframes browser --help")} for usage.`,
+        printFailureLine(
+          (show) =>
+            `${c.error("Unknown subcommand:")} ${show(String(subcommand))}\n\nRun ${c.accent("hyperframes browser --help")} for usage.`,
         );
         failUsage();
     }

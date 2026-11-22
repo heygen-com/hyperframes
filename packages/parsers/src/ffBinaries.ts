@@ -253,18 +253,21 @@ const endsAListLine = (text: string) => ["\n", "\r", "\u0000"].some((char) => te
 
 /** One `file` entry per path; a path holding what ends a list line (LF, CR, NUL) is refused. */
 export function concatListText(
-  paths: readonly string[],
+  entries: readonly (string | { path: string; durationSeconds: number })[],
   options: { videoContainersOnly?: boolean } = {},
 ): string {
   const entryOptions = options.videoContainersOnly ? "option format_whitelist mov,matroska\n" : "";
-  return paths
-    .map((path) => {
+  return entries
+    .map((entry) => {
+      const path = typeof entry === "string" ? entry : entry.path;
       if (endsAListLine(path)) {
         throw new Error(
           `A file to join holds a line break or NUL in its path: ${JSON.stringify(path)}`,
         );
       }
-      return `file '${path.replace(/'/g, "'\\''")}'\n${entryOptions}`;
+      const placed =
+        typeof entry === "string" ? "" : `inpoint 0\nduration ${entry.durationSeconds}\n`;
+      return `file '${path.replace(/'/g, "'\\''")}'\n${placed}${entryOptions}`;
     })
     .join("");
 }

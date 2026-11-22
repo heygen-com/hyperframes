@@ -107,10 +107,10 @@ export async function studioSetText(
       );
     },
     write: async (selection) => {
-      const before = selection.element.textContent;
+      const before = (await deps.readNow(selection)).text;
       const outcome = await deps.setText(selection, text, field);
       if (!outcome.ok) return fromOutcome(outcome, "the text")!;
-      const value = { text, changed: selection.element.textContent !== before };
+      const value = { text, changed: (await deps.readNow(selection)).text !== before };
       return outcome.persistence
         ? saved(value, outcome.persistence)
         : dispatched(value, value.changed);

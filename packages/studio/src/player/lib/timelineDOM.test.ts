@@ -956,3 +956,36 @@ describe("what the live clip list says a clip plays", () => {
     },
   );
 });
+
+describe("createTimelineElementFromManifestClip — received clip numbers", () => {
+  it("takes a preview clip's track, start and length only as numbers, so no writer puts their text in the file", () => {
+    const clip = (track: unknown, start: unknown = 0, duration: unknown = 5) =>
+      createTimelineElementFromManifestClip({
+        clip: {
+          id: "hero",
+          label: "Hero",
+          kind: "element",
+          tagName: "div",
+          start: start as number,
+          duration: duration as number,
+          track: track as number,
+          compositionId: null,
+          parentCompositionId: null,
+          compositionSrc: null,
+          assetUrl: null,
+        },
+        fallbackIndex: 0,
+      });
+
+    const text = '1" onmouseover="alert(1)';
+    const hostile = clip(text, text, text);
+    expect([hostile.track, hostile.authoredTrack, hostile.start, hostile.duration]).toEqual([
+      0, 0, 0, 0,
+    ]);
+    const honest = clip(3, 1.5, 2);
+    expect([honest.track, honest.authoredTrack, honest.start, honest.duration]).toEqual([
+      3, 3, 1.5, 2,
+    ]);
+    expect(clip(Number.NaN).track).toBe(0);
+  });
+});

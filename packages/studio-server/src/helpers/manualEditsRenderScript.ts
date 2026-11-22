@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication
+import { htmlHasStudioReappliedMark } from "@hyperframes/core";
 export interface StudioManualEditsRenderScriptOptions {
   activeCompositionPath?: string | null;
 }
@@ -21,14 +22,7 @@ export function createStudioPositionSeekReapplyScript(): string {
   return positionSeekReapplyCall("false");
 }
 
-const POSITION_EDIT_MARKS = [
-  'data-hf-studio-path-offset="true"',
-  'data-hf-studio-box-size="true"',
-  'data-hf-studio-rotation="true"',
-  'data-hf-studio-motion="',
-];
-export const htmlHasStudioPositionEdits = (html: string) =>
-  POSITION_EDIT_MARKS.some((mark) => html.includes(mark));
+export const htmlHasStudioPositionEdits = htmlHasStudioReappliedMark;
 
 /** The reapply for a preview frame Studio cannot script; Studio wraps one it can script itself. */
 export function createSealedPreviewSeekReapplyScript(): string {
@@ -57,6 +51,7 @@ function studioPositionSeekReapplyRuntime(followFrames: boolean): void {
     !document.querySelector("[" + MOTION_ATTR + "]")
   )
     return;
+  (window as unknown as Record<string, unknown>).__hfStudioSeekReapplyStarted = true;
 
   const splitTopLevelWhitespace = (value: string): string[] => {
     const parts: string[] = [];

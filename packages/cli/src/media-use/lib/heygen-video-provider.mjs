@@ -1,9 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { refuseUnderLimit } from "./credit-limit.mjs";
 import { freezeUrl } from "./freeze.mjs";
+import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
 import {
   classifyHeygenErrorCode,
   HEYGEN_AUTH_COMMAND,
@@ -110,20 +108,12 @@ export async function heygenVideoGenerate(intent, ctx) {
     return null;
   }
 
-  let tmpDir;
   let tmpPath;
   try {
-    tmpDir = mkdtempSync(join(tmpdir(), "media-use-heygen-video-"));
-    tmpPath = join(tmpDir, "video.mp4");
+    tmpPath = privateOutputPath("heygen-video", ".mp4");
     await freezeUrl(videoUrl, tmpPath);
   } catch (err) {
-    if (tmpDir) {
-      try {
-        rmSync(tmpDir, { recursive: true, force: true });
-      } catch {
-        // Preserve the download failure if temporary-directory cleanup fails.
-      }
-    }
+    if (tmpPath) discardPrivateOutput(tmpPath);
     console.error(terminalText(`media-use: heygen video download failed: ${err.message}`));
     return null;
   }
