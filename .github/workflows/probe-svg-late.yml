@@ -50,7 +50,7 @@ jobs:
         if: matrix.side == 'main'
         shell: bash
         run: git show origin/main:packages/cli/src/capture/captureCompositionFrame.ts > packages/cli/src/capture/captureCompositionFrame.ts
-      - name: SVG case, 20 runs, every core busy
+      - name: Whole late-image file, 20 runs, every core busy
         shell: pwsh
         run: |
           $hogs = 1..([Environment]::ProcessorCount) | ForEach-Object {
@@ -59,13 +59,13 @@ jobs:
           "hogs: $($hogs.Count) on $([Environment]::ProcessorCount) cores"
           $failed = 0
           foreach ($i in 1..20) {
-            bun run --cwd packages/cli test src/commands/snapshot.lateImages.browser.test.ts -t "SVG" --maxWorkers=2 *> "$env:RUNNER_TEMP\svg-$i.txt"
+            bun run --cwd packages/cli test src/commands/snapshot.lateImages.browser.test.ts --maxWorkers=2 --reporter=verbose *> "$env:RUNNER_TEMP\svg-$i.txt"
             if ($LASTEXITCODE -ne 0) {
               $failed++
               "run $i failed:"
               Get-Content "$env:RUNNER_TEMP\svg-$i.txt" | Select-String -Pattern "AssertionError|Tests |Error:" | Select-Object -First 4
             }
-            if ($i -eq 1) { Get-Content "$env:RUNNER_TEMP\svg-$i.txt" | Select-String -Pattern "Tests " }
+            Get-Content "$env:RUNNER_TEMP\svg-$i.txt" | Select-String -Pattern "SVG <image>" | Select-Object -First 1
           }
           $hogs | ForEach-Object { Stop-Process -Id $_.Id -Force }
           "side=${{ matrix.side }} runs=20 failed=$failed"
