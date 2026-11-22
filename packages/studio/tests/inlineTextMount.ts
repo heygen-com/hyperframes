@@ -18,6 +18,7 @@ import {
   afterStudioPendingEdits,
   hasStudioPendingEdits,
   isStudioEditSaving,
+  trackedStudioEdit,
 } from "../src/utils/studioPendingEdits";
 import {
   afterStudioManualEditGestures,
@@ -91,7 +92,7 @@ export function mountTextEditing(
       createElement(() => {
         const [selection, set] = useState<DomEditSelection | null>(null);
         setSelection = set;
-        commits = useDomEditTextCommits({
+        const raw = useDomEditTextCommits({
           activeCompPath: PATH,
           previewIframeRef: { current: iframe },
           showToast: (message, kind) => void (kind === "error" && reported.push(String(message))),
@@ -105,6 +106,16 @@ export function mountTextEditing(
           resolveImportedFontAsset: () => null,
           readOnlyPreview: false,
         });
+        // As DomEditContext's trackEditCommits: each save is a pending edit from the call, after older saves.
+        const tracked = <F extends (...args: never[]) => unknown>(save: F) =>
+          trackedStudioEdit(save, { afterOlderSaves: true }) as F;
+        commits = {
+          ...raw,
+          handleDomTextCommitForSelection: tracked(raw.handleDomTextCommitForSelection),
+          handleDomRichTextCommit: tracked(raw.handleDomRichTextCommit),
+          handleDomAddTextField: tracked(raw.handleDomAddTextField),
+          handleDomRemoveTextField: tracked(raw.handleDomRemoveTextField),
+        };
         controls = useInlineTextEdit({
           onCommit: commits.handleDomRichTextCommit,
           onLost: (reason) => void reported.push(reason),
