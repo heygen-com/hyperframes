@@ -1339,3 +1339,24 @@ describe.each(ENDS)("a sealed text edit that %s", (_, end) => {
     await vi.waitFor(() => expect(focus.inFrame).toBe(false));
   });
 });
+
+// fails without the fix: the hold lasted until the frame said its edit ended, so the film took the keyboard back.
+it("ends a sealed text edit the frame never ends once Studio takes focus back, and keeps the keyboard", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  const focus = { inFrame: false };
+  iframe.getRootNode = () => ({ activeElement: focus.inFrame ? iframe : document.body }) as never;
+  iframe.blur = vi.fn(() => void (focus.inFrame = false));
+  onTestFinished(keepKeyboardOutOfSealedFrame(iframe));
+  const { onCommit, controls } = inlineEditor();
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.innerHTML = "Typed";
+  act(() => void window.dispatchEvent(new FocusEvent("focus")));
+  expect(controls().session).toBeNull();
+  await vi.waitFor(() =>
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ html: "Typed" })),
+  );
+  focus.inFrame = true;
+  window.dispatchEvent(new Event("blur"));
+  await vi.waitFor(() => expect(focus.inFrame).toBe(false));
+});
