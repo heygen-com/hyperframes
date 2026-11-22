@@ -1,8 +1,8 @@
 import { defineConfig, mergeConfig } from "vitest/config";
 import viteConfig from "./vite.config";
 
-// Tests that drive a real Chrome run alone, after the unit tests: a Chrome started beside them on a
-// CI runner missed its 20 s launch window twice, failing the whole suite.
+// A Chrome started beside the unit tests on a busy runner can miss its launch window, so these run alone, after.
+const CHROME_TESTS = "**/*.browser.test.ts";
 export default mergeConfig(
   viteConfig,
   defineConfig({
@@ -11,17 +11,13 @@ export default mergeConfig(
       projects: [
         {
           extends: true,
-          test: {
-            name: "unit",
-            exclude: ["**/*.browser.test.ts"],
-            sequence: { groupOrder: 1 },
-          },
+          test: { name: "unit", exclude: [CHROME_TESTS], sequence: { groupOrder: 1 } },
         },
         {
           extends: true,
           test: {
             name: "browser",
-            include: ["**/*.browser.test.ts"],
+            include: [CHROME_TESTS],
             fileParallelism: false,
             sequence: { groupOrder: 2 },
           },
