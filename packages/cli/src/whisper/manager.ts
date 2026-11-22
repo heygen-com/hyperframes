@@ -344,8 +344,6 @@ export async function ensureModel(
 ): Promise<string> {
   const modelPath = join(MODELS_DIR, `ggml-${model}.bin`);
   const pin = PINNED_MODELS.get(model);
-  // Private before anything is read from it or written to it: a folder another account can change, or a link
-  // redirects, is refused instead of receiving the download or vouching for a cached copy.
   ensurePrivateCacheDir(MODELS_DIR, hyperframesCacheDir());
   const cachedBytes = statSync(modelPath, { throwIfNoEntry: false })?.size;
   if (cachedBytes !== undefined && (!pin || cachedBytes === pin.bytes)) return modelPath;

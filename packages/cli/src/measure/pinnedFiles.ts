@@ -1,7 +1,5 @@
 // Files a measuring tool needs but the CLI does not ship: fetched on first use into a folder under the trusted cache
-// root, each one checked against its pinned size and sha256 before it is used, and the folder sealed. The folder is
-// made private (and refused when another account can change it, or it leads through a link that can) before any byte
-// lands in it, so a download never goes into a folder someone else can read, swap or redirect.
+// root, each one checked against its pinned size and sha256 before it is used, and the folder sealed.
 import { renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -52,7 +50,6 @@ export async function ensurePinnedFiles(
     if (foreignWritablePath(path, root) || !(await verifies(path, file))) wanted.push(file);
   }
   if (!wanted.length) return;
-  // Before the first write: made 0700 when new, and refused when another account can change it or a link redirects it.
   ensurePrivateCacheDir(dir, root);
   for (const file of wanted) {
     onStatus?.(`Downloading ${file.name} (${Math.round(file.bytes / 1e5) / 10} MB, once)...`);
