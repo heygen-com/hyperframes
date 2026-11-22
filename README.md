@@ -33,7 +33,7 @@
 
 <p align="center"><a href="https://hyperframes.studio/studio/download?src=github-readme-hero"><img src="https://static.heygen.ai/hyperframes-oss/readme/2026-11/hero-studio-intro-v1.webp" width="800" alt="HyperFrames Studio, the AI video editor: a comment pinned on the word humans, then the agent changes just that word"></a></p>
 
-<!-- Paste the uploaded MP4 (user-attachments URL) on its own line here; GitHub renders it as a player with sound. No caption needed. -->
+https://github.com/user-attachments/assets/b5d3f675-b657-4f28-8533-2c5fa68d1e13
 
 HyperFrames is HeyGen's AI video editor for people and agents. Describe a video, bring your own footage, or remake a video you love, and get a real project you can change down to the frame: ask for a bigger title, a faster cut or new captions, and it changes just that.
 
