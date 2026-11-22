@@ -6,6 +6,7 @@ import {
   runtimeElementWindow,
 } from "./timeline";
 import { createRuntimeStartTimeResolver } from "./startResolver";
+import { rememberSourceLength } from "./sourceLength";
 
 type TimelineTestWindow = Window & {
   __timelines?: Record<string, { duration: () => number }>;
@@ -307,6 +308,26 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips.find((item) => item.id === clip.id)?.stackingContextId).not.toBe(
       "css:root",
     );
+  });
+
+  // fails without the fix: a far clip the runtime let go of dropped out of the clip list.
+  it("keeps an untrimmed clip the runtime let go of, at its measured length", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    document.body.appendChild(root);
+    const video = document.createElement("video");
+    video.id = "far";
+    video.src = "far.mp4";
+    video.setAttribute("data-start", "300");
+    root.appendChild(video);
+    Object.defineProperty(video, "duration", { value: 600, writable: true, configurable: true });
+    rememberSourceLength(video);
+    video.duration = Number.NaN;
+
+    const far = collectRuntimeTimelinePayload(defaultParams).clips.find(
+      (clip) => clip.id === "far",
+    );
+    expect(far?.duration).toBe(600);
   });
 
   it("identifies video clips by tag", () => {
