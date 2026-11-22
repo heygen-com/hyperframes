@@ -77,8 +77,14 @@ function canCommitInlineTextSelection(selection: DomEditSelection, element: HTML
 
 export const textEditNotSaved = (reason: string) => `Couldn't save the text edit: ${reason}`;
 
-function claimTextFor(order: TextWriteOrder, element: HTMLElement, key: string, number: number) {
-  const claim = claimTextWrite(order, key, number, () => textSaveEnded(element));
+function claimTextFor(
+  order: TextWriteOrder,
+  element: HTMLElement,
+  key: string,
+  number: number,
+  composes = false,
+) {
+  const claim = claimTextWrite(order, key, number, () => textSaveEnded(element), composes);
   if (claim) rememberTextTarget(element, order, key);
   return claim;
 }
@@ -223,6 +229,7 @@ export function useDomEditTextCommits({
         selection.element,
         getDomEditTargetKey(selection),
         number,
+        true,
       );
       if (!claim) return { ok: true, changed: false };
       await claim.turn();
@@ -413,6 +420,7 @@ export function useDomEditTextCommits({
         snapshot.element,
         getDomEditTargetKey(snapshot),
         number,
+        true,
       );
       if (!claim) return;
       await claim.turn();

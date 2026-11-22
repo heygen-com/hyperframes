@@ -72,9 +72,12 @@ export function claimTextWrite(
   key: string,
   number: number,
   onSettled?: () => void,
+  /** A field-scoped save rebuilds on what landed at its turn, so a newer claim never makes it stale. */
+  composes = false,
 ): TextWriteClaim | null {
-  if ((order.claims.get(key) ?? 0) > number) return null;
-  order.claims.set(key, number);
+  const newest = order.claims.get(key) ?? 0;
+  if (!composes && newest > number) return null;
+  order.claims.set(key, Math.max(newest, number));
   const changes = previewChangesOutsideTextSaves();
   const before = order.chains.get(key) ?? Promise.resolve();
   let open!: () => void;
@@ -100,7 +103,7 @@ export function claimTextWrite(
     landed: (markup: string) => {
       const last = order.landed.get(key);
       if (skipped || previewChangesOutsideTextSaves() !== changes) return;
-      if (last?.changes === changes && last.number > number) return;
+      if (!composes && last?.changes === changes && last.number > number) return;
       order.landed.set(key, { number, markup, changes });
     },
     saved: () => savedTextIn(order, key),
