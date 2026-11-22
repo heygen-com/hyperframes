@@ -182,17 +182,29 @@ describe("preview iframe hotkey forwarding", () => {
     afterEach(() => closers.splice(0).forEach((close) => close()));
 
     // A frame whose document refuses Studio, reached only over the editing port it hands out per connect.
-    function sealedFrame(focus = { inPreview: true }) {
+    function sealedFrame(focus = { inPreview: true }, { inPlayer = false } = {}) {
       const frame: Record<string, unknown> = {};
       const iframe = detachedFakeIframe(frame);
       const hasFocus = vi.spyOn(document, "hasFocus").mockImplementation(() => focus.inPreview);
+      const player = document.createElement("div");
+      document.body.append(player);
+      if (!inPlayer) document.body.append(iframe);
+      if (inPlayer) {
+        const shadow = player.attachShadow({ mode: "open" });
+        shadow.append(iframe);
+        Object.defineProperty(shadow, "activeElement", {
+          get: () => (focus.inPreview ? iframe : null),
+        });
+      }
       Object.defineProperty(document, "activeElement", {
         configurable: true,
-        get: () => (focus.inPreview ? iframe : document.body),
+        get: () => (!focus.inPreview ? document.body : inPlayer ? player : iframe),
       });
       closers.push(() => {
         hasFocus.mockRestore();
         delete (document as { activeElement?: unknown }).activeElement;
+        player.remove();
+        iframe.remove();
       });
       Object.defineProperty(iframe, "contentDocument", { value: null });
       Object.defineProperty(frame, "document", {
@@ -252,6 +264,15 @@ describe("preview iframe hotkey forwarding", () => {
       expect(new Set(watched[0])).toEqual(
         new Set(APP_HOTKEY_ACTIONS.map((action) => DEFAULT_STUDIO_KEYS[action])),
       );
+      keyDown("Delete", "Delete");
+      await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(1));
+    });
+
+    it("deletes the selection on a Delete pressed inside a preview held in the player's shadow root", async () => {
+      root = mountReactHarness(<Harness />);
+      const { iframe, watched, keyDown } = sealedFrame({ inPreview: true }, { inPlayer: true });
+      act(() => sync?.(iframe));
+      await vi.waitFor(() => expect(watched).toHaveLength(1));
       keyDown("Delete", "Delete");
       await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(1));
     });
