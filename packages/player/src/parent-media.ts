@@ -14,6 +14,7 @@ import { isRealmElement, isRealmHtmlMediaElement } from "./media-element-guards.
 import { isInClipWindow } from "@hyperframes/core/runtime/clip-window";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
 import { readLinkTiming } from "@hyperframes/core/media-link";
+import { mediaFileOf, parentCopyOf, type ParentCopy } from "@hyperframes/core/audible-video";
 import { mediaElementTime, startsSoundOnlyInsideATap } from "@hyperframes/core/runtime/media-clock";
 import {
   MEDIA_SYNC_TOLERANCE_SECONDS,
@@ -59,6 +60,8 @@ export class ParentMediaManager {
    *  replaced or cleared instead of accumulating on every attribute change. */
   private _urlAudioEntry: ProxyEntry | null = null;
   private _urlAudioSrc: string | null = null;
+  /** A sealed film's copies, keyed by the clip they play, from its runtime's list. */
+  private _listed = new Map<string, ProxyEntry>();
 
   private readonly _dispatchEvent: (event: Event) => void;
   private readonly _getMuted: () => boolean;
@@ -66,6 +69,7 @@ export class ParentMediaManager {
   private readonly _getPlaybackRate: () => number;
   private readonly _getCurrentTime: () => number;
   private readonly _isPaused: () => boolean;
+  private readonly _muteFrame: () => void;
 
   constructor(opts: {
     dispatchEvent: (event: Event) => void;
@@ -74,6 +78,8 @@ export class ParentMediaManager {
     getPlaybackRate: () => number;
     getCurrentTime: () => number;
     isPaused: () => boolean;
+    /** Silences the film's own media; sent only while a copy plays it instead. */
+    muteFrame: () => void;
   }) {
     this._dispatchEvent = opts.dispatchEvent;
     this._getMuted = opts.getMuted;
@@ -81,6 +87,7 @@ export class ParentMediaManager {
     this._getPlaybackRate = opts.getPlaybackRate;
     this._getCurrentTime = opts.getCurrentTime;
     this._isPaused = opts.isPaused;
+    this._muteFrame = opts.muteFrame;
   }
 
   get audioOwner(): "runtime" | "parent" {
@@ -99,8 +106,9 @@ export class ParentMediaManager {
     this.pauseAll();
     for (const m of this._entries) if (m !== this._urlAudioEntry) m.el.src = "";
     this._entries = this._urlAudioEntry ? [this._urlAudioEntry] : [];
+    this._listed.clear();
     if (this._urlAudioSrc && !this._urlAudioEntry)
-      this._urlAudioEntry = this._createEntry(this._urlAudioSrc, "audio", 0, Infinity);
+      this._urlAudioEntry = this._createEntry(urlAudio(this._urlAudioSrc));
     this.teardownObserver();
     if (wasPromoted) {
       this._dispatchEvent(
@@ -118,6 +126,7 @@ export class ParentMediaManager {
       m.el.src = "";
     }
     this._entries = [];
+    this._listed.clear();
     this._urlAudioEntry = null;
     this._urlAudioSrc = null;
     this._audioOwner = "runtime";
@@ -234,9 +243,7 @@ export class ParentMediaManager {
   }
 
   stopAdoptedMedia(): void {
-    for (const m of this._entries) {
-      if (m.source) m.el.pause();
-    }
+    for (const m of this._filmCopies()) m.el.pause();
   }
 
   seekAll(timeInSeconds: number): void {
@@ -306,13 +313,6 @@ export class ParentMediaManager {
   }
 
   /**
-   * Take ownership of audible playback in response to the runtime's
-   * `media-autoplay-blocked` signal. Idempotent.
-   *
-   * The caller is responsible for muting the iframe's own media output via the
-   * postMessage bridge (`set-media-output-muted`) after calling this.
-   */
-  /**
    * Take ownership of audible playback. Idempotent. The `onMirror` callback
    * is called with the current timeline time and `{ force: true }` so the
    * caller's mirror implementation runs (enabling test spies on the player
@@ -325,12 +325,7 @@ export class ParentMediaManager {
     if (this._audioOwner === "parent") return;
     this._audioOwner = "parent";
 
-    // Synchronously mute iframe media to close the race window.
-    if (iframeDoc) {
-      for (const el of iframeDoc.querySelectorAll("video, audio")) {
-        if (isRealmHtmlMediaElement(el)) el.muted = true;
-      }
-    }
+    if (this._filmCopies().length > 0) this._silenceFilm(iframeDoc);
     for (const m of [...this._entries]) this._repointToSource(m);
 
     // One-shot alignment — bypass jitter-coalescing gate.
@@ -367,7 +362,7 @@ export class ParentMediaManager {
   setupFromUrl(audioSrc: string): void {
     if (this._urlAudioSrc === audioSrc && this._urlAudioEntry) return;
     this.teardownUrlAudio();
-    const entry = this._createEntry(audioSrc, "audio", 0, Infinity);
+    const entry = this._urlTaken(audioSrc) ? null : this._createEntry(urlAudio(audioSrc));
     // Null when the composition already has a proxy for this URL: that one stays the
     // composition's, and a reset creates ours once that document's proxies are gone.
     this._urlAudioEntry = entry;
@@ -407,25 +402,42 @@ export class ParentMediaManager {
     );
   }
 
-  /**
-   * Create a parent-frame media element and start preloading it. A URL-driven
-   * proxy returns `null` when the file already has one; a clip always gets its
-   * own, since its window and media offset are its own.
-   */
-  private _createEntry(
-    src: string,
-    tag: "audio" | "video",
-    start: number,
-    duration: number,
-    source?: HTMLMediaElement | null,
-  ): ProxyEntry | null {
-    if (!source && this._urlTaken(src)) return null;
+  /** Copies for a sealed film, from its runtime's list: only files under the composition's own folder. */
+  setupFromList(list: unknown, compositionUrl: string | null): void {
+    const wanted = new Map<string, ParentCopy>();
+    const refused: string[] = [];
+    for (const copy of readCopies(list)) {
+      if (underComposition(copy.src, compositionUrl)) wanted.set(JSON.stringify(copy), copy);
+      else refused.push(copy.src);
+    }
+    for (const [key, entry] of this._listed) {
+      if (wanted.has(key)) continue;
+      this._removeEntry(entry);
+      this._listed.delete(key);
+    }
+    for (const [key, copy] of wanted) {
+      if (this._listed.has(key)) continue;
+      const entry = this._createEntry(copy, null, "anonymous");
+      this._listed.set(key, entry);
+      this._copyAdded(entry);
+    }
+    if (refused.length === 0) return;
+    const error = new Error("a sealed film's media outside the composition's folder is not copied");
+    this._dispatchEvent(
+      new CustomEvent("playbackerror", { detail: { source: "parent-proxy", error, refused } }),
+    );
+  }
 
-    const el = tag === "video" ? document.createElement("video") : new Audio();
+  /** Create a parent-frame media element and start preloading it. */
+  private _createEntry(
+    copy: ParentCopy,
+    source?: HTMLMediaElement | null,
+    crossOrigin = source?.getAttribute("crossorigin") ?? null,
+  ): ProxyEntry {
+    const el = copy.kind === "video" ? document.createElement("video") : new Audio();
     el.preload = "auto";
-    const crossOrigin = source?.getAttribute("crossorigin");
     if (crossOrigin != null) el.setAttribute("crossorigin", crossOrigin);
-    el.src = src;
+    el.src = copy.src;
     el.load();
     el.muted = this._getMuted();
     el.volume = this._getVolume();
@@ -434,9 +446,9 @@ export class ParentMediaManager {
 
     const entry: ProxyEntry = {
       el,
-      start,
-      duration,
-      mediaStart: source ? readLinkTiming(source).mediaStart : 0,
+      start: copy.start,
+      duration: copy.duration,
+      mediaStart: copy.mediaStart,
       source,
     };
     el.addEventListener("seeked", () => this._noteSeekLanded(entry));
@@ -444,40 +456,32 @@ export class ParentMediaManager {
     return entry;
   }
 
-  /** Resolve an iframe media element's source to an absolute URL, or null. */
-  private _resolveIframeMediaSrc(iframeEl: HTMLMediaElement): string | null {
-    const rawSrc =
-      iframeEl.getAttribute("src") || iframeEl.querySelector("source")?.getAttribute("src");
-    return rawSrc ? new URL(rawSrc, iframeEl.ownerDocument.baseURI).href : null;
+  /** Every copy of the film's own media: all but the player's `audio-src` track. */
+  private _filmCopies(): ProxyEntry[] {
+    return this._entries.filter((m) => m !== this._urlAudioEntry);
   }
 
-  // fallow-ignore-next-line complexity
-  private _adoptIframeMedia(iframeEl: HTMLMediaElement): void {
-    // Skip elements the preloader has demoted: the observer adopts one when its preload turns
-    // "auto" and drops its proxy, which fetches the whole file, when it turns back.
-    if (iframeEl.preload === "metadata" || iframeEl.preload === "none") return;
-
-    if (this._entries.some((m) => m.source === iframeEl)) return;
-
-    // A video authored muted is picture only: its file's audio belongs to the clip that plays it.
-    if (iframeEl.tagName === "VIDEO" && iframeEl.hasAttribute("muted")) return;
-
-    const src = this._resolveIframeMediaSrc(iframeEl);
-    if (!src) return;
-
-    const timing = readClipTiming(iframeEl);
-    const start = timing.start ?? 0;
-    const duration = timing.duration ?? Number.POSITIVE_INFINITY;
-    const tag = iframeEl.tagName === "VIDEO" ? ("video" as const) : ("audio" as const);
-
-    const created = this._createEntry(src, tag, start, duration, iframeEl);
-
-    // If already under parent ownership and playing, the new proxy must catch
-    // up immediately — bypass the jitter-coalescing gate.
-    if (created && this._audioOwner === "parent") {
-      this.mirrorTime(this._getCurrentTime(), { force: true });
-      if (!this._isPaused()) this._playEntryIfActive(created);
+  // The film's own output goes silent only while a copy plays it instead. Muting the frame's
+  // elements here too closes the race until the runtime applies the message.
+  private _silenceFilm(iframeDoc: Document | null): void {
+    for (const el of iframeDoc?.querySelectorAll("video, audio") ?? []) {
+      if (isRealmHtmlMediaElement(el)) el.muted = true;
     }
+    this._muteFrame();
+  }
+
+  // A copy made while the parent owns playback catches up at once, past the jitter gate.
+  private _copyAdded(entry: ProxyEntry, iframeDoc: Document | null = null): void {
+    if (this._audioOwner !== "parent") return;
+    this._silenceFilm(iframeDoc);
+    this.mirrorTime(this._getCurrentTime(), { force: true });
+    if (!this._isPaused()) this._playEntryIfActive(entry);
+  }
+
+  private _adoptIframeMedia(iframeEl: HTMLMediaElement): void {
+    if (this._entries.some((m) => m.source === iframeEl)) return;
+    const copy = parentCopyOf(iframeEl);
+    if (copy) this._copyAdded(this._createEntry(copy, iframeEl), iframeEl.ownerDocument);
   }
 
   // The runtime re-points a clip (its preview copy, a new bound file). A proxy that is not
@@ -495,12 +499,12 @@ export class ParentMediaManager {
   private _urlTaken(src: string): boolean {
     return this._entries.some((m) => {
       if (m.source && !m.source.isConnected) return false;
-      return ((m.source && this._resolveIframeMediaSrc(m.source)) || m.el.src) === src;
+      return ((m.source && mediaFileOf(m.source)) || m.el.src) === src;
     });
   }
 
   private _repointToSource(entry: ProxyEntry): boolean {
-    const src = entry.source ? this._resolveIframeMediaSrc(entry.source) : null;
+    const src = entry.source ? mediaFileOf(entry.source) : null;
     if (!src || entry.el.src === src) return false;
     entry.el.src = src;
     entry.el.load();
@@ -593,5 +597,39 @@ export class ParentMediaManager {
       obs.observe(target, observeOpts);
     }
     this._mediaObserver = obs;
+  }
+}
+
+function urlAudio(src: string): ParentCopy {
+  return { kind: "audio", src, start: 0, duration: Number.POSITIVE_INFINITY, mediaStart: 0 };
+}
+
+/** The well-formed clips of a list from the film; the frame is not trusted. */
+function readCopies(list: unknown): ParentCopy[] {
+  if (!Array.isArray(list)) return [];
+  return list.filter((item): item is ParentCopy => {
+    if (typeof item !== "object" || item === null) return false;
+    const c = item as Record<string, unknown>;
+    return (
+      (c.kind === "audio" || c.kind === "video") &&
+      typeof c.src === "string" &&
+      Number.isFinite(c.start) &&
+      typeof c.duration === "number" &&
+      c.duration >= 0 &&
+      Number.isFinite(c.mediaStart)
+    );
+  });
+}
+
+/** Whether a file is under the composition's own folder, on its origin. */
+function underComposition(src: string, compositionUrl: string | null): boolean {
+  if (!compositionUrl) return false;
+  try {
+    const file = new URL(src);
+    const base = new URL(compositionUrl);
+    const folder = base.pathname.slice(0, base.pathname.lastIndexOf("/") + 1);
+    return file.origin === base.origin && file.pathname.startsWith(folder);
+  } catch {
+    return false;
   }
 }

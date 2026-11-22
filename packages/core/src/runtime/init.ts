@@ -265,7 +265,7 @@ import {
   isVideoElement,
   type StylableElement,
 } from "./domRealm";
-import { audibleVideoNeedsWebAudio, isAudibleVideoElement } from "../audibleVideo";
+import { audibleVideoNeedsWebAudio, isAudibleVideoElement, parentCopyOf } from "../audibleVideo";
 
 /**
  * A `window.__timelines` entry is authored content and may be a PARTIAL
@@ -534,6 +534,11 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
       masterChain: readMasterFxChain(el.ownerDocument),
     }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
+
+const parentCopies = () =>
+  Array.from(document.querySelectorAll(WEB_AUDIO_MEDIA)).flatMap((el) =>
+    isMediaElement(el) ? (parentCopyOf(el) ?? []) : [],
+  );
 
 /** WebKit restarts a media element's audio 150 to 400 ms late; a decoded buffer on the context clock starts on time. */
 function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolean {
@@ -3259,6 +3264,43 @@ export function initSandboxRuntimeModular(): void {
   let bufferingFor: HTMLMediaElement[] = [];
   const playingOrHeldForData = () => clock.isPlaying() || bufferingFor.length > 0;
   let keepLateMedia = false;
+  // A sealed player copies only the clips this list names. ponytail: once blocked, every watched
+  // change re-reads all media; scope the observer to media records if that shows in a profile.
+  const postParentCopiesWhileTheyChange = () => {
+    let posted = "";
+    const post = () => {
+      const media = parentCopies();
+      const next = JSON.stringify(media);
+      if (next === posted || state.tornDown) return;
+      posted = next;
+      postRuntimeMessage({ source: "hf-preview", type: "media-autoplay-blocked", media });
+    };
+    post();
+    if (typeof MutationObserver === "undefined") return;
+    let queued = false;
+    const observer = new MutationObserver(() => {
+      if (queued) return;
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        post();
+      });
+    });
+    observer.observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: [
+        ...DURATION_FLOOR_INPUT_ATTRIBUTES,
+        "src",
+        "preload",
+        "muted",
+        "data-has-audio",
+        "data-playback-start",
+      ],
+    });
+    runtimeCleanupCallbacks.push(() => observer.disconnect());
+  };
   const preloadNearPlayhead = (
     el: HTMLMediaElement,
     visible: boolean,
@@ -3960,7 +4002,7 @@ export function initSandboxRuntimeModular(): void {
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;
           state.mediaAutoplayBlockedPosted = true;
-          postRuntimeMessage({ source: "hf-preview", type: "media-autoplay-blocked" });
+          postParentCopiesWhileTheyChange();
         },
       });
     }

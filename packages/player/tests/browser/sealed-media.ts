@@ -56,7 +56,40 @@ async function play(cors: boolean) {
   return { videos, pixels, warnings };
 }
 
+/** A sealed player loaded by src whose frame may not start sound: the files it copies into the page. */
+async function sealedCopies(): Promise<string[]> {
+  const strict = await launchBrowser({ autoplay: "gesture" });
+  try {
+    const page = await strict.newPage();
+    await page.goto(`${server.origin}/host.html?fixture=sealed-audio&sealed=1`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.waitForFunction(() => window.__playerReady || window.__playerError, {
+      timeout: 60_000,
+    });
+    await page.evaluate(() =>
+      (document.getElementById("player") as HTMLElement & { play: () => void }).play(),
+    );
+    type Copies = { _audioOwner: string; _parentMedia: { el: HTMLMediaElement }[] };
+    await page.waitForFunction(
+      () => (document.getElementById("player") as unknown as Copies)._audioOwner === "parent",
+      { timeout: 30_000 },
+    );
+    return await page.evaluate(() =>
+      (document.getElementById("player") as unknown as Copies)._parentMedia.map((m) => m.el.src),
+    );
+  } finally {
+    await strict.close();
+  }
+}
+
 try {
+  assert.deepEqual(
+    await sealedCopies(),
+    [`${server.origin}/fixtures/sealed-audio/tone.m4a`],
+    "a sealed player loaded by src copies its film's sound into the page when the frame may not start it",
+  );
+
   const plain = await play(false);
   assert.equal(
     plain.videos.filter((v) => v.readyState >= 2 && v.error === null).length,
@@ -81,7 +114,9 @@ try {
     shared.warnings.filter((w) => w.includes("sample.mp4")),
     [],
   );
-  console.log("[sealed-media] a host without CORS plays; a CORS host keeps pixel access");
+  console.log(
+    "[sealed-media] a host without CORS plays; a CORS host keeps pixel access; a refused frame's sound plays from a copy",
+  );
 } finally {
   await browser.close();
   await server.stop();

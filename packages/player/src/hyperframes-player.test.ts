@@ -1104,22 +1104,15 @@ describe("HyperframesPlayer seek() sync path", () => {
     stubIframeContentDocument(player.iframe, doc);
     stubContentWindow({ postMessage: post });
 
+    player.setAttribute("audio-src", "https://cdn.example.com/background.mp3");
+    const globalProxyPause = vi.spyOn(player._parentMedia[0]!.el, "pause");
     const slideProxyPause = vi.fn();
-    const globalProxyPause = vi.fn();
-    player._parentMedia.push(
-      {
-        el: { pause: slideProxyPause, src: "https://cdn.example.com/slide.mp4" },
-        start: 0,
-        duration: 5,
-        source: iframeVideo,
-      },
-      {
-        el: { pause: globalProxyPause, src: "https://cdn.example.com/background.mp3" },
-        start: 0,
-        duration: Infinity,
-        source: null,
-      },
-    );
+    player._parentMedia.push({
+      el: { pause: slideProxyPause, src: "https://cdn.example.com/slide.mp4" },
+      start: 0,
+      duration: 5,
+      source: iframeVideo,
+    });
 
     player.stopMedia();
 

@@ -36,6 +36,7 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
   setCompositionSize: (width: number, height: number) => void;
   sendControl: (action: string, extra?: Record<string, unknown>) => void;
   getIframeDoc: () => Document | null;
+  getCompositionUrl: () => string | null;
   /** Invoked when the iframe runtime posts `{type: "ready"}` — the player
    *  uses it to replay current bridge state (mute, volume, playback rate) so
    *  control messages sent before the iframe's listener registered aren't lost. */
@@ -143,10 +144,10 @@ export function handleRuntimeMessage(
     } catch {
       /* cross-origin */
     }
+    if (!iframeDoc) callbacks.media.setupFromList(data["media"], callbacks.getCompositionUrl());
     callbacks.media.promoteToParentProxy(iframeDoc, (t, opts) =>
       callbacks.media.mirrorTime(t, opts),
     );
-    callbacks.sendControl("set-media-output-muted", { muted: true });
     return;
   }
 
