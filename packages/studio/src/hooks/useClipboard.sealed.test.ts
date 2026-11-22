@@ -8,6 +8,7 @@ import { usePlayerStore, type TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
 import { setCompositionSourceMap } from "../components/editor/domEditingDom";
+import { parseHTMLContent } from "@hyperframes/core/compiler/html-document";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -208,6 +209,43 @@ it("writes no running code when a sealed preview's own element hides markup in a
     act(() => root?.unmount());
     root = null;
   }
+});
+
+/** Handlers in a written file, read as saved and as the preview server serves it. */
+function handlersServed(written: string): string[] {
+  return [written, parseHTMLContent(written).toString()].flatMap((html) =>
+    Array.from(new DOMParser().parseFromString(html, "text/html").querySelectorAll("*")).flatMap(
+      (el) => el.getAttributeNames().filter((name) => name.startsWith("on")),
+    ),
+  );
+}
+
+// fails without the fix: a comment in an svg <title> passed the check, and the server's parser serves it as markup.
+it("writes nothing the server serves as running code, from the live copy or a saved one", async () => {
+  const svg = "<svg><title><!-- </title><img src=x onerror=f()> --></title></svg>";
+  const live = sealedClipboard(
+    { id: "made", selector: "#made", sourceFile: "index.html" } as DomEditSelection,
+    `<div id="made" class="clip">${svg}</div>`,
+  );
+  expect(live.clipboard().handleCopy()).toBe(true);
+  await live.clipboard().handlePaste();
+  for (const file of live.writes) expect(handlersServed(file)).toEqual([]);
+  act(() => root?.unmount());
+  root = null;
+
+  setCompositionSourceMap(new Map([["recv", "compositions/recv.html"]]));
+  const received = `<!doctype html><html><body><div data-composition-id="recv" data-start="0" data-duration="5">
+<div id="go" class="clip" data-start="1" data-duration="1" data-track-index="2">${svg}</div>
+</div></body></html>`;
+  const saved = sealedClipboard(
+    { id: "go", selector: "#go", sourceFile: "compositions/recv.html" } as DomEditSelection,
+    `<div data-composition-file="compositions/recv.html"><div id="go" class="clip">${svg}</div></div>`,
+    SAVED,
+    { "compositions/recv.html": received },
+  );
+  expect(saved.clipboard().handleCopy()).toBe(true);
+  await saved.clipboard().handlePaste();
+  for (const file of saved.writes) expect(handlersServed(file)).toEqual([]);
 });
 
 // fails without the fix: markup the copy found in another file was taken as saved and pasted unchecked.

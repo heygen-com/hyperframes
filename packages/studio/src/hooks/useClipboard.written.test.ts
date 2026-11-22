@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { pasteElementHtml, pasteTimelineClips } from "./useClipboard";
+import { parseHTMLContent } from "@hyperframes/core/compiler/html-document";
 import { prepareCopy, refuseAddedMarkup } from "../utils/clipboardMarkup";
 
 const FILE = `<!doctype html><html><head><style>
@@ -9,8 +10,12 @@ const FILE = `<!doctype html><html><head><style>
 <div id="card" class="clip" data-start="0" data-duration="2" data-track-index="0">Card</div>
 </div></body></html>`;
 
-/** Every element or attribute in `html` that runs code once written: what no paste may add. */
+/** Every handler in `html` as saved and as the preview server serves it: what no paste may add. */
 function runningCode(html: string): string[] {
+  return [html, parseHTMLContent(html).toString()].flatMap(handlersIn);
+}
+
+function handlersIn(html: string): string[] {
   const doc = new DOMParser().parseFromString(html, "text/html");
   return Array.from(doc.querySelectorAll("*")).flatMap((el) =>
     el
@@ -126,6 +131,14 @@ describe("the final check reads what the saved file holds", () => {
     ).toThrow(/Couldn't paste/);
   });
 
+  it("refuses a saved copy whose elements moved to other parents in the same order", () => {
+    const nested = '<div id="w"><section id="s"><p id="cap">Caption</p></section></div>';
+    const after = inserted('<div id="w"><section id="s"></section><p id="cap">Caption</p></div>');
+    expect(() =>
+      refuseAddedMarkup(before, after, [{ html: nested, readFrom: "index.html" }], "index.html"),
+    ).toThrow(/Couldn't paste/);
+  });
+
   it("accepts the saved copy when it is the copy that was checked", () => {
     expect(() =>
       refuseAddedMarkup(before, inserted(copy), [{ html: copy, readFrom: null }], "index.html"),
@@ -147,4 +160,64 @@ it("renames a pasted id the file already holds written with entities", () => {
     (el) => el.id,
   );
   expect(ids.sort()).toEqual(["left&right", "left&right-2"]);
+});
+
+// fails without the fix: an svg element named template has no template content, and reading the file's ids threw.
+it("pastes into a file holding an svg element named template", () => {
+  const file = FILE.replace(
+    '<div id="card"',
+    '<svg><template id="t"></template></svg>\n<div id="card"',
+  );
+  const pasted = pasteElementHtml(
+    file,
+    { html: '<span id="new">N</span>', readFrom: null },
+    false,
+    "index.html",
+  );
+  expect(pasted).toContain('<span id="new"');
+});
+
+it("pastes a clip whose markup spans lines, indented under the root as written", () => {
+  const html =
+    '<div id="multi" class="clip" data-start="0" data-duration="1" data-track-index="1">\n  <p title="a\nb">x</p>\n</div>';
+  const { content } = pasteTimelineClips(
+    FILE,
+    [{ html, readFrom: null, start: 0, duration: 1, track: 1 }],
+    0,
+    [],
+    false,
+    "index.html",
+  );
+  expect(content).toContain('id="multi"');
+});
+
+// fails without the fix: the check read a comment in an svg <title> as a comment, and the preview server's parser
+// ends the title inside it, serving what follows as markup.
+describe("a paste is checked as the preview server serves the file", () => {
+  const svgClip =
+    '<div id="icon" class="clip" data-start="0" data-duration="1" data-track-index="1">' +
+    "<svg><title><!-- </title><img src=x onerror=f()> --></title></svg></div>";
+
+  it.each([null, "compositions/recv.html", "index.html"])(
+    "as an element read from %s",
+    (readFrom) => {
+      const file = written(() =>
+        pasteElementHtml(FILE, { html: svgClip, readFrom }, false, "index.html"),
+      );
+      expect(runningCode(file)).toEqual([]);
+    },
+  );
+
+  it.each([null, "compositions/recv.html", "index.html"])("as a clip read from %s", (readFrom) => {
+    const clip = { html: svgClip, readFrom, start: 0, duration: 1, track: 1 };
+    const file = written(() => pasteTimelineClips(FILE, [clip], 0, [], true, "index.html").content);
+    expect(runningCode(file)).toEqual([]);
+  });
+
+  it("still pastes an svg whose title is plain text", () => {
+    const icon =
+      '<svg viewBox="0 0 4 4"><title>Icon &lt;/title&gt;</title><circle r="2"></circle></svg>';
+    const file = pasteElementHtml(FILE, { html: icon, readFrom: null }, false, "index.html");
+    expect(file).toMatch(/<title [^>]*>Icon &lt;\/title&gt;<\/title><circle /);
+  });
 });
