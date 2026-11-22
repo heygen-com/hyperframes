@@ -210,6 +210,7 @@ describe("installEditingAgent", () => {
           "live-retime",
           "assets-unloaded",
           "text-edit",
+          "serve-paused-frames",
         ],
       },
     });
