@@ -92,10 +92,8 @@ function pageGotTo(iframe: HTMLIFrameElement | null): string {
   const phase = shadowPlayerReachable(iframe) ? null : shadowPagePhase(iframe);
   if (phase !== "blank" && phase !== "unreadable")
     return phase ? ` Its page had got to: ${phase}.` : "";
-  const given = /^(about:blank)?$/.test(iframe!.getAttribute("src") ?? "")
-    ? "was never given"
-    : "was given";
-  return ` Its page had got to: ${phase}. Its frame ${given} a page address and was added ${Date.now() - frameAddedAt.get(iframe!)!} ms ago.`;
+  const given = /^(about:blank)?$/.test(iframe!.getAttribute("src") ?? "") ? "was never" : "was";
+  return ` Its page had got to: ${phase}. Its frame ${given} given a page address and was added ${Date.now() - frameAddedAt.get(iframe!)!} ms ago.`;
 }
 
 function hyperframesPlayerOf(iframe: HTMLIFrameElement): Element | null {
@@ -230,7 +228,7 @@ export function useShadowPreviewReload({
               : sealed
                 ? "its runtime to report a timeline"
                 : "its timeline to be ready";
-      const got = sealed ? "" : pageGotTo(shadow);
+      const got = sealed ? " Its page had got to: sealed." : pageGotTo(shadow);
       shadowGenRef.current += 1;
       const failedGen = shadowGenRef.current;
       stopPendingShadow();

@@ -517,7 +517,7 @@ describe("shadow reload readiness and failure", () => {
   });
 
   // fails without the fix: a sealed shadow refuses every read, so it was always reported as a page that never loaded.
-  it("says only what a sealed shadow reported when it fails to reload", () => {
+  it("names a sealed shadow's step as sealed, without reading its page, when it fails to reload", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});
     const onPreviewReloadFailed = vi.fn();
@@ -533,7 +533,8 @@ describe("shadow reload readiness and failure", () => {
 
     const [message] = onPreviewReloadFailed.mock.calls[0]!;
     expect(message).toContain("still waiting for its runtime to report a timeline");
-    expect(message).not.toContain("Its page had got to");
+    expect(message).toContain("Its page had got to: sealed.");
+    expect(message).not.toContain("Its frame");
     unmount(root);
   });
 
