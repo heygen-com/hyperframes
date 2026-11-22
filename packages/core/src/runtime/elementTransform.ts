@@ -30,6 +30,7 @@ export interface PlanarTransformOps<M> {
   identity(): M;
   fromTransform(value: string): M | null;
   fromRotate(degrees: number): M;
+  fromScale(x: number, y: number): M;
   /** `outer` applied around `inner`, as an ancestor composes over a child. */
   compose(outer: M, inner: M): M;
 }
@@ -58,6 +59,15 @@ export function individualRotateDegrees(value: string | undefined): number {
   return Number.isFinite(deg) ? deg : 0;
 }
 
+/** The x and y of the CSS `scale` property; null for a 3D scale, whose z is not 1. */
+export function individualScale(value: string | undefined): [number, number] | null {
+  if (!value || value === "none") return [1, 1];
+  const parts = value.trim().split(/\s+/).map(Number);
+  if (parts.length > 3 || !parts.every(Number.isFinite)) return null;
+  const [x, y = x, z = 1] = parts as [number, number?, number?];
+  return z === 1 ? [x, y] : null;
+}
+
 /** One node's own contribution, with the individual properties applied before
  *  `transform` the way CSS does. Null when the node's transform is unusable. */
 function ownNodeTransform<M>(
@@ -69,9 +79,12 @@ function ownNodeTransform<M>(
   if (!style) return null;
   const transform = style.transform;
   const own = transform && transform !== "none" ? ops.fromTransform(transform) : ops.identity();
-  if (!own) return null;
+  const stretch = individualScale(style.scale);
+  if (!own || !stretch) return null;
+  const scaled =
+    stretch[0] === 1 && stretch[1] === 1 ? own : ops.compose(ops.fromScale(...stretch), own);
   const spin = individualRotateDegrees(style.rotate);
-  return spin === 0 ? own : ops.compose(ops.fromRotate(spin), own);
+  return spin === 0 ? scaled : ops.compose(ops.fromRotate(spin), scaled);
 }
 
 /**

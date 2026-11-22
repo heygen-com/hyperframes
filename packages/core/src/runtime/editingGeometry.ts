@@ -108,6 +108,7 @@ export function readElementTransformSnapshot(
     identity: () => new DOMMatrixCtor(),
     fromTransform: (value) => new DOMMatrixCtor(value),
     fromRotate: (degrees) => new DOMMatrixCtor().rotateSelf(degrees),
+    fromScale: (x, y) => new DOMMatrixCtor().scaleSelf(x, y),
     compose: (outer, inner) => outer.multiply(inner),
   };
   try {

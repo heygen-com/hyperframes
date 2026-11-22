@@ -409,6 +409,7 @@ const PLANAR_2D_OPS: PlanarTransformOps<Planar2D> = {
     const rad = (degrees * Math.PI) / 180;
     return { a: Math.cos(rad), b: Math.sin(rad), c: -Math.sin(rad), d: Math.cos(rad) };
   },
+  fromScale: (x, y) => ({ a: x, b: 0, c: 0, d: y }),
   compose: (outer, inner) => ({
     a: outer.a * inner.a + outer.c * inner.b,
     b: outer.b * inner.a + outer.d * inner.b,
