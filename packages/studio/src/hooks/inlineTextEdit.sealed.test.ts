@@ -1232,3 +1232,43 @@ it("keeps both panel saves on different fields of one element when they queue be
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
   expect(text("title")).toBe("<span>Blue</span> <span>Red</span>");
 });
+
+// fails without the fix: the remove waited on the edit's late end, a newer save claimed first, and it was dropped.
+it("keeps a panel remove that ended an edit when a newer save on another field claims first", async () => {
+  const { title, iframe, selection, holdEndReplies } = await sealedTitleHoldingEnds(SPANS);
+  const { persist, text } = sourceFile(undefined, SPANS);
+  const { controls, commits } = wiredEditor(iframe, selection, persist);
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  const release = holdEndReplies();
+  const [first, second] = selection.textFields.map((field) => field.key);
+  const saves: Array<Promise<unknown>> = [];
+  act(() => void saves.push(commits().handleDomRemoveTextField(second!)));
+  act(() => void controls().start(selection.element));
+  act(() => controls().commit());
+  act(() => void saves.push(commits().handleDomTextCommitForSelection(selection, "Blue", first)));
+  release();
+  await act(() => Promise.allSettled(saves));
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+  expect(text("title")).toBe("<span>Blue</span>");
+});
+
+it("keeps a panel remove that ended an edit when a newer save on the same field claims first", async () => {
+  const { title, iframe, selection, holdEndReplies } = await sealedTitleHoldingEnds(SPANS);
+  const { persist, text } = sourceFile(undefined, SPANS);
+  const { controls, commits } = wiredEditor(iframe, selection, persist);
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  const release = holdEndReplies();
+  const [, second] = selection.textFields.map((field) => field.key);
+  const saves: Array<Promise<unknown>> = [];
+  act(() => void saves.push(commits().handleDomRemoveTextField(second!)));
+  act(() => void controls().start(selection.element));
+  act(() => controls().commit());
+  act(() => void saves.push(commits().handleDomTextCommitForSelection(selection, "Red", second)));
+  release();
+  await act(() => Promise.allSettled(saves));
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+  // In gesture order the save targets a field the remove already took out.
+  expect(text("title")).toBe("<span>One</span>");
+});
