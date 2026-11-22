@@ -62,6 +62,8 @@ export class ParentMediaManager {
   private _urlAudioSrc: string | null = null;
   /** A sealed film's copies, keyed by the clip they play, from its runtime's list. */
   private _listed = new Map<string, ProxyEntry>();
+  private _playingCopies = new Set<ProxyEntry>();
+  private _filmSilenced = false;
 
   private readonly _dispatchEvent: (event: Event) => void;
   private readonly _getMuted: () => boolean;
@@ -69,7 +71,7 @@ export class ParentMediaManager {
   private readonly _getPlaybackRate: () => number;
   private readonly _getCurrentTime: () => number;
   private readonly _isPaused: () => boolean;
-  private readonly _muteFrame: () => void;
+  private readonly _setFrameMuted: (muted: boolean) => void;
 
   constructor(opts: {
     dispatchEvent: (event: Event) => void;
@@ -78,8 +80,8 @@ export class ParentMediaManager {
     getPlaybackRate: () => number;
     getCurrentTime: () => number;
     isPaused: () => boolean;
-    /** Silences the film's own media; sent only while a copy plays it instead. */
-    muteFrame: () => void;
+    /** Silences the film's own media while a copy plays it instead, and gives it back after. */
+    setFrameMuted: (muted: boolean) => void;
   }) {
     this._dispatchEvent = opts.dispatchEvent;
     this._getMuted = opts.getMuted;
@@ -87,7 +89,7 @@ export class ParentMediaManager {
     this._getPlaybackRate = opts.getPlaybackRate;
     this._getCurrentTime = opts.getCurrentTime;
     this._isPaused = opts.isPaused;
-    this._muteFrame = opts.muteFrame;
+    this._setFrameMuted = opts.setFrameMuted;
   }
 
   get audioOwner(): "runtime" | "parent" {
@@ -107,6 +109,8 @@ export class ParentMediaManager {
     for (const m of this._entries) if (m !== this._urlAudioEntry) m.el.src = "";
     this._entries = this._urlAudioEntry ? [this._urlAudioEntry] : [];
     this._listed.clear();
+    this._playingCopies.clear();
+    this._filmSilenced = false;
     if (this._urlAudioSrc && !this._urlAudioEntry)
       this._urlAudioEntry = this._createEntry(urlAudio(this._urlAudioSrc));
     this.teardownObserver();
@@ -127,6 +131,8 @@ export class ParentMediaManager {
     }
     this._entries = [];
     this._listed.clear();
+    this._playingCopies.clear();
+    this._filmSilenced = false;
     this._urlAudioEntry = null;
     this._urlAudioSrc = null;
     this._audioOwner = "runtime";
@@ -147,7 +153,10 @@ export class ParentMediaManager {
 
   private _playEntry(m: ProxyEntry): void {
     if (!m.el.src) return;
-    m.el.play().catch((err: unknown) => this._reportPlaybackError(err));
+    m.el.play().catch((err: unknown) => {
+      this._copyLost(m);
+      this._reportPlaybackError(err);
+    });
   }
 
   // Play only if the current playhead is inside the clip's (live) window, so
@@ -318,14 +327,10 @@ export class ParentMediaManager {
    * caller's mirror implementation runs (enabling test spies on the player
    * to fire). If omitted, `mirrorTime` is called directly.
    */
-  promoteToParentProxy(
-    iframeDoc: Document | null,
-    onMirror?: (t: number, opts: { force: boolean }) => void,
-  ): void {
+  promoteToParentProxy(onMirror?: (t: number, opts: { force: boolean }) => void): void {
     if (this._audioOwner === "parent") return;
     this._audioOwner = "parent";
 
-    if (this._filmCopies().length > 0) this._silenceFilm(iframeDoc);
     for (const m of [...this._entries]) this._repointToSource(m);
 
     // One-shot alignment — bypass jitter-coalescing gate.
@@ -453,6 +458,8 @@ export class ParentMediaManager {
       source,
     };
     el.addEventListener("seeked", () => this._noteSeekLanded(entry));
+    el.addEventListener("playing", () => this._copyPlaying(entry));
+    el.addEventListener("error", () => this._copyLost(entry));
     this._entries.push(entry);
     return entry;
   }
@@ -462,19 +469,29 @@ export class ParentMediaManager {
     return this._entries.filter((m) => m !== this._urlAudioEntry);
   }
 
-  // The film's own output goes silent only while a copy plays it instead. Muting the frame's
+  // The film goes silent once a copy of its media is heard instead. Muting an unsealed frame's
   // elements here too closes the race until the runtime applies the message.
-  private _silenceFilm(iframeDoc: Document | null): void {
-    for (const el of iframeDoc?.querySelectorAll("video, audio") ?? []) {
+  private _copyPlaying(entry: ProxyEntry): void {
+    if (entry === this._urlAudioEntry || this._audioOwner !== "parent") return;
+    this._playingCopies.add(entry);
+    if (this._filmSilenced) return;
+    this._filmSilenced = true;
+    for (const el of entry.source?.ownerDocument.querySelectorAll("video, audio") ?? []) {
       if (isRealmHtmlMediaElement(el)) el.muted = true;
     }
-    this._muteFrame();
+    this._setFrameMuted(true);
+  }
+
+  private _copyLost(entry: ProxyEntry): void {
+    this._playingCopies.delete(entry);
+    if (!this._filmSilenced || this._playingCopies.size > 0) return;
+    this._filmSilenced = false;
+    this._setFrameMuted(false);
   }
 
   // A copy made while the parent owns playback catches up at once, past the jitter gate.
-  private _copyAdded(entry: ProxyEntry, iframeDoc: Document | null = null): void {
+  private _copyAdded(entry: ProxyEntry): void {
     if (this._audioOwner !== "parent") return;
-    this._silenceFilm(iframeDoc);
     this.mirrorTime(this._getCurrentTime(), { force: true });
     if (!this._isPaused()) this._playEntryIfActive(entry);
   }
@@ -482,7 +499,7 @@ export class ParentMediaManager {
   private _adoptIframeMedia(iframeEl: HTMLMediaElement): void {
     if (this._entries.some((m) => m.source === iframeEl)) return;
     const copy = parentCopyOf(iframeEl);
-    if (copy) this._copyAdded(this._createEntry(copy, iframeEl), iframeEl.ownerDocument);
+    if (copy) this._copyAdded(this._createEntry(copy, iframeEl));
   }
 
   // The runtime re-points a clip (its preview copy, a new bound file). A proxy that is not
@@ -521,6 +538,7 @@ export class ParentMediaManager {
     entry.el.pause();
     entry.el.src = "";
     this._entries.splice(this._entries.indexOf(entry), 1);
+    this._copyLost(entry);
   }
 
   private _observeDynamicMedia(doc: Document): void {
@@ -628,6 +646,8 @@ function underComposition(src: string, compositionUrl: string | null): string | 
   try {
     const file = new URL(src);
     const base = new URL(compositionUrl);
+    const web = /^https?:$/;
+    if (!web.test(file.protocol) || !web.test(base.protocol)) return null;
     const folder = base.pathname.slice(0, base.pathname.lastIndexOf("/") + 1);
     if (file.origin !== base.origin || !file.pathname.startsWith(folder)) return null;
     const parts = file.pathname.slice(folder.length).split("/").map(decodeURIComponent);

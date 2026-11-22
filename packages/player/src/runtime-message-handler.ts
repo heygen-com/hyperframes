@@ -145,9 +145,7 @@ export function handleRuntimeMessage(
       /* cross-origin */
     }
     if (!iframeDoc) callbacks.media.setupFromList(data["media"], callbacks.getCompositionUrl());
-    callbacks.media.promoteToParentProxy(iframeDoc, (t, opts) =>
-      callbacks.media.mirrorTime(t, opts),
-    );
+    callbacks.media.promoteToParentProxy((t, opts) => callbacks.media.mirrorTime(t, opts));
     return;
   }
 

@@ -188,7 +188,7 @@ class HyperframesPlayer extends HTMLElement {
       getPlaybackRate: () => this.playbackRate,
       getCurrentTime: () => this._currentTime,
       isPaused: () => this._paused,
-      muteFrame: () => this._sendControl("set-media-output-muted", { muted: true }),
+      setFrameMuted: (muted) => this._sendControl("set-media-output-muted", { muted }),
     });
 
     this._directTimelineClock = new DirectTimelineClock({
@@ -1670,13 +1670,7 @@ class HyperframesPlayer extends HTMLElement {
     this._media.mirrorTime(t, opts);
   }
   _promoteToParentProxy() {
-    let d: Document | null = null;
-    try {
-      d = this.iframe.contentDocument;
-    } catch {
-      /* x-origin */
-    }
-    this._media.promoteToParentProxy(d, (t, o) => this._mirrorParentMediaTime(t, o));
+    this._media.promoteToParentProxy((t, o) => this._mirrorParentMediaTime(t, o));
   }
   _observeDynamicMedia(doc: Document) {
     this._media.setupFromIframe(doc);

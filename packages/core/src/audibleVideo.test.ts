@@ -109,4 +109,14 @@ describe("parentCopyOf", () => {
     ).toBeNull();
     expect(parentCopyOf(media('<audio data-start="0"></audio>'))).toBeNull();
   });
+
+  it("gives a clip whose file address is invalid no copy, and leaves the others alone", () => {
+    document.body.innerHTML =
+      '<audio src="https://[" data-start="0"></audio><audio src="b.m4a" data-start="0"></audio>';
+    const copies = [...document.querySelectorAll("audio")].map((el) => parentCopyOf(el));
+    expect(copies.map((c) => c?.src ?? null)).toEqual([
+      null,
+      new URL("b.m4a", document.baseURI).href,
+    ]);
+  });
 });

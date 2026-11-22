@@ -39,7 +39,12 @@ export interface ParentCopy {
 
 export function mediaFileOf(el: HTMLMediaElement): string | null {
   const raw = el.getAttribute("src") || el.querySelector("source")?.getAttribute("src");
-  return raw ? new URL(raw, el.ownerDocument.baseURI).href : null;
+  if (!raw) return null;
+  try {
+    return new URL(raw, el.ownerDocument.baseURI).href;
+  } catch {
+    return null;
+  }
 }
 
 export function parentCopyOf(el: HTMLMediaElement): ParentCopy | null {
