@@ -41,7 +41,13 @@ import {
 } from "../player/lib/previewElements";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
 import { endInlineEditOn, textSaveEnded, type InlineTextEditCommit } from "./useInlineTextEdit";
-import { landedTextFor, nextTextSaveOrder, rememberTextTarget, requestedOrder } from "./textSaves";
+import {
+  landedTextFor,
+  nextTextSaveOrder,
+  queueTextSave,
+  rememberTextTarget,
+  requestedOrder,
+} from "./textSaves";
 import type { UseDomSelectionReturn } from "./useDomSelectionTypes";
 
 // ── Types ──
@@ -196,7 +202,7 @@ export function useDomEditTextCommits({
     [domEditSelection, handleDomStyleCommitForSelection],
   );
 
-  const handleDomTextCommitForSelection = useCallback(
+  const commitTextForSelection = useCallback(
     async (
       selection: DomEditSelection,
       value: string,
@@ -259,6 +265,12 @@ export function useDomEditTextCommits({
       reloadPreview,
       showToast,
     ],
+  );
+
+  const handleDomTextCommitForSelection = useCallback(
+    (selection: DomEditSelection, value: string, fieldKey?: string) =>
+      queueTextSave(selection.element, commitTextForSelection(selection, value, fieldKey)),
+    [commitTextForSelection],
   );
 
   const handleDomTextCommit = useCallback(
@@ -375,7 +387,7 @@ export function useDomEditTextCommits({
     [commitRichText],
   );
 
-  const commitDomTextFields = useCallback(
+  const commitTextFields = useCallback(
     async (
       snapshot: DomEditSelection,
       change: (fields: DomEditTextField[]) => DomEditTextField[],
@@ -446,6 +458,15 @@ export function useDomEditTextCommits({
       reloadPreview,
       showToast,
     ],
+  );
+
+  const commitDomTextFields = useCallback(
+    (
+      snapshot: DomEditSelection,
+      change: (fields: DomEditTextField[]) => DomEditTextField[],
+      options?: { importedFont?: ImportedFontAsset | null; fontFamily?: boolean },
+    ) => queueTextSave(snapshot.element, commitTextFields(snapshot, change, options)),
+    [commitTextFields],
   );
 
   const handleDomTextFieldStyleCommit = useCallback(

@@ -2,7 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import { usePreviewReadOnly } from "../components/editor/previewReadOnlyContext";
 import { settleOnDrain, trackStudioPendingEdit } from "../utils/studioPendingEdits";
-import { isTextTargetWriting, landedTextFor, nextTextSaveOrder, orderedSave } from "./textSaves";
+import {
+  isTextTargetWriting,
+  landedTextFor,
+  nextTextSaveOrder,
+  orderedSave,
+  queueTextSave,
+  textSavesSettled,
+} from "./textSaves";
 import {
   beginStudioManualEditGesture,
   endStudioManualEditGesture,
@@ -179,7 +186,7 @@ const savingOn = new WeakMap<HTMLElement, Promise<unknown>>();
 
 /** A draft's save counts as in flight from its request until it settles, so every later save on it waits. */
 function handedOff<T>(element: HTMLElement, saving: T): T {
-  const run = Promise.resolve(saving);
+  const run = queueTextSave(element, Promise.resolve(saving));
   savingOn.set(element, run);
   const done = () => void (savingOn.get(element) === run && savingOn.delete(element));
   run.then(done, done);
@@ -275,7 +282,11 @@ export function useInlineTextEdit({
         onPause?.();
         sealed.iframe.focus();
         const params = { handle: sealed.handle, action: "start" as const, caret: null };
-        void previewTextEdit(sealed.iframe, params).then((reply) => {
+        // Saves land in gesture order, as a scriptable preview applies them, so the edit opens on their text.
+        const begin = () =>
+          openRef.current === open ? previewTextEdit(sealed.iframe, params) : Promise.resolve(null);
+        const settled = textSavesSettled(element);
+        void (settled ? settled.then(begin) : begin()).then((reply) => {
           if (openRef.current !== open) return;
           if (reply?.applied) open.original = reply.previous ?? "";
           else {

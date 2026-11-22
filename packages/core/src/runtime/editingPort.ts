@@ -238,6 +238,7 @@ export interface EditingRuntimeSnapshot {
 }
 
 export const MAX_DRAFT_PX = 100_000;
+export const EDITING_REQUEST_TIMEOUT_MS = 5_000;
 export const MAX_DRAFT_DEG = 36_000;
 export const MAX_WATCHED_KEYS = 32;
 
@@ -714,7 +715,7 @@ export function createEditingPortClient(options: {
   timeoutMs?: number;
   host?: Window;
 }): EditingPortClient {
-  const { iframe, timeoutMs = 5_000, host = window } = options;
+  const { iframe, timeoutMs = EDITING_REQUEST_TIMEOUT_MS, host = window } = options;
   const pending = new Map<number, Pending>();
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();

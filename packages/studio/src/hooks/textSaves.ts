@@ -1,3 +1,4 @@
+import { EDITING_REQUEST_TIMEOUT_MS } from "@hyperframes/core/runtime/editing-port";
 import { previewChangesOutsideTextSaves } from "../player/previewReloading";
 
 let lastOrder = 0;
@@ -44,4 +45,24 @@ export function landedTextFor(element: HTMLElement): string | undefined {
 export function isTextTargetWriting(element: HTMLElement): boolean {
   const target = targetOf.get(element);
   return (target?.targets.writing.get(target.key) ?? 0) > 0;
+}
+
+const queuedOn = new WeakMap<HTMLElement, Promise<unknown>>();
+
+/** Holds a text save of `element` from its request until it settles; an edit opening on it waits for it. */
+export function queueTextSave<T>(element: HTMLElement, saving: Promise<T>): Promise<T> {
+  const all = Promise.allSettled([queuedOn.get(element), saving]);
+  queuedOn.set(element, all);
+  void all.then(() => queuedOn.get(element) === all && queuedOn.delete(element));
+  return saving;
+}
+
+/** Resolves once the element's queued text saves settle, or after the frame's own request timeout. */
+export function textSavesSettled(element: HTMLElement): Promise<void> | null {
+  const queued = queuedOn.get(element);
+  if (!queued) return null;
+  return Promise.race([
+    queued.then(() => {}),
+    new Promise<void>((resolve) => setTimeout(resolve, EDITING_REQUEST_TIMEOUT_MS)),
+  ]);
 }
