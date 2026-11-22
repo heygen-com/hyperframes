@@ -61,13 +61,14 @@ try {
     waitUntil: "domcontentloaded",
   });
   await switched.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
-  await switched.evaluate(
-    () =>
-      new Promise<void>((resolve) => {
-        const player = document.querySelector("hyperframes-player")!;
-        player.addEventListener("ready", () => resolve(), { once: true });
-        player.setAttribute("sandbox-origin", "opaque");
-      }),
+  await switched.evaluate(() => {
+    (window as { __lastTimeline?: unknown }).__lastTimeline = undefined;
+    document.querySelector("hyperframes-player")!.setAttribute("sandbox-origin", "opaque");
+  });
+  // The sealed document's own timeline, which comes after its static ready: the one a switch leaves behind.
+  await switched.waitForFunction(
+    () => (window as { __lastTimeline?: unknown }).__lastTimeline !== undefined,
+    { timeout: 15_000 },
   );
   const lateError = await switched.evaluate(async () => {
     const w = window as { __lastTimeline?: unknown; __playerError?: string };
