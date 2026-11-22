@@ -45,7 +45,7 @@ vi.mock("node:child_process", async (actual) => {
   return {
     ...cp,
     execFileSync: ((file: string, ...rest: unknown[]) =>
-      file === "ioreg"
+      file === "/usr/sbin/ioreg"
         ? ioreg
         : (cp.execFileSync as (...args: unknown[]) => unknown)(
             file,

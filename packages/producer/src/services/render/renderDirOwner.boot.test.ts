@@ -28,14 +28,19 @@ vi.mock("node:fs", async (load) => {
     }) as typeof fs.readlinkSync,
   };
 });
+const tools = vi.hoisted(() => ({ ran: [] as string[] }));
 vi.mock("node:child_process", async (load) => {
   const cp = await load<typeof import("node:child_process")>();
   const ioreg =
     '+-o J316sAP  <class IOPlatformExpertDevice>\n    "IOPlatformUUID" = "11111111-2222-3333-4444-555555555555"\n';
   return {
     ...cp,
-    execFileSync: ((file: string, ...rest: never[]) =>
-      file === "ioreg" ? ioreg : cp.execFileSync(file, ...rest)) as typeof cp.execFileSync,
+    execFileSync: ((file: string, ...rest: never[]) => {
+      tools.ran.push(file);
+      if (file === "/usr/sbin/ioreg") return ioreg;
+      if (/reg\.exe$/i.test(file)) return "    MachineGuid    REG_SZ    aaaa-bbbb\r\n";
+      return cp.execFileSync(file, ...rest);
+    }) as typeof cp.execFileSync,
   };
 });
 
@@ -96,4 +101,20 @@ it.each([
   deadRenderDir(stamp);
   later();
   expect(listAbandonedRenderDirs(parent)).toEqual([]);
+});
+
+// fails without the fix: the tools ran by bare name, which Windows can resolve from the project folder.
+it.each([
+  ["darwin", undefined, ["/usr/sbin/ioreg"]],
+  ["win32", "C:\\Windows", ["C:\\Windows\\System32\\reg.exe"]],
+  ["win32", "Windows", []],
+])("asks %s's own tool by its absolute path (system root %s)", async (os, systemRoot, expected) => {
+  Object.defineProperty(process, "platform", { value: os });
+  vi.stubEnv("SystemRoot", systemRoot);
+  tools.ran.length = 0;
+  vi.resetModules();
+  const fresh = await import("./renderDirOwner.js");
+  fresh.createOwnedRenderDir(join(parent, `hf-render-${os}-`));
+  vi.unstubAllEnvs();
+  expect(tools.ran).toEqual(expected);
 });
