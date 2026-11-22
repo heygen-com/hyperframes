@@ -1,4 +1,5 @@
 import { mediaElementTime } from "./mediaClock";
+import { loadedByRuntime, runtimeLoad } from "./runtimeLoad";
 
 // A sealed preview's document has an opaque origin, so its own server's media is cross-origin to it. Without
 // `crossorigin` the browser loads that media in no-cors mode: WebGL and canvases refuse its frames, Web Audio treats it
@@ -31,9 +32,6 @@ const seen = new WeakSet<HTMLMediaElement>();
 // A crossorigin change we did not write, even to our own value, makes the attribute the composition's for good.
 const authored = new WeakSet<HTMLMediaElement>();
 const pendingWrites = new WeakMap<HTMLMediaElement, number>();
-let reloading: HTMLMediaElement | null = null;
-// Reloaded by us and not yet started, with the candidates it was for: Chrome keeps NO_SOURCE a few ms meanwhile.
-const selecting = new WeakMap<HTMLMediaElement, string>();
 const pendingPlays = new WeakMap<HTMLMediaElement, Set<object>>();
 const retryOf = new WeakMap<object, Promise<void>>();
 let nativePlay: HTMLMediaElement["play"];
@@ -60,8 +58,6 @@ function selectable(media: HTMLMediaElement, home: string): string[] {
     return [resolved(src, home)];
   });
 }
-
-const candidates = (media: HTMLMediaElement) => selectable(media, home).join(" ");
 
 const isHome = (url: string, home: string) => originOf(url, home) === originOf(home, home);
 // As unsealed Studio reads pixels: only the preview's own host; a list naming another host stays as written.
@@ -97,13 +93,7 @@ function sync(media: HTMLMediaElement, home: string): void {
 // load() resets the playhead, rate and play state; set in the same task, a later change by the composition wins.
 function reload(media: HTMLMediaElement): void {
   const { currentTime, playbackRate, paused } = media;
-  reloading = media;
-  try {
-    media.load();
-  } finally {
-    reloading = null;
-  }
-  selecting.set(media, candidates(media));
+  runtimeLoad(media);
   if (currentTime) media.currentTime = mediaElementTime(currentTime);
   media.playbackRate = playbackRate;
   if (paused) return;
@@ -127,11 +117,9 @@ function play(this: HTMLMediaElement): Promise<void> {
   return settle(nativePlay.call(this)).finally(() => plays.delete(token));
 }
 
-// A load() anyone but us makes tries every source again, as the browser does. One landing before our reload's
-// selection starts, on the same candidates (the runtime's preload reads NO_SOURCE as idle), joins that selection.
+// Only the composition's own load() tries a down source again, as the browser would; the runtime's keep the mark.
 function load(this: HTMLMediaElement): void {
-  const joins = selecting.get(this) === candidates(this);
-  if (reloading !== this && !joins) down.delete(this);
+  if (!loadedByRuntime(this)) down.delete(this);
   nativeLoad.call(this);
 }
 
@@ -220,7 +208,6 @@ let home = "";
 // One function each, so a second start adds no second listener.
 const onError = (event: Event) => failed(event, home);
 const onFirstFrame = (event: Event) => firstFrame(event, home);
-const onLoadStart = (event: Event) => selecting.delete(event.target as HTMLMediaElement);
 
 /** In a sealed document, opts the preview server's own media into CORS as it parses or changes src, before it loads;
  * a source that refuses CORS on an element plays there without it, after one more load. */
@@ -251,7 +238,6 @@ export function corsForSealedMedia(): MutationObserver | null {
   // Media events do not bubble; capture listeners on the document hear every element's.
   document.addEventListener("error", onError, true);
   document.addEventListener("loadeddata", onFirstFrame, true);
-  document.addEventListener("loadstart", onLoadStart, true);
   const media = HTMLMediaElement.prototype;
   if (media.play !== play) [nativePlay, media.play] = [media.play, play];
   if (media.load !== load) [nativeLoad, media.load] = [media.load, load];
