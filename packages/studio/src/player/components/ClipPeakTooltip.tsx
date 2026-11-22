@@ -6,15 +6,26 @@ export const ClipPeakDescriptionContext = createContext<((detail: string | null)
 );
 
 export function ClipPeakTooltip({
+  truncatedLabel = null,
   children,
 }: {
+  truncatedLabel?: string | null;
   children: ReactElement<{ title?: string; "aria-describedby"?: string }>;
 }) {
   const [detail, setDetail] = useState<string | null>(null);
+  const [triggerOpen, setTriggerOpen] = useState(false);
+  const label = detail ?? truncatedLabel;
+  const open = label !== null && (triggerOpen || truncatedLabel !== null);
+
   return (
     <ClipPeakDescriptionContext.Provider value={setDetail}>
-      <Tooltip label={detail ?? ""} disabled={detail === null}>
-        {cloneElement(children, { title: detail === null ? children.props.title : undefined })}
+      <Tooltip
+        label={label ?? ""}
+        open={open}
+        onOpenChange={setTriggerOpen}
+        disabled={label === null}
+      >
+        {cloneElement(children, { title: label === null ? children.props.title : undefined })}
       </Tooltip>
     </ClipPeakDescriptionContext.Provider>
   );

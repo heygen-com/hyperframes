@@ -1,4 +1,4 @@
-import { memo, type CSSProperties, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import {
   CLIP_TRIM_HIT_PX,
@@ -18,6 +18,7 @@ import { OutOfSyncBadge } from "./OutOfSyncBadge";
 import { clipSpeedSuffix } from "./clipToolAttrs";
 import { ClipPeakTooltip } from "./ClipPeakTooltip";
 import { timeLayerPercent } from "./TimelineTimeLayer";
+import { TOOLTIP_HOVER_DELAY_MS, Tooltip } from "../../components/ui/Tooltip";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -59,6 +60,79 @@ export function clipZoomKey(el: TimelineElement, pps: number, interacting: boole
   return `${clipWidthLadder(widthPx)}${widthPx >= HANDLES_MIN_PX ? "+handles" : ""}`;
 }
 
+/** Measures label overflow only on hover/focus so zooming never triggers per-clip layout reads. */
+function useTruncatedClipTooltip(
+  isAudioClip: boolean,
+  onHoverStart: () => void,
+  onHoverEnd: () => void,
+  onPointerDownProp?: (e: React.PointerEvent) => void,
+) {
+  const [showFullName, setShowFullName] = useState(false);
+  const clipRef = useRef<HTMLButtonElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const nameRef = useRef<HTMLSpanElement>(null);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearHoverTimer = () => {
+    if (hoverTimerRef.current !== null) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => clearHoverTimer, []);
+
+  const isTruncated = () => {
+    const el = isAudioClip ? labelRef.current : nameRef.current;
+    return el !== null && el.scrollWidth > el.clientWidth;
+  };
+
+  const closeTooltip = () => {
+    clearHoverTimer();
+    setShowFullName(false);
+  };
+
+  const handlePointerEnter = () => {
+    onHoverStart();
+    clearHoverTimer();
+    if (!isTruncated()) {
+      setShowFullName(false);
+      return;
+    }
+    hoverTimerRef.current = setTimeout(() => {
+      hoverTimerRef.current = null;
+      setShowFullName(true);
+    }, TOOLTIP_HOVER_DELAY_MS);
+  };
+
+  const handlePointerLeave = () => {
+    closeTooltip();
+    onHoverEnd();
+  };
+
+  const handleFocus = () => {
+    clearHoverTimer();
+    setShowFullName(isTruncated());
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    closeTooltip();
+    onPointerDownProp?.(e);
+  };
+
+  return {
+    showFullName,
+    clipRef,
+    labelRef,
+    nameRef,
+    handlePointerEnter,
+    handlePointerLeave,
+    handleFocus,
+    handleBlur: closeTooltip,
+    handlePointerDown,
+  };
+}
+
 // fallow-ignore-next-line complexity
 export const TimelineClip = memo(function TimelineClip({
   el,
@@ -95,6 +169,24 @@ export const TimelineClip = memo(function TimelineClip({
   const showDefaultText = !hasCustomContent && ladder === "labeled";
   const startLabel = el.start.toFixed(1);
   const endLabel = (el.start + el.duration).toFixed(1);
+  const {
+    showFullName,
+    clipRef,
+    labelRef,
+    nameRef,
+    handlePointerEnter,
+    handlePointerLeave,
+    handleFocus,
+    handleBlur,
+    handlePointerDown,
+  } = useTruncatedClipTooltip(isAudioClip, onHoverStart, onHoverEnd, onPointerDown);
+  const nativeTitle = isComposition
+    ? `${el.compositionSrc} • Double-click to open`
+    : `${displayLabel} • ${startLabel}s to ${endLabel}s`;
+  const tooltipLabel = isComposition
+    ? `${displayLabel} • Double-click to open`
+    : `${displayLabel} • ${startLabel}s to ${endLabel}s`;
+  const hasPeakTooltip = isAudioClip || Boolean(el.hasAudio);
   const themeVariables = {
     "--clip-bg": theme.clipBackground,
     "--clip-bg-active": theme.clipBackgroundActive,
@@ -145,6 +237,7 @@ export const TimelineClip = memo(function TimelineClip({
 
   const clip = (
     <button
+      ref={clipRef}
       type="button"
       data-clip={isGestureActor ? undefined : "true"}
       data-el-id={isGestureActor ? undefined : (el.key ?? el.id)}
@@ -167,14 +260,12 @@ export const TimelineClip = memo(function TimelineClip({
       }
       className={clipClassName}
       style={style}
-      title={
-        isComposition
-          ? `${el.compositionSrc} • Double-click to open`
-          : `${displayLabel} • ${startLabel}s to ${endLabel}s`
-      }
-      onPointerEnter={onHoverStart}
-      onPointerLeave={onHoverEnd}
-      onPointerDown={onPointerDown}
+      title={!hasPeakTooltip && showFullName ? undefined : nativeTitle}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+      onPointerDown={handlePointerDown}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
@@ -240,8 +331,10 @@ export const TimelineClip = memo(function TimelineClip({
         </div>
       )}
       {showLabel && (
-        <span className="timeline-clip__label">
-          <span className="timeline-clip__name">{displayLabel}</span>
+        <span ref={labelRef} className="timeline-clip__label">
+          <span ref={nameRef} className="timeline-clip__name">
+            {displayLabel}
+          </span>
           {!isAudioClip && badges}
         </span>
       )}
@@ -271,5 +364,11 @@ export const TimelineClip = memo(function TimelineClip({
       )}
     </button>
   );
-  return isAudioClip || el.hasAudio ? <ClipPeakTooltip>{clip}</ClipPeakTooltip> : clip;
+  return hasPeakTooltip ? (
+    <ClipPeakTooltip truncatedLabel={showFullName ? tooltipLabel : null}>{clip}</ClipPeakTooltip>
+  ) : (
+    <Tooltip label={tooltipLabel} open={showFullName} anchor={() => clipRef.current}>
+      {clip}
+    </Tooltip>
+  );
 });
