@@ -64,7 +64,7 @@ function closestAcrossShadow(element: Element | null, selector: string): Element
   for (let at = element; at; ) {
     const hit = at.closest(selector);
     if (hit) return hit;
-    at = (at.getRootNode() as Partial<ShadowRoot>).host ?? null;
+    at = (at.getRootNode?.() as Partial<ShadowRoot> | undefined)?.host ?? null;
   }
   return null;
 }
