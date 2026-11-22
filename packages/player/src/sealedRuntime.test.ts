@@ -118,6 +118,15 @@ describe("a sealed player brings its own runtime", () => {
     expect(el.iframeElement.getAttribute("src")).toContain("[not a host");
   });
 
+  it("unloads a sealed composition when the player switches to a video", async () => {
+    const el = player({ "sandbox-origin": "", src: sameSite() });
+    await srcdocOf(el);
+    el.setAttribute("type", "video/mp4");
+    el.setAttribute("src", `${location.origin}/clip.mp4`);
+
+    expect(el.iframeElement.hasAttribute("srcdoc")).toBe(false);
+  });
+
   it("leaves an unsealed player's src load as it was", () => {
     const el = player({ src: sameSite() });
 

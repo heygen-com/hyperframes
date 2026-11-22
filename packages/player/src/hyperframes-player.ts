@@ -42,7 +42,6 @@ import {
 // timeline itself respects. Clamping here also shields the native
 // HTMLMediaElement.playbackRate setter, which throws for extreme values in
 // production browsers.
-/** `src` resolved against the page, or null when it is not a URL (URL.parse is too new for older Safari). */
 function parseUrl(src: string): URL | null {
   try {
     return new URL(src, document.baseURI);
@@ -144,7 +143,6 @@ class HyperframesPlayer extends HTMLElement {
   private _ready = false;
   /** Bumped by every navigation, so a sealed load that resolves late shows nothing stale. */
   private _documentLoad = 0;
-  /** The absolute URL of the composition the frame shows; null for a srcdoc or a video. */
   private _compositionUrl: string | null = null;
   private _readyDocument: Document | null = null;
   private _connected = false;
@@ -315,7 +313,6 @@ class HyperframesPlayer extends HTMLElement {
           this._documentLoad++;
           this.iframe.removeAttribute("srcdoc");
           const src = this.getAttribute("src");
-          // A sealed frame shows a URL only through the sealed load, which adds the runtime.
           if (src !== null && (this._wantsVideo() || this.hasAttribute(SANDBOX_ORIGIN_ATTR)))
             this._navigateSrc(src);
         }
@@ -1087,6 +1084,8 @@ class HyperframesPlayer extends HTMLElement {
     this._documentLoad++;
     this._compositionUrl = null;
     if (this._wantsVideo()) {
+      // A sealed composition shown as srcdoc would outlive the frame's about:blank.
+      this.iframe.removeAttribute("srcdoc");
       this._loadVideo(src);
       return;
     }
