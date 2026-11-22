@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -240,7 +240,7 @@ const cases: Array<{ name: string; script?: string; expected: AudioFailureDiagno
   {
     name: "group submix",
     script:
-      'const fs = require("node:fs"); if (process.argv.includes("-filter_complex_script")) process.exit(9); fs.writeFileSync(process.argv.at(-1), "audio");',
+      'const fs = require("node:fs"); if (process.argv.includes("-demuxers")) process.exit(0); if (process.argv.includes("-filter_complex_script")) process.exit(9); fs.writeFileSync(process.argv.at(-1), "audio");',
     expected: {
       stage: "mix",
       reason: "ffmpeg_failed",
@@ -258,6 +258,9 @@ for (const scenario of cases) {
     async () => {
       const root = mkdtempSync(join(tmpdir(), "hf-diagnostic-private-"));
       roots.push(root);
+      // A stand-in answering every call as an encode wrote "audio" to `-demuxers`, the listing's last argument.
+      const stray = join(process.cwd(), "-demuxers");
+      rmSync(stray, { force: true });
       const executable = join(root, "ffmpeg-private");
       if (scenario.script) {
         writeFileSync(executable, `#!${process.execPath}\n${scenario.script}\n`);
@@ -311,6 +314,7 @@ for (const scenario of cases) {
         "private-customer-stderr",
       ])
         expect(line).not.toContain(secret);
+      expect(existsSync(stray)).toBe(false);
     },
   );
 }
