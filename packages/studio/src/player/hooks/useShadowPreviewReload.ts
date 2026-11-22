@@ -75,8 +75,10 @@ function shadowPlayerReachable(iframe: HTMLIFrameElement | null): boolean {
 }
 
 function shadowPagePhase(iframe: HTMLIFrameElement | null): string {
-  const doc = iframe?.contentDocument;
-  if (!doc || doc.URL === "about:blank") return "no-page";
+  const doc = iframe?.isConnected ? iframe.contentDocument : undefined;
+  if (doc === undefined) return "no-frame";
+  if (!doc) return "unreadable";
+  if (doc.URL === "about:blank") return "blank";
   const win = iframe!.contentWindow as unknown as Record<string, unknown>;
   if (doc.readyState === "loading") return "page-loading";
   if (win.__hfStartupError) return "startup-error";
@@ -85,8 +87,14 @@ function shadowPagePhase(iframe: HTMLIFrameElement | null): string {
   return "no-player";
 }
 
-const pageGotTo = (iframe: HTMLIFrameElement | null) =>
-  shadowPlayerReachable(iframe) ? "" : ` Its page had got to: ${shadowPagePhase(iframe)}.`;
+const frameAddedAt = new WeakMap<HTMLIFrameElement, number>();
+function pageGotTo(iframe: HTMLIFrameElement | null): string {
+  const phase = shadowPlayerReachable(iframe) ? null : shadowPagePhase(iframe);
+  if (phase !== "blank" && phase !== "unreadable")
+    return phase ? ` Its page had got to: ${phase}.` : "";
+  const given = /^(about:blank)?$/.test(iframe!.getAttribute("src") ?? "") ? "was never" : "was";
+  return ` Its page had got to: ${phase}. Its frame ${given} given a page address and was added ${Date.now() - frameAddedAt.get(iframe!)!} ms ago.`;
+}
 
 function hyperframesPlayerOf(iframe: HTMLIFrameElement): Element | null {
   const root = iframe.getRootNode();
@@ -220,7 +228,7 @@ export function useShadowPreviewReload({
               : sealed
                 ? "its runtime to report a timeline"
                 : "its timeline to be ready";
-      const got = sealed ? "" : pageGotTo(shadow);
+      const got = sealed ? " Its page had got to: sealed." : pageGotTo(shadow);
       shadowGenRef.current += 1;
       const failedGen = shadowGenRef.current;
       stopPendingShadow();
@@ -424,6 +432,7 @@ export function useShadowPreviewReload({
 
   const setShadowIframeNode = useCallback((node: HTMLIFrameElement | null) => {
     shadowIframeRef.current = node;
+    if (node) frameAddedAt.set(node, Date.now());
     if (node) hyperframesPlayerOf(node)?.toggleAttribute("inert", true);
     const gen = budgetGenRef.current;
     if (!node || !shadowFrameLeftPageRef.current || gen == null || gen !== shadowGenRef.current)
