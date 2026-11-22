@@ -115,8 +115,9 @@ async function unheld(studioPage: Page, run: () => Promise<unknown>) {
 async function gesture(studioPage: Page, frame: Frame, step: Step) {
   if ("type" in step)
     return frame.evaluate(({ field, text }) => {
+      // Keys reach only an element in an edit.
       const span = document.getElementById("t")!.querySelectorAll("span")[field];
-      if (span) span.textContent = text;
+      if (span?.isContentEditable) span.textContent = text;
     }, step.type);
   if ("end" in step && step.end === "blur")
     return frame.evaluate(() =>

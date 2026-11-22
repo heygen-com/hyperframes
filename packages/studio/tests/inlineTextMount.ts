@@ -1,6 +1,6 @@
 // Studio's inline text editing and text saves, mounted in the test page as the canvas wires them, over a file whose
 // writes the test decides: each lands, fails or waits, in the order they reach it.
-import { createElement } from "react";
+import { createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { patchElementInHtml } from "@hyperframes/studio-server/source-mutation";
@@ -65,13 +65,15 @@ export function mountTextEditing(
     const found = await findPreviewElementForSelection(iframe, { id, sourceFile: PATH }, PATH);
     return (await resolvePreviewSelection(iframe, found!, OPTIONS))!;
   };
-  let selection: DomEditSelection | null = null;
+  let setSelection!: (selection: DomEditSelection | null) => void;
   let controls!: ReturnType<typeof useInlineTextEdit>;
   let commits!: ReturnType<typeof useDomEditTextCommits>;
   const root = createRoot(document.createElement("div"));
   flushSync(() =>
     root.render(
       createElement(() => {
+        const [selection, set] = useState<DomEditSelection | null>(null);
+        setSelection = set;
         commits = useDomEditTextCommits({
           activeCompPath: PATH,
           previewIframeRef: { current: iframe },
@@ -95,7 +97,11 @@ export function mountTextEditing(
     return new DOMParser().parseFromString(file, "text/html").getElementById(id)!.innerHTML;
   }
   return {
-    select: async () => (selection = await select()),
+    select: async () => {
+      const selection = await select();
+      flushSync(() => setSelection(selection));
+      return selection;
+    },
     controls: () => controls,
     commits: () => commits,
     saved,
