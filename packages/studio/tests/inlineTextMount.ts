@@ -14,7 +14,11 @@ import type { DomEditSelection } from "../src/components/editor/domEditing";
 import type { PersistDomEditOperations } from "../src/hooks/domEditCommitTypes";
 import { useDomEditTextCommits } from "../src/hooks/useDomEditTextCommits";
 import { useInlineTextEdit } from "../src/hooks/useInlineTextEdit";
-import { hasStudioPendingEdits } from "../src/utils/studioPendingEdits";
+import {
+  afterStudioPendingEdits,
+  hasStudioPendingEdits,
+  isStudioEditSaving,
+} from "../src/utils/studioPendingEdits";
 import {
   afterStudioManualEditGestures,
   isStudioManualEditGestureLiveIn,
@@ -112,6 +116,14 @@ export function mountTextEditing(
   function saved() {
     return new DOMParser().parseFromString(file, "text/html").getElementById(id)!.innerHTML;
   }
+  // As Studio's shadow reload (useShadowPreviewReload.ts): after a live gesture, then after pending saves.
+  function reloadWhenFree(load: () => void): void {
+    const doc = gestureDocumentOf(iframe);
+    const retry = () => reloadWhenFree(load);
+    if (doc && isStudioManualEditGestureLiveIn(doc)) afterStudioManualEditGestures(doc, retry);
+    else if (isStudioEditSaving()) afterStudioPendingEdits(retry);
+    else load();
+  }
   return {
     select: async () => {
       const selection = await select();
@@ -127,11 +139,7 @@ export function mountTextEditing(
     fates,
     releaseWaiting: () => waiting.splice(0).forEach((go) => go()),
     waiting: () => waiting.length,
-    reloadWhenFree: (load) => {
-      const doc = gestureDocumentOf(iframe);
-      if (doc && isStudioManualEditGestureLiveIn(doc)) afterStudioManualEditGestures(doc, load);
-      else load();
-    },
+    reloadWhenFree,
     pending: () => hasStudioPendingEdits() || waiting.length > 0,
   };
 }
