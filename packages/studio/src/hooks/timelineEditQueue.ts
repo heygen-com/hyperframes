@@ -5,13 +5,11 @@ import { forgetTimelineOptimisticGestures } from "../player/components/timelineO
 /** The editor's one timeline edit queue. `placed` rejects when an edit still pending is refused. */
 export interface TimelineEditQueue extends MutableRefObject<Promise<void>> {
   placed?: Promise<void>;
-  /** The project every edit on this queue reads and writes, however late it runs. */
   readonly projectId: string | null;
   /** Set once the editor shows another project: the preview and timeline store are that one's now. */
   closed?: boolean;
 }
 
-/** One queue per project, so a refusal in one project never touches another's edits. */
 export function useTimelineEditQueue(projectId: string | null): TimelineEditQueue {
   const owner = useRef<TimelineEditQueue | null>(null);
   if (owner.current?.projectId !== projectId) {
