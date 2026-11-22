@@ -8,8 +8,6 @@ export function refuseUnlistedMarkup(
 ): void {
   if (readFrom && readFrom === writeTo) return;
   if (markupOutsideAllowlist(doc.documentElement).length > 0) {
-    throw new Error(
-      "Couldn't paste: the copied element holds code or markup that can't be pasted here (a script, a handler, a style block or a link)",
-    );
+    throw new Error("Couldn't paste: the copied element holds markup that can't be pasted here.");
   }
 }
