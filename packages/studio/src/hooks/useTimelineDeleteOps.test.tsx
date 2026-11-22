@@ -206,6 +206,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
             ),
           handleTimelineGroupMove,
           showToast: vi.fn(),
+          reloadPreview: vi.fn(),
         });
       },
     });
@@ -338,45 +339,6 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
       el("hf-c", 4, 2),
       el("hf-b", 2, 2),
     ]);
-  });
-
-  // Deletes hf-b with Ripple off, then trims hf-a to `duration` while the delete is still saving.
-  async function trimBehindRefusedDelete(duration: number) {
-    usePlayerStore.setState({ rippleEditEnabled: false });
-    const queued = mountQueuedEdits("delete hf-b");
-    const [a, b] = queued.elements;
-    let trimmed: Promise<unknown> = Promise.resolve();
-    try {
-      await act(async () => {
-        const deleting = queued.getHook().handleTimelineElementDelete(b);
-        trimmed = queued
-          .getTrim()
-          .handleTrimElements([{ element: a, start: 0, duration }])
-          .then(
-            () => null,
-            (error: Error) => error.message,
-          );
-        await Promise.all([deleting, trimmed]);
-      });
-    } finally {
-      usePlayerStore.setState({ rippleEditEnabled: true });
-    }
-    return { writes: queued.writes, refused: await trimmed };
-  }
-
-  it("a trim queued behind a refused delete that stays clear of the restored clip still saves", async () => {
-    const { writes, refused } = await trimBehindRefusedDelete(1.5);
-
-    expect(refused).toBeNull();
-    expect(writes).toEqual(["delete hf-b", "resize hf-a+1.5"]);
-  });
-
-  // fails without the fix: the trim saved hf-a running to 3, over hf-b, which the refused delete put back.
-  it("a trim queued behind a refused delete that would reach the restored clip is refused", async () => {
-    const { writes, refused } = await trimBehindRefusedDelete(3);
-
-    expect(refused).toBe(LANE_OVERLAP_NOTICE);
-    expect(writes).toEqual(["delete hf-b"]);
   });
 
   it("removes a multi-clip selection with one request, however many clips it holds", async () => {

@@ -223,12 +223,7 @@ export const LANE_OVERLAP_TONE = "info";
 export const laneOverlapRefusal = () =>
   Object.assign(new Error(LANE_OVERLAP_NOTICE), { tone: LANE_OVERLAP_TONE });
 
-export type LaneLanding = {
-  element: TimelineElement;
-  start: number;
-  duration?: number;
-  track?: number;
-};
+export type LaneLanding = { element: TimelineElement; start: number; track?: number };
 
 /** True when one of `checked` overlaps another clip in its lane, each clip placed where `moves` puts it. */
 export function landsOnLaneClip(
@@ -241,7 +236,7 @@ export function landsOnLaneClip(
   const place = (e: TimelineElement) => {
     const move = landed.get(keyOf(e));
     const start = move?.start ?? e.start;
-    return { start, end: start + (move?.duration ?? e.duration), track: move?.track ?? e.track };
+    return { start, end: start + e.duration, track: move?.track ?? e.track };
   };
   return checked.some(({ element }) => {
     const self = place(element);

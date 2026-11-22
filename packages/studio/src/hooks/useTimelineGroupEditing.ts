@@ -33,7 +33,11 @@ import {
 } from "./timelineTimingSync";
 import type { GsapMutationStatus } from "./gsapMutationClient";
 import { getStudioSaveErrorMessage, getStudioSaveErrorTone } from "../utils/studioSaveDiagnostics";
-import { enqueueTimelineEdit, type TimelineEditQueue } from "./timelineEditQueue";
+import {
+  enqueueTimelineEdit,
+  refuseWithEarlier,
+  type TimelineEditQueue,
+} from "./timelineEditQueue";
 
 export interface TimelineGroupMoveChange {
   element: TimelineElement;
@@ -400,8 +404,8 @@ export function useTimelineGroupEditing({
       // the just-patched live DOM. See syncPreviewContentDuration.
       syncPreviewContentDuration(previewIframeRef.current);
       const { coalesceKey, coalesceMs } = timingGestureStep("timeline-group-resize", options);
-      const refused = options?.ifEarlierRefused;
-      return enqueueGroupOperation("Resize timeline clips", refused, async (projectId) => {
+      const derivedStarts = refuseWithEarlier;
+      return enqueueGroupOperation("Resize timeline clips", derivedStarts, async (projectId) => {
         await options?.beforeTiming;
         const sdk = await trySdkBatchPersist({
           changes,

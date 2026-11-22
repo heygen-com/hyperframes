@@ -27,7 +27,7 @@ import type { TimelineMoveUpdates, UseTimelineEditingOptions } from "./useTimeli
 import { getStudioSaveErrorMessage, getStudioSaveErrorTone } from "../utils/studioSaveDiagnostics";
 import {
   enqueueTimelineEdit,
-  keepUnlessItOverlaps,
+  refuseWithEarlier,
   type TimelineEditQueue,
 } from "./timelineEditQueue";
 
@@ -299,7 +299,7 @@ export function useTimelineClipTimingEditing({
           "Resize timeline clip",
           buildResizePatches,
           step,
-          keepUnlessItOverlaps([{ element, ...updates }]),
+          refuseWithEarlier,
         ).then(() => finishResizeGsapSync());
       const persistDone =
         sdkSession && element.hfId && !element.link && !hasPbsAdjustment && !needsExtension

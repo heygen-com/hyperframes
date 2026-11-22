@@ -1,4 +1,4 @@
-import type { MutableRefObject } from "react";
+import { useRef, type MutableRefObject } from "react";
 import { usePlayerStore } from "../player";
 import {
   landsOnLaneClip,
@@ -11,18 +11,26 @@ export interface TimelineEditQueue extends MutableRefObject<Promise<void>> {
   placed?: Promise<void>;
 }
 
+/** One queue per project, so a refusal in one project never touches another's edits. */
+export function useTimelineEditQueue(projectId: string | null): TimelineEditQueue {
+  const owner = useRef<{ projectId: string | null; queue: TimelineEditQueue } | null>(null);
+  if (owner.current?.projectId !== projectId) {
+    owner.current = { projectId, queue: { current: Promise.resolve() } };
+  }
+  return owner.current.queue;
+}
+
 export const refuseWithEarlier = (error: unknown): never => {
   throw error;
 };
 
-/** For an edit the user placed, such as a drop or a trim: kept unless it now overlaps a lane clip. */
+/** For an edit the user placed, such as a drop: kept unless it now overlaps a lane clip. */
 export const keepUnlessItOverlaps = (changes: readonly LaneLanding[]) => () => {
   const { elements } = usePlayerStore.getState();
   const shown = new Map(elements.map((e) => [e.key ?? e.id, e]));
-  const placed = changes.map(({ element, start, duration }) => ({
+  const placed = changes.map(({ element, start }) => ({
     element: shown.get(element.key ?? element.id) ?? element,
     start,
-    duration,
   }));
   if (landsOnLaneClip(elements, placed)) throw laneOverlapRefusal();
 };
@@ -39,7 +47,9 @@ export function enqueueTimelineEdit<T>(
     if (ifEarlierRefused) await earlier.catch(ifEarlierRefused);
     return run();
   });
-  const placed = Promise.all([earlier, task]).then(() => undefined);
+  const placed = Promise.allSettled([earlier, task]).then((settled) => {
+    for (const result of settled) if (result.status === "rejected") throw result.reason;
+  });
   queue.placed = placed;
   queue.current = task.then(
     () => undefined,

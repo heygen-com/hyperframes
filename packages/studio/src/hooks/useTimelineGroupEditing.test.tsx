@@ -237,6 +237,23 @@ it("a drag refused for landing on a restored clip shows the refused-drop notice,
   }
 });
 
+// fails without the fix: a trim of B, shifted to 0 by a delete that was then refused, wrote B at 0.
+it("refuses a trim before it writes when an edit queued before it is refused, so the clip keeps its start", async () => {
+  const { earlier, fetchMock, getHook, unmount } = mountBehindRefusedEdit();
+  try {
+    await act(async () => {
+      const trim = getHook().handleTimelineGroupResize([
+        { element: el("b", 0, 2), start: 0, duration: 1 },
+      ]);
+      await expect(earlier).rejects.toThrow("delete refused");
+      await expect(trim).rejects.toThrow("delete refused");
+    });
+    expect(fetchMock.mock.calls).toEqual([]);
+  } finally {
+    unmount();
+  }
+});
+
 const SLOWER_THAN_THE_DEFAULT_WINDOW_MS = 400;
 
 it("undoes each group move with its GSAP rewrite in one step, however long the rewrite takes", async () => {
