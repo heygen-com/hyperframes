@@ -107,7 +107,9 @@ export async function recordPreviewReadsOff(
   projectDir: string,
   filePaths: Iterable<string>,
 ): Promise<void> {
-  const realProject = await realFilePathOff(resolve(projectDir));
+  const realProject = await realFilePathOff(resolve(projectDir)).catch(() =>
+    realFilePath(resolve(projectDir)),
+  );
   const links = new Map<string, Promise<string | null>>();
   const readLinkOnce = (path: string) => {
     let target = links.get(path);

@@ -75,6 +75,27 @@ it("builds a preview of a page naming 20,000 media files without holding the eve
   expect(affectsPreview(projectDir, join(library, `clip-${FILES - 1}.png`))).toBe(true);
 });
 
+// fails without the fix: the build failed and the sub-composition route answered a server error.
+it.skipIf(process.platform === "win32")(
+  "still answers when the project folder's real path cannot be resolved",
+  async () => {
+    root = mkdtempSync(join(tmpdir(), "preview-reads-"));
+    const projectDir = join(root, "loop");
+    symlinkSync("loop", projectDir);
+    const html = pageNaming(["media/a.png"]);
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      adapter(projectDir, async () => html),
+    );
+
+    expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+    expect(
+      (await app.request("http://localhost/projects/demo/preview/comp/scene.html")).status,
+    ).toBe(404);
+  },
+);
+
 it.skipIf(process.platform === "win32")(
   "counts a change behind a symlinked folder the build read through",
   async () => {
