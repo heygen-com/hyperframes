@@ -1,6 +1,6 @@
 /**
  * The one matrix every overlay measure reads: each node's `rotate`, `scale` and `transform`, in CSS's
- * order, parsed and composed by the browser's `DOMMatrix`; null once a layer leaves its plane. `translate`
+ * order, parsed and composed by the browser's `DOMMatrix`; null once a node or the chain leaves the plane. `translate`
  * never changes a shape (callers re-anchor to the measured box) and `DOMMatrix` refuses its `50%`.
  */
 
@@ -72,7 +72,8 @@ export function composeElementTransform(
     const node = pending[i]!;
     if (acc !== null) {
       const own = ownNodeTransform(node, Matrix, getStyle);
-      acc = own === null ? null : acc.multiply(own);
+      const composed = own && acc.multiply(own);
+      acc = composed && planar(composed) ? composed : null;
     }
     memo?.set(node, acc);
   }

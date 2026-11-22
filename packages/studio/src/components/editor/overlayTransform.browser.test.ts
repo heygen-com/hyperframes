@@ -26,6 +26,12 @@ const LAYERS: Array<{ id: string; style: string; own: [number, number] | null; p
     { id: "tipped", style: "rotate: x 60deg", own: null },
     { id: "tippedBack", style: "rotate: x -60deg", own: null, parent: "rotate: x 60deg" },
     {
+      id: "projected",
+      style: "transform: translateZ(100px) rotate(30deg)",
+      own: null,
+      parent: "transform: perspective(500px); transform-style: preserve-3d",
+    },
+    {
       id: "spunFlat",
       style: "transform: matrix3d(0.866, 0.5, 0, 0, -0.5, 0.866, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)",
       own: [200, 100],
@@ -33,8 +39,8 @@ const LAYERS: Array<{ id: string; style: string; own: [number, number] | null; p
     { id: "nested", style: "scale: 1.5; rotate: 15deg", own: [300, 150], parent: "rotate: 30deg" },
   ];
 
-// fails without the fix: a parent and child turned about x cancelled in the walk (200 x 100) where
-// Chrome flattens the child into its parent and paints it 200 x 25.
+// fails without the fix: a perspective parent and a depth-moved child each looked flat on their own, but
+// together project the layer: the corners spanned 223 x 187 where Chrome paints 279 x 233.
 it("reads every layer's painted corners as Chrome paints them", async () => {
   const bundle = await build({
     stdin: {
