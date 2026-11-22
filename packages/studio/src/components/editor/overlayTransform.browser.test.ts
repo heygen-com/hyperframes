@@ -32,6 +32,18 @@ const LAYERS: Array<{ id: string; style: string; own: [number, number] | null; p
       parent: "transform: perspective(500px); transform-style: preserve-3d",
     },
     {
+      id: "underPerspective",
+      style: "transform: translateZ(100px) rotate(30deg)",
+      own: null,
+      parent: "perspective: 500px",
+    },
+    {
+      id: "inPreserved",
+      style: "rotate: 30deg",
+      own: null,
+      parent: "transform-style: preserve-3d",
+    },
+    {
       id: "spunFlat",
       style: "transform: matrix3d(0.866, 0.5, 0, 0, -0.5, 0.866, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)",
       own: [200, 100],
@@ -39,8 +51,8 @@ const LAYERS: Array<{ id: string; style: string; own: [number, number] | null; p
     { id: "nested", style: "scale: 1.5; rotate: 15deg", own: [300, 150], parent: "rotate: 30deg" },
   ];
 
-// fails without the fix: a perspective parent and a depth-moved child each looked flat on their own, but
-// together project the layer: the corners spanned 223 x 187 where Chrome paints 279 x 233.
+// fails without the fix: under a parent's `perspective: 500px` a depth-moved child is projected, and the corners
+// spanned 223 x 187 where Chrome paints 279 x 233. Any 3D context above a layer now leaves it to the painted box.
 it("reads every layer's painted corners as Chrome paints them", async () => {
   const bundle = await build({
     stdin: {

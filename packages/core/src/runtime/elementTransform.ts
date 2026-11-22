@@ -30,7 +30,7 @@ function ownNodeTransform(
   getStyle: (node: HTMLElement) => CSSStyleDeclaration | null,
 ): DOMMatrix | null {
   const style = getStyle(node);
-  if (!style) return null;
+  if (!style || inThreeDContext(node, getStyle)) return null;
   const transform = style.transform && style.transform !== "none" ? style.transform : "";
   const list = [rotateFunction(style.rotate), scaleFunction(style.scale), transform];
   try {
@@ -39,6 +39,19 @@ function ownNodeTransform(
   } catch {
     return null;
   }
+}
+
+/** A parent's `perspective` or `preserve-3d` projects its children in ways a matrix product does not show. */
+function inThreeDContext(
+  node: HTMLElement,
+  getStyle: (node: HTMLElement) => CSSStyleDeclaration | null,
+) {
+  const parent = node.parentElement && getStyle(node.parentElement);
+  if (!parent) return false;
+  return (
+    (!!parent.perspective && parent.perspective !== "none") ||
+    parent.transformStyle === "preserve-3d"
+  );
 }
 
 /** Keeps the layer's plane flat and unprojected; anything else is left to the box the browser paints. */
