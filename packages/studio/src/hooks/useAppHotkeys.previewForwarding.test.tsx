@@ -8,7 +8,7 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { useAppHotkeys } from "./useAppHotkeys";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { letSealedFrameHoldKeyboard } from "../player/lib/sealedFrameKeyboard";
+import { letStudioTextEditHoldKeyboardInSealedFrame } from "../player/lib/sealedFrameKeyboard";
 import { DEFAULT_STUDIO_KEYS } from "../player/components/studioShortcuts";
 import {
   detachedFakeIframe,
@@ -310,7 +310,7 @@ describe("preview iframe hotkey forwarding", () => {
     it("leaves the keyboard in the frame while Studio's own text edit there holds it", async () => {
       root = mountReactHarness(<Harness />);
       const { iframe, focus } = await sealedFrame();
-      const release = letSealedFrameHoldKeyboard(iframe);
+      const release = letStudioTextEditHoldKeyboardInSealedFrame(iframe);
       act(() => sync?.(iframe));
       window.dispatchEvent(new Event("blur"));
       expect(focus.inPreview).toBe(true);
