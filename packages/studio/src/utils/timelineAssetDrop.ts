@@ -2,6 +2,7 @@ import { encodeUrlPath } from "@hyperframes/parsers";
 export { buildTimelineAssetId } from "@hyperframes/core/timeline-asset-id";
 import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from "./mediaTypes";
 import { roundToCenti } from "./rounding";
+import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
 import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
 import { patchRootCompositionDuration, readRootCompositionDuration } from "./rootDuration";
 
@@ -93,6 +94,13 @@ export function fitTimelineAssetGeometry(
   };
 }
 
+const finiteOrZero = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+export function writtenTrackIndex(track: unknown): number {
+  return Math.trunc(finiteOrZero(track));
+}
+
 export function buildTimelineAssetInsertHtml(input: {
   id: string;
   hfId: string;
@@ -106,7 +114,7 @@ export function buildTimelineAssetInsertHtml(input: {
   /** Video only: true inserts `data-has-audio="true"` with no `muted`. Unknown or false stays muted. */
   hasAudio?: boolean;
 }): string {
-  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${encodeUrlPath(input.assetPath)}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"`;
+  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${encodeUrlPath(input.assetPath)}" data-start="${formatTimelineAttributeNumber(finiteOrZero(input.start))}" data-duration="${formatTimelineAttributeNumber(finiteOrZero(input.duration))}" data-track-index="${writtenTrackIndex(input.track)}"`;
   const geometry = input.geometry ?? { left: 0, top: 0, width: 640, height: 360 };
   const visualStyles = `position: absolute; left: ${geometry.left}px; top: ${geometry.top}px; width: ${geometry.width}px; height: ${geometry.height}px; object-fit: contain; z-index: ${input.zIndex}`;
 
