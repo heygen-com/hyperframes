@@ -145,6 +145,8 @@ class HyperframesPlayer extends HTMLElement {
   private _ready = false;
   /** Bumped by every navigation, so a sealed load that resolves late shows nothing stale. */
   private _documentLoad = 0;
+  /** The URL a sealed srcdoc was fetched from, so its media resolve as they would by `src`. */
+  private _srcdocUrl: string | null = null;
   private _readyBeforeRuntime = false;
   private _readyDocument: Document | null = null;
   private _awaitingLoad = false;
@@ -1119,6 +1121,7 @@ class HyperframesPlayer extends HTMLElement {
   private _showDocument(html: string): void {
     const load = ++this._documentLoad;
     if (!this.hasAttribute(SANDBOX_ORIGIN_ATTR)) {
+      this._srcdocUrl = null;
       this.iframe.srcdoc = prepareSrcdocForElement(this, html);
       return;
     }
@@ -1128,7 +1131,9 @@ class HyperframesPlayer extends HTMLElement {
   private _showSealedDocument(html: string, base: string | undefined, load: number): void {
     prepareSealedSrcdocForElement(this, html, base).then(
       (doc) => {
-        if (load === this._documentLoad) this.iframe.srcdoc = doc;
+        if (load !== this._documentLoad) return;
+        this._srcdocUrl = base ?? null;
+        this.iframe.srcdoc = doc;
       },
       () => {
         if (load !== this._documentLoad) return;
@@ -1370,7 +1375,7 @@ class HyperframesPlayer extends HTMLElement {
       sendControl: (action, extra) => this._sendControl(action, extra),
       getIframeDoc: () => this.iframe.contentDocument,
       getCompositionUrl: () =>
-        this.iframe.hasAttribute("srcdoc") ? null : this.iframe.src || null,
+        this.iframe.hasAttribute("srcdoc") ? this._srcdocUrl : this.iframe.src || null,
       onRuntimeReady: () => {
         this._runtimeBridgeReady = true;
         this._replayBridgeState();
