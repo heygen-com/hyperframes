@@ -144,8 +144,9 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
   });
 
   // Deletes hf-a, then hf-b once hf-a's ripple slid it to 0, both saving through one edit queue.
-  async function deleteTwoInARow(refused?: string) {
+  async function deleteTwoInARow(refuseOnce?: string) {
     const writes: string[] = [];
+    let refused = refuseOnce;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -153,7 +154,10 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
           const { targets } = JSON.parse(String(init?.body)) as { targets: Array<{ id: string }> };
           const write = `delete ${targets.map((t) => t.id).join(",")}`;
           writes.push(write);
-          if (write === refused) return new Response("{}", { status: 500 });
+          if (write === refused) {
+            refused = undefined;
+            return new Response("{}", { status: 500 });
+          }
         }
         return new Response(JSON.stringify({ content: html }), { status: 200 });
       }),
@@ -168,9 +172,12 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
       const run = editQueueRef.current.then(async () => {
         await options?.beforeTiming;
         await serializeStudioFileMutations(writeProjectFile, ["index.html"], async () => {
-          const write = `move ${changes.map((c) => c.element.id).join(",")}`;
+          const write = `move ${changes.map((c) => `${c.element.id}@${c.start}`).join(",")}`;
           writes.push(write);
-          if (write === refused) throw new Error("refused");
+          if (write === refused) {
+            refused = undefined;
+            throw new Error("refused");
+          }
         });
       });
       editQueueRef.current = run.catch(() => undefined);
@@ -187,36 +194,42 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
       const shiftedB = usePlayerStore.getState().elements.find((e) => e.id === "hf-b")!;
       await Promise.all([first, getHook().handleTimelineElementDelete(shiftedB)]);
     });
-    return writes;
+    return { writes, getHook };
   }
 
   // fails without the fix: the second delete saved between the first delete and its ripple.
   it("saves a delete made right after another after the first one's ripple", async () => {
-    const writes = await deleteTwoInARow();
+    const { writes } = await deleteTwoInARow();
 
-    expect(writes).toEqual(["delete hf-a", "move hf-b,hf-c", "delete hf-b", "move hf-c"]);
+    expect(writes).toEqual(["delete hf-a", "move hf-b@0,hf-c@2", "delete hf-b", "move hf-c@0"]);
     expect(usePlayerStore.getState().elements).toEqual([el("hf-c", 0, 2)]);
   });
 
-  // fails without the fix: the refused write restored the timeline from before it, so hf-b came back.
+  // fails without the fix: deleting hf-b saved hf-c at 0, on top of hf-a, though hf-a's delete or shift was refused.
   it.each([
+    ["delete hf-a", ["delete hf-a", "delete hf-b"], [el("hf-c", 4, 2), el("hf-a", 0, 2)]],
     [
-      "delete hf-a",
-      ["delete hf-a", "delete hf-b", "move hf-c"],
-      [el("hf-c", 2, 2), el("hf-a", 0, 2)],
-    ],
-    [
-      "move hf-b,hf-c",
-      ["delete hf-a", "move hf-b,hf-c", "delete hf-b", "move hf-c"],
-      [el("hf-c", 2, 2)],
+      "move hf-b@0,hf-c@2",
+      ["delete hf-a", "move hf-b@0,hf-c@2", "delete hf-b"],
+      [el("hf-c", 4, 2)],
     ],
   ])(
-    "a refused %s rolls back only itself, so the next delete stays gone",
-    async (refused, tried, after) => {
-      expect(await deleteTwoInARow(refused)).toEqual(tried);
+    "a refused %s refuses the next delete's shift too, so hf-c is never saved at 0 on hf-a",
+    async (refused, saved, after) => {
+      expect((await deleteTwoInARow(refused)).writes).toEqual(saved);
       expect(usePlayerStore.getState().elements).toEqual(after);
     },
   );
+
+  it("a delete made once a refusal has settled still closes its gap", async () => {
+    const { writes, getHook } = await deleteTwoInARow("delete hf-a");
+    const a = usePlayerStore.getState().elements.find((e) => e.id === "hf-a")!;
+
+    await act(() => getHook().handleTimelineElementDelete(a));
+
+    expect(writes.slice(2)).toEqual(["delete hf-a", "move hf-c@2"]);
+    expect(usePlayerStore.getState().elements).toEqual([el("hf-c", 2, 2)]);
+  });
 
   it("removes a multi-clip selection with one request, however many clips it holds", async () => {
     const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);

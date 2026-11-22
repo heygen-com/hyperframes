@@ -99,6 +99,8 @@ export function useTimelineDeleteOps({
   // toast system has no action buttons, so Undo and the toggle location are
   // named in words instead.
   const rippleNoticeShownRef = useRef(false);
+  // Rejects once a pending delete or its shift is refused: shifts queued behind it were placed after it.
+  const placedRef = useRef<Promise<void>>(Promise.resolve());
   // fallow-ignore-next-line complexity
   const handleTimelineElementsDelete = useCallback(
     // fallow-ignore-next-line complexity
@@ -198,10 +200,11 @@ export function useTimelineDeleteOps({
         });
         editQueueRef.current = deleted.catch(() => undefined);
         // One call queues both, so no later edit can land between the delete and its shift.
+        const placed = Promise.all([deleted, placedRef.current]).then(() => undefined);
         const shifted =
           rippleChanges &&
           handleTimelineGroupMove(rippleChanges, {
-            beforeTiming: deleted,
+            beforeTiming: placed,
             coalesceKey: step.coalesceKey,
             // Coalescing keeps the LAST entry's label; without this the undo
             // toast reads "Undid Move timeline clips" after a delete, naming
@@ -210,6 +213,13 @@ export function useTimelineDeleteOps({
             // This call gets its own, more specific failure toast below —
             // the generic one would tell the user about one action twice.
             suppressFailureToast: true,
+          });
+        const mine = shifted ?? placed;
+        placedRef.current = mine;
+        void mine
+          .catch(() => undefined)
+          .then(() => {
+            if (placedRef.current === mine) placedRef.current = Promise.resolve();
           });
         try {
           await deleted;
