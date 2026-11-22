@@ -305,6 +305,12 @@ describe("the end of a sequence", () => {
     expect(read()).toBe(6);
   });
 
+  it("says how long until the first of the clear reads, the undo's time to show", async () => {
+    const { busy } = reads([true, true, false, false]);
+    const ms = await restedFor(busy, () => new Promise((r) => setTimeout(r, 10)));
+    expect(ms).toBeGreaterThanOrEqual(20);
+  });
+
   it("gives up with a reason when an edit never stops saving", async () => {
     const { busy } = reads([true]);
     await expect(restedFor(busy, async () => {}, { timeout: 30 })).rejects.toThrow(

@@ -244,12 +244,15 @@ async function driveStep(ctx, step, state) {
   if (step.do === "undo") {
     await blurPreview(page);
     await chord(page, "Control+z");
-    // A key's DOM change reaches the CDP quads only after a frame; the next step reads from them.
-    await nextFrame(page);
+    // The next step presses the box where it is shown; a person sees the old box until then.
+    const shownMs = await restedFor(
+      () => studioBusy(page),
+      () => nextFrame(page),
+    );
     state.depth -= 1;
     // Undone back to the start, the box belongs where it began; any other undo leaves it unknown here.
     state.intended = state.depth === 0 ? state.start : null;
-    return { do: "undo" };
+    return { do: "undo", shownMs };
   }
   if (step.do === "nudge") {
     await recording(page, true);
@@ -439,22 +442,29 @@ export function heldSize(sizeKeys, time) {
 const sizeError = (a, b) =>
   a && b ? Math.max(Math.abs(a.width - b.width), Math.abs(a.height - b.height)) : 0;
 
-/** Resolves once `busy()` has read false `frames` reads in a row, a `frame()` apart; throws at `timeout` ms. */
+/**
+ * Resolves once `busy()` has read false `frames` reads in a row, a `frame()` apart, with the ms until the first of
+ * those reads; throws at `timeout` ms.
+ */
 export async function restedFor(busy, frame, { frames = 2, timeout = 20_000 } = {}) {
-  let clear = 0;
-  for (const deadline = Date.now() + timeout; Date.now() < deadline; await frame()) {
+  const start = Date.now();
+  let [clear, clearSince] = [0, 0];
+  for (const deadline = start + timeout; Date.now() < deadline; await frame()) {
+    const now = Date.now();
     clear = (await busy()) ? 0 : clear + 1;
-    if (clear >= frames) return;
+    if (clear === 1) clearSince = now;
+    if (clear >= frames) return clearSince - start;
   }
   throw new Error("an edit was still waiting or saving");
 }
 
-// A sealed press waits for the previous save, then replays: the file is final once none waits and no edit saves.
-const editsBusy = (page) =>
+// A sealed press waits for the previous save, then replays, and a sealed undo shows only once the preview applies it.
+const studioBusy = (page) =>
   page.evaluate(
     () =>
       Boolean(document.querySelector("[data-dom-edit-press-waiting]")) ||
-      document.documentElement.hasAttribute("data-studio-edits-saving"),
+      document.documentElement.hasAttribute("data-studio-edits-saving") ||
+      document.documentElement.hasAttribute("data-preview-changing"),
   );
 
 async function untilSaved(watcher, owed) {
@@ -537,7 +547,7 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
   }
   // The write count is a floor: one gesture may write twice, so it can be met before the last gesture saves.
   await restedFor(
-    () => editsBusy(page),
+    () => studioBusy(page),
     () => nextFrame(page),
   );
   await page.waitForFunction(
