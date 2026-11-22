@@ -75,6 +75,23 @@ test("valid: description with a colon inside a quoted string", () => {
 const has = (violations, needle) =>
   violations.some((v) => v.message.toLowerCase().includes(needle.toLowerCase()));
 
+test("invalid: a description that a pasted link alone triggers (#8530)", () => {
+  for (const said of [
+    "Bring Figma into a video. Use when the person pastes a figma.com link or asks to use a Figma design.",
+    "Turn a site into a video. Use when the user shares a URL.",
+    "Capture a website. Use when someone drops a link to a page.",
+  ]) {
+    const violations = lintFrontmatter(wrap(`name: foo\ndescription: ${said}`));
+    assert.ok(has(violations, "a pasted link alone"), said);
+  }
+});
+
+test("valid: a description that names the task a link comes with", () => {
+  const said =
+    "Bring Figma into a video. Use when the person asks to use a Figma design, frame or logo in a video; a link with no task is not that ask.";
+  assert.deepEqual(lintFrontmatter(wrap(`name: foo\ndescription: ${said}`)), []);
+});
+
 test("invalid: missing frontmatter block", () => {
   const violations = lintFrontmatter("# just a body, no dashes\n");
   assert.ok(has(violations, "Missing SKILL.md YAML frontmatter"));
