@@ -4,7 +4,7 @@
 import type { Browser } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { closeTestChrome, launchTestChrome } from "../../tests/chromeTestUtils";
-import { allLand, generated, playText, wordsFromGestures } from "../../tests/inlineTextFixture";
+import { generated, playText, wordsFromGestures, writeFates } from "../../tests/inlineTextFixture";
 import { buildStudioBundle } from "../../tests/sealedPreviewHarness";
 
 vi.setConfig({ testTimeout: 240_000, hookTimeout: 60_000 });
@@ -52,10 +52,11 @@ it.each(seeds)("generated text sequence %i", async (seed) => {
         words: true,
       });
   }
+  const writes = `seed ${seed} writes sealed ${JSON.stringify(sealed.writes)} unsealed ${JSON.stringify(unsealed.writes)}`;
   expect
-    .soft({ seed, steps, sealed: sealed.saved })
+    .soft({ seed, steps, sealed: sealed.saved }, writes)
     .toEqual({ seed, steps, sealed: unsealed.saved });
-  if (!allLand(steps)) return;
+  if (writeFates(seed).some((fate) => fate !== "land")) return;
   const model = await run("unsealed", true);
   expect.soft({ seed, steps, saved: sealed.saved }).toEqual({ seed, steps, saved: model.saved });
 });

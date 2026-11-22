@@ -37,7 +37,6 @@ export type Step =
   | { panel: "text"; field: 0 | 1; value: string }
   | { panel: "add" }
   | { panel: "remove"; field: 0 | 1 }
-  | { fate: WriteFate }
   | { answer: true }
   | { release: true }
   | { reloadFrame: true }
@@ -45,6 +44,8 @@ export type Step =
 
 const isGesture = (step: Step) =>
   "open" in step || "type" in step || "end" in step || "cancel" in step || "panel" in step;
+/** Steps that only move when replies and writes arrive; the one-at-a-time model leaves them out. */
+const isTiming = (step: Step) => "answer" in step || "release" in step || "pastDeadline" in step;
 
 /** A seeded sequence a person could make: typing only into an open edit, a panel save ending one that is open. */
 export function generated(seed: number): Step[] {
@@ -70,8 +71,7 @@ export function generated(seed: number): Step[] {
       else if (kind === "add") steps.push({ panel: "add" });
       else steps.push({ panel: "remove", field: pick([0, 1] as const) });
       open = false;
-    } else if (roll < 0.6) steps.push({ fate: pick(["land", "fail", "wait"] as const) });
-    else if (roll < 0.8) steps.push({ answer: true });
+    } else if (roll < 0.8) steps.push({ answer: true });
     else if (roll < 0.87) steps.push({ release: true });
     else if (roll < 0.93) steps.push({ pastDeadline: true });
     else steps.push({ reloadFrame: true });
@@ -81,8 +81,16 @@ export function generated(seed: number): Step[] {
   return steps;
 }
 
-export const allLand = (steps: Step[]) =>
-  steps.every((step) => !("fate" in step) || step.fate === "land");
+/** Each write's fate by the order writes reach the file, so both modes fail the same writes: even seeds all land. */
+export function writeFates(seed: number): WriteFate[] {
+  if (seed % 2 === 0) return [];
+  let state = seed * 7919;
+  const random = () => (state = (state * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+  return Array.from(
+    { length: 6 },
+    () => (["land", "fail", "wait"] as const)[Math.floor(random() * 3)]!,
+  );
+}
 
 type Editing = {
   hfStudio: { mountTextEditing: (...args: unknown[]) => TextEditing };
@@ -170,7 +178,7 @@ async function settle(studioPage: Page, frame: Frame, random: () => number) {
   }
 }
 
-/** Plays `steps` in `mode`; `serial` settles after every gesture and ignores fates (the model for all-land seeds). */
+/** Plays `steps` in `mode`; `serial` settles after every step and lands every write (the model). */
 export async function playText(
   browser: Browser,
   bundle: string,
@@ -201,14 +209,14 @@ export async function playText(
     mode === "sealed",
     file(ORIGINAL),
   );
+  if (!serial)
+    await studioPage.evaluate(
+      (fates) => void (window as unknown as Editing).__text.fates.push(...fates),
+      writeFates(seed),
+    );
   for (const step of steps) {
-    if (serial && !isGesture(step)) continue;
+    if (serial && isTiming(step)) continue;
     if (isGesture(step)) await gesture(studioPage, frame, step);
-    else if ("fate" in step)
-      await studioPage.evaluate(
-        (fate) => void (window as unknown as Editing).__text.fates.push(fate),
-        step.fate,
-      );
     else if ("answer" in step) await answer(studioPage, Math.floor(random() * 1000), null);
     else if ("release" in step)
       await studioPage.evaluate(() => (window as unknown as Editing).__text.releaseWaiting());
