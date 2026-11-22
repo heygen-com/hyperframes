@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseRestoreAttributes, restoreInPlace } from "./restoreAttributes";
+import {
+  HF_COLOR_GRADING_ATTR,
+  normalizeHfColorGrading,
+  serializeHfColorGrading,
+} from "../../colorGrading";
 
 type TestWindow = Window & Record<string, unknown>;
 const win = window as TestWindow;
@@ -43,6 +48,47 @@ describe("restore-attributes", () => {
     expect(box.getAttribute("style")).toBe("left: 0px");
     expect(box.hasAttribute("class")).toBe(false);
     expect(calls).toEqual(["seek 1.5", "rebind", "manual"]);
+  });
+
+  describe("a clip's colour grade", () => {
+    const graded = (grading: string) => {
+      document.body.innerHTML = `<video data-hf-id="clip"></video>`;
+      document.querySelector("video")!.setAttribute(HF_COLOR_GRADING_ATTR, grading);
+      player();
+    };
+    const undoTo = (grading: string) =>
+      restore("hf:clip", [
+        ["data-hf-id", "clip"],
+        [HF_COLOR_GRADING_ATTR, grading],
+      ]);
+    const live = () => document.querySelector("video")!.getAttribute(HF_COLOR_GRADING_ATTR);
+
+    it("is put back in place, rebuilt from the grade's own fields rather than copied", () => {
+      graded('{"adjust":{"exposure":1.5}}');
+      const restored = '{ "adjust": { "exposure": 0.1 }, "onload": "alert(1)" }';
+
+      expect(restoreInPlace(undoTo(restored))).toBe("applied");
+      expect(live()).toBe(serializeHfColorGrading(normalizeHfColorGrading(restored)));
+      expect(live()).not.toContain("onload");
+    });
+
+    it("is refused when it would load a LUT the clip does not already use", () => {
+      graded('{"adjust":{"exposure":1.5}}');
+      const before = document.body.innerHTML;
+
+      expect(restoreInPlace(undoTo('{"lut":{"src":"https://example.com/look.cube"}}'))).toBe(
+        "refused",
+      );
+      expect(document.body.innerHTML).toBe(before);
+    });
+
+    it("keeps the clip's own LUT when only the rest of the grade changes", () => {
+      graded('{"lut":{"src":"luts/look.cube"},"adjust":{"exposure":1.5}}');
+      const restored = '{"lut":{"src":"luts/look.cube"},"adjust":{"exposure":0.1}}';
+
+      expect(restoreInPlace(undoTo(restored))).toBe("applied");
+      expect(normalizeHfColorGrading(live())?.adjust.exposure).toBe(0.1);
+    });
   });
 
   it("restores each copy of an inlined sub-composition", () => {
