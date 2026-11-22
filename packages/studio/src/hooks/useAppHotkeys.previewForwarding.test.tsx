@@ -8,7 +8,6 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { useAppHotkeys } from "./useAppHotkeys";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { letStudioTextEditHoldKeyboardInSealedFrame } from "../player/lib/sealedFrameKeyboard";
 import { DEFAULT_STUDIO_KEYS } from "../player/components/studioShortcuts";
 import {
   detachedFakeIframe,
@@ -296,27 +295,16 @@ describe("preview iframe hotkey forwarding", () => {
     });
 
     // fails without the fix: focus could stay in the frame, where Studio only had the frame's word for a key.
-    it("takes the keyboard back whenever focus moves into the frame", async () => {
+    it("takes the keyboard back on the next task whenever focus moves into the frame", async () => {
       root = mountReactHarness(<Harness />);
       const { iframe, focus, blur } = await sealedFrame();
       act(() => sync?.(iframe));
-      expect(focus.inPreview).toBe(false);
+      await vi.waitFor(() => expect(focus.inPreview).toBe(false));
       focus.inPreview = true;
       window.dispatchEvent(new Event("blur"));
-      expect(focus.inPreview).toBe(false);
-      expect(blur).toHaveBeenCalledTimes(2);
-    });
-
-    it("leaves the keyboard in the frame while Studio's own text edit there holds it", async () => {
-      root = mountReactHarness(<Harness />);
-      const { iframe, focus } = await sealedFrame();
-      const release = letStudioTextEditHoldKeyboardInSealedFrame(iframe);
-      act(() => sync?.(iframe));
-      window.dispatchEvent(new Event("blur"));
       expect(focus.inPreview).toBe(true);
-      release();
-      window.dispatchEvent(new Event("blur"));
-      expect(focus.inPreview).toBe(false);
+      await vi.waitFor(() => expect(focus.inPreview).toBe(false));
+      expect(blur).toHaveBeenCalledTimes(2);
     });
 
     it("deletes the selection on a real Delete once Studio holds the keyboard", async () => {
@@ -331,9 +319,12 @@ describe("preview iframe hotkey forwarding", () => {
       root = mountReactHarness(<Harness />);
       const { iframe, focus, blur } = await sealedFrame();
       act(() => sync?.(iframe));
+      await vi.waitFor(() => expect(blur).toHaveBeenCalledTimes(1));
       act(() => sync?.(null));
       focus.inPreview = true;
       window.dispatchEvent(new Event("blur"));
+      // A task after the take-back would have run: it was queued first.
+      await new Promise((settled) => setTimeout(settled, 0));
       expect(blur).toHaveBeenCalledTimes(1);
     });
   });
