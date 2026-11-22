@@ -3,7 +3,7 @@ import { usePlayerStore, type TimelineElement } from "../player";
 import { batchElementUpdates } from "../player/store/batchElementUpdates";
 import { resolveMainTrackTrimRipple } from "../player/components/timelineGapCommit";
 import { timingGestureStep } from "./timelineTimingSync";
-import { refuseWithEarlier } from "./timelineEditQueue";
+import { refuseWithEarlier, type TimelineEditQueue } from "./timelineEditQueue";
 import type {
   TimelineGroupCommitOptions,
   TimelineGroupMoveChange,
@@ -24,6 +24,7 @@ interface UseTimelineTrimRippleOptions {
   ) => Promise<void>;
   showToast: (message: string, tone?: "error" | "info") => void;
   reloadPreview: () => void;
+  editQueueRef: TimelineEditQueue;
 }
 
 function setStarts(changes: ReadonlyArray<{ element: TimelineElement; start: number }>) {
@@ -41,6 +42,7 @@ export function useTimelineTrimRipple({
   handleTimelineGroupMove,
   showToast,
   reloadPreview,
+  editQueueRef,
 }: UseTimelineTrimRippleOptions) {
   const persistWithRipple = useCallback(
     async (
@@ -54,6 +56,7 @@ export function useTimelineTrimRipple({
       if (!ripple) return persistTrimAlone();
       const { coalesceKey } = timingGestureStep("timeline-resize", given);
       const undoRipple = () => {
+        if (editQueueRef.closed) return;
         const now = new Map(usePlayerStore.getState().elements.map((e) => [e.key ?? e.id, e]));
         setStarts(
           ripple.map(({ element, start }) => ({
@@ -89,7 +92,7 @@ export function useTimelineTrimRipple({
         showToast("Clip trimmed, but the gap could not be closed.", "error");
       }
     },
-    [handleTimelineGroupResize, handleTimelineGroupMove, showToast, reloadPreview],
+    [handleTimelineGroupResize, handleTimelineGroupMove, showToast, reloadPreview, editQueueRef],
   );
 
   const handleTrimElement = useCallback(

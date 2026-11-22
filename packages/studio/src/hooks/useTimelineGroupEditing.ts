@@ -36,6 +36,8 @@ import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
 import {
   enqueueTimelineEdit,
   refuseWithEarlier,
+  shownPreview,
+  whileShown,
   type TimelineEditQueue,
 } from "./timelineEditQueue";
 
@@ -77,7 +79,6 @@ interface UseTimelineGroupEditingOptions {
   isRecordingRef?: RefObject<boolean>;
   pendingTimelineEditPathRef: MutableRefObject<Set<string>>;
   previewIframeRef: RefObject<HTMLIFrameElement | null>;
-  projectIdRef: MutableRefObject<string | null>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   reloadPreview: () => void;
   sdkSession?: Composition | null;
@@ -125,7 +126,6 @@ export function useTimelineGroupEditing({
   isRecordingRef,
   pendingTimelineEditPathRef,
   previewIframeRef,
-  projectIdRef,
   recordEdit,
   reloadPreview,
   sdkSession,
@@ -143,15 +143,14 @@ export function useTimelineGroupEditing({
         showToast("Cannot edit timeline while recording", "error");
         return Promise.reject(new Error(`${label}: blocked while recording`));
       }
-      const projectId = projectIdRef.current;
-      if (!projectId) return Promise.reject(new Error(`${label}: no active project`));
+      if (!editQueueRef.projectId) return Promise.reject(new Error(`${label}: no active project`));
       // The raw (rejecting) promise lets the gesture owner roll back on a real failure.
-      return enqueueTimelineEdit(editQueueRef, () => operation(projectId), {
+      return enqueueTimelineEdit(editQueueRef, operation, {
         label,
         ifEarlierRefused,
       });
     },
-    [editQueueRef, isRecordingRef, projectIdRef, showToast],
+    [editQueueRef, isRecordingRef, showToast],
   );
 
   const persistServerBatch = useCallback(
@@ -169,14 +168,17 @@ export function useTimelineGroupEditing({
         changes: batchChanges,
         writeProjectFile,
         recordEdit,
-        pendingTimelineEditPathRef,
+        pendingTimelineEditPathRef: editQueueRef.closed
+          ? { current: new Set<string>() }
+          : pendingTimelineEditPathRef,
         coalesceKey,
         coalesceMs,
       });
-      forceReloadSdkSession?.();
+      whileShown(editQueueRef, () => forceReloadSdkSession?.());
     },
     [
       activeCompPath,
+      editQueueRef,
       forceReloadSdkSession,
       pendingTimelineEditPathRef,
       recordEdit,
@@ -190,6 +192,7 @@ export function useTimelineGroupEditing({
   // server syncs) when it handled the edit; null → caller falls through to the server.
   const trySdkBatchPersist = useCallback(
     async (input: {
+      projectId: string;
       changes: readonly { element: TimelineElement }[];
       sdkChanges: Array<{
         hfId: string;
@@ -208,6 +211,11 @@ export function useTimelineGroupEditing({
         input.eligible &&
         input.sdkChanges.every((change) => change !== null);
       if (!canUseSdk) return null;
+      const shown = shownPreview(editQueueRef, {
+        iframeRef: previewIframeRef,
+        reloadPreview,
+        publishSdkSession,
+      });
       const result = await sdkTimingBatchPersist(
         input.sdkChanges.filter((change): change is NonNullable<typeof change> => change !== null),
         sharedPath,
@@ -215,10 +223,10 @@ export function useTimelineGroupEditing({
         {
           editHistory: { recordEdit },
           writeProjectFile,
-          reloadPreview,
+          reloadPreview: shown.reload,
           compositionPath: activeCompPath,
-          readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
-          publishSession: publishSdkSession,
+          readProjectFile: (path) => readFileContent(input.projectId, path),
+          publishSession: shown.publish,
         },
         {
           label: input.label,
@@ -231,7 +239,8 @@ export function useTimelineGroupEditing({
     },
     [
       activeCompPath,
-      projectIdRef,
+      editQueueRef,
+      previewIframeRef,
       publishSdkSession,
       recordEdit,
       reloadPreview,
@@ -275,6 +284,7 @@ export function useTimelineGroupEditing({
       // Snapshot the duration BEFORE the optimistic updates below so a failed
       // persist can roll the readout + live root back (see captureDurationRollback).
       const rollbackDuration = captureDurationRollback(previewIframeRef.current);
+      const shown = shownPreview(editQueueRef, { iframeRef: previewIframeRef, reloadPreview });
       // needsExtension gates the SDK path (setTiming can't grow the root duration),
       // so read the store BEFORE the readout sync below optimistically updates it.
       // Track-only batches leave every clip end unchanged, so both this and the
@@ -289,6 +299,7 @@ export function useTimelineGroupEditing({
       return enqueueGroupOperation(label, options?.ifEarlierRefused, async (projectId) => {
         await options?.beforeTiming;
         const sdk = await trySdkBatchPersist({
+          projectId,
           changes,
           sdkChanges: toSdkTimingChanges(changes, (change) => ({
             start: toAuthoredStart(change.element, change.start),
@@ -332,8 +343,8 @@ export function useTimelineGroupEditing({
         try {
           await finishGroupTimingGsapFallback({
             projectId,
-            iframe: previewIframeRef.current,
-            reloadPreview,
+            iframe: shown.iframe(),
+            reloadPreview: shown.reload,
             label,
             errorLabel: "Failed to shift GSAP positions",
             coalesceKey,
@@ -347,12 +358,12 @@ export function useTimelineGroupEditing({
               shiftGsapMutation(change.element.domId, change.start - change.element.start),
           });
         } finally {
-          invalidateGsapCache?.();
+          whileShown(editQueueRef, () => invalidateGsapCache?.());
         }
       }).catch((error) => {
         // Failed persist: revert the optimistic duration readout + live root
         // alongside the gesture owner's store rollback.
-        rollbackDuration();
+        whileShown(editQueueRef, rollbackDuration);
         if (options?.suppressFailureToast) {
           console.error("[Timeline] group move failed to persist", error);
         } else {
@@ -363,6 +374,7 @@ export function useTimelineGroupEditing({
     },
     [
       activeCompPath,
+      editQueueRef,
       enqueueGroupOperation,
       persistServerBatch,
       previewIframeRef,
@@ -397,6 +409,7 @@ export function useTimelineGroupEditing({
       // Snapshot the duration BEFORE the optimistic updates below so a failed
       // persist can roll the readout + live root back (see captureDurationRollback).
       const rollbackDuration = captureDurationRollback(previewIframeRef.current);
+      const shown = shownPreview(editQueueRef, { iframeRef: previewIframeRef, reloadPreview });
       // needsExtension gates the SDK path (setTiming can't grow the root duration),
       // so read the store BEFORE the readout sync below optimistically updates it.
       const needsExtension = extendRootDurationIfNeeded(maxEnd);
@@ -408,6 +421,7 @@ export function useTimelineGroupEditing({
       return enqueueGroupOperation("Resize timeline clips", derivedStarts, async (projectId) => {
         await options?.beforeTiming;
         const sdk = await trySdkBatchPersist({
+          projectId,
           changes,
           sdkChanges: toSdkTimingChanges(changes, (change) => ({
             start: toAuthoredStart(change.element, change.start),
@@ -441,8 +455,8 @@ export function useTimelineGroupEditing({
         try {
           await finishGroupTimingGsapFallback({
             projectId,
-            iframe: previewIframeRef.current,
-            reloadPreview,
+            iframe: shown.iframe(),
+            reloadPreview: shown.reload,
             label: "Resize timeline clips",
             errorLabel: "Failed to scale GSAP positions",
             coalesceKey,
@@ -462,18 +476,19 @@ export function useTimelineGroupEditing({
               ),
           });
         } finally {
-          invalidateGsapCache?.();
+          whileShown(editQueueRef, () => invalidateGsapCache?.());
         }
       }).catch((error) => {
         // Failed persist: revert the optimistic duration readout + live root
         // alongside the gesture owner's store rollback.
-        rollbackDuration();
+        whileShown(editQueueRef, rollbackDuration);
         showToast(getStudioSaveErrorMessage(error), "error");
         throw error;
       });
     },
     [
       activeCompPath,
+      editQueueRef,
       enqueueGroupOperation,
       persistServerBatch,
       previewIframeRef,
