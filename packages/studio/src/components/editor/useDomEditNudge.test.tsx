@@ -49,12 +49,16 @@ function Harness({
     selection,
     groupSelections: EMPTY_GROUP_SELECTIONS,
     allowCanvasMovement: true,
+    iframeRef: makeRef(null),
+    overlayRef: makeRef(null),
+    activeCompositionPathRef: makeRef(null),
     selectionRef: makeRef(selection),
     overlayRectRef: makeRef(REST_RECT),
     groupOverlayItemsRef: makeRef([]),
     gestureRef: makeRef(null),
     groupGestureRef: makeRef(null),
     blockedMoveRef: makeRef(null),
+    waitingPressRef: makeRef(null),
     onManualDragStartRef: makeRef(onManualDragStart),
     onBlockedMoveRef: makeRef(() => {}),
     onPathOffsetCommitRef: makeRef(onPathOffsetCommit),
@@ -386,6 +390,15 @@ describe("useDomEditNudge pauses playback before it snapshots the timelines", ()
     act(() => dispatchArrowRight());
 
     expect(element.hasAttribute("data-hf-drag-paused-timelines")).toBe(false);
+  });
+
+  it("starts a nudge on a sealed preview's selection, whose stand-in is never connected", () => {
+    const standIn = document.createElement("div");
+    mount({ ...makeSelection("Dot", standIn), handle: "e1" });
+
+    act(() => dispatchArrowRight());
+
+    expect(pause).toHaveBeenCalledOnce();
   });
 
   it("leaves playback alone when no layer can move", () => {
