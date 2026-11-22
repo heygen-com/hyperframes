@@ -24,8 +24,8 @@ function sized(element: Element, [x, y, width, height]: number[]) {
 }
 
 /** A 200 x 100 card painted under `transform` on a frame Studio cannot script, and its stand-in. */
-async function sealedCard(transform: string, painted: number[]) {
-  document.body.innerHTML = `<div data-composition-id="main"><div id="card" style="transform: ${transform}"></div></div>`;
+async function sealedCard(transform: string, painted: number[], clip = "") {
+  document.body.innerHTML = `<div data-composition-id="main"><div id="card" style="transform: ${transform};${clip && ` clip-path: ${clip}`}"></div></div>`;
   const card = sized(document.getElementById("card")!, [0, 0, 200, 100]);
   card.getBoundingClientRect = () => {
     const [x, y, width, height] = painted;
@@ -77,7 +77,9 @@ function cropHandles(standIn: HTMLElement, onStyleCommit = vi.fn()) {
     );
   const turn = () =>
     document.querySelector<HTMLElement>("[data-dom-edit-crop-frame]")!.style.transform;
-  return { root, show, turn };
+  const outline = () =>
+    document.querySelector<HTMLElement>("[data-dom-edit-crop-frame] .border-dashed")!.style.width;
+  return { root, show, turn, outline };
 }
 
 /** Drags the right crop edge by `dx, dy` screen px and lets go, all before the frame answers. */
@@ -129,6 +131,22 @@ it("draws a sealed turned card's crop frame turned before any press", async () =
   show({ left: 12, top: 44, width: 200, height: 100, angle: 30 });
 
   expect(turn()).toBe("rotate(30deg)");
+  act(() => root.unmount());
+});
+
+// fails without the fix: before a press, a sealed crop drew its insets at the overlay's zoom alone, as if the card
+// had no scale of its own, until a press measured its size.
+it("draws a sealed scaled card's crop insets at the card's own scale before any press", async () => {
+  const standIn = await sealedCard(
+    "matrix(2, 0, 0, 2, 0, 0)",
+    [0, 0, 400, 200],
+    "inset(0px 20px 0px 0px)",
+  );
+  const { root, show, outline } = cropHandles(standIn);
+
+  show({ left: 0, top: 0, width: 400, height: 200 });
+
+  await vi.waitFor(() => expect(outline()).toBe("360px"));
   act(() => root.unmount());
 });
 
