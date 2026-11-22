@@ -94,6 +94,12 @@ fingerprint or the captured pixels match. A candidate whose overlay differs
 in any way starts its own state, so a one-frame change is never merged away;
 frames inside one candidate are taken on the planner's word, as before.
 
+Measured on the harness `captions` fixtures (1080p HLG, one cue per 2 s,
+before → after): 20 s, 84 candidates → 21 states, 84 → 11 screenshots,
+overlay capture 6.8 s → 2.8 s; 60 s, 244 → 61 states, 244 → 31 screenshots,
+overlay capture 20.4 s → 9.0 s (stage 45.4 s → 38.7 s, the rest is the
+encode). Both outputs stay bit-identical to the layered path.
+
 Progress and stall contract: overlay capture calls `noteStaticDedupActivity(job)`
 for each state, which keeps the stall window open without counting as frame
 progress, and reports in the 25–35% band. Encode drives `job.framesRendered`
