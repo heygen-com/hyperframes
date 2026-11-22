@@ -11,6 +11,7 @@ import {
   useTimelineEditQueue,
   type TimelineEditQueue,
 } from "./timelineEditQueue";
+import { LANE_OVERLAP_NOTICE } from "../player/components/timelineCollision";
 import { useTimelineClipTimingEditing } from "./useTimelineClipTimingEditing";
 import { installReactActEnvironment, mountReactHarness } from "./domSelectionTestHarness";
 
@@ -37,12 +38,13 @@ const gsapSyncs = vi.mocked(finishClipTimingFallback);
 function mountClipTiming() {
   usePlayerStore.getState().setDuration(10);
   const queue: TimelineEditQueue = { current: Promise.resolve(), projectId: "project" };
+  const showToast = vi.fn();
   let hook: ReturnType<typeof useTimelineClipTimingEditing> | null = null;
   function Harness() {
     hook = useTimelineClipTimingEditing({
       activeCompPath: "index.html",
       timelineElements: [],
-      showToast: vi.fn(),
+      showToast,
       writeProjectFile: vi.fn(),
       recordEdit: vi.fn(),
       reloadPreview: vi.fn(),
@@ -54,7 +56,7 @@ function mountClipTiming() {
     return null;
   }
   const root = mountReactHarness(<Harness />);
-  return { queue, getHook: () => hook!, unmount: () => act(() => root.unmount()) };
+  return { queue, showToast, getHook: () => hook!, unmount: () => act(() => root.unmount()) };
 }
 
 const clipB: TimelineElement = {
@@ -69,7 +71,7 @@ const clipB: TimelineElement = {
 describe.each<[string, CutoverResult]>([
   ["the SDK path", { status: "committed", version: "1", before: "<p></p>", after: "<p></p>" }],
   ["the file-write fallback", { status: "declined", reason: "feature_disabled" }],
-])("a single-clip trim saved through %s", (_path, sdkResult) => {
+])("a single-clip edit saved through %s", (_path, sdkResult) => {
   afterEach(() => vi.clearAllMocks());
 
   it("saves when nothing queued before it was refused", async () => {
@@ -97,6 +99,43 @@ describe.each<[string, CutoverResult]>([
     expect(sdkWrites).not.toHaveBeenCalled();
     expect(fileWrites).not.toHaveBeenCalled();
     unmount();
+  });
+
+  // Moves B to `to` while a move queued before it is held, then refuses that move with A back at 0-2.
+  async function dragBehindRefusedMove(to: number) {
+    usePlayerStore.getState().setElements([{ ...clipB, id: "a", hfId: "hf-a", start: 0 }, clipB]);
+    sdkWrites.mockResolvedValue(sdkResult);
+    const h = mountClipTiming();
+    let refuseMove: (error: Error) => void = () => {};
+    const moveSave = new Promise<void>((_, fail) => (refuseMove = fail));
+    const move = enqueueTimelineEdit(h.queue, () => moveSave, { projectId: "project" });
+    const onlyTheMove = h.queue.current;
+    let drag: Promise<void> = Promise.resolve();
+    await act(async () => {
+      drag = h.getHook().handleTimelineElementMove(clipB, { start: to, track: 0 }) ?? drag;
+      await vi.waitFor(() => expect(h.queue.current).not.toBe(onlyTheMove));
+      refuseMove(new Error("move refused"));
+      await expect(move).rejects.toThrow("move refused");
+      await drag.catch(() => undefined);
+    });
+    h.unmount();
+    usePlayerStore.getState().setElements([]);
+    return { drag, showToast: h.showToast };
+  }
+
+  // fails without the fix: a single-clip drag saved B at 1 s over the restored A.
+  it("refuses a single-clip drag that would land on a restored clip, with the refused-drop notice", async () => {
+    const { drag, showToast } = await dragBehindRefusedMove(1);
+    await expect(drag).rejects.toThrow(LANE_OVERLAP_NOTICE);
+    expect(sdkWrites).not.toHaveBeenCalled();
+    expect(fileWrites).not.toHaveBeenCalled();
+    expect(showToast.mock.calls).toEqual([[LANE_OVERLAP_NOTICE, "info"]]);
+  });
+
+  it("keeps a single-clip drag that stays clear of a restored clip", async () => {
+    const { drag } = await dragBehindRefusedMove(6);
+    await expect(drag).resolves.toBeUndefined();
+    expect(sdkWrites).toHaveBeenCalledOnce();
   });
 });
 

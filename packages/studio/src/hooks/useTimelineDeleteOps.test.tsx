@@ -11,6 +11,9 @@ import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordin
 import { enqueueTimelineEdit, type TimelineEditQueue } from "./timelineEditQueue";
 import type { TimelineGroupCommitOptions } from "./useTimelineGroupEditing";
 import { useTimelineTrimRipple } from "./useTimelineTrimRipple";
+import { persistTimelineMoveEditsAtomically } from "./timelineMoveAdapter";
+import { persistMoveEdits, type DragCommitDeps } from "../player/components/timelineClipDragCommit";
+import { LANE_OVERLAP_NOTICE } from "../player/components/timelineCollision";
 
 installReactActEnvironment();
 
@@ -285,17 +288,63 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     ]);
   });
 
-  // A drag's start is where the user dropped it, so it saves as before; it does not opt in.
-  it("a plain move queued behind a refused delete still saves", async () => {
-    const { writes, elements, getHook, handleTimelineGroupMove } = mountQueuedEdits("delete hf-a");
+  // Deletes hf-b with Ripple off, then drags hf-a to `to` while the delete is still saving.
+  async function dragBehindRefusedDelete(to: number) {
+    usePlayerStore.setState({ rippleEditEnabled: false });
+    const queued = mountQueuedEdits("delete hf-b");
+    const [a, b] = queued.elements;
+    let refusal: Promise<unknown> = Promise.resolve();
+    const onMoveElements: DragCommitDeps["onMoveElements"] = (edits, coalesceKey) => {
+      const moved = persistTimelineMoveEditsAtomically(edits, coalesceKey, "timing", {
+        handleTimelineGroupMove: queued.handleTimelineGroupMove,
+      });
+      refusal = moved.then(
+        () => null,
+        (error: Error) => error.message,
+      );
+      return moved;
+    };
+    try {
+      await act(async () => {
+        const deleting = queued.getHook().handleTimelineElementDelete(b);
+        const { elements, updateElement } = usePlayerStore.getState();
+        const drag = persistMoveEdits([{ element: a, updates: { start: to, track: 0 } }], {
+          elements,
+          trackOrder: [0],
+          updateElement,
+          onMoveElements,
+        });
+        await Promise.all([deleting, drag]);
+      });
+    } finally {
+      usePlayerStore.setState({ rippleEditEnabled: true });
+    }
+    return { writes: queued.writes, refused: await refusal };
+  }
 
-    await act(async () => {
-      const deleting = getHook().handleTimelineElementDelete(elements[0]);
-      const c = usePlayerStore.getState().elements.find((e) => e.id === "hf-c")!;
-      await Promise.all([deleting, handleTimelineGroupMove([{ element: c, start: 8 }])]);
-    });
+  it("a drag queued behind a refused delete that stays clear of the restored clip still saves", async () => {
+    const { writes, refused } = await dragBehindRefusedDelete(6.5);
 
-    expect(writes).toEqual(["delete hf-a", "move hf-c@8"]);
+    expect(refused).toBeNull();
+    expect(writes).toEqual(["delete hf-b", "move hf-a@6.5"]);
+    expect(usePlayerStore.getState().elements).toEqual([
+      el("hf-a", 6.5, 2),
+      el("hf-c", 4, 2),
+      el("hf-b", 2, 2),
+    ]);
+  });
+
+  // fails without the fix: the drag saved hf-a at 2.5, on top of hf-b, which the refused delete put back.
+  it("a drag queued behind a refused delete that would land on the restored clip is refused and rolls back", async () => {
+    const { writes, refused } = await dragBehindRefusedDelete(2.5);
+
+    expect(refused).toBe(LANE_OVERLAP_NOTICE);
+    expect(writes).toEqual(["delete hf-b"]);
+    expect(usePlayerStore.getState().elements).toEqual([
+      el("hf-a", 0, 2),
+      el("hf-c", 4, 2),
+      el("hf-b", 2, 2),
+    ]);
   });
 
   it("removes a multi-clip selection with one request, however many clips it holds", async () => {
