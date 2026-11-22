@@ -3,6 +3,8 @@
 // a sealed frame on itself through the editing port.
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { recordLiveSet, swapWaiting } from "./softReload";
+import { drawDrafts } from "../editingDraft";
+import { parseDraftEnd, type EditingDraftEnd } from "../editingDraftEnd";
 
 export interface SetPatchProps {
   x?: number;
@@ -375,6 +377,7 @@ export function lastTweenPatch(patches: ReadonlyArray<{ change: RuntimeTweenChan
 export type PatchTweensParams = {
   patches: Array<{ selector: string; change: RuntimeTweenChange }>;
   seek: boolean;
+  endsDrafts?: EditingDraftEnd[];
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -420,8 +423,17 @@ function parseChange(value: unknown): RuntimeTweenChange | null {
 }
 
 export function parsePatchTweens(params: unknown): PatchTweensParams | null {
-  if (!isRecord(params) || Object.keys(params).sort().join() !== "patches,seek") return null;
-  const { patches, seek } = params;
+  if (!isRecord(params)) return null;
+  const keys = Object.keys(params).sort().join();
+  if (keys !== "patches,seek" && keys !== "endsDrafts,patches,seek") return null;
+  const { patches, seek, endsDrafts } = params;
+  const ends =
+    endsDrafts === undefined
+      ? []
+      : Array.isArray(endsDrafts)
+        ? endsDrafts.map(parseDraftEnd)
+        : [null];
+  if (ends.length > MAX_PATCHES || ends.includes(null)) return null;
   if (typeof seek !== "boolean" || !Array.isArray(patches)) return null;
   if (patches.length === 0 || patches.length > MAX_PATCHES) return null;
   const parsed: PatchTweensParams["patches"] = [];
@@ -434,11 +446,15 @@ export function parsePatchTweens(params: unknown): PatchTweensParams | null {
     if (!okSelector || !change) return null;
     parsed.push({ selector, change });
   }
-  return { patches: parsed, seek };
+  return ends.length
+    ? { patches: parsed, seek, endsDrafts: ends as EditingDraftEnd[] }
+    : { patches: parsed, seek };
 }
 
 /** The frame patching its own timelines: every patch must land, and it renders once at the end. */
-export function patchTweens({ patches, seek }: PatchTweensParams): { patched: boolean } {
+export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
+  patched: boolean;
+} {
   const win = window as unknown as {
     __timelines?: Record<string, PatchableTimeline>;
     gsap?: PatchTarget["gsap"];
@@ -457,5 +473,6 @@ export function patchTweens({ patches, seek }: PatchTweensParams): { patched: bo
       return applyGlobalSet(target, selector, change.props) === null;
     return !patchTween(target, selector, change, undefined, !(seek && index === renderAt));
   });
+  if (missed === undefined && endsDrafts) drawDrafts(endsDrafts);
   return { patched: missed === undefined };
 }

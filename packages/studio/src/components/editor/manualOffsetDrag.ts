@@ -21,7 +21,13 @@ import {
 } from "../../hooks/draggedGsapPosition";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
-import { drawPreviewDraft, endPreviewDraft, endPreviewDraftKeepingSizeOnly } from "./previewDrafts";
+import {
+  armPreviewDraftEnd,
+  drawPreviewDraft,
+  endPreviewDraft,
+  endPreviewDraftKeepingSizeOnly,
+} from "./previewDrafts";
+import { selectorFromSelection } from "../../hooks/gsapShared";
 import type { PreviewGestureStart } from "./previewGestureStartRead";
 
 interface OffsetDragGsap {
@@ -476,7 +482,14 @@ export function applyManualOffsetDragCommit(
   dx: number,
   dy: number,
 ): { x: number; y: number } {
-  return applyManualOffsetCommitValue(member, resolveManualOffsetDragMemberOffset(member, dx, dy));
+  const offset = applyManualOffsetCommitValue(
+    member,
+    resolveManualOffsetDragMemberOffset(member, dx, dy),
+  );
+  // A released drag or resize: its save may end the draft. A nudge burst keeps drawing while it saves.
+  if (!member.plainTranslate)
+    armPreviewDraftEnd(member.element, selectorFromSelection(member.selection));
+  return offset;
 }
 
 /**
