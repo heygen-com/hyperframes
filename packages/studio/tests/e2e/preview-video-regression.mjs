@@ -78,16 +78,18 @@ async function open(beforeNavigate) {
 // A sealed frame gets Studio's seeks as posted messages, which an in-frame seek can overtake. Studio's own message
 // queue to the frame is ordered: once a message posted after them arrives, they have all been applied.
 async function afterStudioMessages(host) {
-  await host.frame.evaluate(() => {
+  await host.frame.evaluate((studio) => {
     window.__regressionBarrier = new Promise((resolve) => {
+      const isBarrier = (event) =>
+        event.source === parent && event.data?.type === "preview-regression-barrier";
       const onMessage = (event) => {
-        if (event.data?.type !== "preview-regression-barrier") return;
+        if (event.origin !== studio || !isBarrier(event)) return;
         removeEventListener("message", onMessage);
         resolve();
       };
       addEventListener("message", onMessage);
     });
-  });
+  }, new URL(host.page.url()).origin);
   const iframe = await host.frame.frameElement();
   await iframe.evaluate((el) =>
     el.contentWindow.postMessage({ type: "preview-regression-barrier" }, "*"),
