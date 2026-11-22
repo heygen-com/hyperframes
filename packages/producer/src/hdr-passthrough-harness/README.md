@@ -197,3 +197,24 @@ plus the deferred video frame extraction (1.2-1.8 s at 20 s), which the
 flag-off render does earlier instead.
 
 Every `--ineligible` class (3 s fixtures) fell back with its expected reason.
+
+### With the seek-hook check and verification probes
+
+Same host and settings, ffmpeg 7.0.2, after the planner started declining
+`hf-seek` listeners and overlay capture started re-probing each candidate's
+ends and every 0.5 s inside it. "verify" is the number of extra probes.
+
+| Fixture                           | off: job | on: job | overlay states (candidates / screenshots / verify) | capture | speedup (job) | off vs on            |
+| --------------------------------- | -------- | ------- | -------------------------------------------------- | ------- | ------------- | -------------------- |
+| HLG `captions` 20 s, 10 cues      | 222.0 s  | 22.0 s  | 21 (84 / 11 / 62)                                  | 4.2 s   | 10.1x         | identical, 600/600   |
+| HLG `captions-offset` 20 s        | 259.3 s  | 28.3 s  | 21 (84 / 11 / 62)                                  | 4.8 s   | 9.2x          | identical, 600/600   |
+| HLG `captions` 60 s, 30 cues      | 591.5 s  | 44.8 s  | 61 (244 / 31 / 182)                                | 11.5 s  | 13.2x         | identical, 1800/1800 |
+| HLG `captions` 180 s, 90 cues     | 1689.7 s | 102.0 s | 181 (724 / 91 / 542)                               | 31.7 s  | 16.6x         | identical, 5400/5400 |
+| PQ `captions` 20 s, 10 cues       | 242.0 s  | 24.6 s  | 21 (84 / 11 / 62)                                  | 4.4 s   | 9.8x          | identical, 600/600   |
+| PQ `captions-offset` 20 s         | 266.6 s  | 22.0 s  | 21 (84 / 11 / 62)                                  | 4.2 s   | 12.1x         | identical, 600/600   |
+| HLG `transformed` 20 s (fallback) | 343.9 s  | 375.0 s | fallback `not_full_canvas`                         | -       | 0.92x         | identical, 600/600   |
+| PQ `transformed` 20 s (fallback)  | 411.4 s  | 356.2 s | fallback `not_full_canvas`                         | -       | 1.15x         | identical, 600/600   |
+
+All 18 `--ineligible` classes (3 s) fell back with their expected reason,
+including `hf-seek-listener` (`overlay_non_gsap_animation`) and
+`seek-time-setter` (`overlay_unverified`).

@@ -123,7 +123,8 @@ state closes, each of its candidates is probed again at its first and last
 frame and at least every 0.5 s in between. A fingerprint the state has not
 seen is screenshotted; pixels that differ from the state's fall back
 (`overlay_unverified`) rather than ship a stale overlay. On the caption
-fixtures this adds about two probes (about 20 ms each) per cue.
+fixtures this adds about six probes (about 20 ms each) per cue: 62 for 10
+cues, 182 for 30.
 
 ## Video frame extraction
 
