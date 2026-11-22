@@ -96,6 +96,7 @@ import {
 import { resolveCommandUsage, type ResolvedCommandUsage } from "./utils/commandUsageResolution.js";
 import { closestMatch, closestNames, commandRedirect, fileHint } from "./utils/didYouMean.js";
 import { errorBox } from "./ui/format.js";
+import { renderExitDiagnostic } from "./ui/renderDiagnostic.js";
 import { failureShown, jsonErrorBody, watchOutput, writeJsonFailure } from "./utils/jsonError.js";
 import { isDevMode } from "./utils/env.js";
 import { terminalLines, terminalText } from "@hyperframes/core";
@@ -522,9 +523,15 @@ function commandSucceededForTelemetry(): boolean {
 
 // A crash before the command delivered says what it was: a program driving the CLI otherwise gets
 // an exit 1 with no words at all.
-function sayCrash(error: Error): void {
+function sayCrash(error: Error, kind: "uncaught_exception" | "unhandled_rejection"): void {
   const words = [`${error.name}: ${error.message}`, firstFrameOf(error.stack)];
   errorBox("The command stopped on an unexpected error", words.filter(Boolean).join("\n"));
+  sayRenderCode(error, kind.toUpperCase());
+}
+
+const quietRun = argv.includes("--quiet");
+function sayRenderCode(error: unknown, fallback: string): void {
+  if (command === "render" && !quietRun) renderExitDiagnostic(error, fallback);
 }
 
 /** The first caller line of a stack, past the Error's own line and the result bookkeeping that recorded it. */
@@ -553,7 +560,7 @@ function exitAfterCliFailure(
   error: Error,
 ): never {
   commandFailed = true;
-  sayCrash(error);
+  sayCrash(error, kind);
   emitCliErrorEvent(kind, error);
   _flushSync?.();
   process.exit(1);
@@ -588,7 +595,7 @@ process.on("unhandledRejection", (reason) => {
   }
   commandFailed = true;
   process.exitCode = 1;
-  sayCrash(error);
+  sayCrash(error, "unhandled_rejection");
   emitCliErrorEvent("unhandled_rejection", error);
 });
 
@@ -706,6 +713,7 @@ async function executeCli(): Promise<void> {
       commandFailed = true;
       errorReported = true;
       await reportCommandFailure(command, error);
+      sayRenderCode(error, "RENDER_FAILED");
       const typed = error instanceof CliUsageError || error instanceof CliRuntimeError;
       const usage = error instanceof CliUsageError && !error.result.presented;
       if (usage && !error.hint) await showRequestedUsage(console.error);
