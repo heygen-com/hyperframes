@@ -14,9 +14,11 @@ import {
   extractMediaMetadata,
   isHdrColorSpace,
   isHttpUrl,
+  isVideoHiddenBeforeStreamStart,
   qualifyVideoLayer,
   resolvePlayableVideoDuration,
   resolveProjectRelativeSrc,
+  videoStartOnMediaTimeline,
   type VideoMetadata,
 } from "@hyperframes/engine";
 import { probeVideoLayout } from "../render/videoLayerPassthroughPlan.js";
@@ -157,6 +159,13 @@ export function checkSourceMetadata(args: {
     checkSourceSignal(metadata, args.transfer) ?? checkSourceGeometry(metadata, args.canvas);
   if (gate) return gate;
   if (!(mediaStart >= 0)) return ineligible("source_unsupported", `mediaStart ${mediaStart}`);
+  // The layered path leaves the video out of frames that sit a second or more
+  // before its first decoded frame; the composite would hold that frame instead.
+  const videoStart = videoStartOnMediaTimeline(metadata);
+  if (isVideoHiddenBeforeStreamStart(videoStart, mediaStart)) {
+    const detail = `video stream starts ${videoStart.toFixed(3)}s into the file, mediaStart ${mediaStart}`;
+    return ineligible("source_unsupported", detail);
+  }
   const playable = resolvePlayableVideoDuration(metadata);
   if (!(playable + TIME_EPSILON_SECONDS >= mediaStart + duration)) {
     const detail = `source has ${playable.toFixed(3)}s, needs ${(mediaStart + duration).toFixed(3)}s`;
@@ -240,6 +249,38 @@ function inspectVideoAnimation(videoId: string, duration: number): VideoAnimatio
   return null;
 }
 
+/**
+ * Runs in the page; must stay self-contained. Read-only.
+ *
+ * The layered compositor clips the video to a rounded rectangle when it has a
+ * border radius of its own or sits inside an `overflow` clipping ancestor that
+ * has one (the stacking query's `getEffectiveBorderRadius`); the composite
+ * always lays the full rectangular frame. Any radius on the video or on a
+ * clipping ancestor is reported, whether or not the layered path would pick it.
+ */
+function findVideoCornerRadius(videoId: string): string | null {
+  const video = document.getElementById(videoId);
+  if (!video) return null;
+  const label = (el: Element) => (el.id ? `#${el.id}` : el.tagName.toLowerCase());
+  const rounded = (style: CSSStyleDeclaration) =>
+    [
+      style.borderTopLeftRadius,
+      style.borderTopRightRadius,
+      style.borderBottomRightRadius,
+      style.borderBottomLeftRadius,
+    ].some((value) =>
+      (value ?? "").split(/\s+/).some((part) => (Number.parseFloat(part) || 0) > 0),
+    );
+  for (let el: Element | null = video; el && el !== document.documentElement; ) {
+    const style = window.getComputedStyle(el);
+    if ((el === video || style.overflow !== "visible") && rounded(style)) {
+      return `border-radius on ${label(el)}`;
+    }
+    el = el.parentElement;
+  }
+  return null;
+}
+
 /** Filesystem and probe access, injectable for tests. */
 export interface EligibilityDeps {
   fileExists: (path: string) => boolean;
@@ -268,10 +309,13 @@ const DEFAULT_DEPS: EligibilityDeps = {
  * loop / rate / start / end); the video is native HDR with the render's
  * transfer; local file that exists; probed metadata is bt2020, constant frame
  * rate, opaque, unrotated, square pixels, same aspect as the canvas (so `fill`
- * and `cover` are both a plain scale) and covers `mediaStart + duration`.
+ * and `cover` are both a plain scale), covers `mediaStart + duration`, and its
+ * video stream starts less than the layered path's hide threshold after
+ * `mediaStart`.
  *
  * Page gates (`await session.get()`): `shader_transitions`; layout at sampled
  * times via `probeVideoLayout` (the SDR video-layer probe, same reasons);
+ * `clip_or_mask` for a border radius on the video or a clipping ancestor;
  * `video_animated` / `not_shown` via `inspectVideoAnimation`; then overlay
  * timing via `planner.analyzeOverlayTiming` with
  * `maxStates = DEFAULT_MAX_OVERLAY_STATES`, whose failure reason is returned
@@ -327,6 +371,8 @@ export async function checkPassthroughEligibility(
   if ("reason" in layout) {
     return ineligible(asReason(layout.reason, LAYOUT_REASONS, "not_full_canvas"));
   }
+  const corner = await page.evaluate(findVideoCornerRadius, element.id);
+  if (corner) return ineligible("clip_or_mask", corner);
   const animation = await page.evaluate(inspectVideoAnimation, element.id, composition.duration);
   if (animation) return ineligible(animation.reason, animation.detail);
 
