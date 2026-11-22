@@ -1,4 +1,5 @@
 import { availableParallelism, totalmem } from "os";
+import { join } from "path";
 import { getHeapStatistics } from "v8";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import {
@@ -94,8 +95,8 @@ describe("shrinkTasks", () => {
       return out;
     });
     expect(tasks.map((task) => task.outputDir)).toEqual([
-      "/tmp/work/worker-0",
-      "/tmp/work/worker-1",
+      join("/tmp/work", "worker-0"),
+      join("/tmp/work", "worker-1"),
     ]);
     expect(frames.sort((a, b) => a - b)).toEqual(Array.from({ length: 10 }, (_, i) => 100 + i));
   });
