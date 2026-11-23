@@ -9,6 +9,33 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.84"
+  description="Released - 2026-11-23"
+  tags={["Release", "Studio", "Producer", "Studio Server"]}
+>
+A new blank project opens on an empty timeline again. Leftover render folders are cleaned up reliably on macOS and Windows, and capture finishes on a small host with no GPU.
+
+## Fixes
+
+- **Studio:** A new blank project opens on an empty timeline again ([e51b75208](https://github.com/heygen-com/hyperframes/commit/e51b75208ac5933f0174406b95243e181cc00163), [#8546](https://github.com/heygen-com/hyperframes/pull/8546)).
+- **Producer:** A dead render's folder is cleaned up reliably, never another machine's ([3ee763267](https://github.com/heygen-com/hyperframes/commit/3ee763267ccfba4da3baadfba790424660acb843), [#8538](https://github.com/heygen-com/hyperframes/pull/8538)).
+- **Studio:** A sealed scale resize lands where it was dropped ([513dcce82](https://github.com/heygen-com/hyperframes/commit/513dcce820c65d23b944d9c2b355a0da66efbe8e), [#8301](https://github.com/heygen-com/hyperframes/pull/8301)).
+- **Skills:** A pasted figma link alone no longer picks the figma skill ([f246845ba](https://github.com/heygen-com/hyperframes/commit/f246845ba45cd93347d6f8b55beed2e6df89e421), [#8536](https://github.com/heygen-com/hyperframes/pull/8536)).
+- **Studio:** A sealed resize step draws its offset and size in one message, shipped in v0.9.83 ([8521027ff](https://github.com/heygen-com/hyperframes/commit/8521027ffc3b5016219c4062c529b5dae7970f3a), [#8537](https://github.com/heygen-com/hyperframes/pull/8537))
+
+## Performance
+
+- **CLI:** Capture of an animated page finishes on a small host with no GPU ([fff27ce94](https://github.com/heygen-com/hyperframes/commit/fff27ce94419555721a4b327a9c8f383baadb2e9), [#8533](https://github.com/heygen-com/hyperframes/pull/8533)).
+
+## Internal
+
+- **Studio:** The edit bench reads an undo once Studio says its reload is done ([07949fb80](https://github.com/heygen-com/hyperframes/commit/07949fb80d1e9a2cacb81d7992af9d52819754f4), [#8542](https://github.com/heygen-com/hyperframes/pull/8542)).
+- **Studio Server:** A slow runner no longer leaves index.html's first copy owed in step-ahead tests ([cda1b0082](https://github.com/heygen-com/hyperframes/commit/cda1b008203d841c7de671d9ec34769b87809419), [#8540](https://github.com/heygen-com/hyperframes/pull/8540)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.83...v0.9.84).
+</Update>
+
+<Update
   label="HyperFrames v0.9.83"
   description="Released - 2026-11-22"
   tags={["Release", "CLI", "Producer"]}
