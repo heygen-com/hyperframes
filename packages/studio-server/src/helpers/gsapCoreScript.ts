@@ -1,4 +1,5 @@
 import { findStartTags, insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
+import { isGsapCoreUrl } from "@hyperframes/core/gsap-cdn";
 
 const URL_BASE = "http://localhost/";
 
@@ -6,9 +7,7 @@ function urlPath(src: string): string | null {
   return URL.canParse(src, URL_BASE) ? new URL(src, URL_BASE).pathname : null;
 }
 
-export function isGsapCoreUrl(src: string): boolean {
-  return /\/gsap(-\d+(\.\d+)*)?(\.min)?\.js$/i.test(urlPath(src) ?? "");
-}
+export { isGsapCoreUrl };
 
 const GSAP_PLUGIN_FILE =
   /\/(\w+Plugin|CustomBounce|CustomEase|CustomWiggle|Draggable|EasePack|Flip|GSDevTools|MotionPathHelper|Observer|ScrollSmoother|ScrollTrigger|SplitText)(\.min)?\.js$/i;

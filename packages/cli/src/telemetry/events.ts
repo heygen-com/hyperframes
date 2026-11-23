@@ -1152,22 +1152,13 @@ export function trackRenderFeedback(props: {
 }
 
 /**
- * A catalog search that found nothing worth installing.
- *
- * This is the only path that ever sends a query anywhere, and it is a separate
- * deliberate command rather than something `catalog --query` does on its own:
- * plain search stays entirely local, which is what the CLI promises. The query
- * is the point of the report — it names a move the catalog does not have yet,
- * so the gaps can be read directly rather than guessed from install counts.
+ * A catalog search that found nothing worth installing, sent only by a deliberate
+ * `feedback --search-miss`. It names the move the catalog lacks, in the agent's words;
+ * the searched words stay on the machine.
  */
-export function trackCatalogSearchMiss(props: {
-  query: string;
-  wanted?: string;
-  tier?: string;
-}): void {
+export function trackCatalogSearchMiss(props: { wanted: string; tier?: string }): void {
   trackEvent("cli_catalog_search_miss", {
-    query: props.query,
-    ...(props.wanted ? { wanted: props.wanted } : {}),
+    wanted: props.wanted,
     ...(props.tier ? { tier: props.tier } : {}),
   });
 }

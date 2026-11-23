@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { HistoryListItem, HistoryResult } from "@hyperframes/studio-server";
-import { studioFileContentVersion, studioWriteHeaders } from "../utils/studioFileVersion";
+import {
+  studioFileContentVersion,
+  studioFileRevision,
+  studioWriteHeaders,
+} from "../utils/studioFileVersion";
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
 import { studioApiFetch } from "../utils/studioApiFetch";
 import {
@@ -29,6 +33,7 @@ interface ApplyResult {
   paths?: string[];
   undoes?: string;
   files?: RestoreFiles;
+  revision?: number;
 }
 
 interface NextStep {
@@ -312,11 +317,13 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
       own.overtake();
       const attempt = async (target: string | null): Promise<ApplyResult> => {
         const previous = await readAll(paths, callbacks.readFile);
-        const posted = await post(
+        const pending = post(
           historyUrl(projectId, target ? "/undo" : "/step"),
           target ? { entryId: target } : { direction: direction === "undo" ? "back" : "forward" },
           studioWriteHeaders(),
         );
+        const revision = studioFileRevision();
+        const posted = await pending;
         heldClaimRef.current = null;
         void refresh();
         if (!posted.ok && posted.status === APP_KEEPS_NO_HISTORY)
@@ -332,6 +339,7 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
         const changed = reply.entry.files.map((file) => file.path);
         return {
           ok: true,
+          revision,
           label: reply.entry.label,
           undoes: reply.entry.undoes,
           paths: changed,

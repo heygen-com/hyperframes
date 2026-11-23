@@ -569,6 +569,7 @@ describe("handleRuntimeMessage scenes seam", () => {
       setCompositionSize: () => {},
       sendControl: () => {},
       getIframeDoc: () => null,
+      getCompositionUrl: () => null,
       onRuntimeReady: () => {},
       onRuntimeTimelineReady: () => {},
       setScenes,

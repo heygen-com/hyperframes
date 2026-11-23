@@ -1,6 +1,6 @@
 import { assertLegacyPublishOwner, checkPublishTransition } from "../share/publishTransition.js";
 import { join, posix, relative, resolve } from "node:path";
-import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
+import { CliUsageError, failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { existsSync } from "node:fs";
 import { terminalLines, terminalText } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
@@ -29,6 +29,8 @@ import {
   ensureProjectId,
   readProjectLink,
   readTeamProject,
+  type TeamProject,
+  teamProjectLinkedHere,
   writeTeamProject,
 } from "../utils/projectLink.js";
 import { cliSourced } from "../utils/sourceTag.js";
@@ -46,6 +48,24 @@ export const examples: Example[] = [
   ["Skip baking H.264 proxies for browser-hostile video codecs", "hyperframes publish --no-proxy"],
   ["Show full lint findings instead of the summary line", "hyperframes publish --lint-verbose"],
 ];
+
+const shownId = (id: string): string => id.replace(/[^!-~]/g, "?");
+
+function describeTeamProject(team: TeamProject): string {
+  const space = team.spaceId ? ` in team space ${shownId(team.spaceId)}` : "";
+  return `project ${shownId(team.projectId)}${space}`;
+}
+
+export function unlinkedTeamProjectError(team: TeamProject): CliUsageError {
+  const space = team.spaceId ? ` --space ${shownId(team.spaceId)}` : "";
+  return new CliUsageError(
+    `.hyperframes/project.json names ${describeTeamProject(team)}, but this machine has not published this folder to it, so --yes will not update it.`,
+    {
+      code: "publish_target_unconfirmed",
+      hint: `To update that project, run again with --update ${shownId(team.projectId)}${space}. To publish this folder as its own project, delete .hyperframes/project.json and run again.`,
+    },
+  );
+}
 
 /** Extract a project id from a published URL (with or without scheme, query, or hash) or accept a bare id. */
 export function parseUpdateTarget(value: string): string {
@@ -196,11 +216,40 @@ export default defineCommand({
       }
     }
 
+    let linkedTeam: TeamProject | null =
+      committedTeam && teamProjectLinkedHere(dir, committedTeam) ? committedTeam : null;
+    let declinedTeam = false;
+    if (committedTeam && !linkedTeam && !updateTarget && credential?.type === "oauth") {
+      if (args.yes === true) throw unlinkedTeamProjectError(committedTeam);
+      console.log();
+      console.log(
+        `  ${c.bold(terminalText(`.hyperframes/project.json names ${describeTeamProject(committedTeam)}, but this machine has not published this folder to it.`))}`,
+      );
+      console.log(
+        `  ${c.dim("It may have come with a cloned, copied or downloaded project. Updating it overwrites that project for everyone who can open it.")}`,
+      );
+      console.log();
+      const adopt = await clack.confirm({
+        message: terminalText(
+          `Update project ${shownId(committedTeam.projectId)} in place? No publishes this folder as its own project.`,
+        ),
+        initialValue: false,
+      });
+      if (clack.isCancel(adopt)) {
+        console.log();
+        console.log(`  ${c.dim("Aborted.")}`);
+        console.log();
+        return;
+      }
+      if (adopt === true) linkedTeam = committedTeam;
+      else declinedTeam = true;
+    }
+
     const existingTarget =
       credential?.type === "oauth"
         ? (
             updateTarget ??
-            committedTeam?.projectId ??
+            linkedTeam?.projectId ??
             (priorLink?.url ? priorLink.projectId : undefined)
           )?.replace(/[^!-~]/g, "?")
         : undefined;
@@ -238,10 +287,10 @@ export default defineCommand({
       }
     }
 
-    // Stable id: explicit --update wins, else the committed team id, else this machine's stored/minted id.
-    const requestedProjectId = updateTarget ?? committedTeam?.projectId ?? ensureProjectId(dir);
-    // Team space: explicit --space wins, else the committed space id, else the personal space.
-    const spaceId = spaceOverride ?? committedTeam?.spaceId;
+    // Stable id: explicit --update wins, else the linked team id, else this machine's stored/minted id.
+    const requestedProjectId = updateTarget ?? linkedTeam?.projectId ?? ensureProjectId(dir);
+    // Team space: explicit --space wins, else the linked space id, else the personal space.
+    const spaceId = spaceOverride ?? linkedTeam?.spaceId;
 
     // Continuity cue: if this directory was published before, show where it lives so the
     // user knows a re-publish updates that same link (when logged in).
@@ -353,7 +402,7 @@ export default defineCommand({
         // Warn whenever we aimed at a KNOWN existing project (an explicit --update target or
         // a committed team id) but the server created a fresh one instead — so a teammate
         // whose space doesn't own the committed project doesn't silently lose the shared link.
-        if ((updateTarget || committedTeam) && !updatedInPlace) {
+        if ((updateTarget || linkedTeam) && !updatedInPlace) {
           const targetDesc = updateTarget ? "The requested project" : "The committed team project";
           console.log();
           console.log(
@@ -365,6 +414,7 @@ export default defineCommand({
         // into a "Publish failed" (the outer catch owns publish failures only).
         if (
           committedTeam === null ||
+          declinedTeam ||
           (spaceId !== undefined && committedTeam.spaceId !== spaceId)
         ) {
           try {

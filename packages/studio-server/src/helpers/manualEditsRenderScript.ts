@@ -44,7 +44,9 @@ function studioPositionSeekReapplyRuntime(followFrames: boolean): void {
   const MOTION_TL_KEY = "studio-motion";
   const WRAPPED_PROP = "__hfStudioPositionSeekReapplyWrapped";
 
+  const sealedFrameArmsBeforeAnyEdit = followFrames;
   if (
+    !sealedFrameArmsBeforeAnyEdit &&
     !document.querySelector("[" + PATH_OFFSET_ATTR + '="true"]') &&
     !document.querySelector("[" + BOX_SIZE_ATTR + '="true"]') &&
     !document.querySelector("[" + ROTATION_ATTR + '="true"]') &&

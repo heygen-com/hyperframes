@@ -71,7 +71,11 @@ import {
 import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
-import { assertCompositionFileSize, CompositionExpansionBudget } from "./compositionSizeLimit";
+import {
+  assertCompositionFileSize,
+  CompositionExpansionBudget,
+  LOCAL_SCRIPTS,
+} from "./compositionSizeLimit";
 import {
   ensureExternalLinkTag,
   inlineSubCompositions,
@@ -131,6 +135,7 @@ interface BundleReadScope {
   projectDir: string;
   privateFiles: BundlePrivateFiles;
   noteRead: (filePath: string) => void;
+  scripts: Map<string, string | null>;
 }
 
 const bundleReads = new AsyncLocalStorage<BundleReadScope>();
@@ -154,6 +159,13 @@ function safeReadFile(filePath: string): string | null {
   } catch {
     return null;
   }
+}
+
+function readScriptOnce(filePath: string): string | null {
+  const scripts = bundleReads.getStore()?.scripts;
+  if (!scripts) return safeReadFile(filePath);
+  if (!scripts.has(filePath)) scripts.set(filePath, safeReadFile(filePath));
+  return scripts.get(filePath) ?? null;
 }
 
 const CSS_PLACEHOLDER_RE = /\/\*__hf_(?:c|import_)\d+__\*\//g;
@@ -964,51 +976,86 @@ export type BundlePrivateFiles = "vcs-and-secrets" | "studio";
 
 type DeferredScriptChunk = string | (() => string);
 
-function preserveLocalScriptIntegrity(
+/** The page's script tags by `src`, collected at first use; a pin carried to a new spelling adds its tag. */
+function scriptTagsBySrc(doc: Document): () => Map<string, Element[]> {
+  let index: Map<string, Element[]> | undefined;
+  return () => {
+    if (index) return index;
+    index = new Map();
+    for (const el of doc.querySelectorAll("script[src]")) {
+      const src = el.getAttribute("src")?.trim() ?? "";
+      const tags = index.get(src);
+      if (tags) tags.push(el);
+      else index.set(src, [el]);
+    }
+    return index;
+  };
+}
+
+/** Whether a local script stays external because a tag pins its file; the page's pins are indexed once. */
+function localScriptPins(
   doc: Document,
-  src: string,
   resolvePath: (src: string) => string | null,
-): boolean {
-  const path = resolvePath(src);
-  if (!path) return false;
-  const pinned = [...doc.querySelectorAll("script[src][integrity]")].filter((el) => {
-    const candidate = el.getAttribute("src") || "";
-    return (
-      isRelativeUrl(candidate) &&
-      resolvePath(candidate) === path &&
-      el.getAttribute("integrity")?.trim()
-    );
-  });
-  for (const el of pinned) ensureExternalScriptTag(doc, src, readExternalScriptAttributes(el));
-  return pinned.length > 0;
+  tagsBySrc: () => Map<string, Element[]>,
+): (src: string) => boolean {
+  let pins: Map<string, Map<string, ExternalScriptAttributes>> | undefined;
+  const carried = new Set<string>();
+  return (src) => {
+    if (!pins) {
+      pins = new Map();
+      for (const el of doc.querySelectorAll("script[src][integrity]")) {
+        const candidate = el.getAttribute("src") || "";
+        if (!isRelativeUrl(candidate) || !el.getAttribute("integrity")?.trim()) continue;
+        const path = resolvePath(candidate);
+        if (!path) continue;
+        const attributes = readExternalScriptAttributes(el);
+        const key = JSON.stringify(attributes);
+        const byAttributes = pins.get(path) ?? new Map<string, ExternalScriptAttributes>();
+        byAttributes.delete(key);
+        pins.set(path, byAttributes.set(key, attributes));
+      }
+    }
+    const path = resolvePath(src);
+    const pinned = path ? pins.get(path) : undefined;
+    if (!pinned) return false;
+    if (!carried.has(src)) {
+      carried.add(src);
+      const index = tagsBySrc();
+      for (const attributes of pinned.values())
+        index.set(src, ensureExternalScriptTag(doc, src, attributes, index.get(src) ?? []));
+    }
+    return true;
+  };
+}
+
+interface SeenCompScripts {
+  srcs: Set<string>;
+  paths: Set<string>;
+  keepsPinned: (src: string) => boolean;
 }
 
 function hoistExternalScript(
   src: string,
   projectDir: string,
   doc: Document,
-  seenSrcs: Set<string>,
+  seen: SeenCompScripts,
   chunks: DeferredScriptChunk[],
   attributes: ExternalScriptAttributes,
 ): void {
   if (attributes.integrity?.trim()) {
     ensureExternalScriptTag(doc, src, attributes);
-    seenSrcs.add(src);
+    seen.srcs.add(src);
     return;
   }
-  if (seenSrcs.has(src)) return;
-  seenSrcs.add(src);
+  if (seen.srcs.has(src)) return;
+  seen.srcs.add(src);
   if (!isNonRelativeUrl(src) && !isAbsolute(src) && attributes.type !== "module") {
     const jsPath = resolveWithinProject(projectDir, decodedUrlPath(src));
-    const js = jsPath ? safeReadFile(jsPath) : null;
-    if (js != null) {
-      chunks.push(() =>
-        preserveLocalScriptIntegrity(doc, src, (value) =>
-          resolveWithinProject(projectDir, decodedUrlPath(value)),
-        )
-          ? ""
-          : js,
-      );
+    if (jsPath && seen.paths.has(jsPath)) return;
+    const js = jsPath ? readScriptOnce(jsPath) : null;
+    if (jsPath && js != null) {
+      seen.paths.add(jsPath);
+      chunks.push(() => (seen.keepsPinned(src) ? "" : js));
       return;
     }
   }
@@ -1024,7 +1071,7 @@ function hoistCompositionScripts(
     runtimeScope: string | undefined;
     runtimeCompId: string | undefined;
     authoredRootId: string | undefined;
-    seenCompScriptSrcs: Set<string>;
+    seenCompScripts: SeenCompScripts;
     compScriptChunks: DeferredScriptChunk[];
     importMaps: ImportMap[];
     moduleScripts: string[];
@@ -1050,7 +1097,7 @@ function hoistCompositionScripts(
         externalSrc,
         opts.projectDir,
         opts.document,
-        opts.seenCompScriptSrcs,
+        opts.seenCompScripts,
         opts.compScriptChunks,
         readExternalScriptAttributes(scriptEl),
       );
@@ -1087,6 +1134,7 @@ export function bundleToSingleHtml(projectDir: string, options?: BundleOptions):
     projectDir,
     privateFiles: options?.privateFiles ?? "studio",
     noteRead,
+    scripts: new Map(),
   };
   return bundleReads.run(scope, () => bundleProject(projectDir, options));
 }
@@ -1188,16 +1236,19 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   // Read before sub-compositions add theirs: only the root's own scripts can reach into scenes.
   const rootScripts = options?.sceneParts
     ? [
-        ...document.querySelectorAll(`script:not([${RUNTIME_BOOTSTRAP_ATTR}])`),
-        ...[...document.querySelectorAll("template")].flatMap((t) => [
-          ...(templateContent(t)?.querySelectorAll("script") ?? []),
-        ]),
-      ].map((el) => {
-        const src = el.getAttribute("src");
-        const path = src && isRelativeUrl(src) ? resolveEntryUrl(src) : null;
-        const text = src ? (path && safeReadFile(path)) || "" : el.textContent || "";
-        return isLibraryCopy(text) ? "" : text;
-      })
+        ...new Set(
+          [
+            ...document.querySelectorAll(`script:not([${RUNTIME_BOOTSTRAP_ATTR}])`),
+            ...[...document.querySelectorAll("template")].flatMap((t) => [
+              ...(templateContent(t)?.querySelectorAll("script") ?? []),
+            ]),
+          ].map((el) => {
+            const src = el.getAttribute("src");
+            const path = src && isRelativeUrl(src) ? resolveEntryUrl(src) : null;
+            return src ? (path && readScriptOnce(path)) || "" : el.textContent || "";
+          }),
+        ),
+      ].map((text) => (isLibraryCopy(text) ? "" : text))
     : [];
 
   // Inline sub-compositions (via shared function)
@@ -1242,7 +1293,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     tagScenes: options?.sceneParts === true,
     readProjectScript: (path: string) => {
       const resolved = isRelativeUrl(path) ? resolveEntryUrl(path) : null;
-      return resolved ? safeReadFile(resolved) : null;
+      return resolved ? readScriptOnce(resolved) : null;
     },
     readVariableDefaults: readDeclaredDefaults,
     parseHostVariables: parseHostVariableValues,
@@ -1268,11 +1319,24 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   const compVariablesByComp: Record<string, Record<string, unknown>> = {
     ...subCompResult.variablesByComp,
   };
-  const seenCompScriptSrcs = new Set<string>();
-  const scenesBySrc = new Map<string, Set<string | undefined>>();
+  const pageScriptTags = scriptTagsBySrc(document);
+  const keepsEntryPinned = localScriptPins(document, resolveEntryUrl, pageScriptTags);
+  const seenCompScripts: SeenCompScripts = {
+    srcs: new Set(),
+    paths: new Set(),
+    keepsPinned: localScriptPins(
+      document,
+      (value) => resolveWithinProject(projectDir, decodedUrlPath(value)),
+      pageScriptTags,
+    ),
+  };
+  const scriptFile = (src: string) => (isRelativeUrl(src) && resolveEntryUrl(src)) || src;
+  const scenesByFile = new Map<string, Set<string | undefined>>();
   for (const item of subCompResult.scriptItems)
-    if (item.kind !== "inline")
-      scenesBySrc.set(item.src, (scenesBySrc.get(item.src) ?? new Set()).add(item.scene));
+    if (item.kind !== "inline") {
+      const file = scriptFile(item.src);
+      scenesByFile.set(file, (scenesByFile.get(file) ?? new Set()).add(item.scene));
+    }
   for (const scriptItem of subCompResult.scriptItems) {
     if (scriptItem.kind === "inline") {
       pushRun(scriptRuns, scriptItem.scene, scriptItem.content);
@@ -1281,20 +1345,21 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     const extSrc = scriptItem.src;
     if (scriptItem.integrity?.trim()) {
       ensureExternalScriptTag(document, extSrc, scriptItem);
-      seenCompScriptSrcs.add(extSrc);
+      seenCompScripts.srcs.add(extSrc);
       continue;
     }
-    if (seenCompScriptSrcs.has(extSrc)) continue;
-    seenCompScriptSrcs.add(extSrc);
+    if (seenCompScripts.srcs.has(extSrc)) continue;
+    seenCompScripts.srcs.add(extSrc);
     // Run once for the film when scenes share it: a scene mounts without the one that loaded it first.
-    const scene = (scenesBySrc.get(extSrc)?.size ?? 0) > 1 ? undefined : scriptItem.scene;
+    const scene =
+      (scenesByFile.get(scriptFile(extSrc))?.size ?? 0) > 1 ? undefined : scriptItem.scene;
     if (isRelativeUrl(extSrc) && scriptItem.type !== "module") {
       const jsPath = resolveEntryUrl(extSrc);
-      const js = jsPath ? safeReadFile(jsPath) : null;
-      if (js != null) {
-        const chunk = () =>
-          preserveLocalScriptIntegrity(document, extSrc, resolveEntryUrl) ? "" : js;
-        pushRun(scriptRuns, scene, chunk);
+      if (jsPath && seenCompScripts.paths.has(jsPath)) continue;
+      const js = jsPath ? readScriptOnce(jsPath) : null;
+      if (jsPath && js != null) {
+        seenCompScripts.paths.add(jsPath);
+        pushRun(scriptRuns, scene, () => (keepsEntryPinned(extSrc) ? "" : js));
         continue;
       }
     }
@@ -1379,7 +1444,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
           runtimeScope,
           runtimeCompId,
           authoredRootId: authoredRootId ?? undefined,
-          seenCompScriptSrcs,
+          seenCompScripts,
           compScriptChunks,
           importMaps: subCompResult.importMaps,
           moduleScripts: subCompResult.moduleScripts,
@@ -1416,7 +1481,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
           runtimeScope,
           runtimeCompId,
           authoredRootId: undefined,
-          seenCompScriptSrcs,
+          seenCompScripts,
           compScriptChunks,
           importMaps: subCompResult.importMaps,
           moduleScripts: subCompResult.moduleScripts,
@@ -1432,17 +1497,27 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     templateEl.remove();
   }
 
+  // A file named by several regular (or nomodule) tags runs once, as a composition's scripts do: a copy per tag grew
+  // the page past memory. Data blocks each keep their text; every copy is charged to the page's budget.
+  const inlinedRootRuns = new Set<string>();
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
     if (!src || !isRelativeUrl(src)) continue;
-    if (preserveLocalScriptIntegrity(document, src, resolveEntryUrl)) continue;
+    if (keepsEntryPinned(src)) continue;
     // Module scripts can contain static imports whose resolution is relative
     // to the script URL. Folding their source into a classic inline script
     // both drops module semantics and changes the import base URL.
     if ((el.getAttribute("type") || "").trim().toLowerCase() === "module") continue;
     const jsPath = resolveEntryUrl(src);
-    const js = jsPath ? safeReadFile(jsPath) : null;
-    if (js == null) continue;
+    const run = isJavaScriptType(el) ? `${el.hasAttribute("nomodule")} ${jsPath}` : null;
+    if (jsPath && run !== null && inlinedRootRuns.has(run)) {
+      el.remove();
+      continue;
+    }
+    const js = jsPath ? readScriptOnce(jsPath) : null;
+    if (!jsPath || js == null) continue;
+    budget.chargeGenerated(LOCAL_SCRIPTS, Buffer.byteLength(js));
+    if (run !== null) inlinedRootRuns.add(run);
     el.setAttribute(INLINED_FILE_ATTR, src);
     el.removeAttribute("src");
     el.textContent = js;

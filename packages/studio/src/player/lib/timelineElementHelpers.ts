@@ -23,6 +23,9 @@ import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { readElementFades } from "@hyperframes/core/audio-fade";
 import { isHtmlElement, isImageElement, isMediaElement } from "@hyperframes/core/runtime/dom-realm";
 import { elementVolume } from "./storedVolume";
+import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core/color-grading";
+import { HF_AUDIO_CARVE_ATTR } from "@hyperframes/core/audio-carve";
+import { committedClipPath } from "../../components/editor/cropPresetStore";
 import {
   type AttrReader,
   clampPlaybackRate,
@@ -242,8 +245,20 @@ function applyFadeMetadataFromElement(entry: TimelineElement, el: Element): void
   setOptional(entry, "fadeOut", fades.fadeOut > 0 ? fades.fadeOut : undefined);
 }
 
+export function readBadgeFields(el: Element) {
+  return {
+    colorGrading: el.getAttribute(HF_COLOR_GRADING_ATTR) ?? undefined,
+    clipPath: committedClipPath(el) ?? undefined,
+    carve: el.getAttribute(HF_AUDIO_CARVE_ATTR) ?? undefined,
+  };
+}
+
 export function applyMediaMetadataFromElement(entry: TimelineElement, el: Element): void {
   setOptional(entry, "text", readTimelineText(el));
+  const badge = readBadgeFields(el);
+  setOptional(entry, "colorGrading", badge.colorGrading);
+  setOptional(entry, "clipPath", badge.clipPath);
+  setOptional(entry, "carve", badge.carve);
   applyPlaybackMetadataFromElement(entry, el);
   applyAudioMetadataFromElement(entry, el);
   applyFadeMetadataFromElement(entry, el);

@@ -22,7 +22,7 @@ import { tryResolveCredential } from "../auth/index.js";
 import { isAuthError } from "../auth/errors.js";
 import { envCredentialVar, isTokenExpired, type ResolvedCredential } from "../auth/resolver.js";
 import { refreshIfNeeded } from "../cloud/auth.js";
-import { writeProjectLink } from "./projectLink.js";
+import { PERSONAL_SPACE, writeProjectLink } from "./projectLink.js";
 import {
   isHiddenProjectFile,
   isPrivateCompositionFile,
@@ -1241,8 +1241,18 @@ export async function publishProjectArchive(
     throw error;
   }
   // Remember the server's id + url so the next publish of this directory updates in place.
-  if (result.claimed) {
-    writeProjectLink(projectDir, { projectId: result.projectId, url: result.url });
-  }
+  if (result.claimed) rememberPublishedLink(projectDir, result, spaceId);
   return result;
+}
+
+function rememberPublishedLink(
+  projectDir: string,
+  result: PublishedProjectResponse,
+  spaceId: string | undefined,
+): void {
+  writeProjectLink(projectDir, {
+    projectId: result.projectId,
+    url: result.url,
+    spaceId: spaceId ?? PERSONAL_SPACE,
+  });
 }

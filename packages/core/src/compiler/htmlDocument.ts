@@ -308,6 +308,27 @@ export function mapStartTagsAndStyles(
   return out + html.slice(cursor);
 }
 
+export interface SourceTag {
+  start: number;
+  endAfterBracket: number;
+  lowercaseName: string;
+  closing: boolean;
+}
+
+export function* tagsOutsideCommentsAndRawText(html: string): Generator<SourceTag> {
+  for (const open of markupStarts(html)) {
+    const closing = html.charAt(open + 1) === "/";
+    const nameStart = open + (closing ? 2 : 1);
+    if (!/[a-z]/i.test(html.charAt(nameStart))) continue;
+    const end = findTagEnd(html, nameStart);
+    if (end === -1) return;
+    let nameEnd = nameStart;
+    while (nameEnd < end && !isTagBoundary(html.charAt(nameEnd))) nameEnd++;
+    const lowercaseName = lowerAscii(html.slice(nameStart, nameEnd));
+    yield { start: open, endAfterBracket: end + 1, lowercaseName, closing };
+  }
+}
+
 export function findStartTags(html: string, name: string): number[] {
   const token = `<${lowerAscii(name)}`;
   const starts: number[] = [];

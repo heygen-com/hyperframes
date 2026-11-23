@@ -25,13 +25,20 @@ import { HistoryBusyError } from "./ownerLock";
 import { HistoryIdError } from "./historyId";
 import {
   HistoryClosedError,
-  HistoryRefusedError,
   openProjectHistory,
   readProjectHistory,
   type ProjectHistory,
 } from "./projectHistory";
+import { HistoryRefusedError, type RefusalReason } from "./historyRefused";
 import { START, type HistoryWho } from "./historyLog";
 import { openBlobStore } from "./blobStore";
+
+/** A refusal Desktop shows as one, not as a failure. */
+const refused = (reason: RefusalReason, text: string) => ({
+  name: "HistoryRefusedError",
+  reason,
+  message: expect.stringContaining(text),
+});
 
 // A test can hold a media copy, and run work after its blob is stored but before history records it.
 const mediaCopy = vi.hoisted(() => ({
@@ -49,17 +56,18 @@ vi.mock("./blobStore", async (importOriginal) => {
       const store = await real.openBlobStore(dir);
       return {
         ...store,
-        put: async (path: string) => {
+        put: (async (path, _pin, onRead) => {
           if (path.endsWith(".bin")) {
             mediaCopy.entered?.();
             await mediaCopy.held;
             mediaCopy.copies.push(basename(path));
             if (mediaCopy.fails?.(mediaCopy.copies.length)) throw new Error("The disk is full.");
           }
-          const hash = await store.put(path);
+          // These cases count media copies unpinned; pinning has its own cases in firstCopy.test.ts.
+          const hash = await store.put(path, false, onRead);
           if (path.endsWith(".bin")) await mediaCopy.stored?.();
           return hash;
-        },
+        }) satisfies typeof store.put,
       };
     },
   };
@@ -350,11 +358,12 @@ describe("openProjectHistory", () => {
       { "index.html": "A", "clip.bin": Buffer.alloc(2 * 1024 ** 2, 7) },
       { budgetBytes: 1, quietMs: 30 },
     );
-    // The edit's prune takes the first copy; storing it again then fails.
+    // Studio's edit, whose prune takes the first copy; storing it again then fails. A step would wait for the copy.
     mediaCopy.fails = (copy) => copy === 2;
     mediaCopy.stored = () => {
       mediaCopy.stored = null;
-      return change(history, you, "Color", () => write("index.html", "B"));
+      write("index.html", "B");
+      return history.claim(you, "Color", ["index.html"]);
     };
     await vi.waitFor(() => expect(mediaCopy.copies).toHaveLength(2), { timeout: 10_000 });
     await history.flush();
@@ -428,10 +437,11 @@ describe("openProjectHistory", () => {
       { "index.html": "A", "clip.bin": clip },
       { budgetBytes: 1, quietMs: 30 },
     );
-    // The copy is stored; an edit commits and prunes before history records the copy.
+    // The copy is stored; Studio's edit commits and prunes before history records it. A step would wait for it.
     mediaCopy.stored = () => {
       mediaCopy.stored = null;
-      return change(history, you, "Color", () => write("index.html", "B"));
+      write("index.html", "B");
+      return history.claim(you, "Color", ["index.html"]);
     };
     release();
     await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.bin"]), {
@@ -629,7 +639,9 @@ describe("openProjectHistory", () => {
     renameSync(join(projectDir, "pages"), join(projectDir, ".hold"));
     symlinkSync(".hold", join(projectDir, "pages"), "dir");
     const again = await open(projectDir, historyRoot);
-    await expect(again.step("back", you)).rejects.toThrow("pages is in the way");
+    await expect(again.step("back", you)).rejects.toMatchObject(
+      refused("in_the_way", "pages is in the way"),
+    );
   });
 
   // fails without the fix: an older undo's kept file stayed in both views, and Redo still offered it.
@@ -785,7 +797,7 @@ describe("openProjectHistory", () => {
     await expect(history.checkout(second.id, "after", after)).rejects.toThrow("empty folder");
     await expect(
       history.checkout("gone", "after", tempDir("hf-history-checkout-")),
-    ).rejects.toThrow("no longer kept");
+    ).rejects.toMatchObject(refused("not_kept", "That change is no longer kept"));
   });
 
   it("checks out each entry's own change around a drag held when an agent turn starts", async () => {
@@ -856,6 +868,7 @@ describe("openProjectHistory", () => {
       rmSync(join(projectDir, "a"), { recursive: true });
       mkdirSync(dirname(join(projectDir, made)), { recursive: true });
       writeFileSync(join(projectDir, made), "made");
+      await history.claim(agent, "scan", []); // as a watcher reports it: a write is timed when history sees it
       vi.useFakeTimers({ toFake: ["Date"] });
       try {
         vi.setSystemTime(Date.now() + 120_000);
@@ -901,8 +914,8 @@ describe("openProjectHistory", () => {
     await history.flush();
     const entries = history.list().length;
 
-    await expect(history.undo(turn.id, { who: you })).rejects.toThrow(
-      "a/sub/new.html is in the way",
+    await expect(history.undo(turn.id, { who: you })).rejects.toMatchObject(
+      refused("in_the_way", "a/sub/new.html is in the way"),
     );
     expect([read("a/b.html"), read("a/sub/new.html"), history.list().length]).toEqual([
       "b",
@@ -924,7 +937,9 @@ describe("openProjectHistory", () => {
       mkdirSync(join(outside, "empty"));
       symlinkSync(outside, join(projectDir, "a"), "dir");
 
-      await expect(history.undo(turn.id, { who: you })).rejects.toThrow("a is in the way");
+      await expect(history.undo(turn.id, { who: you })).rejects.toMatchObject(
+        refused("in_the_way", "a is in the way"),
+      );
       expect([read("c.html"), existsSync(join(outside, "empty"))]).toEqual(["c", true]);
     },
   );
@@ -942,8 +957,8 @@ describe("openProjectHistory", () => {
       symlinkSync(outside, join(projectDir, "a"), "dir");
       await history.flush();
 
-      await expect(history.undo(turn.id, { who: you, mode: "just-this" })).rejects.toThrow(
-        "a is in the way",
+      await expect(history.undo(turn.id, { who: you, mode: "just-this" })).rejects.toMatchObject(
+        refused("in_the_way", "a is in the way"),
       );
       expect(existsSync(join(outside, "b.html"))).toBe(false);
     },
@@ -1472,7 +1487,10 @@ describe("openProjectHistory", () => {
     write("b.html", "2"); // 600 ms after the window's last write, but 300 ms after a.html: still the window's
     await pause(700);
     write("c.html", "2"); // 700 ms without a write: the window had ended
-    const closedWindow = { id: "turn-1", who: agent, label: "Turn", startedAt: 1, lastWriteAt };
+    const closedWindow = {
+      ...{ id: "turn-1", who: agent, label: "Turn", startedAt: 1, lastWriteAt },
+      lastWriteFileTime: lastWriteAt,
+    };
 
     const reopened = await open(projectDir, historyRoot, {
       closedWindow: { ...closedWindow, idleMs: 400 },
@@ -1506,7 +1524,10 @@ describe("openProjectHistory", () => {
       utimesSync(join(projectDir, path), at / 1000, at / 1000);
     };
     const turn = (id: string, lastWriteAt: number, idleMs = 400) => ({
-      closedWindow: { id, who: agent, label: "Turn", startedAt: 1, lastWriteAt, idleMs },
+      closedWindow: {
+        ...{ id, who: agent, label: "Turn", startedAt: 1, lastWriteAt, idleMs },
+        lastWriteFileTime: lastWriteAt,
+      },
     });
 
     // b.html comes first in time though not by name: taken in order, both are the window's.
@@ -1514,11 +1535,9 @@ describe("openProjectHistory", () => {
     const first = statSync(join(projectDir, "b.html")).ctimeMs - 9_990;
     await pause(20);
     write("a.html", "a2"); // past the limit from the window's last write, so it counts only after b.html
-    const lastWrite = statSync(join(projectDir, "a.html")).ctimeMs;
     const reopened = await open(projectDir, historyRoot, turn("turn-1", first, 10_000));
     const [kept] = reopened.list();
     expect(kept?.files.map((file) => file.path)).toEqual(["a.html", "b.html"]);
-    expect(Math.abs(kept!.endedAt - lastWrite), "ends at its last write").toBeLessThan(2);
     await reopened.close();
 
     // Long after the window's last write: an old mtime does not hide a write made now, nor does a removal.

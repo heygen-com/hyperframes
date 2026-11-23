@@ -24,7 +24,11 @@ import {
 } from "@hyperframes/engine/chrome-host-ceiling";
 import { getFreeDiskMb } from "../telemetry/system.js";
 import { BrowserDownloadStalledError, installInChild } from "./installInChild.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import {
+  LINUX_ARM_BROWSER_STEPS,
+  normalizeErrorMessage,
+  SetupStepsError,
+} from "../utils/errorMessage.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { unzipArchive } from "./unzipArchive.js";
 import {
@@ -524,12 +528,9 @@ async function ensureLinuxArmBrowser(options?: EnsureBrowserOptions): Promise<Br
   }
 
   // Could not auto-install — give clear manual instructions.
-  throw new Error(
-    `Chrome Headless Shell is not available for Linux ARM64 (DGX Spark, GB10, Jetson).\n\n` +
-      `Install Chromium manually and point hyperframes to it:\n\n` +
-      `  sudo apt-get install -y chromium-browser\n` +
-      `  export HYPERFRAMES_BROWSER_PATH=$(which chromium-browser)\n\n` +
-      `Then re-run your command. The HYPERFRAMES_BROWSER_PATH env var persists for the session.`,
+  throw new SetupStepsError(
+    `Chrome Headless Shell is not available for Linux ARM64 (DGX Spark, GB10, Jetson).`,
+    LINUX_ARM_BROWSER_STEPS,
   );
 }
 

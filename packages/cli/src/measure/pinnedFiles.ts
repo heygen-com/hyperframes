@@ -1,8 +1,13 @@
 // Files a measuring tool needs but the CLI does not ship: fetched on first use into a folder under the trusted cache
 // root, each one checked against its pinned size and sha256 before it is used, and the folder sealed.
-import { mkdirSync, renameSync, rmSync } from "node:fs";
+import { renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { foreignWritablePath, sealCacheInstall } from "@hyperframes/core/cache-dir";
+import {
+  assertPrivateCachePath,
+  ensurePrivateCacheDir,
+  foreignWritablePath,
+  sealCacheInstall,
+} from "@hyperframes/core/cache-dir";
 import { downloadToFile } from "../cloud/download.js";
 import { verifies, type ModelFile } from "../whisper/modelFile.js";
 import { Fix } from "./media.js";
@@ -11,10 +16,10 @@ export interface PinnedFile extends ModelFile {
   url: string;
 }
 
-async function fetchPinned(dir: string, file: PinnedFile): Promise<void> {
+async function fetchPinned(dir: string, file: PinnedFile, signal?: AbortSignal): Promise<void> {
   const temp = join(dir, `${file.name}.part-${process.pid}`);
   try {
-    await downloadToFile(file.url, temp).catch((err: unknown) => {
+    await downloadToFile(file.url, temp, { signal }).catch((err: unknown) => {
       throw new Fix(
         `could not download ${file.name} (${err instanceof Error ? err.message : String(err)})`,
         "check the network and run the command again",
@@ -37,6 +42,7 @@ export async function ensurePinnedFiles(
   root: string,
   files: readonly PinnedFile[],
   onStatus?: (message: string) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const wanted: PinnedFile[] = [];
   for (const file of files) {
@@ -44,10 +50,11 @@ export async function ensurePinnedFiles(
     if (foreignWritablePath(path, root) || !(await verifies(path, file))) wanted.push(file);
   }
   if (!wanted.length) return;
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  ensurePrivateCacheDir(dir, root);
   for (const file of wanted) {
     onStatus?.(`Downloading ${file.name} (${Math.round(file.bytes / 1e5) / 10} MB, once)...`);
-    await fetchPinned(dir, file);
+    await fetchPinned(dir, file, signal);
   }
   sealCacheInstall(dir, root);
+  for (const file of files) assertPrivateCachePath(join(dir, file.name), root);
 }

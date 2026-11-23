@@ -12,6 +12,7 @@ import {
   hasCompositionOutsideTemplates,
   isFullHtmlDocument,
   mapStartTagsAndStyles,
+  tagsOutsideCommentsAndRawText,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument.js";
@@ -522,5 +523,24 @@ describe("insertRuntimeTag", () => {
     for (const attrs of ["", 'data-motion-blur="off"', 'data-motion-blur-shutter="on"']) {
       expect(insertRuntimeTag(page(attrs), runtime)).not.toContain("data-hf-accel-tracker");
     }
+  });
+});
+
+describe("tagsOutsideCommentsAndRawText", () => {
+  it("lists the real tags only, never tag text inside a script, style, title or comment", () => {
+    const html = `<P id="a">x</P><script>'<b data-hf-id="w">'</script><!-- <i> --><style>/* <u> */</style><br/>`;
+    const tags = [...tagsOutsideCommentsAndRawText(html)].map(
+      ({ lowercaseName, closing, start, endAfterBracket }) =>
+        `${closing ? "/" : ""}${lowercaseName}:${html.slice(start, endAfterBracket)}`,
+    );
+    expect(tags).toEqual([
+      'p:<P id="a">',
+      "/p:</P>",
+      "script:<script>",
+      "/script:</script>",
+      "style:<style>",
+      "/style:</style>",
+      "br:<br/>",
+    ]);
   });
 });

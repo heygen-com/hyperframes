@@ -20,7 +20,12 @@ export interface FinishJob {
   signature: string;
   projectDir: string;
   compPath: string;
-  options: { capture: boolean; gsapBaseUrl: string; sandboxedCapture: boolean };
+  options: {
+    capture: boolean;
+    gsapBaseUrl: string;
+    gsapMirror?: string | null;
+    sandboxedCapture: boolean;
+  };
   variables?: Record<string, unknown>;
 }
 

@@ -2155,6 +2155,14 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio/src/utils/htmlAttrSafety.ts",
     "Studio's hand-synced copy of core's html-attr-safety rules; Studio imports core's now, one source",
   ],
+  ...[
+    "packages/cli/src/registry/envProxy.fixture.ts",
+    "packages/cli/src/registry/envProxy.process.test.ts",
+    "packages/cli/src/utils/envProxyFetch.ts",
+  ].map((path) => [
+    path,
+    "held for v0.10.0 with #8311, the change that added it; drop this entry when it re-lands",
+  ]),
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

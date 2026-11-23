@@ -17,9 +17,9 @@ vi.mock("./blobStore", async (importOriginal) => {
     ...real,
     openBlobStore: async (dir: string) => {
       const store = await real.openBlobStore(dir);
-      const put = async (path: string) => {
+      const put: typeof store.put = async (path, ...rest) => {
         const left = changing.get(basename(path)) ?? 0;
-        if (left === 0) return store.put(path);
+        if (left === 0) return store.put(path, ...rest);
         changing.set(basename(path), left - 1);
         return null;
       };
@@ -202,7 +202,16 @@ describe("a file still being written when the history first opens", () => {
     changing.set("media.txt", 4);
     const history = await openProjectHistory({ projectDir, historyRoot });
     cleanup.push(() => history.close());
-    expect(await history.claim(you, "Edited", ["media.txt"])).toBeNull();
-    expect(history.peek(START)).not.toHaveProperty("media.txt");
+    const edit = await history.claim(you, "Edited", ["media.txt"]);
+    // The start names the file, as a version not kept until its copy lands.
+    expect(history.peek(START)!["media.txt"]).toMatch(/^[0-9a-f]{64}$/);
+    expect(history.peek(START)!["media.txt"]).not.toBe(
+      hashOfVersion(fileContentVersion("recorded")),
+    );
+    // The claim goes ahead of the copy, so its entry refuses an undo until the copy is saved.
+    await expect(history.undo(edit!.id, { who: you })).rejects.toThrow(
+      "The project's starting copy is still being saved",
+    );
+    expect(readFileSync(join(projectDir, "media.txt"), "utf-8")).toBe("recorded");
   });
 });
