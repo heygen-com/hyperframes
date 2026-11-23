@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { appendRecord, findByPrompt, readManifest } from "./lib/manifest.mjs";
@@ -24,6 +25,10 @@ import { validateCubeFile } from "./lib/cube-validate.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..", "..", "..");
 const RESOLVE_CLI = join(import.meta.dirname, "resolve.mjs");
+// Appended to a spawned resolve's fetch stub: its media downloads reach the same stub.
+const ROUTE_DOWNLOADS = `
+const { mediaTransport } = await import(${JSON.stringify(pathToFileURL(join(import.meta.dirname, "lib", "media-fetch.mjs")).href)});
+mediaTransport.fetch = (url, init) => globalThis.fetch(url, init);`;
 // The "Test: skills" CI job has no ffmpeg on PATH (by design). The smart-grade
 // test shells to ffmpeg, so it's skipped there and runs where ffmpeg exists.
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
@@ -126,7 +131,7 @@ globalThis.fetch = async (url, init) => {
   if (u.startsWith("https://cdn.openverse.test/")) return new Response("ID3 openverse bytes");
   return real(url, init);
 };`;
-  return [`--import=data:text/javascript,${encodeURIComponent(stub)}`];
+  return [`--import=data:text/javascript,${encodeURIComponent(stub + ROUTE_DOWNLOADS)}`];
 }
 
 function makeFrame(dir, name, color) {
@@ -228,7 +233,7 @@ syncBuiltinESMExports();
 const prior = globalThis.fetch;
 globalThis.fetch = async (url, init) =>
   String(url).startsWith("https://cdn.openverse.test/") ? new Response("ID3 " + url) : prior(url, init);`;
-  return [`--import=data:text/javascript,${encodeURIComponent(stub)}`];
+  return [`--import=data:text/javascript,${encodeURIComponent(stub + ROUTE_DOWNLOADS)}`];
 }
 
 test("two SFX resolves at once each keep their Openverse credit line", async () => {
@@ -1922,7 +1927,7 @@ globalThis.fetch = async (url, init) => {
   if (u.includes("/public/icons/slack/")) return new Response("<svg xmlns='http://www.w3.org/2000/svg'/>");
   return real(url, init);
 };`;
-  const nodeArgs = [`--import=data:text/javascript,${encodeURIComponent(stub)}`];
+  const nodeArgs = [`--import=data:text/javascript,${encodeURIComponent(stub + ROUTE_DOWNLOADS)}`];
   const base = ["--type", "logo", "--intent", "Slack logo", "--entity", "Slack", "--json"];
   const variant = JSON.parse(
     spawnResolve([...base, "--variant", "wordmark", "--project", tmp], { nodeArgs }).stdout.trim(),

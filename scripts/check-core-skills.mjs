@@ -11,22 +11,23 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Every installed skill's description is listed on every turn; an entry is read in full when it opens.
 export const DESCRIPTION_MAX = 320;
-// Each budget carries +192 B for the usage beacon line (`beaconProblems`) and +160 B for the line
+// Each budget carries +256 B for the usage note line (`beaconProblems`) and +160 B for the line
 // that has every CLI command run through the launcher (`launcherProblems`).
 export const CORE_SKILLS = {
   // +128 B for the routing rows to the video rebuilds and to a reference's style, which only trigger when the entry hands them on.
   // +64 B for the lane pointer to format.md.
-  hyperframes: 7712,
+  hyperframes: 7776,
   // +256 B for the `_meta.updateNotice` line: the agent relays it, the person updates.
   // +256 B for the unattended pointer: a script or CI job with no TTY pins the release.
-  "hyperframes-cli": 8032,
-  "hyperframes-registry": 5472,
-  "media-use": 5472,
-  figma: 7520,
-  slideshow: 5472,
-  "remotion-to-hyperframes": 5472,
-  "reverse-any-video": 5472,
-  "style-sampling": 5472,
+  // +64 B for the rating line naming the person's no to usage notes.
+  "hyperframes-cli": 8160,
+  "hyperframes-registry": 5536,
+  "media-use": 5536,
+  figma: 7584,
+  slideshow: 5536,
+  "remotion-to-hyperframes": 5536,
+  "reverse-any-video": 5536,
+  "style-sampling": 5536,
 };
 
 /** @param {string} skill */

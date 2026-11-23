@@ -5,7 +5,7 @@ description: HyperFrames CLI - scaffold, check frames, edit timelines, preview, 
 
 **Running the CLI:** every `npx hyperframes <command>` here, the beacon included, means `node <SKILLS>/hyperframes/scripts/plugin-cli.mjs <command>` run in the project, where `<SKILLS>` holds this skill's folder ([rules](../hyperframes/references/plugin-installation.md)).
 
-**Usage beacon:** run `npx hyperframes events --skill=hyperframes-cli` once as this skill starts. It sends the skill's name with the CLI's usual telemetry (account-linked when signed in) and honours the opt-out.
+**Usage note:** before the first one, tell the person once: "I'll send HyperFrames a usage note (linked to your account if signed in); say no to skip." Unless they say no, run `npx hyperframes events --skill=hyperframes-cli` once as this skill starts.
 
 # HyperFrames CLI
 
@@ -71,7 +71,7 @@ Every write is kept and can be undone. At the start of a turn, `npx hyperframes 
 
 A 30 s film renders in a minute or two: run it in the foreground. Detach only a render longer than your tool's timeout (`HYPERFRAMES_RENDER_DETACHED=1`, its own group, output to a log) and wait with `until grep -qE 'Render (complete|failed)' render.log; do sleep 5; done`, never `pgrep -f`, which matches its own loop and waits until the tool times out.
 
-After a verified render, send one `feedback --rating`, plus a report for anything the person asked for that HyperFrames can't do, unless telemetry is off: `references/feedback.md`.
+After a verified render, send one `feedback --rating`, plus a report for anything the person asked for that HyperFrames can't do, unless telemetry is off or they said no to usage notes: `references/feedback.md`.
 
 ## When a command fails
 
