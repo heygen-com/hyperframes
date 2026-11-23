@@ -75,6 +75,7 @@ import {
   assertCompositionFileSize,
   CompositionExpansionBudget,
   LOCAL_SCRIPTS,
+  LOCAL_STYLESHEETS,
 } from "./compositionSizeLimit";
 import {
   ensureExternalLinkTag,
@@ -286,7 +287,10 @@ function inlineCssFile(
   cssFileDir: string,
   projectDir: string,
   activeImports: Set<string>,
+  budget: CompositionExpansionBudget,
 ): string {
+  // Charged per copy, before its imports are read: a file imported twice at every level doubles per level.
+  budget.chargeGenerated(LOCAL_STYLESHEETS, Buffer.byteLength(css));
   const { stripped: strippedCss, comments: placeholders } = withCommentsStripped(css);
   const withPlaceholders = replaceMatches(
     strippedCss,
@@ -302,7 +306,7 @@ function inlineCssFile(
       const content = safeReadFile(resolved);
       if (content == null) return full;
       activeImports.add(resolved);
-      const inlined = inlineCssFile(content, dirname(resolved), projectDir, activeImports);
+      const inlined = inlineCssFile(content, dirname(resolved), projectDir, activeImports, budget);
       activeImports.delete(resolved);
       const trimmedMedia = (mediaQuery || "").trim();
       const block = trimmedMedia ? `@media ${trimmedMedia} {\n${inlined}\n}\n` : inlined + "\n";
@@ -1031,7 +1035,25 @@ function localScriptPins(
 interface SeenCompScripts {
   srcs: Set<string>;
   paths: Set<string>;
-  keepsPinned: (src: string) => boolean;
+  inlineFile: (src: string, js: string) => DeferredScriptChunk;
+}
+
+/**
+ * A local script file copied in for a composition. Charged when read, so many names for one file stop at
+ * the budget; given back if a pin keeps the file external.
+ */
+function inlinedScriptFile(
+  js: string,
+  keepsPinned: () => boolean,
+  budget: CompositionExpansionBudget,
+): DeferredScriptChunk {
+  const bytes = Buffer.byteLength(js);
+  budget.chargeGenerated(LOCAL_SCRIPTS, bytes);
+  return () => {
+    if (!keepsPinned()) return js;
+    budget.chargeGenerated(LOCAL_SCRIPTS, -bytes);
+    return "";
+  };
 }
 
 function hoistExternalScript(
@@ -1055,7 +1077,7 @@ function hoistExternalScript(
     const js = jsPath ? readScriptOnce(jsPath) : null;
     if (jsPath && js != null) {
       seen.paths.add(jsPath);
-      chunks.push(() => (seen.keepsPinned(src) ? "" : js));
+      chunks.push(seen.inlineFile(src, js));
       return;
     }
   }
@@ -1216,6 +1238,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     rebaseEntryAuthoredAssetPaths(document, sourceDir, projectDir);
   }
 
+  const budget = new CompositionExpansionBudget();
   for (const el of [...document.querySelectorAll('link[rel="stylesheet"]')]) {
     const href = el.getAttribute("href");
     if (!href || !isRelativeUrl(href) || cssStyleMergeKey(el) === undefined) continue;
@@ -1229,7 +1252,13 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
       const value = el.getAttribute(name);
       if (value !== null) style.setAttribute(name, value);
     }
-    style.textContent = inlineCssFile(css, dirname(cssPath), projectDir, new Set([cssPath]));
+    style.textContent = inlineCssFile(
+      css,
+      dirname(cssPath),
+      projectDir,
+      new Set([cssPath]),
+      budget,
+    );
     el.replaceWith(style);
   }
 
@@ -1258,7 +1287,6 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     host.hasAttribute("data-composition-src"),
   );
   const sceneSources = new Map<string, string | null>();
-  const budget = new CompositionExpansionBudget();
   const subCompResult = inlineSubCompositions(document, subCompositionHosts, {
     resolveHtml: (srcPath: string) => {
       if (!isRelativeUrl(srcPath)) return null;
@@ -1321,14 +1349,15 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   };
   const pageScriptTags = scriptTagsBySrc(document);
   const keepsEntryPinned = localScriptPins(document, resolveEntryUrl, pageScriptTags);
+  const keepsCompPinned = localScriptPins(
+    document,
+    (value) => resolveWithinProject(projectDir, decodedUrlPath(value)),
+    pageScriptTags,
+  );
   const seenCompScripts: SeenCompScripts = {
     srcs: new Set(),
     paths: new Set(),
-    keepsPinned: localScriptPins(
-      document,
-      (value) => resolveWithinProject(projectDir, decodedUrlPath(value)),
-      pageScriptTags,
-    ),
+    inlineFile: (src, js) => inlinedScriptFile(js, () => keepsCompPinned(src), budget),
   };
   const scriptFile = (src: string) => (isRelativeUrl(src) && resolveEntryUrl(src)) || src;
   const scenesByFile = new Map<string, Set<string | undefined>>();
@@ -1359,7 +1388,11 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
       const js = jsPath ? readScriptOnce(jsPath) : null;
       if (jsPath && js != null) {
         seenCompScripts.paths.add(jsPath);
-        pushRun(scriptRuns, scene, () => (keepsEntryPinned(extSrc) ? "" : js));
+        pushRun(
+          scriptRuns,
+          scene,
+          inlinedScriptFile(js, () => keepsEntryPinned(extSrc), budget),
+        );
         continue;
       }
     }

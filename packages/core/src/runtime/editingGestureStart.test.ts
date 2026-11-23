@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { gestureStart } from "./editingGestureStart";
+import { gestureBase, gestureStart } from "./editingGestureStart";
 import { handleFor } from "./editingHandles";
 
 type Tween = { vars: Record<string, unknown>; targets: () => unknown[]; duration: () => number };
@@ -248,5 +248,22 @@ describe("gesture start", () => {
 
   it("answers null for an element this load does not have", () => {
     expect(gestureStart(["0123456789abcdef:999"]).elements).toEqual([null]);
+  });
+});
+
+// fails without the fix: a sealed recording had no read for a layer no tween touches, so it started a static
+// opacity and scale at 1 where the unsealed recorder reads them from GSAP.
+describe("gestureBase", () => {
+  it("reads GSAP's x, y, opacity and scale for a layer no tween touches", () => {
+    const card = turnedCard("");
+    gsapWith([], { x: 12, y: -4, opacity: 0.5, scaleX: 1.5 });
+    expect(gestureBase(handleFor(card))).toEqual({ x: 12, y: -4, opacity: 0.5, scale: 1.5 });
+  });
+
+  it("answers null without GSAP, or for an element this load does not have", () => {
+    const card = turnedCard("");
+    expect(gestureBase(handleFor(card))).toBeNull();
+    gsapWith([]);
+    expect(gestureBase("0123456789abcdef:999")).toBeNull();
   });
 });

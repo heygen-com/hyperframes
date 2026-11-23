@@ -18,6 +18,7 @@ import {
   type EditingElementBox,
   type EditingElementDescription,
   type EditingElementGeometry,
+  type EditingGestureBase,
   type EditingGestureStart,
   type EditingElementHit,
   type EditingElementMatch,
@@ -318,6 +319,20 @@ export async function previewGestureStart(
   if (!Array.isArray(elements) || elements.length !== handles.length) return null;
   if (!Array.isArray(snap) || snap.length > MAX_SNAP_TARGETS || !snap.every(isBox)) return null;
   return { elements: elements.map(readGestureStart), snap };
+}
+
+export async function previewGestureBase(
+  iframe: HTMLIFrameElement,
+  handles: readonly string[],
+): Promise<Array<EditingGestureBase | null> | null> {
+  if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
+  const elements: unknown = (
+    await previewRequest(iframe, "gesture-base", { handles: [...handles] })
+  )?.elements;
+  if (!Array.isArray(elements) || elements.length !== handles.length) return null;
+  return elements.map((base) =>
+    isFiniteFields(base, ["x", "y", "opacity", "scale"]) ? (base as EditingGestureBase) : null,
+  );
 }
 
 const LAYER_KINDS = new Set(["image", "video", "audio", "vector", "group", "text", "shape"]);
