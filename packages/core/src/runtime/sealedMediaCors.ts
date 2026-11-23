@@ -179,14 +179,22 @@ const PINNED_OUT = "video/x-hyperframes-pinned-out";
 const pinned = new WeakMap<HTMLMediaElement, Array<[HTMLSourceElement, string | null]>>();
 const erredThisPick = new WeakMap<HTMLMediaElement, Set<Element>>();
 
-function pinTo(media: HTMLMediaElement, chosen: string, home: string): void {
+function pinTo(media: HTMLMediaElement, keep: Element | null): void {
+  if (!keep || keep === media) return;
   const held: Array<[HTMLSourceElement, string | null]> = [];
   for (const el of media.querySelectorAll("source")) {
-    if (candidate(media, el, home) === chosen && !erredThisPick.get(media)?.has(el)) break;
+    if (el === keep) break;
     held.push([el, el.getAttribute("type")]);
     el.setAttribute("type", PINNED_OUT);
   }
   if (held.length) pinned.set(media, held);
+}
+
+function playingSource(media: HTMLMediaElement, chosen: string, home: string): Element | null {
+  const erred = erredThisPick.get(media);
+  return [...media.querySelectorAll("source")].find(
+    (el) => candidate(media, el, home) === chosen && !erred?.has(el),
+  ) ?? null;
 }
 
 function unpin(media: HTMLMediaElement): void {
@@ -211,7 +219,7 @@ function failed(event: Event, home: string): void {
   if (has(down, media, url)) return;
   setOf(refused, media).add(url);
   write(media, null);
-  pinTo(media, url, home);
+  pinTo(media, event.target as Element);
   reload(media);
 }
 
@@ -226,7 +234,7 @@ function firstFrame(event: Event, home: string): void {
   if (has(refused, media, chosen)) return warnOnce(media, chosen);
   if (!isHome(chosen, home) || !selectable(media, home).includes(chosen)) return;
   write(media, "anonymous");
-  pinTo(media, chosen, home);
+  pinTo(media, playingSource(media, chosen, home));
   reload(media);
 }
 
