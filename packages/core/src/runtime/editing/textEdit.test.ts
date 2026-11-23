@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleFor } from "../editingHandles";
 import { MAX_EDIT_VALUE } from "./editElement";
-import { endTextEdit, parseTextEdit, textEdit, textEditEndedEvent } from "./textEdit";
+import {
+  endTextEdit,
+  parseTextEdit,
+  textEdit,
+  textEditEndedEvent,
+  textEditResult,
+} from "./textEdit";
 
 const V = 1;
 const HANDLE = "0123456789abcdef:1";
@@ -135,6 +141,18 @@ describe("text-edit", () => {
     }
   });
 
+  it("ends keeping the text when the element loses focus, as a press elsewhere does", () => {
+    const { element, handle } = page();
+    const starter = port();
+    start(handle, starter);
+    element.innerHTML = "Hi";
+    element.dispatchEvent(new FocusEvent("blur"));
+    expect(starter.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "text-edit-ended", handle, html: "Hi" }),
+    );
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+  });
+
   it("leaves Shift+Enter to the element as a line break", () => {
     const { element, handle } = page();
     const starter = port();
@@ -192,5 +210,39 @@ describe("text-edit", () => {
     expect(textEditEndedEvent({ ...event, extra: 1 }, V)).toBeNull();
     expect(textEditEndedEvent({ ...event, v: 2 }, V)).toBeNull();
     expect(textEditEndedEvent({ ...event, previous: null }, V)).toBeNull();
+  });
+
+  it("lets out of a frame's reply or ended event nothing but text markup", () => {
+    const hostile = [`<img src="x" onerror="alert(1)">`, `<span onclick="alert(1)">a</span>`];
+    const event = {
+      v: V,
+      event: "text-edit-ended",
+      handle: HANDLE,
+      html: "a <b>b</b>",
+      previous: "b",
+    };
+    expect(textEditEndedEvent(event, V)).toEqual({
+      handle: HANDLE,
+      html: "a <b>b</b>",
+      previous: "b",
+    });
+    const reply = { applied: true, html: "a <b>b</b>", previous: "b" };
+    expect(textEditResult(reply)).toEqual(reply);
+    expect(textEditResult({ applied: true, html: null, previous: null })).not.toBeNull();
+    expect(textEditResult({ ...reply, extra: 1 })).toBeNull();
+    for (const markup of hostile) {
+      expect(textEditEndedEvent({ ...event, html: markup }, V)).toEqual({
+        handle: HANDLE,
+        html: null,
+        previous: "",
+      });
+      expect(textEditEndedEvent({ ...event, previous: markup }, V)).toEqual({
+        handle: HANDLE,
+        html: null,
+        previous: "",
+      });
+      expect(textEditResult({ ...reply, html: markup })).toBeNull();
+      expect(textEditResult({ ...reply, previous: markup })).toBeNull();
+    }
   });
 });

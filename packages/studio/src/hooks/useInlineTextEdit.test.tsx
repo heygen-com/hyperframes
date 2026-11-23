@@ -201,6 +201,7 @@ describe("useInlineTextEdit", () => {
     act(() => {
       controls.current!.start(element);
     });
+    element.textContent = "Typed";
     act(() => root.render(<Probe onCommit={second} />));
 
     expect(controls.current!.session?.element).toBe(element);
@@ -268,10 +269,22 @@ describe("useInlineTextEdit", () => {
     act(() => {
       controls().start(element);
     });
+    element.textContent = "Typed";
     act(() => controls().commit());
     act(() => controls().commit());
 
     expect(onCommit).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+  });
+
+  it("saves nothing when the text was not changed", () => {
+    const element = heading();
+    const { controls, root, onCommit } = mount();
+    act(() => {
+      controls().start(element);
+    });
+    act(() => controls().commit());
+    expect([onCommit.mock.calls.length, controls().session]).toEqual([0, null]);
     act(() => root.unmount());
   });
 
@@ -413,6 +426,7 @@ describe("useInlineTextEdit", () => {
       act(() => {
         controls().start(element);
       });
+      element.textContent = "Typed";
       act(() => controls().commit());
 
       press(element, "Enter");
@@ -582,11 +596,12 @@ describe("useInlineTextEdit with styled runs", () => {
     act(() => {
       controls().start(element);
     });
+    element.textContent = "plain words, typed";
     act(() => controls().commit());
 
     expect(onCommit).toHaveBeenCalledWith({
       element,
-      html: "plain words",
+      html: "plain words, typed",
       previousHtml: "plain words",
     });
     act(() => root.unmount());
