@@ -6,7 +6,10 @@
 import { isStylableElement, type StylableElement as Styled } from "./domRealm";
 import { elementForHandle } from "./editingHandles";
 import type { EditingDraftEnd, EditingDraftReply } from "./editingDraftEnd";
-import type { EditingDraft, EditingDraftRotate } from "./editingPort";
+import type { EditingDraft, EditingDraftProps, EditingDraftRotate } from "./editingPort";
+import { revealClip } from "./clipReveal";
+import { redrawGsapTimelineAt } from "./adapters/gsap";
+import type { RuntimeTimelineLike } from "./types";
 
 export const SIZE_PROPERTIES = [
   "box-sizing",
@@ -29,13 +32,25 @@ interface Before {
   gsapPosition?: { x: number; y: number };
   gsapDrawn?: { x: number; y: number };
   drewTransform?: boolean;
+  propsSet?: string[];
+  putMarkBack?: () => void;
 }
 
 type Gsap = {
   getProperty?: (el: Element, prop: string) => unknown;
-  set?: (el: Element, props: Record<string, number>) => void;
+  set?: (el: Element, props: Record<string, number | string>) => void;
 };
 const frameGsap = () => (window as unknown as { gsap?: Gsap }).gsap;
+
+/** The film's own timeline, as the unsealed recorder finds it: Studio's `__proxied` mark is no timeline. */
+function rootTimeline(): RuntimeTimelineLike | null {
+  const timelines = (window as unknown as { __timelines?: Record<string, RuntimeTimelineLike> })
+    .__timelines;
+  const found = Object.entries(timelines ?? {}).find(
+    ([key, value]) => key !== "__proxied" && typeof value?.seek === "function",
+  );
+  return found?.[1] ?? null;
+}
 
 const before = new WeakMap<Element, Before>();
 let lastDraft = 0;
@@ -182,9 +197,27 @@ function drawRotate(element: Styled, rotate: EditingDraftRotate | null): void {
   gsap?.set?.(element, { rotation: rotate.angle });
 }
 
+function drawProps(element: Styled, { seconds, values }: EditingDraftProps): void {
+  const saved = beforeOf(element);
+  rootTimeline()?.seek(seconds);
+  element.style.setProperty("translate", "none");
+  frameGsap()?.set?.(element, { ...values });
+  saved.putMarkBack ??= revealClip(element);
+  saved.propsSet = [...new Set([...(saved.propsSet ?? []), ...Object.keys(values)])];
+}
+
+function clearProps(element: Styled, saved: Before): void {
+  restore(element, DRAWN);
+  saved.putMarkBack?.();
+  if (saved.propsSet?.length) frameGsap()?.set?.(element, { clearProps: saved.propsSet.join(",") });
+  const timeline = rootTimeline();
+  if (timeline) redrawGsapTimelineAt(timeline, timeline.time());
+}
+
 function end(element: Styled, ending: EditingDraftEnd): void {
   const saved = before.get(element);
   if (!saved || ("draft" in ending && ending.draft !== saved.draft)) return;
+  if (ending.end === "clear") clearProps(element, saved);
   if (ending.end === "restore") {
     restore(element, DRAWN);
     restoreGsapPosition(element);
@@ -201,6 +234,7 @@ function apply(element: Styled, draft: EditingDraft): void {
   else restore(element, ["translate"]);
   if (draft.size) drawSize(element, draft.size);
   else restore(element, SIZE_PROPERTIES);
+  if (draft.props) drawProps(element, draft.props);
 }
 
 /** Applies each draft in order; one for an element this load no longer has is skipped. */

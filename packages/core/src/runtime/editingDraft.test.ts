@@ -219,3 +219,45 @@ describe("moves through GSAP", () => {
     expect(position).toEqual({ x: 12, y: 7 });
   });
 });
+
+// fails without the fix: a sealed recording drew only a translate, so opacity, scale and rotation stood still while
+// it ran, and a tweened layer showed its tween under the recorded move.
+describe("a recording's GSAP values", () => {
+  function recordable() {
+    const { element, handle } = card("translate: 4px 2px");
+    const calls: string[] = [];
+    (window as { gsap?: unknown }).gsap = {
+      getProperty: () => 0,
+      set: (_: Element, props: Record<string, unknown>) =>
+        calls.push(`gsap ${JSON.stringify(props)}`),
+    };
+    (window as { __timelines?: unknown }).__timelines = {
+      __proxied: true,
+      main: { seek: (t: number) => calls.push(`seek ${t}`), time: () => 1.5 },
+    };
+    const sample = (seconds: number, values: Record<string, number>) =>
+      drawDrafts([{ handle, translate: null, size: null, props: { seconds, values } }]);
+    return { element, handle, calls, sample };
+  }
+
+  afterEach(() => {
+    delete (window as { __timelines?: unknown }).__timelines;
+  });
+
+  it("seeks the film's timeline, then sets every recorded value, in one draw", () => {
+    const { element, calls, sample } = recordable();
+    sample(1.5, { x: 20, opacity: 0.4, scale: 1.2, rotation: 15 });
+    expect(calls).toEqual(["seek 1.5", 'gsap {"x":20,"opacity":0.4,"scale":1.2,"rotation":15}']);
+    expect(element.style.translate).toBe("none");
+  });
+
+  it("clears exactly what it set and gives the layer back its translate when the recording ends", () => {
+    const { element, handle, calls, sample } = recordable();
+    sample(1.5, { x: 20, opacity: 0.4 });
+    sample(1.6, { x: 30, rotation: 5 });
+    calls.length = 0;
+    drawDrafts([{ handle, end: "clear" }]);
+    expect(calls).toContain('gsap {"clearProps":"x,opacity,rotation"}');
+    expect(element.style.translate).toBe("4px 2px");
+  });
+});

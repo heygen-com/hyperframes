@@ -7,6 +7,7 @@ import {
   MAX_DESCRIBE_HANDLES,
   type EditingDraft,
   type EditingDraftEnd,
+  type EditingDraftProps,
   type EditingDraftRotate,
 } from "@hyperframes/core/runtime/editing-port";
 import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
@@ -17,6 +18,7 @@ type Drawn = {
   translate: { x: number; y: number; route?: "gsap" } | null;
   size: { width: number; height: number } | null;
   rotate?: EditingDraftRotate | null;
+  props?: EditingDraftProps | null;
 };
 
 /** One gesture's draft: `draft` is the frame's number for it, `saving` the selector its save will patch. */
@@ -117,7 +119,13 @@ export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
   if (prior?.saving) delete entry.saving;
   queue.drawn.set(target.handle, entry);
   const { translate, size, rotate } = entry;
-  const op = { handle: target.handle, translate, size, ...("rotate" in entry && { rotate }) };
+  const op = {
+    handle: target.handle,
+    translate,
+    size,
+    ...("rotate" in entry && { rotate }),
+    ...(entry.props && { props: entry.props }),
+  };
   opGesture.set(op, entry.gesture);
   const last = queue.ops.map((queued) => queued.handle).lastIndexOf(target.handle);
   const waiting = queue.ops[last];
@@ -167,7 +175,7 @@ export function endPreviewDraftKeepingSizeOnly(element: Element): void {
 }
 
 /** Ends the stand-in's draft on its frame: "keep" once saved or regrabbed mid-save, else "restore". */
-export function endPreviewDraft(element: Element, end: "keep" | "restore"): void {
+export function endPreviewDraft(element: Element, end: "keep" | "restore" | "clear"): void {
   endDraft(element, end);
 }
 
@@ -182,7 +190,7 @@ function endDraft(element: Element, end: EditingDraftEnd["end"]): void {
   queue.ops.push(
     entry.draft
       ? { handle, draft: entry.draft, end }
-      : { handle, end: end === "restore" ? "restore" : "keep" },
+      : { handle, end: end === "keep-size" ? "keep" : end },
   );
   send(target.iframe, queue);
 }

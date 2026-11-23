@@ -260,6 +260,17 @@ export type EditingDraftRotate =
   | { angle: number; route: "css" | "gsap" }
   | { angle: number; route: "transform"; value: string };
 export type { EditingDraftEnd };
+export const DRAFT_GSAP_PROPS = [
+  "x",
+  "y",
+  "opacity",
+  "scale",
+  "rotation",
+  "rotationX",
+  "rotationY",
+  "z",
+];
+export type EditingDraftProps = { seconds: number; values: Record<string, number> };
 /** A gesture's draft on one element: null puts that part back; an end keeps what is drawn or restores. */
 export type EditingDraft =
   | {
@@ -267,6 +278,7 @@ export type EditingDraft =
       translate: { x: number; y: number; route?: "gsap" } | null;
       size: { width: number; height: number } | null;
       rotate?: EditingDraftRotate | null;
+      props?: EditingDraftProps | null;
     }
   | EditingDraftEnd;
 
@@ -528,10 +540,27 @@ function draftEntry(value: unknown): EditingDraft | null {
 }
 
 function drawnParts(value: Record<string, unknown>): boolean {
-  const { translate, size, rotate } = value;
-  if (!hasKeys(value, "handle,size,translate") && !hasKeys(value, "handle,rotate,size,translate"))
+  const { handle: _handle, translate, size, rotate, props, ...rest } = value;
+  if (Object.keys(rest).length || !("translate" in value) || !("size" in value)) return false;
+  const parts = [
+    draftTranslate(translate),
+    draftPart(size, "height,width", 0),
+    draftRotate(rotate),
+  ];
+  return !parts.includes(false) && draftPropsWithOneXYWriter(props, translate);
+}
+
+function draftPropsWithOneXYWriter(value: unknown, translate: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (!hasKeys(value, "seconds,values") || !isPlainRecord(value.values)) return false;
+  const { seconds, values } = value;
+  if (!Number.isFinite(seconds) || (seconds as number) < 0) return false;
+  const named = Object.keys(values);
+  if (!named.length || (translate !== null && (named.includes("x") || named.includes("y"))))
     return false;
-  return draftTranslate(translate) && draftPart(size, "height,width", 0) && draftRotate(rotate);
+  return named.every(
+    (key) => DRAFT_GSAP_PROPS.includes(key) && isDraftPx(values[key], -MAX_DRAFT_PX),
+  );
 }
 
 function draftList(params: unknown): EditingParams<"draft"> | null {
