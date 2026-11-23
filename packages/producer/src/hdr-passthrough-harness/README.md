@@ -102,8 +102,23 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   animated GIF (`video_count`:
   the compiler turns it into a second video), a canvas (`canvas`), and
   a GSAP tween that changes the overlay on every frame
-  (`overlay_continuous_animation`). Run these with `--only on`: the check is
-  the route and reason, and both sides would take the layered path.
+  (`overlay_continuous_animation`). Page code that runs on seeks and paints
+  where no fingerprint reads, a custom highlight from a setter on the
+  seek-time global (`setter-highlight`) or from an accessor a GSAP `set()`
+  writes through (`gsap-proxy-highlight`), declines as `seek_callback`
+  however the page compiled it or named it: the same setter from an inserted
+  inline script, `eval`, `new Function`, a script named
+  `hyperframes://injected/0`, an eval named like a DevTools evaluation, a
+  string timer, and a file named `gsap-core.js` (`dynamic-inline-setter`,
+  `eval-setter`, `new-function-setter`, `renderer-named-setter`,
+  `devtools-named-setter`, `string-timer-setter`, `fake-gsap-filename`), and
+  the accessor from an inserted script (`dynamic-inline-gsap-proxy`).
+  `builtins-counter` replaces the builtins a shim could call and shows how
+  often they ran; it declines on its `requestAnimationFrame` loop, and its
+  flag-on (layered fallback) render must match flag off frame for frame,
+  which holds only while nothing the passthrough adds to the page calls them.
+  Run these with `--only on` when the check is only the route and reason
+  (both sides would take the layered path); run `builtins-counter` with both.
 
 - `edge-<case>/` (with `--edge`): the `captions` layout with one thing
   varied that the `captions` fixture holds fixed, each on its own source

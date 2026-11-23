@@ -96,6 +96,16 @@ describe("inspectSeekCallbacks", () => {
     expect(p.inspect()).toBe("1 film-time timer(s), 0 pending");
   });
 
+  it("declines a string timer, which compiles page code with nothing on the stack", () => {
+    const p = page();
+    p.run('setTimeout("window.fromString = 1", 0);');
+    expect(p.inspect()).toBe("1 string timer(s)");
+    // Before rendering starts and after: both are counted.
+    p.seekFrames(100);
+    p.run('setInterval("window.fromString = 2", 50);');
+    expect(p.inspect()).toBe("2 string timer(s)");
+  });
+
   it("leaves out callbacks the renderer's own scripts register", () => {
     const p = page();
     // The runtime and the bridge are injected as hyperframes://injected/<n>; the compiler adds

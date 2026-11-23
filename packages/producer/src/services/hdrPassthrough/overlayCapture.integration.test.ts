@@ -336,7 +336,7 @@ describe.skipIf(!HAS_X265)("HDR passthrough capture dedup through real renders",
     expect(on.messages).toContainEqual(
       expect.stringMatching(
         new RegExp(
-          `^\\[Render\\] HDR passthrough off: seek_callback \\(\\d+ page function\\(s\\) ran on seeks, first .+ in hyperframes-composition://body\\)$`,
+          `^\\[Render\\] HDR passthrough off: seek_callback \\(\\d+ page function\\(s\\) ran after load, first .+ in hyperframes-composition://body\\)$`,
         ),
       ),
     );

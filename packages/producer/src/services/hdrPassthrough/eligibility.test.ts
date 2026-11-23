@@ -225,13 +225,14 @@ describe("checkPassthroughEligibility", () => {
   });
 
   it("declines page code that runs on seeks and keeps state across them", async () => {
-    const activity = (frameCallbacks: unknown[], filmTimers = 0) => ({
+    const activity = (frameCallbacks: unknown[], filmTimers = 0, stringTimers = 0) => ({
       __HF_VIRTUAL_TIME__: {
         callbackActivity: () => ({
           frameCallbacks,
           frameCallbacksOverflow: false,
           pendingFrames: frameCallbacks,
           filmTimers,
+          stringTimers,
           pendingTimers: filmTimers,
         }),
       },
@@ -252,6 +253,14 @@ describe("checkPassthroughEligibility", () => {
       eligible: false,
       reason: "seek_callback",
       detail: "2 film-time timer(s), 2 pending",
+    });
+    const strings = await check(makeInput(), {
+      build: (ctx) => ({ ...captions(ctx), globals: activity([], 0, 1) }),
+    });
+    expect(strings).toMatchObject({
+      eligible: false,
+      reason: "seek_callback",
+      detail: "1 string timer(s)",
     });
   });
 
