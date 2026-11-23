@@ -196,6 +196,23 @@ ${host("a", 0, "a.html")}${host("b", 1, "b.html")}${host("c", 2)}
     }
   });
 
+  it("keeps two data blocks of one type naming one file, each with its text", async () => {
+    const dir = project({
+      "index.html": page(
+        '<script type="application/json" id="primary" src="a.json"></script>\n' +
+          '<script type="application/json" id="secondary" src="a.json"></script>',
+      ),
+      "a.json": '{"settings":1}',
+    });
+
+    const html = await bundleToSingleHtml(dir, PREVIEW);
+
+    const { document } = parseHTML(html);
+    for (const id of ["primary", "secondary"]) {
+      expect(document.getElementById(id)?.textContent).toBe('{"settings":1}');
+    }
+  });
+
   it("refuses a page whose tags copy one file past the page's size limit", async () => {
     const typed = Array.from(
       { length: 100 },
