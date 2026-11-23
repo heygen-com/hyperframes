@@ -8,7 +8,7 @@ export const bundleScriptUrl =
 let source: Promise<string> | undefined;
 
 export function sealedRuntimeSource(): Promise<string> {
-  // The esm build splits this into its own chunk; the cjs and iife builds alias it to runtime-beside-bundle.
+  // The esm build leaves this import to the app's bundler; the cjs and iife builds alias it to runtime-beside-bundle.
   source ??= import("@hyperframes/core/runtime-script")
     .then((runtime) => runtime.getHyperframeRuntimeScript())
     .then(escapeInlineScriptSource);

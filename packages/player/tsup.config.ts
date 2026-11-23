@@ -25,8 +25,16 @@ const shared = {
 };
 
 export default defineConfig([
-  // A sealed player imports the runtime as its own chunk, so it costs nothing until one needs it.
-  { ...shared, format: ["esm"], dts: true, clean: true },
+  // An app's bundler takes the runtime from core, which the player depends on, as a chunk loaded only when needed.
+  {
+    ...shared,
+    format: ["esm"],
+    dts: true,
+    clean: true,
+    esbuildOptions: (options) => {
+      options.external = [...(options.external ?? []), "@hyperframes/core/runtime-script"];
+    },
+  },
   {
     ...shared,
     format: ["cjs", "iife"],
