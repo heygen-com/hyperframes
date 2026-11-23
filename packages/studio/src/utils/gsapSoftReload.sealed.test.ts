@@ -12,6 +12,8 @@ vi.mock("../player/lib/previewChannel", async (importOriginal) => ({
 }));
 
 import { applySoftReload } from "./gsapSoftReload";
+import { frameGsap, frameQuery, settleGsapSnapshot } from "../hooks/gsapFrameSnapshot";
+import { usePlayerStore } from "../player/store/playerStore";
 
 const iframe = document.createElement("iframe");
 const SAVED = `window.__timelines["main"] = gsap.timeline(); gsap.set("#b", { x: 5 });`;
@@ -96,4 +98,32 @@ it("asks for a full reload without sending anything when the file before the wri
 
   expect(result).toBe("cannot-soft-reload");
   expect(previewRequest).not.toHaveBeenCalled();
+});
+
+// fails without the fix: Studio's copy of a sealed frame's GSAP values was read again only on a seek, a reload or an
+// undo, so after a save's in-place rerun a second resize read the scale from before the first and saved it wrong.
+it("reads the frame's GSAP values again once a saved script reruns in place", async () => {
+  const shown = (scaleX: number) => ({
+    time: 2,
+    defaultEase: null,
+    timelines: [{ id: "main", time: 2, defaultEase: null, tweens: [] }],
+    targets: [{ handle: "0123456789abcdef:1", id: "b", className: "", values: { scaleX } }],
+  });
+  let scaleX = 1.125;
+  previewRequest.mockImplementation(async (_frame: unknown, kind: string) =>
+    kind === "gsap-snapshot" ? shown(scaleX) : { result: "applied" },
+  );
+  usePlayerStore.setState({ currentTime: 2, isPlaying: false });
+  await settleGsapSnapshot(iframe);
+
+  scaleX = 1.542;
+  applySoftReload(iframe, SAVED, {
+    authoredHtml: file(SAVED),
+    previousHtml: PREVIOUS,
+    currentTimeOverride: 2,
+  });
+  await settle();
+  await settleGsapSnapshot(iframe);
+
+  expect(frameGsap(iframe)?.getProperty(frameQuery(iframe, "#b")!, "scaleX")).toBe(1.542);
 });
