@@ -128,7 +128,10 @@ function play(this: HTMLMediaElement): Promise<void> {
 
 // Only the composition's own load() tries a down source again, as the browser would; the runtime's keep the mark.
 function load(this: HTMLMediaElement): void {
-  if (!loadedByRuntime(this)) down.delete(this);
+  if (!loadedByRuntime(this)) {
+    down.delete(this);
+    unpin(this);
+  }
   nativeLoad.call(this);
 }
 
