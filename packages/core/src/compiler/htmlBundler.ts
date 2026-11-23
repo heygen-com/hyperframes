@@ -71,7 +71,11 @@ import {
 import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
-import { assertCompositionFileSize, CompositionExpansionBudget } from "./compositionSizeLimit";
+import {
+  assertCompositionFileSize,
+  CompositionExpansionBudget,
+  LOCAL_SCRIPTS,
+} from "./compositionSizeLimit";
 import {
   ensureExternalLinkTag,
   inlineSubCompositions,
@@ -972,8 +976,6 @@ export type BundlePrivateFiles = "vcs-and-secrets" | "studio";
 
 type DeferredScriptChunk = string | (() => string);
 
-const DATA_BLOCK_COPIES = 2;
-
 /** The page's script tags by `src`, collected at first use; a pin carried to a new spelling adds its tag. */
 function scriptTagsBySrc(doc: Document): () => Map<string, Element[]> {
   let index: Map<string, Element[]> | undefined;
@@ -1496,9 +1498,8 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   }
 
   // A file named by several tags of one kind runs once, as a composition's scripts do: a copy per tag grew the page
-  // past memory. Kinds are regular, nomodule, and a data block per type, at most DATA_BLOCK_COPIES types per file.
+  // past memory. Kinds are regular, nomodule, and a data block per type; every copy is charged to the page's budget.
   const inlinedRootRuns = new Set<string>();
-  const dataBlockCopies = new Map<string, number>();
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
     if (!src || !isRelativeUrl(src)) continue;
@@ -1518,11 +1519,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     }
     const js = jsPath ? readScriptOnce(jsPath) : null;
     if (!jsPath || js == null) continue;
-    if (dataType !== null) {
-      const copies = dataBlockCopies.get(jsPath) ?? 0;
-      if (copies >= DATA_BLOCK_COPIES) continue;
-      dataBlockCopies.set(jsPath, copies + 1);
-    }
+    budget.chargeGenerated(LOCAL_SCRIPTS, Buffer.byteLength(js));
     inlinedRootRuns.add(run);
     el.setAttribute(INLINED_FILE_ATTR, src);
     el.removeAttribute("src");
