@@ -15,6 +15,7 @@ export interface SealedPreviewFrame {
   iframe: HTMLIFrameElement;
   /** The frame's window as Studio sees it: only `postMessage` answers, and it reaches the runtime. */
   frame: Record<string, unknown>;
+  reload: () => void;
 }
 
 export function sealedPreviewFrame(
@@ -41,10 +42,15 @@ export function sealedPreviewFrame(
     postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
       postLater({ source: frame as unknown as Window, data, ports: ports.map(wrap) }),
   } as unknown as Window;
-  const agent = installMarkedEditingAgent(parent);
+  let agent = installMarkedEditingAgent(parent);
   frame.postMessage = (data: unknown) => postLater({ source: parent, data });
   onTestFinished(() => agent.dispose());
-  return { iframe, frame };
+  const reload = () => {
+    agent.dispose();
+    agent = installMarkedEditingAgent(parent);
+    iframe.dispatchEvent(new Event("load"));
+  };
+  return { iframe, frame, reload };
 }
 
 export type PortRequest = { id?: unknown; kind?: unknown; params?: unknown };

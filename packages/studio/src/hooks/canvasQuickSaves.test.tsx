@@ -187,7 +187,7 @@ describe("canvas edit commits share the file queue", () => {
 
     await expectBothLand(
       project,
-      () => hook.commitDomTextFields(selection, [selfText], { importedFont: font }),
+      () => hook.commitDomTextFields(selection, () => [selfText], { importedFont: font }),
       () => hook.handleDomStyleCommit("color", "green"),
     );
 

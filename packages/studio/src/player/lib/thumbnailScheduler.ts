@@ -8,6 +8,8 @@ export type ThumbnailValue =
   | { kind: "filmstrip"; urls: readonly string[]; aspect: number }
   | { kind: "waveform"; peaks: readonly number[] };
 
+export const decodedImageBytes = (width: number, height: number) => width * height * 4;
+
 export interface ThumbnailLoadedResult {
   value: ThumbnailValue;
   /** Estimated decoded/object-URL bytes retained by this result. */

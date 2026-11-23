@@ -260,6 +260,13 @@ export function revertNewestStudioPendingEdit(): (() => void) | null {
   return paintBackNewestStudioPendingEdit()?.showAgain ?? null;
 }
 
+const openEdits = new Set<() => unknown>();
+
+export function settleOnDrain(settle: () => unknown): () => void {
+  openEdits.add(settle);
+  return () => openEdits.delete(settle);
+}
+
 export async function flushStudioPendingEdits({
   onlyCurrent = false,
 } = {}): Promise<StudioPendingEditsDrainResult> {
@@ -270,6 +277,7 @@ export async function flushStudioPendingEdits({
     await Promise.resolve();
     await waitForPostBlurEffects();
   }
+  for (const settle of [...openEdits]) trackStudioPendingEdit(settle());
   const detail: StudioFlushPendingEditsDetail = { promises: [] };
   window.dispatchEvent(
     new CustomEvent<StudioFlushPendingEditsDetail>(STUDIO_FLUSH_PENDING_EDITS_EVENT, { detail }),

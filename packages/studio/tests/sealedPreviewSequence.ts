@@ -76,8 +76,14 @@ async function seekTo(studioPage: Page, frame: Frame, index: number, at: number)
 }
 
 /** Studio's page: every reply held until answered; a full reload loads the newest saved file and is counted. */
-async function openStudio(browser: Browser, bundle: string, first: string, at: number) {
-  const preview = await openPreview(browser, bundle, first, "sealed");
+export async function openStudio(
+  browser: Browser,
+  bundle: string,
+  first: string,
+  at: number,
+  mode = "sealed",
+) {
+  const preview = await openPreview(browser, bundle, first, mode);
   await preview.release(200);
   await scrub(preview.page, preview.frame, at);
   await preview.page.evaluate((first) => {
@@ -184,7 +190,7 @@ const pending = (studioPage: Page) =>
   });
 
 /** Answers one pending request: a held reply as the frame sent it, or a refused one with its refusal. */
-function answer(studioPage: Page, pick: number, kind: string | null) {
+export function answer(studioPage: Page, pick: number, kind: string | null) {
   return studioPage.evaluate(
     (at, wanted, refusals) => {
       const w = window as unknown as {
@@ -294,12 +300,12 @@ async function sendSave<Saved, Save extends string>(
 }
 
 /** Waits until a reload in flight has shown the newest saved file. */
-async function loaded(studioPage: Page, frame: Frame) {
+export async function loaded(studioPage: Page, frame: Frame) {
   await studioPage.waitForFunction(() => !(window as unknown as { __loading: boolean }).__loading);
   await ready(frame);
 }
 
-const passDeadlines = (studioPage: Page, all: boolean) =>
+export const passDeadlines = (studioPage: Page, all: boolean) =>
   studioPage.evaluate(
     (every) =>
       (window as unknown as { __passDeadlines: (all: boolean) => number }).__passDeadlines(every),
@@ -310,7 +316,7 @@ const passDeadlines = (studioPage: Page, all: boolean) =>
  * Answers everything still pending, new recoveries included, until nothing is left and the frame is loaded; then
  * every deadline still pending passes, and it drains again.
  */
-async function drain(studioPage: Page, frame: Frame, random: () => number) {
+export async function drain(studioPage: Page, frame: Frame, random: () => number) {
   await studioPage.evaluate(() => {
     (window as unknown as { __swallow: Set<string> }).__swallow = new Set();
   });
