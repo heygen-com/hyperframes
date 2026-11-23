@@ -237,17 +237,15 @@ export function createPreviewGestureStarts(
         return;
       }
       endWaitingPress(press, !!channel);
-      const idleUnlessPressWaits = () => {
-        if (!opts.waitingPressRef.current) clearWaitingMark();
-      };
+      const replayed = replay(startsFrom(step));
+      outline.replayEnded(replayed && channel ? opts.iframeRef.current : null);
+    };
+    const replay = (read: ReturnType<typeof startsFrom>): boolean => {
       const pointerDown = down as unknown as React.PointerEvent<HTMLElement>;
-      const read = startsFrom(step);
-      if (read === false || !start(pointerDown, at, true, read)) return idleUnlessPressWaits();
+      if (read === false || !start(pointerDown, at, true, read)) return false;
       if (press.moved) moveActiveGesture(press.moved);
       if (press.released) releaseActiveGesture(press.released);
-      const replayedIn = opts.iframeRef.current;
-      if (!channel || !replayedIn || opts.waitingPressRef.current) return idleUnlessPressWaits();
-      outline.waitOnDraw(replayedIn);
+      return true;
     };
     press.frame = requestAnimationFrame(poll);
     return true;

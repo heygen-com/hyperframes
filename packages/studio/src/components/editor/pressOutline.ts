@@ -5,10 +5,13 @@ import {
 } from "./domEditOverlayGestures";
 import { previewDraftsSent } from "./previewDrafts";
 
-type OutlineRefs = Pick<UseDomEditOverlayGesturesOptions, "boxRef" | "rafPausedRef" | "iframeRef">;
+type OutlineRefs = Pick<
+  UseDomEditOverlayGesturesOptions,
+  "boxRef" | "rafPausedRef" | "iframeRef" | "waitingPressRef"
+>;
 type ReplayDrawWait = { frame: HTMLIFrameElement };
 
-function createPressOutline({ boxRef, rafPausedRef, iframeRef }: OutlineRefs) {
+function createPressOutline({ boxRef, rafPausedRef, iframeRef, waitingPressRef }: OutlineRefs) {
   let drawWait: ReplayDrawWait | null = null;
   const idle = () => {
     drawWait = null;
@@ -32,21 +35,20 @@ function createPressOutline({ boxRef, rafPausedRef, iframeRef }: OutlineRefs) {
       boxRef.current?.setAttribute(PRESS_WAITING_ATTR, "true");
       rafPausedRef.current = true;
     },
-    waitOnDraw(frame: HTMLIFrameElement) {
-      drawWait = { frame };
+    /** A replay ended: `drewIn` is the sealed frame its draws went to, null if none. */
+    replayEnded(drewIn: HTMLIFrameElement | null) {
+      if (waitingPressRef.current) return;
+      if (!drewIn) return idle();
+      drawWait = { frame: drewIn };
       confirm(drawWait);
     },
   };
 }
 
-export type PressOutline = ReturnType<typeof createPressOutline>;
-
-const outlines = new WeakMap<RefObject<unknown>, PressOutline>();
+const outlines = new WeakMap<RefObject<unknown>, ReturnType<typeof createPressOutline>>();
 
 /** The waiting outline's one owner per overlay mount: idle, waiting on a save, or waiting on a replay's draw. */
-export function pressOutlineOf(
-  opts: OutlineRefs & Pick<UseDomEditOverlayGesturesOptions, "waitingPressRef">,
-) {
+export function pressOutlineOf(opts: OutlineRefs) {
   let outline = outlines.get(opts.waitingPressRef);
   if (!outline) outlines.set(opts.waitingPressRef, (outline = createPressOutline(opts)));
   return outline;
