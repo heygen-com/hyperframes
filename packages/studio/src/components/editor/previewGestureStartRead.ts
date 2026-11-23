@@ -1,7 +1,7 @@
 /** A gesture on a frame Studio cannot script starts from one `gesture-start` read (core `editingGestureStart.ts`). */
 import type { EditingGestureStart } from "@hyperframes/core/runtime/editing-port";
 import { previewGestureStart } from "../../player/lib/previewElements";
-import { whenPreviewStageSized } from "../../player/lib/bridgePlayback";
+import { previewRootHasNoSize, whenPreviewStageSized } from "../../player/lib/bridgePlayback";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
 import type { DomEditSelection } from "./domEditing";
 import type { CropFrameStart } from "./domEditOverlayCrop";
@@ -109,6 +109,11 @@ export async function readShownGestureStarts(
 
 export const UNANSWERED = "unanswered";
 export const PRESS_WAIT_MAX_MS = 10_000;
+
+export const unansweredMoveReason = (iframe: HTMLIFrameElement) =>
+  previewRootHasNoSize(iframe)
+    ? "This composition has no size, so Studio can't move its layers. Give its root a width and height."
+    : "The preview didn't answer, so Studio can't move this layer. Try again.";
 
 export async function askShownGestureStarts(
   iframe: HTMLIFrameElement,

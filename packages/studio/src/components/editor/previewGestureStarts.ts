@@ -26,6 +26,7 @@ import {
   askShownGestureStarts,
   PRESS_WAIT_MAX_MS,
   UNANSWERED,
+  unansweredMoveReason,
   type OverChannel,
   type Shown,
 } from "./previewGestureStartRead";
@@ -240,6 +241,9 @@ export function createPreviewGestureStarts(
       endWaitingPress(press);
       const pointerDown = down as unknown as React.PointerEvent<HTMLElement>;
       const read = startsFrom(step);
+      const pressed = opts.selectionRef.current;
+      if (read === false && step === "drawn" && channel && pressed)
+        opts.onBlockedMoveRef.current(pressed, unansweredMoveReason(channel));
       if (read === false || !start(pointerDown, at, true, read)) return;
       if (press.moved) moveActiveGesture(press.moved);
       if (press.released) releaseActiveGesture(press.released);

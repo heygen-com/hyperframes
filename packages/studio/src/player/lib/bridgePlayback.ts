@@ -17,6 +17,7 @@ interface PlaybackMirror {
   stageSize: { width: number; height: number } | null;
   /** The paused time the runtime last said it shows. */
   shown: number | null;
+  timelinePosted: boolean;
 }
 
 const SEEK_CONFIRM_MS = 500;
@@ -40,6 +41,7 @@ function mirrorOf(iframe: HTMLIFrameElement): PlaybackMirror | null {
       seekUntil: 0,
       stageSize: null,
       shown: null,
+      timelinePosted: false,
     };
     mirrors.set(frame, mirror);
   }
@@ -58,6 +60,13 @@ export function previewStageSize(
 ): { width: number; height: number } | null {
   const frame = iframe.contentWindow;
   return (frame && mirrors.get(frame)?.stageSize) ?? null;
+}
+
+/** The runtime answered with its timeline but never a size: its root measures 0x0 or isn't laid out. */
+export function previewRootHasNoSize(iframe: HTMLIFrameElement): boolean {
+  const frame = iframe.contentWindow;
+  const mirror = frame ? mirrors.get(frame) : undefined;
+  return !!mirror?.timelinePosted && !mirror.stageSize;
 }
 
 /** Resolves once the frame's runtime has posted its size, or after `maxMs` without one. */
@@ -143,6 +152,7 @@ export function onFrameShowsTime(listener: (iframe: HTMLIFrameElement) => void):
 function mirrorPost(mirror: PlaybackMirror, message: Record<string, unknown>, fps: number | null) {
   if (message.type === "timeline" && finiteAtLeastZero(message.durationSeconds)) {
     mirror.duration = message.durationSeconds;
+    mirror.timelinePosted = true;
   } else if (message.type === "state" && finiteAtLeastZero(message.currentTime)) {
     mirrorState(mirror, message.currentTime, message.isPlaying === true, fps);
   } else if (message.type === "stage-size") {

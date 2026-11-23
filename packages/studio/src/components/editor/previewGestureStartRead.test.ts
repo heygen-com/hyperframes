@@ -20,6 +20,7 @@ import {
   gestureStartLayout,
   measurePreviewGestureStart,
   UNANSWERED,
+  unansweredMoveReason,
   type PreviewGestureStart,
 } from "./previewGestureStartRead";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
@@ -164,6 +165,18 @@ describe("an opaque frame whose root declares no size", () => {
     };
     expect(scale(iframe, null)).toEqual([0.75, 0.75]);
     expect(scale(iframe, null)).toEqual(scale(liveFrame(), doc));
+  });
+
+  it("tells a frame that answered without a size from one that never answered", () => {
+    const silent = unsizedOpaqueFrame();
+    expect(unansweredMoveReason(silent.iframe)).toBe(
+      "The preview didn't answer, so Studio can't move this layer. Try again.",
+    );
+    const sizeless = unsizedOpaqueFrame();
+    sizeless.post({ type: "timeline", durationSeconds: 4 });
+    expect(unansweredMoveReason(sizeless.iframe)).toBe(
+      "This composition has no size, so Studio can't move its layers. Give its root a width and height.",
+    );
   });
 
   it("waits for the frame's size before reading a press, instead of giving up", async () => {
