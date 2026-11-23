@@ -167,15 +167,12 @@ function failure(event: Event, home: string): { media: HTMLMediaElement; url: st
 }
 
 function wasDown(media: HTMLMediaElement, url: string): void {
-  setOf(refused, media).delete(url);
-  setOf(down, media).add(url);
+  if (setOf(refused, media).delete(url)) setOf(down, media).add(url);
 }
 
 function picksAgainWithCors(media: HTMLMediaElement, chosen: string, home: string): boolean {
-  if (!isHome(chosen, home)) return false;
   const urls = selectable(media, home);
-  const at = urls.indexOf(chosen);
-  return at >= 0 && urls.slice(0, at).every((url) => isHome(url, home) || has(down, media, url));
+  return allHome(urls, home) || (urls[0] === chosen && isHome(chosen, home));
 }
 
 function failed(event: Event, home: string): void {

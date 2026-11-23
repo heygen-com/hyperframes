@@ -290,7 +290,7 @@ describe("corsForSealedMedia", () => {
     expect([video.getAttribute("crossorigin"), load.mock.calls.length]).toEqual(["anonymous", 1]);
   });
 
-  it("opts in an own source reached after another host's source failed, and keeps CORS when that one fails again", async () => {
+  it("leaves an own source reached after another host's source failed as it plays, since a reload could pick that one", async () => {
     vi.stubGlobal("origin", "null");
     observer = corsForSealedMedia();
     const video = add(
@@ -298,12 +298,9 @@ describe("corsForSealedMedia", () => {
     ).querySelector("video")!;
     await settled();
     const load = vi.spyOn(video, "load").mockImplementation(() => {});
-    const [foreign] = video.querySelectorAll("source");
-    foreign!.dispatchEvent(new Event("error"));
+    video.querySelector("source")!.dispatchEvent(new Event("error"));
     playsFrom(video, `${PREVIEW}media/own.mp4`);
-    expect([video.getAttribute("crossorigin"), load.mock.calls.length]).toEqual(["anonymous", 1]);
-    foreign!.dispatchEvent(new Event("error"));
-    expect([video.getAttribute("crossorigin"), load.mock.calls.length]).toEqual(["anonymous", 1]);
+    expect([video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([false, 0]);
   });
   it("follows the first source the browser would pick when the list changes", async () => {
     vi.stubGlobal("origin", "null");
