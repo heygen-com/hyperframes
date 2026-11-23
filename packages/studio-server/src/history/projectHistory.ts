@@ -95,8 +95,8 @@ export interface ProjectHistoryOptions {
   onError?: (error: unknown) => void;
   /** How long an open waits for another process to close the same history (default 5 s). */
   ownerWaitMs?: number;
-  /** How long the first copy waits on one file before leaving it owed (default 10 s). */
-  firstCopyFileMs?: number;
+  /** How long the first copy waits on one file before leaving it owed (default 10 s), or that wait per file. */
+  firstCopyFileMs?: number | ((path: string) => number);
   ownerUrl?: string;
   /** A CLI turn's window from an earlier open: writes since, within its idle limit, become the entry with its id. */
   closedWindow?: ClosedWindow;
@@ -818,9 +818,8 @@ class Engine {
     const sweptAt = this.now();
     const files = await this.historyFiles();
     const copied = files.filter((file) => file.size <= COPY_LATER_ABOVE_BYTES);
-    const waitMs = this.options.firstCopyFileMs ?? FIRST_COPY_FILE_MS;
     const copies = copied.map((file) =>
-      firstCopyOrOwed(() => this.storeIfPresent(file.path, true), waitMs),
+      firstCopyOrOwed(() => this.storeIfPresent(file.path, true), this.firstCopyWaitMs(file.path)),
     );
     const hashes = await Promise.allSettled(copies.map((copy) => copy.result));
     const late = new Map<string, Promise<Copied>>();
@@ -907,7 +906,6 @@ class Engine {
     sweptAt: number,
     lateFirstCopies = new Map<string, Promise<Copied>>(),
   ): void {
-    const waitMs = this.options.firstCopyFileMs ?? FIRST_COPY_FILE_MS;
     let turn: Promise<unknown> = Promise.resolve();
     let stalledAhead = Promise.resolve(false);
     for (const file of files) {
@@ -916,11 +914,18 @@ class Engine {
       const landed = adoption.firstTry.then(() => false);
       const stepMayBegin = late
         ? Promise.resolve(true)
-        : stalledAhead.then((stalled) => stalled || orAfter(landed, waitMs, true));
+        : stalledAhead.then(
+            (stalled) => stalled || orAfter(landed, this.firstCopyWaitMs(file.path), true),
+          );
       if (!late) [turn, stalledAhead] = [adoption.firstTry, stepMayBegin];
       this.adopting.set(file.path, { ...adoption, stepMayBegin });
     }
     this.saveAdopting();
+  }
+
+  firstCopyWaitMs(path: string): number {
+    const wait = this.options.firstCopyFileMs;
+    return typeof wait === "function" ? wait(path) : (wait ?? FIRST_COPY_FILE_MS);
   }
 
   saveAdopting(): void {
@@ -1970,10 +1975,15 @@ class Engine {
       },
       unsavedBlobBytes: () => this.unsavedBlobBytes(),
       claim: async (who, label, paths, options = {}) => {
-        const waitMs = this.options.firstCopyFileMs ?? FIRST_COPY_FILE_MS;
         const owed = (path: string) => this.adopting.get(this.logPath(path));
         await Promise.all(
-          paths.map((path) => orAfter(Promise.resolve(owed(path)?.retryNow()), waitMs, undefined)),
+          paths.map((path) =>
+            orAfter(
+              Promise.resolve(owed(path)?.retryNow()),
+              this.firstCopyWaitMs(this.logPath(path)),
+              undefined,
+            ),
+          ),
         );
         const pending = paths.filter(owed).map((path) => this.logPath(path));
         return this.queue(() => this.claimNow(who, label, paths, options, pending));

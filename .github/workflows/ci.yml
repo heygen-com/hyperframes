@@ -324,7 +324,8 @@ jobs:
 
   build:
     name: Build
-    needs: changes
+    # Release checks is not a required check; a release whose checks fail must fail this one so it cannot merge.
+    needs: [changes, release-checks]
     # A skipped required check passes, so a broken change detection must fail it instead.
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || needs.changes.outputs.cli_bundle == 'true' || needs.changes.outputs.release_only == 'true') }}
     runs-on: ubuntu-latest
@@ -334,6 +335,11 @@ jobs:
         if: needs.changes.result != 'success'
         run: |
           echo "::error::Detect changes did not succeed (it also rejects large binaries outside LFS); see its log. This required check cannot pass."
+          exit 1
+      - name: Require the release checks
+        if: needs.changes.outputs.release_diff == 'true' && needs.release-checks.result != 'success'
+        run: |
+          echo "::error::Release checks did not succeed (${{ needs.release-checks.result }}); see that job. A release with stale notes or mixed versions cannot merge."
           exit 1
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -1239,7 +1245,7 @@ jobs:
             STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/preview-video-regression" \
             OUT_DIR=/tmp/preview-video-regression \
             node packages/studio/tests/e2e/preview-video-regression.mjs
-      - name: Verify a sealed preview's proxy wait gets past its preflight
+      - name: Verify a sealed preview's proxy wait gets past its preflight, and that it never keeps the keyboard
         if: success() || failure()
         run: |
           set -euo pipefail
@@ -1248,6 +1254,7 @@ jobs:
           cp packages/cli/src/templates/blank/index.html "$project/index.html"
           ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc=size=320x180:rate=30 -t 1 \
             -c:v libx264 -pix_fmt yuv420p "$project/clip.mov"
+          cp -R packages/studio/tests/e2e/fixtures/sealed-keyboard packages/studio/data/projects/sealed-keyboard
           VITE_STUDIO_OPAQUE_PREVIEW_ENABLED=1 NODE_ENV=production \
             bun run --cwd packages/studio dev -- --port 5319 --strictPort &
           SERVER_PID=$!
@@ -1258,6 +1265,9 @@ jobs:
           done
           STUDIO_URL="http://localhost:5319/#project/sealed-proxy" \
             node packages/studio/tests/e2e/sealed-preview-proxy.mjs
+          STUDIO_URL="http://localhost:5319/#project/sealed-keyboard" \
+            STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/sealed-keyboard" \
+            node packages/studio/tests/e2e/sealed-preview-keyboard.mjs
       - name: Upload gate evidence
         # The gate's whole output is machine-readable evidence, and a red run is
         # exactly when someone needs to read it. Keep it on failure too.

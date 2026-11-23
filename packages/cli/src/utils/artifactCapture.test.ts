@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import type { AddressInfo } from "node:net";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -120,6 +128,27 @@ it("a check run while the app keeps the history open is still recorded, never un
     await held.close();
   }
 });
+
+// fails without the fix: the refused claim draft (EPERM in a macOS sandbox, EACCES here) failed the capture.
+it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+  "skips a history another process holds when this run cannot write its folder",
+  async () => {
+    const f = await fixture();
+    const [id] = readdirSync(historyDeps.historyRoot).filter((name) =>
+      existsSync(join(historyDeps.historyRoot, name, "log.jsonl")),
+    );
+    const home = join(historyDeps.historyRoot, id!);
+    writeFileSync(join(home, "owner.pid"), String(process.ppid));
+    chmodSync(home, 0o555);
+    try {
+      await expect(captureArtifactRevision(f.dir)).resolves.toMatchObject({
+        fingerprint: expect.any(String),
+      });
+    } finally {
+      chmodSync(home, 0o755);
+    }
+  },
+);
 
 it("posts a preview checkpoint instead of sending GET", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hf-artifact-preview-"));

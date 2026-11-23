@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication
 import { _resetChromeSandboxFallbackForTests } from "@hyperframes/core/chrome-sandbox";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -1298,6 +1298,14 @@ function resolveHeadlessShellInSubprocess(
 describe("resolveHeadlessShellPath", () => {
   const originalHeadlessShellPath = process.env.PRODUCER_HEADLESS_SHELL_PATH;
   const originalHyperframesBrowserPath = process.env.HYPERFRAMES_BROWSER_PATH;
+  // Ubuntu's umask 002 makes these fake caches group-writable, which the cache check refuses.
+  let originalUmask = 0;
+  beforeAll(() => {
+    originalUmask = process.umask(0o022);
+  });
+  afterAll(() => {
+    process.umask(originalUmask);
+  });
 
   // A runner may export either var (the Windows job sets HYPERFRAMES_BROWSER_PATH); each case sets its own.
   beforeEach(() => {

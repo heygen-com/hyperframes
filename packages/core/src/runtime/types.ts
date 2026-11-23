@@ -3,6 +3,7 @@ import type { PreviewTarget } from "../studioPreviewMark";
 import type { RuntimeAnalyticsEvent } from "./analytics";
 import type { TextLayerRead } from "./editingElement";
 import type { AudioFades } from "../audioFade";
+import type { ParentCopy } from "../audibleVideo";
 import type { RateSpec } from "../speedRamp";
 import type { VolumeKeyframe } from "./mediaVolumeEnvelope";
 
@@ -125,6 +126,7 @@ export type RuntimeTimelineMessage = RuntimeProtocolV1 & {
    * the composition's assets have settled yet. Absent on older runtimes, whose
    * parents must not wait for a message that never comes. */
   assetsReady?: boolean;
+  sceneSwap?: boolean;
 };
 
 export type RuntimeDiagnosticMessage = {
@@ -193,6 +195,7 @@ export type RuntimeStageSizeMessage = {
 export type RuntimeMediaAutoplayBlockedMessage = {
   source: "hf-preview";
   type: "media-autoplay-blocked";
+  media: ParentCopy[];
 };
 
 /**

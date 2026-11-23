@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { parse } from "yaml";
 import { classify } from "./release-only-diff.mjs";
 
 const SCRIPT = new URL("./release-only-diff.mjs", import.meta.url).pathname;
@@ -280,6 +281,24 @@ test("--verify refuses manifests that move from different versions", () => {
     },
   );
   assert.match(run(root, "--verify").stderr, /move from different versions: 0\.8\.1, 0\.8\.0/);
+});
+
+// fails without the fix: Release checks is not a required check, so the queue merged v0.9.82 and v0.9.83 while it
+// failed on notes that missed a PR merged after the cut.
+test("a release whose checks fail cannot merge: the required Build fails with them", () => {
+  const ci = parse(
+    readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8"),
+  );
+  const build = ci.jobs.build;
+  assert.equal(build.name, "Build");
+  assert.ok([build.needs].flat().includes("release-checks"), "Build waits for the release checks");
+  const gate = build.steps.find((step) =>
+    /needs\.release-checks\.result != 'success'/.test(step.if ?? ""),
+  );
+  assert.ok(gate, "Build has a step that fails when the release checks did not succeed");
+  assert.match(gate.if, /needs\.changes\.outputs\.release_diff == 'true'/);
+  assert.match(gate.run, /exit 1/);
+  assert.equal(build.steps.indexOf(gate), 1, "it fails before Build spends time building");
 });
 
 test("the merge queue runs the release checks on a release diff", () => {

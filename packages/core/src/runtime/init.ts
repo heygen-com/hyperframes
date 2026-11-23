@@ -266,7 +266,7 @@ import {
   isVideoElement,
   type StylableElement,
 } from "./domRealm";
-import { audibleVideoNeedsWebAudio, isAudibleVideoElement } from "../audibleVideo";
+import { audibleVideoNeedsWebAudio, isAudibleVideoElement, parentCopyOf } from "../audibleVideo";
 
 /**
  * A `window.__timelines` entry is authored content and may be a PARTIAL
@@ -535,6 +535,11 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
       masterChain: readMasterFxChain(el.ownerDocument),
     }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
+
+const parentCopies = () =>
+  Array.from(document.querySelectorAll(WEB_AUDIO_MEDIA)).flatMap((el) =>
+    isMediaElement(el) ? (parentCopyOf(el) ?? []) : [],
+  );
 
 /** WebKit restarts a media element's audio 150 to 400 ms late; a decoded buffer on the context clock starts on time. */
 function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolean {
@@ -3293,6 +3298,43 @@ export function initSandboxRuntimeModular(): void {
   let bufferingFor: HTMLMediaElement[] = [];
   const playingOrHeldForData = () => clock.isPlaying() || bufferingFor.length > 0;
   let keepLateMedia = false;
+  // A sealed player copies only the clips this list names. ponytail: once blocked, every watched
+  // change re-reads all media; scope the observer to media records if that shows in a profile.
+  const postParentCopiesWhileTheyChange = () => {
+    let posted = "";
+    const post = () => {
+      const media = parentCopies();
+      const next = JSON.stringify(media);
+      if (next === posted || state.tornDown) return;
+      posted = next;
+      postRuntimeMessage({ source: "hf-preview", type: "media-autoplay-blocked", media });
+    };
+    post();
+    if (typeof MutationObserver === "undefined") return;
+    let queued = false;
+    const observer = new MutationObserver(() => {
+      if (queued) return;
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        post();
+      });
+    });
+    observer.observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: [
+        ...DURATION_FLOOR_INPUT_ATTRIBUTES,
+        "src",
+        "preload",
+        "muted",
+        "data-has-audio",
+        "data-playback-start",
+      ],
+    });
+    runtimeCleanupCallbacks.push(() => observer.disconnect());
+  };
   const preloadNearPlayhead = (
     el: HTMLMediaElement,
     visible: boolean,
@@ -3993,7 +4035,7 @@ export function initSandboxRuntimeModular(): void {
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;
           state.mediaAutoplayBlockedPosted = true;
-          postRuntimeMessage({ source: "hf-preview", type: "media-autoplay-blocked" });
+          postParentCopiesWhileTheyChange();
         },
       });
     }
@@ -4064,6 +4106,13 @@ export function initSandboxRuntimeModular(): void {
   let liveRootDurationOverrideSeconds = 0;
   let lastPostedManifest = "";
   let lastTimeline: ReturnType<typeof collectRuntimeTimelinePayload> | null = null;
+  // Only a preview served with a scene manifest can swap; elsewhere the caller reloads directly.
+  const scenesSwappable = readSceneParts(document) !== null;
+  const timelineMessage = (payload: ReturnType<typeof collectRuntimeTimelinePayload>) => ({
+    ...payload,
+    assetsReady: assetsSettled,
+    sceneSwap: scenesSwappable,
+  });
   const computeClipTreeSignature = (): string => {
     let sig = "";
     for (const el of document.querySelectorAll("[data-start]")) {
@@ -4136,7 +4185,7 @@ export function initSandboxRuntimeModular(): void {
     }
 
     lastTimeline = payload;
-    postRuntimeMessage({ ...payload, assetsReady: assetsSettled });
+    postRuntimeMessage(timelineMessage(payload));
     if (!assetsReadyStarted) {
       assetsReadyStarted = true;
       settleFirstFrameCompositionReadiness(document, ({ timedOut }) => {
@@ -4998,8 +5047,7 @@ export function initSandboxRuntimeModular(): void {
       await (windowWork ?? Promise.resolve());
     }
   };
-  // Only a preview served with a scene manifest can swap; elsewhere the caller reloads directly.
-  if (readSceneParts(document)) {
+  if (scenesSwappable) {
     window.__hfSwapScenes = swapScenes;
     window.__hfHoldScenes = holdScenes;
     window.__hfParkedSceneMarkup = parkedSceneMarkup;
@@ -6845,7 +6893,7 @@ export function initSandboxRuntimeModular(): void {
     },
     onScrubAudio: scrubAudio.scrub,
     onAnnounceTimeline: () => {
-      if (lastTimeline) postRuntimeMessage({ ...lastTimeline, assetsReady: assetsSettled });
+      if (lastTimeline) postRuntimeMessage(timelineMessage(lastTimeline));
     },
     onRequestPreviewFacts: () =>
       postRuntimeMessage({

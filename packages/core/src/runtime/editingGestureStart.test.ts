@@ -59,6 +59,11 @@ const GSAP_RENDERS = { _gsap: { renderTransform: () => {} } };
 /** jsdom has no DOMMatrix: a 2D one reading `matrix(...)` and composing as the browser's does. */
 class Matrix2D {
   a = 1;
+  m13 = 0;
+  m23 = 0;
+  m14 = 0;
+  m24 = 0;
+  m44 = 1;
   b = 0;
   c = 0;
   d = 1;
@@ -81,7 +86,7 @@ const tween = (target: unknown, vars: Record<string, unknown>, duration = 0): Tw
 });
 
 /** A 200x100 box whose centre moves `share` of its drawn growth: 0.5 from its corner, 0 self-centred. */
-function growingCard(share: number): HTMLElement {
+function growingCard(share: number | (() => number)): HTMLElement {
   document.body.innerHTML = `<main data-composition-id="main"><div id="card" style="width: 200px"></div></main>`;
   const card = document.getElementById("card")!;
   Object.defineProperty(card, "offsetWidth", { value: 200 });
@@ -89,7 +94,8 @@ function growingCard(share: number): HTMLElement {
   card.getBoundingClientRect = () => {
     const width = parseFloat(card.style.width) || 200;
     const height = parseFloat(card.style.height) || 100;
-    const [cx, cy] = [200 + (width - 200) * share, 100 + (height - 100) * share];
+    const k = typeof share === "number" ? share : share();
+    const [cx, cy] = [200 + (width - 200) * k, 100 + (height - 100) * k];
     const [x, y] = [cx - width / 2, cy - height / 2];
     return {
       x,
@@ -122,6 +128,22 @@ describe("gesture start", () => {
       c: 0,
       d: 0,
     });
+  });
+  // fails without the fix: the probe grew a `translate: -50%` box with its % live and read 0, but the draft that pins
+  // a sealed resize turns that % into px, so the box grew from its corner and drifted half its growth from the pointer.
+  it("measures a %-translated box's growth as the draft draws it, its % turned into px", () => {
+    // Its centre stays put while the % is live, and moves half its growth once the % is px.
+    const card = growingCard(() =>
+      card.style.getPropertyValue("translate").includes("%") ? 0 : 0.5,
+    );
+    card.style.setProperty("translate", "-50% -50%");
+    expect(gestureStart([handleFor(card)]).elements[0]!.grow).toEqual({
+      a: 0.5,
+      b: 0,
+      c: 0,
+      d: 0.5,
+    });
+    expect(card.getAttribute("style")).toBe("width: 200px; translate: -50% -50%;");
   });
   it("reads a GSAP-held element's x/y, its layout size and how it moves, and puts its translate back", () => {
     const card = turnedCard("translate: 10px 20px");

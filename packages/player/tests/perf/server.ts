@@ -194,7 +194,10 @@ export function startServer(options: ServeOptions = {}): RunningServer {
         if (!filePath.startsWith(PATHS.fixturesDir)) {
           return new Response("Forbidden", { status: 403 });
         }
-        return applyCacheHeaders(await readBunFile(filePath), noCache);
+        const res = applyCacheHeaders(await readBunFile(filePath), noCache);
+        // A sealed film has an opaque origin, so it reads its own media as from a CORS host.
+        res.headers.set("Access-Control-Allow-Origin", "*");
+        return res;
       }
 
       return new Response("Not found", { status: 404 });
