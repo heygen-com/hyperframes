@@ -460,6 +460,7 @@ export function buildStandaloneRootTimelineElement(params: {
   if (!Number.isFinite(params.rootDuration) || params.rootDuration <= 0) return null;
 
   const compositionSrc = resolveStandaloneRootCompositionSrc(params.iframeSrc);
+  if (compositionSrc === undefined) return null;
 
   return {
     id: params.compositionId,
