@@ -60,28 +60,39 @@ function afterScript(html: string, from: number): number {
   return html.length;
 }
 
+const isSpace = (c: string) => c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f";
+const isGap = (c: string) => isSpace(c) || c === "/";
+const inName = (c: string) => !isGap(c) && c !== "=";
+const notSpace = (c: string) => !isSpace(c);
+
+function skip(text: string, from: number, more: (c: string) => boolean): number {
+  let i = from;
+  while (i < text.length && more(text.charAt(i))) i++;
+  return i;
+}
+
+function attributeValue(text: string, from: number): { value: string; end: number } {
+  const quote = text.charAt(from);
+  if (quote !== '"' && quote !== "'") {
+    const end = skip(text, from, notSpace);
+    return { value: text.slice(from, end), end };
+  }
+  const close = text.indexOf(quote, from + 1);
+  const end = close < 0 ? text.length : close;
+  return { value: text.slice(from + 1, end), end: end + 1 };
+}
+
 function tagAttributes(text: string): Map<string, string> {
   const attributes = new Map<string, string>();
-  const isSpace = (c: string | undefined) =>
-    c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f";
-  let i = 0;
-  while (i < text.length) {
-    while (isSpace(text[i]) || text[i] === "/") i++;
+  for (let i = skip(text, 0, isGap); i < text.length; i = skip(text, i, isGap)) {
     const start = i;
-    while (i < text.length && !isSpace(text[i]) && text[i] !== "=" && text[i] !== "/") i++;
+    i = skip(text, i, inName);
     if (i === start) break;
     const name = text.slice(start, i).toLowerCase();
-    while (isSpace(text[i])) i++;
+    i = skip(text, i, isSpace);
     let value = "";
-    if (text[i] === "=") {
-      i++;
-      while (isSpace(text[i])) i++;
-      const quote = text[i] === '"' || text[i] === "'" ? text[i] : null;
-      const valueStart = quote ? ++i : i;
-      while (i < text.length && (quote ? text[i] !== quote : !isSpace(text[i]))) i++;
-      value = text.slice(valueStart, i);
-      if (quote) i++;
-    }
+    if (text.charAt(i) === "=")
+      ({ value, end: i } = attributeValue(text, skip(text, i + 1, isSpace)));
     attributes.set(name, value);
   }
   return attributes;

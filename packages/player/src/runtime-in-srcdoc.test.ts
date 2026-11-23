@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  carriesRuntime,
   ensureRuntimeBeforeBodyScripts,
   inlineRuntimeBeforeBodyScripts,
   withBaseHref,
@@ -81,6 +82,17 @@ describe("ensureRuntimeBeforeBodyScripts", () => {
 
     expect(out.indexOf(URL)).toBeLessThan(out.indexOf("<body>"));
     expect(out.indexOf(URL)).toBeGreaterThan(out.indexOf("</header>"));
+  });
+});
+
+describe("carriesRuntime", () => {
+  it("reads a script's own src, not text inside another attribute's quoted value", () => {
+    expect(
+      carriesRuntime(`<script data-note="see src=/hyperframe.runtime.iife.js"></script>`),
+    ).toBe(false);
+    expect(
+      carriesRuntime(`<script data-note='a' src=/v1/hyperframe.runtime.iife.js></script>`),
+    ).toBe(true);
   });
 });
 
