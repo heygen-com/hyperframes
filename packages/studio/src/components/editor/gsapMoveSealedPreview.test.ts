@@ -20,6 +20,7 @@ import {
   type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
 import { armPreviewDraftEnd, drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
+import { commitResizeOffset } from "./resizeDraft";
 import { patchSealedPreview } from "../../hooks/sealedTweenPatch";
 import { takePreviewTicket } from "../../utils/sealedPreviewLedger";
 import { previewAnswer, previewRequest } from "../../player/lib/previewChannel";
@@ -502,24 +503,31 @@ it("a sealed move's save ends its draft in the same frame message, and the teard
 });
 
 // fails without the fix: the scale save and the end that drops the drawn size went as two messages, so the frame
-// could paint one frame between them at the size before the resize (60 px off on the edit bench's scale resizes).
-it("a sealed resize saved as GSAP scale drops its drawn size in the save's own frame message", async () => {
-  mount(SCRIPT);
-  const sizedAsScale = (standIn: Element, member: ManualOffsetDragMember) => {
-    drawPreviewDraft(standIn, { size: { width: 300, height: 200 } });
-    member.sizeSavedAsScale = true;
-    applyManualOffsetDragCommit(member, 10, 0);
-  };
-  const save = savePosition({ kind: "global-set", props: { scale: 1.25 } });
-  await dragBoxOnSealedFrame(SCRIPT, undefined, sizedAsScale, save);
-  const [[, , params]] = patchRequests() as unknown as [
-    [unknown, unknown, { endsDrafts?: unknown[] }],
-  ];
-  expect(params.endsDrafts).toEqual([expect.objectContaining({ end: "restore" })]);
-  await drawsSettled();
-  expect(draftEnds()).toEqual([]);
-  expect(document.getElementById("box")!.style.width).toBe("");
-});
+// could paint one frame between them at the size before the resize (60 px off on the edit bench's scale resizes);
+// a resize whose anchor did not move never armed its end at all.
+it.each([
+  ["its anchor moved", { dx: 10, dy: 0 }],
+  ["its anchor did not move", { dx: 0, dy: 0 }],
+])(
+  "a sealed resize saved as GSAP scale, %s, drops its drawn size in the save's own frame message",
+  async (_name, anchor) => {
+    mount(SCRIPT);
+    const sizedAsScale = (standIn: Element, member: ManualOffsetDragMember) => {
+      drawPreviewDraft(standIn, { size: { width: 300, height: 200 } });
+      member.sizeSavedAsScale = true;
+      commitResizeOffset(member, anchor);
+    };
+    const save = savePosition({ kind: "global-set", props: { scale: 1.25 } });
+    await dragBoxOnSealedFrame(SCRIPT, undefined, sizedAsScale, save);
+    const [[, , params]] = patchRequests() as unknown as [
+      [unknown, unknown, { endsDrafts?: unknown[] }],
+    ];
+    expect(params.endsDrafts).toEqual([expect.objectContaining({ end: "restore" })]);
+    await drawsSettled();
+    expect(draftEnds()).toEqual([]);
+    expect(document.getElementById("box")!.style.width).toBe("");
+  },
+);
 
 // fails without the fix: a gesture with no save ended its draft as {translate:null} then {end:keep}, two messages.
 it("a sealed move with no save ends its draft once, as one end", async () => {

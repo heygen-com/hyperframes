@@ -8,7 +8,12 @@ import {
 } from "./domEditOverlayGeometry";
 import { computeNextResizeAnchor, resizeRemainderShift } from "./domEditResizeLocal";
 import type { ResizeDraftSizes } from "./domEditResizeLocal";
-import { applyManualOffsetDragDraft } from "./manualOffsetDrag";
+import {
+  applyManualOffsetDragCommit,
+  applyManualOffsetDragDraft,
+  type ManualOffsetDragMember,
+} from "./manualOffsetDrag";
+import { armDraftEndOnRelease } from "./manualOffsetDraftEnd";
 import { endStudioManualEditGesture, isStudioManualEditGestureCurrent } from "./manualEdits";
 import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
@@ -182,4 +187,16 @@ export function resolveResizeDraftRect(
       angle: g.actualRotation,
     }
   );
+}
+
+/** Commits a released resize's anchor shift, if it moved; either way its draft's end rides the save. */
+export function commitResizeOffset(
+  member: ManualOffsetDragMember | null | undefined,
+  anchor: { dx: number; dy: number } | null | undefined,
+): { x: number; y: number } | null {
+  if (!member) return null;
+  if (anchor && (anchor.dx !== 0 || anchor.dy !== 0))
+    return applyManualOffsetDragCommit(member, anchor.dx, anchor.dy);
+  armDraftEndOnRelease(member);
+  return null;
 }

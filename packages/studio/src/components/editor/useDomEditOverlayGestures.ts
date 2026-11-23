@@ -49,7 +49,7 @@ import {
   resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
 import { resolveCenterResizeSize } from "./domEditResizeLocal";
-import { endResizeWithoutMember, resolveResizeDraftRect } from "./resizeDraft";
+import { commitResizeOffset, endResizeWithoutMember, resolveResizeDraftRect } from "./resizeDraft";
 import { notifyBlockedPress } from "./domEditOverlayStartGesture";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import {
@@ -503,10 +503,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       // Save size and center-preserving offset together under one undo entry.
       const member = g.pathOffsetMember;
       const anchor = g.lastResizeAnchor;
-      const finalOffset =
-        member && anchor && (anchor.dx !== 0 || anchor.dy !== 0)
-          ? applyManualOffsetDragCommit(member, anchor.dx, anchor.dy)
-          : null;
+      const finalOffset = commitResizeOffset(member, anchor);
       logResize("release", {
         finalSize,
         anchor: anchor ?? null,
