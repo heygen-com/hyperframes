@@ -1354,6 +1354,41 @@ describe("preview quality: lighter copies of heavy files", () => {
       }
     });
 
+    // fails without the fix: the still was asked without the lighter-copy mark, so Studio's server refused it for a
+    // browser-safe H.264 file (422 browser_safe_codec) and the held clip showed black for as long as its copy took.
+    it("stands in its own frame from the server, asked as a lighter copy's still, while it is held", async () => {
+      const { el } = await waitingForItsCopy(making);
+      const media = await import("./media");
+      media.syncRuntimeMedia({
+        clips: [
+          {
+            el,
+            start: 0,
+            mediaStart: 4,
+            duration: 10,
+            end: 10,
+            volume: null,
+            playbackRate: 1,
+            loop: false,
+            sourceDuration: null,
+          },
+        ],
+        timeSeconds: 1,
+        playing: false,
+        playbackRate: 1,
+        getCompositionDuration: () => 0,
+      });
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      const poster = new URL(el.getAttribute("poster")!, document.baseURI);
+      expect([...poster.searchParams]).toEqual([
+        ["hf-proxy", "h264"],
+        ["hf-proxy-box", "2048x1218"],
+        ["hf-proxy-light", "1"],
+        ["hf-proxy-still", "5.0"],
+      ]);
+    });
+
     it("is not given its file back as its clip comes due", async () => {
       const { el, preload } = await waitingForItsCopy(making);
 
