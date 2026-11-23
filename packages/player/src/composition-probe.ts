@@ -61,6 +61,7 @@ export function readPositiveDimension(value: string | null): number | null {
 export { readCompositionSizeFromDocument };
 
 const POLL_MS = 200;
+const LATE_POLL_MS = 1_000;
 
 type PlatformNavigator = Pick<Navigator, "userAgent"> & { userAgentData?: { platform?: string } };
 
@@ -93,16 +94,27 @@ export class CompositionProbe {
   private _runtimeInjected = false;
   private _runtimeScript: HTMLScriptElement | null = null;
   private _failure: { document: Document | null; deadline: boolean } | null = null;
-  private _startedAt = 0;
-  private _limitMs = 0;
+  private _startedAt = performance.now();
+  private _limitMs = loadLimitMs();
+  private _navigationPending = false;
+  private _timedFromNavigation = false;
 
   get failed(): boolean {
     if (this._failure === null || this._failure.deadline) return false;
     return this._failure.document === this._iframe.contentDocument;
   }
 
-  elapsedMs(): number {
-    return performance.now() - this._startedAt;
+  /** Since the host navigated the frame to this document; null for one the frame opened itself. */
+  elapsedMs(): number | null {
+    return this._timedFromNavigation ? performance.now() - this._startedAt : null;
+  }
+
+  /** The host is navigating the frame: its next document's load is timed from now. */
+  markNavigation(): void {
+    this._startedAt = performance.now();
+    this._limitMs = loadLimitMs();
+    this._navigationPending = true;
+    this._timedFromNavigation = true;
   }
 
   get limitMs(): number {
@@ -124,11 +136,16 @@ export class CompositionProbe {
     this.stop();
     this._failure = null;
     this._runtimeInjected = false;
-    this._startedAt = performance.now();
-    this._limitMs = loadLimitMs();
+    if (!this._navigationPending) {
+      this._startedAt = performance.now();
+      this._limitMs = loadLimitMs();
+      this._timedFromNavigation = false;
+    }
+    this._navigationPending = false;
     let attempts = 0;
+    let limitReached = false;
 
-    this._interval = setInterval(() => {
+    const tick = () => {
       attempts++;
       let outcome: ProbeOutcome = null;
       try {
@@ -148,15 +165,16 @@ export class CompositionProbe {
         this.stop();
         this._failure = { document: this._iframe.contentDocument, deadline: false };
         this._callbacks.onError(outcome.message);
-      } else if (this._pastLimit(attempts)) {
+      } else if (!limitReached && performance.now() - this._startedAt >= this._limitMs) {
+        limitReached = true;
+        if (this._callbacks.hostOwnsDeadline?.()) return;
+        if (this._interval) clearInterval(this._interval);
+        this._interval = setInterval(tick, LATE_POLL_MS);
         this._failure = { document: this._iframe.contentDocument, deadline: true };
         this._callbacks.onError(`Composition timeline not found after ${this._limitMs / 1000}s`);
       }
-    }, POLL_MS);
-  }
-
-  private _pastLimit(attempts: number): boolean {
-    return attempts === this._limitMs / POLL_MS && !this._callbacks.hostOwnsDeadline?.();
+    };
+    this._interval = setInterval(tick, POLL_MS);
   }
 
   private _poll(attempts: number): ProbeOutcome {

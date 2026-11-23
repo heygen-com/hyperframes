@@ -86,7 +86,7 @@ describe("a film past its load limit", () => {
     vi.advanceTimersByTime(LINUX + 10_000);
     expect(onError).toHaveBeenCalledOnce();
     Object.assign(win, { __player: { getDuration: () => 6 } });
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(1_000);
     expect(onReady).toHaveBeenCalledOnce();
     expect(onReady.mock.calls[0][0].duration).toBe(6);
   });
@@ -99,12 +99,96 @@ describe("a film past its load limit", () => {
     expect(player.ready).toBe(true);
   });
 
-  it("reports how long the frame took from its load to its timeline, and the limit it had", () => {
+  it("reads the document five times a second until the limit, then once a second", () => {
+    const iframe = document.createElement("iframe");
+    document.body.appendChild(iframe);
+    iframe.contentDocument!.body.innerHTML = '<div data-composition-id="main"></div>';
+    const probe = new CompositionProbe(iframe, { onReady: vi.fn(), onError: vi.fn() });
+    const reads = vi.spyOn(iframe, "contentDocument", "get");
+    probe.start();
+    const readsOver = (ms: number) => {
+      const from = reads.mock.calls.length;
+      vi.advanceTimersByTime(ms);
+      return reads.mock.calls.length - from;
+    };
+    vi.advanceTimersByTime(10_000);
+    const early = readsOver(2_000);
+    vi.advanceTimersByTime(LINUX - 12_000 + 2_000);
+    expect(readsOver(2_000) * 5).toBe(early);
+    probe.stop();
+  });
+
+  it("stops reading a film past its limit once the player leaves the page", () => {
+    const { player } = mountPlayer();
+    vi.advanceTimersByTime(LINUX + 2_000);
+    const reads = vi.spyOn(player.iframeElement, "contentDocument", "get");
+    player.remove();
+    const after = reads.mock.calls.length;
+    vi.advanceTimersByTime(5_000);
+    expect(reads.mock.calls.length).toBe(after);
+  });
+
+  it("fails at the limit by the clock when a throttled tab polls less often", () => {
+    const { onError } = openFrame();
+    vi.advanceTimersByTime(400);
+    const now = performance.now();
+    vi.spyOn(performance, "now").mockReturnValue(now + LINUX);
+    vi.advanceTimersByTime(200);
+    expect(onError).toHaveBeenCalledExactlyOnceWith("Composition timeline not found after 30s");
+  });
+
+  function navigatedPlayer() {
+    const player = document.createElement("hyperframes-player") as HyperframesPlayer;
+    player.setAttribute("src", "film-1.html");
+    document.body.appendChild(player);
+    const iframe = player.shadowRoot!.querySelector("iframe")!;
+    const readies: Array<{ readyMs: number | null; loadLimitMs: number | null }> = [];
+    player.addEventListener("ready", (event) =>
+      readies.push((event as CustomEvent<(typeof readies)[number]>).detail),
+    );
+    const postTimeline = () =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: iframe.contentWindow,
+          data: { source: "hf-preview", type: "timeline", durationInFrames: 120 },
+        }),
+      );
+    return { player, iframe, readies, postTimeline };
+  }
+
+  it("times a timeline posted before load from the navigation, with the limit it had", () => {
+    const { readies, postTimeline } = navigatedPlayer();
+    vi.advanceTimersByTime(1_200);
+    postTimeline();
+    expect(readies).toEqual([expect.objectContaining({ readyMs: 1_200, loadLimitMs: LINUX })]);
+  });
+
+  it("times each later film from its own navigation", () => {
+    const { player, iframe, readies, postTimeline } = navigatedPlayer();
+    vi.advanceTimersByTime(1_200);
+    iframe.dispatchEvent(new Event("load"));
+    postTimeline();
+    vi.advanceTimersByTime(4_000);
+    player.setAttribute("src", "film-2.html");
+    vi.advanceTimersByTime(500);
+    postTimeline();
+    expect(readies.map((ready) => ready.readyMs)).toEqual([1_200, 500]);
+  });
+
+  it("times the film a removed srcdoc falls back to from that removal", () => {
+    const { player, readies, postTimeline } = navigatedPlayer();
+    player.setAttribute("srcdoc", "<p>draft</p>");
+    vi.advanceTimersByTime(4_000);
+    player.removeAttribute("srcdoc");
+    vi.advanceTimersByTime(700);
+    postTimeline();
+    expect(readies.map((ready) => ready.readyMs)).toEqual([700]);
+  });
+
+  it("reports no load time for a document the frame opened itself", () => {
     const { readies, postTimeline } = mountPlayer();
     vi.advanceTimersByTime(1_200);
     postTimeline();
-    expect(readies).toHaveLength(1);
-    expect(readies[0]!.readyMs).toBeGreaterThanOrEqual(1_200);
-    expect(readies[0]!.loadLimitMs).toBe(LINUX);
+    expect(readies).toEqual([expect.objectContaining({ readyMs: null, loadLimitMs: LINUX })]);
   });
 });

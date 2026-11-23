@@ -2429,7 +2429,7 @@ describe("HyperframesPlayer runtime ready handshake", () => {
         duration: 4,
         compositionWidth: 1920,
         compositionHeight: 1080,
-        readyMs: expect.any(Number),
+        readyMs: null,
         loadLimitMs: expect.any(Number),
       },
     ]);
@@ -2448,7 +2448,7 @@ describe("HyperframesPlayer runtime ready handshake", () => {
         duration: 4,
         compositionWidth: 1080,
         compositionHeight: 1920,
-        readyMs: expect.any(Number),
+        readyMs: null,
         loadLimitMs: expect.any(Number),
       },
     ]);
@@ -2473,7 +2473,7 @@ describe("HyperframesPlayer runtime ready handshake", () => {
         duration: 5,
         compositionWidth: 1080,
         compositionHeight: 1350,
-        readyMs: expect.any(Number),
+        readyMs: null,
         loadLimitMs: expect.any(Number),
       },
     ]);
