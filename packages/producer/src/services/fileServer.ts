@@ -326,68 +326,8 @@ const VIRTUAL_TIME_SHIM = String.raw`(function() {
     } catch {}
   }
 
-  // What page code has asked to run on seeks, for a caller that must know whether a frame depends on the
-  // seeks before it and not on its time alone (the HDR passthrough reuses one capture across frames it
-  // seeks out of order). Distinct animation-frame callbacks are kept up to a cap; film-time timers are
-  // counted. A registration whose caller is the renderer's own code (an injected script, a
-  // hyperframes:// script the compiler adds, a DevTools evaluation) is left out; anything else, the
-  // composition's scripts and the libraries it loads, counts.
-  var CALLBACKS_KEPT = 32;
-  var RENDERER_CALLER = /(?:\(|at )(?:hyperframes:\/\/|pptr:)/;
-  var frameCallbacks = [];
-  var rendererFrameCallbacks = [];
-  var frameCallbacksOverflow = false;
-  var filmTimers = 0;
-  // The caller is read from a stack the page never sees, without running the page's stack hooks: a page
-  // that installs Error.prepareStackTrace must render exactly as it would without this record (a hook
-  // that throws would otherwise throw out of requestAnimationFrame). Taken from the realm's own Error,
-  // with both hooks set aside as own data properties and put back as they were. A hook that cannot be
-  // set aside, or a stack that cannot be read, makes the caller page code.
-  var OriginalError = Error;
-  var defineProperty = Object.defineProperty;
-  var getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
-  var STACK_HOOKS = ["prepareStackTrace", "stackTraceLimit"];
-  // Frames: readStackAside, calledByPage, the shim's wrapper, the wrapper's caller, one to spare.
-  var STACK_FRAMES = 5;
-  function readStackAside() {
-    var saved = [];
-    for (var i = 0; i < STACK_HOOKS.length; i++) {
-      var found = getOwnPropertyDescriptor(OriginalError, STACK_HOOKS[i]);
-      if (found && !found.configurable) return null;
-      saved.push(found);
-    }
-    try {
-      defineProperty(OriginalError, "prepareStackTrace", { value: undefined, writable: true, configurable: true });
-      defineProperty(OriginalError, "stackTraceLimit", { value: STACK_FRAMES, writable: true, configurable: true });
-      var stack = new OriginalError().stack;
-      return typeof stack === "string" ? stack : null;
-    } catch (err) {
-      return null;
-    } finally {
-      for (var j = 0; j < STACK_HOOKS.length; j++) {
-        if (saved[j]) defineProperty(OriginalError, STACK_HOOKS[j], saved[j]);
-        else delete OriginalError[STACK_HOOKS[j]];
-      }
-    }
-  }
-  // Whether the code that called the shim's wrapper is the page's. Call from the wrapper itself: the
-  // stack's first line is the message, then readStackAside, this function, the wrapper and its caller.
-  function calledByPage() {
-    var stack = readStackAside();
-    var caller = stack === null ? undefined : stack.split("\n")[4];
-    return !caller || !RENDERER_CALLER.test(caller);
-  }
-  function noteFrameCallback(callback, byPage) {
-    var list = byPage ? frameCallbacks : rendererFrameCallbacks;
-    if (list.length < CALLBACKS_KEPT) list.push(callback);
-    else if (list === frameCallbacks) frameCallbacksOverflow = true;
-  }
-
   window.requestAnimationFrame = function(callback) {
     if (typeof callback !== "function") return 0;
-    if (frameCallbacks.indexOf(callback) < 0 && rendererFrameCallbacks.indexOf(callback) < 0) {
-      noteFrameCallback(callback, calledByPage());
-    }
     var entry = { id: rafId++, callback: callback, cancelled: false };
     rafQueue.push(entry);
     return entry.id;
@@ -449,12 +389,10 @@ const VIRTUAL_TIME_SHIM = String.raw`(function() {
   }
   window.setTimeout = function(callback, delay) {
     if (!rendering || typeof callback !== "function") return originalSetTimeout.apply(null, arguments);
-    if (calledByPage()) filmTimers++;
     return addTimer(callback, delay, Array.prototype.slice.call(arguments, 2), false);
   };
   window.setInterval = function(callback, delay) {
     if (!rendering || typeof callback !== "function") return originalSetInterval.apply(null, arguments);
-    if (calledByPage()) filmTimers++;
     return addTimer(callback, delay, Array.prototype.slice.call(arguments, 2), true);
   };
   window.clearTimeout = function(id) {
@@ -490,26 +428,234 @@ const VIRTUAL_TIME_SHIM = String.raw`(function() {
     getTime: function() {
       return virtualNowMs;
     },
-    // Page-side only (holds functions): see noteFrameCallback.
-    callbackActivity: function() {
+  };
+})();`;
+
+// ── HDR passthrough callback record ─────────────────────────────────────────
+// What page code has asked to run on seeks, for a caller that must know whether a frame depends on the
+// seeks before it and not on its time alone (the HDR passthrough reuses one capture across frames it
+// seeks out of order; `hdrPassthrough/eligibility.ts` reads it). Only renders with the passthrough on
+// get it (`virtualTimeShimFor`): every other page is served `VIRTUAL_TIME_SHIM` exactly.
+//
+// It is spliced into the shim at four anchors rather than written into it, so the shim stays one text
+// that renders with the flag off read unchanged. The record must be invisible to the page: a page that
+// falls back to the layered path must render exactly as it would with the flag off. So it calls nothing
+// the page can replace or observe. Every intrinsic it uses is captured when the shim runs, before any
+// page script, and called through saved references; it reads stacks with the page's stack hooks set
+// aside, and parses them without regular expressions (which update `RegExp.$1` and friends). A caller
+// it cannot classify counts as page code.
+//
+// Distinct animation-frame callbacks are kept up to a cap; film-time timers and string timers are
+// counted. A registration from the renderer's own code (a `hyperframes://injected/<n>` script the file
+// server adds, the compiler's `hyperframes://position-seek-reapply`, a `pptr:` DevTools evaluation) is
+// kept apart; the page code watch declines any page script that takes one of those names
+// (`RENDERER_SCRIPT_NAMES` in `hdrPassthrough/scriptOrigins.ts`), so the name is the renderer's.
+const CALLBACK_RECORD_STATE = String.raw`
+  var CALLBACKS_KEPT = 32;
+  var frameCallbacks = [];
+  var rendererFrameCallbacks = [];
+  var frameCallbacksOverflow = false;
+  var filmTimers = 0;
+  var stringTimers = 0;
+  var recordUncurry = Function.prototype.bind.bind(Function.prototype.call);
+  var recordIndexOf = recordUncurry(String.prototype.indexOf);
+  var recordLastIndexOf = recordUncurry(String.prototype.lastIndexOf);
+  var recordSlice = recordUncurry(String.prototype.slice);
+  var recordHasOwn = recordUncurry(Object.prototype.hasOwnProperty);
+  var recordDefine = Object.defineProperty;
+  var recordDescriptor = Object.getOwnPropertyDescriptor;
+  var RecordError = Error;
+  var STACK_HOOKS = ["prepareStackTrace", "stackTraceLimit"];
+  // Frames: readStackAside, calledByPage, the shim's wrapper, the wrapper's caller, one to spare.
+  var STACK_FRAMES = 5;
+  var RENDERER_SCRIPTS = ["hyperframes://injected/", "hyperframes://position-seek-reapply", "pptr:"];
+  // Property descriptors have no prototype: defineProperty reads "get" and "set" through it.
+  function recordAdd(list, value) {
+    recordDefine(list, list.length, { __proto__: null, value: value, writable: true, enumerable: true, configurable: true });
+  }
+  // A descriptor as getOwnPropertyDescriptor returned it, rebuilt without a prototype.
+  function recordOwnDescriptor(found) {
+    if (recordHasOwn(found, "get") || recordHasOwn(found, "set")) {
+      return { __proto__: null, get: found.get, set: found.set, enumerable: found.enumerable, configurable: found.configurable };
+    }
+    return { __proto__: null, value: found.value, writable: found.writable, enumerable: found.enumerable, configurable: found.configurable };
+  }
+  function recordHas(list, value) {
+    for (var i = 0; i < list.length; i++) if (list[i] === value) return true;
+    return false;
+  }
+  function recordCopy(list) {
+    var copy = [];
+    for (var i = 0; i < list.length; i++) recordAdd(copy, list[i]);
+    return copy;
+  }
+  // The caller's stack, read without running the page's stack hooks: both are set aside as own data
+  // properties of the realm's Error and put back as they were. Null when a hook cannot be set aside.
+  function readStackAside() {
+    var saved = [];
+    for (var i = 0; i < STACK_HOOKS.length; i++) {
+      var found = recordDescriptor(RecordError, STACK_HOOKS[i]);
+      if (found && !found.configurable) return null;
+      recordAdd(saved, found ? recordOwnDescriptor(found) : undefined);
+    }
+    try {
+      recordDefine(RecordError, "prepareStackTrace", { __proto__: null, value: undefined, writable: true, configurable: true });
+      recordDefine(RecordError, "stackTraceLimit", { __proto__: null, value: STACK_FRAMES, writable: true, configurable: true });
+      var stack = new RecordError().stack;
+      return typeof stack === "string" ? stack : null;
+    } catch (err) {
+      return null;
+    } finally {
+      for (var j = 0; j < STACK_HOOKS.length; j++) {
+        if (saved[j]) recordDefine(RecordError, STACK_HOOKS[j], saved[j]);
+        else delete RecordError[STACK_HOOKS[j]];
+      }
+    }
+  }
+  // Line n of a stack (0 is the message), or null.
+  function stackLine(stack, n) {
+    var start = 0;
+    for (var i = 0; i < n; i++) {
+      var next = recordIndexOf(stack, "\n", start);
+      if (next < 0) return null;
+      start = next + 1;
+    }
+    var end = recordIndexOf(stack, "\n", start);
+    return end < 0 ? recordSlice(stack, start) : recordSlice(stack, start, end);
+  }
+  // A frame's location: what is inside a frame's last parentheses, or after "at ". An eval frame's
+  // location names the evaluated code ("eval at f (...), <anonymous>:1:1"), never the renderer's.
+  function frameLocation(line) {
+    if (line.length > 0 && line[line.length - 1] === ")") {
+      var open = recordLastIndexOf(line, " (");
+      return open < 0 ? null : recordSlice(line, open + 2, line.length - 1);
+    }
+    var at = recordIndexOf(line, "at ");
+    return at < 0 ? null : recordSlice(line, at + 3);
+  }
+  function isRendererLocation(location) {
+    if (recordIndexOf(location, " ") >= 0 || recordIndexOf(location, "(") >= 0 || recordIndexOf(location, ")") >= 0) return false;
+    for (var i = 0; i < RENDERER_SCRIPTS.length; i++) {
+      if (recordIndexOf(location, RENDERER_SCRIPTS[i]) === 0) return true;
+    }
+    return false;
+  }
+  // Whether the code that called the shim's wrapper is the page's. Call from the wrapper itself: the
+  // stack's first line is the message, then readStackAside, this function, the wrapper and its caller.
+  function calledByPage() {
+    var stack = readStackAside();
+    var caller = stack === null ? null : stackLine(stack, 4);
+    var location = caller === null ? null : frameLocation(caller);
+    return location === null || !isRendererLocation(location);
+  }
+  function noteFrameCallback(callback, byPage) {
+    var list = byPage ? frameCallbacks : rendererFrameCallbacks;
+    if (list.length < CALLBACKS_KEPT) recordAdd(list, callback);
+    else if (byPage) frameCallbacksOverflow = true;
+  }
+`;
+
+/** Notes a new animation-frame callback; runs right after the wrapper's own callback check. */
+const CALLBACK_RECORD_FRAME = String.raw`    if (!recordHas(frameCallbacks, callback) && !recordHas(rendererFrameCallbacks, callback)) {
+      noteFrameCallback(callback, calledByPage());
+    }
+`;
+
+/** Counts a timer; runs first in the setTimeout / setInterval wrappers. */
+const CALLBACK_RECORD_TIMER = String.raw`    if (typeof callback !== "function") stringTimers++;
+    else if (rendering && calledByPage()) filmTimers++;
+`;
+
+/** `__HF_VIRTUAL_TIME__.callbackActivity()`: page-side only (it holds functions). */
+const CALLBACK_RECORD_READ = String.raw`    callbackActivity: function() {
       var pendingFrames = [];
       for (var i = 0; i < rafQueue.length; i++) {
-        if (!rafQueue[i].cancelled) pendingFrames.push(rafQueue[i].callback);
+        if (!rafQueue[i].cancelled) recordAdd(pendingFrames, rafQueue[i].callback);
       }
       var pendingTimers = 0;
       for (var j = 0; j < timerQueue.length; j++) {
         if (!timerQueue[j].cancelled) pendingTimers++;
       }
       return {
-        frameCallbacks: frameCallbacks.slice(),
+        frameCallbacks: recordCopy(frameCallbacks),
         frameCallbacksOverflow: frameCallbacksOverflow,
         pendingFrames: pendingFrames,
         filmTimers: filmTimers,
+        stringTimers: stringTimers,
         pendingTimers: pendingTimers,
       };
     },
-  };
-})();`;
+`;
+
+/** Inserts `insert` before (or after) the one occurrence of `anchor` in `source`. */
+function spliceAt(
+  source: string,
+  anchor: string,
+  insert: string,
+  where: "before" | "after",
+): string {
+  const at = source.indexOf(anchor);
+  if (at < 0 || source.indexOf(anchor, at + 1) >= 0) {
+    throw new Error(`virtual-time shim: anchor not found exactly once: ${JSON.stringify(anchor)}`);
+  }
+  const cut = where === "before" ? at : at + anchor.length;
+  return source.slice(0, cut) + insert + source.slice(cut);
+}
+
+/** `shim` with the callback record spliced in; throws when an anchor is missing. */
+export function withCallbackRecord(shim: string): string {
+  let out = spliceAt(
+    shim,
+    "  window.requestAnimationFrame = function(callback) {\n",
+    CALLBACK_RECORD_STATE,
+    "before",
+  );
+  out = spliceAt(
+    out,
+    '  window.requestAnimationFrame = function(callback) {\n    if (typeof callback !== "function") return 0;\n',
+    CALLBACK_RECORD_FRAME,
+    "after",
+  );
+  out = spliceAt(
+    out,
+    "  window.setTimeout = function(callback, delay) {\n",
+    CALLBACK_RECORD_TIMER,
+    "after",
+  );
+  out = spliceAt(
+    out,
+    "  window.setInterval = function(callback, delay) {\n",
+    CALLBACK_RECORD_TIMER,
+    "after",
+  );
+  return spliceAt(
+    out,
+    "    getTime: function() {\n      return virtualNowMs;\n    },\n",
+    CALLBACK_RECORD_READ,
+    "after",
+  );
+}
+
+/** The shim with the callback record, or null when main's shim moved an anchor (the passthrough then declines). */
+const VIRTUAL_TIME_SHIM_WITH_CALLBACK_RECORD: string | null = (() => {
+  try {
+    return withCallbackRecord(VIRTUAL_TIME_SHIM);
+  } catch {
+    return null;
+  }
+})();
+
+/**
+ * The virtual-time shim for a render's pages. With the HDR passthrough off this is
+ * `VIRTUAL_TIME_SHIM` itself, so those renders serve the same page as without the feature;
+ * with it on, the shim with the callback record the passthrough's eligibility reads. If the
+ * record cannot be spliced in, the plain shim: the passthrough then finds no record and falls
+ * back.
+ */
+export function virtualTimeShimFor(options: { experimentalHdrPassthrough?: boolean }): string {
+  if (!options.experimentalHdrPassthrough) return VIRTUAL_TIME_SHIM;
+  return VIRTUAL_TIME_SHIM_WITH_CALLBACK_RECORD ?? VIRTUAL_TIME_SHIM;
+}
 
 /**
  * Render mode extension -- adds renderSeek() for frame-accurate seeking
@@ -815,6 +961,39 @@ export interface FileServerHandle {
   port: number;
   close: () => void;
   addPreHeadScript: (script: string) => void;
+  /** The text of every script the server injects into index.html, as the page compiles it. */
+  injectedScriptTexts: () => string[];
+}
+
+/** The contents of each inline `<script>` tag in HTML the injection helpers wrote. */
+function inlineScriptTexts(html: string): string[] {
+  const texts: string[] = [];
+  let cursor = 0;
+  for (;;) {
+    const open = html.indexOf("<script>", cursor);
+    if (open < 0) return texts;
+    // Injected sources are escaped so that "</script" never occurs inside them.
+    const close = html.indexOf("</script>", open);
+    if (close < 0) return texts;
+    texts.push(html.slice(open + "<script>".length, close));
+    cursor = close + "</script>".length;
+  }
+}
+
+/**
+ * The scripts `createFileServer` injects into index.html, as the page compiles them: what the
+ * injection helpers write for each list, read back from an empty document.
+ */
+function injectedScriptTexts(
+  preHeadScripts: readonly string[],
+  headScripts: readonly string[],
+  bodyScripts: readonly string[],
+): string[] {
+  const empty = "<!doctype html><html><head></head><body></body></html>";
+  return [
+    ...inlineScriptTexts(injectScriptsAtHeadStart(empty, preHeadScripts)),
+    ...inlineScriptTexts(injectScriptsIntoHtml(empty, headScripts, bodyScripts, false)),
+  ];
 }
 
 const OFFER_NO_FRAMING_SITE_AN_EDITING_PORT = `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`;
@@ -1077,6 +1256,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
           addPreHeadScript: (script: string) => {
             preHeadScripts.push(script);
           },
+          injectedScriptTexts: () => injectedScriptTexts(preHeadScripts, headScripts, bodyScripts),
           close: () => {
             for (const socket of connections) socket.destroy();
             connections.clear();

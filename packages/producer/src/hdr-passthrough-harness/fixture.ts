@@ -412,7 +412,30 @@ export function buildAnimatedImageArgs(format: AnimatedImageFormat, outputPath: 
 }
 
 /** Extra project content a negative fixture needs beyond its composition options. */
-type NegativeAsset = "gsap" | AnimatedImageFormat;
+type NegativeAsset = "gsap" | "fake-gsap" | AnimatedImageFormat;
+
+/**
+ * A highlight setter on the seek-time global, as script text: the page code a
+ * seek runs that changes what paints where no fingerprint can read it.
+ */
+const HIGHLIGHT_SETTER = `(() => { let time; const apply = (on) => { if (!on) return CSS.highlights.delete("hf"); const range = new Range(); range.selectNodeContents(document.getElementById("hl")); CSS.highlights.set("hf", new Highlight(range)); }; Object.defineProperty(window, "__hfTypegpuTime", { configurable: true, get: () => time, set(t) { time = t; apply(t >= 1 && t < 2); } }); })();`;
+const HIGHLIGHT_STYLE = "<style>::highlight(hf) { background-color: #f00; color: #ff0; }</style>";
+
+/** The fake GSAP file: page code under a GSAP distribution file name. */
+export const FAKE_GSAP_FILE = "gsap-core.js";
+
+/** `HIGHLIGHT_SETTER` compiled by the page some other way than as its own inline script. */
+function highlightSetterCase(name: string, script: string): IneligibleCase {
+  return {
+    name,
+    reason: "seek_callback",
+    composition: {
+      cues: [],
+      headHtml: `${HIGHLIGHT_STYLE}${script}`,
+      overlayHtml: `<div id="hl" style="${BADGE_STYLE};width:auto;color:#fff;font:700 40px sans-serif">HIGHLIGHT</div>`,
+    },
+  };
+}
 
 /** One class of composition the passthrough must decline, and the reason it must log. */
 export interface IneligibleCase {
@@ -492,17 +515,23 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
   {
     name: "lottie-player",
     reason: "overlay_non_gsap_animation",
-    composition: { overlayHtml: `<dotlottie-player style="${BADGE_STYLE}"></dotlottie-player>` },
+    composition: {
+      overlayHtml: `<dotlottie-player style="${BADGE_STYLE}"></dotlottie-player>`,
+    },
   },
   {
     name: "three",
     reason: "overlay_non_gsap_animation",
-    composition: { headHtml: '<script>window.THREE = { REVISION: "fixture" };</script>' },
+    composition: {
+      headHtml: '<script>window.THREE = { REVISION: "fixture" };</script>',
+    },
   },
   {
     name: "webgpu",
     reason: "overlay_non_gsap_animation",
-    composition: { overlayHtml: `<div data-requires-webgpu style="${BADGE_STYLE}"></div>` },
+    composition: {
+      overlayHtml: `<div data-requires-webgpu style="${BADGE_STYLE}"></div>`,
+    },
   },
   {
     name: "svg-smil",
@@ -682,16 +711,8 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
   // read it (a custom highlight here; `:focus`, `:popover-open`, the selection or a custom
   // element's `:state()` the same way). Every probe fingerprints equal, so only the record of
   // page code that ran during capture declines it.
-  {
-    // A setter on the seek-time global the WebGPU adapter assigns on every seek.
-    name: "setter-highlight",
-    reason: "seek_callback",
-    composition: {
-      cues: [],
-      headHtml: `<style>::highlight(hf) { background-color: #f00; color: #ff0; }</style><script>(() => { let time; const apply = (on) => { if (!on) return CSS.highlights.delete("hf"); const range = new Range(); range.selectNodeContents(document.getElementById("hl")); CSS.highlights.set("hf", new Highlight(range)); }; Object.defineProperty(window, "__hfTypegpuTime", { configurable: true, get: () => time, set(t) { time = t; apply(t >= 1 && t < 2); } }); })();</script>`,
-      overlayHtml: `<div id="hl" style="${BADGE_STYLE};width:auto;color:#fff;font:700 40px sans-serif">HIGHLIGHT</div>`,
-    },
-  },
+  // A setter on the seek-time global the WebGPU adapter assigns on every seek.
+  highlightSetterCase("setter-highlight", `<script>${HIGHLIGHT_SETTER}</script>`),
   {
     // An accessor on a plain object a GSAP set() on the registered timeline writes through.
     name: "gsap-proxy-highlight",
@@ -704,6 +725,64 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
         "tl.set(window.highlightProxy, { on: 1 }, 1.0); tl.set(window.highlightProxy, { on: 0 }, 2.0);",
     },
     assets: ["gsap"],
+  },
+  // The same setter, compiled in each way that reports an empty script URL or a name the page
+  // chose. The page code watch goes by how V8 compiled a script, never by its name.
+  highlightSetterCase(
+    "dynamic-inline-setter",
+    `<script>{ const s = document.createElement("script"); s.textContent = ${JSON.stringify(HIGHLIGHT_SETTER)}; document.head.appendChild(s); }</script>`,
+  ),
+  highlightSetterCase("eval-setter", `<script>eval(${JSON.stringify(HIGHLIGHT_SETTER)});</script>`),
+  highlightSetterCase(
+    "new-function-setter",
+    `<script>new Function(${JSON.stringify(HIGHLIGHT_SETTER)})();</script>`,
+  ),
+  highlightSetterCase(
+    "renderer-named-setter",
+    `<script>${HIGHLIGHT_SETTER}\n//# sourceURL=hyperframes://injected/0</script>`,
+  ),
+  highlightSetterCase(
+    "devtools-named-setter",
+    `<script>eval(${JSON.stringify(`${HIGHLIGHT_SETTER}\n//# sourceURL=pptr:evaluate;x`)});</script>`,
+  ),
+  // A string timer compiles page code with nothing on the stack, as DevTools evaluations are.
+  highlightSetterCase(
+    "string-timer-setter",
+    `<script>setTimeout(${JSON.stringify(`${HIGHLIGHT_SETTER}\n//# sourceURL=pptr:evaluate;x`)}, 0);</script>`,
+  ),
+  {
+    // Page code in a file named like GSAP's core build.
+    ...highlightSetterCase(
+      "fake-gsap-filename",
+      `<script src="assets/${FAKE_GSAP_FILE}"></script>`,
+    ),
+    assets: ["fake-gsap"],
+  },
+  {
+    // The accessor a GSAP set() writes through, defined in a dynamically inserted script.
+    name: "dynamic-inline-gsap-proxy",
+    reason: "seek_callback",
+    composition: {
+      cues: [],
+      headHtml: `${HIGHLIGHT_STYLE}<script>{ const s = document.createElement("script"); s.textContent = ${JSON.stringify('(() => { let on = 0; const apply = (lit) => { if (!lit) return CSS.highlights.delete("hf"); const range = new Range(); range.selectNodeContents(document.getElementById("hl")); CSS.highlights.set("hf", new Highlight(range)); }; window.highlightProxy = {}; Object.defineProperty(window.highlightProxy, "on", { get: () => on, set(v) { on = v; apply(v === 1); } }); })();')}; document.head.appendChild(s); }</script>`,
+      overlayHtml: `<div id="hl" style="${BADGE_STYLE};width:auto;color:#fff;font:700 40px sans-serif">HIGHLIGHT</div>`,
+      timelineScript:
+        "tl.set(window.highlightProxy, { on: 1 }, 1.0); tl.set(window.highlightProxy, { on: 0 }, 2.0);",
+    },
+    assets: ["gsap"],
+  },
+  {
+    // A page that replaces builtins the renderer's page scripts call and shows how often they ran,
+    // from an animation-frame loop. It declines on the loop; the flag-on render's layered fallback
+    // must still match the flag-off render frame for frame, so nothing the passthrough adds to the
+    // page may call what the page replaced.
+    name: "builtins-counter",
+    reason: "seek_callback",
+    composition: {
+      cues: [],
+      headHtml: `<script>(() => { window.__calls = 0; const count = (owner, key) => { const original = owner[key]; owner[key] = function () { window.__calls++; return original.apply(this, arguments); }; }; count(Array.prototype, "indexOf"); count(Array.prototype, "push"); count(Array.prototype, "slice"); count(String.prototype, "split"); count(String.prototype, "indexOf"); count(String.prototype, "slice"); count(RegExp.prototype, "test"); count(RegExp.prototype, "exec"); Error.prepareStackTrace = function (error, frames) { window.__calls++; return String(error); }; requestAnimationFrame(function loop() { const el = document.getElementById("seek-counter"); if (el) el.textContent = "calls=" + window.__calls; requestAnimationFrame(loop); }); })();</script>`,
+      overlayHtml: `<div id="seek-counter" style="${BADGE_STYLE};width:auto;color:#fff;font:700 40px sans-serif"></div>`,
+    },
   },
   {
     name: "canvas",
@@ -922,7 +1001,9 @@ interface GenerateOptions {
 }
 
 function runFfmpegOrThrow(ffmpegPath: string, args: string[], what: string): void {
-  const result = spawnSync(ffmpegPath, args, { stdio: ["ignore", "inherit", "inherit"] });
+  const result = spawnSync(ffmpegPath, args, {
+    stdio: ["ignore", "inherit", "inherit"],
+  });
   if (result.status !== 0) {
     throw new Error(`ffmpeg failed generating ${what} (exit ${result.status ?? "signal"})`);
   }
@@ -951,7 +1032,13 @@ function negativeAssetSources(
     }
     images[format] = { source, name };
   }
-  return { gsap: gsapAsset(), ...images };
+  const fakeGsap = join(outDir, "assets", FAKE_GSAP_FILE);
+  writeFileSync(fakeGsap, `${HIGHLIGHT_SETTER}\n`);
+  return {
+    gsap: gsapAsset(),
+    "fake-gsap": { source: fakeGsap, name: FAKE_GSAP_FILE },
+    ...images,
+  };
 }
 
 /** Run ffmpeg to write `path` unless it already exists (non-empty) and `--force` is off. */
@@ -1056,7 +1143,10 @@ function generateFixtures(options: GenerateOptions): GeneratedFixtures {
       dir: writeProject({
         ...project,
         name: "captions",
-        html: buildCompositionHtml({ ...base, compositionId: "hdr-passthrough-captions" }),
+        html: buildCompositionHtml({
+          ...base,
+          compositionId: "hdr-passthrough-captions",
+        }),
       }),
     },
     {
@@ -1066,7 +1156,10 @@ function generateFixtures(options: GenerateOptions): GeneratedFixtures {
         ...project,
         sourcePath: offsetSourcePath,
         name: "captions-offset",
-        html: buildCompositionHtml({ ...base, compositionId: "hdr-passthrough-captions-offset" }),
+        html: buildCompositionHtml({
+          ...base,
+          compositionId: "hdr-passthrough-captions-offset",
+        }),
       }),
     },
     {
@@ -1120,7 +1213,13 @@ function generateFixtures(options: GenerateOptions): GeneratedFixtures {
     }
   }
   if (options.edge) projects.push(...generateEdgeFixtures(options));
-  const manifest: GeneratedFixtures = { sourcePath, durationSec, fps, transfer, projects };
+  const manifest: GeneratedFixtures = {
+    sourcePath,
+    durationSec,
+    fps,
+    transfer,
+    projects,
+  };
   writeFileSync(join(outDir, "fixtures.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   return manifest;
 }

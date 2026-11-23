@@ -26,7 +26,8 @@ import {
   captureOverlayStates,
 } from "./overlayCapture.js";
 import { findFingerprintBlindSpots } from "./overlayFingerprint.js";
-import { watchPageCode } from "./pageCodeWatch.js";
+import { armPageCodeWatch, attachPageCodeWatch, pageCodeWatchOf } from "./pageCodeWatch.js";
+import { POSITION_SEEK_REAPPLY_SCRIPT } from "../htmlCompiler.js";
 import { compositeAndEncode } from "./ffmpegComposite.js";
 import type {
   EligiblePassthrough,
@@ -55,8 +56,9 @@ export interface OverlaySessionDeps {
 /**
  * A DOM capture session configured like the layered stage's `domSession`
  * (screenshot mode, transparent background, the render's video-frame
- * injector). A session that fails to initialise is closed before the error
- * propagates.
+ * injector), with the page code watch armed before it navigates and counting
+ * once it is ready (`pageCodeWatch.ts`). A session that fails to initialise
+ * is closed before the error propagates.
  */
 async function openOverlaySession(input: HdrPassthroughInput): Promise<CaptureSession> {
   if (!input.fileServer) {
@@ -71,19 +73,30 @@ async function openOverlaySession(input: HdrPassthroughInput): Promise<CaptureSe
     { ...input.cfg, forceScreenshot: true },
   );
   try {
+    const watch = await armPageCodeWatch(session.page, [
+      ...input.fileServer.injectedScriptTexts(),
+      POSITION_SEEK_REAPPLY_SCRIPT,
+    ]);
+    attachPageCodeWatch(session.page, watch);
     await initializeSession(session);
     input.assertNotAborted();
     await initTransparentBackground(session.page, { clearCompositionRoot: true });
+    await watch.start();
     return session;
   } catch (error) {
-    await closeCaptureSession(session).catch(() => undefined);
+    await closeOverlaySession(session).catch(() => undefined);
     throw error;
   }
 }
 
+async function closeOverlaySession(session: CaptureSession): Promise<void> {
+  await pageCodeWatchOf(session.page)?.dispose();
+  await closeCaptureSession(session);
+}
+
 const DEFAULT_SESSION_DEPS: OverlaySessionDeps = {
   open: openOverlaySession,
-  close: closeCaptureSession,
+  close: closeOverlaySession,
 };
 
 /**
@@ -178,8 +191,9 @@ async function runHdrPassthrough(
 
   const page = await session.get();
   input.assertNotAborted();
-  // Fingerprints stand in for pixels only while no page code runs on seeks (pageCodeWatch.ts).
-  const pageCode = await watchPageCode(page.page);
+  // Fingerprints stand in for pixels only while no page code runs after load (pageCodeWatch.ts).
+  const pageCode = pageCodeWatchOf(page.page);
+  if (!pageCode) throw new PassthroughDeclinedError("seek_callback", "no page code watch");
   const overlays = await captureOverlayStates({
     input,
     session: page,

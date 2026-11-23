@@ -406,6 +406,37 @@ describe("createFileServer", () => {
     }
   });
 
+  it("lists the text of every script it injects, as the served page has it", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-injected-texts-"));
+    try {
+      writeFileSync(
+        join(projectDir, "index.html"),
+        "<!doctype html><html><head><script>window.page = 1;</script></head><body></body></html>",
+      );
+      const server = await createFileServer({
+        projectDir,
+        preHeadScripts: [VIRTUAL_TIME_SHIM],
+        headScripts: ["window.runtime = '</script>';"],
+        bodyScripts: ["window.bridge = 1;"],
+      });
+      try {
+        server.addPreHeadScript("window.late = 1;");
+        const html = await (await fetch(`${server.url}/index.html`)).text();
+        const served = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+        const texts = server.injectedScriptTexts();
+        // HF_EARLY_STUB, render capture mode, the shim, the late one; the runtime; the bridge.
+        expect(texts).toHaveLength(6);
+        for (const text of texts) expect(served).toContain(text);
+        expect(texts).not.toContain("window.page = 1;");
+        expect(texts.some((text) => text.includes("window.runtime = '<\\/script>';"))).toBe(true);
+      } finally {
+        server.close();
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("tells the browser not to sniff a type, so an image cannot load as a script or stylesheet", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-nosniff-"));
     try {

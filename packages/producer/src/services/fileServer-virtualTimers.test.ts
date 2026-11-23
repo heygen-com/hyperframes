@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { createContext, Script } from "node:vm";
-import { VIRTUAL_TIME_SHIM } from "./fileServer.js";
+import { VIRTUAL_TIME_SHIM, virtualTimeShimFor } from "./fileServer.js";
 
 type Page = { run: <T = unknown>(code: string) => T };
 
 // The shim in a fresh VM whose own timers only record that they were asked for.
-function page(): Page {
+function page(shim: string = VIRTUAL_TIME_SHIM): Page {
   const context = createContext({});
   new Script(`
     globalThis.window = globalThis;
@@ -17,9 +17,11 @@ function page(): Page {
     globalThis.performance = { now: () => 0 };
     globalThis.__renderReady = true;
   `).runInContext(context);
-  new Script(VIRTUAL_TIME_SHIM).runInContext(context);
+  new Script(shim).runInContext(context);
   return { run: <T>(code: string) => new Script(code).runInContext(context) as T };
 }
+
+const RECORD_SHIM = virtualTimeShimFor({ experimentalHdrPassthrough: true });
 
 // Seeks frame by frame at 30 fps up to `untilMs`, as the renderer does before each capture.
 const seekFrames = (untilMs: number) =>
@@ -109,13 +111,13 @@ describe("virtual-time shim timers", () => {
   });
 });
 
-// The shim reads its callers' stacks to tell page code from the renderer's. The page must never see
+// With the HDR passthrough on, the shim's callback record reads its callers' stacks to tell page code from the renderer's. The page must never see
 // that: its own stack hooks do not run, and are left exactly as it set them.
 describe("virtual-time shim caller stacks", () => {
   const activity = "window.__HF_VIRTUAL_TIME__.callbackActivity()";
 
   it("never runs a throwing Error.prepareStackTrace the page installs", () => {
-    const { run } = page();
+    const { run } = page(RECORD_SHIM);
     run(`window.hookCalls = 0;
       window.hook = function () { hookCalls++; throw new TypeError("stack formatting disabled"); };
       Error.prepareStackTrace = hook;`);
@@ -130,7 +132,7 @@ describe("virtual-time shim caller stacks", () => {
   });
 
   it("leaves a counting hook and the stack limit as the page set them", () => {
-    const { run } = page();
+    const { run } = page(RECORD_SHIM);
     run(`window.hookCalls = 0;
       Error.prepareStackTrace = function (error, frames) { hookCalls++; return "pst"; };
       Error.stackTraceLimit = 2;`);
@@ -142,13 +144,13 @@ describe("virtual-time shim caller stacks", () => {
   });
 
   it("leaves no hook behind on a page that set none", () => {
-    const { run } = page();
+    const { run } = page(RECORD_SHIM);
     run("requestAnimationFrame(() => {});");
     expect(run("Object.getOwnPropertyDescriptor(Error, 'prepareStackTrace')")).toBeUndefined();
   });
 
   it("counts the caller as page code when the hook cannot be set aside", () => {
-    const { run } = page();
+    const { run } = page(RECORD_SHIM);
     run(`window.hookCalls = 0;
       Object.defineProperty(Error, "prepareStackTrace", {
         value: function () { hookCalls++; throw new TypeError("no"); },

@@ -473,7 +473,8 @@ async function findSeekHookListeners(page: Page): Promise<string[]> {
     const client = await getCdpSession(page);
     try {
       const { result } = await client.send("Runtime.evaluate", {
-        expression: "window",
+        // Named as a DevTools evaluation, which the page code watch trusts (scriptOrigins.ts).
+        expression: "window\n//# sourceURL=pptr:findSeekHookListeners",
         objectGroup: LISTENER_OBJECT_GROUP,
       });
       if (!result.objectId) return ["seek listeners (window unreadable)"];

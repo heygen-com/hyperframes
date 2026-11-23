@@ -136,7 +136,7 @@ import {
   createFileServer,
   type FileServerHandle,
   HF_PAGE_SIDE_COMPOSITING_STUB,
-  VIRTUAL_TIME_SHIM,
+  virtualTimeShimFor,
 } from "./fileServer.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
 import {
@@ -3844,7 +3844,7 @@ async function executeRenderPipeline(input: {
           projectDir,
           compiledDir: join(workDir, "compiled"),
           port: 0,
-          preHeadScripts: [VIRTUAL_TIME_SHIM],
+          preHeadScripts: [virtualTimeShimFor(cfg)],
           fps: job.config.fps,
           allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
           includeOutsideScripts: job.config.includeOutsideScripts,

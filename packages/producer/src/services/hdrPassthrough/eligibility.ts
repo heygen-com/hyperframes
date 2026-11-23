@@ -310,6 +310,7 @@ export function inspectSeekCallbacks(): string | null {
     frameCallbacksOverflow: boolean;
     pendingFrames: unknown[];
     filmTimers: number;
+    stringTimers: number;
     pendingTimers: number;
   };
   type Ticker = { sleep: () => void; wake: () => void; _listeners?: unknown };
@@ -346,6 +347,10 @@ export function inspectSeekCallbacks(): string | null {
   };
 
   const activity = read();
+  // A string timer runs code the page compiled with no page frame on the stack, which the page code
+  // watch could not tell from a DevTools evaluation if it took a renderer script's name.
+  if (typeof activity.stringTimers !== "number") return "virtual-time callback record unreadable";
+  if (activity.stringTimers > 0) return `${activity.stringTimers} string timer(s)`;
   if (activity.filmTimers > 0) {
     return `${activity.filmTimers} film-time timer(s), ${activity.pendingTimers} pending`;
   }

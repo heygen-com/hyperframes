@@ -348,6 +348,7 @@ export function createFakePage(options: FakePageOptions): {
         frameCallbacksOverflow: false,
         pendingFrames: [],
         filmTimers: 0,
+        stringTimers: 0,
         pendingTimers: 0,
       }),
     },

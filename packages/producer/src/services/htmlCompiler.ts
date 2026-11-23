@@ -189,6 +189,12 @@ export interface CompiledComposition {
 
 const INFERRED_MEDIA_DURATION_ATTR = "data-hf-inferred-duration";
 
+/**
+ * The seek reapply script the compiler adds when positions are baked into the HTML, as the page
+ * compiles it. The HDR passthrough trusts it by this exact text (`hdrPassthrough/scriptOrigins.ts`).
+ */
+export const POSITION_SEEK_REAPPLY_SCRIPT = `${createStudioPositionSeekReapplyScript()}\n//# sourceURL=hyperframes://position-seek-reapply`;
+
 /** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
 function parseSubCompHtmlForValidity(html: string): ParsableDocumentLike {
   return parseHTML(html).document as unknown as ParsableDocumentLike;
@@ -2858,7 +2864,7 @@ async function compileWithAssets(
     ? (insertBeforeCloseTag(
         assembledHtml,
         "body",
-        `<script>${createStudioPositionSeekReapplyScript()}\n//# sourceURL=hyperframes://position-seek-reapply</script>`,
+        `<script>${POSITION_SEEK_REAPPLY_SCRIPT}</script>`,
       ) ?? assembledHtml)
     : assembledHtml;
   const htmlWithDeferredScripts = prepareCompositionScripts(

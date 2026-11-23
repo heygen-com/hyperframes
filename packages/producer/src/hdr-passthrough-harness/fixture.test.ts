@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   EDGE_CASES,
+  FAKE_GSAP_FILE,
   FIXTURE_FPS,
   INELIGIBLE_CASES,
   STREAM_OFFSET_SECONDS,
@@ -319,6 +320,44 @@ describe("INELIGIBLE_CASES", () => {
     );
   });
 
+  it("defines the seek-time setter every way the page can compile it", () => {
+    const find = (name: string) => INELIGIBLE_CASES.find((c) => c.name === name)!;
+    const ways: Record<string, string> = {
+      "dynamic-inline-setter": 'document.createElement("script")',
+      "eval-setter": "eval(",
+      "new-function-setter": "new Function(",
+      "renderer-named-setter": "//# sourceURL=hyperframes://injected/0",
+      "devtools-named-setter": "sourceURL=pptr:evaluate",
+      "string-timer-setter": "setTimeout(",
+      "fake-gsap-filename": `src="assets/${FAKE_GSAP_FILE}"`,
+      "dynamic-inline-gsap-proxy": 'document.createElement("script")',
+    };
+    for (const [name, way] of Object.entries(ways)) {
+      const c = find(name);
+      expect(c.reason).toBe("seek_callback");
+      expect(c.composition.headHtml).toContain(way);
+      // Script text is raw: an HTML entity in it would be a syntax error, not a quote.
+      expect(c.composition.headHtml).not.toContain("&quot;");
+    }
+    expect(find("fake-gsap-filename").assets).toEqual(["fake-gsap"]);
+    expect(find("dynamic-inline-gsap-proxy").assets).toEqual(["gsap"]);
+    // The inline setter is the plain case: the others only change how it is compiled.
+    expect(find("setter-highlight").composition.headHtml).toContain("CSS.highlights.set");
+  });
+
+  it("counts the builtins the page replaced on screen, from an animation-frame loop", () => {
+    const c = INELIGIBLE_CASES.find((x) => x.name === "builtins-counter")!;
+    expect(c.reason).toBe("seek_callback");
+    for (const builtin of [
+      'Array.prototype, "indexOf"',
+      'String.prototype, "split"',
+      'RegExp.prototype, "test"',
+    ]) {
+      expect(c.composition.headHtml).toContain(builtin);
+    }
+    expect(c.composition.headHtml).toContain("requestAnimationFrame(function loop");
+  });
+
   it("ships the assets each case references", () => {
     const gsap = INELIGIBLE_CASES.filter((c) => c.composition.timelineScript !== undefined);
     expect(gsap.length).toBeGreaterThan(0);
@@ -456,7 +495,12 @@ describe("EDGE_CASES", () => {
     const distinct = new Set(EDGE_CASES.map((edge) => JSON.stringify(edge.source)));
     expect(sources.size).toBe(distinct.size);
     expect(
-      edgeSourceName("pq", { width: 1920, height: 1080, fps: "24000/1001", durationSec: 6 }),
+      edgeSourceName("pq", {
+        width: 1920,
+        height: 1080,
+        fps: "24000/1001",
+        durationSec: 6,
+      }),
     ).toBe("pq-1920x1080-24000-1001fps-6s.mp4");
   });
 });

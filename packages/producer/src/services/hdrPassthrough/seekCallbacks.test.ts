@@ -1,11 +1,11 @@
-// `inspectSeekCallbacks` against the real virtual-time shim (and real GSAP) in a VM, the way a render
+// `inspectSeekCallbacks` against the real virtual-time shim with the passthrough's callback record (and real GSAP) in a VM, the way a render
 // page runs them: the shim first, then page scripts, then seeks.
 
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createContext, Script } from "node:vm";
-import { VIRTUAL_TIME_SHIM } from "../fileServer.js";
+import { virtualTimeShimFor } from "../fileServer.js";
 import { inspectGsapGlobalTimeline, inspectSeekCallbacks } from "./eligibility.js";
 
 const GSAP_SOURCE = readFileSync(
@@ -34,7 +34,7 @@ function page(options: { gsap?: boolean } = {}): Page {
     globalThis.navigator = { userAgent: "" };
     globalThis.__renderReady = true;
   `).runInContext(context);
-  new Script(VIRTUAL_TIME_SHIM).runInContext(context);
+  new Script(virtualTimeShimFor({ experimentalHdrPassthrough: true })).runInContext(context);
   if (options.gsap) new Script(GSAP_SOURCE).runInContext(context);
   const run = <T>(code: string) => new Script(code).runInContext(context) as T;
   return {

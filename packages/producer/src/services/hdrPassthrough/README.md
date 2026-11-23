@@ -24,6 +24,8 @@ the source video while it encodes.
 ```
 capture_hdr_layered stage (renderOrchestrator)
   └─ flag on and HDR content: attemptHdrPassthrough            index.ts
+       ├─ overlay page: scripts recorded as V8 compiles them    scriptOrigins.ts
+       │    from before it navigates; call counts from load      pageCodeWatch.ts
        ├─ checkPassthroughEligibility                           eligibility.ts
        │    render / video gates, ffmpeg blend self-test         ffmpegBlendCheck.ts
        │    in-page layout gates, animation gates,
@@ -38,7 +40,7 @@ capture_hdr_layered stage (renderOrchestrator)
        │    screenshot only unseen fingerprints, merge identical neighbours,
        │    re-probe every frame of each merged state,
        │    hold the video's own layer still on every probe,
-       │    record every page function that runs meanwhile        pageCodeWatch.ts
+       │    then decline if any page function ran since load      pageCodeWatch.ts
        └─ compositeAndEncode → videoOnlyPath                    ffmpegComposite.ts
      completed → assemble muxes audio as usual
      fallback  → (extract deferred video frames) → runCaptureHdrStage
@@ -53,7 +55,8 @@ Fallback rules:
 overlay_unverified (...)` and takes the layered path. A page callback that
   runs on seeks and was first registered during capture logs
   `HDR passthrough off: seek_callback (...)` the same way, as does any page
-  function that ran while capture seeked (see "Page code on seeks" below).
+  function that ran after the overlay page loaded (see "Page code on seeks"
+  below).
   Content the fingerprint cannot read that first appeared during capture logs
   `HDR passthrough off: overlay_unreadable (...)`, and a frame where the
   video's own layer is not the one the composite lays logs
@@ -170,11 +173,18 @@ capture starts; a film-time interval that appends a mark has already fired
 up to the furthest frame eligibility seeked, and a backward seek un-fires
 nothing.
 
-The virtual-time shim (`fileServer.ts`) records, from page load, every
-distinct animation-frame callback and counts every film-time timer whose
-caller is page code (anything but the renderer's own `hyperframes://` and
-DevTools scripts). Eligibility declines with `seek_callback` when the page
-has registered any, or added a listener to GSAP's ticker. GSAP's own ticker
+With the passthrough on, and only then, the virtual-time shim
+(`fileServer.ts`, `virtualTimeShimFor`) carries a callback record that
+notes, from page load, every distinct animation-frame callback, counts every
+film-time timer whose caller is page code, and counts every string timer.
+The renderer's callers are told apart by the script their stack frame names:
+`hyperframes://injected/<n>` (the file server's), the compiler's
+`hyperframes://position-seek-reapply` and DevTools `pptr:` evaluations. A
+page can name a script that way, so the page code watch declines any page
+script that takes one of these names (`RENDERER_SCRIPT_NAMES`), and the name
+in a stack is the renderer's. Eligibility declines with `seek_callback` when
+the page has registered any callback, set any string timer, or added a
+listener to GSAP's ticker. GSAP's own ticker
 also runs from an animation frame; it is told apart by sleeping and waking
 it (which cancels and re-requests its frame). It renders GSAP's global
 timeline on its own clock, the seeks it has seen so far, lag-smoothed: the
@@ -190,17 +200,29 @@ the analysis. The record and the global timeline are read again after
 capture, for a callback first registered on a frame only capture visited.
 
 What the record cannot see, a setter on a runtime seek-time global or a
-wrapped runtime function that keeps state of its own, runs on capture's
-seeks, which the page-code watch below declines.
+wrapped runtime function that keeps state of its own, runs after load, which
+the page-code watch below declines.
 
-The record must not change the render it watches, flag on or off. Each
-wrapper reads its caller from a stack taken from the realm's own `Error`
-with the page's `Error.prepareStackTrace` and `Error.stackTraceLimit` set
-aside as own data properties and put back as they were, so a hook the page
-installs never runs for it (a hook that throws would otherwise throw out of
-`requestAnimationFrame`, and a counting one would count). A hook that cannot
-be set aside (non-configurable) makes the caller page code without reading
-the stack.
+The record must not change any render. With the flag off it is not in the
+page at all: those renders are served `VIRTUAL_TIME_SHIM`, the shim exactly
+as it is without the feature (`fileServer-callbackRecord.test.ts` compares
+it with `origin/main`'s text when the checkout has it). The record is
+spliced into that text at four anchors rather than written into it, and a
+shim whose anchors moved gets no record, so the passthrough declines.
+
+With the flag on, a render that falls back must still match the flag-off
+render, so the record calls nothing the page can replace or observe. Every
+intrinsic it uses is captured when the shim runs, before any page script,
+and called through saved references (`Function.prototype.call.bind`); its
+property descriptors have no prototype (`defineProperty` reads `get` and
+`set` through one); it parses stacks with string searches, not regular
+expressions (which update `RegExp.$1`). It reads its caller from a stack
+taken from the realm's own `Error` with the page's `Error.prepareStackTrace`
+and `Error.stackTraceLimit` set aside as own data properties and put back as
+they were, so a hook the page installs never runs for it. A hook that cannot
+be set aside (non-configurable), or a stack it cannot read, makes the caller
+page code. A page that replaces every builtin a shim could reach for sees
+the same calls with the record as without it (the unit test counts them).
 
 ## Page code on seeks
 
@@ -214,22 +236,46 @@ tween target, a custom element reacting to an attribute GSAP writes or a
 MutationObserver. Every probe then fingerprints equal while the pixels
 differ, and no screenshot is taken.
 
-So fingerprints stand in for pixels only while no page code runs.
-`pageCodeWatch.ts` turns on V8's precise call counts
+So fingerprints stand in for pixels only while no page code runs after the
+overlay page loads. `pageCodeWatch.ts` turns on V8's precise call counts
 (`Profiler.startPreciseCoverage` with `callCount`, which resets the counts)
-when capture starts and reads them when it ends. Any function that ran in a
-script that is neither the renderer's (`hyperframes://`, which the compiler
-and file server tag their scripts with, DevTools evaluations, scripts added
-before navigation) nor a GSAP distribution file (`gsap@<v>/dist/<file>.js`,
-which the compiler keeps as the inlined CDN script's address, or a local
-`gsap.min.js`) declines the passthrough with `seek_callback`, naming the
-first one. The composition's inline code is `hyperframes-composition://`, so
-it counts. The runtime and GSAP write only what the fingerprint reads: DOM
+once the overlay page is ready, before eligibility's first probe, and reads
+them after capture. Eligibility's probes are inside the window too: a page
+function they reach (a builtin the page replaced, a getter) runs on the
+overlay page and not on the layered path's. Any function that ran in a
+script that is neither the renderer's nor GSAP's declines the passthrough
+with `seek_callback`, naming the first one.
+
+Whose a script is never comes from its URL, which the page chooses
+(`//# sourceURL=`) or leaves empty (eval, `new Function`, inserted inline
+scripts). `scriptOrigins.ts` records every script on the overlay page as V8
+compiles it (`Debugger.scriptParsed`, enabled before the page navigates) and
+counts a script as the renderer's only when how it was made says so:
+
+- its text is, byte for byte, one the renderer put in the page: the file
+  server's injected scripts (`injectedScriptTexts`, read back from what the
+  injection helpers write) and the compiler's seek reapply
+  (`POSITION_SEEK_REAPPLY_SCRIPT`), by SHA-256;
+- it was compiled in an isolated world (the DevTools utility world);
+- it was compiled in the main frame with no script on the stack and no
+  embedding document, either before anything else in its document (the
+  renderer's `evaluateOnNewDocument` scripts) or under a `pptr:` URL
+  (DevTools evaluations; the planner's own listener lookup is named so).
+
+eval, `new Function` and inserted scripts are compiled with the page's code
+on the stack; parser-inserted and external scripts have an embedding
+document; so a page script reaches the third rule only through a string
+timer, which the shim's record declines, or a `javascript:` URL (see
+"Limitations"). GSAP is a published build (`gsapBuilds.ts`: the core bundle,
+`CustomEase` and `EasePack`, 3.10.0 and later, minified or not), by SHA-256
+of the script as served or as the compiler inlines it; a file only named
+like one is the page's. A script never seen being compiled is the page's,
+and a page script that takes one of the renderer's names declines even if it
+never runs. The runtime and GSAP write only what the fingerprint reads: DOM
 attributes and styles, and the values of GSAP's tween targets, which the
 fingerprint reads back.
 
-A record that cannot be started or read declines too. With the counts on,
-capture of the 20 s fixtures took 9.0-13.3 s (see "Validation").
+A record that cannot be started or read declines too.
 
 ## Capture dedup
 
@@ -309,17 +355,21 @@ from ffmpeg's frame count and reports 35–80%.
 - A closed shadow root with no content is not in the DOM snapshot; one that
   gains content and loses it again between eligibility and the end of
   capture is not seen.
-- Page code compiled with no script address (`eval`, `new Function`) runs
-  in a script with an empty URL, as DevTools evaluations do, and the
-  page-code watch leaves it out. A setter built that way is left to the
-  verification probes.
-- GSAP is recognised by its file name. GSAP bundled into a script of the
-  page's own, a GSAP plugin loaded from a file under another name, and any
-  other library that runs on seeks count as page code and decline, as does a
+- Page code compiled from a `javascript:` URL under a `pptr:` name passes
+  for a DevTools evaluation: such a script has nothing on the stack and no
+  embedding document. It takes a page that names its code after the
+  renderer's internals; string timers, the other way to compile code like
+  that, decline.
+- GSAP is recognised by the exact text of a published build (core,
+  `CustomEase`, `EasePack`, 3.10.0 and later). An older release, another
+  plugin, GSAP bundled into a script of the page's own, and any other
+  library that runs after load count as page code and decline, as does a
   page function GSAP calls on a tween's first render (a function-based
-  value) when that render falls inside capture.
-- Page code that runs only on eligibility's seeks (one that removes itself
-  after its first call) is not in the record.
+  value) when that render falls inside the watch.
+- Compiler scripts other than the seek reapply (the position-edits render
+  script, whose text depends on the edits) count as page code when they run
+  after load. So does a page builtin replacement any of the renderer's probes
+  calls (`Array.prototype.filter`, say): both decline.
 - For a driver that counts seeks, a fallback render is not bit-identical to
   a flag-off render either: the layered path makes one seek fewer before
   frame 0 after a fallback (`raf-counter` shows `n=4` where flag off shows
