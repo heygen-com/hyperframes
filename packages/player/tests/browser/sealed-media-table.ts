@@ -439,6 +439,26 @@ async function installDriver(frame: Frame) {
       if (src.media) el.media = src.media;
       return el;
     };
+    // The clip's own events decide; the bound only ends a clip that never sends the one asked for.
+    const untilEvent = (
+      video: HTMLVideoElement,
+      events: string[],
+      decide: () => boolean | undefined,
+    ) =>
+      new Promise<boolean>((resolve) => {
+        const check = () => {
+          const verdict = decide();
+          if (verdict !== undefined) finish(verdict);
+        };
+        const finish = (verdict: boolean) => {
+          clearTimeout(bound);
+          for (const name of events) video.removeEventListener(name, check);
+          resolve(verdict);
+        };
+        const bound = setTimeout(() => finish(false), 10_000);
+        for (const name of events) video.addEventListener(name, check);
+        check();
+      });
     const pending = new Map<HTMLMediaElement, { action: string; src?: { src: string } }>();
     const interrupt = (video: HTMLMediaElement) => {
       const step = pending.get(video);
@@ -633,16 +653,13 @@ async function installDriver(frame: Frame) {
           for (const video of [...pending.keys()]) interrupt(video);
           return any;
         },
-        async advancing(key: string) {
+        advancing(key: string) {
           const { video } = state.get(key)!;
-          if (video.paused || video.readyState < 2) return false;
-          // Moving within a second: one short sample on a busy page catches a buffering pause.
+          if (video.paused || video.readyState < 2) return Promise.resolve(false);
           const at = video.currentTime;
-          for (let waited = 0; waited < 1000; waited += 100) {
-            await new Promise((resolve) => setTimeout(resolve, 100));
-            if (video.currentTime !== at) return true;
-          }
-          return false;
+          return untilEvent(video, ["timeupdate", "pause"], () =>
+            video.currentTime !== at ? true : video.paused ? false : undefined,
+          );
         },
         // Every film alike: a looping clip at its end has no frame until the loop's seek lands.
         async loopRestart(key: string, loops: number) {
