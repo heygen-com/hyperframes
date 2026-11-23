@@ -82,7 +82,9 @@ function runStatus(json: boolean): void {
   // Machine-local safety state (no identity): survives a config wipe so a
   // tripped experiment circuit breaker stays tripped. Listed for transparency.
   console.log(`  ${c.dim("State:")}      ${c.accent(terminalText(STATE_PATH))}`);
-  console.log(`  ${c.dim("Tracked commands:")} ${c.bold(String(config.commandCount))}`);
+  console.log(
+    `  ${c.dim("Tracked commands:")} ${c.bold(terminalText(String(config.commandCount)))}`,
+  );
   console.log();
   console.log(`  ${c.dim("Disable:")}    ${c.accent("hyperframes telemetry disable")}`);
   console.log(

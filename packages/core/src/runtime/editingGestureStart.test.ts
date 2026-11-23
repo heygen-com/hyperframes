@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { gestureStart } from "./editingGestureStart";
+import { gestureBase, gestureStart } from "./editingGestureStart";
 import { handleFor } from "./editingHandles";
 
 type Tween = { vars: Record<string, unknown>; targets: () => unknown[]; duration: () => number };
@@ -248,5 +248,29 @@ describe("gesture start", () => {
 
   it("answers null for an element this load does not have", () => {
     expect(gestureStart(["0123456789abcdef:999"]).elements).toEqual([null]);
+  });
+});
+
+// fails without the fix: a sealed recording had no read for a layer no tween touches, so it started a static
+// opacity and scale at 1 where the unsealed recorder reads them from GSAP.
+describe("gestureBase", () => {
+  it("reads GSAP's x, y, opacity and scale for a layer no tween touches", () => {
+    const card = turnedCard("");
+    gsapWith([], { x: 12, y: -4, opacity: 0.5, scaleX: 1.5 });
+    expect(gestureBase(handleFor(card))).toEqual({ x: 12, y: -4, opacity: 0.5, scale: 1.5 });
+  });
+
+  // fails without the fix: a page without GSAP answered null, so a sealed recording refused to start where the
+  // unsealed recorder starts from x 0, y 0, opacity 1 and scale 1.
+  it("answers the values at rest on a page without GSAP, as the unsealed recorder starts", () => {
+    const card = turnedCard("");
+    expect(gestureBase(handleFor(card))).toEqual({ x: 0, y: 0, opacity: 1, scale: 1 });
+  });
+
+  it("answers null for an element this load does not have", () => {
+    gsapWith([]);
+    expect(gestureBase("0123456789abcdef:999")).toBeNull();
+    Reflect.deleteProperty(window, "gsap");
+    expect(gestureBase("0123456789abcdef:999")).toBeNull();
   });
 });

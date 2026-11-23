@@ -963,6 +963,29 @@ describe.skipIf(process.platform === "win32")(
       expect(human).toContain(shown);
     });
 
+    // fails without the fix: the process id another server reported was printed as it arrived
+    it("shows control characters in a listed server's process id as text", async () => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      await handlePreviewList(3002, false, {
+        scan: async () =>
+          [
+            {
+              port: 32601,
+              host: "127.0.0.1",
+              projectName: "film",
+              projectDir: "/work/film",
+              version: "1.0.0",
+              pid: "4242\u0007",
+            },
+          ] as never,
+        listManaged: async () => [],
+      });
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+      expect(human).toContain("(PID 4242\\x07)");
+      expect(human).not.toContain("\u0007");
+    });
+
     it("prints it as visible escapes in --list and keeps it in --list --json", async () => {
       const dir = projectNamedWithControls();
       const log = vi.spyOn(console, "log").mockImplementation(() => {});

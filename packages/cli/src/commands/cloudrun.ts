@@ -22,6 +22,7 @@ import { type CanvasResolution, terminalLines, terminalText } from "@hyperframes
 import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
+import { printFailureLine } from "../utils/jsonError.js";
 import {
   reportVariableIssues,
   resolveVariablesArg,
@@ -258,7 +259,9 @@ export default defineCommand({
       case "destroy":
         return runDestroy(args);
       default:
-        console.error(`${c.error("Unknown subcommand:")} ${terminalText(subcommand)}\n${HELP}`);
+        printFailureLine(
+          (show) => `${c.error("Unknown subcommand:")} ${show(subcommand)}\n${HELP}`,
+        );
         failUsage();
     }
   },
@@ -497,8 +500,9 @@ function writeCloudBuildConfig(image: string): string {
 // fallow-ignore-next-line complexity
 async function runSites(args: Record<string, unknown>): Promise<void> {
   if (args.target !== "create") {
-    console.error(
-      `[cloudrun sites] unknown verb "${terminalText(String(args.target))}". Only "create" is supported.`,
+    printFailureLine(
+      (show) =>
+        `[cloudrun sites] unknown verb "${show(String(args.target))}". Only "create" is supported.`,
     );
     failUsage();
   }
@@ -671,7 +675,7 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
   const fps = resolveCloudRunFps(args, projectDir, "render-batch");
   buildRenderConfig(args, fps, width, height, undefined);
   if (!existsSync(resolve(batchPath))) {
-    console.error(`[cloudrun render-batch] batch file not found: ${terminalText(batchPath)}`);
+    printFailureLine((show) => `[cloudrun render-batch] batch file not found: ${show(batchPath)}`);
     failCommand();
   }
   const entries = parseBatchFile(resolve(batchPath));

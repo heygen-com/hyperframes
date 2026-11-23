@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { getCachedGpuEncoder } from "@hyperframes/engine";
 import { findFfBinary, getSkippedX86Binary } from "@hyperframes/parsers/ff-binaries";
 import { detectLinuxDistro, ffmpegInstallCommand } from "./linuxDeps.js";
@@ -106,7 +107,9 @@ export function getFFmpegInstallHint(): string {
     .filter((name) => !findFfBinary(name, { configuredMustExist: true }))
     .map(getSkippedX86Binary)
     .filter((path) => path !== undefined);
-  const note = ignored.map((path) => ` (ignored ${path}: x86_64 only, it cannot run on this Mac)`);
+  const note = ignored.map(
+    (path) => ` (ignored ${terminalText(path)}: x86_64 only, it cannot run on this Mac)`,
+  );
   return installHint() + note.join("");
 }
 

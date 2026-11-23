@@ -18,12 +18,16 @@ import {
   type EditingElementBox,
   type EditingElementDescription,
   type EditingElementGeometry,
+  type EditingGestureBase,
   type EditingGestureStart,
   type EditingElementHit,
   type EditingElementMatch,
   type EditingElementSource,
   type EditingLayer,
   type EditingStackingSibling,
+  type EditingParams,
+  type TextEditResult,
+  textEditResult,
 } from "@hyperframes/core/runtime/editing-port";
 import { resolveElementSourceFile } from "../../components/editor/domEditingDom";
 import { previewRequest } from "./previewChannel";
@@ -90,6 +94,7 @@ export function readPreviewElement(value: unknown): PreviewElement | null {
   if (!isValueOrNull(value.id) || !isValueOrNull(value.selector)) return null;
   if (!isSource(value.source) || typeof value.locked !== "boolean") return null;
   if (!isStyles(value.inlineStyles) || !isLongText(value.text)) return null;
+  if (value.textMarkup !== undefined && typeof value.textMarkup !== "boolean") return null;
   return hasPlainFields(value) ? (value as unknown as PreviewElement) : null;
 }
 
@@ -320,6 +325,20 @@ export async function previewGestureStart(
   return { elements: elements.map(readGestureStart), snap };
 }
 
+export async function previewGestureBase(
+  iframe: HTMLIFrameElement,
+  handles: readonly string[],
+): Promise<Array<EditingGestureBase | null> | null> {
+  if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
+  const elements: unknown = (
+    await previewRequest(iframe, "gesture-base", { handles: [...handles] })
+  )?.elements;
+  if (!Array.isArray(elements) || elements.length !== handles.length) return null;
+  return elements.map((base) =>
+    isFiniteFields(base, ["x", "y", "opacity", "scale"]) ? (base as EditingGestureBase) : null,
+  );
+}
+
 const LAYER_KINDS = new Set(["image", "video", "audio", "vector", "group", "text", "shape"]);
 const isLayer = (value: unknown): value is EditingLayer =>
   isFields(value) &&
@@ -397,6 +416,13 @@ function ownedPutBack(
   return any ? { styles, attributes, html } : null;
 }
 
+export async function previewTextEdit(
+  iframe: HTMLIFrameElement,
+  params: EditingParams<"text-edit">,
+): Promise<TextEditResult | null> {
+  return textEditResult(await previewRequest(iframe, "text-edit", params));
+}
+
 export interface PreviewElementEdit {
   drawn: Promise<boolean>;
   restore(names?: readonly string[]): void;
@@ -408,14 +434,15 @@ const latestWriters = new WeakMap<HTMLIFrameElement, Map<string, symbol>>();
 export function editPreviewElement(
   iframe: HTMLIFrameElement,
   handle: string,
-  edit: { styles?: EditEntry[]; attributes?: EditEntry[]; html?: string },
+  edit: { styles?: EditEntry[]; attributes?: EditEntry[]; html?: string; expect?: string },
 ): PreviewElementEdit {
-  const send = (styles: StyleEntry[], attributes: EditEntry[], html?: string) =>
+  const send = (styles: StyleEntry[], attributes: EditEntry[], html?: string, expect?: string) =>
     previewRequest(iframe, "edit-element", {
       handle,
       styles,
       attributes,
       ...(html !== undefined && { html }),
+      ...(html !== undefined && expect !== undefined && { expect }),
     });
   const writers = latestWriters.get(iframe) ?? new Map<string, symbol>();
   latestWriters.set(iframe, writers);
@@ -424,7 +451,7 @@ export function editPreviewElement(
   for (const [name] of edit.styles ?? []) writers.set(key("style", name), self);
   for (const [name] of edit.attributes ?? []) writers.set(key("attr", name), self);
   if (edit.html !== undefined) writers.set(key("html", ""), self);
-  const reply = send(edit.styles ?? [], edit.attributes ?? [], edit.html);
+  const reply = send(edit.styles ?? [], edit.attributes ?? [], edit.html, edit.expect);
   return {
     drawn: reply.then((before) => before?.applied === true),
     restore(names) {

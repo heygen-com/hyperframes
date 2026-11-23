@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { bumpDomEditCommitMapVersion, runDomEditCommit } from "./domEditCommitRunner";
+import {
+  bumpDomEditCommitMapVersion,
+  claimTextWrite,
+  runDomEditCommit,
+  textWriteOrder,
+} from "./domEditCommitRunner";
 
 function commitConfig(overrides: Partial<Parameters<typeof runDomEditCommit>[0]> = {}) {
   return {
@@ -55,5 +60,29 @@ describe("DOM edit commit version cleanup", () => {
     ).rejects.toThrow("capture failed");
 
     expect(onFinally).toHaveBeenCalledOnce();
+  });
+
+  it("opens the next text write's turn only after a failed write's revert, even one that throws", async () => {
+    const order = textWriteOrder();
+    const failed = claimTextWrite(order, "title", 1, undefined, true)!;
+    const next = claimTextWrite(order, "title", 2, undefined, true)!;
+    const events: string[] = [];
+    const failing = runDomEditCommit(
+      commitConfig({
+        persist: () =>
+          failed.write(async () => {
+            throw new Error("disk full");
+          }),
+        revert: () => {
+          events.push("revert");
+          throw new Error("revert failed");
+        },
+        onFinally: failed.release,
+      }),
+    );
+    const landing = next.write(async () => void events.push("next write"));
+    await expect(failing).rejects.toThrow("revert failed");
+    await landing;
+    expect(events).toEqual(["revert", "next write"]);
   });
 });

@@ -203,6 +203,26 @@ describe("auth/resolver", () => {
     },
   );
 
+  // fails without the fix: the folder's path was printed as it is on disk
+  // Windows refuses control characters in folder names.
+  it.skipIf(process.platform === "win32")(
+    "shows control characters in the folder of a project .env key as text",
+    async () => {
+      const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      try {
+        const project = await fs.mkdtemp(join(dir, "project\u0007-"));
+        await fs.writeFile(join(project, ".env"), "HEYGEN_API_KEY=odd-folder-key\n");
+        loadProjectDotEnv(project, process.env, () => {});
+        await resolveCredential();
+        const printed = stderr.mock.calls.map(([line]) => String(line)).join("");
+        expect(printed).toContain(`.env (${join(project, ".env").replace("\u0007", "\\x07")}):`);
+        expect(printed).not.toContain("\u0007");
+      } finally {
+        stderr.mockRestore();
+      }
+    },
+  );
+
   describe.each(PROJECT_KINDS)("a project .env key from %s", (_, record) => {
     it.each([
       ["expired without a refresh token", { access_token: "stale", expires_at: "2020-01-01Z" }],

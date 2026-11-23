@@ -1,4 +1,5 @@
 import { wallSetTimeout } from "./wallClock";
+import { capturePageIn } from "../studioPreviewMark";
 import {
   PREVIEW_PROXY_PRIORITY_HEADER,
   PREVIEW_PROXY_PROGRESS_HEADER,
@@ -44,9 +45,14 @@ export async function waitForServedProxy(
 ): Promise<boolean> {
   let failed = 0;
   let ask = href;
+  const onUnwatchedCapturePage = capturePageIn(document);
   try {
     while (live()) {
-      const headers = askHeaders(atPlayhead(), background, onAsk);
+      const headers = askHeaders(
+        !onUnwatchedCapturePage && atPlayhead(),
+        background || onUnwatchedCapturePage,
+        onAsk,
+      );
       const res = await fetch(ask, { headers, cache: "no-store" }).catch(() => null);
       ask = withoutRetryFlag(href);
       void res?.body?.cancel().catch(() => {});

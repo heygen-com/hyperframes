@@ -2375,6 +2375,31 @@ describe("createColorGradingRuntime", () => {
     });
   });
 
+  it("shows the plain video, not its last graded frame, when a later frame can't be sampled", () => {
+    const { video, canvas } = startRuntimeWithVideo();
+    expect(video.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
+    const gl = getContextSpy.mock.results[0]!.value as { texImage2D: ReturnType<typeof vi.fn> };
+    const upload = gl.texImage2D.getMockImplementation()!;
+    gl.texImage2D.mockImplementation((...args: unknown[]) => {
+      if (args.length === 6) throw new DOMException("The video is tainted", "SecurityError");
+      return upload(...args);
+    });
+
+    runtime?.redraw();
+    expect([canvas.style.display, video.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)]).toEqual([
+      "none",
+      false,
+    ]);
+    expect(runtime?.getStatus("#hero-video").state).toBe("unavailable");
+
+    gl.texImage2D.mockImplementation(upload);
+    runtime?.redraw();
+    expect([canvas.style.display, video.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)]).toEqual([
+      "block",
+      "true",
+    ]);
+  });
+
   it("falls back to the source media on WebGL context loss and redraws after restore", () => {
     const { video, canvas } = startRuntimeWithVideo();
     const shared = getContextSpy.mock.instances[0] as HTMLCanvasElement;

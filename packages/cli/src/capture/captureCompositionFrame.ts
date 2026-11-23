@@ -256,7 +256,7 @@ async function waitForCompositionSettle(
 
   if (!runtimeReady) {
     console.warn(
-      `\n   ${c.warn("⚠")} Runtime did not become render-ready within ${options.renderReadyTimeoutMs}ms — ${options.renderReadyWarningSuffix}`,
+      `\n   ${c.warn("⚠")} Runtime did not become render-ready within ${options.renderReadyTimeoutMs}ms — ${terminalText(options.renderReadyWarningSuffix)}`,
     );
   }
 
@@ -419,7 +419,7 @@ async function launchCompositionBrowser(
     }
 
     console.warn(
-      `[hyperframes] Managed chrome-headless-shell crashed at launch; retrying once with system Chrome at ${systemBrowser.executablePath}.`,
+      `[hyperframes] Managed chrome-headless-shell crashed at launch; retrying once with system Chrome at ${terminalText(systemBrowser.executablePath)}.`,
     );
     try {
       chromeBrowser = await launch(systemBrowser.executablePath);
