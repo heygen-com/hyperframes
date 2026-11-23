@@ -130,12 +130,24 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
       // tween of one of their rules) changes them without touching the DOM text.
       for (const sheet of Array.from(shadow.styleSheets ?? [])) pushSheet(sheet);
       for (const sheet of shadow.adoptedStyleSheets ?? []) pushSheet(sheet);
+      // Not in document.getAnimations().
+      pushAnimations(shadow);
       parts.push("</#shadow>");
     }
     // Script and noscript text never paints (scripts already ran; scripting is on). The
     // runtime's own script alone is megabytes, which this probe would otherwise hash every frame.
     if (el.localName !== "script" && el.localName !== "noscript") visitChildren(el);
     parts.push("</>");
+  };
+  const pushAnimations = (scope: Document | ShadowRoot) => {
+    try {
+      for (const animation of scope.getAnimations()) {
+        parts.push(`@anim ${animation.playState},${String(animation.currentTime)}`);
+      }
+    } catch {
+      // Unreadable animations cannot be proven equal: make this probe unique.
+      parts.push(`@anim unreadable ${Math.random()}`);
+    }
   };
   const sheetsSeen = new Set<CSSStyleSheet>();
   const pushSheet = (sheet: CSSStyleSheet) => {
@@ -162,14 +174,7 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
     `@window ${window.scrollX},${window.scrollY},${window.innerWidth}x${window.innerHeight}`,
   );
   parts.push(`@fonts ${document.fonts?.status ?? ""},${document.fonts?.size ?? ""}`);
-  try {
-    for (const animation of document.getAnimations()) {
-      parts.push(`@anim ${animation.playState},${String(animation.currentTime)}`);
-    }
-  } catch {
-    // Unreadable animations cannot be proven equal: make this probe unique.
-    parts.push(`@anim unreadable ${Math.random()}`);
-  }
+  pushAnimations(document);
 
   // Non-CSS values GSAP tweens write on their targets: CSS ones land in the style attribute.
   type Tweenish = {

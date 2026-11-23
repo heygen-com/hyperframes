@@ -124,6 +124,8 @@ export type PassthroughIneligibleReason =
   | "subcomposition_background"
   | "object_fit"
   | "paints_under"
+  // something moves, hides or restyles the video (also overlay capture's
+  // per-frame check of its layer, overlayCapture.createVideoLayerGuard)
   | "video_animated"
   // overlay timing (see planner.analyzeOverlayTiming)
   | "overlay_continuous_animation"
@@ -137,7 +139,9 @@ export type PassthroughIneligibleReason =
   | "too_many_states"
   // page code that runs on seeks and keeps state across them (animation-frame
   // callbacks, film-time timers, GSAP ticker listeners): its output can depend
-  // on the order of seeks, which capture does not share with the layered path
+  // on the order of seeks, which capture does not share with the layered path;
+  // and any page function that ran while capture seeked (pageCodeWatch.ts),
+  // which can change what paints where the fingerprint cannot read it
   | "seek_callback"
   // overlay content the capture fingerprint cannot read (a closed shadow root,
   // an <iframe> / <object> / <embed> anywhere, shadow trees included), so two

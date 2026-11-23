@@ -221,6 +221,7 @@ describe("INELIGIBLE_CASES", () => {
       "video-dim-gsap",
       "setter-highlight",
       "gsap-proxy-highlight",
+      "shadow-css-animation",
     ]) {
       expect(names).toContain(name);
     }

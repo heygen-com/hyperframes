@@ -512,6 +512,15 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     },
   },
   {
+    // A CSS animation inside an open shadow root: `document.getAnimations()` does not list it, so
+    // the runtime never seeks it and it plays on the wall clock, flag on or off.
+    name: "shadow-css-animation",
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      overlayHtml: `<div id="shadow-host" style="${BADGE_STYLE}"></div><script>document.getElementById("shadow-host").attachShadow({ mode: "open" }).innerHTML = "<style>@keyframes hf-pulse { from { opacity: 1 } to { opacity: 0.2 } } div { width: 128px; height: 128px; background: #e33; animation: hf-pulse 0.5s infinite alternate; }</style><div></div>";</script>`,
+    },
+  },
+  {
     // The runtime dispatches `hf-seek` on window on every seek; a listener can
     // rewrite the overlay on any frame, which no static walk sees.
     name: "hf-seek-listener",

@@ -165,6 +165,22 @@ describe("collectOverlayPageFingerprint in Chrome", () => {
     expect(after).not.toEqual(before);
   });
 
+  it("changes as an animation inside an open shadow root advances", async () => {
+    await page.evaluate(() => {
+      const host = document.createElement("div");
+      host.id = "anim-host";
+      document.getElementById("root")!.appendChild(host);
+      host.attachShadow({ mode: "open" }).innerHTML =
+        "<style>@keyframes p { from { opacity: 1 } to { opacity: 0 } } div { animation: p 1s linear paused; }</style><div>x</div>";
+    });
+    const [before, after] = await around(() => {
+      for (const animation of document.getElementById("anim-host")!.shadowRoot!.getAnimations()) {
+        animation.currentTime = 400;
+      }
+    });
+    expect(after).not.toEqual(before);
+  });
+
   it("changes when a tween writes a property the DOM does not reflect", async () => {
     await page.addScriptTag({ path: GSAP_PATH });
     await page.evaluate(() => {

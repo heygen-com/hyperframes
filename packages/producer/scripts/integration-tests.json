@@ -77,5 +77,6 @@
   "src/services/hdrPassthrough/ffmpegComposite.integration.test.ts",
   "src/services/hdrPassthrough/overlayCapture.integration.test.ts",
   "src/services/hdrPassthrough/overlayFingerprint.integration.test.ts",
-  "src/services/hdrPassthrough/pageCodeWatch.integration.test.ts"
+  "src/services/hdrPassthrough/pageCodeWatch.integration.test.ts",
+  "src/services/hdrPassthrough/planner.integration.test.ts"
 ]

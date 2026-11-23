@@ -90,7 +90,8 @@ The passthrough runs only when it can reproduce the layered output:
   GSAP tweens or `set()` calls. Anything animating on its own clock declines
   (CSS / Web Animations, canvas, iframes, frame sources, timeline callbacks,
   Lottie and other adapters, three.js / WebGPU, SVG SMIL, animated GIF / WebP /
-  APNG / AVIF, `hf-seek` listeners on `window`), as does a run of per-frame
+  APNG / AVIF, `hf-seek` listeners on `window`; CSS animations and SMIL inside
+  open shadow roots too, which `document.getAnimations()` does not list), as does a run of per-frame
   changes longer than a short transition, or more states than the analysis
   limit. A seek-driven writer none of these name (a setter on a runtime
   global, a wrapped runtime function, an accessor GSAP writes through) is
@@ -227,8 +228,8 @@ it counts. The runtime and GSAP write only what the fingerprint reads: DOM
 attributes and styles, and the values of GSAP's tween targets, which the
 fingerprint reads back.
 
-A record that cannot be started or read declines too. On the 20 s fixtures
-the counts add nothing measurable to capture (see "Validation").
+A record that cannot be started or read declines too. With the counts on,
+capture of the 20 s fixtures took 9.0-13.3 s (see "Validation").
 
 ## Capture dedup
 
@@ -342,3 +343,23 @@ blend self-test and the `seek_callback` gate add about 0.15 s and one page
 evaluation; on a host twice as loaded, the 60 s fixture took 170.6 s against
 1163.7 s for flag off (6.8x) and the 20 s one on ffmpeg 8.0.1 31.5 s against
 315.9 s (10.0x), all identical.
+
+With the video-layer check and the page-code watch, the 20 s `captions` and
+`captions-gsap` fixtures still take the passthrough and decode identical to
+flag off (framemd5 600/600, stream and frame side data equal) on HLG and PQ,
+ffmpeg 7.0.2 and 8.0.1. Flag-off vs flag-on job time, two renders at a time
+on a loaded host:
+
+| ffmpeg | transfer | `captions`             | `captions-gsap`        |
+| ------ | -------- | ---------------------- | ---------------------- |
+| 7.0.2  | HLG      | 193.4 s / 32.1 s, 6.0x | 240.9 s / 32.5 s, 7.4x |
+| 7.0.2  | PQ       | 179.7 s / 25.4 s, 7.1x | 204.7 s / 24.5 s, 8.4x |
+| 8.0.1  | HLG      | 184.0 s / 24.1 s, 7.6x | 213.5 s / 30.6 s, 7.0x |
+| 8.0.1  | PQ       | 213.7 s / 32.1 s, 6.7x | 324.0 s / 38.4 s, 8.4x |
+
+Capture took 9.0-13.3 s of that with the call counts on (10.5-36.8 s on the
+commit before, on a host loaded differently, so the counts' cost is inside
+the noise). The 3 s fixtures where a selector dims the video between layout
+samples, or page code on seeks changes a popover, highlight, `:state()`,
+selection, option, validity or shadow-root canvas, fall back and decode
+identical to flag off.

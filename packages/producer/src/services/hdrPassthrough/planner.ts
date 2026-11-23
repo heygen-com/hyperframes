@@ -263,11 +263,13 @@ function collectOverlayPageFacts(videoId: string): Omit<OverlayPageFacts, "unsee
  * nothing: runtime adapters that seek lottie-web, anime.js or three.js on
  * every frame (lottie's SVG renderer and three's CSS3DRenderer write the DOM,
  * not a canvas), adapter registries whose instances run on their own clock
- * (d3 transitions, maps), lottie web components, WebGPU scenes, and SVG SMIL,
- * which no adapter seeks at all. Each is reported by name.
+ * (d3 transitions, maps), lottie web components, WebGPU scenes, SVG SMIL,
+ * which no adapter seeks at all, and CSS / Web Animations inside open shadow
+ * roots, which the engine's document-level check does not see. Each is
+ * reported by name.
  */
 // fallow-ignore-next-line complexity
-function findUnseekedAnimationDrivers(): string[] {
+export function findUnseekedAnimationDrivers(): string[] {
   const w = window as unknown as Record<string, unknown> & {
     lottie?: { getRegisteredAnimations?: () => unknown };
     anime?: { running?: unknown };
@@ -306,11 +308,24 @@ function findUnseekedAnimationDrivers(): string[] {
   const SMIL = new Set(["animate", "animateColor", "animateMotion", "animateTransform", "set"]);
   const PLAYERS = new Set(["lottie-player", "dotlottie-player", "dotlottie-wc"]);
   let smil = 0;
-  for (const el of Array.from(document.querySelectorAll("*"))) {
-    if (SMIL.has(el.localName)) smil++;
-    else if (PLAYERS.has(el.localName)) found.push(`<${el.localName}>`);
+  let shadowAnimations = 0;
+  // Open shadow trees too: `document.querySelectorAll` and `document.getAnimations()` (which the
+  // engine's CSS animation check reads) stop at a shadow root, and the runtime never seeks an
+  // animation there, so it plays on the wall clock in either path.
+  const scopes: Array<Document | ShadowRoot> = [document];
+  for (let i = 0; i < scopes.length; i++) {
+    const scope = scopes[i] as Document | ShadowRoot;
+    if (scope !== document) shadowAnimations += scope.getAnimations?.().length ?? 0;
+    for (const el of Array.from(scope.querySelectorAll("*"))) {
+      if (SMIL.has(el.localName)) smil++;
+      else if (PLAYERS.has(el.localName)) found.push(`<${el.localName}>`);
+      if (el.shadowRoot) scopes.push(el.shadowRoot);
+    }
   }
   if (smil > 0) found.push(`SVG SMIL (${smil} element${smil === 1 ? "" : "s"})`);
+  if (shadowAnimations > 0) {
+    found.push(`CSS/WAAPI animation in a shadow root (${shadowAnimations})`);
+  }
   return [...new Set(found)];
 }
 
