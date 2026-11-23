@@ -318,7 +318,7 @@ export function useInlineTextEdit({
         setSession(open);
         onPause?.();
         sealed.iframe.focus();
-        const params = { handle: sealed.handle, action: "start" as const, caret: null };
+        const params = { handle: sealed.handle, action: "start" as const, caret: caretAt ?? null };
         // Saves land in gesture order, as a scriptable preview applies them, so the edit opens on their text.
         const begin = () =>
           openRef.current === open ? previewTextEdit(sealed.iframe, params) : Promise.resolve(null);

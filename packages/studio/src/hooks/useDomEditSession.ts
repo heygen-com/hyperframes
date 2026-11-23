@@ -12,6 +12,7 @@ import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
+import { textEditNotSaved } from "./useDomEditTextCommits";
 import { useGroupCommits } from "./useGroupCommits";
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import { useGsapCacheVersion } from "./useGsapTweenCache";
@@ -362,6 +363,11 @@ export function useDomEditSession({
     void ungroupSelection(sel);
   }, [domEditSelectionRef, ungroupSelection, setActiveGroupElement, showToast]);
 
+  const handleDomTextEditLost = useCallback(
+    (reason: string) => showToast(textEditNotSaved(reason), "error"),
+    [showToast],
+  );
+
   // ── Wiring: selection sync, GSAP cache, preview sync, selection handlers ──
   const {
     onClickToSource,
@@ -511,6 +517,7 @@ export function useDomEditSession({
     handleDomTextCommit,
     handleDomTextCommitForSelection,
     handleDomRichTextCommit,
+    handleDomTextEditLost,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,

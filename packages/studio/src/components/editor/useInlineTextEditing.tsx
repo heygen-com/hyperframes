@@ -2,8 +2,6 @@ import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { InlineTextCaret } from "./InlineTextCaret";
 import { InlineTextToolbar } from "./InlineTextToolbar";
 import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
-import { useStudioShellContextOptional } from "../../contexts/StudioContext";
-import { textEditNotSaved } from "../../hooks/useDomEditTextCommits";
 import { useInlineTextEdit } from "../../hooks/useInlineTextEdit";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
@@ -38,8 +36,8 @@ export function useInlineTextEditing(
   { enterFromWindow = false }: { enterFromWindow?: boolean } = {},
 ): {
   editing: boolean;
-  /** Open an edit when this press pairs with the last one. */
-  startFromPress: (event: { clientX: number; clientY: number }) => boolean;
+  /** Open an edit when this press pairs with the last one; `onSelection`: it landed on the selection's box. */
+  startFromPress: (event: { clientX: number; clientY: number }, onSelection?: boolean) => boolean;
   /** Handle a key on the canvas. Returns true when it opened an edit. */
   handleKeyDown: (event: KeyChord) => boolean;
   /**
@@ -51,10 +49,9 @@ export function useInlineTextEditing(
   toolbar: ReactNode;
 } {
   const actions = useDomEditActionsContextOptional();
-  const shell = useStudioShellContextOptional();
   const inlineText = useInlineTextEdit({
     onCommit: (commit) => actions?.handleDomRichTextCommit(commit),
-    onLost: (reason) => shell?.showToast(textEditNotSaved(reason), "error"),
+    onLost: (reason) => actions?.handleDomTextEditLost(reason),
     onPause: () => usePlayerStore.getState().setIsPlaying(false),
   });
   const lastPressRef = useRef<PressMark | null>(null);
@@ -68,11 +65,12 @@ export function useInlineTextEditing(
    * meant the first double press on any element opened nothing, which is every
    * double press that matters.
    */
-  const elementUnderPress = (event: { clientX: number; clientY: number }) => {
+  const elementUnderPress = (event: { clientX: number; clientY: number }, onSelection: boolean) => {
     const iframe = actions?.previewIframeRef?.current;
     if (!iframe) return null;
-    // A sealed frame cannot be hit-tested from here; its first press already selected the element.
-    if (previewFrameOpaque(iframe)) return selectionRef.current?.element ?? null;
+    // A sealed frame cannot be hit-tested from here: only a press on the selection's box is known to be on it.
+    if (previewFrameOpaque(iframe))
+      return onSelection ? (selectionRef.current?.element ?? null) : null;
     // The same hit test the canvas uses to decide what was clicked; a plain
     // elementFromPoint only finds wrappers, since Studio suppresses pointer events.
     return getPreviewTargetFromPointer(iframe, event.clientX, event.clientY);
@@ -81,10 +79,14 @@ export function useInlineTextEditing(
   /** A point on Studio's canvas, in the scaled composition's coordinates. */
   const compositionPoint = (event: { clientX: number; clientY: number }) => {
     const iframe = actions?.previewIframeRef?.current;
-    const view = iframe?.contentWindow;
-    if (!iframe || !view?.innerWidth) return undefined;
+    if (!iframe) return undefined;
+    // A sealed frame's window cannot be read; its viewport is the frame element's own box.
+    const width = previewFrameOpaque(iframe)
+      ? iframe.clientWidth
+      : iframe.contentWindow?.innerWidth;
+    if (!width) return undefined;
     const box = iframe.getBoundingClientRect();
-    const scale = box.width / view.innerWidth || 1;
+    const scale = box.width / width || 1;
     return { x: (event.clientX - box.left) / scale, y: (event.clientY - box.top) / scale };
   };
 
@@ -129,17 +131,23 @@ export function useInlineTextEditing(
       </>
     ),
     handleKeyDown,
-    startFromPress: (event) => {
+    startFromPress: (event, onSelection = false) => {
       if (inlineText.session) return false;
-      const element = elementUnderPress(event);
+      const element = elementUnderPress(event, onSelection);
       const press = { x: event.clientX, y: event.clientY, at: Date.now(), element };
-      const paired = isDoublePress(lastPressRef.current, press);
+      const last = lastPressRef.current;
+      const iframe = actions?.previewIframeRef?.current;
+      // A sealed first press may be on a layer the frame has not picked yet, so the pair is by time and place.
+      const sealed = Boolean(iframe && previewFrameOpaque(iframe));
+      const paired = isDoublePress(sealed && last ? { ...last, element } : last, press);
       lastPressRef.current = press;
 
       if (!paired || !element) return false;
       const selection = selectionRef.current;
       if (selection?.handle && selection.element === element)
-        return canEditSealedTextInline(selection) && inlineText.start(element);
+        return (
+          canEditSealedTextInline(selection) && inlineText.start(element, compositionPoint(event))
+        );
       if (!canEditElementTextInline(element)) return false;
       // The caret opens where the press landed, which means mapping the point
       // out of Studio's coordinates and into the composition's own.

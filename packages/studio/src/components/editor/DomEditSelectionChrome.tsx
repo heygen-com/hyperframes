@@ -143,7 +143,7 @@ interface DomEditSelectionChromeProps {
   inlineText?: {
     editing: boolean;
     /** Every press on the box. Returns true when it opened a text edit. */
-    startFromPress: (event: React.PointerEvent) => boolean;
+    startFromPress: (event: React.PointerEvent, onSelection?: boolean) => boolean;
   };
 }
 
@@ -222,7 +222,7 @@ export function DomEditSelectionChrome({
             // default on the first press, which suppresses the compatibility
             // mousedown the canvas would otherwise see, and the pointer capture
             // it takes stops the browser pairing the presses into a dblclick.
-            if (inlineText?.startFromPress(e)) {
+            if (inlineText?.startFromPress(e, true)) {
               e.preventDefault();
               e.stopPropagation();
               return;
