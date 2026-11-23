@@ -1,6 +1,5 @@
 /** Case-insensitive HTML token scans, with no DOM: the player inlines scripts with these too. */
 
-/** Marks the runtime script a preview or bundle puts in a page. */
 export const RUNTIME_BOOTSTRAP_ATTR = "data-hyperframes-preview-runtime";
 
 /** ASCII-only chunks bound match arrays; starting at uppercase preserves unchanged spans. */

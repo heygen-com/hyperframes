@@ -1,9 +1,14 @@
-import { bundleScriptUrl } from "./sealed-runtime.js";
+export const bundleScriptUrl =
+  typeof document !== "undefined" && document.currentScript instanceof HTMLScriptElement
+    ? document.currentScript.src
+    : null;
 
-/** What the cjs and iife builds load for `@hyperframes/core/runtime-script`: the runtime file shipped beside them. */
-export async function getHyperframeRuntimeScript(): Promise<string> {
-  if (!bundleScriptUrl) throw new Error("The player's script URL is unknown");
-  const response = await fetch(new URL("hyperframe.runtime.iife.js", bundleScriptUrl));
+export async function runtimeBeside(scriptUrl: string | null): Promise<string> {
+  if (!scriptUrl) throw new Error("The player's script URL is unknown");
+  const response = await fetch(new URL("hyperframe.runtime.iife.js", scriptUrl));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.text();
 }
+
+/** What the cjs and iife builds load for `@hyperframes/core/runtime-script`. */
+export const getHyperframeRuntimeScript = (): Promise<string> => runtimeBeside(bundleScriptUrl);

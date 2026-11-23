@@ -44,6 +44,7 @@ export default defineConfig([
         ...options.alias,
         "@hyperframes/core/runtime-script": "./src/runtime-beside-bundle.ts",
       };
+      options.define = { ...options.define, "import.meta.url": "undefined" };
     },
     onSuccess: async () => copyFileSync(join(coreDist, RUNTIME_FILE), join("dist", RUNTIME_FILE)),
   },

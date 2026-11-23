@@ -40,13 +40,45 @@ function linksRuntime(html: string): boolean {
   for (
     let tag = findOpeningTag(html, "script");
     tag;
-    tag = findOpeningTag(html, "script", tag.end)
+    tag = findOpeningTag(html, "script", afterScript(html, tag.end))
   ) {
-    const text = html.slice(tag.index, tag.end);
-    if (text.toLowerCase().includes(RUNTIME_BOOTSTRAP_ATTR)) return true;
-    if (/\bsrc\s*=/i.test(text) && text.includes("hyperframe.runtime.iife.js")) return true;
+    const attributes = tagAttributes(html.slice(tag.index + "<script".length, tag.end - 1));
+    if (attributes.has(RUNTIME_BOOTSTRAP_ATTR)) return true;
+    if (attributes.get("src")?.includes("hyperframe.runtime.iife.js")) return true;
   }
   return false;
+}
+
+function afterScript(html: string, from: number): number {
+  const close = html.toLowerCase().indexOf("</script", from);
+  return close < 0 ? html.length : close;
+}
+
+function tagAttributes(text: string): Map<string, string> {
+  const attributes = new Map<string, string>();
+  const isSpace = (c: string | undefined) =>
+    c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f";
+  let i = 0;
+  while (i < text.length) {
+    while (isSpace(text[i]) || text[i] === "/") i++;
+    const start = i;
+    while (i < text.length && !isSpace(text[i]) && text[i] !== "=" && text[i] !== "/") i++;
+    if (i === start) break;
+    const name = text.slice(start, i).toLowerCase();
+    while (isSpace(text[i])) i++;
+    let value = "";
+    if (text[i] === "=") {
+      i++;
+      while (isSpace(text[i])) i++;
+      const quote = text[i] === '"' || text[i] === "'" ? text[i] : null;
+      const valueStart = quote ? ++i : i;
+      while (i < text.length && (quote ? text[i] !== quote : !isSpace(text[i]))) i++;
+      value = text.slice(valueStart, i);
+      if (quote) i++;
+    }
+    attributes.set(name, value);
+  }
+  return attributes;
 }
 
 type OpeningTag = { index: number; end: number };
