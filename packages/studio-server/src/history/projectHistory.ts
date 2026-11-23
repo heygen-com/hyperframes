@@ -1297,10 +1297,14 @@ class Engine {
       this.claimsAsked.has(change.path),
     );
     for (const change of asked) this.outside!.changes.delete(change.path);
-    await this.commitPending();
-    if (!asked.length) return;
-    const outside = this.outsideGroup();
-    for (const change of asked) outside.changes.set(change.path, change);
+    try {
+      await this.commitPending((path) => this.claimsAsked.has(path));
+    } finally {
+      if (asked.length) {
+        const outside = this.outsideGroup();
+        for (const change of asked) outside.changes.set(change.path, change);
+      }
+    }
   }
 
   countAsked(paths: readonly string[], step: 1 | -1): void {
@@ -1312,10 +1316,12 @@ class Engine {
   }
 
   /** Commits every other writer's pending changes, oldest first; open windows stay open. */
-  async commitPending(): Promise<void> {
+  async commitPending(keep: (path: string) => boolean = () => false): Promise<void> {
     await this.commitOutside();
-    for (const window of [...this.windows])
-      if (window.changes.size) await this.commitCut(window, [...window.changes.keys()]);
+    for (const window of [...this.windows]) {
+      const cut = [...window.changes.keys()].filter((path) => !keep(path));
+      if (cut.length) await this.commitCut(window, cut);
+    }
   }
 
   pendingElsewhere(): boolean {

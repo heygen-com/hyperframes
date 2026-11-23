@@ -48,6 +48,21 @@ const mediaCopy = vi.hoisted(() => ({
   copies: [] as string[],
   fails: null as ((copy: number) => boolean) | null,
 }));
+// A test can make the history log refuse its next entries, as a full disk does.
+const logWrites = vi.hoisted(() => ({ fails: 0 }));
+vi.mock("./historyLog", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./historyLog")>();
+  return {
+    ...real,
+    saveRecord: ((...args) => {
+      if (logWrites.fails > 0 && args[2].type === "entry") {
+        logWrites.fails -= 1;
+        throw new Error("The disk is full.");
+      }
+      return real.saveRecord(...args);
+    }) satisfies typeof real.saveRecord,
+  };
+});
 vi.mock("./blobStore", async (importOriginal) => {
   const real = await importOriginal<typeof import("./blobStore")>();
   return {
@@ -81,6 +96,7 @@ const cleanup: Array<() => unknown> = [];
 afterEach(async () => {
   for (const step of cleanup.splice(0).reverse()) await step();
   Object.assign(mediaCopy, { held: null, entered: null, stored: null, copies: [], fails: null });
+  logWrites.fails = 0;
 });
 
 const inside = (dir: string, path: string) => readFileSync(join(dir, path), "utf-8");
@@ -2003,6 +2019,45 @@ describe("claim: a writer that records after writing", () => {
     expect(await history.step("back", you)).toMatchObject({ ok: true });
     expect(read("index.html")).toBe("<h1>Hello</h1>");
     expect(has("assets/logo.png")).toBe(true);
+  });
+
+  // fails without the fix: the import's failed entry took the waiting save's change with it; the save recorded nothing.
+  it("a save waiting behind an import that fails to record still records its own step", async () => {
+    const { history, write } = await project(
+      { "index.html": "<h1>Hello</h1>", "notes.md": "n" },
+      { quietMs: 60_000 },
+    );
+    write("notes.md", "agent notes");
+    write("assets/logo.png", "png");
+    write("index.html", "<h1>Two</h1>");
+    await pendingOutside(history, "index.html");
+    logWrites.fails = 1;
+    const [imported, edited] = await Promise.allSettled([
+      history.claim(you, "Imported media", ["assets/logo.png"]),
+      history.claim(you, "Edited", ["index.html"]),
+    ]);
+    expect(imported.status).toBe("rejected");
+    expect(edited).toMatchObject({ status: "fulfilled", value: { id: expect.any(String) } });
+    expect(history.list().map((entry) => entry.label)).toContain("Edited");
+  });
+
+  // fails without the fix: the import cut the whole agent window into its entry, the save's change with it.
+  it("a save caught inside an open agent window keeps its own step when an import's claim runs first", async () => {
+    const { history, write, read } = await project(
+      { "index.html": "<h1>Hello</h1>" },
+      { quietMs: 60_000 },
+    );
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("assets/logo.png", "png");
+    write("index.html", "<h1>Two</h1>");
+    await Promise.all([
+      history.claim(you, "Imported media", ["assets/logo.png"]),
+      history.claim(you, "Edited", ["index.html"]),
+    ]);
+    await window.close();
+    expect(history.list().map((entry) => entry.label)).toEqual(["Imported media", "Edited"]);
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect(read("index.html")).toBe("<h1>Hello</h1>");
   });
 
   it("a change made before a claim's own files is still logged ahead of the claim", async () => {
