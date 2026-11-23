@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import { usePreviewReadOnly } from "../components/editor/previewReadOnlyContext";
+import { usePlayerStore } from "../player/store/playerStore";
 import { holdSealedFrameKeyboard } from "../player/lib/sealedFrameKeyboard";
 import { settleOnDrain, trackStudioPendingEdit } from "../utils/studioPendingEdits";
 import {
@@ -298,7 +299,7 @@ export function useInlineTextEdit({
 
   const start = useCallback(
     (element: HTMLElement, caretAt?: { x: number; y: number }): boolean => {
-      if (openRef.current || readOnly) return false;
+      if (openRef.current || readOnly || usePlayerStore.getState().previewFailed) return false;
       const sealed = previewStandIn(element);
       if (sealed) {
         const gesture = beginStudioManualEditGesture(element, "edit");

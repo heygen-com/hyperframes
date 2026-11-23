@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useState, type RefObject } from "react";
 import type { DomEditSelection } from "./domEditing";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 export interface CanvasContextMenuState {
   x: number;
@@ -82,7 +83,7 @@ export function useCanvasContextMenuState({
         }
       }
 
-      if (!activeSel) return;
+      if (!activeSel || usePlayerStore.getState().previewFailed) return;
       setContextMenu({ x: event.clientX, y: event.clientY, sel: activeSel });
     },
     [selectionRef, hoverSelectionRef, onCanvasPointerMoveRef, onSelectionChangeRef],

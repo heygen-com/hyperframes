@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PreviewReadOnlyProvider } from "../components/editor/previewReadOnlyContext";
 import { useInlineTextEdit, type InlineTextEditControls } from "./useInlineTextEdit";
 import { applyUndoRestoreToPreview } from "../utils/gsapUndoRestore";
+import { usePlayerStore } from "../player/store/playerStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -685,6 +686,21 @@ describe("an undo that lands while a text edit is open", () => {
     expect(element.style.getPropertyValue("translate")).toBe("");
     expect(element.getAttribute("contenteditable")).toBe("true");
     expect(element.style.getPropertyValue("outline")).not.toBe("");
+    act(() => root.unmount());
+  });
+
+  it("refuses to open an edit while the preview has failed, so a press already on its way does nothing", () => {
+    const element = heading();
+    const { controls, root, onPause } = mount();
+    usePlayerStore.getState().setPreviewFailed(true);
+    let opened = true;
+    act(() => {
+      opened = controls().start(element);
+    });
+    usePlayerStore.getState().setPreviewFailed(false);
+    expect(opened).toBe(false);
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+    expect(onPause).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
 });
