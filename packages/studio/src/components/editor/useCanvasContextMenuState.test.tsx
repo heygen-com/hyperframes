@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
-import React, { act } from "react";
-import { createRoot } from "react-dom/client";
+import React, { act, useRef, useState } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../../player/store/playerStore";
 import type { DomEditSelection } from "./domEditing";
@@ -9,7 +9,10 @@ import { useCanvasContextMenuState } from "./useCanvasContextMenuState";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+let root: Root | null = null;
 afterEach(() => {
+  act(() => root?.unmount());
+  root = null;
   usePlayerStore.getState().setPreviewFailed(false);
   document.body.innerHTML = "";
 });
@@ -19,19 +22,25 @@ function mountHeld() {
   let release: (selection: DomEditSelection | null) => void = () => {};
   const hitTest = () => new Promise<DomEditSelection | null>((resolve) => (release = resolve));
   const menu: { current: ReturnType<typeof useCanvasContextMenuState> | null } = { current: null };
+  // As the overlay does: the right-click's hit selects its target, and the menu reads that selection.
   function Probe() {
+    const [selection, setSelection] = useState<DomEditSelection | null>(null);
+    const selectionRef = useRef(selection);
+    selectionRef.current = selection;
+    const onSelectionChangeRef = useRef((next: DomEditSelection) => setSelection(next));
     menu.current = useCanvasContextMenuState({
-      selection: null,
-      selectionRef: { current: null },
-      hoverSelectionRef: { current: null },
-      onCanvasPointerMoveRef: { current: hitTest },
-      onSelectionChangeRef: { current: vi.fn() },
+      selection,
+      selectionRef,
+      hoverSelectionRef: useRef<DomEditSelection | null>(null),
+      onCanvasPointerMoveRef: useRef(hitTest),
+      onSelectionChangeRef,
     });
     return null;
   }
   const host = document.createElement("div");
   document.body.append(host);
-  act(() => createRoot(host).render(<Probe />));
+  root = createRoot(host);
+  act(() => root!.render(<Probe />));
   const rightClick = {
     preventDefault: vi.fn(),
     clientX: 40,
