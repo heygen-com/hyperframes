@@ -440,7 +440,11 @@ async function installDriver(frame: Frame) {
       return el;
     };
     // The clip's own events decide; the bound only ends a clip that never sends the one asked for.
-    const untilEvent = (video: HTMLVideoElement, events: string[], decide: () => boolean | undefined) =>
+    const untilEvent = (
+      video: HTMLVideoElement,
+      events: string[],
+      decide: () => boolean | undefined,
+    ) =>
       new Promise<boolean>((resolve) => {
         const check = () => {
           const verdict = decide();
