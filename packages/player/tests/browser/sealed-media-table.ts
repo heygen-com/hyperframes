@@ -658,11 +658,13 @@ async function installDriver(frame: Frame) {
           );
         },
         // Every film alike: a looping clip at its end has no frame until the loop's seek lands.
-        loopRestart(key: string, loops: number) {
+        async loopRestart(key: string, loops: number) {
           const { video } = state.get(key)!;
-          return untilEvent(video, ["seeked"], () =>
-            Number(video.dataset.loops ?? 0) > loops ? true : undefined,
-          );
+          for (let waited = 0; waited < 2000; waited += 50) {
+            if (Number(video.dataset.loops ?? 0) > loops) return true;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          return false;
         },
         keys: () => [...state.keys()],
         settled: () =>
