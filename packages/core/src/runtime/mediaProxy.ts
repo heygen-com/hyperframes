@@ -49,7 +49,12 @@ import {
   type PreviewSourceFacts,
   wantsLighterCopy,
 } from "../previewProxyBox";
-import { capturePageIn, captureStillsIn, PREVIEW_FILE_SIZE_ATTR } from "../studioPreviewMark";
+import {
+  CAPTURE_STILL_ATTR,
+  capturePageIn,
+  captureStillsIn,
+  PREVIEW_FILE_SIZE_ATTR,
+} from "../studioPreviewMark";
 
 /**
  * One entry per project-root-relative asset pathname, injected by the
@@ -687,6 +692,7 @@ export function standInCaptureStill(el: HTMLMediaElement, onScreen: boolean): vo
   url.searchParams.set(PREVIEW_PROXY_STILL_PARAM, at.toFixed(3));
   if (el.getAttribute("poster") === url.href) return;
   el.setAttribute("poster", url.href);
+  el.setAttribute(CAPTURE_STILL_ATTR, "");
   const drawn = new Image();
   holdFrameCaptures(new Promise((landed) => (drawn.onload = drawn.onerror = landed)));
   drawn.src = url.href;

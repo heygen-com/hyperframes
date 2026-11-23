@@ -30,6 +30,7 @@ import { postRuntimeMessage } from "./bridge";
 import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
 import { resetCopyReporting } from "./previewCopies";
 import {
+  CAPTURE_STILL_ATTR,
   CAPTURE_STILLS,
   STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
@@ -1373,7 +1374,7 @@ describe("preview quality: lighter copies of heavy files", () => {
       });
       afterEach(() => marks.splice(0).forEach((mark) => mark.remove()));
 
-      const loads: Array<{ src: string; onload: (() => void) | null }> = [];
+      const loads: Array<{ url: string; onload: (() => void) | null }> = [];
       async function capturedAt(seconds: number, facts = HEAVY) {
         loads.length = 0;
         vi.stubGlobal(
@@ -1381,8 +1382,10 @@ describe("preview quality: lighter copies of heavy files", () => {
           class {
             onload: (() => void) | null = null;
             onerror: (() => void) | null = null;
-            set src(src: string) {
-              loads.push(Object.assign(this, { src }));
+            url = "";
+            set src(url: string) {
+              this.url = url;
+              loads.push(this);
             }
           },
         );
@@ -1422,7 +1425,8 @@ describe("preview quality: lighter copies of heavy files", () => {
           ["hf-proxy-light", "1"],
           ["hf-proxy-still", "5.250"],
         ]);
-        expect(loads.map((load) => load.src)).toEqual([poster.href]);
+        expect(loads.map((load) => load.url)).toEqual([poster.href]);
+        expect(el.hasAttribute(CAPTURE_STILL_ATTR)).toBe(true);
         expect(captured()).toBe(false);
         loads[0]!.onload!();
         await vi.advanceTimersByTimeAsync(0);

@@ -58,6 +58,7 @@ export function capturePageIn(doc: Document): boolean {
   );
 }
 export const CAPTURE_STILLS = "hf-capture-stills";
+export const CAPTURE_STILL_ATTR = "data-hf-capture-still";
 export function captureStillsIn(doc: Document): boolean {
   return capturePageIn(doc) && doc.querySelector(`meta[name="${CAPTURE_STILLS}"]`) !== null;
 }
