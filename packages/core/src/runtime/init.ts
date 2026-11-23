@@ -546,7 +546,6 @@ function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolea
   return (
     isWebKit() &&
     isAudioElement(el) &&
-    !el.loop &&
     !isLongSource(el) &&
     webAudio.fitsDecodeBudget(el) &&
     typeof readElementRateSpec(el) === "number" &&

@@ -542,6 +542,19 @@ describe("WebAudioTransport", () => {
       expect(mock.startFn).toHaveBeenCalledWith(108, 1.5);
     });
 
+    // fails without the fix: the buffer played a looped clip's source once, from past its end.
+    it("loops a looping element's buffer over [mediaStart, end], from the pass the playhead is in", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const looping = { ...mockEl, loop: true } as HTMLMediaElement;
+      const buffer = { duration: 10 } as AudioBuffer;
+
+      // 20 s into a clip whose source loops 2..10 s: two passes and 4 s in, so 6 s into the file.
+      await transport.schedulePlayback(looping, buffer, 0, 2, () => 20, 1, gen, 1, 30);
+
+      expect(mock.sourceNode).toMatchObject({ loop: true, loopStart: 2, loopEnd: 10 });
+      expect(mock.startFn).toHaveBeenCalledWith(0, 6, 10);
+    });
+
     it("starts clips at exact composition start time immediately", async () => {
       const { transport, mock, gen } = setupTransport(100);
 

@@ -6182,10 +6182,16 @@ describe("initSandboxRuntimeModular", () => {
     const SAFARI =
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
 
-    const startRouted = async (userAgent?: string, duration = 10, src = "/assets/track.mp3") => {
+    const startRouted = async (
+      userAgent?: string,
+      duration = 10,
+      src = "/assets/track.mp3",
+      loop = false,
+    ) => {
       if (userAgent) vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
       const audio = mountAudio(src);
       Object.defineProperty(audio, "duration", { value: duration });
+      audio.loop = loop;
       const capture = vi
         .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
         .mockResolvedValue({ el: audio } as never);
@@ -6202,6 +6208,13 @@ describe("initSandboxRuntimeModular", () => {
 
     it("hands the sound to a decoded buffer on the context clock once it is decoded", async () => {
       const { audio, schedule, release } = await startRouted(SAFARI);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+      expect(schedule).toHaveBeenCalledTimes(1);
+    });
+
+    // fails without the fix: a looped clip stayed on its element, heard ~300 ms behind the picture on iOS.
+    it("hands a looped clip to a decoded buffer too", async () => {
+      const { audio, schedule, release } = await startRouted(SAFARI, 10, "/assets/track.mp3", true);
       await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
       expect(schedule).toHaveBeenCalledTimes(1);
     });
