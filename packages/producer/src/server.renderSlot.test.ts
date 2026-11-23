@@ -31,9 +31,9 @@ vi.mock("./services/renderOrchestrator.js", () => {
 
 import { createRenderHandlers } from "./server.js";
 
-function createApp(rendersDir: string) {
+function createApp(rendersDir: string, maxConcurrentRenders = 1) {
   const app = new Hono();
-  const handlers = createRenderHandlers({ maxConcurrentRenders: 1, rendersDir });
+  const handlers = createRenderHandlers({ maxConcurrentRenders, rendersDir });
   app.post("/render", handlers.render);
   app.post("/render/stream", handlers.renderStream);
   app.get("/render/queue", handlers.queue);
@@ -99,4 +99,52 @@ describe("render handlers: rejected job config", () => {
       expect(await activeRenders(app)).toBe(0);
     },
   );
+});
+
+describe("render handlers: unusable render concurrency", () => {
+  const priorEnv = process.env.PRODUCER_MAX_CONCURRENT_RENDERS;
+  const priorTmp = process.env.PRODUCER_TMP_PROJECT_DIR;
+  let scratch: string;
+
+  beforeEach(() => {
+    scratch = mkdtempSync(join(tmpdir(), "producer-concurrency-test-"));
+    process.env.PRODUCER_TMP_PROJECT_DIR = scratch;
+  });
+
+  afterEach(() => {
+    if (priorEnv === undefined) delete process.env.PRODUCER_MAX_CONCURRENT_RENDERS;
+    else process.env.PRODUCER_MAX_CONCURRENT_RENDERS = priorEnv;
+    if (priorTmp === undefined) delete process.env.PRODUCER_TMP_PROJECT_DIR;
+    else process.env.PRODUCER_TMP_PROJECT_DIR = priorTmp;
+    rmSync(scratch, { recursive: true, force: true });
+  });
+
+  /**
+   * The concurrency ceiling is a semaphore limit. `NaN` and `0` never admit a render, so
+   * `acquire()` queues forever and the request is never answered: this race is what fails
+   * when the setting is used unchecked, and it is the only signal before the fix.
+   */
+  const answeredWithin = (app: Hono, ms: number): Promise<string> =>
+    Promise.race([
+      post(app, "/render", {}).then((response) => `status ${response.status}`),
+      new Promise<string>((resolve) => setTimeout(() => resolve("no response"), ms)),
+    ]);
+
+  it.each([0, -1, 1.5, Number.NaN])(
+    "still answers a render when maxConcurrentRenders is %s",
+    async (value) => {
+      const app = createApp(join(scratch, "renders"), value);
+
+      expect(await answeredWithin(app, 2_000)).toBe("status 200");
+    },
+  );
+
+  it("still answers a render when the environment setting is not a usable integer", async () => {
+    process.env.PRODUCER_MAX_CONCURRENT_RENDERS = "two";
+    const app = new Hono();
+    const handlers = createRenderHandlers({ rendersDir: join(scratch, "renders-env") });
+    app.post("/render", handlers.render);
+
+    expect(await answeredWithin(app, 2_000)).toBe("status 200");
+  });
 });
