@@ -74,6 +74,9 @@ here: the `Unknown command:` line and the suggestion under it, the
 the `measure <file>` shortcut prints. Other lines a command prints are as they
 were.
 `--json` output is not changed by this.
+When a `--json` run fails, the `error.message` it answers with carries a repeated
+value as it was given, not in the visible-text form; `lambda`, `cloudrun` and
+`beats` do this too.
 
 **`--json` for agents and scripts.** Most commands accept it, before or after
 the command name: `hyperframes --json info` is the same run as
