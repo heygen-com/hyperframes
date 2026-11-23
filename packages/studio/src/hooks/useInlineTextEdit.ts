@@ -250,6 +250,16 @@ function endWithOriginal(sealed: NonNullable<InlineTextEditSession["sealed"]>): 
   void previewTextEdit(sealed.iframe, { handle: sealed.handle, action: "end", keep: false });
 }
 
+/** Read as the edit opens, so a press already on its way when the preview fails opens nothing. */
+const editRefused = (readOnly: boolean) => readOnly || usePlayerStore.getState().previewFailed;
+
+function useSaveOnPreviewFailure(commit: () => void): void {
+  const previewFailed = usePlayerStore((state) => state.previewFailed);
+  useEffect(() => {
+    if (previewFailed) commit();
+  }, [previewFailed, commit]);
+}
+
 export function useInlineTextEdit({
   onCommit,
   onPause,
@@ -299,7 +309,7 @@ export function useInlineTextEdit({
 
   const start = useCallback(
     (element: HTMLElement, caretAt?: { x: number; y: number }): boolean => {
-      if (openRef.current || readOnly || usePlayerStore.getState().previewFailed) return false;
+      if (openRef.current || editRefused(readOnly)) return false;
       const sealed = previewStandIn(element);
       if (sealed) {
         const gesture = beginStudioManualEditGesture(element, "edit");
@@ -424,10 +434,7 @@ export function useInlineTextEdit({
     return handedOff(open.element, saving);
   }, [onCommit, teardown, endSealed]);
   const commit = useCallback(() => void save(), [save]);
-  const previewFailed = usePlayerStore((state) => state.previewFailed);
-  useEffect(() => {
-    if (previewFailed) commit();
-  }, [previewFailed, commit]);
+  useSaveOnPreviewFailure(commit);
 
   const cancel = useCallback(() => {
     const open = openRef.current;
