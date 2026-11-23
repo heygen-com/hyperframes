@@ -23,6 +23,8 @@ npx hyperframes lambda render ./my-project --width 1920 --height 1080 --wait
 npx hyperframes lambda destroy
 ```
 
+`destroy` deletes their deployed stack: ask the person first and run it only after they say yes.
+
 ## Choose Lambda or local rendering
 
 - **Local `render`** — dev-loop iteration, single host, anything under a few minutes at 1080p.
@@ -57,6 +59,7 @@ Builds `packages/aws-lambda/dist/handler.zip` and SAM-deploys the stack (Lambda 
 | `--chrome-source` | `sparticuz`                     | `sparticuz` or `chrome-headless-shell` |
 | `--memory`        | `10240`                         | Lambda memory in MB                    |
 | `--skip-build`    | off                             | Reuse existing `handler.zip`           |
+| `--no-warm`       | warm                            | Skip the warm-up call after deploy     |
 
 ## Upload a reusable site
 
@@ -84,13 +87,16 @@ Starts a Step Functions execution. Returns immediately with a `renderId` unless 
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--width` / `--height`  | Output dimensions in pixels                                                                                                                                                                                                                                                                                                                                   |
 | `--output-resolution`   | Supersampling preset (engages Chrome `deviceScaleFactor`) — `landscape` / `landscape-4k` / `portrait` / `portrait-4k` / `square` / `square-4k`, plus aliases (`1080p`, `4k`, `uhd`, `hd`, `1080p-portrait`, `4k-portrait`, `1080p-square`, `4k-square`). Use this to render an authored-at-1080p composition at 4K without re-laying-out — see footgun below. |
-| `--fps`                 | `24` / `30` / `60`                                                                                                                                                                                                                                                                                                                                            |
+| `--fps`                 | `24` / `25` / `30` / `60`                                                                                                                                                                                                                                                                                                                                     |
 | `--format`              | `mp4` / `mov` / `png-sequence` / `webm` (default `mp4`)                                                                                                                                                                                                                                                                                                       |
 | `--codec`               | `h264` / `h265` (mp4 only)                                                                                                                                                                                                                                                                                                                                    |
 | `--quality`             | `draft` / `standard` / `high`                                                                                                                                                                                                                                                                                                                                 |
 | `--chunk-size`          | Frames per chunk (default `240`)                                                                                                                                                                                                                                                                                                                              |
 | `--max-parallel-chunks` | Max concurrent chunks (default `16`)                                                                                                                                                                                                                                                                                                                          |
 | `--target-chunk-frames` | Cap frames per chunk and let the planner add chunks up to the parallel limit                                                                                                                                                                                                                                                                                  |
+| `--keyframe-interval`   | MP4 only: a keyframe at least every N seconds (a maximum: chunk joins add keyframes)                                                                                                                                                                                                                                                                          |
+| `--max-bitrate`         | MP4 only: peak bitrate cap, held per chunk (a join can burst up to one buffer)                                                                                                                                                                                                                                                                                |
+| `--buffer-size`         | MP4 only: buffer for `--max-bitrate` (default twice it)                                                                                                                                                                                                                                                                                                       |
 | `--site-id`             | Reuse an existing site (skip upload)                                                                                                                                                                                                                                                                                                                          |
 | `--execution-name`      | Explicit Step Functions execution name                                                                                                                                                                                                                                                                                                                        |
 | `--output-key`          | Explicit final S3 object key                                                                                                                                                                                                                                                                                                                                  |
@@ -103,7 +109,7 @@ Starts a Step Functions execution. Returns immediately with a `renderId` unless 
 
 **`--width` / `--height` footgun.** Setting `--width 3840 --height 2160` against a composition whose `data-width="1920"` silently produces 1080p — the runtime lays out the page at the composition's authored dimensions and the CLI flags are ignored for layout. To actually output at 4K, use `--output-resolution 4k` (supersamples via `deviceScaleFactor`). The CLI now prints a warning when CLI dimensions disagree with the composition's `data-width` / `data-height` and `--output-resolution` is not set; the warning is suppressed when `--json` is on or `index.html` isn't on disk (`--site-id` flows).
 
-For variable-driven templates, declare the schema in the composition and pass either `--variables` or `--variables-file`, never both. `--strict-variables` checks local project input before any render starts. Also read [`variables-and-media.md`](../../hyperframes-core/references/variables-and-media.md#variables).
+For variable-driven templates, declare the schema in the composition and pass either `--variables` or `--variables-file`, never both. `--strict-variables` checks local project input before any render starts. Also read [Variables](../../hyperframes/references/format.md#variables).
 
 ## Render a JSONL batch
 
@@ -152,6 +158,8 @@ Prints one snapshot — overall percent, frames rendered, Lambda invocations, ac
 npx hyperframes lambda destroy
 ```
 
+Ask the person before `destroy` and run it only after they say yes: it deletes their deployed Lambda stack.
+
 Calls `sam delete --no-prompts` and drops the local state file. **The render S3 bucket is configured `Retain`** so it survives stack destruction — empty + delete it via the AWS console / CLI if you want the storage back.
 
 ### Non-retryable errors
@@ -177,7 +185,7 @@ The default action set is deliberately broad (`Resource: "*"`) because CloudForm
 
 ## State, cost, and cleanup
 
-`hyperframes lambda` stores per-stack metadata under `<cwd>/.hyperframes/lambda-stack-<name>.json` (bucket name, state-machine ARN, region). Not secret, but AWS-account-identifying. Commit it to a repo or `.gitignore` it per your workflow.
+`hyperframes lambda` stores per-stack metadata under `<cwd>/.hyperframes/lambda-stack-<name>.json` (bucket name, state-machine ARN, region). Not secret, but AWS-account-identifying. Commit it to a repo or `.gitignore` it per your workflow. The CLI refuses a state file with malformed fields or one that is a symlink, and uploads only to a bucket owned by the account of the file's state machine.
 
 - `lambda destroy` removes the SAM stack but **leaves the S3 bucket** (`Retain`). Delete it manually if you want the storage back.
 - Lambda billing is per-invocation + duration. `progress` reports the accrued cost.

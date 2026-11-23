@@ -23,7 +23,6 @@
 // those set mirrors into the exact dir the agent reads.
 
 import {
-  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -34,6 +33,7 @@ import {
   symlinkSync,
   unlinkSync,
 } from "node:fs";
+import { copyDirSync } from "./copyDir.js";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { AGENT_GLOBAL_DIRS, type AgentDirBase } from "./agentDirs.generated.js";
@@ -195,7 +195,7 @@ function linkOrCopy(
   if (unsafe) return unsafe;
   rmSync(targetSkill, { recursive: true, force: true });
   if (platform === "win32") {
-    cpSync(sourceSkill, targetSkill, { recursive: true });
+    copyDirSync(sourceSkill, targetSkill);
   } else {
     symlinkSync(relative(dirname(targetSkill), sourceSkill), targetSkill);
   }

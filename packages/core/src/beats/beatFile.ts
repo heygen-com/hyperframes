@@ -4,6 +4,7 @@
 
 import {
   decodeAuthoredAttribute,
+  decodedUrlPath,
   scanHtmlOpeningTags,
   type HtmlOpeningTagSpan,
 } from "@hyperframes/parsers";
@@ -31,15 +32,15 @@ export function audioRelPathForSrc(src: string | null | undefined): string | nul
     const queryOrHash = after.search(/[?#]/);
     if (queryOrHash !== -1) after = after.slice(0, queryOrHash);
     if (after.startsWith("comp/")) after = after.slice("comp/".length);
-    rel = after ? decodeURIComponent(after) : null;
+    rel = after ? decodedUrlPath(after) : null;
   }
   if (!rel) {
     // Fall back to the FULL pathname (not just basename) so two files with the
     // same name in different folders don't collide on one beat file.
     try {
-      rel = decodeURIComponent(new URL(src, "http://_").pathname);
+      rel = decodedUrlPath(new URL(src, "http://_").pathname);
     } catch {
-      rel = src;
+      rel = decodedUrlPath(src);
     }
   }
   if (!rel) return null;

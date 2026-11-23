@@ -11,12 +11,12 @@
  *     Record one confirmed brief answer into the project tier; the same value
  *     confirmed in two different projects promotes the key to the user tier.
  *
- * Consumption rules live in hyperframes/references/brief-contract.md § 2
- * (Remembered defaults): a remembered value becomes the recommended option
- * with a receipt — it never skips a question.
+ * Consumption rule (references/memory.md): a remembered value becomes the
+ * recommended option with a receipt — it never skips a question.
  */
 import { parseArgs } from "node:util";
 import { mergedPreferences, recordPreference } from "./lib/prefs-store.mjs";
+import { terminalText } from "./lib/terminal-text.mjs";
 
 const { values: args, positionals } = parseArgs({
   options: {
@@ -32,7 +32,7 @@ const { values: args, positionals } = parseArgs({
 const verb = positionals[0];
 
 function fail(message) {
-  console.error(message);
+  console.error(terminalText(message));
   process.exit(1);
 }
 
@@ -45,7 +45,9 @@ if (verb === "get") {
   } else {
     for (const [key, entry] of Object.entries(merged)) {
       console.log(
-        `${key} = ${entry.value}  (${entry.source}; confirmed in ${entry.confirmed_in.join(", ")})`,
+        terminalText(
+          `${key} = ${entry.value}  (${entry.source}; confirmed in ${entry.confirmed_in.join(", ")})`,
+        ),
       );
     }
   }
@@ -59,7 +61,7 @@ if (verb === "get") {
       workflow: args.workflow,
     });
     const promotion = result.promoted ? "; promoted to user tier" : "";
-    console.log(`recorded ${result.key} = ${result.value} (project${promotion})`);
+    console.log(terminalText(`recorded ${result.key} = ${result.value} (project${promotion})`));
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));
   }

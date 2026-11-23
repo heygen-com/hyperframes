@@ -2,3 +2,4 @@
 // @hyperframes/parsers/asset-paths subpath so the main entry stays browser-safe.
 export * from "./assetPaths.js";
 export * from "./rewriteSubCompPaths.js";
+export { rewriteSrcsetUrls } from "./srcset.js";

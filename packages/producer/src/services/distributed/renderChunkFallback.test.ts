@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
+  CaptureFailure,
   type CaptureSession,
+  ImageMissingFromFrameError,
   createFrameLookupTable,
   readWebGlVendorInfoFromCanvas,
   resolveConfig,
@@ -10,9 +12,12 @@ import {
   createChunkVideoFrameInjectorFactory,
   createVerifiedDistributedCaptureSession,
   type ChunkResult,
+  MixedCaptureModesError,
+  observedChunkCaptureMode,
   runCaptureWithScreenshotFallback,
   shouldRetryChunkCaptureWithScreenshot,
 } from "./renderChunk.js";
+import { CaptureStageError } from "../render/captureStageError.js";
 
 const originalProbeTimeout = process.env.PRODUCER_BEGINFRAME_PROBE_TIMEOUT_MS;
 
@@ -123,6 +128,26 @@ describe("distributed session isolation", () => {
     expect(firstAttempt).not.toBeNull();
     expect(screenshotRetry).not.toBeNull();
     expect(screenshotRetry).not.toBe(firstAttempt);
+  });
+
+  it("holds a session's first injection until its frames are extracted", async () => {
+    let failExtraction: (error: Error) => void = () => {};
+    const lookup = new Promise<ReturnType<typeof createFrameLookupTable>>((_, reject) => {
+      failExtraction = reject;
+    });
+    const factory = createChunkVideoFrameInjectorFactory(lookup);
+    const hook = factory();
+    expect(hook).not.toBeNull();
+    expect(factory()).not.toBe(hook);
+
+    let settled = false;
+    const injection = hook!({} as Parameters<NonNullable<typeof hook>>[0], 0).finally(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    failExtraction(new Error("ffmpeg could not read the clip"));
+    await expect(injection).rejects.toThrow("ffmpeg could not read the clip");
   });
 });
 
@@ -249,5 +274,83 @@ describe("beginFrameSessionNeedsScreenshotFallback", () => {
       }),
     ).toBe(false);
     expect(probes).toBe(1);
+  });
+});
+
+describe("a chunk whose workers launched in different capture modes", () => {
+  const mixed = [{ captureMode: "beginframe" }, { captureMode: "screenshot" }];
+
+  it("fails with a typed error instead of being retried or mixed into one output", async () => {
+    expect(() => observedChunkCaptureMode(mixed)).toThrow(MixedCaptureModesError);
+    expect(
+      shouldRetryChunkCaptureWithScreenshot(
+        new MixedCaptureModesError(["beginframe", "screenshot"]),
+      ),
+    ).toBe(false);
+    let runs = 0;
+    await expect(
+      runCaptureWithScreenshotFallback({
+        forceScreenshot: false,
+        run: async () => {
+          runs++;
+          return observedChunkCaptureMode(mixed);
+        },
+        resetForScreenshotRetry: () => {},
+      }),
+    ).rejects.toThrow(MixedCaptureModesError);
+    expect(runs).toBe(1);
+  });
+
+  it("accepts one mode and still rejects a chunk with no workers or an unknown mode", () => {
+    expect(
+      observedChunkCaptureMode([{ captureMode: "beginframe" }, { captureMode: "beginframe" }]),
+    ).toBe("beginframe");
+    expect(() => observedChunkCaptureMode([])).toThrow(/invalid mode/);
+    expect(() => observedChunkCaptureMode([{ captureMode: "gpu" }])).toThrow(/invalid mode/);
+  });
+});
+
+describe("a chunk whose frame shows an image that never arrived", () => {
+  const stopped = () => new ImageMissingFromFrameError(0, ["photo.png"], false);
+  const throughMultiWorkerCapture = () =>
+    new CaptureStageError({
+      cause: new CaptureFailure({
+        kind: "authoring",
+        message: "[Parallel] Capture failed: Worker 0",
+        cause: new CaptureFailure({ kind: "authoring", message: "worker", cause: stopped() }),
+      }),
+      browserConsole: [],
+    });
+  const run = (first: unknown, second?: unknown) =>
+    runCaptureWithScreenshotFallback({
+      forceScreenshot: false,
+      run: async (forceScreenshot) => {
+        throw forceScreenshot ? second : first;
+      },
+      resetForScreenshotRetry: () => {},
+    });
+
+  it("throws the image's own error from a multi-worker capture, so cloud retry lists see its name", async () => {
+    await expect(run(throughMultiWorkerCapture())).rejects.toMatchObject({
+      name: "ImageMissingFromFrameError",
+      sources: ["photo.png"],
+    });
+  });
+
+  it("throws it from a single-worker capture too", async () => {
+    const wrapped = new CaptureStageError({ cause: stopped(), browserConsole: [] });
+    await expect(run(wrapped)).rejects.toMatchObject({ name: "ImageMissingFromFrameError" });
+  });
+
+  it("throws it when it comes from the screenshot retry", async () => {
+    const beginFrameFailed = new Error("HeadlessExperimental.beginFrame timed out");
+    await expect(run(beginFrameFailed, throughMultiWorkerCapture())).rejects.toMatchObject({
+      name: "ImageMissingFromFrameError",
+    });
+  });
+
+  it("leaves any other capture failure as it was", async () => {
+    const other = new CaptureStageError({ cause: new Error("boom"), browserConsole: [] });
+    await expect(run(other)).rejects.toBe(other);
   });
 });

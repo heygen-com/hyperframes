@@ -6,12 +6,14 @@ npx hyperframes media-use resolve --type <type> --intent "<description>" --proje
 
 Returns one line: `resolved <id> → <path> (<type>, <metadata>)`
 
+A weak match is still returned, with a `media-use: low-confidence match` line on stderr and a `match` object in `--json` output: `{score, min_score, low_confidence}` for a HeyGen sound under 0.5, or `{matched_words, intent_words, low_confidence, resolved_for?}` for a project file found by its name. Listen to a low-confidence sound before placing it, or resolve again with other words. A sound effect nothing matches fails with `no sound effect matched`, naming the min score the search used.
+
 ## Types
 
 | Type    | What it finds                    | Provider / cascade                                           |
 | ------- | -------------------------------- | ------------------------------------------------------------ |
 | `bgm`   | Background music                 | HeyGen audio catalog (10k+ tracks)                           |
-| `sfx`   | Sound effects                    | Bundled 19-file library + HeyGen catalog                     |
+| `sfx`   | Sound effects                    | Openverse (CC0 / CC BY), then the bundled 21-file library    |
 | `image` | Photos, backgrounds              | HeyGen asset search (75k+ vectors)                           |
 | `icon`  | Icons, symbols                   | HeyGen asset search (type=icon)                              |
 | `logo`  | Official brand marks             | theSVG → GitHub org avatar → domain favicon                  |

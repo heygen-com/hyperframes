@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { track } from "./telemetry.mjs";
+import { terminalLines } from "./terminal-text.mjs";
 
 // v0.3.0 is the first CLI that can use an OAuth session; v0.1.x/0.2.x reject it
 // ("heygen-cli can't use OAuth yet"), and OAuth is what the free-usage path
@@ -10,8 +11,8 @@ export const HEYGEN_MIN_VERSION = "0.3.0";
 // installer text out of the runtime module; the docs are the safer source of
 // truth for platform-specific setup.
 export const HEYGEN_INSTALL_COMMAND =
-  "Install the CLI from https://developers.heygen.com/cli, then run: heygen auth login --oauth";
-export const HEYGEN_AUTH_COMMAND = "heygen auth login --oauth";
+  "Install the CLI from https://developers.heygen.com/cli, then run: hyperframes auth login";
+export const HEYGEN_AUTH_COMMAND = "hyperframes auth login";
 export const HEYGEN_UPDATE_COMMAND = "heygen update";
 export const HEYGEN_CLIENT_SOURCE_ARGV = ["--headers", "X-HeyGen-Client-Source: media-use"];
 
@@ -102,19 +103,16 @@ const pendingFailureTracking = new Set();
 // API, move this state into a per-resolve context before reusing that path.
 let pendingRemediation = null;
 
-const TOOL_WORDS = { bgm: "music", sfx: "sound-effect" };
-
-/** A music or sound-effect resolve miss after the heygen CLI was missing or too old: what is missing, the host
- * app's own tool, the fix. Other types keep the generic miss. */
+/** A music resolve miss after the heygen CLI was missing or too old: what is missing, the host app's own
+ * tool, the fix. Other types keep the generic miss. */
 export function heygenMiss(type, { code }) {
-  const tool = TOOL_WORDS[type];
-  if (!tool) return null;
+  if (type !== "bgm") return null;
   const outdated = code === "outdated";
   const state = outdated ? `older than v${HEYGEN_MIN_VERSION}` : "not installed";
   return {
     code: outdated ? "heygen_cli_outdated" : "heygen_cli_missing",
     fix: outdated ? HEYGEN_UPDATE_COMMAND : HEYGEN_INSTALL_COMMAND,
-    error: `${type} needs the heygen CLI, which is ${state}: use your host app's own ${tool} tool if it has one, or ${outdated ? "update" : "install"} the CLI.`,
+    error: `${type} needs the heygen CLI, which is ${state}: use your host app's own music tool if it has one, or ${outdated ? "update" : "install"} the CLI.`,
   };
 }
 
@@ -132,7 +130,7 @@ export function reportHeygenFailure(err, context, trackEvent = track) {
   if (ACTIONABLE_MESSAGES.has(message)) {
     console.error(message);
   } else {
-    console.error(`media-use: \`${context}\` failed: ${message}`);
+    console.error(terminalLines(`media-use: \`${context}\` failed: ${message}`));
   }
   try {
     const tracked = Promise.resolve(

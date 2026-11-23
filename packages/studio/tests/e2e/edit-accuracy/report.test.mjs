@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accurate } from "./ratchet.mjs";
-import { entry, score, UNDO_WRITE_MAX_MS } from "./report.mjs";
+import { entry, score, slowRunner, UNDO_WRITE_MAX_MS } from "./report.mjs";
 
 const frames = { intervals: [16, 17, 16], work: [2, 3, 2] };
 const result = (undo) => ({
@@ -58,5 +58,35 @@ describe("a case's verdict", () => {
     const slow = { ...frames, work: [9, 1, 1], control: frames };
     expect(score({ id: "case" }, { ...result({}), smooth: slow }).pass).toBe(false);
     expect(score({ id: "case" }, { error: "boom" }).pass).toBe(false);
+  });
+});
+
+describe("the slow runner check", () => {
+  // Each case's usual seconds is 20 here; the grid's own come from timings.json.
+  const at = (...seconds) => seconds.map((s, i) => ({ id: `case-${i}`, seconds: s }));
+  const usual = () => 20;
+
+  it("stops a shard whose first four cases ran about 5x slower than usual", () => {
+    // A merge queue shard that ran into its timeout: its first cases, in seconds.
+    expect(slowRunner(at(95.5, 133.7, 57.9, 107.5, 91.6), usual)).toBeCloseTo(4.775);
+  });
+
+  it("lets a healthy runner through, including one slow case among its first four", () => {
+    expect(slowRunner(at(22, 21.4, 19.8, 23.1), usual)).toBeNull();
+    expect(slowRunner(at(14, 92.7, 16.3, 15.2), usual)).toBeNull();
+  });
+
+  it("judges speed, not how long the cases are", () => {
+    const long = [
+      { id: "a", seconds: 90 },
+      { id: "b", seconds: 84 },
+      { id: "c", seconds: 88 },
+      { id: "d", seconds: 86 },
+    ];
+    expect(slowRunner(long, () => 60)).toBeNull();
+  });
+
+  it("waits for four cases before judging", () => {
+    expect(slowRunner(at(95.5, 133.7, 107.5), usual)).toBeNull();
   });
 });

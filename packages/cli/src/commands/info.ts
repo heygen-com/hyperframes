@@ -1,13 +1,20 @@
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 
 export const examples: Example[] = [
   ["Show project metadata", "hyperframes info"],
   ["Output as JSON", "hyperframes info --json"],
+  ["List the clips the render hears, on the film's clock", "hyperframes info --media --json"],
 ];
 import { join } from "node:path";
-import { parseHtml, CANVAS_DIMENSIONS } from "@hyperframes/core";
+import { parseHtml, CANVAS_DIMENSIONS, terminalText } from "@hyperframes/core";
+import {
+  findRootCompositionElement,
+  readCompositionSize,
+} from "@hyperframes/core/runtime/composition-length";
+import { readDataDurationSeconds } from "@hyperframes/parsers/media-duration";
+import { heardClips } from "../utils/projectMedia.js";
 import { c } from "../ui/colors.js";
 import { formatBytes, label } from "../ui/format.js";
 import { ensureDOMParser } from "../utils/dom.js";
@@ -26,11 +33,16 @@ export function orientation(width: number, height: number): "landscape" | "portr
  * fall back to the computed timeline end.
  */
 export function durationFromHtml(html: string, fallback: number): number {
-  const match =
-    html.match(/data-composition-id[^>]*data-duration=["']([\d.]+)["']/) ||
-    html.match(/data-duration=["']([\d.]+)["'][^>]*data-composition-id/);
-  const value = match?.[1] ? parseFloat(match[1]) : NaN;
-  return Number.isFinite(value) ? value : fallback;
+  return durationFromRoot(rootFromHtml(html), fallback);
+}
+
+function rootFromHtml(html: string): HTMLElement | null {
+  ensureDOMParser();
+  return findRootCompositionElement(new DOMParser().parseFromString(html, "text/html"));
+}
+
+function durationFromRoot(root: Element | null, fallback: number): number {
+  return readDataDurationSeconds((name) => root?.getAttribute(name)) ?? fallback;
 }
 
 function totalSize(dir: string): number {
@@ -51,12 +63,17 @@ export default defineCommand({
   args: {
     dir: { type: "positional", description: "Project directory", required: false },
     json: { type: "boolean", description: "Output as JSON", default: false },
+    media: {
+      type: "boolean",
+      description: "Also list every clip the render hears, scenes included, on the film's clock",
+      default: false,
+    },
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
     const html = readFileSync(project.indexPath, "utf-8");
 
-    ensureDOMParser();
+    const root = rootFromHtml(html);
     const parsed = parseHtml(html);
 
     const tracks = new Set(parsed.elements.map((el) => el.zIndex));
@@ -64,18 +81,12 @@ export default defineCommand({
       (max, el) => Math.max(max, el.startTime + el.duration),
       0,
     );
-    // Read actual dimensions from root composition element
-    const widthMatch =
-      html.match(/data-composition-id[^>]*data-width=["'](\d+)["']/) ||
-      html.match(/data-width=["'](\d+)["'][^>]*data-composition-id/);
-    const heightMatch =
-      html.match(/data-composition-id[^>]*data-height=["'](\d+)["']/) ||
-      html.match(/data-height=["'](\d+)["'][^>]*data-composition-id/);
+    const dimensions = root ? readCompositionSize(root) : null;
     const fallback = CANVAS_DIMENSIONS[parsed.resolution];
-    const width = widthMatch?.[1] ? parseInt(widthMatch[1], 10) : fallback.width;
-    const height = heightMatch?.[1] ? parseInt(heightMatch[1], 10) : fallback.height;
+    const width = dimensions?.width ?? fallback.width;
+    const height = dimensions?.height ?? fallback.height;
     const resolution = `${width}x${height}`;
-    const duration = durationFromHtml(html, maxEnd);
+    const duration = durationFromRoot(root, maxEnd);
     const size = totalSize(project.dir);
 
     const typeCounts: Record<string, number> = {};
@@ -85,6 +96,8 @@ export default defineCommand({
     const typeStr = Object.entries(typeCounts)
       .map(([t, count]) => `${count} ${t}`)
       .join(", ");
+
+    const heard = args.media ? await heardClips(project.dir) : undefined;
 
     if (args.json) {
       console.log(
@@ -99,6 +112,7 @@ export default defineCommand({
             tracks: tracks.size,
             types: typeCounts,
             size,
+            ...(heard ? { heard } : {}),
           }),
           null,
           2,
@@ -107,11 +121,17 @@ export default defineCommand({
       return;
     }
 
-    console.log(`${c.success("◇")}  ${c.accent(project.name)}`);
+    console.log(`${c.success("◇")}  ${c.accent(terminalText(project.name))}`);
     console.log(label("Resolution", resolution));
     console.log(label("Duration", `${duration.toFixed(1)}s`));
     console.log(label("Elements", `${parsed.elements.length}${typeStr ? ` (${typeStr})` : ""}`));
     console.log(label("Tracks", `${tracks.size}`));
     console.log(label("Size", formatBytes(size)));
+    for (const clip of heard ?? []) {
+      const until = clip.end > 0 ? `${clip.end.toFixed(2)}s` : "its end";
+      console.log(
+        label("Heard", `${terminalText(clip.src)} ${clip.start.toFixed(2)}s to ${until}`),
+      );
+    }
   },
 });

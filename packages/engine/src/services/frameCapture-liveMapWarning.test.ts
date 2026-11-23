@@ -11,7 +11,7 @@ describe("buildLiveMapWarning", () => {
 
   it("points the author at the bake pipeline instead of just describing the failure", () => {
     const warning = buildLiveMapWarning(["Leaflet"]);
-    expect(warning.message).toContain("bake-basemap.mjs");
+    expect(warning.message).toContain("scripts/bake-basemap.mjs");
     expect(warning.message).toContain("deterministic-render");
   });
 

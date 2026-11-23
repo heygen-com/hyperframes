@@ -4,15 +4,15 @@
  * script.
  *
  * Walks up from this file's location until it finds a directory that
- * contains `packages/aws-lambda/`. Caching is unnecessary — this runs
- * once per CLI invocation.
+ * contains `packages/aws-lambda/`. Undefined outside a checkout (the
+ * published CLI), where deploy uses the adapter's prebuilt handler.
  */
 
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export function repoRoot(): string {
+export function repoRoot(): string | undefined {
   const override = process.env.HYPERFRAMES_REPO_ROOT;
   if (override) {
     if (existsSync(resolve(override, "packages", "aws-lambda", "package.json"))) return override;
@@ -30,8 +30,5 @@ export function repoRoot(): string {
     if (parent === dir) break;
     dir = parent;
   }
-  throw new Error(
-    "[hyperframes lambda] could not find the repo root (no packages/aws-lambda/ above this CLI's source). " +
-      "Run `hyperframes lambda` from within a hyperframes checkout, or set HYPERFRAMES_REPO_ROOT explicitly.",
-  );
+  return undefined;
 }

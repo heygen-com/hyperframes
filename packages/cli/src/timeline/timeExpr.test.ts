@@ -20,6 +20,7 @@ const row: TimelineRow = {
   host: null,
   hostRow: null,
   children: [],
+  parentRow: null,
   trackIndex: 0,
   src: null,
   sourceFile: null,
@@ -33,6 +34,7 @@ const row: TimelineRow = {
   pendingReason: null,
   laneError: null,
   syncOffsetFrames: null,
+  mediaStart: 0,
 };
 
 describe("parseTimeExpression", () => {

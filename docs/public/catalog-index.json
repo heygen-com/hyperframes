@@ -1955,6 +1955,23 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dynamic-grid.png"
   },
   {
+    "name": "echo-smear",
+    "type": "component",
+    "title": "Echo Smear",
+    "description": "Distance-adaptive streak — records each element's real trajectory (position, rotation, scale, opacity), then trails time-offset copies behind it in proportion to its speed, combined by brightest pixel, so fast moves smear and slow ones stay sharp; spinning edges stay smooth",
+    "tags": [
+      "effect",
+      "smear",
+      "echo",
+      "motion-blur",
+      "velocity",
+      "after-effects",
+      "animation"
+    ],
+    "href": "/catalog/components/echo-smear",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/echo-smear.png"
+  },
+  {
     "name": "echo-trail",
     "type": "component",
     "title": "Echo Trail",
@@ -2087,6 +2104,26 @@
       "monochrome"
     ],
     "href": "/catalog/blocks/falling-lines"
+  },
+  {
+    "name": "filmed-screen",
+    "type": "component",
+    "title": "Filmed Screen",
+    "description": "Your scene, filmed off a screen: perspective, depth of field that follows an element you name, LED sub-pixels and per-shot colour grades. Shots glide into each other, focus racks between elements, and the focused element stays sharp.",
+    "tags": [
+      "filmed",
+      "screen",
+      "monitor",
+      "led",
+      "camera",
+      "depth-of-field",
+      "html-in-canvas",
+      "shader",
+      "webgl",
+      "effect"
+    ],
+    "href": "/catalog/components/filmed-screen",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/filmed-screen.png"
   },
   {
     "name": "flash-through-white",

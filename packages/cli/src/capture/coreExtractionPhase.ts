@@ -25,8 +25,10 @@ import {
 } from "./mediaCapture.js";
 import { extractVisibleText } from "./contentExtractor.js";
 import { isDegradableEvaluateTimeoutError } from "./captureTimeout.js";
+import { waitForPageReady } from "./navigateForCapture.js";
 import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
 import { filterExtractedScripts } from "./filterExtractedScripts.js";
+import { terminalText } from "@hyperframes/core";
 
 export interface CoreExtractionInput {
   page1: Page;
@@ -277,7 +279,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     } catch (err) {
       const errMsg =
         err instanceof Error ? `${err.message}\n${err.stack}` : normalizeErrorMessage(err);
-      console.error(`  ⚠ Design style extraction failed: ${errMsg}`);
+      console.error(`  ⚠ Design style extraction failed: ${terminalText(errMsg)}`);
       warnings.push(`Design style extraction failed: ${errMsg}`);
     }
   };
@@ -332,16 +334,24 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
       maxScreenshots,
       files: screenshots,
     });
-    if (capture.interruption || screenshots.length === 0) {
+    const failed = capture.failures.map(
+      ({ file, scrollY, message }) =>
+        `could not capture ${file}${scrollY === null ? "" : ` (scrolled to ${scrollY}px)`}: ${message}`,
+    );
+    if (capture.interruption || failed.length > 0 || screenshots.length === 0) {
       recordBudget("screenshots");
       const { reason, message: detail }: ScreenshotInterruption = capture.interruption ?? {
         reason: "internal-error",
-        message: "screenshot capture produced no files",
+        message: failed.length > 0 ? "" : "screenshot capture produced no files",
       };
-      const cause =
+      const cause = [
         reason === "budget-exhausted"
           ? `--capture-budget exhausted during ${exhaustedPhase}`
-          : detail;
+          : detail,
+        ...failed,
+      ]
+        .filter(Boolean)
+        .join("; ");
       const message = `${screenshots.length}/${maxScreenshots} requested screenshot files captured: ${cause}`;
       screenshotOutcome = {
         kind: screenshots.length === 0 ? "failed" : "partial",
@@ -354,6 +364,11 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
   };
   await runScreenshotCapture();
   const runHtmlExtraction = async (): Promise<void> => {
+    await waitForPageReady(page1, {
+      timeoutMs: Math.min(15_000, remainingMs()),
+      networkIdle: "after-load",
+    });
+
     // Catalog all assets (must run before extractHtml which converts img src to data URLs)
     progress("design", "Cataloging assets...");
     try {
@@ -371,7 +386,13 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
 
     // ── MUTATION phase: extractHtml modifies the live DOM (converts images to data URLs) ──
     progress("extract", "Extracting HTML & CSS...");
-    extracted = await extractHtml(page1, { settleTime: 1000 });
+    extracted = await extractHtml(page1, {
+      settleTime: 1000,
+      onWarning: (message) => {
+        warnings.push(message);
+        progress("warn", message);
+      },
+    });
     state.extracted = extracted;
 
     // Strip framework scripts from the extracted body — keep visual library scripts

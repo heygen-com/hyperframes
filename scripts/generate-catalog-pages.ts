@@ -58,6 +58,22 @@ export function mdxStringAttribute(name: string, value: string): string {
   return `${name}="${escaped}"`;
 }
 
+/**
+ * Text as the plain child of an HTML element in MDX, escaped through character
+ * references like mdxStringAttribute: `<`, `{` and `}` would otherwise open
+ * markup or an expression, and `&` goes first so its own references survive.
+ * MDX still reads that text as inline markdown, so `\`, backtick, `*`, `_`, `[`,
+ * `]` and `~` become references too: "@_blue_sweater_" stays literal, not italic.
+ */
+export function mdxText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/\{/g, "&#123;")
+    .replace(/\}/g, "&#125;")
+    .replace(/[\\`*_[\]~]/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
 function payloadPath(kind: ItemKind, name: string): string {
   return join(payloadRoot, typeDir(kind), `${name}.json`);
 }
@@ -71,7 +87,9 @@ function hasPayload(kind: ItemKind, name: string): boolean {
 function unsupportedFlag(kind: ItemKind, name: string): string | null {
   const path = payloadPath(kind, name);
   if (!existsSync(path)) return null;
-  const payload = JSON.parse(readFileSync(path, "utf-8")) as { unsupported?: string };
+  const payload = JSON.parse(readFileSync(path, "utf-8")) as {
+    unsupported?: string;
+  };
   return payload.unsupported ?? null;
 }
 
@@ -199,8 +217,8 @@ const RELATED_TOPICS: readonly string[] = [
   "## Related topics",
   "",
   "- [Browse the complete Catalog](/catalog)",
-  "- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)",
-  "- [Build a richer composition](/go-further)",
+  "- [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)",
+  "- [Put blocks together into one video](/concepts/compositions)",
   "",
 ];
 
@@ -1010,7 +1028,11 @@ function detailMeta(kind: ItemKind, manifest: RegistryItem, file: { source: stri
     duration: "duration" in manifest ? manifest.duration : undefined,
     width,
     height,
-    category: groupForItem({ name: manifest.name, type: kind, tags: manifest.tags ?? [] }),
+    category: groupForItem({
+      name: manifest.name,
+      type: kind,
+      tags: manifest.tags ?? [],
+    }),
     badge: stabilityBadge(manifest as RegistryItem & SourceMetadata),
     codeLines: file?.source.split("\n").length,
   };
@@ -1044,7 +1066,6 @@ function detailOpening(
     `  compositionId="${manifest.name}"`,
     `  compositionSrc="${target}"`,
     `  title=${JSON.stringify(manifest.title)}`,
-    `  description=${JSON.stringify(manifest.description)}`,
     `  variables={${JSON.stringify(variables)}}`,
     `  meta={${JSON.stringify(meta)}}`,
     `  attribution={${JSON.stringify(detailAttribution(kind, manifest))}}`,
@@ -1071,8 +1092,10 @@ function generateItemMdx(
   const file = primarySource(kind, manifest);
 
   // `mode: frame` gives the page the full content width the stage and the Tune
-  // panel need side by side. Mintlify still renders `title` as the H1 and
-  // `description` as the standfirst, so neither is repeated in the body.
+  // panel need side by side. A frame page shows no title of its own, and Mintlify
+  // renders snippet components (CatalogDetail) in the browser only, so the H1, the
+  // standfirst and the Docs tab's text are written into the page here: that is the
+  // HTML search engines read. A `<header>` element is dropped by Mintlify; a div keeps it.
   const lines: string[] = [
     "---",
     `title: ${yamlString(manifest.title)}`,
@@ -1082,6 +1105,11 @@ function generateItemMdx(
     "",
     'import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";',
     'import { InstallCommand } from "/snippets/install-command.jsx";',
+    "",
+    '<div className="hf-ve-static-head not-prose">',
+    `  <h1>${mdxText(manifest.title)}</h1>`,
+    `  <p>${mdxText(manifest.description)}</p>`,
+    "</div>",
     "",
     ...detailOpening(kind, manifest, primaryTarget, live, Boolean(file)),
   ];
@@ -1110,7 +1138,10 @@ function generateItemMdx(
     "",
     "</CatalogSlot>",
     "",
-    '<CatalogSlot slot="docs">',
+    "</CatalogDetail>",
+    "",
+    // The Docs tab: shown while that tab is open (docs/custom.css), and in the server HTML always.
+    '<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">',
     "",
   );
 
@@ -1150,7 +1181,7 @@ function generateItemMdx(
   // Generated tail: provenance, then the required `## Related topics` so the
   // page ends with it per docs/AGENTS.md. The marker delimits what is generated.
   lines.push(FOOTER_MARKER, "", ...footerSection(manifest, tags, source), ...RELATED_TOPICS);
-  lines.push("</CatalogSlot>", "", "</CatalogDetail>", "");
+  lines.push("</div>", "");
 
   return lines.join("\n");
 }
@@ -1271,9 +1302,15 @@ function main(): void {
   // openable sections, and keeps every existing shelf name intact underneath.
   const SECTIONS: { section: string; groups: string[] }[] = [
     { section: "3D", groups: ["3D motion", "3D objects"] },
-    { section: "Text & captions", groups: ["Captions", "Typography & Text", "Lower Thirds"] },
+    {
+      section: "Text & captions",
+      groups: ["Captions", "Typography & Text", "Lower Thirds"],
+    },
     { section: "Code", groups: ["Code Animations", "Code Snippets"] },
-    { section: "Transitions", groups: ["Shader Transitions", "CSS Transitions"] },
+    {
+      section: "Transitions",
+      groups: ["Shader Transitions", "CSS Transitions"],
+    },
     { section: "Data & charts", groups: ["Data"] },
     {
       section: "Scenes & demos",
@@ -1285,7 +1322,10 @@ function main(): void {
     // sections on their own, and pulling it out takes the largest section in
     // the catalog from 120 items down to 95.
     { section: "Carousels", groups: ["Carousels"] },
-    { section: "Motion & effects", groups: ["Motion Primitives", "Effects", "Camera"] },
+    {
+      section: "Motion & effects",
+      groups: ["Motion Primitives", "Effects", "Camera"],
+    },
     { section: "Surfaces", groups: ["Texture", "HTML-in-Canvas"] },
     { section: "Blocks", groups: ["Blocks"] },
   ];

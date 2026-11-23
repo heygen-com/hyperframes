@@ -4,11 +4,12 @@
  * Phase-1 asset import, packaged as a registry item.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import {
   createFigmaClient,
   FigmaClientError,
   nodeToHtml,
+  ownProjectDir,
   parseFigmaRef,
   readBindings,
   resolveBindings,
@@ -18,7 +19,8 @@ import {
   type NodeToHtmlResult,
   type RasterizeRequest,
 } from "@hyperframes/core/figma";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 
 function escapeAttr(value: string): string {
@@ -31,6 +33,7 @@ function escapeAttr(value: string): string {
 import { runAssetImport, type AssetImportResult } from "./asset.js";
 import { downloadRender } from "./download.js";
 import { withFigmaErrors } from "./cliError.js";
+import { terminalText } from "@hyperframes/core";
 
 export interface ComponentImportDeps {
   projectDir: string;
@@ -67,7 +70,6 @@ export async function runComponentImport(
     console.warn(
       `component dir compositions/components/${name} already exists — overwriting (rename the figma frame for a separate import)`,
     );
-  mkdirSync(componentDir, { recursive: true });
 
   const { html, frozenAssets, failedRasterize } = await rasterizeFallback(
     mapped,
@@ -75,9 +77,10 @@ export async function runComponentImport(
     componentDir,
     deps,
   );
+  ownProjectDir(deps.projectDir, componentDir);
 
   const htmlFile = join(componentDir, `${name}.html`);
-  writeFileSync(htmlFile, html + "\n");
+  replaceFileAtomically(htmlFile, html + "\n");
 
   const registryItem = {
     name,
@@ -98,7 +101,7 @@ export async function runComponentImport(
       })),
     ],
   };
-  writeFileSync(
+  replaceFileAtomically(
     join(componentDir, "registry-item.json"),
     JSON.stringify(registryItem, null, 2) + "\n",
   );
@@ -140,7 +143,9 @@ async function rasterizeFallback(
     if (asset === null) {
       failedRasterize.push(req.nodeId);
       console.warn(
-        `could not render node ${req.nodeId} ("${req.name}") as svg or png — leaving its placeholder without src`,
+        terminalText(
+          `could not render node ${req.nodeId} ("${req.name}") as svg or png — leaving its placeholder without src`,
+        ),
       );
       continue;
     }
@@ -201,7 +206,9 @@ export default defineCommand({
         download: downloadRender,
         name: args.name,
       });
-      console.log(`imported component "${result.name}" → ${result.htmlPath}`);
+      console.log(
+        `imported component "${terminalText(result.name)}" → ${terminalText(result.htmlPath)}`,
+      );
       if (result.rasterized.length > 0) {
         const ok = result.rasterized.length - result.failedRasterize.length;
         console.log(

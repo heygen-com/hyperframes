@@ -20,6 +20,7 @@ import {
   setStyleSheet,
 } from "./model.js";
 import { keyToPath, stylePath } from "./patches.js";
+import { scriptLooksUp } from "./scriptLookups.js";
 import {
   writeVariableDefault,
   clearVariableDefault,
@@ -141,6 +142,12 @@ export function applyOverrideSet(parsed: ParsedDocument, overrides: OverrideSet)
   for (const [key, value] of entries) {
     const path = keyToPath(key);
     if (!path) continue;
+    if (
+      value !== null &&
+      /^\/elements\/[^/]+$/.test(path) &&
+      !isElementSnapshotOverride(key, value)
+    )
+      continue;
     if (value === null) {
       patches.push({ op: "remove", path });
     } else {
@@ -158,12 +165,60 @@ export function applyOverrideSet(parsed: ParsedDocument, overrides: OverrideSet)
       patches.push({ op: "remove", path: stylePath(rootId, `--${key.slice("var.".length)}`) });
     }
   }
-  applyPatchesToDocument(parsed, patches);
+  applyPatchesToDocument(parsed, patches, { keepScriptTargets: true });
+  restoreOverridePositions(parsed, overrides);
+}
+
+export function isElementSnapshotOverride(
+  key: string,
+  value: OverrideSet[string],
+): value is Record<string, unknown> & { html: string; siblingIndex: number } {
+  if (value === null || typeof value !== "object") return false;
+  return (
+    /^\/elements\/[^/]+$/.test(keyToPath(key) ?? "") &&
+    typeof value.html === "string" &&
+    typeof value.siblingIndex === "number"
+  );
+}
+
+function restoreOverridePositions(parsed: ParsedDocument, overrides: OverrideSet): void {
+  const positions: Array<{ el: Element; parent: Element; childNodeIndex: number }> = [];
+  for (const [key, value] of Object.entries(overrides)) {
+    if (!isElementSnapshotOverride(key, value) || typeof value.childNodeIndex !== "number")
+      continue;
+    const el = findById(parsed.document, key);
+    if (!el?.parentElement) continue;
+    positions.push({ el, parent: el.parentElement, childNodeIndex: value.childNodeIndex });
+  }
+  // Detach every restored sibling so inserting one cannot shift another's saved position.
+  for (const { el } of positions) el.remove();
+  for (const { el, parent, childNodeIndex } of positions.sort(
+    (a, b) => a.childNodeIndex - b.childNodeIndex,
+  )) {
+    parent.insertBefore(el, parent.childNodes[childNodeIndex] ?? null);
+  }
+}
+
+/** Keep a deleted node a script looks up: serialize writes it back hidden, so the script finds it. */
+function keepDelete(parsed: ParsedDocument, el: Element): void {
+  const parent = el.parentElement;
+  (parsed.keptDeletes ??= []).push({
+    hfId: el.getAttribute("data-hf-id") ?? "",
+    html: el.outerHTML,
+    parentId: parent?.getAttribute("data-hf-id") ?? null,
+    siblingIndex: parent ? Array.from(parent.children).indexOf(el) : 0,
+  });
+}
+
+interface ApplyOptions {
+  /** Keep a copy of each removed element an inline script looks up (stored deletes replayed onto a base). */
+  keepScriptTargets?: boolean;
 }
 
 export function applyPatchesToDocument(
   parsed: ParsedDocument,
   patches: readonly JsonPatchOp[],
+  options: ApplyOptions = {},
 ): void {
   for (const patch of patches) {
     const p = parsePath(patch.path);
@@ -171,12 +226,17 @@ export function applyPatchesToDocument(
     if (p.id && patch.path.startsWith("/elements/")) {
       p.id = p.id.replace(/~1/g, "/").replace(/~0/g, "~");
     }
-    applyOne(parsed, patch, p);
+    applyOne(parsed, patch, p, options);
   }
 }
 
 // fallow-ignore-next-line complexity
-function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): void {
+function applyOne(
+  parsed: ParsedDocument,
+  patch: JsonPatchOp,
+  p: ParsedPath,
+  options: ApplyOptions,
+): void {
   switch (p.type) {
     case "style": {
       const el = p.id ? findById(parsed.document, p.id) : null;
@@ -245,8 +305,10 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
       if (!p.id) return;
       if (patch.op === "remove") {
         const el = findById(parsed.document, p.id);
+        if (el && options.keepScriptTargets && scriptLooksUp(parsed.document, el))
+          keepDelete(parsed, el);
         el?.remove();
-      } else if (patch.op === "add" && patch.value) {
+      } else if ((patch.op === "add" || patch.op === "replace") && patch.value) {
         const v = patch.value as { html: string; parentId: string | null; siblingIndex: number };
         const parent = v.parentId
           ? findById(parsed.document, v.parentId)
@@ -257,6 +319,7 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
         tmp.innerHTML = v.html;
         const node = tmp.firstElementChild;
         if (!node) return;
+        if (patch.op === "replace") findById(parsed.document, p.id)?.remove();
         const children = Array.from(parent.children);
         const ref = children[v.siblingIndex] ?? null;
         parent.insertBefore(node, ref);

@@ -1,17 +1,20 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compileForRender } from "./htmlCompiler.js";
 import { synthesizeMediaFixture } from "./mediaTypeTestFixtures.js";
 import { Semaphore } from "../utils/semaphore.js";
 import { sharedMediaProbeSemaphore } from "../utils/mediaProbeConcurrency.js";
+import { defaultLogger } from "../logger.js";
 
 describe("compileForRender media-type ownership", () => {
   const projectDir = mkdtempSync(join(tmpdir(), "hf-compiler-media-type-"));
   const downloadDir = join(projectDir, "downloads");
   const stillPath = join(projectDir, "extensionless-still");
   const videoPath = join(projectDir, "extensionless-video");
+  const singleGopPath = join(projectDir, "single-gop.mp4");
+  const shortVideoPath = join(projectDir, "short-video-long-audio.mp4");
 
   beforeAll(() => {
     mkdirSync(downloadDir, { recursive: true });
@@ -38,6 +41,34 @@ describe("compileForRender media-type ownership", () => {
       "-f",
       "mp4",
       videoPath,
+    ]);
+    synthesizeMediaFixture([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=s=32x32:d=10:r=30",
+      "-c:v",
+      "mpeg4",
+      "-g",
+      "1000",
+      singleGopPath,
+    ]);
+    synthesizeMediaFixture([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=s=32x32:d=1:r=30",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=10",
+      "-c:v",
+      "mpeg4",
+      "-g",
+      "1000",
+      "-c:a",
+      "aac",
+      shortVideoPath,
     ]);
   }, 30_000);
 
@@ -78,6 +109,47 @@ describe("compileForRender media-type ownership", () => {
     });
   });
 
+  it("reports sparse keyframes without asserting failed frame extraction", async () => {
+    const warnings = vi.spyOn(defaultLogger, "warn").mockImplementation(() => {});
+    try {
+      await compile('<video id="single-gop" src="single-gop.mp4" data-start="0"></video>');
+      await vi.waitFor(() => {
+        expect(warnings.mock.calls.some(([message]) => message.includes("sparse keyframes"))).toBe(
+          true,
+        );
+      });
+      const sparseWarning = warnings.mock.calls.find(([message]) =>
+        message.includes("sparse keyframes"),
+      )?.[0];
+      expect(sparseWarning).toContain('Video "single-gop"');
+      expect(sparseWarning).toContain("max interval: 10s");
+      expect(sparseWarning).not.toMatch(/causes seek failures|frame freezing/);
+      expect(sparseWarning).toContain("If preview seeking is slow");
+      expect(sparseWarning).toContain("rendering is unaffected");
+      expect(sparseWarning).toContain('ffmpeg -i "single-gop.mp4"');
+    } finally {
+      warnings.mockRestore();
+    }
+  });
+
+  it("does not warn about a short video whose container has a long audio track", async () => {
+    const warnings = vi.spyOn(defaultLogger, "warn").mockImplementation(() => {});
+    try {
+      await compile(
+        '<video id="short-video" src="short-video-long-audio.mp4" data-start="0"></video>',
+      );
+      await vi.waitFor(() => {
+        expect(sharedMediaProbeSemaphore.activeCount).toBe(0);
+        expect(sharedMediaProbeSemaphore.waitingCount).toBe(0);
+      });
+      expect(warnings.mock.calls.some(([message]) => message.includes("sparse keyframes"))).toBe(
+        false,
+      );
+    } finally {
+      warnings.mockRestore();
+    }
+  });
+
   it("shares a four-wide media-probe limiter across parallel sub-compositions", async () => {
     const originalAcquire = Semaphore.prototype.acquire;
     const limiterInstances = new Set<Semaphore>();
@@ -95,11 +167,12 @@ describe("compileForRender media-type ownership", () => {
       const subCompositions: string[] = [];
       for (let index = 0; index < 8; index += 1) {
         const name = `probe-${index}.html`;
+        copyFileSync(join(projectDir, "extensionless-video"), join(projectDir, `video-${index}`));
         writeFileSync(
           join(projectDir, name),
           `<!doctype html><html><body>
             <div data-composition-id="sub-${index}" data-width="32" data-height="32" data-duration="1">
-              <video id="video-${index}" src="extensionless-video" data-start="0"></video>
+              <video id="video-${index}" src="video-${index}" data-start="0"></video>
             </div>
           </body></html>`,
         );

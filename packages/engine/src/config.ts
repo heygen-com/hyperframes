@@ -7,6 +7,7 @@
  */
 
 import { tmpdir } from "node:os";
+import { DISTRIBUTED_FPS, type DistributedFps } from "@hyperframes/core/distributed-fps";
 import { chromeMajorCeiling } from "./services/chromeHostCeiling.js";
 import { join } from "node:path";
 import {
@@ -23,7 +24,7 @@ import { DEFAULT_VP9_CPU_USED, normalizeVp9CpuUsed } from "./services/vp9Options
  */
 export interface EngineConfig {
   // ── Rendering ────────────────────────────────────────────────────────
-  fps: 24 | 30 | 60;
+  fps: DistributedFps;
   quality: "draft" | "standard" | "high";
   format: "jpeg" | "png";
   jpegQuality: number;
@@ -69,6 +70,8 @@ export interface EngineConfig {
    * `HF_STATIC_DEDUP` in {false,0,off}. Only arms in screenshot capture mode.
    */
   staticFrameDedup: boolean;
+  /** Opt-in `HF_VIDEO_LAYER_PASSTHROUGH`: ffmpeg composites a full-canvas source video under the page capture. */
+  videoLayerPassthrough: boolean;
   /**
    * Use drawElementImage for frame capture (requires the CanvasDrawElement
    * Chrome flag, added globally in buildChromeArgs). Default ON, clamped in
@@ -87,6 +90,7 @@ export interface EngineConfig {
    * true. Kill switch: `HF_DE_WORKER_ENCODE=false`.
    */
   enableDrawElementWorkerEncode: boolean;
+  useInPageEncode: boolean;
   /**
    * INTERNAL. Set by resolveConfig when it disabled enablePageSideCompositing
    * solely because drawElement was on. Lets the producer's compile-time gates
@@ -107,6 +111,8 @@ export interface EngineConfig {
    * the runtime probe fires). Not intended to be set by callers.
    */
   forceScreenshotExplicitlyOptedOut?: boolean;
+  /** How long a BeginFrame capture may take to draw its first frame before the render retries by screenshot. */
+  beginFrameFirstFrameDeadlineMs?: number;
   /**
    * Low-memory render profile. When `true`, the orchestrator collapses the
    * pipeline to its cheapest shape on memory-constrained hosts: it skips the
@@ -182,9 +188,9 @@ export interface EngineConfig {
   streamingEncodeDurationCapEnabled: boolean;
 
   // ── FFmpeg timeouts ──────────────────────────────────────────────────
-  /** Timeout for FFmpeg frame encoding (ms). Default: 600_000 */
+  /** How long a disk-frame encode may go without a new frame before it is stopped (ms). Default: 600_000 */
   ffmpegEncodeTimeout: number;
-  /** Timeout for FFmpeg mux/faststart processes (ms). Default: 300_000 */
+  /** How long any other FFmpeg step (audio, mux, extraction) may go without progress (ms). Default: 300_000 */
   ffmpegProcessTimeout: number;
   /**
    * Inactivity timeout for FFmpeg streaming encode (ms). The timer resets on
@@ -298,8 +304,10 @@ export const DEFAULT_CONFIG: EngineConfig = {
   protocolTimeout: 300_000,
   forceScreenshot: false,
   staticFrameDedup: true,
+  videoLayerPassthrough: false,
   useDrawElement: true,
   enableDrawElementWorkerEncode: true,
+  useInPageEncode: false,
   // Auto-detected per host in `resolveConfig`; defaults off for the raw
   // DEFAULT_CONFIG (used directly by tests and worker-sizing fallbacks).
   lowMemoryMode: false,
@@ -339,6 +347,7 @@ const OPTIONAL_ENGINE_CONFIG_FIELDS = [
   "expectedChromiumMajor",
   "pageSideCompositingAutoDisabled",
   "forceScreenshotExplicitlyOptedOut",
+  "beginFrameFirstFrameDeadlineMs",
   "streamingEncodeAutoDisabledOnWin32Compound",
   "runtimeManifestPath",
   "extractCacheDir",
@@ -350,8 +359,10 @@ const BOOLEAN_ENGINE_CONFIG_FIELDS = [
   "enableBrowserPool",
   "forceScreenshot",
   "staticFrameDedup",
+  "videoLayerPassthrough",
   "useDrawElement",
   "enableDrawElementWorkerEncode",
+  "useInPageEncode",
   "lowMemoryMode",
   "enablePageSideCompositing",
   "enableChunkedEncode",
@@ -378,7 +389,7 @@ const POSITIVE_NUMBER_ENGINE_CONFIG_FIELDS = [
 ] as const;
 
 const ENUM_ENGINE_CONFIG_FIELDS = {
-  fps: [24, 30, 60],
+  fps: DISTRIBUTED_FPS,
   quality: ["draft", "standard", "high"],
   format: ["jpeg", "png"],
   browserGpuMode: ["software", "hardware", "auto"],
@@ -448,6 +459,9 @@ function validateEngineConfigScalars(config: Record<string, unknown>): void {
   assertEngineConfigNumber(config, "jpegQuality", 0);
   if (typeof config.jpegQuality === "number" && config.jpegQuality > 100) {
     throw new Error("Engine config jpegQuality must be <= 100");
+  }
+  if (config.beginFrameFirstFrameDeadlineMs !== undefined) {
+    assertEngineConfigNumber(config, "beginFrameFirstFrameDeadlineMs", 1, true);
   }
 }
 
@@ -798,6 +812,37 @@ export function explainDrawElementDisabled(args: {
   return "disabled";
 }
 
+/** `pageNavigationTimeout` alone, for callers that need the page-load budget without the rest of the config. */
+export function resolvePageNavigationTimeout(): number {
+  const raw = process.env.PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS;
+  const parsed = raw === undefined || raw === "" ? NaN : Number(raw);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_CONFIG.pageNavigationTimeout;
+}
+
+const RESTRICT_PAGE_NETWORK_ON = new Set(["true", "1", "yes", "on"]);
+const RESTRICT_PAGE_NETWORK_OFF = new Set(["false", "0", "no", "off"]);
+let warnedRestrictPageNetworkValue: string | undefined;
+
+/**
+ * `PRODUCER_RESTRICT_PAGE_NETWORK=true`: the render page may reach only its own server and public addresses.
+ * Unset or blank is off. `true`, `1`, `yes` and `on` turn it on and `false`, `0`, `no` and `off` turn it off,
+ * in any letter case and with surrounding whitespace. Any other value restricts and logs a warning once.
+ * A property of the host (a shared render service), not of one render, so it stays out of EngineConfig snapshots.
+ */
+export function resolveRestrictPageNetwork(): boolean {
+  const raw = process.env.PRODUCER_RESTRICT_PAGE_NETWORK ?? "";
+  const value = raw.trim().toLowerCase();
+  if (value === "" || RESTRICT_PAGE_NETWORK_OFF.has(value)) return false;
+  if (RESTRICT_PAGE_NETWORK_ON.has(value)) return true;
+  if (warnedRestrictPageNetworkValue !== raw) {
+    warnedRestrictPageNetworkValue = raw;
+    console.warn(
+      `[hyperframes] PRODUCER_RESTRICT_PAGE_NETWORK=${JSON.stringify(raw)} is neither true nor false; the render network stays restricted.`,
+    );
+  }
+  return true;
+}
+
 export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
   const env = (key: string): string | undefined => process.env[key];
   const envNum = (key: string, fallback: number): number => {
@@ -844,7 +889,6 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
       DEFAULT_CONFIG.largeRenderThreshold,
     ),
 
-    chromePath: env("PRODUCER_HEADLESS_SHELL_PATH"),
     disableGpu: envBool("PRODUCER_DISABLE_GPU", DEFAULT_CONFIG.disableGpu),
     browserGpuMode: envBrowserGpuMode(),
     allowSoftwareWebGpu: envBool(
@@ -863,11 +907,16 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
 
     forceScreenshot: envBool("PRODUCER_FORCE_SCREENSHOT", DEFAULT_CONFIG.forceScreenshot),
     staticFrameDedup: resolveStaticFrameDedup(),
+    videoLayerPassthrough: envBool(
+      "HF_VIDEO_LAYER_PASSTHROUGH",
+      DEFAULT_CONFIG.videoLayerPassthrough,
+    ),
     useDrawElement: envBool("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", DEFAULT_CONFIG.useDrawElement),
     enableDrawElementWorkerEncode: envBool(
       "HF_DE_WORKER_ENCODE",
       DEFAULT_CONFIG.enableDrawElementWorkerEncode,
     ),
+    useInPageEncode: envBool("HF_INPAGE_ENCODE", DEFAULT_CONFIG.useInPageEncode),
     lowMemoryMode: resolveLowMemoryMode(),
     enablePageSideCompositing: envBool(
       "HF_PAGE_SIDE_COMPOSITING",
@@ -931,10 +980,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
       "PRODUCER_RENDER_READY_TIMEOUT_MS",
       DEFAULT_CONFIG.renderReadyTimeout,
     ),
-    pageNavigationTimeout: envNum(
-      "PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS",
-      DEFAULT_CONFIG.pageNavigationTimeout,
-    ),
+    pageNavigationTimeout: resolvePageNavigationTimeout(),
 
     verifyRuntime: env("PRODUCER_VERIFY_HYPERFRAME_RUNTIME") !== "false",
     runtimeManifestPath: env("PRODUCER_HYPERFRAME_MANIFEST_PATH"),

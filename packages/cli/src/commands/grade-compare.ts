@@ -1,13 +1,14 @@
-import { failCommand } from "../utils/commandResult.js";
 import {
   copyFileSync,
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { makeOutputFolder } from "../utils/outputFolder.js";
+import { readJsonFileText } from "../utils/jsonFlag.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import {
@@ -16,19 +17,23 @@ import {
   normalizeHfColorGrading,
   parseCubeLut,
   serializeHfColorGrading,
+  terminalText,
 } from "@hyperframes/core";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
-import { defineCommand } from "citty";
-import sharp from "sharp";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { openSettledCompositionPage, runFfmpegOnce } from "../capture/captureCompositionFrame.js";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { loadSharp } from "../utils/optionalPackages.js";
 import { displayPathFromBase, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
 import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
+import { failCaught } from "../utils/jsonError.js";
+import { CliUsageError } from "../utils/commandResult.js";
+import { parseTimeoutMs } from "../utils/timeoutArg.js";
 
 const COMPOSITION_ID = "grade-compare";
 const COMPOSITION_DURATION = "1";
@@ -38,6 +43,7 @@ const MAX_COLUMNS = 4;
 const GRID_PADDING = 16;
 const LABEL_HEIGHT = 32;
 const FFMPEG_EXTRACT_TIMEOUT_MS = 30_000;
+const DEFAULT_RENDER_READY_TIMEOUT_MS = 5_000;
 
 export interface GradeCompareCell {
   label: string;
@@ -143,7 +149,9 @@ export function warnInactiveGradingCells(cells: readonly GradeCompareCell[]): vo
     const normalized = normalizeHfColorGrading(cell.grading);
     if (!isHfColorGradingActive(normalized)) {
       console.error(
-        c.warn(`Warning: grading for "${cell.label}" is inactive/no-op — it will render ungraded`),
+        c.warn(
+          `Warning: grading for "${terminalText(cell.label)}" is inactive/no-op — it will render ungraded`,
+        ),
       );
     }
   }
@@ -213,7 +221,7 @@ export function parseGradesFile(filePath: string): GradeCompareCell[] {
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(filePath, "utf-8"));
+    parsed = JSON.parse(readJsonFileText(filePath));
   } catch (err) {
     throw new Error(`Could not parse grades JSON: ${normalizeErrorMessage(err)}`);
   }
@@ -243,7 +251,7 @@ export function resolveLutCells(luts: string): GradeCompareCell[] {
     .map((part) => part.trim())
     .filter(Boolean);
   if (paths.length === 0) {
-    throw new Error("--luts must include at least one LUT path");
+    throw new CliUsageError("--luts must include at least one LUT path");
   }
   return paths.map((lutPath) =>
     validateCell(basename(lutPath, extname(lutPath)), { lut: { src: lutPath } }),
@@ -267,12 +275,12 @@ export function parseGradeCompareArgs(args: {
   timeout?: unknown;
 }): ParsedGradeCompareArgs {
   const frameArg = readOptionalString(args.for);
-  if (!frameArg) throw new Error("--for <path> is required");
+  if (!frameArg) throw new CliUsageError("--for <path> is required");
 
   const gradesArg = readOptionalString(args.grades);
   const lutsArg = readOptionalString(args.luts);
   if (Boolean(gradesArg) === Boolean(lutsArg)) {
-    throw new Error("Exactly one of --grades or --luts is required");
+    throw new CliUsageError("Exactly one of --grades or --luts is required");
   }
 
   const projectDir = resolve(readOptionalString(args.project) ?? process.cwd());
@@ -287,7 +295,7 @@ export function parseGradeCompareArgs(args: {
       ? { kind: "grades", path: resolveFromBase(projectDir, gradesArg) }
       : { kind: "luts", value: lutsArg ?? "" },
     json: args.json === true,
-    timeoutMs: Number.parseInt(readOptionalString(args.timeout) ?? "", 10) || 5000,
+    timeoutMs: parseTimeoutMs(args.timeout, DEFAULT_RENDER_READY_TIMEOUT_MS),
   };
 }
 
@@ -445,7 +453,7 @@ export async function prepareGradeCompareTempProject(opts: {
       }
       const lutText = readFileSync(sourcePath, "utf-8");
       try {
-        parseCubeLut(lutText, { maxSize: 64 });
+        parseCubeLut(lutText);
       } catch (err) {
         throw new Error(
           `LUT for "${cell.label}" is not a valid .cube: ${normalizeErrorMessage(err)}`,
@@ -515,7 +523,7 @@ async function extractVideoFrameToBuffer(videoPath: string): Promise<Buffer | nu
   }
 }
 
-async function loadReferenceFrame(framePath: string): Promise<ReferenceFrame> {
+export async function loadReferenceFrame(framePath: string): Promise<ReferenceFrame> {
   if (!existsSync(framePath)) {
     throw new Error(`Reference frame not found: ${framePath}`);
   }
@@ -527,15 +535,16 @@ async function loadReferenceFrame(framePath: string): Promise<ReferenceFrame> {
     throw new Error(`Could not extract a frame from video: ${framePath}`);
   }
 
-  const metadata = await sharp(buffer).metadata();
-  if (!metadata.width || !metadata.height) {
+  const sharp = await loadSharp("grade-compare");
+  const { width, height } = (await sharp(buffer).metadata()).autoOrient;
+  if (!width || !height) {
     throw new Error(`Could not read reference frame dimensions: ${framePath}`);
   }
 
   return {
     buffer,
-    width: metadata.width,
-    height: metadata.height,
+    width,
+    height,
     stagedName: isVideoPath(framePath) ? "frame.png" : frameFileNameForPath(framePath),
   };
 }
@@ -609,7 +618,8 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: "Render-ready timeout in ms before capture (default: 5000)",
+      description:
+        "Render-ready timeout before capture: a number of ms, or a duration such as 30s (default: 5000)",
     },
     baseline: {
       type: "boolean",
@@ -647,7 +657,7 @@ export default defineCommand({
 
       if (!parsed.json) {
         console.log(
-          `${c.accent("◆")}  Rendering ${cells.length} grade candidates from ${c.accent(basename(parsed.framePath))}`,
+          `${c.accent("◆")}  Rendering ${cells.length} grade candidates from ${c.accent(terminalText(basename(parsed.framePath)))}`,
         );
       }
 
@@ -667,8 +677,8 @@ export default defineCommand({
         prepared.tempDir,
         parsed.timeoutMs,
       );
-      mkdirSync(dirname(parsed.outPath), { recursive: true });
-      copyFileSync(tempSheet, parsed.outPath);
+      makeOutputFolder(dirname(parsed.outPath));
+      replaceFileAtomically(parsed.outPath, readFileSync(tempSheet));
       trackCompareSheet({
         command: "grade-compare",
         cells: prepared.cells.length,
@@ -681,16 +691,15 @@ export default defineCommand({
       if (parsed.json) {
         printJson(buildGradeCompareSuccessPayload(sheet, prepared.cells.length, capResult));
       } else {
-        console.log(`\n${c.success("◇")}  Grade comparison saved to ${sheet}`);
+        console.log(`\n${c.success("◇")}  Grade comparison saved to ${terminalText(sheet)}`);
       }
     } catch (err) {
-      const message = normalizeErrorMessage(err);
-      if (jsonRequested) {
-        printJson({ ok: false, error: message });
-      } else {
-        console.error(`\n${c.error("✗")} Grade compare failed: ${message}`);
-      }
-      failCommand();
+      failCaught(
+        err,
+        jsonRequested,
+        (m) => `\n${c.error("✗")} Grade compare failed: ${m}`,
+        printJson,
+      );
     } finally {
       if (preparedDir) {
         rmSync(preparedDir, { recursive: true, force: true });

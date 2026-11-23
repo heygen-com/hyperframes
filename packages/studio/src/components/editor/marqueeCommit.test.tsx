@@ -2,9 +2,15 @@
 import { act, useRef, type RefObject } from "react";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { installReactActEnvironment, mountReactHarness } from "../../hooks/domSelectionTestHarness";
+import {
+  installReactActEnvironment,
+  makeSelection,
+  mountReactHarness,
+} from "../../hooks/domSelectionTestHarness";
+import type { DomEditSelection } from "./domEditing";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import type { DomSelectionResult } from "../../hooks/useDomSelectionTypes";
+import type { MarqueeSelectionMode } from "../../utils/marqueeGeometry";
 import { useMarqueeGestures } from "./marqueeCommit";
 
 vi.mock("../../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
@@ -39,7 +45,13 @@ function Overlay() {
       onPointerMove={marquee.onPointerMove}
       onPointerUp={marquee.onPointerUp}
     >
-      {marquee.marqueeRect && <div data-band data-width={marquee.marqueeRect.width} />}
+      {marquee.marqueeRect && (
+        <div
+          data-band
+          data-width={marquee.marqueeRect.width}
+          data-mode={marquee.marqueeRect.mode}
+        />
+      )}
     </div>
   );
 }
@@ -55,6 +67,7 @@ function MarqueeSurface({
     <div
       ref={overlayRef}
       data-band-overlay
+      data-candidates={marquee.candidateRects.length}
       onPointerDown={marquee.begin}
       onPointerMove={marquee.onPointerMove}
       onPointerUp={marquee.onPointerUp}
@@ -66,10 +79,12 @@ function TestMarquee({
   iframeRef,
   onSelect,
   resolveHits,
+  groupSelectionsRef,
 }: {
   iframeRef: RefObject<HTMLIFrameElement | null>;
-  onSelect: (selections: HTMLElement[], additive: boolean) => DomSelectionResult | void;
+  onSelect: (selections: HTMLElement[], mode: MarqueeSelectionMode) => DomSelectionResult | void;
   resolveHits: (elements: HTMLElement[]) => HTMLElement[] | Promise<HTMLElement[]>;
+  groupSelectionsRef?: RefObject<DomEditSelection[]>;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const marquee = useMarqueeGestures({
@@ -78,8 +93,18 @@ function TestMarquee({
     activeCompositionPathRef: useRef<string | null>("index.html"),
     onMarqueeSelectRef: { current: onSelect },
     resolveHits,
+    groupSelectionsRef,
   });
   return <MarqueeSurface overlayRef={overlayRef} marquee={marquee} />;
+}
+
+function previewWithTwoElements() {
+  const iframe = document.createElement("iframe");
+  const doc = document.implementation.createHTMLDocument("preview");
+  doc.body.innerHTML =
+    '<div data-composition-id="main"><h1 id="title">Title</h1><p id="subtitle">Subtitle</p></div>';
+  Object.defineProperty(iframe, "contentDocument", { value: doc });
+  return { iframe, doc };
 }
 
 const pointer = (
@@ -88,6 +113,7 @@ const pointer = (
   clientY: number,
   selector = "[data-overlay]",
   shiftKey = false,
+  altKey = false,
 ) =>
   act(() => {
     document.querySelector(selector)!.dispatchEvent(
@@ -99,6 +125,7 @@ const pointer = (
         clientX,
         clientY,
         shiftKey,
+        altKey,
       }),
     );
   });
@@ -214,7 +241,10 @@ it.each([
     doc.body.innerHTML =
       '<div data-composition-id="main"><h1 id="title">Title</h1><p id="subtitle">Subtitle</p></div>';
     Object.defineProperty(iframe, "contentDocument", { value: doc });
-    const apply = vi.fn((_selections: HTMLElement[], _additive: boolean) => ({ changed, count }));
+    const apply = vi.fn((_selections: HTMLElement[], _mode: MarqueeSelectionMode) => ({
+      changed,
+      count,
+    }));
     const band = mountReactHarness(
       <TestMarquee
         iframeRef={{ current: iframe }}
@@ -244,3 +274,106 @@ it.each([
     }
   },
 );
+
+it.each([
+  ["no modifier", false, false, "replace"],
+  ["Shift", true, false, "add"],
+  ["Alt", false, true, "subtract"],
+  ["Shift and Alt", true, true, "subtract"],
+] as const)("a band released with %s commits in %s mode", async (_, shiftKey, altKey, mode) => {
+  const iframe = document.createElement("iframe");
+  const doc = document.implementation.createHTMLDocument("preview");
+  doc.body.innerHTML = '<div data-composition-id="main"><h1 id="title">Title</h1></div>';
+  Object.defineProperty(iframe, "contentDocument", { value: doc });
+  const apply = vi.fn((_selections: HTMLElement[], _mode: MarqueeSelectionMode) => undefined);
+  const band = mountReactHarness(
+    <TestMarquee
+      iframeRef={{ current: iframe }}
+      onSelect={apply}
+      resolveHits={(elements) => elements}
+    />,
+  );
+  const fire = (type: string, x: number, y: number) =>
+    pointer(type, x, y, "[data-band-overlay]", shiftKey, altKey);
+  try {
+    fire("pointerdown", 0, 0);
+    fire("pointermove", 120, 90);
+    await act(async () => {
+      fire("pointerup", 120, 90);
+    });
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(apply.mock.calls[0]![1]).toBe(mode);
+  } finally {
+    act(() => band.unmount());
+  }
+});
+
+it("the modifiers held at release decide: a band dragged with Alt but released without commits a replace", async () => {
+  const { iframe } = previewWithTwoElements();
+  const apply = vi.fn((_selections: HTMLElement[], _mode: MarqueeSelectionMode) => undefined);
+  const band = mountReactHarness(
+    <TestMarquee iframeRef={{ current: iframe }} onSelect={apply} resolveHits={(e) => e} />,
+  );
+  try {
+    pointer("pointerdown", 0, 0, "[data-band-overlay]", false, true);
+    pointer("pointermove", 120, 90, "[data-band-overlay]", false, true);
+    await act(async () => {
+      pointer("pointerup", 120, 90, "[data-band-overlay]", false, false);
+    });
+    expect(apply.mock.calls[0]![1]).toBe("replace");
+  } finally {
+    act(() => band.unmount());
+  }
+});
+
+it("while subtracting, only elements already in the selection are outlined as candidates", () => {
+  const { iframe, doc } = previewWithTwoElements();
+  const title = doc.getElementById("title")!;
+  const groupSelectionsRef = { current: [makeSelection("Title", title)] };
+  const band = mountReactHarness(
+    <TestMarquee
+      iframeRef={{ current: iframe }}
+      onSelect={() => undefined}
+      resolveHits={(e) => e}
+      groupSelectionsRef={groupSelectionsRef}
+    />,
+  );
+  const candidates = () =>
+    document.querySelector<HTMLElement>("[data-band-overlay]")?.dataset.candidates;
+  try {
+    pointer("pointerdown", 0, 0, "[data-band-overlay]");
+    pointer("pointermove", 120, 90, "[data-band-overlay]");
+    expect(candidates()).toBe("2");
+    pointer("pointermove", 130, 90, "[data-band-overlay]", false, true);
+    expect(candidates()).toBe("1");
+    pointer("pointermove", 140, 90, "[data-band-overlay]", true, false);
+    expect(candidates()).toBe("2");
+  } finally {
+    act(() => band.unmount());
+  }
+});
+
+it("the band reports the mode its modifiers select while it is drawn", () => {
+  const mode = () => document.querySelector<HTMLElement>("[data-band]")?.dataset.mode;
+  pointer("pointerdown", 10, 10);
+  pointer("pointermove", 120, 90);
+  expect(mode()).toBe("replace");
+  pointer("pointermove", 130, 90, "[data-overlay]", true);
+  expect(mode()).toBe("add");
+  pointer("pointermove", 140, 90, "[data-overlay]", false, true);
+  expect(mode()).toBe("subtract");
+});
+
+it("a plain click with no band in flight replaces the selection with nothing", () => {
+  const apply = vi.fn((_selections: HTMLElement[], _mode: MarqueeSelectionMode) => undefined);
+  const band = mountReactHarness(
+    <TestMarquee iframeRef={{ current: null }} onSelect={apply} resolveHits={(e) => e} />,
+  );
+  try {
+    pointer("pointerdown", 0, 0, "[data-band-overlay]", false, true);
+    pointer("pointerup", 0, 0, "[data-band-overlay]", false, true);
+    expect(apply).toHaveBeenCalledWith([], "replace");
+  } finally {
+    act(() => band.unmount());
+  }
+});

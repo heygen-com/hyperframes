@@ -5,7 +5,18 @@ export * from "./ui";
 export { EditorShell } from "./components/EditorShell";
 export type { EditorShellProps } from "./components/EditorShell";
 export { NLEPreview } from "./components/nle/NLEPreview";
-export { DEFAULT_SHORTCUT_SECTIONS } from "./player/components/studioShortcuts";
+export {
+  DEFAULT_SHORTCUT_SECTIONS,
+  DEFAULT_STUDIO_KEYS,
+  buildShortcutSections,
+  getStudioKeys,
+  setStudioKeys,
+  studioKeyClash,
+  useStudioKeys,
+} from "./player/components/studioShortcuts";
+export { formatCombo, matchCombo, parseCombo } from "@hyperframes/core/key-combo";
+export type { Combo } from "@hyperframes/core/key-combo";
+export type { StudioKeyAction, StudioKeys } from "./player/components/studioShortcuts";
 export { ShortcutsButton } from "./player/components/ShortcutsPanel";
 export { dispatchLinkShortcut } from "./hooks/linkShortcuts";
 export type { LinkShortcutCallbacks } from "./hooks/linkShortcuts";
@@ -34,6 +45,36 @@ export {
   formatTime,
 } from "./player";
 export { usePreviewIframeStore } from "./player/store/previewIframeStore";
+export {
+  previewDocumentCopy,
+  previewEditingClient,
+  previewFrameOpaque,
+} from "./player/lib/previewChannel";
+export {
+  describePreviewElements,
+  previewAncestors,
+  previewElementsAtPoint,
+  previewGeometry,
+  previewLayers,
+  previewPointerTargets,
+  queryPreviewElements,
+  type PreviewElement,
+  type PreviewElementHit,
+} from "./player/lib/previewElements";
+export {
+  findPreviewElementForSelection,
+  findPreviewElementForTimelineElement,
+  readable,
+  standInFor,
+  standInHandle,
+} from "./components/editor/previewSelection";
+export { PREVIEW_QUALITY_LEVELS, type PreviewQuality } from "@hyperframes/core/preview-quality";
+export type {
+  PlaybackHealth,
+  PreviewCopies,
+  PreviewFacts,
+  PreviewQualityChosenBy,
+} from "./player/store/previewQualitySlice";
 export {
   openAudioGainDialog,
   useAudioGainDialogStore,
@@ -80,6 +121,7 @@ export { ImageThumbnail } from "./player/components/ImageThumbnail";
 export type { ImageThumbnailProps } from "./player/components/ImageThumbnail";
 export { useRenderClipContent } from "./hooks/useRenderClipContent";
 export { useThumbnailStill } from "./hooks/useThumbnailStill";
+export { fetchParsedAnimations, getAnimationsForElement } from "./hooks/useGsapTweenCache";
 export type { ThumbnailStill, UseThumbnailStillOptions } from "./hooks/useThumbnailStill";
 export type { UseRenderClipContentOptions } from "./hooks/useRenderClipContent";
 export type { ThumbnailPriority } from "./player/lib/thumbnailScheduler";
@@ -264,7 +306,12 @@ export { useMarqueeGestures } from "./components/editor/marqueeCommit";
 export type { MarqueeGestures, MarqueeGesturesDeps } from "./components/editor/marqueeCommit";
 export { MarqueeOverlay } from "./components/editor/MarqueeOverlay";
 export type { MarqueeOverlayProps } from "./components/editor/MarqueeOverlay";
-export type { Rect as MarqueeRect } from "./utils/marqueeGeometry";
+export type {
+  Rect as MarqueeRect,
+  MarqueeBand,
+  MarqueeSelectionMode,
+} from "./utils/marqueeGeometry";
+export { resolveMarqueeMode } from "./utils/marqueeGeometry";
 
 export { buildStudioTools } from "./webmcp/useStudioAgentTools";
 export type { StudioAgentToolsDeps } from "./webmcp/useStudioAgentTools";

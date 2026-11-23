@@ -5,7 +5,7 @@ import {
   SYSTEM_FONT_SIZE_LIMIT,
 } from "./systemFontLocator";
 
-describe("systemFontLocator", { timeout: 15_000 }, () => {
+describe("systemFontLocator", () => {
   beforeAll(() => {
     clearSystemFontCache();
   });

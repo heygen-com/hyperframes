@@ -21,10 +21,10 @@
  * chain the color-grading runtime uses: `__hfVariablesByComp[compId]` for
  * inlined sub-compositions, then the top-level merged `getVariables()`.
  *
- * Applied at init AND re-applied after the composition loader inlines
- * external / template sub-compositions (their DOM and per-instance scoped
- * values don't exist at init). Idempotent: re-applying writes the same
- * values.
+ * Text is bound before composition scripts run; all of it at init and after
+ * the composition loader inlines external / template sub-compositions (their
+ * DOM and per-instance scoped values don't exist at init). Idempotent:
+ * re-applying writes the same values.
  */
 
 import { readVariablesForElement } from "./variableScope";
@@ -145,7 +145,12 @@ function applyCssCustomProperties(roots: Iterable<Element>, cache: ScopeValuesCa
   }
 }
 
-function variableSrcFor(el: Element, cache: ScopeValuesCache, warn = true): string | null {
+/** The src `values` bind to `el` through its `data-var-src`, or null when nothing safe is bound. */
+export function boundMediaSrc(
+  el: Element,
+  values: Record<string, unknown>,
+  warn = true,
+): string | null {
   const id = el.getAttribute("data-var-src")?.trim();
   if (!id) return null;
   // Only media elements may take a variable-driven src (see VAR_SRC_TAGS) — a
@@ -157,7 +162,7 @@ function variableSrcFor(el: Element, cache: ScopeValuesCache, warn = true): stri
       );
     return null;
   }
-  const url = resolveUrl(valuesForElement(el, cache)[id]);
+  const url = resolveUrl(values[id]);
   if (url === null) return null;
   if (!isSafeMediaUrl(url)) {
     if (warn) console.warn(`[hyperframes] Ignoring data-var-src="${id}": unsafe URL protocol.`);
@@ -166,18 +171,24 @@ function variableSrcFor(el: Element, cache: ScopeValuesCache, warn = true): stri
   return url;
 }
 
+function variableSrcFor(el: Element, cache: ScopeValuesCache, warn = true): string | null {
+  return boundMediaSrc(el, valuesForElement(el, cache), warn);
+}
+
 /** The src an element loads, preview proxy aside: its bound variable's value, else its attribute. */
 export function unproxiedMediaSrc(el: Element): string | null {
   return variableSrcFor(el, new Map(), false) ?? unproxiedSrc(el);
 }
 
+const matching = (doc: Document, within: Element | undefined, selector: string): Element[] =>
+  within
+    ? [...(within.matches(selector) ? [within] : []), ...within.querySelectorAll(selector)]
+    : Array.from(doc.querySelectorAll(selector));
+
 /** Applies the bindings in `doc`, or only those inside `within` and `within` itself. */
 export function applyVariableBindings(doc: Document, within?: Element): void {
   const cache: ScopeValuesCache = new Map();
-  const all = (selector: string): Element[] =>
-    within
-      ? [...(within.matches(selector) ? [within] : []), ...within.querySelectorAll(selector)]
-      : Array.from(doc.querySelectorAll(selector));
+  const all = (selector: string) => matching(doc, within, selector);
   const topRoot = within ? null : findTopRoot(doc);
   applyCssCustomProperties([...(topRoot ? [topRoot] : []), ...all("[data-composition-id]")], cache);
 
@@ -185,11 +196,24 @@ export function applyVariableBindings(doc: Document, within?: Element): void {
     const url = variableSrcFor(el, cache);
     if (url !== null && unproxiedSrc(el) !== url) el.setAttribute("src", url);
   }
+  bindText(all("[data-var-text]"), cache);
+}
 
-  for (const el of all("[data-var-text]")) {
+/** Binds only text, in `doc` or inside `within`: what composition scripts read before they run. */
+export function applyTextBindings(doc: Document, within?: Element): void {
+  bindText(matching(doc, within, "[data-var-text]"), new Map());
+}
+
+const textWrittenOnce = new WeakSet<Element>();
+
+/** Writes each binding once: a script may then reshape the text, which a second write would duplicate. */
+function bindText(elements: Element[], cache: ScopeValuesCache): void {
+  for (const el of elements) {
     const id = el.getAttribute("data-var-text")?.trim();
-    if (!id) continue;
+    if (!id || textWrittenOnce.has(el)) continue;
     const value = valuesForElement(el, cache)[id];
-    if (isScalar(value)) setOwnTextPreservingChildren(el, String(value));
+    if (!isScalar(value)) continue;
+    setOwnTextPreservingChildren(el, String(value));
+    textWrittenOnce.add(el);
   }
 }

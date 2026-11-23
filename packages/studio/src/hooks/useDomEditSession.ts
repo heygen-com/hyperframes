@@ -12,6 +12,7 @@ import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
+import { textEditNotSaved } from "./useDomEditTextCommits";
 import { useGroupCommits } from "./useGroupCommits";
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import { useGsapCacheVersion } from "./useGsapTweenCache";
@@ -21,6 +22,7 @@ import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useKeyframeEaseCommits } from "./useKeyframeEaseCommits";
 import { useCommitPreflightCapabilities } from "./useCommitPreflightCapabilities";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import { selectionDataAttribute } from "../components/editor/previewSelection";
 import { membersForDelete, timelineElementsForDelete } from "./domEditDeleteMembers";
 import type { RecordEditInput } from "./domEditDeleteMembers";
 import type { DomEditTimelineParams } from "./useDomSelectionTypes";
@@ -63,6 +65,7 @@ export interface UseDomEditSessionParams extends DomEditTimelineParams {
   readOnlyPreview: boolean;
 }
 
+// fallow-ignore-next-line complexity
 export function useDomEditSession({
   projectId,
   activeCompPath,
@@ -122,7 +125,6 @@ export function useDomEditSession({
     buildDomSelectionForTimelineElement,
     handleTimelineElementSelect,
     refreshDomEditSelectionFromPreview,
-    refreshDomEditGroupSelectionsFromPreview,
     applyMarqueeSelection,
   } = useDomSelection({
     projectId,
@@ -352,7 +354,7 @@ export function useDomEditSession({
 
   const handleUngroupSelection = useCallback(() => {
     const sel = domEditSelectionRef.current;
-    if (!sel?.element.hasAttribute("data-hf-group")) {
+    if (!sel || selectionDataAttribute(sel, "data-hf-group") === null) {
       showToast("Select a group to ungroup", "info");
       return;
     }
@@ -361,6 +363,11 @@ export function useDomEditSession({
     setActiveGroupElement(null);
     void ungroupSelection(sel);
   }, [domEditSelectionRef, ungroupSelection, setActiveGroupElement, showToast]);
+
+  const handleDomTextEditLost = useCallback(
+    (reason: string) => showToast(textEditNotSaved(reason), "error"),
+    [showToast],
+  );
 
   // ── Wiring: selection sync, GSAP cache, preview sync, selection handlers ──
   const {
@@ -394,8 +401,7 @@ export function useDomEditSession({
     activeCompPath,
     domEditSelection,
     domEditSelectionRef,
-    domEditGroupSelectionsRef,
-    refreshDomEditGroupSelectionsFromPreview,
+    refreshDomEditSelectionFromPreview,
     previewIframeRef,
     previewIframe,
     captionEditMode: previewCaptionEditMode,
@@ -406,8 +412,6 @@ export function useDomEditSession({
     refreshPreviewDocumentVersion,
     syncPreviewHotkeys,
     applyStudioManualEditsToPreviewRef,
-    applyDomSelection,
-    buildDomSelectionFromTarget,
     openSourceForSelection,
     ...gsapScriptEdits,
     handleDomManualEditsReset,
@@ -488,7 +492,6 @@ export function useDomEditSession({
     copiedAgentPrompt,
     agentPromptSelectionContext,
     domEditSelectionRef,
-    // Callbacks
     handleTimelineElementSelect,
     handlePreviewCanvasMouseDown,
     handlePreviewCanvasPointerMove,
@@ -514,6 +517,7 @@ export function useDomEditSession({
     handleDomTextCommit,
     handleDomTextCommitForSelection,
     handleDomRichTextCommit,
+    handleDomTextEditLost,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,

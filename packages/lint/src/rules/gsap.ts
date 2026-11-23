@@ -1,4 +1,7 @@
-import { gsapCallOffset, containingCallOffset } from "../scriptPositions";
+import { replaceBlockComments } from "../linearScans";
+import postcss from "postcss";
+import { styleRoot } from "../styleRoots";
+import { gsapCallOffset, containingCallOffset, gsapRunsWhenScriptRuns } from "../scriptPositions";
 interface LintParsedGsap {
   animations: Array<{
     targetSelector: string;
@@ -37,6 +40,7 @@ import type { HyperframeLintFinding, LintRule } from "../types";
 import type { OpenTag } from "../utils";
 import {
   readAttr,
+  readTagAttr,
   readDecodedAttr,
   truncateSnippet,
   stripJsComments,
@@ -66,6 +70,27 @@ type GsapWindow = {
 };
 
 const SCENE_BOUNDARY_EPSILON_SECONDS = 0.05;
+const TWEEN_ENDPOINT_EPSILON_SECONDS = 0.001;
+
+/** Where two windows overlap; a zero-length one (a `set`) only by landing inside the other (`running`). */
+function windowOverlap(
+  a: GsapWindow,
+  b: GsapWindow,
+): { start: number; end: number; running?: GsapWindow } | null {
+  const aIsPoint = a.end <= a.position;
+  const bIsPoint = b.end <= b.position;
+  if (aIsPoint && bIsPoint) return null;
+  if (aIsPoint || bIsPoint) {
+    const [point, running] = aIsPoint ? [a, b] : [b, a];
+    const inside =
+      point.position > running.position + TWEEN_ENDPOINT_EPSILON_SECONDS &&
+      point.position < running.end - TWEEN_ENDPOINT_EPSILON_SECONDS;
+    return inside ? { start: point.position, end: point.position, running } : null;
+  }
+  const start = Math.max(a.position, b.position);
+  const end = Math.min(a.end, b.end);
+  return end - start > TWEEN_ENDPOINT_EPSILON_SECONDS ? { start, end } : null;
+}
 
 // Sentinel the GSAP parser assigns to a tween whose target it cannot statically
 // resolve to a concrete element (a computed variable, a helper call, etc.). It is
@@ -79,7 +104,7 @@ const UNRESOLVED_TARGET = "__unresolved__";
 function targetHasNoStableIdentity(selector: string, identity?: string): boolean {
   if (identity) return false;
   return (
-    selector === UNRESOLVED_TARGET || selector === "dwell/hold" || selector.startsWith("proxy → ")
+    selector === UNRESOLVED_TARGET || selector === "dwell/hold" || selector.startsWith("proxy ")
   );
 }
 
@@ -180,6 +205,17 @@ function stringValue(value: string | number | undefined): string | null {
   return null;
 }
 
+function fromToGroupSharesFromProperty(windows: GsapWindow[]): boolean {
+  if (windows.some((win) => win.fromPropertyValues === undefined)) return true;
+  const counts = new Map<string, number>();
+  for (const win of windows) {
+    for (const key of Object.keys(win.fromPropertyValues ?? {})) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  return [...counts.values()].some((count) => count >= 2);
+}
+
 function zeroValue(value: string | number | undefined): boolean {
   if (typeof value === "number") return value === 0;
   if (typeof value !== "string") return false;
@@ -205,7 +241,7 @@ function collectStaticCssVariableDefinitions(
   ];
   const definitionPattern = /(?:^|[;{])\s*(--[A-Za-z0-9_-]+)\s*:/gm;
   for (const source of sources) {
-    const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, " ");
+    const withoutComments = replaceBlockComments(source, " ");
     for (const match of withoutComments.matchAll(definitionPattern)) {
       if (match[1]) definitions.add(match[1]);
     }
@@ -241,7 +277,10 @@ function hiddenSetTargetSelectors(target: string, aliases: Map<string, string>):
   return parts
     .flatMap((part) => {
       const trimmed = part.trim();
-      const resolved = /^(["'`])([^"'`]+)\1$/.exec(trimmed)?.[2] ?? aliases.get(trimmed);
+      const resolved =
+        /^(["'`])([^"'`]+)\1$/.exec(trimmed)?.[2] ??
+        /^[\w$.]+\.querySelector(?:All)?\(\s*(["'`])([^"'`]+)\1\s*\)$/.exec(trimmed)?.[2] ??
+        aliases.get(trimmed);
       return resolved === undefined ? [] : resolved.split(",");
     })
     .map((selector) => selector.trim())
@@ -258,8 +297,13 @@ function extractStandaloneHiddenSelectors(script: string): Set<string> {
   )) {
     aliases.set(match[1] ?? "", match[3] ?? "");
   }
+  for (const match of source.matchAll(
+    /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[\w$.]+\.querySelector(?:All)?\(\s*(["'`])([^"'`]+)\2\s*\)/g,
+  )) {
+    aliases.set(match[1] ?? "", match[3] ?? "");
+  }
   const pattern =
-    /gsap\.set\s*\(\s*(\[[^[\]]*\]|"[^"]*"|'[^']*'|`[^`]*`|[^,()[\]]+?)\s*,\s*\{([\s\S]*?)\}\s*\)/g;
+    /gsap\.set\s*\(\s*(\[[^[\]]*\]|"[^"]*"|'[^']*'|`[^`]*`|[\w$.]+\.querySelector(?:All)?\(\s*(?:"[^"]*"|'[^']*'|`[^`]*`)\s*\)|[^,()[\]]+?)\s*,\s*\{([\s\S]*?)\}\s*\)/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(source)) !== null) {
     // Skip callback/handler bodies; keep IIFEs (they run at parse time).
@@ -379,10 +423,35 @@ function styleLooksFullFrameOverlay(style: string): boolean {
   return coversFrame && styleHasOpaqueBackground(style);
 }
 
+// The `[selectorList, body]` pairs `/(?<![^{}])([^{}]+)\{([^}]+)\}/g` matches, found in linear
+// time: a run of non-braces, then `{`, then everything up to the next `}`. The next `}` is cached,
+// because rescanning for it from every `{` is quadratic on a style with many `{` and no `}`.
+function styleRuleBodies(css: string): Array<[selectorList: string, body: string]> {
+  const out: Array<[string, string]> = [];
+  let start = 0;
+  let close = 0;
+  while (start < css.length) {
+    let brace = start;
+    while (brace < css.length && css[brace] !== "{" && css[brace] !== "}") brace++;
+    if (brace === css.length) break;
+    if (css[brace] === "{" && brace > start) {
+      if (close !== -1 && close <= brace) close = css.indexOf("}", brace + 1);
+      if (close === -1) break;
+      if (close > brace + 1) {
+        out.push([css.slice(start, brace), css.slice(brace + 1, close)]);
+        start = close + 1;
+        continue;
+      }
+    }
+    start = brace + 1;
+  }
+  return out;
+}
+
 function collectSimpleStyleRules(styles: LintContext["styles"]): Map<string, string> {
   const rules = new Map<string, string>();
   for (const style of styles) {
-    for (const [, selectorList, body] of style.content.matchAll(/([^{}]+)\{([^}]+)\}/g)) {
+    for (const [selectorList, body] of styleRuleBodies(style.content)) {
       if (!selectorList || !body) continue;
       for (const selector of selectorList.split(",")) {
         const token = selector.trim();
@@ -396,15 +465,15 @@ function collectSimpleStyleRules(styles: LintContext["styles"]): Map<string, str
 
 function tagSimpleSelectors(tag: OpenTag): string[] {
   const selectors: string[] = [];
-  const id = readAttr(tag.raw, "id");
+  const id = readTagAttr(tag, "id");
   if (id) selectors.push(`#${id}`);
-  const classes = readAttr(tag.raw, "class")?.split(/\s+/).filter(Boolean) ?? [];
+  const classes = readTagAttr(tag, "class")?.split(/\s+/).filter(Boolean) ?? [];
   for (const className of classes) selectors.push(`.${className}`);
   return selectors;
 }
 
 function combinedTagStyle(tag: OpenTag, styleRules: Map<string, string>): string {
-  const styles = [readAttr(tag.raw, "style") || ""];
+  const styles = [readTagAttr(tag, "style") || ""];
   for (const selector of tagSimpleSelectors(tag)) {
     const ruleStyle = styleRules.get(selector);
     if (ruleStyle) styles.push(ruleStyle);
@@ -856,12 +925,33 @@ function expressionReachesMeasurement(expression: string, measuring: Set<string>
   return false;
 }
 
+const LINE_TERMINATOR = /[\n\r\u2028\u2029]/;
+
+// Whether `id` is `parts` in order with a gap of non-line-terminators between each pair, the
+// language of `^a.*b.*c$`, checked with leftmost indexOf so time stays linear in the id.
+function matchesTemplateParts(id: string, parts: string[]): boolean {
+  const first = parts[0] ?? "";
+  const last = parts[parts.length - 1] ?? "";
+  if (parts.length === 1) return id === first;
+  if (!id.startsWith(first)) return false;
+  let at = first.length;
+  for (const part of parts.slice(1, -1)) {
+    const found = id.indexOf(part, at);
+    if (found === -1 || LINE_TERMINATOR.test(id.slice(at, found))) return false;
+    at = found + part.length;
+  }
+  const end = id.length - last.length;
+  return end >= at && id.endsWith(last) && !LINE_TERMINATOR.test(id.slice(at, end));
+}
+
 // Resolve script-level element variables to the simple selector tokens they can
 // denote: literal getElementById/querySelector lookups, template-literal ids
 // matched against the document's actual ids, and script-assigned class names
 // (createElementNS + setAttribute("class", ...)). Anything else stays unresolved.
-function resolveScriptElementTokens(source: string, tags: OpenTag[]): Map<string, Set<string>> {
-  const documentIds = tags.map((tag) => readAttr(tag.raw, "id")).filter((id) => id !== null);
+function resolveScriptElementTokens(
+  source: string,
+  documentIds: readonly string[],
+): Map<string, Set<string>> {
   const tokensByVar = new Map<string, Set<string>>();
   const add = (name: string, token: string): void => {
     const tokens = tokensByVar.get(name) ?? new Set<string>();
@@ -882,9 +972,8 @@ function resolveScriptElementTokens(source: string, tags: OpenTag[]): Map<string
     // A template with no literal segments (`getElementById(\`${name}\`)`) would
     // match EVERY id in the document — treat it as unresolved instead.
     if (staticParts.every((part) => part === "")) continue;
-    const idPattern = new RegExp(`^${staticParts.map(escapeRegExp).join(".*")}$`);
     for (const id of documentIds) {
-      if (idPattern.test(id)) add(match[1] ?? "", `#${id}`);
+      if (matchesTemplateParts(id, staticParts)) add(match[1] ?? "", `#${id}`);
     }
   }
   for (const match of source.matchAll(
@@ -977,6 +1066,27 @@ function indexInsideNonIifeRange(
 // opacity to EXACTLY zero. The declaration regex is boundary-anchored so
 // `opacity: 0.98` never matches; it ends at `;` or end of input, which also
 // catches a final declaration without a trailing semicolon.
+function cssRuleSubjects(
+  styles: LintContext["styles"],
+): Array<{ declarations: string[]; subjects: string[] }> {
+  const rules: Array<{ declarations: string[]; subjects: string[] }> = [];
+  for (const style of styles) {
+    let root: postcss.Root;
+    try {
+      root = styleRoot(style);
+    } catch {
+      continue;
+    }
+    root.walkRules((rule) => {
+      const subjects = rule.selectors.flatMap(
+        (selector) => /[#.][a-zA-Z0-9_-]+$/.exec(selector.trim())?.[0] ?? [],
+      );
+      if (subjects.length) rules.push({ declarations: rule.nodes.map(String), subjects });
+    });
+  }
+  return rules;
+}
+
 function collectCssOpacityZeroSelectors(
   styles: LintContext["styles"],
   tags: OpenTag[],
@@ -984,14 +1094,9 @@ function collectCssOpacityZeroSelectors(
   const selectors = new Set<string>();
   const opacityExactlyZero = /opacity\s*:\s*0(?:\.0+)?\s*(?:;|$)/;
 
-  for (const style of styles) {
-    for (const [, selector, body] of style.content.matchAll(
-      /([#.][a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g,
-    )) {
-      if (body && opacityExactlyZero.test(body)) {
-        selectors.add((selector ?? "").trim());
-      }
-    }
+  for (const { declarations, subjects } of cssRuleSubjects(styles)) {
+    if (!declarations.some((declaration) => opacityExactlyZero.test(declaration))) continue;
+    for (const subject of subjects) selectors.add(subject);
   }
 
   for (const tag of tags) {
@@ -1070,6 +1175,22 @@ export const gsapRules: LintRule<LintContext>[] = [
 
     const styleRules = collectSimpleStyleRules(styles);
     const reportedVisibleOverlayKeys = new Set<string>();
+    const visibleOverlays = tags.flatMap((tag) => {
+      const selectors = tagSimpleSelectors(tag);
+      if (selectors.length === 0) return [];
+      const authoredStyle = combinedTagStyle(tag, styleRules);
+      if (!authoredStyle || !styleLooksFullFrameOverlay(authoredStyle)) return [];
+      if (styleHasHiddenInitialState(authoredStyle)) return [];
+      return [{ tag, selectors, overlayKey: readTagAttr(tag, "id") || String(tag.index) }];
+    });
+    const overlaysByToken = new Map<string, number[]>();
+    visibleOverlays.forEach(({ selectors }, at) => {
+      for (const token of selectors) {
+        const list = overlaysByToken.get(token);
+        if (list) list.push(at);
+        else overlaysByToken.set(token, [at]);
+      }
+    });
 
     for (const script of scripts) {
       const gsapWindows = await cachedExtractGsapWindows(script.content);
@@ -1078,31 +1199,34 @@ export const gsapRules: LintRule<LintContext>[] = [
       for (let i = 0; i < gsapWindows.length; i++) {
         const left = gsapWindows[i];
         if (!left) continue;
-        if (left.end <= left.position) continue;
         // Unresolved targets are unknown elements: two of them are not provably
         // the same element, so an overlap between them cannot be asserted.
         if (targetHasNoStableIdentity(left.targetSelector, left.targetIdentity)) continue;
         for (let j = i + 1; j < gsapWindows.length; j++) {
           const right = gsapWindows[j];
           if (!right) continue;
-          if (right.end <= right.position) continue;
           const leftIdentity = left.targetIdentity ?? left.targetSelector;
           const rightIdentity = right.targetIdentity ?? right.targetSelector;
           if (leftIdentity !== rightIdentity) continue;
-          const overlapStart = Math.max(left.position, right.position);
-          const overlapEnd = Math.min(left.end, right.end);
-          if (overlapEnd <= overlapStart) continue;
+          const overlap = windowOverlap(left, right);
+          if (!overlap) continue;
           if (left.overwriteAuto || right.overwriteAuto) continue;
           const sharedProperties = left.properties.filter((prop) =>
             right.properties.includes(prop),
           );
           if (sharedProperties.length === 0) continue;
+          const properties = sharedProperties.join(", ");
+          const { running } = overlap;
           findings.push({
             code: "overlapping_gsap_tweens",
             severity: "warning",
-            message: `GSAP tweens overlap on "${left.targetSelector}" for ${sharedProperties.join(", ")} between ${overlapStart.toFixed(2)}s and ${overlapEnd.toFixed(2)}s.`,
+            message: running
+              ? `A GSAP set on "${left.targetSelector}" for ${properties} fires at ${overlap.start.toFixed(2)}s while a tween on it is still running (${running.position.toFixed(2)}s to ${running.end.toFixed(2)}s).`
+              : `GSAP tweens overlap on "${left.targetSelector}" for ${properties} between ${overlap.start.toFixed(2)}s and ${overlap.end.toFixed(2)}s.`,
             selector: left.targetSelector,
-            fixHint: 'Shorten the earlier tween, move the later tween, or add `overwrite: "auto"`.',
+            fixHint: running
+              ? `Let the tween finish before the set fires: move the set to ${running.end.toFixed(2)}s or later, or shorten the tween. Played in order the set wins; seeked (scrub, export) the tween can win, so an old state stays visible.`
+              : 'Shorten the earlier tween, move the later tween, or add `overwrite: "auto"`.',
             snippet: truncateSnippet(`${left.raw}\n${right.raw}`),
           });
         }
@@ -1119,7 +1243,7 @@ export const gsapRules: LintRule<LintContext>[] = [
       }
 
       const repeatedFromToGroups = [...fromToWindowsBySelector.values()].filter(
-        (windows) => windows.length >= 2,
+        (windows) => windows.length >= 2 && fromToGroupSharesFromProperty(windows),
       );
       for (const fromToWindows of repeatedFromToGroups) {
         const firstFromTo = fromToWindows[0];
@@ -1157,22 +1281,26 @@ export const gsapRules: LintRule<LintContext>[] = [
       }
 
       // gsap_fullscreen_overlay_starts_visible
-      for (const tag of tags) {
-        const selectors = tagSimpleSelectors(tag);
-        if (selectors.length === 0) continue;
-        const overlayKey = readAttr(tag.raw, "id") || String(tag.index);
+      const windowTokens = new Map(
+        gsapWindows.map((win) => [win, targetedSelectorTokens(win.targetSelector)]),
+      );
+      const showsOrHides = (win: GsapWindow) =>
+        win.properties.some((prop) =>
+          ["opacity", "autoAlpha", "visibility", "display"].includes(prop),
+        );
+      // Only overlays some visibility tween names can be flagged; walking every overlay per script made it quadratic.
+      const targeted = new Set<number>();
+      for (const win of gsapWindows.filter(showsOrHides))
+        for (const token of windowTokens.get(win)!)
+          for (const at of overlaysByToken.get(token) ?? []) targeted.add(at);
+      for (const at of [...targeted].sort((a, b) => a - b)) {
+        const { tag, selectors, overlayKey } = visibleOverlays[at]!;
         if (reportedVisibleOverlayKeys.has(overlayKey)) continue;
-        const authoredStyle = combinedTagStyle(tag, styleRules);
-        if (!authoredStyle || !styleLooksFullFrameOverlay(authoredStyle)) continue;
-        if (styleHasHiddenInitialState(authoredStyle)) continue;
 
         const visibilityWindows = gsapWindows
           .filter((win) => {
-            const tokens = targetedSelectorTokens(win.targetSelector);
-            if (!selectors.some((selector) => tokens.has(selector))) return false;
-            return win.properties.some((prop) =>
-              ["opacity", "autoAlpha", "visibility", "display"].includes(prop),
-            );
+            const tokens = windowTokens.get(win)!;
+            return selectors.some((selector) => tokens.has(selector)) && showsOrHides(win);
           })
           .sort((a, b) => a.position - b.position);
         const startsHiddenAtZero = visibilityWindows.some(
@@ -1182,13 +1310,18 @@ export const gsapRules: LintRule<LintContext>[] = [
               (win.fromPropertyValues !== undefined && isHiddenGsapState(win.fromPropertyValues))),
         );
         if (startsHiddenAtZero) continue;
-        if (selectors.some((selector) => authoredHiddenSelectors.has(selector))) continue;
+        if (
+          selectors.some((selector) =>
+            [...authoredHiddenSelectors].some(
+              (hidden) => hidden === selector || targetedSelectorTokens(hidden).has(selector),
+            ),
+          )
+        )
+          continue;
         const firstVisible = visibilityWindows.find((win) => makesOverlayVisible(win));
         if (!firstVisible) continue;
         const selector =
-          selectors.find((candidate) =>
-            targetedSelectorTokens(firstVisible.targetSelector).has(candidate),
-          ) ||
+          selectors.find((candidate) => windowTokens.get(firstVisible)!.has(candidate)) ||
           selectors[0] ||
           tag.name;
         // A window only re-hides the overlay if it is a DIFFERENT tween that ends
@@ -1270,17 +1403,13 @@ export const gsapRules: LintRule<LintContext>[] = [
     const cssScaleSelectors = new Map<string, string>();
 
     // Check <style> blocks for transform rules
-    for (const style of styles) {
-      for (const [, selector, body] of style.content.matchAll(
-        /([#.][a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g,
-      )) {
-        const tMatch = body?.match(/transform\s*:\s*([^;]+)/);
-        if (!tMatch || !tMatch[1]) continue;
-        const transformVal = tMatch[1].trim();
-        if (/translate/i.test(transformVal))
-          cssTranslateSelectors.set((selector ?? "").trim(), transformVal);
-        if (/scale/i.test(transformVal))
-          cssScaleSelectors.set((selector ?? "").trim(), transformVal);
+    for (const { declarations, subjects } of cssRuleSubjects(styles)) {
+      const tMatch = declarations.join(";").match(/transform\s*:\s*([^;]+)/);
+      if (!tMatch || !tMatch[1]) continue;
+      const transformVal = tMatch[1].trim();
+      for (const subject of subjects) {
+        if (/translate/i.test(transformVal)) cssTranslateSelectors.set(subject, transformVal);
+        if (/scale/i.test(transformVal)) cssScaleSelectors.set(subject, transformVal);
       }
     }
 
@@ -1389,20 +1518,53 @@ export const gsapRules: LintRule<LintContext>[] = [
     const usesGsap = allScriptTexts.some((t) =>
       /gsap\.(to|from|fromTo|timeline|set|registerPlugin)\b/.test(t),
     );
-    const hasGsapScript = allScriptSrcs.some((src) => /gsap/i.test(src));
-    // Detect GSAP bundled inline (no src attribute). Match:
-    // - Producer's CDN-inlining comment: /* inlined: ...gsap... */
-    // - GSAP library internals: _gsScope, GreenSock, gsap.config
-    // - Large inline scripts (>5KB) that reference gsap (likely bundled library)
+    const isGsapCoreSrc = (src: string) =>
+      /(^|\/)gsap(-\d+(\.\d+)*)?(\.min)?\.js$/i.test(src.split(/[?#]/)[0] ?? "");
+    const hasGsapScript = allScriptSrcs.some(isGsapCoreSrc);
+    // Inline core is its inlining marker, license banner or library body, never usage like gsap.defaults().
     const hasInlineGsap = allScriptTexts.some(
       (t) =>
-        /\/\*\s*inlined:.*gsap/i.test(t) ||
-        /\b_gsScope\b/.test(t) ||
-        /\bGreenSock\b/.test(t) ||
-        /\bgsap\.(config|defaults|version)\b/.test(t) ||
-        (t.length > 5000 && /\bgsap\b/i.test(t)),
+        [...t.matchAll(/\/\*\s*inlined:\s*(\S+)\s*\*\//gi)].some((m) =>
+          isGsapCoreSrc(m[1] ?? ""),
+        ) ||
+        /\/\*!\s*\*\s*GSAP\s+\d/.test(t) ||
+        /Missing plugin\? gsap\.registerPlugin\(\)/.test(t) ||
+        /\b_gsScope\b/.test(t),
     );
 
+    if (usesGsap && hasGsapScript && !hasInlineGsap && !canInheritGsapFromHost) {
+      // A classic script runs where it sits, so GSAP must load earlier: a deferred, async or later tag is too late.
+      const classic = (s: { attrs: string }) => {
+        const tag = `<script ${s.attrs}>`;
+        return (
+          (readDecodedAttr(tag, "type") ?? "").toLowerCase() !== "module" &&
+          readDecodedAttr(tag, "defer") === null &&
+          readDecodedAttr(tag, "async") === null
+        );
+      };
+      // defer and async do nothing on an inline script; only a module waits. A use inside a listener runs later.
+      const firstUse = scripts.find(
+        (s) =>
+          !/\bsrc\s*=/.test(s.attrs) &&
+          (readDecodedAttr(`<script ${s.attrs}>`, "type") ?? "").toLowerCase() !== "module" &&
+          gsapRunsWhenScriptRuns(s),
+      );
+      const firstGsap = scripts.find(
+        (s) => classic(s) && isGsapCoreSrc(readAttr(`<script ${s.attrs}>`, "src") || ""),
+      );
+      if (firstUse && (!firstGsap || firstGsap.index > firstUse.index)) {
+        return [
+          {
+            code: "gsap_loaded_after_use",
+            severity: "error",
+            message:
+              "A script calls gsap before the GSAP script has run, so gsap is not there yet and its timeline never registers.",
+            fixHint:
+              "Move the GSAP <script src> above the first script that uses gsap, without defer or async; the <head> is safest.",
+          },
+        ];
+      }
+    }
     if (!usesGsap || hasGsapScript || hasInlineGsap || canInheritGsapFromHost) return [];
     return [
       {
@@ -1635,6 +1797,7 @@ export const gsapRules: LintRule<LintContext>[] = [
       options.isSubComposition || rawSource.trimStart().toLowerCase().startsWith("<template");
 
     for (const script of scripts) {
+      if (script.index === -1) continue;
       const content = script.content;
       if (!/gsap\.timeline/.test(content)) continue;
       const hasRegistration =
@@ -1659,7 +1822,7 @@ export const gsapRules: LintRule<LintContext>[] = [
   },
 
   // gsap_timeline_registered_before_async_build — registering window.__timelines[id]
-  // BEFORE the timeline is built inside document.fonts.ready (or any async callback)
+  // BEFORE the timeline is built inside a font-ready callback
   // leaves an EMPTY timeline registered. The runtime's sub-composition readiness gate
   // treats "key present" as "ready" and nests the child ONCE, while still empty — so the
   // animation never renders when this composition is mounted as a sub-composition.
@@ -1668,14 +1831,16 @@ export const gsapRules: LintRule<LintContext>[] = [
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {
       const content = stripJsComments(script.content);
-      const regIdx = content.search(/window\s*\.\s*__timelines\s*\[/);
+      const regIdx = content.search(
+        /window\s*\.\s*__timelines\s*(?:\[[^\]]+\]|\.\s*[A-Za-z_$][\w$]*)\s*=\s*(?!=)/,
+      );
       if (regIdx < 0) continue;
-      const fontsReadyIdx = content.search(/document\s*\.\s*fonts\s*\.\s*ready/);
+      const fontsReadyIdx = content.search(/document\s*\.\s*fonts\s*\.\s*(?:ready\b|load\s*\()/);
       if (fontsReadyIdx < 0) continue;
       // Registering after the async boundary is the correct pattern — skip it.
       if (regIdx >= fontsReadyIdx) continue;
       // Confirm the build is actually deferred past the boundary (a tween/build call
-      // appears after document.fonts.ready), i.e. the registered timeline starts empty.
+      // appears after the font wait), i.e. the registered timeline starts empty.
       const tail = content.slice(fontsReadyIdx);
       if (!/\.(?:to|from|fromTo)\s*\(|buildEffect\s*\(/.test(tail)) continue;
       findings.push({
@@ -1683,12 +1848,12 @@ export const gsapRules: LintRule<LintContext>[] = [
         severity: "error",
         message:
           "window.__timelines is assigned BEFORE the timeline is built inside " +
-          "document.fonts.ready. An empty timeline registered early gets nested empty " +
+          "document.fonts.ready or document.fonts.load(). An empty timeline registered early gets nested empty " +
           "when this composition is used as a sub-composition (the readiness gate treats " +
           '"key present" as "ready" and never re-nests), so the animation renders blank.',
         fixHint:
           "Move the `window.__timelines[id] = tl;` assignment to the END of the " +
-          "document.fonts.ready callback, after the tweens are added. Optionally call " +
+          "font-ready callback, after the tweens are added. Optionally call " +
           "window.__hfForceTimelineRebind() right after, to re-nest the populated timeline.",
       });
     }
@@ -2266,7 +2431,7 @@ export const gsapRules: LintRule<LintContext>[] = [
 
     const multiDashTokens = new Set<string>();
     for (const style of styles) {
-      for (const [, selectorList, body] of style.content.matchAll(/([^{}]+)\{([^}]+)\}/g)) {
+      for (const [selectorList, body] of styleRuleBodies(style.content)) {
         if (!selectorList || !body) continue;
         const value = readStyleProperty(body, "stroke-dasharray");
         if (!value || !isMultiComponentDasharray(value)) continue;
@@ -2285,9 +2450,10 @@ export const gsapRules: LintRule<LintContext>[] = [
     }
     if (multiDashTokens.size === 0) return findings;
 
+    const documentIds = tags.flatMap((tag) => readTagAttr(tag, "id") ?? []);
     for (const script of scripts) {
       const source = stripJsComments(script.content);
-      const varTokens = resolveScriptElementTokens(source, tags);
+      const varTokens = resolveScriptElementTokens(source, documentIds);
       const reported = new Set<string>();
 
       const writerPattern =
@@ -2414,6 +2580,42 @@ export const gsapRules: LintRule<LintContext>[] = [
     return findings;
   },
 
+  // svg_round_cap_hidden_dash — a round or square cap hides a path with dash == gap == pathLength and
+  // offset == dash. The next dash then starts exactly at the path end, and Chrome's float rounding
+  // leaves a sliver there that the cap paints as a dot, on some curves and not others.
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      const style = readAttr(tag.raw, "style") ?? "";
+      const read = (name: string) => readAttr(tag.raw, name) ?? readStyleProperty(style, name);
+      const cap = read("stroke-linecap");
+      if (cap !== "round" && cap !== "square") continue;
+      const pathLength = Number(readAttr(tag.raw, "pathLength"));
+      const offset = Number(read("stroke-dashoffset"));
+      const dashes = (read("stroke-dasharray") ?? "").split(/[\s,]+/).map(Number);
+      const [dash, gap = dash] = dashes;
+      if (dashes.length > 2 || dash === undefined || gap === undefined) continue;
+      if (![pathLength, offset, dash, gap].every(Number.isFinite) || pathLength <= 0) continue;
+      const period = dash + gap;
+      if (period <= 0 || offset < 0) continue;
+      const nextDashAt = period - (offset % period);
+      if (offset % period < dash || Math.abs(nextDashAt - pathLength) > pathLength * 1e-6) continue;
+      findings.push({
+        code: "svg_round_cap_hidden_dash",
+        severity: "warning",
+        message:
+          `<${tag.name}> is hidden with stroke-dasharray ${dash}${dashes.length > 1 ? ` ${gap}` : ""} and stroke-dashoffset ${offset} ` +
+          `on pathLength ${pathLength}, but its ${cap} cap can still paint a dot at the end of the path (Chrome rounds the zero-length dash differently per curve).`,
+        elementId: readAttr(tag.raw, "id") ?? undefined,
+        fixHint:
+          `Make the gap longer than the path (stroke-dasharray "${pathLength} ${+(pathLength * 1.2).toFixed(3)}" with stroke-dashoffset ${+(pathLength * 1.1).toFixed(3)}), ` +
+          "or keep the element visibility:hidden until its draw tween starts.",
+        snippet: truncateSnippet(tag.raw),
+      });
+    }
+    return findings;
+  },
+
   // svg_measure_before_path_d — getTotalLength() on a <path> that has no static `d`
   // attribute in the HTML. In Chrome getTotalLength() on a d-less path returns 0,
   // silently killing dash animations (offset 0 == length 0 == nothing to draw). If a
@@ -2428,9 +2630,10 @@ export const gsapRules: LintRule<LintContext>[] = [
     // CSS `d: path(...)` supplies geometry statically — treat like a static attribute.
     const cssProvidesD = styles.some((style) => /\bd\s*:\s*path\(/.test(style.content));
 
+    const documentIds = tags.flatMap((tag) => readTagAttr(tag, "id") ?? []);
     for (const script of scripts) {
       const source = stripJsComments(script.content);
-      const varTokens = resolveScriptElementTokens(source, tags);
+      const varTokens = resolveScriptElementTokens(source, documentIds);
       const functionRanges = collectFunctionBodyRanges(source);
       const createdVars = new Set(
         [...source.matchAll(/([A-Za-z_$][\w$]*)\s*=\s*document\.createElementNS\(/g)].map(

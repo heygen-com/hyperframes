@@ -3,6 +3,7 @@ import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import { resolveRateSpec, sourceTimeAt } from "@hyperframes/core/speed-ramp";
 import { MEDIA_LINK_ATTR as LINK_ATTR, relinkSplitHalves } from "@hyperframes/core/media-link";
+import { mediaInputArgs } from "./mediaExtensions.js";
 import {
   findTargetElement,
   isHTMLElement,
@@ -45,6 +46,7 @@ export function freezeExtractArgs(src: string, mediaTime: number, output: string
     "-y",
     "-ss",
     String(round3(mediaTime)),
+    ...mediaInputArgs(src),
     "-i",
     src,
     "-frames:v",
@@ -138,7 +140,7 @@ function growRootToFit(document: Document): void {
   if (end > rootDuration + EPSILON) root.setAttribute("data-duration", String(round3(end)));
 }
 
-const COPIED_PICTURE_ATTRS = ["class", "style", "data-color-grading"];
+const COPIED_PICTURE_ATTRS = ["class", "style", "data-color-grading", "data-color-group"];
 
 function buildStill(
   document: Document,

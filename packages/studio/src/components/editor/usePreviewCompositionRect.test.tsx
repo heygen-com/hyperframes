@@ -9,6 +9,7 @@ import {
   type PreviewCompositionRect,
 } from "./usePreviewCompositionRect";
 import { usePlayerStore } from "../../player/store/playerStore";
+import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -98,6 +99,44 @@ describe("usePreviewCompositionRect", () => {
       top: 20,
       width: 500,
       height: 500,
+      scaleX: 0.5,
+      scaleY: 0.5,
+    });
+    probe.unmount();
+  });
+
+  it("scales an opaque frame by the size its runtime posts, only from the frame's own origin", async () => {
+    const frame = {};
+    Object.defineProperty(frame, "document", {
+      get: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    });
+    const iframe = boxed(document.createElement("iframe"), [110, 70, 960, 540]);
+    iframe.setAttribute("sandbox", "allow-scripts");
+    Object.defineProperty(iframe, "contentWindow", { value: frame });
+    Object.defineProperty(iframe, "contentDocument", { value: null });
+    watchPreviewFrame(iframe);
+    const stageSize = (width: number, origin: string) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: frame as Window,
+          origin,
+          data: { source: "hf-preview", type: "stage-size", width, height: 1080 },
+        }),
+      );
+    stageSize(1920, "null");
+    stageSize(960, window.location.origin);
+    const probe = mountProbe();
+    await act(async () => {
+      probe.setIframe(iframe);
+      await settle();
+    });
+    expect(probe.read()).toEqual({
+      left: 100,
+      top: 50,
+      width: 960,
+      height: 540,
       scaleX: 0.5,
       scaleY: 0.5,
     });

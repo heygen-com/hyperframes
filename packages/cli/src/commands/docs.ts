@@ -1,5 +1,6 @@
-import { failCommand } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { failCommand, failUsage } from "../utils/commandResult.js";
+import { printFailureLine } from "../utils/jsonError.js";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { readFileSync, existsSync } from "node:fs";
 
@@ -43,6 +44,18 @@ const TOPICS: Record<string, TopicEntry> = {
     file: "compositions.md",
     description: "Composition structure, nesting, and variables",
   },
+  audio: {
+    file: "audio.md",
+    description: "Audio clips: timing, trim, level, fades, volume lanes",
+  },
+  transcribe: {
+    file: "transcribe.md",
+    description: "Word timestamps and captions: models, engines, import and export",
+  },
+  "motion-blur": {
+    file: "motion-blur.md",
+    description: "Shutter smear on fast movers: attributes, tiers, checks",
+  },
 };
 
 function docsDir(): string {
@@ -65,7 +78,7 @@ function formatBold(line: string): string {
   return line.replace(/\*\*(.+?)\*\*/g, (_match, bold: string) => bold);
 }
 
-function renderMarkdown(content: string): void {
+export function renderMarkdown(content: string): void {
   const lines = content.split("\n");
 
   for (const line of lines) {
@@ -93,13 +106,8 @@ function renderMarkdown(content: string): void {
       continue;
     }
 
-    // Bold markup (strip ** markers for terminal output)
-    const rest = formatBold(line);
-    console.log(rest);
-    continue;
-
     // Everything else
-    console.log(formatInlineCode(line));
+    console.log(formatBold(formatInlineCode(line)));
   }
 }
 
@@ -132,18 +140,18 @@ export default defineCommand({
     // Look up the topic
     const entry = TOPICS[topic];
     if (entry === undefined) {
-      console.error(c.error(`Unknown topic: ${topic}`));
+      printFailureLine((show) => c.error(`Unknown topic: ${show(topic)}`));
       console.error();
       console.error("Available topics:");
       for (const name of Object.keys(TOPICS)) {
         console.error(`  ${c.accent(name)}`);
       }
-      failCommand();
+      failUsage();
     }
 
     const filePath = join(docsDir(), entry.file);
     if (!existsSync(filePath)) {
-      console.error(c.error(`Doc file not found: ${filePath}`));
+      printFailureLine((show) => c.error(`Doc file not found: ${show(filePath)}`));
       failCommand();
     }
 

@@ -44,6 +44,17 @@ test("quotes inside a regex literal open no string, so later comments still coun
   assert.equal(measure(source, ".ts").comment, 4);
 });
 
+test("a template nested in a substitution does not end the outer template, so later comments still count", () => {
+  const source = [
+    "const quoted = `'${value.replace(/'/g, `'\\\\''`)}'`;",
+    "// one",
+    "const label = `${what} copied`; // two",
+    'const deep = `a${b ? `c${d}` : "}"}e`;',
+    "// three",
+  ].join("\n");
+  assert.equal(measure(source, ".ts").comment, 3);
+});
+
 test("a JSX closing tag's slash opens no regex", () => {
   assert.equal(measure("const a = <p>x</p>; // c\n", ".tsx").comment, 1);
   assert.equal(measure("const a = <a>x</a>{/* note */};\n", ".tsx").comment, 1);
@@ -209,6 +220,36 @@ function runCli(t, base, head) {
 
 const FILE = "packages/web/src/a.ts";
 const code = "export const a = 1;\nexport const b = 2;\nexport const c = 3;\n";
+const GENERATED = "packages/web/src/_gen/output.ts";
+const ATTRIBUTES = { ".gitattributes": "packages/web/src/_gen/** linguist-generated=true\n" };
+
+for (const exists of [false, true])
+  test(`the CLI skips base-marked generated output, existing ${exists}`, (t) => {
+    const base = { ...ATTRIBUTES, [FILE]: code, ...(exists ? { [GENERATED]: code } : {}) };
+    const { status, output } = runCli(t, base, {
+      ...base,
+      [GENERATED]: `// generated docs\n${code}`,
+    });
+    assert.equal(status, 0, output);
+  });
+
+test("the CLI does not accept a generated exemption added by the change", (t) => {
+  const base = { [FILE]: code, [GENERATED]: code };
+  const { status, output } = runCli(t, base, {
+    ...base,
+    ...ATTRIBUTES,
+    [GENERATED]: `// authored docs\n${code}`,
+  });
+  assert.equal(status, 1, output);
+});
+
+test("generated comments do not raise the bar for new authored source", (t) => {
+  const base = { ...ATTRIBUTES, [FILE]: code, [GENERATED]: `${wall(30)}\n${code}` };
+  const fresh = "packages/web/src/new.ts";
+  const { status, output } = runCli(t, base, { ...base, [fresh]: `// authored docs\n${code}` });
+  assert.equal(status, 1, output);
+  assert.match(output, /NEW file over its package's comment share/);
+});
 
 test("the CLI fails a diff that adds comment lines to a package source file", (t) => {
   const { status, output } = runCli(t, { [FILE]: code }, { [FILE]: `// why b is two\n${code}` });

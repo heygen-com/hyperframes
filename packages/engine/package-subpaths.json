@@ -19,10 +19,22 @@
       "types": "./dist/services/chromeHostCeiling.d.ts",
       "environments": ["bun", "node"]
     },
+    "./chrome-startup": {
+      "source": "./src/services/chromeStartup.ts",
+      "runtime": "./dist/services/chromeStartup.js",
+      "types": "./dist/services/chromeStartup.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./system-memory": {
       "source": "./src/services/systemMemory.ts",
       "runtime": "./dist/services/systemMemory.js",
       "types": "./dist/services/systemMemory.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./wsl-host": {
+      "source": "./src/services/wslHost.ts",
+      "runtime": "./dist/services/wslHost.js",
+      "types": "./dist/services/wslHost.d.ts",
       "environments": ["bun", "node"]
     },
     "./shader-transitions": {
@@ -36,6 +48,18 @@
       "runtime": "./package.json",
       "types": null,
       "environments": ["browser", "bun", "node"]
+    },
+    "./network-policy": {
+      "source": "./src/utils/networkPolicy.ts",
+      "runtime": "./dist/utils/networkPolicy.js",
+      "types": "./dist/utils/networkPolicy.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./public-network": {
+      "source": "./src/services/publicNetwork/index.ts",
+      "runtime": "./dist/services/publicNetwork/index.js",
+      "types": "./dist/services/publicNetwork/index.d.ts",
+      "environments": ["bun", "node"]
     }
   }
 }

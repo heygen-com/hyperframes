@@ -71,7 +71,8 @@ export class SlideshowController {
   }
 
   get canNext(): boolean {
-    // next has a destination: a later slide in this sequence, OR (in a branch) the parent.
+    const slide = this.currentSlide;
+    if (slide && this.frame.fragmentIndex + 1 < slide.fragments.length) return true;
     const slides = this.slidesOf(this.frame.sequenceId);
     return this.frame.slideIndex + 1 < slides.length || this.stack.length > 1;
   }

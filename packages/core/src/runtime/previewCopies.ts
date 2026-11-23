@@ -1,0 +1,95 @@
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { postRuntimeMessage } from "./bridge";
+
+type CopyState = {
+  state: "making" | "ready" | "failed";
+  progress: number | null;
+  light: boolean;
+};
+
+const REPORT_EVERY_MS = 1000;
+const copies = new Map<HTMLMediaElement, CopyState>();
+let reporting = false;
+let reportedAny = false;
+let timer: ReturnType<typeof setTimeout> | undefined;
+let dirtyWhileWaiting = false;
+
+function report(): boolean {
+  for (const el of copies.keys()) if (!el.isConnected) copies.delete(el);
+  const states = [...copies.values()];
+  const wanted = states.length > 0;
+  if (!wanted && !reportedAny) return false;
+  reportedAny = wanted;
+  const made = states.reduce(
+    (sum, copy) => sum + (copy.state === "ready" ? 1 : (copy.progress ?? 0)),
+    0,
+  );
+  postRuntimeMessage({
+    source: "hf-preview",
+    type: "preview-copies",
+    copies: wanted
+      ? {
+          total: states.length,
+          ready: states.filter((copy) => copy.state === "ready").length,
+          failed: states.filter((copy) => copy.state === "failed").length,
+          progress: made / states.length,
+          error: states.some((copy) => copy.state === "failed") ? "failed" : null,
+        }
+      : null,
+  });
+  return true;
+}
+
+function scheduleReport(): void {
+  if (timer !== undefined) {
+    dirtyWhileWaiting = true;
+    return;
+  }
+  if (!report()) return;
+  timer = wallSetTimeout(() => {
+    timer = undefined;
+    if (dirtyWhileWaiting) {
+      dirtyWhileWaiting = false;
+      scheduleReport();
+    }
+  }, REPORT_EVERY_MS);
+}
+
+/** Starts counting the lighter copies wanted at a level; at full quality none are wanted. */
+export function setCopyReportingLevel(level: number): void {
+  for (const [el, copy] of copies) if (copy.light) copies.delete(el);
+  reporting = level < 1;
+  wallClearTimeout(timer);
+  timer = undefined;
+  dirtyWhileWaiting = false;
+  scheduleReport();
+}
+
+export function resetCopyReporting(): void {
+  copies.clear();
+  wallClearTimeout(timer);
+  timer = undefined;
+  reporting = false;
+  reportedAny = false;
+  dirtyWhileWaiting = false;
+}
+
+export function noteCopy(
+  el: HTMLMediaElement,
+  state: CopyState["state"],
+  progress: number | null = null,
+  light = true,
+): void {
+  if (light && !reporting) return;
+  copies.set(el, { state, progress, light });
+  scheduleReport();
+}
+
+export function failedCopyElements(): HTMLMediaElement[] {
+  return [...copies].filter(([, copy]) => copy.state === "failed").map(([el]) => el);
+}
+
+/** True when every lighter copy wanted at this level is ready; true when none are wanted. */
+export function copiesReady(): boolean {
+  return [...copies.values()].every((copy) => !copy.light || copy.state === "ready");
+}

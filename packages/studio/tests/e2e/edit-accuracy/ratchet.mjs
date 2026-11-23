@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Edit accuracy gate against the base branch's baseline.json; smoothness is reported, never gated.
-// `flipped <base> <results>` lists cases to re-run twice; `gate <base> <head> <out> <results...>` judges 2 of 3.
-// A case whose runs disagree is listed as unstable.
+// `flipped <base> <results>` lists cases to re-run twice; `gate [--shards n] <base> <head> <out> <results...>`
+// judges 2 of 3. A case whose runs disagree is listed as unstable. A newly passing case is reported, never gated.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -57,9 +57,14 @@ export function bankable(runs) {
  */
 export const QUARANTINED = {};
 
-/** Every run of every case: each shard's run plus the re-runs of the cases it flipped. */
+/**
+ * Every run of every case: each shard's run plus the re-runs of the cases it flipped. `scope`, for a run of
+ * part of the grid, limits the base branch's passing count to the cases that ran. A case removed from the grid
+ * on purpose leaves the head's baseline.json in the same change: it is listed as retired and no longer counted.
+ */
 // fallow-ignore-next-line complexity
-export function gate(base, head, runs, quarantine = QUARANTINED) {
+export function gate(base, head, runs, quarantine = QUARANTINED, scope = null) {
+  const counted = (id) => Object.hasOwn(head.cases, id) && (!scope || scope.has(id));
   const seen = new Map();
   for (const r of runs) seen.set(r.id, [...(seen.get(r.id) ?? []), entry(r)]);
   const all = [...seen].map(([id, entries]) => {
@@ -78,7 +83,7 @@ export function gate(base, head, runs, quarantine = QUARANTINED) {
       return { id, fixer, passed: c?.passed ?? null, runs: c?.entries.map(accurate) ?? [] };
     }),
     basePassing: Object.entries(base.cases).filter(
-      ([id, e]) => !Object.hasOwn(quarantine, id) && accurate(e),
+      ([id, e]) => !Object.hasOwn(quarantine, id) && counted(id) && accurate(e),
     ).length,
     headPassing: passing.length,
     headSmooth: passing.filter((c) => mostlySmooth(c.entries)).length,
@@ -89,15 +94,14 @@ export function gate(base, head, runs, quarantine = QUARANTINED) {
     newlyPassing: passing.filter((c) => !c.basePassed).map((c) => c.id),
     unbanked: passing.filter((c) => !accurate(head.cases[c.id])).map((c) => c.id),
     overclaimed: cases.filter((c) => !c.passed && accurate(head.cases[c.id])).map((c) => c.id),
-    missing: Object.keys(base.cases).filter((id) => !seen.has(id)),
+    missing: Object.keys(base.cases).filter((id) => counted(id) && !seen.has(id)),
+    retired: Object.keys(base.cases).filter((id) => !Object.hasOwn(head.cases, id)),
   };
   const reasons = [
     result.regressed.length &&
       `${result.regressed.length} case(s) that pass on the base branch fail here`,
     result.headPassing < result.basePassing &&
       `the passing count fell from ${result.basePassing} to ${result.headPassing}`,
-    result.unbanked.length &&
-      `${result.unbanked.length} newly passing case(s) are not banked in baseline.json`,
     result.overclaimed.length &&
       `baseline.json marks ${result.overclaimed.length} failing case(s) as passing`,
   ].filter(Boolean);
@@ -124,9 +128,13 @@ export function comment(g) {
     "",
     ...list("Regressed", g.regressed),
     ...list("Newly passing", g.newlyPassing),
-    ...list("Not banked (commit the artifact's baseline.json)", g.unbanked),
+    ...list(
+      "Not banked yet, reported and not gated (bank a full-grid run's baseline.json)",
+      g.unbanked,
+    ),
     ...list("Marked passing in baseline.json but failing", g.overclaimed),
     ...list("In the base grid but not run", g.missing),
+    ...list("Retired: removed from baseline.json with the grid, not counted", g.retired),
     `**Quarantined, measured but not gated** (${g.quarantined.length})`,
     ...g.quarantined.map(
       (q) =>
@@ -146,8 +154,28 @@ export function comment(g) {
 // Strict: CI writes {"cases":{}} for a missing base, so a file that does not parse is broken, not empty.
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 
+/** The grid a shard ran, from its first run's meta ("pr shard 2/5"); re-runs record their filter instead. */
+const gridOf = (results) => results.find((r) => !r.meta.rerun)?.meta.grid.split(" ")[0];
+
+const VERDICTS = {
+  0: "Edit accuracy holds against the base branch.",
+  1: "Edit accuracy fell against the base branch; see the PR comment.",
+};
+const notRun = (reported) => `Edit accuracy did not run: ${reported}; see the shard jobs.`;
+
+/** Writes what the workflow posts and prints; the verdict is the only text it shows for a failed gate. */
+function report(out, markdown, g) {
+  mkdirSync(out, { recursive: true });
+  writeFileSync(join(out, "comment.md"), markdown);
+  writeFileSync(join(out, "gate.json"), JSON.stringify(g, null, 1));
+  console.log(markdown);
+}
+
 // fallow-ignore-next-line complexity
-function main([command, basePath, ...rest]) {
+function main(argv) {
+  const shardsAt = argv.indexOf("--shards");
+  const shards = shardsAt === -1 ? null : Number(argv.splice(shardsAt, 2)[1]);
+  const [command, basePath, ...rest] = argv;
   const base = readJson(basePath);
   if (command === "flipped") {
     for (const id of flipped(base, readJson(rest[0]).cases)) console.log(id);
@@ -155,24 +183,44 @@ function main([command, basePath, ...rest]) {
   }
   const [headPath, out, ...resultPaths] = rest;
   const runs = resultPaths.map((p) => readJson(p));
-  if (!runs.length) throw new Error("no results.json from any shard");
+  if (!runs.length) {
+    const verdict = notRun(`0 of ${shards ?? "the"} shards reported results`);
+    report(
+      out,
+      `<!-- edit-accuracy -->\n### ${verdict}\n\nNothing was compared with the base branch.\n`,
+      {
+        ok: false,
+        verdict,
+      },
+    );
+    return 2;
+  }
+  const cases = runs.flatMap((r) => r.cases);
+  const full = gridOf(runs) === "full";
+  // A shard that died uploads nothing, so the count of first runs is what shows it.
+  const firstRuns = runs.filter((r) => !r.meta.rerun).length;
+  const shortfall =
+    shards !== null && firstRuns !== shards && `${firstRuns} of ${shards} shards reported results`;
+  // A case that ran and fell is a drop; a shard that did not report is not one, so only the cases that ran count.
   const g = gate(
     base,
     readJson(headPath),
-    runs.flatMap((r) => r.cases),
+    cases,
+    QUARANTINED,
+    full && !shortfall ? null : new Set(cases.map((c) => c.id)),
   );
-  mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, "comment.md"), comment(g));
-  writeFileSync(join(out, "gate.json"), JSON.stringify(g, null, 1));
-  // A baseline.json to commit when cases newly pass.
-  writeReport(
-    out,
-    { ...runs[0].meta, grid: "full (CI)" },
-    bankable(runs.flatMap((r) => r.cases)),
-    0,
-  );
-  console.log(comment(g));
-  return g.ok ? 0 : 1;
+  const code = g.ok ? (shortfall ? 2 : 0) : 1;
+  if (shortfall) g.reasons.push(shortfall);
+  g.ok = code === 0;
+  g.verdict = code === 2 ? notRun(shortfall) : VERDICTS[code];
+  report(out, comment(g), g);
+  // A baseline.json to commit when cases newly pass; only a full grid holds every case.
+  if (full) writeReport(out, { ...runs[0].meta, grid: "full (CI)" }, bankable(cases), 0);
+  if (g.unbanked.length && process.env.GITHUB_ACTIONS)
+    console.log(
+      `::notice title=Edit accuracy::${g.unbanked.length} newly passing case(s) are not banked in baseline.json; not gated.`,
+    );
+  return code;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url))

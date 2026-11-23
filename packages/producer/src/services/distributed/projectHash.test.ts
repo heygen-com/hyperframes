@@ -1,0 +1,244 @@
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { hashProjectDir, listSiteFiles, listSiteFilesForUpload } from "./projectHash.js";
+
+const dirs: string[] = [];
+function tempDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "hf-project-hash-"));
+  dirs.push(dir);
+  return dir;
+}
+function project(): string {
+  const dir = tempDir();
+  writeFileSync(join(dir, "index.html"), "<html>hi</html>");
+  return dir;
+}
+afterEach(() => {
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+describe("listSiteFiles / hashProjectDir", () => {
+  it("follows a symlinked project root", () => {
+    const real = project();
+    const link = join(tempDir(), "fx");
+    symlinkSync(real, link);
+    expect(listSiteFiles(link)).toEqual(["index.html"]);
+    expect(hashProjectDir(link)).toBe(hashProjectDir(real));
+  });
+
+  it("lists symlinked files and folders when asked to include them, and hashes their targets' bytes", () => {
+    const dir = project();
+    const outside = tempDir();
+    mkdirSync(join(outside, "media"));
+    writeFileSync(join(outside, "shared.css"), "a{}");
+    writeFileSync(join(outside, "media", "clip.txt"), "v1");
+    symlinkSync(join(outside, "shared.css"), join(dir, "shared.css"));
+    symlinkSync(join(outside, "media"), join(dir, "media"));
+    const list = () => listSiteFiles(dir, undefined, "include");
+    expect(list()).toEqual(["index.html", "media/clip.txt", "shared.css"]);
+
+    const before = hashProjectDir(dir, list());
+    writeFileSync(join(outside, "media", "clip.txt"), "v2");
+    expect(hashProjectDir(dir, list())).not.toBe(before);
+  });
+
+  // fails without the fix: a bare listSiteFiles followed links out of the project.
+  it("leaves out files and folders linked in from outside the project unless asked to include them", () => {
+    const dir = project();
+    const outside = tempDir();
+    mkdirSync(join(outside, "media"));
+    writeFileSync(join(outside, "shared.css"), "a{}");
+    writeFileSync(join(outside, "media", "clip.txt"), "v1");
+    symlinkSync(join(outside, "shared.css"), join(dir, "shared.css"));
+    symlinkSync(join(outside, "media"), join(dir, "media"));
+    expect(listSiteFiles(dir)).toEqual(["index.html"]);
+    expect(hashProjectDir(dir)).toBe(hashProjectDir(project()));
+  });
+
+  it("treats a sibling folder whose name starts with the project's as outside it", () => {
+    const parent = tempDir();
+    const dir = join(parent, "proj");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "index.html"), "<html>hi</html>");
+    mkdirSync(join(parent, "proj-other"));
+    writeFileSync(join(parent, "proj-other", "a.css"), "a{}");
+    symlinkSync(join(parent, "proj-other", "a.css"), join(dir, "a.css"));
+    const outside: string[] = [];
+    expect(listSiteFiles(dir, undefined, (path) => outside.push(path))).toEqual(["index.html"]);
+    expect(outside).toEqual(["a.css"]);
+  });
+
+  it("skips top-level skip-list folders", () => {
+    const dir = project();
+    mkdirSync(join(dir, "node_modules"));
+    writeFileSync(join(dir, "node_modules", "junk.js"), "x");
+    expect(listSiteFiles(dir)).toEqual(["index.html"]);
+  });
+
+  it("leaves env files out at every depth", () => {
+    const dir = project();
+    mkdirSync(join(dir, "sub"));
+    writeFileSync(join(dir, ".env"), "KEY=1");
+    writeFileSync(join(dir, "sub", ".env.local"), "KEY=1");
+    writeFileSync(join(dir, ".envrc"), "KEY=1");
+    writeFileSync(join(dir, "sub", ".env-local"), "KEY=1");
+    writeFileSync(join(dir, "sub", ".env_prod"), "KEY=1");
+    writeFileSync(join(dir, "sub", "environment.css"), "a{}");
+    expect(listSiteFiles(dir)).toEqual(["index.html", "sub/environment.css"]);
+  });
+
+  it("leaves credentials and tool state out at every depth, and names each one", () => {
+    const dir = project();
+    for (const folder of [".claude", ".aws", "sub"]) mkdirSync(join(dir, folder));
+    writeFileSync(join(dir, ".npmrc"), "//registry.npmjs.org/:_authToken=x");
+    writeFileSync(join(dir, ".mcp.json"), "{}");
+    writeFileSync(join(dir, ".claude", "settings.local.json"), "{}");
+    writeFileSync(join(dir, ".aws", "credentials"), "[default]");
+    writeFileSync(join(dir, "sub", "id_ed25519"), "key");
+    writeFileSync(join(dir, "sub", "cert.PEM"), "key");
+    writeFileSync(join(dir, "sub", "logo.png"), "png");
+    const leftOut: string[] = [];
+    expect(listSiteFiles(dir, (path) => leftOut.push(path))).toEqual([
+      "index.html",
+      "sub/logo.png",
+    ]);
+    expect(leftOut.sort()).toEqual([
+      ".aws",
+      ".claude",
+      ".mcp.json",
+      ".npmrc",
+      "sub/cert.PEM",
+      "sub/id_ed25519",
+    ]);
+  });
+
+  it("names the private files an upload left out in one line, and says nothing when none was", () => {
+    const notices: string[] = [];
+    const clean = project();
+    expect(listSiteFilesForUpload(clean, (line) => notices.push(line))).toEqual(["index.html"]);
+    expect(notices).toEqual([]);
+    const dir = project();
+    mkdirSync(join(dir, ".ssh"));
+    for (const name of [".npmrc", ".mcp.json", "a.pem", "b.pem", "c.pem", "d.pem"]) {
+      writeFileSync(join(dir, name), "secret");
+    }
+    expect(listSiteFilesForUpload(dir, (line) => notices.push(line))).toEqual(["index.html"]);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain(".mcp.json, .npmrc, .ssh, a.pem, b.pem and 2 more");
+  });
+
+  it("shows control characters in a left-out path as escapes, never raw", () => {
+    const dir = project();
+    const folder = "evil\u001b[2J\u009b";
+    mkdirSync(join(dir, folder));
+    writeFileSync(join(dir, folder, ".npmrc"), "secret");
+    const notices: string[] = [];
+    expect(listSiteFilesForUpload(dir, (line) => notices.push(line))).toEqual(["index.html"]);
+    expect(notices[0]).toContain("evil\\x1b[2J\\x9b/.npmrc");
+    expect(notices[0]).not.toContain("\u001b");
+    expect(notices[0]).not.toContain("\u009b");
+  });
+
+  it("leaves out a file whose link points at a credential", () => {
+    const dir = project();
+    const home = tempDir();
+    mkdirSync(join(dir, "assets"));
+    mkdirSync(join(home, ".ssh"));
+    writeFileSync(join(home, ".ssh", "config"), "Host x");
+    symlinkSync(join(home, ".ssh"), join(dir, "assets", "keys"));
+    expect(listSiteFiles(dir)).toEqual(["index.html"]);
+  });
+
+  // fails without the fix: an upload shipped whatever a link inside the project pointed at.
+  it("leaves out an upload's files and folders linked in from outside the project, naming each", () => {
+    const dir = project();
+    const outside = tempDir();
+    mkdirSync(join(outside, "media"));
+    mkdirSync(join(dir, "assets"));
+    writeFileSync(join(outside, "shared.css"), "a{}");
+    writeFileSync(join(outside, "media", "clip.txt"), "v1");
+    writeFileSync(join(dir, "assets", "logo.png"), "png");
+    symlinkSync(join(outside, "shared.css"), join(dir, "shared.css"));
+    symlinkSync(join(outside, "media"), join(dir, "media"));
+    symlinkSync(join(dir, "assets", "logo.png"), join(dir, "logo.png"));
+    const notices: string[] = [];
+
+    expect(listSiteFilesForUpload(dir, (line) => notices.push(line))).toEqual([
+      "assets/logo.png",
+      "index.html",
+      "logo.png",
+    ]);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain("outside the project: media, shared.css.");
+    expect(notices[0]).toContain("--include-outside-files");
+  });
+
+  // fails without the fix: an SDK caller with no onNotice lost these files without a word.
+  it("warns on the console about files an upload left out when the caller passes no onNotice", () => {
+    const dir = project();
+    const outside = tempDir();
+    writeFileSync(join(outside, "shared.css"), "a{}");
+    symlinkSync(join(outside, "shared.css"), join(dir, "shared.css"));
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(listSiteFilesForUpload(dir)).toEqual(["index.html"]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain("outside the project: shared.css.");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("uploads files linked in from outside the project when the caller includes them", () => {
+    const dir = project();
+    const outside = tempDir();
+    writeFileSync(join(outside, "shared.css"), "a{}");
+    symlinkSync(join(outside, "shared.css"), join(dir, "shared.css"));
+    const notices: string[] = [];
+
+    expect(listSiteFilesForUpload(dir, (line) => notices.push(line), true)).toEqual([
+      "index.html",
+      "shared.css",
+    ]);
+    expect(notices).toEqual([]);
+  });
+
+  it("does not loop on a folder that links back to an ancestor", () => {
+    const dir = project();
+    symlinkSync(dir, join(dir, "self"));
+    expect(listSiteFiles(dir)).toEqual(["index.html"]);
+  });
+
+  it("throws on a dangling symlink, naming it", () => {
+    const dir = project();
+    symlinkSync(join(dir, "missing.png"), join(dir, "broken.png"));
+    expect(() => listSiteFiles(dir)).toThrow(/cannot read broken\.png/);
+  });
+
+  it("never reuses an id from the unversioned scheme", () => {
+    const dir = project();
+    const unversioned = createHash("sha256")
+      .update("index.html\0<html>hi</html>")
+      .digest("hex")
+      .slice(0, 16);
+    expect(hashProjectDir(dir)).not.toBe(unversioned);
+  });
+
+  it("hashes a file larger than a runtime can read in one call", () => {
+    const dir = project();
+    writeFileSync(join(dir, "big.mov"), "");
+    truncateSync(join(dir, "big.mov"), 2 ** 32 + 1);
+    // Same bytes hashed outside this code: "site-v2\0big.mov\0" + 4 GiB + 1 zero bytes + index.html.
+    expect(hashProjectDir(dir)).toBe("014f8f69f7633edb");
+  }, 60_000);
+
+  it("keeps the site id of a small project unchanged", () => {
+    const dir = project();
+    mkdirSync(join(dir, "assets"));
+    writeFileSync(join(dir, "assets", "clip.mp4"), Buffer.from([0, 1, 2, 255]));
+    expect(hashProjectDir(dir)).toBe("12972d522bd6829d");
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ensureHfIds, mintHfId, walkCompositionDescendants } from "./hfIds.js";
+import { ensureHfIds, mintHfId, stampHfIdsInPlace, walkCompositionDescendants } from "./hfIds.js";
 import { parseHTML } from "linkedom";
 import { assignHfIds } from "./hfIdAssignment.js";
 
@@ -40,6 +40,73 @@ describe("ensureHfIds fragment detection", () => {
     expect(out).toContain("<html>");
     expect(idOf(out, "#title")).toMatch(/^hf-[a-z0-9]{4}$/);
     expect(ensureHfIds(out)).toBe(out);
+  });
+});
+
+describe("stampHfIdsInPlace keeps the source's own formatting", () => {
+  it.each(["script", "style"])("keeps source offsets after expanding Unicode near %s", (tag) => {
+    const html = `<div DATA-X='KeepCase'>${"İ".repeat(20)}<${tag}>/* İ <span> */</${tag.toUpperCase()} \n><p class='KeepMe'>after</p></div>`;
+    const out = stampHfIdsInPlace(html);
+    expect(out.replace(/ data-hf-id="hf-[a-z0-9]{4}"/g, "")).toBe(html);
+    expect(ids(out)).toEqual(ids(ensureHfIds(html)));
+    expect(stampHfIdsInPlace(out)).toBe(out);
+  });
+
+  it("only inserts ids into a composition written without whitespace", () => {
+    const html =
+      '<template id="s-template"><div data-composition-id="s" data-start="0" data-duration="4"><style>#t{color:red}</style><img src="a.png"/><input disabled><p class=\'t\' id=t>Hi<br></p></div></template>';
+    const out = stampHfIdsInPlace(html);
+    expect(out.replace(/ data-hf-id="hf-[a-z0-9]{4}"/g, "")).toBe(html);
+    expect(ids(out.replace(/<\/?template[^>]*>/g, ""))).toHaveLength(5);
+    expect(stampHfIdsInPlace(out)).toBe(out);
+  });
+
+  it("only inserts ids into a full document with comments, scripts and SVG", () => {
+    const html = `<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><script>if(a<b){x="<div>"}</script></head>\n<body>\n  <!-- <span> -->\n  <div id="root" data-composition-id="main"><svg viewBox="0 0 10 10"><path d="M0 0"/></svg></div>\n</body>\n</html>\n`;
+    const out = stampHfIdsInPlace(html);
+    expect(out.replace(/ data-hf-id="hf-[a-z0-9]{4}"/g, "")).toBe(html);
+    expect(ids(out)).toEqual(ids(ensureHfIds(html)));
+    expect(idOf(out, "path")).toMatch(/^hf-/);
+  });
+
+  it("keeps an astral character from shifting the minted id", () => {
+    const html = `<div title='😀' data-hf-id=""><span>Hello</span></div>`;
+    const out = stampHfIdsInPlace(html);
+    expect(out).toContain(`title='😀' data-hf-id="`);
+    expect(out).not.toMatch(/data-hf-id=hf-/);
+    expect(ids(out)).toEqual(ids(ensureHfIds(html)));
+  });
+
+  it("does not mint an id inside another attribute's quotes", () => {
+    const html = `<div title=' data-hf-id=""' data-hf-id=""><p data-hf-id="">Hi</p></div>`;
+    const out = stampHfIdsInPlace(html);
+    expect(out).toContain(`title=' data-hf-id=""'`);
+    expect(out.replace(/data-hf-id="hf-[a-z0-9]{4}"/g, 'data-hf-id=""')).toBe(html);
+    expect(ids(out)).toEqual(ids(ensureHfIds(html)));
+  });
+
+  it("fills an empty data-hf-id instead of leaving it blank", () => {
+    const html = `<div data-hf-id=""><p data-hf-id="">Hello</p></div>`;
+    const out = stampHfIdsInPlace(html);
+    expect(out.replace(/data-hf-id="hf-[a-z0-9]{4}"/g, 'data-hf-id=""')).toBe(html);
+    expect(out).not.toMatch(/data-hf-id=""\s+data-hf-id=/);
+    expect(ids(out)).toEqual(ids(ensureHfIds(html)));
+    expect(ids(out).every((id) => /^hf-[a-z0-9]{4}$/.test(id))).toBe(true);
+  });
+
+  it("does not treat a longer tag name as the end of a script or style", () => {
+    const script = `<div><script>s="</scripts>"</script><span>x</span></div>`;
+    const styled = `<div><style>/* </styles */</style><span>x</span></div>`;
+    for (const html of [script, styled]) {
+      const out = stampHfIdsInPlace(html);
+      expect(out.replace(/ data-hf-id="hf-[a-z0-9]{4}"/g, "")).toBe(html);
+      expect(ids(out)).toEqual(ids(ensureHfIds(html)));
+    }
+    const stray = `<div><script>s="</scripts><p>"</script></p><span>x</span></div>`;
+    const stamped = stampHfIdsInPlace(stray);
+    expect(stamped).toContain(`s="</scripts><p>"</script>`);
+    expect(stamped).not.toMatch(/scripts><p>" data-hf-id/);
+    expect(ids(stamped)).toEqual(ids(ensureHfIds(stray)));
   });
 });
 
@@ -159,6 +226,31 @@ describe("ensureHfIds", () => {
     expect(a).not.toBe(b);
     expect(a).toMatch(/^hf-[a-z0-9]{4}$/);
     expect(b).toMatch(/^hf-[a-z0-9]{4}$/);
+  });
+
+  it("mints a run of identical elements with a few set lookups each, not one per earlier twin", () => {
+    const { document } = parseHTML(`<p class="x">same</p>`);
+    const el = document.querySelector("p") as Element;
+    let lookups = 0;
+    class Counted extends Set<string> {
+      override has(id: string) {
+        lookups += 1;
+        return super.has(id);
+      }
+    }
+    const assigned = new Counted();
+    const twins = 2000;
+    for (let i = 0; i < twins; i += 1) mintHfId(el, assigned);
+    expect(assigned.size).toBe(twins);
+    expect(lookups).toBeLessThan(3 * twins);
+  });
+
+  it("past 10,000 identical elements, every id is still unique", () => {
+    const { document } = parseHTML(`<p class="x">same</p>`);
+    const el = document.querySelector("p") as Element;
+    const assigned = new Set<string>();
+    for (let i = 0; i < 10050; i += 1) mintHfId(el, assigned);
+    expect(assigned.size).toBe(10050);
   });
 
   // Post-persist stability: once data-hf-id is written back to source, edits

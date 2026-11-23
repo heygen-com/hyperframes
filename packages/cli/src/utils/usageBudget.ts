@@ -7,8 +7,25 @@ const windowSchema = {
   optionalProperties: { resets_at: { type: "string", nullable: true } },
   additionalProperties: true,
 } as const;
+const spendSchema = {
+  nullable: true,
+  optionalProperties: {
+    percent: { type: "float64", nullable: true },
+    enabled: { type: "boolean", nullable: true },
+  },
+  additionalProperties: true,
+} as const;
+const extraUsageSchema = {
+  nullable: true,
+  optionalProperties: {
+    utilization: { type: "float64", nullable: true },
+    is_enabled: { type: "boolean", nullable: true },
+  },
+  additionalProperties: true,
+} as const;
 const usageSchema = {
   properties: { five_hour: windowSchema, seven_day: windowSchema },
+  optionalProperties: { spend: spendSchema, extra_usage: extraUsageSchema },
   additionalProperties: true,
 } as const;
 const parseUsage = new Ajv().compileParser<JTDDataType<typeof usageSchema>>(usageSchema);
@@ -21,6 +38,7 @@ export type HarnessUsage =
       harness: "claude-code" | "codex" | "grok";
       session: UsageWindow | null;
       weekly: UsageWindow | null;
+      spend: UsageWindow | null;
       planTier: string | null;
     };
 
@@ -41,7 +59,21 @@ export function parseHarnessUsage(text: string): HarnessUsage {
   };
   const session = normalize(usage.five_hour);
   const weekly = normalize(usage.seven_day);
-  return knownUsage("claude-code", session, weekly);
+  return knownUsage("claude-code", session, weekly, null, claudeSpendWindow(usage));
+}
+
+function claudeSpendWindow(usage: JTDDataType<typeof usageSchema>): UsageWindow | null {
+  const spend = usage.spend;
+  const extra = usage.extra_usage;
+  const percent =
+    spend && spend.enabled !== false && typeof spend.percent === "number"
+      ? spend.percent
+      : extra && extra.is_enabled === true && typeof extra.utilization === "number"
+        ? extra.utilization
+        : null;
+  if (percent === null) return null;
+  const used = percent > 100 ? 100 : percent;
+  return { usedPercent: used, remainingPercent: 100 - used, resetsAt: null };
 }
 
 function knownUsage(
@@ -49,10 +81,13 @@ function knownUsage(
   session: UsageWindow | null,
   weekly: UsageWindow | null,
   planTier: string | null = null,
+  spend: UsageWindow | null = null,
 ): HarnessUsage {
-  const windows = [session, weekly].filter((window): window is UsageWindow => window !== null);
+  const windows = [session, weekly, spend].filter(
+    (window): window is UsageWindow => window !== null,
+  );
+  if (!windows.length) return unknownUsage("no_usage_windows");
   if (
-    !windows.length ||
     windows.some(
       (window) =>
         !Number.isFinite(window.remainingPercent) ||
@@ -61,7 +96,7 @@ function knownUsage(
     )
   )
     return unknownUsage("invalid_usage_response");
-  return { status: "known", harness, session, weekly, planTier };
+  return { status: "known", harness, session, weekly, spend, planTier };
 }
 
 const codexWindowSchema = {

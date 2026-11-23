@@ -125,24 +125,121 @@ describe("generateProjectScaffold metadata", () => {
 });
 
 describe("loadEnvFile", () => {
-  const keys = ["hyperframes_feedback_email", "HyperFrames_Feedback_Email", "HF_SCAFFOLD_TEST_KEY"];
+  const keys = ["hyperframes_feedback_email", "HyperFrames_Feedback_Email", "GEMINI_API_KEY"];
   let dir: string;
 
   beforeEach(() => {
     dir = fs.mkdtempSync(join(tmpdir(), "hf-scaffold-env-"));
+    vi.stubEnv("GEMINI_API_KEY", undefined);
   });
 
   afterEach(() => {
-    for (const key of keys) delete process.env[key];
+    vi.unstubAllEnvs();
+    for (const key of keys.slice(0, 2)) delete process.env[key];
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it("never takes the feedback email from a project file, in any letter case", () => {
     fs.writeFileSync(
       join(dir, ".env"),
-      'hyperframes_feedback_email=a@example.com\nHyperFrames_Feedback_Email=b@example.com\nHF_SCAFFOLD_TEST_KEY="kept"\n',
+      'hyperframes_feedback_email=a@example.com\nHyperFrames_Feedback_Email=b@example.com\nGEMINI_API_KEY="kept"\n',
     );
     loadEnvFile(join(dir, "out"));
     expect(keys.map((key) => process.env[key])).toEqual([undefined, undefined, "kept"]);
+  });
+
+  it("never accepts browser executables from an output ancestor", () => {
+    const browserKeys = [
+      "HYPERFRAMES_BROWSER_PATH",
+      "PRODUCER_HEADLESS_SHELL_PATH",
+      "hyperframes_browser_path",
+    ];
+    const before = browserKeys.map((key) => process.env[key]);
+    try {
+      for (const key of browserKeys) delete process.env[key];
+      fs.writeFileSync(
+        join(dir, ".env"),
+        browserKeys.map((key) => `${key}=/untrusted/browser`).join("\n"),
+      );
+      loadEnvFile(join(dir, "out"));
+      expect(browserKeys.map((key) => process.env[key])).toEqual([undefined, undefined, undefined]);
+    } finally {
+      browserKeys.forEach((key, index) => {
+        const value = before[index];
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      });
+    }
+  });
+
+  it.each([
+    "PATH",
+    "Path",
+    "LOCALAPPDATA",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "HOME",
+    "LD_PRELOAD",
+    "ld_preload",
+    "LD_LIBRARY_PATH",
+    "DYLD_INSERT_LIBRARIES",
+    "NODE_OPTIONS",
+    "Node_Options",
+    "HYPERFRAMES_BROWSER_PATH",
+    "PRODUCER_HEADLESS_SHELL_PATH",
+    "localappdata",
+    "UNRECOGNIZED_FUTURE_SETTING",
+  ])("does not import launcher or unknown setting %s", (key) => {
+    vi.stubEnv(key, undefined);
+    fs.writeFileSync(join(dir, ".env"), `${key}=/untrusted/value\nGEMINI_API_KEY=allowed\n`);
+    loadEnvFile(join(dir, "out"));
+    expect(process.env[key]).toBeUndefined();
+    expect(process.env.GEMINI_API_KEY).toBe("allowed");
+  });
+
+  it("does not import a supported provider setting with the wrong letter case", () => {
+    fs.writeFileSync(join(dir, ".env"), "gemini_api_key=/untrusted/value\n");
+    loadEnvFile(join(dir, "out"));
+    expect(process.env.gemini_api_key).toBeUndefined();
+    expect(process.env.GEMINI_API_KEY).toBeUndefined();
+  });
+
+  it("loads supported vision provider settings without replacing inherited credentials", () => {
+    const settings = {
+      OPENROUTER_API_KEY: "router-key",
+      GOOGLE_API_KEY: "google-key",
+      HYPERFRAMES_VERTEX_PROJECT_ID: "example-project",
+      HYPERFRAMES_VERTEX_SERVICE_ACCOUNT: '{"client_email":"test@example.com"}',
+      HYPERFRAMES_VERTEX_LOCATION: "us-central1",
+      HYPERFRAMES_VERTEX_MODEL: "vertex-model",
+      HYPERFRAMES_OPENROUTER_MODEL: "router-model",
+      HYPERFRAMES_GEMINI_MODEL: "gemini-model",
+      HYPERFRAMES_VISION_TIMEOUT_MS: "2000",
+    };
+    for (const key of Object.keys(settings)) vi.stubEnv(key, undefined);
+    vi.stubEnv("GEMINI_API_KEY", "inherited-key");
+    fs.writeFileSync(
+      join(dir, ".env"),
+      [
+        "GEMINI_API_KEY=project-key",
+        ...Object.entries(settings).map(([key, value]) => `${key}=${value}`),
+      ].join("\n"),
+    );
+    loadEnvFile(join(dir, "out"));
+    expect(process.env.GEMINI_API_KEY).toBe("inherited-key");
+    for (const [key, value] of Object.entries(settings)) expect(process.env[key]).toBe(value);
+  });
+
+  it("can skip loading the output's dotenv file entirely", () => {
+    const previous = process.env.HYPERFRAMES_NO_CAPTURE_DOTENV;
+    try {
+      process.env.HYPERFRAMES_NO_CAPTURE_DOTENV = "1";
+      fs.writeFileSync(join(dir, ".env"), "GEMINI_API_KEY=untrusted\n");
+      loadEnvFile(join(dir, "out"));
+      expect(process.env.GEMINI_API_KEY).toBeUndefined();
+    } finally {
+      if (previous === undefined) delete process.env.HYPERFRAMES_NO_CAPTURE_DOTENV;
+      else process.env.HYPERFRAMES_NO_CAPTURE_DOTENV = previous;
+    }
   });
 });

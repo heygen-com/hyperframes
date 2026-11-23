@@ -46,6 +46,27 @@ export const WorkflowChooser = () => {
       poster: `${CDN}/wfv2-motion.jpg`,
     },
     {
+      title: "Make a 3D or animated piece",
+      bring: "Bring an idea; it can be a character, an object, or a whole world.",
+      href: "/guides/general-video",
+      video: "https://static.heygen.ai/hyperframes-oss/homepage/showcase/card/axe-v1.mp4",
+      poster: "https://static.heygen.ai/hyperframes-oss/homepage/showcase/poster/axe-v1.jpg",
+    },
+    {
+      title: "Add VFX to footage",
+      bring: "Bring a clip; cut the person out, put them in a billboard, change the world behind.",
+      href: "/guides/remove-background",
+      video: "https://static.heygen.ai/hyperframes-oss/homepage/showcase/card/vfx-background-removal-launch-v1.mp4",
+      poster: "https://static.heygen.ai/hyperframes-oss/homepage/showcase/poster/vfx-background-removal-launch-v1.jpg",
+    },
+    {
+      title: "Make something funny",
+      bring: "Bring a joke: a parody, a skit, a meme.",
+      href: "/guides/general-video",
+      video: "https://static.heygen.ai/hyperframes-oss/homepage/showcase/card/cow-v1.mp4",
+      poster: "https://static.heygen.ai/hyperframes-oss/homepage/showcase/poster/cow-v1.jpg",
+    },
+    {
       title: "Cut to music",
       bring: "Bring a track and any photos or video you want to use.",
       href: "/guides/music-to-video",
@@ -60,16 +81,25 @@ export const WorkflowChooser = () => {
       poster: "https://static.heygen.ai/hyperframes-oss/docs/images/showcase/wfv2-slideshow.jpg",
     },
     {
-      title: "Direct a custom video",
+      title: "Turn data into a video",
+      bring: "Bring numbers, a spreadsheet, or places on a map.",
+      href: "/prompting/data-and-maps",
+      video: "https://static.heygen.ai/hyperframes-oss/docs/images/prompting/barrace-handdrawn.mp4",
+      poster: "/public/images/workflows/data-video.jpg",
+    },
+    {
+      title: "Add an AI presenter",
+      bring: "Bring a script; a HeyGen avatar says it on screen.",
+      href: "/guides/avatar-presenter",
+      video: "https://static.heygen.ai/hyperframes-oss/docs/images/prompting/captions-anchor-rail-v2.mp4",
+      poster: "https://static.heygen.ai/hyperframes-oss/docs/images/showcase/avatar-presenter-caption-rail-v1.jpg",
+    },
+    {
+      title: "Make any other video",
       bring: "Bring the outcome you want and whatever source material you have.",
       href: "/guides/general-video",
       video: `${CDN}/wfv2-general.mp4`,
       poster: `${CDN}/wfv2-general.jpg`,
-    },
-    {
-      title: "Port a Remotion composition",
-      bring: "Bring an existing Remotion project. One-way migration, not a new build.",
-      href: "/guides/hyperframes-vs-remotion",
     },
   ];
 
@@ -110,7 +140,7 @@ export const WorkflowChooser = () => {
     <div className="hf-workflow-routes" ref={gridRef}>
       {routes.map((route) => (
         <a
-          key={route.href}
+          key={route.title}
           href={route.href}
           aria-label={`${route.title}. ${route.bring}`}
           className="hf-workflow-route"

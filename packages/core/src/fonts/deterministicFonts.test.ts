@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import postcss from "postcss";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,6 +50,17 @@ describe("existing font-face recognition", () => {
   ])("handles a long incomplete font-face suffix", async (css) => {
     const html = `<html><head><style>${css}</style></head><body>Hello</body></html>`;
     expect(await injectDeterministicFontFaces(html, { allowSystemFontCapture: false })).toBe(html);
+  });
+
+  it("never parses a stylesheet that has no font-family or custom property", async () => {
+    const parse = vi.spyOn(postcss, "parse");
+    try {
+      const html = `<html><head><style>${"@font-face{{".repeat(1_000)}</style></head><body>Hello</body></html>`;
+      await injectDeterministicFontFaces(html, { allowSystemFontCapture: false });
+      expect(parse).not.toHaveBeenCalled();
+    } finally {
+      parse.mockRestore();
+    }
   });
 });
 
@@ -213,7 +225,13 @@ describe("var() font-family fallbacks", () => {
 
   it("injects the fallback family of an undefined custom property", async () => {
     const html = styled(`body { font-family: var(--font-body, Inter, system-ui, sans-serif); }`);
-    const result = await injectDeterministicFontFaces(html, { allowSystemFontCapture: false });
+    const fetchImpl = Object.assign(async () => new Response("", { status: 404 }), {
+      preconnect: fetch.preconnect,
+    });
+    const result = await injectDeterministicFontFaces(html, {
+      fetchImpl,
+      allowSystemFontCapture: false,
+    });
     expect(result).toContain(`font-family: "Inter";`);
   });
 

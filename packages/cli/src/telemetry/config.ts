@@ -2,31 +2,28 @@ import * as fs from "node:fs";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { randomUUID } from "node:crypto";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { telemetryRuntimeOverride } from "./policy.js";
 import { isAttendedTerminal } from "../utils/attendedTerminal.js";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
+import { hyperframesConfigDir, seededConfigFile } from "../utils/configDir.js";
 
 // ---------------------------------------------------------------------------
 // Config directory: ~/.hyperframes/
 // ---------------------------------------------------------------------------
 
-const CONFIG_DIR = join(homedir(), ".hyperframes");
-const CONFIG_FILE = join(CONFIG_DIR, "config.json");
+const configDir = () => hyperframesConfigDir();
+const configFile = () => seededConfigFile("config.json");
 
 // ---------------------------------------------------------------------------
 // Install-state file: ~/.hyperframes/install-state.json
 //
 // A separate FILE, but deliberately the same DIRECTORY as config.json, so
-// `rm -rf ~/.hyperframes` really is a full reset. It previously lived in
-// ~/.local/state/hyperframes/ specifically to survive that delete; review
-// rejected that ("if someone is deleting their hyperframes config it should
-// wipe all hyperframes state — I'm not sure we should try and persist state
-// elsewhere to get around this"), and the measurement agreed: the churn this
-// actually defends against is not users running `rm -rf`.
+// `rm -rf ~/.hyperframes` really is a full reset.
 //
-// The threat it does defend against is config.json itself. That file is hot
+// What it defends against is config.json itself. That file is hot
 // and wide — ~20 fields rewritten on every command and every render — and
 // readConfig recovers from ANY parse/permission/IO failure by minting a fresh
 // identity. Splitting these two facts into their own file decouples them from
@@ -37,7 +34,7 @@ const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 // no counters, nothing emitted that links the old install to the new one:
 //
 //   1. `markerAt` — "a hyperframes install existed on this machine". Now that
-//      it shares CONFIG_DIR, `predecessorFound` measures the churn we care
+//      it shares configDir(), `predecessorFound` measures the churn we care
 //      about (config.json lost, install-state survived => corruption/re-mint)
 //      rather than deliberate directory deletion, which takes both.
 //   2. `deParallelRouterTrialFired` — the DE parallel-router circuit
@@ -45,18 +42,18 @@ const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 //      install into an experimental path that already FAILED on this machine.
 //   3. `bucketSeed` — the canary bucketing unit, so a re-mint does not
 //      reshuffle cohorts mid-rollout. Never transmitted; only the resulting
-//      true/false assignments are. Sharing CONFIG_DIR is what keeps it from
+//      true/false assignments are. Sharing configDir() is what keeps it from
 //      being a persistent identifier that outlives the user's reset.
 //
 // Removal path: delete ~/.hyperframes (or just this file). `hyperframes
 // telemetry status` prints its exact location.
 // ---------------------------------------------------------------------------
 
-const STATE_FILE = join(CONFIG_DIR, "install-state.json");
+const stateFile = () => seededConfigFile("install-state.json");
 
 // Pre-move location. Read once, migrated, then deleted — an install that
 // wrote state under the old scheme keeps its tripped breaker instead of
-// silently re-enrolling, and no file is left behind outside CONFIG_DIR.
+// silently re-enrolling, and no file is left behind outside configDir().
 const LEGACY_STATE_FILE = join(homedir(), ".local", "state", "hyperframes", "install-state.json");
 
 interface InstallState {
@@ -135,7 +132,7 @@ function warnSeedBackfillFailed(error: string | undefined): void {
   // all. `hyperframes doctor` still surfaces it on demand.
   if (telemetryRuntimeOverride() !== null) return;
   console.warn(
-    `[hyperframes] Could not persist telemetry config${error ? `: ${error}` : ""}. ` +
+    `[hyperframes] Could not persist telemetry config${error ? `: ${terminalText(String(error))}` : ""}. ` +
       "Canary cohort assignment will not be stable across runs.",
   );
 }
@@ -183,6 +180,23 @@ function installStateLatchedFired(): boolean {
   return latchedFiredSeen;
 }
 
+/** Lift the router latch from both stores; install-state goes first or the next write copies it back. */
+export function releaseDeParallelRouterLatch(): void {
+  const read = readInstallState();
+  if (isInstallState(read) && read.deParallelRouterTrialFired) {
+    try {
+      writeInstallState({ ...read, deParallelRouterTrialFired: undefined });
+    } catch {
+      return;
+    }
+  }
+  latchedFiredSeen = false;
+  stateFiredSynced = false;
+  const config = readConfigFresh();
+  config.deParallelRouterTrialFired = undefined;
+  writeConfig(config);
+}
+
 /**
  * The seed install-state has recorded for this machine, if any.
  *
@@ -214,7 +228,7 @@ function isInstallState(value: InstallState | InstallStateMiss): value is Instal
  * re-read harmlessly next time.
  */
 function readInstallState(): InstallState | InstallStateMiss {
-  const current = parseInstallState(STATE_FILE);
+  const current = parseInstallState(stateFile());
   if (isInstallState(current)) {
     removeLegacyStateFile();
     return current;
@@ -264,10 +278,10 @@ export function __resetInstallStateSyncForTests(): void {
  * since a corrupted state file silently reads as absent.
  */
 function writeInstallState(next: InstallState): void {
-  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-  const tmpFile = `${STATE_FILE}.${process.pid}.tmp`;
+  mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+  const tmpFile = `${stateFile()}.${process.pid}.tmp`;
   writeFileSync(tmpFile, JSON.stringify(next, null, 2) + "\n", { mode: 0o600 });
-  renameSync(tmpFile, STATE_FILE);
+  renameSync(tmpFile, stateFile());
 }
 
 /**
@@ -327,7 +341,7 @@ function syncInstallState(config: HyperframesConfig): boolean {
   // the freshly minted seed lived in config.json alone, and the NEXT
   // config-only re-mint rolled a third seed instead of inheriting the second.
   // One existsSync on a path we are about to write anyway.
-  if (stateMarkerSynced && !existsSync(STATE_FILE)) {
+  if (stateMarkerSynced && !existsSync(stateFile())) {
     stateMarkerSynced = false;
     stateFiredSynced = false;
   }
@@ -388,6 +402,53 @@ function mintConfig(): HyperframesConfig {
   };
 }
 
+/** What the router's self-verify rejected, kept so the bad frame can be found and fixed. */
+export interface DeRouterRevert {
+  /** The router outcome, or the fallback reason the render reported (psnr, blank, capture_error...). */
+  reason: string;
+  frameIndex?: number;
+  failedDb?: number;
+  thresholdDb?: number;
+  at: string;
+  /** CLI version that recorded it: a different version re-arms the router. */
+  version: string;
+  /** deParallelRouterTrialRenderCount when it happened. */
+  atRender: number;
+}
+
+/** A lone revert (`strike`) is remembered; a second inside the window turns the router off (`trip`). */
+export interface DeRouterBreaker {
+  strike?: DeRouterRevert;
+  trip?: DeRouterRevert & { cleanRenders: number };
+}
+
+function hasFields(value: object, types: Record<string, "string" | "number">): boolean {
+  return Object.entries(types).every(([key, type]) => typeof Reflect.get(value, key) === type);
+}
+
+function isDeRouterRevert(value: unknown): value is DeRouterRevert {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    hasFields(value, { reason: "string", at: "string", version: "string", atRender: "number" })
+  );
+}
+
+function isDeRouterTrip(value: unknown): value is NonNullable<DeRouterBreaker["trip"]> {
+  return isDeRouterRevert(value) && hasFields(value, { cleanRenders: "number" });
+}
+
+function parseDeRouterBreaker(value: unknown): DeRouterBreaker | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const strike = Reflect.get(value, "strike");
+  const trip = Reflect.get(value, "trip");
+  const parsed: DeRouterBreaker = {
+    strike: isDeRouterRevert(strike) ? strike : undefined,
+    trip: isDeRouterTrip(trip) ? trip : undefined,
+  };
+  return parsed.strike || parsed.trip ? parsed : undefined;
+}
+
 export interface HyperframesConfig {
   /** Has the user agreed to download the on-device search model? Undefined means never asked. */
   localEmbeddingEnabled?: boolean;
@@ -439,16 +500,21 @@ export interface HyperframesConfig {
     /** True after the result has been surfaced once to the user. */
     reported?: boolean;
   };
-  /** ISO timestamp of the last `skills check` freshness check (24h cache). */
+  /** ISO timestamp of the last `skills check` freshness check (2h cache). */
   lastSkillsCheck?: string;
+  /** The CLI version that check ran under: it compared against that version's release tag. */
+  skillsCheckedVersion?: string;
   /** Whether installed skills were stale at the last check. */
   skillsUpdateAvailable?: boolean;
   /** How many installed skills were outdated at the last check. */
   skillsOutdatedCount?: number;
   /** How many skills were missing (not installed) at the last check. */
   skillsMissingCount?: number;
+  /** Names of the HyperFrames skills installed at the last check (current or outdated). */
+  skillsInstalled?: string[];
+  /** Names of the installed skills that were outdated at the last check. */
+  skillsOutdated?: string[];
   /** How many installed skills were flagged removed-upstream at the last check. */
-  skillsRemovedCount?: number;
   /**
    * True once the DE parallel-router experiment ("HF_DE_PARALLEL_ROUTER")
    * has actually FAILED (its self-verify/generic-failure safety net fired —
@@ -461,6 +527,8 @@ export interface HyperframesConfig {
    * `maybeEnableDeParallelRouterTrial`/`maybeConsumeDeParallelRouterTrial`.
    */
   deParallelRouterTrialFired?: boolean;
+  /** Why and when the router went off (or its lone strike); the latch above mirrors `trip`. */
+  deParallelRouterBreaker?: DeRouterBreaker;
   /**
    * Count of engaged (routed or reverted) trial renders so far — the
    * backstop that caps exposure even absent an actual failure. See
@@ -510,6 +578,23 @@ export interface HyperframesConfig {
    * telemetry rows of the renders it describes.
    */
   recentRenders?: RecentRenderRecord[];
+  /** The newest local `check`: exit code and its top error codes, which `hyperframes feedback` attaches. */
+  lastCheck?: LastCheckRecord;
+}
+
+/** The newest `check` in {@link HyperframesConfig.lastCheck}; codes and counts only, no content or paths. */
+export interface LastCheckRecord {
+  at: string;
+  /** Absent while the check has not finished: it is still running, or was stopped. */
+  exitCode?: number;
+  codes: Record<string, number>;
+}
+
+/** Remember the newest check so a later `hyperframes feedback` can name why it failed. */
+export function recordLastCheck(lastCheck: LastCheckRecord): void {
+  const config = readConfigFresh();
+  config.lastCheck = lastCheck;
+  writeConfig(config);
 }
 
 /** One entry in {@link HyperframesConfig.recentRenders}. */
@@ -657,10 +742,12 @@ function passthroughFields(parsed: Partial<HyperframesConfig>): Partial<Hyperfra
     pendingUpdate: parsed.pendingUpdate,
     completedUpdate: parsed.completedUpdate,
     lastSkillsCheck: parsed.lastSkillsCheck,
+    skillsCheckedVersion: parsed.skillsCheckedVersion,
     skillsUpdateAvailable: parsed.skillsUpdateAvailable,
     skillsOutdatedCount: parsed.skillsOutdatedCount,
     skillsMissingCount: parsed.skillsMissingCount,
-    skillsRemovedCount: parsed.skillsRemovedCount,
+    skillsInstalled: stringList(parsed.skillsInstalled),
+    skillsOutdated: stringList(parsed.skillsOutdated),
     localEmbeddingEnabled: consentFrom(parsed.localEmbeddingEnabled),
   };
 }
@@ -680,6 +767,7 @@ function guardedFields(parsed: Partial<HyperframesConfig>): Partial<HyperframesC
     // wins over an untripped config.json, never the reverse.
     deParallelRouterTrialFired:
       parsed.deParallelRouterTrialFired === true || installStateLatchedFired() ? true : undefined,
+    deParallelRouterBreaker: parseDeRouterBreaker(parsed.deParallelRouterBreaker),
     deParallelRouterTrialRenderCount:
       typeof parsed.deParallelRouterTrialRenderCount === "number"
         ? parsed.deParallelRouterTrialRenderCount
@@ -714,10 +802,10 @@ function materializeConfig(parsed: Partial<HyperframesConfig>): HyperframesConfi
 export function readConfig(): HyperframesConfig {
   if (cachedConfig) return { ...cachedConfig };
 
-  if (!existsSync(CONFIG_FILE)) return mintAndCacheConfig();
+  if (!existsSync(configFile())) return mintAndCacheConfig();
 
   try {
-    const raw = readFileSync(CONFIG_FILE, "utf-8");
+    const raw = readFileSync(configFile(), "utf-8");
     const parsed = JSON.parse(raw) as Partial<HyperframesConfig>;
 
     const config = materializeConfig(parsed);
@@ -843,7 +931,7 @@ function warnSettingsLockedOnce(error: unknown): void {
     process.argv.some((arg) => arg === "--json" || arg.startsWith("--json="))
   )
     return;
-  console.error(`${(error as Error).message} (see \`hyperframes doctor\`).`);
+  console.error(`${terminalText((error as Error).message)} (see \`hyperframes doctor\`).`);
 }
 
 export function updateLocalModelConsent(
@@ -866,6 +954,11 @@ export function updateLocalModelConsent(
   }
 }
 
+/** A list of names from disk, or absent when what is there is not one. */
+function stringList(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : undefined;
+}
+
 /** Absent means never asked; anything present but not `true` counts as a no. */
 function consentFrom(value: unknown): boolean | undefined {
   return value === undefined ? undefined : value === true;
@@ -873,7 +966,7 @@ function consentFrom(value: unknown): boolean | undefined {
 
 function localModelConsentOnDisk(): boolean | undefined {
   try {
-    return consentFrom(JSON.parse(readFileSync(CONFIG_FILE, "utf-8")).localEmbeddingEnabled);
+    return consentFrom(JSON.parse(readFileSync(configFile(), "utf-8")).localEmbeddingEnabled);
   } catch (error) {
     // A settings file that exists but cannot be read may hold a no; only a missing one was never asked.
     return (error as NodeJS.ErrnoException).code === "ENOENT" ? undefined : false;
@@ -885,8 +978,8 @@ let holdingConfigLock = false;
 /** One process at a time between reading config.json and replacing it; re-entrant within this one. */
 function withConfigLock<T>(task: () => T): T {
   if (holdingConfigLock) return task();
-  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-  return withFileLock(`${CONFIG_FILE}.lock`, fs, () => {
+  mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+  return withFileLock(`${configFile()}.lock`, fs, () => {
     holdingConfigLock = true;
     try {
       return task();
@@ -898,10 +991,10 @@ function withConfigLock<T>(task: () => T): T {
 
 function persistConfig(config: HyperframesConfig): ConfigWriteResult {
   try {
-    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-    const tmpFile = `${CONFIG_FILE}.${process.pid}.tmp`;
+    mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+    const tmpFile = `${configFile()}.${process.pid}.tmp`;
     writeFileSync(tmpFile, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
-    renameSync(tmpFile, CONFIG_FILE);
+    renameSync(tmpFile, configFile());
     cachedConfig = { ...config };
     // Mirror into the install-state file (marker + tripped breaker) so no
     // breaker write site has to remember to do it. A failed mirror does NOT
@@ -928,7 +1021,7 @@ export function incrementCommandCount(): number {
 }
 
 /** Expose the config directory path for the telemetry command output */
-export const CONFIG_PATH = CONFIG_FILE;
+export const CONFIG_PATH = configFile();
 
 /** Expose the install-state path for the telemetry command output. */
-export const STATE_PATH = STATE_FILE;
+export const STATE_PATH = stateFile();

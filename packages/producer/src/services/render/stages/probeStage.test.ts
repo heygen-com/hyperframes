@@ -1,15 +1,28 @@
-import { afterAll, describe, expect, it, mock } from "bun:test";
+import { afterAll, describe, expect, it, mock, spyOn } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { RateSpec } from "@hyperframes/core";
+import { parseAudioElements, videoAudioId } from "../../../../../engine/src/services/audioMixer.js";
+import {
+  parseVideoElements,
+  parseImageElements,
+} from "../../../../../engine/src/services/videoFrameExtractor.js";
+import { resolveReferencedStart } from "../../../../../engine/src/services/referenceResolver.js";
+import { collectRenderMedia } from "../../renderMediaCollector.js";
 
 const workDir = mkdtempSync(join(tmpdir(), "hf-stage-test-"));
 afterAll(() => rmSync(workDir, { recursive: true, force: true }));
 import { createHash } from "node:crypto";
+import { parseHTML } from "linkedom";
 import {
   hasAutoStartVideos,
+  hasRuntimeMediaChanges,
   hasScriptedAudioVolumeAutomation,
   hasVariableBoundMedia,
+  probeHoldFitsCapture,
+  probeVideoHold,
+  reportedLengthSource,
 } from "./probeStage.js";
 
 // ── Mocks for runProbeStage tests ────────────────────────────────────────────
@@ -25,6 +38,9 @@ let mediaPreflightComposition: unknown;
 let afterMediaPreflight: (() => void) | null = null;
 let fileServerCloseCallCount = 0;
 let browserMediaResults: unknown[] = [];
+let browserMediaError: Error | null = null;
+// Media sizes the mocked FFmpeg probe reports, by resolved path; any other path fails to probe.
+const mediaSizes = new Map<string, { width: number; height: number }>();
 
 type MockSession = {
   id: number;
@@ -83,6 +99,7 @@ function resetRetryMocks() {
   afterMediaPreflight = null;
   fileServerCloseCallCount = 0;
   browserMediaResults = [];
+  mediaSizes.clear();
 }
 
 mock.module("../../assetMediaType.js", () => ({
@@ -99,6 +116,17 @@ mock.module("../../assetMediaType.js", () => ({
 }));
 
 mock.module("@hyperframes/engine", () => ({
+  parseAudioElements,
+  parseVideoElements,
+  parseImageElements,
+  resolveReferencedStart,
+  videoAudioId,
+  resolveProjectRelativeSrc: (src: string, projectDir: string) => `${projectDir}/${src}`,
+  extractMediaMetadata: async (path: string) => {
+    const size = mediaSizes.get(path);
+    if (!size) throw new Error(`ffprobe failed: ${path}`);
+    return size;
+  },
   createCaptureSession: async (
     _url: string,
     _dir: string,
@@ -147,6 +175,12 @@ mock.module("@hyperframes/engine", () => ({
     durationProbeSessions.push(session);
     return 5;
   },
+  getCompositionLengthSource: async () => ({
+    from: "media",
+    tag: "video",
+    src: "/private/customer/Full Source.mp4?token=x",
+    trimmed: false,
+  }),
   closeCaptureSession: async (session: MockSession) => {
     closeCaptureSessionCallCount++;
     closedSessions.push(session);
@@ -162,6 +196,8 @@ mock.module("@hyperframes/engine", () => ({
   },
   // Mirror of the real engine classifier. Canonical tests + pattern list
   // live in frameCapture-transientErrors.test.ts — update both if patterns change.
+  isMemoryExhaustionError: (error: unknown) =>
+    /^out of memory\.?$/i.test(error instanceof Error ? error.message.trim() : ""),
   isTransientBrowserError: (error: unknown) => {
     const msg = error instanceof Error ? error.message : String(error);
     if (/Composition has zero duration[\s\S]*Runtime ready: false/.test(msg)) return true;
@@ -185,14 +221,19 @@ mock.module("../../fileServer.js", () => ({
 }));
 
 mock.module("../../htmlCompiler.js", () => ({
-  discoverMediaFromBrowser: async () => browserMediaResults,
+  discoverMediaFromBrowser: async () => {
+    if (browserMediaError) throw browserMediaError;
+    return browserMediaResults;
+  },
   discoverAudioVolumeAutomationFromTimeline: async () => [],
   discoverVideoVisibilityFromTimeline: async () => [],
   recompileWithResolutions: async (c: unknown) => c,
   resolveCompositionDurations: async () => [],
 }));
 
+const notedStaticDedupActivity: object[] = [];
 mock.module("../shared.js", () => ({
+  noteStaticDedupActivity: (job: object) => notedStaticDedupActivity.push(job),
   BROWSER_MEDIA_EPSILON: 0.0001,
   projectBrowserEndToCompositionTimeline: (
     existingStart: number,
@@ -244,7 +285,7 @@ function makeProbeInput(overrides: {
   };
 
   return {
-    projectDir: "/tmp/hf-probe-test-project",
+    projectDir: workDir,
     workDir: workDir,
     job: {
       id: "probe-test",
@@ -364,7 +405,316 @@ describe("hasVariableBoundMedia", () => {
     expect(hasVariableBoundMedia(audio, { title: "Row 02" })).toBe(false);
     expect(hasVariableBoundMedia(image, { hero_src: "row-02.png" })).toBe(true);
   });
+
+  it("requires a browser probe when the mount sets the variable, with no render variables", () => {
+    const mount = (values: string) =>
+      `<div data-composition-id="clip" data-variable-values='${values}'>` +
+      `<video id="v" src="placeholder.mp4" data-var-src="src"></video></div>`;
+
+    expect(hasVariableBoundMedia(mount('{"src":"clip.mp4"}'), undefined)).toBe(true);
+    expect(hasVariableBoundMedia(mount('{"title":"Row 02"}'), undefined)).toBe(false);
+  });
+
+  it("requires a browser probe when the variable has a declared default", () => {
+    const declared = `<html data-composition-variables='[{"id":"src","type":"string","default":"clip.mp4"}]'><body>`;
+    const video = `<video id="v" src="placeholder.mp4" data-var-src="src"></video>`;
+
+    expect(hasVariableBoundMedia(`${declared}${video}</body></html>`, undefined)).toBe(true);
+  });
+
+  it("requires a browser probe when an inlined sub-composition declared the default", () => {
+    // Inlining drops a full-document sub-composition's <html data-composition-variables> and the
+    // inner root's data-composition-id; the compiled table, keyed by the host, keeps the merged value.
+    const mount =
+      `<div data-composition-id="card" data-composition-file="compositions/card.html">` +
+      `<div data-hf-inner-root="true"><video id="v" src="placeholder.mp4" data-var-src="src"></video></div>` +
+      `</div>`;
+    const html = `<html><body>${mount}</body></html>`;
+
+    expect(hasVariableBoundMedia(html, undefined, { card: { src: "clip.mp4" } })).toBe(true);
+    expect(hasVariableBoundMedia(html, undefined, { card: { other: "clip.mp4" } })).toBe(false);
+    expect(hasVariableBoundMedia(html, undefined, {})).toBe(false);
+  });
+
+  it("matches a repeated mount through the host's runtime composition id", () => {
+    const mount =
+      `<div data-composition-id="card__hf2" data-hf-original-composition-id="card">` +
+      `<div data-hf-inner-root="true"><video id="v" src="placeholder.mp4" data-var-src="src"></video></div>` +
+      `</div>`;
+
+    expect(
+      hasVariableBoundMedia(`<html><body>${mount}</body></html>`, undefined, {
+        card__hf1: { src: "a.mp4" },
+        card__hf2: { src: "b.mp4" },
+      }),
+    ).toBe(true);
+  });
+
+  it("lets the nearest scope's table entry answer alone, like the runtime", () => {
+    const nested =
+      `<div data-composition-id="outer"><div data-composition-id="inner">` +
+      `<video id="v" src="placeholder.mp4" data-var-src="src"></video></div></div>`;
+    const html = `<html><body>${nested}</body></html>`;
+
+    expect(
+      hasVariableBoundMedia(html, undefined, { outer: { src: "a.mp4" }, inner: { title: "x" } }),
+    ).toBe(false);
+    expect(hasVariableBoundMedia(html, undefined, { outer: { src: "a.mp4" } })).toBe(false);
+    expect(hasVariableBoundMedia(html, undefined, { inner: { src: "b.mp4" } })).toBe(true);
+  });
 });
+
+describe("hasVariableBoundMedia — page size", () => {
+  it("parses a large variables attribute once, not once per bound element", () => {
+    const values = JSON.stringify(
+      Object.fromEntries(Array.from({ length: 1_000 }, (_, i) => [`k${i}`, "v"])),
+    );
+    const images = `<img src="a.png" data-var-src="missing">`.repeat(2_000);
+    const html = `<html><body><div data-variable-values='${values}'>${images}</div></body></html>`;
+    const parse = spyOn(JSON, "parse");
+    try {
+      expect(hasVariableBoundMedia(html, undefined)).toBe(false);
+      expect(parse.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      parse.mockRestore();
+    }
+  });
+
+  it("takes the conservative answer when the ancestor walks run past their budget", () => {
+    const depth = 600;
+    const images = `<img src="a.png" data-var-src="missing">`.repeat(2_000);
+    const html = `<html><body>${"<div>".repeat(depth)}${images}${"</div>".repeat(depth)}</body></html>`;
+
+    expect(hasVariableBoundMedia(html, undefined)).toBe(true);
+  });
+});
+
+describe("hasRuntimeMediaChanges", () => {
+  const page = (body: string, script: string) =>
+    `<html><body>${body}<script>${script}</script></body></html>`;
+
+  it("finds a source write aimed at a video by id or by selector", () => {
+    const video = `<div class="scene"><video id="clip" src="a.mp4"></video></div>`;
+    expect(
+      hasRuntimeMediaChanges(page(video, `document.getElementById("clip").src = "b.mp4";`)),
+    ).toBe(true);
+    expect(
+      hasRuntimeMediaChanges(page(video, `document.querySelector(".scene video").src = "b.mp4";`)),
+    ).toBe(true);
+    expect(
+      hasRuntimeMediaChanges(
+        page(
+          `<video><source id="s" src="a.mp4"></video>`,
+          `document.getElementById("s").src = "b";`,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores source writes aimed at other elements", () => {
+    const body = `<img id="poster" class="still" src="a.png"><video id="clip" src="a.mp4"></video>`;
+    const script = `document.getElementById("poster").src = "b.png";
+      document.querySelector(".still").setAttribute("src", "c.png");`;
+    expect(hasRuntimeMediaChanges(page(body, script))).toBe(false);
+    const malformed = `document.querySelector("[[bad").src = "d.png";`;
+    expect(hasRuntimeMediaChanges(page(body, malformed))).toBe(true);
+    expect(
+      hasRuntimeMediaChanges(page(`<img id="clip">`, `document.getElementById("clip").src = "b";`)),
+    ).toBe(false);
+  });
+
+  it("answers id writes from one index, with no document lookup per write", () => {
+    const count = 2_000;
+    const divs = Array.from({ length: count }, (_, i) => `<div id="d${i}"></div>`);
+    const writes = Array.from(
+      { length: count },
+      (_, i) => `document.getElementById("n${i}").src = "x";`,
+    );
+    const html = page(`${divs.join("")}<video id="clip" src="a.mp4"></video>`, writes.join("\n"));
+    const lookups = documentLookupSpies();
+    try {
+      expect(hasRuntimeMediaChanges(html)).toBe(false);
+      expect(lookups.getElementById.mock.calls.length).toBe(0);
+      expect(lookups.querySelectorAll.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      lookups.restore();
+    }
+  });
+
+  it("finds a source write on a page written without the html, head or body tags", () => {
+    const html =
+      `<!doctype html><head><script>document.getElementById("clip").src = "b.mp4";</script></head>` +
+      `<body><video id="clip" src="a.mp4"></video></body>`;
+    expect(hasRuntimeMediaChanges(html)).toBe(true);
+  });
+
+  it("lets the browser probe decide when there are too many selectors to check", () => {
+    const videos = `<video src="a.mp4"></video>`.repeat(50);
+    const writes = Array.from(
+      { length: 8_000 },
+      (_, i) => `document.querySelector(".q${i}").src = "x";`,
+    );
+    expect(hasRuntimeMediaChanges(page(videos, writes.join("\n")))).toBe(true);
+  });
+
+  it("lets the browser probe decide a long selector against many media elements", () => {
+    const videos = `<video src="a.mp4"></video>`.repeat(100);
+    const selector = `${".nope > ".repeat(2_000)}video`;
+    const script = `document.querySelector(${JSON.stringify(selector)}).src = "x";`;
+    expect(hasRuntimeMediaChanges(page(videos, script))).toBe(true);
+    expect(hasRuntimeMediaChanges(page(`<video></video>`, script))).toBe(false);
+  });
+
+  it("lets the browser probe decide a selector with a sibling combinator", () => {
+    const script = `document.querySelector(".nope ~ .none").src = "x";`;
+    expect(hasRuntimeMediaChanges(page(`<video src="a.mp4"></video>`, script))).toBe(true);
+  });
+
+  it("still checks tag, class, attribute and child selectors without the browser", () => {
+    const body = `<div class="scene" data-x="a,b"><p><video src="a.mp4"></video></p></div>`;
+    const write = (selector: string) =>
+      page(body, `document.querySelector(${JSON.stringify(selector)}).src = "x";`);
+    const matches = elementMatchesSpy();
+    try {
+      expect(hasRuntimeMediaChanges(write(".scene > p > video"))).toBe(true);
+      expect(hasRuntimeMediaChanges(write('[data-x="a,b"] video'))).toBe(true);
+      expect(hasRuntimeMediaChanges(write(".other video, div > video"))).toBe(false);
+      expect(matches.mock.calls.length).toBe(3);
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("leaves page-walking selectors on a deep page to the browser without matching them", () => {
+    const depth = 5_000;
+    const body = `${"<div class='d'>".repeat(depth)}<video src="a.mp4"></video>${"</div>".repeat(depth)}`;
+    const selectors = [
+      ".d:has(.none) video",
+      "div:not(.none) video",
+      ":nth-child(1) video",
+      "p:contains(x)",
+      ".d .d .d video",
+      "div video audio",
+    ];
+    const matches = elementMatchesSpy();
+    try {
+      for (const selector of selectors) {
+        const writes = Array.from(
+          { length: 500 },
+          (_, i) => `document.querySelector(${JSON.stringify(`${selector}.n${i}`)}).src = "x";`,
+        );
+        expect(hasRuntimeMediaChanges(page(body, writes.join("\n")))).toBe(true);
+      }
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("charges each check for the media's ancestors and their attributes", () => {
+    const wide = `<div data-x="${"x".repeat(400_000)}">`;
+    const writes = Array.from(
+      { length: 2_000 },
+      (_, i) => `document.querySelector(".q${i} video").src = "x";`,
+    );
+    const deep = `${"<div>".repeat(20_000)}<video src="a.mp4"></video>${"</div>".repeat(20_000)}`;
+    const matches = elementMatchesSpy();
+    try {
+      expect(hasRuntimeMediaChanges(page(`${wide}<video></video></div>`, writes.join("\n")))).toBe(
+        true,
+      );
+      expect(hasRuntimeMediaChanges(page(deep, writes.join("\n")))).toBe(true);
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("charges a long selector's whole text against every media element", () => {
+    const videos = `<div data-x="a"><video src="a.mp4"></video></div>`.repeat(100);
+    const longValue = `[data-x="${"y".repeat(20_000)}"] video`;
+    const longGap = `div${" ".repeat(20_000)}video`;
+    const matches = elementMatchesSpy();
+    try {
+      for (const selector of [longValue, longGap]) {
+        const script = `document.querySelector(${JSON.stringify(selector)}).src = "x";`;
+        expect(hasRuntimeMediaChanges(page(videos, script))).toBe(true);
+      }
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("charges each simple test in a compound for the attribute text it reads", () => {
+    const video = `<video data-x="${"v".repeat(1_000)}" src="a.mp4"></video>`;
+    const selector = `video${"[data-x]".repeat(2_000)}`;
+    const script = `document.querySelector(${JSON.stringify(selector)}).src = "x";`;
+    const matches = elementMatchesSpy();
+    try {
+      expect(hasRuntimeMediaChanges(page(video, script))).toBe(true);
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("reads no attribute text when every write targets an id", () => {
+    let proto = Object.getPrototypeOf(parseHTML("<p></p>").document.querySelector("p"));
+    while (proto && !Object.getOwnPropertyDescriptor(proto, "attributes")) {
+      proto = Object.getPrototypeOf(proto);
+    }
+    const original = Object.getOwnPropertyDescriptor(proto, "attributes")!;
+    let reads = 0;
+    Object.defineProperty(proto, "attributes", {
+      ...original,
+      get(this: Element) {
+        reads += 1;
+        return original.get!.call(this);
+      },
+    });
+    try {
+      const body = `<div data-x="a"><video id="clip" src="a.mp4"></video></div>`;
+      expect(hasRuntimeMediaChanges(page(body, `document.getElementById("x").src = "b";`))).toBe(
+        false,
+      );
+      expect(reads).toBe(0);
+    } finally {
+      Object.defineProperty(proto, "attributes", original);
+    }
+  });
+});
+
+/** Spies on linkedom's `Element.matches`, wherever on the prototype chain it lives. */
+function elementMatchesSpy() {
+  let proto = Object.getPrototypeOf(parseHTML("<p></p>").document.querySelector("p"));
+  while (proto && !Object.hasOwn(proto, "matches")) proto = Object.getPrototypeOf(proto);
+  return spyOn(proto as Element, "matches");
+}
+
+/** Spies on the linkedom document's own lookups, wherever on its prototype chain they live. */
+function documentLookupSpies() {
+  const owner = (name: string): object => {
+    for (
+      let proto = Object.getPrototypeOf(parseHTML("<html></html>").document);
+      proto;
+      proto = Object.getPrototypeOf(proto)
+    ) {
+      if (Object.hasOwn(proto, name)) return proto;
+    }
+    throw new Error(`no ${name} on the document`);
+  };
+  const getElementById = spyOn(owner("getElementById") as Document, "getElementById");
+  const querySelectorAll = spyOn(owner("querySelectorAll") as Document, "querySelectorAll");
+  return {
+    getElementById,
+    querySelectorAll,
+    restore() {
+      getElementById.mockRestore();
+      querySelectorAll.mockRestore();
+    },
+  };
+}
 
 describe("runProbeStage — forceScreenshot threading", () => {
   it("runs media-type preflight after the browser-reconciliation phase", async () => {
@@ -412,7 +762,243 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(mediaPreflightComposition).toBe(input.composition);
   });
 
+  it("preserves browser-discovered loops on audio and audible video tracks", async () => {
+    resetRetryMocks();
+    const timing = {
+      start: 0,
+      end: 5,
+      duration: 5,
+      mediaStart: 0,
+      loop: true,
+      volume: 1,
+      muted: false,
+    };
+    browserMediaResults = [
+      { id: "existing", tagName: "audio", src: "tone.wav", hasAudio: false, ...timing },
+      { id: "inserted", tagName: "audio", src: "other.wav", hasAudio: false, ...timing },
+      { id: "muted", tagName: "audio", src: "muted.wav", hasAudio: false, ...timing, muted: true },
+      { id: "clip", tagName: "video", src: "clip.mp4", hasAudio: true, ...timing },
+    ];
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.compiled.html = '<script>new Audio("other.wav")</script>';
+    input.composition.duration = 5;
+    input.composition.audios.push(
+      { id: "existing", src: "tone.wav", start: 0, end: 5, mediaStart: 0, layer: 0, type: "audio" },
+      {
+        id: "clip-audio",
+        src: "clip.mp4",
+        start: 0,
+        end: 5,
+        mediaStart: 0,
+        layer: 0,
+        type: "video",
+      },
+    );
+    input.composition.videos.push({
+      id: "clip",
+      src: "clip.mp4",
+      start: 0,
+      end: 5,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: true,
+    });
+    await runProbeStage(input);
+    expect(input.composition.audios.map((audio) => ({ id: audio.id, loop: audio.loop }))).toEqual([
+      { id: "existing", loop: true },
+      { id: "clip-audio", loop: true },
+      { id: "inserted", loop: true },
+    ]);
+  });
+
   // Scene in-point 5 and clip trim 1: the collector starts picture and sound at source 6.
+  const runtimeRates = [
+    1.5,
+    {
+      target: "rate",
+      points: [
+        { t: 0, v: 1 },
+        { t: 3, v: 2 },
+      ],
+    } satisfies RateSpec,
+  ];
+  it.each(
+    runtimeRates.flatMap((playbackRate) => [
+      { tagName: "video", existing: false, playbackRate },
+      { tagName: "audio", existing: false, playbackRate },
+      { tagName: "video", existing: true, playbackRate },
+      { tagName: "audio", existing: true, playbackRate },
+    ]),
+  )(
+    "retains a runtime $tagName rate (existing: $existing, rate: $playbackRate)",
+    async ({ tagName, existing, playbackRate }) => {
+      resetRetryMocks();
+      browserMediaResults = [
+        {
+          id: "clip",
+          tagName,
+          src: "clip.mp4",
+          start: 0,
+          end: 3,
+          duration: 3,
+          mediaStart: 0.5,
+          playbackRate,
+          loop: false,
+          hasAudio: true,
+          volume: 1,
+          muted: false,
+        },
+      ];
+      const { runProbeStage } = await import("./probeStage.js");
+      const input = makeProbeInput({});
+      const clip = {
+        id: "clip",
+        src: "clip.mp4",
+        start: 0,
+        end: 3,
+        mediaStart: 0.5,
+        playbackRate: 1,
+      };
+      if (existing && tagName === "video") {
+        input.composition.videos.push({ ...clip, loop: false, hasAudio: true });
+        input.composition.audios.push({ ...clip, id: "clip-audio", layer: 0, type: "video" });
+      }
+      if (existing && tagName === "audio") {
+        input.composition.audios.push({ ...clip, layer: 0, type: "audio" });
+      }
+
+      await runProbeStage(input);
+
+      const media = tagName === "video" ? input.composition.videos : input.composition.audios;
+      expect(media[0]).toMatchObject({ playbackRate, mediaStart: 0.5 });
+      if (existing && tagName === "video") {
+        expect(input.composition.audios[0]).toMatchObject({ playbackRate, mediaStart: 0.5 });
+      }
+    },
+  );
+
+  it.each([
+    { tagName: "video", pageStart: 1, expected: 3 },
+    { tagName: "video", pageStart: 3, expected: 5 },
+    { tagName: "audio", pageStart: 1, expected: 3 },
+    { tagName: "audio", pageStart: 3, expected: 5 },
+  ])(
+    "applies a scene trim when adopting a runtime $tagName lane (page start $pageStart)",
+    async ({ tagName, pageStart, expected }) => {
+      resetRetryMocks();
+      const playbackRate = {
+        target: "rate",
+        points: [
+          { t: 0, v: 1 },
+          { t: 2, v: 1 },
+          { t: 4, v: 2 },
+        ],
+      } satisfies RateSpec;
+      browserMediaResults = [
+        {
+          id: "clip",
+          tagName,
+          src: "clip.mp4",
+          start: 0,
+          end: 5,
+          duration: 5,
+          mediaStart: pageStart,
+          playbackRate,
+          loop: false,
+          hasAudio: true,
+          volume: 1,
+          muted: false,
+        },
+      ];
+      const { runProbeStage } = await import("./probeStage.js");
+      const input = makeProbeInput({});
+      input.compiled.html = `<div data-composition-id="scene" data-start="5" data-duration="3" data-playback-start="2">
+        <${tagName} id="clip" src="clip.mp4" data-start="0" data-duration="5" data-playback-start="1" data-playback-rate="2" data-has-audio="true"></${tagName}>
+      </div>`;
+      const collected = collectRenderMedia(input.compiled.html);
+      input.composition.videos = collected.videos;
+      input.composition.audios = collected.audios;
+      const before = tagName === "video" ? collected.videos : collected.audios;
+      expect(before[0]).toMatchObject({ start: 5, end: 8, mediaStart: 5, playbackRate: 2 });
+
+      await runProbeStage(input);
+
+      const shiftedRate = {
+        target: "rate",
+        points: [
+          { t: 0, v: 1 },
+          { t: 2, v: 2 },
+        ],
+      };
+      const media = tagName === "video" ? input.composition.videos : input.composition.audios;
+      expect(media[0]).toMatchObject({
+        start: 5,
+        end: 8,
+        mediaStart: expected,
+        playbackRate: shiftedRate,
+      });
+      if (tagName === "video") {
+        expect(input.composition.audios[0]).toMatchObject({
+          mediaStart: expected,
+          playbackRate: shiftedRate,
+        });
+      }
+    },
+  );
+
+  it.each(
+    runtimeRates.flatMap((playbackRate) => [
+      { tagName: "video", playbackRate },
+      { tagName: "audio", playbackRate },
+    ]),
+  )(
+    "preserves a collected $tagName speed ramp during reconciliation (browser rate: $playbackRate)",
+    async ({ tagName, playbackRate }) => {
+      resetRetryMocks();
+      browserMediaResults = [
+        {
+          id: "clip",
+          tagName,
+          src: "clip.mp4",
+          start: 0,
+          end: 5,
+          duration: 5,
+          mediaStart: 1,
+          playbackRate,
+          loop: false,
+          hasAudio: true,
+          volume: 1,
+          muted: false,
+        },
+      ];
+      const { runProbeStage } = await import("./probeStage.js");
+      const input = makeProbeInput({});
+      const authoredRate = {
+        target: "rate",
+        points: [
+          { t: 0, v: 1 },
+          { t: 2, v: 1 },
+          { t: 4, v: 2 },
+        ],
+      } satisfies RateSpec;
+      input.compiled.html = `<div data-composition-id="scene" data-start="5" data-duration="3" data-playback-start="2">
+        <${tagName} id="clip" src="clip.mp4" data-start="0" data-duration="5" data-playback-start="1" data-has-audio="true" data-automation='${JSON.stringify({ version: 1, lanes: [authoredRate] })}'></${tagName}>
+      </div>`;
+      const collected = collectRenderMedia(input.compiled.html);
+      input.composition.videos = collected.videos;
+      input.composition.audios = collected.audios;
+      const before = structuredClone({ videos: collected.videos, audios: collected.audios });
+      const media = tagName === "video" ? collected.videos : collected.audios;
+      expect(media[0]).toMatchObject({ mediaStart: 3 });
+
+      await runProbeStage(input);
+
+      expect(input.composition.videos).toEqual(before.videos);
+      expect(input.composition.audios).toEqual(before.audios);
+    },
+  );
+
   it.each([
     { pageStart: 1, expected: 6 },
     { pageStart: 3, expected: 8 },
@@ -551,6 +1137,54 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(input.composition.videos[0]?.src).toBe("runtime-still.asset");
     expect(mediaPreflightComposition).toBe(input.composition);
   });
+
+  it.each(["take one.mp4", "café.mp4", "take%20one.mp4", "caf%C3%A9.mp4"])(
+    "mixes the sound of a clip whose src is written %s once, however the browser spells it",
+    async (name) => {
+      resetRetryMocks();
+      const timing = { start: 0, end: 5, duration: 5, mediaStart: 0, loop: false, volume: 1 };
+      browserMediaResults = [
+        {
+          id: "clip",
+          tagName: "video",
+          src: new URL(name, "http://127.0.0.1:0/").href,
+          hasAudio: true,
+          muted: false,
+          ...timing,
+        },
+      ];
+      const { runProbeStage } = await import("./probeStage.js");
+      const { appendAutoDetectedVideoAudio } = await import("./extractVideosStage.js");
+      const input = makeProbeInput({});
+      input.composition.duration = 5;
+      input.composition.videos.push({
+        id: "clip",
+        src: name,
+        start: 0,
+        end: 5,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: true,
+      });
+      input.composition.audios.push({
+        id: videoAudioId("clip"),
+        src: name,
+        start: 0,
+        end: 5,
+        mediaStart: 0,
+        layer: 0,
+        type: "video",
+      });
+
+      await runProbeStage({ ...input, measuresShownBoxes: true });
+      appendAutoDetectedVideoAudio(input.composition, [
+        { videoId: "clip", metadata: { hasAudio: true } },
+      ]);
+
+      expect(input.composition.videos[0]?.src).toBe(name);
+      expect(input.composition.audios.map((audio) => audio.id)).toEqual([videoAudioId("clip")]);
+    },
+  );
 
   it("uses selected intrinsic duration only when the variable-bound duration was inferred", async () => {
     resetRetryMocks();
@@ -785,6 +1419,45 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(mediaPreflightComposition).toBe(input.composition);
   });
 
+  it("probes a video source write after an inner binding shadows its variable", async () => {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    input.composition.videos.push({
+      id: "clip",
+      src: "a.mp4",
+      start: 0,
+      end: 5,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    });
+    input.compiled.html = `<video id="clip" src="a.mp4"></video><img id="poster" src="a.png">
+      <script>const target = document.getElementById("clip");
+      { const target = document.getElementById("poster"); target.src = "b.png"; }
+      target.src = "b.mp4";</script>`;
+    browserMediaResults = [
+      {
+        id: "clip",
+        tagName: "video",
+        src: "b.mp4",
+        start: 0,
+        end: 5,
+        duration: 5,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: false,
+        volume: 1,
+        muted: true,
+      },
+    ];
+    await runProbeStage(input);
+    expect(capturedCfgs.length).toBeGreaterThan(0);
+    expect(input.composition.videos[0]?.src).toBe("b.mp4");
+  });
+
   it("does not probe for img or script src mutations", async () => {
     resetRetryMocks();
     capturedCfgs.length = 0;
@@ -800,6 +1473,21 @@ describe("runProbeStage — forceScreenshot threading", () => {
     await runProbeStage(input);
 
     expect(capturedCfgs).toHaveLength(0);
+  });
+
+  it("opens a page for a video larger than the canvas, and none for a film without one", async () => {
+    resetRetryMocks();
+    const { runProbeStage } = await import("./probeStage.js");
+    for (const measuresShownBoxes of [false, true]) {
+      capturedCfgs.length = 0;
+      const input = makeProbeInput({});
+      input.composition.duration = 5;
+      input.compiled.html = `<video id="clip" src="clip.mp4" data-start="0" data-duration="5"></video>`;
+      await runProbeStage({ ...input, measuresShownBoxes });
+      expect(capturedCfgs.length > 0, `measuresShownBoxes ${measuresShownBoxes}`).toBe(
+        measuresShownBoxes,
+      );
+    }
   });
 
   it("probes when a source child of existing media is mutated", async () => {
@@ -897,6 +1585,32 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(input.cfg.forceScreenshot).toBe(false);
   });
 
+  it("defers the probe's still-frame check and gives its session the render's memo and page hash", async () => {
+    capturedOptions.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const staticDedupMemo = {};
+    await runProbeStage({ ...makeProbeInput({}), staticDedupMemo });
+    const options = capturedOptions[0] as {
+      deferStaticDedup?: boolean;
+      staticDedupMemo?: object;
+      compositionHash?: string;
+    };
+    expect(options.deferStaticDedup).toBe(true);
+    expect(options.staticDedupMemo).toBe(staticDedupMemo);
+    expect(options.compositionHash).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it("reports the deferred check's screenshots to the render's stall watcher when its session is reused", async () => {
+    capturedOptions.length = 0;
+    notedStaticDedupActivity.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    await runProbeStage(input);
+    const options = capturedOptions[0] as { onStaticDedupActivity?: () => void };
+    options.onStaticDedupActivity?.();
+    expect(notedStaticDedupActivity).toEqual([input.job]);
+  });
+
   it("passes forceScreenshot:false through unchanged when neither cfg nor stage input forces it", async () => {
     capturedCfgs.length = 0;
 
@@ -925,6 +1639,110 @@ describe("runProbeStage — render variable threading", () => {
       variables: { short: true, sceneCount: 2 },
     });
   });
+});
+
+describe("probeVideoHold", () => {
+  it("holds each readable local video with its size, leaving runtime-set and remote sources live", async () => {
+    resetRetryMocks();
+    mediaSizes.set("/p/4k.mp4", { width: 3840, height: 2160 });
+    const html = `<body>
+      <video id="local" src="4k.mp4"></video>
+      <video id="bound" src="4k.mp4" data-var-src="clip"></video>
+      <video id="sourced"><source src="4k.mp4" data-var-src="clip"></video>
+      <video id="remote" src="https://cdn.example/4k.mp4"></video>
+      <video id="unreadable" src="missing.mp4"></video>
+    </body>`;
+    const videos = ["local", "bound", "sourced", "remote", "unreadable"].map((id) => ({
+      id,
+      src:
+        id === "remote"
+          ? "https://cdn.example/4k.mp4"
+          : id === "unreadable"
+            ? "missing.mp4"
+            : "4k.mp4",
+    }));
+
+    expect(await probeVideoHold(videos, html, "/p", "/p/compiled")).toEqual({
+      skipReadinessVideoIds: ["local"],
+      videoMetadataHints: [{ id: "local", width: 3840, height: 2160 }],
+    });
+  });
+});
+
+describe("probeHoldFitsCapture", () => {
+  it("lets capture reuse the probe page only when capture holds every video the probe held", () => {
+    expect(probeHoldFitsCapture(["a", "b"], ["a", "b", "c"])).toBe(true);
+    expect(probeHoldFitsCapture(["a", "b"], ["a"])).toBe(false);
+    expect(probeHoldFitsCapture(undefined, [])).toBe(true);
+  });
+});
+
+describe("runProbeStage — video hold", () => {
+  // fails without the fix: the probe page loaded every clip live, so 40 clips of one 4K file froze Chrome.
+  it("opens the probe page with the composition's local videos held at their FFmpeg size", async () => {
+    resetRetryMocks();
+    capturedOptions.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({ stageForceScreenshot: false });
+    mediaSizes.set(`${input.projectDir}/4k.mp4`, { width: 3840, height: 2160 });
+    input.composition.videos = [
+      { id: "c0", src: "4k.mp4", start: 0, end: 2, mediaStart: 0, hasAudio: false },
+      { id: "c1", src: "4k.mp4", start: 2, end: 4, mediaStart: 30, hasAudio: false },
+    ] as never[];
+
+    await runProbeStage(input);
+
+    expect(capturedOptions[0]).toMatchObject({
+      skipReadinessVideoIds: ["c0", "c1"],
+      videoMetadataHints: [
+        { id: "c0", width: 3840, height: 2160 },
+        { id: "c1", width: 3840, height: 2160 },
+      ],
+    });
+  });
+});
+
+describe("runProbeStage — page motion blur", () => {
+  // The probe session is reused for capture, so it must carry the render's "off" like any session.
+  it("passes pageMotionBlur to the probe session so a reused session installs the off global", async () => {
+    capturedOptions.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({ stageForceScreenshot: false });
+    input.job.config.pageMotionBlur = "off";
+
+    await runProbeStage(input);
+
+    expect(capturedOptions[0]).toMatchObject({ pageMotionBlur: "off" });
+  });
+
+  it("leaves pageMotionBlur unset when the render does not ask for off", async () => {
+    capturedOptions.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+
+    await runProbeStage(makeProbeInput({ stageForceScreenshot: false }));
+
+    expect(capturedOptions[0]).not.toHaveProperty("pageMotionBlur", "off");
+  });
+});
+
+describe("runProbeStage — capture jpeg quality", () => {
+  // A sequential disk render reuses this session for every frame, so its quality is the render's.
+  for (const [preset, expected] of [
+    ["draft", 80],
+    ["standard", 100],
+    ["high", 100],
+  ] as const) {
+    it(`captures ${preset} renders at jpeg quality ${expected}`, async () => {
+      capturedOptions.length = 0;
+      const { runProbeStage } = await import("./probeStage.js");
+      const input = makeProbeInput({ stageForceScreenshot: false });
+      input.job.config.quality = preset;
+
+      await runProbeStage(input);
+
+      expect(capturedOptions[0]).toMatchObject({ format: "jpeg", quality: expected });
+    });
+  }
 });
 
 describe("runProbeStage — decimal duration frame count", () => {
@@ -1108,5 +1926,53 @@ describe("runProbeStage — transient browser error retry (#1687)", () => {
     expect(closeCaptureSessionCallCount).toBe(0);
     expect(result.duration).toBe(5);
     expect(result.probeSession).not.toBeNull();
+  });
+});
+
+describe("reportedLengthSource", () => {
+  it("names a media clip by tag, trim and a hash of its file name, never its path", () => {
+    const reported = reportedLengthSource({
+      from: "media",
+      tag: "video",
+      src: "https://cdn.example/private/customer/Full Source.mp4?token=secret#t=2",
+      trimmed: false,
+    });
+    expect(reported).toEqual({
+      from: "media",
+      tag: "video",
+      trimmed: false,
+      srcHash: createHash("sha256").update("Full Source.mp4").digest("hex").slice(0, 12),
+    });
+    expect(JSON.stringify(reported)).not.toMatch(/customer|secret|Full Source/);
+    expect(reportedLengthSource({ from: "timeline" })).toEqual({ from: "timeline" });
+    expect(reportedLengthSource(null)).toBeNull();
+  });
+});
+
+describe("runProbeStage — a page call that never answers", () => {
+  it("says which probe step stopped, keeping the browser's own words", async () => {
+    resetRetryMocks();
+    browserMediaError = new Error(
+      "Runtime.callFunctionOn timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
+    );
+    const { runProbeStage } = await import("./probeStage.js");
+    try {
+      await expect(runProbeStage(makeProbeInput({}))).rejects.toThrow(
+        "Preparing the render stopped while listing the film's videos, audio and images: Runtime.callFunctionOn timed out.",
+      );
+    } finally {
+      browserMediaError = null;
+    }
+  });
+
+  it("leaves a bare out-of-memory message as it is, so it is still read as memory exhaustion", async () => {
+    resetRetryMocks();
+    browserMediaError = new Error("Out of memory");
+    const { runProbeStage } = await import("./probeStage.js");
+    try {
+      await expect(runProbeStage(makeProbeInput({}))).rejects.toThrow(/^Out of memory$/);
+    } finally {
+      browserMediaError = null;
+    }
   });
 });

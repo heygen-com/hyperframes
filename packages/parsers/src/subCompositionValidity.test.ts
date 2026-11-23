@@ -23,6 +23,12 @@ const VALID_HTML_NO_TEMPLATE = `<!doctype html>
 </html>`;
 
 describe("checkSubCompositionUsability", () => {
+  // fails without the fix: an SVG element named template has no content, and the check read it as an HTML one.
+  it("reads the HTML template after an SVG element named template", () => {
+    const html = `<svg><template></template></svg>${VALID_HTML}`;
+    expect(checkSubCompositionUsability(html, parse)).toEqual({ ok: true });
+  });
+
   it("accepts a valid <template>-based sub-composition", () => {
     expect(checkSubCompositionUsability(VALID_HTML, parse)).toEqual({ ok: true });
   });

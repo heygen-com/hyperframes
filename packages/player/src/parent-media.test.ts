@@ -1,9 +1,13 @@
-import { afterEach, describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
 import { ParentMediaManager, type ProxyEntry } from "./parent-media";
 
 // A fake media element whose paused state is driven by play()/pause() stubs.
-function makeFakeAudio(initiallyPaused: boolean): HTMLMediaElement {
-  const el = new Audio();
+function makeFakeAudio(
+  initiallyPaused: boolean,
+  tag: "audio" | "video" = "audio",
+): HTMLMediaElement {
+  const el = tag === "video" ? document.createElement("video") : new Audio();
   let paused = initiallyPaused;
   Object.defineProperty(el, "paused", { get: () => paused });
   el.pause = () => {
@@ -25,6 +29,7 @@ function makeManager(overrides: Partial<{ isPaused: boolean; owner: "runtime" | 
     getPlaybackRate: () => 1,
     getCurrentTime: () => 0,
     isPaused: () => overrides.isPaused ?? true,
+    setFrameMuted: () => {},
   });
   return mgr;
 }
@@ -70,7 +75,7 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
       el: new Audio(),
       start: 0,
       duration: Infinity,
-      driftSamples: 0,
+      mediaStart: 0,
     };
     adopted.el.src = "https://example.test/iframe-clip.mp4";
     mgr.entries.push(adopted);
@@ -92,7 +97,7 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
   it("pauses a proxy once the playhead passes the clip end (trimmed clip)", () => {
     const mgr = makeManager({ owner: "parent", isPaused: false });
     const el = makeFakeAudio(false); // already playing within the clip
-    mgr.entries.push({ el, start: 0, duration: 5, driftSamples: 0 });
+    mgr.entries.push({ el, start: 0, duration: 5, mediaStart: 0 });
 
     mgr.mirrorTime(3); // inside [0, 5) — stays playing
     expect(el.paused).toBe(false);
@@ -110,7 +115,7 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
     document.body.appendChild(source);
 
     const el = makeFakeAudio(false);
-    mgr.entries.push({ el, start: 0, duration: 30, driftSamples: 0, source });
+    mgr.entries.push({ el, start: 0, duration: 30, mediaStart: 0, source });
 
     mgr.mirrorTime(20); // within 30 → playing
     expect(el.paused).toBe(false);
@@ -126,13 +131,13 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
     const mgr = makeManager({ owner: "parent" });
     const inWin = makeFakeAudio(true); // currently paused — scrub should start it
     const outWin = makeFakeAudio(false); // currently playing, but outside its window
-    mgr.entries.push({ el: inWin, start: 0, duration: 5, driftSamples: 0 });
-    mgr.entries.push({ el: outWin, start: 10, duration: 5, driftSamples: 0 });
+    mgr.entries.push({ el: inWin, start: 0, duration: 5, mediaStart: 0 });
+    mgr.entries.push({ el: outWin, start: 10, duration: 5, mediaStart: 0 });
 
     mgr.scrubAll(2); // playhead at 2s
 
     // in-window proxy: positioned at rel time and AUDIBLE (the point of scrub-audio)
-    expect(inWin.currentTime).toBe(2);
+    expect(inWin.currentTime).toBeCloseTo(mediaElementTime(2), 9);
     expect(inWin.paused).toBe(false);
     // out-of-window proxy: paused, not blipped
     expect(outWin.paused).toBe(true);
@@ -145,7 +150,7 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
       el: new Audio(),
       start: 0,
       duration: Infinity,
-      driftSamples: 0,
+      mediaStart: 0,
     };
     adopted.el.src = "https://example.test/shared.mp3";
     mgr.entries.push(adopted);
@@ -160,6 +165,34 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
     mgr.teardownUrlAudio();
     expect(mgr.entries).toHaveLength(1);
     expect(mgr.entries[0]).toBe(adopted);
+  });
+});
+
+describe("ParentMediaManager priming", () => {
+  const iPhone =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148";
+  afterEach(() => vi.restoreAllMocks());
+
+  function primed() {
+    const mgr = makeManager();
+    mgr.setupFromUrl("https://example.test/a.mp3");
+    const el = mgr.entries[0].el;
+    const calls: string[] = [];
+    const play = el.play.bind(el);
+    el.play = () => (calls.push("play"), play());
+    const pause = el.pause.bind(el);
+    el.pause = () => (calls.push("pause"), pause());
+    mgr.primeAll();
+    return calls;
+  }
+
+  it("plays then pauses every idle copy so iOS lets it start after the tap", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(iPhone);
+    expect(primed()).toEqual(["play", "pause"]);
+  });
+
+  it("leaves the copies alone where no tap is needed", () => {
+    expect(primed()).toEqual([]);
   });
 });
 
@@ -250,7 +283,7 @@ describe("ParentMediaManager following its clips", () => {
     clip.setAttribute("src", copy);
     await flushObserver();
 
-    mgr.promoteToParentProxy(document);
+    mgr.promoteToParentProxy();
 
     expect(mgr.entries.map((m) => m.el.src)).toEqual([copy]);
   });
@@ -258,34 +291,25 @@ describe("ParentMediaManager following its clips", () => {
   it("follows a re-pointed clip at once while the parent owns playback", async () => {
     const mgr = makeManager();
     const clip = adoptedClip(mgr, "https://example.test/clip.mov");
-    mgr.promoteToParentProxy(document);
+    mgr.promoteToParentProxy();
     clip.setAttribute("src", copy);
     await flushObserver();
 
     expect(mgr.entries.map((m) => m.el.src)).toEqual([copy]);
   });
 
-  it("keeps one proxy per file when a clip is re-pointed at another clip's file", async () => {
+  it("gives a clip re-pointed at another clip's file its own proxy", async () => {
     const mgr = makeManager();
     adoptedClip(mgr, "https://example.test/a.mov");
     const b = adoptedClip(mgr, "https://example.test/b.mov");
-    mgr.promoteToParentProxy(document);
+    mgr.promoteToParentProxy();
     b.setAttribute("src", "https://example.test/a.mov");
     await flushObserver();
 
-    expect(mgr.entries.map((m) => m.el.src)).toEqual(["https://example.test/a.mov"]);
-  });
-
-  it("keeps one proxy per file when the parent takes over after such a re-point", async () => {
-    const mgr = makeManager();
-    adoptedClip(mgr, "https://example.test/a.mov");
-    const b = adoptedClip(mgr, "https://example.test/b.mov");
-    b.setAttribute("src", "https://example.test/a.mov");
-    await flushObserver();
-
-    mgr.promoteToParentProxy(document);
-
-    expect(mgr.entries.map((m) => m.el.src)).toEqual(["https://example.test/a.mov"]);
+    expect(mgr.entries.map((m) => m.el.src)).toEqual([
+      "https://example.test/a.mov",
+      "https://example.test/a.mov",
+    ]);
   });
 
   const files = (mgr: ParentMediaManager) => mgr.entries.map((m) => m.el.src).sort();
@@ -294,7 +318,7 @@ describe("ParentMediaManager following its clips", () => {
     const mgr = makeManager();
     const a = adoptedClip(mgr, "https://example.test/a.mov");
     const b = adoptedClip(mgr, "https://example.test/b.mov");
-    mgr.promoteToParentProxy(document);
+    mgr.promoteToParentProxy();
     a.setAttribute("src", "https://example.test/b.mov");
     b.setAttribute("src", "https://example.test/a.mov");
     await flushObserver();
@@ -310,32 +334,19 @@ describe("ParentMediaManager following its clips", () => {
     b.setAttribute("src", "https://example.test/c.mov");
     await flushObserver();
 
-    mgr.promoteToParentProxy(document);
+    mgr.promoteToParentProxy();
 
     expect(files(mgr)).toEqual(["https://example.test/b.mov", "https://example.test/c.mov"]);
   });
 
   it("keeps the proxy of a clip when another clip on the same file leaves", async () => {
     const mgr = makeManager();
-    adoptedClip(mgr, "https://example.test/a.mov");
+    const first = adoptedClip(mgr, "https://example.test/a.mov");
     const twin = adoptedClip(mgr, "https://example.test/a.mov");
     twin.remove();
     await flushObserver();
 
-    expect(files(mgr)).toEqual(["https://example.test/a.mov"]);
-  });
-
-  it("gives a clip that replaces another on the same file its own proxy", async () => {
-    const mgr = makeManager();
-    const old = adoptedClip(mgr, "https://example.test/a.mov");
-    const replacement = document.createElement("video");
-    replacement.setAttribute("src", "https://example.test/a.mov");
-    replacement.setAttribute("data-start", "0");
-    replacement.preload = "auto";
-    document.body.replaceChild(replacement, old);
-    await flushObserver();
-
-    expect(mgr.entries.map((m) => m.source)).toEqual([replacement]);
+    expect(mgr.entries.map((m) => m.source)).toEqual([first]);
   });
 
   it("drops the proxy of a re-pointed clip when the clip leaves", async () => {
@@ -355,11 +366,551 @@ describe("ParentMediaManager clip window", () => {
   it("plays a proxy inside its clip window and pauses it at the clip end instant", () => {
     const mgr = makeManager({ isPaused: false, owner: "parent" });
     const el = makeFakeAudio(false);
-    mgr.entries.push({ el, start: 1, duration: 2, driftSamples: 0 });
+    mgr.entries.push({ el, start: 1, duration: 2, mediaStart: 0 });
 
     mgr.mirrorTime(2.999);
     expect(el.paused).toBe(false);
     mgr.mirrorTime(3);
     expect(el.paused).toBe(true);
+  });
+});
+
+describe("ParentMediaManager takes cut from one joined file", () => {
+  afterEach(() => document.body.replaceChildren());
+
+  const FILE = "https://example.test/joined.mp4";
+  // [data-start, data-duration, data-media-start] of each take: the picture cuts hard, the audio window
+  // starts a little before the cut and ends a little after it.
+  const TAKES = [
+    [0, 8.2, 3],
+    [8, 8.2, 20],
+    [16, 8.8, 31.5],
+  ];
+
+  function mountTakes() {
+    const audios: HTMLAudioElement[] = [];
+    for (const [start, duration, mediaStart] of TAKES) {
+      const video = document.createElement("video");
+      video.setAttribute("src", FILE);
+      video.setAttribute("muted", "");
+      video.setAttribute("data-start", String(start));
+      video.setAttribute("data-duration", String(duration));
+      video.setAttribute("data-media-start", String(mediaStart));
+      const audio = document.createElement("audio");
+      audio.setAttribute("src", FILE);
+      audio.setAttribute("data-start", String(start));
+      audio.setAttribute("data-duration", String(duration));
+      audio.setAttribute("data-media-start", String(mediaStart));
+      document.body.append(video, audio);
+      audios.push(audio);
+    }
+    return audios;
+  }
+
+  // Count writes to currentTime the way a seek storm shows up in a browser.
+  function trackSeeks(el: HTMLMediaElement) {
+    let time = 0;
+    const seeks: number[] = [];
+    Object.defineProperty(el, "currentTime", {
+      get: () => time,
+      set: (v: number) => {
+        time = v;
+        seeks.push(v);
+      },
+    });
+    let paused = true;
+    Object.defineProperty(el, "paused", { get: () => paused });
+    el.play = () => {
+      paused = false;
+      return Promise.resolve();
+    };
+    el.pause = () => {
+      paused = true;
+    };
+    return {
+      seeks,
+      advance: (dt: number) => {
+        if (!paused) time += dt;
+      },
+    };
+  }
+
+  it("plays every take from its own media start for its own window, with one seek per take", () => {
+    const audios = mountTakes();
+    const mgr = makeManager({ isPaused: false });
+    mgr.setupFromIframe(document);
+    expect(mgr.entries).toHaveLength(audios.length);
+    const tracks = mgr.entries.map((m) => trackSeeks(m.el));
+    mgr.promoteToParentProxy();
+
+    let t = 0;
+    const playing: boolean[][] = [];
+    for (; t <= 25; t += 0.1) {
+      mgr.mirrorTime(t);
+      playing.push(mgr.entries.map((m) => !m.el.paused));
+      for (const track of tracks) track.advance(0.1);
+    }
+
+    // each take is heard, and from the cut footage's own place in the file
+    TAKES.forEach(([start, duration, mediaStart], i) => {
+      const first = tracks[i].seeks[0];
+      expect(first).toBeGreaterThanOrEqual(mediaStart);
+      expect(first).toBeLessThanOrEqual(mediaStart + 0.1);
+      expect(playing.some((row) => row[i])).toBe(true);
+      expect(mgr.entries[i].start).toBe(start);
+      expect(mgr.entries[i].duration).toBe(duration);
+      // at most the entry seek per take window (promotion adds one aligned seek at most)
+      expect(tracks[i].seeks.length).toBeLessThanOrEqual(2);
+    });
+    // a muted video is picture only: no proxy plays its file's audio on top of its take's audio
+    expect(mgr.entries.every((m) => m.source?.tagName === "AUDIO")).toBe(true);
+  });
+
+  it("keeps every take silent outside its window", () => {
+    mountTakes();
+    const mgr = makeManager({ isPaused: false });
+    mgr.setupFromIframe(document);
+    mgr.entries.forEach((m) => trackSeeks(m.el));
+    mgr.promoteToParentProxy();
+
+    mgr.mirrorTime(12);
+    expect(mgr.entries.map((m) => !m.el.paused)).toEqual([false, true, false]);
+    mgr.mirrorTime(24.5);
+    expect(mgr.entries.map((m) => !m.el.paused)).toEqual([false, false, true]);
+  });
+
+  it("seeks a take to its media start plus the time into its window on a user seek", () => {
+    mountTakes();
+    const mgr = makeManager();
+    mgr.setupFromIframe(document);
+    const tracks = mgr.entries.map((m) => trackSeeks(m.el));
+
+    mgr.seekAll(10);
+
+    expect(tracks[1].seeks.map(Math.round)).toEqual([22]);
+    expect(tracks[0].seeks).toEqual([]);
+  });
+
+  it("positions an upcoming take at its media start before its window opens", () => {
+    mountTakes();
+    const mgr = makeManager({ isPaused: false });
+    mgr.setupFromIframe(document);
+    const tracks = mgr.entries.map((m) => trackSeeks(m.el));
+    mgr.promoteToParentProxy();
+
+    mgr.mirrorTime(6.4); // inside take 1's window, 1.6 s before take 2
+    expect(tracks[1].seeks.at(-1)).toBeUndefined();
+    mgr.mirrorTime(7.0);
+    expect(tracks[1].seeks.map(Math.round)).toEqual([20]);
+    expect(mgr.entries[1].el.paused).toBe(true);
+
+    // at the cut it only plays: no second seek
+    mgr.mirrorTime(8.0);
+    expect(mgr.entries[1].el.paused).toBe(false);
+    expect(tracks[1].seeks.map(Math.round)).toEqual([20]);
+  });
+});
+
+describe("ParentMediaManager drift policy", () => {
+  afterEach(() => {
+    document.body.replaceChildren();
+    vi.restoreAllMocks();
+  });
+
+  // A playing proxy `lag` seconds behind a timeline at `t`, a clip that starts at 0 and plays from media 0.
+  function playingProxy(lag: number, t = 5, tag: "audio" | "video" = "audio") {
+    const mgr = makeManager({ isPaused: false });
+    const el = makeFakeAudio(false, tag);
+    const writes: number[] = [];
+    let time = t - lag;
+    Object.defineProperty(el, "currentTime", {
+      get: () => time,
+      set: (v: number) => {
+        time = v;
+        writes.push(v);
+      },
+    });
+    mgr.entries.push({ el, start: 0, duration: 30, mediaStart: 0 });
+    return { mgr, el, writes, setTime: (v: number) => (time = v) };
+  }
+
+  it("leaves a proxy inside the sync tolerance alone", () => {
+    const { mgr, el, writes, setTime } = playingProxy(0.03);
+    mgr.mirrorTime(5);
+    setTime(5.07);
+    mgr.mirrorTime(5.1);
+    expect(writes).toEqual([]);
+    expect(el.playbackRate).toBe(1);
+  });
+
+  it("steers a proxy that lags a little by rate, capped at 10%, without seeking", () => {
+    const { mgr, el, writes } = playingProxy(0.07);
+    mgr.mirrorTime(5);
+    mgr.mirrorTime(5.08);
+    expect(writes).toEqual([]);
+    expect(el.playbackRate).toBeGreaterThan(1);
+    expect(el.playbackRate).toBeLessThanOrEqual(1.1);
+  });
+
+  it("returns a steered proxy to its authored rate once it has caught up", () => {
+    const { mgr, el, setTime } = playingProxy(0.07);
+    mgr.mirrorTime(5);
+    setTime(5.1);
+    mgr.mirrorTime(5.1);
+    expect(el.playbackRate).toBe(1);
+  });
+
+  it("seeks a proxy that holds a lag past 100 ms, once", () => {
+    const { mgr, writes, setTime } = playingProxy(0.25);
+    mgr.mirrorTime(5); // first sample: offset not yet known to hold
+    setTime(4.85); // the proxy advanced with the timeline: the lag held
+    mgr.mirrorTime(5.1);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toBeCloseTo(mediaElementTime(5.1), 9);
+  });
+
+  it("seeks a video proxy that holds a 1 s lag: a proxy is heard, whatever its tag", () => {
+    const { mgr, el, writes, setTime } = playingProxy(1, 5, "video");
+    mgr.mirrorTime(5);
+    setTime(4.1);
+    mgr.mirrorTime(5.1);
+    expect(writes).toHaveLength(1);
+    expect(el.playbackRate).toBe(1);
+  });
+
+  it("steers, never seeks, a proxy whose lag keeps growing because it is stalled", () => {
+    const { mgr, el, writes } = playingProxy(0.25);
+    mgr.mirrorTime(5);
+    mgr.mirrorTime(5.1); // currentTime did not move: lag grew by 100 ms
+    expect(writes).toEqual([]);
+    expect(el.playbackRate).toBeLessThanOrEqual(1.1);
+  });
+
+  it("seeks at once on a forced alignment when the proxy is off the playhead", () => {
+    const { mgr, writes } = playingProxy(2);
+    mgr.mirrorTime(5, { force: true });
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toBeCloseTo(mediaElementTime(5), 9);
+  });
+
+  it("aims a seek of a playing proxy ahead by the time its last seek took to land", () => {
+    let now = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    const mgr = makeManager({ isPaused: false });
+    mgr.setupFromUrl("https://example.test/take.mp3");
+    const el = mgr.entries[0].el;
+    const writes: number[] = [];
+    let time = 4.75;
+    Object.defineProperty(el, "currentTime", {
+      get: () => time,
+      set: (v: number) => {
+        time = v;
+        writes.push(v);
+      },
+    });
+    Object.defineProperty(el, "paused", { get: () => false });
+    mgr.promoteToParentProxy(() => {}); // owner parent without the alignment seek
+
+    mgr.mirrorTime(5); // 250 ms behind
+    time = 4.85;
+    mgr.mirrorTime(5.1); // the lag held: seek, no landing time known yet
+    now = 1230;
+    el.dispatchEvent(new Event("seeked")); // it took 230 ms to land
+    time = 5.0; // landed 230 ms late, lagging the playhead again
+    mgr.mirrorTime(5.33);
+    time = 5.1;
+    mgr.mirrorTime(5.43);
+
+    expect(writes).toHaveLength(2);
+    expect(writes[0]).toBeCloseTo(mediaElementTime(5.1), 9);
+    expect(writes[1]).toBeCloseTo(mediaElementTime(5.43 + 0.23), 9);
+  });
+});
+
+describe("proxy crossorigin", () => {
+  it.each(["audio", "video"] as const)("a %s proxy carries its source's crossorigin", (tag) => {
+    const created: HTMLMediaElement[] = [];
+    const real = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((t: string) => {
+      const el = real(t);
+      if (t === "video") created.push(el as HTMLMediaElement);
+      return el;
+    });
+    const OrigAudio = globalThis.Audio;
+    globalThis.Audio = function () {
+      const el = real("audio");
+      created.push(el);
+      return el;
+    } as unknown as typeof Audio;
+    const source = real(tag);
+    source.setAttribute("crossorigin", "anonymous");
+    const parent = Object.create(ParentMediaManager.prototype) as ParentMediaManager;
+    Object.assign(parent, {
+      _entries: [],
+      _getMuted: () => false,
+      _getVolume: () => 1,
+      _getPlaybackRate: () => 1,
+    });
+    (parent as any)._createEntry(
+      { kind: tag, src: "https://x/a.mp3", start: 0, duration: 5, mediaStart: 0 },
+      source,
+    );
+    const proxy = created.find((e) => e.tagName.toLowerCase() === tag)!;
+    globalThis.Audio = OrigAudio;
+    vi.restoreAllMocks();
+    expect(proxy.getAttribute("crossorigin")).toBe("anonymous");
+  });
+});
+
+describe("ParentMediaManager for a sealed film, from its runtime's list", () => {
+  const film = "https://films.test/f/index.html";
+  const clip = (src: string, start = 0) => ({
+    kind: "audio",
+    src,
+    start,
+    duration: 5,
+    mediaStart: 0,
+  });
+
+  function makeSealedManager() {
+    const events: CustomEvent[] = [];
+    const setFrameMuted = vi.fn();
+    const mgr = new ParentMediaManager({
+      dispatchEvent: (e) => events.push(e as CustomEvent),
+      getMuted: () => false,
+      getVolume: () => 1,
+      getPlaybackRate: () => 1,
+      getCurrentTime: () => 0,
+      isPaused: () => true,
+      setFrameMuted,
+    });
+    return { mgr, events, setFrameMuted };
+  }
+
+  // A copy's own state, as the browser reports it, then the event that says it changed.
+  function becomes(el: HTMLMediaElement, state: "playing" | "pause" | "ended" | "error") {
+    const define = (key: string, value: unknown) =>
+      Object.defineProperty(el, key, { configurable: true, get: () => value });
+    define("paused", state !== "playing");
+    define("readyState", state === "playing" ? 4 : 1);
+    define("ended", state === "ended");
+    if (state === "error") define("error", { code: 2 });
+    el.dispatchEvent(new Event(state));
+  }
+
+  it("copies only files under the composition's own folder, without credentials, and reports the rest", () => {
+    const { mgr, events } = makeSealedManager();
+
+    mgr.setupFromList(
+      [
+        clip("https://films.test/f/music/a.m4a"),
+        clip("https://films.test/f/music/my%20take.m4a?v=3"),
+        clip("https://other.test/f/a.m4a"),
+        clip("https://films.test/g/a.m4a"),
+        clip("https://films.test/f/../secret.m4a"),
+        clip("data:audio/mp4;base64,AAAA"),
+      ],
+      film,
+    );
+
+    expect(mgr.entries.map((m) => m.el.src)).toEqual([
+      "https://films.test/f/music/a.m4a",
+      "https://films.test/f/music/my%20take.m4a?v=3",
+    ]);
+    expect(mgr.entries.every((m) => m.el.getAttribute("crossorigin") === "anonymous")).toBe(true);
+    const refusal = events.find((e) => e.type === "playbackerror");
+    expect(refusal?.detail.refused).toEqual([
+      "https://other.test/f/a.m4a",
+      "https://films.test/g/a.m4a",
+      "https://films.test/f/../secret.m4a",
+      "data:audio/mp4;base64,AAAA",
+    ]);
+  });
+
+  it("refuses every way out of the composition's folder, and copies a file in a folder under it", () => {
+    const { mgr, events } = makeSealedManager();
+    const escapes = [
+      "https://films.test/f/%2e%2e/secret.m4a",
+      "https://films.test/f/..%2Fsecret.m4a",
+      "https://films.test/f/music%2F..%2F..%2Fsecret.m4a",
+      "https://films.test/f/..%5Csecret.m4a",
+      "https://films.test/f/..\\secret.m4a",
+      "https://elsewhere.test/f/a.m4a",
+      "//elsewhere.test/f/a.m4a",
+    ];
+
+    mgr.setupFromList(
+      [...escapes, "https://films.test/f/music/loops/a.m4a"].map((src) => clip(src)),
+      film,
+    );
+
+    expect(mgr.entries.map((m) => m.el.src)).toEqual(["https://films.test/f/music/loops/a.m4a"]);
+    expect(events.find((e) => e.type === "playbackerror")?.detail.refused).toEqual(escapes);
+  });
+
+  it("copies nothing when the composition has no address of its own", () => {
+    const { mgr } = makeSealedManager();
+    mgr.setupFromList([clip("https://films.test/f/a.m4a")], null);
+    expect(mgr.entries).toHaveLength(0);
+  });
+
+  it("skips a list entry that is not a well-formed clip", () => {
+    const { mgr } = makeSealedManager();
+    mgr.setupFromList(
+      [
+        { kind: "audio", start: 0 },
+        { ...clip("https://films.test/f/a.m4a"), start: Number.NaN },
+        "x",
+        null,
+      ],
+      film,
+    );
+    expect(mgr.entries).toHaveLength(0);
+  });
+
+  it("gives each clip on one file its own copy, and follows the list as it changes", () => {
+    const { mgr } = makeSealedManager();
+    mgr.setupFromList(
+      [clip("https://films.test/f/a.m4a", 0), clip("https://films.test/f/a.m4a", 4)],
+      film,
+    );
+    expect(mgr.entries.map((m) => m.start)).toEqual([0, 4]);
+    const kept = mgr.entries[1];
+
+    mgr.setupFromList([clip("https://films.test/f/a.m4a", 4)], film);
+    expect(mgr.entries).toEqual([kept]);
+  });
+
+  it("mutes the film only once a copy is playing, not when the copy is made or told to play", () => {
+    const { mgr, setFrameMuted } = makeSealedManager();
+
+    mgr.setupFromList([clip("https://films.test/f/a.m4a")], film);
+    mgr.promoteToParentProxy();
+    expect(setFrameMuted).not.toHaveBeenCalled();
+
+    becomes(mgr.entries[0]!.el, "playing");
+    expect(setFrameMuted.mock.calls).toEqual([[true]]);
+  });
+
+  it("gives the film its sound back when its last playing copy fails or is dropped", () => {
+    const { mgr, setFrameMuted } = makeSealedManager();
+    mgr.setupFromList(
+      [clip("https://films.test/f/a.m4a"), clip("https://films.test/f/b.m4a")],
+      film,
+    );
+    mgr.promoteToParentProxy();
+    const [a, b] = mgr.entries.map((m) => m.el);
+    becomes(a!, "playing");
+    becomes(b!, "playing");
+
+    becomes(a!, "error");
+    expect(setFrameMuted.mock.calls).toEqual([[true]]);
+
+    mgr.setupFromList([clip("https://films.test/f/a.m4a")], film);
+    expect(setFrameMuted.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it("gives the film its sound back when the only copy still playing fails after the others stopped", () => {
+    const { mgr, setFrameMuted } = makeSealedManager();
+    mgr.setupFromList(
+      ["a", "b", "c"].map((f) => clip(`https://films.test/f/${f}.m4a`)),
+      film,
+    );
+    mgr.promoteToParentProxy();
+    const [a, b, c] = mgr.entries.map((m) => m.el);
+    becomes(a!, "playing");
+    becomes(b!, "playing");
+    becomes(a!, "ended");
+    becomes(c!, "playing");
+    becomes(b!, "pause");
+
+    becomes(c!, "error");
+    expect(setFrameMuted.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it.each([
+    ["before", true],
+    ["after", false],
+  ])(
+    "gives the film its sound back when the next copy's play is refused, the old copy's pause event arriving %s the refusal",
+    async (_order, pauseEventFirst) => {
+      let now = 1;
+      const setFrameMuted = vi.fn();
+      const mgr = new ParentMediaManager({
+        dispatchEvent: () => {},
+        getMuted: () => false,
+        getVolume: () => 1,
+        getPlaybackRate: () => 1,
+        getCurrentTime: () => now,
+        isPaused: () => false,
+        setFrameMuted,
+      });
+      mgr.setupFromList(
+        [clip("https://films.test/f/a.m4a", 0), clip("https://films.test/f/b.m4a", 5)],
+        film,
+      );
+      const [a, b] = mgr.entries.map((m) => m.el);
+      let aPaused = true;
+      Object.defineProperty(a, "paused", { get: () => aPaused });
+      Object.defineProperty(a, "readyState", { get: () => 4 });
+      a!.play = async () => {
+        aPaused = false;
+      };
+      a!.pause = () => {
+        aPaused = true;
+      };
+      b!.play = () => Promise.reject(new DOMException("refused", "NotAllowedError"));
+      b!.pause = () => {};
+
+      mgr.promoteToParentProxy();
+      a!.dispatchEvent(new Event("playing"));
+      now = 6;
+      mgr.mirrorTime(now, { force: true });
+      if (pauseEventFirst) a!.dispatchEvent(new Event("pause"));
+      await vi.waitFor(() => expect(setFrameMuted.mock.calls.length).toBeGreaterThan(1));
+      if (!pauseEventFirst) a!.dispatchEvent(new Event("pause"));
+
+      expect(setFrameMuted.mock.calls).toEqual([[true], [false]]);
+      mgr.destroy();
+    },
+  );
+
+  it("mutes an unsealed film's own media once a copy of it is playing", () => {
+    const { mgr, setFrameMuted } = makeSealedManager();
+    document.body.innerHTML = '<audio src="https://films.test/f/a.m4a" data-start="0"></audio>';
+    mgr.setupFromIframe(document);
+    mgr.promoteToParentProxy();
+    expect(setFrameMuted).not.toHaveBeenCalled();
+
+    becomes(mgr.entries[0]!.el, "playing");
+    expect(setFrameMuted.mock.calls).toEqual([[true]]);
+    expect(document.querySelector("audio")!.muted).toBe(true);
+    mgr.destroy();
+  });
+
+  it("copies only what a render hears: no copy for a video marked as having no sound", () => {
+    const { mgr } = makeSealedManager();
+    document.body.innerHTML =
+      '<video src="https://films.test/f/v.mp4" data-start="0" data-has-audio="false"></video>' +
+      '<video src="https://films.test/f/w.mp4" data-start="0"></video>';
+    mgr.setupFromIframe(document);
+    expect(mgr.entries.map((m) => m.el.src)).toEqual(["https://films.test/f/w.mp4"]);
+    mgr.destroy();
+  });
+
+  it("never mutes the film for the player's own audio-src track alone", () => {
+    const { mgr, setFrameMuted } = makeSealedManager();
+    mgr.setupFromUrl("https://cdn.test/narration.mp3");
+    mgr.promoteToParentProxy();
+    becomes(mgr.entries[0]!.el, "playing");
+    expect(setFrameMuted).not.toHaveBeenCalled();
+  });
+
+  it("never copies from an opaque origin, even when the composition's own origin is opaque too", () => {
+    const { mgr } = makeSealedManager();
+    const opaque = [clip("data:audio/mp4;base64,AAAA"), clip("about:blank")];
+    mgr.setupFromList(opaque, "about:blank");
+    mgr.setupFromList(opaque, "data:audio/x,film");
+    expect(mgr.entries).toHaveLength(0);
   });
 });

@@ -13,6 +13,7 @@
   "shardCount": 9,
   "distributedShardCount": 1,
   "timings": {
+    "page-side-shader-compositor-unavailable": 30,
     "animejs-adapter": 16,
     "nested-sequential-video-local-start": 3,
     "audio-mux-parity": 16,
@@ -21,6 +22,9 @@
     "dogs-captions": 524,
     "font-variant-numeric": 7,
     "gsap-letters-render-compat": 9,
+    "gsap-redraw-start-and-overlap": 6,
+    "graded-video-transitions": 10,
+    "hdr-hlg-audio-windows": 150,
     "hdr-hlg-regression": 125,
     "hdr-regression": 207,
     "iframe-render-compat": 11,
@@ -36,6 +40,8 @@
     "png-sequence": 3,
     "portrait-edge-bleed": 6,
     "raf-ball-render-compat": 10,
+    "random-stagger-workers": 8,
+    "timers-on-film-time": 8,
     "render-symlinked-assets": 6,
     "static-volume-future-set": 9,
     "speed-ramp": 7,
@@ -57,6 +63,7 @@
     "style-7-prod": 100,
     "style-8-prod": 94,
     "style-9-prod": 71,
+    "gradient-text-layered-child": 6,
     "subcomp-bare-fragment": 3,
     "sub-comp-id-selector": 8,
     "sub-comp-t0": 12,
@@ -66,7 +73,8 @@
     "vfr-screen-recording": 6,
     "vignelli-stacking": 40,
     "webm-transparency": 60,
-    "webm-vp9": 4
+    "webm-vp9": 4,
+    "html-dir-rtl": 8
   },
   "excluded": {
     "chrome-screenshot-bottom-edge": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",

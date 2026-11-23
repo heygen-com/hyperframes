@@ -32,6 +32,23 @@ describe("renderProgress", () => {
   });
 });
 
+describe("renderProgress with a stage that is not one line", () => {
+  // fails without the fix: the stage was written as given, so one update took several lines.
+  it.each([false, true])("keeps the update on one line (TTY: %s)", (isTTY) => {
+    let output = "";
+    Object.defineProperty(process.stdout, "isTTY", { value: isTTY, configurable: true });
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      output += String(chunk);
+      return true;
+    }) as typeof process.stdout.write;
+
+    renderProgress(42, `Failed: a\nb${String.fromCharCode(27)}[2Kc`);
+
+    expect(output).toContain("Failed: a\\x0ab\\x1b[2Kc");
+    expect(output.replace(/^\r/, "").trimEnd()).not.toMatch(/[\r\n]/);
+  });
+});
+
 describe("renderMachineProgress", () => {
   const capture = (isTTY: boolean) => {
     let output = "";

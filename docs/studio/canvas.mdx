@@ -1,43 +1,32 @@
 ---
-title: "Edit the frame"
-sidebarTitle: "Edit the frame"
-description: "Select the right element, change its content or design, arrange layers, and verify the result in motion."
+title: "Edit on the canvas"
+sidebarTitle: "Canvas, motion and code"
+description: "In the browser editor: select and change what you see, animate it with keyframes, and edit the code or hand it to your agent."
 ---
 
-Use this workflow when you can point to the thing that needs to change in the
-current frame.
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
+For anything you can point at in the current frame.
 
 <Frame caption="A selected headline exposes canvas handles and the Design controls that apply to it.">
   <img
     src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/canvas-v1.jpg"
-    alt="HyperFrames Studio with a headline selected on the canvas and its Design controls open"
+    alt="HyperFrames browser editor with a headline selected on the canvas and its Design controls open"
   />
 </Frame>
 
-## 1. Pause where the element is visible
+## Select it
 
-Move the playhead to a frame where you can judge the element and its
-surroundings. If it enters or exits, pause after the movement has settled.
+Pause where the element is fully visible and click it. If the wrong thing gets selected (or it's hidden, off-frame or
+inside a group), pick it in the **Layers** tab instead. The selection is the same in the preview, the panels and the
+timeline.
 
-Click the element on the canvas. When the wrong item is selected, open
-**Inspector → Layers** and choose it there. Layers is also the reliable way to
-find something that is hidden, outside the frame, or inside a group.
+## Change it
 
-The selection stays connected across the canvas, Inspector, and timeline.
+On the preview: drag inside the selection to move it, drag a handle to resize, use the rotation control, crop an image
+or video without moving its box, nudge with the arrow keys. Guides show when it snaps.
 
-## 2. Change only what is wrong
-
-Use the canvas for spatial edits:
-
-- drag inside the selection to move it;
-- drag a handle to resize it;
-- use the rotation control for supported elements;
-- crop an image or video to change the visible area without moving its box;
-- use arrow keys for a small nudge;
-- watch the guides when the element snaps to the frame or another element.
-
-Open **Design** for exact properties. The sections shown depend on the selected
-element.
+For exact values, use **Design**. Its sections depend on what you selected:
 
 | Need                                                     | Look in Design |
 | -------------------------------------------------------- | -------------- |
@@ -50,86 +39,213 @@ element.
 | Change timing or animation                               | Motion         |
 | Apply a look or media effect                             | Effects        |
 
-Do not change content, layout, style, timing, and motion at once. Make one kind
-of edit, play it, then decide whether another edit is still needed.
-
-## 3. Work with overlaps and groups
-
-Layers shows the visual structure of the current composition. Dragging a layer
-changes its stacking order when the wrong item covers another. Timeline tracks
-organize time; they are not automatically the same as visual stacking order.
-
-Group elements that should move and remain organized together. Use
-**Command/Ctrl + G** to group and **Command/Ctrl + Shift + G** to ungroup.
-
-A nested composition is a reusable scene inside another composition. Open the
-nested composition when the change should affect that scene itself. Stay in
-the parent when you only need to change where or when the scene appears.
-
-## 4. Decide whether the edit should animate
-
-Auto-keyframe starts enabled in the timeline toolbar.
-
-- Turn it **off** for a correction that should stay constant for the clip.
-- Leave it **on** when changing the property at the current playhead time
-  should create motion.
-
-After an animated edit, look for the new keyframe diamond and play through the
-complete movement. Use [Animation and keyframes](/studio/animation) when you
-need to retime or shape it.
+Make one kind of change at a time, play it, then decide on the next.
 
 <Warning>
-  A position change made at one frame can look like a normal layout fix while becoming an unintended
-  animation during playback. Check auto-keyframe before dragging.
+  **Auto-record manual edits as keyframes** is on by default, so moving something at one frame can quietly become an
+  animation. Turn it off in the timeline toolbar for a fix that should hold for the whole clip.
 </Warning>
 
-## 5. Replace media without breaking the scene
+## Layers, groups and nested scenes
 
-Select the image, video, or audio element and replace its source from **Media**
-or **Assets**. Then check:
+Drag in **Layers** to change what sits in front. Timeline tracks are about time, not stacking. Group things that move
+together with **⌘G** (ungroup **⌘⇧G**). Open a nested scene to change the scene itself; stay in the parent to change
+only where or when it appears.
 
-- crop and fit;
-- visible duration;
-- playback start, rate, loop, and volume when those controls apply;
-- the transition into and out of the clip.
+## Replace media
 
-A new file can have a different aspect ratio or duration even when the source
-path changes successfully.
+Select the image, video or audio and swap the file from **Media** in Design or from **Assets**. Then check the crop,
+the length, and the cut in and out: a new file can have another shape or duration.
 
-## 6. Play the result, not just the frame
+## Check it playing
 
-Play from before the edit until after it. Check that:
+Play from before the edit to after it: still readable at the final size, not covering anything important, entrances
+and exits still working, text readable over every background it crosses. ⌘Z undoes.
 
-- the element stays readable at the final output size;
-- it does not cross or cover another important element;
-- its entrance and exit still work;
-- text remains readable over every background it crosses;
-- undo returns the project to the expected state if the change was wrong.
+## When it isn't editable here
 
-## When Studio cannot edit it safely
-
-Some generated, nested, or source-controlled elements do not expose every
-property for direct editing. In order:
-
-1. select the exact parent or child in Layers;
-2. open the nested composition;
-3. check whether Design exposes the property;
-4. use **Ask agent** or copy the selected context;
-5. edit the source only when you understand the project structure.
-
-Ask the agent for a broad change instead of forcing it through several manual
-edits:
+Some generated or nested elements don't expose every property. Try selecting the exact parent or child in Layers, or
+open the nested scene. Otherwise choose **Ask agent about this element** in Design (it copies the element and your
+request for your agent), or ask for the bigger change directly:
 
 ```text
-Keep this scene's content, but rebuild its layout so the product remains
-readable at mobile-video size.
+Keep this scene's content, but rebuild its layout so the product stays readable at phone size.
 ```
 
-Use [the timeline](/studio/timeline) when the problem is when something happens,
-or [Animation and keyframes](/studio/animation) when the problem is how it moves.
+## Animate with keyframes
+
+A keyframe is a value at a moment; the motion is what happens between two of them. Keyframes show as diamonds on
+the timeline.
+
+<div className="not-prose my-7 max-w-2xl overflow-hidden rounded-xl border border-zinc-200 bg-zinc-950 dark:border-zinc-800">
+  <video
+    className="aspect-video w-full object-cover"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-animation-keyframe-loop-v1.mp4#t=0.1"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-animation-keyframe-loop-v1.jpg"
+    autoPlay
+    muted
+    loop
+    playsInline
+    preload="metadata"
+  />
+  <div className="px-3 py-2 text-sm text-zinc-600 dark:text-zinc-400">
+    Select an element, place the playhead, and add a keyframe.
+  </div>
+</div>
+
+### Read the motion first
+
+Select the element, expand its animation lanes on the timeline, and play from before the move to after it. Name the
+real problem first: it starts late, takes too long, takes the wrong route, or speeds up the wrong way. Each needs a
+different fix.
+
+### Add, move or delete keyframes
+
+Put the playhead on the moment, choose **Add keyframe at playhead** (or press **K** with the element selected), and
+change the property. Drag a diamond to retime it (closer together is faster), change its value, or press **Delete**.
+
+With **Auto-record manual edits as keyframes** on (the default), any change you make at the playhead becomes a
+keyframe. That's the quick way to pose two moments: set the first, move the playhead, set the second, play. Turn it
+off for a fix that should hold the whole clip.
+
+### Easing and paths
+
+- **Easing** is how it speeds up and slows down between keyframes. Start from a preset; use the speed curve when the
+  start or the stop still feels wrong; use a hold for a jump with no in-between. Judge it playing, not from the curve.
+- **Paths:** position keyframes draw a route on the preview. Drag a point to change it, bend a segment to curve it,
+  hold **Option** while dragging the element to move the whole path. Turn on auto-rotate only when the element
+  should face where it's going.
+
+### Record a gesture
+
+When a move is easier to perform than describe: select the element, press **R** (**Record a gesture**), move the
+pointer, press **R** again. Drag records position, scroll records depth; the shortcuts panel lists the keys for
+rotation, opacity and scale. Treat it as a first take: simplify the path and retime it.
+
+### Motion the agent wrote
+
+Some motion comes from a loop or helper in the code. **Unroll to edit** turns supported cases into ordinary keyframes.
+When a value says **Computed value. Edit it in the Code tab.**, it can only be changed in the code, or ask your agent:
+
+```text
+Keep the same curved route, but make the move finish with the voiceover instead of two beats later.
+```
+
+Good motion reveals, points or connects; text gets time to be read; two unrelated moves don't fight for the same
+moment. The code-level rules are in the [GSAP animation guide](/guides/gsap-animation).
+
+## Edit the source
+
+The browser editor, your agent and the CLI all work on the same files. Use **Code** for a small change you understand;
+use the agent when it crosses files, changes the structure or starts from an error you don't recognize. (In the
+[Studio app](/studio-app/edit-with-the-agent) the agent sits beside the preview, so none of the copying below is needed.)
+
+### Choose the smallest safe surface
+
+| Change                                                           | Best starting point            |
+| ---------------------------------------------------------------- | ------------------------------ |
+| Visible text, layout, style, media, timing, or supported motion  | Canvas, Inspector, or timeline |
+| One known value in one known file                                | Code                           |
+| Story, several scenes, generated animation, or project structure | Agent                          |
+| A reported lint problem with a clear direct fix                  | The browser editor or Code                 |
+| An unfamiliar failure or a fix spanning files                    | Copy to Agent                  |
+
+The choice is about the change, not a permanent workflow. You can move between
+the surfaces without exporting or converting the project.
+
+### Make a focused source edit
+
+1. Open **Code** in the left panel column.
+2. Select the exact file in the project tree.
+3. Find the value responsible for the visible result.
+4. Make one focused change.
+5. Wait for the preview to refresh, then play the affected moment.
+
+Edits save automatically and can be undone. If a save fails, the editor says so; fix the connection to the preview
+server before going on.
+
+<Warning>
+  Creating, renaming, moving, or deleting a file can break references elsewhere in the project.
+  Search for the old path or ask the agent to update every reference.
+</Warning>
+
+Don't edit the same file here and in another tool at once. If the other change lands first, your save is refused with
+a message; reload the file, look at what changed, and apply your edit again.
+
+### Ask about the selected element
+
+When a visible element needs source work, select it and choose **Ask agent about
+this element**. The browser editor prepares the element and project context, combines it
+with your instruction, and copies the prompt to the clipboard. Paste that
+prompt into your agent chat.
+
+<Frame caption="The browser editor prepares a prompt for the selected element; you paste it into your agent chat.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/ask-agent-v1.jpg"
+    alt="HyperFrames browser editor dialog for copying a prompt about the selected element and project context"
+  />
+</Frame>
+
+```text
+Keep the current narration and scene order. Make this product panel readable
+at the final video size, and do not change the following scene.
+```
+
+The copied context tells the agent where to look. Your sentence tells it what
+must remain true.
+
+### Run Lint
+
+Choose **Lint** at the bottom of the left panel column. The browser editor opens **HyperFrame
+Lint Results** with errors, warnings, file locations, and fix hints when they
+are available.
+
+Fix a simple, understood issue directly, then run Lint again. Use **Copy to
+Agent** when the source location is unfamiliar or the fix may affect other
+files. Add what happened before the error and what you expected:
+
+```text
+This appeared after I shortened the intro clip. I expected the title animation
+to keep its current timing. Fix the issue without changing the rest of the
+opening.
+```
+
+Do not paste only the error message when the intended result matters. A
+technically valid repair can still make the wrong creative change.
+
+### Use the project-level gates before delivery
+
+Lint is a quick in-editor pass. The project-level commands remain the
+final gate, especially when the project contains nested compositions:
+
+```bash
+npx hyperframes lint
+npx hyperframes check
+```
+
+`lint` checks the composition structure. `check` adds browser, runtime, layout,
+motion, and WCAG contrast verification.
+
+Passing checks do not approve the story or the final encode. Play the project
+after a source fix, then watch the rendered file before sharing it.
+
+### When the preview and source disagree
+
+1. Stop editing until the latest save finishes.
+2. Keep the first exact error or save warning.
+3. Reload the project only after checking whether another tool changed the file.
+4. Run the project checks.
+5. Ask the agent with the error, project path, action that caused it, and result
+   you expected.
+
+Use [Troubleshooting](/help#in-the-preview-and-browser-editor) for editor, preview, and
+render-queue failures. Use [Finish and share](/guides/export-and-share) for the
+complete approval, validation, render, and delivery path.
 
 ## Related topics
 
 - [Edit timing on the timeline](/studio/timeline)
-- [Edit animation and keyframes](/studio/animation)
-- [Work with source and an agent](/studio/source)
+- [Keyboard shortcuts](/studio/index#keyboard-shortcuts)
+- [Recover from a browser editor problem](/help#in-the-preview-and-browser-editor)
+- [Understand a HyperFrames project](/concepts)
+- [Finish, render, and share](/guides/export-and-share)

@@ -1,0 +1,13 @@
+{
+  "name": "gsap-redraw-start-and-overlap",
+  "description": "Regression guard for the per-frame GSAP redraw. A wipe bar's fromTo starts 0.7 ms before a frame and only its from-vars make it visible: it must be drawn on every frame of its sweep. A slow drift with a short move on the same property inside it must resume after the move, as in playback.",
+  "tags": ["regression", "render-compat", "gsap"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

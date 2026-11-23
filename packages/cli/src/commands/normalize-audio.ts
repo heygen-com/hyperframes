@@ -1,7 +1,10 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { relative } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { terminalLines, terminalText } from "@hyperframes/core";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { relative, resolve } from "node:path";
 import {
   absoluteLoudnessPlan,
+  absoluteOutcome,
   audioNormalizationPlan,
   audioTags,
   DEFAULT_TARGET_LUFS,
@@ -14,11 +17,14 @@ import {
   type AudioTag,
   type LoudnessLimit,
 } from "@hyperframes/studio-server/loudness";
-import { defineCommand } from "citty";
+import { resolveAuthoredAssetFile } from "@hyperframes/parsers/asset-resolution";
+import { defineCommand } from "../utils/defineCommand.js";
 import { c } from "../ui/colors.js";
+import { projectCompositionFiles } from "../utils/mountedCompositions.js";
 import { resolveProject } from "../utils/project.js";
-import { failCommand } from "../utils/commandResult.js";
+import { CliUsageError, failCommand, failUsage } from "../utils/commandResult.js";
 import type { Example } from "./_examples.js";
+import { jsonFailure } from "../utils/jsonError.js";
 
 export {
   audioNormalizationPlan,
@@ -32,16 +38,32 @@ export {
 const DEFAULT_TOLERANCE_LU = 0.5;
 
 function fail(message: string, json: boolean, cause?: unknown): never {
-  if (json) console.log(JSON.stringify({ ok: false, error: message }, null, 2));
-  else console.error(c.error(message));
+  const usage = cause instanceof CliUsageError;
+  if (json) {
+    console.log(
+      JSON.stringify(jsonFailure(usage ? cause.code : "runtime_error", message), null, 2),
+    );
+  } else console.error(c.error(terminalLines(message)));
+  if (usage) failUsage();
   failCommand(1, cause);
 }
 
-function byId(tags: readonly AudioTag[], rawId: string, role: string): AudioTag {
+type ProjectAudioTag = AudioTag & { file: string };
+
+function projectAudioTags(projectDir: string): ProjectAudioTag[] {
+  return projectCompositionFiles(projectDir).flatMap((file) =>
+    audioTags(readFileSync(resolve(projectDir, file), "utf8")).map((tag) => ({ ...tag, file })),
+  );
+}
+
+function byId(tags: readonly ProjectAudioTag[], rawId: string, role: string): ProjectAudioTag {
   const id = rawId.trim().replace(/^#/, "");
-  const tag = tags.find((candidate) => candidate.id === id);
-  if (!tag) throw new Error(`${role} audio #${id} was not found`);
-  return tag;
+  const matches = tags.filter((candidate) => candidate.id === id);
+  if (matches.length > 1) {
+    throw new Error(`${role} audio #${id} is declared in ${matches.map((m) => m.file).join(", ")}`);
+  }
+  if (!matches[0]) throw new Error(`${role} audio #${id} was not found`);
+  return matches[0];
 }
 
 interface NormalizeAudioOptions {
@@ -57,24 +79,27 @@ interface WriteOutcome {
   ok: true;
   wrote: boolean;
   withinTolerance: boolean;
+  heldByLimit: boolean;
+  reachedLufs: number;
   tolerance: number;
-  indexPath: string;
+  filePath: string;
 }
 
 type NormalizeAudioResult = WriteOutcome & ModePlan;
 
-function selectedTags(html: string, referenceId: string, targetId: string) {
-  const tags = audioTags(html);
+function selectedTags(tags: readonly ProjectAudioTag[], referenceId: string, targetId: string) {
   const referenceTag = byId(tags, referenceId, "Reference");
   const targetTag = byId(tags, targetId, "Target");
   if (referenceTag.id === targetTag.id) {
-    throw new Error("Reference and target must be different audio elements");
+    throw new CliUsageError("Reference and target must be different audio elements");
   }
   return { referenceTag, targetTag };
 }
 
-function existingAudioFile(projectDir: string, tag: AudioTag): string {
-  const file = resolveLocalAudioPath(projectDir, tag.src);
+function existingAudioFile(projectDir: string, tag: ProjectAudioTag): string {
+  const file =
+    resolveAuthoredAssetFile(projectDir, tag.file, tag.src) ??
+    resolveLocalAudioPath(projectDir, tag.src);
   if (!existsSync(file)) {
     throw new Error(`Audio #${tag.id} file was not found: ${relative(projectDir, file)}`);
   }
@@ -83,8 +108,8 @@ function existingAudioFile(projectDir: string, tag: AudioTag): string {
 
 async function measuredPlan(
   projectDir: string,
-  referenceTag: AudioTag,
-  targetTag: AudioTag,
+  referenceTag: ProjectAudioTag,
+  targetTag: ProjectAudioTag,
 ): Promise<AudioNormalizationPlan> {
   const ffmpegPath = requiredFfmpeg();
   const referenceFile = existingAudioFile(projectDir, referenceTag);
@@ -99,29 +124,24 @@ async function measuredPlan(
   );
 }
 
-function writeAtomically(path: string, contents: string): void {
-  const temporary = `${path}.hf-normalize-${process.pid}.tmp`;
-  writeFileSync(temporary, contents);
-  renameSync(temporary, path);
-}
-
 function parsedTolerance(raw: string): number {
   const tolerance = Number(raw);
   if (!Number.isFinite(tolerance) || tolerance < 0) {
-    throw new Error("--tolerance must be a non-negative number");
+    throw new CliUsageError("--tolerance must be a non-negative number");
   }
   return tolerance;
 }
 
 function parsedLufs(raw: string): number {
   const lufs = Number(raw);
-  if (!Number.isFinite(lufs) || lufs >= 0) throw new Error("--lufs must be a negative number");
+  if (!Number.isFinite(lufs) || lufs >= 0)
+    throw new CliUsageError("--lufs must be a negative number");
   return lufs;
 }
 
 async function measuredAbsolutePlan(
   projectDir: string,
-  targetTag: AudioTag,
+  targetTag: ProjectAudioTag,
   targetLufs: number,
 ): Promise<AbsoluteLoudnessPlan> {
   const measurement = await measureAudio(
@@ -141,40 +161,57 @@ type ModePlan =
 
 async function plannedNormalization(
   projectDir: string,
-  html: string,
+  tags: readonly ProjectAudioTag[],
   options: NormalizeAudioOptions,
   tolerance: number,
-): Promise<{ targetTag: AudioTag; withinTolerance: boolean; plan: ModePlan }> {
+): Promise<{ targetTag: ProjectAudioTag; withinTolerance: boolean; plan: ModePlan }> {
   if (options.reference === undefined) {
-    const targetTag = byId(audioTags(html), options.target, "Target");
+    const targetTag = byId(tags, options.target, "Target");
     const plan = await measuredAbsolutePlan(projectDir, targetTag, parsedLufs(options.lufs));
-    const withinTolerance = Math.abs(plan.changeDb) <= tolerance;
+    const withinTolerance = targetTag.volume > 0 && absoluteOutcome(plan, tolerance) === "matched";
     return { targetTag, withinTolerance, plan: { mode: "absolute", ...plan } };
   }
-  const { referenceTag, targetTag } = selectedTags(html, options.reference, options.target);
+  const { referenceTag, targetTag } = selectedTags(tags, options.reference, options.target);
   const plan = await measuredPlan(projectDir, referenceTag, targetTag);
   const withinTolerance = Math.abs(plan.referenceLufs - plan.targetLufs) <= tolerance;
   return { targetTag, withinTolerance, plan: { mode: "reference", ...plan } };
 }
 
 async function normalizeAudio(options: NormalizeAudioOptions): Promise<NormalizeAudioResult> {
-  const project = resolveProject(options.dir);
-  const html = readFileSync(project.indexPath, "utf8");
   const tolerance = parsedTolerance(options.tolerance);
+  const project = resolveProject(options.dir);
+  const tags = projectAudioTags(project.dir);
   const { targetTag, withinTolerance, plan } = await plannedNormalization(
     project.dir,
-    html,
+    tags,
     options,
     tolerance,
   );
-  const wrote = options.write && !withinTolerance;
+  const filePath = resolve(project.dir, targetTag.file);
+  const heldByLimit = targetTag.volume > 0 && heldAtLimit(plan, tolerance);
+  const wrote = options.write && !withinTolerance && !heldByLimit;
   if (wrote) {
-    writeAtomically(
-      project.indexPath,
-      updateAudioVolume(readFileSync(project.indexPath, "utf8"), targetTag.id, plan.volume),
+    replaceFileAtomically(
+      filePath,
+      updateAudioVolume(readFileSync(filePath, "utf8"), targetTag.id, plan.volume),
     );
   }
-  return { ok: true, wrote, withinTolerance, tolerance, indexPath: project.indexPath, ...plan };
+  const reachedLufs = heldByLimit ? plan.projectedLufs - plan.changeDb : plan.projectedLufs;
+  return {
+    ok: true,
+    wrote,
+    withinTolerance,
+    heldByLimit,
+    reachedLufs,
+    tolerance,
+    filePath,
+    ...plan,
+  };
+}
+
+function heldAtLimit(plan: ModePlan, tolerance: number): boolean {
+  if (plan.mode === "absolute") return absoluteOutcome(plan, tolerance) === "held";
+  return plan.limitedBy !== null && Math.abs(plan.changeDb) <= tolerance;
 }
 
 const LIMIT_TEXT: Record<LoudnessLimit, string> = {
@@ -185,15 +222,22 @@ const LIMIT_TEXT: Record<LoudnessLimit, string> = {
 function printMeasuredLine(result: NormalizeAudioResult): void {
   if (result.mode === "reference") {
     console.log(
-      `${c.bold(`#${result.referenceId}`)} ${result.referenceLufs.toFixed(1)} LUFS → ` +
-        `${c.bold(`#${result.targetId}`)} ${result.targetLufs.toFixed(1)} LUFS`,
+      `${c.bold(`#${terminalText(result.referenceId)}`)} ${result.referenceLufs.toFixed(1)} LUFS → ` +
+        `${c.bold(`#${terminalText(result.targetId)}`)} ${result.targetLufs.toFixed(1)} LUFS`,
     );
+    if (result.limitedBy) {
+      console.log(
+        `${result.heldByLimit ? "Stays at" : "Reaches"} ${result.reachedLufs.toFixed(1)} LUFS, ` +
+          `${(result.referenceLufs - result.reachedLufs).toFixed(1)} dB under the reference ` +
+          `(${LIMIT_TEXT[result.limitedBy]}).`,
+      );
+    }
     return;
   }
   const limit = result.limitedBy ? ` (${LIMIT_TEXT[result.limitedBy]})` : "";
   console.log(
-    `${c.bold(`#${result.targetId}`)} ${result.sourceLufs.toFixed(1)} LUFS → ` +
-      `${result.projectedLufs.toFixed(1)} LUFS, target ${result.targetLufs.toFixed(1)}${limit}`,
+    `${c.bold(`#${terminalText(result.targetId)}`)} ${result.sourceLufs.toFixed(1)} LUFS → ` +
+      `${result.reachedLufs.toFixed(1)} LUFS, target ${result.targetLufs.toFixed(1)}${limit}`,
   );
 }
 
@@ -206,13 +250,20 @@ function printHumanResult(result: NormalizeAudioResult): void {
     return;
   }
 
+  if (result.heldByLimit) {
+    console.log(c.dim("Cannot get closer to the target; the gain is unchanged."));
+    return;
+  }
+
   console.log(
-    `Set #${result.targetId} data-volume ${result.previousVolume.toFixed(3)} → ${result.volume.toFixed(6)} ` +
+    `Set #${terminalText(result.targetId)} data-volume ${result.previousVolume.toFixed(3)} → ${result.volume.toFixed(6)} ` +
       `(${result.changeDb >= 0 ? "+" : ""}${result.changeDb.toFixed(1)} dB).`,
   );
   console.log(
     result.wrote
-      ? c.success(`Updated ${relative(process.cwd(), result.indexPath) || "index.html"}.`)
+      ? c.success(
+          `Updated ${terminalText(relative(process.cwd(), result.filePath) || "index.html")}.`,
+        )
       : c.dim("Dry run only. Pass --write to persist this gain."),
   );
 }
@@ -279,7 +330,7 @@ export default defineCommand({
         write: args.write,
       });
       if (args.json) {
-        const { indexPath: _, ...jsonResult } = result;
+        const { filePath: _, ...jsonResult } = result;
         console.log(JSON.stringify(jsonResult, null, 2));
         return;
       }

@@ -20,7 +20,7 @@ function getSingleMeaningfulChild(container: Element): Element | null {
  */
 export function unwrapTemplate(html: string): string {
   const lowered = html.toLowerCase();
-  if (!lowered.includes("<template") || !lowered.includes("</template>")) {
+  if (!lowered.includes("<template") || !/<\/template[ \t\n\r\f]*>/.test(lowered)) {
     return html;
   }
 

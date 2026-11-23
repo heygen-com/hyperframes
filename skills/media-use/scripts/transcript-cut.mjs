@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 
+import "./lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import { compileCutList } from "./lib/cutlist.mjs";
+import { ownFolder } from "./lib/manifest.mjs";
 import { fadeFilterFor } from "./lib/transcriptCutFade.mjs";
 import { track } from "./lib/telemetry.mjs";
+import { terminalText } from "./lib/terminal-text.mjs";
 
 const { values: args } = parseArgs({
   options: {
@@ -60,7 +63,7 @@ try {
   });
 } catch (err) {
   if (args.json) console.log(JSON.stringify({ ok: false, error: err.message }));
-  else console.error(`error: ${err.message}`);
+  else console.error(`error: ${err.message}`.split("\n").map(terminalText).join("\n"));
   process.exit(1);
 }
 
@@ -86,8 +89,14 @@ function run() {
 
   const inputPath = resolve(args.input);
   const outPath = resolve(args.out);
-  mkdirSync(dirname(outPath), { recursive: true });
+  // An --out inside the project (the folder this runs in) is written only into its real folders.
+  const rel = relative(process.cwd(), dirname(outPath));
+  const outsideProject = rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+  if (outsideProject) mkdirSync(dirname(outPath), { recursive: true });
+  else ownFolder(process.cwd(), rel);
   const tmpDir = mkdtempSync(join(tmpdir(), "media-use-cut-"));
+  // The encode lands in a new private folder beside --out, so nothing already next to it is written through.
+  let outDir = null;
   const keptSeconds = sumDurations(segments);
   const totalSeconds = probeDuration(inputPath);
 
@@ -98,7 +107,10 @@ function run() {
       // with priming silence (~25-35ms for AAC), which concat then bakes in as a
       // gap at each cut -- a defect distinct from, and surviving, the fades
       // below. PCM has no priming, so audio is encoded exactly once, at concat.
-      const ext = args.copy ? extname(outPath) || ".mp4" : isAudioOnly(outPath) ? ".wav" : ".mkv";
+      // The video container is .mov, not .mkv: ffmpeg writes Matroska
+      // timestamps in whole milliseconds, which moves frames off the source's
+      // frame grid, and the concat copy below carries that into the output.
+      const ext = args.copy ? extname(outPath) || ".mp4" : isAudioOnly(outPath) ? ".wav" : ".mov";
       const out = join(tmpDir, `segment-${String(index).padStart(4, "0")}${ext}`);
       // --copy stays fade-free (stream copy cannot filter). A segment's true
       // start/end (index 0's start, the last segment's end) borders nothing
@@ -117,9 +129,10 @@ function run() {
       listPath,
       parts.map((part) => `file '${escapeConcatPath(part)}'`).join("\n") + "\n",
     );
-    // Encode to a sibling temp (same extension so ffmpeg picks the right muxer),
+    // Encode to a temp beside --out (same extension so ffmpeg picks the right muxer),
     // then atomic-rename so a SIGKILL mid-encode can't leave a truncated outPath.
-    const tmpOut = `${outPath}.part${extname(outPath) || ".mp4"}`;
+    outDir = mkdtempSync(join(dirname(outPath), ".media-use-cut-"));
+    const tmpOut = join(outDir, `out${extname(outPath) || ".mp4"}`);
     // --copy already produced final-codec segments, so concat can stream-copy.
     // Otherwise the PCM intermediates are encoded here, once, for the whole file.
     const concatCodecs = args.copy
@@ -137,6 +150,7 @@ function run() {
     renameSync(tmpOut, outPath);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
+    if (outDir) rmSync(outDir, { recursive: true, force: true });
   }
 
   // Stream copy can only cut on keyframes; on sparse-keyframe footage the snap
@@ -171,11 +185,13 @@ function run() {
   }
 
   console.log(
-    `cut ${inputPath} -> ${outPath} (${segments.length} segments, ${fmt(keptSeconds)}s kept of ${fmt(
-      totalSeconds,
-    )}s)`,
+    terminalText(
+      `cut ${inputPath} -> ${outPath} (${segments.length} segments, ${fmt(keptSeconds)}s kept of ${fmt(
+        totalSeconds,
+      )}s)`,
+    ),
   );
-  console.log(`next: resolve --from ${outPath} --type <type>`);
+  console.log(terminalText(`next: resolve --from ${outPath} --type <type>`));
 }
 
 function cutSegment(inputPath, segment, outPath, copy, fade) {
@@ -183,20 +199,27 @@ function cutSegment(inputPath, segment, outPath, copy, fade) {
     "-y",
     "-nostdin",
     "-ss",
-    fmt(segment.start),
+    seekTime(segment.start),
     "-i",
     inputPath,
     "-to",
-    fmt(segment.end - segment.start),
+    seekTime(segment.end - segment.start),
   ];
   if (copy) {
     argv.push("-c", "copy", "-avoid_negative_ts", "make_zero");
-  } else if (extname(outPath).toLowerCase() === ".mkv") {
+  } else if (extname(outPath).toLowerCase() === ".mov") {
     // Concat splices raw segment edges together; without a short ramp the
     // waveform steps discontinuously at every boundary and you hear a click.
     if (fade) argv.push("-af", fade);
     // Video intermediate: keep the picture cheap and the audio uncompressed.
     argv.push("-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "pcm_s16le");
+    // A keyframe every second. The renderer seeks into this footage, and x264
+    // on its own leaves up to 250 frames between keyframes.
+    argv.push("-force_key_frames", "expr:gte(t,n_forced)");
+    // Constant frame rate from the first frame. Left to itself, ffmpeg 7 starts
+    // a range that begins between two source frames one frame late, and .mov
+    // rounds that lead-in to the millisecond.
+    argv.push("-fps_mode", "cfr");
   } else {
     if (fade) argv.push("-af", fade);
     argv.push("-c:a", "pcm_s16le");
@@ -263,6 +286,15 @@ function fmt(n) {
   return round3(n)
     .toFixed(3)
     .replace(/\.?0+$/, "");
+}
+
+// -ss/-to name frames, and ffmpeg's accurate seek drops everything before the
+// time it is given: at 30 fps, frame 386 sits at 12.866666 s, and a 3-decimal
+// -ss of 12.867 starts that segment on frame 387 instead, leaving the cut a
+// frame short from the join on. So the values ffmpeg gets keep frame precision,
+// while fmt() above stays at 3 decimals for the times that are only printed.
+function seekTime(n) {
+  return Number(n).toFixed(6);
 }
 
 function round3(n) {

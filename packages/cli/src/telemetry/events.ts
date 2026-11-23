@@ -1,4 +1,5 @@
 import type { BrowserInstallFacts } from "../browser/installFacts.js";
+import type { StopCode } from "../utils/checkPipeline.js";
 import type { OutputResolutionIssueKind } from "@hyperframes/core";
 import { redactTelemetryString } from "@hyperframes/core/telemetry-redaction";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
@@ -7,7 +8,13 @@ import type { CatalogUsage } from "../utils/catalogUsage.js";
 import { flush, shouldTrack, trackEvent } from "./client.js";
 import { readConfig } from "./config.js";
 import { getPowerState } from "./system.js";
+import type { RenderCpuTelemetryPayload } from "./renderCpu.js";
+import {
+  type RenderMotionBlurTelemetryPayload,
+  renderMotionBlurEventProperties,
+} from "./renderMotionBlur.js";
 import { CliRuntimeError } from "../utils/commandResult.js";
+import type { MissingPathFacts } from "@hyperframes/producer";
 
 // Power state is volatile (a laptop docks/undocks mid-session), so it is
 // sampled per render event rather than cached with SystemMeta. Attached to
@@ -121,6 +128,7 @@ export interface RenderObservabilityTelemetryPayload {
   observabilityExtractVfrPreflightCount?: number;
   observabilityExtractCacheHits?: number;
   observabilityExtractCacheMisses?: number;
+  observabilityExtractCachePublishFailures?: number;
   observabilityInitDurationMs?: number;
   observabilityInitTweenCount?: number;
   observabilityInitElementCount?: number;
@@ -201,6 +209,7 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
     observability_extract_vfr_preflight_count: props.observabilityExtractVfrPreflightCount,
     observability_extract_cache_hits: props.observabilityExtractCacheHits,
     observability_extract_cache_misses: props.observabilityExtractCacheMisses,
+    observability_extract_cache_publish_failures: props.observabilityExtractCachePublishFailures,
     observability_init_duration_ms: props.observabilityInitDurationMs,
     observability_init_tween_count: props.observabilityInitTweenCount,
     observability_init_element_count: props.observabilityInitElementCount,
@@ -255,6 +264,16 @@ function renderEnvironmentEventProperties(props: RenderEnvironmentTelemetryPaylo
   };
 }
 
+function renderCpuEventProperties(props: RenderCpuTelemetryPayload) {
+  return {
+    cpu_busy_avg_pct: props.cpuBusyAvgPct,
+    cpu_busy_peak_pct: props.cpuBusyPeakPct,
+    cpu_cores_busy_peak: props.cpuCoresBusyPeak,
+    load_avg_start: props.loadAvgStart,
+    load_avg_end: props.loadAvgEnd,
+  };
+}
+
 function redactTelemetryMessage(value: string): string {
   return redactTelemetryString(value);
 }
@@ -263,7 +282,17 @@ export function trackCommand(command: string, runId?: string): void {
   trackEvent("cli_command", {
     command,
     ...runIdField(runId),
+    ...installedSkillsFields(),
   });
+}
+
+function installedSkillsFields(): Record<string, string> {
+  const config = readConfig();
+  if (!config.skillsInstalled) return {};
+  return {
+    skills_installed: config.skillsInstalled.join(","),
+    skills_outdated: (config.skillsOutdated ?? []).join(","),
+  };
 }
 
 /**
@@ -325,7 +354,7 @@ export function trackRenderComplete(
     durationMs: number;
     fps: number;
     quality: string;
-    /** Authoring workflow skill that drove this render (e.g. "product-launch-video"). */
+    /** Authoring skill that drove this render (e.g. "hyperframes"). */
     authoringSkill?: string;
     /** Which step resolved authoringSkill: an explicit --skill flag, or the project's own config. */
     authoringSkillSource?: string;
@@ -359,6 +388,7 @@ export function trackRenderComplete(
     staticDedupEnabled?: boolean;
     staticDedupArmed?: boolean;
     staticDedupSkipReason?: string;
+    staticDedupIneligibleCause?: string;
     staticDedupPredictedFrames?: number;
     staticDedupReusedFrames?: number;
     // BeginFrame no-damage reuse outcome (Linux/Docker lastFrameCache — the BF
@@ -415,6 +445,7 @@ export function trackRenderComplete(
     deBlankDeterministicAccepts?: number;
     deBlankRecaptures?: number;
     deBoundaryFrames?: number;
+    deRiskFrames?: number;
     deNcprFallbacks?: number;
     deFrameTimeouts?: number;
     // "cli" when triggered by `hyperframes render` (default), "studio" when
@@ -430,11 +461,16 @@ export function trackRenderComplete(
     captureAvgMs?: number;
     /** Warmup-robust per-frame capture median (basis for speedup estimates). */
     captureP50Ms?: number;
+    captureSeekAvgMs?: number;
+    captureBeforeCaptureAvgMs?: number;
+    captureScreenshotAvgMs?: number;
+    encoderWaitAvgMs?: number;
     /** <video> element count (speedup segmentation: injection comps read lower). */
     videoCount?: number;
     capturePeakMs?: number;
     // Resource usage
     peakMemoryMb?: number;
+    deRouterBreakerOff?: boolean;
     // Aggregate Chrome memory (RenderPerfSummary.chromeMemory); overrides the
     // live observability values when both are present, because the live ones
     // are only the last session's and the aggregate covers every worker.
@@ -470,7 +506,9 @@ export function trackRenderComplete(
     distinctId?: string;
   } & RenderObservabilityTelemetryPayload &
     RenderOutputShapeTelemetryPayload &
-    RenderEnvironmentTelemetryPayload,
+    RenderEnvironmentTelemetryPayload &
+    RenderCpuTelemetryPayload &
+    RenderMotionBlurTelemetryPayload,
 ): void {
   trackEvent(
     "render_complete",
@@ -509,6 +547,7 @@ export function trackRenderComplete(
       static_dedup_enabled: props.staticDedupEnabled,
       static_dedup_armed: props.staticDedupArmed,
       static_dedup_skip_reason: props.staticDedupSkipReason,
+      static_dedup_ineligible_cause: props.staticDedupIneligibleCause,
       static_dedup_predicted_frames: props.staticDedupPredictedFrames,
       static_dedup_reused_frames: props.staticDedupReusedFrames,
       begin_frame_no_damage_frames: props.beginFrameNoDamageFrames,
@@ -583,16 +622,20 @@ export function trackRenderComplete(
         props.deFallbackThresholdDb,
         props.captureDeFallbackThresholdDb,
       ),
+      de_router_breaker_off: props.deRouterBreakerOff,
       de_blank_suspects: props.deBlankSuspects,
       de_blank_deterministic_accepts: props.deBlankDeterministicAccepts,
       de_blank_recaptures: props.deBlankRecaptures,
       de_boundary_frames: props.deBoundaryFrames,
+      de_risk_frames: props.deRiskFrames,
       de_ncpr_fallbacks: props.deNcprFallbacks,
       de_frame_timeouts: props.deFrameTimeouts,
       ...powerStateFields(),
       source: props.source ?? "cli",
       ...renderOutputShapeEventProperties(props),
       ...renderEnvironmentEventProperties(props),
+      ...renderCpuEventProperties(props),
+      ...renderMotionBlurEventProperties(props),
       composition_duration_ms: props.compositionDurationMs,
       composition_width: props.compositionWidth,
       composition_height: props.compositionHeight,
@@ -600,6 +643,10 @@ export function trackRenderComplete(
       speed_ratio: props.speedRatio,
       capture_avg_ms: props.captureAvgMs,
       capture_p50_ms: props.captureP50Ms,
+      capture_seek_avg_ms: props.captureSeekAvgMs,
+      capture_before_capture_avg_ms: props.captureBeforeCaptureAvgMs,
+      capture_screenshot_avg_ms: props.captureScreenshotAvgMs,
+      encoder_wait_avg_ms: props.encoderWaitAvgMs,
       video_count: props.videoCount,
       capture_peak_ms: props.capturePeakMs,
       peak_memory_mb: props.peakMemoryMb,
@@ -640,7 +687,7 @@ export function trackRenderError(
   props: {
     fps: number;
     quality: string;
-    /** Authoring workflow skill that drove this render (e.g. "product-launch-video"). */
+    /** Authoring skill that drove this render (e.g. "hyperframes"). */
     authoringSkill?: string;
     /** Which step resolved authoringSkill: an explicit --skill flag, or the project's own config. */
     authoringSkillSource?: string;
@@ -657,6 +704,8 @@ export function trackRenderError(
     errorName?: string;
     /** failedStage normalized to a stable snake_case code. */
     failedStageCode?: string;
+    missingPathKind?: string;
+    missingPath?: MissingPathFacts;
     errorMessage?: string;
     elapsedMs?: number;
     peakMemoryMb?: number;
@@ -666,7 +715,8 @@ export function trackRenderError(
     distinctId?: string;
   } & RenderObservabilityTelemetryPayload &
     RenderOutputShapeTelemetryPayload &
-    RenderEnvironmentTelemetryPayload,
+    RenderEnvironmentTelemetryPayload &
+    RenderCpuTelemetryPayload,
 ): void {
   trackEvent(
     "render_error",
@@ -684,10 +734,15 @@ export function trackRenderError(
       failed_stage: props.failedStage,
       error_name: props.errorName,
       failed_stage_code: props.failedStageCode,
+      missing_path_kind: props.missingPathKind,
+      missing_path_scope: props.missingPath?.scope,
+      missing_path_synced: props.missingPath?.synced,
+      missing_path_root: props.missingPath?.root,
       error_message: props.errorMessage ? redactTelemetryMessage(props.errorMessage) : undefined,
       elapsed_ms: props.elapsedMs,
       ...renderOutputShapeEventProperties(props),
       ...renderEnvironmentEventProperties(props),
+      ...renderCpuEventProperties(props),
       peak_memory_mb: props.peakMemoryMb,
       memory_free_mb: props.memoryFreeMb,
       ...powerStateFields(),
@@ -830,7 +885,7 @@ export type AuthLoginFailureReason =
   | "flow_timeout" // OAuth callback wait elapsed (user closed the tab / walked away)
   | "rejected" // backend rejected the supplied API key (401)
   | "invalid_input" // key was empty, header-unsafe, or too short
-  | "aborted"; // prompt cancelled, or no key arrived on stdin before timeout
+  | "aborted"; // prompt or browser wait cancelled, or no key arrived on stdin before timeout
 
 export function trackAuthLoginStarted(method: AuthLoginMethod, distinctId?: string): void {
   trackEvent("auth_login_started", { method }, distinctId);
@@ -853,11 +908,15 @@ export function trackAuthLoginFailed(
 // install's anonymousId, so events recorded before sign-in stitch to the same
 // person instead of stranding as a separate anonymous profile. Routed through
 // trackEvent so it shares the opt-out gate and flush path — a no-op when
-// telemetry is disabled. `distinctId` is the account email (else username);
-// see the privacy notice in showTelemetryNotice and docs/packages/cli.mdx.
-export function identifyUser(distinctId: string): void {
+// telemetry is disabled. Identity comes from auth/telemetryIdentity.ts; see
+// showTelemetryNotice and docs/packages/cli.mdx.
+export function identifyUser(distinctId: string, traits: Record<string, string> = {}): void {
   if (!distinctId) return;
-  trackEvent("$identify", { $anon_distinct_id: readConfig().anonymousId }, distinctId);
+  trackEvent(
+    "$identify",
+    { $anon_distinct_id: readConfig().anonymousId, $set: traits },
+    distinctId,
+  );
 }
 
 // A render was rejected by the output-resolution/HDR pre-flight (P1-3)
@@ -874,7 +933,7 @@ export function trackCliError(props: {
   error_message: string;
   stack_trace?: string;
   command?: string;
-  kind: "uncaught_exception" | "unhandled_rejection" | "command_error";
+  kind: "uncaught_exception" | "unhandled_rejection" | "command_error" | "silent_exit";
   /** Low-cardinality figma REST call label (e.g. "images", "files_nodes") —
    *  which endpoint failed, for FigmaClientError-backed failures only. */
   endpoint?: string;
@@ -960,6 +1019,59 @@ export function trackTranscribeUnavailable(props: { optional: boolean }): void {
   trackEvent("transcribe_unavailable", { optional: props.optional });
 }
 
+// A reverse session could not be recorded. `cause` is a closed set (never free text) so an
+// alert can page on a failing start route; `status` is the HTTP status when there was one.
+export type ReverseUnrecordedCause =
+  | "not_signed_in"
+  | "http_4xx"
+  | "http_5xx"
+  | "http_other"
+  | "network"
+  | "bad_body";
+
+export function trackReverseStartUnrecorded(props: {
+  cause: ReverseUnrecordedCause;
+  status?: number;
+  /** An error status only: whether HeyGen's API wrote the body, or something between (a proxy, a firewall). */
+  heygenBody?: boolean;
+}): void {
+  trackEvent("cli_reverse_start_unrecorded", {
+    cause: props.cause,
+    status: props.status,
+    heygen_body: props.heygenBody,
+  });
+}
+
+export function trackSkillCommandRan(props: {
+  skill: string;
+  command: string;
+  signedIn?: boolean;
+  sessionId?: string;
+}): void {
+  trackEvent("skill_command_ran", {
+    authoring_skill: props.skill,
+    command: props.command,
+    signed_in: props.signedIn,
+    session_id: props.sessionId,
+  });
+}
+
+// `billing` could not open a checkout. `reason` is the closed CheckoutFailure class, never the message.
+export function trackBillingCheckoutFailed(props: {
+  reason: "checkout_unavailable" | "checkout_network" | "checkout_rejected";
+}): void {
+  trackEvent("cli_billing_checkout_failed", { reason: props.reason });
+}
+
+export function trackBillingCheckoutReturnRefused(): void {
+  trackEvent("cli_billing_checkout_return_refused", {});
+}
+
+// `billing` waited out its timeout with no payment: the person did not finish, nothing is broken.
+export function trackBillingWaitTimeout(props: { action: "subscribe" | "add-credits" }): void {
+  trackEvent("cli_billing_wait_timeout", { action: props.action });
+}
+
 // grade-compare / compare stand up headless Chrome and render up to 16 cells.
 // Cell count, truncation-cap hits, and whether the render-ready timeout fired
 // are the signals needed before safely lifting the cap. Low-cardinality only.
@@ -1040,23 +1152,36 @@ export function trackRenderFeedback(props: {
 }
 
 /**
- * A catalog search that found nothing worth installing.
- *
- * This is the only path that ever sends a query anywhere, and it is a separate
- * deliberate command rather than something `catalog --query` does on its own:
- * plain search stays entirely local, which is what the CLI promises. The query
- * is the point of the report — it names a move the catalog does not have yet,
- * so the gaps can be read directly rather than guessed from install counts.
+ * A catalog search that found nothing worth installing, sent only by a deliberate
+ * `feedback --search-miss`. It names the move the catalog lacks, in the agent's words;
+ * the searched words stay on the machine.
  */
-export function trackCatalogSearchMiss(props: {
-  query: string;
-  wanted?: string;
-  tier?: string;
-}): void {
+export function trackCatalogSearchMiss(props: { wanted: string; tier?: string }): void {
   trackEvent("cli_catalog_search_miss", {
-    query: props.query,
-    ...(props.wanted ? { wanted: props.wanted } : {}),
+    wanted: props.wanted,
     ...(props.tier ? { tier: props.tier } : {}),
+  });
+}
+
+// Where a snapshot's time went and how far its video frames sat from a keyframe, so the slow runs
+// split by cause. Low-cardinality only: counts, a stage name and a distance bucket.
+export function trackSnapshotRun(props: {
+  frames: number;
+  videoFrames: number;
+  decodePasses: number;
+  sharedFrames: number;
+  longestDecodeSeconds: number;
+  slowStage: "open" | "seek" | "video" | "capture";
+}): void {
+  const seconds = props.longestDecodeSeconds;
+  trackEvent("cli_snapshot_run", {
+    frames: props.frames,
+    video_frames: props.videoFrames,
+    decode_passes: props.decodePasses,
+    shared_frames: props.sharedFrames,
+    keyframe_distance:
+      seconds <= 2 ? "to_2s" : seconds <= 10 ? "to_10s" : seconds <= 60 ? "to_60s" : "over_60s",
+    slow_stage: props.slowStage,
   });
 }
 
@@ -1092,13 +1217,22 @@ export function trackCheckReport(props: {
   motionWarnings: number;
   contrastErrors: number;
   contrastWarnings: number;
+  craftWarnings: number;
   launchSettleMs: number;
+  renderReadyTimedOut: boolean;
   seekLoopMs: number;
   contrastMs: number;
+  gridMs: number;
+  craftMs: number;
+  overlapMs: number;
+  durationSec: number;
   gridPoints: number;
   contrastPoints: number;
   ok: boolean;
   exitCode: number;
+  stopCode?: StopCode;
+  /** Present when the project had videos Chrome cannot decode: counts and milliseconds only. */
+  mediaCopies?: { total: number; waitedMs: number; unfinished: number };
   runId?: string;
 }): void {
   trackEvent("check_report", {
@@ -1117,13 +1251,25 @@ export function trackCheckReport(props: {
     motion_warnings: props.motionWarnings,
     contrast_errors: props.contrastErrors,
     contrast_warnings: props.contrastWarnings,
+    craft_warnings: props.craftWarnings,
     launch_settle_ms: props.launchSettleMs,
+    render_ready_timed_out: props.renderReadyTimedOut,
     seek_loop_ms: props.seekLoopMs,
     contrast_ms: props.contrastMs,
+    grid_ms: props.gridMs,
+    craft_ms: props.craftMs,
+    overlap_ms: props.overlapMs,
+    composition_s: props.durationSec,
     grid_points: props.gridPoints,
     contrast_points: props.contrastPoints,
     ok: props.ok,
     exit_code: props.exitCode,
+    ...(props.stopCode && { stop_code: props.stopCode }),
+    ...(props.mediaCopies && {
+      copies_total: props.mediaCopies.total,
+      copies_waited_ms: props.mediaCopies.waitedMs,
+      copies_unfinished: props.mediaCopies.unfinished,
+    }),
     ...runIdField(props.runId),
   });
 }

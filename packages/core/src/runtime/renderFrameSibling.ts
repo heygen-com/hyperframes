@@ -21,10 +21,10 @@ import { isImageElement } from "./domRealm";
 
 /**
  * The render id an element is addressed by: its stamped, document-unique id
- * when the producer compiled this document, else its author id. The two are
+ * when the compiler stamped this document, else its author id. The two are
  * the same string whenever no collision forced a suffix.
  */
-export function readMediaRenderId(media: Element): string | null {
+export function readMediaRenderId(media: Pick<Element, "getAttribute" | "id">): string | null {
   return media.getAttribute(MEDIA_RENDER_ID_ATTR) || media.id || null;
 }
 

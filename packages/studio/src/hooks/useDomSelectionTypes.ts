@@ -1,7 +1,9 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import type { PreviewElement } from "../player/lib/previewElements";
 import type { SelectElementOptions, TimelineElement } from "../player";
 import type { RightPanelTab } from "../utils/studioHelpers";
+import type { MarqueeSelectionMode } from "../utils/marqueeGeometry";
 
 export interface DomSelectionResult {
   changed: boolean;
@@ -72,7 +74,7 @@ export interface UseDomSelectionReturn {
   ) => void;
   clearDomSelection: () => void;
   buildDomSelectionFromTarget: (
-    target: HTMLElement,
+    target: HTMLElement | PreviewElement,
     options?: ResolveDomSelectionOptions,
   ) => Promise<DomEditSelection | null>;
   resolveDomSelectionFromPreviewPoint: (
@@ -89,7 +91,12 @@ export interface UseDomSelectionReturn {
     element: TimelineElement,
   ) => Promise<DomEditSelection | null>;
   handleTimelineElementSelect: (element: TimelineElement | null) => Promise<void>;
-  refreshDomEditSelectionFromPreview: (selection: DomEditSelection) => Promise<void>;
-  refreshDomEditGroupSelectionsFromPreview: (selections: DomEditSelection[]) => Promise<void>;
-  applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => DomSelectionResult;
+  refreshDomEditSelectionFromPreview: (
+    selection: DomEditSelection,
+    iframe?: HTMLIFrameElement | null,
+  ) => Promise<void>;
+  applyMarqueeSelection: (
+    selections: DomEditSelection[],
+    mode: MarqueeSelectionMode,
+  ) => DomSelectionResult;
 }

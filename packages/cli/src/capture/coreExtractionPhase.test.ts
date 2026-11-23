@@ -8,7 +8,12 @@ import { createPartialCaptureState } from "./partialCapture.js";
 import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 import { StageBudgetTimeoutError } from "./captureTimeout.js";
 
-const control = vi.hoisted(() => ({ remaining: 10000, expireLazy: false, throwCatalog: false }));
+const control = vi.hoisted(() => ({
+  remaining: 10000,
+  expireLazy: false,
+  throwCatalog: false,
+  styleError: "",
+}));
 vi.mock("./lazyScrollForCapture.js", () => ({
   lazyScrollForCapture: async () => {
     if (control.expireLazy) control.remaining = 0;
@@ -35,15 +40,18 @@ vi.mock("./tokenExtractor.js", () => ({
   }),
 }));
 vi.mock("./designStyleExtractor.js", () => ({
-  extractDesignStyles: async () => ({
-    typography: [],
-    spacing: { observed: [], baseUnit: 0 },
-    radius: [],
-    shadows: [],
-    buttons: [],
-    cards: [],
-    nav: null,
-  }),
+  extractDesignStyles: async () => {
+    if (control.styleError) throw new Error(control.styleError);
+    return {
+      typography: [],
+      spacing: { observed: [], baseUnit: 0 },
+      radius: [],
+      shadows: [],
+      buttons: [],
+      cards: [],
+      nav: null,
+    };
+  },
 }));
 vi.mock("./assetCataloger.js", () => ({ catalogAssets: async () => [] }));
 vi.mock("./htmlExtractor.js", () => ({
@@ -71,14 +79,21 @@ afterEach(() => {
   control.remaining = 10000;
   control.expireLazy = false;
   control.throwCatalog = false;
+  control.styleError = "";
+  vi.restoreAllMocks();
 });
 
-async function extract(expireScreenshot = false) {
+const REFUSED = "Protocol error (Page.captureScreenshot): Unable to capture screenshot";
+
+/** `refuseShots`: the screenshot calls (1-based) Chrome refuses. */
+async function extract(expireScreenshot = false, refuseShots: number[] = []) {
   vi.useFakeTimers();
   const outputDir = mkdtempSync(join(tmpdir(), "hf-core-budget-"));
   mkdirSync(join(outputDir, "extracted"));
   const state = createPartialCaptureState({ url: "https://example.com", outputDir });
+  let shots = 0;
   const screenshot = vi.fn(async () => {
+    if (refuseShots.includes(++shots)) throw new Error(REFUSED);
     if (expireScreenshot) control.remaining = 0;
     return new Uint8Array(24);
   });
@@ -157,6 +172,14 @@ describe("core extraction screenshot budget", () => {
       expect(screenshot).not.toHaveBeenCalled();
     },
   );
+  it("names the screenshot Chrome refused twice and keeps the rest", async () => {
+    const { result, warnings } = await extract(false, [2, 3]);
+    expect(result.screenshots).toEqual(["screenshots/scroll-000.png", "screenshots/full-page.png"]);
+    expect(warnings).toContain(
+      `2/3 requested screenshot files captured: could not capture screenshots/scroll-100.png (scrolled to 8920px): ${REFUSED}`,
+    );
+    expect(result.screenshotOutcome).toEqual({ kind: "partial", reason: "internal-error" });
+  });
   it("keeps a positive partial count and names actual versus requested", async () => {
     const { result, warnings } = await extract(true);
     expect(result.screenshots).toHaveLength(1);
@@ -170,5 +193,17 @@ describe("core extraction screenshot budget", () => {
     expect(warnings).toContain(
       "animation catalog evaluate timed out; continuing without animation catalog",
     );
+  });
+  // fails without the fix: a line break in the reason started a line of its own
+  it("keeps the reason design styles could not be read on one line", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    control.styleError = "no styles\n  ✓ Captured";
+    const { warnings } = await extract();
+    const line = String(error.mock.calls[0]![0]);
+    expect(line).toMatch(
+      /^ {2}⚠ Design style extraction failed: no styles\\x0a {2}✓ Captured\\x0a/,
+    );
+    expect(line).not.toContain("\n");
+    expect(warnings.join()).toContain("no styles\n  ✓ Captured");
   });
 });

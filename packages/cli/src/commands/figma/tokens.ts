@@ -6,7 +6,7 @@
  * component-import time, Phase 3).
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import {
   createFigmaClient,
   FigmaClientError,
@@ -17,7 +17,8 @@ import {
   type FigmaClient,
   type FigmaTokensSidecar,
 } from "@hyperframes/core/figma";
-import { writeFileSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { terminalText } from "@hyperframes/core";
 import { join } from "node:path";
 import { withFigmaErrors } from "./cliError.js";
 
@@ -55,7 +56,7 @@ export async function runTokensImport(
   if (vars !== null) {
     const out = tokensToVariables(vars, { fileKey, version });
     upsertBindings(deps.projectDir, out.bindings);
-    writeFileSync(sidecarPath, JSON.stringify(out.sidecar, null, 2) + "\n");
+    replaceFileAtomically(sidecarPath, JSON.stringify(out.sidecar, null, 2) + "\n");
     return { mode: "variables", entries: out.entries, sidecarPath };
   }
 
@@ -71,7 +72,7 @@ export async function runTokensImport(
       value: null,
     })),
   };
-  writeFileSync(sidecarPath, JSON.stringify(sidecar, null, 2) + "\n");
+  replaceFileAtomically(sidecarPath, JSON.stringify(sidecar, null, 2) + "\n");
   return { mode: "styles", entries: [], sidecarPath, styleCount: styles.length };
 }
 
@@ -93,7 +94,7 @@ export default defineCommand({
             : "variables are Enterprise-gated on this plan, and this file has no published library styles to fall back to — nothing recorded. Publish the file's styles to a team library, or read variables via the Figma MCP connector's get_variable_defs instead (works on any plan, rate-limited).",
         );
       }
-      console.log(`wrote ${result.sidecarPath} (${result.mode})`);
+      console.log(terminalText(`wrote ${result.sidecarPath} (${result.mode})`));
       if (result.entries.length > 0) {
         console.log("add to data-composition-variables:");
         console.log(JSON.stringify(result.entries, null, 2));

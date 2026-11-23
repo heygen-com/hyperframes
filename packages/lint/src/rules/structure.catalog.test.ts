@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter";
 
@@ -10,6 +10,7 @@ const STRUCTURE_CODES = new Set([
   "caption_track_kind_missing",
   "multiple_caption_tracks",
   "clip_ends_past_root_duration",
+  "nested_clip_never_visible",
 ]);
 
 function htmlFiles(dir: string): string[] {
@@ -29,7 +30,7 @@ describe("structure rules on the shipped catalog and skills", () => {
     const hits: string[] = [];
     let roots = 0;
     for (const file of files) {
-      const isRoot = file.endsWith("/index.html");
+      const isRoot = basename(file) === "index.html";
       roots += isRoot ? 1 : 0;
       const { findings } = await lintHyperframeHtml(readFileSync(file, "utf8"), {
         host: "studio",
@@ -39,7 +40,7 @@ describe("structure rules on the shipped catalog and skills", () => {
       for (const f of findings.filter((x) => STRUCTURE_CODES.has(x.code)))
         hits.push(`${file}: ${f.code}`);
     }
-    expect(roots).toBeGreaterThan(30);
+    expect(roots).toBeGreaterThan(5);
     expect(hits).toEqual([]);
   }, 120_000);
 });

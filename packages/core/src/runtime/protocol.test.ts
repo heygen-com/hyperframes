@@ -14,6 +14,13 @@ describe("runtime protocol", () => {
     },
   );
 
+  it.each([24_000, 30_000, 60_000])("states %s/1001 fps exactly", (numerator) => {
+    expect(runtimeProtocolFpsFromNumber(numerator / 1_001)).toEqual({
+      numerator,
+      denominator: 1_001,
+    });
+  });
+
   it("accepts protocol v1 metadata and exposes its fps", () => {
     expect(inspectRuntimeProtocol(runtimeProtocolMetadata(60))).toMatchObject({
       status: "supported",

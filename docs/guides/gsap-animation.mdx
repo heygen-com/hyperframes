@@ -10,13 +10,13 @@ GSAP is the primary animation runtime for HyperFrames compositions. You author t
 
 
 <DocsVideo
-  title="GSAP keyframes on screen, and the ease curve being shaped in Studio"
+  title="GSAP keyframes on screen, and the ease curve being shaped in the browser editor"
   src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/gsap-keyframes-demo-v2.mp4"
   poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/gsap-keyframes-demo-v1.jpg"
 />
 
 The code in that clip is the real thing — a `gsap.to()` with a `keyframes` array,
-and the same motion being reshaped by dragging the ease curve in Studio rather
+and the same motion being reshaped by dragging the ease curve in the browser editor rather
 than guessing numbers.
 
 ## Minimal contract
@@ -71,7 +71,7 @@ The registry key must match `data-composition-id`.
 5. Animate transforms and opacity for movement. Avoid repeatedly animating layout properties such as `top`, `left`, `width`, or `height`.
 6. Let HyperFrames control clip visibility and media playback.
 
-The normal timeline methods are `to()`, `from()`, `fromTo()`, and `set()`. GSAP supports many CSS properties, but the [HyperFrames animation skill](https://github.com/heygen-com/hyperframes/tree/main/skills/hyperframes-animation) contains the render-safe patterns used by agents.
+The normal timeline methods are `to()`, `from()`, `fromTo()`, and `set()`. GSAP supports many CSS properties, but the [HyperFrames animation skill](https://github.com/heygen-com/hyperframes/tree/main/skills/hyperframes/animation) contains the render-safe patterns used by agents.
 
 ## Load fonts before measuring text
 
@@ -155,6 +155,6 @@ Check the first frame, the moving state, and the end state. A timeline that look
 
 ## Related topics
 
-- [Edit animation and keyframes in Studio](/studio/animation)
+- [Edit animation and keyframes in the browser editor](/studio/canvas#animate-with-keyframes)
 - [Understand deterministic rendering](/concepts/determinism)
 - [Use the HTML composition schema](/reference/html-schema)

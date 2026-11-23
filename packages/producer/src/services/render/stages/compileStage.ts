@@ -35,9 +35,15 @@
  *     same behavior as before this PR.
  */
 
-import { join } from "node:path";
-import type { EngineConfig } from "@hyperframes/engine";
+import { requireOutputDimensions } from "../outputDimensions.js";
+import { existsSync, writeFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import { escapesAssetRoot } from "../../../utils/paths.js";
+import { privateCacheRoot, type ChromaSubsampling, type EngineConfig } from "@hyperframes/engine";
 import { suggestMatchingPreset, type CanvasResolution } from "@hyperframes/core";
+import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
+import { readTextFile } from "@hyperframes/parsers/asset-resolution";
+import { assertCompositionFileSize } from "@hyperframes/core/compiler";
 import type { CompiledComposition } from "../../htmlCompiler.js";
 import { compileForRender } from "../../htmlCompiler.js";
 import type { ProducerLogger } from "../../../logger.js";
@@ -48,14 +54,24 @@ import {
   type CompositionMetadata,
 } from "../shared.js";
 import type { RenderJob } from "../../renderOrchestrator.js";
-import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
+import {
+  dropMediaOutsideProject,
+  preflightCompositionAssetMediaTypes,
+} from "../../assetMediaType.js";
+
+function animatedGifCacheDir(extractCacheDir: string | undefined): string | undefined {
+  try {
+    const root = extractCacheDir && privateCacheRoot(extractCacheDir);
+    return root ? join(root, "animated-gif") : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface CompileStageInput {
   projectDir: string;
   workDir: string;
-  /** Absolute path to the entry HTML (already resolved to standalone-entry if needed). */
-  htmlPath: string;
-  /** The relative `entryFile` string, used only for log payloads. */
+  /** Entry HTML relative to `projectDir`; a `<template>` sub-composition is isolated inside the index shell. */
   entryFile: string;
   job: RenderJob;
   /**
@@ -89,6 +105,10 @@ export interface CompileStageInput {
   allowSystemFontCapture?: boolean;
   /** Render-time variable overrides (`--variables`); see CompileForRenderOptions.variables. */
   variables?: Record<string, unknown>;
+  /** Absolute project paths not on disk, readable at these URLs instead. */
+  urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+  /** See RenderConfig.pageMotionBlur; decides whether the page renders through screenshots. */
+  pageMotionBlur?: "off";
 }
 
 export interface CompileStageResult {
@@ -109,7 +129,7 @@ export interface CompileStageResult {
    */
   forceScreenshot: boolean;
   /** Low-cardinality compile-time gate that disabled default drawElement:
-   * `3d` | `mix_blend_mode` | `shader_transitions`. Undefined when none fired. */
+   * `3d` | `ancestor_background_image` | `shader_transitions`. Undefined when none fired. */
   deCompileGate?: string;
 }
 
@@ -148,11 +168,77 @@ function adaptAspectAgnosticResolution(
   return flipped;
 }
 
+/**
+ * The HTML file to compile for `entryFile`. A `<template>`-wrapped
+ * sub-composition has no live root, timeline or duration of its own, so it is
+ * rendered through the project's index.html shell with only its mount host kept.
+ */
+export function resolveEntryHtmlPath(input: {
+  projectDir: string;
+  workDir: string;
+  entryFile: string;
+  log: ProducerLogger;
+  assetRoot?: string;
+}): string {
+  const { projectDir, workDir, entryFile, log } = input;
+  const readEntry = (path: string) => {
+    if (escapesAssetRoot(path, input.assetRoot)) {
+      throw new Error(
+        `Entry file "${relative(projectDir, path)}" leads outside the project folder`,
+      );
+    }
+    assertCompositionFileSize(path, relative(projectDir, path));
+    return readTextFile(path);
+  };
+  const htmlPath = join(projectDir, entryFile);
+  const rawEntry = readEntry(htmlPath);
+  if (entryFile === "index.html" || !isTemplateEntry(rawEntry)) return htmlPath;
+
+  const projectIndexPath = join(projectDir, "index.html");
+  if (!existsSync(projectIndexPath)) {
+    throw new Error(
+      `Template entry file "${entryFile}" requires a project index.html to extract its render shell.`,
+    );
+  }
+  const standaloneHtml = extractStandaloneEntryFromIndex(
+    readEntry(projectIndexPath),
+    entryFile,
+    rawEntry,
+  );
+  if (!standaloneHtml) {
+    throw new Error(
+      `Entry file "${entryFile}" is not mounted from index.html via data-composition-src, so it cannot be rendered independently.`,
+    );
+  }
+  const wrapperPath = join(workDir, "standalone-entry.html");
+  writeFileSync(wrapperPath, standaloneHtml, "utf-8");
+  log.info("Extracted standalone entry from index.html host context", { entryFile });
+  return wrapperPath;
+}
+
+/**
+ * 4:4:4 captures opaque PNG, which drawElement cannot verify or worker-encode (JPEG-only), so it
+ * turns drawElement off. Returns the compile gate that applies after this check.
+ */
+function applyChroma444Gate(
+  cfg: EngineConfig,
+  chromaSubsampling: ChromaSubsampling | undefined,
+  gate: string | undefined,
+  log: ProducerLogger,
+): string | undefined {
+  if (!cfg.useDrawElement || chromaSubsampling !== "444") return gate;
+  cfg.useDrawElement = false;
+  log.info(
+    "[Render] Fast capture: chromaSubsampling 444 captures lossless PNG frames, so disabling " +
+      "drawElementImage for this render. Capture uses the platform's baseline route.",
+  );
+  return "chroma_444";
+}
+
 export async function runCompileStage(input: CompileStageInput): Promise<CompileStageResult> {
   const {
     projectDir,
     workDir,
-    htmlPath,
     entryFile,
     job,
     cfg,
@@ -164,6 +250,8 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     abortSignal,
   } = input;
 
+  const assetRoot = job.config.allowOutsideProjectAssets ? undefined : projectDir;
+  const htmlPath = resolveEntryHtmlPath({ projectDir, workDir, entryFile, log, assetRoot });
   const compileStart = Date.now();
   const compiled = await compileForRender(projectDir, htmlPath, join(workDir, "downloads"), {
     log,
@@ -171,10 +259,12 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     allowSystemFontCapture,
     abortSignal,
     variables: input.variables,
-    animatedGifCacheDir: cfg.extractCacheDir
-      ? join(cfg.extractCacheDir, "animated-gif")
-      : undefined,
+    urlByAbsentLocalPath: input.urlByAbsentLocalPath,
+    pageMotionBlur: input.pageMotionBlur,
+    animatedGifCacheDir: animatedGifCacheDir(cfg.extractCacheDir),
     ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
+    allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+    includeOutsideScripts: job.config.includeOutsideScripts,
   });
   assertNotAborted();
   const compileOnlyMs = Date.now() - compileStart;
@@ -223,24 +313,6 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
         "for this render. Capture uses the platform's baseline route.",
     );
   }
-  // Fast-capture mix-blend-mode gate, same shape as the 3D gate above.
-  // drawElementImage captures each element's paint records before the
-  // compositor resolves blend equations — blended layers render as if
-  // mix-blend-mode were absent, producing saturated/damaged composites
-  // (measured: 42 dB min vs 53 dB floor on real blend+filter comps, macOS GPU).
-  // HF_FAST_CAPTURE_BLEND=true bypasses for R&D.
-  if (
-    cfg.useDrawElement &&
-    process.env.HF_FAST_CAPTURE_BLEND !== "true" &&
-    compiled.usesMixBlendMode
-  ) {
-    cfg.useDrawElement = false;
-    deCompileGate = "mix_blend_mode";
-    log.info(
-      "[Render] Fast capture: composition uses mix-blend-mode, so disabling drawElementImage " +
-        "for this render. Capture uses the platform's baseline route.",
-    );
-  }
   // Fast-capture ancestor-background-image gate, same shape as the gates above.
   // drawElementService's per-frame ancestor fill replicates only the nearest
   // non-transparent ancestor background-COLOR behind the captured subtree; a
@@ -280,6 +352,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
         "so page-side compositing stays available.",
     );
   }
+  deCompileGate = applyChroma444Gate(cfg, job.config.chromaSubsampling, deCompileGate, log);
   // Whenever a compile-time gate cleared useDrawElement, restore page-side
   // compositing — but ONLY when resolveConfig auto-disabled it because
   // drawElement was going to run. An explicit enablePageSideCompositing:false
@@ -310,10 +383,18 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     videos: compiled.videos,
     audios: compiled.audios,
     images: compiled.images,
+    gradedCanvas: compiled.gradedCanvas,
     masterFxChain: compiled.masterFxChain,
     width: compiled.width,
     height: compiled.height,
   };
+  dropMediaOutsideProject({
+    projectDir,
+    workDir,
+    composition,
+    log,
+    allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+  });
   await preflightCompositionAssetMediaTypes({
     projectDir,
     compiledDir: join(workDir, "compiled"),
@@ -336,10 +417,12 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     hdrRequested: job.config.hdrMode === "force-hdr",
     alphaRequested: needsAlpha,
   });
-  const outputWidth = width * deviceScaleFactor;
-  const outputHeight = height * deviceScaleFactor;
-  if (deviceScaleFactor > 1) {
-    log.info("Supersampling composition via deviceScaleFactor", {
+  const outputWidth = Math.round(width * deviceScaleFactor);
+  const outputHeight = Math.round(height * deviceScaleFactor);
+  requireOutputDimensions(job.config.expectedOutputDimensions, outputWidth, outputHeight);
+  if (job.config.expectedOutputDimensions !== undefined) job.outputDimensionsChecked = true;
+  if (deviceScaleFactor !== 1) {
+    log.info("Scaling composition via deviceScaleFactor", {
       compositionWidth: width,
       compositionHeight: height,
       outputResolution: effectiveResolution,

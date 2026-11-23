@@ -1,12 +1,17 @@
+import { existsSync } from "node:fs";
 import type { ArgsDef, CommandDef } from "citty";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { CliUsageError } from "./commandResult.js";
 import { isTextFile } from "./textFile.js";
+import { jsonFailure } from "./jsonError.js";
 
 // citty binds each declared positional in order and leaves the rest in `args._`, where they were
 // silently dropped (`render ./proj out.mp4` rendered to the default path). Reject them up front.
 
 // Leaf commands that read extra positionals from `args._` on purpose, by command path.
 export const ACCEPTS_EXTRA_POSITIONALS = new Set([
+  "add",
+  "audio",
   "compare",
   "figma asset",
   "skills update",
@@ -15,10 +20,6 @@ export const ACCEPTS_EXTRA_POSITIONALS = new Set([
 
 // Free-text commands: their last positional takes every remaining word (`tts hello world`).
 export const JOINS_EXTRA_POSITIONALS = new Set(["catalog", "tts"]);
-
-const EXTRA_POSITIONAL_HINTS: Record<string, string> = {
-  add: "Run add once per item, or pass a single tag to install every item tagged with it.",
-};
 
 // citty parses `--json` on every command (`--json=1` as "1"); after `--` it is a positional.
 function wantsJson(value: unknown): boolean {
@@ -45,6 +46,25 @@ function usageLine(path: string, args: ArgsDef): string {
   return parts.join(" ");
 }
 
+// An unquoted path with spaces reaches us as several words; the longest run of them that is a file names it.
+function runStart(word: string): string {
+  if (!word.startsWith("-")) return word;
+  const eq = word.indexOf("=");
+  return eq < 0 ? "" : word.slice(eq + 1);
+}
+
+function spacedPath(argv: readonly string[]): string | undefined {
+  let longest = "";
+  for (let i = 0; i < argv.length; i++) {
+    let joined = runStart(argv[i]!);
+    for (let j = i + 1; joined && j < argv.length && !argv[j]!.startsWith("-"); j++) {
+      joined = `${joined} ${argv[j]}`;
+      if (joined.length > longest.length && existsSync(joined)) longest = joined;
+    }
+  }
+  return longest || undefined;
+}
+
 /** Join a free-text command's trailing words, else throw a usage error naming the extras. */
 export function resolveExtraPositionals(
   cmd: CommandDef<ArgsDef>,
@@ -67,12 +87,14 @@ export function resolveExtraPositionals(
   }
 
   const plural = extra.length === 1 ? "" : "s";
-  const message =
-    `Unexpected extra argument${plural} for hyperframes ${path}: ${extra.join(", ")}\n` +
-    `Usage: ${usageLine(path, args)}` +
-    (EXTRA_POSITIONAL_HINTS[path] ? `\n${EXTRA_POSITIONAL_HINTS[path]}` : "");
-  if (wantsJson(parsed?.json)) console.log(JSON.stringify({ ok: false, error: message }));
-  else console.error(message);
+  const spaced = spacedPath(process.argv.slice(2));
+  const message = (show: (text: string) => string) =>
+    `Unexpected extra argument${plural} for hyperframes ${path}: ${extra.map(show).join(", ")}\n` +
+    (spaced ? `'${show(spaced)}' is one path with spaces: quote it.\n` : "") +
+    `Usage: ${usageLine(path, args)}`;
+  if (wantsJson(parsed?.json))
+    console.log(JSON.stringify(jsonFailure("usage_error", message(String))));
+  else console.error(message(terminalText));
   // Telemetry reads the thrown message: the command path and a count, never the arguments.
   throw new CliUsageError(
     `${extra.length} unexpected extra argument${plural} for hyperframes ${path}`,

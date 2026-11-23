@@ -7,18 +7,25 @@
 
 import type { Page } from "puppeteer-core";
 import type { ExtractedHtml } from "./types.js";
-import { isPrivateUrl } from "./assetDownloader.js";
+import { safeFetch } from "./assetDownloader.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
 
 const DEFAULT_SETTLE_TIME = 3000;
+// Best-effort inlining: a page with hundreds of slow images or sheets must not hold the capture.
+const DEFAULT_INLINE_BUDGET_MS = 20_000;
 
 // Pre-existing capture pipeline size — surfaced by a one-line escape fix, not new logic.
 // fallow-ignore-next-line complexity
 export async function extractHtml(
-  page: Page,
-  opts: { settleTime?: number } = {},
+  page: Pick<Page, "evaluate" | "url">,
+  opts: {
+    settleTime?: number;
+    inlineBudgetMs?: number;
+    onWarning?: (message: string) => void;
+  } = {},
 ): Promise<ExtractedHtml> {
   const settleTime = opts.settleTime ?? DEFAULT_SETTLE_TIME;
+  const inlineBudgetMs = opts.inlineBudgetMs ?? DEFAULT_INLINE_BUDGET_MS;
 
   // Lazy-load scroll removed — index.ts already scrolls before calling extractHtml.
   // Images are loaded by the time we get here.
@@ -31,14 +38,23 @@ export async function extractHtml(
     return Array.from(document.querySelectorAll('link[rel="stylesheet"][href]')).map(function(l) { return l.href; });
   })()`)) as string[];
 
-  for (const href of stylesheetUrls) {
+  const sheetsDeadline = Date.now() + inlineBudgetMs;
+  for (const [index, href] of stylesheetUrls.entries()) {
+    if (Date.now() >= sheetsDeadline) {
+      opts.onWarning?.(
+        `${stylesheetUrls.length - index} stylesheet(s) stayed linked: inlining stopped after ${inlineBudgetMs}ms`,
+      );
+      break;
+    }
     try {
-      if (isPrivateUrl(href)) continue;
-      const res = await fetch(href, {
+      const res = await safeFetch(href, {
         signal: AbortSignal.timeout(10000),
         headers: { "User-Agent": CAPTURE_USER_AGENT },
       });
-      if (!res.ok) continue;
+      if (!res?.ok) {
+        await res?.body?.cancel().catch(() => {});
+        continue;
+      }
       let css = await res.text();
       // Fix relative url() references
       // fallow-ignore-next-line complexity
@@ -50,18 +66,22 @@ export async function extractHtml(
           return match;
         }
       });
-      // Add the CSS as a <style> tag in <head> via Puppeteer's addStyleTag
-      await page.addStyleTag({ content: css });
-      // Remove the original <link> tag (use parameterized evaluate to avoid injection)
-      await page.evaluate((targetHref: string) => {
-        const links = document.querySelectorAll('link[rel="stylesheet"]');
-        for (const link of links) {
-          if ((link as HTMLLinkElement).href === targetHref) {
-            link.remove();
-            break;
+      await page.evaluate(
+        (targetHref: string, content: string) => {
+          const links = document.querySelectorAll('link[rel="stylesheet"]');
+          for (const link of links) {
+            if (link instanceof HTMLLinkElement && link.href === targetHref) {
+              const style = document.createElement("style");
+              style.textContent = content;
+              style.media = link.media;
+              link.replaceWith(style);
+              break;
+            }
           }
-        }
-      }, href);
+        },
+        href,
+        css,
+      );
     } catch {
       /* network error — skip */
     }
@@ -91,13 +111,24 @@ export async function extractHtml(
         try { return "url('" + new URL(url, location.href).href + "')"; } catch(e) { return "url('" + url + "')"; }
       });
     });
+    // A page's own <style> blocks too: the font download only fetches absolute urls.
+    document.querySelectorAll("style").forEach(function(el) {
+      var css = el.textContent || "";
+      var fixed = css.replace(/url\\(\\s*['"]?([^'"\\)\\s]+)['"]?\\s*\\)/g, function(match, url) {
+        if (/^(data:|https?:|\\/\\/|#)/i.test(url)) return match;
+        try { return "url('" + new URL(url, document.baseURI).href + "')"; } catch(e) { return match; }
+      });
+      if (fixed !== css) el.textContent = fixed;
+    });
   })()`);
 
   // Step 3b: Convert cross-origin images to data URLs
   // Some CDNs (Contentful, etc.) block direct access but images are already
   // loaded in the browser. We convert loaded images to data URLs via canvas.
-  await page.evaluate(`(async () => {
+  const unconverted = (await page.evaluate(`(async () => {
     var imgs = Array.from(document.querySelectorAll("img"));
+    var deadline = Date.now() + ${inlineBudgetMs};
+    var kept = 0;
     for (var i = 0; i < imgs.length; i++) {
       var img = imgs[i];
       try {
@@ -106,6 +137,10 @@ export async function extractHtml(
         // Only convert cross-origin images (same-origin ones will load fine)
         var imgUrl = new URL(img.src);
         if (imgUrl.origin === location.origin) continue;
+        if (Date.now() >= deadline) {
+          kept++;
+          continue;
+        }
         // Try to draw to canvas — will fail if CORS blocks it
         var canvas = document.createElement("canvas");
         canvas.width = img.naturalWidth;
@@ -119,8 +154,9 @@ export async function extractHtml(
         }
       } catch(e) {
         // Canvas CORS failed — try fetch + blob as fallback
+        var stop = AbortSignal.timeout(Math.max(1, deadline - Date.now()));
         try {
-          var resp = await fetch(img.src, { mode: "cors" });
+          var resp = await fetch(img.src, { mode: "cors", signal: stop });
           if (resp.ok) {
             var blob = await resp.blob();
             var reader = new FileReader();
@@ -135,10 +171,17 @@ export async function extractHtml(
           }
         } catch(e2) {
           // Both methods failed — image stays as original URL
+          if (stop.aborted) kept++;
         }
       }
     }
-  })()`);
+    return kept;
+  })()`)) as number;
+  if (unconverted > 0) {
+    opts.onWarning?.(
+      `${unconverted} image(s) kept their original URLs: inlining stopped after ${inlineBudgetMs}ms`,
+    );
+  }
 
   // Step 4: Extract everything
   const result = (await page.evaluate(`(() => {

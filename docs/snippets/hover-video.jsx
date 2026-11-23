@@ -1,4 +1,4 @@
-export const HoverVideo = ({ src, poster, className, hasAudio = true }) => {
+export const HoverVideo = ({ src, poster, className, label, hasAudio = true }) => {
   const videoRef = useRef(null);
   const wrapRef = useRef(null);
   const [muted, setMuted] = useState(true);
@@ -86,6 +86,7 @@ export const HoverVideo = ({ src, poster, className, hasAudio = true }) => {
     <div ref={wrapRef} className={className} style={{ position: "relative", overflow: "hidden" }}>
       <video
         ref={videoRef}
+        aria-label={label}
         className="absolute inset-0 h-full w-full object-cover"
         src={inView ? src : undefined}
         poster={poster}

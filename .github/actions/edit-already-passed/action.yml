@@ -1,0 +1,36 @@
+name: Edit already passed
+description: |
+  Reports whether this run comes from a pull request title or body edit on a
+  head commit whose previous run of the same workflow passed. Such an edit
+  cannot change the result, so callers skip their checks and the skipped
+  required checks still pass. A base change, a first run, or a previous run
+  that failed, was cancelled or is unfinished returns false and runs them again.
+  The calling job needs `actions: read`.
+
+outputs:
+  passed:
+    description: "`true` when the previous run on this head commit passed."
+    value: ${{ steps.previous.outputs.passed }}
+
+runs:
+  using: composite
+  steps:
+    - id: previous
+      if: github.event.action == 'edited' && github.event.changes.base == null
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      run: |
+        workflow="$(basename "${GITHUB_WORKFLOW_REF%%@*}")"
+        conclusion="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?event=pull_request&head_sha=$HEAD_SHA&per_page=100" --jq '
+          [.workflow_runs[]
+            | select(.id < (env.GITHUB_RUN_ID | tonumber)
+                and .head_branch == env.HEAD_REF
+                and .head_repository.full_name == env.HEAD_REPO)]
+          | max_by(.id) | .conclusion // "none"')" || conclusion="lookup failed"
+        echo "Previous $workflow run on $HEAD_SHA: $conclusion"
+        if [ "$conclusion" = success ]; then passed=true; else passed=false; fi
+        echo "passed=$passed" >> "$GITHUB_OUTPUT"

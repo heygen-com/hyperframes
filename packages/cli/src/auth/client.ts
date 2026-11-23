@@ -18,9 +18,9 @@
 import { ErrApi, ErrUnauthenticated, isAuthError } from "./errors.js";
 import type { ResolvedCredential } from "./resolver.js";
 import { scrubCredentials } from "./scrub.js";
+import { explainNetworkFailure } from "../utils/networkFailure.js";
 import type { OAuthTokens } from "./store.js";
 
-const DEFAULT_BASE_URL = "https://api.heygen.com";
 export const HEYGEN_CLI_SOURCE_HEADER = "X-HeyGen-Source";
 export const HEYGEN_CLI_SOURCE = "cli";
 // Tool-attribution header identifying this CLI as the request origin. Sent on
@@ -30,9 +30,12 @@ export const HEYGEN_CLI_SOURCE = "cli";
 export const HEYGEN_CLIENT_SOURCE_HEADER = "X-HeyGen-Client-Source";
 export const HEYGEN_CLIENT_SOURCE = "hyperframes";
 
+/** Long enough for a slow answer, short enough that an offline machine hears so within seconds. */
+export const ACCOUNT_REQUEST_TIMEOUT_MS = 15_000;
+
 export function apiBaseUrl(): string {
   const override = process.env["HEYGEN_API_URL"];
-  return override && override.length > 0 ? override.replace(/\/+$/, "") : DEFAULT_BASE_URL;
+  return override && override.length > 0 ? override.replace(/\/+$/, "") : "https://api.heygen.com";
 }
 
 export type BillingType = "wallet" | "subscription" | "usage_based" | string;
@@ -130,7 +133,13 @@ export class AuthClient {
     allowRefresh: boolean,
   ): Promise<UserInfo> {
     const headers = buildAuthHeaders(credential);
-    const res = await this.fetchImpl(url, { method: "GET", headers });
+    const res = await this.fetchImpl(url, {
+      method: "GET",
+      headers,
+      signal: AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS),
+    }).catch((error: unknown) => {
+      throw explainNetworkFailure(error, url);
+    });
 
     if (res.status === 401) {
       if (

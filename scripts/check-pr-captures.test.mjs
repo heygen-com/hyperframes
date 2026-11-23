@@ -19,7 +19,7 @@ import {
 } from "./check-pr-captures.mjs";
 
 const ASSET = "https://github.com/user-attachments/assets/9173dafa-203a-447a-be3a-1234567890ab";
-const studio = (path, lines = 50) => ({ path, lines });
+const studio = (path, binary = false) => ({ path, binary });
 const captured = `## Before\n![old](${ASSET})\n\n## After\n${ASSET}\n`;
 
 test("a PR that touches neither package needs nothing", () => {
@@ -76,36 +76,27 @@ test("a nested heading stays inside its section", () => {
 
 test("No visible change passes for a small non-visual diff", () => {
   const body = "## No visible change\nrename of an internal type";
-  assert.equal(evaluate({ body, files: [studio("packages/studio/src/types.ts", 8)] }).ok, true);
+  assert.equal(evaluate({ body, files: [studio("packages/studio/src/types.ts")] }).ok, true);
 });
 
-test("No visible change fails at 20 lines and says why", () => {
+// fails without the fix: a 700-line logic change was refused for its size alone.
+test("No visible change passes for a non-visual diff of any size", () => {
   const body = "## No visible change\nx";
-  const { ok, problems } = evaluate({ body, files: [studio("packages/studio/src/a.ts", 20)] });
-  assert.equal(ok, false);
-  assert.match(problems[0], /changes 20 lines .* under 20/);
+  const files = parseNumstat("500\t200\tpackages/studio/src/a.ts\0");
+  assert.equal(evaluate({ body, files }).ok, true);
 });
 
 test("No visible change fails on a .tsx file even when tiny, and names the file", () => {
   const body = "## No visible change\nx";
-  const { problems } = evaluate({ body, files: [studio("packages/studio/src/Button.tsx", 1)] });
+  const { problems } = evaluate({ body, files: [studio("packages/studio/src/Button.tsx")] });
   assert.match(problems[0], /touches .*Button\.tsx/);
 });
 
-test("both No visible change conditions are reported together", () => {
-  const body = "## No visible change\nx";
-  const { problems } = evaluate({ body, files: [studio("packages/studio/src/a.css", 90)] });
-  assert.equal(problems.filter((p) => p.startsWith('"No visible change"')).length, 2);
-});
-
-test("numstat keeps only watched paths and counts added plus deleted", () => {
+test("numstat keeps only watched paths and marks none of these text files binary", () => {
   const files = parseNumstat(
     "3\t2\tpackages/studio/src/a.ts\0" + "9\t9\tdocs/x.md\0" + "1\t0\tpackages/player/src/b.ts\0",
   );
-  assert.deepEqual(files, [
-    studio("packages/studio/src/a.ts", 5),
-    studio("packages/player/src/b.ts", 1),
-  ]);
+  assert.deepEqual(files, [studio("packages/studio/src/a.ts"), studio("packages/player/src/b.ts")]);
 });
 
 test("markdown under a watched package needs no capture", () => {
@@ -121,20 +112,24 @@ test("test files under a watched package need no capture", () => {
     "28\t0\tpackages/studio/tests/e2e/edit-accuracy/server.test.mjs\0" +
       "12\t4\tpackages/studio/tests/e2e/edit-accuracy/case.mjs\0" +
       "6\t1\tpackages/player/src/a.spec.tsx\0" +
-      "40\t0\tpackages/studio/src/b.test.ts\0",
+      "40\t0\tpackages/studio/src/b.test.ts\0" +
+      "39\t0\tpackages/studio/src/c.test-helpers.ts\0",
   );
   assert.deepEqual(files, []);
   assert.equal(evaluate({ body: "", files }).ok, true);
   const mixed = parseNumstat(
     "3\t0\tpackages/studio/src/a.ts\0" + "40\t0\tpackages/studio/src/a.test.ts\0",
   );
-  assert.deepEqual(mixed, [studio("packages/studio/src/a.ts", 3)]);
+  assert.deepEqual(mixed, [studio("packages/studio/src/a.ts")]);
   assert.equal(evaluate({ body: "", files: mixed }).ok, false);
 });
 
-test("a binary file spends the whole no-visible-change budget", () => {
-  const [file] = parseNumstat("-\t-\tpackages/studio/public/logo.png\0");
-  assert.equal(file.lines, 20);
+test("No visible change fails on a binary file, such as an image, and names it", () => {
+  const body = "## No visible change\nx";
+  const files = parseNumstat("-\t-\tpackages/studio/public/logo.png\0");
+  const { ok, problems } = evaluate({ body, files });
+  assert.equal(ok, false);
+  assert.match(problems[0], /binary files: packages\/studio\/public\/logo\.png/);
 });
 
 test("the failure prints the exact attach command", () => {
@@ -209,7 +204,7 @@ test("comment fragments cannot rebuild a comment or hide a section from the read
 
 test("No visible change does not cover a component change", () => {
   const body = "## No visible change\nx";
-  assert.equal(evaluate({ body, files: [studio("packages/studio/src/A.tsx", 5)] }).ok, false);
+  assert.equal(evaluate({ body, files: [studio("packages/studio/src/A.tsx")] }).ok, false);
 });
 
 test("a renamed-in file is a plain path with --no-renames -z output", () => {

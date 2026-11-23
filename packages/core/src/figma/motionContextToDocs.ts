@@ -64,11 +64,14 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function keyPattern(key: string, valuePattern: string): RegExp {
+  return new RegExp(`(?<![\\w$])${escapeRegExp(key)}\\s*:\\s*${valuePattern}`);
+}
+
 /** Extract the balanced `{...}` body following `marker` in `src`. Brace
  * counting does not skip string literals — sound for motion.dev output
  * (numeric arrays + named eases, never arbitrary strings containing `}`). */
-function balancedBlock(src: string, marker: string): string | null {
-  const at = src.indexOf(marker);
+function balancedBlock(src: string, marker: string, at = src.indexOf(marker)): string | null {
   if (at === -1) return null;
   const start = src.indexOf("{", at + marker.length - 1);
   if (start === -1) return null;
@@ -83,9 +86,15 @@ function balancedBlock(src: string, marker: string): string | null {
   return null;
 }
 
+function balancedBlockAfterKey(src: string, key: string): string | null {
+  const match = keyPattern(key, "\\{").exec(src);
+  if (!match) return null;
+  return balancedBlock(src, match[0], match.index);
+}
+
 /** Extract a balanced `[...]` immediately after `key:` inside `src`. */
 function arrayAfterKey(src: string, key: string): string | null {
-  const re = new RegExp(`${escapeRegExp(key)}\\s*:\\s*\\[`);
+  const re = keyPattern(key, "\\[");
   const m = re.exec(src);
   if (!m) return null;
   const start = m.index + m[0].length - 1;
@@ -101,7 +110,7 @@ function arrayAfterKey(src: string, key: string): string | null {
 }
 
 function scalarAfterKey(src: string, key: string): string | null {
-  const m = new RegExp(`${escapeRegExp(key)}\\s*:\\s*("[^"]*"|[\\w.]+)`).exec(src);
+  const m = keyPattern(key, '("[^"]*"|[\\w.]+)').exec(src);
   return m?.[1] ?? null;
 }
 
@@ -150,7 +159,7 @@ interface RawTrackData {
 /** Extract and validate one property's raw arrays from the snippet blocks. */
 function extractTrackData(animate: string, transition: string, prop: string): RawTrackData | null {
   const valuesSrc = arrayAfterKey(animate, prop);
-  const propTransition = balancedBlock(transition, `${prop}: {`);
+  const propTransition = balancedBlockAfterKey(transition, prop);
   if (!valuesSrc || !propTransition) return null;
   const timesSrc = arrayAfterKey(propTransition, "times");
   const durationSrc = scalarAfterKey(propTransition, "duration");

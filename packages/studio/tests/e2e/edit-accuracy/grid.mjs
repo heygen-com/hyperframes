@@ -27,13 +27,16 @@ export function localAsset(url) {
 
 // Studio has corner handles only (ResizeHandle is nw|ne|sw|se); its edge strips crop, so there is no edge resize.
 const GESTURES = ["move", "resize", "rotate", "crop", "nudge"];
+// Trimmed from 2061 cases: across 444 historical result snapshots, zoom 200, the pct and center placements and most nested
+// keyframed cases never failed where a kept case with the same gesture, GSAP mode and playhead did not. Drag paths and
+// sequences still cover pct, center and zoom 200.
 const AXES = {
   // idle: GSAP loaded and a paused timeline tweens another element; the target itself is plain CSS.
   gsap: ["none", "idle", "tween", "hold"],
-  placement: ["px", "pct", "center", "xpercent"],
+  placement: ["px", "xpercent"],
   rotation: [0, 30],
   nesting: ["root", "nested"],
-  zoom: [50, 100, 200],
+  zoom: [50, 100],
 };
 
 // Timelines with keyframes at `times` (0, 2 and 3 s unless set) on the property each animates; `css` is it in CSS.
@@ -105,22 +108,29 @@ function keyframedCases() {
     nesting: AXES.nesting,
     zoom: AXES.zoom,
     gesture: GESTURES,
-  }).flatMap((c) => {
-    const times = KEYFRAMED[c.gsap].times ?? KEY_TIMES;
-    return playheadsFor(times).map((at) => ({
-      id: `${caseId(c)}-${at}`,
-      ...c,
-      at,
-      playhead: AT[at],
-      keys: {
-        times: times.filter((t) => t !== AT[at]),
-        props: KEYFRAMED[c.gsap].props,
-        css: KEYFRAMED[c.gsap].css,
-        render: times.at(-1),
-      },
-    }));
-  });
+  })
+    .flatMap((c) => {
+      const times = KEYFRAMED[c.gsap].times ?? KEY_TIMES;
+      return playheadsFor(times).map((at) => ({
+        id: `${caseId(c)}-${at}`,
+        ...c,
+        at,
+        playhead: AT[at],
+        keys: {
+          times: times.filter((t) => t !== AT[at]),
+          props: KEYFRAMED[c.gsap].props,
+          css: KEYFRAMED[c.gsap].css,
+          render: times.at(-1),
+        },
+      }));
+    })
+    .filter((c) => c.nesting === "root" || NESTED_KEYFRAMED(c));
 }
+
+// Nested keyframed cases are kept only for a resize on a keyframe at zoom 100 without rotation, so the PR slice
+// still catches the nested resize regression two historical gate runs failed on (resize-scale-px-r0-nested-z100-on).
+const NESTED_KEYFRAMED = (c) =>
+  c.gesture === "resize" && c.at === "on" && c.zoom === 100 && c.rotation === 0;
 
 const product = (axes) =>
   Object.entries(axes).reduce(
@@ -130,7 +140,11 @@ const product = (axes) =>
 const caseId = (c) =>
   [c.gesture, c.gsap, c.placement, `r${c.rotation}`, c.nesting, `z${c.zoom}`].join("-");
 
-/** `pr` is a smaller slice for CI; `keyframes` is the GSAP-animated set alone, which `full` also runs. */
+/**
+ * `pr` is the pull request slice, zoom 100 and no rotation in both nestings: it held a regressed case for 10 of the 11
+ * pull requests the full gate caught in its first two weeks (the miss was a zoom 50 pick). The merge queue runs `full`.
+ * `keyframes` is the GSAP-animated set alone, which `full` also runs.
+ */
 export function buildGrid(kind = "full") {
   if (kind === "keyframes") return keyframedCases();
   return (
@@ -139,7 +153,7 @@ export function buildGrid(kind = "full") {
       .filter((c) => c.placement !== "xpercent" || !["none", "idle"].includes(c.gsap))
       .map((c) => ({ id: caseId(c), ...c, other: c.gsap === "idle" }))
       .concat(dragCases(), keyframedCases())
-      .filter((c) => kind !== "pr" || (c.zoom === 100 && c.nesting === "root"))
+      .filter((c) => kind !== "pr" || (c.zoom === 100 && c.rotation === 0))
   );
 }
 
@@ -240,6 +254,27 @@ function subHtml(spec) {
   </div>
 </template>
 `;
+}
+
+const TIMINGS = require("./timings.json");
+
+/** A case's usual seconds on a healthy runner (timings.json); an untimed case counts as the slowest. */
+export const expectedSeconds = (c, timings = TIMINGS) =>
+  timings[c.id] ?? Math.max(0, ...Object.values(timings));
+
+/**
+ * Shard `shard` of `shards`, packed longest first by each case's measured seconds (timings.json, from timings.mjs) so
+ * the shards finish together; a case with no timing counts as the slowest. Returned longest first.
+ */
+export function shardCases(cases, shard, shards, timings = TIMINGS) {
+  const cost = (c) => expectedSeconds(c, timings);
+  const bins = Array.from({ length: shards }, () => ({ cases: [], seconds: 0 }));
+  for (const c of [...cases].sort((a, b) => cost(b) - cost(a) || a.id.localeCompare(b.id))) {
+    const lightest = bins.reduce((min, bin) => (bin.seconds < min.seconds ? bin : min));
+    lightest.cases.push(c);
+    lightest.seconds += cost(c);
+  }
+  return bins[shard - 1].cases;
 }
 
 /** Writes the case's project into `dir` and returns the files a gesture may rewrite. */

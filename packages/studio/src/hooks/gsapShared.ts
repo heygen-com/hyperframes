@@ -14,6 +14,8 @@ import {
   resolveTweenDuration,
 } from "../utils/globalTimeCompiler";
 import { toCompositionTime } from "../player/store/timelineElement";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
+import { frameGsap, frameQuery } from "./gsapFrameSnapshot";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -25,17 +27,7 @@ export interface IframeGsap {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-export const PROPERTY_DEFAULTS: Record<string, number> = {
-  opacity: 1,
-  x: 0,
-  y: 0,
-  scale: 1,
-  scaleX: 1,
-  scaleY: 1,
-  rotation: 0,
-  width: 100,
-  height: 100,
-};
+export { KEYFRAME_PROPERTY_DEFAULTS as PROPERTY_DEFAULTS } from "@hyperframes/core/keyframe-defaults";
 
 /** A tween's eases for re-writing it as keyframes: a flat tween's ease must become easeEach,
  *  since GSAP eases each percentage segment power1.inOut whatever the tween-level ease says. */
@@ -371,6 +363,7 @@ export function computeElementPercentage(
 
 /** Safely retrieve the GSAP runtime from the preview iframe. */
 export function getIframeGsap(iframe: HTMLIFrameElement | null): IframeGsap | null {
+  if (iframe && previewFrameOpaque(iframe)) return frameGsap(iframe);
   if (!iframe?.contentWindow) return null;
   try {
     const gsap = (iframe.contentWindow as unknown as { gsap?: IframeGsap }).gsap;
@@ -385,6 +378,7 @@ export function queryIframeElement(
   iframe: HTMLIFrameElement | null,
   selector: string,
 ): Element | null {
+  if (iframe && previewFrameOpaque(iframe)) return frameQuery(iframe, selector);
   try {
     return iframe?.contentDocument?.querySelector(selector) ?? null;
   } catch {

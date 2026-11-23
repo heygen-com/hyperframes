@@ -189,3 +189,29 @@ describe("isPsnrFilterAvailable", () => {
     await expect(isPsnrFilterAvailable()).resolves.toBe(false);
   });
 });
+
+describe("isFfmpegHwaccelAvailable", () => {
+  it("reads `ffmpeg -hwaccels`", async () => {
+    const { execFile, calls } = createExecFileSpy({
+      kind: "ok",
+      stdout: "Hardware acceleration methods:\nvideotoolbox\n",
+    });
+    vi.doMock("node:child_process", () => ({ execFile }));
+
+    const { isFfmpegHwaccelAvailable } = await import("./psnrFilterAvailability.js");
+    await expect(isFfmpegHwaccelAvailable("videotoolbox")).resolves.toBe(true);
+    await expect(isFfmpegHwaccelAvailable("cuda")).resolves.toBe(false);
+    expect(calls.map((call) => call.args)).toEqual([["-hide_banner", "-hwaccels"]]);
+  });
+
+  it("does not answer from the filter list, or the filter question from the hwaccel list", async () => {
+    const { execFile, calls } = createExecFileSpy({ kind: "ok", stdout: "videotoolbox\n" });
+    vi.doMock("node:child_process", () => ({ execFile }));
+
+    const { isFfmpegFilterAvailable, isFfmpegHwaccelAvailable } =
+      await import("./psnrFilterAvailability.js");
+    await isFfmpegFilterAvailable("zscale");
+    await isFfmpegHwaccelAvailable("videotoolbox");
+    expect(calls.map((call) => call.args[1])).toEqual(["-filters", "-hwaccels"]);
+  });
+});

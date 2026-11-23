@@ -3,6 +3,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { parseHTML } from "linkedom";
 import { type Page } from "puppeteer-core";
+import { installMediaRenderIdBridge } from "./mediaRenderIdBridge.js";
 import {
   pageScreenshotCapture,
   pageContentExceedsCaptureHeight,
@@ -14,6 +15,7 @@ import {
   syncVideoFrameVisibility,
   shouldDefaultCaptureBeyondViewport,
   initTransparentBackground,
+  capturesAlpha,
   DOM_LAYER_MASK_STYLE_ID,
 } from "./screenshotService.js";
 
@@ -182,6 +184,17 @@ describe("pageContentExceedsCaptureHeight", () => {
   it("is true when the page genuinely overflows the requested height", async () => {
     const page = makeFakePageWithScrollHeight(2007);
     await expect(pageContentExceedsCaptureHeight(page, 1920)).resolves.toBe(true);
+  });
+});
+
+describe("capturesAlpha", () => {
+  it("follows the format unless the caller says otherwise", () => {
+    expect(capturesAlpha({ format: "png" })).toBe(true);
+    expect(capturesAlpha({ format: "jpeg" })).toBe(false);
+  });
+
+  it("keeps an opaque page for PNG frames captured only to be averaged", () => {
+    expect(capturesAlpha({ format: "png", transparent: false })).toBe(false);
   });
 });
 
@@ -558,6 +571,33 @@ describe("video-frame injection respects ancestor visibility", () => {
     };
   }
 
+  it("switches frame visibility by render identity when scenes share an authored video id", async () => {
+    const { setup, teardown } = withGlobals(setupHostHiddenScenario({}));
+    try {
+      const first = setup.video.cloneNode() as HTMLVideoElement;
+      first.setAttribute("data-hf-render-id", "pip");
+      setup.video.setAttribute("data-hf-render-id", "pip__hf2");
+      const firstFrame = setup.document.createElement("img");
+      const secondFrame = setup.document.createElement("img");
+      firstFrame.className = secondFrame.className = "__render_frame__";
+      setup.video.before(first, firstFrame);
+      setup.video.after(secondFrame);
+      const page = {
+        ...passthroughPage(),
+        evaluateOnNewDocument: async (fn: (attr: string) => void, attr: string) => fn(attr),
+      } as unknown as Page;
+      await installMediaRenderIdBridge(page);
+      await syncVideoFrameVisibility(page, ["pip__hf2"]);
+      expect(firstFrame.style.visibility).toBe("hidden");
+      expect(secondFrame.style.visibility).toBe("visible");
+      await syncVideoFrameVisibility(page, ["pip"]);
+      expect(firstFrame.style.visibility).toBe("visible");
+      expect(secondFrame.style.visibility).toBe("hidden");
+    } finally {
+      teardown();
+    }
+  });
+
   it("skips replacement-frame creation when the video's host has visibility:hidden", async () => {
     const { teardown, setup } = withGlobals(setupHostHiddenScenario({ visibility: "hidden" }));
     try {
@@ -687,9 +727,9 @@ describe("video-frame injection respects ancestor visibility", () => {
     expect(sibling?.style.visibility).toBe("visible");
   });
 
-  it("does not copy color-grading source suppression opacity to the injected frame", async () => {
+  it("copies a color-graded video's animated opacity to the injected frame", async () => {
     const { teardown, setup } = withGlobals(
-      setupHostHiddenScenario({}, { videoStyle: { opacity: "0" } }),
+      setupHostHiddenScenario({}, { videoStyle: { opacity: "0.4" } }),
     );
     setup.video.setAttribute("data-hf-color-grading-source-hidden", "true");
 
@@ -707,15 +747,15 @@ describe("video-frame injection respects ancestor visibility", () => {
 
     const sibling = setup.video.nextElementSibling as HTMLElement | null;
     expect(sibling?.classList.contains("__render_frame__")).toBe(true);
-    expect(sibling?.style.opacity).toBe("1");
+    expect(sibling?.style.opacity).toBe("0.4");
   });
 
-  it("repairs stale injected-frame opacity while syncing color-graded active videos", async () => {
+  it("leaves the injected frame's opacity alone while syncing color-graded active videos", async () => {
     const { teardown, setup } = withGlobals(setupHostHiddenScenario({}));
     setup.video.setAttribute("data-hf-color-grading-source-hidden", "true");
     const seededImg = setup.document.createElement("img");
     seededImg.classList.add("__render_frame__");
-    seededImg.style.opacity = "0";
+    seededImg.style.opacity = "0.4";
     setup.video.parentNode?.insertBefore(seededImg, setup.video.nextSibling);
     const setSourceVisibility = vi.fn();
     (setup.window as unknown as { __hf: unknown }).__hf = {
@@ -728,7 +768,7 @@ describe("video-frame injection respects ancestor visibility", () => {
       teardown();
     }
 
-    expect(seededImg.style.opacity).toBe("1");
+    expect(seededImg.style.opacity).toBe("0.4");
     expect(seededImg.style.visibility).toBe("visible");
     expect(setSourceVisibility).toHaveBeenCalledWith(setup.video, true);
   });

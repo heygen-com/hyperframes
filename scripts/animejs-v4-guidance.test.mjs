@@ -11,14 +11,6 @@ const guidance = [
     path: "packages/core/src/runtime/adapters/animejs.ts",
     required: ["anime.animate", "anime.createTimeline"],
   },
-  {
-    path: "skills/hyperframes-animation/adapters/animejs.md",
-    required: ["anime.animate", "anime.createTimeline"],
-  },
-  {
-    path: "skills/hyperframes-keyframes/references/keyframe-patterns.md",
-    required: ["anime.createTimeline"],
-  },
 ];
 
 function read(path) {
@@ -40,6 +32,13 @@ for (const { path, required } of guidance) {
     assert.doesNotMatch(snippets, /\banime\.timeline\s*\(/);
   });
 }
+
+test("the runtimes reference teaches Anime.js v4, never the v3 call sites", () => {
+  const runtimes = read("skills/hyperframes/references/runtimes.md");
+  assert.match(runtimes, /anime\.js v4/);
+  assert.doesNotMatch(runtimes, /\banime\s*\(\s*\{/);
+  assert.doesNotMatch(runtimes, /\banime\.timeline\s*\(/);
+});
 
 test("the window anime global advertises the v4 namespace API", () => {
   const source = read("packages/core/src/runtime/window.d.ts");

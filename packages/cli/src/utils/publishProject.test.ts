@@ -1,8 +1,17 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { dirname, join, posix, relative } from "node:path";
 import AdmZip from "adm-zip";
+import { parseHTML } from "linkedom";
 
 const authMocks = vi.hoisted(() => ({
   tryResolveCredential: vi.fn(),
@@ -16,7 +25,8 @@ const linkMocks = vi.hoisted(() => ({
   writeProjectLink: vi.fn(),
 }));
 
-vi.mock("./projectLink.js", () => ({
+vi.mock("./projectLink.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./projectLink.js")>()),
   writeProjectLink: linkMocks.writeProjectLink,
 }));
 
@@ -38,6 +48,8 @@ import {
   getPublishApiBaseUrl,
   localizeExternalAssets,
   publishProjectArchive,
+  readStaged,
+  stagePublishFiles,
   uploadTimeoutMs,
   zipPublishFileMap,
 } from "./publishProject.js";
@@ -214,6 +226,117 @@ async function runAuthenticatedPublish(
 }
 
 describe("createPublishArchive", () => {
+  it.each([
+    { filename: "poster art.svg", reference: "poster%20art.svg" },
+    { filename: "封面.svg", reference: "%E5%B0%81%E9%9D%A2.svg" },
+    { filename: "100%.svg", reference: "100%.svg" },
+    { filename: "poster%20art.svg", reference: "poster%20art.svg" },
+    { filename: "poster#art.svg", reference: "poster%23art.svg" },
+    { filename: "poster#art.svg", reference: "poster#art.svg" },
+  ])("archives $filename referenced as $reference", ({ filename, reference }) => {
+    const projectDir = makeProjectDir();
+    const extDir = mkdtempSync(join(tmpdir(), "hf-ext-"));
+    try {
+      const entryPath = "compositions/scene.html";
+      const htmlDir = join(projectDir, dirname(entryPath));
+      mkdirSync(htmlDir, { recursive: true });
+      stageExternalAsset(extDir, htmlDir, filename, "POSTER_DATA");
+      if (reference !== filename) {
+        stageExternalAsset(extDir, htmlDir, reference, "LITERAL_DECOY");
+      }
+      const assetPath = relative(htmlDir, join(extDir, reference)).replaceAll("\\", "/");
+      const html = `<html><body><img src="${assetPath}"><video src="../clip.mp4" poster="${assetPath}"></video></body></html>`;
+      writeFileSync(join(projectDir, "index.html"), "<html></html>");
+      writeFileSync(join(projectDir, entryPath), html);
+      writeFileSync(join(projectDir, "clip.mp4"), "MP4_DATA");
+
+      const archive = createPublishArchive(projectDir);
+      const zip = new AdmZip(archive.buffer);
+      const { document } = parseHTML(zip.readAsText(entryPath));
+      const src = document.querySelector("img")?.getAttribute("src");
+      if (!src) throw new Error("Archived image has no src");
+      expect(document.querySelector("video")?.getAttribute("poster")).toBe(src);
+      const url = new URL(src, `https://archive.example/${entryPath}`);
+      expect(url.hash).toBe("");
+      expect(url.search).toBe("");
+      const archivedPath = decodeURIComponent(url.pathname.slice(1));
+      expect(archivedPath).toMatch(/^_ext\//);
+      expect(posix.basename(archivedPath)).toBe(filename);
+      expect(zip.readFile(archivedPath)).toEqual(Buffer.from("POSTER_DATA"));
+      expect(archive.fileCount).toBe(4);
+      expect(readFileSync(join(projectDir, entryPath), "utf-8")).toBe(html);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+      rmSync(extDir, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["index.html", "compositions/scene.html"])(
+    "includes external video posters referenced from %s",
+    (entryPath) => {
+      const projectDir = makeProjectDir();
+      const extDir = mkdtempSync(join(tmpdir(), "hf-ext-"));
+      try {
+        const htmlDir = join(projectDir, dirname(entryPath));
+        mkdirSync(htmlDir, { recursive: true });
+        if (entryPath !== "index.html") {
+          writeFileSync(join(projectDir, "index.html"), "<html></html>");
+        }
+        const posterPath = stageExternalAsset(extDir, htmlDir, "poster.png", "PNG_DATA");
+        const videoPath = posix.relative(posix.dirname(entryPath), "clip.mp4");
+        const html = `<html><body><video src="${videoPath}" poster="${posterPath}"></video></body></html>`;
+        writeFileSync(join(projectDir, entryPath), html);
+        writeFileSync(join(projectDir, "clip.mp4"), "MP4_DATA");
+
+        const archive = createPublishArchive(projectDir);
+        const zip = new AdmZip(archive.buffer);
+        const posterEntries = zip
+          .getEntries()
+          .filter((entry) => entry.entryName.startsWith("_ext/") && entry.name === "poster.png");
+
+        expect(posterEntries).toHaveLength(1);
+        const archivedPoster = posterEntries[0]!;
+        expect(archivedPoster.getData()).toEqual(Buffer.from("PNG_DATA"));
+        expect(zip.readAsText(entryPath)).toContain(
+          `poster="${posix.relative(posix.dirname(entryPath), archivedPoster.entryName)}"`,
+        );
+        expect(zip.readAsText(entryPath)).toContain(`src="${videoPath}"`);
+        expect(archive.fileCount).toBe(entryPath === "index.html" ? 3 : 4);
+        expect(readFileSync(join(projectDir, entryPath), "utf-8")).toBe(html);
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+        rmSync(extDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("preserves internal, remote, and inline video posters", () => {
+    const projectDir = makeProjectDir();
+    try {
+      const posters = [
+        "poster.png",
+        "poster%20art.png",
+        "https://cdn.example.com/poster.png",
+        "https://cdn.example.com/poster%20art.png",
+        "data:image/png;base64,AA==",
+      ];
+      const html = `<html><body>${posters.map((poster) => `<video src="clip.mp4" poster="${poster}"></video>`).join("")}</body></html>`;
+      writeFileSync(join(projectDir, "index.html"), html);
+      writeFileSync(join(projectDir, "poster.png"), "PNG_DATA");
+      writeFileSync(join(projectDir, "poster art.png"), "ENCODED_PNG_DATA");
+      writeFileSync(join(projectDir, "clip.mp4"), "MP4_DATA");
+
+      const archive = createPublishArchive(projectDir);
+      const zip = new AdmZip(archive.buffer);
+
+      expect(archive.fileCount).toBe(4);
+      expect(zip.readAsText("index.html")).toBe(html);
+      expect(zip.getEntries().some((entry) => entry.entryName.startsWith("_ext/"))).toBe(false);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("packages the project and skips hidden files and node_modules", () => {
     const dir = makeProjectDir();
     try {
@@ -616,6 +739,7 @@ beforeEach(() => {
   linkMocks.writeProjectLink.mockReset();
   vi.stubEnv("HYPERFRAMES_PUBLISHED_PROJECTS_API_URL", "");
   vi.stubEnv("HEYGEN_API_URL", "");
+  vi.stubEnv("HYPERFRAMES_ENV", "prod");
 });
 
 afterEach(() => {
@@ -628,6 +752,38 @@ const signedStagedS3Url =
   "https://s3.example.com/upload?X-Amz-SignedHeaders=content-length;content-type;host;x-amz-server-side-encryption";
 
 describe("publishProjectArchive", () => {
+  // fails without the fix: with no archive passed in, files from outside the project were uploaded unasked.
+  it("leaves files from outside the project out of an archive it builds itself", async () => {
+    const dir = makeProjectDir();
+    const outside = mkdtempSync(join(tmpdir(), "hf-outside-"));
+    const fetchMock = directFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      writeFileSync(join(outside, "logo.png"), "png", "utf-8");
+      writeFileSync(join(dir, "index.html"), `<img src="${join(outside, "logo.png")}">`, "utf-8");
+      writeFileSync(join(dir, "styles.css"), "body {}", "utf-8");
+
+      await publishProjectArchive(dir);
+
+      const file = (fetchMock.mock.calls[1]![1].body as FormData).get("file") as File;
+      const entries = new AdmZip(Buffer.from(await file.arrayBuffer()))
+        .getEntries()
+        .map((entry) => entry.entryName);
+      expect(entries).toContain("styles.css");
+      expect(entries.filter((name) => name.includes("logo.png"))).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("takes the publish service from the environment under HYPERFRAMES_ENV=dev", () => {
+    vi.stubEnv("HYPERFRAMES_ENV", "dev");
+    expect(getPublishApiBaseUrl()).toBe("https://api2.heygen.com");
+    vi.stubEnv("HEYGEN_API_URL", "https://api2.example.test");
+    expect(getPublishApiBaseUrl()).toBe("https://api2.example.test");
+  });
+
   it("uploads through the staged publish flow and returns the stable project URL", async () => {
     const dir = makeProjectDir();
     const fetchMock = stagedFetch(
@@ -680,6 +836,30 @@ describe("publishProjectArchive", () => {
           headers: jsonHeaders,
         },
       );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("publishProjectArchive", () => {
+  it("keeps server-sent upload headers in any case without adding duplicates", async () => {
+    const dir = makeProjectDir();
+    const serverHeaders = {
+      "Content-Type": "application/zip",
+      "Content-Length": "123",
+      "X-Amz-Server-Side-Encryption": "AES256",
+    };
+    const fetchMock = stagedFetch(
+      { file_count: 1 },
+      { upload_url: signedStagedS3Url, upload_headers: serverHeaders },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      await publishProjectArchive(dir);
+      expect(fetchMock.mock.calls[1]![1].headers).toEqual(serverHeaders);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -1026,6 +1206,7 @@ describe("publishProjectArchive", () => {
       expect(linkMocks.writeProjectLink).toHaveBeenCalledWith(dir, {
         projectId: "hfp_stable",
         url: "https://hyperframes.dev/p/hfp_stable",
+        spaceId: "",
       });
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -1122,6 +1303,22 @@ describe("publishProjectArchive with a credential the server rejects", () => {
       .mockResolvedValueOnce(new Response("not found", { status: 404 }))
       .mockResolvedValueOnce(unauthorized());
     await publishExpecting(fetchMock, EXPIRED);
+  });
+
+  it("asks a signed-out publish to log in when the upload route answers 401, with no fallback", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(unauthorized());
+    vi.stubGlobal("fetch", fetchMock);
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      await expect(publishProjectArchive(dir)).rejects.toThrow(
+        "Publishing needs an account. Run hyperframes auth login to publish.",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]![0]).toMatch(/\/publish\/upload$/);
   });
 
   it("does not blame the login for a 401 from the storage upload, which carries no credential", async () => {
@@ -1311,5 +1508,142 @@ describe("publishProjectArchive with an expired login and no refresh token", () 
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("readStaged", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "hf-staged-"));
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    writeFileSync(join(dir, "clip.bin"), "staged bytes");
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("reads a file left on disk only while it is the file that was staged", () => {
+    const staged = stagePublishFiles(dir, 4).get("clip.bin")!;
+    expect(Buffer.isBuffer(staged)).toBe(false);
+    expect(readStaged(staged).toString()).toBe("staged bytes");
+
+    writeFileSync(join(dir, "swap.bin"), "other  bytes");
+    utimesSync(join(dir, "swap.bin"), 1, 1);
+    renameSync(join(dir, "swap.bin"), join(dir, "clip.bin"));
+    expect(() => readStaged(staged)).toThrow(/changed on disk/);
+  });
+});
+
+describe("createPublishArchive referenced dot-paths", () => {
+  const clip = ".hyperframes/prepared-assets/clip.mp4";
+
+  function projectWith(html: string, files: Record<string, string>): string {
+    const dir = makeProjectDir();
+    writeFileSync(join(dir, "index.html"), html, "utf-8");
+    for (const [name, body] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, name)), { recursive: true });
+      writeFileSync(join(dir, name), body, "utf-8");
+    }
+    return dir;
+  }
+
+  const names = (dir: string) =>
+    new AdmZip(createPublishArchive(dir).buffer).getEntries().map((e) => e.entryName);
+
+  it("carries a referenced file under a dot-folder", () => {
+    const dir = projectWith(`<video src="${clip}"></video>`, { [clip]: "v" });
+    expect(names(dir)).toContain(clip);
+  });
+
+  it("fails before upload when a referenced file is missing", () => {
+    const dir = projectWith(`<video src="${clip}"></video>`, {});
+    expect(() => createPublishArchive(dir)).toThrow(clip);
+  });
+
+  it("does not fail on a missing href, source fallback, srcset candidate or CSS url", () => {
+    const dir = projectWith(
+      `<link rel="stylesheet" href="s.css"><a href="notes.html">n</a><video><source src="a.webm"><source src="a.mp4"></video>` +
+        `<img src="a.png" srcset="a.png 1x, a@2x.png 2x"><style>.a{background:url(gone.jpg)}</style>`,
+      { "a.mp4": "v", "a.png": "p", "s.css": ".a{background:url(gone.jpg)}" },
+    );
+    expect(() => createPublishArchive(dir)).not.toThrow();
+    expect(names(dir)).not.toContain("notes.html");
+  });
+
+  it("fails on a missing video, audio, img src or poster, naming the file", () => {
+    for (const tag of [
+      'video src="gone.mp4"',
+      'audio src="gone.mp3"',
+      'img src="gone.png"',
+      'video poster="gone.jpg"',
+    ]) {
+      const name = /"(gone\.[a-z0-9]+)"/.exec(tag)![1]!;
+      expect(() =>
+        createPublishArchive(projectWith(`<${tag}></${tag.split(" ")[0]}>`, {})),
+      ).toThrow(name);
+    }
+  });
+
+  it("leaves out an unreferenced .env", () => {
+    const dir = projectWith(`<video src="${clip}"></video>`, { [clip]: "v", ".env": "SECRET=1" });
+    expect(names(dir)).not.toContain(".env");
+  });
+
+  it("leaves out an env file or a tool record even when the markup names it", () => {
+    const dir = projectWith(
+      `<link href=".env"><img src=".env.local"><a href=".hyperframes/history-turn.json">h</a>`,
+      { ".env": "SECRET=1", ".env.local": "SECRET=1", ".hyperframes/history-turn.json": "{}" },
+    );
+    expect(names(dir)).toEqual(["index.html"]);
+  });
+});
+
+describe("archive keys for names written in either Unicode form", () => {
+  // "é" as one code point (composed) and as e + a combining accent (decomposed): macOS file pickers store the latter.
+  const composed = "assets/Photos et vidéos 1.mp4";
+  const decomposed = "assets/Photos et vidéos 1.mp4";
+
+  it("keys a file stored decomposed by the composed name a page uses, so the renderer finds it", () => {
+    const dir = makeProjectDir();
+    mkdirSync(join(dir, "assets"), { recursive: true });
+    writeFileSync(join(dir, decomposed), "video");
+    writeFileSync(join(dir, "index.html"), `<video src="${composed}"></video>`);
+
+    const map = buildPublishFileMap(dir);
+
+    expect([...map.keys()].sort()).toEqual([composed, "index.html"]);
+    expect(map.get(composed)?.toString()).toBe("video");
+    const entries = new AdmZip(zipPublishFileMap(map).buffer).getEntries().map((e) => e.entryName);
+    expect(entries).toContain(composed);
+  });
+
+  it("rewrites a page and a stylesheet that name a decomposed file the way the disk lists it", () => {
+    const dir = makeProjectDir();
+    mkdirSync(join(dir, "assets"), { recursive: true });
+    writeFileSync(join(dir, decomposed), "video");
+    writeFileSync(
+      join(dir, "assets/styles.css"),
+      `.a { background: url("${decomposed.slice(7)}"); }`,
+    );
+    writeFileSync(
+      join(dir, "index.html"),
+      `<video src="${decomposed}"></video><img src="${encodeURI(decomposed)}">`,
+    );
+
+    const map = buildPublishFileMap(dir);
+
+    expect([...map.keys()].sort()).toEqual([composed, "assets/styles.css", "index.html"]);
+    expect(map.get("index.html")?.toString()).toBe(
+      `<video src="${composed}"></video><img src="${encodeURI(composed)}">`,
+    );
+    expect(map.get("assets/styles.css")?.toString()).toContain(composed.slice(7));
+  });
+
+  it("refuses two files that differ only by Unicode form instead of letting one overwrite the other", () => {
+    const dir = makeProjectDir();
+    mkdirSync(join(dir, "assets"), { recursive: true });
+    writeFileSync(join(dir, composed), "first");
+    writeFileSync(join(dir, decomposed), "second");
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+
+    expect(() => buildPublishFileMap(dir)).toThrow(/same name|differ only/i);
   });
 });

@@ -79,6 +79,26 @@ describe("ClawHub skill sync", () => {
     ]);
   });
 
+  it("publishes one patch past each acknowledged taken version", () => {
+    const acknowledged = [
+      ["hyperframes", "1.0.51", "1.0.52"],
+      ["hyperframes-cli", "1.0.73", "1.0.74"],
+      ["hyperframes-registry", "1.0.15", "1.0.16"],
+      ["media-use", "1.0.87", "1.0.88"],
+      ["remotion-to-hyperframes", "1.0.17", "1.0.18"],
+    ];
+    const clawhub = fakeClawhub({
+      syncFailed: acknowledged.map(([slug, taken]) => ({ slug, message: TAKEN(taken) })),
+    });
+
+    assert.deepEqual(sync(clawhub), []);
+    const published = clawhub.calls.filter((args) => args[0] === "publish");
+    assert.deepEqual(
+      published.map((args) => [args[3], args[args.indexOf("--version") + 1]]),
+      acknowledged.map(([slug, , next]) => [slug, next]),
+    );
+  });
+
   it("fails rather than skipping further when the next patch is taken too", () => {
     const clawhub = fakeClawhub({ syncFailed: [creativeTaken], takenVersions: ["1.0.14"] });
 

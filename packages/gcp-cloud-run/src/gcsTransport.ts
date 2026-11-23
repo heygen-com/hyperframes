@@ -21,14 +21,19 @@
 
 import {
   createReadStream,
+  copyFileSync,
   createWriteStream,
   existsSync,
+  lstatSync,
   mkdirSync,
+  readdirSync,
+  renameSync,
   rmSync,
   statSync,
+  constants as fsConstants,
 } from "node:fs";
-import { createHash } from "node:crypto";
-import { dirname } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { Storage } from "@google-cloud/storage";
 import * as tar from "tar";
@@ -241,12 +246,56 @@ function isGcsPreconditionFailed(error: unknown): boolean {
  * package (pure JS over `node:zlib`) rather than spawning a system tar
  * binary so the archive format is independent of the container's userland.
  */
-export async function tarDirectory(sourceDir: string, destTarball: string): Promise<void> {
+export async function tarDirectory(
+  sourceDir: string,
+  destTarball: string,
+  files?: string[],
+): Promise<void> {
   if (!existsSync(sourceDir) || !statSync(sourceDir).isDirectory()) {
     throw new Error(`[gcsTransport] tar source must be an existing directory: ${sourceDir}`);
   }
   mkdirSync(dirname(destTarball), { recursive: true });
-  await tar.create({ gzip: true, file: destTarball, cwd: sourceDir }, ["."]);
+  // `files` (relative to `sourceDir`) packs exactly those paths, with symlinks followed.
+  await tar.create(
+    { gzip: true, file: destTarball, cwd: sourceDir, follow: files !== undefined },
+    files ?? ["."],
+  );
+}
+
+// Symbolic links could point anywhere on this machine; hard links are unpacked, then made copies.
+const UNPACKED_ENTRY_TYPES: ReadonlySet<string> = new Set([
+  "File",
+  "OldFile",
+  "ContiguousFile",
+  "Directory",
+  "Link",
+]);
+
+function hardLinkedFiles(dir: string, found: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) hardLinkedFiles(path, found);
+    else if (entry.isFile() && lstatSync(path).nlink > 1) found.push(path);
+  }
+  return found;
+}
+
+function copyHardLinkedFiles(destDir: string): void {
+  for (const path of hardLinkedFiles(destDir)) {
+    if (lstatSync(path).nlink === 1) continue;
+    const copy = join(dirname(path), `.unlink-${randomUUID()}`);
+    try {
+      copyFileSync(path, copy, fsConstants.COPYFILE_EXCL);
+      renameSync(copy, path);
+    } catch (err) {
+      try {
+        rmSync(copy, { force: true });
+      } catch {
+        // Report the copy failure, not a failed cleanup.
+      }
+      throw err;
+    }
+  }
 }
 
 /**
@@ -266,5 +315,15 @@ export async function untarDirectory(tarballPath: string, destDir: string): Prom
     rmSync(destDir, { recursive: true, force: true });
   }
   mkdirSync(destDir, { recursive: true });
-  await tar.extract({ file: tarballPath, cwd: destDir });
+  let sawHardLink = false;
+  await tar.extract({
+    file: tarballPath,
+    cwd: destDir,
+    filter: (_path, entry) => {
+      if (!("type" in entry) || !UNPACKED_ENTRY_TYPES.has(entry.type)) return false;
+      sawHardLink ||= entry.type === "Link";
+      return true;
+    },
+  });
+  if (sawHardLink) copyHardLinkedFiles(destDir);
 }

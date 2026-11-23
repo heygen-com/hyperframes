@@ -1,5 +1,7 @@
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { AFTER_FONTS_CLAIM, DEFERRED_FILE, typeAfterFonts } from "../compiler/scriptRuns";
 import { postRuntimeMessage } from "./bridge";
+import { applyTextBindings } from "./applyVariableBindings";
 
 /** Past the 3 s a font-display:block face holds text back, far under the engine's 45 s player-ready wait. */
 export const FONT_WAIT_TIMEOUT_MS = 5000;
@@ -10,14 +12,19 @@ export const FONT_WAIT_TIMEOUT_MS = 5000;
 export async function waitForFonts(): Promise<void> {
   const fonts = document.fonts;
   if (!fonts) return;
-  // Layout starts loading the faces laid-out text uses; with none loading, ready resolves at once.
+  // Layout starts the faces laid-out text uses; load() starts the rest so ready covers them too.
   void document.body?.offsetHeight;
+  for (const face of Array.from(fonts)) {
+    if (face.status === "unloaded") void face.load().catch(() => {});
+  }
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = await Promise.race([
     fonts.ready.then(() => false),
-    new Promise<boolean>((resolve) => (timer = setTimeout(resolve, FONT_WAIT_TIMEOUT_MS, true))),
+    new Promise<boolean>(
+      (resolve) => (timer = wallSetTimeout(resolve, FONT_WAIT_TIMEOUT_MS, true)),
+    ),
   ]);
-  clearTimeout(timer);
+  wallClearTimeout(timer);
   if (!timedOut) return;
   const loadingFamilies = [
     ...new Set(
@@ -82,6 +89,24 @@ function runInPlace(el: Element): HTMLScriptElement | undefined {
   return script;
 }
 
+export const PREVIEW_SCRIPT_SLICE_MS = 50;
+
+/** A render's virtual clock holds every timer until it advances, so only a preview gives the page turns. */
+const givesTurns = () => !(window as { __HF_VIRTUAL_TIME__?: unknown }).__HF_VIRTUAL_TIME__;
+
+function nextUnclampedTask(): Promise<void> {
+  const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+  if (typeof scheduler?.yield === "function") return scheduler.yield();
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve();
+    };
+    channel.port2.postMessage(null);
+  });
+}
+
 const loaded = (script: HTMLScriptElement) =>
   new Promise((resolve) => {
     script.addEventListener("load", resolve);
@@ -102,18 +127,25 @@ function afterQueuedModules(): Promise<unknown> {
 }
 
 /**
- * Once fonts are ready, runs each script in its own place in parser order (classic, then module and
- * deferred), calls `afterRun`, then the load listeners the scripts added after those events passed.
+ * Once fonts are ready and variable text is bound, runs each script in its own place in parser order (classic,
+ * then module and deferred), calls `afterRun`, then the load listeners the scripts added after those events passed.
  */
 export async function runScriptsAfterFonts(
   scripts: readonly Element[],
   afterRun?: () => void,
 ): Promise<void> {
   await waitForFonts();
+  applyTextBindings(document);
   const isLate = (el: Element) => typeAfterFonts(el) === "module" || el.matches(DEFERRED_FILE);
   const held: HeldListener[] = [];
   const release = [document, window].map((target) => holdPassedLoadEvents(target, held));
+  const turns = givesTurns();
+  let slice = performance.now();
   for (const el of [...scripts.filter((el) => !isLate(el)), ...scripts.filter(isLate)]) {
+    if (turns && performance.now() - slice > PREVIEW_SCRIPT_SLICE_MS) {
+      await nextUnclampedTask();
+      slice = performance.now();
+    }
     const script = runInPlace(el);
     if (script?.hasAttribute("src") && !script.async && !script.noModule) await loaded(script);
     else if (typeAfterFonts(el) === "module") await afterQueuedModules();

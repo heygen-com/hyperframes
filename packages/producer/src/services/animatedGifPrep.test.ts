@@ -1,11 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { parseHTML } from "linkedom";
 import {
   buildAnimatedGifTranscodeArgs,
   prepareAnimatedGifInputs,
+  resolveLocalImageSourcePath,
   type AnimatedGifTranscodeRequest,
 } from "./animatedGifPrep.js";
 
@@ -97,6 +98,36 @@ describe("buildAnimatedGifTranscodeArgs", () => {
 });
 
 describe("prepareAnimatedGifInputs", () => {
+  it.each([".git/sticker.gif", ".hyperframes/sticker.gif", ".claude/sticker.gif"])(
+    "never transcodes the private project file %s",
+    async (src) => {
+      const projectDir = makeProject();
+      try {
+        mkdirSync(dirname(join(projectDir, src)), { recursive: true });
+        writeFileSync(join(projectDir, src), gif([...frame(5), ...frame(15)], 0));
+        const calls: AnimatedGifTranscodeRequest[] = [];
+        const result = await prepareAnimatedGifInputs(
+          `<img data-start="0" data-duration="2" src="${src}" />`,
+          {
+            projectDir,
+            downloadDir: projectDir,
+            transcode: async (request) => {
+              calls.push(request);
+              writeFileSync(request.outputPath, "webm");
+            },
+          },
+        );
+        expect(calls).toEqual([]);
+        expect(result.preparedGifs).toEqual([]);
+        expect(
+          resolveLocalImageSourcePath(src, { projectDir, downloadDir: projectDir }),
+        ).toBeNull();
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("rewrites animated GIF images to muted looped videos", async () => {
     const projectDir = makeProject();
     writeFileSync(join(projectDir, "sticker.gif"), gif([...frame(5), ...frame(15)], 0));
@@ -182,15 +213,17 @@ describe("prepareAnimatedGifInputs", () => {
     expect(result.preparedAssets.size).toBe(0);
   });
 
-  it("lets data-loop override infinite GIF metadata", async () => {
+  it.each([0, 3])("lets data-loop=false override GIF loop count %i", async (loopCount) => {
     const projectDir = makeProject();
-    writeFileSync(join(projectDir, "reaction.gif"), gif([...frame(10), ...frame(10)], 0));
+    writeFileSync(join(projectDir, "reaction.gif"), gif([...frame(10), ...frame(10)], loopCount));
+    const calls: AnimatedGifTranscodeRequest[] = [];
     const result = await prepareAnimatedGifInputs(
       `<img data-start="0" data-duration="2" data-loop="false" src="reaction.gif" />`,
       {
         projectDir,
         downloadDir: projectDir,
         transcode: async (request) => {
+          calls.push(request);
           writeFileSync(request.outputPath, "webm");
         },
       },
@@ -198,6 +231,9 @@ describe("prepareAnimatedGifInputs", () => {
 
     const { document } = parseHTML(result.html);
     expect(document.querySelector("video")?.hasAttribute("loop")).toBe(false);
+    expect(result.preparedGifs[0]?.loopIterations).toBe(1);
+    expect(result.preparedGifs[0]?.padSeconds).toBe(1.8);
+    expect(calls[0]?.args).not.toContain("-stream_loop");
   });
 
   it("expands finite loop metadata into the transcoded source", async () => {
@@ -218,6 +254,56 @@ describe("prepareAnimatedGifInputs", () => {
     expect(result.preparedGifs[0]?.loopIterations).toBe(3);
     expect(calls[0]?.args).toContain("-stream_loop");
     expect(calls[0]?.args).toContain("2");
+  });
+
+  it("reads no GIF outside the project unless the caller allows outside files", async () => {
+    const root = makeProject();
+    const projectDir = join(root, "project");
+    const outside = join(root, "Downloads", "reaction.gif");
+    mkdirSync(projectDir);
+    mkdirSync(dirname(outside));
+    writeFileSync(outside, gif([...frame(10), ...frame(10)], 0));
+    const html = `<img data-start="0" data-duration="1" src="../Downloads/reaction.gif"><img data-start="0" data-duration="1" src="${outside}">`;
+    const calls: AnimatedGifTranscodeRequest[] = [];
+    const options = {
+      projectDir,
+      downloadDir: join(projectDir, "downloads"),
+      transcode: async (request: AnimatedGifTranscodeRequest) => {
+        calls.push(request);
+        writeFileSync(request.outputPath, "webm");
+      },
+    };
+
+    for (const src of ["../Downloads/reaction.gif", outside]) {
+      expect(resolveLocalImageSourcePath(src, options)).toBeNull();
+    }
+    const contained = await prepareAnimatedGifInputs(html, options);
+    expect(contained.html).toBe(html);
+    expect(calls).toHaveLength(0);
+
+    const trusted = await prepareAnimatedGifInputs(html, { ...options, allowOutsideFiles: true });
+    expect(trusted.preparedGifs).toHaveLength(2);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("reads a remote GIF that Studio saved in the private downloads folder", async () => {
+    const projectDir = makeProject();
+    const downloadDir = join(projectDir, ".hyperframes", "prepared-assets", "downloads");
+    const sourceUrl = "https://cdn.example.com/loop.gif";
+    const sourcePath = join(downloadDir, "download_0123456789ab.gif");
+    mkdirSync(downloadDir, { recursive: true });
+    writeFileSync(sourcePath, gif([...frame(10), ...frame(10)], 0));
+    const options = { projectDir, downloadDir, sourceAssets: new Map([[sourceUrl, sourcePath]]) };
+    try {
+      expect(resolveLocalImageSourcePath(sourceUrl, options)).toBe(sourcePath);
+      const result = await prepareAnimatedGifInputs(
+        `<img data-start="0" data-duration="2" src="${sourceUrl}" />`,
+        { ...options, transcode: async (request) => writeFileSync(request.outputPath, "webm") },
+      );
+      expect(result.preparedGifs[0]?.sourceSrc).toBe(sourceUrl);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 
   it("uses source asset mappings for remote GIF URLs", async () => {

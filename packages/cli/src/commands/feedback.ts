@@ -1,8 +1,9 @@
-import { failCommand } from "../utils/commandResult.js";
+import { failUsage } from "../utils/commandResult.js";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
-import { defineCommand } from "citty";
-import * as clack from "@clack/prompts";
+import { terminalLines, terminalText } from "@hyperframes/core";
+import { defineCommand } from "../utils/defineCommand.js";
+import * as clack from "../ui/prompts.js";
 import open from "open";
 import type { Example } from "./_examples.js";
 import {
@@ -12,15 +13,23 @@ import {
 } from "../telemetry/events.js";
 import { shouldTrack } from "../telemetry/client.js";
 import { getDoctorSummary } from "../telemetry/feedback.js";
-import { readConfig, type RecentRenderRecord } from "../telemetry/config.js";
-import { publishProjectArchive } from "../utils/publishProject.js";
+import { readConfig, type LastCheckRecord, type RecentRenderRecord } from "../telemetry/config.js";
+import { createPublishArchive, publishProjectArchive } from "../utils/publishProject.js";
 import { submitCatalogSearchMiss, submitFeedback } from "../utils/submitFeedback.js";
 import { buildIssueUrl, HYPERFRAMES_REPO_URL } from "../utils/feedbackIssue.js";
 import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
+import { isUnattended } from "../utils/attendedTerminal.js";
 import { parseFeedbackRating } from "../utils/feedbackRating.js";
 import { feedbackEmail, parseFeedbackSource } from "../utils/feedbackSource.js";
 import { lintFeedbackComment, type FeedbackLintInput } from "../utils/feedbackLint.js";
+import { type LeftOutReference, outsideFilesNotice } from "../utils/leftOutReference.js";
+import { trackUploadLeftOut } from "../telemetry/uploadLeftOut.js";
+import {
+  confirmOutsideFiles,
+  type OutsideFileChoice,
+  stageWithOutsideFileApproval,
+} from "../utils/outsideFileApproval.js";
 
 export const examples: Example[] = [
   ["Submit render feedback", 'hyperframes feedback --rating 8 --comment "fast but font missing"'],
@@ -31,7 +40,7 @@ export const examples: Example[] = [
   ],
   [
     "Report a catalog gap after a fruitless search",
-    'hyperframes feedback --search-miss "typewriter that deletes" --wanted "text that types then backspaces"',
+    'hyperframes feedback --search-miss --wanted "text that types then backspaces"',
   ],
   [
     "Also file a GitHub issue with a published repro",
@@ -41,6 +50,24 @@ export const examples: Example[] = [
 
 function normalizeComment(raw?: string): string | undefined {
   return raw || undefined;
+}
+
+async function reportSearchMiss(rawWanted?: string, rawTier?: string): Promise<void> {
+  if (!shouldTrack()) {
+    console.log(c.dim("Telemetry is disabled. Nothing sent."));
+    return;
+  }
+  const wanted = normalizeComment(rawWanted);
+  if (!wanted) {
+    console.error(c.error("Describe the move you needed with --wanted"));
+    failUsage();
+  }
+  const tier = normalizeComment(rawTier);
+  trackCatalogSearchMiss({ wanted, tier });
+  // Ack before the forward, which is best-effort and bounded, so the
+  // reporter is never left waiting on it.
+  console.log(c.dim("Logged the gap. Thanks — that is how the catalog grows."));
+  await submitCatalogSearchMiss({ wanted, tier, cliVersion: VERSION });
 }
 
 /**
@@ -56,10 +83,24 @@ export function buildTelemetryJoinKeys(input: {
   feedbackId: string;
   anonymousId: string;
   recentRenders?: RecentRenderRecord[];
+  lastCheck?: LastCheckRecord;
+  now?: number;
 }): string {
   const parts = [`fid=${input.feedbackId}`, `tid=${input.anonymousId}`];
   if (input.recentRenders?.length) {
     parts.push(`renders=${input.recentRenders.map((r) => `${r.id}${r.ok ? "" : "!"}`).join(",")}`);
+  }
+  if (input.lastCheck) {
+    const codes = Object.entries(input.lastCheck.codes).map(
+      ([code, n]) => `${code.slice(0, 24)}*${n}`,
+    );
+    const result =
+      input.lastCheck.exitCode === undefined ? "unfinished" : `exit${input.lastCheck.exitCode}`;
+    parts.push(`check=${result}${codes.length ? `:${codes.join(",")}` : ""}`);
+    const minutes = Math.round(
+      ((input.now ?? Date.now()) - Date.parse(input.lastCheck.at)) / 60_000,
+    );
+    if (Number.isFinite(minutes) && minutes >= 0) parts.push(`check_age=${minutes}m`);
   }
   return parts.join(" ");
 }
@@ -69,7 +110,7 @@ function printIssueConsent(dir: string): void {
   console.log(
     `  ${c.bold("Filing an issue will publish this project publicly and open a GitHub issue draft.")}`,
   );
-  console.log(`  ${c.dim(`Project at ${dir} will be uploaded to a public URL.`)}`);
+  console.log(`  ${c.dim(`Project at ${terminalText(dir)} will be uploaded to a public URL.`)}`);
   console.log(
     `  ${c.dim("The issue draft will contain that public link plus your feedback; you review and submit it.")}`,
   );
@@ -88,7 +129,7 @@ async function promptConfirm(): Promise<boolean> {
 async function confirmFileIssue(dir: string, yes: boolean): Promise<boolean> {
   printIssueConsent(dir);
   if (yes) return true;
-  if (!process.stdout.isTTY) {
+  if (isUnattended()) {
     console.log(`  ${c.dim("Re-run with --yes to publish the repro and file the issue.")}\n`);
     return false;
   }
@@ -101,16 +142,53 @@ async function confirmFileIssue(dir: string, yes: boolean): Promise<boolean> {
  * Publish a minimal repro and return its public URL. Degrades gracefully:
  * on failure it returns undefined so the issue still opens without a link.
  */
-async function publishRepro(dir: string): Promise<string | undefined> {
+async function publishRepro(
+  dir: string,
+  outsideFileChoice: OutsideFileChoice,
+): Promise<string | undefined> {
   const spinner = clack.spinner();
   spinner.start("Publishing minimal repro...");
   try {
-    const published = await publishProjectArchive(dir);
+    const ask = outsideFileChoice.ask;
+    const { staged, outsideFiles } = await stageWithOutsideFileApproval(
+      dir,
+      {
+        ...outsideFileChoice,
+        ask:
+          ask &&
+          ((files) => {
+            spinner.stop("Repro prepared");
+            return ask(files).finally(() => spinner.start("Publishing minimal repro..."));
+          }),
+      },
+      (onOutsideFile) => {
+        const leftOut: string[] = [];
+        const references: LeftOutReference[] = [];
+        const archive = createPublishArchive(
+          dir,
+          (warning, reference) => {
+            leftOut.push(warning);
+            references.push(reference);
+          },
+          onOutsideFile,
+        );
+        return { archive, leftOut, references };
+      },
+    );
+    const { archive, leftOut, references } = staged;
+    trackUploadLeftOut("feedback", references);
+    if (outsideFiles.length > 0) {
+      spinner.stop("Repro prepared");
+      clack.log.info(terminalLines(outsideFilesNotice(outsideFiles)));
+      spinner.start("Publishing minimal repro...");
+    }
+    const published = await publishProjectArchive(dir, { archive });
     spinner.stop(c.success("Repro published"));
+    for (const warning of leftOut) clack.log.warn(c.warn(terminalLines(warning)));
     return published.url;
   } catch (err: unknown) {
     spinner.stop(c.error("Publish failed"));
-    console.error(`  ${(err as Error).message}`);
+    console.error(`  ${terminalLines((err as Error).message)}`);
     console.log(`  ${c.dim("Filing the issue without a repro link.")}`);
     return undefined;
   }
@@ -124,7 +202,7 @@ async function publishRepro(dir: string): Promise<string | undefined> {
  */
 function printFeedbackLintWarnings(input: FeedbackLintInput): void {
   for (const warning of lintFeedbackComment(input)) {
-    console.log(c.warn(`⚠ ${warning.message}`));
+    console.log(c.warn(`⚠ ${terminalLines(warning.message)}`));
   }
 }
 
@@ -138,7 +216,7 @@ async function openAndPrintIssue(url: string): Promise<void> {
   }
   console.log();
   console.log(`  ${c.dim("Review and submit the pre-filled issue (it is not auto-submitted):")}`);
-  console.log(`  ${c.accent(url)}`);
+  console.log(`  ${c.accent(terminalText(url))}`);
   console.log();
 }
 
@@ -147,11 +225,15 @@ async function fileGithubIssue(opts: {
   comment?: string;
   rawDir?: string;
   yes: boolean;
+  includeOutsideFiles: boolean;
   doctorSummary: string;
 }): Promise<void> {
   const dir = resolve(opts.rawDir ?? ".");
   if (!(await confirmFileIssue(dir, opts.yes))) return;
-  const repoPublicUrl = await publishRepro(dir);
+  const repoPublicUrl = await publishRepro(dir, {
+    includeAll: opts.includeOutsideFiles,
+    ask: opts.yes || isUnattended() ? undefined : confirmOutsideFiles,
+  });
   const url = buildIssueUrl({
     repoUrl: HYPERFRAMES_REPO_URL,
     rating: opts.rating,
@@ -173,15 +255,15 @@ function reportRating(
   const rating = raw === undefined ? undefined : parseFeedbackRating(raw);
   if (rating === null) {
     console.error(c.error("Rating must be an integer between 0 and 10"));
-    failCommand();
+    failUsage();
   }
   if (rating === undefined && !comment?.trim()) {
     console.error(c.error("Give a --rating (an integer from 0 to 10), a --comment, or both"));
-    failCommand();
+    failUsage();
   }
   if (rating === undefined && fileIssue) {
     console.error(c.error("--file-issue needs a --rating"));
-    failCommand();
+    failUsage();
   }
   return rating;
 }
@@ -225,8 +307,9 @@ export default defineCommand({
       description: 'Who wrote the report: "person" or "agent"',
     },
     "search-miss": {
-      type: "string",
-      description: "Report a catalog search that found nothing useful; pass the query you ran",
+      type: "boolean",
+      description:
+        "Report a catalog search that found nothing useful; describe the move with --wanted",
     },
     wanted: {
       type: "string",
@@ -251,26 +334,18 @@ export default defineCommand({
       description: "Skip the publish + file-issue consent prompt",
       default: false,
     },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Upload the files the repro uses from outside its folder without asking. Otherwise they are left out unless you approve them.",
+      default: false,
+    },
   },
   async run({ args }) {
     // A search miss is a different report from a rating: it names a gap in the
     // catalog rather than scoring an experience, so it carries no rating and
     // must not land in the same number.
-    const searchMiss = normalizeComment(args["search-miss"]);
-    if (searchMiss) {
-      if (!shouldTrack()) {
-        console.log(c.dim("Telemetry is disabled. Nothing sent."));
-        return;
-      }
-      const wanted = normalizeComment(args.wanted);
-      const tier = normalizeComment(args.tier);
-      trackCatalogSearchMiss({ query: searchMiss, wanted, tier });
-      // Ack before the forward, which is best-effort and bounded, so the
-      // reporter is never left waiting on it.
-      console.log(c.dim("Logged the gap. Thanks — that is how the catalog grows."));
-      await submitCatalogSearchMiss({ query: searchMiss, wanted, tier, cliVersion: VERSION });
-      return;
-    }
+    if (args["search-miss"]) return reportSearchMiss(args.wanted, args.tier);
 
     const comment = normalizeComment(args.comment);
     const rating = reportRating(args.rating, comment, args["file-issue"] === true);
@@ -278,7 +353,7 @@ export default defineCommand({
     const source = parseFeedbackSource(args.source);
     if (source === null) {
       console.error(c.error('Source must be "person" or "agent"'));
-      failCommand();
+      failUsage();
     }
 
     if (!shouldTrack()) {
@@ -297,6 +372,7 @@ export default defineCommand({
       feedbackId,
       anonymousId: config.anonymousId,
       recentRenders: config.recentRenders,
+      lastCheck: config.lastCheck,
     });
     const envWithJoinKeys = doctorSummary ? `${doctorSummary} ${joinKeys}` : joinKeys;
 
@@ -326,6 +402,7 @@ export default defineCommand({
         comment,
         rawDir: args.dir,
         yes: args.yes === true,
+        includeOutsideFiles: args["include-outside-files"] === true,
         doctorSummary,
       });
     }

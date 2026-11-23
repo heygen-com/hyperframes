@@ -36,6 +36,7 @@ export interface AssembleStageInput {
   videoOnlyPath: string;
   /** Mixed audio path (only read when `hasAudio` is true). */
   audioOutputPath: string;
+  audioPcmPath?: string;
   /** Final on-disk output. A directory when `format` is `"hls"`. */
   outputPath: string;
   hasAudio: boolean;
@@ -57,7 +58,7 @@ export interface AssembleStageResult {
   assembleMs: number;
 }
 
-function recordLimiterAttenuation(job: RenderJob, audioLoweredDb: number | undefined): void {
+export function recordLimiterAttenuation(job: RenderJob, audioLoweredDb: number | undefined): void {
   if (audioLoweredDb === undefined) return;
   job.audioLoweredDb = audioLoweredDb;
   const ceiling = `−${Math.abs(AAC_DELIVERY_TRUE_PEAK_DBFS)} dBTP`;
@@ -116,6 +117,7 @@ async function assembleOutput(
     const normalizeResult = await padOrTrimAudioToVideoFrameCount({
       videoPath: videoOnlyPath,
       audioPath: audioOutputPath,
+      sourcePath: input.audioPcmPath,
       outputPath: normalizedAudioPath,
       signal: abortSignal,
       timeoutMs: ffmpegProcessTimeout,

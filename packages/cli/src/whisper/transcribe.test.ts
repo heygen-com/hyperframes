@@ -1,9 +1,8 @@
 import { chmodSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import {
-  dtwPresetForModel,
   getPreparedWavDurationSeconds,
   initialModelForLanguage,
   isPcm16kMono,
@@ -12,29 +11,20 @@ import {
   resolveAudioPreparationTimeoutMs,
   resolveWhisperTimeoutMs,
   whisperModelSlowdownFactor,
+  withoutPaths,
   wrapWhisperTimeoutError,
 } from "./transcribe.js";
 
-describe("dtwPresetForModel", () => {
-  // The large family is the regression: model files are hyphenated but
-  // whisper.cpp's --dtw preset is dotted, so `--dtw large-v3` used to abort
-  // with "unknown DTW preset 'large-v3'".
-  test.each([
-    ["large-v3", "large.v3"],
-    ["large-v2", "large.v2"],
-    ["large-v1", "large.v1"],
-    ["large-v3-turbo", "large.v3.turbo"],
-  ])("maps hyphenated large model %s to dotted preset %s", (model, preset) => {
-    expect(dtwPresetForModel(model)).toBe(preset);
+describe("withoutPaths", () => {
+  it("leaves only file names of absolute paths, and leaves other slashes alone", () => {
+    expect(
+      withoutPaths(
+        `loading '${join(homedir(), ".cache", "m", "ggml-tiny.bin")}' from /opt/x/lib/libwhisper.1.dylib (C:\\Users\\me\\w.exe), file:/srv/a/talk.wav [/srv/b/c.wav] 1/2 done`,
+      ),
+    ).toBe(
+      "loading 'ggml-tiny.bin' from libwhisper.1.dylib (w.exe), file:talk.wav [c.wav] 1/2 done",
+    );
   });
-
-  // tiny/base/small/medium (+.en) already match their preset — must be unchanged.
-  test.each(["tiny", "base.en", "small.en", "medium.en", "small"])(
-    "leaves preset-identical model %s unchanged",
-    (model) => {
-      expect(dtwPresetForModel(model)).toBe(model);
-    },
-  );
 });
 
 describe("resolveWhisperTimeoutMs", () => {

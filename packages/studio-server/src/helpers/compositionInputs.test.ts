@@ -67,46 +67,46 @@ describe("a root write", () => {
   const rewrite = (dir: string, head: string, body: string) =>
     writeFileSync(join(dir, "index.html"), html(head, body));
 
-  it("moves every composition when the head changed, or when no head was seen yet", () => {
+  it("moves every composition when the head changed, or when no head was seen yet", async () => {
     const dir = project(files("<style>a{}</style>", "x"));
     expect(compositionsAffectedBy(dir, "index.html")).toBeNull();
 
-    compositionInputSignature(dir, "compositions/a.html", "s1");
+    await compositionInputSignature(dir, "compositions/a.html", "s1");
     rewrite(dir, "<style>b{}</style>", "x");
     expect(compositionsAffectedBy(dir, "index.html")).toBeNull();
   });
 
-  it("moves only the root when the head is as it was", () => {
+  it("moves only the root when the head is as it was", async () => {
     const dir = project(files("<style>a{}</style>", "x"));
-    compositionInputSignature(dir, "compositions/a.html", "s1");
+    await compositionInputSignature(dir, "compositions/a.html", "s1");
     rewrite(dir, "<style>a{}</style>", "moved");
     expect(compositionsAffectedBy(dir, "index.html")).toEqual(["index.html"]);
     rewrite(dir, "<style>a{}</style>", "moved again");
     expect(compositionsAffectedBy(dir, "index.html")).toEqual(["index.html"]);
   });
 
-  it("tells every subscriber of one head edit the same thing, even after a thumbnail request", () => {
+  it("tells every subscriber of one head edit the same thing, even after a thumbnail request", async () => {
     const dir = project(files("<style>a{}</style>", "x"));
-    compositionInputSignature(dir, "compositions/a.html", "s1");
+    await compositionInputSignature(dir, "compositions/a.html", "s1");
     rewrite(dir, "<style>b{}</style>", "x");
     expect(compositionsAffectedBy(dir, "index.html")).toBeNull();
-    compositionInputSignature(dir, "compositions/a.html", "s2");
+    await compositionInputSignature(dir, "compositions/a.html", "s2");
     expect(compositionsAffectedBy(dir, "index.html")).toBeNull();
   });
 
-  it("leaves a scene's input signature alone for a body edit, not for a head edit", () => {
+  it("leaves a scene's input signature alone for a body edit, not for a head edit", async () => {
     const dir = project(files("<style>a{}</style>", "x"));
-    const before = compositionInputSignature(dir, "compositions/a.html", "s1");
+    const before = await compositionInputSignature(dir, "compositions/a.html", "s1");
     rewrite(dir, "<style>a{}</style>", "moved");
-    expect(compositionInputSignature(dir, "compositions/a.html", "s2")).toBe(before);
+    expect(await compositionInputSignature(dir, "compositions/a.html", "s2")).toBe(before);
     rewrite(dir, "<style>b{}</style>", "moved");
-    expect(compositionInputSignature(dir, "compositions/a.html", "s3")).not.toBe(before);
+    expect(await compositionInputSignature(dir, "compositions/a.html", "s3")).not.toBe(before);
   });
 
-  it("changes the root's own input signature for a body edit", () => {
+  it("changes the root's own input signature for a body edit", async () => {
     const dir = project(files("<style>a{}</style>", "x"));
-    const before = compositionInputSignature(dir, "index.html", "s1");
+    const before = await compositionInputSignature(dir, "index.html", "s1");
     rewrite(dir, "<style>a{}</style>", "moved");
-    expect(compositionInputSignature(dir, "index.html", "s2")).not.toBe(before);
+    expect(await compositionInputSignature(dir, "index.html", "s2")).not.toBe(before);
   });
 });

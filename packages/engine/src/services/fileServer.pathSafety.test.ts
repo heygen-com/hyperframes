@@ -61,3 +61,102 @@ describe("fileServer path containment", () => {
     expect(await response.text()).toContain("<html>");
   });
 });
+
+describe("fileServer private project files", () => {
+  it.each(["/.env", "/.Env.local", "/.git/config", "/%2egit/config"])(
+    "answers %s with 404",
+    async (requestPath) => {
+      const projectDir = fs.mkdtempSync(path.join(tmpdir(), "hf-fileserver-private-"));
+      fs.mkdirSync(path.join(projectDir, ".git"));
+      fs.writeFileSync(path.join(projectDir, ".env"), "SECRET=1");
+      fs.writeFileSync(path.join(projectDir, ".Env.local"), "SECRET=1");
+      fs.writeFileSync(path.join(projectDir, ".git", "config"), "SECRET=1");
+      fs.writeFileSync(path.join(projectDir, "asset.txt"), "ok");
+      const server = await createFileServer({ headScripts: [], bodyScripts: [], projectDir });
+      try {
+        const response = await fetch(`${server.url}${requestPath}`);
+        expect(response.status).toBe(404);
+        expect(await response.text()).not.toContain("SECRET");
+        expect((await fetch(`${server.url}/asset.txt`)).status).toBe(200);
+      } finally {
+        server.close();
+        fs.rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("fileServer credential files", () => {
+  const credentials = [
+    ".npmrc",
+    ".mcp.json",
+    ".claude/x.json",
+    ".aws/credentials",
+    "id_ed25519",
+    "cert.pem",
+  ];
+  it.each(credentials.map((file) => `/${file}`))("answers %s with 404", async (requestPath) => {
+    const projectDir = fs.mkdtempSync(path.join(tmpdir(), "hf-fileserver-credentials-"));
+    for (const folder of [".claude", ".aws"]) fs.mkdirSync(path.join(projectDir, folder));
+    for (const file of credentials) fs.writeFileSync(path.join(projectDir, file), "SECRET=1");
+    fs.writeFileSync(path.join(projectDir, "asset.txt"), "ok");
+    const server = await createFileServer({ headScripts: [], bodyScripts: [], projectDir });
+    try {
+      const response = await fetch(`${server.url}${requestPath}`);
+      expect(response.status).toBe(404);
+      expect(await response.text()).not.toContain("SECRET");
+      expect((await fetch(`${server.url}/asset.txt`)).status).toBe(200);
+    } finally {
+      server.close();
+      fs.rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("fileServer tool records", () => {
+  it.each([
+    ".hyperframes/app-history.jsonl",
+    ".hyperframes/agent-handoff.json",
+    ".hyperframes/comments.jsonl",
+    "%2ehyperframes/agent-handoff.json",
+    ".hyperframes%2fcomments.jsonl",
+    "linked-history.json",
+  ])(
+    "answers %s with 404 from either root and still serves prepared assets",
+    async (requestPath) => {
+      const projectDir = fs.mkdtempSync(path.join(tmpdir(), "hf-fileserver-records-"));
+      const compiledDir = fs.mkdtempSync(path.join(tmpdir(), "hf-fileserver-records-compiled-"));
+      for (const root of [projectDir, compiledDir]) {
+        fs.mkdirSync(path.join(root, ".hyperframes", "prepared-assets"), { recursive: true });
+        for (const name of ["app-history.jsonl", "agent-handoff.json", "comments.jsonl"]) {
+          fs.writeFileSync(path.join(root, ".hyperframes", name), "PRIVATE_RECORD");
+        }
+      }
+      fs.writeFileSync(
+        path.join(projectDir, ".hyperframes", "prepared-assets", "clip.txt"),
+        "prepared",
+      );
+      fs.symlinkSync(
+        path.join(projectDir, ".hyperframes", "app-history.jsonl"),
+        path.join(projectDir, "linked-history.json"),
+      );
+      const server = await createFileServer({
+        headScripts: [],
+        bodyScripts: [],
+        projectDir,
+        compiledDir,
+      });
+      try {
+        const response = await fetch(`${server.url}/${requestPath}`);
+        expect(response.status).toBe(404);
+        expect(await response.text()).not.toContain("PRIVATE_RECORD");
+        const prepared = await fetch(`${server.url}/.hyperframes/prepared-assets/clip.txt`);
+        expect(await prepared.text()).toBe("prepared");
+      } finally {
+        server.close();
+        fs.rmSync(projectDir, { recursive: true, force: true });
+        fs.rmSync(compiledDir, { recursive: true, force: true });
+      }
+    },
+  );
+});

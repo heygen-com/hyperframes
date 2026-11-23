@@ -28,9 +28,14 @@ test("accepts a valid minimal 3D cube LUT", () => {
 });
 
 test("rejects oversize LUTs with the core parser message", () => {
-  const result = validateCube("LUT_3D_SIZE 65", { maxSize: 64 });
+  const result = validateCube("LUT_3D_SIZE 66");
   assert.equal(result.ok, false);
-  assert.match(result.error, /LUT_3D_SIZE 65 exceeds max 64/);
+  assert.match(result.error, /LUT_3D_SIZE 66 exceeds max 65/);
+});
+
+test("accepts the 65-point cube that grading tools export", () => {
+  const rows = Array.from({ length: 65 ** 3 }, () => "0 0 0").join("\n");
+  assert.deepEqual(validateCube(`LUT_3D_SIZE 65\n${rows}`), { ok: true, size: 65 });
 });
 
 test("rejects data rows before LUT_3D_SIZE", () => {
@@ -96,7 +101,7 @@ test("CLI exits zero for valid files and non-zero for invalid files", () => {
     const valid = join(dir, "valid.cube");
     const invalid = join(dir, "invalid.cube");
     writeFileSync(valid, IDENTITY_2);
-    writeFileSync(invalid, "LUT_3D_SIZE 65");
+    writeFileSync(invalid, "LUT_3D_SIZE 66");
 
     const out = execFileSync(
       process.execPath,
@@ -117,7 +122,34 @@ test("CLI exits zero for valid files and non-zero for invalid files", () => {
             stdio: "pipe",
           },
         ),
-      (err) => err.status === 1 && String(err.stderr).includes("exceeds max 64"),
+      (err) => err.status === 1 && String(err.stderr).includes("exceeds max 65"),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the command prints a bad value from the file with control characters as visible escapes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cube-validate-escape-"));
+  try {
+    const file = join(dir, "bad.cube");
+    writeFileSync(file, "LUT_3D_SIZE 2\n0 0 1\x1b]52;c;aGk=\x07\n");
+    assert.throws(
+      () =>
+        execFileSync(
+          process.execPath,
+          [new URL("./cube-validate.mjs", import.meta.url).pathname, file],
+          {
+            encoding: "utf8",
+            stdio: "pipe",
+          },
+        ),
+      (err) => {
+        const stderr = String(err.stderr);
+        assert.ok(stderr.includes("1\\x1b]52;c;aGk=\\x07"), stderr);
+        for (const raw of ["\x07", "\x1b"]) assert.ok(!stderr.includes(raw), stderr);
+        return err.status === 1;
+      },
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });

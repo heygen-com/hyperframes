@@ -44,13 +44,13 @@ vi.mock("./blobStore", async (importOriginal) => {
       const store = await original.openBlobStore(dir);
       return {
         ...store,
-        put: async (path: string) => {
+        put: (async (path, ...rest) => {
           hooks.beforePut?.();
-          return store.put(path);
-        },
-        writeTo: async (hash: string, path: string, beforeReplace?: () => void) => {
+          return store.put(path, ...rest);
+        }) satisfies typeof store.put,
+        writeTo: async (hash: string, root: string, path: string, beforeReplace?: () => void) => {
           hooks.beforeWrite?.();
-          await store.writeTo(hash, path, beforeReplace);
+          await store.writeTo(hash, root, path, beforeReplace);
           hooks.afterWrite?.();
         },
       };

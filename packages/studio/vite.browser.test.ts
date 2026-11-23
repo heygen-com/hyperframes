@@ -1,8 +1,10 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { join } from "node:path";
 
 const browserMocks = vi.hoisted(() => {
+  const cdp = { send: vi.fn(async (_method: string) => undefined), on: vi.fn() };
   const page = {
+    createCDPSession: vi.fn(async () => cdp),
     setViewport: vi.fn(async () => {}),
     goto: vi.fn(async () => {}),
     evaluate: vi.fn(async () => undefined),
@@ -12,18 +14,26 @@ const browserMocks = vi.hoisted(() => {
     close: vi.fn(async () => {}),
   };
   const newPage = vi.fn(async () => page);
-  const sharedBrowser = { connected: true, newPage };
+  const sharedBrowser = { connected: true as boolean, newPage };
   const launch = vi.fn(async () => sharedBrowser);
-  return { launch, newPage, page, sharedBrowser };
+  const versionProbe = vi.fn(() => "150.0.0.0");
+  return { cdp, launch, newPage, page, sharedBrowser, versionProbe };
 });
 
 vi.mock("puppeteer-core", () => ({ default: { launch: browserMocks.launch } }));
+vi.mock("node:child_process", async (original) => ({
+  ...(await original<typeof import("node:child_process")>()),
+  execFileSync: browserMocks.versionProbe,
+}));
 
+import { thumbnailSeekReadyInBrowser } from "@hyperframes/studio-server";
 import { findSystemChrome, generateThumbnail, type GenerateThumbnailOptions } from "./vite.browser";
 
 const originalBrowserPath = process.env["HYPERFRAMES_BROWSER_PATH"];
 
-function options(signal = new AbortController().signal): GenerateThumbnailOptions {
+const controllers: AbortController[] = [];
+
+function options(signal = trackedSignal()): GenerateThumbnailOptions {
   return {
     project: { dir: process.cwd() },
     compPath: "index.html",
@@ -38,15 +48,30 @@ function options(signal = new AbortController().signal): GenerateThumbnailOption
   };
 }
 
+function trackedSignal(): AbortSignal {
+  const controller = new AbortController();
+  controllers.push(controller);
+  return controller.signal;
+}
+
 describe("generateThumbnail", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     process.env["HYPERFRAMES_BROWSER_PATH"] = process.execPath;
-  });
+    // generateThumbnail loads puppeteer lazily; the first load is slow on a cold Windows runner.
+    await import("puppeteer-core");
+  }, 60_000);
 
   beforeEach(() => {
     browserMocks.launch.mockReset().mockResolvedValue(browserMocks.sharedBrowser);
     browserMocks.newPage.mockClear();
+    browserMocks.versionProbe.mockClear();
     for (const mock of Object.values(browserMocks.page)) mock.mockClear();
+    browserMocks.cdp.send.mockClear();
+  });
+
+  afterEach(() => {
+    // Cancel any request a timed-out test left running, so it cannot close pages in the next test.
+    for (const controller of controllers.splice(0)) controller.abort();
   });
 
   afterAll(() => {
@@ -60,6 +85,53 @@ describe("generateThumbnail", () => {
     await expect(generateThumbnail(options())).resolves.toBeNull();
     await expect(generateThumbnail(options())).resolves.toEqual(Buffer.from("thumbnail"));
     expect(browserMocks.launch).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks on the browser's version only to word a failure, and only once", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // An earlier test's browser would skip the launch.
+    browserMocks.sharedBrowser.connected = false;
+    browserMocks.launch.mockImplementationOnce(async () => {
+      browserMocks.sharedBrowser.connected = true;
+      return browserMocks.sharedBrowser;
+    });
+
+    await expect(generateThumbnail(options())).resolves.toEqual(Buffer.from("thumbnail"));
+    expect(browserMocks.launch).toHaveBeenCalledTimes(1);
+    expect(browserMocks.versionProbe).not.toHaveBeenCalled();
+
+    browserMocks.page.goto.mockRejectedValueOnce(new Error("page failed"));
+    browserMocks.page.goto.mockRejectedValueOnce(new Error("page failed again"));
+    await generateThumbnail(options());
+    await generateThumbnail(options());
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("150.0.0.0"), "page failed again");
+    expect(browserMocks.versionProbe).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it("grants the capture page's loads on its own session before it navigates", async () => {
+    const previewUrl = "http://127.0.0.1:5190/api/projects/demo/preview?hf-capture=1";
+    await expect(generateThumbnail({ ...options(), previewUrl })).resolves.toEqual(
+      Buffer.from("thumbnail"),
+    );
+    const enable = browserMocks.cdp.send.mock.calls.findIndex(
+      ([method]) => method === "Fetch.enable",
+    );
+    expect(enable).toBeGreaterThanOrEqual(0);
+    expect(browserMocks.cdp.send.mock.invocationCallOrder[enable]).toBeLessThan(
+      browserMocks.page.goto.mock.invocationCallOrder[0]!,
+    );
+    expect(browserMocks.page.goto).toHaveBeenCalledWith(previewUrl, expect.anything());
+  });
+
+  it("holds a thumbnail's shot on the thumbnail readiness rule", async () => {
+    await expect(generateThumbnail(options())).resolves.toEqual(Buffer.from("thumbnail"));
+
+    const { waitForFunction, screenshot } = browserMocks.page;
+    expect(waitForFunction).toHaveBeenCalledWith(thumbnailSeekReadyInBrowser, { timeout: 5000 });
+    expect(waitForFunction.mock.invocationCallOrder[0]).toBeLessThan(
+      screenshot.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it("captures at the route-provided physical output size", async () => {

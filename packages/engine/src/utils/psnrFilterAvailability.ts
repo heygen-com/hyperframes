@@ -15,7 +15,16 @@ import { getFfmpegBinary } from "./ffmpegBinaries.js";
  * not change across renders within the same CLI invocation, and re-probing
  * per session would burn ~50-100ms of subprocess spawn per capture worker.
  */
-let cachedFilterList: Promise<string | null> | null = null;
+const cachedLists = new Map<string, Promise<string | null>>();
+
+function listed(flag: "-filters" | "-hwaccels"): Promise<string | null> {
+  let list = cachedLists.get(flag);
+  if (!list) cachedLists.set(flag, (list = listFfmpeg(flag)));
+  return list;
+}
+
+const listsWord = (stdout: string | null, name: string) =>
+  stdout !== null && new RegExp(`(^|\\s)${name}(\\s|$)`, "m").test(stdout);
 
 /**
  * Returns true when the resident ffmpeg exposes the `psnr` filter. False on
@@ -30,26 +39,28 @@ export function isPsnrFilterAvailable(): Promise<boolean> {
   return isFfmpegFilterAvailable("psnr");
 }
 
+// `-filters` and `-hwaccels` list one name per line; a whole-word match ignores longer names
+// and banner prose that mentions it.
 export async function isFfmpegFilterAvailable(name: string): Promise<boolean> {
-  if (cachedFilterList === null) cachedFilterList = listFilters();
-  const stdout = await cachedFilterList;
-  // `-filters` lists one filter per line; a whole-word match ignores longer names
-  // and banner prose that mentions the filter.
-  return stdout !== null && new RegExp(`(^|\\s)${name}(\\s|$)`, "m").test(stdout);
+  return listsWord(await listed("-filters"), name);
+}
+
+export async function isFfmpegHwaccelAvailable(name: string): Promise<boolean> {
+  return listsWord(await listed("-hwaccels"), name);
 }
 
 /** Test-only: drop the memoized probe result. */
 export function resetPsnrFilterAvailabilityCache(): void {
-  cachedFilterList = null;
+  cachedLists.clear();
 }
 
-async function listFilters(): Promise<string | null> {
+async function listFfmpeg(flag: "-filters" | "-hwaccels"): Promise<string | null> {
   // Match `psnr.ts`: promisify lazily so a partial `node:child_process` mock
   // (test that omits `execFile`) doesn't crash at module load — it fails at
   // call time instead, and the try/catch below reports no filters at all.
   const execFileP = promisify(execFile);
   try {
-    const { stdout } = await execFileP(getFfmpegBinary(), ["-hide_banner", "-filters"], {
+    const { stdout } = await execFileP(getFfmpegBinary(), ["-hide_banner", flag], {
       maxBuffer: 4 * 1024 * 1024,
       timeout: 5_000,
       windowsHide: true,

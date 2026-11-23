@@ -174,7 +174,8 @@
         var GROUPS = RAW_GROUPS.map(function (pair, gi) {
           var ws = pair[0],
             we = pair[1];
-          var nextStart = gi + 1 < RAW_GROUPS.length ? WORDS[RAW_GROUPS[gi + 1][0]].start : 8.0;
+          var nextStart =
+            gi + 1 < RAW_GROUPS.length ? WORDS[RAW_GROUPS[gi + 1][0]].start : Infinity;
           var gEnd = Math.min(WORDS[we].end + 0.35, nextStart - 0.05);
           return { wordStart: ws, wordEnd: we, start: WORDS[ws].start, end: gEnd };
         });

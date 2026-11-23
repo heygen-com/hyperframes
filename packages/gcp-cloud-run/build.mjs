@@ -54,6 +54,9 @@ await Promise.all([
 // through node_modules to the sibling package's already-built `dist/`
 // types instead of pulling its full source tree into emit (which would
 // violate rootDir).
-execSync("tsc -p tsconfig.build.json --emitDeclarationOnly", { stdio: "inherit" });
+execSync(
+  "tsc -p tsconfig.build.json --emitDeclarationOnly && node ../../scripts/rewrite-relative-import-extensions.mjs dist",
+  { stdio: "inherit" },
+);
 
 console.log("[Build] Complete: dist/{index,server,sdk/index,terraform}.js + .d.ts");

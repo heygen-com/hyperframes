@@ -7,6 +7,10 @@ export function cloneCaptureWarning<T extends CaptureWarning>(warning: T): T {
     details: warning.details
       ? {
           ...warning.details,
+          audioFailures: warning.details.audioFailures?.map((failure) => ({
+            ...failure,
+            ...(failure.subprocess ? { subprocess: { ...failure.subprocess } } : {}),
+          })),
           sources: warning.details.sources ? [...warning.details.sources] : undefined,
           failureReasons: warning.details.failureReasons
             ? [...warning.details.failureReasons]

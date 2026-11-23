@@ -45,6 +45,7 @@ const EVERY_WRITTEN_KEY: Required<ProjectConfig> = {
   media: { autoProxy: true },
   authoringSkill: "product-launch-video",
   registryItems: [EVERY_RECORD_FIELD],
+  reverseSessionId: "rvs_0f8fad5b-d9cb-469f-a165-70867728950e",
 };
 
 describe("hyperframes.json schema", () => {

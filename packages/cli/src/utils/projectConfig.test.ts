@@ -8,8 +8,10 @@ import {
   normalizeConfig,
   projectConfigPath,
   readProjectConfig,
+  readProjectConfigWithStatus,
   resolveAutoProxy,
   recordProjectRegistryItems,
+  recordProjectReverseSession,
   seedProjectAuthoringSkill,
   writeProjectConfig,
   PROJECT_CONFIG_FILENAME,
@@ -48,6 +50,75 @@ describe("projectConfig", () => {
         rmSync(dir, { recursive: true, force: true });
       }
     });
+  });
+
+  describe("UTF-8 byte order marks", () => {
+    it("reads custom project settings after one leading byte order mark", () => {
+      const dir = tmp();
+      try {
+        const config = {
+          registry: "https://example.com/custom-registry",
+          paths: { blocks: "scenes", components: "effects", assets: "media" },
+          media: { autoProxy: false },
+        };
+        writeFileSync(projectConfigPath(dir), `\uFEFF${JSON.stringify(config)}`);
+        expect(readProjectConfigWithStatus(dir)).toMatchObject({ status: "ok", config });
+        expect(readProjectConfig(dir)?.registry).toBe(config.registry);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("patches marked settings without dropping their encoding marker or custom keys", () => {
+      const dir = tmp();
+      try {
+        writeFileSync(
+          projectConfigPath(dir),
+          `\uFEFF${JSON.stringify({ custom: "kept" }, null, 4)}\n`,
+        );
+        seedProjectAuthoringSkill(dir, "hyperframes");
+        recordProjectRegistryItems(dir, [
+          { name: "test-block", type: "hyperframes:block", target: "scenes/test.html" },
+        ]);
+        const text = readFileSync(projectConfigPath(dir), "utf8");
+        expect(text.startsWith("\uFEFF")).toBe(true);
+        expect(text).toContain('\n    "custom"');
+        expect(JSON.parse(text.slice(1))).toMatchObject({
+          custom: "kept",
+          authoringSkill: "hyperframes",
+          registryItems: [{ name: "test-block", target: "scenes/test.html" }],
+        });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("preserves byte order mark characters inside configuration values", () => {
+      const dir = tmp();
+      try {
+        writeFileSync(
+          projectConfigPath(dir),
+          `\uFEFF${JSON.stringify({ paths: { assets: "media/\uFEFFmarked" } })}`,
+        );
+        expect(readProjectConfig(dir)?.paths.assets).toBe("media/\uFEFFmarked");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it.each(["\uFEFF{", "\uFEFF", "\uFEFF\uFEFF{}"])(
+      "keeps malformed or empty marked configuration unreadable (%s)",
+      (content) => {
+        const dir = tmp();
+        try {
+          writeFileSync(projectConfigPath(dir), content);
+          expect(readProjectConfigWithStatus(dir)).toEqual({ status: "unreadable" });
+          expect(readProjectConfig(dir)).toBeUndefined();
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      },
+    );
   });
 
   describe("normalizeConfig", () => {
@@ -460,6 +531,63 @@ describe("projectConfig", () => {
       expect(
         normalizeConfig({ registryItems: [{ name: "x" }] as never }).registryItems,
       ).toBeUndefined();
+    });
+  });
+
+  describe("recordProjectReverseSession", () => {
+    const SESSION = "rvs_0f8fad5b-d9cb-469f-a165-70867728950e";
+
+    it("creates the folder and a default config when neither exists", () => {
+      const root = tmp();
+      const dir = join(root, "rebuild");
+      try {
+        expect(recordProjectReverseSession(dir, SESSION, "reverse-any-video")).toBe(
+          projectConfigPath(dir),
+        );
+        expect(readProjectConfig(dir)).toMatchObject({
+          registry: DEFAULT_PROJECT_CONFIG.registry,
+          authoringSkill: "reverse-any-video",
+          reverseSessionId: SESSION,
+        });
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("replaces the session but keeps an existing owner skill and unknown keys", () => {
+      const dir = tmp();
+      try {
+        writeFileSync(
+          projectConfigPath(dir),
+          JSON.stringify({ authoringSkill: "hyperframes", reverseSessionId: "rvs_old", x: 1 }),
+        );
+        recordProjectReverseSession(dir, SESSION, "reverse-any-video");
+        expect(JSON.parse(readFileSync(projectConfigPath(dir), "utf-8"))).toEqual({
+          authoringSkill: "hyperframes",
+          reverseSessionId: SESSION,
+          x: 1,
+        });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("writes nothing for an id that is not an id, or over a corrupt config", () => {
+      const dir = tmp();
+      try {
+        expect(recordProjectReverseSession(dir, "../x", "reverse-any-video")).toBeUndefined();
+        writeFileSync(projectConfigPath(dir), "{ not valid json");
+        expect(recordProjectReverseSession(dir, SESSION, "reverse-any-video")).toBeUndefined();
+        expect(readFileSync(projectConfigPath(dir), "utf-8")).toBe("{ not valid json");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("survives a normalizeConfig round-trip, dropping a malformed id", () => {
+      expect(normalizeConfig({ reverseSessionId: SESSION }).reverseSessionId).toBe(SESSION);
+      expect(normalizeConfig({ reverseSessionId: "a b" }).reverseSessionId).toBeUndefined();
+      expect(normalizeConfig({ reverseSessionId: "rvs_legacy" }).reverseSessionId).toBeUndefined();
     });
   });
 });

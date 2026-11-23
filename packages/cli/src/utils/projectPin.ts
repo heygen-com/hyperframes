@@ -1,10 +1,10 @@
 import { isSafeVersion } from "./safeVersion.js";
 
-// Matches `hyperframes@<semver>` as a whole token inside a script string. The
-// version class mirrors isSafeVersion's semver shape; capturing group 1 is the
-// old version. `(?=\s|$)` keeps it from matching a longer package name.
+// Package-name characters before the name belong to another package, including
+// scoped names: a word boundary also matches after their slash, hyphen or dot.
+// The version shape follows isSafeVersion; group 1 captures the current pin.
 export const HYPERFRAMES_PIN_RE =
-  /\bhyperframes@([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)(?=\s|$)/g;
+  /(?<![0-9A-Za-z._/@-])hyperframes@([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)(?=\s|$)/g;
 
 export interface PinRewriteResult {
   changed: boolean;

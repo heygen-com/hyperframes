@@ -1,6 +1,12 @@
 import { DEFAULT_IMAGE_TIMELINE_DURATION_SECONDS } from "@hyperframes/parsers/media-duration";
 import { describe, it, expect, afterEach } from "vitest";
-import { collectRuntimeTimelinePayload } from "./timeline";
+import {
+  collectRuntimeTimelinePayload,
+  isRuntimeElementVisibleAt,
+  runtimeElementWindow,
+} from "./timeline";
+import { createRuntimeStartTimeResolver } from "./startResolver";
+import { rememberSourceLength } from "./sourceLength";
 
 type TimelineTestWindow = Window & {
   __timelines?: Record<string, { duration: () => number }>;
@@ -109,6 +115,58 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(trackOf("clip-other")).toBe(2);
   });
 
+  it("names both clips of a GSAP transition on the clip message, for a preview that cannot read the page", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    root.innerHTML = `
+      <div id="a" data-start="0" data-duration="3" data-track-index="0"></div>
+      <div id="b" data-start="2" data-duration="3" data-track-index="0"></div>
+      <div id="c" data-start="5" data-duration="3" data-track-index="0"></div>`;
+    document.body.appendChild(root);
+    (window as TimelineTestWindow).__timelines = {
+      main: { duration: () => 10, labels: { "hf:transition:a:b:fade": 2 } } as never,
+    };
+
+    const labels = collectRuntimeTimelinePayload(defaultParams).clips.map((clip) => [
+      clip.id,
+      clip.transitionLabel,
+    ]);
+    expect(labels).toEqual([
+      ["a", "hf:transition:a:b:fade"],
+      ["b", "hf:transition:a:b:fade"],
+      ["c", null],
+    ]);
+  });
+
+  it("still lists every clip, with the labels it can read, when one timeline's labels throw", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    root.innerHTML = `
+      <div id="a" data-start="0" data-duration="3" data-track-index="0"></div>
+      <div id="b" data-start="2" data-duration="3" data-track-index="0"></div>`;
+    document.body.appendChild(root);
+    (window as TimelineTestWindow).__timelines = {
+      broken: {
+        duration: () => 10,
+        getLabels: () => {
+          throw new Error("a page's own timeline");
+        },
+      } as never,
+      main: { duration: () => 10, labels: { "hf:transition:a:b:fade": 2 } } as never,
+    };
+
+    const labels = collectRuntimeTimelinePayload(defaultParams).clips.map((clip) => [
+      clip.id,
+      clip.transitionLabel,
+    ]);
+    expect(labels).toEqual([
+      ["a", "hf:transition:a:b:fade"],
+      ["b", "hf:transition:a:b:fade"],
+    ]);
+  });
+
   it("collects clips from elements with data-start and data-duration", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -129,6 +187,31 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips[0].duration).toBe(3);
     expect(result.clips[0].track).toBe(0);
     expect(result.clips[0].kind).toBe("element");
+  });
+
+  it("sends a plain text layer's words and look, capped, and no text for any other layer", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+    const title = document.createElement("h1");
+    title.id = "title";
+    title.setAttribute("data-start", "0");
+    title.setAttribute("data-duration", "5");
+    title.style.color = "rgb(255, 255, 255)";
+    title.textContent = `  Hello\n   ${"x".repeat(500)} `;
+    const card = document.createElement("div");
+    card.id = "card";
+    card.setAttribute("data-start", "0");
+    card.setAttribute("data-duration", "5");
+    card.innerHTML = "<img src='a.png'> Caption";
+    root.append(title, card);
+
+    const [titleClip, cardClip] = collectRuntimeTimelinePayload(defaultParams).clips;
+
+    expect(titleClip.text?.value).toBe(`Hello ${"x".repeat(194)}`);
+    expect(titleClip.text?.color).toBe("rgb(255, 255, 255)");
+    expect(cardClip.text).toBeNull();
   });
 
   it("parses inline z-index for timeline clips", () => {
@@ -277,6 +360,26 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips.find((item) => item.id === clip.id)?.stackingContextId).not.toBe(
       "css:root",
     );
+  });
+
+  // fails without the fix: a far clip the runtime let go of dropped out of the clip list.
+  it("keeps an untrimmed clip the runtime let go of, at its measured length", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    document.body.appendChild(root);
+    const video = document.createElement("video");
+    video.id = "far";
+    video.src = "far.mp4";
+    video.setAttribute("data-start", "300");
+    root.appendChild(video);
+    Object.defineProperty(video, "duration", { value: 600, writable: true, configurable: true });
+    rememberSourceLength(video);
+    video.duration = Number.NaN;
+
+    const far = collectRuntimeTimelinePayload(defaultParams).clips.find(
+      (clip) => clip.id === "far",
+    );
+    expect(far?.duration).toBe(600);
   });
 
   it("identifies video clips by tag", () => {
@@ -1109,5 +1212,54 @@ describe("collectRuntimeTimelinePayload", () => {
       expect(result.durationSeconds).toBe(154.8);
       expect(result.durationInFrames).toBe(Math.ceil(154.8 * 30));
     });
+  });
+});
+
+describe("runtimeElementWindow", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  // A root with no data-duration and a 2 s timeline under a 6 s video went black from 2 s.
+  it("ends a nested scene with its timeline, but never the root", () => {
+    document.body.innerHTML = `<div id="main" data-composition-id="main" data-start="0">
+      <div id="scene" data-composition-id="scene" data-start="0"></div></div>`;
+    const timelineRegistry = { main: { duration: () => 2 }, scene: { duration: () => 2 } };
+    const options = { timelineRegistry, resolver: createRuntimeStartTimeResolver({}) };
+    expect(runtimeElementWindow(document.getElementById("main")!, options)).toEqual({
+      start: 0,
+      end: Number.POSITIVE_INFINITY,
+    });
+    expect(runtimeElementWindow(document.getElementById("scene")!, options)).toEqual({
+      start: 0,
+      end: 2,
+    });
+  });
+});
+
+describe("isRuntimeElementVisibleAt", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  // fails without the fix: snapshot and preview read the authored seconds, so a title held across two clips whose
+  // second start sits a hair past 100 s went blank at exactly 100 s, the frame render shows it on.
+  it("puts a clip edge a hair off a frame on that frame for preview and snapshot, as render does", () => {
+    document.body.innerHTML = `<div id="main" data-composition-id="main" data-start="0" data-duration="110">
+      <div id="held" data-start="90" data-duration="10"></div>
+      <div id="rest" data-start="100.00002" data-duration="10"></div></div>`;
+    const shownAt = (currentTime: number) =>
+      ["held", "rest"].filter((id) =>
+        isRuntimeElementVisibleAt(document.getElementById(id)!, {
+          currentTime,
+          compositionDuration: 110,
+          canonicalFps: 30,
+          timelineRegistry: {},
+          resolver: createRuntimeStartTimeResolver({}),
+        }),
+      );
+    expect(shownAt(99.875)).toEqual(["held"]);
+    expect(shownAt(100)).toEqual(["rest"]);
+    expect(shownAt(100.125)).toEqual(["rest"]);
   });
 });

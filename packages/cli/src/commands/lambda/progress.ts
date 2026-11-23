@@ -7,7 +7,8 @@ import { setCommandExitCode } from "../../utils/commandResult.js";
  */
 
 import { c } from "../../ui/colors.js";
-import { requireStack } from "./state.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
+import { videoArchitecture, requireStack } from "./state.js";
 
 export interface ProgressArgs {
   /** Full SFN execution ARN OR the renderId (== execution name). */
@@ -33,15 +34,17 @@ export async function runProgress(args: ProgressArgs): Promise<void> {
     executionArn,
     region: stack.region,
     defaultMemorySizeMb: stack.lambdaMemoryMb,
+    videoArchitecture: videoArchitecture(stack),
   });
 
   if (args.json) {
     console.log(JSON.stringify(progress, null, 2));
     return;
   }
+  for (const warning of progress.warnings) console.warn(c.warn(terminalLines(warning)));
 
   const pct = Math.round(progress.overallProgress * 100);
-  console.log(`${c.dim("Status:")}    ${statusColor(progress.status)}`);
+  console.log(`${c.dim("Status:")}    ${statusColor(terminalText(progress.status))}`);
   console.log(`${c.dim("Progress:")}  ${pct}%`);
   console.log(
     `${c.dim("Frames:")}    ${progress.framesRendered}${progress.totalFrames === null ? "" : ` / ${progress.totalFrames}`}`,
@@ -51,13 +54,15 @@ export async function runProgress(args: ProgressArgs): Promise<void> {
     `${c.dim("Cost:")}      ${progress.costs.displayCost} (Lambda $${progress.costs.breakdown.lambdaUsd.toFixed(4)} + SFN $${progress.costs.breakdown.stepFunctionsUsd.toFixed(4)})`,
   );
   if (progress.outputFile) {
-    console.log(`${c.dim("Output:")}    ${progress.outputFile.s3Uri}`);
+    console.log(`${c.dim("Output:")}    ${terminalText(progress.outputFile.s3Uri)}`);
   }
   if (progress.errors.length > 0) {
     console.log();
     console.log(c.error("Errors:"));
     for (const err of progress.errors) {
-      console.log(`  ${c.dim(err.state)}: ${err.error} — ${err.cause}`);
+      console.log(
+        `  ${c.dim(terminalText(err.state))}: ${terminalLines(err.error)} — ${terminalLines(err.cause)}`,
+      );
     }
   }
   if (progress.fatalErrorEncountered) {

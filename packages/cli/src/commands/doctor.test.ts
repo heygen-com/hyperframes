@@ -1,11 +1,25 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
+import type { ExecFileSyncOptions } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, onTestFinished, vi } from "vitest";
 import { optionalPackageDir } from "../utils/optionalPackages.js";
 import {
+  TESTED_FFMPEG_VERSION,
   buildDoctorReport,
+  ffmpegDoctorDetail,
+  checkDocker,
+  checkDockerRunning,
   checkFramesCache,
   checkOptionalPackage,
   redactHome,
@@ -71,6 +85,79 @@ describe("redactHome", () => {
   it("leaves strings without HOME unchanged", () => {
     process.env["HOME"] = "/Users/alice";
     expect(redactHome("brew install ffmpeg")).toBe("brew install ffmpeg");
+  });
+});
+
+describe("Docker checks", () => {
+  const dockerName = process.platform === "win32" ? "docker.exe" : "docker";
+
+  type RunFile = (file: string, args: string[], options: ExecFileSyncOptions) => string;
+
+  function dir(prefix: string): string {
+    const path = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+    onTestFinished(() => rmSync(path, { recursive: true, force: true }));
+    return path;
+  }
+
+  function projectWithDocker(): { projectBin: string; projectDocker: string } {
+    const project = dir("hf-doctor-project-");
+    const projectBin = join(project, "node_modules", ".bin");
+    mkdirSync(projectBin, { recursive: true });
+    const projectDocker = join(projectBin, dockerName);
+    writeFileSync(projectDocker, "#!/bin/sh\n", { mode: 0o755 });
+    vi.spyOn(process, "cwd").mockReturnValue(project);
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
+    });
+    return { projectBin, projectDocker };
+  }
+
+  it("runs docker by its absolute path from a folder outside the project, with no shell", () => {
+    const { projectBin } = projectWithDocker();
+    const outside = dir("hf-doctor-bin-");
+    const docker = join(outside, dockerName);
+    writeFileSync(docker, "#!/bin/sh\n", { mode: 0o755 });
+    vi.stubEnv("PATH", [projectBin, outside].join(delimiter));
+    const run = vi.fn<RunFile>(() => "Docker version 27.0.0\n");
+
+    expect(checkDocker(undefined, run)).toEqual({ ok: true, detail: "Docker version 27.0.0" });
+    expect(checkDockerRunning(undefined, run)).toEqual({ ok: true, detail: "Running" });
+
+    expect(run.mock.calls.map(([file, args]) => [file, args])).toEqual([
+      [docker, ["--version"]],
+      [docker, ["info"]],
+    ]);
+    for (const [, , options] of run.mock.calls) expect(options).not.toHaveProperty("shell");
+  });
+
+  it("reports a docker found only inside the project as missing and says it was skipped", () => {
+    const { projectBin, projectDocker } = projectWithDocker();
+    vi.stubEnv("PATH", [projectBin, "."].join(delimiter));
+    const run = vi.fn<RunFile>(() => "");
+
+    const result = checkDocker(undefined, run);
+
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe("Not found");
+    expect(result.hint).toContain(projectDocker);
+    expect(result.hint).toContain("outside the project");
+    expect(result.hint).toContain("https://docs.docker.com/get-docker/");
+    expect(checkDockerRunning(undefined, run)).toMatchObject({ ok: false, detail: "Not running" });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("keeps the plain install hint when there is no docker anywhere", () => {
+    vi.spyOn(process, "cwd").mockReturnValue(dir("hf-doctor-empty-"));
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+    });
+
+    expect(checkDocker(() => undefined)).toEqual({
+      ok: false,
+      detail: "Not found",
+      hint: "https://docs.docker.com/get-docker/",
+    });
   });
 });
 
@@ -295,7 +382,7 @@ describe("checkOptionalPackage", () => {
     });
   });
 
-  it("reports the installed version read from the cached package", () => {
+  function checkCachedManifest(manifest: string) {
     const cacheDir = mkdtempSync(join(tmpdir(), "hf-doctor-optional-"));
     dirs.push(cacheDir);
     const pkgDir = join(
@@ -303,13 +390,27 @@ describe("checkOptionalPackage", () => {
       "node_modules/@google/genai",
     );
     mkdirSync(pkgDir, { recursive: true });
-    writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ version: "1.52.0" }));
+    writeFileSync(join(pkgDir, "package.json"), manifest);
     const cliUrl = pathToFileURL(join(cacheDir, "cli.js")).href;
-    expect(checkOptionalPackage("@google/genai", cacheDir, cliUrl)).toEqual({
+    return checkOptionalPackage("@google/genai", cacheDir, cliUrl);
+  }
+
+  it("reports the installed version read from the cached package", () => {
+    expect(checkCachedManifest('{"version":"1.52.0"}')).toEqual({
       ok: true,
       detail: "1.52.0 installed",
     });
   });
+
+  it.each(['{"version":', "null", '{"version":123}'])(
+    "finishes the dependency check with an invalid cached manifest: %s",
+    (manifest) => {
+      expect(checkCachedManifest(manifest)).toEqual({
+        ok: true,
+        detail: "Not installed (installs on first use)",
+      });
+    },
+  );
 });
 
 describe("checkSettingsLock", () => {
@@ -330,6 +431,34 @@ describe("checkSettingsLock", () => {
       expect(existsSync(lock)).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("ffmpegDoctorDetail", () => {
+  it("marks the tested build and warns on any other", () => {
+    expect(ffmpegDoctorDetail(`ffmpeg n${TESTED_FFMPEG_VERSION}-66-gabc`)).toContain(
+      "(tested build)",
+    );
+    for (const other of [
+      "ffmpeg 7.0.2-static",
+      `ffmpeg 7.1 at ~/ffmpeg-${TESTED_FFMPEG_VERSION}/bin/ffmpeg`,
+      `ffmpeg ${TESTED_FFMPEG_VERSION}0-static`,
+    ]) {
+      expect(ffmpegDoctorDetail(other)).toContain(`only comparable on ${TESTED_FFMPEG_VERSION}`);
+    }
+  });
+
+  it("names the build CI and the render images pin", () => {
+    const root = join(__dirname, "../../../..");
+    for (const f of [
+      ".github/actions/install-ffmpeg-linux/action.yml",
+      "packages/cli/src/docker/Dockerfile.render",
+      "packages/gcp-cloud-run/Dockerfile",
+      "Dockerfile.test",
+      "examples/k8s-jobs/Dockerfile.example",
+    ]) {
+      expect(readFileSync(join(root, f), "utf8")).toContain(`n${TESTED_FFMPEG_VERSION}-`);
     }
   });
 });

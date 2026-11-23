@@ -17,9 +17,9 @@ vi.mock("@hyperframes/parsers/hf-ids", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@hyperframes/parsers/hf-ids")>();
   return {
     ...actual,
-    ensureHfIds: (html: string) => {
+    stampHfIdsInPlace: (html: string) => {
       hooks.minting?.();
-      return actual.ensureHfIds(html);
+      return actual.stampHfIdsInPlace(html);
     },
   };
 });
@@ -46,6 +46,15 @@ describe("stampFileHfIds", () => {
     const returned = stampFileHfIds(file);
     expect(returned).toContain('data-hf-id="hf-');
     expect(readFileSync(file, "utf-8")).toBe(returned);
+  });
+
+  it("adds only the ids to the file, keeping its own formatting", () => {
+    const html = `<div class='clip' data-start=0 data-end="3"><img src="a.png"/><input disabled>Hi</div>`;
+    const file = tmpFile(html);
+    stampFileHfIds(file);
+    const written = readFileSync(file, "utf-8");
+    expect(written).toContain('data-hf-id="hf-');
+    expect(written.replace(/ data-hf-id="hf-[a-z0-9]{4}"/g, "")).toBe(html);
   });
 
   it("replaces the stamped file and removes its temporary sibling", () => {

@@ -5,6 +5,7 @@
  * on real registry blocks. Produces an HTML report.
  */
 
+import "./lib/windows-exe-search.mjs";
 import {
   mkdtempSync,
   cpSync,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { smoothness } from "./case.mjs";
+import { controlDrag, smoothness } from "./case.mjs";
 
 const thread = { pid: 1, tid: 2 };
 const mark = { name: "edit-bench-end", cat: "blink.user_timing", ts: 1_000_000, ...thread };
@@ -24,5 +24,20 @@ describe("smoothness work per frame", () => {
     const s = smoothness(rec([task(960_000, 4_000, 4_000)]));
     expect(s.work).toBeNull();
     expect(s.unknown).toBe("no end mark in the trace");
+  });
+});
+
+describe("controlDrag", () => {
+  it("measures again after a failed control instead of failing every later case", async () => {
+    let calls = 0;
+    const browser = {
+      createBrowserContext: async () => {
+        calls += 1;
+        throw new Error(`blank page ${calls} failed`);
+      },
+    };
+    await expect(controlDrag(browser, "move")).rejects.toThrow("blank page 1 failed");
+    await expect(controlDrag(browser, "move")).rejects.toThrow("blank page 2 failed");
+    expect(calls).toBe(2);
   });
 });

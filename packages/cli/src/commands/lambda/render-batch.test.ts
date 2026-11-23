@@ -6,9 +6,9 @@ import { CliRuntimeError } from "../../utils/commandResult.js";
 import {
   buildLambdaBatchRenderConfig,
   parseBatchFile,
-  runWithConcurrencyLimit,
   type RenderBatchArgs,
 } from "./render-batch.js";
+import { runWithConcurrencyLimit } from "../../utils/concurrency.js";
 
 let tmpDir: string;
 
@@ -76,6 +76,21 @@ describe("runWithConcurrencyLimit", () => {
   it("returns immediately for an empty input array", async () => {
     const out = await runWithConcurrencyLimit([], 10, async (n: number) => n * 2);
     expect(out).toEqual([]);
+  });
+
+  it("after a rejection starts nothing new and settles only once started work has finished", async () => {
+    const started: number[] = [];
+    let slowDone = false;
+    const run = runWithConcurrencyLimit([1, 2, 3, 4], 2, async (n) => {
+      started.push(n);
+      if (n === 2) throw new Error("boom");
+      await new Promise((r) => setTimeout(r, 30));
+      slowDone = true;
+      return n;
+    });
+    await expect(run).rejects.toThrow(/boom/);
+    expect(started).toEqual([1, 2]);
+    expect(slowDone).toBe(true);
   });
 
   it("propagates the first worker rejection", async () => {
@@ -166,5 +181,15 @@ describe("buildLambdaBatchRenderConfig — aspect-agnostic wire threading", () =
     const config = buildLambdaBatchRenderConfig({ ...baseArgs, outputResolution: "portrait-4k" });
     expect(config.outputResolution).toBe("portrait-4k");
     expect(config.outputResolutionAspectAgnostic).toBeUndefined();
+  });
+
+  it("sends the delivery options to every batch entry", () => {
+    expect(
+      buildLambdaBatchRenderConfig({ ...baseArgs, keyframeIntervalSeconds: 2, maxBitrate: "8M" }),
+    ).toMatchObject({ keyframeIntervalSeconds: 2, maxBitrate: "8M" });
+  });
+
+  it("hands the deploy's reserved concurrency to the planner", () => {
+    expect(buildLambdaBatchRenderConfig(baseArgs, 64).workerConcurrency).toBe(64);
   });
 });

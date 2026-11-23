@@ -5,6 +5,7 @@ import {
   interpolateVolumeGain,
   probeAndCacheElementVolume,
   probeElementVolumeKeyframes,
+  volumeMoversOf,
 } from "./mediaVolumeEnvelope";
 
 describe("probeElementVolumeKeyframes", () => {
@@ -114,7 +115,69 @@ describe("probeElementVolumeKeyframes", () => {
   });
 });
 
+describe("volumeMoversOf", () => {
+  it("lists the elements a tween names volume on, and only those", () => {
+    const [a, b, title] = [
+      document.createElement("audio"),
+      document.createElement("audio"),
+      document.createElement("h1"),
+    ];
+    const movers = volumeMoversOf({
+      getChildren: () => [
+        { targets: () => [a], vars: { volume: 0.2 } },
+        { targets: () => [b], vars: { playbackRate: 2 } },
+        { targets: () => [title], vars: { opacity: 1 } },
+      ],
+    });
+    expect([...movers.elements]).toEqual([a]);
+    expect(movers.anySetter).toBe(false);
+    expect(movers.unknown).toBe(false);
+  });
+
+  it("marks a tweened setter on a plain object, and a timeline that cannot list its tweens", () => {
+    const gain = { set level(_v: number) {} };
+    expect(
+      volumeMoversOf({ getChildren: () => [{ targets: () => [gain], vars: { level: 0 } }] })
+        .anySetter,
+    ).toBe(true);
+    expect(volumeMoversOf({}).unknown).toBe(true);
+    expect(
+      volumeMoversOf({
+        getChildren: () => {
+          throw new Error("no");
+        },
+      }).unknown,
+    ).toBe(true);
+  });
+});
+
 describe("probeAndCacheElementVolume", () => {
+  it("walks the timeline's tweens once for a pass that shares its movers", () => {
+    let walks = 0;
+    const els = Array.from({ length: 50 }, () => {
+      const audio = document.createElement("audio");
+      audio.dataset.start = "0";
+      audio.dataset.duration = "5";
+      document.body.append(audio);
+      return audio;
+    });
+    const timeline = {
+      totalTime: () => 0,
+      getChildren: () => {
+        walks += 1;
+        return [{ targets: () => [document.createElement("h1")], vars: { opacity: 1 } }];
+      },
+    };
+    const cache = new WeakMap<HTMLMediaElement, { time: number; volume: number }[]>();
+    let movers: ReturnType<typeof volumeMoversOf> | undefined;
+    const shared = () => (movers ??= volumeMoversOf(timeline));
+    for (const el of els) probeAndCacheElementVolume(el, timeline, 5, cache, { movers: shared });
+    expect(walks).toBe(1);
+    // without a shared index each probe walks on its own, as before
+    for (const el of els) probeAndCacheElementVolume(el, timeline, 5, cache);
+    expect(walks).toBe(51);
+  });
+
   it("does not seek or cache when live timeline probing is disabled", () => {
     const audio = document.createElement("audio");
     audio.dataset.volume = "1";

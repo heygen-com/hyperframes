@@ -1,6 +1,6 @@
-import sharp from "sharp";
 import { DOMParser } from "linkedom";
 import { parse, walk } from "css-tree";
+import { loadSharp } from "../utils/optionalPackages.js";
 
 const SVG_ELEMENTS = new Set(
   "svg g defs title desc metadata path rect circle ellipse line polyline polygon text tspan textPath use symbol image clipPath mask pattern marker linearGradient radialGradient stop filter feBlend feColorMatrix feComponentTransfer feComposite feConvolveMatrix feDiffuseLighting feDisplacementMap feDistantLight feDropShadow feFlood feFuncA feFuncB feFuncG feFuncR feGaussianBlur feImage feMerge feMergeNode feMorphology feOffset fePointLight feSpecularLighting feSpotLight feTile feTurbulence style"
@@ -107,6 +107,7 @@ function validIconEntry(
 async function validIconImage(bytes: Buffer): Promise<boolean> {
   const png = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   if (!png) return validIconBitmap(bytes);
+  const sharp = await loadSharp("website capture");
   try {
     await sharp(bytes, { limitInputPixels: 65536 }).resize(1, 1).raw().toBuffer();
     return true;
@@ -136,6 +137,7 @@ function validIconDimensions(width: number, height: number): boolean {
 /** Choose a canonical image extension from the content, never a remote URL suffix. */
 export async function captureImageExtension(bytes: Buffer): Promise<string | null> {
   if (await validIco(bytes)) return ".ico";
+  const sharp = await loadSharp("website capture");
   try {
     const embedded = new Set<string>();
     // Reject active XML before passing it to an image decoder.
@@ -165,6 +167,7 @@ export async function captureImageExtension(bytes: Buffer): Promise<string | nul
 }
 
 async function validEmbeddedImages(references: Set<string>): Promise<boolean> {
+  const sharp = await loadSharp("website capture");
   let remainingBytes = 10 * 1024 * 1024;
   let remainingPixels = 40_000_000;
   for (const reference of references) {

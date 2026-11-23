@@ -25,7 +25,6 @@
     "dist",
     "src/**/*.test.ts",
     "src/**/__test_utils__/**",
-    "src/regression-harness-lambda-local.ts",
-    "src/plan-parity-lambda-local-driver.ts"
+    "src/regression-harness-lambda-local.ts"
   ]
 }

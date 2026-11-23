@@ -137,11 +137,21 @@ test("conditions in the first step key are never credited", () => {
   assert.match(check(tree)["scripts/parity.test.mjs"][0], /no CI runner/);
 });
 
-test("block dependency syntax fails closed instead of losing the dependency", () => {
+test("block and wrapped dependency lists gate a job like the one-line list", () => {
+  for (const needs of ["\n      - disabled", "\n      [\n        disabled,\n      ]"]) {
+    const tree = fixture("node --test scripts/parity.test.mjs", '"**"');
+    tree[".github/workflows/ci.yml"] =
+      tree[".github/workflows/ci.yml"].replace("    needs: changes", `    needs:${needs}`) +
+      "  disabled:\n    if: false\n    steps: []\n";
+    assert.match(check(tree)["scripts/parity.test.mjs"].join("\n"), /CI filters exclude/);
+  }
+});
+
+test("a dependency mapping fails closed instead of losing the dependency", () => {
   const tree = fixture();
   tree[".github/workflows/ci.yml"] = tree[".github/workflows/ci.yml"].replace(
     "needs: changes",
-    "needs:\n      - disabled",
+    "needs:\n      disabled: x",
   );
   assert.throws(() => check(tree), /Block job/);
 });
@@ -170,6 +180,16 @@ test("quoted runner selection keys cannot silently change collection", () => {
 
 test("quoted comments do not widen path filters", () => {
   const tree = fixture("node --test scripts/parity.test.mjs", '"scripts/**" # "skills/**"');
+  assert.match(check(tree)["scripts/parity.test.mjs"].join("\n"), /CI filters exclude skills/);
+});
+
+test("negated filter globs exclude only under some-with-excludes, and fail closed elsewhere", () => {
+  const tree = fixture("node --test scripts/parity.test.mjs", '"**"\n              - "!skills/**"');
+  assert.throws(() => check(tree), /Negated path filters/);
+  tree[".github/workflows/ci.yml"] = tree[".github/workflows/ci.yml"].replace(
+    "        with:\n",
+    "        with:\n          predicate-quantifier: some-with-excludes\n",
+  );
   assert.match(check(tree)["scripts/parity.test.mjs"].join("\n"), /CI filters exclude skills/);
 });
 
@@ -257,4 +277,27 @@ test("report CLI prints diagnostics without applying the gate verdict", (t) => {
   const orphan = run();
   assert.equal(orphan.status, 0, orphan.stderr);
   assert.match(orphan.stdout, /orphan.test.mjs/);
+});
+
+test("inline vitest projects are reachable through the union of their selections", () => {
+  const tree = fixture("bun run --filter '*' test", '"**"');
+  delete tree["scripts/parity.test.mjs"];
+  tree["packages/a/package.json"] = JSON.stringify({
+    name: "@scope/a",
+    scripts: { test: "vitest run" },
+  });
+  tree["packages/a/src/a.test.ts"] = "";
+  tree["packages/a/src/b.browser.test.ts"] = "";
+  const project = (name, include, exclude) =>
+    `{ extends: true, test: { name: "${name}", include: ["${include}"], exclude: ${exclude} } }`;
+  tree["packages/a/vitest.config.ts"] = `export default { test: { projects: [
+    ${project("unit", "src/**/*.test.ts", '["src/**/*.browser.test.ts"]')},
+    ${project("browser", "src/**/*.browser.test.ts", "[]")},
+  ] } }`;
+  assert.deepEqual(check(tree), {});
+  tree["packages/a/vitest.config.ts"] = tree["packages/a/vitest.config.ts"].replace(
+    '"src/**/*.browser.test.ts"], exclude: []',
+    '"src/**/*.other.test.ts"], exclude: []',
+  );
+  assert.match(check(tree)["packages/a/src/b.browser.test.ts"][0], /no CI runner/);
 });

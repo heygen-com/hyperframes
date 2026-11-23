@@ -206,3 +206,28 @@ describe("motion-shot adapter seeking", () => {
     expect(settled).toBe(true);
   });
 });
+
+it("updates marker coordinates after each seek, including the border origin", async () => {
+  document.body.innerHTML = '<div id="resizing"></div>';
+  const el = document.getElementById("resizing")!;
+  let width = 250;
+  Object.defineProperties(el, {
+    offsetWidth: { get: () => width },
+    offsetHeight: { get: () => 44 },
+    clientLeft: { get: () => 3 },
+    clientTop: { get: () => 3 },
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      const x = Number.parseFloat(this.style.left) + 3;
+      const y = Number.parseFloat(this.style.top) + 3;
+      return new DOMRect(x, y, 0, 0);
+    },
+  );
+  motionWindow.__hfSeekAllAdapters = async (t) => {
+    width = t === 0 ? 250 : 1050;
+  };
+  const [result] = await sampleMarkerOnionElements(["#resizing"], [0, 1]);
+  expect(result?.samples.map((s) => s.q[1]!.x - s.q[0]!.x)).toEqual([250, 1050]);
+  expect(result?.samples[0]?.q[0]).toEqual({ x: 0, y: 0 });
+});

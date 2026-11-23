@@ -1,51 +1,15 @@
 #!/usr/bin/env python3
 """
-Regenerate the sRGB → BT.2020 (HLG/PQ) LUT reference values pinned by
-packages/engine/src/utils/alphaBlit.test.ts.
-
-This is a paste-helper for the *very rare* case the LUT genuinely needs to
-shift — e.g. a spec update changes one of the OETF constants, or we change
-the SDR-white reference level in the PQ branch. The reference values in
-alphaBlit.test.ts are byte-exact integers, and updating ~12 hand-edited
-literals (or all 256 of them, if the test grows) is exactly the kind of
-mechanical churn we want to keep out of the diff.
+Regenerate the byte-exact sRGB -> BT.2020 (HLG/PQ) probe table pinned in
+packages/engine/src/utils/alphaBlit.test.ts (SRGB_TO_HDR_REFERENCE).
 
 Usage:
-    # Regenerate the probe table that lives in alphaBlit.test.ts (paste over
-    # the SRGB_TO_HDR_REFERENCE literal):
-    python3 packages/engine/scripts/generate-lut-reference.py --probes
+    python3 packages/engine/scripts/generate-lut-reference.py --probes   # paste over the table
+    python3 packages/engine/scripts/generate-lut-reference.py            # full 256-entry LUTs as JSON
 
-    # Dump the full 256-entry LUTs as JSON (for ad-hoc analysis or new tests):
-    python3 packages/engine/scripts/generate-lut-reference.py
-
-    # Override the probe set:
-    python3 packages/engine/scripts/generate-lut-reference.py --probes \
-        --probe-indices 0,32,64,128,192,255
-
-## How to use this when the LUT changes
-
-1. Edit buildSrgbToHdrLut() in packages/engine/src/utils/alphaBlit.ts.
-2. Mirror the same edit here (constants, branch logic — keep them in sync).
-3. Run with --probes and paste the output over SRGB_TO_HDR_REFERENCE in
-   alphaBlit.test.ts. Update the asymmetric-R/G/B and BT.2408-invariant
-   tests by hand if those probe values shifted.
-4. Re-run `bun test src/utils/alphaBlit.test.ts` to confirm the engine LUT
-   and the test-pinned values still agree.
-
-## Why Python (not TS)?
-
-A standalone script avoids dragging the engine's bun/Node/build environment
-into a one-off codegen flow, and matches the existing fixture-generation
-pattern at packages/producer/tests/hdr-regression/scripts/generate-hdr-photo-pq.py.
-Python's math.log / math.pow are libm-backed and produce IEEE-754-equivalent
-results to JS's Math.log / Math.pow for these inputs — see js_round_nonneg
-below for the one rounding quirk we have to match by hand.
-
-## Drift contract
-
-This file MIRRORS buildSrgbToHdrLut() in alphaBlit.ts. If the two diverge,
-this script silently emits wrong values. Any change to one MUST be reflected
-in the other; run the script and the test suite together to catch drift.
+This file MIRRORS buildSrgbToSignalLut() in alphaBlit.ts: change both together,
+then run alphaBlit.test.ts. js_round_nonneg matches JS Math.round, the one
+rounding difference from Python.
 """
 
 import argparse
@@ -58,6 +22,8 @@ from collections.abc import Iterable
 HLG_A = 0.17883277
 HLG_B = 1 - 4 * HLG_A
 HLG_C = 0.5 - HLG_A * math.log(4 * HLG_A)
+# BT.2408 SDR-reference white in HLG: the scene light (relative to peak) at 75% signal
+HLG_SDR_WHITE = (math.exp((0.75 - HLG_C) / HLG_A) + HLG_B) / 12
 
 # PQ (SMPTE 2084) OETF constants — keep in sync with alphaBlit.ts
 PQ_M1 = 0.1593017578125
@@ -90,9 +56,11 @@ def srgb_eotf(i: int) -> float:
 
 
 def hlg_oetf(linear: float) -> float:
-    if linear <= 1 / 12:
-        return math.sqrt(3 * linear)
-    return HLG_A * math.log(12 * linear - HLG_B) + HLG_C
+    # Place SDR-reference white at 75% HLG signal (BT.2408), like PQ's 203 nits.
+    scene = linear * HLG_SDR_WHITE
+    if scene <= 1 / 12:
+        return math.sqrt(3 * scene)
+    return HLG_A * math.log(12 * scene - HLG_B) + HLG_C
 
 
 def pq_oetf(linear: float) -> float:

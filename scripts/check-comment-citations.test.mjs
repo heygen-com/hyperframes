@@ -9,7 +9,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { PROBE, checkComments } from "./check-comment-citations.mjs";
+import { PROBE, checkComments, generatedPaths } from "./check-comment-citations.mjs";
 
 const CHECKER = fileURLToPath(new URL("./check-comment-citations.mjs", import.meta.url));
 
@@ -69,9 +69,10 @@ test("a cited file that does not exist fails", (t) => {
 
 test("a bare project file a skill workflow writes is not this repo's to resolve", (t) => {
   const { failures } = checkSubject(t, {
-    "skills/demo/references/visual-design.md": ["Read `BRIEF.md` and `storyboard.html`.", ""].join(
-      "\n",
-    ),
+    "skills/demo/references/visual-design.md": [
+      "Read `BRIEF.md` and `boards/storyboard.html`.",
+      "",
+    ].join("\n"),
   });
   assert.deepEqual(failures, []);
 });
@@ -652,6 +653,47 @@ function runCli(t, base, head, args = [], overrides = {}) {
 }
 
 const KIT = { "src/kit.ts": ["export const needsReview = 1;", ""].join("\n") };
+const GENERATED = "src/_gen/output.ts";
+const ATTRIBUTES = { ".gitattributes": "src/_gen/** linguist-generated=true\n" };
+
+for (const exists of [false, true])
+  test(`the CLI skips base-marked generated citations, existing ${exists}`, (t) => {
+    const base = { ...KIT, ...ATTRIBUTES, ...(exists ? { [GENERATED]: KIT["src/kit.ts"] } : {}) };
+    const head = {
+      ...base,
+      [GENERATED]: "// The `missing.ts` module owns this.\nexport const value = 1;\n",
+    };
+    const { status, output } = runCli(t, base, head);
+    assert.equal(status, 0, output);
+  });
+
+test("the CLI does not accept a citation exemption added by the change", (t) => {
+  const { status, output } = runCli(t, KIT, {
+    ...KIT,
+    ...ATTRIBUTES,
+    [GENERATED]: "// The `missing.ts` module owns this.\nexport const value = 1;\n",
+  });
+  assert.equal(status, 1, output);
+});
+
+for (const attribute of ["linguist-generated", "linguist-generated=false", "-linguist-generated"])
+  test(`the CLI respects the base attribute ${attribute}`, (t) => {
+    const base = { ...KIT, ".gitattributes": `src/_gen/** ${attribute}\n` };
+    const { status, output } = runCli(t, base, {
+      ...base,
+      [GENERATED]: "// The `missing.ts` module owns this.\nexport const value = 1;\n",
+    });
+    assert.equal(status, attribute === "linguist-generated" ? 0 : 1, output);
+  });
+
+test("generated source remains a valid citation target", (t) => {
+  const base = { ...KIT, ...ATTRIBUTES, [GENERATED]: "export const value = 1;\n" };
+  const { status, output } = runCli(t, base, {
+    ...base,
+    "src/subject.ts": "// The `src/_gen/output.ts` module owns this.\nexport const subject = 1;\n",
+  });
+  assert.equal(status, 0, output);
+});
 const explains = (symbol) =>
   oneLiner(
     `// The kit stops carrying \`${symbol}\`: the verdict map owns what a review row means.`,
@@ -970,4 +1012,32 @@ test("a TypeScript private field is code, not a standalone comment", (t) => {
     "src/subject.ts": ["  #countLabel = 0; // count label", "  countLabel = 1;", ""].join("\n"),
   });
   assert.deepEqual(warnings, []);
+});
+
+test("a git too old for check-attr --source is named, not hidden behind EPIPE", (t) => {
+  const bin = mkdtempSync(path.join(tmpdir(), "old-git-"));
+  t.after(() => rmSync(bin, { recursive: true, force: true }));
+  const git = path.join(bin, "git");
+  writeFileSync(
+    git,
+    [
+      "#!/bin/sh",
+      'if [ "$1" = version ]; then echo "git version 2.39.5"; exit 0; fi',
+      'echo "error: unknown option \\`source=HEAD\'" >&2',
+      "exit 129",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  const savedPath = process.env.PATH;
+  process.env.PATH = `${bin}${path.delimiter}${savedPath}`;
+  t.after(() => {
+    process.env.PATH = savedPath;
+  });
+  const paths = Array.from({ length: 20_000 }, (_, i) => `packages/core/src/file-${i}.ts`);
+
+  assert.throws(
+    () => generatedPaths(bin, "HEAD", paths),
+    /needs git 2\.40 or newer; found "git version 2\.39\.5"/,
+  );
 });

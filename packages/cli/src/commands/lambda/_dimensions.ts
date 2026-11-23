@@ -8,8 +8,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { CanvasResolution } from "@hyperframes/core";
-import { c } from "../../ui/colors.js";
+import { outputResolutionForSize, type CanvasResolution } from "@hyperframes/core";
 import { findCompositionDimensions } from "../../utils/compositionViewport.js";
 
 export interface DimensionMismatchArgs {
@@ -17,31 +16,26 @@ export interface DimensionMismatchArgs {
   cliWidth: number;
   cliHeight: number;
   outputResolution: CanvasResolution | undefined;
-  /** Suppress the warning when stdout is reserved for machine output (--json). */
-  quiet: boolean;
 }
 
-// fallow-ignore-next-line complexity
-export function warnOnDimensionMismatch(args: DimensionMismatchArgs): void {
-  if (args.quiet) return;
-  if (args.outputResolution) return;
+export function resolveOutputResolutionFromSize(
+  args: DimensionMismatchArgs,
+): CanvasResolution | undefined {
+  if (args.outputResolution) return args.outputResolution;
   let html: string;
   try {
     html = readFileSync(join(args.projectDir, "index.html"), "utf-8");
   } catch {
-    return;
+    return undefined;
   }
   const composition = findCompositionDimensions(html);
-  if (!composition) return;
-  if (composition.width === args.cliWidth && composition.height === args.cliHeight) return;
-  console.warn(
-    c.warn(
-      `--width/--height (${args.cliWidth}×${args.cliHeight}) disagrees with the composition's ` +
-        `data-width/data-height (${composition.width}×${composition.height}). The runtime lays out ` +
-        `the page at the composition's authored dimensions, so your output will be ` +
-        `${composition.width}×${composition.height}, not ${args.cliWidth}×${args.cliHeight}.\n` +
-        `  To supersample to a higher resolution, pass --output-resolution (e.g. \`--output-resolution=4k\`).\n` +
-        `  To truly change layout dimensions, edit the composition's data-width/data-height in index.html.`,
-    ),
-  );
+  if (!composition) return undefined;
+  const size = outputResolutionForSize({
+    compositionWidth: composition.width,
+    compositionHeight: composition.height,
+    width: args.cliWidth,
+    height: args.cliHeight,
+  });
+  if (!size.ok) throw new Error(`--width/--height: ${size.message}`);
+  return size.outputResolution;
 }

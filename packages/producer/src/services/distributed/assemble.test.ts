@@ -29,13 +29,17 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  applyFaststart,
+  cpuBudget,
+  muxVideoWithAudio,
   PROVENANCE_RENDERER_NAME,
   PROVENANCE_VERSION,
   readRenderProvenance,
   renderProvenanceArgs,
 } from "@hyperframes/engine";
+import { padOrTrimAudioToVideoFrameCount } from "../render/audioPadTrim.js";
 import type { ChunkSliceJson } from "../render/stages/freezePlan.js";
-import { assemble } from "./assemble.js";
+import { assemble, cfrEncodeArgs, cfrRateControlArgs } from "./assemble.js";
 import type { DistributedFormat } from "./shared.js";
 
 let runRoot: string;
@@ -91,14 +95,14 @@ function buildPlanDir(
  * independently concatenable because GOP === frame count and the first
  * frame is forced as a keyframe.
  */
-function makeMp4Chunk(outputPath: string, frameCount: number): void {
+function makeMp4Chunk(outputPath: string, frameCount: number, size = "160x120"): void {
   const args = [
     "-v",
     "error",
     "-f",
     "lavfi",
     "-i",
-    `testsrc=size=160x120:rate=30:duration=${frameCount / 30}`,
+    `testsrc=size=${size}:rate=30:duration=${frameCount / 30}`,
     "-c:v",
     "libx264",
     "-preset",
@@ -229,8 +233,75 @@ function probeStream(
   return parsed.streams?.[0] ?? null;
 }
 
+/** Per-packet pts, dts, duration, size and payload hash of one stream. */
+function streamPackets(path: string, stream: "v" | "a"): string {
+  const result = spawnSync(
+    "ffmpeg",
+    ["-v", "error", "-i", path, "-map", `0:${stream}:0`, "-c", "copy", "-f", "framemd5", "-"],
+    { stdio: "pipe" },
+  );
+  if (result.status !== 0) throw new Error(result.stderr.toString().slice(-400));
+  return result.stdout.toString();
+}
+
+/** Three 1 s chunks plus audio 0.5 s too long, so the trim branch runs. */
+function buildAudioFixture(): { planDir: string; chunkPaths: string[]; audioPath: string } {
+  const chunks: ChunkSliceJson[] = [0, 1, 2].map((index) => ({
+    index,
+    startFrame: index * 30,
+    endFrame: (index + 1) * 30,
+  }));
+  const planDir = buildPlanDir("mp4", chunks, 90, true);
+  const chunkPaths = chunks.map(({ index }) => join(planDir, `chunk-${index}.mp4`));
+  for (const chunkPath of chunkPaths) makeMp4Chunk(chunkPath, 30, "640x360");
+  const audioPath = join(planDir, "audio.m4a");
+  makeAacAudio(audioPath, 3.5);
+  return { planDir, chunkPaths, audioPath };
+}
+
+function diskKb(path: string): number {
+  return Number(spawnSync("du", ["-sk", path]).stdout.toString().split("\t")[0]);
+}
+
 describe("assemble()", () => {
   const TIMEOUT_MS = 30_000;
+
+  it("rejects a WAV file in place of the planned M4A sidecar", async () => {
+    if (!hasFfmpeg) return;
+    const { planDir, chunkPaths, audioPath } = buildAudioFixture();
+    const wav = spawnSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=1",
+      "-f",
+      "wav",
+      audioPath,
+    ]);
+    expect(wav.status).toBe(0);
+    const output = join(planDir, "audio-check.mp4");
+    await expect(assemble(planDir, chunkPaths, audioPath, output)).rejects.toThrow();
+    expect(existsSync(output)).toBe(false);
+  });
+
+  it("rejects an input list in place of an encoded chunk", async () => {
+    if (!hasFfmpeg) return;
+    const chunks = [
+      { index: 0, startFrame: 0, endFrame: 5 },
+      { index: 1, startFrame: 5, endFrame: 10 },
+    ];
+    const planDir = buildPlanDir("mp4", chunks, 10, false);
+    const video = join(planDir, "video.mp4");
+    const list = join(planDir, "list.mp4");
+    makeMp4Chunk(video, 5);
+    writeFileSync(list, "ffconcat version 1.0\n");
+    const output = join(planDir, "output.mp4");
+    await expect(assemble(planDir, [video, list], null, output)).rejects.toThrow();
+    expect(existsSync(output)).toBe(false);
+  });
 
   it(
     "concat-copies two mp4 chunks and applies faststart",
@@ -350,6 +421,26 @@ describe("assemble()", () => {
         readdirSync(planDir).filter((name) => name.startsWith("failed.mp4.assemble-work-")),
       ).toEqual([]);
       expect(existsSync(outputPath)).toBe(false);
+    },
+    TIMEOUT_MS,
+  );
+
+  // fails without the fix: the line break ended the entry and ffmpeg read the rest as list lines.
+  it.skipIf(process.platform === "win32")(
+    "refuses chunk paths whose folder name holds a line break",
+    async () => {
+      const chunks: ChunkSliceJson[] = [
+        { index: 0, startFrame: 0, endFrame: 5 },
+        { index: 1, startFrame: 5, endFrame: 10 },
+      ];
+      const planDir = buildPlanDir("mp4", chunks, 10, false);
+      const folder = join(planDir, "chunks\nfile 'other.mov'\n#");
+      mkdirSync(folder);
+      const chunkPaths = ["0.mp4", "1.mp4"].map((name) => join(folder, name));
+      for (const path of chunkPaths) writeFileSync(path, "not a video");
+      await expect(assemble(planDir, chunkPaths, null, join(planDir, "out.mp4"))).rejects.toThrow(
+        "line break or NUL",
+      );
     },
     TIMEOUT_MS,
   );
@@ -485,6 +576,86 @@ describe("assemble()", () => {
   );
 
   it(
+    "keeps local disk under the chunks plus one copy of the output",
+    async () => {
+      if (!hasFfmpeg || process.platform === "win32") return;
+      const { planDir, chunkPaths, audioPath } = buildAudioFixture();
+      const outputPath = join(planDir, "output.mp4");
+      // Every intermediate is complete when its ffmpeg exits, so the disk
+      // total at each exit bounds the peak.
+      const diskLog = join(planDir, "disk.log");
+      const wrapper = join(runRoot, `ffmpeg-disk-${Date.now()}.sh`);
+      const realFfmpeg = process.env.HYPERFRAMES_FFMPEG_PATH?.trim() || "ffmpeg";
+      writeFileSync(
+        wrapper,
+        `#!/bin/sh\n"${realFfmpeg}" "$@"\nstatus=$?\ndu -sk '${planDir}' | cut -f1 >> '${diskLog}'\nexit $status\n`,
+        { mode: 0o755 },
+      );
+      const baselineKb = diskKb(planDir);
+      const previous = process.env.HYPERFRAMES_FFMPEG_PATH;
+      process.env.HYPERFRAMES_FFMPEG_PATH = wrapper;
+      try {
+        await assemble(planDir, chunkPaths, audioPath, outputPath);
+      } finally {
+        if (previous === undefined) delete process.env.HYPERFRAMES_FFMPEG_PATH;
+        else process.env.HYPERFRAMES_FFMPEG_PATH = previous;
+      }
+      const peakKb = Math.max(...readFileSync(diskLog, "utf8").trim().split("\n").map(Number));
+      const outputKb = statSync(outputPath).size / 1024;
+      expect(peakKb - baselineKb).toBeLessThan(outputKb * 1.5);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "writes the same video and audio packets as separate concat, mux and faststart passes",
+    async () => {
+      if (!hasFfmpeg) return;
+      const { planDir, chunkPaths, audioPath } = buildAudioFixture();
+      const outputPath = join(planDir, "output.mp4");
+      await assemble(planDir, chunkPaths, audioPath, outputPath);
+
+      const concatList = join(planDir, "legacy-list.txt");
+      writeFileSync(concatList, chunkPaths.map((path) => `file '${path}'`).join("\n"));
+      const concatPath = join(planDir, "legacy-concat.mp4");
+      const concat = spawnSync("ffmpeg", [
+        ...["-v", "error", "-r", "30", "-f", "concat", "-safe", "0", "-i", concatList],
+        ...["-c", "copy", ...renderProvenanceArgs(concatPath), "-y", concatPath],
+      ]);
+      expect(concat.status).toBe(0);
+      const paddedPath = join(planDir, "legacy-audio.m4a");
+      expect(
+        (
+          await padOrTrimAudioToVideoFrameCount({
+            videoPath: concatPath,
+            audioPath,
+            outputPath: paddedPath,
+          })
+        ).success,
+      ).toBe(true);
+      const fps = { num: 30, den: 1 };
+      const muxPath = join(planDir, "legacy-mux.mp4");
+      const mux = await muxVideoWithAudio(
+        concatPath,
+        paddedPath,
+        muxPath,
+        undefined,
+        { audioCodec: "aac" },
+        fps,
+      );
+      expect(mux.success).toBe(true);
+      const legacyPath = join(planDir, "legacy.mp4");
+      expect((await applyFaststart(muxPath, legacyPath, undefined, undefined, fps)).success).toBe(
+        true,
+      );
+
+      expect(streamPackets(outputPath, "v")).toBe(streamPackets(legacyPath, "v"));
+      expect(streamPackets(outputPath, "a")).toBe(streamPackets(legacyPath, "a"));
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
     "cfr:true re-encodes for exact avg_frame_rate matching r_frame_rate",
     async () => {
       if (!hasFfmpeg) {
@@ -546,6 +717,69 @@ describe("assemble()", () => {
       const expectedDuration = 10 / 30;
       const probedDuration = Number(stream?.duration ?? 0);
       expect(Math.abs(probedDuration - expectedDuration)).toBeLessThan(0.001);
+    },
+    TIMEOUT_MS,
+  );
+
+  it("cfr re-encode pins x264 threads to the CPU quota", () => {
+    const args = cfrEncodeArgs(["-i", "chunk.mp4"], {}, "30");
+    expect(args[args.indexOf("-threads") + 1]).toBe(String(cpuBudget()));
+  });
+
+  it("cfr re-encode keeps the keyframe interval and the peak cap", () => {
+    const args = cfrEncodeArgs(
+      ["-i", "chunk.mp4"],
+      { maxBitrate: "8M", bufferSize: "12M", keyframeIntervalFrames: 60 },
+      "30",
+    );
+    expect(args[args.indexOf("-g") + 1]).toBe("60");
+    expect(args[args.indexOf("-maxrate") + 1]).toBe("8000000");
+    expect(args[args.indexOf("-bufsize") + 1]).toBe("12000000");
+    const plain = cfrEncodeArgs(["-i", "chunk.mp4"], {}, "30");
+    expect(plain).not.toContain("-g");
+    expect(plain).not.toContain("-maxrate");
+  });
+
+  it("cfr re-encode keeps the chunks' rate control", () => {
+    expect(cfrRateControlArgs({})).toEqual(["-preset", "medium", "-crf", "18"]);
+    expect(cfrRateControlArgs({ quality: "high" })).toEqual(["-preset", "fast", "-crf", "15"]);
+    expect(cfrRateControlArgs({ quality: "standard", crf: 12 })).toEqual([
+      "-preset",
+      "medium",
+      "-crf",
+      "12",
+    ]);
+    expect(cfrRateControlArgs({ bitrate: "10M" })).toEqual(["-preset", "medium", "-b:v", "10M"]);
+    expect(cfrRateControlArgs({ crf: 12, bitrate: "10M" })).toEqual([
+      "-preset",
+      "medium",
+      "-crf",
+      "12",
+    ]);
+  });
+
+  it(
+    "cfr:true output size follows the locked crf",
+    async () => {
+      if (!hasFfmpeg) {
+        console.warn("[assemble.test] skipping cfr crf test — ffmpeg not available on this host");
+        return;
+      }
+      const sizeAt = async (crf: number) => {
+        const chunks: ChunkSliceJson[] = [{ index: 0, startFrame: 0, endFrame: 10 }];
+        const planDir = buildPlanDir("mp4", chunks, 10, false);
+        writeFileSync(
+          join(planDir, "meta", "encoder.json"),
+          JSON.stringify({ encoder: "libx264-software", quality: "standard", crf }),
+          "utf-8",
+        );
+        const chunkPath = join(planDir, "chunk-0.mp4");
+        makeMp4Chunk(chunkPath, 10);
+        const outputPath = join(planDir, `output-crf${crf}.mp4`);
+        await assemble(planDir, [chunkPath], null, outputPath, { cfr: true });
+        return statSync(outputPath).size;
+      };
+      expect(await sizeAt(10)).toBeGreaterThan(await sizeAt(40));
     },
     TIMEOUT_MS,
   );
@@ -755,6 +989,31 @@ describe("assemble()", () => {
         renderer: PROVENANCE_RENDERER_NAME,
         version: PROVENANCE_VERSION,
       });
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "refuses a chunk that is a playlist of other files",
+    async () => {
+      if (!hasFfmpeg) return;
+      const chunks: ChunkSliceJson[] = [
+        { index: 0, startFrame: 0, endFrame: 5 },
+        { index: 1, startFrame: 5, endFrame: 10 },
+      ];
+      const planDir = buildPlanDir("mp4", chunks, 10, false);
+      makeMp4Chunk(join(planDir, "elsewhere.mp4"), 5);
+      const playlist = join(planDir, "chunk-0.m3u8");
+      writeFileSync(
+        playlist,
+        "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nelsewhere.mp4\n#EXT-X-ENDLIST\n",
+      );
+      const chunkB = join(planDir, "chunk-1.mp4");
+      makeMp4Chunk(chunkB, 5);
+
+      await expect(
+        assemble(planDir, [playlist, chunkB], null, join(planDir, "output.mp4")),
+      ).rejects.toThrow();
     },
     TIMEOUT_MS,
   );

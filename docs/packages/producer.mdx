@@ -68,6 +68,12 @@ const job = createRenderJob({
 HDR output is available for MP4 through `hdrMode`. Transparent formats render
 in SDR because HDR and alpha are not one supported output path.
 
+`chromaSubsampling: "444"` renders an SDR MP4 master with full-resolution
+colour (H.264 yuv444p, lossless PNG capture). It needs the software encoder,
+is rejected with `useGpu`, HDR output, other formats and distributed renders,
+and many players cannot decode it. See
+[4:4:4 masters](/guides/rendering#444-masters).
+
 ```ts
 const job = createRenderJob({
   fps: 30,
@@ -100,6 +106,69 @@ segment starts on a keyframe. HLS is SDR only (`hdrMode: "force-hdr"` is
 rejected), refuses GPU encoding (GPU encoders ignore the keyframe lock), and is
 not available in distributed rendering, Lambda, or Cloud Run.
 
+## Require specific output dimensions
+
+Services can set `expectedOutputDimensions: { width: 1280, height: 720 }` in the render
+config or HTTP request. The producer checks the compiled composition and any output
+resolution scaling before opening the capture browser. A mismatch fails with
+`OUTPUT_DIMENSIONS_MISMATCH`; this option does not resize the composition.
+
+Successful jobs and HTTP completion responses include `outputDimensionsChecked: true`
+when this check ran. Distributed planning accepts the same option and reports the
+confirmation through `onPlanned`. A caller that requires this contract must reject
+an absent confirmation, including responses from older producer versions.
+
+## Inspect output validation
+
+A matching output duration does not prove that every expected frame is present.
+WebM and HLS often omit the frame count from their metadata. When no usable count
+is available, the producer skips the frame-count check and continues checking
+duration and requested dimensions.
+
+Set `debug: true` in `createRenderJob()` or use `npx hyperframes render --debug`
+to retain `render.log` in the render's working directory. Its
+`artifact_frame_count_unavailable` debug event records the output path and
+expected frame count whenever this check is skipped. Normal output stays quiet;
+a custom `logger` can also collect the event through its `debug` method.
+
+## Reference background
+
+Completed jobs expose `reference_background`. In-process local render results, blocking and
+streaming producer responses, and distributed plan and assembly results carry
+this same additive field:
+
+```json
+{"reference_background":{"kind":"solid","rgb":[10,46,138]}}
+```
+
+The value describes the composition root and its surrounding page background at
+the canonical initial film state. It is read from Chromium's computed styles
+before transparent capture changes those styles, not inferred from rendered
+frames or an inner panel. Distributed chunks preserve the plan's reference;
+they do not choose a different reference at each chunk boundary.
+
+| Kind | Meaning |
+| --- | --- |
+| `solid` | An opaque computed background, with three integer sRGB components from 0 to 255. |
+| `none` | A positively established `background: none` declaration with no effective paint. |
+| `unsupported_non_solid` | An effective background image or gradient. |
+| `unknown` | Missing, unresolved, changing, translucent, or otherwise indeterminate background. |
+
+A transparent computed color alone does **not** establish `none`. An undeclared
+background, an authored transparent color, or an inaccessible stylesheet that
+prevents proving absence remains `unknown`. Gradients and images are never
+replaced with their underlying color. Consumers must preserve indeterminate
+results instead of treating them as a default color or proof of a blank frame.
+
+In-process local rendering reads from a session it already opens. The Docker CLI
+wrapper does not currently return the child process's result metadata. Distributed planning
+opens an inspection-only page even for a composition whose duration was
+resolved statically. It does not require WebGPU, run BeginFrame liveness checks,
+or reconcile media on that page. An unavailable browser or failed inspection
+produces `unknown` without rejecting an otherwise valid static plan. The value
+is stored in the execution-plan artifacts, not added to the hashed v2 transport
+manifest, so older readers and materializers remain compatible.
+
 ## Cancel a render
 
 Pass an abort signal to the final argument:
@@ -121,6 +190,22 @@ await executeRenderJob(
 An aborted render throws `RenderCancelledError`. Correctness warnings can also
 block a render when `strictness: "strict"` is enabled.
 
+## Remote scripts and stylesheets
+
+Before rendering, the producer downloads a composition's remote `<script src>` files and
+its stylesheets from hosts other than Google Fonts, and inlines them so the render needs
+no network for them. One compile downloads at most 32 distinct script addresses and 32
+distinct stylesheet addresses. A composition that links more of either is refused before
+any of that kind is downloaded, with an error that names the count. Stylesheets count
+before their contents are read, so a sheet with only layout rules counts too. Google Fonts
+links are handled by the font step and do not count. A script the host ships itself (GSAP,
+when `HYPERFRAMES_GSAP_VENDOR_DIR` names its folder) counts only when a tag's integrity
+metadata does not match that copy and it has to be downloaded.
+
+These downloads share one 60-second window, which starts with the first of them.
+Anything still pending then fails like an unreachable file, and its tag stays as written.
+Font files and other assets keep their own per-request time limits.
+
 ## Build a render service
 
 The package exports a Hono application and server helpers:
@@ -131,9 +216,58 @@ import { startServer } from "@hyperframes/producer";
 await startServer({ port: 8080 });
 ```
 
+A browser request (one that carries an `Origin` or `Sec-Fetch-Site` header) is accepted
+only under an IP address, `localhost` or a `*.localhost` name, so a page that points its
+own domain at the server cannot start renders or lint. If browsers reach the server
+through a proxy name, list that name in `allowedHosts` or in the comma-separated
+`PRODUCER_ALLOWED_HOSTS` variable. Requests without those headers, such as curl or
+another service, are unaffected.
+
+The server listens on `127.0.0.1` unless you pass `hostname` or set `PRODUCER_HOST`. To
+listen on any other address, also set `authToken` or `PRODUCER_AUTH_TOKEN`. Every route
+except `/health` then requires `Authorization: Bearer <token>`, and the server refuses to
+start without one. A request's `projectDir` must resolve, symlinks included, inside
+`projectsDir` (`PRODUCER_PROJECTS_DIR`, default: the working directory). Its `entryFile`
+must stay inside that project, and `outputPath` must be inside `rendersDir`
+(`PRODUCER_RENDERS_DIR`, default `/tmp`). `debug: true` is refused unless you set
+`allowDebug` or `PRODUCER_ALLOW_DEBUG=1`. `createProducerApp` applies these path and
+debug checks by default. `createRenderHandlers`, for mounting the handlers inside your own
+trusted service, applies them only with `confineRequests: true`.
+
 For larger workloads, the `@hyperframes/producer/distributed` entry exposes the
 three rendering activities—`plan`, `renderChunk`, and `assemble`. Your
 orchestrator remains responsible for dispatch, retries, storage, and networking.
+
+A service that renders projects from other people should set
+`PRODUCER_RESTRICT_PAGE_NETWORK=true`. The render browser can then reach only its own
+project server and public IPv4 addresses: everything else it sends, from pages, frames,
+workers, WebSockets and WebRTC alike, goes through a local proxy that checks every
+address a name resolves to and connects to the address it checked. A refused request
+fails like any other unreachable asset. Leave it unset for local renders that load
+assets from your own machine or network.
+
+Where the only way out is an egress proxy, set `HYPERFRAMES_CAPTURE_PROXY` to its
+`http://` URL, as for `capture`. The local proxy then sends every browser request to
+it by hostname, and the egress proxy must refuse private and internal destinations
+itself.
+
+The setting accepts `true`, `1`, `yes` or `on` to turn the restriction on and `false`, `0`,
+`no` or `off` to leave it off, in any letter case. Any other value turns it on and logs a
+warning, so a misspelled value never leaves a render service open.
+
+With the restriction on, a video or audio URL is downloaded through the same address
+checks before FFmpeg reads it. A file FFmpeg does read by URL, such as a signed storage
+URL for a project's video, must be a self-contained container like MP4, WebM or WAV. A
+playlist, manifest or concat list under a media file name is refused.
+
+If your network routes a range that is not a private one, such as a cluster's pod range,
+add it with `PRODUCER_NON_PUBLIC_CIDRS`, a comma-separated list like `192.160.0.0/16`. Asset
+downloads and the render browser then refuse those addresses too. A malformed entry
+refuses every address rather than being skipped, and logs a warning.
+
+`hyperframes render --docker` passes both settings into its render container when they
+are set in the shell that runs it. When they are not set, the container's render page can
+reach anything the container's network can, including private addresses.
 
 ## Related topics
 

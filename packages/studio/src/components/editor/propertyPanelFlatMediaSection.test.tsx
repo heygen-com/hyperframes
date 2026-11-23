@@ -163,7 +163,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
     act(() => root.unmount());
   });
 
-  it("commits +12 dB of boost from the upper half of the volume fader", () => {
+  it("commits +12 dB of boost from the upper half of the gain fader", () => {
     const onSetAttribute = vi.fn();
     const element = makeVideoElement({ dataAttributes: { volume: "1" } });
     const host = document.createElement("div");
@@ -182,7 +182,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
         />,
       );
     });
-    const volumeTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[0];
+    const volumeTrack = host.querySelector('[data-flat-slider-track="true"][aria-label="Volume"]')!;
     Object.defineProperty(volumeTrack, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });
@@ -197,41 +197,45 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
     act(() => root.unmount());
   });
 
-  it("writes through the envelope instead of the attribute once volume is automated", () => {
-    const onSetAttribute = vi.fn();
-    const onCommitVolumeAt = vi.fn();
-    const element = makeVideoElement({ dataAttributes: { volume: "1" } });
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    act(() => {
-      root.render(
-        <FlatMediaSection
-          projectDir={null}
-          element={element}
-          styles={{}}
-          onSetStyle={vi.fn()}
-          onSetAttribute={onSetAttribute}
-          onSetHtmlAttribute={vi.fn()}
-          onSetAttributeBatch={vi.fn()}
-          volumeAutomated
-          onCommitVolumeAt={onCommitVolumeAt}
-        />,
-      );
-    });
-    const volumeTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[0];
-    Object.defineProperty(volumeTrack, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
-    });
-    act(() => {
-      volumeTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
-      volumeTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
-    });
-    expect(onCommitVolumeAt).toHaveBeenCalledTimes(1);
-    expect(onCommitVolumeAt.mock.calls[0][0]).toBeCloseTo(3.981072, 6);
-    expect(onSetAttribute).not.toHaveBeenCalledWith("volume", expect.anything());
-    act(() => root.unmount());
-  });
+  it.each([true, false])(
+    "Volume sets the whole clip's gain and never writes a keyframe (fade: %s)",
+    (automated) => {
+      const onSetAttribute = vi.fn();
+      const element = makeVideoElement({ dataAttributes: { volume: "1" } });
+      const host = document.createElement("div");
+      document.body.append(host);
+      const root = createRoot(host);
+      act(() => {
+        root.render(
+          <FlatMediaSection
+            projectDir={null}
+            element={element}
+            styles={{}}
+            onSetStyle={vi.fn()}
+            onSetAttribute={onSetAttribute}
+            onSetHtmlAttribute={vi.fn()}
+            onSetAttributeBatch={vi.fn()}
+            volumeAutomated={automated}
+          />,
+        );
+      });
+      expect(labelsOf(host).filter((label) => label === "Volume" || label === "Gain")).toEqual([
+        "Volume",
+      ]);
+      const volumeTrack = host.querySelector(
+        '[data-flat-slider-track="true"][aria-label="Volume"]',
+      )!;
+      Object.defineProperty(volumeTrack, "getBoundingClientRect", {
+        value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+      });
+      act(() => {
+        volumeTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+        volumeTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
+      });
+      expect(onSetAttribute).toHaveBeenCalledWith("volume", "3.981072");
+      act(() => root.unmount());
+    },
+  );
 
   it("commits a new rate value on slider track pointerdown", () => {
     const onSetAttribute = vi.fn();
@@ -252,7 +256,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
         />,
       );
     });
-    const rateTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[1];
+    const rateTrack = host.querySelector('[data-flat-slider-track="true"][aria-label="Speed"]')!;
     Object.defineProperty(rateTrack, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });
@@ -284,7 +288,9 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
         />,
       );
     });
-    const mediaStartTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[2];
+    const mediaStartTrack = host.querySelector(
+      '[data-flat-slider-track="true"][aria-label="Media start"]',
+    )!;
     Object.defineProperty(mediaStartTrack, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });

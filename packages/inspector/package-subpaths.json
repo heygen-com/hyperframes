@@ -1,0 +1,28 @@
+{
+  "package": "@hyperframes/inspector",
+  "subpaths": {
+    ".": {
+      "source": "./src/service.ts",
+      "runtime": {
+        "default": "./dist/service.js"
+      },
+      "types": "./dist/types/inspector/src/service.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./live": {
+      "runtime": {
+        "default": "./dist/live.js"
+      },
+      "types": "./dist/types/inspector/src/live.d.ts",
+      "environments": ["node"]
+    },
+    "./server": {
+      "source": "./src/server.ts",
+      "runtime": {
+        "default": "./dist/server.js"
+      },
+      "types": "./dist/types/inspector/src/server.d.ts",
+      "environments": ["bun", "node"]
+    }
+  }
+}

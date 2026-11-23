@@ -19,6 +19,10 @@ const FAKE_PROJECT = {
   indexPath: "/fake-project/index.html",
 };
 
+export async function fakeCdpSession() {
+  return { send: async () => undefined, on: () => undefined, detach: async () => undefined };
+}
+
 export function resolveProjectMock() {
   return { resolveProject: vi.fn(() => FAKE_PROJECT) };
 }

@@ -1,11 +1,13 @@
 import { buildProjectApiPath } from "./projectRouting";
-import { isTypingTarget } from "./typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 import type { TimelineElement } from "../player/store/playerStore";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import { ancestorIds } from "../components/editor/previewSelection";
 import type { TimelineAssetKind } from "./timelineAssetDrop";
 import { roundToCenti } from "./rounding";
 import { studioApiFetch } from "./studioApiFetch";
 import { encodeUrlPath } from "@hyperframes/parsers";
+import { keyHint } from "../player/components/studioShortcuts";
 
 export interface EditingFile {
   path: string;
@@ -23,7 +25,8 @@ export type RightPanelTab =
   | "renders"
   | "block-params"
   | "slideshow"
-  | "variables";
+  | "variables"
+  | "motionBlur";
 export interface AgentModalAnchorPoint {
   x: number;
   y: number;
@@ -31,6 +34,10 @@ export interface AgentModalAnchorPoint {
 
 export function getTimelineElementLabel(element: TimelineElement): string {
   return element.label || element.id || element.tag;
+}
+
+export function deletedNotice(label: string, count: number): string {
+  return `Deleted ${label}. Undo (${keyHint("undo")}) restores ${count === 1 ? "it" : "them"}.`;
 }
 
 function normalizeProjectAssetPath(value: string): string {
@@ -102,19 +109,6 @@ export function isManualGeometryStyleProperty(property: string): boolean {
   return property === "left" || property === "top" || property === "width" || property === "height";
 }
 
-export function getEventTargetElement(target: EventTarget | null): HTMLElement | null {
-  if (!target || typeof target !== "object") return null;
-  const maybeNode = target as {
-    nodeType?: number;
-    parentElement?: Element | null;
-  };
-  if (maybeNode.nodeType === 1) return target as HTMLElement;
-  if (maybeNode.nodeType === 3 && maybeNode.parentElement) {
-    return maybeNode.parentElement as HTMLElement;
-  }
-  return null;
-}
-
 export function shouldIgnoreHistoryShortcut(target: EventTarget | null): boolean {
   return isTypingTarget(target);
 }
@@ -145,14 +139,30 @@ export type ElementMatchSelection = Pick<
   | "sourceFile"
   | "compositionSrc"
   | "isCompositionHost"
->;
+> &
+  Partial<Pick<DomEditSelection, "handle">>;
+
+function matchesByClipId(
+  selection: ElementMatchSelection,
+  element: TimelineElement,
+  file: string,
+  value: string | undefined,
+  clipIdScope: string | undefined,
+) {
+  if (!clipIdScope || !selection.handle) return false;
+  if (element.domId || element.hfId || element.selector) return false;
+  return element.id === value && (element.sourceFile || clipIdScope) === file;
+}
 
 function matchesByDomId(
   selection: ElementMatchSelection,
   element: TimelineElement,
   selectionSourceFile: string,
+  clipIdScope?: string,
 ): boolean {
   if (!selection.id) return false;
+  if (matchesByClipId(selection, element, selectionSourceFile, selection.id, clipIdScope))
+    return true;
   return (
     element.domId === selection.id && (element.sourceFile || "index.html") === selectionSourceFile
   );
@@ -162,8 +172,11 @@ function matchesByHfId(
   selection: ElementMatchSelection,
   element: TimelineElement,
   selectionSourceFile: string,
+  clipIdScope?: string,
 ): boolean {
   if (!selection.hfId) return false;
+  if (matchesByClipId(selection, element, selectionSourceFile, selection.hfId, clipIdScope))
+    return true;
   return (
     element.hfId === selection.hfId && (element.sourceFile || "index.html") === selectionSourceFile
   );
@@ -186,9 +199,11 @@ function matchesBySelector(selection: ElementMatchSelection, element: TimelineEl
   );
 }
 
+/** `clipIdScope` matches opaque picks to clip-id-only rows, which have no patch target: select/seek only. */
 export function findMatchingTimelineElementId(
   selection: ElementMatchSelection,
   elements: TimelineElement[],
+  clipIdScope?: string,
 ): string | null {
   const selectionSourceFile = selection.sourceFile || "index.html";
   // Priority matters, not just "any of the three": a composition-host
@@ -203,7 +218,7 @@ export function findMatchingTimelineElementId(
   // first; only fall back to the coarser compositionSrc-only match when
   // none of them identifies a specific element.
   const byId = selection.id
-    ? elements.find((el) => matchesByDomId(selection, el, selectionSourceFile))
+    ? elements.find((el) => matchesByDomId(selection, el, selectionSourceFile, clipIdScope))
     : undefined;
   if (byId) return byId.key ?? byId.id;
 
@@ -211,7 +226,7 @@ export function findMatchingTimelineElementId(
   // whether it has a real DOM id — the only correlator for an element like
   // an ungroup child that has neither an authored id nor a selector.
   const byHfId = selection.hfId
-    ? elements.find((el) => matchesByHfId(selection, el, selectionSourceFile))
+    ? elements.find((el) => matchesByHfId(selection, el, selectionSourceFile, clipIdScope))
     : undefined;
   if (byHfId) return byHfId.key ?? byHfId.id;
 
@@ -254,16 +269,12 @@ export function findTimelineIdByAncestor(
   elements: TimelineElement[],
   sourceFile: string,
 ): string | null {
-  let ancestor = element?.parentElement ?? null;
-  while (ancestor) {
-    const id = ancestor.id;
-    if (id) {
-      const match = elements.find(
-        (el) => el.domId === id && (el.sourceFile ?? "index.html") === sourceFile,
-      );
-      if (match) return match.key ?? match.id;
-    }
-    ancestor = ancestor.parentElement;
+  for (const id of element ? ancestorIds(element) : []) {
+    if (!id) continue;
+    const match = elements.find(
+      (el) => el.domId === id && (el.sourceFile ?? "index.html") === sourceFile,
+    );
+    if (match) return match.key ?? match.id;
   }
   return null;
 }
@@ -279,9 +290,11 @@ export function resolveTimelineIdForSelection(
   selection: DomEditSelection,
   elements: TimelineElement[],
   activeCompPath: string | null,
+  byClipId = false,
 ): string | null {
+  const clipIdScope = byClipId ? activeCompPath || "index.html" : undefined;
   return (
-    findMatchingTimelineElementId(selection, elements) ??
+    findMatchingTimelineElementId(selection, elements, clipIdScope) ??
     findTimelineIdByAncestor(
       selection.element,
       elements,

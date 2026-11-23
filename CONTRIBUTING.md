@@ -9,6 +9,12 @@ Thanks for your interest in contributing to Hyperframes! This guide will help yo
 3. Install dependencies: `bun install`
 4. Create a branch: `git checkout -b my-feature`
 
+The published skill source lives in `skills/`. To install skills while working in
+this checkout, use `npx hyperframes skills update`, which installs globally. Run
+project-local `npx skills add ...` from a separate video project: its destination
+can overlap `skills/` and overwrite uncommitted changes. The repo-native skills in
+`.claude/skills/` and `.agents/skills/` are already included in the checkout.
+
 ## Choosing work
 
 Start with [available newcomer issues](https://github.com/heygen-com/hyperframes/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22+no%3Aassignee) or [help-wanted issues](https://github.com/heygen-com/hyperframes/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22+no%3Aassignee). Read the discussion and check existing PRs before starting; an unassigned issue may already have work in progress. Comment with your intended approach and coordinate a claim with a maintainer.
@@ -136,7 +142,7 @@ before merge, listed at the end.
 1. Create `registry/<blocks|components>/<name>/registry-item.json` following the [schema](packages/core/schemas/registry-item.json)
 2. For components: include a `demo.html`
 3. Run `npx hyperframes lint` and `npx hyperframes validate` on your HTML
-4. Test the install flow: `hyperframes add <name> --dir /tmp/test-project`
+4. Test the install flow: `hyperframes init /tmp/test-project`, then `hyperframes add <name> --dir /tmp/test-project`
 5. Generate and validate the catalog: `bun run check:catalog-drift`
 
 ### Generated catalog files

@@ -110,6 +110,18 @@ function mockMediaPixels(read: () => number): void {
   } as unknown as CanvasRenderingContext2D);
 }
 
+function mockUnreadableMedia(): void {
+  const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+    mockReturnValue(value: CanvasRenderingContext2D): void;
+  };
+  getContextSpy.mockReturnValue({
+    drawImage() {},
+    getImageData() {
+      throw new DOMException("tainted canvas", "SecurityError");
+    },
+  } as unknown as CanvasRenderingContext2D);
+}
+
 const ROOT = { left: 0, top: 0, width: 640, height: 360 };
 const COUNTDOWN = { left: 280, top: 140, width: 80, height: 48 };
 const ZERO_BOX = { left: 0, top: 0, width: 0, height: 0 };
@@ -154,6 +166,22 @@ describe("motion-signature.browser media and geometry channels", () => {
     const collect = installScript();
     const before = collect();
     pixelValue = 220;
+
+    expect(collect()).not.toBe(before);
+  });
+
+  it("changes the sweep fingerprint when an img whose pixels cannot be read swaps its source", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <img id="frame" src="https://cdn.example/a.png" />
+      </div>
+    `;
+    installFixture({ rects: { root: ROOT, frame: ROOT } });
+    mockUnreadableMedia();
+
+    const collect = installScript();
+    const before = collect();
+    document.getElementById("frame")?.setAttribute("src", "https://cdn.example/b.png");
 
     expect(collect()).not.toBe(before);
   });
@@ -743,7 +771,7 @@ describe("motion-signature.browser counter channel", () => {
   it("ignores a display:none decoy counter owner in a frozen composition", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
-        <div id="decoy"></div>
+        <div id="decoy" style="display: none"></div>
         <span id="countdown"></span>
       </div>
     `;
@@ -771,7 +799,7 @@ describe("motion-signature.browser counter channel", () => {
   it("ignores a decoy counter owner nested inside a display:none subtree", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
-        <div id="hidden-parent"><div id="decoy"></div></div>
+        <div id="hidden-parent" style="display: none"><div id="decoy"></div></div>
         <span id="countdown"></span>
       </div>
     `;

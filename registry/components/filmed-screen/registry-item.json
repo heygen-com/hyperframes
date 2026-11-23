@@ -1,0 +1,31 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "filmed-screen",
+  "type": "hyperframes:component",
+  "title": "Filmed Screen",
+  "description": "Your scene, filmed off a screen: perspective, depth of field that follows an element you name, LED sub-pixels and per-shot colour grades. Shots glide into each other, focus racks between elements, and the focused element stays sharp.",
+  "stability": "experimental",
+  "tags": [
+    "filmed",
+    "screen",
+    "monitor",
+    "led",
+    "camera",
+    "depth-of-field",
+    "html-in-canvas",
+    "shader",
+    "webgl",
+    "effect"
+  ],
+  "files": [
+    {
+      "path": "filmed-screen.html",
+      "target": "compositions/components/filmed-screen.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/filmed-screen.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/filmed-screen.png"
+  }
+}

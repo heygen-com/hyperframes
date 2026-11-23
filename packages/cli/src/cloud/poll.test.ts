@@ -43,8 +43,8 @@ describe("cloud/poll", () => {
   });
 
   describe("defaults", () => {
-    it("matches the documented 10s / 60min defaults", () => {
-      expect(DEFAULT_POLL_INTERVAL_MS).toBe(10_000);
+    it("matches the documented 2s / 60min defaults", () => {
+      expect(DEFAULT_POLL_INTERVAL_MS).toBe(2_000);
       expect(DEFAULT_MAX_WAIT_MS).toBe(60 * 60 * 1000);
     });
   });

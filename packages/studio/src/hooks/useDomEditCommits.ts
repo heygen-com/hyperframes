@@ -1,4 +1,5 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
+import { editContextTarget } from "../utils/studioFileHistory";
 import { useCallback } from "react";
 import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
 import { FONT_EXT } from "../utils/mediaTypes";
@@ -7,12 +8,11 @@ import { StudioSaveHttpError, trackStudioSaveFailure } from "../utils/studioSave
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { CommitDomEditPatchBatches } from "./domEditCommitTypes";
-import type { ResolveDomSelectionOptions } from "./useDomSelectionTypes";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { DomEditPersistUnsafeValueError } from "./domEditPersistFailure";
-import { useDomEditPersist, type RecordEditInput } from "./useDomEditPersist";
+import { useDomEditPersist, type UseDomEditPersistParams } from "./useDomEditPersist";
 import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
-import { useDomEditTextCommits } from "./useDomEditTextCommits";
+import { useDomEditTextCommits, type UseDomEditTextCommitsParams } from "./useDomEditTextCommits";
 import { useDomGeometryCommits } from "./useDomGeometryCommits";
 import { useElementLifecycleOps } from "./useElementLifecycleOps";
 import {
@@ -25,13 +25,15 @@ import type { CutoverResult } from "../utils/sdkCutover";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import { encodeUrlPath } from "@hyperframes/parsers";
 
-export interface UseDomEditCommitsParams {
-  activeCompPath: string | null;
-  previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
-  showToast: (message: string, tone?: "error" | "info") => void;
-  queueDomEditSave: <T>(save: () => Promise<T>) => Promise<T>;
-  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
-  editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
+export interface UseDomEditCommitsParams extends Pick<
+  UseDomEditPersistParams,
+  | "activeCompPath"
+  | "previewIframeRef"
+  | "showToast"
+  | "queueDomEditSave"
+  | "writeProjectFile"
+  | "editHistory"
+> {
   fileTree: string[];
   importedFontAssetsRef: React.MutableRefObject<ImportedFontAsset[]>;
   projectId: string | null;
@@ -46,10 +48,7 @@ export interface UseDomEditCommitsParams {
   ) => void;
   clearDomSelection: () => void;
   refreshDomEditSelectionFromPreview: (selection: DomEditSelection) => void;
-  buildDomSelectionFromTarget: (
-    target: HTMLElement,
-    options?: ResolveDomSelectionOptions,
-  ) => Promise<DomEditSelection | null>;
+  buildDomSelectionFromTarget: UseDomEditTextCommitsParams["buildDomSelectionFromTarget"];
   /** Resync the in-memory SDK session after a SERVER-side write (NOT the SDK
    * path, whose session is already current) so a later SDK edit doesn't
    * serialize the pre-write doc and revert the server's change. */
@@ -178,6 +177,13 @@ export function useDomEditCommits({
                   coalesceKey: options.coalesceKey,
                   coalesceMs: options.coalesceMs,
                   files,
+                  targets: batches
+                    .filter((batch) => Object.hasOwn(files, batch.sourceFile))
+                    .flatMap((batch) =>
+                      batch.patches.map(({ target }) =>
+                        editContextTarget(batch.sourceFile, target),
+                      ),
+                    ),
                 });
               }
               return {
@@ -259,12 +265,14 @@ export function useDomEditCommits({
     persistDomEditOperations,
     resolveImportedFontAsset,
     showToast,
+    reloadPreview,
   });
 
   // ── Position patch helper (shared by geometry + lifecycle hooks) ──
 
   const commitPositionPatchToHtml = useDomEditPositionPatchCommit({
     activeCompPath,
+    previewIframeRef,
     persistDomEditOperations,
     showToast,
   });

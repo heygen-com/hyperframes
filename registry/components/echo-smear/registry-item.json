@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "echo-smear",
+  "type": "hyperframes:component",
+  "title": "Echo Smear",
+  "description": "Distance-adaptive streak — records each element's real trajectory (position, rotation, scale, opacity), then trails time-offset copies behind it in proportion to its speed, combined by brightest pixel, so fast moves smear and slow ones stay sharp; spinning edges stay smooth",
+  "tags": ["effect", "smear", "echo", "motion-blur", "velocity", "after-effects", "animation"],
+  "files": [
+    {
+      "path": "echo-smear.html",
+      "target": "compositions/components/echo-smear.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/echo-smear.png"
+  }
+}

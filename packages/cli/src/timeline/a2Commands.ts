@@ -4,8 +4,9 @@ import {
   type AppliedFileMutation,
 } from "@hyperframes/studio-server";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { readJsonFileText, readJsonStdinText } from "../utils/jsonFlag.js";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { describeProject, type ProjectTimeline, type TimelineRow } from "./describeProject.js";
 import { resolveRef } from "./resolveRef.js";
 import { parseTimeExpression } from "./timeExpr.js";
@@ -18,6 +19,7 @@ import {
   diff,
   fpsFor,
   isRecord,
+  FIELDS_READ_BY_VERB,
   mutationConflict,
   positional,
   publicReceipt,
@@ -71,8 +73,9 @@ export async function runIds(args: Record<string, unknown>): Promise<void> {
   if (json) console.log(JSON.stringify(withMeta(result), null, 2));
   else console.log(`ids: stamped ${receipts.length} file${receipts.length === 1 ? "" : "s"}`);
 }
+type SettledClip = { verb: MutationVerb; ref: string };
 type ApplyEditResult =
-  | { ok: true; file: string; after: string }
+  | { ok: true; file: string; after: string; settled?: SettledClip }
   | { ok: false; reason: string; fix: string };
 
 const PLAN_VERBS = new Set<MutationVerb>(["move", "trim", "split", "delete", "set", "duplicate"]);
@@ -102,6 +105,17 @@ function preparePlanEdit(
       ok: false,
       reason: `unsupported edit verb ${edit.verb}`,
       fix: "use move, trim, split, delete, set, or duplicate",
+    };
+  }
+  const fields = FIELDS_READ_BY_VERB[edit.verb as MutationVerb];
+  const unused = Object.keys(edit).find(
+    (key) => key !== "verb" && key !== "ref" && !fields.includes(key),
+  );
+  if (unused) {
+    return {
+      ok: false,
+      reason: `${edit.verb} does not use ${unused}`,
+      fix: `remove ${unused}; ${edit.verb} takes ${fields.join(", ")}`,
     };
   }
   const resolved = resolveRef(timeline, edit.ref);
@@ -141,22 +155,38 @@ function applyPlanEdit(
   };
   const decision = decideMutation(verb, context, { ...planEdit, _: [planEdit.ref] });
   if (!decision.ok) return { ok: false, reason: decision.reason, fix: decision.fix };
+  const movesClip = verb === "move" || verb === "trim";
   const conflict = mutationConflict(
     verb as MutationVerb,
-    planEdit.overwrite === true,
+    planEdit.overwrite === true || movesClip,
     row,
     timeline,
     decision.nextStart,
     decision.nextDuration,
   );
   if (conflict) return { ok: false, reason: conflict.reason, fix: conflict.fix };
-  return { ok: true, file: row.file, after: decision.after };
+  const settled = movesClip && planEdit.overwrite !== true ? { verb, ref: row.ref } : undefined;
+  return { ok: true, file: row.file, after: decision.after, ...(settled && { settled }) };
+}
+
+function overlapAtEnd(
+  settled: SettledClip[],
+  timeline: ProjectTimeline,
+): { reason: string; fix: string } | null {
+  for (const { verb, ref } of settled) {
+    const found = resolveRef(timeline, ref);
+    if (!found.ok) continue;
+    const { row } = found;
+    const conflict = mutationConflict(verb, false, row, timeline, row.start, row.duration);
+    if (conflict) return conflict;
+  }
+  return null;
 }
 
 type EditPlan = { ok: true; edits: unknown[] } | { ok: false; reason: string; fix: string };
 
-function readEditPlan(file: string): EditPlan {
-  const raw = file === "-" ? readFileSync(0, "utf-8") : readFileSync(file, "utf-8");
+export function readEditPlan(file: string): EditPlan {
+  const raw = file === "-" ? readJsonStdinText() : readJsonFileText(file);
   try {
     const edits: unknown = JSON.parse(raw);
     return Array.isArray(edits)
@@ -187,13 +217,16 @@ async function applyPlanEdits(
   project: ReturnType<typeof resolveProject>,
   sourceByFile: Map<string, string>,
 ): Promise<{ ok: true } | { ok: false; reason: string; fix: string }> {
+  const settled: SettledClip[] = [];
   for (const edit of edits) {
     const result = applyPlanEdit(edit, timeline, project, sourceByFile);
     if (!result.ok) return result;
+    if (result.settled) settled.push(result.settled);
     sourceByFile.set(result.file, result.after);
     timeline = await describeProject(project.indexPath, undefined, sourceByFile);
   }
-  return { ok: true };
+  const conflict = overlapAtEnd(settled, timeline);
+  return conflict ? { ok: false, ...conflict } : { ok: true };
 }
 
 export async function runApply(args: Record<string, unknown>): Promise<void> {
@@ -271,7 +304,7 @@ type UndoInput =
 function readUndoInput(input: string): UndoInput {
   let raw: string;
   try {
-    raw = readFileSync(input, "utf-8");
+    raw = readJsonFileText(input);
   } catch {
     raw = input;
   }
@@ -297,8 +330,25 @@ function readUndoInput(input: string): UndoInput {
   return { ok: true, receipts: values, batch: Array.isArray(value) };
 }
 
+function refuseUndoError(error: unknown, projectDir: string, json: boolean): void {
+  if (isRecord(error) && error.code === "ENOENT" && typeof error.path === "string")
+    return refuse(
+      "timeline undo",
+      {
+        reason: `undo file is missing: ${relative(projectDir, error.path).split("\\").join("/")}`,
+        fix: "restore the missing target or backup file before retrying undo",
+      },
+      json,
+    );
+  if (isFileChanged(error))
+    return refusal(error.message, "read the latest timeline before retrying undo", json);
+  throw error;
+}
+
 export async function runUndo(args: Record<string, unknown>): Promise<void> {
-  const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined);
+  const project = resolveProject(typeof args.dir === "string" ? args.dir : undefined, {
+    requireIndex: false,
+  });
   const json = args.json === true;
   const input = typeof args.receipt === "string" ? args.receipt : positional(args)[1];
   if (!input)
@@ -309,23 +359,21 @@ export async function runUndo(args: Record<string, unknown>): Promise<void> {
     );
   const undo = readUndoInput(input);
   if (!undo.ok) return refuse("timeline undo", undo, json);
-  const inputs = undo.receipts.map((receipt) => {
-    const target = join(project.dir, receipt.file);
-    return {
-      sourceFile: receipt.file,
-      absPath: target,
-      before: readFileSync(target, "utf-8"),
-      after: readFileSync(join(project.dir, receipt.backupPath), "utf-8"),
-      expectedVersion: receipt.version,
-    };
-  });
   let receipts: AppliedFileMutation[];
   try {
+    const inputs = undo.receipts.map((receipt) => {
+      const target = join(project.dir, receipt.file);
+      return {
+        sourceFile: receipt.file,
+        absPath: target,
+        before: readFileSync(target, "utf-8"),
+        after: readFileSync(join(project.dir, receipt.backupPath), "utf-8"),
+        expectedVersion: receipt.version,
+      };
+    });
     receipts = applyFileMutations(project.dir, inputs);
   } catch (error) {
-    if (isFileChanged(error))
-      return refusal(error.message, "read the latest timeline before retrying undo", json);
-    throw error;
+    return refuseUndoError(error, project.dir, json);
   }
   const result = {
     ok: true,

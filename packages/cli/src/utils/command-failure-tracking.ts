@@ -88,7 +88,7 @@ function guardLeafFlags(
   ctx: CommandContext<any>,
   rawArgs: string[],
 ): void {
-  assertKnownFlags(cmd, rawArgs);
+  assertKnownFlags(cmd, rawArgs, path);
   const guarded = guardSwallowedFlagValues(cmd, path, rawArgs);
   if (!guarded.rewritten) return;
   ctx.rawArgs = guarded.rawArgs;

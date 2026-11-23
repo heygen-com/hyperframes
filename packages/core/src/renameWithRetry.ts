@@ -1,0 +1,155 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import { copyFileSync, readdirSync, renameSync } from "node:fs";
+import { copyFile, rename } from "node:fs/promises";
+import { removeScratch } from "./removeScratch.js";
+
+// Windows reports EPERM/EACCES/EBUSY while antivirus or a just-exited process holds the file (clears in ms; ~1.3 s of
+// waits in all). EPERM onto a folder with files in it never clears; an empty one may be a removed folder still held.
+const RETRYABLE = new Set(["EPERM", "EACCES", "EBUSY"]);
+const BACKOFF_MS = [10, 20, 40, 80, 160, 320, 640];
+
+interface Options {
+  platform?: NodeJS.Platform;
+  /** Copy the bytes when Windows keeps refusing (a TEMP that denies delete). Not atomic: scratch files only. */
+  copyFallback?: boolean;
+}
+
+export function isWindowsHold(error: unknown, platform = process.platform): boolean {
+  if (platform !== "win32") return false;
+  return RETRYABLE.has((error as NodeJS.ErrnoException | undefined)?.code ?? "");
+}
+
+const holdScope = new AsyncLocalStorage<{ open: boolean; held: unknown }>();
+
+class HeldRename {
+  constructor(readonly error: unknown) {}
+}
+
+export async function catchHeldRename(work: () => Promise<void>): Promise<unknown> {
+  const scope: { open: boolean; held: unknown } = { open: true, held: null };
+  try {
+    await holdScope.run(scope, work);
+  } catch (thrown) {
+    if (!(thrown instanceof HeldRename)) throw thrown;
+  } finally {
+    scope.open = false;
+  }
+  return scope.held;
+}
+
+function handOverHold(error: unknown): void {
+  const scope = holdScope.getStore();
+  if (!scope?.open) return;
+  scope.open = false;
+  scope.held = error;
+  throw new HeldRename(error);
+}
+
+/** What a refused rename does next: wait and try again, fall back to a copy, or give up with the error. */
+function nextStep(
+  error: unknown,
+  attempt: number,
+  options: Options,
+  platform: NodeJS.Platform,
+  to: string,
+) {
+  if (!isWindowsHold(error, platform) || isFilledFolder(to)) return "throw";
+  if (attempt < BACKOFF_MS.length) return "wait";
+  return options.copyFallback ? "copy" : "throw";
+}
+
+function isFilledFolder(path: string): boolean {
+  try {
+    return readdirSync(path).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** `renameSync` that rides out Windows' transient file locks; other platforms and errors throw at once. */
+export function renameWithRetry(
+  from: string,
+  to: string,
+  options: Options & {
+    rename?: (from: string, to: string) => void;
+    copy?: (from: string, to: string) => void;
+  } = {},
+): void {
+  const doRename = options.rename ?? renameSync;
+  const doCopy = options.copy ?? copyFileSync;
+  const platform = options.platform ?? process.platform;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      doRename(from, to);
+      return;
+    } catch (error) {
+      const step = nextStep(error, attempt, options, platform, to);
+      if (step === "throw") throw error;
+      handOverHold(error);
+      if (step === "wait") {
+        sleepSync(BACKOFF_MS[attempt]!);
+        continue;
+      }
+      try {
+        doCopy(from, to);
+      } catch {
+        throw error;
+      }
+      removeScratch(from);
+      return;
+    }
+  }
+}
+
+/** Async twin of {@link renameWithRetry}. */
+export async function renameWithRetryAsync(
+  from: string,
+  to: string,
+  options: Options & {
+    rename?: (from: string, to: string) => Promise<void>;
+    copy?: (from: string, to: string) => Promise<void>;
+  } = {},
+): Promise<void> {
+  const doRename = options.rename ?? rename;
+  const doCopy = options.copy ?? copyFile;
+  const platform = options.platform ?? process.platform;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await doRename(from, to);
+      return;
+    } catch (error) {
+      const step = nextStep(error, attempt, options, platform, to);
+      if (step === "throw") throw error;
+      if (step === "wait") {
+        await new Promise((resolve) => setTimeout(resolve, BACKOFF_MS[attempt]));
+        continue;
+      }
+      try {
+        await doCopy(from, to);
+      } catch {
+        throw error;
+      }
+      removeScratch(from);
+      return;
+    }
+  }
+}
+
+export async function retryWindowsHold<T>(
+  operation: () => T,
+  options: { platform?: NodeJS.Platform } = {},
+): Promise<T> {
+  const platform = options.platform ?? process.platform;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return operation();
+    } catch (error) {
+      if (!isWindowsHold(error, platform) || attempt >= BACKOFF_MS.length) throw error;
+      await new Promise((resolve) => setTimeout(resolve, BACKOFF_MS[attempt]));
+    }
+  }
+}

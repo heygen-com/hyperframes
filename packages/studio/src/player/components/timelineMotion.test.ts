@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { usePlayerStore } from "../store/playerStore";
 import { markTimelineMotion, TIMELINE_REST_MS, whenTimelineIdle } from "./timelineMotion";
 
 afterEach(() => {
@@ -24,4 +25,16 @@ it("waits for a zoom to rest before resolving, and resolves at once when nothing
   void whenTimelineIdle().then(() => (again = true));
   await vi.advanceTimersByTimeAsync(1);
   expect(again).toBe(true);
+});
+
+it("waits for the film to stop playing", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestIdleCallback"] });
+  usePlayerStore.getState().setIsPlaying(true);
+  let idle = false;
+  void whenTimelineIdle().then(() => (idle = true));
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(idle).toBe(false);
+  usePlayerStore.getState().setIsPlaying(false);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(idle).toBe(true);
 });

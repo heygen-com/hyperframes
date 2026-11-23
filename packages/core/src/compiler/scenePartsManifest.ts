@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
-import { SCENE_PART_ATTR, SCENE_PARTS_META, type SceneParts } from "../sceneParts";
+import {
+  SCENE_FONTS_ATTR,
+  SCENE_PART_ATTR,
+  SCENE_PARTS_META,
+  type SceneParts,
+} from "../sceneParts";
 import { injectTagsAtHeadStart, parseHTMLContent } from "./htmlDocument";
 
 const hash = (text: string) => createHash("sha1").update(text).digest("hex").slice(0, 16);
@@ -9,6 +14,7 @@ const hash = (text: string) => createHash("sha1").update(text).digest("hex").sli
  * `ignore` lists selectors for parts that change on every build without changing what is shown.
  */
 export function addScenePartsManifest(html: string, ignore: readonly string[] = []): string {
+  if (!html.includes(SCENE_PART_ATTR)) return html;
   const doc = parseHTMLContent(html);
   const parts = [...doc.querySelectorAll(`[${SCENE_PART_ATTR}]`)];
   if (parts.length === 0) return html;
@@ -20,7 +26,10 @@ export function addScenePartsManifest(html: string, ignore: readonly string[] = 
   // A marker keeps each part's place in `shared`, so moving or reordering a scene changes it.
   for (const el of parts)
     el.replaceWith(doc.createComment(`hf-scene:${el.getAttribute(SCENE_PART_ATTR)}`));
-  for (const el of ignore.flatMap((sel) => [...doc.querySelectorAll(sel)])) el.remove();
+  for (const el of [...ignore, `style[${SCENE_FONTS_ATTR}]`].flatMap((sel) => [
+    ...doc.querySelectorAll(sel),
+  ]))
+    el.remove();
   const manifest: SceneParts = {
     shared: hash(doc.toString()),
     scenes: Object.fromEntries([...byScene].map(([scene, html]) => [scene, hash(html.join("\n"))])),

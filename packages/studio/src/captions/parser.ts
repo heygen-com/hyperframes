@@ -3,6 +3,14 @@
 // and builds a CaptionModel from a TranscriptWord array.
 
 import {
+  parseExpressionAt,
+  tokenizer,
+  type Expression,
+  type Property,
+  type SpreadElement,
+  type UnaryExpression,
+} from "acorn";
+import {
   CaptionModel,
   CaptionSegment,
   CaptionGroup,
@@ -38,23 +46,32 @@ export function buildCaptionModel(
   transcript: TranscriptWord[],
   options: BuildOptions,
 ): CaptionModel {
-  const { width, height, duration, wordsPerGroup = 5 } = options;
+  const { wordsPerGroup = 5 } = options;
+  const wordGroups: TranscriptWord[][] = [];
+  for (let offset = 0; offset < transcript.length; offset += wordsPerGroup) {
+    wordGroups.push(transcript.slice(offset, offset + wordsPerGroup));
+  }
+  return buildGroupedCaptionModel(wordGroups, options);
+}
 
+function buildGroupedCaptionModel(
+  wordGroups: TranscriptWord[][],
+  { width, height, duration }: BuildOptions,
+): CaptionModel {
   const segments = new Map<string, CaptionSegment>();
   const groups = new Map<string, CaptionGroup>();
   const groupOrder: string[] = [];
 
-  // Chunk the transcript into groups of wordsPerGroup
-  for (let groupIdx = 0; groupIdx < transcript.length; groupIdx += wordsPerGroup) {
-    const chunk = transcript.slice(groupIdx, groupIdx + wordsPerGroup);
-    const groupId = `group-${groupIdx / wordsPerGroup}`;
+  for (const chunk of wordGroups) {
+    const groupId = `group-${groups.size}`;
     const segmentIds: string[] = [];
 
     chunk.forEach((word, wordIdx) => {
-      const segmentId = `segment-${groupIdx + wordIdx}`;
+      const segmentIndex = segments.size;
+      const segmentId = `segment-${segmentIndex}`;
       const segment: CaptionSegment = {
         id: segmentId,
-        wordId: word.id ?? `w${groupIdx + wordIdx}`,
+        wordId: word.id ?? `w${segmentIndex}`,
         text: word.text,
         start: word.start,
         end: word.end,
@@ -96,30 +113,50 @@ export function buildCaptionModel(
   };
 }
 
+const GROUP_SELECTOR = ".caption-group, .caption-line, .caption-block";
+const WORD_SELECTOR = ".word, .caption-word";
+
+/** Read outer groups in transcript order; return null if their word counts do not match. */
+function readTranscriptGroups(transcript: TranscriptWord[], groupEls: NodeListOf<Element>) {
+  const wordGroups: TranscriptWord[][] = [];
+  let offset = 0;
+  for (const group of groupEls) {
+    // Caption templates can nest layout lines inside a single timed group.
+    if (group.parentElement?.closest(GROUP_SELECTOR)) continue;
+    const size = group.querySelectorAll(WORD_SELECTOR).length;
+    if (size === 0) continue;
+    wordGroups.push(transcript.slice(offset, offset + size));
+    offset += size;
+  }
+  return offset === transcript.length ? wordGroups : null;
+}
+
 /**
  * Extracts a transcript word array from caption composition source code.
  *
  * Looks for `const TRANSCRIPT = [...]` or `const script = [...]` (also let/var)
  * and parses each `{ text, start, end }` object into TranscriptWord objects.
  *
+ * Supports static literals only; expressions are never evaluated.
  * Returns an empty array if no transcript is found or if parsing fails.
  */
 export function extractTranscript(source: string): TranscriptWord[] {
-  // Match: (const|let|var) (TRANSCRIPT|script) = [...]
-  // The array may span multiple lines and contain trailing commas.
-  // The lazy [\s\S]*? anchors on the first `];` — assumes transcript word
-  // text never contains a literal `];` string (safe for speech transcripts).
-  const varPattern = /(?:const|let|var)\s+(?:TRANSCRIPT|script)\s*=\s*(\[[\s\S]*?\]);/;
-  const match = source.match(varPattern);
+  // Locate the initializer in either JavaScript or a complete HTML composition.
+  // Acorn owns its boundary so delimiters inside strings remain literal text.
+  const varPattern = /\b(?:const|let|var)\s+(?:TRANSCRIPT|script)\s*=\s*(?=\[)/;
+  const match = varPattern.exec(source);
 
   if (!match) {
     return [];
   }
 
-  const arrayLiteral = match[1];
-
   try {
-    return parseTranscriptArray(arrayLiteral);
+    const options = { ecmaVersion: "latest" } as const;
+    const expression = parseExpressionAt(source, match.index + match[0].length, options);
+    if (expression.type !== "ArrayExpression") return [];
+    const nextToken = tokenizer(source.slice(expression.end), options).getToken();
+    if (nextToken.type.label !== ";") return [];
+    return parseTranscriptArray(readStaticValue(expression));
   } catch {
     return [];
   }
@@ -130,7 +167,8 @@ export function extractTranscript(source: string): TranscriptWord[] {
  * from the source and reading computed styles from rendered elements.
  *
  * Runs in the Studio (outside the iframe). Reads computed styles from iframe DOM
- * elements to build a fully-styled CaptionModel.
+ * elements to build a fully-styled CaptionModel. Preserves DOM group boundaries
+ * when they account for every transcript word; otherwise uses default grouping.
  *
  * Returns null if no transcript is found in the source.
  */
@@ -149,25 +187,19 @@ export function parseCaptionComposition(
   }
 
   // Step 2: Look for grouping and word elements in the iframe DOM
-  const groupEls = iframeDoc.querySelectorAll(".caption-group, .caption-line, .caption-block");
-  const wordEls = iframeDoc.querySelectorAll(".word, .caption-word");
+  const groupEls = iframeDoc.querySelectorAll(GROUP_SELECTOR);
+  const wordEls = iframeDoc.querySelectorAll(WORD_SELECTOR);
 
-  // Step 3: Infer wordsPerGroup from element counts
-  let wordsPerGroup = 5; // default
-  if (groupEls.length > 0 && wordEls.length > 0) {
-    wordsPerGroup = Math.round(wordEls.length / groupEls.length);
-    if (wordsPerGroup < 1) {
-      wordsPerGroup = 1;
-    }
-  }
-
-  // Step 4: Build the caption model with inferred grouping
-  const model = buildCaptionModel(transcript, {
+  // Preserve authored boundaries when the DOM accounts for the complete transcript.
+  const wordGroups = readTranscriptGroups(transcript, groupEls);
+  const options = {
     width: compositionWidth,
     height: compositionHeight,
     duration: compositionDuration,
-    wordsPerGroup,
-  });
+  };
+  const model = wordGroups
+    ? buildGroupedCaptionModel(wordGroups, options)
+    : buildCaptionModel(transcript, options);
 
   // Step 5: Read computed styles from the first word or group element
   const firstWordEl = wordEls.item(0) as Element | null;
@@ -262,51 +294,75 @@ export function parseCaptionComposition(
   return model;
 }
 
-/**
- * Parses a JS array literal containing `{ text, start, end }` objects.
- *
- * Handles:
- * - Double-quoted and single-quoted string values
- * - Trailing commas after the last element or property
- * - Unquoted property keys (standard JS object literal syntax)
- * - Numeric values for start/end
- */
-function parseTranscriptArray(arrayLiteral: string): TranscriptWord[] {
-  // Try parsing as-is first (handles already-valid JSON)
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(arrayLiteral);
-  } catch {
-    // Not valid JSON — normalize single quotes, unquoted keys, trailing commas
-    let normalized = arrayLiteral;
-    normalized = normalized.replace(/'((?:[^'\\]|\\.)*)'/g, (_match, inner) => {
-      const escaped = inner.replace(/\\'/g, "'").replace(/"/g, '\\"');
-      return `"${escaped}"`;
-    });
-    normalized = normalized.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":');
-    normalized = normalized.replace(/,(\s*[}\]])/g, "$1");
-    parsed = JSON.parse(normalized);
+/** Decode data literals only, including metadata that is not used by captions. */
+function readStaticValue(node: Expression | SpreadElement | null): unknown {
+  switch (node?.type) {
+    case "Literal":
+      // Acorn's remaining literals are strings, numbers, booleans, or null.
+      if ("regex" in node || "bigint" in node) break;
+      return node.value;
+    case "UnaryExpression":
+      return readSignedNumber(node);
+    case "ArrayExpression":
+      return node.elements.map(readStaticValue);
+    case "ObjectExpression":
+      return Object.fromEntries(node.properties.map(readStaticProperty));
   }
+  throw new SyntaxError("Transcript values must be static literals");
+}
 
+function readSignedNumber(node: UnaryExpression): number {
+  if (
+    (node.operator !== "-" && node.operator !== "+") ||
+    node.argument.type !== "Literal" ||
+    typeof node.argument.value !== "number"
+  ) {
+    throw new SyntaxError("Transcript unary expressions must be signed numeric literals");
+  }
+  return node.operator === "-" ? -node.argument.value : node.argument.value;
+}
+
+function readStaticProperty(property: Property | SpreadElement): [string | number, unknown] {
+  if (
+    property.type !== "Property" ||
+    property.kind !== "init" ||
+    property.method ||
+    property.shorthand ||
+    property.computed
+  ) {
+    throw new SyntaxError("Transcript properties must be static data");
+  }
+  const key =
+    property.key.type === "Identifier" ? property.key.name : readStaticValue(property.key);
+  if (typeof key !== "string" && typeof key !== "number") {
+    throw new SyntaxError("Transcript property keys must be names or literals");
+  }
+  return [key, readStaticValue(property.value)];
+}
+
+function parseTranscriptArray(parsed: unknown): TranscriptWord[] {
   if (!Array.isArray(parsed)) {
     return [];
   }
 
   const words: TranscriptWord[] = [];
-  for (const item of parsed) {
+  const items: unknown[] = parsed;
+  for (const item of items) {
     if (
       item !== null &&
       typeof item === "object" &&
-      typeof (item as Record<string, unknown>).text === "string" &&
-      typeof (item as Record<string, unknown>).start === "number" &&
-      typeof (item as Record<string, unknown>).end === "number"
+      "text" in item &&
+      typeof item.text === "string" &&
+      "start" in item &&
+      typeof item.start === "number" &&
+      "end" in item &&
+      typeof item.end === "number"
     ) {
-      const entry = item as Record<string, unknown>;
       words.push({
-        ...(typeof entry.id === "string" ? { id: entry.id } : {}),
-        text: entry.text as string,
-        start: entry.start as number,
-        end: entry.end as number,
+        ...("id" in item && typeof item.id === "string" ? { id: item.id } : {}),
+        text: item.text,
+        start: item.start,
+        end: item.end,
       });
     }
   }

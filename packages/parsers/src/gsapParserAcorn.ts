@@ -25,7 +25,7 @@ import {
   EXTRAS_KEYS,
   GSAP_DEFAULT_DURATION,
 } from "./gsapConstants.js";
-import { buildArcPath } from "./gsapSerialize.js";
+import { buildArcPath, distributeArrayKeyframes } from "./gsapSerialize.js";
 import { inlineComputedTimelines, readProvenance } from "./gsapInline.js";
 import { getObjectArrayKeyframeTiming } from "./gsapObjectArrayTiming.js";
 
@@ -73,7 +73,10 @@ function parseProgram(script: string): any {
 
 type ScopeBindings = ReadonlyMap<string, number | string | boolean>;
 /** Per-scope element bindings: scopeNode → (variable name → selector). */
-type TargetBindings = Map<any, Map<string, string>>;
+type TargetBindings = {
+  byScope: Map<unknown, Map<string, string>>;
+  identifiers: IdentifierBindingIndex;
+};
 
 type IdentifierDeclaration = {
   node: any;
@@ -372,10 +375,10 @@ function addBinding(
   name: string,
   selector: string,
 ): void {
-  let scoped = bindings.get(scopeNode);
+  let scoped = bindings.byScope.get(scopeNode);
   if (!scoped) {
     scoped = new Map();
-    bindings.set(scopeNode, scoped);
+    bindings.byScope.set(scopeNode, scoped);
   }
   if (!scoped.has(name)) scoped.set(name, selector);
 }
@@ -386,12 +389,12 @@ function lookupBindingFromAncestors(
   bindings: TargetBindings,
 ): string | null {
   for (const scopeNode of scopeChainFromAncestors(ancestors)) {
-    const selector = bindings.get(scopeNode)?.get(name);
+    const selector = bindings.byScope.get(scopeNode)?.get(name);
     if (selector !== undefined) return selector;
   }
   // Program-scope bindings are stored under null (enclosingScopeNodeFromAncestors
   // returns null when no function wrapper exists — the common case in HF scripts).
-  return bindings.get(null)?.get(name) ?? null;
+  return bindings.byScope.get(null)?.get(name) ?? null;
 }
 
 function isFunctionNode(node: any): boolean {
@@ -459,7 +462,7 @@ function collectTargetBindings(
   scope: ScopeBindings,
   identifierBindings: IdentifierBindingIndex,
 ): TargetBindings {
-  const bindings: TargetBindings = new Map();
+  const bindings: TargetBindings = { byScope: new Map(), identifiers: identifierBindings };
 
   acornWalk.ancestor(ast, {
     VariableDeclarator(node: any, _: unknown, ancestors: any[]) {
@@ -573,7 +576,21 @@ function resolveTargetSelector(
     return typeof node.value === "string" ? node.value : null;
   }
   if (node.type === "Identifier") {
-    return lookupBindingFromAncestors(node.name, ancestors, bindings);
+    const bound = lookupBindingFromAncestors(node.name, ancestors, bindings);
+    if (bound) return bound;
+    const declaration = findVisibleIdentifierDeclaration(
+      node.name,
+      ancestors,
+      bindings.identifiers,
+      node.start,
+    );
+    if (
+      declaration?.kind !== "const" ||
+      bindings.identifiers.reassignedDeclarations.has(declaration.node)
+    )
+      return null;
+    const literal = resolveNode(declaration.node.init, scope);
+    return typeof literal === "string" ? literal : null;
   }
   if (node.type === "CallExpression") {
     return selectorFromQueryCall(node, scope);
@@ -628,8 +645,9 @@ function describeProxyTarget(targetNode: any, varsNode: any, scope: ScopeBinding
   const onUpdate = findPropertyNode(varsNode, "onUpdate");
   const driven = onUpdate ? drivenDomChannel(onUpdate) : undefined;
   if (driven) return `proxy → ${driven}`;
-  // Empty / proxy object with no resolvable DOM write ⇒ a timing spacer.
-  return "dwell/hold";
+  return objNode.properties.length === 0 && !onUpdate
+    ? "dwell/hold"
+    : "proxy (unresolved DOM association)";
 }
 
 /** True for `el.style.foo = …` (nested-member style write). */
@@ -760,6 +778,7 @@ interface TimelineDetection {
   ref: TimelineRef | null;
   timelineCount: number;
   defaults?: TimelineDefaults;
+  declaration?: Pick<acorn.Node, "start" | "end">;
 }
 
 /** The static string key of a member access (`window.__timelines["scene"]` -> "scene"), else null. */
@@ -829,6 +848,7 @@ function findTimelineVar(ast: any, scope?: ScopeBindings): TimelineDetection {
   let ref: TimelineRef | null = null;
   let timelineCount = 0;
   let defaults: TimelineDefaults | undefined;
+  let declaration: TimelineDetection["declaration"];
   const emptyScope: ScopeBindings = scope ?? new Map();
 
   acornWalk.simple(ast, {
@@ -839,6 +859,7 @@ function findTimelineVar(ast: any, scope?: ScopeBindings): TimelineDetection {
           timelineVar = node.id.name;
           ref = { kind: "identifier", name: node.id.name };
           defaults = extractTimelineDefaults(node.init, emptyScope);
+          declaration = { start: node.start, end: node.end };
         }
       }
     },
@@ -856,12 +877,13 @@ function findTimelineVar(ast: any, scope?: ScopeBindings): TimelineDetection {
             ref = { kind: "member", node: left };
             defaults = extractTimelineDefaults(node.right, emptyScope);
           }
+          if (ref) declaration = { start: node.start, end: node.end };
         }
       }
     },
   });
 
-  return { timelineVar, ref, timelineCount, defaults };
+  return { timelineVar, ref, timelineCount, defaults, declaration };
 }
 
 // ── Tween call collection ─────────────────────────────────────────────────────
@@ -1163,21 +1185,9 @@ function parseSimpleArrayKeyframes(node: any, scope: ScopeBindings): GsapKeyfram
     }
   }
 
-  const maxLen = Math.max(...[...arrayProps.values()].map((a) => a.length), 0);
-  const keyframes: GsapPercentageKeyframe[] = [];
-
-  for (let i = 0; i < maxLen; i++) {
-    const percentage = maxLen > 1 ? Math.round((i / (maxLen - 1)) * 100) : 0;
-    const properties: Record<string, number | string> = {};
-    for (const [key, values] of arrayProps) {
-      if (i < values.length) properties[key] = values[i] as number | string;
-    }
-    keyframes.push({ percentage, properties });
-  }
-
   return {
     format: "simple-array",
-    keyframes,
+    keyframes: distributeArrayKeyframes(arrayProps),
     ...(ease ? { ease } : {}),
     ...(easeEach ? { easeEach } : {}),
   };
@@ -1421,6 +1431,10 @@ function tweenCallToAnimation(
     duration,
     ease,
   };
+  if (
+    ["stagger", "repeat", "repeatDelay", "delay"].some((key) => findPropertyNode(call.varsArg, key))
+  )
+    anim.inspectionTiming = inspectionTiming(call.varsArg, scope);
   if (targetIdentity) anim.targetIdentity = targetIdentity;
   if (!hasPositionArg) anim.implicitPosition = true;
   let group = classifyTweenPropertyGroup(properties);
@@ -1446,35 +1460,67 @@ function tweenCallToAnimation(
 
 // ── Stagger annotation (read path) ────────────────────────────────────────────
 
-/**
- * Pull the per-element stagger amount out of a captured `extras.stagger` value.
- * GSAP staggers are either a number (`0.08`) or an object (`{ each: 0.012, ... }`).
- * The value arrives here as the round-trip form `__raw:<source>`; we only need
- * the leading numeric / `each:` figure for the annotation. Returns undefined for
- * non-numeric (function) staggers — there's nothing honest to print.
- */
+function inspectionTiming(
+  varsNode: any,
+  scope: ScopeBindings,
+): NonNullable<GsapAnimation["inspectionTiming"]> {
+  const numeric = (key: string): number | null => {
+    const node = findPropertyNode(varsNode, key);
+    if (!node) return 0;
+    const value = resolveNode(node, scope);
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  };
+  const node = findPropertyNode(varsNode, "stagger");
+  let stagger: NonNullable<GsapAnimation["inspectionTiming"]>["stagger"] = { each: 0 };
+  if (node) {
+    const value = resolveNode(node, scope);
+    stagger = typeof value === "number" ? { each: value } : null;
+    if (
+      node.type === "ObjectExpression" &&
+      !(node.properties ?? []).some(
+        (p: any) =>
+          !["each", "amount", "from", "ease", "axis", "grid"].includes(propKeyName(p) ?? ""),
+      )
+    ) {
+      const each = resolveNode(findPropertyNode(node, "each"), scope);
+      const amount = resolveNode(findPropertyNode(node, "amount"), scope);
+      // Grid and axis distributions need runtime geometry.
+      if (!findPropertyNode(node, "grid") && !findPropertyNode(node, "axis")) {
+        if (typeof amount === "number") stagger = { amount };
+        else if (typeof each === "number") stagger = { each };
+      }
+    }
+  }
+  return {
+    repeat: numeric("repeat"),
+    repeatDelay: numeric("repeatDelay"),
+    delay: numeric("delay"),
+    stagger,
+  };
+}
+
 function staggerAmount(raw: unknown): number | undefined {
   if (typeof raw === "number") return raw;
   if (typeof raw !== "string") return undefined;
   const src = raw.startsWith("__raw:") ? raw.slice(6) : raw;
-  const m = /(?:each\s*:\s*)?(-?\d+(?:\.\d+)?)/.exec(src);
-  if (!m) return undefined;
-  const n = Number.parseFloat(m[1]!);
-  return Number.isFinite(n) ? n : undefined;
+  try {
+    const node = acorn.parseExpressionAt(src, 0, { ecmaVersion: "latest" });
+    if (src.slice(node.end).trim()) return undefined;
+    const value = resolveNode(
+      node.type === "ObjectExpression" ? findPropertyNode(node, "each") : node,
+      new Map(),
+    );
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
-/** Rest-pose value GSAP animates to/from for an unspecified endpoint. */
 function restValue(prop: string): number {
   return prop === "opacity" || prop.startsWith("scale") ? 1 : 0;
 }
 
-/**
- * Honest from/to keyframes for a flat staggered tween, mirroring how a flat
- * tween renders: `from()` plays vars -> rest, `to()` plays rest -> vars, `fromTo`
- * plays its authored endpoints. A synthetic `stagger` channel rides on both
- * keyframes so the per-element cascade is visible even when the tween lands on
- * the rest pose (a 1->1 collection that would otherwise read as a no-op).
- */
+/** Studio reads these stops, including the rest pose. The CLI reports that pose as unresolved. */
 function staggeredKeyframes(
   anim: Omit<GsapAnimation, "id">,
   each: number,
@@ -1893,6 +1939,7 @@ export interface ParsedGsapAcornForWrite {
   ast: any;
   timelineVar: string;
   hasTimeline: boolean;
+  timelineDeclaration?: TimelineDetection["declaration"];
   located: Array<{ id: string; call: TweenCallInfo; animation: GsapAnimation }>;
 }
 
@@ -1926,7 +1973,13 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
       call,
       animation: animations[i]!,
     }));
-    return { ast, timelineVar, hasTimeline: detection.ref !== null, located };
+    return {
+      ast,
+      timelineVar,
+      hasTimeline: detection.ref !== null,
+      timelineDeclaration: detection.declaration,
+      located,
+    };
   } catch {
     return null;
   }

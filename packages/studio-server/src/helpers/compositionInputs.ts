@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { parseHTML } from "linkedom";
-import { createProjectSignature } from "./projectSignature.js";
+import { createProjectSignatureAsync } from "./projectSignature.js";
 import { rootHeadContent } from "./subComposition.js";
 import { resolveWithinProject } from "./safePath.js";
 import { descendants } from "./compositionInsertion.js";
@@ -99,11 +99,11 @@ function rootHashes(read: SourceReader) {
 
 // What a thumbnail of `compPath` renders from: the project minus the compositions the root
 // mounts that `compPath` does not; for a scene the root counts as its head alone.
-export function compositionInputSignature(
+export async function compositionInputSignature(
   projectDir: string,
   compPath: string,
   projectSignature: string,
-): string {
+): Promise<string> {
   const key = `${projectDir}\0${compPath}`;
   const known = inputSignatures.get(key);
   if (known?.projectSignature === projectSignature) return known.inputSignature;
@@ -115,11 +115,12 @@ export function compositionInputSignature(
   );
   let inputSignature: string;
   if (comp === ROOT_COMPOSITION) {
-    inputSignature = createProjectSignature(projectDir, excluded);
+    inputSignature = await createProjectSignatureAsync(projectDir, excluded);
   } else {
     const hashes = rootHashes(read);
     if (!rootMemos.has(projectDir)) rootMemos.set(projectDir, { ...hashes, affected: null });
-    inputSignature = `${createProjectSignature(projectDir, excluded.add(ROOT_COMPOSITION))}:${hashes.head}`;
+    const rest = await createProjectSignatureAsync(projectDir, excluded.add(ROOT_COMPOSITION));
+    inputSignature = `${rest}:${hashes.head}`;
   }
   inputSignatures.set(key, { projectSignature, inputSignature });
   return inputSignature;

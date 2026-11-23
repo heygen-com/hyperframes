@@ -10,6 +10,7 @@ import { mkdirSync, rmSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { BUNDLES, WORKERS } from "./buildEntries.mjs";
+import { rewriteRelativeImportExtensions } from "../../scripts/rewrite-relative-import-extensions.mjs";
 
 rmSync("dist", { recursive: true, force: true });
 mkdirSync("dist", { recursive: true });
@@ -54,5 +55,6 @@ import { execSync } from "child_process";
 execSync("tsc --emitDeclarationOnly --declaration --declarationMap false", {
   stdio: "inherit",
 });
+rewriteRelativeImportExtensions("dist");
 
 console.log("[Build] Complete: dist/index.js, dist/public-server.js, *.d.ts");

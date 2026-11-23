@@ -14,18 +14,20 @@ describe("buildNpxCommand", () => {
     });
   });
 
-  // Real npx cold-start on Windows CI routinely exceeds vitest's 5s default,
-  // making this smoke test flaky. Give it generous headroom (it still asserts
-  // a real version string, so it isn't reduced to a tautology by mocking).
-  it("executes the host npx version check through the resolved command", () => {
-    const npx = buildNpxCommand(["--version"]);
-    const version = execFileSync(npx.command, npx.args, {
-      encoding: "utf8",
-      timeout: 30_000,
-    }).trim();
+  // Runs a real npx, so only the dedicated shim job sets HF_NPX_SHIM_E2E; the general shards stay hermetic.
+  it.runIf(process.env.HF_NPX_SHIM_E2E === "1")(
+    "executes the host npx version check through the resolved command",
+    () => {
+      const npx = buildNpxCommand(["--version"]);
+      const version = execFileSync(npx.command, npx.args, {
+        encoding: "utf8",
+        timeout: 30_000,
+      }).trim();
 
-    expect(version).toMatch(/^\d+\.\d+\.\d+/);
-  }, 60_000);
+      expect(version).toMatch(/^\d+\.\d+\.\d+/);
+    },
+    60_000,
+  );
 });
 
 describe("buildNpmCommand", () => {

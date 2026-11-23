@@ -1,0 +1,86 @@
+{
+  "name": "@hyperframes/inspector",
+  "version": "0.9.86",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes",
+    "directory": "packages/inspector"
+  },
+  "bin": {
+    "hyperframes-inspector": "./dist/server.js"
+  },
+  "files": [
+    "dist/service.js",
+    "dist/live.js",
+    "dist/server.js",
+    "dist/inspection.js",
+    "dist/types",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "bun": "./src/service.ts",
+      "import": "./src/service.ts",
+      "types": "./src/service.ts",
+      "default": "./dist/service.js"
+    },
+    "./live": {
+      "types": "./dist/types/inspector/src/live.d.ts",
+      "default": "./dist/live.js"
+    },
+    "./server": {
+      "bun": "./src/server.ts",
+      "import": "./src/server.ts",
+      "types": "./src/server.ts",
+      "default": "./dist/server.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/types/inspector/src/service.d.ts",
+        "default": "./dist/service.js"
+      },
+      "./live": {
+        "types": "./dist/types/inspector/src/live.d.ts",
+        "default": "./dist/live.js"
+      },
+      "./server": {
+        "types": "./dist/types/inspector/src/server.d.ts",
+        "default": "./dist/server.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "serve": "bun run build && bun src/server.ts",
+    "test:egress": "bun tests/egress.ts",
+    "test:service-worker": "bun tests/serviceWorker.ts",
+    "test:timeline": "bun tests/timeline.ts",
+    "test:timeline-compositions": "bun tests/timelineCompositions.ts",
+    "test:live": "bun run build && bun tests/live.ts",
+    "test:live-scenes": "bun run build && bun tests/liveScenes.ts",
+    "test:source-release": "bun tests/sourceRelease.ts",
+    "serve:node": "node dist/server.js"
+  },
+  "dependencies": {
+    "@hyperframes/core": "workspace:*",
+    "@hyperframes/parsers": "workspace:*",
+    "@jridgewell/trace-mapping": "^0.3.29",
+    "acorn": "^8.17.0",
+    "esbuild": "^0.28.2",
+    "eslint-scope": "^9.1.2",
+    "htmlparser2": "^10.1.0",
+    "postcss": "^8.5.8",
+    "puppeteer-core": "^25.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.12"
+  }
+}

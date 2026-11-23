@@ -1,131 +1,541 @@
 ---
-title: "Get unstuck"
-sidebarTitle: "Get unstuck"
-description: "Start with what you can see, try the smallest useful fix, and get back to your HyperFrames task."
+title: "Troubleshooting"
+sidebarTitle: "Troubleshooting"
+description: "Fix common HyperFrames problems by what you see: in the Studio app, in the preview and browser editor, and when a render fails or looks wrong."
 ---
 
-Find the symptom that looks like yours below.
+Find what you see. Problems sit in three places:
 
-## Studio will not open
+- [In the Studio app](#in-the-studio-app): updates, sign-in, usage limits, blocked steps, API keys.
+- [In the preview and browser editor](#in-the-preview-and-browser-editor): a stale preview, something you can't
+  select, missing media, wrong animation.
+- [Renders and setup](#renders-and-setup): a render that fails, looks different or is slow, and setup errors.
 
-The browser never opens, the page is unreachable, or the project does not load.
+## In the Studio app
 
-1. Open a terminal in the HyperFrames project folder.
-2. Run `npx hyperframes preview`.
-3. Keep that process running while Studio is open.
-4. Use the local URL printed in the terminal.
+Most problems in the app come from the agent it works with (Claude Code, Codex and the others), not from HyperFrames.
 
-If the command cannot find a project, check that you are inside the project folder rather than its parent.
+### How updates arrive
 
-## Preview is wrong or stale
+The app checks for a new version when it opens and every few minutes after that. When one is ready, you get a
+notification, a round update button appears in the bottom-right corner, and Framey points at it: **There's a new
+update. Click here**.
 
-A change is missing, playback looks old, or the preview is blank. Preview's Code
-editor and visual controls save automatically. If you edited the project in another
-application, save that file first.
+1. Click the update button. It fills up as the update downloads.
+2. The app restarts by itself as soon as nothing is running: no agent run, export, or setup in progress. It reopens
+   the project you had open, and you do not lose anything.
 
-1. Wait for the project refresh, then reload Studio once.
-2. Check the terminal for a build or runtime error.
-3. Run the project checks:
+To check by hand, open **Settings** > **Updates** and choose **Check for updates**. On a Mac, **HyperFrames** >
+**Check for Updates…** in the menu bar does the same. Some updates show a short video of what is new.
+
+**Automatic updates** in **Settings** > **Updates** is on by default: the app updates itself while you're away. Turn it
+off to update only when you click.
+
+If an update says **The update is taking longer than it should** or **The update didn't finish**, click the update
+button and choose **Try again** to cancel it and start a new one, or **Download it instead** to get the
+latest version from the download page. **Download the latest version** in **Settings** > **Updates** also opens the
+download page. If it says **Could not check for updates**, check
+your internet connection, then try again.
+
+### The app asks me to sign in to HyperFrames
+
+Sending a request needs your HeyGen account. Choose **Continue with HeyGen** and finish in your browser within 10
+minutes. If it says **Couldn't renew your sign-in** or **Couldn't finish signing in**, check your internet (and that a
+VPN or proxy covers all apps). If it says **Sign-in timed out**, **Your sign-in expired** or **HeyGen didn't sign you
+in**, choose **Try again**.
+
+### You're signed out of Claude Code
+
+The chat shows a sign-in card. Your message is kept. Choose **Sign in**, finish in your browser, and the message
+sends as soon as you are back. Choose **Use Codex instead** to send it with Codex if Codex is ready.
+
+For Codex, the chat says **Codex is not signed in**. Choose **Copy sign-in command**, run it in a terminal, then
+choose **Try again**.
+
+### My agent hit its usage limit
+
+The chat says, for example, **Claude Code hit its usage limit. It resets** at a time. This is your agent's own plan
+limit, not a HyperFrames one. Wait until it resets and choose **Try again**, or choose **Switch to Codex** (or
+**Switch to Claude Code**) if the other agent is set up.
+
+If the chat says the agent **had a problem on its side**, the agent's service is busy or down. Try again in a few
+minutes.
+
+### Claude Code blocked a step
+
+**Agent access** in **Settings** > **Agent** decides what Claude Code may do:
+
+- **Auto**, the default: it works in your project and blocks risky steps on its own.
+- **Full access**: it can install, use the internet, and run anything, with no checks.
+
+With **Auto**, a step Claude Code refuses shows as blocked in the run's work log. If the change needed that step,
+switch to **Full access** and send the request again.
+
+### The agent is not installed or won't start
+
+The chat says Claude Code **is not installed**. Choose **Try again** and the app sets it up for you. If
+Claude Code is installed but will not start, choose **Reinstall** in **Settings** > **Permissions**. See
+[Connect your agent](/studio-app/connect-your-agent) for the manual commands.
+
+### Other messages
+
+| The chat says | Do this |
+| --- | --- |
+| **… ran out of room in this chat** | Choose **Start a fresh session**. |
+| **… needs an update to use** a model | Choose the update button in the chat. |
+| **… could not reach the internet** | Check your connection, then **Try again**. |
+| **… could not finish this change** | Choose **Try again**, or say the change differently. |
+
+### Where your work is kept
+
+- **Your projects**: the hidden `.hyperframes-studio` folder in your home folder.
+- **Exported videos**: your Downloads folder.
+- **App settings and sign-in**: `Library/Application Support/HyperFrames` in your home folder on a Mac,
+  `%APPDATA%\HyperFrames` on Windows, and `.config/HyperFrames` in your home folder on Linux.
+
+Each project is a plain HyperFrames project folder, so it also opens in the
+[Studio web editor](/studio/index) and with the [command line](/developers/cli).
+
+## In the preview and browser editor
+
+### I cannot select the right element
+
+- Pause on a frame where it is visible.
+- Choose it from Layers.
+- Check whether it belongs to a group or nested composition.
+- Look for an off-canvas indicator.
+
+### A direct edit is unavailable
+
+The selected element may be generated, nested, or unsupported for that operation.
+
+Try the inspector, open the nested composition, copy context to the agent, or make a focused source edit.
+
+### A canvas move became animation
+
+Check whether auto-keyframing is enabled. Undo the edit, turn it off, and make the layout change again.
+
+### The timeline edit landed at the wrong time
+
+Undo, zoom in, place the playhead more precisely, and retry. Check whether snapping moved the boundary to a nearby clip or beat.
+
+### The preview did not update
+
+- Preview's Code editor and visual controls save automatically. If the change came
+  from another editor or an agent, confirm that the external file was saved.
+- Wait for the project refresh.
+- Check the terminal running `hyperframes preview`.
+- Reload the browser editor if the preview process is still healthy.
+- Restart `npx hyperframes preview` when the server stopped.
+
+### Media is missing or slow
+
+Confirm that the file exists inside the project and that its path is correct. Large media may need time to prepare a preview. Remote files can fail because of access or cross-origin restrictions.
+
+### An edit failed to save
+
+Keep the error visible, avoid stacking more edits on top of it, and undo if available. Copy the issue to your agent with the action that caused it.
+
+### A render failed
+
+Keep the complete error. Run the project checks, confirm FFmpeg and source media are available, then retry:
 
 ```bash
 npx hyperframes lint
 npx hyperframes check
 ```
 
-`lint` checks the composition structure. `check` opens the project in a browser gate and catches runtime, layout, motion, and contrast problems.
+For lower-level failures, continue to [general troubleshooting](/help).
 
-## I cannot select or edit something
+### Video is black in preview but renders
 
-Selection, canvas controls, timing, or an Inspector field is unavailable.
+The browser may not decode the source codec even though FFmpeg can.
 
-- Open **Layers** and select the element there when clicking the canvas is difficult.
-- Scrub to a time where the element is actually visible.
-- Check whether the visual lives inside a nested composition.
-- Ask the agent when the change affects source structure rather than one visible element.
+HyperFrames normally creates and uses a compatible preview proxy. If the frame remains black:
 
-[Open Studio troubleshooting →](/studio/troubleshooting)
+1. confirm automatic proxying is not disabled;
+2. run `npx hyperframes doctor`;
+3. run `npx hyperframes lint --verbose` to identify affected files;
+4. confirm the source file exists and can be read.
 
-## Media is missing or black
+### Video, image, or audio is missing
 
-An image, video, font, or audio file is absent or does not render. Check that:
+Prefer a local project asset. Confirm its path, filename capitalization, and whether it was moved or renamed.
 
-- the file still exists inside the project;
-- the path and filename capitalisation match;
-- the source is local and available during rendering;
-- the browser can decode the format;
-- the media is visible at the current time;
-- the terminal reports no download, decode, or CORS error.
+Remote media can fail because of permissions, expiring URLs, or cross-origin restrictions.
 
-Never rely on a temporary signed URL or a render-time network request. Ask the agent to copy required media into the project.
+### Preview stutters
 
-## Animation is wrong
+Common causes:
 
-Motion jumps, drifts, starts at the wrong time, or changes after seeking. First decide whether it happens:
+- very large source images;
+- several large `backdrop-filter` blurs;
+- expensive shadows or filters on animated elements;
+- too many large overlapping layers.
 
-- during normal playback;
-- only after scrubbing;
-- only in the final render.
+Check whether the slowdown occurs in one scene. Resize oversized media and simplify the expensive element before reducing the whole project’s quality.
 
-That distinction separates a timeline mistake from non-deterministic animation. HyperFrames animation must be seekable: the same frame should look the same every time it is requested.
+These problems often appear in agent-written or manually edited source.
 
-Run `npx hyperframes check`, then give your agent the smallest affected scene and the exact timestamp.
+### A video freezes while its box animates
 
-## Render failed or differs from preview
+Do not animate `width`, `height`, `top`, or `left` directly on a `<video>` element.
 
-Export stops, produces the wrong result, or disagrees with Studio.
+Put the video inside a wrapper and animate the wrapper:
 
-1. Preserve the complete render error.
-2. Run `npx hyperframes check`.
-3. Confirm fonts and media are local and load before capture.
-4. Check the affected timestamp in Studio.
-5. Try the normal MP4 preset before changing codecs or advanced flags.
-
-The [complete troubleshooting guide](/guides/troubleshooting) covers codec, browser, FFmpeg, GPU, HDR, and deployment-specific failures.
-
-## Copy a useful diagnostic
-
-If none of the above resolved it, send this to your agent with the visible facts filled in:
-
-```text
-What I was trying to do:
-
-What I clicked or ran:
-
-What I expected:
-
-What happened instead:
-
-Exact error:
-
-Where it happens: Studio / lint / check / render
-
-Does it happen every time?
-
-HyperFrames version:
-
-Operating system:
-
-Affected file or timestamp:
+```html
+<div id="video-wrapper">
+  <video src="./assets/video.mp4" style="width:100%;height:100%"></video>
+</div>
 ```
 
-Add a screenshot or short recording when the failure is visual. Never paste access tokens, credentials, or private media into a public issue.
+```javascript
+tl.to("#video-wrapper", { width: 500, height: 280, x: 1200 }, 2);
+```
+
+### Media plays out of sync
+
+Do not call `play()`, `pause()`, or set `currentTime` from composition scripts.
+
+HyperFrames owns media playback. Use timing and media attributes to describe when the file should play.
+
+### The composition ends too early
+
+Check the resolved composition duration:
+
+```bash
+npx hyperframes compositions
+```
+
+A short animation timeline can make a project end before the underlying media. Extend the authored root duration or timeline using the correct pattern for that composition.
+
+### A timed element is always visible
+
+Timed visible elements need `class="clip"` as well as their timing attributes.
+
+```html
+<h1 class="clip" data-start="2" data-duration="5" data-track-index="0">
+  Hello
+</h1>
+```
+
+`npx hyperframes lint` normally catches this.
+
+### Animation is static
+
+Check that the animation is paused and registered using the exact composition ID.
+
+```javascript
+const timeline = gsap.timeline({ paused: true });
+window.__timelines = window.__timelines || {};
+window.__timelines["my-video"] = timeline;
+```
+
+`my-video` must match `data-composition-id="my-video"`.
+
+### Changing root duration from a variable does nothing
+
+The root render length is determined before composition scripts run. Author or generate the intended root `data-duration` directly.
+
+Clip durations can still vary. See [Variables](/concepts/variables) for what may be changed safely.
+
+### Preview checks an unexpected port range
+
+When starting a managed background preview, choose the discovery range with an explicit port:
+
+```bash
+npx hyperframes preview --background --port 4567
+```
+
+Discovery checks ports 4567–4666. If this project has a saved preview on another
+port outside that range, only that saved port is checked separately. When moving
+an existing managed preview to the requested port, add `--force-new` to stop and
+replace it. Without `--port`, discovery starts at the saved preview's port.
+
+`preview --status --port 4567` uses the same discovery range and checks an
+out-of-range saved port separately. Among previews for this project, status
+prefers the exact requested port, then the saved preview's port, then another
+match. The saved log path appears only when the selected server is verified as
+that background preview. If the listener PID cannot be determined, JSON reports
+`pid: null` and text output omits the PID.
+
+`preview --stop` checks only this project's saved port when a session exists,
+even with an explicit `--port`. Without a saved session, `--stop --port 4567`
+discovers previews in ports 4567–4666. Shutdown waits check only the port being
+stopped.
+
+## Renders and setup
+
+### Check the basics first
+
+<Steps>
+  <Step title="Check the machine">
+    ```bash
+    npx hyperframes doctor
+    ```
+
+    This checks the runtime, browser, FFmpeg, and other local requirements.
+  </Step>
+  <Step title="Check the project">
+    ```bash
+    npx hyperframes lint
+    npx hyperframes check
+    ```
+  </Step>
+  <Step title="Inspect the visible result">
+    Open the browser editor or capture important frames:
+
+    ```bash
+    npx hyperframes snapshot --at 0,3,8
+    ```
+  </Step>
+  <Step title="Give the agent useful context">
+    Copy the complete error and add what you did, what you expected, and what must not change.
+  </Step>
+</Steps>
+
+For selection, canvas, timeline, autosave, and editor-only failures, use
+[Browser editor troubleshooting](/help#in-the-preview-and-browser-editor).
+
+### "No composition found"
+
+The project needs an `index.html` containing a valid composition root with `data-composition-id`, width, and height.
+
+Create a new project:
+
+```bash
+npx hyperframes init my-video
+```
+
+Or compare the current source with [Compositions](/concepts/compositions).
+
+### "FFmpeg not found"
+
+FFmpeg is required for local video encoding.
+
+<CodeGroup>
+```bash macOS
+brew install ffmpeg
+```
+
+```bash Ubuntu or Debian
+sudo apt install ffmpeg
+```
+
+```powershell Windows
+# Download a 64-bit Windows build from:
+# https://ffmpeg.org/download.html#build-windows
+# Then add its bin directory to PATH.
+```
+</CodeGroup>
+
+Verify with `ffmpeg -version`, then rerun `npx hyperframes doctor`.
+
+### Docker render will not start
+
+Run `docker info`.
+
+Confirm Docker is installed, its daemon is running, your user has permission, and the first image download can reach the registry.
+
+### "HyperFrames runtime failed"
+
+When a startup error includes `[thrown at: ...]`, use those script locations to find the failing code. The short trace shows where the error started and, when identifiable, where your composition called it. Locations come from the browser and may point to bundled code.
+
+### The render looks different from preview
+
+Check fonts, remote media, browser-specific effects, and the actual exported file.
+
+Use Docker when you need a pinned rendering environment:
+
+```bash
+npx hyperframes render --docker --output output.mp4
+```
+
+### Repeated scene fonts make export HTML very large
+
+Before embedding local font files, the render compiler removes duplicate top-level `@font-face` declarations from active, unconditional styles. The last copy stays in place, so its order relative to other font faces is kept. Conditional rules and alternate styles are left alone, and your source scene files are not changed.
+
+Only declarations with the same family, `src`, and descriptors count as duplicates. If the export is still large, make repeated scene font rules match exactly, or declare the font once in a shared root style.
+
+### Every render takes about 45 seconds longer than expected
+
+A composition that never registers a GSAP timeline still makes the producer wait
+for one. The producer polls `window.__timelines[<id>]` until the composition
+player reports ready, then gives up after `player-ready-timeout` (45 s by
+default). The wait is a fixed cost paid on every render, so it does not shrink
+when you lower quality or resize media.
+
+Declare that the composition has no timeline:
+
+```html
+<div
+  data-composition-id="promo"
+  data-no-timeline
+  data-width="1920"
+  data-height="1080"
+  data-duration="6"
+></div>
+```
+
+`npx hyperframes lint` reports the missing attribute as
+`missing_data_no_timeline`. Compositions that do register a timeline are
+unaffected: the poll returns as soon as the timeline appears, long before the
+timeout.
+
+To register a timeline instead of skipping the wait, see
+[GSAP animation](/guides/gsap-animation).
+
+### The render is slow
+
+The causes below scale with the project. For a constant penalty on every render,
+check the timeline poll above first.
+
+During iteration:
+
+- use draft quality;
+- inspect snapshots before starting another full render;
+- resize large source media;
+- simplify expensive filters;
+- avoid increasing resolution or frame rate before needed.
+
+Run `npx hyperframes benchmark` when tuning worker settings.
+
+### The render is slow under WSL2
+
+WSL2 can expose a graphics card to Linux, but headless Chrome may not be able to use
+it. The render then falls back to software rendering, which can be several times
+slower on a long or effect-heavy video. The render log says so:
+
+```text
+[hyperframes] browserGpuMode probe → software (WebGL unavailable)
+[hyperframes] WSL: the GPU check found no hardware GPU, so this render uses software WebGL ...
+```
+
+The lines after it say what HyperFrames checked. If they say your user is not in
+the `render` group, add yourself, restart WSL, and render again:
+
+```bash
+sudo usermod -aG render $USER
+# then, in Windows PowerShell:
+wsl --shutdown
+```
+
+If the GPU is still not used, render from Windows instead. Copy the project to
+a Windows drive (for example `C:\Users\you\renders\my-video`) and run the same
+command from PowerShell, where Chrome uses the graphics card through Direct3D:
+
+```powershell
+npx hyperframes render --output final.mp4
+```
+
+Run it from a normal Windows folder, not a `\\wsl.localhost\...` path.
+
+### Expected HDR but received SDR
+
+HDR needs a supported output and correct source color metadata. MP4 is the normal HDR output path; WebM and MOV may fall back to SDR.
+
+Use `--hdr` only when the whole source and delivery workflow is intended for HDR. Read [HDR rendering](/guides/hdr) before delivery.
 
 ## Still stuck
 
-<CardGroup cols={2}>
-  <Card title="Complete troubleshooting" icon="wrench" href="/guides/troubleshooting">
-    Less common project, media, animation, rendering, and environment failures.
-  </Card>
-  <Card title="Share product feedback" icon="comment" href="/guides/feedback">
-    Explain a confusing or broken experience with useful context.
-  </Card>
-  <Card title="Search GitHub issues" icon="github" href="https://github.com/heygen-com/hyperframes/issues">
-    Find a known problem, or open a reproducible one.
-  </Card>
-</CardGroup>
+Run:
+
+```bash
+npx hyperframes info
+```
+
+Then search [GitHub issues](https://github.com/heygen-com/hyperframes/issues) or open a report with:
+
+- the exact error;
+- steps to reproduce;
+- HyperFrames version and operating system;
+- whether the issue occurs in preview, checks, or render;
+- a small shareable project when possible.
+
+Do not include secrets, private media, or access tokens.
+
+## Share feedback
+
+Useful feedback explains the outcome you wanted and what stopped you from reaching it.
+
+### Talk with the HyperFrames team
+
+Building something with HyperFrames? We would love to understand what you are creating, where you got stuck, and what feels harder than it should.
+
+[Book a casual 30-minute conversation with the HyperFrames team](https://calendar.google.com/calendar/u/0/appointments/schedules/AcZssZ2cSpKoDgmcmRrgekrnrgqmvPT8W6F2Zg6e7MY7IJqaZKwpn_I0NdTHkN390iguMepE_NVg8ezb?gv=true). No preparation is required, and this is product research—not a sales call.
+
+### Send feedback from the command line
+
+From a HyperFrames project, run:
+
+```bash
+npx hyperframes feedback --rating 7 --comment "The render finished, but the captions were missing."
+```
+
+The rating is from 0 to 10. The comment is optional, but a specific example is usually more useful than a score alone.
+
+A comment with no rating is a report with no score, for something you needed that HyperFrames cannot do yet. It never counts in the rating:
+
+```bash
+npx hyperframes feedback --comment "MISSING FEATURE: trim a clip from the timeline | WORKAROUND: none"
+```
+
+### Report a reproducible bug
+
+Use `--file-issue` when the project can be shared publicly:
+
+```bash
+npx hyperframes feedback \
+  --rating 3 \
+  --comment "The timeline freezes when this GSAP scene is opened." \
+  --file-issue
+```
+
+<Warning>
+  This flow asks for confirmation before uploading the selected project directory to a public URL.
+  It is not a privacy scrubber and may include most of that project. The safest approach is to copy
+  only the files needed to reproduce the bug into a separate clean folder, inspect it, then pass
+  that folder with `--dir`. Never publish private media, customer data, credentials, or secrets.
+</Warning>
+
+HyperFrames then opens a prepared GitHub issue in your browser. Review it before submitting; the issue is not posted automatically.
+
+You can also [open a GitHub issue directly](https://github.com/heygen-com/hyperframes/issues).
+
+### Include enough evidence
+
+A useful report includes:
+
+- what you were trying to make;
+- the action or command you used;
+- what you expected;
+- what happened instead;
+- the exact error message;
+- whether it happens every time;
+- a screenshot or short recording for a visual problem;
+- a small project when it is safe to share.
+
+Do not include API keys, access tokens, credentials, private media, or customer information.
+
+### About feedback data
+
+HyperFrames may occasionally show a short rating prompt after a render or during a Studio session. You can ignore or dismiss it.
+
+Feedback can include the rating, an optional comment, and basic environment information used to understand the problem. It does not include your composition HTML, video files, project names, file paths, or environment-variable values beyond the short agent and app names listed under [`telemetry`](/packages/cli#telemetry), such as `client=example-app/1.2.3/stable` when another app launched the CLI. When an app launches it for a signed-in person, the report can also carry that person's email, set by the app through `HYPERFRAMES_FEEDBACK_EMAIL`, and whether a person or an agent wrote it.
+
+To turn off CLI telemetry:
+
+```bash
+npx hyperframes telemetry disable
+```
+
+That also stops the feedback prompt and takes the install out of any
+[canary rollout](/contributing/canary-rollouts) — nothing that reports nothing
+is ever picked for a staged release.
+
+Studio feedback is controlled separately from the CLI setting.
 
 ## Related topics
 
-- [Troubleshoot a project, preview, or render](/guides/troubleshooting)
-- [Recover from a Studio problem](/studio/troubleshooting)
+- [Install the Studio app](/studio-app/index)
 - [Finish and share a video](/guides/export-and-share)

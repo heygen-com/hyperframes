@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
+import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
+import { PLAYER_FRAME_NAME } from "@hyperframes/core/studio-preview-mark";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
 
 // Install a stubbed contentDocument getter on the given iframe element. The
@@ -146,6 +148,7 @@ describe("HyperframesPlayer parent-frame media", () => {
     paused: boolean;
     play: ReturnType<typeof vi.fn>;
     pause: ReturnType<typeof vi.fn>;
+    addEventListener: ReturnType<typeof vi.fn>;
     load: ReturnType<typeof vi.fn>;
   };
 
@@ -161,6 +164,7 @@ describe("HyperframesPlayer parent-frame media", () => {
       paused: true,
       play: vi.fn().mockResolvedValue(undefined),
       pause: vi.fn(),
+      addEventListener: vi.fn(),
       load: vi.fn(),
     };
 
@@ -253,7 +257,7 @@ describe("HyperframesPlayer parent-frame media", () => {
     expect(mockAudio.play).toHaveBeenCalled();
 
     player.seek(12.5);
-    expect(mockAudio.currentTime).toBe(12.5);
+    expect(mockAudio.currentTime).toBe(mediaElementTime(12.5));
 
     player.pause();
     expect(mockAudio.pause).toHaveBeenCalled();
@@ -339,7 +343,7 @@ describe("HyperframesPlayer parent-frame media", () => {
 
     player.seek(12.5);
     expect(mockAudio.pause).toHaveBeenCalled();
-    expect(mockAudio.currentTime).toBe(12.5);
+    expect(mockAudio.currentTime).toBe(mediaElementTime(12.5));
   });
 
   it("promotion is idempotent", () => {
@@ -693,6 +697,60 @@ describe("HyperframesPlayer adoptedStyleSheets", () => {
   });
 });
 
+describe("HyperframesPlayer page glyph slots", () => {
+  function slotAt(root: ParentNode | null, selector: string): HTMLSlotElement {
+    const slot = root?.querySelector(selector);
+    if (!(slot instanceof HTMLSlotElement)) throw new Error(`no slot at ${selector}`);
+    return slot;
+  }
+
+  function onlyAssigned(slot: HTMLSlotElement): Element | undefined {
+    const assigned = slot.assignedElements();
+    return assigned.length === 1 ? assigned[0] : undefined;
+  }
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("keeps the page's play glyph in the controls after they are rebuilt or the player moves", () => {
+    const player = document.createElement("hyperframes-player");
+    player.setAttribute("controls", "");
+    const glyph = document.createElement("span");
+    glyph.slot = "play-icon";
+    player.appendChild(glyph);
+    document.body.appendChild(player);
+    const expectGlyphShown = () => {
+      expect(glyph.parentElement).toBe(player);
+      expect(onlyAssigned(slotAt(player.shadowRoot, ".hfp-ico-play slot"))).toBe(glyph);
+    };
+
+    expectGlyphShown();
+
+    player.removeAttribute("controls");
+    player.setAttribute("controls", "");
+    expectGlyphShown();
+
+    player.remove();
+    document.body.appendChild(player);
+    expectGlyphShown();
+  });
+
+  it("shows the page's loading mark in the loader card", () => {
+    const player = document.createElement("hyperframes-player");
+    const mark = document.createElement("img");
+    mark.slot = "loading-mark";
+    player.appendChild(mark);
+    document.body.appendChild(player);
+
+    expect(onlyAssigned(slotAt(player.shadowRoot, ".hfp-shader-loader-mark slot"))).toBe(mark);
+  });
+});
+
 // ── Media MutationObserver scoping ──
 //
 // The observer that catches late-attached `<audio data-start>` from
@@ -778,206 +836,6 @@ describe("HyperframesPlayer media MutationObserver scoping", () => {
   });
 });
 
-// ── Parent-proxy time-mirror coalescing ──
-//
-// `_mirrorParentMediaTime` is the steady-state correction loop that nudges
-// every parent-frame audio/video proxy back onto the iframe's timeline. The
-// post-`P1-4` contract: a single over-threshold sample (one slow bridge tick,
-// one tab-throttled rAF, one GC pause) is absorbed by a per-proxy counter and
-// does NOT cost a `currentTime` write. Only a *trending* drift — two
-// consecutive samples above the 50 ms threshold — triggers a seek. Forced
-// callers (audio-ownership promotion, brand-new proxy initialization) bypass
-// the gate so the listener never hears a misaligned sample on cut-over.
-
-describe("HyperframesPlayer parent-proxy time-mirror coalescing", () => {
-  type DriftEntry = {
-    el: { currentTime: number; src: string; pause: () => void };
-    start: number;
-    duration: number;
-    driftSamples: number;
-  };
-  type PlayerInternal = HTMLElement & {
-    _parentMedia: DriftEntry[];
-    _mirrorParentMediaTime: (timelineSeconds: number, options?: { force?: boolean }) => void;
-    _promoteToParentProxy?: () => void;
-  };
-
-  let player: PlayerInternal;
-
-  beforeEach(async () => {
-    await import("./hyperframes-player.js");
-    player = document.createElement("hyperframes-player") as PlayerInternal;
-    document.body.appendChild(player);
-    // No audio-src was set, so `_parentMedia` is empty. Tests push synthetic
-    // POJO entries — `_mirrorParentMediaTime` only reads/writes
-    // `el.currentTime`, so a plain object stands in fine for HTMLMediaElement.
-  });
-
-  afterEach(() => {
-    player.remove();
-    vi.restoreAllMocks();
-  });
-
-  function makeEntry(
-    opts: {
-      currentTime?: number;
-      start?: number;
-      duration?: number;
-      driftSamples?: number;
-    } = {},
-  ): DriftEntry {
-    // Include `pause`/`src` so `disconnectedCallback`'s teardown loop
-    // (`m.el.pause(); m.el.src = ""`) doesn't blow up when the player is
-    // removed at the end of the test — `_mirrorParentMediaTime` itself only
-    // touches `currentTime`.
-    const entry: DriftEntry = {
-      el: {
-        currentTime: opts.currentTime ?? 0,
-        src: "",
-        pause: vi.fn(),
-      },
-      start: opts.start ?? 0,
-      duration: opts.duration ?? 100,
-      driftSamples: opts.driftSamples ?? 0,
-    };
-    player._parentMedia.push(entry);
-    return entry;
-  }
-
-  it("initializes new parent-media entries with driftSamples=0", () => {
-    // Mock Audio just for this test so the audio-src bootstrap path produces
-    // a real entry rather than throwing on construction.
-    const mockAudio = {
-      src: "",
-      preload: "",
-      muted: false,
-      playbackRate: 1,
-      currentTime: 0,
-      paused: true,
-      play: vi.fn().mockResolvedValue(undefined),
-      pause: vi.fn(),
-      load: vi.fn(),
-    };
-    vi.spyOn(globalThis, "Audio").mockImplementation(function () {
-      return mockAudio as unknown as HTMLAudioElement;
-    });
-
-    const fresh = document.createElement("hyperframes-player") as PlayerInternal;
-    fresh.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
-    document.body.appendChild(fresh);
-
-    expect(fresh._parentMedia).toHaveLength(1);
-    expect(fresh._parentMedia[0]?.driftSamples).toBe(0);
-    fresh.remove();
-  });
-
-  it("does nothing when drift is within the 50 ms threshold", () => {
-    const m = makeEntry({ currentTime: 5 });
-    player._mirrorParentMediaTime(5.04);
-    expect(m.el.currentTime).toBe(5);
-    expect(m.driftSamples).toBe(0);
-  });
-
-  it("absorbs a single over-threshold spike without writing currentTime", () => {
-    const m = makeEntry({ currentTime: 5 });
-    player._mirrorParentMediaTime(5.5);
-    expect(m.el.currentTime).toBe(5);
-    expect(m.driftSamples).toBe(1);
-  });
-
-  it("issues a seek on the second consecutive over-threshold sample", () => {
-    const m = makeEntry({ currentTime: 5 });
-    player._mirrorParentMediaTime(5.5);
-    expect(m.el.currentTime).toBe(5);
-    expect(m.driftSamples).toBe(1);
-    // Second sample with the same drift: the gate trips, the write fires,
-    // and the counter resets so the proxy doesn't re-seek every later tick.
-    player._mirrorParentMediaTime(5.5);
-    expect(m.el.currentTime).toBe(5.5);
-    expect(m.driftSamples).toBe(0);
-  });
-
-  it("resets the counter when a sample comes back within threshold", () => {
-    const m = makeEntry({ currentTime: 5 });
-    player._mirrorParentMediaTime(5.5);
-    expect(m.driftSamples).toBe(1);
-    // Recovery — counter must clear so a later isolated spike doesn't
-    // accidentally satisfy the 2-sample gate by piggy-backing on stale state.
-    player._mirrorParentMediaTime(5.02);
-    expect(m.driftSamples).toBe(0);
-    expect(m.el.currentTime).toBe(5);
-    player._mirrorParentMediaTime(5.5);
-    expect(m.driftSamples).toBe(1);
-    expect(m.el.currentTime).toBe(5);
-  });
-
-  it("force: true writes immediately on the first over-threshold sample", () => {
-    const m = makeEntry({ currentTime: 5 });
-    player._mirrorParentMediaTime(5.5, { force: true });
-    expect(m.el.currentTime).toBe(5.5);
-    expect(m.driftSamples).toBe(0);
-  });
-
-  it("force: true clears any pre-existing drift counter", () => {
-    const m = makeEntry({ currentTime: 5, driftSamples: 1 });
-    player._mirrorParentMediaTime(5.5, { force: true });
-    expect(m.el.currentTime).toBe(5.5);
-    expect(m.driftSamples).toBe(0);
-  });
-
-  it("does not seek out-of-range entries and resets their counters", () => {
-    // Active window [10, 15). currentTime=99 is a sentinel — if the function
-    // ever writes inside an out-of-range branch the test catches it because
-    // relTime would be 5 (or 15), not 99.
-    const m = makeEntry({
-      currentTime: 99,
-      start: 10,
-      duration: 5,
-      driftSamples: 5,
-    });
-    player._mirrorParentMediaTime(5);
-    expect(m.el.currentTime).toBe(99);
-    expect(m.driftSamples).toBe(0);
-    // Boundary: relTime === duration → still out of range (the loop uses `>=`).
-    m.driftSamples = 7;
-    player._mirrorParentMediaTime(15);
-    expect(m.el.currentTime).toBe(99);
-    expect(m.driftSamples).toBe(0);
-  });
-
-  it("tracks drift independently across multiple proxies", () => {
-    // a is drifted; b is aligned. A single tick must increment a's counter
-    // and reset b's — proving the per-entry state is genuinely per-entry.
-    const a = makeEntry({ currentTime: 5 });
-    const b = makeEntry({ currentTime: 7.01, driftSamples: 1 });
-    player._mirrorParentMediaTime(7);
-    expect(a.el.currentTime).toBe(5);
-    expect(a.driftSamples).toBe(1);
-    expect(b.el.currentTime).toBe(7.01);
-    expect(b.driftSamples).toBe(0);
-  });
-
-  it("force: true bypasses the gate for every proxy in a single sweep", () => {
-    const a = makeEntry({ currentTime: 5 });
-    const b = makeEntry({ currentTime: 8 });
-    player._mirrorParentMediaTime(7, { force: true });
-    expect(a.el.currentTime).toBe(7);
-    expect(b.el.currentTime).toBe(7);
-    expect(a.driftSamples).toBe(0);
-    expect(b.driftSamples).toBe(0);
-  });
-
-  it("_promoteToParentProxy invokes _mirrorParentMediaTime with force: true", () => {
-    // Integration check of the promotion call site — we cannot tolerate even
-    // ~80 ms of audible drift across an ownership flip, so the call site
-    // must opt out of the jitter gate.
-    const spy = vi.spyOn(player, "_mirrorParentMediaTime");
-    player._promoteToParentProxy?.();
-    const forcedCall = spy.mock.calls.find(([, opts]) => opts?.force === true);
-    expect(forcedCall).toBeDefined();
-  });
-});
-
 // ── Synchronous seek() with same-origin detection ──
 //
 // Studio has long reached past the postMessage bridge and called the runtime's
@@ -1009,18 +867,21 @@ describe("HyperframesPlayer seek() sync path", () => {
     postMessage?: ReturnType<typeof vi.fn>;
   };
   type PlayerInternal = HTMLElement & {
-    seek: (t: number) => void;
+    seek: (t: number, options?: { keepPlaying?: boolean }) => void;
     play: () => void;
     pause: () => void;
     stopMedia: () => void;
     iframe: HTMLIFrameElement;
     _currentTime: number;
+    _ready: boolean;
+    _assetsReady: boolean;
+    currentTime: number;
+    paused: boolean;
     duration: number;
     _parentMedia: Array<{
       el: { pause: ReturnType<typeof vi.fn>; src: string };
       start: number;
       duration: number;
-      driftSamples: number;
       source?: HTMLMediaElement | null;
     }>;
   };
@@ -1243,24 +1104,15 @@ describe("HyperframesPlayer seek() sync path", () => {
     stubIframeContentDocument(player.iframe, doc);
     stubContentWindow({ postMessage: post });
 
+    player.setAttribute("audio-src", "https://cdn.example.com/background.mp3");
+    const globalProxyPause = vi.spyOn(player._parentMedia[0]!.el, "pause");
     const slideProxyPause = vi.fn();
-    const globalProxyPause = vi.fn();
-    player._parentMedia.push(
-      {
-        el: { pause: slideProxyPause, src: "https://cdn.example.com/slide.mp4" },
-        start: 0,
-        duration: 5,
-        driftSamples: 0,
-        source: iframeVideo,
-      },
-      {
-        el: { pause: globalProxyPause, src: "https://cdn.example.com/background.mp3" },
-        start: 0,
-        duration: Infinity,
-        driftSamples: 0,
-        source: null,
-      },
-    );
+    player._parentMedia.push({
+      el: { pause: slideProxyPause, src: "https://cdn.example.com/slide.mp4" },
+      start: 0,
+      duration: 5,
+      source: iframeVideo,
+    });
 
     player.stopMedia();
 
@@ -1368,6 +1220,107 @@ describe("HyperframesPlayer seek() sync path", () => {
     stubContentWindow({ postMessage: vi.fn() });
     player.seek(11);
     expect(player._currentTime).toBe(11);
+  });
+
+  function fakeTimeline(duration: number) {
+    const state = { time: 0, playing: false };
+    const timeline: TimelineStub = {
+      duration: () => duration,
+      time: () => state.time,
+      seek: (t) => void (state.time = t),
+      play: () => void (state.playing = true),
+      pause: () => void (state.playing = false),
+    };
+    return { timeline, state };
+  }
+
+  function recordPlayAndPause(): string[] {
+    const events: string[] = [];
+    for (const type of ["play", "pause"]) player.addEventListener(type, () => events.push(type));
+    return events;
+  }
+
+  it("keeps playing from the new time when seek() is asked to keep playing", () => {
+    const { timeline, state } = fakeTimeline(10);
+    stubContentWindow({ __timelines: { main: timeline }, postMessage: vi.fn() });
+    player.play();
+    const events = recordPlayAndPause();
+
+    player.seek(3, { keepPlaying: true });
+
+    expect(player.paused).toBe(false);
+    expect(player.currentTime).toBe(3);
+    expect(state).toEqual({ time: 3, playing: true });
+    expect(events).toEqual([]);
+  });
+
+  it("stays paused when seek() is asked to keep playing a paused film", () => {
+    const { timeline, state } = fakeTimeline(10);
+    stubContentWindow({ __timelines: { main: timeline }, postMessage: vi.fn() });
+    const events = recordPlayAndPause();
+
+    player.seek(3, { keepPlaying: true });
+
+    expect(player.paused).toBe(true);
+    expect(state).toEqual({ time: 3, playing: false });
+    expect(events).toEqual([]);
+  });
+
+  it("asks a cross-origin runtime to play on after a seek that keeps playing", () => {
+    const post = vi.fn();
+    stubContentWindow({ postMessage: post });
+    player._ready = true;
+    player._assetsReady = true;
+    player.play();
+    post.mockClear();
+
+    player.seek(3, { keepPlaying: true });
+
+    const actions = post.mock.calls
+      .map(([message]) => message.action)
+      .filter((action) => action === "seek" || action === "play");
+    expect(actions).toEqual(["seek", "play"]);
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "seek", timeSeconds: 3 }),
+      "*",
+    );
+    expect(player.paused).toBe(false);
+  });
+
+  it("keeps a playing film playing from where the viewer releases the scrubber", () => {
+    const { timeline, state } = fakeTimeline(10);
+    stubContentWindow({ __timelines: { main: timeline }, postMessage: vi.fn() });
+    player.setAttribute("controls", "");
+    player.play();
+    const events = recordPlayAndPause();
+    const scrubber = player.shadowRoot!.querySelector<HTMLElement>(".hfp-scrubber")!;
+    scrubber.getBoundingClientRect = () => ({ left: 0, width: 100 }) as DOMRect;
+
+    scrubber.dispatchEvent(new MouseEvent("mousedown", { clientX: 20 }));
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 70 }));
+    document.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(player.paused).toBe(false);
+    expect(player.currentTime).toBe(7);
+    expect(state).toEqual({ time: 7, playing: true });
+    expect(events).toEqual(["pause", "play"]);
+  });
+
+  it("leaves a paused film paused when the viewer clicks the scrubber", () => {
+    const { timeline, state } = fakeTimeline(10);
+    stubContentWindow({ __timelines: { main: timeline }, postMessage: vi.fn() });
+    player.setAttribute("controls", "");
+    player.seek(0);
+    const events = recordPlayAndPause();
+    const scrubber = player.shadowRoot!.querySelector<HTMLElement>(".hfp-scrubber")!;
+    scrubber.getBoundingClientRect = () => ({ left: 0, width: 100 }) as DOMRect;
+
+    scrubber.dispatchEvent(new MouseEvent("mousedown", { clientX: 70 }));
+    document.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(player.paused).toBe(true);
+    expect(state).toEqual({ time: 7, playing: false });
+    expect(events).toEqual([]);
   });
 });
 
@@ -1899,6 +1852,7 @@ describe("HyperframesPlayer volume and mute", () => {
     load: ReturnType<typeof vi.fn>;
     play: ReturnType<typeof vi.fn>;
     pause: ReturnType<typeof vi.fn>;
+    addEventListener: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -1914,6 +1868,7 @@ describe("HyperframesPlayer volume and mute", () => {
       load: vi.fn(),
       play: vi.fn().mockResolvedValue(undefined),
       pause: vi.fn(),
+      addEventListener: vi.fn(),
     };
     vi.spyOn(globalThis, "Audio").mockImplementation(function () {
       return mockAudio as unknown as HTMLAudioElement;
@@ -2849,6 +2804,7 @@ describe("HyperframesPlayer playback rate", () => {
     load: ReturnType<typeof vi.fn>;
     play: ReturnType<typeof vi.fn>;
     pause: ReturnType<typeof vi.fn>;
+    addEventListener: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -2864,6 +2820,7 @@ describe("HyperframesPlayer playback rate", () => {
       load: vi.fn(),
       play: vi.fn().mockResolvedValue(undefined),
       pause: vi.fn(),
+      addEventListener: vi.fn(),
     };
     vi.spyOn(globalThis, "Audio").mockImplementation(function () {
       return mockAudio as unknown as HTMLAudioElement;
@@ -3145,7 +3102,7 @@ describe("HyperframesPlayer video mode", () => {
     expect(player.paused).toBe(false);
 
     player.seek(2.5);
-    expect(video.currentTime).toBe(2.5);
+    expect(video.currentTime).toBe(mediaElementTime(2.5));
     expect(player.currentTime).toBe(2.5);
     expect(player.paused).toBe(true);
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
@@ -3182,7 +3139,7 @@ describe("HyperframesPlayer video mode", () => {
     flushFrame();
 
     expect(ended).toBe(0);
-    expect(video.currentTime).toBe(0);
+    expect(video.currentTime).toBe(mediaElementTime(0));
     expect(playSpy).toHaveBeenCalledTimes(2);
     expect(player.paused).toBe(false);
   });
@@ -3546,6 +3503,70 @@ describe("HyperframesPlayer video mode", () => {
     expect(withControls.duration).toBe(0);
   });
 
+  it.each([null, ""])("unloads a playing video when src is cleared to %s", (src) => {
+    const withControls = createPlayer({ type: "video/mp4", src: FILM, controls: "" });
+    const video = videoOf(withControls);
+    loadMetadata(video);
+    withControls.seek(3);
+    withControls.play();
+
+    if (src === null) withControls.removeAttribute("src");
+    else withControls.setAttribute("src", src);
+
+    expect(video.getAttribute("src")).toBeNull();
+    expect(HTMLMediaElement.prototype.load).toHaveBeenCalledOnce();
+    expect(withControls.ready).toBe(false);
+    expect(withControls.paused).toBe(true);
+    expect(withControls.currentTime).toBe(0);
+    expect(withControls.duration).toBe(0);
+    expect(withControls.shadowRoot?.textContent).toContain("0:00 / 0:00");
+    expect(withControls.shadowRoot?.querySelector('[aria-label="Play"]')).not.toBeNull();
+
+    withControls.setAttribute("src", FILM);
+    loadMetadata(video);
+    withControls.play();
+
+    expect(withControls.ready).toBe(true);
+    expect(withControls.paused).toBe(false);
+    expect(video.getAttribute("src")).toBe(FILM);
+  });
+
+  it("shows a playback rate configured before controls are created", () => {
+    player = createPlayer({ type: "video/mp4", src: FILM, "playback-rate": "2", controls: "" });
+
+    const speed = player.shadowRoot?.querySelector(".hfp-speed-btn");
+    expect(speed?.textContent).toBe("2x");
+    expect(speed?.getAttribute("aria-label")).toBe("Playback speed: 2x");
+    expect(player.shadowRoot?.querySelector(".hfp-speed-option.hfp-active")?.textContent).toBe(
+      "2x",
+    );
+  });
+
+  it.each([false, true])("restores current controls state with paused=%s", (paused) => {
+    loadMetadata(videoOf(player), 60);
+    player.playbackRate = 2;
+    player.seek(15);
+    if (!paused) player.play();
+
+    for (let i = 0; i < 2; i++) {
+      player.setAttribute("controls", "");
+
+      const button = player.shadowRoot?.querySelector<HTMLButtonElement>(".hfp-play-btn");
+      expect(button?.getAttribute("aria-label")).toBe(paused ? "Play" : "Pause");
+      expect(player.shadowRoot?.querySelector(".hfp-time")?.textContent).toBe("0:15 / 1:00");
+      expect(player.shadowRoot?.querySelector<HTMLElement>(".hfp-progress")?.style.width).toBe(
+        "25%",
+      );
+      expect(player.shadowRoot?.querySelector(".hfp-speed-btn")?.textContent).toBe("2x");
+
+      player.removeAttribute("controls");
+    }
+
+    player.setAttribute("controls", "");
+    player.shadowRoot?.querySelector<HTMLButtonElement>(".hfp-play-btn")?.click();
+    expect(player.paused).toBe(!paused);
+  });
+
   it("stops playing when the video fails", () => {
     const video = videoOf(player);
     loadMetadata(video);
@@ -3682,6 +3703,67 @@ describe("HyperframesPlayer click-to-play", () => {
   });
 });
 
+describe("HyperframesPlayer fullscreen", () => {
+  type FullscreenPlayer = HTMLElement & {
+    play: () => void;
+    disableFullscreen: boolean;
+  };
+
+  let player: FullscreenPlayer;
+
+  function fullscreenButton(): HTMLButtonElement {
+    const button = player.shadowRoot?.querySelector<HTMLButtonElement>(".hfp-fullscreen-btn");
+    if (!button) throw new Error("no fullscreen button");
+    return button;
+  }
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: true });
+    player = document.createElement("hyperframes-player") as FullscreenPlayer;
+    player.setAttribute("controls", "");
+    document.body.appendChild(player);
+  });
+
+  afterEach(() => {
+    player.remove();
+    Reflect.deleteProperty(document, "fullscreenEnabled");
+    vi.restoreAllMocks();
+  });
+
+  it("disableFullscreen property toggles the disable-fullscreen attribute", () => {
+    player.disableFullscreen = true;
+    expect(player.hasAttribute("disable-fullscreen")).toBe(true);
+
+    player.disableFullscreen = false;
+    expect(player.hasAttribute("disable-fullscreen")).toBe(false);
+  });
+
+  it("fullscreens the player element, and the click does not play", () => {
+    const requestFullscreen = vi.fn(async () => {});
+    player.requestFullscreen = requestFullscreen;
+    const play = vi.spyOn(player, "play").mockImplementation(() => undefined);
+
+    fullscreenButton().click();
+
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+    expect(requestFullscreen.mock.contexts[0]).toBe(player);
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("disable-fullscreen hides the button", () => {
+    expect(getComputedStyle(fullscreenButton()).display).not.toBe("none");
+
+    player.remove();
+    player = document.createElement("hyperframes-player") as FullscreenPlayer;
+    player.setAttribute("controls", "");
+    player.setAttribute("disable-fullscreen", "");
+    document.body.appendChild(player);
+
+    expect(getComputedStyle(fullscreenButton()).display).toBe("none");
+  });
+});
+
 describe("HyperframesPlayer retained runtime data", () => {
   interface RuntimeDataPlayer extends HTMLElement {
     iframeElement: HTMLIFrameElement;
@@ -3788,7 +3870,10 @@ describe("HyperframesPlayer retained runtime data", () => {
     expect(player.iframeElement.sandbox.contains("allow-scripts")).toBe(true);
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
     expect(player.iframeElement.sandbox.contains("allow-top-navigation")).toBe(false);
-    expect(player.iframeElement.referrerPolicy).toBe("no-referrer");
+  });
+
+  it("sends its host page's URL only to a composition on the same origin", () => {
+    expect(player.iframeElement.referrerPolicy).toBe("same-origin");
   });
 
   it("supports an opaque-origin sandbox for hosts that do not need direct iframe DOM access", () => {
@@ -3799,6 +3884,11 @@ describe("HyperframesPlayer retained runtime data", () => {
 
     player.removeAttribute("sandbox-origin");
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
+  });
+
+  it("names its frame, the one mark a composition in an opaque sandbox can still read", () => {
+    player.setAttribute("sandbox-origin", "opaque");
+    expect(player.iframeElement.name).toBe(PLAYER_FRAME_NAME);
   });
 
   it("treats every non-null sandbox-origin value as restrictive", () => {
@@ -3939,7 +4029,7 @@ describe("HyperframesPlayer asset-ready gate", () => {
     _onIframeLoad(): void;
     play(): void;
     pause(): void;
-    seek(timeInSeconds: number): void;
+    seek(timeInSeconds: number, options?: { keepPlaying?: boolean }): void;
     shaderLoader: {
       showAssetsLoading(): void;
       hide(): void;
@@ -4009,6 +4099,100 @@ describe("HyperframesPlayer asset-ready gate", () => {
 
     expect(readyAtHostLoad[1]).toBe(false);
     player.remove();
+  });
+
+  describe("a timeline between a navigation and the next document's load", () => {
+    const protocol = (capabilities: string[]) => ({
+      protocolVersion: 1,
+      fps: { numerator: 30, denominator: 1 },
+      capabilities,
+    });
+    async function navigatedUnreadable() {
+      const player = (await createConnectedPlayer()) as PlayerInternal & {
+        probe: { start(): void };
+        _abandonComposition(reason: string): void;
+        _getSameOriginIframeDocument(): Document | null;
+      };
+      const start = vi.spyOn(player.probe, "start");
+      const sent = vi.spyOn(player.iframe.contentWindow!, "postMessage");
+      vi.spyOn(player, "_getSameOriginIframeDocument").mockReturnValue(null);
+      player._abandonComposition("navigated");
+      return { player, start, sent };
+    }
+    const announced = (sent: { mock: { calls: unknown[][] } }) =>
+      sent.mock.calls.filter(
+        ([data]) => (data as { action?: string })?.action === "announce-timeline",
+      );
+
+    // fails without the fix: the old document's late timeline made the next sealed load skip its probe.
+    it("drops a late message the left document stamped, and takes the next document's before its load", async () => {
+      const { player, start } = await navigatedUnreadable();
+      const stamped = (documentId: string) => ({
+        type: "timeline",
+        durationInFrames: 60,
+        documentId,
+        ...protocol(["seconds-time", "announce-timeline"]),
+      });
+      post(player, stamped("old"));
+      player.iframe.dispatchEvent(new Event("load"));
+      post(player, stamped("old"));
+      expect(player._ready).toBe(true);
+      start.mockClear();
+
+      player._abandonComposition("navigated again");
+      post(player, stamped("old"));
+      expect(player._ready).toBe(false);
+      post(player, stamped("new"));
+      expect(player._ready).toBe(true);
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(start).not.toHaveBeenCalled();
+      player.remove();
+    });
+
+    it("asks a document that never stamped a message again, and only its answer makes it ready", async () => {
+      const { player, start, sent } = await navigatedUnreadable();
+      const capable = protocol(["seconds-time", "announce-timeline"]);
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+      expect(player._ready).toBe(false);
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(start).toHaveBeenCalledOnce();
+      expect(announced(sent)).toHaveLength(1);
+      expect(player._ready).toBe(false);
+
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+      expect(player._ready).toBe(true);
+      player.remove();
+    });
+
+    it("takes a runtime's timeline as today when the runtime cannot be asked again", async () => {
+      const { player, start, sent } = await navigatedUnreadable();
+      post(player, { type: "timeline", durationInFrames: 60, ...protocol(["seconds-time"]) });
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(player._ready).toBe(true);
+      expect(start).not.toHaveBeenCalled();
+      expect(announced(sent)).toHaveLength(0);
+      player.remove();
+    });
+
+    it("keeps a static-composition ready at load and still asks for the runtime's timeline", async () => {
+      const { player, sent } = await navigatedUnreadable();
+      const capable = protocol(["seconds-time", "announce-timeline"]);
+      post(player, { type: "static-composition", durationSeconds: 2, width: 640, height: 360 });
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(player._ready).toBe(true);
+      expect(announced(sent)).toHaveLength(1);
+
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+      expect((player as unknown as { _readyBeforeRuntime: boolean })._readyBeforeRuntime).toBe(
+        false,
+      );
+      player.remove();
+    });
   });
 
   it("paints a document before its load when nothing first-frame is pending", async () => {
@@ -4185,19 +4369,26 @@ describe("HyperframesPlayer asset-ready gate", () => {
     const player = await createConnectedPlayer();
     const doc = player.iframe.contentDocument!;
     const showSpy = vi.spyOn(player.shaderLoader, "showAssetsLoading");
+    // The overlay delay runs on fake time; the iframe's own frames stay real, however slow.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      player._waitForAssetsReady(doc);
+      expect(player.assetsReady).toBe(false);
 
-    player._waitForAssetsReady(doc);
-    expect(player.assetsReady).toBe(false);
+      // Only paint-and-idle is pending on this blank iframe doc (no runtime, no media).
+      const win = doc.defaultView!;
+      for (let frame = 0; frame < 600 && !player.assetsReady; frame++) {
+        await new Promise<void>((resolve) => win.requestAnimationFrame(() => resolve()));
+      }
+      expect(player.assetsReady).toBe(true);
 
-    // Only paint-and-idle is pending on this blank iframe doc (no runtime,
-    // no media) — it settles well under ASSETS_LOADING_SHOW_DELAY_MS.
-    await awaitPaintAndIdle(doc.defaultView!);
-
-    expect(player.assetsReady).toBe(true);
-    expect(player.hasAttribute("assets-loading")).toBe(false);
-    expect(showSpy).not.toHaveBeenCalled();
-
-    player.remove();
+      vi.advanceTimersByTime(1_000);
+      expect(player.hasAttribute("assets-loading")).toBe(false);
+      expect(showSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      player.remove();
+    }
   });
 
   it("fires painted only after the raised loader has faded out, not at assetsready", async () => {
@@ -4389,6 +4580,32 @@ describe("HyperframesPlayer asset-ready gate", () => {
     player.remove();
   });
 
+  it("shows Buffering while the runtime holds playback for a track, and hides it on resume", async () => {
+    const player = (await createConnectedPlayer()) as PlayerInternal & {
+      _onMessage: (event: MessageEvent) => void;
+      paused: boolean;
+    };
+    const showSpy = vi.spyOn(player.shaderLoader, "showAssetsLoading");
+    const post = (buffering: boolean) =>
+      player._onMessage(
+        new MessageEvent("message", {
+          source: player.iframe.contentWindow,
+          data: { source: "hf-preview", type: "state", frame: 30, isPlaying: true, buffering },
+        }),
+      );
+
+    post(true);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(player.hasAttribute("buffering")).toBe(true);
+    expect(showSpy).toHaveBeenCalledWith("Buffering", "");
+    expect(player.paused).toBe(false);
+
+    post(false);
+    expect(player.hasAttribute("buffering")).toBe(false);
+
+    player.remove();
+  });
+
   it("keeps a shader load drawn over the loading card when assets-loading-ui switches to none", async () => {
     const player = await createConnectedPlayer();
     const { doc } = createStalledVideoDoc();
@@ -4481,6 +4698,29 @@ describe("HyperframesPlayer asset-ready gate", () => {
     expect(player.assetsReady).toBe(true);
     expect(player._pendingPlay).toBe(false);
     expect(playSpy).not.toHaveBeenCalled();
+
+    player.remove();
+  });
+
+  it("keeps a queued play if a seek asks to keep playing while assets are still buffering", async () => {
+    const player = await createConnectedPlayer();
+
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    player._waitForAssetsReady(doc);
+    player.play();
+    player.seek(1.5, { keepPlaying: true });
+
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._paused).toBe(false);
+    expect(playSpy).toHaveBeenCalledTimes(1);
 
     player.remove();
   });

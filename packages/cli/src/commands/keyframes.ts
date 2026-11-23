@@ -1,12 +1,20 @@
-import { defineCommand } from "citty";
-import { existsSync, readFileSync } from "node:fs";
-import { readProjectFile } from "@hyperframes/parsers/asset-resolution";
+import { terminalText, terminalTextDeep } from "@hyperframes/core";
+import { defineCommand } from "../utils/defineCommand.js";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isWithinProjectRoot, readProjectFile } from "@hyperframes/parsers/asset-resolution";
+import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { resolve, dirname, basename, join, relative, sep } from "node:path";
-import { parseGsapScript, type GsapAnimation } from "@hyperframes/core/gsap-parser";
+import {
+  parseGsapScript,
+  GSAP_DEFAULT_DURATION,
+  type GsapAnimation,
+} from "@hyperframes/core/gsap-parser";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
+import { leftOutNotice, stageReferencedFiles } from "../utils/stageReferencedFiles.js";
 import { withMeta } from "../utils/updateCheck.js";
 
 export const examples: Example[] = [
@@ -23,7 +31,7 @@ interface KeyframePoint {
   /** Tween-relative percentage (0–100). */
   pct: number;
   /** Absolute timeline time (seconds) = tweenStart + pct/100 * duration. */
-  time: number;
+  time: number | null;
   properties: Record<string, number | string>;
 }
 
@@ -32,11 +40,16 @@ interface SurfacedTween {
   target: string;
   method: string;
   group?: string;
-  start: number;
-  duration: number;
-  end: number;
+  start: number | null;
+  duration: number | null;
+  end: number | null;
   /** "keyframes" (array/object form), "flat" (to/from), or "motionPath". */
   shape: "keyframes" | "flat" | "motionPath";
+  unresolved: string[];
+  keyframeBasis: "authored-stops" | "tween-endpoints";
+  position: number | string;
+  ease?: string;
+  totalDuration: number | null;
   keyframes: KeyframePoint[];
   /** x/y position points (gsap offsets) when this tween animates position. */
   path: Array<{ x: number; y: number }> | null;
@@ -49,8 +62,8 @@ interface SurfacedTween {
 /** One drawn stroke of a multi-stroke trace — a single position tween. */
 interface TraceStroke {
   id: string;
-  start: number;
-  end: number;
+  start: number | null;
+  end: number | null;
   keyframes: KeyframePoint[];
   points: Array<{ x: number; y: number }>;
 }
@@ -103,17 +116,21 @@ interface SurfacedComposition {
 // in discovery order — NOT strict source order when a file mixes top-level and
 // template scripts. Spec-conformant sub-compositions keep everything in one
 // template, so mixed files only need to parse, not preserve interleaving.
-function queryIncludingTemplates(html: string, selector: string): Element[] {
+function compositionRoots(html: string): Array<{ querySelectorAll(s: string): Iterable<Element> }> {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const roots: Array<{ querySelectorAll(s: string): Iterable<Element> }> = [doc];
-  const queue = Array.from(doc.querySelectorAll("template")) as HTMLTemplateElement[];
+  const queue = Array.from(doc.querySelectorAll("template"));
   while (queue.length > 0) {
-    const content = queue.shift()!.content;
+    const content = templateContent(queue.shift()!);
     if (!content) continue;
     roots.push(content);
-    queue.push(...(Array.from(content.querySelectorAll("template")) as HTMLTemplateElement[]));
+    queue.push(...Array.from(content.querySelectorAll("template")));
   }
-  return roots.flatMap((root) => Array.from(root.querySelectorAll(selector)));
+  return roots;
+}
+
+function queryIncludingTemplates(html: string, selector: string): Element[] {
+  return compositionRoots(html).flatMap((root) => Array.from(root.querySelectorAll(selector)));
 }
 
 function inlineScriptText(html: string): string {
@@ -132,7 +149,7 @@ function inlineStyleText(html: string): string {
 function num(v: number | string | undefined): number | null {
   if (typeof v === "number") return v;
   if (typeof v === "string") {
-    const n = Number.parseFloat(v);
+    const n = Number(v);
     return Number.isFinite(n) ? n : null;
   }
   return null;
@@ -147,41 +164,13 @@ function isPositionTween(anim: GsapAnimation): boolean {
   );
 }
 
-// The rest-state value for an animated property (what GSAP animates to/from when
-// the other endpoint is the element's natural pose): 1 for scale/opacity, 0 for
-// translate/rotation.
-function baseProps(props: Record<string, number | string>): Record<string, number | string> {
-  const base: Record<string, number | string> = {};
-  for (const k of Object.keys(props)) {
-    if (k === "ease") continue;
-    base[k] = k === "opacity" || k.startsWith("scale") ? 1 : 0;
-  }
-  return base;
-}
-
-// Flat tweens carry no explicit keyframes — synthesize a 0%/100% pair against the
-// element's rest pose so the surfaced keyframes are uniform. `from()` goes
-// fromProperties → base; `to()` goes base → properties.
 function flatKeyframes(anim: GsapAnimation): KeyframePoint[] {
-  if (anim.method === "fromTo") {
-    return [
-      { pct: 0, time: 0, properties: anim.fromProperties ?? {} },
-      { pct: 100, time: 0, properties: anim.properties ?? {} },
-    ];
-  }
-  // to()/from() vars both live in anim.properties; from() plays them in reverse
-  // against the element's rest pose.
   const vars = anim.properties ?? {};
-  const base = baseProps(vars);
-  return anim.method === "from"
-    ? [
-        { pct: 0, time: 0, properties: vars },
-        { pct: 100, time: 0, properties: base },
-      ]
-    : [
-        { pct: 0, time: 0, properties: base },
-        { pct: 100, time: 0, properties: vars },
-      ];
+  if (anim.method === "set") return [{ pct: 100, time: 0, properties: vars }];
+  return [
+    { pct: 0, time: 0, properties: anim.method === "from" ? vars : (anim.fromProperties ?? {}) },
+    { pct: 100, time: 0, properties: anim.method === "from" ? {} : vars },
+  ];
 }
 
 // Studio-internal markers that aren't user motion: the position-hold `set` GSAP
@@ -200,38 +189,149 @@ function cleanProps(props: Record<string, number | string>): Record<string, numb
   return out;
 }
 
-function surfaceTween(anim: GsapAnimation): SurfacedTween {
-  const start =
-    typeof anim.resolvedStart === "number" ? anim.resolvedStart : (num(anim.position) ?? 0);
-  const duration = anim.duration ?? 0;
+function round(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
 
-  let shape: SurfacedTween["shape"];
-  let rawKfs: Array<{ percentage: number; properties: Record<string, number | string> }>;
-  if (anim.keyframes?.keyframes?.length) {
-    shape = "keyframes";
-    rawKfs = anim.keyframes.keyframes;
-  } else if (anim.arcPath?.enabled) {
-    shape = "motionPath";
-    rawKfs = [];
-  } else {
-    shape = "flat";
-    rawKfs = flatKeyframes(anim).map((k) => ({ percentage: k.pct, properties: k.properties }));
+type InspectionTiming = NonNullable<GsapAnimation["inspectionTiming"]>;
+type StaggerTiming = NonNullable<InspectionTiming["stagger"]>;
+type RawKeyframe = { percentage: number; properties: Record<string, number | string> };
+
+function knownRepeatCycle(
+  timing: InspectionTiming,
+): { repeat: number; repeatDelay: number; stagger: StaggerTiming } | null {
+  const { repeat, repeatDelay, stagger } = timing;
+  if (repeat === null || repeat < 0 || repeatDelay === null || stagger === null) return null;
+  return { repeat, repeatDelay, stagger };
+}
+
+function targetCount(html: string, selector: string): number | null {
+  try {
+    return queryIncludingTemplates(html, selector).length;
+  } catch {
+    return null;
   }
+}
 
+function staggerSpread(html: string, selector: string, stagger: StaggerTiming): number | null {
+  const count = targetCount(html, selector);
+  if (!count) return null;
+  if ("amount" in stagger) return count > 1 ? Math.abs(stagger.amount) : 0;
+  return Math.abs(stagger.each) * (count - 1);
+}
+
+function tweenSpan(anim: GsapAnimation, duration: number | null, html: string): number | null {
+  if (duration === null) return null;
+  if (!anim.inspectionTiming) return duration;
+  const cycle = knownRepeatCycle(anim.inspectionTiming);
+  if (!cycle) return null;
+  const spread =
+    anim.extras?.stagger === undefined
+      ? 0
+      : staggerSpread(html, anim.targetSelector, cycle.stagger);
+  if (spread === null) return null;
+  return round((duration + spread) * (cycle.repeat + 1) + cycle.repeatDelay * cycle.repeat);
+}
+
+function tweenStart(anim: GsapAnimation): number | null {
+  if (followsTimelineCursor(anim) && typeof anim.resolvedStart !== "number") return null;
+  const position = typeof anim.resolvedStart === "number" ? anim.resolvedStart : num(anim.position);
+  const delay = anim.inspectionTiming ? anim.inspectionTiming.delay : 0;
+  return position === null || delay === null ? null : position + delay;
+}
+
+function tweenDuration(anim: GsapAnimation): number | null {
+  if (anim.method === "set") return 0;
+  if (anim.durationUnresolved) return null;
+  return anim.duration ?? GSAP_DEFAULT_DURATION;
+}
+
+function syntheticStaggerStops(anim: GsapAnimation): boolean {
+  const stops = anim.keyframes?.keyframes ?? [];
+  return stops.length > 0 && stops.every((stop) => "stagger" in stop.properties);
+}
+
+function tweenShape(anim: GsapAnimation): { shape: SurfacedTween["shape"]; rawKfs: RawKeyframe[] } {
+  if (anim.hasUnresolvedKeyframes) return { shape: "keyframes", rawKfs: [] };
+  if (anim.keyframes?.keyframes?.length && !syntheticStaggerStops(anim))
+    return { shape: "keyframes", rawKfs: anim.keyframes.keyframes };
+  if (anim.arcPath?.enabled) return { shape: "motionPath", rawKfs: [] };
+  return {
+    shape: "flat",
+    rawKfs: flatKeyframes(anim).map((k) => ({ percentage: k.pct, properties: k.properties })),
+  };
+}
+
+function keyframeTime(start: number | null, duration: number | null, pct: number): number | null {
+  if (start === null || duration === null) return null;
+  return round(start + (pct / 100) * duration);
+}
+
+function missesEndpointProperties(anim: GsapAnimation, keyframes: KeyframePoint[]): boolean {
+  if (anim.method === "set") return false;
+  const authored = Object.keys(anim.properties).filter((p) => p !== "ease" && p !== "data");
+  return keyframes.some((k) => authored.some((p) => !(p in k.properties)));
+}
+
+function hasRawExpressions(keyframes: KeyframePoint[]): boolean {
+  return keyframes.some((k) =>
+    Object.values(k.properties).some((v) => typeof v === "string" && v.startsWith("__raw:")),
+  );
+}
+
+function hasNoProperties(anim: GsapAnimation): boolean {
+  return !Object.keys(anim.properties).length && !anim.keyframes;
+}
+
+function unresolvedFields(
+  anim: GsapAnimation,
+  timing: { start: number | null; duration: number | null; totalDuration: number | null },
+  keyframes: KeyframePoint[],
+): string[] {
+  const checks: Array<[string, boolean]> = [
+    ["start", timing.start === null],
+    ["duration", timing.duration === null],
+    ["target", anim.hasUnresolvedSelector === true],
+    ["keyframes", anim.hasUnresolvedKeyframes === true],
+    ["properties", hasNoProperties(anim)],
+    ["totalDuration", timing.totalDuration === null],
+    ["endpointProperties", missesEndpointProperties(anim, keyframes)],
+    ["propertyExpressions", hasRawExpressions(keyframes)],
+  ];
+  return checks.filter(([, isUnresolved]) => isUnresolved).map(([field]) => field);
+}
+
+function keyframeBasis(
+  shape: SurfacedTween["shape"],
+  anim: GsapAnimation,
+): SurfacedTween["keyframeBasis"] {
+  const staggered = anim.keyframes?.keyframes.some((k) => "stagger" in k.properties);
+  return shape === "flat" || staggered ? "tween-endpoints" : "authored-stops";
+}
+
+function surfaceTween(anim: GsapAnimation, html: string): SurfacedTween {
+  const start = tweenStart(anim);
+  const duration = tweenDuration(anim);
+  const totalDuration = tweenSpan(anim, duration, html);
+  const { shape, rawKfs } = tweenShape(anim);
   const keyframes: KeyframePoint[] = rawKfs.map((kf) => ({
     pct: kf.percentage,
-    time: Math.round((start + (kf.percentage / 100) * duration) * 1000) / 1000,
+    time: keyframeTime(start, duration, kf.percentage),
     properties: cleanProps(kf.properties),
   }));
-
   return {
     id: anim.id,
     target: anim.targetSelector,
     method: anim.method,
     group: anim.propertyGroup,
-    start: Math.round(start * 1000) / 1000,
+    start: start === null ? null : round(start),
     duration,
-    end: Math.round((start + duration) * 1000) / 1000,
+    end: start === null || totalDuration === null ? null : round(start + totalDuration),
+    totalDuration,
+    position: anim.position,
+    ease: anim.ease,
+    unresolved: unresolvedFields(anim, { start, duration, totalDuration }, keyframes),
+    keyframeBasis: keyframeBasis(shape, anim),
     shape,
     keyframes,
     path: isPositionTween(anim) ? positionPath(keyframes) : null,
@@ -241,7 +341,11 @@ function surfaceTween(anim: GsapAnimation): SurfacedTween {
 // Carry x/y forward across keyframes that only set one axis, so the path is
 // continuous (GSAP holds the last value for an unspecified property).
 function positionPath(keyframes: KeyframePoint[]): Array<{ x: number; y: number }> | null {
-  if (keyframes.length === 0) return null;
+  if (
+    keyframes.length === 0 ||
+    !keyframes.every((k) => num(k.properties.x) !== null && num(k.properties.y) !== null)
+  )
+    return null;
   let lastX = 0;
   let lastY = 0;
   return keyframes.map((kf) => {
@@ -255,6 +359,24 @@ function positionPath(keyframes: KeyframePoint[]): Array<{ x: number; y: number 
 
 // ── Composition surfacing ────────────────────────────────────────────────────
 
+function followsTimelineCursor(anim: GsapAnimation): boolean {
+  return !anim.global && (anim.implicitPosition === true || typeof anim.position !== "number");
+}
+
+function movesCursorUnpredictably(anim: GsapAnimation, tween: SurfacedTween): boolean {
+  if (anim.global) return false;
+  const delay = anim.inspectionTiming?.delay;
+  const delayUnknown = delay === null || (typeof delay === "number" && delay !== 0);
+  return tween.totalDuration === null || tween.totalDuration !== tween.duration || delayUnknown;
+}
+
+function forgetStart(tween: SurfacedTween): void {
+  tween.start = null;
+  tween.end = null;
+  for (const point of tween.keyframes) point.time = null;
+  if (!tween.unresolved.includes("start")) tween.unresolved.push("start");
+}
+
 export function surfaceComposition(
   html: string,
   label: string,
@@ -267,7 +389,15 @@ export function surfaceComposition(
   } catch {
     animations = [];
   }
-  const tweens = animations.filter((a) => !isHoldMarker(a)).map(surfaceTween);
+  let cursorChanged = false;
+  const tweens = animations
+    .filter((a) => !isHoldMarker(a))
+    .map((anim) => {
+      const tween = surfaceTween(anim, html);
+      if (cursorChanged && followsTimelineCursor(anim)) forgetStart(tween);
+      if (movesCursorUnpredictably(anim, tween)) cursorChanged = true;
+      return tween;
+    });
   attachComposedAncestors(tweens, html);
   return {
     composition: label,
@@ -307,7 +437,7 @@ function parseDeclarations(body: string): string[] {
 function stripRanges(text: string, ranges: Array<{ start: number; end: number }>): string {
   let out = "";
   let cursor = 0;
-  for (const range of [...ranges].sort((a, b) => a.start - b.start)) {
+  for (const range of [...ranges].sort((a, b) => (a.start ?? 0) - (b.start ?? 0))) {
     out += text.slice(cursor, range.start);
     cursor = range.end;
   }
@@ -467,9 +597,9 @@ function surfaceAnime(script: string): SurfacedAnimeAnimation[] {
 function attachComposedAncestors(tweens: SurfacedTween[], html: string): void {
   const animated = [...new Set(tweens.filter((t) => t.method !== "set").map((t) => t.target))];
   if (animated.length < 2) return; // need ≥2 distinct animated elements to compose
-  const doc = new DOMParser().parseFromString(html, "text/html");
+  const roots = compositionRoots(html);
   for (const t of tweens) {
-    const ancestors = animatedAncestors(doc, t.target, animated);
+    const ancestors = animatedAncestors(roots, t.target, animated);
     if (ancestors.length) {
       t.composedWith = ancestors.map((sel) => ({
         selector: sel,
@@ -487,14 +617,28 @@ const safeMatches = (el: Element, sel: string): boolean => {
   }
 };
 
-// Animated-target selectors of `target`'s DOM ancestors (in order, parent-first).
-function animatedAncestors(doc: Document, target: string, animated: string[]): string[] {
-  let el: Element | null = null;
+function firstCompositionMatch(
+  roots: ReturnType<typeof compositionRoots>,
+  selector: string,
+): Element | null {
   try {
-    el = doc.querySelector(target);
+    for (const root of roots) {
+      const el = Array.from(root.querySelectorAll(selector))[0];
+      if (el) return el;
+    }
   } catch {
-    return [];
+    return null;
   }
+  return null;
+}
+
+// Animated-target selectors of `target`'s DOM ancestors (in order, parent-first).
+function animatedAncestors(
+  roots: ReturnType<typeof compositionRoots>,
+  target: string,
+  animated: string[],
+): string[] {
+  const el = firstCompositionMatch(roots, target);
   const out: string[] = [];
   for (let n = el?.parentElement ?? null; n; n = n.parentElement) {
     for (const sel of animated) {
@@ -520,9 +664,11 @@ function summarizeMotion(tweens: SurfacedTween[], sel: string): string {
     }
   }
   const varying = [...ranges.entries()]
-    .filter(([, r]) => r.max - r.min > 0.5)
-    .map(([k, r]) => `${k} ${Math.round(r.min)}..${Math.round(r.max)}`);
-  return varying.length ? varying.join(", ") : "(static)";
+    .filter(([, r]) => r.max - r.min > 1e-6)
+    .map(([k, r]) => `${k} ${round(r.min)}..${round(r.max)}`);
+  return varying.length
+    ? varying.join(", ")
+    : "(no resolved variation; runtime verification required)";
 }
 
 function bumpRange(ranges: Map<string, { min: number; max: number }>, k: string, n: number): void {
@@ -543,35 +689,38 @@ function pathTravels(points: Array<{ x: number; y: number }>): boolean {
   return points.some((p) => Math.abs(p.x - first.x) > 0.5 || Math.abs(p.y - first.y) > 0.5);
 }
 
+function isDrawnStroke(t: SurfacedTween): boolean {
+  if (t.method === "set" || t.start === null || t.end === null) return false;
+  return !!t.path && t.path.length >= 2 && pathTravels(t.path); // in-place tween (e.g. opacity carrying a static y) is not a drawn stroke
+}
+
+function traceOf(target: string, list: SurfacedTween[]): SurfacedTrace {
+  const strokes = [...list]
+    .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
+    .map((t) => ({
+      id: t.id,
+      start: t.start,
+      end: t.end,
+      keyframes: t.keyframes,
+      points: t.path!,
+    }));
+  return { target, strokes };
+}
+
 // Group an element's DRAWN position strokes (to/from/fromTo/keyframes that carry
 // a path) into one ordered trace. A `set` with x/y is a pen-up jump — excluded
 // (not drawn). Only targets with ≥2 strokes become a composited trace; a single
 // stroke stays on the normal per-tween path so existing output is unchanged.
 function groupTraces(tweens: SurfacedTween[]): SurfacedTrace[] {
   const byTarget = new Map<string, SurfacedTween[]>();
-  for (const t of tweens) {
-    if (t.method === "set") continue;
-    if (!t.path || t.path.length < 2) continue;
-    if (!pathTravels(t.path)) continue; // in-place tween (e.g. opacity carrying a static y) is not a drawn stroke
+  for (const t of tweens.filter(isDrawnStroke)) {
     const list = byTarget.get(t.target);
     if (list) list.push(t);
     else byTarget.set(t.target, [t]);
   }
-  const traces: SurfacedTrace[] = [];
-  for (const [target, list] of byTarget) {
-    if (list.length < 2) continue;
-    const strokes = [...list]
-      .sort((a, b) => a.start - b.start)
-      .map((t) => ({
-        id: t.id,
-        start: t.start,
-        end: t.end,
-        keyframes: t.keyframes,
-        points: t.path!,
-      }));
-    traces.push({ target, strokes });
-  }
-  return traces;
+  return [...byTarget]
+    .filter(([, list]) => list.length >= 2)
+    .map(([target, list]) => traceOf(target, list));
 }
 
 export function collectCompositions(indexPath: string): SurfacedComposition[] {
@@ -590,6 +739,7 @@ export function collectCompositions(indexPath: string): SurfacedComposition[] {
     const src = div.getAttribute("data-composition-src");
     if (!src) continue;
     const subPath = resolve(baseDir, src);
+    if (!isWithinProjectRoot(baseDir, subPath)) continue;
     const sub = readProjectFile(subPath);
     if (sub.kind !== "file") continue;
     const id = div.getAttribute("data-composition-id") ?? src;
@@ -603,34 +753,48 @@ export function collectCompositions(indexPath: string): SurfacedComposition[] {
 function fmtProps(props: Record<string, number | string>): string {
   return Object.entries(props)
     .filter(([k]) => k !== "ease")
-    .map(([k, v]) => `${k}:${v}`)
+    .map(([k, v]) => terminalText(`${k}:${v}`))
     .join(" ");
 }
 
+function formatSeconds(value: number | null): string {
+  return value === null ? "unresolved" : `${value}s`;
+}
+
 function printTween(t: SurfacedTween): void {
-  const timing = c.dim(`@${t.start}s→${t.end}s (${t.duration}s)`);
-  const group = t.group ? c.dim(` ${t.group}`) : "";
-  console.log(`  ${c.accent(t.target)}${group}  ${c.dim(t.method)}/${t.shape}  ${timing}`);
+  const timing = c.dim(
+    `@${formatSeconds(t.start)}→${formatSeconds(t.end)} (${formatSeconds(t.duration)})`,
+  );
+  const group = t.group ? c.dim(` ${terminalText(t.group)}`) : "";
+  console.log(
+    `  ${c.accent(terminalText(t.target))}${group}  ${c.dim(terminalText(t.method))}/${t.shape}  ${timing}`,
+  );
   if (t.shape === "motionPath") {
     console.log(c.dim(`    motionPath arc (${t.keyframes.length} stops)`));
   } else {
     const kfLine = t.keyframes.map((k) => `${k.pct}% {${fmtProps(k.properties)}}`).join("  ");
     console.log(`    ${c.dim(kfLine)}`);
   }
+  if (t.unresolved.length)
+    console.log(c.dim(`    unresolved: ${terminalText(t.unresolved.join(", "))}`));
   if (t.composedWith?.length) {
     for (const a of t.composedWith) {
-      console.log(c.dim(`    ↑ composed with ${c.accent(a.selector)}${c.dim(": " + a.summary)}`));
+      console.log(
+        c.dim(
+          `    ↑ composed with ${c.accent(terminalText(a.selector))}${c.dim(": " + terminalText(a.summary))}`,
+        ),
+      );
     }
   }
   console.log();
 }
 
 function printTrace(tr: SurfacedTrace): void {
-  const start = Math.min(...tr.strokes.map((s) => s.start));
-  const end = Math.max(...tr.strokes.map((s) => s.end));
+  const start = Math.min(...tr.strokes.flatMap((s) => (s.start === null ? [] : [s.start])));
+  const end = Math.max(...tr.strokes.flatMap((s) => (s.end === null ? [] : [s.end])));
   const n = tr.strokes.length;
   console.log(
-    `  ${c.accent(tr.target)}${c.dim(" position")}  ${c.dim("trace")}  ${c.dim(`${n} strokes`)} ${c.dim(`@${start}s→${end}s`)}`,
+    `  ${c.accent(terminalText(tr.target))}${c.dim(" position")}  ${c.dim("trace")}  ${c.dim(`${n} strokes`)} ${c.dim(`@${start}s→${end}s`)}`,
   );
   tr.strokes.forEach((s, i) => {
     const kfLine = s.keyframes.map((k) => `${k.pct}% {${fmtProps(k.properties)}}`).join("  ");
@@ -721,7 +885,7 @@ function onionShotOptions(args: ShotArgs & { selector?: string }) {
 }
 
 function printOnionShotSaved(saved: string, elementCount: number): void {
-  console.log(`${c.success("◇")}  onion-skin screenshot saved ${c.accent(saved)}`);
+  console.log(`${c.success("◇")}  onion-skin screenshot saved ${c.accent(terminalText(saved))}`);
   console.log(
     c.dim(
       `   ${elementCount} element${elementCount === 1 ? "" : "s"} · open it to verify the motion matches your target, then read the keyframes below.`,
@@ -735,42 +899,90 @@ function printOnionShotSaved(saved: string, elementCount: number): void {
 async function runOnionShot(
   comps: SurfacedComposition[],
   allComps: SurfacedComposition[],
-  projectDir: string | undefined,
-  entryFile: string | undefined,
+  scope: ShotScope,
   args: ShotArgs & { selector?: string },
 ): Promise<boolean> {
-  const { captureMotionPathShot } = await import("./motionShot.js");
   // With --selector, sample from the FULL animated set and let the browser scope
   // to the selector (or its animated descendants when the selector is a static
   // wrapper like `.clip`). Without it, only the (already-filtered) comps qualify.
   const requests = collectShotSelectors(args.selector ? allComps : comps);
-  const guardError = onionShotGuardError(projectDir, requests, args.ghost ?? false);
+  const guardError = onionShotGuardError(scope.projectDir, requests, args.ghost ?? false);
   if (guardError) {
     console.log(c.dim(guardError));
     return true;
   }
-  const saved = await captureMotionPathShot(projectDir!, requests, resolve(args.shot!), {
-    ...onionShotOptions(args),
-    entryFile,
-  });
+  const saved = await captureOnionShot(scope, requests, args);
   printOnionShotSaved(saved, requests.length);
   return false;
 }
 
+async function captureOnionShot(
+  scope: ShotScope,
+  requests: Array<{ selector: string }>,
+  args: ShotArgs & { selector?: string },
+): Promise<string> {
+  const { captureMotionPathShot, ensureShotOutputDir } = await import("./motionShot.js");
+  const outPath = resolve(args.shot!);
+  const options = onionShotOptions(args);
+  if (!scope.singleFile) {
+    return captureMotionPathShot(scope.projectDir!, requests, outPath, {
+      ...options,
+      entryFile: scope.entryFile,
+    });
+  }
+  ensureShotOutputDir(outPath, scope.singleFile);
+  const stage = await singleFileStage(scope.singleFile, scope.projectDir!);
+  const stagedDir = mkdtempSync(join(tmpdir(), "hf-keyframes-shot-"));
+  try {
+    const notice = leftOutNotice(
+      `keyframes --shot ${stage.entryFile}`,
+      stageReferencedFiles(stage.root, stage.entries, stagedDir),
+    );
+    if (notice) console.warn(c.dim(notice));
+    return await captureMotionPathShot(stagedDir, requests, outPath, {
+      ...options,
+      entryFile: stage.entryFile,
+    });
+  } finally {
+    rmSync(stagedDir, { recursive: true, force: true });
+  }
+}
+
+export async function singleFileStage(file: string, projectDir: string) {
+  const { extractStandaloneEntryFromIndex, isTemplateEntry } =
+    await import("@hyperframes/core/compiler");
+  const index = join(projectDir, "index.html");
+  const entryFile = relative(projectDir, file).split(sep).join("/");
+  const scene = readFileSync(file, "utf8");
+  const mounted =
+    file !== index &&
+    existsSync(index) &&
+    isTemplateEntry(scene) &&
+    extractStandaloneEntryFromIndex(readFileSync(index, "utf8"), entryFile, scene) !== null;
+  return mounted
+    ? { root: projectDir, entries: [index, file], entryFile }
+    : { root: dirname(file), entries: [file], entryFile: basename(file) };
+}
+
+interface ShotScope {
+  projectDir: string | undefined;
+  entryFile: string | undefined;
+  singleFile?: string;
+}
+
 // Resolve the command target (a project dir or a single .html) into surfaced
 // compositions, applying the optional --selector filter.
-export function resolveScope(args: { target?: string; selector?: string }): {
+export function resolveScope(args: { target?: string; selector?: string }): ShotScope & {
   comps: SurfacedComposition[];
   allComps: SurfacedComposition[];
   projectName: string;
-  projectDir: string | undefined;
-  entryFile: string | undefined;
 } {
   const raw = args.target?.trim();
   let comps: SurfacedComposition[];
   let projectName: string;
   let projectDir: string | undefined;
   let entryFile: string | undefined;
+  let singleFile: string | undefined;
   const entry = raw?.endsWith(".html") ? readProjectFile(raw) : undefined;
   if (raw && entry?.kind === "file") {
     const entryPath = resolve(raw);
@@ -778,6 +990,7 @@ export function resolveScope(args: { target?: string; selector?: string }): {
     projectName = basename(entryPath);
     projectDir = findProjectRoot(entryPath);
     entryFile = relative(projectDir, entryPath).split(sep).join("/");
+    singleFile = entryPath;
   } else {
     const project = resolveProject(raw);
     comps = collectCompositions(project.indexPath);
@@ -807,7 +1020,7 @@ export function resolveScope(args: { target?: string; selector?: string }): {
           cmp.anime.length > 0,
       );
   }
-  return { comps, allComps, projectName, projectDir, entryFile };
+  return { comps, allComps, projectName, projectDir, entryFile, singleFile };
 }
 
 function findProjectRoot(entryPath: string): string {
@@ -846,7 +1059,7 @@ function printCompositionTweens(cmp: SurfacedComposition): void {
 // Print one composition's traces + tweens (skipping strokes already shown in a trace).
 function printComposition(cmp: SurfacedComposition): void {
   if (isEmptyComposition(cmp)) return;
-  console.log(c.bold(`${cmp.composition}`) + c.dim(`  (${cmp.source})`));
+  console.log(c.bold(terminalText(cmp.composition)) + c.dim(`  (${terminalText(cmp.source)})`));
   for (const tr of cmp.traces) printTrace(tr);
   printCompositionTweens(cmp);
   for (const cssKeyframes of cmp.cssKeyframes) printCssKeyframes(cssKeyframes);
@@ -855,20 +1068,24 @@ function printComposition(cmp: SurfacedComposition): void {
 
 function printCssKeyframes(cssKeyframes: SurfacedCssKeyframes): void {
   const selectors = cssKeyframes.selectors.length
-    ? cssKeyframes.selectors.join(", ")
+    ? terminalText(cssKeyframes.selectors.join(", "))
     : "(no selector found)";
   console.log(
-    `  ${c.accent(`@keyframes ${cssKeyframes.name}`)}${c.dim(" css")}  ${c.dim(selectors)}`,
+    `  ${c.accent(`@keyframes ${terminalText(cssKeyframes.name)}`)}${c.dim(" css")}  ${c.dim(selectors)}`,
   );
   for (const stop of cssKeyframes.keyframes) {
-    console.log(`    ${c.dim(`${stop.selector} {${stop.declarations.join("; ")}}`)}`);
+    console.log(`    ${c.dim(terminalText(`${stop.selector} {${stop.declarations.join("; ")}}`))}`);
   }
   console.log();
 }
 
 function printAnime(anime: SurfacedAnimeAnimation): void {
-  const targets = anime.targets.length ? anime.targets.join(", ") : "(targets not parsed)";
-  const durations = anime.durations.length ? ` duration ${anime.durations.join(",")}` : "";
+  const targets = anime.targets.length
+    ? terminalText(anime.targets.join(", "))
+    : "(targets not parsed)";
+  const durations = anime.durations.length
+    ? ` duration ${terminalText(anime.durations.join(","))}`
+    : "";
   const registered = anime.registered ? "registered" : "not registered";
   console.log(
     `  ${c.accent(`anime.${anime.kind}`)}${c.dim(` ${registered}`)}  ${c.dim(`${targets}${durations}`)}`,
@@ -951,20 +1168,13 @@ function createKeyframesCommand(options: Partial<KeyframesCommandOptions> = {}) 
     async run({ args }) {
       ensureDOMParser();
       const runtime = normalizeRuntime(args.runtime, commandOptions.defaultRuntime);
-      if (runtime === "css" || runtime === "anime") {
-        console.log(
-          c.dim(
-            `${commandOptions.name}: ${runtime} output is a static authoring surface; use validate/render/snapshot to verify runtime adapter seekability.`,
-          ),
-        );
-        console.log();
-      }
-      const { comps: rawComps, allComps, projectName, projectDir, entryFile } = resolveScope(args);
+      const scope = resolveScope(args);
+      const { comps: rawComps, allComps, projectName } = scope;
       const comps = filterCompositionsByRuntime(rawComps, runtime);
 
       // --shot: 3D onion-skin self-verify screenshot. Returns true when the command
       // should stop (guard failure) so run() stays small.
-      if (args.shot && (await runOnionShot(comps, allComps, projectDir, entryFile, args))) return;
+      if (args.shot && (await runOnionShot(comps, allComps, scope, args))) return;
 
       if (args.json) {
         console.log(
@@ -973,19 +1183,32 @@ function createKeyframesCommand(options: Partial<KeyframesCommandOptions> = {}) 
         return;
       }
 
-      const total = comps.reduce(
+      if (runtime === "css" || runtime === "anime") {
+        console.log(
+          c.dim(
+            `${commandOptions.name}: ${runtime} output is a static authoring surface; use validate/render/snapshot to verify runtime adapter seekability.`,
+          ),
+        );
+        console.log();
+      }
+
+      const shown = terminalTextDeep(comps);
+      const projectShown = terminalText(projectName);
+      const total = shown.reduce(
         (n, cmp) => n + cmp.tweens.length + cmp.cssKeyframes.length + cmp.anime.length,
         0,
       );
       if (total === 0) {
-        console.log(`${c.success("◇")}  ${c.accent(projectName)} ${c.dim("— no keyframes found")}`);
+        console.log(
+          `${c.success("◇")}  ${c.accent(projectShown)} ${c.dim("— no keyframes found")}`,
+        );
         return;
       }
       console.log(
-        `${c.success("◇")}  ${c.accent(projectName)} ${c.dim("—")} ${c.dim(`${total} item${total === 1 ? "" : "s"}`)}`,
+        `${c.success("◇")}  ${c.accent(projectShown)} ${c.dim("—")} ${c.dim(`${total} item${total === 1 ? "" : "s"}`)}`,
       );
       console.log();
-      for (const cmp of comps) printComposition(cmp);
+      for (const cmp of shown) printComposition(cmp);
       console.log(
         c.dim(
           `Tip: edit the keyframes in source, then \`${commandOptions.invocation} --shot out.png\` to see the rendered motion.`,

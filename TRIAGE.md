@@ -96,6 +96,12 @@ When a PR merges, verify whether it resolves the full issue and whether the fix 
 
 Keep the advertised queue within actual mentoring and review capacity. Track time to first useful response, duplicate implementations, blocked contributors, and review follow-through. Improve task preparation before adding more labels or automation.
 
+### Stale PRs and issues
+
+`.github/workflows/stale.yml` runs daily. A PR with no activity for 14 days gets the `stale` label and a comment, and closes 7 days later. Any push, comment or label change resets the clock. Issues follow the same timing, but only those labeled `triage/needs-info`. Drafts and PRs labeled `keep-open`, `dependencies` (Renovate) or `security` are exempt.
+
+When a stale close frees an issue, recheck it and restore `help wanted` (and `good first issue` if it still qualifies) so someone else can take it.
+
 ### Useful GitHub searches
 
 Run these in this repository's issue search:

@@ -1,3 +1,6 @@
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { registerSeekCompletion } from "./adapters/seek-dispatch";
+import { PREVIEW_SEEK_HOLD_ATTR } from "../studioPreviewMark";
 import {
   HF_COLOR_GRADING_ADJUST_KEYS,
   HF_COLOR_GRADING_ANIMATABLE_PROPERTIES,
@@ -5,6 +8,7 @@ import {
   HF_COLOR_GRADING_CANVAS_ID_PREFIX,
   HF_COLOR_GRADING_DETAIL_KEYS,
   HF_COLOR_GRADING_EFFECT_KEYS,
+  HF_COLOR_GRADING_SOURCE_TAGS,
   hasHfColorGradingHueCurveValues,
   hasHfColorGradingRgbCurveValues,
   hasHfColorGradingSecondaryValues,
@@ -24,6 +28,7 @@ import {
   COLOR_GRADING_SOURCE_HIDDEN_ATTR,
   COLOR_GRADING_AUTHORED_OPACITY_ATTR,
 } from "../colorGrading";
+import { effectiveColorGrading, HF_COLOR_GROUP_ATTR, HF_COLOR_GROUP_TAG } from "../colorGroups";
 import {
   compileHfColorCurve,
   compileHfHueCurve,
@@ -32,6 +37,7 @@ import {
 } from "../colorGradingCurves";
 import {
   DEFAULT_MAX_CUBE_LUT_SIZE,
+  fitCubeLutToTexture,
   packCubeLutToRgba8,
   parseCubeLut,
   unitFloatToByte,
@@ -40,11 +46,20 @@ import {
 } from "../colorLuts";
 import { copyMediaVisualStyles } from "../inline-scripts/parityContract";
 import { readVariablesForElement } from "./variableScope";
+import { mediaElementTime } from "./mediaClock";
 import { swallow } from "./diagnostics";
+import { createRecordFilter } from "./mutationRecords";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
-import { isElementNode, isHtmlElement, isImageElement, isVideoElement } from "./domRealm";
+import { getPausedVideoFrame } from "./pausedVideoFrames";
+import {
+  isCanvasElement,
+  isElementNode,
+  isHtmlElement,
+  isImageElement,
+  isVideoElement,
+} from "./domRealm";
 
-type ColorGradingMediaElement = HTMLVideoElement | HTMLImageElement;
+type ColorGradingMediaElement = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement;
 
 type EntrySource = "attribute" | "live";
 
@@ -66,12 +81,17 @@ interface VideoFrameCallbackHost {
 type FloatUniformBinding<K extends string> = readonly [key: K, location: WebGLUniformLocation];
 
 interface ProgramInfo {
-  program: WebGLProgram;
   texture: WebGLTexture;
   lutTexture: WebGLTexture;
   advancedTexture: WebGLTexture;
   advancedSignature: string | null;
   quad: WebGLBuffer;
+  shaders: Map<string, MainShader>;
+  failedStageDefines: Set<string>;
+}
+
+interface MainShader {
+  program: WebGLProgram;
   position: number;
   source: WebGLUniformLocation | null;
   blurSource: WebGLUniformLocation | null;
@@ -190,8 +210,11 @@ interface EffectRenderState {
   effectError: string | null;
 }
 
+const CONTEXT_RESTORE_GRACE_MS = 3000;
+
 interface ColorGradingRenderer extends EffectRenderState {
   canvas: HTMLCanvasElement;
+  glCanvas: HTMLCanvasElement;
 }
 
 interface ColorGradingEntry extends ColorGradingRenderer {
@@ -210,12 +233,11 @@ interface ColorGradingEntry extends ColorGradingRenderer {
   touchedParent: HTMLElement | null;
   parentInlinePosition: string | null;
   sourceHidden: boolean;
-  borderlessFrame: HTMLElement | null;
-  sourceInlineOpacity: string | null;
-  sourceInlineOpacityPriority: string;
+  hiddenFrame: HTMLElement | null;
   sourceOpacityForCanvas: string;
   sourceVisibleForCanvas: boolean;
   hasDrawn: boolean;
+  seeksAwaitingDraw: Array<() => void>;
   contextLost: boolean;
   grainSeed: number;
   destroyed: boolean;
@@ -240,6 +262,7 @@ export interface RuntimeColorGradingApi {
   refresh: () => number;
   redraw: () => number;
   redrawAnimated: () => number;
+  holdSeekUntilDrawn: () => void;
   waitForActiveLuts: () => Promise<number>;
   setGrading: (
     target: HfColorGradingTarget | string | null | undefined,
@@ -303,6 +326,8 @@ type LutCacheEntry =
 const LUT_CACHE = new Map<string, LutCacheEntry>();
 const COLOR_GRADING_CANVAS_ATTR = "data-hf-color-grading-canvas";
 const COLOR_GRADING_CANVAS_CLASS = "__hf_color_grading_canvas__";
+const MAX_GRADING_CANVAS_PIXELS = 1 << 24;
+const MAX_GRADING_CANVAS_SIDE = 8192;
 
 /** Captures authored media opacity before animation or grading can mutate it. */
 export function installAuthoredOpacityCapture(): void {
@@ -349,8 +374,9 @@ const ADVANCED_TEXTURE_MAX_X_GLSL = `${HF_COLOR_CURVE_LUT_SIZE - 1}.0`;
 const ADVANCED_TEXTURE_HEIGHT_GLSL = `${ADVANCED_TEXTURE_HEIGHT}.0`;
 const ADVANCED_CONFIG_Y_GLSL = `${(ADVANCED_CONFIG_ROW + 0.5) / ADVANCED_TEXTURE_HEIGHT}`;
 
+// The member's own grade, else its grade group's — normalized in the member's variable scope.
 function readColorGradingAttribute(element: Element): ResolvedHfColorGrading | null {
-  const raw = element.getAttribute(HF_COLOR_GRADING_ATTR);
+  const raw = effectiveColorGrading(element, element.ownerDocument);
   if (raw == null) return null;
   return normalizeHfColorGradingWithVariables(raw, readVariablesForElement(element));
 }
@@ -515,12 +541,16 @@ const FRAGMENT_SHADER = [
   "}",
   "vec4 samplePrepared(vec2 uv){",
   "  vec4 base = sampleSource(uv);",
+  "#ifdef HF_STAGE_BLUR",
   "  float blur = clamp(u_blur, 0.0, 1.0);",
   "  if (blur > 0.0 && u_blurReady > 0.5) base = mix(base, sampleBlur(uv), blur);",
+  "#endif",
+  "#ifdef HF_STAGE_KUWAHARA",
   "  float kuwahara = clamp(u_kuwahara, 0.0, 1.0);",
   "  if (kuwahara > 0.0 && u_kuwaharaReady > 0.5) {",
   "    base.rgb = mix(base.rgb, sampleKuwahara(uv), kuwahara);",
   "  }",
+  "#endif",
   "  return base;",
   "}",
   "float tapeTrackingBand(float y, float center, float width){",
@@ -531,11 +561,14 @@ const FRAGMENT_SHADER = [
   "vec4 sampleMedia(vec2 uv){",
   "  float pixel = clamp(u_pixelate, 0.0, 1.0);",
   "  vec2 sampleUv = uv;",
+  "#ifdef HF_STAGE_PIXELATE",
   "  if (pixel > 0.0) {",
   "    float blockSize = mix(1.0, 48.0, pixel);",
   "    vec2 cells = max(u_resolution / blockSize, vec2(1.0));",
   "    sampleUv = (floor(clamp(uv, vec2(0.0), vec2(0.999999)) * cells) + 0.5) / cells;",
   "  }",
+  "#endif",
+  "#ifdef HF_STAGE_TAPE",
   "  float tapeDamage = clamp(u_tapeDamage, 0.0, 1.0);",
   "  float tapeTracking = clamp(u_tapeTracking, 0.0, 1.0);",
   "  float tapeNoise = clamp(u_tapeNoise, 0.0, 1.0);",
@@ -552,9 +585,15 @@ const FRAGMENT_SHADER = [
   "  trackingShift += tapeTrackingBand(sampleUv.y, fract(0.89 + tapeTime * 0.029), 0.032) * 0.55;",
   "  trackingShift *= tapeTracking * 48.0;",
   "  float tapeShift = (lineJitter + slowWobble + headSwitch + trackingShift) * tapeDamage;",
+  "#endif",
   "  float texelX = 1.0 / max(u_resolution.x * max(u_uvScale.x, 0.00001), 1.0);",
+  "#ifdef HF_STAGE_TAPE",
   "  vec2 tapeUv = sampleUv + vec2(tapeShift * texelX, 0.0);",
+  "#else",
+  "  vec2 tapeUv = sampleUv;",
+  "#endif",
   "  vec4 base = samplePrepared(tapeUv);",
+  "#ifdef HF_STAGE_TAPE",
   "  if (tapeDamage > 0.0) {",
   "    vec2 lumaStep = vec2(texelX * mix(1.0, 3.5, tapeDamage), 0.0);",
   "    vec3 leftTape = samplePrepared(tapeUv - lumaStep).rgb;",
@@ -570,6 +609,8 @@ const FRAGMENT_SHADER = [
   "    tapeColor += (fineNoise * 0.035 + dropout * 0.12) * tapeDamage * tapeNoise;",
   "    base.rgb = mix(base.rgb, clamp(tapeColor, 0.0, 1.0), tapeDamage);",
   "  }",
+  "#endif",
+  "#ifdef HF_STAGE_CHROMA_BLEED",
   "  float chromaBleed = clamp(u_chromaBleed, 0.0, 1.0);",
   "  if (chromaBleed > 0.0) {",
   "    float radius = mix(1.0, 4.0, chromaBleed);",
@@ -583,8 +624,10 @@ const FRAGMENT_SHADER = [
   "    vec3 blurredChroma = ((c0 - vec3(lumaOf(c0))) * 6.0 + (c1 - vec3(lumaOf(c1))) * 4.0 + (c2 - vec3(lumaOf(c2))) * 4.0 + (c3 - vec3(lumaOf(c3))) + (c4 - vec3(lumaOf(c4)))) / 16.0;",
   "    base.rgb = mix(base.rgb, clamp(vec3(centerLuma) + blurredChroma, 0.0, 1.0), chromaBleed);",
   "  }",
+  "#endif",
   "  return base;",
   "}",
+  "#ifdef HF_STAGE_CHROMATIC",
   "vec4 sampleChromaticMedia(vec2 uv, vec4 center){",
   "  float amount = clamp(u_chromaticAberration, 0.0, 1.0);",
   "  if (amount <= 0.0) return center;",
@@ -595,6 +638,9 @@ const FRAGMENT_SHADER = [
   "  vec3 split = vec3(positive.r, center.g, negative.b);",
   "  return vec4(split, center.a);",
   "}",
+  "#else",
+  "vec4 sampleChromaticMedia(vec2 uv, vec4 center){ return center; }",
+  "#endif",
   "vec3 sampleDigitalSplit(vec2 uv, vec2 block, float time, float amount){",
   "  float split = amount * 0.06;",
   "  float direction = digitalHash(block * 0.4 + vec2(floor(time * 3.7), floor(time * 5.3)));",
@@ -602,6 +648,7 @@ const FRAGMENT_SHADER = [
   "  vec4 center = sampleMedia(uv);",
   "  return vec3(sampleMedia(uv + axis * split).r, center.g, sampleMedia(uv - axis * split).b);",
   "}",
+  "#ifdef HF_STAGE_GLITCH",
   "vec3 applyDigitalGlitch(vec2 uv, vec3 source){",
   "  float amount = clamp(u_digitalGlitch, 0.0, 1.0);",
   "  if (amount <= 0.0) return source;",
@@ -670,6 +717,9 @@ const FRAGMENT_SHADER = [
   "  }",
   "  return mix(source, clamp(glitch, 0.0, 1.0), amount);",
   "}",
+  "#else",
+  "vec3 applyDigitalGlitch(vec2 uv, vec3 source){ return source; }",
+  "#endif",
   "float dustMask(vec2 uv, float frameBucket){",
   "  vec2 grid = vec2(128.0, 72.0);",
   "  vec2 cell = floor(uv * grid);",
@@ -698,6 +748,7 @@ const FRAGMENT_SHADER = [
   "  float shapeRadius = shape > 3.5 ? radius * 0.45 : radius;",
   "  return 1.0 - smoothstep(shapeRadius, shapeRadius + softness, distanceToInk);",
   "}",
+  "#ifdef HF_STAGE_MONO_SCREEN",
   "vec3 applyMonoScreen(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float invert = step(0.5, u_monoScreenInvert);",
@@ -715,6 +766,10 @@ const FRAGMENT_SHADER = [
   "  vec3 paper = paletteColor(max(u_paletteSize - 1.0, 1.0));",
   "  return mix(source, mix(paper, ink, inkMask), amount);",
   "}",
+  "#else",
+  "vec3 applyMonoScreen(vec3 source, float amount){ return source; }",
+  "#endif",
+  "#ifdef HF_STAGE_ENGRAVING",
   "vec3 applyEngraving(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float spacing = mix(3.0, 20.0, clamp(u_engravingSpacing, 0.0, 1.0));",
@@ -741,6 +796,9 @@ const FRAGMENT_SHADER = [
   "  vec3 paper = paletteColor(max(u_paletteSize - 1.0, 1.0));",
   "  return mix(source, mix(paper, ink, inkMask), amount);",
   "}",
+  "#else",
+  "vec3 applyEngraving(vec3 source, float amount){ return source; }",
+  "#endif",
   "float crosshatchLine(vec2 pixel, float angle, float spacing, float thickness, float seed){",
   "  vec2 alongAxis = vec2(cos(angle), sin(angle));",
   "  vec2 acrossAxis = vec2(-alongAxis.y, alongAxis.x);",
@@ -768,6 +826,7 @@ const FRAGMENT_SHADER = [
   "  float gy = -tl - 2.0 * tc - tr + bl + 2.0 * bc + br;",
   "  return length(vec2(gx, gy));",
   "}",
+  "#ifdef HF_STAGE_CROSSHATCH",
   "vec3 applyCrosshatch(vec2 uv, vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float spacing = mix(5.0, 30.0, clamp(u_crosshatchSpacing, 0.0, 1.0));",
@@ -792,6 +851,10 @@ const FRAGMENT_SHADER = [
   "  result = mix(result, ink, clamp(edge, 0.0, 1.0));",
   "  return mix(source, result, amount);",
   "}",
+  "#else",
+  "vec3 applyCrosshatch(vec2 uv, vec3 source, float amount){ return source; }",
+  "#endif",
+  "#ifdef HF_STAGE_HALFTONE",
   "vec3 applyHalftone(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  vec3 cmy = 1.0 - source;",
@@ -811,6 +874,10 @@ const FRAGMENT_SHADER = [
   "  printColor *= mix(vec3(1.0), vec3(0.035), blackInk * 0.92);",
   "  return mix(source, printColor, amount);",
   "}",
+  "#else",
+  "vec3 applyHalftone(vec3 source, float amount){ return source; }",
+  "#endif",
+  "#ifdef HF_STAGE_TWO_INK_PRINT",
   "vec3 applyTwoInkPrint(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float sourceLuma = lumaOf(source);",
@@ -837,6 +904,9 @@ const FRAGMENT_SHADER = [
   "  printColor += overprint * redDot * tealDot;",
   "  return mix(source, clamp(printColor, 0.0, 1.0), amount);",
   "}",
+  "#else",
+  "vec3 applyTwoInkPrint(vec3 source, float amount){ return source; }",
+  "#endif",
   "vec3 paletteColor(float index){",
   "  if (index < 0.5) return u_palette0;",
   "  if (index < 1.5) return u_palette1;",
@@ -998,6 +1068,15 @@ const FRAGMENT_SHADER = [
   `  vec4 after = texture2D(u_advanced, vec2((upper + 0.5) / ${ADVANCED_TEXTURE_WIDTH_GLSL}, y));`,
   "  return mix(before, after, position - lower);",
   "}",
+  "vec4 sampleHueCurve(float coordinate){",
+  `  float position = fract(coordinate) * ${ADVANCED_TEXTURE_WIDTH_GLSL};`,
+  "  float lower = floor(position);",
+  `  float upper = mod(lower + 1.0, ${ADVANCED_TEXTURE_WIDTH_GLSL});`,
+  `  float y = 1.5 / ${ADVANCED_TEXTURE_HEIGHT_GLSL};`,
+  `  vec4 before = texture2D(u_advanced, vec2((lower + 0.5) / ${ADVANCED_TEXTURE_WIDTH_GLSL}, y));`,
+  `  vec4 after = texture2D(u_advanced, vec2((upper + 0.5) / ${ADVANCED_TEXTURE_WIDTH_GLSL}, y));`,
+  "  return mix(before, after, position - lower);",
+  "}",
   "vec4 advancedConfig(float index){",
   `  return texture2D(u_advanced, vec2((index + 0.5) / ${ADVANCED_TEXTURE_WIDTH_GLSL}, ${ADVANCED_CONFIG_Y_GLSL}));`,
   "}",
@@ -1021,6 +1100,7 @@ const FRAGMENT_SHADER = [
   "  color += u_highlightWheel.z * weights.z * 0.25;",
   "  return color;",
   "}",
+  "#ifdef HF_STAGE_RGB_CURVES",
   "vec3 applyRgbCurves(vec3 color){",
   "  if (u_rgbCurvesEnabled < 0.5) return color;",
   "  vec3 master = vec3(",
@@ -1034,11 +1114,15 @@ const FRAGMENT_SHADER = [
   "    sampleAdvancedCurve(master.b, 0.0).b",
   "  );",
   "}",
+  "#else",
+  "vec3 applyRgbCurves(vec3 color){ return color; }",
+  "#endif",
   "float decodeSigned(float value){ return (value * 255.0 - 128.0) / 127.0; }",
+  "#ifdef HF_STAGE_HUE_CURVES",
   "vec3 applyHueCurves(vec3 color){",
   "  if (u_hueCurvesEnabled < 0.5) return color;",
   "  vec3 hsv = rgbToHsv(clamp(color, 0.0, 1.0));",
-  "  vec3 curves = sampleAdvancedCurve(hsv.x, 1.0).rgb;",
+  "  vec3 curves = sampleHueCurve(hsv.x).rgb;",
   "  float originalLuma = lumaOf(color);",
   "  hsv.x = fract(hsv.x + decodeSigned(curves.r) * 0.5);",
   "  hsv.y = clamp(hsv.y * max(0.0, 1.0 + decodeSigned(curves.g)), 0.0, 1.0);",
@@ -1046,6 +1130,9 @@ const FRAGMENT_SHADER = [
   "  shifted += vec3(originalLuma - lumaOf(shifted) + decodeSigned(curves.b));",
   "  return shifted;",
   "}",
+  "#else",
+  "vec3 applyHueCurves(vec3 color){ return color; }",
+  "#endif",
   "float softRangeMask(float value, float minimum, float maximum, float softness){",
   "  if (value < minimum) {",
   "    if (softness <= 0.0) return 0.0;",
@@ -1095,10 +1182,12 @@ const FRAGMENT_SHADER = [
   "  color = applyTonalWheels(color);",
   "  color = applyRgbCurves(color);",
   "  color = applyHueCurves(color);",
+  "#ifdef HF_STAGE_SECONDARIES",
   "  if (u_secondaryCount > 0.5) color = applySecondary(color, 0.0);",
   "  if (u_secondaryCount > 1.5) color = applySecondary(color, 1.0);",
   "  if (u_secondaryCount > 2.5) color = applySecondary(color, 2.0);",
   "  if (u_secondaryCount > 3.5) color = applySecondary(color, 3.0);",
+  "#endif",
   "  return color;",
   "}",
   "vec3 sampleLut(float r, float g, float b){",
@@ -1107,6 +1196,7 @@ const FRAGMENT_SHADER = [
   "  float y = (g + 0.5) / max(u_lutTextureSize.y, 1.0);",
   "  return texture2D(u_lut, vec2(x, y)).rgb;",
   "}",
+  "#ifdef HF_STAGE_LUT",
   "vec3 applyLut(vec3 color){",
   "  if (u_lutEnabled < 0.5) return color;",
   "  float size = max(u_lutSize, 2.0);",
@@ -1132,6 +1222,9 @@ const FRAGMENT_SHADER = [
   "  vec3 lutColor = mix(c0, c1, f.b);",
   "  return mix(color, lutColor, clamp(u_lutIntensity, 0.0, 1.0));",
   "}",
+  "#else",
+  "vec3 applyLut(vec3 color){ return color; }",
+  "#endif",
   "vec3 applyPrimaryGrade(vec3 color){",
   "  color *= pow(2.0, u_exposure);",
   "  float y = lumaOf(color);",
@@ -1159,6 +1252,7 @@ const FRAGMENT_SHADER = [
   "  color = applyAdvancedGrade(color);",
   "  return clamp(applyLut(clamp(color, 0.0, 1.0)), 0.0, 1.0);",
   "}",
+  "#ifdef HF_STAGE_DITHER",
   "vec3 applyDither(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float scale = max(min(u_resolution.x, u_resolution.y) / 540.0, 0.25);",
@@ -1168,6 +1262,9 @@ const FRAGMENT_SHADER = [
   "  float index = floor(clamp(lumaOf(source) * (levels - 1.0) + bayer4(block), 0.0, levels - 1.0));",
   "  return mix(source, paletteColor(index), amount);",
   "}",
+  "#else",
+  "vec3 applyDither(vec3 source, float amount){ return source; }",
+  "#endif",
   "vec2 asciiEdgeDirection(vec2 uv, vec2 stepUv){",
   "  float topLeft = bt601Luma(sampleMedia(uv + vec2(-stepUv.x, -stepUv.y)).rgb);",
   "  float top = bt601Luma(sampleMedia(uv + vec2(0.0, -stepUv.y)).rgb);",
@@ -1187,6 +1284,7 @@ const FRAGMENT_SHADER = [
   "  vec2 centered = uv - 0.5;",
   "  return vec2(centered.x * cosine - centered.y * sine, centered.x * sine + centered.y * cosine) + 0.5;",
   "}",
+  "#ifdef HF_STAGE_ASCII",
   "vec3 applyAscii(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float scale = max(min(u_resolution.x, u_resolution.y) / 540.0, 0.25);",
@@ -1213,6 +1311,10 @@ const FRAGMENT_SHADER = [
   "  vec3 asciiColor = mix(background, inkColor, ink);",
   "  return mix(source, asciiColor, amount);",
   "}",
+  "#else",
+  "vec3 applyAscii(vec3 source, float amount){ return source; }",
+  "#endif",
+  "#ifdef HF_STAGE_SCANLINES",
   "vec3 applyScanlines(vec3 source, float amount){",
   "  if (amount <= 0.0) return source;",
   "  float count = mix(50.0, 500.0, clamp(u_scanlineCount, 0.0, 1.0));",
@@ -1221,6 +1323,9 @@ const FRAGMENT_SHADER = [
   "  float line = mix(1.0 - wave, pow(1.0 - wave, 2.2), softness);",
   "  return source * (1.0 - line * amount);",
   "}",
+  "#else",
+  "vec3 applyScanlines(vec3 source, float amount){ return source; }",
+  "#endif",
   "void main(){",
   "  vec2 uv = (v_uv - u_uvOffset) / u_uvScale;",
   "  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) {",
@@ -1229,13 +1334,16 @@ const FRAGMENT_SHADER = [
   "  }",
   "  vec4 originalSample = sampleSource(uv);",
   "  uv = applyCrtWarp(uv);",
+  "#ifdef HF_STAGE_CRT",
   "  vec2 displayEdge = smoothstep(vec2(0.0), vec2(0.006), uv) * (1.0 - smoothstep(vec2(0.994), vec2(1.0), uv));",
   "  float displayMask = displayEdge.x * displayEdge.y;",
+  "#endif",
   "  vec4 sampleColor = sampleMedia(uv);",
   "  sampleColor = sampleChromaticMedia(uv, sampleColor);",
   "  sampleColor.rgb = applyDigitalGlitch(uv, sampleColor.rgb);",
   "  vec3 original = originalSample.rgb;",
   "  vec3 color = mix(sampleColor.rgb, applyColorGrade(sampleColor.rgb), u_intensity);",
+  "#ifdef HF_STAGE_GRAIN",
   "  float grainAmount = clamp(u_grain, 0.0, 1.0);",
   "  if (grainAmount > 0.0) {",
   "    float grainPixelSize = mix(1.0, 6.0, clamp(u_grainSize, 0.0, 1.0));",
@@ -1247,6 +1355,8 @@ const FRAGMENT_SHADER = [
   "    float grainMask = smoothstep(0.02, 0.55, grainLuma) * (1.0 - smoothstep(0.88, 1.0, grainLuma));",
   "    color += grain * grainAmount * mix(0.025, 0.08, grainMask);",
   "  }",
+  "#endif",
+  "#ifdef HF_STAGE_FILM_ARTIFACTS",
   "  float filmArtifacts = clamp(u_filmArtifacts, 0.0, 1.0);",
   "  if (filmArtifacts > 0.0) {",
   "    float filmFrame = floor(u_grainSeed);",
@@ -1259,6 +1369,7 @@ const FRAGMENT_SHADER = [
   "    float scratch = (1.0 - smoothstep(0.0, 1.4 / max(u_resolution.x, 1.0), abs(v_uv.x - scratchX))) * scratchLife;",
   "    color = mix(color, vec3(0.94, 0.88, 0.76), scratch * 0.28 * filmArtifacts);",
   "  }",
+  "#endif",
   "  color = applyMonoScreen(clamp(color, 0.0, 1.0), clamp(u_monoScreen, 0.0, 1.0));",
   "  color = applyEngraving(clamp(color, 0.0, 1.0), clamp(u_engraving, 0.0, 1.0));",
   "  color = applyCrosshatch(uv, clamp(color, 0.0, 1.0), clamp(u_crosshatch, 0.0, 1.0));",
@@ -1266,8 +1377,11 @@ const FRAGMENT_SHADER = [
   "  color = applyTwoInkPrint(clamp(color, 0.0, 1.0), clamp(u_twoInkPrint, 0.0, 1.0));",
   "  color = applyDither(clamp(color, 0.0, 1.0), clamp(u_dither, 0.0, 1.0));",
   "  color = applyAscii(clamp(color, 0.0, 1.0), clamp(u_ascii, 0.0, 1.0));",
+  "#ifdef HF_STAGE_BLOOM",
   "  if (u_bloomReady > 0.5 && u_bloom > 0.0) color += sampleBloom(uv) * u_bloom;",
+  "#endif",
   "  color = applyScanlines(clamp(color, 0.0, 1.0), clamp(u_scanlines, 0.0, 1.0));",
+  "#ifdef HF_STAGE_VIGNETTE",
   "  vec2 vignetteAspect = u_resolution.x > u_resolution.y",
   "    ? vec2(u_resolution.x / max(u_resolution.y, 1.0), 1.0)",
   "    : vec2(1.0, u_resolution.y / max(u_resolution.x, 1.0));",
@@ -1278,9 +1392,13 @@ const FRAGMENT_SHADER = [
   "  float vignetteFeather = mix(0.08, 0.72, clamp(u_vignetteFeather, 0.0, 1.0));",
   "  float vignetteMask = smoothstep(vignetteMidpoint, vignetteMidpoint + vignetteFeather, vignetteDistance);",
   "  color *= 1.0 - vignetteMask * clamp(u_vignette, 0.0, 1.0) * 0.75;",
+  "#endif",
+  "#ifdef HF_STAGE_CRT",
   "  float warpActive = step(0.0001, u_crtCurvature);",
   "  color *= mix(1.0, displayMask, warpActive);",
+  "#endif",
   "  vec3 graded = clamp(color, 0.0, 1.0);",
+  "#ifdef HF_STAGE_COMPARE",
   "  if (u_compareEnabled > 0.5) {",
   "    float pos = clamp(u_comparePosition, 0.0, 1.0);",
   "    float softness = max(u_compareSoftness, 0.00001);",
@@ -1294,9 +1412,63 @@ const FRAGMENT_SHADER = [
   "    gl_FragColor = vec4(mix(splitColor, vec3(1.0), lineMask * 0.82), sampleColor.a);",
   "    return;",
   "  }",
+  "#endif",
   "  gl_FragColor = vec4(graded, sampleColor.a);",
   "}",
 ].join("\n");
+
+type FragmentShaderStage = readonly [
+  define: string,
+  active: (grading: ResolvedHfColorGrading, compare: RuntimeColorGradingCompareState) => boolean,
+];
+
+/** Software GL pays for a stage even at 0, so each grade compiles only the stages it enables. */
+const FRAGMENT_SHADER_STAGES: readonly FragmentShaderStage[] = [
+  ["HF_STAGE_BLUR", (grading) => grading.effects.blur > 0],
+  ["HF_STAGE_KUWAHARA", (grading) => grading.effects.kuwahara > 0],
+  ["HF_STAGE_PIXELATE", (grading) => grading.effects.pixelate > 0],
+  ["HF_STAGE_TAPE", (grading) => grading.effects.tapeDamage > 0],
+  ["HF_STAGE_CHROMA_BLEED", (grading) => grading.effects.chromaBleed > 0],
+  ["HF_STAGE_CHROMATIC", (grading) => grading.effects.chromaticAberration > 0],
+  ["HF_STAGE_CRT", (grading) => grading.effects.crtCurvature > 0],
+  ["HF_STAGE_GLITCH", (grading) => grading.effects.digitalGlitch > 0],
+  ["HF_STAGE_GRAIN", (grading) => grading.details.grain > 0],
+  ["HF_STAGE_FILM_ARTIFACTS", (grading) => grading.effects.filmArtifacts > 0],
+  ["HF_STAGE_MONO_SCREEN", (grading) => grading.effects.monoScreen > 0],
+  ["HF_STAGE_ENGRAVING", (grading) => grading.effects.engraving > 0],
+  ["HF_STAGE_CROSSHATCH", (grading) => grading.effects.crosshatch > 0],
+  ["HF_STAGE_HALFTONE", (grading) => grading.effects.halftone > 0],
+  ["HF_STAGE_TWO_INK_PRINT", (grading) => grading.effects.twoInkPrint > 0],
+  ["HF_STAGE_DITHER", (grading) => grading.effects.dither > 0],
+  ["HF_STAGE_ASCII", (grading) => grading.effects.ascii > 0],
+  ["HF_STAGE_BLOOM", (grading) => grading.effects.bloom > 0],
+  ["HF_STAGE_SCANLINES", (grading) => grading.effects.scanlines > 0],
+  ["HF_STAGE_VIGNETTE", (grading) => grading.details.vignette > 0],
+  ["HF_STAGE_RGB_CURVES", (grading) => advancedGradeState(grading).rgbCurvesEnabled],
+  ["HF_STAGE_HUE_CURVES", (grading) => advancedGradeState(grading).hueCurvesEnabled],
+  ["HF_STAGE_SECONDARIES", (grading) => advancedGradeState(grading).secondaryCount > 0],
+  ["HF_STAGE_LUT", (grading) => grading.lut !== null],
+  ["HF_STAGE_COMPARE", (_grading, compare) => compare.enabled],
+];
+
+function fragmentShaderStageDefines(
+  grading: ResolvedHfColorGrading,
+  compare: RuntimeColorGradingCompareState,
+): string {
+  let defines = "";
+  for (const [define, active] of FRAGMENT_SHADER_STAGES) {
+    if (active(grading, compare)) defines += `#define ${define}\n`;
+  }
+  return defines;
+}
+
+const ALL_FRAGMENT_SHADER_STAGE_DEFINES = FRAGMENT_SHADER_STAGES.map(
+  ([define]) => `#define ${define}\n`,
+).join("");
+
+const MAX_PREVIEW_CANDIDATES = 32;
+
+const MAX_CACHED_MAIN_SHADERS = MAX_PREVIEW_CANDIDATES;
 
 const BLUR_FRAGMENT_SHADER = [
   "#ifdef GL_FRAGMENT_PRECISION_HIGH",
@@ -1461,8 +1633,16 @@ const KUWAHARA_RESOLVE_FRAGMENT_SHADER = [
   "}",
 ].join("\n");
 
+const COLOR_GRADING_SOURCE_SELECTOR = HF_COLOR_GRADING_SOURCE_TAGS.flatMap((tag) => [
+  `${tag}[${HF_COLOR_GRADING_ATTR}]`,
+  `${tag}[${HF_COLOR_GROUP_ATTR}]`,
+]).join(", ");
+
 function isColorGradingMediaElement(value: Element): value is ColorGradingMediaElement {
-  return isVideoElement(value) || isImageElement(value);
+  return (
+    isHtmlElement(value) &&
+    (HF_COLOR_GRADING_SOURCE_TAGS as readonly string[]).includes(value.localName)
+  );
 }
 
 function isVisibleForColorGrading(element: ColorGradingMediaElement): boolean {
@@ -1637,15 +1817,63 @@ function createFloatUniformBindings<K extends string>(
   return bindings;
 }
 
-function deleteProgramResources(
+function deleteTextures(
   gl: WebGLRenderingContext,
-  program: WebGLProgram | null,
   textures: readonly (WebGLTexture | null)[],
 ): void {
-  if (program) gl.deleteProgram(program);
   for (const texture of textures) {
     if (texture) gl.deleteTexture(texture);
   }
+}
+
+function createMainShader(gl: WebGLRenderingContext, stageDefines: string): MainShader | null {
+  const program = createProgram(gl, stageDefines + FRAGMENT_SHADER);
+  if (!program) return null;
+  return {
+    program,
+    position: gl.getAttribLocation(program, "a_pos"),
+    source: gl.getUniformLocation(program, "u_source"),
+    blurSource: gl.getUniformLocation(program, "u_blurSource"),
+    bloomSource: gl.getUniformLocation(program, "u_bloomSource"),
+    kuwaharaSource: gl.getUniformLocation(program, "u_kuwaharaSource"),
+    lut: gl.getUniformLocation(program, "u_lut"),
+    advanced: gl.getUniformLocation(program, "u_advanced"),
+    resolution: gl.getUniformLocation(program, "u_resolution"),
+    uvScale: gl.getUniformLocation(program, "u_uvScale"),
+    uvOffset: gl.getUniformLocation(program, "u_uvOffset"),
+    blurReady: gl.getUniformLocation(program, "u_blurReady"),
+    bloomReady: gl.getUniformLocation(program, "u_bloomReady"),
+    kuwaharaReady: gl.getUniformLocation(program, "u_kuwaharaReady"),
+    lutEnabled: gl.getUniformLocation(program, "u_lutEnabled"),
+    lutSize: gl.getUniformLocation(program, "u_lutSize"),
+    lutTextureSize: gl.getUniformLocation(program, "u_lutTextureSize"),
+    lutDomainMin: gl.getUniformLocation(program, "u_lutDomainMin"),
+    lutDomainMax: gl.getUniformLocation(program, "u_lutDomainMax"),
+    lutIntensity: gl.getUniformLocation(program, "u_lutIntensity"),
+    shadowWheel: gl.getUniformLocation(program, "u_shadowWheel"),
+    midtoneWheel: gl.getUniformLocation(program, "u_midtoneWheel"),
+    highlightWheel: gl.getUniformLocation(program, "u_highlightWheel"),
+    rgbCurvesEnabled: gl.getUniformLocation(program, "u_rgbCurvesEnabled"),
+    hueCurvesEnabled: gl.getUniformLocation(program, "u_hueCurvesEnabled"),
+    secondaryCount: gl.getUniformLocation(program, "u_secondaryCount"),
+    adjustUniforms: createFloatUniformBindings(gl, program, HF_COLOR_GRADING_ADJUST_KEYS),
+    detailUniforms: createFloatUniformBindings(gl, program, HF_COLOR_GRADING_DETAIL_KEYS),
+    effectUniforms: createFloatUniformBindings(gl, program, HF_COLOR_GRADING_EFFECT_KEYS),
+    grainSeed: gl.getUniformLocation(program, "u_grainSeed"),
+    effectTime: gl.getUniformLocation(program, "u_effectTime"),
+    paletteSize: gl.getUniformLocation(program, "u_paletteSize"),
+    palette0: gl.getUniformLocation(program, "u_palette0"),
+    palette1: gl.getUniformLocation(program, "u_palette1"),
+    palette2: gl.getUniformLocation(program, "u_palette2"),
+    palette3: gl.getUniformLocation(program, "u_palette3"),
+    palette4: gl.getUniformLocation(program, "u_palette4"),
+    palette5: gl.getUniformLocation(program, "u_palette5"),
+    intensity: gl.getUniformLocation(program, "u_intensity"),
+    compareEnabled: gl.getUniformLocation(program, "u_compareEnabled"),
+    comparePosition: gl.getUniformLocation(program, "u_comparePosition"),
+    compareSoftness: gl.getUniformLocation(program, "u_compareSoftness"),
+    compareLineWidth: gl.getUniformLocation(program, "u_compareLineWidth"),
+  };
 }
 
 function createProgramInfo(canvas: HTMLCanvasElement): {
@@ -1657,75 +1885,84 @@ function createProgramInfo(canvas: HTMLCanvasElement): {
     premultipliedAlpha: false,
   });
   if (!gl) return null;
-  const program = createProgram(gl);
+  const program = createProgramResources(gl);
+  return program ? { gl, program } : null;
+}
+
+function createProgramResources(gl: WebGLRenderingContext): ProgramInfo | null {
+  const baseShader = createMainShader(gl, "");
+  if (!baseShader) return null;
+  const resources = createMainResources(gl);
+  if (!resources) {
+    gl.deleteProgram(baseShader.program);
+    return null;
+  }
+  return { ...resources, shaders: new Map([["", baseShader]]), failedStageDefines: new Set() };
+}
+
+function createMainResources(
+  gl: WebGLRenderingContext,
+): Omit<ProgramInfo, "shaders" | "failedStageDefines"> | null {
   const texture = createTexture(gl);
   const lutTexture = createTexture(gl, gl.NEAREST);
   const advancedTexture = createTexture(gl, gl.NEAREST);
-  if (!program || !texture || !lutTexture || !advancedTexture) {
-    deleteProgramResources(gl, program, [texture, lutTexture, advancedTexture]);
+  if (!texture || !lutTexture || !advancedTexture) {
+    deleteTextures(gl, [texture, lutTexture, advancedTexture]);
     return null;
   }
   const quad = gl.createBuffer();
   if (!quad) {
-    deleteProgramResources(gl, program, [texture, lutTexture, advancedTexture]);
+    deleteTextures(gl, [texture, lutTexture, advancedTexture]);
     return null;
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, quad);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  return { texture, lutTexture, advancedTexture, advancedSignature: null, quad };
+}
 
-  return {
-    gl,
-    program: {
-      program,
-      texture,
-      lutTexture,
-      advancedTexture,
-      advancedSignature: null,
-      quad,
-      position: gl.getAttribLocation(program, "a_pos"),
-      source: gl.getUniformLocation(program, "u_source"),
-      blurSource: gl.getUniformLocation(program, "u_blurSource"),
-      bloomSource: gl.getUniformLocation(program, "u_bloomSource"),
-      kuwaharaSource: gl.getUniformLocation(program, "u_kuwaharaSource"),
-      lut: gl.getUniformLocation(program, "u_lut"),
-      advanced: gl.getUniformLocation(program, "u_advanced"),
-      resolution: gl.getUniformLocation(program, "u_resolution"),
-      uvScale: gl.getUniformLocation(program, "u_uvScale"),
-      uvOffset: gl.getUniformLocation(program, "u_uvOffset"),
-      blurReady: gl.getUniformLocation(program, "u_blurReady"),
-      bloomReady: gl.getUniformLocation(program, "u_bloomReady"),
-      kuwaharaReady: gl.getUniformLocation(program, "u_kuwaharaReady"),
-      lutEnabled: gl.getUniformLocation(program, "u_lutEnabled"),
-      lutSize: gl.getUniformLocation(program, "u_lutSize"),
-      lutTextureSize: gl.getUniformLocation(program, "u_lutTextureSize"),
-      lutDomainMin: gl.getUniformLocation(program, "u_lutDomainMin"),
-      lutDomainMax: gl.getUniformLocation(program, "u_lutDomainMax"),
-      lutIntensity: gl.getUniformLocation(program, "u_lutIntensity"),
-      shadowWheel: gl.getUniformLocation(program, "u_shadowWheel"),
-      midtoneWheel: gl.getUniformLocation(program, "u_midtoneWheel"),
-      highlightWheel: gl.getUniformLocation(program, "u_highlightWheel"),
-      rgbCurvesEnabled: gl.getUniformLocation(program, "u_rgbCurvesEnabled"),
-      hueCurvesEnabled: gl.getUniformLocation(program, "u_hueCurvesEnabled"),
-      secondaryCount: gl.getUniformLocation(program, "u_secondaryCount"),
-      adjustUniforms: createFloatUniformBindings(gl, program, HF_COLOR_GRADING_ADJUST_KEYS),
-      detailUniforms: createFloatUniformBindings(gl, program, HF_COLOR_GRADING_DETAIL_KEYS),
-      effectUniforms: createFloatUniformBindings(gl, program, HF_COLOR_GRADING_EFFECT_KEYS),
-      grainSeed: gl.getUniformLocation(program, "u_grainSeed"),
-      effectTime: gl.getUniformLocation(program, "u_effectTime"),
-      paletteSize: gl.getUniformLocation(program, "u_paletteSize"),
-      palette0: gl.getUniformLocation(program, "u_palette0"),
-      palette1: gl.getUniformLocation(program, "u_palette1"),
-      palette2: gl.getUniformLocation(program, "u_palette2"),
-      palette3: gl.getUniformLocation(program, "u_palette3"),
-      palette4: gl.getUniformLocation(program, "u_palette4"),
-      palette5: gl.getUniformLocation(program, "u_palette5"),
-      intensity: gl.getUniformLocation(program, "u_intensity"),
-      compareEnabled: gl.getUniformLocation(program, "u_compareEnabled"),
-      comparePosition: gl.getUniformLocation(program, "u_comparePosition"),
-      compareSoftness: gl.getUniformLocation(program, "u_compareSoftness"),
-      compareLineWidth: gl.getUniformLocation(program, "u_compareLineWidth"),
-    },
-  };
+function useMainShader(
+  gl: WebGLRenderingContext,
+  program: ProgramInfo,
+  grading: ResolvedHfColorGrading,
+  compare: RuntimeColorGradingCompareState,
+): MainShader {
+  const shader = mainShaderFor(gl, program, fragmentShaderStageDefines(grading, compare));
+  gl.useProgram(shader.program);
+  return shader;
+}
+
+function mainShaderFor(
+  gl: WebGLRenderingContext,
+  program: ProgramInfo,
+  requested: string,
+): MainShader {
+  const stageDefines = program.failedStageDefines.has(requested)
+    ? ALL_FRAGMENT_SHADER_STAGE_DEFINES
+    : requested;
+  if (program.failedStageDefines.has(stageDefines)) {
+    throw new Error("Color grading shader failed to compile");
+  }
+  const cached = program.shaders.get(stageDefines);
+  if (cached) {
+    // Re-inserting a hit keeps the Map in least-recently-used order for eviction.
+    program.shaders.delete(stageDefines);
+    program.shaders.set(stageDefines, cached);
+    return cached;
+  }
+  const compiled = createMainShader(gl, stageDefines);
+  if (!compiled) {
+    program.failedStageDefines.add(stageDefines);
+    return mainShaderFor(gl, program, ALL_FRAGMENT_SHADER_STAGE_DEFINES);
+  }
+  if (program.shaders.size >= MAX_CACHED_MAIN_SHADERS) {
+    for (const [key, evicted] of program.shaders) {
+      gl.deleteProgram(evicted.program);
+      program.shaders.delete(key);
+      break;
+    }
+  }
+  program.shaders.set(stageDefines, compiled);
+  return compiled;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1778,7 +2015,7 @@ function hashStringSeed(value: string): number {
 function seedForElement(element: ColorGradingMediaElement): number {
   const key =
     element.id ||
-    element.currentSrc ||
+    (!isCanvasElement(element) && element.currentSrc) ||
     element.getAttribute("src") ||
     `${element.tagName}:${Array.prototype.indexOf.call(element.parentNode?.children ?? [], element)}`;
   return hashStringSeed(key);
@@ -1825,13 +2062,14 @@ function uploadEntryLut(
   lut: CubeLut3D,
 ): RuntimeLutTexture | null {
   if (entry.lut?.src === src) return entry.lut;
-  const packed = packCubeLutToRgba8(lut);
   const { gl, program } = entry;
+  const fitted = fitCubeLutToTexture(lut, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+  const packed = packCubeLutToRgba8(fitted);
   try {
     uploadLutTexture(gl, program.lutTexture, packed);
     entry.lut = {
       src,
-      size: lut.size,
+      size: fitted.size,
       domainMin: lut.domainMin,
       domainMax: lut.domainMax,
       textureWidth: packed.width,
@@ -1882,12 +2120,13 @@ function uploadPreviewLut(
   src: string,
   lut: CubeLut3D,
 ): RuntimeLutTexture {
-  const packed = packCubeLutToRgba8(lut);
   const { gl, program } = renderer;
+  const fitted = fitCubeLutToTexture(lut, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+  const packed = packCubeLutToRgba8(fitted);
   uploadLutTexture(gl, program.lutTexture, packed);
   return {
     src,
-    size: lut.size,
+    size: fitted.size,
     domainMin: lut.domainMin,
     domainMax: lut.domainMax,
     textureWidth: packed.width,
@@ -1932,15 +2171,15 @@ function destroyMainProgramResources(gl: WebGLRenderingContext, program: Program
   gl.deleteTexture(program.lutTexture);
   gl.deleteTexture(program.advancedTexture);
   gl.deleteBuffer(program.quad);
-  gl.deleteProgram(program.program);
+  for (const shader of program.shaders.values()) gl.deleteProgram(shader.program);
+  program.shaders.clear();
 }
 
 function replaceProgramResources(entry: ColorGradingEntry): boolean {
-  const created = createProgramInfo(entry.canvas);
-  if (!created) return false;
+  const program = createProgramResources(entry.gl);
+  if (!program) return false;
   destroyProgramResources(entry);
-  entry.gl = created.gl;
-  entry.program = created.program;
+  entry.program = program;
   entry.lut = null;
   entry.lutLoadingSrc = null;
   entry.lutError = null;
@@ -1948,36 +2187,78 @@ function replaceProgramResources(entry: ColorGradingEntry): boolean {
   return true;
 }
 
-function hideFrameBorder(entry: ColorGradingEntry, frame: HTMLElement): void {
-  if (entry.borderlessFrame !== frame) restoreFrameBorder(entry);
-  entry.borderlessFrame = frame;
-  frame.style.borderStyle = "none";
+function moveToContext(
+  entry: ColorGradingEntry,
+  context: { canvas: HTMLCanvasElement; gl: WebGLRenderingContext },
+): boolean {
+  const program = createProgramResources(context.gl);
+  if (!program) return false;
+  destroyProgramResources(entry);
+  entry.gl = context.gl;
+  entry.glCanvas = context.canvas;
+  entry.program = program;
+  entry.lut = null;
+  entry.lutLoadingSrc = null;
+  entry.lutError = null;
+  entry.effectError = null;
+  return true;
 }
 
-function restoreFrameBorder(entry: ColorGradingEntry): void {
-  const frame = entry.borderlessFrame;
-  if (!frame) return;
-  entry.borderlessFrame = null;
-  frame.style.borderStyle = window.getComputedStyle(entry.element).borderStyle;
+function adoptContext(
+  entry: ColorGradingEntry,
+  context: { canvas: HTMLCanvasElement; gl: WebGLRenderingContext },
+): void {
+  entry.contextLost = !moveToContext(entry, context);
+  entry.drawError = entry.contextLost ? "WebGL context rebuild failed" : null;
+  if (entry.contextLost) restoreSourceElement(entry);
+  else drawEntry(entry);
+}
+
+const HIDE_STYLE_ATTR = "data-hf-color-grading-hide";
+
+// A hidden source keeps its own opacity, which the canvas copies, and its hit area, so a click still picks it.
+function hideFromView(element: HTMLElement): void {
+  const doc = element.ownerDocument;
+  if (!doc.querySelector(`style[${HIDE_STYLE_ATTR}]`)) {
+    const style = doc.createElement("style");
+    style.setAttribute(HIDE_STYLE_ATTR, "");
+    style.textContent = `[${COLOR_GRADING_SOURCE_HIDDEN_ATTR}] { filter: opacity(0) !important; }`;
+    (doc.head ?? doc.documentElement).appendChild(style);
+  }
+  element.setAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR, "true");
+}
+
+/** The filter the page gives `element`, read with grading's hide lifted for that one synchronous read. */
+function ownFilter(element: HTMLElement): string {
+  const sheet = element.ownerDocument.querySelector<HTMLStyleElement>(
+    `style[${HIDE_STYLE_ATTR}]`,
+  )?.sheet;
+  if (!sheet || !element.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)) {
+    return window.getComputedStyle(element).filter;
+  }
+  sheet.disabled = true;
+  try {
+    return window.getComputedStyle(element).filter;
+  } finally {
+    sheet.disabled = false;
+  }
+}
+
+function hideFrame(entry: ColorGradingEntry, frame: HTMLElement): void {
+  if (entry.hiddenFrame !== frame) restoreFrame(entry);
+  entry.hiddenFrame = frame;
+  hideFromView(frame);
+}
+
+function restoreFrame(entry: ColorGradingEntry): void {
+  entry.hiddenFrame?.removeAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR);
+  entry.hiddenFrame = null;
 }
 
 function restoreSourceElement(entry: ColorGradingEntry): void {
-  restoreFrameBorder(entry);
+  restoreFrame(entry);
   if (!entry.sourceHidden) return;
   entry.element.removeAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR);
-  const opacity = entry.element.style.getPropertyValue("opacity");
-  const priority = entry.element.style.getPropertyPriority("opacity");
-  if (opacity === "0" && priority === "important") {
-    if (entry.sourceInlineOpacity === null) {
-      entry.element.style.removeProperty("opacity");
-    } else {
-      entry.element.style.setProperty(
-        "opacity",
-        entry.sourceInlineOpacity,
-        entry.sourceInlineOpacityPriority,
-      );
-    }
-  }
   entry.sourceHidden = false;
 }
 
@@ -2460,31 +2741,22 @@ function resolveTarget(
 }
 
 function readSourceSize(source: TexImageSource): { width: number; height: number } | null {
-  if (isVideoElement(source)) {
-    return source.videoWidth > 0 && source.videoHeight > 0
-      ? { width: source.videoWidth, height: source.videoHeight }
-      : null;
-  }
-  if (isImageElement(source)) {
-    return source.naturalWidth > 0 && source.naturalHeight > 0
-      ? { width: source.naturalWidth, height: source.naturalHeight }
-      : null;
-  }
-  return null;
+  const [width, height] = isVideoElement(source)
+    ? [source.videoWidth, source.videoHeight]
+    : isImageElement(source)
+      ? [source.naturalWidth, source.naturalHeight]
+      : isCanvasElement(source)
+        ? [source.width, source.height]
+        : [0, 0];
+  return width > 0 && height > 0 ? { width, height } : null;
 }
 
 function isDrawableSource(source: TexImageSource): boolean {
-  if (isVideoElement(source)) {
-    return (
-      source.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
-      source.videoWidth > 0 &&
-      source.videoHeight > 0
-    );
+  if (isVideoElement(source) && source.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    return false;
   }
-  if (isImageElement(source)) {
-    return source.complete && source.naturalWidth > 0 && source.naturalHeight > 0;
-  }
-  return false;
+  if (isImageElement(source) && !source.complete) return false;
+  return readSourceSize(source) !== null;
 }
 
 function findRenderFrameImage(video: HTMLVideoElement): HTMLImageElement | null {
@@ -2492,9 +2764,13 @@ function findRenderFrameImage(video: HTMLVideoElement): HTMLImageElement | null 
   return frame && isDrawableSource(frame) ? frame : null;
 }
 
+function isShownForColorGrading(element: ColorGradingMediaElement): boolean {
+  return isVisibleForColorGrading(element) || hasInjectedRenderFrame(element);
+}
+
 function hasInjectedRenderFrame(element: ColorGradingMediaElement): boolean {
   if (!isVideoElement(element)) return false;
-  const frame = findRenderFrameImage(element);
+  const frame = findInjectedRenderFrame(element);
   if (!frame) return false;
   const style = window.getComputedStyle(frame);
   return style.display !== "none" && style.visibility !== "hidden";
@@ -2548,6 +2824,8 @@ function getDrawableSource(element: ColorGradingMediaElement): TexImageSource | 
   if (isVideoElement(element)) {
     const renderFrame = findRenderFrameImage(element);
     if (renderFrame) return renderFrame;
+    const previewFrame = getPausedVideoFrame(element);
+    if (previewFrame) return previewFrame;
   }
   return isDrawableSource(element) ? element : null;
 }
@@ -2597,7 +2875,7 @@ function parseObjectPosition(value: string): { x: number; y: number } {
 }
 
 // fallow-ignore-next-line complexity
-function calculateObjectFitUv(
+export function calculateObjectFitUv(
   boxWidth: number,
   boxHeight: number,
   sourceWidth: number,
@@ -2628,7 +2906,8 @@ function calculateObjectFitUv(
   }
   const position = parseObjectPosition(objectPosition || "center");
   const offsetX = ((boxWidth - drawWidth) * position.x) / boxWidth;
-  const offsetY = ((boxHeight - drawHeight) * position.y) / boxHeight;
+  const positionFromBottom = 1 - position.y;
+  const offsetY = ((boxHeight - drawHeight) * positionFromBottom) / boxHeight;
   return {
     scaleX: drawWidth / boxWidth,
     scaleY: drawHeight / boxHeight,
@@ -2651,6 +2930,16 @@ function resolvedLayoutSize(primary: number, fallback: number): number {
   return Math.max(0, Math.round(primary > 0 ? primary : fallback));
 }
 
+function fitToGpuLimits(width: number, height: number): { width: number; height: number } {
+  const scale = Math.min(
+    1,
+    Math.sqrt(MAX_GRADING_CANVAS_PIXELS / (width * height)),
+    MAX_GRADING_CANVAS_SIDE / Math.max(width, height),
+  );
+  const fitted = { width: Math.floor(width * scale), height: Math.floor(height * scale) };
+  return scale < 1 ? fitted : { width: Math.round(width), height: Math.round(height) };
+}
+
 function updateCanvasLayout(
   entry: ColorGradingEntry,
   styleSource: HTMLElement,
@@ -2661,6 +2950,7 @@ function updateCanvasLayout(
 
   const computed = window.getComputedStyle(styleSource);
   copyMediaVisualStyles(canvas.style, computed);
+  canvas.style.filter = ownFilter(element);
   canvas.style.borderStyle = "none";
   canvas.style.pointerEvents = "none";
   canvas.style.position = "absolute";
@@ -2683,8 +2973,7 @@ function updateCanvasLayout(
     return null;
   }
   const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
-  const width = Math.round(cssWidth * pixelRatio);
-  const height = Math.round(cssHeight * pixelRatio);
+  const { width, height } = fitToGpuLimits(cssWidth * pixelRatio, cssHeight * pixelRatio);
   if (canvas.width !== width) canvas.width = width;
   if (canvas.height !== height) canvas.height = height;
   return { width, height };
@@ -2871,10 +3160,26 @@ function setWheelUniform(
   gl.uniform3f(location, wheel.hue / 360, wheel.amount, wheel.level);
 }
 
+function advancedGradeState(grading: ResolvedHfColorGrading): {
+  rgbCurvesEnabled: boolean;
+  hueCurvesEnabled: boolean;
+  secondaryCount: number;
+} {
+  const { curves, hueCurves, secondaries } = grading;
+  return {
+    rgbCurvesEnabled: hasHfColorGradingRgbCurveValues(curves),
+    hueCurvesEnabled: hasHfColorGradingHueCurveValues(hueCurves),
+    secondaryCount: hasHfColorGradingSecondaryValues(secondaries)
+      ? secondaries.reduce((count, secondary) => count + Number(secondary.enabled), 0)
+      : 0,
+  };
+}
+
 // fallow-ignore-next-line complexity
 function applyUniforms(
   gl: WebGLRenderingContext,
   program: ProgramInfo,
+  shader: MainShader,
   grading: ResolvedHfColorGrading,
   lut: RuntimeLutTexture | null,
   blurReady: boolean,
@@ -2886,58 +3191,53 @@ function applyUniforms(
   grainSeed: number,
   effectTime: number,
 ): void {
-  gl.uniform1i(program.source, 0);
-  gl.uniform1i(program.blurSource, 1);
-  gl.uniform1i(program.lut, 2);
-  gl.uniform1i(program.kuwaharaSource, 3);
-  gl.uniform1i(program.bloomSource, 4);
-  gl.uniform1i(program.advanced, 5);
-  gl.uniform2f(program.resolution, layout.width, layout.height);
-  gl.uniform2f(program.uvScale, uv.scaleX, uv.scaleY);
-  gl.uniform2f(program.uvOffset, uv.offsetX, uv.offsetY);
-  gl.uniform1f(program.blurReady, blurReady ? 1 : 0);
-  gl.uniform1f(program.bloomReady, bloomReady ? 1 : 0);
-  gl.uniform1f(program.kuwaharaReady, kuwaharaReady ? 1 : 0);
-  gl.uniform1f(program.lutEnabled, lut ? 1 : 0);
-  gl.uniform1f(program.lutSize, lut?.size ?? 2);
-  gl.uniform2f(program.lutTextureSize, lut?.textureWidth ?? 1, lut?.textureHeight ?? 1);
+  gl.uniform1i(shader.source, 0);
+  gl.uniform1i(shader.blurSource, 1);
+  gl.uniform1i(shader.lut, 2);
+  gl.uniform1i(shader.kuwaharaSource, 3);
+  gl.uniform1i(shader.bloomSource, 4);
+  gl.uniform1i(shader.advanced, 5);
+  gl.uniform2f(shader.resolution, layout.width, layout.height);
+  gl.uniform2f(shader.uvScale, uv.scaleX, uv.scaleY);
+  gl.uniform2f(shader.uvOffset, uv.offsetX, uv.offsetY);
+  gl.uniform1f(shader.blurReady, blurReady ? 1 : 0);
+  gl.uniform1f(shader.bloomReady, bloomReady ? 1 : 0);
+  gl.uniform1f(shader.kuwaharaReady, kuwaharaReady ? 1 : 0);
+  gl.uniform1f(shader.lutEnabled, lut ? 1 : 0);
+  gl.uniform1f(shader.lutSize, lut?.size ?? 2);
+  gl.uniform2f(shader.lutTextureSize, lut?.textureWidth ?? 1, lut?.textureHeight ?? 1);
   gl.uniform3f(
-    program.lutDomainMin,
+    shader.lutDomainMin,
     lut?.domainMin[0] ?? 0,
     lut?.domainMin[1] ?? 0,
     lut?.domainMin[2] ?? 0,
   );
   gl.uniform3f(
-    program.lutDomainMax,
+    shader.lutDomainMax,
     lut?.domainMax[0] ?? 1,
     lut?.domainMax[1] ?? 1,
     lut?.domainMax[2] ?? 1,
   );
-  gl.uniform1f(program.lutIntensity, grading.lut?.intensity ?? 0);
-  const { curves, hueCurves, secondaries } = grading;
-  const rgbCurvesEnabled = hasHfColorGradingRgbCurveValues(curves);
-  const hueCurvesEnabled = hasHfColorGradingHueCurveValues(hueCurves);
-  const secondaryCount = hasHfColorGradingSecondaryValues(secondaries)
-    ? secondaries.reduce((count, secondary) => count + Number(secondary.enabled), 0)
-    : 0;
+  gl.uniform1f(shader.lutIntensity, grading.lut?.intensity ?? 0);
+  const { rgbCurvesEnabled, hueCurvesEnabled, secondaryCount } = advancedGradeState(grading);
   if (rgbCurvesEnabled || hueCurvesEnabled || secondaryCount > 0) {
-    ensureAdvancedTexture(gl, program, grading, secondaries);
+    ensureAdvancedTexture(gl, program, grading, grading.secondaries);
   }
-  setWheelUniform(gl, program.shadowWheel, grading.wheels.shadows);
-  setWheelUniform(gl, program.midtoneWheel, grading.wheels.midtones);
-  setWheelUniform(gl, program.highlightWheel, grading.wheels.highlights);
-  gl.uniform1f(program.rgbCurvesEnabled, rgbCurvesEnabled ? 1 : 0);
-  gl.uniform1f(program.hueCurvesEnabled, hueCurvesEnabled ? 1 : 0);
-  gl.uniform1f(program.secondaryCount, secondaryCount);
-  for (const [key, location] of program.adjustUniforms) {
+  setWheelUniform(gl, shader.shadowWheel, grading.wheels.shadows);
+  setWheelUniform(gl, shader.midtoneWheel, grading.wheels.midtones);
+  setWheelUniform(gl, shader.highlightWheel, grading.wheels.highlights);
+  gl.uniform1f(shader.rgbCurvesEnabled, rgbCurvesEnabled ? 1 : 0);
+  gl.uniform1f(shader.hueCurvesEnabled, hueCurvesEnabled ? 1 : 0);
+  gl.uniform1f(shader.secondaryCount, secondaryCount);
+  for (const [key, location] of shader.adjustUniforms) {
     gl.uniform1f(location, grading.adjust[key]);
   }
-  for (const [key, location] of program.detailUniforms) {
+  for (const [key, location] of shader.detailUniforms) {
     gl.uniform1f(location, grading.details[key]);
   }
-  gl.uniform1f(program.grainSeed, grainSeed);
-  gl.uniform1f(program.effectTime, effectTime);
-  for (const [key, location] of program.effectUniforms) {
+  gl.uniform1f(shader.grainSeed, grainSeed);
+  gl.uniform1f(shader.effectTime, effectTime);
+  for (const [key, location] of shader.effectUniforms) {
     gl.uniform1f(location, grading.effects[key]);
   }
   const palette =
@@ -2946,39 +3246,22 @@ function applyUniforms(
       ? DEFAULT_ART_PALETTE
       : DEFAULT_EFFECT_PALETTE);
   const lastColor = palette[palette.length - 1] ?? DEFAULT_EFFECT_PALETTE[1];
-  gl.uniform1f(program.paletteSize, palette.length);
-  setPaletteColorUniform(gl, program.palette0, palette[0] ?? DEFAULT_EFFECT_PALETTE[0]);
-  setPaletteColorUniform(gl, program.palette1, palette[1] ?? lastColor);
-  setPaletteColorUniform(gl, program.palette2, palette[2] ?? lastColor);
-  setPaletteColorUniform(gl, program.palette3, palette[3] ?? lastColor);
-  setPaletteColorUniform(gl, program.palette4, palette[4] ?? lastColor);
-  setPaletteColorUniform(gl, program.palette5, palette[5] ?? lastColor);
-  gl.uniform1f(program.intensity, grading.intensity);
-  gl.uniform1f(program.compareEnabled, compare.enabled ? 1 : 0);
-  gl.uniform1f(program.comparePosition, compare.position);
-  gl.uniform1f(program.compareSoftness, compare.softness);
-  gl.uniform1f(program.compareLineWidth, compare.lineWidth);
+  gl.uniform1f(shader.paletteSize, palette.length);
+  setPaletteColorUniform(gl, shader.palette0, palette[0] ?? DEFAULT_EFFECT_PALETTE[0]);
+  setPaletteColorUniform(gl, shader.palette1, palette[1] ?? lastColor);
+  setPaletteColorUniform(gl, shader.palette2, palette[2] ?? lastColor);
+  setPaletteColorUniform(gl, shader.palette3, palette[3] ?? lastColor);
+  setPaletteColorUniform(gl, shader.palette4, palette[4] ?? lastColor);
+  setPaletteColorUniform(gl, shader.palette5, palette[5] ?? lastColor);
+  gl.uniform1f(shader.intensity, grading.intensity);
+  gl.uniform1f(shader.compareEnabled, compare.enabled ? 1 : 0);
+  gl.uniform1f(shader.comparePosition, compare.position);
+  gl.uniform1f(shader.compareSoftness, compare.softness);
+  gl.uniform1f(shader.compareLineWidth, compare.lineWidth);
 }
 
 function hideSourceElement(entry: ColorGradingEntry): void {
-  if (!entry.sourceHidden) {
-    // Prefer the parse-time authored capture: by the time the first hide runs,
-    // the inline opacity is usually an animation-engine transient (a from()
-    // tween's 0 at playhead 0), and restoring THAT when grading is removed
-    // would leave the element invisible. Fall back to the live inline value
-    // for documents loaded without the capture installed.
-    // `null` = never captured; "" = captured, authored none (store as null).
-    const authored = entry.element.getAttribute(COLOR_GRADING_AUTHORED_OPACITY_ATTR);
-    if (authored !== null) {
-      entry.sourceInlineOpacity = authored === "" ? null : authored;
-      entry.sourceInlineOpacityPriority = "";
-    } else {
-      entry.sourceInlineOpacity = entry.element.style.getPropertyValue("opacity") || null;
-      entry.sourceInlineOpacityPriority = entry.element.style.getPropertyPriority("opacity");
-    }
-  }
-  entry.element.setAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR, "true");
-  entry.element.style.setProperty("opacity", "0", "important");
+  hideFromView(entry.element);
   entry.sourceHidden = true;
 }
 
@@ -3069,11 +3352,19 @@ function readAnimatedGrading(entry: ColorGradingEntry): ResolvedHfColorGrading {
   return animated;
 }
 
+const CLI_SEEK_DRAW_GATE = Symbol.for("hyperframes.webglDrawGate");
+
+function drawsGated(): boolean {
+  const gate: unknown = Reflect.get(window, CLI_SEEK_DRAW_GATE);
+  return typeof gate === "object" && gate !== null && Reflect.get(gate, "skip") === true;
+}
+
 function uploadSourceTexture(
   gl: WebGLRenderingContext,
   texture: WebGLTexture,
   source: TexImageSource,
 ): void {
+  if (drawsGated()) return;
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -3100,54 +3391,131 @@ function bindProgramTextures(
 }
 
 // fallow-ignore-next-line complexity
-function drawEntry(entry: ColorGradingEntry): boolean {
-  if (entry.destroyed || entry.contextLost) return false;
+function fitSharedCanvas(entry: ColorGradingEntry, size: { width: number; height: number }): void {
+  if (entry.glCanvas === entry.canvas) return;
+  if (entry.glCanvas.width < size.width) entry.glCanvas.width = size.width;
+  if (entry.glCanvas.height < size.height) entry.glCanvas.height = size.height;
+}
+
+function presentEntry(entry: ColorGradingEntry, size: { width: number; height: number }): void {
+  if (entry.glCanvas === entry.canvas) return;
+  const context = entry.canvas.getContext("2d");
+  if (!context) throw new Error("Canvas 2D is unavailable");
+  const { width, height } = size;
+  context.clearRect(0, 0, width, height);
+  context.drawImage(
+    entry.glCanvas,
+    0,
+    entry.glCanvas.height - height,
+    width,
+    height,
+    0,
+    0,
+    width,
+    height,
+  );
+}
+
+type DrawableFrame = {
+  source: TexImageSource;
+  pixels: NonNullable<ReturnType<typeof readablePixels>>;
+  size: { width: number; height: number };
+};
+
+function drawableFrame(entry: ColorGradingEntry): DrawableFrame | null {
+  if (document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)) return null;
   const source = getDrawableSource(entry.element);
   const pixels = source && readablePixels(source, entry);
   if (!source || !pixels) {
     if (!entry.hasDrawn) entry.canvas.style.display = "none";
-    return false;
+    return null;
   }
-  const sourceSize = readSourceSize(source);
-  if (!sourceSize) return false;
-  const styleSource = isHtmlElement(source) ? source : entry.element;
-  const sourceOpacity = entry.element.style.getPropertyValue("opacity");
-  const sourceOpacityPriority = entry.element.style.getPropertyPriority("opacity");
-  const hiddenByColorGrading =
-    entry.sourceHidden && sourceOpacity === "0" && sourceOpacityPriority === "important";
+  const size = readSourceSize(source);
+  return size ? { source, pixels, size } : null;
+}
+
+function syncSourceAppearance(
+  entry: ColorGradingEntry,
+  source: TexImageSource,
+  injectedFrameSource: boolean,
+): void {
   const sourceVisibility = entry.element.style.getPropertyValue("visibility");
-  const injectedFrameSource = isRenderFrameImage(source);
-  if (injectedFrameSource) keepCanvasAboveSource(entry, source);
-  // When color grading hid the source (opacity:0 !important), temporarily
-  // restore the authored inline opacity so getComputedStyle reflects the CSS
-  // animation's current value instead of our own hide. Without this, a CSS
-  // entrance animation (opacity: 0→1) freezes at its first-frame value for
-  // the entire render because the !important blocks all animation effects on
-  // the property (#3329). The restore–read–rehide is synchronous, so no
-  // repaint occurs between the style writes.
-  if (hiddenByColorGrading && !injectedFrameSource) {
-    if (entry.sourceInlineOpacity !== null) {
-      entry.element.style.setProperty(
-        "opacity",
-        entry.sourceInlineOpacity,
-        entry.sourceInlineOpacityPriority || "",
-      );
-    } else {
-      entry.element.style.removeProperty("opacity");
-    }
-  }
-  const computed = window.getComputedStyle(injectedFrameSource ? source : entry.element);
+  const computed = window.getComputedStyle(
+    injectedFrameSource ? (source as HTMLImageElement) : entry.element,
+  );
   // Grading never writes `visibility`, so the source's computed visibility
   // always tracks the clip window and has to be re-read every frame.
   entry.sourceOpacityForCanvas = computed.opacity || "1";
-  if (hiddenByColorGrading && !injectedFrameSource) {
-    entry.element.style.setProperty("opacity", "0", "important");
-  }
   entry.sourceVisibleForCanvas =
     (injectedFrameSource || sourceVisibility !== "hidden") && computed.visibility !== "hidden";
-  const layout = updateCanvasLayout(entry, styleSource);
-  if (!layout) return false;
+}
 
+function canonicalFrameTime(element: ColorGradingMediaElement): number {
+  const runtimeTime = (window as WindowWithColorGrading).__player?.getTime?.();
+  if (typeof runtimeTime === "number" && Number.isFinite(runtimeTime))
+    return Math.max(0, runtimeTime);
+  return isVideoElement(element) ? Math.max(0, element.currentTime) : 0;
+}
+
+function renderGradedFrame(
+  entry: ColorGradingEntry,
+  pixels: DrawableFrame["pixels"],
+  layout: { width: number; height: number },
+  uv: ReturnType<typeof calculateObjectFitUv>,
+): void {
+  const { gl, program } = entry;
+  fitSharedCanvas(entry, layout);
+  const grading = readAnimatedGrading(entry);
+  const lut = ensureEntryLut(entry);
+  // Browser media elements are top-left oriented; WebGL texture coordinates
+  // are bottom-left oriented unless the upload is flipped.
+  uploadSourceTexture(gl, program.texture, pixels);
+  const hasAnimatedKuwahara = readAnimatedValue(entry.element, ANIMATED_KUWAHARA_PROPERTY) !== null;
+  const prepared = prepareEffectTextures(entry, grading, layout, uv, {
+    preserveKuwahara: hasAnimatedKuwahara,
+  });
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, layout.width, layout.height);
+  const shader = useMainShader(gl, program, grading, entry.compare);
+  bindProgramTextures(gl, program, prepared);
+  const frameTime = canonicalFrameTime(entry.element);
+  const grainSeed = entry.grainSeed + Math.floor(frameTime * 60);
+  applyUniforms(
+    gl,
+    program,
+    shader,
+    grading,
+    lut,
+    prepared.blurReady,
+    prepared.bloomReady,
+    prepared.kuwaharaReady,
+    entry.compare,
+    layout,
+    uv,
+    grainSeed,
+    frameTime,
+  );
+  drawFullscreenQuad(gl, { quad: program.quad, position: shader.position });
+  if (gl.drawingBufferWidth < layout.width || gl.drawingBufferHeight < layout.height) {
+    restoreSourceElement(entry);
+    entry.canvas.style.display = "none";
+    throw new Error("The GPU's drawing buffer is smaller than the grading canvas");
+  }
+  presentEntry(entry, layout);
+}
+
+function placeCanvas(
+  entry: ColorGradingEntry,
+  source: TexImageSource,
+  sourceSize: { width: number; height: number },
+): {
+  layout: { width: number; height: number };
+  uv: ReturnType<typeof calculateObjectFitUv>;
+} | null {
+  const styleSource = isRenderFrameImage(source) ? source : entry.element;
+  const layout = updateCanvasLayout(entry, styleSource);
+  if (!layout) return null;
   const style = window.getComputedStyle(styleSource);
   const uv = calculateObjectFitUv(
     layout.width,
@@ -3157,53 +3525,36 @@ function drawEntry(entry: ColorGradingEntry): boolean {
     style.objectFit,
     style.objectPosition,
   );
-  const { gl, program } = entry;
-  try {
-    const grading = readAnimatedGrading(entry);
-    const lut = ensureEntryLut(entry);
-    // Browser media elements are top-left oriented; WebGL texture coordinates
-    // are bottom-left oriented unless the upload is flipped.
-    uploadSourceTexture(gl, program.texture, pixels);
-    const hasAnimatedKuwahara =
-      readAnimatedValue(entry.element, ANIMATED_KUWAHARA_PROPERTY) !== null;
-    const prepared = prepareEffectTextures(entry, grading, layout, uv, {
-      preserveKuwahara: hasAnimatedKuwahara,
-    });
+  return { layout, uv };
+}
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, layout.width, layout.height);
-    gl.useProgram(program.program);
-    bindProgramTextures(gl, program, prepared);
-    const runtimeTime = (window as WindowWithColorGrading).__player?.getTime?.();
-    const frameTime =
-      typeof runtimeTime === "number" && Number.isFinite(runtimeTime)
-        ? Math.max(0, runtimeTime)
-        : isVideoElement(entry.element)
-          ? Math.max(0, entry.element.currentTime)
-          : 0;
-    const grainSeed = entry.grainSeed + Math.floor(frameTime * 60);
-    applyUniforms(
-      gl,
-      program,
-      grading,
-      lut,
-      prepared.blurReady,
-      prepared.bloomReady,
-      prepared.kuwaharaReady,
-      entry.compare,
-      layout,
-      uv,
-      grainSeed,
-      frameTime,
-    );
-    drawFullscreenQuad(gl, program);
+function markDrawn(entry: ColorGradingEntry): void {
+  entry.hasDrawn = true;
+  entry.drawError = null;
+  releaseSeeks(entry);
+}
+
+function drawEntry(entry: ColorGradingEntry): boolean {
+  if (entry.destroyed || entry.contextLost) return false;
+  const frame = drawableFrame(entry);
+  if (!frame) return false;
+  const { source, pixels, size: sourceSize } = frame;
+  const injectedFrameSource = isRenderFrameImage(source);
+  if (injectedFrameSource) keepCanvasAboveSource(entry, source);
+  syncSourceAppearance(entry, source, injectedFrameSource);
+  const placed = placeCanvas(entry, source, sourceSize);
+  if (!placed) return false;
+  const { layout, uv } = placed;
+  try {
+    renderGradedFrame(entry, pixels, layout, uv);
     hideSourceElement(entry);
-    if (injectedFrameSource) hideFrameBorder(entry, source);
-    entry.hasDrawn = true;
-    entry.drawError = null;
+    if (injectedFrameSource) hideFrame(entry, source);
+    markDrawn(entry);
     return true;
   } catch (err) {
     entry.drawError = err instanceof Error ? err.message : "Shader draw failed";
+    entry.canvas.style.display = "none";
+    restoreSourceElement(entry);
     swallow("runtime.colorGrading.drawEntry", err);
     return false;
   }
@@ -3231,6 +3582,7 @@ function createPreviewRenderer(): ColorGradingPreviewRenderer | null {
   return created
     ? {
         canvas,
+        glCanvas: canvas,
         ...created,
         lut: null,
         effectTargets: null,
@@ -3304,7 +3656,7 @@ async function renderPreviewBatch(
   const { dimensions, uv, grainSeed, effectTime } = frame;
   const images: RuntimeColorGradingPreviewBatch["images"] = [];
 
-  for (const candidate of candidates.slice(0, 32)) {
+  for (const candidate of candidates.slice(0, MAX_PREVIEW_CANDIDATES)) {
     const grading = normalizeHfColorGrading(candidate.grading);
     if (!grading) {
       images.push({ id: candidate.id, dataUrl: null, error: "Invalid grading" });
@@ -3356,12 +3708,13 @@ function renderPreviewCandidate(
   });
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, dimensions.width, dimensions.height);
-  gl.useProgram(program.program);
+  const shader = useMainShader(gl, program, grading, DEFAULT_COMPARE);
   bindProgramTextures(gl, program, prepared);
   if (!lut) renderer.lut = null;
   applyUniforms(
     gl,
     program,
+    shader,
     grading,
     lut,
     prepared.blurReady,
@@ -3373,7 +3726,7 @@ function renderPreviewCandidate(
     grainSeed,
     effectTime,
   );
-  drawFullscreenQuad(gl, program);
+  drawFullscreenQuad(gl, { quad: program.quad, position: shader.position });
   return canvas.toDataURL("image/png");
 }
 
@@ -3385,6 +3738,14 @@ function addListener(
 ): void {
   target.addEventListener(type, listener);
   entry.cleanup.push(() => target.removeEventListener(type, listener));
+}
+
+function redrawsOnTransportTick(element: ColorGradingMediaElement): boolean {
+  if (isCanvasElement(element)) return true;
+  if (isVideoElement(element) && !element.paused && !element.ended) return false;
+  return ANIMATED_GRADING_PROPERTIES.some(
+    (property) => readAnimatedValue(element, property) !== null,
+  );
 }
 
 function cancelScheduledFrame(entry: ColorGradingEntry): void {
@@ -3423,34 +3784,22 @@ function installEntryListeners(entry: ColorGradingEntry): void {
   const redraw = () => {
     drawEntry(entry);
   };
+  const redrawOnPresentedFrame = () => {
+    drawEntry(entry);
+    scheduleVideoDraw(entry);
+  };
   addListener(entry, entry.element, "load", redraw);
   addListener(entry, entry.element, "loadedmetadata", redraw);
-  addListener(entry, entry.element, "loadeddata", redraw);
-  addListener(entry, entry.element, "seeked", redraw);
+  addListener(entry, entry.element, "loadeddata", redrawOnPresentedFrame);
+  addListener(entry, entry.element, "seeked", redrawOnPresentedFrame);
+  addListener(entry, entry.element, "error", () => releaseSeeks(entry));
+  addListener(entry, entry.element, "emptied", () => releaseSeeks(entry));
   addListener(entry, entry.element, "timeupdate", redraw);
   addListener(entry, window, "resize", redraw);
   if (isVideoElement(entry.element)) {
     addListener(entry, entry.element, "play", () => scheduleVideoDraw(entry));
     addListener(entry, entry.element, "pause", redraw);
   }
-  addListener(entry, entry.canvas, "webglcontextlost", (event) => {
-    event.preventDefault();
-    entry.contextLost = true;
-    entry.drawError = "WebGL context lost";
-    entry.canvas.style.display = "none";
-    restoreSourceElement(entry);
-  });
-  addListener(entry, entry.canvas, "webglcontextrestored", () => {
-    entry.contextLost = false;
-    if (!replaceProgramResources(entry)) {
-      entry.contextLost = true;
-      entry.drawError = "WebGL context restore failed";
-      restoreSourceElement(entry);
-      return;
-    }
-    entry.drawError = null;
-    drawEntry(entry);
-  });
   if (typeof ResizeObserver !== "undefined") {
     entry.resizeObserver = new ResizeObserver(redraw);
     entry.resizeObserver.observe(entry.element);
@@ -3483,9 +3832,32 @@ function installEntryListeners(entry: ColorGradingEntry): void {
   }
 }
 
+const SEEK_DRAW_LIMIT_MS = 2_000;
+
+function nextDraw(entry: ColorGradingEntry): Promise<void> {
+  return new Promise((resolve) => {
+    const release = () => {
+      wallClearTimeout(timer);
+      const at = entry.seeksAwaitingDraw.indexOf(release);
+      if (at >= 0) entry.seeksAwaitingDraw.splice(at, 1);
+      resolve();
+    };
+    const timer = wallSetTimeout(release, SEEK_DRAW_LIMIT_MS);
+    entry.seeksAwaitingDraw.push(release);
+  });
+}
+
+const releaseSeeks = (entry: ColorGradingEntry) => {
+  for (const release of entry.seeksAwaitingDraw.splice(0)) release();
+};
+
+const canDraw = (video: HTMLVideoElement) =>
+  !video.error && video.readyState >= HTMLMediaElement.HAVE_METADATA && video.videoWidth > 0;
+
 function detachEntry(entry: ColorGradingEntry): ColorGradingRenderer | null {
   if (entry.destroyed) return null;
   entry.destroyed = true;
+  releaseSeeks(entry);
   cancelScheduledFrame(entry);
   entry.resizeObserver?.disconnect();
   for (const cleanup of entry.cleanup) cleanup();
@@ -3503,6 +3875,7 @@ function detachEntry(entry: ColorGradingEntry): ColorGradingRenderer | null {
   }
   return {
     canvas: entry.canvas,
+    glCanvas: entry.glCanvas,
     gl: entry.gl,
     program: entry.program,
     effectTargets: null,
@@ -3543,17 +3916,88 @@ export function createColorGradingRuntime(pausedMediaLease?: {
 }): RuntimeColorGradingApi {
   const entries = new WeakMap<ColorGradingMediaElement, ColorGradingEntry>();
   const trackedElements = new Set<ColorGradingMediaElement>();
+  const hiddenAtRefresh = new Set<ColorGradingMediaElement>();
   const idleRenderers: ColorGradingRenderer[] = [];
   let observer: MutationObserver | null = null;
   let previewRenderer: ColorGradingPreviewRenderer | null = null;
   let previewQueue = Promise.resolve();
   let destroyed = false;
+  let shared: { canvas: HTMLCanvasElement; gl: WebGLRenderingContext } | null = null;
+  let rebuildTimer: ReturnType<typeof setTimeout> | undefined;
+  const trackedEntries = () =>
+    [...trackedElements].flatMap((element) => entries.get(element) ?? []);
+
+  const sharedContext = () => {
+    if (shared) return shared;
+    const canvas = document.createElement("canvas");
+    const gl = canvas.getContext("webgl", { alpha: true, premultipliedAlpha: false });
+    if (!gl) return null;
+    canvas.addEventListener("webglcontextlost", (event) => {
+      event.preventDefault();
+      idleRenderers.length = 0;
+      for (const entry of trackedEntries()) {
+        entry.contextLost = true;
+        entry.drawError = "WebGL context lost";
+        entry.canvas.style.display = "none";
+        restoreSourceElement(entry);
+      }
+      watchForRestore(canvas, gl);
+    });
+    canvas.addEventListener("webglcontextrestored", () => {
+      if (shared?.canvas !== canvas) return;
+      wallClearTimeout(rebuildTimer);
+      for (const entry of trackedEntries()) {
+        entry.contextLost = !replaceProgramResources(entry);
+        entry.drawError = entry.contextLost ? "WebGL context restore failed" : null;
+        if (entry.contextLost) restoreSourceElement(entry);
+        else drawEntry(entry);
+      }
+      refresh();
+    });
+    shared = { canvas, gl };
+    return shared;
+  };
+
+  const watchForRestore = (canvas: HTMLCanvasElement, gl: WebGLRenderingContext): void => {
+    wallClearTimeout(rebuildTimer);
+    rebuildTimer = wallSetTimeout(() => rebuildLostContext(canvas, gl), CONTEXT_RESTORE_GRACE_MS);
+  };
+
+  const rebuildLostContext = (canvas: HTMLCanvasElement, gl: WebGLRenderingContext): void => {
+    if (destroyed || shared?.canvas !== canvas || !gl.isContextLost?.()) return;
+    const stale = shared;
+    shared = null;
+    const next = sharedContext();
+    if (!next) {
+      shared = stale;
+      watchForRestore(canvas, gl);
+      return;
+    }
+    for (const entry of trackedEntries()) adoptContext(entry, next);
+    refresh();
+  };
+
+  const newRenderer = (element: ColorGradingMediaElement): ColorGradingRenderer | null => {
+    const context = sharedContext();
+    const program = context && createProgramResources(context.gl);
+    if (!context || !program) return null;
+    return {
+      canvas: makeCanvas(element),
+      glCanvas: context.canvas,
+      gl: context.gl,
+      program,
+      effectTargets: null,
+      kuwaharaTargets: null,
+      effectError: null,
+    };
+  };
 
   const upsert = (
     element: ColorGradingMediaElement,
     grading: ResolvedHfColorGrading,
     source: EntrySource,
   ): boolean => {
+    hiddenAtRefresh.delete(element);
     const existing = entries.get(element);
     if (existing) {
       existing.grading = grading;
@@ -3566,20 +4010,9 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     if (renderer) {
       attachCanvas(renderer.canvas, element);
     } else {
-      const canvas = makeCanvas(element);
-      const created = createProgramInfo(canvas);
-      if (!created) {
-        canvas.remove();
-        return false;
-      }
-      renderer = {
-        canvas,
-        gl: created.gl,
-        program: created.program,
-        effectTargets: null,
-        kuwaharaTargets: null,
-        effectError: null,
-      };
+      const created = newRenderer(element);
+      if (!created) return false;
+      renderer = created;
     }
     const entry: ColorGradingEntry = {
       element,
@@ -3601,12 +4034,11 @@ export function createColorGradingRuntime(pausedMediaLease?: {
       touchedParent: null,
       parentInlinePosition: null,
       sourceHidden: false,
-      borderlessFrame: null,
-      sourceInlineOpacity: null,
-      sourceInlineOpacityPriority: "",
+      hiddenFrame: null,
       sourceOpacityForCanvas: window.getComputedStyle(element).opacity || "1",
       sourceVisibleForCanvas: window.getComputedStyle(element).visibility !== "hidden",
       hasDrawn: false,
+      seeksAwaitingDraw: [],
       contextLost: false,
       grainSeed: seedForElement(element),
       destroyed: false,
@@ -3615,7 +4047,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     trackedElements.add(element);
     installEntryListeners(entry);
     drawEntry(entry);
-    if (isVideoElement(element) && !element.paused) scheduleVideoDraw(entry);
+    if (isVideoElement(element)) scheduleVideoDraw(entry);
     return true;
   };
 
@@ -3644,12 +4076,13 @@ export function createColorGradingRuntime(pausedMediaLease?: {
   };
 
   const removeElement = (element: ColorGradingMediaElement): void => {
+    hiddenAtRefresh.delete(element);
     const entry = entries.get(element);
     if (!entry) return;
     const renderer = detachEntry(entry);
     if (renderer) {
       if (entry.contextLost || idleRenderers.length >= MAX_IDLE_COLOR_GRADING_RENDERERS) {
-        destroyProgramResources(renderer, true);
+        destroyProgramResources(renderer);
       } else {
         idleRenderers.push(renderer);
       }
@@ -3661,18 +4094,18 @@ export function createColorGradingRuntime(pausedMediaLease?: {
   const refresh = (): number => {
     if (destroyed) return 0;
     const attributeElements = new Set<ColorGradingMediaElement>();
-    const nodes = document.querySelectorAll(
-      `video[${HF_COLOR_GRADING_ATTR}], img[${HF_COLOR_GRADING_ATTR}]`,
-    );
+    hiddenAtRefresh.clear();
+    const nodes = document.querySelectorAll(COLOR_GRADING_SOURCE_SELECTOR);
     nodes.forEach((node) => {
       if (!isColorGradingMediaElement(node)) return;
       attributeElements.add(node);
       const grading = readColorGradingAttribute(node);
       if (isRuntimeColorGradingActive(node, grading)) {
-        if (isVisibleForColorGrading(node) || hasInjectedRenderFrame(node)) {
+        if (isShownForColorGrading(node)) {
           upsert(node, grading, "attribute");
         } else {
           removeElement(node);
+          hiddenAtRefresh.add(node);
         }
       } else {
         removeElement(node);
@@ -3691,8 +4124,20 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     return trackedElements.size;
   };
 
+  const adoptShownMedia = (): void => {
+    for (const element of hiddenAtRefresh) {
+      if (element.isConnected && !isShownForColorGrading(element)) continue;
+      hiddenAtRefresh.delete(element);
+      const grading = readColorGradingAttribute(element);
+      if (element.isConnected && isRuntimeColorGradingActive(element, grading)) {
+        upsert(element, grading, "attribute");
+      }
+    }
+  };
+
   const redraw = (): number => {
     if (destroyed) return 0;
+    adoptShownMedia();
     let drawn = 0;
     for (const element of trackedElements) {
       const entry = entries.get(element);
@@ -3700,6 +4145,13 @@ export function createColorGradingRuntime(pausedMediaLease?: {
       if (drawEntry(entry)) drawn += 1;
     }
     return drawn;
+  };
+
+  const holdSeekUntilDrawn = (): void => {
+    const videos = trackedEntries().filter(
+      (entry) => isVideoElement(entry.element) && canDraw(entry.element),
+    );
+    if (videos.length) registerSeekCompletion(Promise.all(videos.map(nextDraw)), "video-frame");
   };
 
   const waitForActiveLuts = async (): Promise<number> => {
@@ -3719,16 +4171,12 @@ export function createColorGradingRuntime(pausedMediaLease?: {
 
   const redrawAnimated = (): number => {
     if (destroyed) return 0;
+    adoptShownMedia();
     let drawn = 0;
     for (const element of trackedElements) {
       const entry = entries.get(element);
       if (!entry) continue;
-      const hasAnimatedProperty = ANIMATED_GRADING_PROPERTIES.some(
-        (property) => readAnimatedValue(element, property) !== null,
-      );
-      if (!hasAnimatedProperty) continue;
-      if (isVideoElement(element) && !element.paused && !element.ended) continue;
-      if (drawEntry(entry)) drawn += 1;
+      if (redrawsOnTransportTick(element) && drawEntry(entry)) drawn += 1;
     }
     return drawn;
   };
@@ -3796,7 +4244,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     }
     const grading = readColorGradingAttribute(element);
     if (isRuntimeColorGradingActive(element, grading)) {
-      if (!isVisibleForColorGrading(element) && !hasInjectedRenderFrame(element)) {
+      if (!isShownForColorGrading(element)) {
         return { state: "pending", message: "Waiting for visible media" };
       }
       return { state: "unavailable", message: "WebGL unavailable" };
@@ -3854,18 +4302,22 @@ export function createColorGradingRuntime(pausedMediaLease?: {
       element.pause();
       element.loop = loop;
       element.muted = muted;
-      element.currentTime = time;
+      element.currentTime = mediaElementTime(time);
     };
   };
 
   const destroy = (): void => {
     if (destroyed) return;
     destroyed = true;
+    wallClearTimeout(rebuildTimer);
     observer?.disconnect();
     observer = null;
     for (const element of trackedElements) removeElement(element);
-    for (const renderer of idleRenderers) destroyProgramResources(renderer, true);
+    hiddenAtRefresh.clear();
+    for (const renderer of idleRenderers) destroyProgramResources(renderer);
     idleRenderers.length = 0;
+    shared?.gl.getExtension("WEBGL_lose_context")?.loseContext();
+    shared = null;
     if (previewRenderer) {
       destroyProgramResources(previewRenderer, true);
       previewRenderer = null;
@@ -3873,12 +4325,19 @@ export function createColorGradingRuntime(pausedMediaLease?: {
   };
 
   if (document.body) {
-    observer = new MutationObserver(() => refresh());
+    // A grade group's element joining or leaving regrades its members, so it counts too.
+    const recordsTouchGrading = createRecordFilter(
+      `${COLOR_GRADING_SOURCE_SELECTOR}, ${HF_COLOR_GROUP_TAG}`,
+      (node) => Array.from(trackedElements).some((element) => node.contains(element)),
+    );
+    observer = new MutationObserver((records) => {
+      if (recordsTouchGrading(records)) refresh();
+    });
     observer.observe(document.body, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: [HF_COLOR_GRADING_ATTR],
+      attributeFilter: [HF_COLOR_GRADING_ATTR, HF_COLOR_GROUP_ATTR],
     });
   }
 
@@ -3886,6 +4345,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     refresh,
     redraw,
     redrawAnimated,
+    holdSeekUntilDrawn,
     waitForActiveLuts,
     setGrading,
     setCompare,

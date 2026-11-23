@@ -1,53 +1,8 @@
 import type { RuntimeDeterministicAdapter } from "../types";
 import { swallow } from "../diagnostics";
 
-/**
- * Lottie adapter for HyperFrames
- *
- * Supports lottie-web and @lottiefiles/dotlottie-web.
- *
- * ## Usage in a composition
- *
- * ### lottie-web (classic):
- * ```html
- * <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
- * <div id="anim"></div>
- * <script>
- *   const anim = lottie.loadAnimation({
- *     container: document.getElementById('anim'),
- *     renderer: 'svg',
- *     loop: false,
- *     autoplay: false,
- *     path: 'animation.json',
- *   });
- *   // Register so the adapter can seek it:
- *   window.__hfLottie = window.__hfLottie || [];
- *   window.__hfLottie.push(anim);
- * </script>
- * ```
- *
- * ### @lottiefiles/dotlottie-web:
- * ```html
- * <script src="https://unpkg.com/@lottiefiles/dotlottie-web"></script>
- * <canvas id="anim"></canvas>
- * <script>
- *   const player = new DotLottie({
- *     canvas: document.getElementById('anim'),
- *     src: 'animation.lottie',
- *     autoplay: false,
- *   });
- *   window.__hfLottie = window.__hfLottie || [];
- *   window.__hfLottie.push(player);
- * </script>
- * ```
- *
- * Multiple animations are supported — all are seeked in sync.
- *
- * ## Auto-discovery
- *
- * The adapter also attempts to auto-discover Lottie animations registered
- * via the global `lottie` object, so compositions that call
- * `lottie.loadAnimation(...)` without manually registering still work.
+/** Seeks paused lottie-web and dotLottie instances registered on window.__hfLottie.
+ * Setup: skills/hyperframes/references/runtimes.md
  */
 export function createLottieAdapter(params?: {
   resolveStartSeconds?: (element: Element) => number;

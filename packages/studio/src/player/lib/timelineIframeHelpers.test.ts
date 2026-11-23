@@ -118,6 +118,47 @@ describe("buildMissingCompositionElements — hfId (R7)", () => {
   });
 });
 
+describe("buildMissingCompositionElements — on a settled timeline", () => {
+  // Studio runs this on every runtime state tick, so a timeline with nothing to add must cost one host scan.
+  const settled = () =>
+    makeDoc(`
+      <div data-composition-id="root">
+        <div id="intro" data-composition-id="intro" data-start="0" data-duration="3"></div>
+        ${Array.from({ length: 40 }, (_, i) => `<video id="clip-${i}" data-start="${i}" data-duration="1"></video>`).join("")}
+      </div>
+    `);
+  const rows = ["intro", ...Array.from({ length: 40 }, (_, i) => `clip-${i}`)].map((id, i) => ({
+    id,
+    key: id,
+    tag: id === "intro" ? "div" : "video",
+    start: i,
+    duration: 1,
+    track: 0,
+  }));
+
+  it("walks no more of the document than the hosts when nothing is missing or patchable", () => {
+    const doc = settled();
+    const scans = vi.spyOn(doc, "querySelectorAll");
+    const result = buildMissingCompositionElements(doc, window as IframeWindow, rows, 40);
+    expect(scans.mock.calls.map(([selector]) => selector)).toEqual([
+      "[data-composition-id][data-start]",
+    ]);
+    expect([result.missing, result.patched, result.updatedEls]).toEqual([[], false, rows]);
+  });
+
+  it("still patches a row whose host carries its source", () => {
+    const doc = settled();
+    doc.getElementById("intro")!.setAttribute("data-composition-src", "compositions/intro.html");
+    const { patched, updatedEls } = buildMissingCompositionElements(
+      doc,
+      window as IframeWindow,
+      rows,
+      40,
+    );
+    expect([patched, updatedEls[0]?.compositionSrc]).toEqual([true, "compositions/intro.html"]);
+  });
+});
+
 describe("buildMissingCompositionElements — nested master time", () => {
   it("places hosts two and three levels deep at their master time", () => {
     const doc = makeDoc(`
@@ -170,105 +211,26 @@ describe("setPreviewMediaVolume", () => {
 });
 
 describe("scrubPreviewAudio", () => {
-  it("scales scrub feedback by the Studio preview volume", () => {
-    const iframe = document.createElement("iframe");
-    document.body.append(iframe);
-    const audio = iframe.contentDocument?.createElement("audio");
-    if (!audio || !iframe.contentDocument?.body) throw new Error("expected iframe audio document");
-    audio.id = "music";
-    audio.play = vi.fn(async () => {});
-    audio.pause = vi.fn();
-    iframe.contentDocument.body.append(audio);
+  // fails without the fix: Studio played the track through the frame's document, which a sealed frame does not give it.
+  it("asks a sealed preview's runtime to play the music row's track, and to stop", () => {
+    const postMessage = vi.fn();
+    const iframe = {
+      contentDocument: null,
+      contentWindow: { postMessage },
+    } as unknown as HTMLIFrameElement;
 
-    scrubPreviewAudio(iframe, 0.5, { id: "music" }, 0.4);
-
-    expect(audio.volume).toBeCloseTo(0.1);
-    stopScrubPreviewAudio();
-  });
-
-  /**
-   * The preview document is a different realm, so `instanceof HTMLAudioElement`
-   * is false for every node in it. That threw the `music` hint away and left
-   * the first `<audio>` in the document as the only route — and the first
-   * `<audio>` is often the voiceover, so scrubbing previewed the wrong track.
-   * Two elements, music second, is what tells the two paths apart: with one
-   * element the fallback reaches the right node by accident.
-   */
-  it("previews the track named by the music row, not the first audio in the document", () => {
-    const iframe = document.createElement("iframe");
-    document.body.append(iframe);
-    const previewDoc = iframe.contentDocument;
-    if (!previewDoc?.body) throw new Error("expected an iframe document");
-
-    const voiceover = previewDoc.createElement("audio");
-    voiceover.id = "voiceover";
-    voiceover.play = vi.fn(async () => {});
-    voiceover.pause = vi.fn();
-
-    const music = previewDoc.createElement("audio");
-    music.id = "music-bed";
-    music.play = vi.fn(async () => {});
-    music.pause = vi.fn();
-
-    previewDoc.body.append(voiceover, music);
-
-    // The node really is cross-realm; this is the condition, not a contrivance.
-    expect(music instanceof HTMLAudioElement).toBe(false);
-
-    scrubPreviewAudio(iframe, 0.5, { id: "music-bed" }, 1);
-
-    expect(music.play).toHaveBeenCalled();
-    expect(voiceover.play).not.toHaveBeenCalled();
-    stopScrubPreviewAudio();
-  });
-
-  it("previews the music row's own track when a sub-composition repeats its id", () => {
-    const iframe = document.createElement("iframe");
-    document.body.append(iframe);
-    const previewDoc = iframe.contentDocument;
-    if (!previewDoc?.body) throw new Error("expected an iframe document");
-    previewDoc.body.innerHTML =
-      '<div data-composition-id="strip" data-composition-src="compositions/strip.html"><audio id="music"></audio></div>' +
-      '<audio id="music" class="root"></audio>';
-    const [inner, root] = Array.from(previewDoc.querySelectorAll("audio"));
-    for (const audio of [inner, root])
-      Object.assign(audio!, { play: vi.fn(async () => {}), pause: vi.fn() });
-
-    scrubPreviewAudio(iframe, 0.5, { id: "music" }, 1);
-
-    expect(root!.play).toHaveBeenCalled();
-    expect(inner!.play).not.toHaveBeenCalled();
-    stopScrubPreviewAudio();
-  });
-
-  /** A scrub audition is media running under a paused clock, which the runtime now
-   *  stops on sight. So it borrows the element. That a leased element survives the
-   *  tick is asserted runtime-side in core's `transportPark.test.ts`; here the
-   *  contract is that the hook is called with the right element and given back. */
-  it("borrows the element from the runtime for the audition and returns it on stop", () => {
-    const iframe = document.createElement("iframe");
-    document.body.append(iframe);
-    const previewDoc = iframe.contentDocument;
-    if (!previewDoc?.body) throw new Error("expected an iframe document");
-
-    const music = previewDoc.createElement("audio");
-    music.id = "music";
-    music.play = vi.fn(async () => {});
-    music.pause = vi.fn();
-    previewDoc.body.append(music);
-
-    const leasePausedMedia = vi.fn();
-    const releasePausedMedia = vi.fn();
-    (previewDoc.defaultView as IframeWindow).__hf = { leasePausedMedia, releasePausedMedia };
-
-    scrubPreviewAudio(iframe, 0.5, { id: "music" }, 1);
-
-    expect(leasePausedMedia).toHaveBeenCalledWith(music);
-    expect(releasePausedMedia).not.toHaveBeenCalled();
-
+    scrubPreviewAudio(iframe, 0.5, { id: "music", hfId: "a1", sourceFile: "index.html" }, 0.4);
     stopScrubPreviewAudio();
 
-    expect(releasePausedMedia).toHaveBeenCalledWith(music);
+    expect(postMessage.mock.calls.map(([message]) => message)).toEqual([
+      expect.objectContaining({
+        action: "scrub-audio",
+        time: 0.5,
+        volume: 0.4,
+        target: { id: "music", hfId: "a1", sourceFile: "index.html" },
+      }),
+      expect.objectContaining({ action: "scrub-audio", time: null }),
+    ]);
   });
 });
 

@@ -19,12 +19,14 @@ interface PutOperation {
 class FakeS3 {
   readonly objects = new Map<string, StoredObject>();
   readonly puts: PutOperation[] = [];
+  sends = 0;
 
   asClient(): import("@aws-sdk/client-s3").S3Client {
     return this as unknown as import("@aws-sdk/client-s3").S3Client;
   }
 
   async send(command: unknown): Promise<unknown> {
+    this.sends += 1;
     // AWS command inputs are the runtime boundary exercised by this fake.
     const value = command as unknown as {
       readonly constructor: { readonly name: string };
@@ -110,14 +112,61 @@ describe("S3PlanV2ArtifactPublisher", () => {
       planOutputS3Prefix: `s3://bucket/render${"/".repeat(10_000)}`,
     });
 
-    expect(publisher.artifactPrefix).toBe("s3://bucket/render/v2/artifacts/sha256");
+    expect(publisher.artifactPrefix).toBe("s3://bucket/cas/sha256");
     expect(publisher.manifestUri).toBe("s3://bucket/render/v2/manifest.json");
+  });
+
+  it("references a remote project file already in the store, and refuses one that is not", async () => {
+    const digest = createHash("sha256").update("remote video").digest("hex");
+    const s3 = new FakeS3();
+    s3.objects.set(`s3://bucket/cas/sha256/${digest.slice(0, 2)}/${digest}`, {
+      bytes: Buffer.from("remote video"),
+      sha256: digest,
+    });
+    const publisher = new S3PlanV2ArtifactPublisher({
+      s3: s3.asClient(),
+      planOutputS3Prefix: "s3://bucket/renders/remote",
+      temporaryRoot: makeSource("x").root,
+    });
+
+    await publisher.referenceStoredBlob({ sha256: digest, sizeBytes: 12 });
+    await expect(
+      publisher.referenceStoredBlob({ sha256: "e".repeat(64), sizeBytes: 12 }),
+    ).rejects.toMatchObject({ name: "PLAN_ARTIFACT_MISSING" });
+    await publisher.commitManifest(manifestFor(digest));
+
+    expect(s3.puts.map((operation) => operation.uri)).toEqual([
+      "s3://bucket/renders/remote/v2/manifest.json",
+    ]);
+  });
+
+  it("reuses a blob the SDK or another render already stored instead of uploading it", async () => {
+    const source = makeSource("shared media");
+    const s3 = new FakeS3();
+    const blobUri = `s3://bucket/cas/sha256/${source.digest.slice(0, 2)}/${source.digest}`;
+    s3.objects.set(blobUri, { bytes: Buffer.from("shared media"), sha256: source.digest });
+    const publisher = new S3PlanV2ArtifactPublisher({
+      s3: s3.asClient(),
+      planOutputS3Prefix: "s3://bucket/renders/second",
+      temporaryRoot: source.root,
+    });
+
+    await publisher.putBlob({
+      sourcePath: source.path,
+      sha256: source.digest,
+      sizeBytes: source.sizeBytes,
+    });
+    await publisher.commitManifest(manifestFor(source.digest));
+
+    expect(s3.puts.map((operation) => operation.uri)).toEqual([
+      "s3://bucket/renders/second/v2/manifest.json",
+    ]);
   });
 
   it("publishes immutable blobs before the fixed-key manifest", async () => {
     const source = makeSource("hello");
     const s3 = new FakeS3();
-    const artifactPrefix = "s3://bucket/render/v2/artifacts/sha256";
+    const artifactPrefix = "s3://bucket/cas/sha256";
     const manifestUri = "s3://bucket/render/v2/manifest.json";
     const publisher = new S3PlanV2ArtifactPublisher({
       s3: s3.asClient(),
@@ -137,6 +186,22 @@ describe("S3PlanV2ArtifactPublisher", () => {
     expect(s3.puts.map((operation) => operation.uri)).toEqual([blobUri, manifestUri]);
     expect(s3.puts.every((operation) => operation.ifNoneMatch === "*")).toBe(true);
     expect(s3.objects.get(manifestUri)?.bytes.toString("utf8")).toBe(manifest);
+  });
+
+  it("sends nothing for a digest it already published", async () => {
+    const source = makeSource("hello");
+    const s3 = new FakeS3();
+    const publisher = new S3PlanV2ArtifactPublisher({
+      s3: s3.asClient(),
+      planOutputS3Prefix: "s3://bucket/render",
+      temporaryRoot: source.root,
+    });
+    const blob = { sourcePath: source.path, sha256: source.digest, sizeBytes: source.sizeBytes };
+
+    await publisher.putBlob(blob);
+    const sendsAfterFirst = s3.sends;
+    await publisher.putBlob(blob);
+    expect(s3.sends).toBe(sendsAfterFirst);
   });
 
   it("refuses to expose a manifest that references an unpublished digest", async () => {

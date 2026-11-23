@@ -30,5 +30,7 @@ export const useLinkedClipPreferences = create<LinkedClipPreferences>((set) => (
   },
 }));
 
+export const useCompositionFps = (): number => useLinkedClipPreferences((s) => s.compositionFps);
+
 export const isLinkedSelectionOn = (): boolean =>
   useLinkedClipPreferences.getState().linkedSelection;

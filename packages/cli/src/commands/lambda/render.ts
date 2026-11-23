@@ -11,15 +11,17 @@ import type {
   DistributedFormat,
   SerializableDistributedRenderConfig,
 } from "@hyperframes/aws-lambda/sdk";
-import type { CanvasResolution } from "@hyperframes/core";
+import type { CanvasResolution, DistributedFps } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
+import type { DeliveryFlagValues } from "../../utils/deliveryFlags.js";
 import {
   reportVariableIssues,
   resolveVariablesArg,
   validateVariablesAgainstProject,
 } from "../../utils/variables.js";
-import { warnOnDimensionMismatch } from "./_dimensions.js";
-import { requireStack, stateFilePath } from "./state.js";
+import { resolveOutputResolutionFromSize } from "./_dimensions.js";
+import { videoArchitecture, requireStack, type StackOutputs, stateFilePath } from "./state.js";
 
 // Dynamic-import the SDK so tsup keeps it out of the static-import head of
 // the CLI bundle. See sites.ts loadSDK() for the full rationale.
@@ -27,12 +29,13 @@ async function loadSDK(): Promise<typeof import("@hyperframes/aws-lambda/sdk")> 
   return import("@hyperframes/aws-lambda/sdk");
 }
 
-export interface RenderArgs {
+export interface RenderArgs extends DeliveryFlagValues {
   projectDir: string;
   stackName: string;
   siteId?: string;
+  includeOutsideFiles?: boolean;
   /** Composition config — fps/width/height/format required, rest optional. */
-  fps: 24 | 30 | 60;
+  fps: DistributedFps;
   width: number;
   height: number;
   /**
@@ -84,13 +87,15 @@ export async function runRender(args: RenderArgs): Promise<void> {
   const stack = requireStack(args.stackName);
   const projectDir = resolvePath(args.projectDir);
 
-  warnOnDimensionMismatch({
-    projectDir,
-    cliWidth: args.width,
-    cliHeight: args.height,
-    outputResolution: args.outputResolution,
-    quiet: args.json,
-  });
+  args = {
+    ...args,
+    outputResolution: resolveOutputResolutionFromSize({
+      projectDir,
+      cliWidth: args.width,
+      cliHeight: args.height,
+      outputResolution: args.outputResolution,
+    }),
+  };
 
   // Resolve --variables / --variables-file using the same parser the local
   // `hyperframes render` uses. `resolveVariablesArg` exits(1) with a friendly
@@ -117,33 +122,25 @@ export async function runRender(args: RenderArgs): Promise<void> {
       // doesn't quietly become a no-op.
       console.warn(
         c.warn(
-          `--strict-variables: no ${indexPath} on disk — schema validation skipped. ` +
+          `--strict-variables: no ${terminalText(indexPath)} on disk — schema validation skipped. ` +
             "Variables flow through unchecked. To enable strict checking, run from a project dir that contains the composition.",
         ),
       );
     }
   }
 
-  const config: SerializableDistributedRenderConfig = buildLambdaRenderConfig(args, variables);
+  const config: SerializableDistributedRenderConfig = buildLambdaRenderConfig(
+    args,
+    variables,
+    stack.reservedConcurrency,
+  );
 
-  // When the caller passes only --site-id, synthesise the minimum-shape
-  // SiteHandle pointing at the deterministic content-addressed key. The
-  // `bytes` / `uploadedAt` fields are intentionally placeholders — the
-  // SDK reads only `siteId` + `projectS3Uri` when `uploaded: false`.
-  const siteHandle = args.siteId
-    ? {
-        siteId: args.siteId,
-        bucketName: stack.bucketName,
-        projectS3Uri: `s3://${stack.bucketName}/sites/${args.siteId}/project.tar.gz`,
-        bytes: 0,
-        uploadedAt: "",
-        uploaded: false,
-      }
-    : undefined;
+  // --site-id renders a site an earlier `lambda sites create` uploaded.
+  const { renderToLambda, siteHandleFromId } = await loadSDK();
+  const siteHandle = args.siteId ? siteHandleFromId(stack.bucketName, args.siteId) : undefined;
 
-  const { renderToLambda } = await loadSDK();
   const handle = await renderToLambda({
-    projectDir: siteHandle ? undefined : projectDir,
+    projectDir,
     siteHandle,
     bucketName: stack.bucketName,
     stateMachineArn: stack.stateMachineArn,
@@ -151,6 +148,8 @@ export async function runRender(args: RenderArgs): Promise<void> {
     config,
     executionName: args.executionName,
     outputKey: args.outputKey,
+    includeOutsideFiles: args.includeOutsideFiles,
+    onNotice: (message) => console.error(c.dim(terminalLines(message))),
   });
 
   if (args.json) {
@@ -168,40 +167,46 @@ export async function runRender(args: RenderArgs): Promise<void> {
   }
 
   console.log(c.success("Render started."));
-  console.log(`  ${c.dim("Render ID:")}     ${handle.renderId}`);
-  console.log(`  ${c.dim("Execution ARN:")} ${handle.executionArn}`);
-  console.log(`  ${c.dim("Output S3 URI:")} ${handle.outputS3Uri}`);
-  console.log(`  ${c.dim("Project S3:")}    ${handle.projectS3Uri}`);
-  console.log(`  ${c.dim("Stack state:")}   ${stateFilePath(args.stackName)}`);
+  console.log(`  ${c.dim("Render ID:")}     ${terminalText(handle.renderId)}`);
+  console.log(`  ${c.dim("Execution ARN:")} ${terminalText(handle.executionArn)}`);
+  console.log(`  ${c.dim("Output S3 URI:")} ${terminalText(handle.outputS3Uri)}`);
+  console.log(`  ${c.dim("Project S3:")}    ${terminalText(handle.projectS3Uri)}`);
+  console.log(`  ${c.dim("Stack state:")}   ${terminalText(stateFilePath(args.stackName))}`);
   console.log();
   if (args.wait) {
     await waitForCompletion(handle.executionArn, stack, args.waitIntervalMs, args.json);
     return;
   }
-  console.log(c.dim(`Poll with: hyperframes lambda progress ${handle.renderId}`));
+  console.log(c.dim(`Poll with: hyperframes lambda progress ${terminalText(handle.renderId)}`));
 }
 
 async function waitForCompletion(
   executionArn: string,
-  stack: { region: string; functionName: string; lambdaMemoryMb: number },
+  stack: StackOutputs,
   intervalMs: number,
   json: boolean,
 ): Promise<void> {
   // Lazy import to avoid pulling SFN client when only `render --no-wait` is used.
   const { getRenderProgress } = await loadSDK();
   let lastRendered = -1;
+  const warned = new Set<string>();
   while (true) {
     const progress = await getRenderProgress({
       executionArn,
       region: stack.region,
       defaultMemorySizeMb: stack.lambdaMemoryMb,
+      videoArchitecture: videoArchitecture(stack),
     });
+    for (const warning of progress.warnings) {
+      if (!warned.has(warning)) console.warn(c.warn(terminalLines(warning)));
+      warned.add(warning);
+    }
     if (!json && progress.framesRendered !== lastRendered) {
       lastRendered = progress.framesRendered;
       const total = progress.totalFrames ?? "?";
       const pct = Math.round(progress.overallProgress * 100);
       console.log(
-        `  ${c.dim(`[${progress.status}]`)} ${pct}% • ${progress.framesRendered}/${total} frames • ${progress.costs.displayCost}`,
+        `  ${c.dim(`[${terminalText(progress.status)}]`)} ${pct}% • ${progress.framesRendered}/${total} frames • ${progress.costs.displayCost}`,
       );
     }
     if (progress.status !== "RUNNING") {
@@ -210,14 +215,16 @@ async function waitForCompletion(
       } else if (progress.status === "SUCCEEDED" && progress.outputFile) {
         console.log();
         console.log(c.success("Render complete."));
-        console.log(`  ${c.dim("Output:")}        ${progress.outputFile.s3Uri}`);
+        console.log(`  ${c.dim("Output:")}        ${terminalText(progress.outputFile.s3Uri)}`);
         console.log(`  ${c.dim("Size:")}          ${progress.outputFile.bytes ?? "?"} bytes`);
         console.log(`  ${c.dim("Total cost:")}    ${progress.costs.displayCost}`);
       } else {
         console.log();
-        console.log(c.error(`Render ended with status ${progress.status}.`));
+        console.log(c.error(`Render ended with status ${terminalText(progress.status)}.`));
         for (const err of progress.errors) {
-          console.log(`  ${c.dim(err.state)}: ${err.error} — ${err.cause}`);
+          console.log(
+            `  ${c.dim(terminalText(err.state))}: ${terminalLines(err.error)} — ${terminalLines(err.cause)}`,
+          );
         }
         setCommandExitCode(1);
       }
@@ -241,6 +248,7 @@ function sleep(ms: number): Promise<void> {
 export function buildLambdaRenderConfig(
   args: RenderArgs,
   variables: Record<string, unknown> | undefined,
+  workerConcurrency?: number,
 ): SerializableDistributedRenderConfig {
   const config: SerializableDistributedRenderConfig = {
     fps: args.fps,
@@ -253,6 +261,11 @@ export function buildLambdaRenderConfig(
     chunkSize: args.chunkSize,
     maxParallelChunks: args.maxParallelChunks,
     targetChunkFrames: args.targetChunkFrames,
+    keyframeIntervalSeconds: args.keyframeIntervalSeconds,
+    proresProfile: args.proresProfile,
+    maxBitrate: args.maxBitrate,
+    bufferSize: args.bufferSize,
+    workerConcurrency,
     runtimeCap: "lambda",
     variables,
   };

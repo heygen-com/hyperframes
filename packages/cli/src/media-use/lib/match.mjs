@@ -45,3 +45,20 @@ export function typesMatch(a, b) {
   const visual = new Set(["icon", "image", "logo"]);
   return visual.has(a) && visual.has(b);
 }
+
+// How well a file found by its name fits `intent`: low confidence unless every word of the intent is in the
+// name and the file was not resolved for a different intent.
+export function nameMatch(intent, stem, resolvedFor) {
+  const wanted = matchTokens(intent);
+  const named = matchTokens(stem);
+  const shared = [...wanted].filter((token) => named.has(token));
+  const otherIntent =
+    typeof resolvedFor === "string" &&
+    [...matchTokens(resolvedFor)].join(" ") !== [...wanted].join(" ");
+  return {
+    matched_words: shared,
+    intent_words: wanted.size,
+    low_confidence: shared.length < wanted.size || otherIntent,
+    ...(otherIntent && { resolved_for: resolvedFor }),
+  };
+}

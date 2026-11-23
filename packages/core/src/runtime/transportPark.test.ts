@@ -168,6 +168,7 @@ describe("parked transport loop", () => {
 
   afterEach(() => {
     window.__hfRuntimeTeardown?.();
+    delete (document as { visibilityState?: DocumentVisibilityState }).visibilityState;
     document.body.innerHTML = "";
     window.__timelines = {} as Record<string, RuntimeTimelineLike>;
     delete window.__player;
@@ -734,7 +735,7 @@ describe("parked transport loop", () => {
     expect(posted.filter((m) => m["type"] === "timeline").length - before).toBe(0);
   });
 
-  it("posts a playing clip's new track, label and z-index on the next poll", async () => {
+  it("posts a playing clip's new track, label and z-index once playback stops", async () => {
     mount(
       '<div id="clip" data-start="0" data-duration="5" data-track-index="0" data-timeline-label="Before" style="z-index: 1"></div>',
     );
@@ -747,7 +748,11 @@ describe("parked transport loop", () => {
     clip.setAttribute("data-timeline-label", "After");
     clip.style.zIndex = "9";
     await flushObservers();
+    posted.length = 0;
     for (let i = 0; i < 130; i += 1) frame120Hz();
+    expect(posted.filter((m) => m["type"] === "timeline")).toHaveLength(0);
+    window.__player!.pause();
+    for (let i = 0; i < 10; i += 1) frame120Hz();
     const clips = (posted.filter((m) => m["type"] === "timeline").at(-1)?.["clips"] ?? []) as Array<
       Record<string, unknown>
     >;
@@ -982,5 +987,51 @@ describe("parked transport loop", () => {
     settle();
     expect(window.__player!.isPlaying()).toBe(true);
     expect(media.isPaused()).toBe(true);
+  });
+
+  const setVisibility = (state: DocumentVisibilityState) => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+    document.dispatchEvent(new Event("visibilitychange"));
+  };
+
+  it("keeps the transport ticking on a timer while the document is hidden", () => {
+    // A hidden document runs no animation frames but its media keeps playing, so a
+    // transport driven by frames alone never ends a clip at the end of its window.
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    mount(`<audio id="a1" data-start="0" data-duration="1"></audio>`);
+    const media = stubMediaPlayback(document.getElementById("a1") as HTMLAudioElement, 10);
+    initSandboxRuntimeModular();
+    quiesce();
+
+    window.__player!.play();
+    settle();
+    expect(media.isPaused()).toBe(false);
+
+    setVisibility("hidden");
+    for (let i = 0; i < 100; i += 1) {
+      nowMs += 16;
+      vi.advanceTimersByTime(16);
+    }
+
+    expect(window.__player!.getTime()).toBeGreaterThan(1);
+    expect(media.isPaused()).toBe(true);
+  });
+
+  it("moves a pending tick between animation frames and a timer as visibility changes", () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    expect(raf.pending()).toBe(1);
+
+    setVisibility("hidden");
+    expect(raf.pending()).toBe(0);
+    vi.advanceTimersByTime(16);
+    expect(raf.pending()).toBe(0);
+    expect(window.__player!.isPlaying()).toBe(true);
+
+    setVisibility("visible");
+    expect(raf.pending()).toBe(1);
   });
 });

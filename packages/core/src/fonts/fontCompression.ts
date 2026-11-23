@@ -1,17 +1,11 @@
 // @ts-expect-error -- wawoff2 ships no type declarations
 import wawoff2 from "wawoff2";
 import { createHash } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { hyperframesCacheDir } from "../cacheDir.js";
+import { createStagingDir } from "../atomicFile.js";
 
 const { compress } = wawoff2 as {
   compress: (input: Buffer | Uint8Array) => Promise<Uint8Array>;
@@ -33,6 +27,7 @@ function rawMimeType(format: string): string {
 type FontCompressionOptions = {
   cacheDir?: string;
   compressImpl?: (input: Buffer) => Promise<Buffer>;
+  compressToWoff2?: boolean;
 };
 
 function defaultCacheDir(): string {
@@ -40,7 +35,7 @@ function defaultCacheDir(): string {
     process.env.HYPERFRAMES_FONT_CACHE_DIR ??
     (process.env.AWS_LAMBDA_FUNCTION_NAME
       ? join(tmpdir(), "hyperframes", "fonts")
-      : join(homedir(), ".cache", "hyperframes", "fonts"));
+      : hyperframesCacheDir("fonts"));
   return join(root, "local-compression-v1");
 }
 
@@ -70,7 +65,7 @@ function cacheCompression(path: string, compressed: Buffer): void {
     mkdirSync(dirname(path), { recursive: true });
     // Keep the write on the cache filesystem for an atomic rename, inside a
     // private directory that this invocation owns.
-    tempDir = mkdtempSync(join(dirname(path), ".compression-"));
+    tempDir = createStagingDir(dirname(path), ".compression-");
     const tmpPath = join(tempDir, "font.woff2");
     writeFileSync(tmpPath, compressed, { flag: "wx", mode: 0o644 });
     renameSync(tmpPath, path);
@@ -94,8 +89,8 @@ export async function fontToDataUri(
   if (originalFormat === "woff2") {
     return `data:font/woff2;base64,${input.toString("base64")}`;
   }
-  if (originalFormat === "ttc") {
-    return `data:font/collection;base64,${input.toString("base64")}`;
+  if (originalFormat === "ttc" || options.compressToWoff2 === false) {
+    return `data:${rawMimeType(originalFormat)};base64,${input.toString("base64")}`;
   }
   try {
     const cachePath = cachedCompressionPath(

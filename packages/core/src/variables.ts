@@ -16,7 +16,9 @@ export type {
   BooleanVariable,
   EnumVariable,
   FontVariable,
+  FontValue,
   ImageVariable,
+  ImageValue,
 } from "@hyperframes/parsers/composition";
 export {
   COMPOSITION_VARIABLE_TYPES,

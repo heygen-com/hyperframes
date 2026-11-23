@@ -358,7 +358,10 @@ describe("sdkCutoverPersist", () => {
       label: "Resize layer box",
     });
     expect(deps.editHistory.recordEdit).toHaveBeenCalledWith(
-      expect.objectContaining({ label: "Resize layer box" }),
+      expect.objectContaining({
+        label: "Resize layer box",
+        targets: [{ file: "/comp.html", hfId: "hf-abc" }],
+      }),
     );
   });
 

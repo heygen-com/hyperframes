@@ -15,9 +15,9 @@ export const AdvancedPathGrid = () => {
       poster: "https://static.heygen.ai/hyperframes-oss/docs/images/showcase/go-further-agent-revision-loop-v1.jpg",
     },
     {
-      title: "Edit in Studio",
+      title: "Edit in the browser editor",
       detail: "Change visible design, text, media, timing, and animation in the live project.",
-      action: "Open the Studio guide",
+      action: "Open the browser editor guide",
       href: "/studio",
       video: `${CDN}/studio-direct-edit-loop-v2.mp4`,
       poster: `${CDN}/studio-direct-edit-loop-v2.jpg`,
@@ -33,7 +33,7 @@ export const AdvancedPathGrid = () => {
     {
       title: "Check, render, and share",
       detail:
-        "Validate the project, render through Studio, an agent, or the CLI, and review the file.",
+        "Validate the project, render through the browser editor, an agent, or the CLI, and review the file.",
       action: "Finish the project",
       href: "/guides/export-and-share",
       video: `${CDN}/studio-check-render-loop-v5.mp4`,

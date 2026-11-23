@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>perf fixture: heavy-long-gsap</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #050714;
+        overflow: hidden;
+        font-family: system-ui, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      video {
+        position: absolute;
+        object-fit: cover;
+      }
+      .dot {
+        position: absolute;
+        width: 56px;
+        height: 56px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #6366f1, #ec4899);
+        color: #fff;
+        font: 600 14px/56px system-ui;
+        text-align: center;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      }
+    </style>
+    <script src="/vendor/gsap.min.js"></script>
+    <script data-hyperframes-runtime="1" src="/vendor/hyperframe.runtime.iife.js"></script>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="1920"
+      data-height="1080"
+      data-duration="120"
+      data-fps="30"
+    ></div>
+    <script>
+      (function () {
+        var root = document.getElementById("root");
+        var tl = gsap.timeline({ paused: true });
+        function video(src, track, start, duration, css) {
+          var v = document.createElement("video");
+          v.setAttribute("data-start", String(start));
+          v.setAttribute("data-duration", String(duration));
+          v.setAttribute("data-track-index", String(track));
+          v.setAttribute("src", "../_media/" + src);
+          v.setAttribute("preload", "auto");
+          v.setAttribute("playsinline", "");
+          v.muted = true;
+          v.style.cssText = css;
+          root.appendChild(v);
+          return v;
+        }
+        // A two-minute timeline: 400 elements, about 4,000 tweens, no media.
+        for (var i = 0; i < 400; i++) {
+          var el = document.createElement("div");
+          el.className = "dot";
+          el.textContent = String(i);
+          el.style.left = (i % 25) * 76 + "px";
+          el.style.top = Math.floor(i / 25) * 67 + "px";
+          root.appendChild(el);
+          for (var k = 0; k < 10; k++) {
+            tl.to(
+              el,
+              {
+                x: Math.sin(i + k) * 120,
+                y: Math.cos(i * k) * 80,
+                rotation: (k % 2 ? 1 : -1) * 90,
+                opacity: 0.4 + (k % 3) * 0.3,
+                duration: 6,
+                ease: "power2.inOut",
+              },
+              (i % 20) * 0.3 + k * 11,
+            );
+          }
+        }
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

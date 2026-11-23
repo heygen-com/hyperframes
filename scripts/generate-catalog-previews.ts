@@ -8,7 +8,8 @@
  * - Blocks:     renders the block's standalone HTML via a wrapper index.html
  * - Components: renders the component's demo.html via a wrapper index.html
  *
- * Output: docs/images/catalog/<type>/<name>.png + <name>.mp4
+ * Output: docs/images/catalog/<type>/<name>.png + <name>.mp4, and the gallery card's
+ *   docs/images/catalog-card/<type>/<name>.mp4 + <name>.jpg
  *   (docs/images/ is gitignored — files are served from the CDN. After running
  *   this script, run `bun run upload:docs-images` to publish.)
  *
@@ -32,6 +33,8 @@ import {
 import { execFileSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseHTMLContent } from "../packages/core/src/compiler/htmlDocument.js";
+import { readDataDurationSeconds } from "../packages/parsers/src/mediaDuration.js";
 import { createCatalogPreviewTempDir } from "./catalog-preview-temp.js";
 import { runAsCommand } from "./entrypoint.ts";
 // Import from source — bun workspace linking doesn't resolve for scripts outside packages/.
@@ -133,9 +136,9 @@ export function discoverItems(
 
 // ── Preview generation ─────────────────────────────────────────────────────
 
-function outputDir(kind: ItemKind): string {
+function outputDir(kind: ItemKind, root = "docs/images/catalog"): string {
   const typeDir = kind === "block" ? "blocks" : "components";
-  return resolve(repoRoot, "docs/images/catalog", typeDir);
+  return resolve(repoRoot, root, typeDir);
 }
 
 /**
@@ -253,8 +256,8 @@ export interface PrepareOptions {
    * into: its root is content with no canvas behind it and no vertical
    * placement. Mounted into the plain wrapper it lands against white in the
    * top-left corner and clips. This supplies the part its authored demo would
-   * have: a dark canvas, the dark theme its own tokens are written against, and
-   * the component centred with room around it.
+   * have: the theme tokens the demo hands its mount, a canvas in the demo's
+   * background, and the component centred with room around it.
    */
   uiFragment?: boolean;
   /**
@@ -333,7 +336,7 @@ function readWrapperManifest(tmpDir: string): WrapperManifest {
 }
 
 function wrapperBackground(tags: string[], uiFragment: boolean | undefined): string {
-  if (uiFragment) return "#0a0a0a";
+  if (uiFragment) return "var(--bg, #0a0a0a)";
   return tags.includes("social") || tags.includes("overlay") ? "#1a1a2e" : "#ffffff";
 }
 
@@ -356,18 +359,22 @@ interface WrapperSpec {
   entrySrc: string;
   width: number;
   height: number;
-  duration: number;
+  duration: number | null;
   bgColor: string;
   uiFragment: boolean | undefined;
+  /** Custom property declarations for the wrapper's `:root`. */
+  themeTokens: string[];
 }
 
 function renderWrapperHtml(spec: WrapperSpec): string {
-  const { name, entrySrc, width, height, duration, bgColor, uiFragment } = spec;
+  const { name, entrySrc, width, height, duration, bgColor, uiFragment, themeTokens } = spec;
   // `inset: 0` keeps the mount from shrinking to its content; `center stretch` centres vertically only.
   const staging = uiFragment
     ? `\n    [data-composition-src] { inset: 0; display: grid; place-items: center stretch; box-sizing: border-box; padding: ${Math.round(height / 11)}px; }`
     : "";
+  const timing = duration === null ? "" : ` data-duration="${duration}"`;
   const theme = uiFragment ? ' data-hf-theme="dark"' : "";
+  const tokens = themeTokens.length > 0 ? `:root { ${themeTokens.join(" ")} } ` : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -375,11 +382,11 @@ function renderWrapperHtml(spec: WrapperSpec): string {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=${width}, height=${height}" />
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-  <style>* { margin: 0; padding: 0; } html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: ${bgColor}; }${staging}</style>
+  <style>${tokens}* { margin: 0; padding: 0; } html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: ${bgColor}; }${staging}</style>
 </head>
 <body>
-  <div data-composition-id="preview-root" data-width="${width}" data-height="${height}" data-start="0" data-duration="${duration}"${theme}>
-    <div data-composition-id="${name}" data-composition-src="${entrySrc}" data-start="0" data-duration="${duration}" data-track-index="0" data-width="${width}" data-height="${height}"></div>
+  <div data-composition-id="preview-root" data-width="${width}" data-height="${height}" data-start="0"${timing}${theme}>
+    <div data-composition-id="${name}" data-composition-src="${entrySrc}" data-start="0"${timing} data-track-index="0" data-width="${width}" data-height="${height}"></div>
   </div>
   <script>
     window.__timelines = window.__timelines || {};
@@ -389,19 +396,81 @@ function renderWrapperHtml(spec: WrapperSpec): string {
 </html>`;
 }
 
+function authoredEntryDuration(html: string): number | null {
+  const document = parseHTMLContent(html);
+  const root =
+    document.querySelector("[data-composition-id]") ??
+    document.querySelector("template")?.content.querySelector("[data-composition-id]");
+  if (root == null) return null;
+  return (
+    readDataDurationSeconds((name) => root.getAttribute(name)) ??
+    readDataDurationSeconds(() => root.getAttribute("data-composition-duration"))
+  );
+}
+
+function flatRules(rules: CSSRuleList | undefined): CSSRule[] {
+  return [...(rules ?? [])].flatMap((rule) =>
+    "cssRules" in rule ? flatRules((rule as CSSGroupingRule).cssRules) : [rule],
+  );
+}
+
+function matchesSelector(element: Element, selector: string): boolean {
+  try {
+    return element.matches(selector);
+  } catch {
+    // Pseudo-elements and selectors the parser does not know never style the element itself.
+    return false;
+  }
+}
+
+function customProperties(style: CSSStyleDeclaration): string[] {
+  return [...Array(style.length).keys()]
+    .map((i) => style[i] ?? "")
+    .filter((prop) => prop.startsWith("--"))
+    .map((prop) => `${prop}: ${style.getPropertyValue(prop).trim()};`);
+}
+
+// Custom properties the demo sets on this entry's mount or its ancestors, outermost first so
+// the nearest wins: the preview wears the demo's theme, not the snippet's fallbacks.
+function demoThemeTokens(tmpDir: string, entryFile: string): string[] {
+  const demoPath = join(tmpDir, "demo.html");
+  if (!existsSync(demoPath)) return [];
+  const document = parseHTMLContent(readFileSync(demoPath, "utf-8"));
+  const entryPath = resolve(tmpDir, entryFile);
+  const mount = [...document.querySelectorAll("[data-composition-src]")].find(
+    (el) => resolve(tmpDir, el.getAttribute("data-composition-src") ?? "") === entryPath,
+  );
+  if (!mount) return [];
+
+  const rules = [...document.querySelectorAll("style")]
+    .flatMap((style) => flatRules((style as HTMLStyleElement).sheet?.cssRules))
+    .filter((rule): rule is CSSStyleRule => "selectorText" in rule);
+  const lineage: Element[] = [];
+  for (let el: Element | null = mount; el; el = el.parentElement) lineage.unshift(el);
+  // ponytail: rules on one element apply in source order, not by specificity; no demo relies on it.
+  return lineage.flatMap((el) => [
+    ...rules
+      .filter((rule) => matchesSelector(el, rule.selectorText))
+      .flatMap((rule) => customProperties(rule.style)),
+    ...customProperties((el as HTMLElement).style),
+  ]);
+}
+
 function writeWrapperIndex(
   tmpDir: string,
   item: CatalogItem,
   uiFragment: boolean | undefined,
 ): void {
   const manifest = readWrapperManifest(tmpDir);
+  const entryHtml = readFileSync(join(tmpDir, item.entryFile), "utf-8");
   const wrapper = renderWrapperHtml({
     name: item.name,
     entrySrc: wrapperEntrySrc(tmpDir, manifest, item.entryFile),
     ...manifestSize(manifest),
-    duration: manifest.duration ?? 5,
+    duration: authoredEntryDuration(entryHtml) ?? manifest.duration ?? null,
     bgColor: wrapperBackground(manifest.tags ?? [], uiFragment),
     uiFragment,
+    themeTokens: uiFragment ? demoThemeTokens(tmpDir, item.entryFile) : [],
   });
   writeFileSync(join(tmpDir, "index.html"), wrapper, "utf-8");
 }
@@ -419,15 +488,25 @@ export async function prepareProjectDir(
   options: PrepareOptions = {},
 ): Promise<string> {
   const tmpDir = createCatalogPreviewTempDir(item.name);
-  cpSync(item.sourceDir, tmpDir, { recursive: true });
-  await materializeHostedAssets(tmpDir, options.hostedAssets);
-  mirrorRegistryTargets(tmpDir);
+  try {
+    cpSync(item.sourceDir, tmpDir, { recursive: true });
+    await materializeHostedAssets(tmpDir, options.hostedAssets);
+    mirrorRegistryTargets(tmpDir);
 
-  promoteStandaloneEntry(tmpDir, item.entryFile);
-  if (!existsSync(join(tmpDir, "index.html"))) writeWrapperIndex(tmpDir, item, options.uiFragment);
-  await compileIndex(tmpDir, options.compile);
+    promoteStandaloneEntry(tmpDir, item.entryFile);
+    if (!existsSync(join(tmpDir, "index.html")))
+      writeWrapperIndex(tmpDir, item, options.uiFragment);
+    await compileIndex(tmpDir, options.compile);
 
-  return tmpDir;
+    return tmpDir;
+  } catch (error) {
+    try {
+      rmSync(tmpDir, { recursive: true, force: true });
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "Catalog preparation and cleanup failed");
+    }
+    throw error;
+  }
 }
 
 /** Pull a `data-<attr>` pixel value out of the wrapper markup, or fall back. */
@@ -482,6 +561,60 @@ async function generateVideo(item: CatalogItem, projectDir: string): Promise<voi
   encodeForWeb(masterMp4, outMp4);
   rmSync(masterMp4, { force: true });
   console.log(`  ✓ ${item.name}.mp4 (${(statSync(outMp4).size / 1048576).toFixed(1)} MB)`);
+  writeCard(item, outMp4);
+}
+
+/** Where in the clip the card poster may come from: a fixed moment is often a blank frame between beats. */
+const POSTER_CANDIDATES = [0.25, 0.45, 0.65, 0.85];
+
+/**
+ * The gallery card's copy (docs/images/catalog-card). Every card on screen plays, so each one is a 480-wide
+ * silent loop of about 50 KB rather than the 1280-wide preview. Its poster is the candidate frame with the
+ * largest JPEG, which is the one with the most on it.
+ */
+function writeCard(item: CatalogItem, previewMp4: string): void {
+  const outDir = outputDir(item.kind, "docs/images/catalog-card");
+  mkdirSync(outDir, { recursive: true });
+  const ffmpeg = (args: string[]) =>
+    execFileSync("ffmpeg", ["-v", "error", "-y", ...args], { stdio: "inherit" });
+  const cardMp4 = join(outDir, `${item.name}.mp4`);
+  ffmpeg([
+    ...["-i", previewMp4, "-vf", "scale=480:-2", "-c:v", "libx264", "-crf", "28"],
+    ...["-preset", "slow", "-pix_fmt", "yuv420p", "-an", "-movflags", "+faststart", cardMp4],
+  ]);
+
+  const probe = [
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "csv=p=0",
+    "--",
+    cardMp4,
+  ];
+  const seconds = Number(execFileSync("ffprobe", probe).toString());
+  const candidates = POSTER_CANDIDATES.map((share, i) => {
+    const file = join(outDir, `${item.name}.poster-${i}.jpg`);
+    ffmpeg([
+      "-ss",
+      (seconds * share).toFixed(2),
+      "-i",
+      cardMp4,
+      "-frames:v",
+      "1",
+      "-q:v",
+      "4",
+      file,
+    ]);
+    return file;
+  }).filter((file) => existsSync(file));
+  const busiest = candidates.reduce((a, b) => (statSync(b).size > statSync(a).size ? b : a));
+  cpSync(busiest, join(outDir, `${item.name}.jpg`));
+  for (const file of candidates) rmSync(file, { force: true });
+  console.log(
+    `  ✓ card ${item.name}.mp4 + .jpg (${(statSync(cardMp4).size / 1024).toFixed(0)} KB)`,
+  );
 }
 
 /**

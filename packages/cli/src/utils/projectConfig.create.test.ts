@@ -12,7 +12,11 @@ import {
 
 vi.mock("node:fs", async (importOriginal) => {
   const original = await importOriginal<typeof fs>();
-  return { ...original, readFileSync: vi.fn(original.readFileSync) };
+  return {
+    ...original,
+    readFileSync: vi.fn(original.readFileSync),
+    linkSync: vi.fn(original.linkSync),
+  };
 });
 
 const dirs: string[] = [];
@@ -41,6 +45,18 @@ describe("project config creation", () => {
     expect(JSON.parse(fs.readFileSync(path, "utf-8"))).toEqual(DEFAULT_PROJECT_CONFIG);
     writeProjectConfig(dir, updated);
     expect(JSON.parse(fs.readFileSync(path, "utf-8"))).toEqual(updated);
+  });
+
+  it("creates the config on a volume or sandbox that refuses hard links (EPERM)", () => {
+    const dir = project();
+    vi.mocked(fs.linkSync).mockImplementationOnce(() => {
+      throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    });
+    createProjectConfig(dir);
+    expect(JSON.parse(fs.readFileSync(projectConfigPath(dir), "utf-8"))).toEqual(
+      DEFAULT_PROJECT_CONFIG,
+    );
+    expect(fs.readdirSync(dir)).toEqual(["hyperframes.json"]);
   });
 
   it("preserves a config created after the skill seed reads ENOENT", () => {

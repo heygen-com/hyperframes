@@ -1,8 +1,33 @@
-import { createServer, type ServerResponse } from "node:http";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import {
+  createServer,
+  request as httpRequest,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
+import { Duplex } from "node:stream";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { isAbsolute, relative, resolve } from "node:path";
+import {
+  PREVIEW_PROXY_BOX_PARAM,
+  parsePreviewProxyBox,
+  type PreviewProxyBox,
+} from "@hyperframes/core";
 import { getMimeType } from "@hyperframes/core/studio-api";
-import { decodeWellFormedEscapes } from "@hyperframes/studio-server";
+import {
+  decodeWellFormedEscapes,
+  openRangeEnd,
+  serviceWorkerScriptFetch,
+} from "@hyperframes/studio-server";
+import {
+  documentFromAnotherSite,
+  proxyWorkFromAnotherSite,
+} from "@hyperframes/studio-server/request-identity";
+import { findStageProxyBox } from "./compositionViewport.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { injectMediaCodecMap } from "./compositionServer.js";
 import {
@@ -19,11 +44,113 @@ import {
   PROXY_VARIANT_CONFIG,
   type ProxyVariantRequest,
 } from "@hyperframes/studio-server/media-codec-map";
+import {
+  isOwnLoopbackHost,
+  listenOnBrowserSafePort,
+  SAME_ORIGIN_FRAMING_HEADERS,
+} from "@hyperframes/engine";
 
 export interface StaticProjectServer {
   url: string;
+  /** 0 when nothing listens: the server answers in this process only (see `answer`). */
   port: number;
   close: () => Promise<void>;
+  /** Set when a sandbox refused listen(): the browser's requests to `url` come here instead of a socket. */
+  answer?: (request: InProcessRequest) => Promise<InProcessResponse>;
+}
+
+export interface InProcessRequest {
+  method: string;
+  /** Path and query, e.g. `/assets/a.mp4?hf-proxy=alpha`. */
+  path: string;
+  headers: Record<string, string>;
+}
+
+export interface InProcessResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: Buffer;
+}
+
+/** A sandbox refuses a loopback listen() with one of these; any other bind error stays fatal. */
+const REFUSED_LISTEN = new Set(["EPERM", "EACCES"]);
+
+/** Two connected in-memory sockets: what one side writes, the other reads. */
+function socketPair(): [Duplex, Duplex] {
+  const sides: Duplex[] = [];
+  const side = (other: () => Duplex) =>
+    new Duplex({
+      read() {},
+      write(chunk, _encoding, done) {
+        other().push(chunk);
+        done();
+      },
+      final(done) {
+        other().push(null);
+        done();
+      },
+    });
+  sides.push(
+    side(() => sides[1]!),
+    side(() => sides[0]!),
+  );
+  return [sides[0]!, sides[1]!];
+}
+
+/** Hands one request to `server` over an in-memory socket, so its handler (Range, proxies) answers unchanged. */
+function answerInProcess(
+  server: Server,
+  host: string,
+  request: InProcessRequest,
+): Promise<InProcessResponse> {
+  const [client, served] = socketPair();
+  server.emit("connection", served);
+  return new Promise((resolveAnswer, rejectAnswer) => {
+    const req = httpRequest(
+      {
+        method: request.method,
+        path: request.path,
+        headers: { ...request.headers, host, connection: "close" },
+        // No `agent`: Node uses createConnection only when no agent is given.
+        createConnection: () => client as never,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("error", rejectAnswer);
+        res.on("end", () => {
+          const headers: Record<string, string> = {};
+          for (const [name, value] of Object.entries(res.headers)) {
+            if (value !== undefined && name !== "connection" && name !== "transfer-encoding")
+              headers[name] = Array.isArray(value) ? value.join(", ") : value;
+          }
+          resolveAnswer({ status: res.statusCode ?? 500, headers, body: Buffer.concat(chunks) });
+        });
+      },
+    );
+    req.on("error", rejectAnswer);
+    req.end();
+  });
+}
+
+let inProcessServers = 0;
+const inProcessAnswers = new Map<
+  string,
+  (request: InProcessRequest) => Promise<InProcessResponse>
+>();
+
+/** The in-process answer for a URL served by `serveStaticProjectHtml` when listen() was refused, else undefined. */
+export function inProcessAnswer(url: string) {
+  return inProcessAnswers.get(new URL(url).origin);
+}
+
+function serveUntaggedPng(filePath: string, res: ServerResponse): boolean {
+  if (getMimeType(filePath) !== "image/png") return false;
+  const untagged = stripSdrPngColourTags(readFileSync(filePath));
+  if (!untagged) return false;
+  res.writeHead(200, { "Content-Type": "image/png", "Content-Length": String(untagged.length) });
+  res.end(untagged);
+  return true;
 }
 
 /**
@@ -57,7 +184,11 @@ function serveFileWithRange(
   if (match) {
     const hasStart = match[1] !== "";
     start = hasStart ? Number(match[1]) : Math.max(0, size - Number(match[2]));
-    end = !hasStart ? last : match[2] !== "" ? Math.min(Number(match[2]), last) : last;
+    end = !hasStart
+      ? last
+      : match[2] !== ""
+        ? Math.min(Number(match[2]), last)
+        : openRangeEnd(start, last, contentType);
 
     if (start > end || start > last) {
       res.writeHead(416, { ...headers, "Content-Range": `bytes */${size}` });
@@ -80,6 +211,7 @@ function serveFileWithRange(
   // just `[start, end]` and closes its own fd on end/error. writeHead is
   // deferred to `open` so a failed open can still answer 500.
   const stream = createReadStream(filePath, { start, end });
+  res.once("close", () => stream.destroy());
   stream.on("open", () => {
     res.writeHead(status, headers);
     stream.pipe(res);
@@ -120,9 +252,12 @@ async function serveProxyRequest(
   projectDir: string,
   filePath: string,
   request: ProxyVariantRequest,
+  box: PreviewProxyBox | undefined,
   autoProxy: boolean,
   rangeHeader: string | undefined,
   res: ServerResponse,
+  signal: AbortSignal,
+  limitSeconds?: number,
 ): Promise<void> {
   const contentType = getMimeType(filePath);
   if (!autoProxy || !contentType.startsWith("video/")) {
@@ -150,13 +285,50 @@ async function serveProxyRequest(
       return;
     }
     recordProxyRequest();
-    const proxyPath = await resolveProxy(projectDir, filePath, variant);
+    const proxyPath = await resolveProxy(projectDir, filePath, variant, box, {
+      signal,
+      limitSeconds,
+    });
     // The await above can span a whole transcode; the client may be gone.
     if (res.writableEnded || res.destroyed) return;
     serveFileWithRange(proxyPath, rangeHeader, res, PROXY_VARIANT_CONFIG[variant].contentType);
   } catch (err) {
     writeProxyError(err, res);
   }
+}
+
+function markForAnotherSite(html: string): string {
+  return injectTagsAtHeadStart(html, `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`);
+}
+
+/** A load by another site is sandboxed, and the documents it gets are marked so their runtime offers it no editing port. */
+/** A `?hf-proxy=` copy runs ffmpeg on this machine, so another site may not ask for one. */
+function proxyRequestedByAnotherSite(req: IncomingMessage): boolean {
+  return proxyWorkFromAnotherSite({
+    fetchSite: req.headers["sec-fetch-site"] as string | undefined,
+    host: req.headers.host,
+    referer: req.headers.referer,
+  });
+}
+
+function loadedByAnotherSite(req: IncomingMessage, res: ServerResponse): boolean {
+  const anotherSite = documentFromAnotherSite({
+    fetchSite: req.headers["sec-fetch-site"] as string | undefined,
+    host: req.headers.host,
+    referer: req.headers.referer,
+  });
+  res.setHeader("Vary", "Sec-Fetch-Site, Referer");
+  if (anotherSite) {
+    const policies = [res.getHeader("Content-Security-Policy"), "sandbox allow-scripts"];
+    res.setHeader("Content-Security-Policy", policies.filter((p) => p !== undefined).map(String));
+  }
+  return anotherSite;
+}
+
+function serveMarkedDocument(filePath: string, res: ServerResponse): void {
+  const body = markForAnotherSite(readFileSync(filePath, "utf-8"));
+  res.writeHead(200, { "Content-Type": getMimeType(filePath) });
+  res.end(body);
 }
 
 export async function serveStaticProjectHtml(
@@ -169,47 +341,99 @@ export async function serveStaticProjectHtml(
   // Explicit CLI --proxy/--no-proxy value. Undefined preserves the project's
   // committed hyperframes.json setting.
   autoProxyOverride?: boolean,
+  proxyLimits: ReadonlyMap<string, number> = new Map(),
 ): Promise<StaticProjectServer> {
   const roots = [projectDir, ...assetRoots];
   // Codec-map injection lives here (not per-caller) so all seven callers of
   // this function inherit it in one place; computed once since `html` is
   // static for the lifetime of this server, not re-scanned per request.
   const autoProxy = resolveAutoProxy(projectDir, autoProxyOverride);
-  const servedHtml = autoProxy ? await injectMediaCodecMap(html, projectDir, [{ html }]) : html;
+  const copies = new AbortController();
+  const servedHtml = autoProxy
+    ? await injectMediaCodecMap(
+        html,
+        projectDir,
+        [{ html }],
+        undefined,
+        true,
+        copies.signal,
+        findStageProxyBox(html),
+      )
+    : html;
+  const markedHtml = markForAnotherSite(servedHtml);
+
+  let listeningPort = -1;
+  let inProcessHost: string | undefined;
+  const answersHost = (host: string | undefined) =>
+    isOwnLoopbackHost(host, listeningPort) ||
+    (inProcessHost !== undefined && host === inProcessHost);
 
   // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    const workerScript = serviceWorkerScriptFetch({
+      serviceWorker: req.headers["service-worker"] as string | undefined,
+      fetchDest: req.headers["sec-fetch-dest"] as string | undefined,
+    });
+    if (!answersHost(req.headers.host) || workerScript) {
+      res.writeHead(403, { "Content-Type": "text/plain" });
+      res.end("Forbidden");
+      return;
+    }
+    for (const [name, value] of Object.entries(SAME_ORIGIN_FRAMING_HEADERS)) {
+      res.setHeader(name, value);
+    }
+    const anotherSite = loadedByAnotherSite(req, res);
     const url = req.url ?? "/";
     if (url === "/" || url === "/index.html") {
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(servedHtml);
+      res.writeHead(200, { "Content-Type": getMimeType("index.html") });
+      res.end(anotherSite ? markedHtml : servedHtml);
       return;
     }
 
     const queryIndex = url.indexOf("?");
     const pathOnly = queryIndex === -1 ? url : url.slice(0, queryIndex);
-    const proxyParam =
-      queryIndex === -1 ? null : new URLSearchParams(url.slice(queryIndex + 1)).get("hf-proxy");
+    const query = new URLSearchParams(queryIndex === -1 ? "" : url.slice(queryIndex + 1));
+    const proxyParam = query.get("hf-proxy");
     const proxyRequest =
       proxyParam !== null && isProxyVariantRequest(proxyParam) ? proxyParam : null;
+    const boxParam = query.get(PREVIEW_PROXY_BOX_PARAM);
+    const proxyBox = boxParam === null ? undefined : parsePreviewProxyBox(boxParam);
+    if (proxyBox === null || (proxyBox && !proxyRequest)) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    if (proxyParam !== null && proxyRequestedByAnotherSite(req)) {
+      res.writeHead(403);
+      res.end("Forbidden: media proxy requested by another site");
+      return;
+    }
 
     const requestPath = decodeWellFormedEscapes(pathOnly).replace(/^\//, "");
     for (const root of roots) {
       const filePath = resolve(root, requestPath);
       const rel = relative(root, filePath);
       if (rel.startsWith("..") || isAbsolute(rel)) continue; // traversal guard; try next root
+      if (isPrivateFileUnder(root, filePath, isStudioPrivatePath)) continue;
       if (existsSync(filePath)) {
         if (proxyRequest) {
           void serveProxyRequest(
             projectDir,
             filePath,
             proxyRequest,
+            proxyBox,
             autoProxy,
             req.headers.range,
             res,
+            copies.signal,
+            proxyLimits.get(filePath),
           );
+        } else if (anotherSite && getMimeType(filePath).startsWith("text/html")) {
+          serveMarkedDocument(filePath, res);
         } else {
-          serveFileWithRange(filePath, req.headers.range, res);
+          if (!serveUntaggedPng(filePath, res))
+            serveFileWithRange(filePath, req.headers.range, res);
         }
         return;
       }
@@ -218,24 +442,42 @@ export async function serveStaticProjectHtml(
     res.end();
   });
 
-  const port = await new Promise<number>((resolvePort, rejectPort) => {
-    server.on("error", rejectPort);
-    // Bind loopback only (SECURITY F-001): a bare listen(0) binds 0.0.0.0/::,
-    // which an IDE's port auto-forward surfaces as a transient "preview". The
-    // snapshot browser is co-located (url below is already 127.0.0.1).
-    server.listen(0, "127.0.0.1", () => {
-      const addr = server.address();
-      const resolvedPort = typeof addr === "object" && addr ? addr.port : 0;
-      if (!resolvedPort) rejectPort(new Error(bindErrorMessage));
-      else resolvePort(resolvedPort);
+  // Bind loopback only (SECURITY F-001): a bare listen(0) binds 0.0.0.0/::,
+  // which an IDE's port auto-forward surfaces as a transient "preview". The
+  // snapshot browser is co-located (url below is already 127.0.0.1).
+  const port = await listenOnBrowserSafePort(server, "127.0.0.1")
+    .then((bound) => bound || Promise.reject(new Error(bindErrorMessage)))
+    .catch((error: unknown) => {
+      if (REFUSED_LISTEN.has((error as NodeJS.ErrnoException).code ?? "")) return 0;
+      throw error;
     });
-  });
 
+  if (port === 0) {
+    server.removeAllListeners("error");
+    // A sandbox (e.g. an agent's) may refuse listen(); the browser asks this origin and the process answers.
+    const url = `http://hyperframes-${++inProcessServers}.localhost/`;
+    const host = new URL(url).host;
+    inProcessHost = host;
+    const answer = (request: InProcessRequest) => answerInProcess(server, host, request);
+    inProcessAnswers.set(new URL(url).origin, answer);
+    return {
+      url,
+      port: 0,
+      close: async () => {
+        copies.abort();
+        inProcessAnswers.delete(new URL(url).origin);
+      },
+      answer,
+    };
+  }
+
+  listeningPort = port;
   return {
     url: `http://127.0.0.1:${port}/`,
     port,
     close: () =>
       new Promise<void>((resolveClose) => {
+        copies.abort();
         server.close(() => resolveClose());
       }),
   };

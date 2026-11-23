@@ -1,3 +1,4 @@
+import { sourceLengthOf } from "./sourceLength";
 import type { RuntimeTimelineLike } from "./types";
 import { readTimelineDurationSeconds } from "./timelineDuration";
 import { resolveAuthoredTimingWindow } from "./authoredTiming";
@@ -46,11 +47,24 @@ export function createRuntimeStartTimeResolver(params: {
   const durationCache = new WeakMap<Element, number | null>();
   const visiting = new Set<Element>();
 
-  const findReferenceTarget = (refId: string): Element | null => {
+  const compositionScopeOf = (element: Element): Element | null =>
+    (element.hasAttribute("data-composition-id") ? element.parentElement : element)?.closest(
+      "[data-composition-id]",
+    ) ?? null;
+
+  const findReferenceTarget = (refId: string, from: Element): Element | null => {
+    const scope = compositionScopeOf(from);
+    if (scope) {
+      for (const candidate of scope.querySelectorAll(`[id="${refId}"]`)) {
+        if (compositionScopeOf(candidate) === scope) return candidate;
+      }
+    }
     const byId = doc.getElementById(refId);
     if (byId) return byId;
     return (
-      (doc.querySelector(`[data-composition-id="${CSS.escape(refId)}"]`) as Element | null) ?? null
+      Array.from(doc.querySelectorAll("[data-composition-id]")).find(
+        (element) => element.getAttribute("data-composition-id") === refId,
+      ) ?? null
     );
   };
 
@@ -87,7 +101,7 @@ export function createRuntimeStartTimeResolver(params: {
       resolveAuthoredDuration(element) ??
       positive(
         isMediaElement(element)
-          ? resolveNaturalMediaTimelineDuration(element, element.duration)
+          ? resolveNaturalMediaTimelineDuration(element, sourceLengthOf(element))
           : null,
       ) ??
       positive(resolveTimedImageDurationSeconds(element)) ??
@@ -96,18 +110,17 @@ export function createRuntimeStartTimeResolver(params: {
     return resolved;
   };
 
+  const COMPOSITION_HOST_SELECTOR =
+    "[data-composition-src], [data-composition-id], [data-composition-file]";
   const isCompositionHost = (element: Element): boolean =>
-    element.hasAttribute("data-composition-src") ||
-    element.hasAttribute("data-composition-id") ||
-    element.hasAttribute("data-composition-file");
+    element.matches(COMPOSITION_HOST_SELECTOR);
 
-  // A mounted composition root without its own `data-start` takes its timing from the host it was
-  // loaded into: the host may use a different id than the file, or none (an anonymous host).
+  // A mounted composition root without its own `data-start` takes its timing from the nearest host
+  // or timed wrapper above it, the clip that shows it; the host may use another id than the file.
   const inheritedTimingHost = (element: Element): Element | null => {
-    const parent = element.parentElement;
-    if (!parent || !element.hasAttribute("data-composition-id")) return null;
+    if (!element.hasAttribute("data-composition-id")) return null;
     if (parseStartExpression(element.getAttribute("data-start"))) return null;
-    return isCompositionHost(parent) ? parent : null;
+    return element.parentElement?.closest(`[data-start], ${COMPOSITION_HOST_SELECTOR}`) ?? null;
   };
 
   const resolveCompositionOrigin = (compositionRoot: Element, fallback: number): number =>
@@ -133,7 +146,7 @@ export function createRuntimeStartTimeResolver(params: {
       // Negative when a host's in-point is past its start; the host's slot cuts that part.
       return resolveHostOffsetForElement(element, fallback) + Math.max(0, expression.value);
     }
-    const target = findReferenceTarget(expression.refId);
+    const target = findReferenceTarget(expression.refId, element);
     if (!target) return fallback;
     const targetStart = resolveStartForElementInternal(target, 0);
     const targetDuration = resolveDurationForElement(target) ?? 0;

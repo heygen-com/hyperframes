@@ -1,3 +1,4 @@
+import type { EditContextTarget } from "./studioFileHistory";
 import { openComposition, type Composition } from "@hyperframes/sdk";
 import { hashContent, markSelfWrite } from "../hooks/sdkSelfWriteRegistry";
 import { trackStudioEvent } from "./studioTelemetry";
@@ -31,6 +32,7 @@ export interface CutoverDeps {
   editHistory: {
     recordEdit: (entry: {
       label: string;
+      targets?: EditContextTarget[];
       coalesceKey?: string;
       coalesceMs?: number;
       files: Record<string, { before: string; after: string }>;
@@ -56,6 +58,7 @@ export interface CutoverDeps {
 }
 
 export interface CutoverOptions {
+  targets?: EditContextTarget[];
   label?: string;
   coalesceKey?: string;
   /** Coalesce window (ms); Infinity folds across a slow round-trip. */
@@ -137,6 +140,7 @@ export function failedCutover(
     family,
     error_kind: cutoverErrorKind(err),
     ...(err instanceof StudioSaveHttpError ? { status: err.statusCode } : {}),
+    error_name: err.name,
     error: err.message,
   });
   return { status: "failed", error: err };
@@ -232,6 +236,15 @@ async function rollbackWrite(
   }
 }
 
+function historyEntryOptions(options?: CutoverOptions) {
+  return {
+    label: options?.label ?? "Edit layer",
+    ...(options?.targets && { targets: options.targets }),
+    ...(options?.coalesceKey ? { coalesceKey: options.coalesceKey } : {}),
+    ...(options?.coalesceMs != null ? { coalesceMs: options.coalesceMs } : {}),
+  };
+}
+
 async function writeAndRecord(
   after: string,
   targetPath: string,
@@ -247,9 +260,7 @@ async function writeAndRecord(
   }
   try {
     await deps.editHistory.recordEdit({
-      label: options?.label ?? "Edit layer",
-      ...(options?.coalesceKey ? { coalesceKey: options.coalesceKey } : {}),
-      ...(options?.coalesceMs != null ? { coalesceMs: options.coalesceMs } : {}),
+      ...historyEntryOptions(options),
       files: { [targetPath]: { before: originalContent, after } },
     });
     return null;
@@ -263,7 +274,8 @@ function refreshCommittedEdit(after: string, deps: CutoverDeps, options?: Cutove
     if (deps.refresh) deps.refresh(after);
     else if (!options?.skipRefresh) deps.reloadPreview();
   } catch (error) {
-    trackStudioEvent("sdk_cutover_refresh_failed", { error: asCutoverError(error).message });
+    const err = asCutoverError(error);
+    trackStudioEvent("sdk_cutover_refresh_failed", { error_name: err.name, error: err.message });
   }
 }
 
@@ -296,9 +308,11 @@ async function commitCandidateEdit(
     // candidate here can make all three authorities disagree (or dispose the
     // now-live session). Production publishers are non-throwing; keep the
     // durable commit authoritative and surface this post-commit fault.
+    const err = asCutoverError(error);
     trackStudioEvent("sdk_cutover_publish_failed", {
       path: targetPath,
-      error: asCutoverError(error).message,
+      error_name: err.name,
+      error: err.message,
     });
   }
   if (refreshTarget) refreshCommittedEdit(edit.after, deps, options);

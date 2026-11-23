@@ -1,0 +1,396 @@
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runCommand } from "citty";
+import { describe, expect, it, vi } from "vitest";
+
+const { measureAudio } = vi.hoisted(() => ({ measureAudio: vi.fn() }));
+
+vi.mock("@hyperframes/studio-server/loudness", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hyperframes/studio-server/loudness")>()),
+  measureAudio,
+  requiredFfmpeg: () => "ffmpeg",
+}));
+
+import normalizeAudioCommand from "./normalize-audio.js";
+import { CliRuntimeError } from "../utils/commandResult.js";
+
+describe("absolute normalize-audio command", () => {
+  it.each([
+    { volume: 0, integratedLufs: -16, write: true, wrote: true, withinTolerance: false },
+    { volume: 0, integratedLufs: -15.8, write: true, wrote: true, withinTolerance: false },
+    { volume: 0, integratedLufs: -16, write: false, wrote: false, withinTolerance: false },
+    { volume: 1, integratedLufs: -16, write: true, wrote: false, withinTolerance: true },
+    { volume: 2, integratedLufs: -16, write: true, wrote: true, withinTolerance: false },
+  ])("normalizes $volume gain at $integratedLufs LUFS with write=$write", async (test) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-command-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const path = join(dir, "index.html");
+      const html = `<audio id="voice" src="voice.wav" data-volume="${test.volume}" data-duration="2"></audio>`;
+      writeFileSync(path, html);
+      writeFileSync(join(dir, "voice.wav"), "audio bytes");
+      measureAudio.mockResolvedValue({
+        integratedLufs: test.integratedLufs,
+        truePeakDbfs: -12.3,
+      });
+      const args = [dir, "--target", "voice", "--json"];
+      if (test.write) args.push("--write");
+
+      await runCommand(normalizeAudioCommand, { rawArgs: args });
+
+      const result = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
+      expect(result).toMatchObject({
+        ok: true,
+        targetId: "voice",
+        previousVolume: test.volume,
+        wrote: test.wrote,
+        withinTolerance: test.withinTolerance,
+      });
+      const expectedGain = Number((10 ** ((-16 - test.integratedLufs) / 20)).toFixed(6));
+      const expectedHtml = test.wrote
+        ? html.replace(`data-volume="${test.volume}"`, `data-volume="${expectedGain}"`)
+        : html;
+      expect(readFileSync(path, "utf8")).toBe(expectedHtml);
+      expect(readFileSync(join(dir, "voice.wav"), "utf8")).toBe("audio bytes");
+
+      if (test.wrote) {
+        await runCommand(normalizeAudioCommand, { rawArgs: args });
+        expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+          ok: true,
+          wrote: false,
+          withinTolerance: true,
+        });
+        expect(readFileSync(path, "utf8")).toBe(expectedHtml);
+      }
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// fails without the fix: the rewrite went through a link at its pid-named temp file, onto a file outside.
+describe("normalize-audio --write never writes through a link at its temp name", () => {
+  it("leaves the link's target alone and writes the composition in the project", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-normalize-link-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const dir = join(root, "project");
+      mkdirSync(dir);
+      const outside = join(root, "outside.txt");
+      writeFileSync(outside, "keep me");
+      const path = join(dir, "index.html");
+      writeFileSync(
+        path,
+        `<audio id="voice" src="voice.wav" data-volume="0" data-duration="2"></audio>`,
+      );
+      writeFileSync(join(dir, "voice.wav"), "audio bytes");
+      symlinkSync(outside, `${path}.hf-normalize-${process.pid}.tmp`);
+      measureAudio.mockResolvedValue({ integratedLufs: -20, truePeakDbfs: -12.3 });
+
+      await runCommand(normalizeAudioCommand, {
+        rawArgs: [dir, "--target", "voice", "--json", "--write"],
+      });
+
+      expect(readFileSync(outside, "utf8")).toBe("keep me");
+      expect(readFileSync(path, "utf8")).toMatch(/data-volume="(?!0")/);
+      expect(lstatSync(path).isSymbolicLink()).toBe(false);
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("normalize-audio on a clip inside a mounted scene", () => {
+  it("measures it and writes the gain into the scene file", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-scene-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const root = `<div data-composition-id="main"><div data-composition-id="intro" data-composition-src="compositions/intro.html"></div></div>`;
+      const scene = `<audio id="voice" src="voice.wav" data-volume="0" data-duration="2"></audio>`;
+      mkdirSync(join(dir, "compositions"));
+      writeFileSync(join(dir, "index.html"), root);
+      writeFileSync(join(dir, "compositions", "intro.html"), scene);
+      writeFileSync(join(dir, "voice.wav"), "audio bytes");
+      measureAudio.mockResolvedValue({ integratedLufs: -16, truePeakDbfs: -12.3 });
+
+      await runCommand(normalizeAudioCommand, {
+        rawArgs: [dir, "--target", "voice", "--json", "--write"],
+      });
+
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: true,
+        targetId: "voice",
+        wrote: true,
+      });
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(root);
+      expect(readFileSync(join(dir, "compositions", "intro.html"), "utf8")).toBe(
+        scene.replace('data-volume="0"', 'data-volume="1"'),
+      );
+    } finally {
+      log.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves the scene's audio source against the scene file, not the project root", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-scene-src-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const root = `<div data-composition-id="main"><div data-composition-id="intro" data-composition-src="compositions/intro.html"></div></div>`;
+      const scene = `<audio id="voice" src="../assets/voice.wav" data-volume="0" data-duration="2"></audio>`;
+      mkdirSync(join(dir, "compositions"));
+      mkdirSync(join(dir, "assets"));
+      writeFileSync(join(dir, "index.html"), root);
+      writeFileSync(join(dir, "compositions", "intro.html"), scene);
+      writeFileSync(join(dir, "assets", "voice.wav"), "audio bytes");
+      measureAudio.mockClear();
+      measureAudio.mockResolvedValue({ integratedLufs: -16, truePeakDbfs: -12.3 });
+
+      await runCommand(normalizeAudioCommand, { rawArgs: [dir, "--target", "voice", "--json"] });
+
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({ ok: true });
+      expect(measureAudio.mock.calls[0]?.[1]).toBe(join(dir, "assets", "voice.wav"));
+    } finally {
+      log.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("normalize-audio on nested template scenes", () => {
+  it("writes the gain only into the nested scene that declares the target", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-nested-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const root = `<div data-composition-id="main"><div data-composition-src="compositions/outer.html"></div></div>`;
+    const outer = `<template><div data-composition-id="outer"><div data-composition-src="compositions/inner.html"></div></div></template>`;
+    const inner = `<template><div data-composition-id="inner"><audio id="voice" src="voice.wav" data-volume="0" data-duration="2"></audio></div></template>`;
+    try {
+      mkdirSync(join(dir, "compositions"));
+      writeFileSync(join(dir, "index.html"), root);
+      writeFileSync(join(dir, "compositions", "outer.html"), outer);
+      writeFileSync(join(dir, "compositions", "inner.html"), inner);
+      writeFileSync(join(dir, "voice.wav"), "audio bytes");
+      measureAudio.mockReset();
+      measureAudio.mockResolvedValue({ integratedLufs: -16, truePeakDbfs: -12.3 });
+
+      await runCommand(normalizeAudioCommand, {
+        rawArgs: [dir, "--target", "voice", "--json", "--write"],
+      });
+
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: true,
+        targetId: "voice",
+        wrote: true,
+      });
+      expect(measureAudio).toHaveBeenCalledTimes(1);
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(root);
+      expect(readFileSync(join(dir, "compositions", "outer.html"), "utf8")).toBe(outer);
+      expect(readFileSync(join(dir, "compositions", "inner.html"), "utf8")).toBe(
+        inner.replace('data-volume="0"', 'data-volume="1"'),
+      );
+      expect(readFileSync(join(dir, "voice.wav"), "utf8")).toBe("audio bytes");
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a target declared in the root and a nested scene before measuring or writing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-nested-duplicate-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const audio = `<audio id="voice" src="voice.wav" data-volume="0" data-duration="2"></audio>`;
+    const root = `<div data-composition-id="main">${audio}<div data-composition-src="compositions/outer.html"></div></div>`;
+    const outer = `<template><div data-composition-id="outer"><div data-composition-src="compositions/inner.html"></div></div></template>`;
+    const inner = `<template><div data-composition-id="inner">${audio}</div></template>`;
+    try {
+      mkdirSync(join(dir, "compositions"));
+      writeFileSync(join(dir, "index.html"), root);
+      writeFileSync(join(dir, "compositions", "outer.html"), outer);
+      writeFileSync(join(dir, "compositions", "inner.html"), inner);
+      writeFileSync(join(dir, "voice.wav"), "audio bytes");
+      measureAudio.mockReset();
+      measureAudio.mockResolvedValue({ integratedLufs: -16, truePeakDbfs: -12.3 });
+
+      await expect(
+        runCommand(normalizeAudioCommand, {
+          rawArgs: [dir, "--target", "voice", "--json", "--write"],
+        }),
+      ).rejects.toBeInstanceOf(CliRuntimeError);
+
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: false,
+        error: {
+          code: "runtime_error",
+          message: "Target audio #voice is declared in index.html, compositions/inner.html",
+        },
+      });
+      expect(measureAudio).not.toHaveBeenCalled();
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(root);
+      expect(readFileSync(join(dir, "compositions", "outer.html"), "utf8")).toBe(outer);
+      expect(readFileSync(join(dir, "compositions", "inner.html"), "utf8")).toBe(inner);
+      expect(readFileSync(join(dir, "voice.wav"), "utf8")).toBe("audio bytes");
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("absolute normalize-audio command held by a limit", () => {
+  it("prints the level the clip plays at, its data-volume included", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-absolute-held-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const path = join(dir, "index.html");
+      const html = `<audio id="voice" src="voice.wav" data-volume="2" data-duration="2"></audio>`;
+      writeFileSync(path, html);
+      writeFileSync(join(dir, "voice.wav"), "audio bytes");
+      measureAudio.mockResolvedValue({ integratedLufs: -20, truePeakDbfs: -7.8 });
+
+      await runCommand(normalizeAudioCommand, {
+        rawArgs: [dir, "--target", "voice", "--lufs", "-12", "--write"],
+      });
+
+      const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(printed).toContain(
+        "-20.0 LUFS → -14.0 LUFS, target -12.0 (stopped short of -1.5 dBTP)",
+      );
+      expect(printed).toContain("Cannot get closer to the target; the gain is unchanged.");
+      expect(readFileSync(path, "utf8")).toBe(html);
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("reference normalize-audio command", () => {
+  it("writes the most gain that stays under -1.5 dBTP and says how far under the reference that leaves it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-reference-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const path = join(dir, "index.html");
+      const html =
+        `<audio id="speaker-opening" src="open.wav" data-volume="1"></audio>` +
+        `<audio id="speaker-closing" src="close.wav" data-volume="1"></audio>`;
+      writeFileSync(path, html);
+      writeFileSync(join(dir, "open.wav"), "audio bytes");
+      writeFileSync(join(dir, "close.wav"), "audio bytes");
+      measureAudio
+        .mockResolvedValueOnce({ integratedLufs: -15, truePeakDbfs: -3 })
+        .mockResolvedValueOnce({ integratedLufs: -18, truePeakDbfs: -3 });
+
+      await runCommand(normalizeAudioCommand, {
+        rawArgs: [dir, "--reference", "speaker-opening", "--target", "speaker-closing", "--write"],
+      });
+
+      const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(printed).toContain(
+        "Reaches -16.5 LUFS, 1.5 dB under the reference (stopped short of -1.5 dBTP).",
+      );
+      expect(readFileSync(path, "utf8")).toContain(
+        `<audio id="speaker-closing" src="close.wav" data-volume="1.188502"></audio>`,
+      );
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("says where the target stays when the ceiling leaves less gain than the tolerance", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-reference-held-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const path = join(dir, "index.html");
+      const html =
+        `<audio id="speaker-opening" src="open.wav" data-volume="1"></audio>` +
+        `<audio id="speaker-closing" src="close.wav" data-volume="1"></audio>`;
+      writeFileSync(path, html);
+      writeFileSync(join(dir, "open.wav"), "audio bytes");
+      writeFileSync(join(dir, "close.wav"), "audio bytes");
+      measureAudio
+        .mockResolvedValueOnce({ integratedLufs: -15, truePeakDbfs: -3 })
+        .mockResolvedValueOnce({ integratedLufs: -18, truePeakDbfs: -1.8 });
+
+      await runCommand(normalizeAudioCommand, {
+        rawArgs: [dir, "--reference", "speaker-opening", "--target", "speaker-closing", "--write"],
+      });
+
+      const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(printed).toContain(
+        "Stays at -18.0 LUFS, 3.0 dB under the reference (stopped short of -1.5 dBTP).",
+      );
+      expect(printed).toContain("Cannot get closer to the target; the gain is unchanged.");
+      expect(readFileSync(path, "utf8")).toBe(html);
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// fails without the fix: the audio src from index.html reached the terminal with its control characters live.
+describe("normalize-audio on a clip whose file is missing", () => {
+  it("prints the src's control characters as visible escapes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-command-test-"));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      writeFileSync(
+        join(dir, "index.html"),
+        `<audio id="voice" src="vo\u001b[2Jice.wav" data-volume="1" data-duration="2"></audio>`,
+      );
+      await expect(
+        runCommand(normalizeAudioCommand, { rawArgs: [dir, "--target", "voice"] }),
+      ).rejects.toBeInstanceOf(CliRuntimeError);
+      const printed = error.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(printed).toContain("Audio #voice file was not found: vo\\x1b[2Jice.wav");
+      expect(printed).not.toContain("vo\u001b[2Jice");
+    } finally {
+      error.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// fails without the fix: the clip id from index.html reached the terminal with its control characters live.
+describe("normalize-audio on a clip whose id holds control characters", () => {
+  it("prints the id's control characters as visible escapes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-command-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      writeFileSync(
+        join(dir, "index.html"),
+        `<audio id="vo\u001b[2Jice" src="voice.wav" data-volume="1" data-duration="2"></audio>`,
+      );
+      writeFileSync(join(dir, "voice.wav"), "audio bytes");
+      measureAudio.mockResolvedValue({ integratedLufs: -20, truePeakDbfs: -12.3 });
+      await runCommand(normalizeAudioCommand, { rawArgs: [dir, "--target", "vo\u001b[2Jice"] });
+      const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(printed).toContain("#vo\\x1b[2Jice");
+      expect(printed).toContain("Set #vo\\x1b[2Jice data-volume");
+      expect(printed).not.toContain("vo\u001b[2Jice");
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

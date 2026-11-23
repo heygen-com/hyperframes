@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { MEDIA_INPUT_ARGS } from "@hyperframes/studio-server/outside-file";
 import {
   audioNormalizationPlan,
   audioTags,
@@ -73,14 +74,20 @@ describe("loudnessMeasureArgs", () => {
     // bounding: ffmpeg keeps feeding the graph and ebur128 integrates audio the
     // clip never plays. Measured on a fixture whose played window is -61.8 LUFS,
     // output-side `-t` reported -33.8.
-    const args = loudnessMeasureArgs("clip.wav", { mediaStart: 2, duration: 4 });
+    const args = loudnessMeasureArgs("clip.wav", { mediaStart: 2, duration: 4 }, 0);
     expect(args.indexOf("-ss")).toBeLessThan(args.indexOf("-i"));
     expect(args.indexOf("-t")).toBeLessThan(args.indexOf("-i"));
-    expect(args.slice(args.indexOf("-ss"), args.indexOf("-i"))).toEqual(["-ss", "2", "-t", "4"]);
+    expect(args.slice(args.indexOf("-ss"), args.indexOf("-i"))).toEqual([
+      "-ss",
+      "2",
+      "-t",
+      "4",
+      ...MEDIA_INPUT_ARGS,
+    ]);
   });
 
   it("leaves an untrimmed clip unbounded", () => {
-    const args = loudnessMeasureArgs("clip.wav", { mediaStart: 0, duration: null });
+    const args = loudnessMeasureArgs("clip.wav", { mediaStart: 0, duration: null }, 0);
     expect(args).not.toContain("-ss");
     expect(args).not.toContain("-t");
   });
@@ -142,22 +149,36 @@ describe("audioNormalizationPlan", () => {
     expect(plan.projectedLufs).toBeCloseTo(plan.referenceLufs, 6);
   });
 
-  it("refuses a gain beyond Studio's +12 dB ceiling", () => {
-    expect(() =>
-      audioNormalizationPlan(
-        { id: "reference", volume: 1, integratedLufs: -5, truePeakDbfs: -1 },
-        { id: "target", volume: 1, integratedLufs: -30, truePeakDbfs: -30 },
-      ),
-    ).toThrow(/\+12 dB/i);
+  it("stops a boost at Studio's +12 dB ceiling and names it", () => {
+    const plan = audioNormalizationPlan(
+      { id: "reference", volume: 1, integratedLufs: -5, truePeakDbfs: -1 },
+      { id: "target", volume: 1, integratedLufs: -30, truePeakDbfs: -30 },
+    );
+
+    expect(plan.limitedBy).toBe("gain-ceiling");
+    expect(plan.gainDb).toBeCloseTo(12, 6);
+    expect(plan.projectedLufs).toBeCloseTo(-18, 6);
   });
 
-  it("refuses a boost that would clip", () => {
-    expect(() =>
-      audioNormalizationPlan(
-        { id: "reference", volume: 1, integratedLufs: -10, truePeakDbfs: -1 },
-        { id: "target", volume: 1, integratedLufs: -15, truePeakDbfs: -2 },
-      ),
-    ).toThrow(/clip/i);
+  it("stops a boost that would pass -1.5 dBTP there, as the absolute target does", () => {
+    const plan = audioNormalizationPlan(
+      { id: "reference", volume: 1, integratedLufs: -10, truePeakDbfs: -1 },
+      { id: "target", volume: 1, integratedLufs: -15, truePeakDbfs: -2 },
+    );
+
+    expect(plan.limitedBy).toBe("true-peak");
+    expect(plan.gainDb).toBeCloseTo(0.5, 6);
+    expect(plan.projectedTruePeakDbfs).toBeCloseTo(-1.5, 6);
+    expect(plan.referenceLufs - plan.projectedLufs).toBeCloseTo(4.5, 6);
+  });
+
+  it("names no limit when the match fits", () => {
+    const plan = audioNormalizationPlan(
+      { id: "reference", volume: 1, integratedLufs: -15.5, truePeakDbfs: -3.2 },
+      { id: "target", volume: 1, integratedLufs: -11.7, truePeakDbfs: -0.2 },
+    );
+
+    expect(plan.limitedBy).toBeNull();
   });
 });
 

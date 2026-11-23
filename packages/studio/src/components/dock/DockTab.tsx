@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import {
+  Aperture,
   BracketsCurly,
   ChartBarHorizontal,
   Code,
@@ -29,6 +30,7 @@ const TAB_ICONS: Record<PanelId, Icon> = {
   renders: FilmSlate,
   variables: BracketsCurly,
   slideshow: Presentation,
+  motionBlur: Aperture,
 };
 
 /**

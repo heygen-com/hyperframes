@@ -1,14 +1,18 @@
 import { DEFAULT_MAX_SCREENSHOTS } from "../capture/types.js";
-import { failCommand } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { failCommand, scheduleCliExit, failUsage } from "../utils/commandResult.js";
+import { defineCommand } from "../utils/defineCommand.js";
 import { resolve } from "node:path";
 import type { Example } from "./_examples.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { normalizeErrorMessage, SetupStepsError } from "../utils/errorMessage.js";
 import { diag } from "../ui/diagnostics.js";
 import type { CapturePhaseProgress } from "../capture/types.js";
 import { parseCaptureDeadline } from "../capture/captureWatchdog.js";
+import { jsonFailure, printFailureLine } from "../utils/jsonError.js";
+import { terminalText } from "@hyperframes/core";
+import { parseTimeoutMs } from "../utils/timeoutArg.js";
 
 const CAPTURE_PHASE_PREFIX = "HYPERFRAMES_CAPTURE_PHASE ";
+const DEFAULT_CAPTURE_TIMEOUT_MS = 120_000;
 
 function emitCapturePhase(event: CapturePhaseProgress): void {
   diag.notice(`${CAPTURE_PHASE_PREFIX}${JSON.stringify(event)}`);
@@ -23,7 +27,7 @@ function parsePositiveInteger(
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     console.error(`${flag} must be a positive integer${unit}.`);
-    failCommand();
+    failUsage();
   }
   return parsed;
 }
@@ -32,9 +36,18 @@ export const examples: Example[] = [
   ["Capture a website into ./capture/", "hyperframes capture https://stripe.com"],
   ["Capture to a different directory", "hyperframes capture https://linear.app -o linear-video"],
   ["JSON output for AI agents", "hyperframes capture https://example.com --json"],
+  ["Capture a local HTML file", "hyperframes capture --local-file ./site/index.html -o site-video"],
+  [
+    "Let a local page read files from a parent directory",
+    "hyperframes capture --local-file ./site/pages/about.html --local-root ./site",
+  ],
   [
     "Pull a video from the captured manifest by index",
     "hyperframes capture --video ./linear-video --index 0",
+  ],
+  [
+    "Send all capture traffic through an egress proxy",
+    "HYPERFRAMES_CAPTURE_PROXY=http://127.0.0.1:3128 hyperframes capture https://example.com",
   ],
   [
     "List videos referenced in the captured manifest",
@@ -50,8 +63,18 @@ export default defineCommand({
   args: {
     url: {
       type: "positional",
-      description: "Website URL to capture (omit when using --video)",
+      description: "Website URL to capture (omit when using --local-file or --video)",
       required: false,
+    },
+    "local-file": {
+      type: "string",
+      description:
+        "Capture a local HTML file (or a directory's index.html) instead of a URL; remote subresources still go through the public-address policy",
+    },
+    "local-root": {
+      type: "string",
+      description:
+        "(--local-file) Directory the page may read local files from (default: the HTML file's directory)",
     },
     output: {
       type: "string",
@@ -74,7 +97,8 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: "Page load timeout in ms (default: 120000)",
+      description:
+        "Page load timeout: a number of ms, or a duration such as 30s or 2m (default: 120000)",
     },
     "capture-budget": {
       type: "string",
@@ -107,6 +131,14 @@ export default defineCommand({
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
+    const { captureUpstreamProxy } = await import("@hyperframes/engine/public-network");
+    try {
+      captureUpstreamProxy();
+    } catch (error) {
+      printFailureLine((show) => show(normalizeErrorMessage(error)));
+      failCommand();
+    }
+
     if (args.video) {
       const { runVideoMode } = await import("./capture/video.js");
       await runVideoMode({
@@ -118,19 +150,38 @@ export default defineCommand({
       return;
     }
 
-    const url = args.url as string | undefined;
-    if (!url) {
-      console.error(
-        "Missing URL. Pass a website URL, or use --video <project> for video download.",
-      );
-      failCommand();
-    }
-
-    try {
-      new URL(url);
-    } catch {
-      console.error(`Invalid URL: ${url}`);
-      failCommand();
+    const localFile = args["local-file"] as string | undefined;
+    const localRoot = args["local-root"] as string | undefined;
+    let url = args.url as string | undefined;
+    if (localFile !== undefined) {
+      if (url) {
+        console.error("Pass either a URL or --local-file, not both.");
+        failUsage();
+      }
+      const { resolveLocalCaptureTarget } = await import("../capture/localPage.js");
+      try {
+        url = resolveLocalCaptureTarget(localFile, localRoot).fileUrl;
+      } catch (err) {
+        printFailureLine((show) => show(normalizeErrorMessage(err)));
+        failCommand();
+      }
+    } else {
+      if (localRoot !== undefined) {
+        console.error("--local-root requires --local-file.");
+        failUsage();
+      }
+      if (!url) {
+        console.error(
+          "Missing URL. Pass a website URL, --local-file <path>, or --video <project> for video download.",
+        );
+        failUsage();
+      }
+      try {
+        new URL(url);
+      } catch {
+        printFailureLine((show) => `Invalid URL: ${show(String(url))}`);
+        failUsage();
+      }
     }
 
     const captureBudgetMs = parsePositiveInteger(
@@ -169,7 +220,7 @@ export default defineCommand({
     if (!isJson) {
       const { c } = await import("../ui/colors.js");
       console.log();
-      console.log(c.dim("◆") + "  Capturing " + c.bold(url));
+      console.log(c.dim("◆") + "  Capturing " + c.bold(terminalText(url)));
       if (isDefaultOutput && outputName !== "capture") {
         console.log(`  ${c.dim(`(./capture/ exists; writing to ./${outputName}/)`)}`);
       }
@@ -183,11 +234,13 @@ export default defineCommand({
       const result = await captureWebsite(
         {
           url,
+          localFile,
+          localRoot,
           outputDir,
           skipAssets: args["skip-assets"] as boolean,
           skipVision: args["skip-vision"] as boolean,
           maxScreenshots,
-          timeout: args.timeout ? parseInt(args.timeout as string) : undefined,
+          timeout: parseTimeoutMs(args.timeout, DEFAULT_CAPTURE_TIMEOUT_MS),
           postNavigationBudgetMs: captureBudgetMs,
           captureDeadlineMs: parseCaptureDeadline(process.env.HYPERFRAMES_CAPTURE_DEADLINE_MS),
           json: isJson,
@@ -207,7 +260,7 @@ export default defineCommand({
                 done: "  Done",
               };
               const label = stages[stage] || `  ${stage}`;
-              console.log(detail ? `${label} ${detail}` : label);
+              console.log(terminalText(detail ? `${label} ${detail}` : label));
             },
       );
 
@@ -243,7 +296,10 @@ export default defineCommand({
         console.log();
         const icon = result.ok ? c.success("◇") : c.error("✗");
         const status = result.ok ? "Captured" : "Capture failed";
-        console.log(icon + `  ${status} ${c.bold(result.title)} → ${c.dim(outputDir)}`);
+        console.log(
+          icon +
+            `  ${status} ${c.bold(terminalText(result.title))} → ${c.dim(terminalText(outputDir))}`,
+        );
         console.log();
         console.log(`  ${c.dim("Screenshots:")} ${result.screenshots.length}`);
         console.log(`  ${c.dim("Assets:")} ${result.assets.length}`);
@@ -261,23 +317,25 @@ export default defineCommand({
         }
         console.log(`  ${c.dim("Sections:")} ${result.tokens.sections.length}`);
         console.log(
-          `  ${c.dim("Fonts:")} ${result.tokens.fonts
-            .map(function (f) {
-              return (
-                f.family +
-                " (" +
-                (f.variable && f.weightRange
-                  ? f.weightRange[0] + "-" + f.weightRange[1] + " variable"
-                  : f.weights.join(",")) +
-                ")"
-              );
-            })
-            .join(", ")}`,
+          `  ${c.dim("Fonts:")} ${terminalText(
+            result.tokens.fonts
+              .map(function (f) {
+                return (
+                  f.family +
+                  " (" +
+                  (f.variable && f.weightRange
+                    ? f.weightRange[0] + "-" + f.weightRange[1] + " variable"
+                    : f.weights.join(",")) +
+                  ")"
+                );
+              })
+              .join(", "),
+          )}`,
         );
         if (result.warnings.length > 0) {
           console.log();
           for (const w of result.warnings) {
-            console.log(`  ${c.warn("⚠")} ${w}`);
+            console.log(`  ${c.warn("⚠")} ${terminalText(w)}`);
           }
         }
         console.log();
@@ -299,12 +357,16 @@ export default defineCommand({
         /* best-effort */
       }
       if (isJson) {
-        console.log(JSON.stringify({ ok: false, error: errMsg }));
+        console.log(JSON.stringify(jsonFailure("runtime_error", errMsg)));
       } else {
-        console.error(`\n  ✗ Capture failed: ${errMsg}\n`);
+        const setup = err instanceof SetupStepsError ? err : undefined;
+        console.error(`\n  ✗ Capture failed: ${terminalText(setup?.summary ?? errMsg)}\n`);
+        if (setup) console.error(`${setup.stepsWrittenByCli}\n`);
       }
+      scheduleCliExit(1);
       failCommand();
     }
+    scheduleCliExit(captureFailed ? 1 : 0);
     if (captureFailed) failCommand();
   },
 });

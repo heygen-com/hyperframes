@@ -4,22 +4,22 @@ Maintainer-facing reference. Nothing here changes how you resolve or operate on 
 
 ## What it owns (the gaps HyperFrames leaves)
 
-HyperFrames owns media _playback_; media-use owns everything else. Each row is enforced by `scripts/lib/coverage.test.mjs` so the claim can't rot.
+HyperFrames owns media _playback_; media-use owns everything else. Each row is enforced by `packages/cli/src/media-use/lib/coverage.test.mjs` so the claim can't rot.
 
-| HyperFrames gap                            | media-use owns it via                                                                                                                                                                                                                                                               |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Audio-only, no image/icon                  | `resolve --type image\|icon` (heygen asset search)                                                                                                                                                                                                                                  |
-| No third-party brand logos                 | `resolve --type logo` (theSVG → GitHub org avatar → domain favicon)                                                                                                                                                                                                                 |
-| No voice / audio generation                | `resolve --type voice` (HeyGen TTS free-usage path; optional local Kokoro) + the audio engine (`audio/scripts/audio.mjs`)                                                                                                                                                           |
-| Scattered/duplicated audio engine          | one consolidated engine under `audio/` (hyperframes-media retired)                                                                                                                                                                                                                  |
-| No agent media-ops (cut/reframe/transform) | `references/operations.md` + `resolve --from` to register outputs                                                                                                                                                                                                                   |
-| No transcript-driven cutting               | `scripts/transcript-cut.mjs` compiles word-timestamp edits into cut lists                                                                                                                                                                                                           |
-| No auto-duck / publish loudness            | `scripts/audio-duck.mjs` + `references/operations.md` loudnorm/sidechain recipes                                                                                                                                                                                                    |
-| No cross-project memory                    | global content-addressed cache + auto-promote (`~/.media`)                                                                                                                                                                                                                          |
-| Grade recipes and LUT freezing             | `resolve --type grade` emits a paste-ready recipe and `resolve --type lut` freezes validated `.cube` files; direct element analysis/authoring lives in `hyperframes media-treatment`                                                                                                |
-| No image generation                        | RAM-graded local mflux (FLUX) via `scripts/lib/mflux-provider.mjs`, codex `image_gen` upsell (`scripts/lib/codex-provider.mjs`)                                                                                                                                                     |
-| No video generation                        | `resolve --type video` — HeyGen avatar video first (free-usage path, sign-in nudge on auth failure), local LTX fallback (`videogen` in `scripts/lib/local-models.mjs`); image-to-video, photo-avatar, dub/translate remain manual `heygen` CLI recipes (`references/operations.md`) |
-| Weak local-model defaults                  | HeyGen free-usage path via the `heygen` CLI; local open-source tools only as opt-in alternatives (`scripts/lib/local-run.mjs`)                                                                                                                                                      |
+| HyperFrames gap                            | media-use owns it via                                                                                                                                                                                                                                    |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Audio-only, no image/icon                  | `resolve --type image\|icon` (heygen asset search)                                                                                                                                                                                                       |
+| No third-party brand logos                 | `resolve --type logo` (theSVG → GitHub org avatar → domain favicon)                                                                                                                                                                                      |
+| No voice / audio generation                | `resolve --type voice` (HeyGen TTS free-usage path; optional local Kokoro) + the audio engine (`audio/scripts/audio.mjs`)                                                                                                                                |
+| Scattered/duplicated audio engine          | one consolidated engine under `audio/` (hyperframes-media retired)                                                                                                                                                                                       |
+| No agent media-ops (cut/reframe/transform) | `references/operations.md` + `resolve --from` to register outputs                                                                                                                                                                                        |
+| No transcript-driven cutting               | `scripts/transcript-cut.mjs` compiles word-timestamp edits into cut lists                                                                                                                                                                                |
+| No auto-duck / publish loudness            | `scripts/audio-duck.mjs` + `references/operations.md` loudnorm/sidechain recipes                                                                                                                                                                         |
+| No cross-project memory                    | global content-addressed cache + auto-promote (`~/.media`)                                                                                                                                                                                               |
+| Grade recipes and LUT freezing             | `resolve --type grade` emits a paste-ready recipe and `resolve --type lut` freezes validated `.cube` files; direct element analysis/authoring lives in `hyperframes media-treatment`                                                                     |
+| No image generation                        | `resolve --type image` — RAM-graded local mflux (FLUX), codex `image_gen` upsell                                                                                                                                                                         |
+| No video generation                        | `resolve --type video` — HeyGen avatar video first (free-usage path, sign-in nudge on auth failure), local LTX fallback (`videogen` ladder); image-to-video, photo-avatar, dub/translate remain manual `heygen` CLI recipes (`references/operations.md`) |
+| Weak local-model defaults                  | HeyGen free-usage path via the `heygen` CLI; local open-source tools only as opt-in alternatives                                                                                                                                                         |
 
 ## Usage stats
 
@@ -35,9 +35,10 @@ npx hyperframes media-use resolve --stats --project . --days 7
 
 ## Telemetry
 
-`resolve` and the edit tools (transcribe / transcript-cut / audio-duck) send an
-anonymous usage event to PostHog (`scripts/lib/telemetry.mjs`), so we can see
-which capabilities are actually used. It records only the media TYPE, the
+`resolve` and the edit tools (transcribe / transcript-cut / audio-duck) send a
+usage event to PostHog (`scripts/lib/telemetry.mjs`), so we can see which
+capabilities are actually used. It is anonymous until you sign in to HeyGen
+(see Privacy below). It records only the media TYPE, the
 resolution SOURCE, and the winning PROVIDER: never the intent text, file names,
 or paths, and `$ip:null` so no IP is stored. Best-effort and non-blocking (a
 resolve never waits on or fails from telemetry).
@@ -47,7 +48,7 @@ dev). Same public PostHog project key and opt-outs as the `hyperframes` CLI.
 
 HeyGen request tagging: every generating `heygen` call (TTS, avatar video, catalog
 search) carries the allowlisted `X-HeyGen-Client-Source: media-use` header, sourced
-from one shared constant (`HEYGEN_CLIENT_SOURCE_ARGV` in `scripts/lib/heygen-cli.mjs`)
+from one shared constant (`HEYGEN_CLIENT_SOURCE_ARGV` in `packages/cli/src/media-use/lib/heygen-cli.mjs`)
 so a future call site can't silently ship untagged. Read-only discovery calls
 (`voice list`, `avatar list`) are intentionally left untagged.
 
@@ -55,7 +56,7 @@ so a future call site can't silently ship untagged. Read-only discovery calls
 
 media-use uses the same shared install id as the `hyperframes` CLI/studio
 (`~/.hyperframes/config.json`). When you are signed in to HeyGen, usage is
-linked to your account email, or username when email is unavailable, matching
-the CLI behavior. The events stay coarse: media type, source, provider, and
+linked to your HeyGen account (keyed on an id derived from your username, with
+your email and username stored on it), matching the CLI behavior. The events stay coarse: media type, source, provider, and
 small counts only; intent text and paths stay local. Disable telemetry with
 `HYPERFRAMES_NO_TELEMETRY=1` or `DO_NOT_TRACK=1`.

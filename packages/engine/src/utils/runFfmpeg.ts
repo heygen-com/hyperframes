@@ -6,8 +6,10 @@
  * that appears across audioMixer and chunkEncoder into a single helper.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { spawn, type ChildProcess } from "child_process";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
+import { ffmpegInputIndexes, withPublicOnlyProxy } from "./urlInput.js";
 import { trackChildProcess } from "./processTracker.js";
 import {
   ManagedChildProcess,
@@ -17,6 +19,7 @@ import {
 
 export interface RunFfmpegOptions {
   signal?: AbortSignal;
+  /** Stop after this long without a higher frame count or output time (counted from spawn until one). */
   timeout?: number;
   onStderr?: (line: string) => void;
 }
@@ -138,25 +141,32 @@ export function formatFfmpegError(
     : `FFmpeg exited with code ${exitCode}`;
 }
 
-/** formatFfmpegError, led by the timeout when this process was killed at its deadline. */
+/** formatFfmpegError, led by the timeout when this process was killed for making no progress. */
 export function describeFfmpegFailure(
-  result: Pick<RunFfmpegResult, "exitCode" | "stderr" | "terminationReason">,
+  result: Pick<RunFfmpegResult, "exitCode" | "signal" | "stderr" | "terminationReason">,
   timeoutMs: number,
 ): string {
   const error = formatFfmpegError(result.exitCode, result.stderr);
-  if (result.terminationReason !== "deadline") return error;
-  return (
-    `FFmpeg timed out after ${timeoutMs} ms (ffmpegProcessTimeout; long renders can raise ` +
-    `FFMPEG_PROCESS_TIMEOUT_MS). ${error}`
-  );
+  if (result.terminationReason === "inactivity") {
+    return (
+      `FFmpeg timed out after ${timeoutMs} ms without progress (ffmpegProcessTimeout, ` +
+      `FFMPEG_PROCESS_TIMEOUT_MS). ${error}`
+    );
+  }
+  if (result.exitCode !== null) return error;
+  const signalOrRequestedStop =
+    result.terminationReason === "exit" ? result.signal : result.terminationReason;
+  return signalOrRequestedStop
+    ? `FFmpeg ended without an exit code (${signalOrRequestedStop}). ${error}`
+    : error;
 }
 
-function spawnFfmpeg(args: string[]): ChildProcess {
+function spawnFfmpeg(args: string[], env?: NodeJS.ProcessEnv): ChildProcess {
   // windowsHide: ffmpeg/ffprobe are console-subsystem binaries, so without
   // this Node opens a visible console window per spawn on Windows. A render
   // shells out dozens of times across parallel workers, which flashes a burst
   // of windows across the user's desktop. No-op on macOS and Linux.
-  const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
+  const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true, ...(env && { env }) });
   trackChildProcess(ffmpeg);
   return ffmpeg;
 }
@@ -191,55 +201,40 @@ const ABORTED_BEFORE_START: RunFfmpegResult = {
   terminationReason: "abort",
 };
 
-export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
-  if (opts?.signal?.aborted) return { ...ABORTED_BEFORE_START };
-  const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
-  const managed = new ManagedChildProcess(spawnFfmpeg(args), {
-    signal: opts?.signal,
-    deadlineAtMs: Date.now() + timeout,
-    onStderr: opts?.onStderr,
-  });
-  return toResult(await managed.wait());
+const progressListener = new AsyncLocalStorage<() => void>();
+
+/** Runs `work` with `onProgress` called each time an FFmpeg it starts writes a higher frame count or output time. */
+export function withFfmpegProgress<T>(onProgress: () => void, work: () => Promise<T>): Promise<T> {
+  return progressListener.run(onProgress, work);
 }
 
-/**
- * Runs `ffmpeg <producerArgs> | ffmpeg <consumerArgs>`. Fails when either side
- * fails and reports the first failure, its stderr last so error tails show it.
- */
-export async function runFfmpegPipeline(
-  producerArgs: string[],
-  consumerArgs: string[],
-  opts?: RunFfmpegOptions,
-): Promise<RunFfmpegResult> {
+export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
   if (opts?.signal?.aborted) return { ...ABORTED_BEFORE_START };
-  const deadlineAtMs = Date.now() + (opts?.timeout ?? DEFAULT_TIMEOUT);
-  const producer = spawnFfmpeg(producerArgs);
-  const consumer = spawnFfmpeg(consumerArgs);
-  // Either side ending early, or failing to start, must release the other from the pipe.
-  consumer.stdin?.on("error", () => {});
-  for (const event of ["close", "error"] as const) {
-    consumer.once(event, () => producer.stdout?.destroy());
-    producer.once(event, () => consumer.stdin?.end());
+  const onProgress = progressListener.getStore();
+  // With a restricted page network, a URL input not declared by the render reaches only public hosts.
+  const proxying = withPublicOnlyProxy(args, ffmpegInputIndexes(args));
+  const routed = proxying && (await proxying);
+  let framesWritten = 0;
+  let secondsWritten = 0;
+  let managed: ManagedChildProcess | undefined;
+  const readStats = ffmpegStatsReader(({ frames = 0, seconds = 0 }) => {
+    if (frames <= framesWritten && seconds <= secondsWritten) return;
+    framesWritten = Math.max(frames, framesWritten);
+    secondsWritten = Math.max(seconds, secondsWritten);
+    managed?.markActivity();
+    onProgress?.();
+  });
+  try {
+    managed = new ManagedChildProcess(spawnFfmpeg(routed?.args ?? args, routed?.env), {
+      signal: opts?.signal,
+      inactivityTimeoutMs: opts?.timeout ?? DEFAULT_TIMEOUT,
+      onStderr: (chunk) => {
+        readStats(chunk);
+        opts?.onStderr?.(chunk);
+      },
+    });
+    return toResult(await managed.wait());
+  } finally {
+    await routed?.close();
   }
-  if (consumer.stdin) producer.stdout?.pipe(consumer.stdin);
-  const settleOrder: ManagedChildProcessOutcome[] = [];
-  const outcomes = await Promise.all(
-    [producer, consumer].map((child) =>
-      new ManagedChildProcess(child, {
-        signal: opts?.signal,
-        deadlineAtMs,
-        onStderr: opts?.onStderr,
-      })
-        .wait()
-        .then((outcome) => {
-          settleOrder.push(outcome);
-          return outcome;
-        }),
-    ),
-  );
-  const reported = settleOrder.find((outcome) => !succeeded(outcome)) ?? outcomes[1]!;
-  const stderr = [...outcomes.filter((outcome) => outcome !== reported), reported]
-    .map((outcome) => outcome.stderr)
-    .join("");
-  return toResult(reported, stderr);
 }

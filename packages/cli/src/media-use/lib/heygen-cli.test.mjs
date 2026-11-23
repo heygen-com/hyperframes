@@ -301,15 +301,29 @@ test("flushHeygenFailureTracking resolves immediately when nothing is pending", 
   await flushHeygenFailureTracking();
 });
 
-test("only a music or sound-effect miss names the heygen CLI and the host app's own tool", () => {
-  for (const type of ["image", "icon", "voice", "video"])
+test("only a music miss names the heygen CLI and the host app's own tool", () => {
+  for (const type of ["sfx", "image", "icon", "voice", "video"])
     assert.equal(heygenMiss(type, { code: "not_found" }), null, type);
   assert.equal(heygenMiss("bgm", { code: "not_found" }).code, "heygen_cli_missing");
-  const sfx = heygenMiss("sfx", { code: "outdated" });
-  assert.equal(sfx.code, "heygen_cli_outdated");
-  assert.match(sfx.error, /host app's own sound-effect tool/);
+  const bgm = heygenMiss("bgm", { code: "outdated" });
+  assert.equal(bgm.code, "heygen_cli_outdated");
+  assert.match(bgm.error, /host app's own music tool/);
 });
 
 test("a CLI that rejects --headers without printing a version is outdated", () => {
   assert.equal(classifyHeygenErrorCode({ stderr: "Error: unknown flag: --headers" }), "outdated");
+});
+
+test("a heygen CLI failure message keeps its lines and prints control characters as escapes", () => {
+  const stderrCalls = captureFailureReport(
+    { stderr: Buffer.from("Error: voice \x1b]0;title\x07 not usable\r\nretry \rlater\n") },
+    "heygen voice list",
+    () => {},
+  );
+
+  assert.deepEqual(stderrCalls, [
+    [
+      "media-use: `heygen voice list` failed: Error: voice \\x1b]0;title\\x07 not usable\nretry \\x0dlater",
+    ],
+  ]);
 });

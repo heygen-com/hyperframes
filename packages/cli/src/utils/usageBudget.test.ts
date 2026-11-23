@@ -11,6 +11,7 @@ describe("Claude shared usage visibility", () => {
   it("preserves independent usage percentages and reset times", () => {
     expect(parseHarnessUsage(windows(81, 95))).toEqual({
       status: "known",
+      spend: null,
       harness: "claude-code",
       planTier: null,
       session: { usedPercent: 81, remainingPercent: 19, resetsAt: null },
@@ -22,6 +23,7 @@ describe("Claude shared usage visibility", () => {
       parseHarnessUsage('{"five_hour":null,"seven_day":{"utilization":95,"resets_at":null}}'),
     ).toEqual({
       status: "known",
+      spend: null,
       harness: "claude-code",
       planTier: null,
       session: null,
@@ -31,6 +33,7 @@ describe("Claude shared usage visibility", () => {
   it("preserves empty and fully used windows", () => {
     expect(parseHarnessUsage(windows(0, 100))).toEqual({
       status: "known",
+      spend: null,
       harness: "claude-code",
       planTier: null,
       session: { usedPercent: 0, remainingPercent: 100, resetsAt: null },
@@ -40,7 +43,6 @@ describe("Claude shared usage visibility", () => {
   it.each([
     "not-json",
     "{}",
-    '{"five_hour":null,"seven_day":null}',
     windows(-1, 20),
     windows(10, 101),
     '{"five_hour":{"utilization":"80"},"seven_day":{"utilization":10}}',
@@ -49,6 +51,77 @@ describe("Claude shared usage visibility", () => {
       status: "unknown",
       reason: "invalid_usage_response",
     });
+  });
+});
+
+describe("Claude spend-metered plans", () => {
+  it("reports no usage windows instead of an invalid response when every window is absent", () => {
+    expect(parseHarnessUsage('{"five_hour":null,"seven_day":null}')).toEqual({
+      status: "unknown",
+      reason: "no_usage_windows",
+    });
+  });
+  it("exposes the spend share when the five-hour and weekly windows are absent", () => {
+    expect(
+      parseHarnessUsage(
+        JSON.stringify({
+          five_hour: null,
+          seven_day: null,
+          spend: { percent: 42.5, enabled: true, severity: "normal" },
+          extra_usage: { is_enabled: true, utilization: 10 },
+        }),
+      ),
+    ).toEqual({
+      status: "known",
+      harness: "claude-code",
+      planTier: null,
+      session: null,
+      weekly: null,
+      spend: { usedPercent: 42.5, remainingPercent: 57.5, resetsAt: null },
+    });
+  });
+  it("falls back to extra usage utilization when spend is absent", () => {
+    expect(
+      parseHarnessUsage(
+        JSON.stringify({
+          five_hour: null,
+          seven_day: null,
+          extra_usage: { is_enabled: true, utilization: 30 },
+        }),
+      ),
+    ).toMatchObject({
+      status: "known",
+      spend: { usedPercent: 30, remainingPercent: 70, resetsAt: null },
+    });
+  });
+  it("caps spend over the limit at fully used", () => {
+    expect(
+      parseHarnessUsage(
+        JSON.stringify({
+          five_hour: null,
+          seven_day: null,
+          spend: { percent: 120, enabled: true },
+        }),
+      ),
+    ).toMatchObject({ status: "known", spend: { usedPercent: 100, remainingPercent: 0 } });
+  });
+  it("ignores disabled spend and keeps reporting rate windows", () => {
+    expect(
+      parseHarnessUsage(
+        JSON.stringify({
+          five_hour: { utilization: 5 },
+          seven_day: null,
+          spend: { percent: 80, enabled: false },
+        }),
+      ),
+    ).toMatchObject({ status: "known", spend: null, session: { usedPercent: 5 } });
+  });
+  it("rejects a negative spend share", () => {
+    expect(
+      parseHarnessUsage(
+        JSON.stringify({ five_hour: null, seven_day: null, spend: { percent: -1, enabled: true } }),
+      ),
+    ).toEqual({ status: "unknown", reason: "invalid_usage_response" });
   });
 });
 
@@ -65,6 +138,7 @@ it("maps Codex windows by duration and exposes its reported plan tier", () => {
     ),
   ).toEqual({
     status: "known",
+    spend: null,
     harness: "codex",
     planTier: "pro",
     session: { usedPercent: 25, remainingPercent: 75, resetsAt: "1970-01-01T02:00:00.000Z" },
@@ -85,6 +159,7 @@ it.each([undefined, null])(
       ),
     ).toEqual({
       status: "known",
+      spend: null,
       harness: "codex",
       planTier: null,
       session: null,
@@ -104,6 +179,7 @@ it("converts Codex relative resets using the supplied observation time", () => {
     ),
   ).toEqual({
     status: "known",
+    spend: null,
     harness: "codex",
     planTier: null,
     weekly: null,
@@ -112,12 +188,17 @@ it("converts Codex relative resets using the supplied observation time", () => {
 });
 it.each([
   "{}",
-  '{"rate_limit":{}}',
   '{"rate_limit":{"primary_window":{"used_percent":101}}}',
   '{"rate_limit":{"primary_window":{"used_percent":-1}}}',
   '{"rate_limit":{"primary_window":{"used_percent":10,"reset_at":9000000000000}}}',
 ])("rejects invalid Codex allowance: %s", (text) => {
   expect(parseCodexUsage(text)).toEqual({ status: "unknown", reason: "invalid_usage_response" });
+});
+it("reports no usage windows for an empty Codex rate limit", () => {
+  expect(parseCodexUsage('{"rate_limit":{}}')).toEqual({
+    status: "unknown",
+    reason: "no_usage_windows",
+  });
 });
 it("rejects unsupported Codex durations", () => {
   expect(
@@ -151,6 +232,7 @@ it("exposes Grok weekly credits without inventing a session or plan tier", () =>
     ),
   ).toEqual({
     status: "known",
+    spend: null,
     harness: "grok",
     planTier: null,
     session: null,
@@ -160,6 +242,7 @@ it("exposes Grok weekly credits without inventing a session or plan tier", () =>
 it("honors Grok proto JSON's omitted zero usage", () => {
   expect(parseGrokUsage(JSON.stringify({ config: { currentPeriod: grokPeriod } }))).toEqual({
     status: "known",
+    spend: null,
     harness: "grok",
     planTier: null,
     session: null,

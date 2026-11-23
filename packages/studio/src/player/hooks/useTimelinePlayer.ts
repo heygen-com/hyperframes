@@ -4,7 +4,7 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 import { useShadowPreviewReload } from "./useShadowPreviewReload";
-import { resolvePlaybackAdapter } from "./playbackAdapterResolution";
+import { resolveFramePlaybackAdapter } from "./playbackAdapterResolution";
 import { subscribePreviewFrame, transportAdapter } from "../store/previewFrameStore";
 import { clampToDuration } from "../lib/time";
 import { useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
@@ -28,6 +28,7 @@ export {
 } from "../lib/playbackShortcuts";
 
 import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
+import { setFrameLoopStart } from "../lib/previewChannel";
 import { releaseStaticSeekCache, type StaticSeekCacheEntry } from "../lib/playbackAdapter";
 import { mergeTimelineElementsPreservingDowngrades } from "../lib/timelineDOM";
 import { findTimelineElementInIframe } from "../../hooks/timelineEditingHelpers";
@@ -38,26 +39,30 @@ import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFi
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
-import { isStudioManualEditGestureLiveIn } from "../../components/editor/manualEditsDom";
+import { isStudioManualEditGestureLiveIn } from "../../components/editor/manualEditGesture";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
+import { usePreviewQualityForwarding } from "./usePreviewQualityForwarding";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
-import { sceneSwapFor } from "../sceneSwap";
-import { whileScriptWrites } from "../previewReloading";
+import { gestureDocumentOf } from "../../components/editor/previewSelection";
+import { sceneSwapFor, supersededByNewerEdit, swapFreshly } from "../sceneSwap";
 
 export interface UseTimelinePlayerOptions {
   /** Runs right after a reloaded preview becomes the live iframe. */
   onShadowPromoted?: () => void;
   /** A reload was abandoned (cause in the message); the previous preview is still showing. */
   onPreviewReloadFailed?: (message: string) => void;
+  holdPreviewStill?: (live: HTMLIFrameElement) => Promise<(() => void) | null>;
 }
 
 const publishSeek = (time: number, options?: { follow?: boolean }) =>
   options?.follow === false ? liveTime.notify(time) : liveTime.notifySeek(time);
 
+// fallow-ignore-next-line complexity
 export function useTimelinePlayer({
   onShadowPromoted,
   onPreviewReloadFailed,
+  holdPreviewStill,
 }: UseTimelinePlayerOptions = {}) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const rafRef = useRef<number>(0);
@@ -78,7 +83,6 @@ export function useTimelinePlayer({
   // The fixture lease belongs at this shared synchronization boundary so every
   // iframe discovery path has the same owner for deciding whether it may write.
   const syncTimelineElements = useCallback(
-    // The lease guard adds one deliberate branch at the shared synchronization boundary.
     // fallow-ignore-next-line complexity
     (elements: TimelineElement[], nextDuration?: number) => {
       if (hasTimelinePerformanceFixtureLease()) return;
@@ -127,19 +131,18 @@ export function useTimelinePlayer({
 
       // Asynchronously enrich media elements still missing sourceDuration
       // (header-only probe, cheap), applying each resolved value to the store.
-      void probeMissingSourceDurations(
-        mergedElements,
-        state.timelineProjectId,
-        (key, durationSeconds) => {
-          usePlayerStore.setState((state) => {
-            const idx = state.elements.findIndex((e) => (e.key ?? e.id) === key);
-            if (idx === -1 || state.elements[idx].sourceDuration != null) return {};
-            const patched = state.elements.slice();
-            patched[idx] = { ...state.elements[idx], sourceDuration: durationSeconds };
-            return { elements: patched };
+      void probeMissingSourceDurations(mergedElements, state.timelineProjectId, (durations) => {
+        usePlayerStore.setState((state) => {
+          let patched: TimelineElement[] | null = null;
+          state.elements.forEach((element, idx) => {
+            const durationSeconds = durations.get(element.key ?? element.id);
+            if (durationSeconds === undefined || element.sourceDuration != null) return;
+            patched ??= state.elements.slice();
+            patched[idx] = { ...element, sourceDuration: durationSeconds };
           });
-        },
-      );
+          return patched ? { elements: patched } : state;
+        });
+      });
     },
     [setElements, requestTimelineReady, setDuration],
   );
@@ -149,9 +152,8 @@ export function useTimelinePlayer({
       try {
         // undefined means "no override"; an explicit null override means "no adapter".
         const iframe = overrideIframe !== undefined ? overrideIframe : iframeRef.current;
-        const win = iframe?.contentWindow as IframeWindow | null;
-        if (!iframe || !win) return null;
-        const adapter = resolvePlaybackAdapter(iframe, win, {
+        if (!iframe) return null;
+        const adapter = resolveFramePlaybackAdapter(iframe, {
           cache: staticSeekAdapterRef,
           warned: staticSeekWarnedRef,
         });
@@ -164,9 +166,7 @@ export function useTimelinePlayer({
   );
 
   const setLoopStart = useCallback((seconds: number | null) => {
-    try {
-      (iframeRef.current?.contentWindow as IframeWindow | null)?.__hf?.setLoopStart?.(seconds);
-    } catch {}
+    if (iframeRef.current) setFrameLoopStart(iframeRef.current, seconds);
   }, []);
   const { startRAFLoop, stopRAFLoop, stopReverseLoop } = useTimelinePlayerLoop({
     rafRef,
@@ -296,7 +296,7 @@ export function useTimelinePlayer({
     stopRAFLoop();
   }, [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop]);
   const seek = useCallback(
-    (time: number, options?: { keepPlaying?: boolean; follow?: boolean }) => {
+    (time: number, options?: { keepPlaying?: boolean; follow?: boolean; settled?: boolean }) => {
       const wasReverseShuttle = shuttleDirectionRef.current === "backward";
       stopReverseLoop();
       const adapter = getAdapter();
@@ -423,6 +423,7 @@ export function useTimelinePlayer({
     beginShadowReload,
     resetPreviewSlots,
     previewGeneration,
+    onLiveLoaded,
   } = useShadowPreviewReload({
     iframeRef,
     getAdapter,
@@ -437,6 +438,7 @@ export function useTimelinePlayer({
     applyPreviewAudioState,
     onPromoted: onShadowPromoted,
     onReloadFailed: onPreviewReloadFailed,
+    holdStill: holdPreviewStill,
     handOverPlayback: (time, playing) => {
       // keepPlaying: move the playhead without the paused-seek audio scrub.
       seek(time, { keepPlaying: true, follow: false });
@@ -489,7 +491,7 @@ export function useTimelinePlayer({
   const refreshPlayer = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
-    swapCancelRef.current?.abort(new Error("superseded by a newer edit"));
+    swapCancelRef.current?.abort(supersededByNewerEdit());
     const cancel = new AbortController();
     swapCancelRef.current = cancel;
     logReload("refreshPlayer", () => ({ stack: new Error("refreshPlayer").stack }));
@@ -501,20 +503,16 @@ export function useTimelinePlayer({
     // A newer edit, or anything replacing the live preview (a reload, a composition switch), wins.
     const isCurrent = () => gen === refreshGenRef.current && slot === previewGeneration();
     const swap = sceneSwapFor(iframe);
-    const swapWouldReplaceGestureNode =
-      !!iframe.contentDocument && isStudioManualEditGestureLiveIn(iframe.contentDocument);
+    const gestureDoc = gestureDocumentOf(iframe);
+    const swapWouldReplaceGestureNode = !!gestureDoc && isStudioManualEditGestureLiveIn(gestureDoc);
     if (!swap || isRefreshingRef.current || swapWouldReplaceGestureNode)
       return reloadWholeFilm(url.toString());
-    whileScriptWrites(() => swap(url.toString(), isCurrent, cancel.signal)).catch(
-      (error: unknown) => {
-        if (!isCurrent()) return;
-        logReload("scene-swap-refused", { reason: String(error) });
-        reloadWholeFilm(url.toString());
-      },
-    );
+    swapFreshly(swap, url, isCurrent, cancel.signal, reloadWholeFilm);
   }, [reloadWholeFilm, previewGeneration]);
   const pauseRef = useRef(pause);
   pauseRef.current = pause;
+
+  usePreviewQualityForwarding(iframeRef);
 
   useMountEffect(() => {
     const handleWindowKeyDown = (e: KeyboardEvent) => playbackKeyDownRef.current(e);
@@ -573,13 +571,21 @@ export function useTimelinePlayer({
     });
   }, [applyPlaybackRate, applyPreviewAudioState]);
 
+  const onLiveIframeLoad = useCallback(
+    (context?: number) => {
+      onIframeLoad(context);
+      onLiveLoaded();
+    },
+    [onIframeLoad, onLiveLoaded],
+  );
+
   return {
     iframeRef,
     play,
     pause,
     togglePlay,
     seek,
-    onIframeLoad,
+    onIframeLoad: onLiveIframeLoad,
     refreshPlayer,
     saveSeekPosition,
     resetPlayer,

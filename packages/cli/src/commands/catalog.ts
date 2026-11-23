@@ -1,4 +1,4 @@
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 
 export const examples: Example[] = [
@@ -10,15 +10,22 @@ export const examples: Example[] = [
   ["Search (positional, same as --query)", 'hyperframes catalog "crossfade"'],
 ];
 
-import * as clack from "@clack/prompts";
-import { realpath, type ItemType, type RegistryItem } from "@hyperframes/core";
+import * as clack from "../ui/prompts.js";
+import {
+  realpath,
+  terminalLines,
+  terminalText,
+  type ItemType,
+  type RegistryItem,
+} from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { loadAllItems } from "../registry/resolver.js";
-import { fetchRegistryManifest } from "../registry/remote.js";
+import { readRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { relative, resolve } from "node:path";
-import { finishCommand } from "../utils/commandResult.js";
-import { isAttendedTerminal } from "../utils/attendedTerminal.js";
+import { CliUsageError, finishCommand } from "../utils/commandResult.js";
+import { printFailureLine } from "../utils/jsonError.js";
+import { isUnattended } from "../utils/attendedTerminal.js";
 import { runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
 import {
@@ -40,6 +47,8 @@ import {
   localVectorNames,
 } from "../registry/localSemantic.js";
 
+const ON_DEVICE_SETUP_COMMAND = "hyperframes catalog --on-device";
+
 /**
  * Get the offline tier ready, and report every reason it could not be.
  *
@@ -55,6 +64,8 @@ async function prepareOnDeviceTier(opts: {
   assumedYes: boolean;
   artifactRevision?: string;
   canPrompt: boolean;
+  /** Only an explicit --on-device installs the runtime; a plain search never waits on it. */
+  installRuntime: boolean;
   registry: string;
   registryNames: ReadonlySet<string>;
   status: LocalModelStatus;
@@ -62,7 +73,7 @@ async function prepareOnDeviceTier(opts: {
   const warnings: string[] = [];
   const warn = (message: string): void => {
     warnings.push(message);
-    console.error(message);
+    console.error(terminalLines(message));
   };
 
   const status = opts.status;
@@ -117,6 +128,12 @@ async function prepareOnDeviceTier(opts: {
     return warnings;
   }
 
+  if (!opts.installRuntime && !hasLocalRuntime()) {
+    warn(
+      `on-device search is off until its runtime is installed: run \`${ON_DEVICE_SETUP_COMMAND}\` once.`,
+    );
+    return warnings;
+  }
   // Before the model download: fetching 32 MB and then finding the runtime missing wastes it.
   const runtime = await ensureLocalRuntime();
   if (!runtime.ok) {
@@ -201,7 +218,7 @@ export default defineCommand({
       // prompt that fires on a TTY, which leaves every agent and CI run unable
       // to opt in at all.
       description:
-        "Use on-device meaning search; pass --yes to approve a first non-interactive download",
+        "Use on-device meaning search, or set it up when given without a query; pass --yes to approve a first non-interactive download",
     },
   },
   // one flag-parsing entry point feeding three output paths (json, interactive, table); splitting those is its own change
@@ -215,16 +232,19 @@ export default defineCommand({
     let typeFilter: ItemType | undefined;
     if (args.type === "block") typeFilter = "hyperframes:block";
     else if (args.type === "component") typeFilter = "hyperframes:component";
-    else if (args.type) {
-      console.error(`Invalid --type: "${args.type}". Use "block" or "component".`);
-      finishCommand(1);
+    // An empty `--type=` is a typo too, not a request for no filter.
+    else if (args.type !== undefined) {
+      throw new CliUsageError(`Invalid --type: "${args.type}". Use "block" or "component".`);
     }
 
     // Asked for the whole manifest on purpose: its item list defines coverage,
     // and its artifact revision is the one owner of vector freshness.
-    const manifest = await fetchRegistryManifest(config.registry);
-    const entries = manifest?.items ?? [];
-    const artifactRevision = manifest?.catalogArtifact?.revision;
+    const manifest = await readRegistryManifest(config.registry).catch((error: unknown) => {
+      printFailureLine((show) => show(error instanceof Error ? error.message : String(error)));
+      return finishCommand(1);
+    });
+    const entries = manifest.items;
+    const artifactRevision = manifest.catalogArtifact?.revision;
     const catalog = entries.filter((e) => e.type !== "hyperframes:example");
     const registryNames = new Set(catalog.map((e) => e.name));
     const filtered = typeFilter ? catalog.filter((e) => e.type === typeFilter) : catalog;
@@ -247,7 +267,8 @@ export default defineCommand({
     // Collected rather than only printed, so --json can carry the same reasons
     // the terminal shows. A machine that asked for a tier deserves to be told
     // it did not run.
-    const searchContext = query ? { status: localModelStatus() } : null;
+    const searchContext =
+      query || args["on-device"] === true ? { status: localModelStatus() } : null;
     const routineUpdate =
       searchContext?.status.status === "unavailable" ||
       (searchContext?.status.status === "ready" &&
@@ -260,7 +281,8 @@ export default defineCommand({
       warnings = await prepareOnDeviceTier({
         assumedYes: args.yes === true,
         artifactRevision,
-        canPrompt: isAttendedTerminal() && !json,
+        canPrompt: !isUnattended() && !json,
+        installRuntime: args["on-device"] === true,
         registry: config.registry,
         registryNames,
         status: searchContext.status,
@@ -269,9 +291,10 @@ export default defineCommand({
       // the state owner again rather than carrying the pre-download snapshot.
       effectiveStatus = localModelStatus();
     }
-    const searched = effectiveStatus
-      ? await applySearch(tagged, query, registryNames, effectiveStatus)
-      : null;
+    const searched =
+      query && effectiveStatus
+        ? await applySearch(tagged, query, registryNames, effectiveStatus)
+        : null;
     if (searched) warnings.push(...searched.warnings);
     const matching = searched ? searched.items : tagged;
 
@@ -297,7 +320,7 @@ export default defineCommand({
           : null;
       if (tierHint) {
         warnings.push(tierHint);
-        console.error(tierHint);
+        console.error(terminalLines(tierHint));
       }
       // An empty result is exactly when the tier matters most: nothing found on
       // the weakest tier means something different from nothing found on the
@@ -319,9 +342,7 @@ export default defineCommand({
               // Withheld when the query never parsed: the catalog has not been
               // shown to be missing anything, so inviting a gap report here
               // would file noise against a search that never ran.
-              ...(unsearchable
-                ? {}
-                : { report_gap: searchMissCommand(query, tierToken(searched)) }),
+              ...(unsearchable ? {} : { report_gap: searchMissReport(tierToken(searched)) }),
               results: [],
             },
             null,
@@ -337,7 +358,9 @@ export default defineCommand({
           args.tag ? `tag "${args.tag}"` : null,
         ].filter(Boolean);
         if (unsearchable) {
-          console.error(c.error(`No searchable words in query "${query}".`));
+          printFailureLine((show) =>
+            c.error(`No searchable words in query "${show(String(query))}".`),
+          );
           console.error("");
           console.error(
             c.warn(
@@ -348,13 +371,13 @@ export default defineCommand({
             ),
           );
         } else {
-          console.log(`No items match ${criteria.join(" and ")}.`);
+          console.log(`No items match ${terminalText(criteria.join(" and "))}.`);
           // Zero results is the unambiguous case: no tier judgement to make and
           // nothing to install, so name the gap channel outright.
           if (query) {
             console.log("");
             console.log(c.dim("  Nothing in the catalog does this? Report the gap:"));
-            console.log(c.dim(`  ${searchMissCommand(query, tierToken(searched))}`));
+            console.log(c.dim(`  ${searchMissReport(tierToken(searched))}`));
           }
         }
       }
@@ -392,7 +415,7 @@ export default defineCommand({
             // plausible items and none of them did the thing — a judgement
             // only the reader can make, so the command has to already be in
             // the envelope by the time they make it.
-            report_gap: searchMissCommand(query, tierToken(searched)),
+            report_gap: searchMissReport(tierToken(searched)),
             results: output,
           },
           null,
@@ -433,7 +456,7 @@ export default defineCommand({
         // reads as the tool arguing with itself.
         if (warnings.length === 0) {
           const hint = localModelHint(json, effectiveStatus);
-          if (hint) console.error(hint);
+          if (hint) console.error(terminalLines(hint));
           await offerLocalModel(matching.length, json, config.registry, artifactRevision);
         }
       }
@@ -446,9 +469,7 @@ export default defineCommand({
         // in. Every catalog gap reported to date came from the word tier. The
         // tier rides along in the command so a vocabulary miss stays
         // distinguishable from a meaning miss when the reports are read.
-        console.log(
-          c.dim(`  None of these do it? ${searchMissCommand(query, tierToken(searched))}`),
-        );
+        console.log(c.dim(`  None of these do it? ${searchMissReport(tierToken(searched))}`));
       }
     }
 
@@ -456,7 +477,7 @@ export default defineCommand({
       const options = matching.map((item) => ({
         value: item.name,
         label: item.name,
-        hint: item.description,
+        hint: terminalText(item.description),
       }));
 
       const selected = await clack.select({
@@ -476,18 +497,20 @@ export default defineCommand({
       });
 
       for (const warning of result.warnings) {
-        console.warn(c.warn(`Warning: ${warning}`));
+        console.warn(c.warn(`Warning: ${terminalText(warning)}`));
       }
       console.log("");
-      console.log(`${c.success("✓")} Installed ${c.accent(result.name)} (${result.type})`);
+      console.log(
+        `${c.success("✓")} Installed ${c.accent(terminalText(result.name))} (${terminalText(result.type)})`,
+      );
       const root = realpath(dir);
       for (const file of result.written) {
-        console.log(`  ${c.dim(relative(root, file))}`);
+        console.log(`  ${c.dim(terminalText(relative(root, file)))}`);
       }
       if (result.snippet) {
         console.log("");
         console.log(c.dim("Include snippet:"));
-        console.log(`  ${result.snippet}`);
+        console.log(`  ${terminalText(result.snippet)}`);
       }
       return;
     }
@@ -501,9 +524,9 @@ export default defineCommand({
 
     for (const item of matching) {
       const type = item.type.replace("hyperframes:", "");
-      const tags = item.tags?.length ? c.dim(` [${item.tags.join(", ")}]`) : "";
+      const tags = item.tags?.length ? c.dim(` [${terminalText(item.tags.join(", "))}]`) : "";
       console.log(
-        `${c.cyan(item.name.padEnd(NAME_COL))}${type.padEnd(TYPE_COL)}${item.description}${tags}`,
+        `${c.cyan(terminalText(item.name).padEnd(NAME_COL))}${terminalText(type).padEnd(TYPE_COL)}${terminalText(item.description)}${tags}`,
       );
     }
 
@@ -613,7 +636,7 @@ async function applySearch<
   const warnings: string[] = [];
   // On-device meaning search, when the user opted into the model. Free and
   // offline, and it answers phrasings word matching cannot reach.
-  if (status.status === "ready") {
+  if (status.status === "ready" && hasLocalRuntime()) {
     try {
       const ranking = await localSemanticRanking(query);
       if (ranking) {
@@ -641,7 +664,7 @@ async function applySearch<
       // not run is indistinguishable from one that ran badly.
       const warning = `on-device search did not run: ${error instanceof Error ? error.message : "unknown error"}`;
       warnings.push(warning);
-      console.error(warning);
+      console.error(terminalLines(warning));
     }
   }
 
@@ -674,28 +697,11 @@ function tierDetail(searched: { localMode: LocalMode } | null): string {
 }
 
 /**
- * The command that turns a fruitless search into a catalog gap report.
- *
- * A search that returns nothing usable is the only moment anyone knows what
- * the catalog is missing, and it was also the one moment we said nothing:
- * `feedback --search-miss` was documented in the skill and printed by
- * `feedback --help`, neither of which is open when a query comes back wrong.
- * Handing back the exact line, with the query already in it, is the whole
- * difference between a gap someone reports and a gap someone works around.
- *
- * Only the command is built here. Sending it stays a separate deliberate act,
- * so plain `catalog --query` keeps its promise that the query text never
- * leaves the machine.
+ * The line that reports a gap, ready to run. It names the move that was missing and the tier;
+ * the query is left out, so the searched words never leave the machine.
  */
-export function searchMissCommand(query: string, tier: "on-device" | "words"): string {
-  // Double quotes with the shell metacharacters escaped: the queries that
-  // matter are plain-language phrases, and half the real ones so far were
-  // CJK, which single-quoting renders no more safely and reads worse.
-  const quoted = query.replace(/(["\\$`])/g, "\\$1");
-  return (
-    `npx hyperframes feedback --search-miss "${quoted}" ` +
-    `--wanted "<the move you needed>" --tier ${tier}`
-  );
+export function searchMissReport(tier: "on-device" | "words"): string {
+  return `npx hyperframes feedback --search-miss --wanted "<the move you needed>" --tier ${tier}`;
 }
 
 type LocalMode = "local-model" | "words";
@@ -712,7 +718,7 @@ type LocalMode = "local-model" | "words";
  * person to prompt instead, or when that person has already answered.
  */
 function localModelHint(json: boolean, status: LocalModelStatus | undefined): string | null {
-  if (!json && isAttendedTerminal()) return null;
+  if (!json && !isUnattended()) return null;
   if (status?.status !== "not-asked") return null;
   return nonInteractiveConsentMessage();
 }
@@ -730,7 +736,7 @@ async function offerLocalModel(
   registryBaseUrl: string,
   artifactRevision?: string,
 ): Promise<void> {
-  if (json || !isAttendedTerminal()) return;
+  if (json || isUnattended()) return;
   if (localModelStatus().status !== "not-asked") return;
   // Deliberately not gated on the number of results. That gate was set when the
   // catalog was small; against 411 moves a word match nearly always returns
@@ -757,7 +763,7 @@ async function offerLocalModel(
   console.log(
     c.dim(
       vectors
-        ? "  Run the search again to download the model and rank by meaning."
+        ? `  Run \`${ON_DEVICE_SETUP_COMMAND}\` once to download the model and rank by meaning.`
         : "  Could not fetch the catalog vectors; offline ranking stays off until they are available.",
     ),
   );

@@ -16,7 +16,6 @@
         font-size: 160px;
         font-weight: 900;
         letter-spacing: 0.05em;
-        transform: scale(0);
       }
       .scene-1 .subtitle {
         font-size: 36px;
@@ -36,7 +35,12 @@
       const scene = document.querySelector(".scene-1");
       tl.set(scene, { opacity: 1 }, 0);
       // spring({damping:12, stiffness:100, mass:1}) -> back.out(1.4) ~0.7s
-      tl.to(scene.querySelector(".title"), { scale: 1, duration: 0.7, ease: "back.out(1.4)" }, 0);
+      tl.fromTo(
+        scene.querySelector(".title"),
+        { scale: 0 },
+        { scale: 1, duration: 0.7, ease: "back.out(1.4)" },
+        0,
+      );
       // interpolate(frame, [20,40], [0,1]) -> 0.667s..1.333s linear
       tl.fromTo(
         scene.querySelector(".subtitle"),

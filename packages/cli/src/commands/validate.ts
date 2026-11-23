@@ -1,28 +1,36 @@
 import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
+import { launchWithPageNetwork } from "../browser/pageNetwork.js";
 // The media-metadata wait exists twice on purpose: once Node-side and once
 // inside a page.evaluate() body, which is serialized into the browser and
 // cannot import the Node helper. Line-level markers don't survive the clone
 // window drifting as the file is edited, hence the file-level suppression.
 // fallow-ignore-file code-duplication
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { normalizeErrorMessage, splitStepsWrittenByCli } from "../utils/errorMessage.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
+import {
+  resolveNaturalMediaTimelineDuration,
+  terminalText,
+  terminalTextDeep,
+} from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { decodeWellFormedEscapes } from "@hyperframes/studio-server";
 import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
+import { pageNavigationTimeoutMs } from "../utils/renderArgs.js";
 import {
   installPageFunctionGuard,
   resolveCliChromeGpuMode,
   seekCompositionTimeline,
   waitForRuntimeReady,
 } from "../capture/captureCompositionFrame.js";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -48,32 +56,20 @@ interface ContrastEntry {
 const CONTRAST_SAMPLES = 5;
 const SEEK_SETTLE_MS = 150;
 const PREFERRED_SEEK_TARGET_WAIT_MS = 500;
-const MEDIA_EXTENSIONS = /\.(aac|flac|m4a|mov|mp3|mp4|oga|ogg|wav|webm)$/i;
-// Floor for the initial page navigation. A blocking external <script> (GSAP
-// from a CDN, etc.) delays `domcontentloaded`; the actual render (much larger
-// budget) rides it out, so validate's navigation must be at least as patient as
-// the user's --timeout, never stuck below this floor.
-const NAV_TIMEOUT_FLOOR_MS = 10000;
-
-// Navigation budget = the larger of the floor and the user's --timeout, so
-// `--timeout` (already the "wait longer for slow loads" knob for media/settle)
-// also extends navigation instead of being ignored by a hardcoded 10s.
-export function resolveNavigationTimeoutMs(optTimeout?: number): number {
-  return Math.max(NAV_TIMEOUT_FLOOR_MS, optTimeout ?? 0);
-}
-
+// Media files a proxy swap can abandon mid-fetch; an aborted non-image request for one is not a load failure.
+const MEDIA_EXTENSIONS =
+  /\.(3gp|aac|aif|aiff|avi|flac|flv|m2ts|m4a|m4v|mkv|mov|mp3|mp4|mpeg|mpg|mts|mxf|oga|ogg|ogv|opus|wav|weba|webm|wma|wmv)$/i;
 // Turn Puppeteer's opaque "Navigation timeout of Nms exceeded" into an
-// actionable message: the usual cause is a blocking CDN <script> that render
-// tolerates but validate's tighter budget does not. Returns a replacement Error
-// for a navigation timeout, or null for any other error (caller rethrows as-is).
+// actionable message: the usual cause is a slow blocking CDN <script>. Returns a
+// replacement Error for a navigation timeout, or null for any other error.
 export function navigationTimeoutHint(err: unknown, navTimeoutMs: number): Error | null {
   const msg = err instanceof Error ? err.message : String(err);
   if (!/navigation timeout/i.test(msg)) return null;
   return new Error(
     `Page navigation timed out after ${navTimeoutMs}ms. A blocking external <script> ` +
-      `(e.g. GSAP loaded from a CDN) can delay page load past this budget even when the ` +
-      `full render succeeds. Vendor the script locally (recommended for deterministic ` +
-      `renders), or re-run with a longer --timeout.`,
+      `(e.g. GSAP loaded from a CDN) can delay page load past this budget, which render ` +
+      `shares. Vendor the script locally (recommended for deterministic renders), or ` +
+      `re-run with a longer --timeout or PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS.`,
   );
 }
 
@@ -85,6 +81,7 @@ export function shouldIgnoreRequestFailure(
   if (errorText === "net::ERR_ABORTED" && isOptionalCaptionOverridesRequest(url)) return true;
   if (errorText !== "net::ERR_ABORTED") return false;
   if (resourceType === "media") return true;
+  if (resourceType === "image") return false;
   try {
     return MEDIA_EXTENSIONS.test(new URL(url).pathname);
   } catch {
@@ -147,6 +144,29 @@ export function raceMediaReady(
   });
 }
 
+function unmeasuredClipWarnings(unreadable: string[], unloadable: string[]): ConsoleEntry[] {
+  const warnings: ConsoleEntry[] = [];
+  if (unreadable.length > 0) {
+    warnings.push({
+      level: "warning",
+      text:
+        `Could not read the duration of ${unreadable.length} media element(s) within the ` +
+        `validate timeout (${unreadable.join(", ")}); their slot vs. source fit was not checked. ` +
+        `Re-run with a longer --timeout if the source is slow to load.`,
+    });
+  }
+  if (unloadable.length > 0) {
+    warnings.push({
+      level: "warning",
+      text:
+        `${unloadable.length} media element(s) failed to load (${unloadable.join(", ")}), so ` +
+        `their slot vs. source fit was not checked. A longer --timeout will not help: check ` +
+        `that the source exists and plays in Chrome.`,
+    });
+  }
+  return warnings;
+}
+
 /**
  * Flag `<audio>` clips whose source is meaningfully shorter than their
  * `data-duration` slot (the slot gets silently shortened in renders). Videos
@@ -155,7 +175,7 @@ export function raceMediaReady(
  * can't see.
  */
 export async function auditClipDurations(
-  page: import("puppeteer-core").Page,
+  page: Pick<import("puppeteer-core").Page, "evaluate">,
   analyzeClipMediaFit: typeof import("@hyperframes/engine").analyzeClipMediaFit,
   extraWaitMs: number,
 ): Promise<ConsoleEntry[]> {
@@ -176,21 +196,30 @@ export async function auditClipDurations(
     // snapshot. Elements that already have a duration resolve immediately, so
     // this adds no latency in the common case.
     const deadline = Date.now() + maxWaitMs;
+    const reads = new Map<HTMLMediaElement, HTMLMediaElement>();
     await Promise.all(
       nodes.map((el) => {
         if (Number.isFinite(el.duration) && el.duration > 0) return Promise.resolve();
+        const probe = new Audio();
+        probe.preload = "metadata";
+        probe.src = el.currentSrc || el.src || el.querySelector("source")?.src || "";
+        reads.set(el, probe);
         return new Promise<void>((resolve) => {
           const cleanup = () => {
-            el.removeEventListener("loadedmetadata", onReady);
-            el.removeEventListener("error", onReady);
+            for (const target of [el, probe]) {
+              target.removeEventListener("loadedmetadata", onReady);
+              target.removeEventListener("error", onReady);
+            }
             clearTimeout(timer);
           };
           const onReady = () => {
             cleanup();
             resolve();
           };
-          el.addEventListener("loadedmetadata", onReady, { once: true });
-          el.addEventListener("error", onReady, { once: true });
+          for (const target of [el, probe]) {
+            target.addEventListener("loadedmetadata", onReady, { once: true });
+            target.addEventListener("error", onReady, { once: true });
+          }
           const timer = setTimeout(onReady, Math.max(0, deadline - Date.now()));
         });
       }),
@@ -200,9 +229,10 @@ export async function auditClipDurations(
       id: string;
       kind: string;
       slot: number;
-      mediaStart: number;
+      attributes: Record<string, string | null>;
       duration: number;
       loop: boolean;
+      failed: boolean;
     }> = [];
     for (const el of nodes) {
       const slot = parseFloat(el.getAttribute("data-duration") ?? "");
@@ -211,9 +241,17 @@ export async function auditClipDurations(
         id: el.id || el.getAttribute("src") || `(${el.tagName.toLowerCase()})`,
         kind: el.tagName === "AUDIO" ? "Audio" : "Video",
         slot,
-        mediaStart: parseFloat(el.getAttribute("data-media-start") ?? "0") || 0,
-        duration: el.duration,
+        attributes: {
+          "data-media-start": el.getAttribute("data-media-start"),
+          "data-playback-start": el.getAttribute("data-playback-start"),
+          "data-playback-rate": el.getAttribute("data-playback-rate"),
+          "data-automation": el.getAttribute("data-automation"),
+        },
+        duration: Number.isFinite(el.duration)
+          ? el.duration
+          : (reads.get(el)?.duration ?? Number.NaN),
         loop: el.loop || el.getAttribute("data-loop") === "true",
+        failed: Boolean(el.error ?? reads.get(el)?.error),
       });
     }
     return rows;
@@ -221,14 +259,19 @@ export async function auditClipDurations(
 
   const warnings: ConsoleEntry[] = [];
   const unreadable: string[] = [];
+  const unloadable: string[] = [];
   for (const clip of clips) {
     if (!Number.isFinite(clip.duration) || clip.duration <= 0) {
       // Metadata never loaded (e.g. slow remote source) — record so the gap in
       // coverage isn't silent, rather than dropping it.
-      unreadable.push(clip.id);
+      (clip.failed ? unloadable : unreadable).push(clip.id);
       continue;
     }
-    const mediaSeconds = Math.max(0, clip.duration - clip.mediaStart);
+    const mediaSeconds = resolveNaturalMediaTimelineDuration(
+      { getAttribute: (name) => clip.attributes[name] ?? null },
+      clip.duration,
+    );
+    if (mediaSeconds === null) continue;
     const fit = analyzeClipMediaFit({ slotSeconds: clip.slot, mediaSeconds, loop: clip.loop });
     if (!fit) continue;
     warnings.push({
@@ -239,15 +282,7 @@ export async function auditClipDurations(
         `Set data-duration to ~${mediaSeconds.toFixed(2)}s if that isn't intended.`,
     });
   }
-  if (unreadable.length > 0) {
-    warnings.push({
-      level: "warning",
-      text:
-        `Could not read the duration of ${unreadable.length} media element(s) within the ` +
-        `validate timeout (${unreadable.join(", ")}); their slot vs. source fit was not checked. ` +
-        `Re-run with a longer --timeout if the source is slow to load.`,
-    });
-  }
+  warnings.push(...unmeasuredClipWarnings(unreadable, unloadable));
   return warnings;
 }
 
@@ -444,11 +479,17 @@ async function validateInBrowser(
     const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, browser.executablePath);
     const requiresWebGpu = compositionRequiresWebGpu(html);
     const { gpuConfig, softwareWebGpu } = resolveLocalWebGpu(resolvedGpuMode, requiresWebGpu);
-    const chromeBrowser = await launchManagedBrowser(puppeteer.default, {
-      headless: true,
-      executablePath: browser.executablePath,
-      args: buildChromeArgs({ ...viewport, captureMode: "screenshot", requiresWebGpu }, gpuConfig),
-    });
+    const chromeBrowser = await launchWithPageNetwork(server.url, (network) =>
+      launchManagedBrowser(puppeteer.default, {
+        headless: true,
+        executablePath: browser.executablePath,
+        userDataDir: network.userDataDir,
+        args: [
+          ...buildChromeArgs({ ...viewport, captureMode: "screenshot", requiresWebGpu }, gpuConfig),
+          ...network.args,
+        ],
+      }),
+    );
 
     try {
       const page = await chromeBrowser.newPage();
@@ -500,7 +541,7 @@ async function validateInBrowser(
         }
       });
 
-      const navTimeoutMs = resolveNavigationTimeoutMs(opts.timeout);
+      const navTimeoutMs = pageNavigationTimeoutMs(opts.timeout);
       try {
         await page.goto(server.url, { waitUntil: "domcontentloaded", timeout: navTimeoutMs });
       } catch (err) {
@@ -602,18 +643,23 @@ function emitTextReport(
   console.log(`${c.accent("◇")}  ${formatTotals(errors, warnings, contrastFailures)}`);
 }
 
-function emitFailureReport(message: string, asJson: boolean): void {
+export function emitFailureReport(message: string, asJson: boolean): void {
   if (asJson) {
     console.log(
       JSON.stringify(
-        withMeta({ ok: false, error: message, errors: [], warnings: [] }, { deprecated: true }),
+        withMeta(
+          { ...jsonFailure("runtime_error", message), errors: [], warnings: [] },
+          { deprecated: true },
+        ),
         null,
         2,
       ),
     );
     return;
   }
-  console.error(`${c.error("✗")} ${message}`);
+  const { summary, stepsWrittenByCli } = splitStepsWrittenByCli(message);
+  console.error(`${c.error("✗")} ${terminalText(summary)}`);
+  if (stepsWrittenByCli) console.error(`\n${stepsWrittenByCli}\n`);
 }
 
 export default defineCommand({
@@ -638,7 +684,7 @@ Examples:
     timeout: {
       type: "string",
       description:
-        "Ms to wait for scripts to settle and media to load (default: 3000). Also raises the " +
+        "Ms to wait for scripts to settle and media to load. Also raises the " +
         "page-navigation budget above its 10s floor when a slow external <script> needs longer.",
       default: "3000",
     },
@@ -651,7 +697,9 @@ Examples:
     const asJson = Boolean(args.json);
 
     if (!asJson) {
-      console.log(`${c.accent("◆")}  Validating ${c.accent(project.name)} in headless Chrome`);
+      console.log(
+        `${c.accent("◆")}  Validating ${c.accent(terminalText(project.name))} in headless Chrome`,
+      );
     }
 
     try {
@@ -660,14 +708,14 @@ Examples:
       setCommandExitCode(exitCode);
       return;
     } catch (err: unknown) {
-      const message = normalizeErrorMessage(err);
+      const message = failureMessage(err);
       emitFailureReport(message, asJson);
       failCommand();
     }
   },
 });
 
-function printValidationResult(
+export function printValidationResult(
   result: { errors: ConsoleEntry[]; warnings: ConsoleEntry[]; contrast?: ContrastEntry[] },
   asJson: boolean,
 ): number {
@@ -678,7 +726,8 @@ function printValidationResult(
   if (asJson) {
     emitJsonReport(errors, warnings, contrast, contrastFailures);
   } else {
-    emitTextReport(errors, warnings, contrastFailures, contrastPassed);
+    const shown = terminalTextDeep({ errors, warnings, contrastFailures, contrastPassed });
+    emitTextReport(shown.errors, shown.warnings, shown.contrastFailures, shown.contrastPassed);
   }
   return errors.length > 0 ? 1 : 0;
 }

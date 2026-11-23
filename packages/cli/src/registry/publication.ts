@@ -1,6 +1,8 @@
-import { lstatSync, chmodSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, chmodSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { mkdirWithinProject, realpath } from "@hyperframes/core";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 export { realProjectRoot as registryRoot } from "@hyperframes/core";
 
@@ -46,13 +48,13 @@ export function publishRegistryFile(
   const parent = realpath(dirname(path));
   assertContained(root, parent);
   const destination = resolve(parent, basename(path));
-  const stage = mkdtempSync(join(parent, ".hf-install-"));
+  const stage = createStagingDir(parent, ".hf-install-");
   try {
     const stagedFile = join(stage, "file");
     writeFileSync(stagedFile, bytes, { flag: "wx" });
     const previous = lstatSync(destination, { throwIfNoEntry: false });
     if (previous?.isFile()) chmodSync(stagedFile, previous.mode & 0o777);
-    renameSync(stagedFile, destination);
+    renameWithRetry(stagedFile, destination);
     return destination;
   } finally {
     rmSync(stage, { recursive: true, force: true });

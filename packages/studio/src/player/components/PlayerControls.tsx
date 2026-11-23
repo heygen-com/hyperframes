@@ -6,10 +6,12 @@ import { liveTime, usePlayerStore } from "../store/playerStore";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { Tooltip } from "../../components/ui";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import { ShortcutsButton } from "./ShortcutsPanel";
-import type { ShortcutSection } from "./studioShortcuts";
+import { keyHint, useStudioKeys, type ShortcutSection } from "./studioShortcuts";
 import { SpeedMenu } from "./SpeedMenu";
 import { VolumeControl } from "./VolumeControl";
+import { PreviewSeekBar } from "./PreviewSeekBar";
 
 /* ── Icon sub-components ─────────────────────────────────────────── */
 
@@ -109,8 +111,9 @@ const FullscreenButton = memo(function FullscreenButton({
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
 }) {
+  const fsKey = keyHint("fullscreen", useStudioKeys());
   return (
-    <Tooltip label={isFullscreen ? "Exit fullscreen (F)" : "Enter fullscreen (F)"}>
+    <Tooltip label={isFullscreen ? `Exit fullscreen (${fsKey})` : `Enter fullscreen (${fsKey})`}>
       <button
         type="button"
         onClick={() => {
@@ -158,13 +161,15 @@ const FullscreenButton = memo(function FullscreenButton({
 
 interface PlayerControlsProps {
   onTogglePlay: () => void;
-  onSeek: (time: number) => void;
+  onSeek: (time: number, options?: { settled?: boolean }) => void;
   disabled?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   /** Replaces the shortcuts panel's list, e.g. DEFAULT_SHORTCUT_SECTIONS with entries dropped or relabelled. */
   shortcutSections?: readonly ShortcutSection[];
 }
+
+const compositionFps = () => useLinkedClipPreferences.getState().compositionFps;
 
 export const PlayerControls = memo(function PlayerControls({
   onTogglePlay,
@@ -201,7 +206,7 @@ export const PlayerControls = memo(function PlayerControls({
     if (!timeDisplayRef.current) return;
     const t = currentTimeRef.current;
     timeDisplayRef.current.textContent =
-      timeDisplayMode === "frame" ? formatFrameTime(t, duration) : formatTime(t);
+      timeDisplayMode === "frame" ? formatFrameTime(t, duration, compositionFps()) : formatTime(t);
   }, [duration, timeDisplayMode]);
 
   useMountEffect(() => {
@@ -211,7 +216,7 @@ export const PlayerControls = memo(function PlayerControls({
       const currentDuration = durationRef.current;
       const text =
         timeDisplayModeRef.current === "frame"
-          ? formatFrameTime(time, currentDuration)
+          ? formatFrameTime(time, currentDuration, compositionFps())
           : formatTime(time);
       if (timeDisplayRef.current.textContent !== text) timeDisplayRef.current.textContent = text;
     };
@@ -221,9 +226,10 @@ export const PlayerControls = memo(function PlayerControls({
   });
 
   return (
-    <div>
+    <div className="relative z-20">
+      <PreviewSeekBar duration={duration} disabled={controlsDisabled} onSeek={onSeek} />
       <div
-        className="grid h-10 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-3"
+        className="grid h-7 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-3"
         aria-disabled={disabled || undefined}
         style={{
           paddingBottom: "env(safe-area-inset-bottom)",
@@ -257,7 +263,7 @@ export const PlayerControls = memo(function PlayerControls({
               onTogglePlay();
             }}
             disabled={controlsDisabled}
-            className="flex h-8 w-8 items-center justify-center justify-self-center rounded-md text-neutral-100 transition-colors hover:text-white disabled:pointer-events-none disabled:opacity-30"
+            className="flex h-7 w-8 items-center justify-center justify-self-center rounded-md text-neutral-100 transition-colors hover:text-white disabled:pointer-events-none disabled:opacity-30"
           >
             <PlayPauseMorphIcon playing={isPlaying} />
           </button>

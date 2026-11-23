@@ -6,6 +6,8 @@
  */
 
 import { isBlockedNetworkHost } from "@hyperframes/engine";
+import { publicRequest } from "@hyperframes/engine/public-network";
+import { fetchLocalPageUrl } from "./localPage.js";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join, extname } from "node:path";
 import { createHash } from "node:crypto";
@@ -21,6 +23,7 @@ import {
 } from "./readBoundedResponse.js";
 import { captureFontExtension, captureFontFilename } from "./captureFontValidation.js";
 import { captureImageExtension } from "./captureImageValidation.js";
+import { loadSharp } from "../utils/optionalPackages.js";
 
 interface DownloadBudgetOptions {
   byteBudget?: DownloadByteBudget;
@@ -40,6 +43,8 @@ interface DownloadBudgetOptions {
 export type AssetDropReason =
   /** Fetched, then judged too small to be a real asset rather than a spacer or tracking pixel. */
   | "size-floor"
+  /** Larger than any one asset may be; skipped whole, never cut. */
+  | "size-ceiling"
   /** The post-navigation clock ran out before this one was reached. */
   | "budget-exhausted"
   /** A per-run or per-family limit was already met. */
@@ -51,7 +56,13 @@ export type AssetDropCounts = Record<AssetDropReason, number>;
 
 /** A tally with every reason at zero — the shape a caller merges into. */
 export function noDrops(): AssetDropCounts {
-  return { "size-floor": 0, "budget-exhausted": 0, "cap-reached": 0, unavailable: 0 };
+  return {
+    "size-floor": 0,
+    "size-ceiling": 0,
+    "budget-exhausted": 0,
+    "cap-reached": 0,
+    unavailable: 0,
+  };
 }
 
 /** Sum two tallies. Used to fold the font pass and the asset pass into one capture-wide count. */
@@ -314,6 +325,7 @@ export async function downloadAssets(
   faviconLinks?: IconCandidate[],
   options: DownloadBudgetOptions = {},
 ): Promise<{ assets: DownloadedAsset[]; drops: AssetDropCounts; icons: IconManifest }> {
+  await loadSharp("website capture");
   options = { ...options, byteBudget: options.byteBudget ?? createCaptureDownloadBudget() };
   const assetsDir = join(outputDir, "assets");
   ensureCaptureDirSync(outputDir, assetsDir);
@@ -326,6 +338,7 @@ export async function downloadAssets(
   ensureCaptureDirSync(outputDir, join(outputDir, "assets", "svgs"));
   const usedSvgNames = new Set<string>();
   const MAX_INLINE_SVGS = 30;
+  const MAX_INLINE_SVG_BYTES = 2 * 1024 * 1024;
   drops["cap-reached"] += Math.max(0, tokens.svgs.length - MAX_INLINE_SVGS);
   for (let i = 0; i < tokens.svgs.length && i < MAX_INLINE_SVGS; i++) {
     const svg = tokens.svgs[i]!;
@@ -335,6 +348,10 @@ export async function downloadAssets(
     }
     // Hash the bytes that actually land on disk, so the filename still can't drift from content.
     const svgFile = toStandaloneSvg(svg.outerHTML);
+    if (Buffer.byteLength(svgFile, "utf-8") > MAX_INLINE_SVG_BYTES) {
+      drops["size-ceiling"]++;
+      continue;
+    }
     const slug = svgContentHashSlug(svgFile, !!svg.isLogo);
     let finalSlug = slug;
     let suffix = 2;
@@ -580,7 +597,7 @@ export async function downloadAndRewriteFonts(
   });
 
   const usedFontNames = new Set<string>();
-  let rewritten = css;
+  const localFontPaths = new Map<string, string>();
   let count = 0;
 
   for (const [index, fontUrl] of sortedUrls.entries()) {
@@ -615,7 +632,7 @@ export async function downloadAndRewriteFonts(
         const localPath = join(assetsDir, filename);
         const relativePath = `assets/fonts/${filename}`;
         writeCaptureFileSync(localPath, buffer);
-        rewritten = rewritten.split(fontUrl).join(relativePath);
+        localFontPaths.set(fontUrl, relativePath);
       } else {
         drops.unavailable++;
       }
@@ -624,6 +641,10 @@ export async function downloadAndRewriteFonts(
     }
   }
 
+  const rewritten = css.replace(fontUrlRegex, (match: string, url: string) => {
+    const localPath = localFontPaths.get(url);
+    return localPath ? match.replace(url, localPath) : match;
+  });
   return { css: rewritten, drops };
 }
 
@@ -654,13 +675,16 @@ const MAX_FETCH_REDIRECTS = 5;
  * or on network error.
  */
 export async function safeFetch(url: string, init?: RequestInit): Promise<Response | null> {
+  const local = fetchLocalPageUrl(url, init);
+  if (local) return local;
   let current = url;
   for (let hop = 0; hop <= MAX_FETCH_REDIRECTS; hop++) {
     if (isPrivateUrl(current)) return null;
-    const res = await fetch(current, { ...init, redirect: "manual" });
+    const res = await publicRequest(current, { ...init, redirect: "manual" });
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get("location");
       if (!loc) return res;
+      await res.body?.cancel().catch(() => {});
       try {
         current = new URL(loc, current).toString();
       } catch {

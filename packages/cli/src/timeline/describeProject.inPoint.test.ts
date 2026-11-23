@@ -17,16 +17,20 @@ const SCENE = `<template id="scene-template"><div data-composition-id="scene" da
 
 beforeAll(ensureDOMParser);
 
+/** The video rows of a project made of `index` and `compositions/scene.html`. */
+async function videoRows(index: string, prefix: string, scene = SCENE) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, "compositions"));
+  writeFileSync(join(dir, "index.html"), index);
+  writeFileSync(join(dir, "compositions", "scene.html"), scene);
+  const timeline = await describeProject(join(dir, "index.html"));
+  return timeline.tracks.find((t) => t.kind === "video")!.rows;
+}
+
 describe("a sub-composition's in-point", () => {
   it("shifts each later split half's videos by its in-point and cuts them to that half", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-timeline-inpoint-"));
-    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
-    mkdirSync(join(dir, "compositions"));
-    writeFileSync(join(dir, "index.html"), SPLIT_INDEX);
-    writeFileSync(join(dir, "compositions", "scene.html"), SCENE);
-
-    const timeline = await describeProject(join(dir, "index.html"));
-    const videos = timeline.tracks.find((t) => t.kind === "video")!.rows;
+    const videos = await videoRows(SPLIT_INDEX, "hf-timeline-inpoint-");
 
     // The first half's in-point is 0, so it shows its children's authored extent, as before.
     expect(videos.map((r) => [r.host, r.id, r.absStart, r.absEnd])).toEqual([
@@ -39,18 +43,35 @@ describe("a sub-composition's in-point", () => {
     ]);
   });
 
-  it("cuts nothing for a host whose in-point is 0, as Studio stamps on every inserted scene", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-timeline-inpoint0-"));
-    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
-    mkdirSync(join(dir, "compositions"));
-    writeFileSync(
-      join(dir, "index.html"),
-      `<div data-composition-id="main" data-duration="12"><div id="scene" data-composition-src="compositions/scene.html" data-start="1" data-duration="3" data-playback-start="0"></div></div>`,
+  it("cuts a clip nested in a timed wrapper like the wrapper's own clips", async () => {
+    const videos = await videoRows(
+      `<div data-composition-id="main" data-duration="9"><div data-playback-start="5" id="half" data-composition-src="compositions/scene.html" data-start="5" data-duration="4"></div></div>`,
+      "hf-timeline-inpoint-nested-",
+      `<div data-composition-id="scene" data-duration="12"><div id="w" data-start="0" data-duration="12">
+<video id="n" src="../sample.mp4" muted data-start="4" data-duration="4" data-media-start="5"></video></div></div>`,
     );
-    writeFileSync(join(dir, "compositions", "scene.html"), SCENE);
 
-    const timeline = await describeProject(join(dir, "index.html"));
-    const videos = timeline.tracks.find((t) => t.kind === "video")!.rows;
+    expect(videos.map((r) => [r.id, r.absStart, r.absEnd, r.mediaStart])).toEqual([["n", 5, 8, 6]]);
+  });
+
+  it("moves each cut clip's media in-point by the part the cut skips", async () => {
+    const videos = await videoRows(SPLIT_INDEX, "hf-timeline-inpoint-media-");
+
+    expect(videos.map((r) => [r.host, r.id, r.mediaStart])).toEqual([
+      ["scene", "v1", 1],
+      ["scene", "v2", 5],
+      ["scene-split", "v2", 6],
+      ["scene", "v3", 2],
+      ["scene-split", "v3", 2],
+      ["scene-split-split", "v3", 3],
+    ]);
+  });
+
+  it("cuts nothing for a host whose in-point is 0, as Studio stamps on every inserted scene", async () => {
+    const videos = await videoRows(
+      `<div data-composition-id="main" data-duration="12"><div id="scene" data-composition-src="compositions/scene.html" data-start="1" data-duration="3" data-playback-start="0"></div></div>`,
+      "hf-timeline-inpoint0-",
+    );
 
     expect(videos.map((r) => [r.id, r.absStart, r.absEnd])).toEqual([
       ["v1", 1, 5],

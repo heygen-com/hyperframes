@@ -1148,6 +1148,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "echo-smear",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "echo-trail",
       "type": "hyperframes:component"
     },
@@ -1161,6 +1165,10 @@
     },
     {
       "name": "fade-through",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "filmed-screen",
       "type": "hyperframes:component"
     },
     {
@@ -1821,6 +1829,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "bc864ce3968c37dbf8cfec579aa60394d483fccb2b77b3c0a17229a59df100ca"
+    "revision": "c7135c14ef25e7d5f1be39c15ffcf730e4bd7a4488ac01d59b9ecda894b09dcb"
   }
 }

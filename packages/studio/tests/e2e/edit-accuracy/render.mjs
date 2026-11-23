@@ -1,5 +1,5 @@
 /** Render drift: the target's box in a frame the producer captures, found by its flat colour. */
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 // Source import, as scripts/preview-capture.ts does: bun runs the producer's TypeScript directly.
 import {
@@ -63,6 +63,89 @@ const luminance = (hex) => {
   return 0.299 * r + 0.587 * g + 0.114 * b;
 };
 
+/** A saved project with no GSAP timeline; a keyframe added in Studio writes one, so the files decide, not the spec. */
+const noTimeline = (dir) =>
+  !["index.html", "compositions/sub.html"].some(
+    (f) => existsSync(join(dir, f)) && readFileSync(join(dir, f), "utf8").includes("__timelines"),
+  );
+
+/** Runs in the producer's page: marks every composition host `data-no-timeline`, the engine's opt-out of the wait. */
+function markNoTimeline() {
+  const mark = (e) => e.matches("[data-composition-id]") && e.setAttribute("data-no-timeline", "");
+  new MutationObserver((records) => {
+    for (const r of records)
+      for (const n of r.addedNodes)
+        if (n.nodeType === 1) [n, ...n.querySelectorAll("[data-composition-id]")].forEach(mark);
+  }).observe(document, { childList: true, subtree: true });
+}
+
+const CAPTURE = {
+  width: COMPOSITION.width,
+  height: COMPOSITION.height,
+  fps: FPS,
+  format: "jpeg",
+  quality: 100,
+};
+// A composition with no GSAP never registers a timeline; the default 45 s wait for one changes no pixel.
+// Static-frame dedup opens a second page that would fetch GSAP from the CDN; one frame needs none.
+const CAPTURE_CONFIG = { playerReadyTimeout: 10_000, staticFrameDedup: false };
+
+/** A capture session with the renders' launch configuration and its page closed: only its browser lease is left. */
+async function openHold(framesDir) {
+  // requiresWebGpu as the renders find it from the fixtures, so the launch configuration matches theirs.
+  const session = await createCaptureSession(
+    "about:blank",
+    framesDir,
+    { ...CAPTURE, requiresWebGpu: false },
+    null,
+    CAPTURE_CONFIG,
+  );
+  await session.page.close();
+  // closeCaptureSession then only releases the browser lease.
+  session.pageReleased = true;
+  return session;
+}
+
+let hold = null;
+
+/**
+ * Keeps the producer's Chrome open between renders. The engine pools a browser per launch configuration and
+ * closes it when its last session closes; this session holds a lease with the same configuration and no page,
+ * so each render opens a page in that browser instead of launching one. Call the result to let it close.
+ */
+export async function holdProducerBrowser(framesDir) {
+  const current = { framesDir, session: openHold(framesDir) };
+  hold = current;
+  // A hold that fails here is taken again by the next render.
+  await current.session.catch(() => undefined);
+  return async () => {
+    if (hold === current) hold = null;
+    const session = await current.session.catch(() => null);
+    if (session) await closeCaptureSession(session);
+  };
+}
+
+/** The held browser; a hold that failed or whose Chrome died is dropped and taken again, never reused. */
+// fallow-ignore-next-line complexity
+export async function heldBrowser() {
+  if (!hold) return null;
+  const taken = hold.session;
+  const session = await taken.catch(() => null);
+  if (session?.browser.connected) return session.browser;
+  if (hold.session === taken) {
+    hold.session = openHold(hold.framesDir);
+    if (session) void closeCaptureSession(session).catch(() => undefined);
+  }
+  return (await hold.session.catch(() => null))?.browser ?? null;
+}
+
+let warnedNotHeld = false;
+function warnUnlessHeld(held, browser) {
+  if (!held || browser === held || warnedNotHeld) return;
+  warnedNotHeld = true;
+  console.warn("edit bench: the render did not reuse the held producer browser");
+}
+
 /** Renders `dir` at `time` and measures the target's box in the frame. */
 export async function renderBox(dir, decoder, time = PLAYHEAD) {
   const framesDir = join(dir, ".bench-frames");
@@ -70,23 +153,17 @@ export async function renderBox(dir, decoder, time = PLAYHEAD) {
   const server = await createFileServer({ projectDir: dir, port: 0, fps: FPS });
   let session;
   try {
-    session = await createCaptureSession(
-      server.url,
-      framesDir,
-      {
-        width: COMPOSITION.width,
-        height: COMPOSITION.height,
-        fps: FPS,
-        format: "jpeg",
-        quality: 100,
-      },
-      null,
-      // A composition with no GSAP never registers a timeline; the default 45 s wait for one changes no pixel.
-      // Static-frame dedup opens a second page that would fetch GSAP from the CDN; one frame needs none.
-      { playerReadyTimeout: 10_000, staticFrameDedup: false },
-    );
+    const held = await heldBrowser();
+    session = await createCaptureSession(server.url, framesDir, CAPTURE, null, CAPTURE_CONFIG);
+    warnUnlessHeld(held, session.browser);
+    // A fresh page in a reused browser: nothing an earlier case's render cached may serve this one.
+    const cdp = await session.page.createCDPSession();
+    await cdp.send("Network.clearBrowserCache");
+    await cdp.detach();
     // The producer's own browser would fetch GSAP from the CDN; a stalled fetch renders the 0 s frame.
     await serveFixtureAssetsLocally(session.page);
+    // Without the opt-out, a project with no timeline waits out playerReadyTimeout on every render.
+    if (noTimeline(dir)) await session.page.evaluateOnNewDocument(markNoTimeline);
     await initializeSession(session);
     const { buffer } = await captureFrameToBuffer(session, 0, time);
     // Diagnostic only: a DOM rect ignores clip-path, so it cannot score a crop.

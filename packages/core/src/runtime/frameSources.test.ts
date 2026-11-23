@@ -14,13 +14,12 @@ function deferred() {
 }
 
 const adapters: ReturnType<typeof createFrameSourceAdapter>[] = [];
-const adapter = (compositionDuration = 20, exportRenderSeek = false) => {
+const adapter = (compositionDuration = 20) => {
   const runtime = createFrameSourceAdapter({
     start: (element) => createRuntimeStartTimeResolver({}).resolveStartForElement(element, 0),
     duration: (element) => createRuntimeStartTimeResolver({}).resolveDurationForElement(element),
     compositionDuration: () => compositionDuration,
     canonicalFps: () => 30,
-    exportRenderSeek: () => exportRenderSeek,
   });
   adapters.push(runtime);
   return runtime;
@@ -42,6 +41,19 @@ afterEach(() => {
 });
 
 describe("frame sources", () => {
+  it("holds a geometry read that skips video frames until its asynchronous draw lands", async () => {
+    const frame = deferred();
+    disposers.push(registerFrameSource({ element: mount(), render: () => frame.promise }));
+    adapter().seek({ time: 2 });
+    let captured = false;
+    const capture = waitForSeekCompletion({ videoFrames: false }).then(() => (captured = true));
+    await Promise.resolve();
+    expect(captured).toBe(false);
+    frame.resolve();
+    await capture;
+    expect(captured).toBe(true);
+  });
+
   it("holds capture through setup and asynchronous drawing", async () => {
     const setup = deferred();
     const frame = deferred();
@@ -280,10 +292,10 @@ describe("frame sources", () => {
     expect(render).toHaveBeenCalledTimes(1);
   });
 
-  it("matches snapped export visibility at near-frame starts and ends", async () => {
+  it("shows a source on render's snapped window at near-frame starts and ends, in preview too", async () => {
     const render = vi.fn();
     disposers.push(registerFrameSource({ element: mount("1.00001", "1"), render }));
-    const runtime = adapter(3, true);
+    const runtime = adapter(3);
     runtime.seek({ time: 1 });
     await waitForSeekCompletion();
     expect(render).toHaveBeenLastCalledWith(0, expect.any(AbortSignal));
@@ -293,18 +305,6 @@ describe("frame sources", () => {
     runtime.seek({ time: 2 });
     await waitForSeekCompletion();
     expect(render).toHaveBeenCalledTimes(2);
-  });
-
-  it("retains unsnapped authored timing during interactive preview", async () => {
-    const render = vi.fn();
-    disposers.push(registerFrameSource({ element: mount("1.00001", "1"), render }));
-    const runtime = adapter(3);
-    runtime.seek({ time: 1 });
-    await waitForSeekCompletion();
-    expect(render).not.toHaveBeenCalled();
-    runtime.seek({ time: 2 });
-    await waitForSeekCompletion();
-    expect(render).toHaveBeenCalledTimes(1);
   });
 
   it("rejects invalid original ranges before registering a source", () => {

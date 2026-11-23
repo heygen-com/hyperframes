@@ -136,6 +136,16 @@ describe("layoutAudit helpers", () => {
     });
   });
 
+  it("keeps canvas_covered an error only when the canvas is covered for most of the film", () => {
+    const covered = (times: number[], samples: number) =>
+      collapseStaticLayoutIssues(
+        times.map((time) => ({ ...issue("canvas_covered", "error"), time })),
+        samples,
+      )[0]?.severity;
+    expect(covered([1, 2, 3, 4, 5], 8)).toBe("error");
+    expect(covered([7, 8], 8)).toBe("info");
+  });
+
   it("formats issues with timestamp, selector, container, and fix hint", () => {
     const formatted = formatLayoutIssue({
       ...issue("text_box_overflow", "error"),
@@ -152,6 +162,32 @@ describe("layoutAudit helpers", () => {
     expect(formatted).toContain("inside .bubble");
     expect(formatted).toContain("right 18px, bottom 7px");
     expect(formatted).toContain("Fix: Increase container padding");
+  });
+
+  it("shows control characters in composition text as visible escapes", () => {
+    const formatted = formatLayoutIssue({
+      ...issue("text_box_overflow", "error"),
+      selector: "#h\u001b]0;t\u0007",
+      containerSelector: ".b\u009b2J",
+      text: "Plan\u001b[2K",
+      message: "clipped\u001b[1A",
+      fixHint: "pad \u001b]52;c;Y2xpcA==\u0007",
+    });
+
+    for (const control of ["\u0007", "\u001b", "\u009b"]) expect(formatted).not.toContain(control);
+    expect(formatted).toContain("#h\\x1b]0;t\\x07 inside .b\\x9b2J");
+    expect(formatted).toContain('"Plan\\x1b[2K" — clipped\\x1b[1A');
+    expect(formatted).toContain("\n    Fix: pad \\x1b]52;c;Y2xpcA==\\x07");
+  });
+
+  it("shows control characters in an issue code from the page as visible escapes", () => {
+    const formatted = formatLayoutIssue({
+      ...issue("text_box_overflow", "error"),
+      code: "text_box_overflow\u001b]52;c;Y2xpcA==\u0007" as LayoutIssue["code"],
+    });
+
+    expect(formatted).not.toContain("\u001b");
+    expect(formatted).toContain("text_box_overflow\\x1b]52;c;Y2xpcA==\\x07");
   });
 
   it("formats collapsed issue time ranges", () => {
@@ -273,6 +309,38 @@ describe("persistence-tiered severity (#U10)", () => {
 
     expect(collapsed).toHaveLength(1);
     expect(collapsed[0]).toMatchObject({ severity: "error", occurrences: 2 });
+  });
+
+  it("keeps a text_occluded at error when the word lives one sample and is hidden at it", () => {
+    const grid = [0.167, 0.5, 0.833, 1.167];
+    const word = (time: number, lifetime: { start: number; end: number }) => ({
+      ...issue("text_occluded", "error"),
+      time,
+      lifetime,
+    });
+
+    const collapsed = collapseStaticLayoutIssues(
+      [word(0.167, { start: 0, end: 0.4 }), word(0.5, { start: 0.4, end: 0.8 })].map((entry) => ({
+        ...entry,
+        selector: `#w${entry.time}`,
+      })),
+      grid.length,
+      grid,
+    );
+
+    expect(collapsed.map((entry) => entry.severity)).toEqual(["error", "error"]);
+  });
+
+  it("still demotes a text_occluded seen at one of several samples its clip spans", () => {
+    const grid = [0.1, 0.3, 0.5, 0.7];
+
+    const collapsed = collapseStaticLayoutIssues(
+      [{ ...issue("text_occluded", "error"), time: 0.3, lifetime: { start: 0, end: 1 } }],
+      grid.length,
+      grid,
+    );
+
+    expect(collapsed[0]).toMatchObject({ severity: "info", occurrences: 1 });
   });
 
   it("keeps a text_occluded over changing text at error, not demoted per sample", () => {

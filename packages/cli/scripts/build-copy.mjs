@@ -1,7 +1,17 @@
 // Cross-platform replacement for the previous `mkdir -p … && cp -r …` shell
 // chain, which failed on Windows because `cp` doesn't accept `-r` there.
 
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+} from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -38,12 +48,15 @@ function copyDir(src, dest) {
 }
 
 // Source maps stay out: the CLI ships none of its own (tsup sourcemap: false).
+// Tests stay out too: the published skills run their scripts, never their tests.
+const isTestFile = (path) => /\.test\.[cm]?[jt]s$/.test(path);
+
 function copyDirContents(src, dest) {
   for (const entry of readdirSync(src)) {
     cpSync(join(src, entry), join(dest, entry), {
       recursive: true,
       force: true,
-      filter: (path) => !path.endsWith(".map"),
+      filter: (path) => !path.endsWith(".map") && !isTestFile(path),
     });
   }
 }
@@ -57,12 +70,63 @@ function copyMdFiles(srcDir, destDir) {
   }
 }
 
+// Studio preview loads these from the CLI's own server instead of jsDelivr
+// (studioServer.ts serves dist/vendor/npm). They come from the workspace's
+// installed gsap, which must match the version core asks for, or Studio would
+// quietly fall back to the CDN for every preview.
+const GSAP_VENDOR_FILES = ["gsap.min.js", "CustomEase.min.js", "MotionPathPlugin.min.js"];
+
+function copyGsapVendorFiles() {
+  const coreRequire = createRequire(join(REPO_ROOT, "packages", "core", "package.json"));
+  const gsapRoot = dirname(coreRequire.resolve("gsap/package.json"));
+  const { version } = JSON.parse(readFileSync(join(gsapRoot, "package.json"), "utf-8"));
+  const coreSource = readFileSync(
+    join(REPO_ROOT, "packages", "core", "src", "gsapCdn.ts"),
+    "utf-8",
+  );
+  const expected = coreSource.match(/GSAP_CDN_VERSION = "([^"]+)"/)?.[1];
+  if (version !== expected) {
+    throw new Error(
+      `[build-copy] installed gsap ${version} does not match GSAP_CDN_VERSION ${expected}`,
+    );
+  }
+  const vendorDir = join(DIST, "vendor", "npm");
+  rmSync(vendorDir, { recursive: true, force: true });
+  // Older versions templates still name ship too, as the CDN's exact files: package.json's `gsap-<version>` aliases
+  // (src/server/gsapVendor.test.ts pins their bytes).
+  const cliManifest = join(REPO_ROOT, "packages", "cli", "package.json");
+  const cliRequire = createRequire(cliManifest);
+  const aliases = Object.keys(JSON.parse(readFileSync(cliManifest, "utf-8")).devDependencies ?? {});
+  const roots = [
+    gsapRoot,
+    ...aliases
+      .filter((name) => /^gsap-\d+\.\d+\.\d+$/.test(name))
+      .map((name) => dirname(cliRequire.resolve(`${name}/package.json`))),
+  ];
+  for (const root of roots) {
+    const { version: shipped } = JSON.parse(readFileSync(join(root, "package.json"), "utf-8"));
+    const dest = join(vendorDir, `gsap@${shipped}`, "dist");
+    mkdirSync(dest, { recursive: true });
+    for (const file of GSAP_VENDOR_FILES) {
+      copyFileSync(join(root, "dist", file), join(dest, file));
+      chmodSync(join(dest, file), 0o644);
+    }
+  }
+}
+
 // fallow-ignore-next-line complexity
 async function main() {
   for (const sub of ["studio", "docs", "templates", "skills", "docker"]) {
     mkdirSync(join(DIST, sub), { recursive: true });
   }
   mkdirSync(join(DIST, "commands"), { recursive: true });
+
+  // The bundled sharing modules resolve their policy and Unicode tables beside
+  // the CLI chunks, rather than from the share package's source directory.
+  copyDir(
+    join(REPO_ROOT, "packages", "share", "src", "sources", "contract"),
+    join(DIST, "contract"),
+  );
 
   const studioDist = resolve(CLI_ROOT, "..", "studio", "dist");
   await waitForStudioDist(studioDist);
@@ -86,7 +150,7 @@ async function main() {
   // Skills bundled into the published CLI. Branches don't all carry the same
   // skills/ tree (it gets restructured), so each entry is existsSync-guarded:
   // a missing skill dir warns + skips instead of crashing the build.
-  for (const skill of ["hyperframes", "hyperframes-cli", "gsap", "media-use"]) {
+  for (const skill of ["hyperframes", "hyperframes-cli", "media-use"]) {
     const src = join(REPO_ROOT, "skills", skill);
     if (!existsSync(src)) {
       console.warn(`[build-copy] skill not found, skipping: skills/${skill}`);
@@ -94,7 +158,7 @@ async function main() {
     }
     const destination = join(DIST, "skills", skill);
     rmSync(destination, { recursive: true, force: true });
-    copyDir(src, destination);
+    cpSync(src, destination, { recursive: true, force: true, filter: (path) => !isTestFile(path) });
   }
 
   // The media-use engine lives with the CLI source, but keeps its published
@@ -107,6 +171,12 @@ async function main() {
   cpSync(
     join(mediaEngine, "resolve.mjs"),
     join(DIST, "skills", "media-use", "scripts", "resolve.mjs"),
+  );
+  // The SFX media index ships with the release whose bundled SFX files it names.
+  mkdirSync(join(DIST, "catalog-artifact"), { recursive: true });
+  cpSync(
+    join(REPO_ROOT, "registry", "catalog-artifact", "media-vectors.json"),
+    join(DIST, "catalog-artifact", "media-vectors.json"),
   );
 
   const dockerfile = join(CLI_ROOT, "src", "docker", "Dockerfile.render");
@@ -154,6 +224,15 @@ async function main() {
       console.warn(`[build-copy] player bundle not found, skipping: ${src}`);
     }
   }
+
+  // The bundled inspector reads its page runtime from beside its own chunk.
+  const inspectorRuntime = join(REPO_ROOT, "packages", "inspector", "dist", "inspection.js");
+  cpSync(inspectorRuntime, join(DIST, "inspection.js"));
+
+  // Windows process reads run this file with -File (utils/windowsProcesses.ts), found beside the bundled chunks.
+  cpSync(join(CLI_ROOT, "src", "utils", "processes.ps1"), join(DIST, "processes.ps1"));
+
+  copyGsapVendorFiles();
 
   copyMdFiles(join(CLI_ROOT, "src", "docs"), join(DIST, "docs"));
 

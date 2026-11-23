@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import { waitForTestCondition } from "../utils/processTestUtils.js";
 
 const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "launch.fixture.ts");
 const children = new Set<ChildProcess>();
+const profiles = new Set<string>();
 
 /** Pids of every process whose command line carries this profile dir (Chromium and its helpers). */
 function browserPids(profileDir: string): number[] {
@@ -30,6 +31,7 @@ function startFixture(profileDir: string, readyPath: string, mode = "launch"): C
     { stdio: "ignore" },
   );
   children.add(child);
+  profiles.add(profileDir);
   return child;
 }
 
@@ -38,9 +40,17 @@ const exited = (child: ChildProcess) =>
     child.once("exit", (code, signal) => resolve({ code, signal })),
   );
 
+// Chrome outlives a SIGKILLed parent, so a failed case also kills its browser directly.
 afterEach(() => {
   for (const child of children) child.kill("SIGKILL");
+  for (const pid of [...profiles].flatMap(browserPids)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {}
+  }
+  for (const profile of profiles) rmSync(dirname(profile), { recursive: true, force: true });
   children.clear();
+  profiles.clear();
 });
 
 describe.skipIf(process.platform !== "linux")("managed browser shutdown", () => {

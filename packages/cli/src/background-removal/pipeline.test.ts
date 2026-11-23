@@ -79,8 +79,15 @@ describe("background-removal/pipeline — buildEncoderArgs", () => {
     },
   );
 
-  it.each(["mov", "png"] as const)("keeps the %s output color path", (format) => {
-    const args = buildEncoderArgs(format, 64, 64, 30, `/tmp/cutout.${format}`);
+  it("converts raw RGBA to the tagged BT.709 matrix for the ProRes mov", () => {
+    const args = buildEncoderArgs("mov", 64, 64, 30, "/tmp/cutout.mov");
+    const filter = args[args.indexOf("-vf") + 1];
+    expect(filter).toContain("out_color_matrix=bt709");
+    expect(filter).toContain("setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709");
+  });
+
+  it("keeps the png output color path", () => {
+    const args = buildEncoderArgs("png", 64, 64, 30, "/tmp/cutout.png");
     expect(args).not.toContain("-vf");
   });
 

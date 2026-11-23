@@ -180,6 +180,33 @@ describe("applyFileMutations", () => {
     }
   });
 
+  it.skipIf(process.getuid?.() === 0)(
+    "changes nothing when one of the files is read-only, the others included",
+    () => {
+      resetFileWriteReceipts();
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-mutation-readonly-file-"));
+      const first = join(projectDir, "first.html");
+      const locked = join(projectDir, "index.html");
+      try {
+        writeFileSync(first, "first-before", "utf8");
+        writeFileSync(locked, "locked-before", "utf8");
+        chmodSync(locked, 0o444);
+        expect(() =>
+          applyFileMutations(projectDir, [
+            { sourceFile: "first.html", absPath: first, after: "first-after" },
+            { sourceFile: "index.html", absPath: locked, after: "locked-after" },
+          ]),
+        ).toThrow(expect.objectContaining({ code: expect.stringMatching(/^(EACCES|EPERM)$/) }));
+        expect(readFileSync(first, "utf8")).toBe("first-before");
+        expect(readFileSync(locked, "utf8")).toBe("locked-before");
+      } finally {
+        chmodSync(locked, 0o644);
+        resetFileWriteReceipts();
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     "reports the write error, not a failed rollback, when a later file was never written",
     () => {

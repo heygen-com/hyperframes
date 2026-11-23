@@ -1,5 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -30,6 +38,29 @@ afterEach(() => {
 });
 
 describe("cleanupProxyCache", () => {
+  it.skipIf(process.platform === "win32")(
+    "removes nothing from the folder a linked .transcode-cache points at",
+    () => {
+      const project = mkdtempSync(join(tmpdir(), "hf-proxy-cache-project-"));
+      const outside = mkdtempSync(join(tmpdir(), "hf-proxy-cache-outside-"));
+      tempDirs.push(project, outside);
+      const now = 1_800_000_000_000;
+      const theirs = proxy(outside, "someone-elses-file");
+      writeEntry(theirs, 4, now - 31 * 24 * 60 * 60 * 1000);
+      symlinkSync(outside, join(project, ".transcode-cache"));
+
+      const result = cleanupProxyCache(join(project, ".transcode-cache"), {
+        now,
+        maxBytes: Number.POSITIVE_INFINITY,
+        maxIdleMs: 60 * 60 * 1000,
+        minSweepIntervalMs: 0,
+      });
+
+      expect(result.removed).toEqual([]);
+      expect(existsSync(theirs)).toBe(true);
+    },
+  );
+
   it("removes idle and oldest entries until the cache is within its byte budget", () => {
     const cache = cacheDir();
     const now = 1_800_000_000_000;
@@ -52,6 +83,26 @@ describe("cleanupProxyCache", () => {
     expect(existsSync(expired)).toBe(false);
     expect(existsSync(oldest)).toBe(false);
     expect(existsSync(newest)).toBe(true);
+  });
+
+  it("counts the cached still frames toward the budget and sweeps them with the copies", () => {
+    const cache = cacheDir();
+    const now = 1_800_000_000_000;
+    const oldStill = proxy(cache, "old-still", ".jpg");
+    const copy = proxy(cache, "copy");
+    writeEntry(oldStill, 6, now - 3_000);
+    writeEntry(copy, 6, now - 1_000);
+
+    const result = cleanupProxyCache(cache, {
+      now,
+      maxBytes: 8,
+      maxIdleMs: 30 * 24 * 60 * 60 * 1000,
+      minSweepIntervalMs: 0,
+    });
+
+    expect(result.removed).toEqual([oldStill]);
+    expect(existsSync(oldStill)).toBe(false);
+    expect(existsSync(copy)).toBe(true);
   });
 
   it("reports the same removals in a dry run and removes nothing", () => {
@@ -113,6 +164,61 @@ describe("cleanupProxyCache", () => {
     expect(result.removed).toEqual([staleTemp]);
     expect(result.bytesAfter).toBe(12);
     expect(existsSync(inFlight)).toBe(true);
+  });
+
+  it("sweeps stale pieces of a stopped long copy, but not while its copy runs or within the hour", () => {
+    const cache = cacheDir();
+    const now = 1_800_000_000_000;
+    const hour = 60 * 60 * 1000;
+    const key = basename(proxy(cache, "long"), ".mp4");
+    const runningKey = basename(proxy(cache, "running"), ".mp4");
+    const tag = "0123456789abcdef".repeat(2);
+    const stalePiece = join(cache, `.part-${key}-${tag}-0.mp4`);
+    const stalePieceTemp = join(cache, `.tmp-${randomUUID()}-.part-${key}-${tag}-1.mp4`);
+    const untaggedPiece = join(cache, `.part-${key}-3.mp4`);
+    const freshPiece = join(cache, `.part-${key}-${tag}-2.mp4`);
+    const runningPiece = join(cache, `.part-${runningKey}-${tag}-0.mp4`);
+    writeEntry(stalePiece, 3, now - 2 * hour);
+    writeEntry(untaggedPiece, 3, now - 2 * hour);
+    writeEntry(stalePieceTemp, 3, now - 2 * hour);
+    writeEntry(freshPiece, 3, now - 11 * 60 * 1000);
+    writeEntry(runningPiece, 3, now - 2 * hour);
+
+    const result = cleanupProxyCache(cache, {
+      now,
+      staleTempMs: 10 * 60 * 1000,
+      minSweepIntervalMs: 0,
+      protectedPaths: new Set([join(cache, `${runningKey}.mp4`)]),
+    });
+
+    expect(result.removed.sort()).toEqual([stalePiece, stalePieceTemp, untaggedPiece].sort());
+    expect(existsSync(freshPiece)).toBe(true);
+    expect(existsSync(runningPiece)).toBe(true);
+  });
+
+  it("sweeps old-style pieces even while that copy runs, and pieces dated in the future", () => {
+    const cache = cacheDir();
+    const now = 1_800_000_000_000;
+    const hour = 60 * 60 * 1000;
+    const runningKey = basename(proxy(cache, "running"), ".mp4");
+    const stoppedKey = basename(proxy(cache, "stopped"), ".mp4");
+    const tag = "0123456789abcdef".repeat(2);
+    const untagged = join(cache, `.part-${runningKey}-0.mp4`);
+    const ownPiece = join(cache, `.part-${runningKey}-${tag}-1.mp4`);
+    const futureDated = join(cache, `.part-${stoppedKey}-${tag}-0.mp4`);
+    writeEntry(untagged, 3, now - 2 * hour);
+    writeEntry(ownPiece, 3, now - 2 * hour);
+    writeEntry(futureDated, 3, now + 365 * 24 * hour);
+
+    const result = cleanupProxyCache(cache, {
+      now,
+      staleTempMs: 10 * 60 * 1000,
+      minSweepIntervalMs: 0,
+      protectedPaths: new Set([join(cache, `${runningKey}.mp4`)]),
+    });
+
+    expect(result.removed.sort()).toEqual([futureDated, untagged].sort());
+    expect(existsSync(ownPiece)).toBe(true);
   });
 
   it("never removes a file the transcoder did not name, even from an idle cache over budget", () => {

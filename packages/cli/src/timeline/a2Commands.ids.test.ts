@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { consumeCommandResult } from "../utils/commandResult.js";
-import { runIds } from "./a2Commands.js";
+import { readEditPlan, runIds } from "./a2Commands.js";
 
 const hooks = vi.hoisted(() => ({ minting: undefined as (() => void) | undefined }));
 vi.mock("@hyperframes/parsers/hf-ids", async (importOriginal) => {
@@ -37,16 +37,27 @@ describe("timeline ids", () => {
       hooks.minting = undefined;
       writeFileSync(indexPath, save);
     };
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
 
     await runIds({ dir, json: true });
 
     expect(readFileSync(indexPath, "utf-8")).toBe(save);
     expect(consumeCommandResult().exitCode).toBe(2);
-    expect(JSON.parse(String(stderr.mock.calls[0]?.[0]))).toMatchObject({
+    expect(JSON.parse(String(stdout.mock.calls.at(-1)?.[0]))).toMatchObject({
       ok: false,
+      error: { code: "refused", message: "file changed since the timeline was read" },
       reason: "file changed since the timeline was read",
     });
+  });
+});
+
+describe("timeline apply plan file", () => {
+  it("reads an edit plan saved with a UTF-8 BOM", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-timeline-plan-"));
+    dirs.push(dir);
+    const file = join(dir, "plan.json");
+    writeFileSync(file, '\uFEFF[{"op":"trim"}]');
+    expect(readEditPlan(file)).toEqual({ ok: true, edits: [{ op: "trim" }] });
   });
 });

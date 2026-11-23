@@ -3,12 +3,9 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  hasUnloadedAssets,
-  Player,
-  readPreviewErrorMessage,
-  shouldShowCompositionLoadingOverlay,
-} from "./Player";
+import { Player, readPreviewErrorMessage, shouldShowCompositionLoadingOverlay } from "./Player";
+import { hasUnloadedAssets } from "./previewAssetWait";
+import { previewEditingClient } from "../lib/previewChannel";
 import { usePlayerStore } from "../store/playerStore";
 import { onPreviewDocumentLoaded } from "../sceneSwap";
 
@@ -18,12 +15,15 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 let root: Root | null = null;
 let lifecycleLog: string[] = [];
+const playersMade: HTMLElement[] = [];
 
 class TestHyperframesPlayer extends HTMLElement {
   readonly iframeElement = document.createElement("iframe");
 
   constructor() {
     super();
+    playersMade.push(this);
+    this.attachShadow({ mode: "open" });
 
     const addIframeListener = this.iframeElement.addEventListener.bind(this.iframeElement);
     this.iframeElement.addEventListener = ((type, listener, options) => {
@@ -128,6 +128,41 @@ describe("preview errors", () => {
     root = null;
   });
 
+  // fails without the fix: a frame whose agent never answered kept its client, and its window listener held the
+  // retired frame, until a load that never comes.
+  it("disposes the frame's editing-port client when it unmounts", async () => {
+    const ref = vi.fn();
+    await mountPlayer({ ref } as Partial<PlayerProps>);
+    const client = previewEditingClient(ref.mock.calls[0]?.[0] as HTMLIFrameElement);
+
+    act(() => root?.unmount());
+    root = null;
+
+    const outcome = await Promise.race([
+      client.request("assets-unloaded", {}).then(
+        () => "answered",
+        (error: { code?: string }) => error.code,
+      ),
+      new Promise((resolve) => setTimeout(() => resolve("pending"), 50)),
+    ]);
+    expect(outcome).toBe("disposed");
+  });
+
+  it("leaves a callback ref alone on unmount, so a frame its owner made live since is kept", async () => {
+    // A shadow reload's promotion makes its frame the live one without calling the live Player's ref.
+    const ref = vi.fn();
+    const { player } = await mountPlayer({ ref } as Partial<PlayerProps>);
+    const frame = ref.mock.calls[0]?.[0] as HTMLIFrameElement;
+    player.shadowRoot!.append(frame); // where <hyperframes-player> keeps its frame
+    expect(frame.isConnected).toBe(true);
+
+    act(() => root?.unmount());
+    root = null;
+
+    expect(ref).toHaveBeenCalledTimes(1);
+    expect(frame.isConnected).toBe(false);
+  });
+
   it("puts the preview on the player's once-a-second paused heartbeat", async () => {
     const { player } = await mountPlayer();
     expect(player.hasAttribute("low-power-idle")).toBe(true);
@@ -179,6 +214,69 @@ describe("preview errors", () => {
 
     act(() => void player.dispatchEvent(new Event("painted")));
     expect(onPainted.mock.calls.map(([details]) => details.loadId)).toEqual([1, 2]);
+  });
+});
+
+describe("a host's sandbox origin", () => {
+  const token = "T".repeat(43);
+  const stubFrameToken = (body: { token?: string } | null) =>
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe("/api/projects/demo/frame-token");
+      return { ok: body !== null, json: async () => body } as Response;
+    });
+  const settle = () =>
+    act(async () => {
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    });
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([
+    ["/api/projects/demo/preview", `/api/projects/demo/preview/~${token}`],
+    [
+      "/api/projects/demo/preview/comp/scene.html",
+      `/api/projects/demo/preview/~${token}/comp/scene.html`,
+    ],
+    ["/api/projects/demo/preview?_t=1", `/api/projects/demo/preview/~${token}?_t=1`],
+    // A reload starts from the frame's own src, which already carries a token, maybe a stale one.
+    [`/api/projects/demo/preview/~${token}?_t=2`, `/api/projects/demo/preview/~${token}?_t=2`],
+    [
+      `/api/projects/demo/preview/~${"S".repeat(43)}/comp/scene.html`,
+      `/api/projects/demo/preview/~${token}/comp/scene.html`,
+    ],
+  ])(
+    "seals an opaque preview of %s and loads it under its project's frame token",
+    async (directUrl, sealed) => {
+      stubFrameToken({ token });
+      const { player } = await mountPlayer({ directUrl, sandboxOrigin: "opaque" });
+      await settle();
+      expect(player.hasAttribute("sandbox-origin")).toBe(true);
+      expect(player.getAttribute("src")).toBe(sealed);
+    },
+  );
+
+  it("still seals the preview when the project has no frame token to give", async () => {
+    stubFrameToken(null);
+    const { player } = await mountPlayer({ sandboxOrigin: "opaque" });
+    await settle();
+    expect(player.hasAttribute("sandbox-origin")).toBe(true);
+    expect(player.getAttribute("src")).toBe("/api/projects/demo/preview");
+  });
+
+  it("keeps the seal a host puts on the player from its ref", async () => {
+    const seal = (iframe: HTMLIFrameElement | null) =>
+      iframe && playersMade.at(-1)?.setAttribute("sandbox-origin", "opaque");
+    const { player } = await mountPlayer({ ref: seal });
+    await settle();
+    expect(player.getAttribute("sandbox-origin")).toBe("opaque");
+  });
+
+  it("leaves a same-origin preview on its plain path without asking for a token", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch");
+    const { player } = await mountPlayer();
+    await settle();
+    expect(player.hasAttribute("sandbox-origin")).toBe(false);
+    expect(player.getAttribute("src")).toBe("/api/projects/demo/preview");
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
@@ -378,6 +476,39 @@ describe("ready to show", () => {
     expect(usePlayerStore.getState().previewBooted).toBe(true);
   });
 
+  /** A first load whose one audio has no data yet: Studio's asset wait. */
+  async function loadWithUnloadedMedia(props: Partial<PlayerProps>) {
+    const { host, player } = await mountPlayer(props);
+    const el = player as TestHyperframesPlayer;
+    document.body.appendChild(el.iframeElement);
+    const doc = el.iframeElement.contentDocument!;
+    const audio = doc.createElement("audio");
+    Object.defineProperty(audio, "readyState", { value: 0, configurable: true });
+    Object.defineProperty(audio, "networkState", { value: 2, configurable: true });
+    doc.body.appendChild(audio);
+    loadAndReady(el);
+    painted(el);
+    await flushEffects();
+    return host;
+  }
+
+  it("keeps its asset wait on a later load that only skips the composition cover", async () => {
+    const host = await loadWithUnloadedMedia({ suppressLoadingOverlay: true });
+    expect(host.textContent).toContain("Preparing preview assets");
+  });
+
+  it("draws no loader of its own when the host draws one, and still says the preview is loading", async () => {
+    const onCompositionLoadingChange = vi.fn();
+    const host = await loadWithUnloadedMedia({
+      suppressLoadingOverlay: false,
+      loadingUi: "host",
+      onCompositionLoadingChange,
+    });
+    expect(host.textContent).not.toContain("Preparing preview assets");
+    expect(host.textContent).not.toContain("Loading composition");
+    expect(onCompositionLoadingChange).toHaveBeenLastCalledWith(true);
+  });
+
   it("stops deferring editing work when the preview never shows", async () => {
     vi.useFakeTimers();
     try {
@@ -438,6 +569,15 @@ describe("ready to show", () => {
   });
 });
 
+describe("preview canvas chrome", () => {
+  it("does not paint Studio chrome on the scaled composition iframe", async () => {
+    const { player } = await mountPlayer();
+    const injectedStyles = Array.from(player.shadowRoot?.querySelectorAll("style") ?? []);
+
+    expect(injectedStyles.some((style) => style.textContent?.includes("box-shadow"))).toBe(false);
+  });
+});
+
 describe("composition loading overlay", () => {
   it("shows while the composition is loading", () => {
     expect(shouldShowCompositionLoadingOverlay(true)).toBe(true);
@@ -481,5 +621,12 @@ describe("composition loading overlay", () => {
     expect(hasUnloadedAssets(iframe, false)).toBe(false);
 
     iframe.remove();
+  });
+});
+
+describe("accelerated canvases", () => {
+  it("are tracked in Studio's window, whose prototype a preview canvas gets when Studio reaches it first", () => {
+    expect("__hfAccelTracked" in HTMLCanvasElement.prototype.getContext).toBe(true);
+    expect(Reflect.get(window, "__hfAcceleratedCanvases")).toBeInstanceOf(WeakSet);
   });
 });

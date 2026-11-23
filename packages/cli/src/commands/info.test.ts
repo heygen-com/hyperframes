@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { orientation, durationFromHtml } from "./info.js";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import info, { orientation, durationFromHtml } from "./info.js";
 
 describe("orientation", () => {
   it("is landscape when width > height", () => {
@@ -30,4 +33,113 @@ describe("durationFromHtml", () => {
     const html = `<div data-composition-id="comp"></div>`;
     expect(durationFromHtml(html, 5)).toBe(5);
   });
+});
+
+describe("info", () => {
+  it.each([
+    {
+      name: "quoted attributes",
+      html: '<div data-composition-id="main" data-width="64" data-height="96" data-duration=".2"></div>',
+    },
+    {
+      name: "whitespace around attribute assignments",
+      html: '<div data-composition-id = "main" data-width = "64" data-height\n= "96" data-duration = ".2"></div>',
+    },
+    {
+      name: "unquoted attributes",
+      html: "<div data-composition-id=main data-width=64 data-height=96 data-duration=.2></div>",
+    },
+    {
+      name: "commented composition before the root",
+      html: `<!-- <div data-composition-id="example" data-width="1920" data-height="1080" data-duration="8"></div> -->
+        <div data-composition-id="main" data-width="64" data-height="96" data-duration=".2"></div>`,
+    },
+    {
+      name: "composition markup inside a script string",
+      html: `<script>const example = '<div data-composition-id="example" data-width="1920" data-height="1080" data-duration="8"></div>';</script>
+        <div data-composition-id="main" data-width="64" data-height="96" data-duration=".2"></div>`,
+    },
+    {
+      name: "explicit root after another composition",
+      html: `<div data-composition-id="other" data-width="1920" data-height="1080" data-duration="8"></div>
+        <div data-composition-id="main" data-root="true" data-width="64" data-height="96" data-duration=".2"></div>`,
+    },
+  ])("reports the root metadata with $name", async ({ html }) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-info-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      writeFileSync(join(dir, "index.html"), html);
+      await info.run?.({ args: { _: [], dir, json: true, media: false }, rawArgs: [], cmd: info });
+
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
+        resolution: "portrait",
+        width: 64,
+        height: 96,
+        duration: 0.2,
+      });
+    } finally {
+      log.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the inferred resolution and timeline duration when root metadata is absent", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-info-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      writeFileSync(
+        join(dir, "index.html"),
+        `<html data-resolution="landscape"><body><div data-composition-id="main">
+          <div class="clip" data-start="1" data-duration="2"></div>
+        </div></body></html>`,
+      );
+      await info.run?.({ args: { _: [], dir, json: true, media: false }, rawArgs: [], cmd: info });
+
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
+        resolution: "landscape",
+        width: 1920,
+        height: 1080,
+        duration: 3,
+      });
+    } finally {
+      log.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // Windows refuses control characters in folder names.
+  it.skipIf(process.platform === "win32")(
+    "prints a folder name with control characters as visible escapes, and --json keeps it",
+    async () => {
+      // Built rather than written: a literal control character in the source is a lint error.
+      const esc = String.fromCharCode(27);
+      const name = `video${esc}]0;x${String.fromCharCode(7)}${esc}[2J`;
+      const parent = mkdtempSync(join(tmpdir(), "hf-info-"));
+      const dir = join(parent, name);
+      mkdirSync(dir);
+      writeFileSync(join(dir, "index.html"), '<div data-composition-id="main"></div>');
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      try {
+        await info.run?.({
+          args: { _: [], dir, json: false, media: false },
+          rawArgs: [],
+          cmd: info,
+        });
+        const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+        log.mockClear();
+        await info.run?.({
+          args: { _: [], dir, json: true, media: false },
+          rawArgs: [],
+          cmd: info,
+        });
+
+        expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+        expect(human).toContain("video\\x1b]0;x\\x07\\x1b[2J");
+        expect(JSON.parse(String(log.mock.calls[0]?.[0])).name).toBe(name);
+      } finally {
+        log.mockRestore();
+        rmSync(parent, { recursive: true, force: true });
+      }
+    },
+  );
 });

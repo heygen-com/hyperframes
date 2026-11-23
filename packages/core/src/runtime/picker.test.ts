@@ -155,6 +155,32 @@ describe("createPickerModule", () => {
       expect(candidatesUnder(() => [long], "label")).toEqual([`${"x".repeat(54)}😀…`]);
     });
 
+    it("cuts a long text's label at a word, not inside one", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      const para = document.createElement("p");
+      para.textContent =
+        "Every frame of this film was made by hand over three long winters in a small studio by the sea.";
+      const word = document.createElement("p");
+      word.textContent = "x".repeat(70);
+      document.body.append(para, word);
+
+      expect(candidatesUnder(() => [para], "label")).toEqual([
+        "Every frame of this film was made by hand over three…",
+      ]);
+      expect(candidatesUnder(() => [word], "label")).toEqual([`${"x".repeat(55)}…`]);
+    });
+
+    it("includes the element classes needed by host hover identifiers", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      const card = document.createElement("div");
+      card.className = "title featured";
+      document.body.appendChild(card);
+
+      expect(candidatesUnder(() => [card], "className")).toEqual(["title featured"]);
+    });
+
     it("getCandidatesAtPoint returns empty for invalid coords", () => {
       const picker = createPickerModule({ postMessage: createMockPostMessage() });
       picker.installPickerApi();
@@ -292,6 +318,68 @@ describe("createPickerModule", () => {
       }
     });
 
+    it("picks a video whose decoded preview surface hides the native pixels", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML =
+        '<video id="video" data-hf-preview-video-frame style="opacity:0;width:100px;height:100px"></video>';
+      const video = document.querySelector("video")!;
+      expect(candidatesUnder(() => [video])).toContain("#video");
+      video.removeAttribute("data-hf-preview-video-frame");
+      expect(candidatesUnder(() => [video])).not.toContain("#video");
+    });
+
+    it("still picks an image inside a faint texture wrapper", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML =
+        '<div id="scene"><div id="wash" style="opacity:0.07;background-image:url(grain.svg)"><img id="photo" alt=""></div></div>';
+      const el = (id: string) => document.getElementById(id)!;
+      expect(candidatesUnder(() => [el("photo"), el("wash"), el("scene")])).toContain("#photo");
+    });
+
+    it("picks the picture under a faint SVG filter grain", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.head.innerHTML = "<style>#world-grain { opacity: 0.07 }</style>";
+      document.body.innerHTML =
+        '<div id="scene"><img id="photo" alt=""><svg id="world-grain"><filter id="world-noise"><feTurbulence /></filter><rect id="grain-rect" filter="url(#world-noise)" /></svg></div>';
+      const el = (id: string) => document.getElementById(id)!;
+      expect(
+        candidatesUnder(() => [el("grain-rect"), el("world-grain"), el("photo"), el("scene")]),
+      ).toEqual(["#photo", "#scene"]);
+    });
+
+    it("keeps faint HTML custom elements whose names begin with fe pickable", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML =
+        '<div id="scene"><feed-card id="card" style="opacity:0.07"></feed-card></div>';
+      const el = (id: string) => document.getElementById(id)!;
+      expect(candidatesUnder(() => [el("card"), el("scene")])).toEqual(["#card", "#scene"]);
+    });
+
+    it("still picks a filtered rect in an opaque SVG", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML =
+        '<svg id="chart"><filter id="glow"><feGaussianBlur /></filter><rect id="bar" filter="url(#glow)" /></svg>';
+      const el = (id: string) => document.getElementById(id)!;
+      expect(candidatesUnder(() => [el("bar"), el("chart")])).toEqual(["#bar", "#chart"]);
+    });
+
+    it("does not pick a faint texture veil that covers the frame", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML =
+        '<div id="scene"><div id="grain-tex" style="opacity:0.07;background-image:url(grain.svg)"></div><p id="copy">Hello</p></div>';
+      const el = (id: string) => document.getElementById(id)!;
+      expect(candidatesUnder(() => [el("grain-tex"), el("copy"), el("scene")])).toEqual([
+        "#copy",
+        "#scene",
+      ]);
+    });
+
     it("keeps a click-through overlay host passing through to what is under it", () => {
       const picker = createPickerModule({ postMessage: createMockPostMessage() });
       picker.installPickerApi();
@@ -410,6 +498,34 @@ describe("createPickerModule", () => {
           .map(([message]) => message)
           .find((message) => message.type === "element-pick-candidates");
         expect(picked.candidates.map((c: any) => c.selector)).toEqual(["#title", "#bg"]);
+      } finally {
+        picker.disablePickMode();
+        restore();
+      }
+    });
+
+    it("refreshes hovered geometry while the preview scrolls and stops after disable", () => {
+      const postMessage = createMockPostMessage();
+      const picker = createPickerModule({ postMessage });
+      document.body.innerHTML = `<h1 id="title">Hi</h1>`;
+      let top = 10;
+      at("title").getBoundingClientRect = () => new DOMRect(20, top, 100, 40);
+      const restore = emulateHitTest(() => [at("title")]);
+      try {
+        picker.enablePickMode();
+        move();
+        top = 30;
+        document.dispatchEvent(new Event("scroll"));
+        const hovered = () =>
+          postMessage.mock.calls
+            .map(([message]) => message)
+            .filter((message) => message.type === "element-hovered");
+        expect(hovered().at(-1)?.elementInfo.boundingBox.y).toBe(30);
+
+        picker.disablePickMode();
+        const countAfterDisable = hovered().length;
+        document.dispatchEvent(new Event("scroll"));
+        expect(hovered()).toHaveLength(countAfterDisable);
       } finally {
         picker.disablePickMode();
         restore();

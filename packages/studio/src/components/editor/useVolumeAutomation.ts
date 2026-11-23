@@ -49,8 +49,6 @@ export interface VolumeAutomationBinding {
   volumeAutomated: boolean;
   onAutomateVolume: () => void;
   onRemoveVolumeAutomation: () => void;
-  onCommitVolumeAt: (v: number) => void;
-  automatedVolumeValue: number | undefined;
   /** Speed: the `rate` lane, plus the CapCut-style presets that seed it. */
   rate: RateBinding;
 }
@@ -108,13 +106,8 @@ export function useVolumeAutomation(
       onCommitAt: (v: number) => writeLane((a) => withPointAt(a, target, clipTimeSec, v)),
     };
   };
-  // `??` alone would let an empty `data-volume` through as Number("") === 0, so
-  // automating the track would seed its lane at silence. The engine reads the same
-  // empty value as unity.
-  const raw = element.dataAttributes?.["volume"];
-  const parsed = raw ? Number(raw) : 1;
-  const current = Number.isFinite(parsed) ? parsed : 1;
-  const volume = laneBinding(VOLUME_TARGET, current, writeOwn);
+  // Unity: `data-volume` multiplies the lane, so seeding it there would play it twice.
+  const volume = laneBinding(VOLUME_TARGET, 1, writeOwn);
   const rateAttr = Number.parseFloat(element.dataAttributes?.["playback-rate"] ?? "");
   const rate = laneBinding(
     RATE_TARGET,
@@ -123,10 +116,8 @@ export function useVolumeAutomation(
   );
   return {
     volumeAutomated: volume.automated,
-    automatedVolumeValue: volume.automatedValue,
     onAutomateVolume: volume.onAutomate,
     onRemoveVolumeAutomation: volume.onRemoveAutomation,
-    onCommitVolumeAt: volume.onCommitAt,
     rate: {
       ...rate,
       canApplyPreset: elDuration > 0,

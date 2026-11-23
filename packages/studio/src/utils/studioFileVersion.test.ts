@@ -6,6 +6,7 @@ import {
   resetStudioWriteTokens,
   studioExpectedFileVersion,
   studioFileContentVersion,
+  studioFileRevision,
   studioWriteHeaders,
 } from "./studioFileVersion";
 
@@ -95,5 +96,19 @@ describe("studio write-token echo identity", () => {
 
     markStudioWriteToken("abandoned-studio-write", 1_000);
     expect(consumeStudioWriteToken("abandoned-studio-write", 301_000)).toBe(false);
+  });
+
+  it("moves the file revision once per write claimed, and not for its echo", () => {
+    resetStudioWriteTokens();
+    const start = studioFileRevision();
+    markStudioWriteToken("revision-write");
+
+    expect(studioFileRevision()).toBe(start + 1);
+    // The echo of a write already counted must not move it again: a reader asked for after the
+    // write was claimed would read as stale on its own echo and fetch a second time for nothing.
+    expect(consumeStudioWriteToken("revision-write")).toBe(true);
+    expect(studioFileRevision()).toBe(start + 1);
+    markStudioWriteToken("second-write");
+    expect(studioFileRevision()).toBe(start + 2);
   });
 });

@@ -1,4 +1,4 @@
-import { setCommandExitCode } from "../../utils/commandResult.js";
+import { CliUsageError, failUsage, setCommandExitCode } from "../../utils/commandResult.js";
 /**
  * `hyperframes lambda policies role|user|validate` — IAM bootstrap.
  *
@@ -21,9 +21,10 @@ import { setCommandExitCode } from "../../utils/commandResult.js";
  * checked-in policy still covers the CLI's needs with `policies validate`.
  */
 
-import { readFileSync } from "node:fs";
+import { readJsonFileText } from "../../utils/jsonFlag.js";
+import { terminalLines } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
-import { normalizeErrorMessage } from "../../utils/errorMessage.js";
+import { failureMessage, jsonFailure } from "../../utils/jsonError.js";
 
 export type PoliciesVerb = "role" | "user" | "validate";
 
@@ -81,6 +82,23 @@ const REQUIRED_ACTIONS = {
     "cloudwatch:DescribeAlarms",
     "cloudwatch:PutMetricAlarm",
   ],
+  // `deploy --video-arch arm64` tags and pushes the video image; Set/GetRepositoryPolicy let Lambda pull it.
+  ecr: [
+    "ecr:BatchCheckLayerAvailability",
+    "ecr:BatchGetImage",
+    "ecr:CompleteLayerUpload",
+    "ecr:CreateRepository",
+    "ecr:DeleteRepository",
+    "ecr:DescribeRepositories",
+    "ecr:GetDownloadUrlForLayer",
+    "ecr:GetRepositoryPolicy",
+    "ecr:InitiateLayerUpload",
+    "ecr:ListTagsForResource",
+    "ecr:PutImage",
+    "ecr:SetRepositoryPolicy",
+    "ecr:TagResource",
+    "ecr:UploadLayerPart",
+  ],
   iam: [
     "iam:AttachRolePolicy",
     "iam:CreateRole",
@@ -98,6 +116,7 @@ const REQUIRED_ACTIONS = {
     "lambda:AddPermission",
     "lambda:CreateFunction",
     "lambda:DeleteFunction",
+    "lambda:DeleteFunctionConcurrency",
     "lambda:GetFunction",
     "lambda:GetFunctionConfiguration",
     "lambda:InvokeFunction",
@@ -144,6 +163,7 @@ const REQUIRED_ACTIONS = {
     "states:CreateStateMachine",
     "states:DeleteStateMachine",
     "states:DescribeExecution",
+    "states:DescribeMapRun",
     "states:DescribeStateMachine",
     "states:GetExecutionHistory",
     "states:ListExecutions",
@@ -245,23 +265,22 @@ export async function runPolicies(args: PoliciesArgs): Promise<void> {
         const msg =
           "[lambda policies validate] usage: hyperframes lambda policies validate <policy.json>";
         if (args.json) {
-          console.log(JSON.stringify({ ok: false, error: msg }, null, 2));
-          setCommandExitCode(1);
-          return;
+          console.log(JSON.stringify(jsonFailure("usage_error", msg), null, 2));
+          failUsage();
         }
-        throw new Error(msg);
+        throw new CliUsageError(msg);
       }
       let result: ValidateResult;
       try {
         result = validatePolicy(args.inputPath);
       } catch (err) {
-        const msg = normalizeErrorMessage(err);
+        const msg = failureMessage(err);
         if (args.json) {
-          console.log(JSON.stringify({ ok: false, error: msg }, null, 2));
+          console.log(JSON.stringify(jsonFailure("runtime_error", msg), null, 2));
           setCommandExitCode(1);
           return;
         }
-        console.error(c.error(`Failed to validate ${args.inputPath}: ${msg}`));
+        console.error(c.error(terminalLines(`Failed to validate ${args.inputPath}: ${msg}`)));
         setCommandExitCode(1);
         return;
       }
@@ -271,7 +290,7 @@ export async function runPolicies(args: PoliciesArgs): Promise<void> {
         return;
       }
       for (const warning of result.warnings) {
-        console.warn(c.dim(`Warning: ${warning}`));
+        console.warn(c.dim(`Warning: ${terminalLines(warning)}`));
       }
       if (result.missing.length === 0) {
         console.log(c.success(`Policy covers all ${result.required.length} required actions.`));
@@ -316,7 +335,7 @@ export interface ValidateResult {
  *     not by our matcher. We end-anchor only.
  */
 export function validatePolicy(policyPath: string): ValidateResult {
-  const raw = readFileSync(policyPath, "utf-8");
+  const raw = readJsonFileText(policyPath);
   const parsed = JSON.parse(raw) as { Statement?: unknown };
   const statements: Array<{
     Effect?: string;

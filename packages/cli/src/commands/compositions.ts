@@ -1,10 +1,12 @@
-import { defineCommand } from "citty";
+import { terminalText } from "@hyperframes/core";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { readFileSync } from "node:fs";
-import { readProjectFile } from "@hyperframes/parsers/asset-resolution";
+import { readProjectFile, resolveCompositionSrc } from "@hyperframes/parsers/asset-resolution";
+import { firstTemplateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import { readDataDurationSeconds } from "@hyperframes/parsers/media-duration";
-import { resolve, dirname } from "node:path";
+import { dirname } from "node:path";
 
 export const examples: Example[] = [
   ["List compositions in the current project", "hyperframes compositions"],
@@ -66,9 +68,9 @@ export function parseCompositions(html: string, baseDir: string): CompositionInf
 
     // If this references an external sub-composition, parse that file
     if (compositionSrc) {
-      const subPath = resolve(baseDir, compositionSrc);
-      const sub = readProjectFile(subPath);
-      if (sub.kind === "file") {
+      const subPath = resolveCompositionSrc(baseDir, compositionSrc);
+      const sub = subPath ? readProjectFile(subPath) : null;
+      if (sub?.kind === "file") {
         const subInfo = parseSubComposition(sub.text, id, width, height);
         compositions.push({ ...subInfo, source: compositionSrc });
         return;
@@ -123,8 +125,7 @@ export function parseSubComposition(
 ): CompositionInfo {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
-  const template = doc.querySelector("template");
-  const searchDocument = template?.content ?? doc;
+  const searchDocument = firstTemplateContent(doc) ?? doc;
 
   // Sub-compositions may use <template> wrappers or direct divs
   const compDiv = searchDocument.querySelector("[data-composition-id]");
@@ -196,28 +197,33 @@ export default defineCommand({
     }
 
     if (compositions.length === 0) {
-      console.log(`${c.success("◇")}  ${c.accent(project.name)} — no compositions found`);
+      console.log(
+        `${c.success("◇")}  ${c.accent(terminalText(project.name))} — no compositions found`,
+      );
       return;
     }
 
     const compositionLabel =
       compositions.length === 1 ? "1 composition" : `${compositions.length} compositions`;
     console.log(
-      `${c.success("◇")}  ${c.accent(project.name)} ${c.dim("—")} ${c.dim(compositionLabel)}`,
+      `${c.success("◇")}  ${c.accent(terminalText(project.name))} ${c.dim("—")} ${c.dim(compositionLabel)}`,
     );
     console.log();
 
     // Calculate padding for alignment
-    const maxIdLen = compositions.reduce((max, comp) => Math.max(max, comp.id.length), 0);
+    const maxIdLen = compositions.reduce(
+      (max, comp) => Math.max(max, terminalText(comp.id).length),
+      0,
+    );
 
     for (const comp of compositions) {
-      const id = c.accent(comp.id.padEnd(maxIdLen));
+      const id = c.accent(terminalText(comp.id).padEnd(maxIdLen));
       const duration = c.bold(`${comp.duration.toFixed(1)}s`);
       const resolution = c.dim(`${comp.width}×${comp.height}`);
       const elements = c.dim(
         `${comp.elementCount} ${comp.elementCount === 1 ? "element" : "elements"}`,
       );
-      const source = comp.source ? c.dim(` ← ${comp.source}`) : "";
+      const source = comp.source ? c.dim(` ← ${terminalText(comp.source)}`) : "";
 
       console.log(`   ${id}   ${duration}   ${resolution}   ${elements}${source}`);
     }

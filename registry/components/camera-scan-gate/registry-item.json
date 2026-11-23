@@ -27,7 +27,7 @@
       "role": "style",
       "label": "Scan color",
       "description": "Any CSS color value used by the scan line and recognition glow.",
-      "default": "var(--brand)"
+      "default": "var(--brand, #22c55e)"
     },
     {
       "id": "targetLabel",

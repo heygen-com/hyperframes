@@ -10,6 +10,14 @@
       },
       "duration": 0.38,
       "ease": "back.out(1.35)",
+      "inspectionTiming": {
+        "repeat": 0,
+        "repeatDelay": 0,
+        "delay": 0,
+        "stagger": {
+          "each": 0.055
+        }
+      },
       "extras": {
         "stagger": "__raw:0.055"
       },
@@ -73,6 +81,14 @@
       },
       "duration": 0.42,
       "ease": "power3.out",
+      "inspectionTiming": {
+        "repeat": 0,
+        "repeatDelay": 0,
+        "delay": 0,
+        "stagger": {
+          "each": 0.08
+        }
+      },
       "extras": {
         "stagger": "__raw:0.08"
       },

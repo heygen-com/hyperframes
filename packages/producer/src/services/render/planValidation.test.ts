@@ -215,6 +215,11 @@ describe("validateNoSystemFonts", () => {
     expect(() => validateNoSystemFonts(CLEAN_HTML)).not.toThrow();
   });
 
+  it("passes a font shorthand with a generic primary, as it did before shorthands loaded faces", () => {
+    const html = `<!doctype html><html><head><style>p { font: 16px system-ui; } b { font: bold 56px sans-serif; }</style></head><body>x</body></html>`;
+    expect(() => validateNoSystemFonts(html)).not.toThrow();
+  });
+
   it("passes when font-family is absent entirely (plain text composition)", () => {
     expect(() =>
       validateNoSystemFonts(`<!doctype html><html><body><p>no fonts here</p></body></html>`),

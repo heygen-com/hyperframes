@@ -9,7 +9,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeAll, describe, expect, it, onTestFinished } from "vitest";
+import { beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
+import { runCommand } from "citty";
 import type { ArgsDef } from "citty";
 import { ensureDOMParser } from "../utils/dom.js";
 import keyframesCommand from "./keyframes.js";
@@ -17,6 +18,7 @@ import {
   collectCompositions,
   collectShotSelectors,
   resolveScope,
+  singleFileStage,
   surfaceComposition,
 } from "./keyframes.js";
 import { ensureShotOutputDir } from "./motionShot.js";
@@ -38,6 +40,62 @@ beforeAll(() => ensureDOMParser());
 const wrap = (script: string) =>
   `<!doctype html><html><body><div id="root" data-composition-id="main" data-duration="4"><div id="dot" class="clip"></div></div><script>${script}</script></body></html>`;
 
+describe("keyframes JSON output", () => {
+  it.each(["css", "anime"])("emits parseable JSON with --runtime %s", async (runtime) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-json-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const source = join(dir, "index.html");
+    writeFileSync(source, wrap(""));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    onTestFinished(() => log.mockRestore());
+
+    await runCommand(keyframesCommand, { rawArgs: [source, "--runtime", runtime, "--json"] });
+
+    const output = log.mock.calls.map((args) => args.join(" ")).join("\n");
+    const result: unknown = JSON.parse(output);
+    expect(result).toMatchObject({
+      project: "index.html",
+      runtime,
+      compositions: [{ composition: "index.html", tweens: [], cssKeyframes: [], anime: [] }],
+    });
+  });
+});
+
+describe("keyframes human output", () => {
+  it("prints selectors, values and keyframe text from the project with control characters escaped", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const bel = String.fromCharCode(7);
+    const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-human-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const source = join(dir, "index.html");
+    writeFileSync(
+      source,
+      wrap(
+        `const tl = gsap.timeline({ paused: true }); tl.to("#dot${esc}[2J", { x: "40px${esc}]52;c;cA==${bel}", duration: 1 }, 0); window.__timelines = { main: tl };`,
+      ).replace(
+        "</body>",
+        `<style>@keyframes pulse { from { content: "a${esc}[1A"; } to { opacity: 1; } } #dot { animation: pulse 1s; }</style></body>`,
+      ),
+    );
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    onTestFinished(() => log.mockRestore());
+
+    await runCommand(keyframesCommand, { rawArgs: [source, "--runtime", "all"] });
+
+    const colors = new RegExp(`${esc}\\[[0-9;]*m`, "g");
+    const output = log.mock.calls
+      .map((args) => args.join(" "))
+      .join("\n")
+      .replace(colors, "");
+    expect(output).not.toContain(esc);
+    expect(output).not.toContain(bel);
+    expect(output).toContain("#dot\\x1b[2J");
+    expect(output).toContain("40px\\x1b]52;c;cA==\\x07");
+    expect(output).toContain("a\\x1b[1A");
+  });
+});
+
 describe("keyframes direct composition scope", () => {
   it("keeps the project root and passes the nested HTML entry to --shot", () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-target-"));
@@ -52,6 +110,47 @@ describe("keyframes direct composition scope", () => {
 
     expect(scope.projectDir).toBe(projectDir);
     expect(scope.entryFile).toBe("compositions/scene.html");
+    expect(scope.singleFile).toBe(scenePath);
+  });
+});
+
+describe("keyframes --shot on a bare HTML file", () => {
+  const scene = `<template id="scene-template"><div data-composition-id="scene"></div></template>`;
+  const mountingIndex = wrap("").replace(
+    '<div id="dot" class="clip"></div>',
+    '<div data-composition-id="scene" data-composition-src="compositions/scene.html"></div>',
+  );
+
+  function project(index: string) {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-stage-"));
+    onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
+    mkdirSync(join(projectDir, "compositions"));
+    writeFileSync(join(projectDir, "index.html"), index);
+    return projectDir;
+  }
+
+  it("stages a scene its project mounts from the project, so the scene keeps its shell", async () => {
+    const projectDir = project(mountingIndex);
+    const scenePath = join(projectDir, "compositions", "scene.html");
+    writeFileSync(scenePath, scene);
+
+    expect(await singleFileStage(scenePath, projectDir)).toEqual({
+      root: projectDir,
+      entries: [join(projectDir, "index.html"), scenePath],
+      entryFile: "compositions/scene.html",
+    });
+  });
+
+  it("stages any other file from its own folder, even under a folder holding index.html", async () => {
+    const projectDir = project(wrap(""));
+    const sentPath = join(projectDir, "compositions", "sent.html");
+    writeFileSync(sentPath, scene);
+
+    expect(await singleFileStage(sentPath, projectDir)).toEqual({
+      root: join(projectDir, "compositions"),
+      entries: [sentPath],
+      entryFile: "sent.html",
+    });
   });
 });
 
@@ -157,6 +256,81 @@ describe("keyframes composed-ancestor surfacing (nested elements)", () => {
     `);
     const { tweens } = surfaceComposition(html, "index.html", "index.html");
     expect(tweens.find((t) => t.target === "#core")?.composedWith).toBeUndefined();
+  });
+
+  it.each(["template", "nested template"])(
+    "keeps the parent motion of a child authored in a %s",
+    (mode) => {
+      const content = `<div id="hero"><div id="core" class="clip"></div></div><script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#hero", { keyframes: { "0%": { x: -300 }, "100%": { x: 300 } }, duration: 4 }, 0);
+        tl.to("#core", { keyframes: { "0%": { scale: 1 }, "100%": { scale: 1.5 } }, duration: 4 }, 0);
+        window.__timelines = { beat: tl };
+      </script>`;
+      const html =
+        mode === "template"
+          ? `<template>${content}</template>`
+          : `<template><div><template>${content}</template></div></template>`;
+      const { tweens } = surfaceComposition(html, "beat.html", "beat.html");
+      expect(tweens).toHaveLength(2);
+      expect(tweens.find((t) => t.target === "#core")?.composedWith).toEqual([
+        { selector: "#hero", summary: "x -300..300" },
+      ]);
+    },
+  );
+
+  it("keeps animated ancestors ordered from the parent to the outer group", () => {
+    const html = `<template><div id="stage"><div id="hero"><div id="core"></div></div></div><script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#stage", { y: 0 }, { y: 100, duration: 4 }, 0);
+      tl.fromTo("#hero", { x: 0 }, { x: 300, duration: 4 }, 0);
+      tl.fromTo("#core", { scale: 1 }, { scale: 1.5, duration: 4 }, 0);
+      window.__timelines = { beat: tl };
+    </script></template>`;
+    const { tweens } = surfaceComposition(html, "beat.html", "beat.html");
+    expect(tweens.find((t) => t.target === "#core")?.composedWith).toEqual([
+      { selector: "#hero", summary: "x 0..300" },
+      { selector: "#stage", summary: "y 0..100" },
+    ]);
+  });
+
+  it("keeps implicit parent starting values unresolved inside a template", () => {
+    const html = `<template><div id="hero"><div id="core"></div></div><script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { x: 300, duration: 4 }, 0);
+      tl.to("#core", { scale: 1.5, duration: 4 }, 0);
+      window.__timelines = { beat: tl };
+    </script></template>`;
+    const { tweens } = surfaceComposition(html, "beat.html", "beat.html");
+    const hero = tweens.find((t) => t.target === "#hero");
+    expect(hero?.keyframes[0]?.properties.x).toBeUndefined();
+    expect(hero?.unresolved).toContain("endpointProperties");
+    expect(tweens.find((t) => t.target === "#core")?.composedWith).toEqual([
+      { selector: "#hero", summary: "(no resolved variation; runtime verification required)" },
+    ]);
+  });
+
+  it("uses document matches before template matches for a repeated selector", () => {
+    const html = `<div id="core"></div><template><div id="hero"><div id="core"></div></div><script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { x: 300, duration: 4 }, 0);
+      tl.to("#core", { scale: 1.5, duration: 4 }, 0);
+      window.__timelines = { beat: tl };
+    </script></template>`;
+    const { tweens } = surfaceComposition(html, "beat.html", "beat.html");
+    expect(tweens.find((t) => t.target === "#core")?.composedWith).toBeUndefined();
+  });
+
+  it("does not treat an animated sibling as a template child's ancestor", () => {
+    const html = `<template><div id="hero"></div><div id="core"></div><script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { x: 300, duration: 4 }, 0);
+      tl.to("#core", { scale: 1.5, duration: 4 }, 0);
+      window.__timelines = { beat: tl };
+    </script></template>`;
+    const { tweens } = surfaceComposition(html, "beat.html", "beat.html");
+    expect(tweens).toHaveLength(2);
+    expect(tweens.every((tween) => tween.composedWith === undefined)).toBe(true);
   });
 });
 
@@ -384,4 +558,92 @@ describe("keyframes project compositions", () => {
 
     expect(collectCompositions(join(dir, "index.html"))).toHaveLength(1);
   });
+
+  it.each(["../outside.html", "OUTSIDE"])(
+    "does not read a data-composition-src outside the project (%s)",
+    (written) => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-outside-src-"));
+      onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+      const project = join(dir, "project");
+      mkdirSync(project);
+      const outside = join(dir, "outside.html");
+      writeFileSync(outside, `<div data-composition-id="outside"></div>`);
+      const src = written === "OUTSIDE" ? outside : written;
+      writeFileSync(
+        join(project, "index.html"),
+        `<!doctype html><html><body><div data-composition-id="main" data-duration="4"><div data-composition-id="intro" data-composition-src="${src}"></div></div></body></html>`,
+      );
+
+      expect(collectCompositions(join(project, "index.html"))).toHaveLength(1);
+    },
+  );
+});
+
+describe("keyframes text output", () => {
+  const printed = async (html: string, extra: string[], file = "index.html") => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-text-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const source = join(dir, file);
+    writeFileSync(source, html);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    onTestFinished(() => log.mockRestore());
+    await runCommand(keyframesCommand, { rawArgs: [source, ...extra] });
+    return log.mock.calls.map((args) => args.join(" ")).join("\n");
+  };
+
+  // fails without the fix: a tween target or CSS rule from the project reached the terminal with its control bytes.
+  it.each([
+    [
+      "a GSAP tween target",
+      wrap(`
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#dot\u001b]52;c;cGF5\u0007", { x: 10, duration: 1 });
+        window.__timelines = [tl];
+      `),
+      [],
+      "\\x1b]52;c;cGF5\\x07",
+    ],
+    [
+      "a GSAP tween property name",
+      wrap(`
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#dot", { "\u001b]52;c;cGF5\u0007": 1, duration: 1 });
+        window.__timelines = [tl];
+      `),
+      [],
+      "\\x1b]52;c;cGF5\\x07",
+    ],
+    [
+      "a CSS keyframes rule",
+      `<!doctype html><html><head><style>
+        .dot { animation: rise 1s both; }
+        @keyframes rise { 0% { content: "\u001b[2J\u0007"; } 100% { opacity: 1; } }
+      </style></head><body><div class="dot"></div></body></html>`,
+      ["--runtime", "css"],
+      "\\x1b[2J\\x07",
+    ],
+  ])(
+    "prints %s with its control characters as visible escapes",
+    async (_what, html, extra, escaped) => {
+      const output = await printed(html, extra);
+      expect(output).toContain(escaped);
+      expect(output).not.toContain("\u001b");
+      expect(output).not.toContain("\u0007");
+    },
+  );
+
+  // Windows file names cannot hold control characters.
+  it.skipIf(process.platform === "win32")(
+    "prints a file name with control characters as visible escapes",
+    async () => {
+      const output = await printed(
+        `<!doctype html><html><body></body></html>`,
+        [],
+        "a\u001b]0;x\u0007.html",
+      );
+      expect(output).toContain("a\\x1b]0;x\\x07.html");
+      expect(output).not.toContain("\u001b");
+      expect(output).not.toContain("\u0007");
+    },
+  );
 });

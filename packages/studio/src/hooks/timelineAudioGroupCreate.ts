@@ -12,6 +12,8 @@ import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { HF_AUDIO_GROUP_ATTR, HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { runtimeAudioId } from "../player/lib/timelineElementHelpers";
 import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
+import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
+import { findOpaqueTimelineElement } from "../components/editor/previewSelection";
 import { readTagSnippetByTarget, type PatchOperation } from "../utils/sourcePatcher";
 import {
   findTimelineElementInIframe,
@@ -26,6 +28,7 @@ import {
   type MutableRef,
   type UseTimelineElementVisibilityEditingInput,
 } from "./timelineTrackVisibility";
+import { countOf } from "../utils/countOf";
 
 interface AudioGroupCarveInput extends UseTimelineElementVisibilityEditingInput {
   checkEditable?: (elements: readonly TimelineElement[]) => boolean;
@@ -145,6 +148,62 @@ function patchLiveGroupElement(
   return true;
 }
 
+/** The members' and the group element's live writes, as `patchLiveAudioGroupState` and
+ *  `patchLiveGroupElement` make them; returns their unwind. */
+function patchLiveGroup(
+  iframe: HTMLIFrameElement | null,
+  elements: readonly TimelineElement[],
+  groupId: string,
+  groupLabel: string | undefined,
+  activeCompPath: string | null,
+): () => void {
+  const priorGroups = captureAudioGroupState(iframe, elements, activeCompPath);
+  patchLiveAudioGroupState(iframe, elements, groupId, activeCompPath);
+  const createdLiveGroupElement = patchLiveGroupElement(iframe, groupId, groupLabel);
+  return () => {
+    patchLiveAudioGroupState(iframe, elements, null, activeCompPath, priorGroups);
+    if (createdLiveGroupElement) {
+      iframe?.contentDocument?.getElementById(groupId)?.remove();
+    }
+  };
+}
+
+/** The same writes in a sealed preview, run by its runtime on the members it resolves. */
+async function patchSealedGroup(
+  iframe: HTMLIFrameElement,
+  elements: readonly TimelineElement[],
+  groupId: string,
+  groupLabel: string | undefined,
+  activeCompPath: string | null,
+): Promise<() => Promise<void>> {
+  const lookup = { activeCompositionPath: activeCompPath, isMasterView: true };
+  const found = await Promise.all(
+    elements.map((element) => findOpaqueTimelineElement(iframe, element, lookup)),
+  );
+  const handles = found.flatMap((element) => (element ? [element.handle] : []));
+  const reply = await previewRequest(iframe, "assign-audio-group", {
+    members: handles.map((handle) => ({ handle, group: groupId })),
+    element: { id: groupId, label: groupLabel ?? null, present: true },
+  });
+  const previous: unknown = reply?.previous;
+  const assigned =
+    Array.isArray(previous) &&
+    previous.length === handles.length &&
+    typeof reply?.changed === "boolean"
+      ? { previous, changed: reply.changed }
+      : null;
+  return async () => {
+    if (!assigned) return;
+    await previewRequest(iframe, "assign-audio-group", {
+      members: handles.map((handle, i) => {
+        const prior = assigned.previous[i];
+        return { handle, group: typeof prior === "string" && prior ? prior : null };
+      }),
+      element: assigned.changed ? { id: groupId, label: null, present: false } : null,
+    });
+  };
+}
+
 interface CreateAudioGroupAndAssignMembersInput {
   projectId: string;
   activeCompPath: string | null;
@@ -181,15 +240,16 @@ export async function createAudioGroupAndAssignMembers({
   // then persists `sources: [groupId]` on success, so a quiet no-op leaves the
   // carve aimed at a group that does not exist.
   if (elements.length < 2) {
-    throw new Error(`Cannot group ${elements.length} clip(s): a group needs at least two`);
+    throw new Error(`Cannot group ${countOf(elements.length, "clip")}: a group needs at least two`);
   }
   if (!GROUP_ID_PATTERN.test(groupId)) {
     throw new Error(`Invalid audio group id ${JSON.stringify(groupId)}`);
   }
 
-  const priorGroups = captureAudioGroupState(previewIframe, elements, activeCompPath);
-  patchLiveAudioGroupState(previewIframe, elements, groupId, activeCompPath);
-  const createdLiveGroupElement = patchLiveGroupElement(previewIframe, groupId, groupLabel);
+  const unwindLive =
+    previewIframe && previewFrameOpaque(previewIframe)
+      ? await patchSealedGroup(previewIframe, elements, groupId, groupLabel, activeCompPath)
+      : patchLiveGroup(previewIframe, elements, groupId, groupLabel, activeCompPath);
   reseekPreviewRuntime(previewIframe);
 
   const groupOperation: PatchOperation = {
@@ -219,6 +279,7 @@ export async function createAudioGroupAndAssignMembers({
       label: groupLabel
         ? `Group ${elements.length} clips as ${groupLabel}`
         : `Group ${elements.length} voice clips`,
+      // fallow-ignore-next-line code-duplication
       files,
       readFile: (path) => readFileContent(projectId, path),
       writeFile: writeProjectFile,
@@ -232,10 +293,7 @@ export async function createAudioGroupAndAssignMembers({
     // Mirrors setElementsHidden's failure path: the optimistic live patch
     // already ran, so a save failure has to be unwound or the preview shows a
     // grouping that never made it to disk.
-    patchLiveAudioGroupState(previewIframe, elements, null, activeCompPath, priorGroups);
-    if (createdLiveGroupElement) {
-      previewIframe?.contentDocument?.getElementById(groupId)?.remove();
-    }
+    await unwindLive();
     reseekPreviewRuntime(previewIframe);
     throw error;
   }

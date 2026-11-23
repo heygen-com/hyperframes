@@ -1,6 +1,6 @@
 import { roundTo3 } from "../../utils/rounding";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
-import { readCssRotation } from "../../hooks/draggedGsapPosition";
+import { readCssRotation } from "@hyperframes/core/runtime/css-rotation";
 import { readStudioPathOffset, readStudioRotation, styleUsesStudioOffset } from "./manualEditsDom";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
 import {
@@ -70,38 +70,61 @@ function evaluateLength(value: string, side: number): number {
 
 const CONTENT_BOXES = new Set(["content-box", "fill-box"]);
 
+type ComputedRead = (property: string) => string;
+
+export const TRANSLATE_PX_PROPERTIES = [
+  "translate",
+  "width",
+  "height",
+  "box-sizing",
+  "transform-box",
+  ...["left", "right", "top", "bottom"].flatMap((s) => [`padding-${s}`, `border-${s}-width`]),
+];
+
 /** The side % resolves against: the box `transform-box` names (fill-box is the content box on HTML). */
-function referenceBox(
-  cs: CSSStyleDeclaration,
-  size: "width" | "height",
-  a: string,
-  b: string,
-): number {
-  const n = (prop: string) => Number.parseFloat(cs.getPropertyValue(prop)) || 0;
+function referenceBox(read: ComputedRead, size: "width" | "height", a: string, b: string): number {
+  const n = (prop: string) => Number.parseFloat(read(prop)) || 0;
   const pad =
     n(`padding-${a}`) + n(`padding-${b}`) + n(`border-${a}-width`) + n(`border-${b}-width`);
-  const content = n(size) - (cs.boxSizing === "border-box" ? pad : 0);
-  return CONTENT_BOXES.has(cs.getPropertyValue("transform-box")) ? content : content + pad;
+  const content = n(size) - (read("box-sizing") === "border-box" ? pad : 0);
+  return CONTENT_BOXES.has(read("transform-box")) ? content : content + pad;
 }
 
-/** The element's CSS `translate` in px, as it renders now. */
-// ponytail: a 3-value translate loses its z on the next move; keep z when a fixture needs it.
-export function readTranslatePx(el: HTMLElement): Point {
-  const cs = el.ownerDocument.defaultView?.getComputedStyle(el);
-  // Computed first: Chrome resolves em, vw and var() there and leaves only % to work out.
-  const value = cs?.translate || el.style.getPropertyValue("translate") || "none";
+/** A computed translate in px; with no styles to size the box, a % is NaN rather than 0. */
+export function translatePx(value: string, read?: ComputedRead): Point {
   if (value === "none") return { x: 0, y: 0 };
   const [x = "0px", y = "0px"] = splitTopLevelWhitespace(value);
   const side = (size: "width" | "height", a: string, b: string) =>
-    cs ? referenceBox(cs, size, a, b) : 0;
+    read ? referenceBox(read, size, a, b) : Number.NaN;
   return {
     x: evaluateLength(x, side("width", "left", "right")),
     y: evaluateLength(y, side("height", "top", "bottom")),
   };
 }
 
+const frameTranslates = new WeakMap<Element, { inline: string; px: Point; computed: string }>();
+
+export function rememberFrameTranslate(el: HTMLElement, px: Point, computed: string): void {
+  frameTranslates.set(el, { inline: el.style.getPropertyValue("translate"), px, computed });
+}
+
+/** The element's CSS `translate` in px, as it renders now. */
+// ponytail: a 3-value translate loses its z on the next move; keep z when a fixture needs it.
+export function readTranslatePx(el: HTMLElement): Point {
+  const cs = el.ownerDocument.defaultView?.getComputedStyle(el);
+  const inline = el.style.getPropertyValue("translate");
+  const frame = cs ? undefined : frameTranslates.get(el);
+  if (frame?.inline === inline) return frame.px;
+  // Computed first: Chrome resolves em, vw and var() there and leaves only % to work out.
+  return translatePx(cs?.translate || inline || "none", cs && ((p) => cs.getPropertyValue(p)));
+}
+
 export function readTranslatePxLeavingPercent(el: HTMLElement): Point {
-  const value = el.ownerDocument.defaultView?.getComputedStyle(el).translate || "none";
+  const cs = el.ownerDocument.defaultView?.getComputedStyle(el);
+  const inline = el.style.getPropertyValue("translate");
+  const frame = cs ? undefined : frameTranslates.get(el);
+  const computed = frame?.inline === inline ? frame.computed : cs?.translate;
+  const value = computed || inline || "none";
   const [x = "0px", y = "0px"] = value === "none" ? [] : splitTopLevelWhitespace(value);
   const px = (part: string) => roundTo3(evaluateLength(part, 0)) || 0;
   return { x: px(x), y: px(y) };

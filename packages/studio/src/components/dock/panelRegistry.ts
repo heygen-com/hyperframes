@@ -12,6 +12,7 @@ export const PANEL_IDS = [
   "renders",
   "variables",
   "slideshow",
+  "motionBlur",
 ] as const;
 
 export type PanelId = (typeof PANEL_IDS)[number];
@@ -56,6 +57,11 @@ export const PANEL_DEFINITIONS = {
   renders: { title: "Renders", zone: "right", reopen: { near: "design", direction: "within" } },
   variables: { title: "Variables", zone: "right", reopen: { near: "design", direction: "within" } },
   slideshow: { title: "Slideshow", zone: "right", reopen: { near: "design", direction: "within" } },
+  motionBlur: {
+    title: "Blur",
+    zone: "right",
+    reopen: { near: "design", direction: "within" },
+  },
 } as const satisfies Record<PanelId, PanelDefinition>;
 
 export function isPanelId(value: unknown): value is PanelId {

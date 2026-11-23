@@ -15,6 +15,7 @@
  * prefix as a composition script error, which fails a render whose timeline wait times out.
  */
 
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   HF_VFX_ATTR,
   VfxChainError,
@@ -31,6 +32,7 @@ import {
   type HfVfxParamValues,
   type HfVfxRefParam,
 } from "../vfx";
+import { htmlInCanvasForm, markCaptureCanvas, markCaptured } from "../htmlInCanvas";
 import { registerSeekCompletion } from "./adapters/seek-dispatch";
 import { isCanvasElement, isHtmlElement } from "./domRealm";
 
@@ -267,7 +269,7 @@ const OUT_BOX = "position:absolute;inset:0;width:100%;height:100%;pointer-events
 
 /** The output canvas the exporter may already have emitted, else a new one. */
 function findOrCreateOut(host: HTMLElement): HTMLCanvasElement {
-  const existing = host.querySelector("canvas.hf-vfx-out");
+  const existing = host.querySelector(":scope > canvas.hf-vfx-out");
   if (isCanvasElement(existing)) {
     // The exporter emits the canvas bare — `<canvas class="hf-vfx-out"></canvas>`
     // — "for layout stability". Adopted untouched it keeps the default
@@ -391,7 +393,6 @@ function resolveRefSource(
   if (cached) return { kind: "source", source: cached };
   const source = resolveCaptureSource(target, gl, `${describeHost(host)}: "${param.key}" source`);
   if (!source) return { kind: "error" };
-  source.visible = source.canvas.hasAttribute(VFX_REF_VISIBLE_ATTR);
   cache.set(target, source);
   return { kind: "source", source };
 }
@@ -467,6 +468,13 @@ function findBackdropWrapper(owner: HTMLElement): HTMLCanvasElement | null {
   return null;
 }
 
+/** The exporter writes `layoutsubtree`; a browser that dropped it needs `content="drawable"` and `drawable` instead. */
+function adoptCaptureForm(canvas: HTMLCanvasElement, inner: HTMLElement): void {
+  if (htmlInCanvasForm() !== "drawable") return;
+  markCaptureCanvas(canvas, "drawable");
+  markCaptured(inner, "drawable");
+}
+
 /**
  * The `<canvas layoutsubtree class="hf-vfx-src">` that supplies `owner`'s
  * pixels, plus its 2-D context. Never injected at runtime: the compiler derives
@@ -490,7 +498,7 @@ function resolveCaptureSource(
   label: string,
 ): VfxCaptureSource | undefined {
   const backdrop = findBackdropWrapper(owner);
-  const canvas = backdrop ?? owner.querySelector("canvas.hf-vfx-src");
+  const canvas = backdrop ?? owner.querySelector(":scope > canvas.hf-vfx-src");
   const inner = isCanvasElement(canvas) ? canvas.querySelector(":scope > .hf-vfx-in") : null;
   if (!isCanvasElement(canvas) || !isHtmlElement(inner)) {
     reportVfxError(
@@ -498,6 +506,17 @@ function resolveCaptureSource(
         `<canvas layoutsubtree class="hf-vfx-src"><div class="hf-vfx-in">…</div></canvas> in ` +
         `source: inside the element for its own pixels, or beside it with ` +
         `data-vfx-for="${owner.id}" for the layers below it.`,
+    );
+    return undefined;
+  }
+  if (
+    canvas.querySelector("canvas.hf-vfx-src") ||
+    canvas.parentElement?.closest("canvas.hf-vfx-src")
+  ) {
+    reportVfxError(
+      `${label}: a capture canvas nested inside another capture canvas blocks ` +
+        `the renderer's main thread in drawElementImage, so this chain is not ` +
+        `registered. Keep each .hf-vfx-src out of every other .hf-vfx-src subtree.`,
     );
     return undefined;
   }
@@ -509,14 +528,16 @@ function resolveCaptureSource(
     );
     return undefined;
   }
+  adoptCaptureForm(canvas, inner);
   return {
     canvas,
     inner,
     ctx,
     texture: createCaptureTexture(gl),
     backdrop: backdrop !== null,
-    // Only a `ref` source may be visible; `resolveRefSource` sets it.
-    visible: false,
+    // Read here, not by the caller: a canvas reached as a host's own source
+    // and as a ref would otherwise get two objects with opposite `keepBitmap`.
+    visible: canvas.hasAttribute(VFX_REF_VISIBLE_ATTR),
     emptyBoxReported: false,
     laidOutEmpty: deviceSize(inner) === null,
   };
@@ -532,13 +553,8 @@ function resolveCaptureSource(
  * Only the OUTPUT canvas is watched: `.hf-vfx-src` is a 2-D context and is
  * unaffected by GL context loss.
  *
- * Restore is deliberately unhandled — the entry stays lost for as long as this
- * registry does. `initVfx` already re-scans and re-registers every host when
- * the composition mounts and again when a sub-composition arrives, rebuilding
- * every program, texture and framebuffer from scratch; a second, narrower
- * rebuild path for `webglcontextrestored` alone would duplicate that one and
- * be free to drift from it. `preventDefault()` still runs, so the context is
- * restorable if a follow-up wants to take it.
+ * A lost entry stays lost for as long as its registry does; `rebuildLostVfx`
+ * re-runs `initVfx` once the context is restored, the one rebuild path.
  */
 function watchContextLoss(entry: VfxEntry): void {
   entry.out.addEventListener("webglcontextlost", (event) => {
@@ -550,6 +566,12 @@ function watchContextLoss(entry: VfxEntry): void {
     entry.contextLost = true;
     reportVfxError(`${describeHost(entry.host)}: WebGL context lost.`);
   });
+}
+
+/** Rebuilds every chain once none is still waiting on its context: a rebuild on a lost one drops the host for good. */
+export function rebuildLostVfx(root: HTMLElement): void {
+  if (!registry.some((entry) => entry.contextLost)) return;
+  if (registry.every((entry) => !entry.gl.isContextLost())) initVfx(root, registryFps);
 }
 
 /** The host's chain, or `null` once the reason it is unusable has been said. */
@@ -1189,14 +1211,14 @@ function awaitCanvasPaint(canvas: HTMLCanvasElement): Promise<"painted" | "timeo
     const finish = (outcome: "painted" | "timeout"): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      wallClearTimeout(timer);
       canvas.removeEventListener("paint", onPaint);
       resolve(outcome);
     };
     const onPaint = (): void => finish("painted");
     // Cleared by `finish`, so the common case adds no latency and leaves no
     // timer behind; on a canvas that never paints it is the only way out.
-    const timer = setTimeout(() => finish("timeout"), CAPTURE_PAINT_TIMEOUT_MS);
+    const timer = wallSetTimeout(() => finish("timeout"), CAPTURE_PAINT_TIMEOUT_MS);
     canvas.addEventListener("paint", onPaint, { once: true });
     try {
       (canvas as RequestPaintCanvas).requestPaint?.();
@@ -1392,5 +1414,8 @@ export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
   // `__hf_page_composite_resolve` — so a `self` chain painted nothing there, in
   // silence. The runtime has to be able to finish its own frame.
   if (options?.engineMode) armPageComposite();
-  registerSeekCompletion(capturePreviewThenPaint(capturing, t, seq, options?.engineMode === true));
+  registerSeekCompletion(
+    capturePreviewThenPaint(capturing, t, seq, options?.engineMode === true),
+    "vfx",
+  );
 }

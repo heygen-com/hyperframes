@@ -140,7 +140,12 @@ const childProcess = require("node:child_process");
 const realSpawn = childProcess.spawn;
 childProcess.spawn = function (command, args, options) {
   if (Array.isArray(args) && args[0] === "-e" && String(args[1]).includes("posthog")) {
-    (0, eval)(args[1]);
+    // The real child reads and deletes args[2]; do the same, then run only its fetch.
+    const file = String(args[2]);
+    const body = require("node:fs").readFileSync(file, "utf8");
+    require("node:fs").unlinkSync(file);
+    const fetchOnly = String(args[1]).slice(String(args[1]).indexOf("fetch("));
+    (0, eval)(fetchOnly.replace("body:b,", "body:" + JSON.stringify(body) + ","));
     return { unref() {}, on() { return this; } };
   }
   return realSpawn.call(this, command, args, options);
@@ -420,6 +425,28 @@ check(
   "browser_version_major is a positive number",
   typeof posEvent.browser_version_major === "number" && posEvent.browser_version_major > 0,
   posEvent.browser_version_major,
+);
+const isPct = (v) => typeof v === "number" && v >= 0 && v <= 100;
+check(
+  "cpu_busy_avg_pct is a percentage",
+  isPct(posEvent.cpu_busy_avg_pct),
+  posEvent.cpu_busy_avg_pct,
+);
+check(
+  "cpu_busy_peak_pct is a percentage at or above the average",
+  isPct(posEvent.cpu_busy_peak_pct) && posEvent.cpu_busy_peak_pct >= posEvent.cpu_busy_avg_pct,
+  posEvent.cpu_busy_peak_pct,
+);
+check(
+  "cpu_cores_busy_peak is a core count",
+  Number.isInteger(posEvent.cpu_cores_busy_peak) &&
+    posEvent.cpu_cores_busy_peak <= posEvent.cpu_count,
+  posEvent.cpu_cores_busy_peak,
+);
+check(
+  "load_avg_start and load_avg_end are present",
+  typeof posEvent.load_avg_start === "number" && typeof posEvent.load_avg_end === "number",
+  [posEvent.load_avg_start, posEvent.load_avg_end],
 );
 
 console.log("render: negative fixture (no media, root/body matched, no skill flag, clean env)");

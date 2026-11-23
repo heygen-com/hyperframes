@@ -25,7 +25,7 @@ import {
   type PreviewTarget,
 } from "./timelineElementHelpers";
 import { postRuntimeControlMessage } from "./runtimeProtocol";
-import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
+import { transitionLabelsForDocument } from "@hyperframes/core/studio-preview-mark";
 
 // ---------------------------------------------------------------------------
 // Viewport / DOM normalisation
@@ -101,7 +101,7 @@ function isPreviewPlayerHost(value: unknown): value is PreviewPlayerHost {
   return value instanceof HTMLElement;
 }
 
-function resolvePreviewPlayerHost(iframe: HTMLIFrameElement): PreviewPlayerHost | null {
+export function resolvePreviewPlayerHost(iframe: HTMLIFrameElement): PreviewPlayerHost | null {
   const root = iframe.getRootNode();
   if (
     typeof ShadowRoot !== "undefined" &&
@@ -208,76 +208,9 @@ export function resolveIframe(el: Element | null): HTMLIFrameElement | null {
 // ---------------------------------------------------------------------------
 // Audio scrubbing
 // ---------------------------------------------------------------------------
-// Plays a brief slice of the music track while the user drags the playhead,
-// like an NLE scrub. Repeated calls keep playback alive; it auto-pauses shortly
-// after scrubbing stops and restores the element's prior muted state.
+// The preview's runtime plays the slice, so a sealed frame scrubs as an open one does.
 
-const SCRUB_VOLUME = 0.25;
-
-let scrubAudioEl: HTMLAudioElement | null = null;
-let scrubStopTimer: ReturnType<typeof setTimeout> | null = null;
-let scrubPrevMuted: boolean | null = null;
-let scrubPrevVolume: number | null = null;
-
-// Resolve the SAME element the store identified as music: prefer that row's own
-// element, then the role attribute, and only fall back to the first <audio>
-// (which could be a voiceover, so the row hint matters).
-/**
- * `doc` is the preview iframe's document, so its `<audio>` nodes are instances of
- * the IFRAME's `HTMLAudioElement`, never this module's. `instanceof
- * HTMLAudioElement` here is false for every one of them, which silently threw the
- * `music` hint away and fell through to "first `<audio>` in the document" — the
- * very thing the comment above warns can be a voiceover. Ask what the node IS.
- * Same rule and same reasoning as packages/core/src/runtime/domRealm.ts.
- */
-function isAudioNode(node: Element | null): node is HTMLAudioElement {
-  return (
-    node !== null &&
-    node.namespaceURI === "http://www.w3.org/1999/xhtml" &&
-    node.localName === "audio"
-  );
-}
-
-function resolveScrubAudioEl(doc: Document, music?: PreviewTarget | null): HTMLAudioElement | null {
-  if (music) {
-    const byId = previewElementFinder(doc, "audio")(music);
-    if (isAudioNode(byId)) return byId;
-  }
-  return (
-    doc.querySelector<HTMLAudioElement>("audio[data-timeline-role='music']") ??
-    doc.querySelector<HTMLAudioElement>("audio")
-  );
-}
-
-/** The runtime stops any media running under a paused clock, and a scrub audition
- *  IS media running under a paused clock, so it has to borrow the element. Every
- *  hop is optional: a runtime predating the hook must no-op, not throw. Wrapped in
- *  named calls so `applyScrub` does not carry the optional chains' branches. */
-function leaseScrubElement(el: HTMLAudioElement): void {
-  (el.ownerDocument.defaultView as IframeWindow | null)?.__hf?.leasePausedMedia?.(el);
-}
-
-function releaseScrubElement(el: HTMLAudioElement): void {
-  (el.ownerDocument.defaultView as IframeWindow | null)?.__hf?.releasePausedMedia?.(el);
-}
-
-function applyScrub(el: HTMLAudioElement, audioFileTime: number, previewVolume: number): void {
-  if (scrubAudioEl && scrubAudioEl !== el) stopScrubPreviewAudio();
-  if (scrubPrevMuted === null) scrubPrevMuted = el.muted;
-  if (scrubPrevVolume === null) scrubPrevVolume = el.volume;
-  scrubAudioEl = el;
-  leaseScrubElement(el);
-  try {
-    el.muted = false;
-    el.volume = SCRUB_VOLUME * normalizePreviewVolume(previewVolume);
-    if (Math.abs(el.currentTime - audioFileTime) > 0.04) el.currentTime = audioFileTime;
-    if (el.paused) void el.play().catch(() => {});
-  } catch {
-    /* element not ready */
-  }
-  if (scrubStopTimer) clearTimeout(scrubStopTimer);
-  scrubStopTimer = setTimeout(stopScrubPreviewAudio, 140);
-}
+let scrubFrame: Window | null = null;
 
 /**
  * Scrub the preview music audio to `audioFileTime` (seconds into the source
@@ -294,37 +227,22 @@ export function scrubPreviewAudio(
     stopScrubPreviewAudio();
     return;
   }
-  let doc: Document | null = null;
-  try {
-    doc = iframe.contentDocument;
-  } catch {
-    return;
-  }
-  if (!doc) return;
-  const el = resolveScrubAudioEl(doc, music);
-  if (el) applyScrub(el, audioFileTime, previewVolume);
+  const frame = iframe.contentWindow;
+  if (scrubFrame && scrubFrame !== frame) stopScrubPreviewAudio();
+  scrubFrame = frame;
+  const target = music
+    ? { id: music.id, hfId: music.hfId, domId: music.domId, sourceFile: music.sourceFile }
+    : null;
+  postRuntimeControlMessage(frame, "scrub-audio", {
+    target,
+    time: audioFileTime,
+    volume: normalizePreviewVolume(previewVolume),
+  });
 }
 
 export function stopScrubPreviewAudio(): void {
-  if (scrubStopTimer) {
-    clearTimeout(scrubStopTimer);
-    scrubStopTimer = null;
-  }
-  const el = scrubAudioEl;
-  scrubAudioEl = null;
-  if (!el) return;
-  // `scrubStopTimer` guarantees this runs within ~140 ms of the last scrub, so
-  // the borrow cannot outlive the audition.
-  releaseScrubElement(el);
-  try {
-    el.pause();
-    if (scrubPrevMuted !== null) el.muted = scrubPrevMuted;
-    if (scrubPrevVolume !== null) el.volume = scrubPrevVolume;
-  } catch {
-    /* ignore */
-  }
-  scrubPrevMuted = null;
-  scrubPrevVolume = null;
+  postRuntimeControlMessage(scrubFrame, "scrub-audio", { time: null });
+  scrubFrame = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -496,7 +414,7 @@ export function buildMissingCompositionElements(
   const hosts = doc.querySelectorAll("[data-composition-id][data-start]");
   const missing: TimelineElement[] = [];
 
-  const resolveEnd = createReferenceEndResolver(createTimedElementLookup(doc), iframeWin);
+  let resolveEnd: ReturnType<typeof createReferenceEndResolver> | undefined;
   const masterTime = createRuntimeStartTimeResolver({
     timelineRegistry: iframeWin.__timelines,
     includeAuthoredTimingAttrs: true,
@@ -508,6 +426,7 @@ export function buildMissingCompositionElements(
     const compId = el.getAttribute("data-composition-id");
     if (!compId || compId === rootCompId) continue;
     if (existingIds.has(el.id) || existingIds.has(compId)) continue;
+    resolveEnd ??= createReferenceEndResolver(createTimedElementLookup(doc), iframeWin);
     const entry = buildMissingCompositionEntry({
       doc,
       iframeWin,
@@ -521,7 +440,9 @@ export function buildMissingCompositionElements(
     if (entry) missing.push(entry);
   }
 
-  // Patch existing elements that are missing compositionSrc
+  // Patch existing elements that are missing compositionSrc; only a host carrying its source can supply one.
+  if (!doc.querySelector("[data-composition-src], [data-composition-file]"))
+    return { missing, updatedEls: currentEls as TimelineElement[], patched: false };
   let patched = false;
   const findHost = previewElementFinder(doc);
   const updatedEls = (currentEls as TimelineElement[]).map((existing) => {

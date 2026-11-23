@@ -12,17 +12,23 @@ let pendingResult: CommandResult = SUCCESS_RESULT;
 let rootExitRequester: ((exitCode: number) => void) | undefined;
 let rootExitCodeSanitizer: (() => void) | undefined;
 
+export const USAGE_EXIT_CODE = 2;
+
 export class CliUsageError extends Error {
   readonly result: CommandResult;
+  readonly hint?: string;
+  readonly code: string;
 
   constructor(
     message = "Invalid command usage",
-    options: { exitCode?: number; presented?: boolean } = {},
+    options: { exitCode?: number; presented?: boolean; hint?: string; code?: string } = {},
   ) {
     super(message);
     this.name = "CliUsageError";
+    this.hint = options.hint;
+    this.code = options.code ?? "usage_error";
     this.result = {
-      exitCode: options.exitCode ?? 1,
+      exitCode: options.exitCode ?? USAGE_EXIT_CODE,
       kind: "usage_error",
       presented: options.presented,
     };
@@ -31,13 +37,15 @@ export class CliUsageError extends Error {
 
 export class CliRuntimeError extends Error {
   readonly result: CommandResult;
+  readonly code: string;
 
   constructor(
     message = "Command failed",
-    options: { exitCode?: number; presented?: boolean; cause?: unknown } = {},
+    options: { exitCode?: number; presented?: boolean; cause?: unknown; code?: string } = {},
   ) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = "CliRuntimeError";
+    this.code = options.code ?? "runtime_error";
     this.result = {
       exitCode: options.exitCode ?? 1,
       kind: "runtime_error",
@@ -57,15 +65,23 @@ export class CliResultSignal extends Error {
   }
 }
 
-export function failCommand(exitCode = 1, cause?: unknown): never {
-  throw new CliRuntimeError("Command failed", { exitCode, presented: true, cause });
+export function failCommand(exitCode = 1, cause?: unknown, code?: string): never {
+  throw new CliRuntimeError("Command failed", { exitCode, presented: true, cause, code });
 }
 
-export function failUsage(exitCode = 1): never {
+export function failUsage(exitCode = USAGE_EXIT_CODE): never {
   throw new CliUsageError("Invalid command usage", { exitCode, presented: true });
 }
 
+let firstFailureStack: string | undefined;
+const noteFailure = (exitCode: number) => {
+  if (exitCode !== 0) firstFailureStack ??= new Error("the run failed here").stack;
+};
+
+export const failureOrigin = (): string | undefined => firstFailureStack;
+
 export function finishCommand(exitCode = 0): never {
+  noteFailure(exitCode);
   throw new CliResultSignal({
     exitCode,
     kind: exitCode === 0 ? "success" : "runtime_error",
@@ -75,6 +91,7 @@ export function finishCommand(exitCode = 0): never {
 
 /** Record a non-fatal result while allowing output/finalizers to complete. */
 export function setCommandResult(result: CommandResult): void {
+  noteFailure(result.exitCode);
   if (pendingResult.exitCode !== 0 && result.exitCode === 0) return;
   pendingResult = result;
 }
@@ -108,8 +125,34 @@ export function sanitizeSuccessfulExitCode(): void {
   rootExitCodeSanitizer?.();
 }
 
+export async function outputWritten(): Promise<void> {
+  const written = (stream: NodeJS.WriteStream) =>
+    new Promise<void>((resolve) => stream.write("", () => resolve()));
+  await Promise.all([written(process.stdout), written(process.stderr)]);
+}
+
+let drainsToExit = false;
+const DRAIN_GRACE_MS = 8_000;
+
+export function drainToExit(): void {
+  drainsToExit = true;
+}
+
+export interface ProcessEnd {
+  exit(exitCode: number): void;
+  setExitCode(exitCode: number): void;
+  later: typeof setTimeout;
+}
+
+export function endProcess(exitCode: number, host: ProcessEnd): void {
+  if (!drainsToExit) return host.exit(exitCode);
+  host.setExitCode(exitCode);
+  host.later(() => host.exit(exitCode), DRAIN_GRACE_MS).unref();
+}
+
 /** Ask cli.ts to finalize telemetry/output and then terminate the process. */
 export function requestCliExit(exitCode = 0): void {
+  noteFailure(exitCode);
   if (!rootExitRequester) {
     setCommandResult({
       exitCode,
@@ -119,4 +162,25 @@ export function requestCliExit(exitCode = 0): void {
     return;
   }
   rootExitRequester(exitCode);
+}
+
+type UnrefableTimer = {
+  unref: () => void;
+};
+
+function isUnrefableTimer(
+  timer: ReturnType<typeof setTimeout>,
+): timer is ReturnType<typeof setTimeout> & UnrefableTimer {
+  return (
+    typeof timer === "object" &&
+    timer !== null &&
+    "unref" in timer &&
+    typeof timer.unref === "function"
+  );
+}
+
+/** For a command whose result is out: ends the process if anything it started is still holding it. */
+export function scheduleCliExit(exitCode = 0): void {
+  const timer = setTimeout(() => requestCliExit(exitCode), 100);
+  if (isUnrefableTimer(timer)) timer.unref();
 }

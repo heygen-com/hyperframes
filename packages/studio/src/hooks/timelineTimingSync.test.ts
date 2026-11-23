@@ -778,7 +778,7 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
     expect(reloadPreview).toHaveBeenCalledTimes(1);
     expect(consoleError).toHaveBeenCalledWith(
       expect.stringContaining("GSAP"),
-      expect.objectContaining({ message: "Failed to restore index.html" }),
+      expect.objectContaining({ message: "Failed to restore index.html (503)" }),
     );
   });
 

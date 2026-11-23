@@ -123,17 +123,30 @@ const ALLOW = new Set([
   ...REACT_DOM_EXPORTS,
 ]);
 
-// Files a skill workflow writes into the user's project at run time; skill docs name them bare.
+// Files a skill workflow or a CLI command (`capture`, `transcribe`) writes into the user's project at run time; skill docs name them bare.
 const PROJECT_FILES = new Set([
   "frame.md",
   "STORYBOARD.md",
   "SCRIPT.md",
+  "audio_meta.json",
   "BRIEF.md",
-  "storyboard.html",
+  "boards/storyboard.html",
   "design.md",
   "_role.md",
   "cinematic.json",
   "safe-zones.json",
+  "BLOCKED.md",
+  "REVIEW.md",
+  "STORYLINES.md",
+  "assets/transcript.json",
+  "transcript.json",
+  "REVERSE.md",
+  ".hyperframes/credit-limit.json",
+  "asset-descriptions.md",
+  "extracted/page.html",
+  "extracted/visible-text.txt",
+  "extracted/tokens.json",
+  "extracted/design-styles.json",
 ]);
 
 // A URL, an absolute path, a `<sha>:<path>`, build output or a project file: none resolve in the tree.
@@ -178,8 +191,46 @@ function literalEnd(line, start, regex) {
   return -1;
 }
 
+// Index just past the literal opening at `i` (string, template or regex), or -1. `before` is the code preceding it.
+// A `/` after a value, `<`, `++` or `--` is division or a tag (`a / b`, `</p>`, `i++ / 2`).
+function literalAt(line, i, before) {
+  const ch = line[i];
+  if (ch === "`") return templateEnd(line, i);
+  // ponytail: `return /re/` reads as division; add a keyword check if that ever hides a comment.
+  const regex = ch === "/" && !/(?:[\w$)\]<]|\+\+|--)$/.test(before.trimEnd());
+  const end = regex || `"'`.includes(ch) ? literalEnd(line, i, regex) : -1;
+  // A regex never closes on a comment opener: this `/` is division, e.g. continued from the line above.
+  return regex && (line[end] === "/" || line[end] === "*") ? -1 : end;
+}
+
+// A `${…}` holds code, so a backtick in it opens a nested template rather than closing this one.
+function templateEnd(line, start) {
+  for (let i = start + 1; i < line.length; i++) {
+    if (line[i] === "\\") i++;
+    else if (line[i] === "`") return i + 1;
+    else if (line[i] === "$" && line[i + 1] === "{") {
+      const end = substitutionEnd(line, i + 2);
+      if (end === -1) return -1;
+      i = end - 1;
+    }
+  }
+  return -1;
+}
+
+function substitutionEnd(line, start) {
+  let depth = 0;
+  for (let i = start; i < line.length; ) {
+    const ch = line[i];
+    if (ch === "}" && depth === 0) return i + 1;
+    if (ch === "{") depth++;
+    if (ch === "}") depth--;
+    const end = literalAt(line, i, line.slice(start, i));
+    i = end === -1 ? i + 1 : end;
+  }
+  return -1;
+}
+
 /** stripStrings for C-like code, plus regex literals, so `/["'`]/` opens no string or template.
- *  A `/` after a value, `<`, `++` or `--` is division or a tag (`a / b`, `</p>`, `i++ / 2`).
  *  Stops at the first comment. */
 function stripLiterals(line) {
   let out = "";
@@ -187,11 +238,7 @@ function stripLiterals(line) {
     const ch = line[i];
     const comment = ch === "/" && (line[i + 1] === "/" || line[i + 1] === "*");
     if (comment) return out + line.slice(i);
-    // ponytail: `return /re/` reads as division; add a keyword check if that ever hides a comment.
-    const regex = ch === "/" && !/(?:[\w$)\]<]|\+\+|--)$/.test(out.trimEnd());
-    let end = regex || `"'\``.includes(ch) ? literalEnd(line, i, regex) : -1;
-    // A regex never closes on a comment opener: this `/` is division, e.g. continued from the line above.
-    if (regex && (line[end] === "/" || line[end] === "*")) end = -1;
+    const end = literalAt(line, i, out);
     if (end === -1) {
       out += ch;
       i++;
@@ -872,6 +919,30 @@ export function checkComments(root, files, scope = { kind: "all" }) {
   return { failures: [...failures, ...blockFailures], warnings, examined };
 }
 
+function requireCheckAttrSource(root) {
+  const version = execFileSync("git", ["version"], { cwd: root, encoding: "utf8" }).trim();
+  const [major, minor] = (version.match(/(\d+)\.(\d+)/) ?? []).slice(1).map(Number);
+  if (major < 2 || (major === 2 && minor < 40)) {
+    throw new Error(
+      `The comment check reads attributes at a ref with \`git check-attr --source\`, which needs git 2.40 or newer; found "${version}".`,
+    );
+  }
+}
+
+export function generatedPaths(root, ref, paths) {
+  if (paths.length === 0) return new Set();
+  requireCheckAttrSource(root);
+  const attributes = execFileSync(
+    "git",
+    ["check-attr", `--source=${ref}`, "-z", "--stdin", "linguist-generated"],
+    { cwd: root, encoding: "utf8", input: `${paths.join("\0")}\0`, maxBuffer: 64e6 },
+  ).split("\0");
+  const generated = new Set();
+  for (let i = 0; i + 2 < attributes.length; i += 3)
+    if (["set", "true"].includes(attributes[i + 2])) generated.add(attributes[i]);
+  return generated;
+}
+
 function mergeBase(root, ref) {
   return execFileSync("git", ["merge-base", ref, "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 }
@@ -984,8 +1055,10 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
   const base =
     explicit.length > 0 ? null : mergeBase(root, process.env.COMMENT_CHECK_BASE ?? "origin/main");
   // The probe is graded by the self-check only, or every PR that edits it would go red.
-  const files =
+  const candidates =
     base === null ? explicit : changedFiles(root, base).filter((file) => file !== PROBE);
+  const generated = base === null ? new Set() : generatedPaths(root, base, candidates);
+  const files = candidates.filter((file) => !generated.has(file));
   const scope = base === null ? { kind: "all" } : { kind: "lines", ...diffScope(root, base) };
   const { failures, warnings, examined } = checkComments(root, files, scope);
 

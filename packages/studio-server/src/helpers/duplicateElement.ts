@@ -20,13 +20,17 @@ export function duplicateElementInHtml(
   target: SourceMutationTarget,
   newId: string,
   at: number,
+  fallbackDuration = 0,
 ): DuplicateElementResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const element = findTargetElement(document, target);
   if (!element || !element.parentElement) return { html: source, matched: false, newId: null };
-  const duration = numericAttribute(element, "data-duration");
+  const duration = element.hasAttribute("data-duration")
+    ? numericAttribute(element, "data-duration")
+    : fallbackDuration;
+  const start = numericAttribute(element, "data-start");
   const track = numericAttribute(element, "data-track-index") ?? 0;
-  if (duration === null || numericAttribute(element, "data-start") === null) {
+  if (duration === null || start === null) {
     return { html: source, matched: false, newId: null };
   }
   const uniqueId = nextUniqueId(document, newId);
@@ -36,7 +40,7 @@ export function duplicateElementInHtml(
   clone.setAttribute("id", uniqueId);
   dedupeClonedCompositionId(document, clone);
   stripStableIds(clone);
-  clone.setAttribute("data-start", String(at));
+  moveElementStart(clone, start, at);
   element.parentElement.insertBefore(clone, element.nextSibling);
   const html = wrappedFragment ? document.body.innerHTML || "" : document.toString();
   return { html: ensureHfIds(html), matched: true, newId: uniqueId };
@@ -49,7 +53,7 @@ function rippleElements(
   duration: number,
   track: number,
 ): void {
-  for (const candidate of Array.from(document.querySelectorAll("[data-start][data-duration]"))) {
+  for (const candidate of Array.from(document.querySelectorAll("[data-start]"))) {
     if (candidate === element || candidate.getAttribute("data-track-index") !== String(track)) {
       continue;
     }
@@ -57,8 +61,15 @@ function rippleElements(
     if (start === null) continue;
     const metInsertionPoint = sameInstant(start, at);
     if (start < at && !metInsertionPoint) continue;
-    candidate.setAttribute("data-start", String((metInsertionPoint ? at : start) + duration));
+    moveElementStart(candidate, start, (metInsertionPoint ? at : start) + duration);
   }
+}
+
+function moveElementStart(element: Element, start: number, nextStart: number): void {
+  element.setAttribute("data-start", String(nextStart));
+  if (!element.hasAttribute("data-end")) return;
+  const end = numericAttribute(element, "data-end");
+  if (end !== null) element.setAttribute("data-end", String(end + (nextStart - start)));
 }
 
 function stripStableIds(element: Element): void {

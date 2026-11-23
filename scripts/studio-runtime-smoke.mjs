@@ -23,6 +23,7 @@ function text(body, contentType = "text/plain") {
 
 const PROJECT_PATH = `/api/projects/${PROJECT_ID}`;
 const GET_RESPONSES = new Map([
+  ["/api/share/bootstrap", json({ csrf: "s".repeat(43) })],
   [
     "/api/projects",
     json({ projects: [{ id: PROJECT_ID, dir: "/tmp/smoke-test", title: "Smoke test" }] }),
@@ -42,6 +43,7 @@ const GET_RESPONSES = new Map([
   [`${PROJECT_PATH}/renders`, json({ renders: [] })],
   [`${PROJECT_PATH}/lint`, json({ findings: [] })],
   [`${PROJECT_PATH}/selection`, json({ selection: null, updatedAt: null })],
+  [`${PROJECT_PATH}/recovery-drafts/index.html`, json({ draft: null })],
   [`${PROJECT_PATH}/history`, json({ entries: [], back: null, forward: null })],
   ["/api/registry/blocks", json([])],
   ["/api/fonts", json({ fonts: [] })],
@@ -52,7 +54,7 @@ const GET_RESPONSES = new Map([
   // interesting assertion is that the shell mounts clean, not that a blocking
   // notice renders. The notice has its own tests.
   ["/api/environment/ffmpeg", json({ ok: true })],
-  // The header's Edit with Framey asks this on load; shown, so the shell mounts with it.
+  // The header's "Install the desktop app" asks this on load; shown, so the shell mounts with it.
   [
     "/api/open-in-desktop",
     json({

@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,11 +10,13 @@ import { runFfmpeg } from "../utils/runFfmpeg.js";
 // Two CPUs: the extractor runs at most one ffmpeg at a time.
 vi.mock("os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("os")>()),
+  availableParallelism: () => 2,
   cpus: () => [{}, {}],
 }));
 
 const { extractAllVideoFrames, extractVideoFramesRange } = await import("./videoFrameExtractor.js");
 const { extractMediaMetadata } = await import("../utils/ffprobe.js");
+const { isFfmpegFilterAvailable } = await import("../utils/psnrFilterAvailability.js");
 
 describe.skipIf(process.platform === "win32")("extractAllVideoFrames ffmpeg concurrency", () => {
   const dir = mkdtempSync(join(tmpdir(), "hf-extract-concurrency-"));
@@ -61,6 +64,8 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames ffmpeg conc
       shim,
       [
         "#!/bin/sh",
+        // Capability probes (macOS asks for -hwaccels once) read no input and are not extractions.
+        `case " $* " in *" -i "*) ;; *) exec "${getFfmpegBinary()}" "$@" ;; esac`,
         'm="$HF_TEST_SHIM_DIR/running/$$"; : > "$m"',
         'ls "$HF_TEST_SHIM_DIR/running" | wc -l >> "$HF_TEST_SHIM_DIR/alive"',
         'case "$*" in *held-*) until [ -f "$HF_TEST_SHIM_DIR/release" ] || [ ! -d "$HF_TEST_SHIM_DIR" ]; do sleep 0.05; done ;; esac',
@@ -91,7 +96,7 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames ffmpeg conc
     expect(Math.max(...alive)).toBe(1);
   }, 120_000);
 
-  it("gives a variable-frame-rate clip's two-process pipeline one slot", async () => {
+  it("runs a variable-frame-rate clip's ffmpeg in the one slot", async () => {
     const clips = await Promise.all(
       [0, 1].map((i) =>
         synth(`vfr-${i}`, `color=c=0x${i ? "28C83C" : "C83C28"}:s=32x32:d=2:r=60`, [
@@ -100,9 +105,53 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames ffmpeg conc
       ),
     );
     const alive = await aliveCounts("vfr", clips, 1, 30);
-    expect(alive).toHaveLength(4);
-    expect(Math.max(...alive)).toBeLessThanOrEqual(2);
+    expect(alive).toHaveLength(2);
+    expect(Math.max(...alive)).toBe(1);
   }, 60_000);
+
+  const HAS_ZSCALE = /\szscale\s/.test(
+    spawnSync(getFfmpegBinary(), ["-hide_banner", "-filters"]).stdout.toString(),
+  );
+
+  it.skipIf(!HAS_ZSCALE)(
+    "finishes tone-mapped cuts of shared sources in the one slot, probing each source once",
+    async () => {
+      const hlg = [
+        ...[
+          "-vf",
+          "zscale=pin=bt709:tin=bt709:min=bt709:p=bt2020:t=arib-std-b67:m=bt2020nc:r=tv,format=yuv420p",
+        ],
+        ...["-color_primaries", "bt2020", "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc"],
+      ];
+      const sources = await Promise.all(
+        [0, 1].map((i) => synth(`hlg-${i}`, `testsrc=s=32x32:d=4:r=10,hue=h=${i * 90}`, hlg)),
+      );
+      const run = join(dir, "tonemap");
+      mkdirSync(join(run, "running"), { recursive: true });
+      // macOS checks for zscale once per process; take that check before the shim counts runs.
+      await isFfmpegFilterAvailable("zscale");
+      process.env.HF_TEST_SHIM_DIR = run;
+      process.env[FFMPEG_PATH_ENV] = shim;
+      try {
+        const cuts = Array.from({ length: 8 }, (_, cut) =>
+          extractVideoFramesRange(sources[cut % 2]!, `tonemap-${cut}`, cut * 0.4, 0.4, {
+            fps: 10,
+            outputDir: run,
+            toneMapHdrToSdr: true,
+          }),
+        );
+        expect((await Promise.all(cuts)).map((cut) => cut.totalFrames)).toEqual(Array(8).fill(4));
+      } finally {
+        if (previousFfmpeg === undefined) delete process.env[FFMPEG_PATH_ENV];
+        else process.env[FFMPEG_PATH_ENV] = previousFfmpeg;
+        delete process.env.HF_TEST_SHIM_DIR;
+      }
+      const alive = readFileSync(join(run, "alive"), "utf8").trim().split(/\s+/).map(Number);
+      expect(alive).toHaveLength(8 + 2 * 2);
+      expect(Math.max(...alive)).toBe(1);
+    },
+    60_000,
+  );
 
   it("lets a cancelled extraction leave the queue while another holds the slot", async () => {
     const [held, queued] = await Promise.all([

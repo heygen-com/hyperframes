@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=640, height=360" />
+    <title>HTML dir rtl</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+        background: rgb(255, 0, 255);
+        font-family: system-ui, sans-serif;
+      }
+
+      #root {
+        position: relative;
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+        background: #0b3d91;
+      }
+
+      #start-block {
+        position: absolute;
+        top: 32px;
+        left: 32px;
+        width: 160px;
+        height: 96px;
+        background: #f5c400;
+      }
+
+      #end-block {
+        position: absolute;
+        top: 32px;
+        right: 32px;
+        width: 96px;
+        height: 96px;
+        background: #19c37d;
+      }
+
+      #headline {
+        position: absolute;
+        top: 160px;
+        right: 32px;
+        margin: 0;
+        color: #ffffff;
+        font-size: 48px;
+      }
+
+      #progress {
+        position: absolute;
+        right: 32px;
+        bottom: 32px;
+        width: 576px;
+        height: 24px;
+        background: #ff4d4d;
+        transform-origin: right center;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="640"
+      data-height="360"
+      data-start="0"
+      data-duration="2"
+    >
+      <div id="start-block"></div>
+      <div id="end-block"></div>
+      <h1 id="headline">مرحبا بالعالم</h1>
+      <div id="progress"></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: 2, ease: "none" }, 0);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

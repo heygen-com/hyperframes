@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import puppeteer, { type Browser, type Page } from "puppeteer-core";
+import type { Browser, Page } from "puppeteer-core";
 import { resolveHeadlessShellPath } from "./browserManager.js";
 import { injectVideoFramesBatch } from "./screenshotService.js";
+import { closeTestChrome, listenOnLoopback, launchTestChrome } from "./__fixtures__/loopback.js";
 
 const chromePath = resolveHeadlessShellPath();
 const hasBrowser = chromePath !== undefined && spawnSync(chromePath, ["--version"]).status === 0;
@@ -30,15 +31,8 @@ describe.skipIf(!hasBrowser)("video frame transport in Chrome", () => {
   });
 
   beforeAll(async () => {
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const address = server.address();
-    if (!address || typeof address === "string") throw new Error("No test server address");
-    origin = `http://127.0.0.1:${address.port}`;
-    browser = await puppeteer.launch({
-      executablePath: chromePath,
-      headless: true,
-      args: ["--no-sandbox", "--disable-dev-shm-usage"],
-    });
+    origin = await listenOnLoopback(server);
+    browser = await launchTestChrome(chromePath);
   });
   beforeEach(async () => {
     if (page) await page.close();
@@ -51,7 +45,7 @@ describe.skipIf(!hasBrowser)("video frame transport in Chrome", () => {
     unexpectedFrameRequests = 0;
   });
   afterAll(async () => {
-    await browser?.close();
+    await closeTestChrome(browser);
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
@@ -109,6 +103,42 @@ describe.skipIf(!hasBrowser)("video frame transport in Chrome", () => {
       404,
     );
     expect(unexpectedFrameRequests).toBe(0);
+  });
+
+  it("publishes a replacement only after its full-resolution decode completes", async () => {
+    await injectVideoFramesBatch(page, [{ videoId: "a", dataUri: blueJpeg }]);
+    await page.addStyleTag({ content: ".__render_frame__ { visibility: visible !important }" });
+    await page.evaluate(() => {
+      const decode = HTMLImageElement.prototype.decode;
+      HTMLImageElement.prototype.decode = async function () {
+        document.documentElement.setAttribute("data-decode-pending", "1");
+        await new Promise<void>((resolve) =>
+          window.addEventListener("release-frame-decode", () => resolve(), { once: true }),
+        );
+        await decode.call(this);
+      };
+    });
+    const injection = injectVideoFramesBatch(page, [{ videoId: "a", dataUri: redPng }]);
+    try {
+      await page.waitForSelector('[data-decode-pending="1"]');
+      const visibility = await page.evaluate(() => {
+        const img = document.querySelector<HTMLImageElement>("img.__render_frame__");
+        if (!img) throw new Error("No replacement frame");
+        return getComputedStyle(img).visibility;
+      });
+      expect(visibility).toBe("hidden");
+    } finally {
+      await page.evaluate(() => window.dispatchEvent(new Event("release-frame-decode")));
+      await injection;
+    }
+    expect((await pixels())[0]?.rgba).toEqual([255, 0, 0, 255]);
+    expect(
+      await page.evaluate(() => {
+        const img = document.querySelector("img");
+        if (!img) throw new Error("No replacement frame");
+        return getComputedStyle(img).visibility;
+      }),
+    ).toBe("visible");
   });
 
   it("loads frames even while all same-origin download connections are busy", async () => {

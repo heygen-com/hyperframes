@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import {
   closeSync,
   fstatSync,
@@ -12,7 +14,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Identity is read through a descriptor, not a path, so the snapshot cannot be mistaken
 // for a check that the following write is then trusted to still hold (the pattern
@@ -26,7 +29,7 @@ const snapshot = (path: string) => {
   }
 };
 import { after, describe, it } from "node:test";
-import { writeGeneratedFile } from "./writeGeneratedFile.js";
+import { formatGeneratedSource, writeGeneratedFile } from "./writeGeneratedFile.js";
 
 const workDir = mkdtempSync(join(tmpdir(), "write-generated-"));
 after(() => rmSync(workDir, { recursive: true, force: true }));
@@ -81,5 +84,42 @@ describe("writeGeneratedFile", () => {
     assert.equal(writeGeneratedFile(out, "export const A = 1;\n"), true);
 
     assert.equal(readFileSync(out, "utf8"), "export const A = 1;\n");
+  });
+});
+
+describe("formatGeneratedSource", () => {
+  it("formats with the installed formatter when bun cannot be spawned from PATH", () => {
+    const require = createRequire(import.meta.url);
+    const moduleUrl = new URL("./writeGeneratedFile.ts", import.meta.url).href;
+    const source = 'export const value={quote:"a\\\"b"};';
+    const expected = formatGeneratedSource(source, target("formatted"));
+    assert.notEqual(expected, source);
+    const actual = execFileSync(
+      process.execPath,
+      [
+        "--import",
+        require.resolve("tsx"),
+        "--input-type=module",
+        "--eval",
+        `import { formatGeneratedSource } from ${JSON.stringify(moduleUrl)}; process.stdout.write(formatGeneratedSource(${JSON.stringify(source)}, ${JSON.stringify(target("formatted"))}));`,
+      ],
+      {
+        encoding: "utf8",
+        env: { ...process.env, PATH: "" },
+        cwd: resolve(dirname(fileURLToPath(import.meta.url)), "../../../.."),
+      },
+    );
+    assert.equal(actual, expected);
+  });
+
+  it("fails visibly before an invalid artifact can replace an existing file", () => {
+    const out = target("invalid");
+    const before = "export const original = true;\n";
+    writeFileSync(out, before);
+    assert.throws(
+      () => writeGeneratedFile(out, formatGeneratedSource("export const = ;", out)),
+      /format.*generated|generated.*format/i,
+    );
+    assert.equal(readFileSync(out, "utf8"), before);
   });
 });

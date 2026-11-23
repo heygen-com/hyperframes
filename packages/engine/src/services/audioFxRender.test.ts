@@ -322,6 +322,31 @@ describe.skipIf(!HAS_BROWSER)("browser render", () => {
     expect(db(rms(readWav(outPath).samples))).toBeLessThan(db(rms(readWav(input).samples)) - 3);
   }, 180_000);
 
+  it("applies clip gain ahead of the chain, so a compressor sees it", async () => {
+    const input = join(dir, "in.wav");
+    tone(input, 0.5, 200);
+    const chain: HfAudioFxChain = {
+      version: 1,
+      nodes: [
+        {
+          type: "compressor",
+          enabled: true,
+          params: { ...defaultAudioFxParams("compressor"), threshold: -40, ratio: 20 },
+        },
+      ],
+    };
+    const levelAt = async (inputGain: number): Promise<number> => {
+      const outPath = join(dir, `gain-${inputGain}.wav`);
+      await applyAudioFxChain(input, chain, outPath, { trackId: "t", inputGain });
+      return db(rms(readWav(outPath).samples));
+    };
+    // After the chain, a quarter gain would land exactly 12.04 dB down; ahead of
+    // it, the compressor takes most of that back.
+    const drop = (await levelAt(1)) - (await levelAt(0.25));
+    expect(drop).toBeGreaterThan(0);
+    expect(drop).toBeLessThan(6);
+  }, 180_000);
+
   it("shifts pitch up an octave, matching the preview worklet", async () => {
     const input = join(dir, "in.wav");
     tone(input, 0.5, 220);
@@ -908,43 +933,56 @@ describe("windowed rendering of a long input", () => {
     }
   });
 
-  it.skipIf(!HAS_BROWSER)("warns when a chain remembers longer than the pre-roll cap", async () => {
-    const input = join(dir, "warn.wav");
-    writeWav(input, new Float32Array(SR), SR, 1, true);
-    const delay = (feedback: number): HfAudioFxChain => ({
-      version: 1,
-      nodes: [{ type: "delay", id: "d", enabled: true, params: { time: 400, feedback, mix: 0.5 } }],
-    });
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    try {
-      const streaming = { ...limits, prerollSeconds: 0.5, maxPrerollSeconds: 2 };
-      await applyAudioFxChain(input, delay(0.95), join(dir, "w1.wav"), {
-        trackId: "t1",
-        streaming,
+  it.skipIf(!HAS_BROWSER)(
+    "warns when a chain remembers longer than the pre-roll cap",
+    async () => {
+      const input = join(dir, "warn.wav");
+      writeWav(input, new Float32Array(SR), SR, 1, true);
+      const delay = (feedback: number): HfAudioFxChain => ({
+        version: 1,
+        nodes: [
+          { type: "delay", id: "d", enabled: true, params: { time: 400, feedback, mix: 0.5 } },
+        ],
       });
-      expect(warn).toHaveBeenCalledTimes(1);
-      expect(String(warn.mock.calls[0]?.[0])).toContain("track t1");
-      await applyAudioFxChain(input, delay(0.1), join(dir, "w2.wav"), { trackId: "t2", streaming });
-      expect(warn).toHaveBeenCalledTimes(1);
-    } finally {
-      warn.mockRestore();
-    }
-  });
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        const streaming = { ...limits, prerollSeconds: 0.5, maxPrerollSeconds: 2 };
+        await applyAudioFxChain(input, delay(0.95), join(dir, "w1.wav"), {
+          trackId: "t1",
+          streaming,
+        });
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(String(warn.mock.calls[0]?.[0])).toContain("track t1");
+        await applyAudioFxChain(input, delay(0.1), join(dir, "w2.wav"), {
+          trackId: "t2",
+          streaming,
+        });
+        expect(warn).toHaveBeenCalledTimes(1);
+      } finally {
+        warn.mockRestore();
+      }
+    },
+    180_000,
+  );
 
-  it.skipIf(!HAS_BROWSER)("closes the input when the output cannot be opened", async () => {
-    const input = join(dir, "in.wav");
-    writeWav(input, new Float32Array(SR * 2), SR, 1, true);
-    openedFds.log.length = 0;
-    await expect(
-      applyAudioFxChain(input, chainOf("gain"), join(dir, "no-such-dir", "out.wav"), {
-        trackId: "t",
-        streaming: limits,
-      }),
-    ).rejects.toThrow();
-    const onInput = openedFds.log.filter((entry) => entry.path === input);
-    expect(onInput.length).toBeGreaterThan(0);
-    expect(onInput.every((entry) => entry.closed)).toBe(true);
-  });
+  it.skipIf(!HAS_BROWSER)(
+    "closes the input when the output cannot be opened",
+    async () => {
+      const input = join(dir, "in.wav");
+      writeWav(input, new Float32Array(SR * 2), SR, 1, true);
+      openedFds.log.length = 0;
+      await expect(
+        applyAudioFxChain(input, chainOf("gain"), join(dir, "no-such-dir", "out.wav"), {
+          trackId: "t",
+          streaming: limits,
+        }),
+      ).rejects.toThrow();
+      const onInput = openedFds.log.filter((entry) => entry.path === input);
+      expect(onInput.length).toBeGreaterThan(0);
+      expect(onInput.every((entry) => entry.closed)).toBe(true);
+    },
+    180_000,
+  );
 
   it("names the unsupported case when automation meets a file past 2 GiB", async () => {
     const path = join(dir, "huge-auto.wav");

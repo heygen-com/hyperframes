@@ -386,7 +386,7 @@ const EXTRACT_SCRIPT = `(() => {
       viewBox: svg.getAttribute("viewBox") || undefined,
       width: Math.round(rect.width),
       height: Math.round(rect.height),
-      outerHTML: svg.outerHTML.slice(0, 10000),
+      outerHTML: svg.outerHTML,
       isLogo: isLogo
     };
   }).filter(Boolean).slice(0, 50);

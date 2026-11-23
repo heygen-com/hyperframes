@@ -3,15 +3,15 @@ import {
   existsSync,
   linkSync,
   mkdirSync,
-  mkdtempSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
+import { renameWithRetry } from "@hyperframes/engine";
 import { dirname, join } from "node:path";
 import { PlanV2IntegrityError } from "./planV2Errors.js";
 import { assertPlanV2Sha256, planV2BlobPath } from "./planV2Layout.js";
+import { cannotHardLink, createStagingDir } from "@hyperframes/core/atomic-file";
 
 export interface PlanV2PublishBlob {
   readonly sourcePath: string;
@@ -26,16 +26,11 @@ export interface PlanV2ArtifactPublisher {
    * adapters must finish reading/uploading it before the promise resolves.
    */
   putBlob(blob: Readonly<PlanV2PublishBlob>): Promise<void>;
+  referenceStoredBlob?(blob: Readonly<Omit<PlanV2PublishBlob, "sourcePath">>): Promise<void>;
   /** Commit the manifest only after every referenced blob is durable. */
   commitManifest(manifestBytes: string): Promise<void>;
   /** Idempotent best-effort cleanup for an unpublished or partial plan. */
   abort(): Promise<void>;
-}
-
-function canFallbackToCopy(error: unknown): boolean {
-  if (!(error instanceof Error) || !("code" in error)) return false;
-  const code = error.code;
-  return code === "EXDEV" || code === "EPERM" || code === "EACCES" || code === "ENOTSUP";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -87,7 +82,7 @@ export class LocalPlanV2ArtifactPublisher implements PlanV2ArtifactPublisher {
     this.destinationDir = destinationDir;
     this.#linkFile = options.linkFile ?? linkSync;
     mkdirSync(dirname(destinationDir), { recursive: true });
-    this.temporaryDir = mkdtempSync(join(dirname(destinationDir), ".plan-v2-publish-"));
+    this.temporaryDir = createStagingDir(dirname(destinationDir), ".plan-v2-publish-");
   }
 
   async putBlob(blob: Readonly<PlanV2PublishBlob>): Promise<void> {
@@ -101,16 +96,16 @@ export class LocalPlanV2ArtifactPublisher implements PlanV2ArtifactPublisher {
     const destinationPath = planV2BlobPath(this.temporaryDir, digest);
     if (existsSync(destinationPath)) return;
     mkdirSync(dirname(destinationPath), { recursive: true });
-    const stagingDir = mkdtempSync(join(dirname(destinationPath), ".plan-v2-blob-"));
+    const stagingDir = createStagingDir(dirname(destinationPath), ".plan-v2-blob-");
     const temporaryPath = join(stagingDir, "blob");
     try {
       try {
         this.#linkFile(blob.sourcePath, temporaryPath);
       } catch (error) {
-        if (!canFallbackToCopy(error)) throw error;
+        if (!cannotHardLink(error)) throw error;
         copyFileSync(blob.sourcePath, temporaryPath);
       }
-      renameSync(temporaryPath, destinationPath);
+      renameWithRetry(temporaryPath, destinationPath);
     } finally {
       rmSync(stagingDir, { recursive: true, force: true });
     }
@@ -125,7 +120,7 @@ export class LocalPlanV2ArtifactPublisher implements PlanV2ArtifactPublisher {
       }
     }
     writeFileSync(join(this.temporaryDir, "plan.json"), manifestBytes, "utf-8");
-    renameSync(this.temporaryDir, this.destinationDir);
+    renameWithRetry(this.temporaryDir, this.destinationDir);
     this.#committed = true;
   }
 

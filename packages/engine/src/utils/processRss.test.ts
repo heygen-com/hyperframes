@@ -115,6 +115,21 @@ describe("sampleProcessRss", () => {
     expect(result).toEqual([{ pid: 9, rssMb: 2 }]);
   });
 
+  it.each([1, 2, 3])("keeps successful Windows samples when pid %i fails", async (failedPid) => {
+    const calls: number[] = [];
+    const exec = async (_file: string, args: readonly string[]) => {
+      const pid = Number(args[4]?.slice("PID eq ".length));
+      calls.push(pid);
+      if (pid === failedPid) throw new Error("tasklist timed out");
+      return { stdout: `"chrome.exe","${pid}","Console","1","${pid * 1024} K"\r\n` };
+    };
+
+    expect(await sampleProcessRss([1, 2, 3], exec, "win32")).toEqual(
+      [1, 2, 3].filter((pid) => pid !== failedPid).map((pid) => ({ pid, rssMb: pid })),
+    );
+    expect(calls).toEqual([1, 2, 3]);
+  });
+
   it("drops invalid pids and duplicates before calling ps", async () => {
     const calls: Array<readonly string[]> = [];
     const exec = async (_file: string, args: readonly string[]) => {

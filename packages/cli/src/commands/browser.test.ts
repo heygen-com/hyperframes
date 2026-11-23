@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const spinners: Array<{ running: boolean }> = [];
 const logError = vi.fn();
+// A person at a terminal: the prompts and spinners these tests drive are refused otherwise.
+vi.mock("../utils/attendedTerminal.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/attendedTerminal.js")>()),
+  isUnattended: () => false,
+}));
 vi.mock("@clack/prompts", () => ({
   intro: vi.fn(),
   outro: vi.fn(),
@@ -83,5 +88,51 @@ describe("browser ensure", () => {
 
     expect(logError).toHaveBeenCalledWith("EACCES: permission denied");
     expect(spinners.filter((s) => s.running)).toEqual([]);
+  });
+});
+
+describe("browser output for people", () => {
+  const ODD = "\u001b[2J\u0007";
+  const SHOWN = "\\x1b[2J\\x07";
+
+  beforeEach(() => {
+    spinners.length = 0;
+    logError.mockReset();
+    ensureBrowser.mockReset();
+    findBrowser.mockReset();
+    linuxArm = false;
+  });
+
+  // fails without the fix: the failure's own text is printed as it arrived.
+  it("shows control characters in an ensure failure as text", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    ensureBrowser.mockRejectedValue(new Error(`no browser at /opt/ch${ODD}rome`));
+    await expect(runEnsure(false)).rejects.toThrow("Command failed");
+    expect(logError).toHaveBeenCalledWith(`no browser at /opt/ch${SHOWN}rome`);
+  });
+
+  // fails without the fix: the browser's path is printed as it is on disk.
+  it("shows control characters in the found browser's path as text", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    ensureBrowser.mockResolvedValue({ executablePath: `/opt/ch${ODD}rome`, source: "system" });
+    await runEnsure(false);
+    const printed = log.mock.calls.flat().join("\n");
+    expect(printed).toContain(`/opt/ch${SHOWN}rome`);
+    expect(printed).not.toContain(ODD);
+  });
+
+  // fails without the fix: the subcommand is printed as it was typed.
+  it("shows control characters in an unknown subcommand as text", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(
+      browserCommand.run!({
+        args: { _: [], subcommand: `en${ODD}sure`, force: false },
+        rawArgs: [],
+        cmd: browserCommand,
+      }),
+    ).rejects.toThrow();
+    const printed = error.mock.calls.flat().join("\n");
+    expect(printed).toContain(`en${SHOWN}sure`);
+    expect(printed).not.toContain(ODD);
   });
 });

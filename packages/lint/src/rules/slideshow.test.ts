@@ -51,6 +51,18 @@ describe("slideshow lint rule", () => {
     expect(findings[0]!.code).toBe("slideshow_invalid");
   });
 
+  it.each(['"0"', "1e400"])(
+    "reports invalid slide timing %s as slideshow_invalid",
+    async (start) => {
+      const html = `<div data-composition-id="c" data-width="1920" data-height="1080">
+      <script type="application/hyperframes-slideshow+json">{"slides":[{"sceneId":"a","startTime":${start},"endTime":5}]}</script>
+    </div>`;
+      expect(await findSlideshow(html)).toEqual([
+        expect.objectContaining({ code: "slideshow_invalid", severity: "error" }),
+      ]);
+    },
+  );
+
   it.each([null, {}, { id: "h1", label: 42, target: "deep" }])(
     "reports malformed hotspot %j as a structure finding without crashing lint",
     async (hotspot) => {
@@ -85,5 +97,28 @@ describe("slideshow lint rule", () => {
     const findings = await findSlideshow(html);
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0]!.message).toContain("no-such-seq");
+  });
+
+  it("flags slideshow_unresolved_ref when a sceneId in the manifest is missing from the document", async () => {
+    const html = `<div data-composition-id="c" data-width="1920" data-height="1080">
+      <div data-composition-id="scene-a" data-start="0" data-duration="5"></div>
+      <script type="application/hyperframes-slideshow+json">{"slides":[{"sceneId":"missing-scene"}]}</script>
+    </div>`;
+    const findings = await findSlideshow(html);
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        code: "slideshow_unresolved_ref",
+        severity: "error",
+      }),
+    );
+  });
+
+  it("passes slideshow_unresolved_ref when all manifest sceneIds exist as data-composition-id", async () => {
+    const html = `<div data-composition-id="c" data-width="1920" data-height="1080">
+      <div data-composition-id="scene-1" data-start="0" data-duration="5"></div>
+      <script type="application/hyperframes-slideshow+json">{"slides":[{"sceneId":"scene-1"}]}</script>
+    </div>`;
+    const findings = await findSlideshow(html);
+    expect(findings.some((f) => f.code === "slideshow_unresolved_ref")).toBe(false);
   });
 });

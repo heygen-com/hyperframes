@@ -10,12 +10,24 @@ import {
   isStudioManualEditGestureCurrent,
   readAppliedStudioPathOffset,
   restoreStudioPathOffset,
+  restoreStudioPathOffsetStyles,
   type StudioPathOffsetSnapshot,
 } from "./manualEdits";
 import type { EditMoment } from "./manualEditsTypes";
-import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
+import {
+  computeDraggedGsapPosition,
+  DRAG_MOVING_ATTR,
+  stampGestureBase,
+} from "../../hooks/draggedGsapPosition";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
+import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
+import {
+  armDraftEndOnRelease,
+  endDraftKeepingWhatTheSaveWrites,
+  settleDraftTranslate,
+} from "./manualOffsetDraftEnd";
+import type { PreviewGestureStart } from "./previewGestureStartRead";
 
 interface OffsetDragGsap {
   set: (el: Element, vars: Record<string, number | string>) => void;
@@ -83,6 +95,7 @@ export interface ManualOffsetDragMember {
   initialOffset: { x: number; y: number };
   /** The move writes the element's own inline `translate`; offsets are then absolute translate px. */
   plainTranslate: boolean;
+  sizeSavedAsScale?: boolean;
   /**
    * The element's GSAP x/y at gesture start, captured in JS so a mid-drag
    * re-render (which reverts inline style + wipes the `data-hf-drag-gsap-base-*`
@@ -91,6 +104,8 @@ export interface ManualOffsetDragMember {
    * making the element accelerate away ("flies"). See applyOffsetDragDraftViaGsap.
    */
   baseGsap: { x: number; y: number };
+  /** The sealed preview's gesture start reported a tween moving it. */
+  moving?: true;
   initialPathOffset: StudioPathOffsetSnapshot;
   gestureToken: string;
   screenToOffset: ManualOffsetDragMatrix;
@@ -289,7 +304,7 @@ export function measureManualOffsetDragScreenToOffsetMatrix(
 
     return { ok: true, matrix: screenToOffset };
   } finally {
-    restoreStudioPathOffset(element, snapshot);
+    restoreStudioPathOffsetStyles(element, snapshot);
   }
 }
 
@@ -318,9 +333,12 @@ export function createManualOffsetDragMember(input: {
   rect: ManualOffsetDragRect;
   gesture?: "drag" | "nudge" | "resize"; // resize: the anchor that keeps its centre planted
   at?: EditMoment;
+  start?: PreviewGestureStart;
 }): ManualOffsetDragMemberResult {
-  const plainTranslate =
-    !!input.gesture && editsPlainCss(input.element, input.gesture === "resize" ? "resize" : "move");
+  const { start, gesture } = input;
+  const plainTranslate = start
+    ? !start.gsap
+    : !!gesture && editsPlainCss(input.element, gesture === "resize" ? "resize" : "move");
   // The APPLIED offset, never a dormant var, so a stale one can't fling the element off-screen.
   const initialOffset = plainTranslate
     ? readTranslatePx(input.element)
@@ -336,8 +354,9 @@ export function createManualOffsetDragMember(input: {
   // getProperty makes GSAP bake the CSS translate into its transform, so a plain move never reads it.
   const gsapX = (!plainTranslate && win?.gsap?.getProperty?.(input.element, "x")) || 0;
   const gsapY = (!plainTranslate && win?.gsap?.getProperty?.(input.element, "y")) || 0;
-  const baseGsap = { x: gsapX, y: gsapY };
-  if (!plainTranslate) stampGestureBase(input.element, initialOffset, baseGsap);
+  const baseGsap = start?.gsap ? { x: start.gsap.x, y: start.gsap.y } : { x: gsapX, y: gsapY };
+  const moving = start?.gsap?.moving === true;
+  if (!plainTranslate) stampGestureBase(input.element, initialOffset, baseGsap, moving);
 
   if (win?.__timelines) {
     const paused: string[] = [];
@@ -367,9 +386,10 @@ export function createManualOffsetDragMember(input: {
     scaleY: input.rect.editScaleY,
     plainTranslate,
   });
+  endPreviewDraft(input.element, "keep");
   if (!measured.ok) {
-    // GSAP transforms can defeat the probe: approximate with the preview scale. The commit
-    // reads GSAP's real position, so only the drag preview is imprecise.
+    // A stand-in has no box: the frame probed its element at the press. GSAP transforms can defeat
+    // the probe: approximate with the preview scale; the commit reads GSAP's real position.
     const scaleX = input.rect.editScaleX || 1;
     const scaleY = input.rect.editScaleY || 1;
     const w = readTransformWDivisor(input.element);
@@ -382,9 +402,10 @@ export function createManualOffsetDragMember(input: {
         initialOffset,
         plainTranslate,
         baseGsap,
+        ...(moving && { moving }),
         initialPathOffset,
         gestureToken,
-        screenToOffset: { a: w / scaleX, b: 0, c: 0, d: w / scaleY },
+        screenToOffset: start?.screenToOffset ?? { a: w / scaleX, b: 0, c: 0, d: w / scaleY },
         originRect: input.rect,
       },
     };
@@ -399,6 +420,7 @@ export function createManualOffsetDragMember(input: {
       initialOffset,
       plainTranslate,
       baseGsap,
+      ...(moving && { moving }),
       initialPathOffset,
       gestureToken,
       screenToOffset: measured.matrix,
@@ -426,6 +448,8 @@ function drawMemberOffset(
   offset: { x: number; y: number },
   commit: boolean,
 ): void {
+  const { x, y } = member.initialOffset;
+  drawPreviewDraft(member.element, { translate: { x: offset.x - x, y: offset.y - y } });
   if (member.plainTranslate) writeTranslatePx(member.element, offset);
   else if (applyOffsetDragDraftViaGsap(member.element, offset, member.baseGsap)) return;
   else if (commit) applyStudioPathOffset(member.element, offset);
@@ -442,27 +466,12 @@ export function applyManualOffsetDragDraft(
   return offset;
 }
 
-/**
- * Re-stamp the STABLE gesture-start base/offset before the source commit reads
- * them. A mid-gesture re-render can wipe these attrs; the commit converts the
- * drop offset → gsap x/y via computeDraggedGsapPosition, which without the base
- * falls back to the live (already-dragged) transform and re-adds the delta — so
- * the element flies off-screen the instant you drop it. The member holds the
- * true gesture-start values in JS, immune to the re-render.
- */
-export function stampGestureBase(el: HTMLElement, initialOffset: Point, baseGsap: Point): void {
-  el.setAttribute("data-hf-drag-gsap-base-x", String(baseGsap.x));
-  el.setAttribute("data-hf-drag-gsap-base-y", String(baseGsap.y));
-  el.setAttribute("data-hf-drag-initial-offset-x", String(initialOffset.x));
-  el.setAttribute("data-hf-drag-initial-offset-y", String(initialOffset.y));
-}
-
 function applyManualOffsetCommitValue(
   member: ManualOffsetDragMember,
   offset: { x: number; y: number },
 ): { x: number; y: number } {
   if (!member.plainTranslate)
-    stampGestureBase(member.element, member.initialOffset, member.baseGsap);
+    stampGestureBase(member.element, member.initialOffset, member.baseGsap, !!member.moving);
   drawMemberOffset(member, offset, true);
   return offset;
 }
@@ -472,7 +481,12 @@ export function applyManualOffsetDragCommit(
   dx: number,
   dy: number,
 ): { x: number; y: number } {
-  return applyManualOffsetCommitValue(member, resolveManualOffsetDragMemberOffset(member, dx, dy));
+  const offset = applyManualOffsetCommitValue(
+    member,
+    resolveManualOffsetDragMemberOffset(member, dx, dy),
+  );
+  armDraftEndOnRelease(member);
+  return offset;
 }
 
 /**
@@ -520,27 +534,16 @@ export function restoreManualOffsetDragMembers(members: ManualOffsetDragMember[]
   }
 }
 
-// Drop the draft's `translate: none` so the soft reload starts clean (#1673). When GSAP owns
-// the position it folded any translate into its transform, so one still showing applies twice.
-function settleDraftTranslate(element: HTMLElement, gsapOwnsPosition: boolean): void {
-  if (element.style.getPropertyValue("translate") === "none") {
-    element.style.removeProperty("translate");
-  }
-  if (!gsapOwnsPosition) return;
-  const view = element.ownerDocument.defaultView;
-  const underneath = view?.getComputedStyle(element).getPropertyValue("translate");
-  if (underneath && underneath !== "none") element.style.setProperty("translate", "none");
-}
-
-/** Teardown after a COMMITTED drag. */
 export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): void {
   for (const member of members) {
     if (!isStudioManualEditGestureCurrent(member.element, member.gestureToken)) continue;
     endStudioManualEditGesture(member.element, member.gestureToken);
+    endDraftKeepingWhatTheSaveWrites(member);
     member.element.removeAttribute("data-hf-drag-initial-offset-x");
     member.element.removeAttribute("data-hf-drag-initial-offset-y");
     member.element.removeAttribute("data-hf-drag-gsap-base-x");
     member.element.removeAttribute("data-hf-drag-gsap-base-y");
+    member.element.removeAttribute(DRAG_MOVING_ATTR);
     // Do NOT clearProps:"transform" — that nukes the committed GSAP position
     // and causes a visual snap-back before the soft reload re-applies it.
     const gsapOwnsPosition = !member.plainTranslate && Boolean(getOffsetDragGsap(member.element));

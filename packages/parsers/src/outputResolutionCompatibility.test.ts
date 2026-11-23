@@ -116,15 +116,92 @@ describe("checkOutputResolutionCompatibility", () => {
   });
 
   describe("scale constraints", () => {
-    it("flags downsampling (preset smaller than composition)", () => {
-      // 3840×2160 composition, landscape (1920×1080) preset → 0.5× DPR.
+    it("allows a preset smaller than the composition (0.5× DPR)", () => {
       const result = checkOutputResolutionCompatibility({
         compositionWidth: 3840,
         compositionHeight: 2160,
         outputResolution: "landscape",
       });
-      expect(result.ok).toBe(false);
-      expect(result.kind).toBe("downsampling");
+      expect(result.ok).toBe(true);
+    });
+
+    it.each([
+      [1920, 1080, "landscape-720p"],
+      [1920, 1080, "landscape-480p"],
+      [1080, 1920, "portrait-720p"],
+      [1080, 1920, "portrait-480p"],
+      [1080, 1080, "square-720p"],
+      [1080, 1080, "square-480p"],
+    ] as const)(
+      "allows %i×%i down to %s",
+      (compositionWidth, compositionHeight, outputResolution) => {
+        expect(
+          checkOutputResolutionCompatibility({
+            compositionWidth,
+            compositionHeight,
+            outputResolution,
+          }),
+        ).toEqual({ ok: true });
+      },
+    );
+
+    it.each([
+      [1280, 720, "landscape-1440p"],
+      [720, 1280, "portrait-1440p"],
+      [720, 720, "square-1440p"],
+      [2560, 1440, "landscape-1440p"],
+      [3840, 2160, "landscape-1440p"],
+      [2160, 3840, "portrait-1440p"],
+      [2160, 2160, "square-1440p"],
+    ] as const)(
+      "allows %i×%i to %s (an exact multiple or a smaller preset)",
+      (compositionWidth, compositionHeight, outputResolution) => {
+        expect(
+          checkOutputResolutionCompatibility({
+            compositionWidth,
+            compositionHeight,
+            outputResolution,
+          }),
+        ).toEqual({ ok: true });
+      },
+    );
+
+    it("refuses 1920×1080 to landscape-1440p: 4/3 is not an integer scale factor", () => {
+      const result = checkOutputResolutionCompatibility({
+        compositionWidth: 1920,
+        compositionHeight: 1080,
+        outputResolution: "landscape-1440p",
+      });
+      expect(result.kind).toBe("non-integer-scale");
+    });
+
+    it("keeps the 1440p tier when suggesting a swap for the wrong orientation", () => {
+      const result = checkOutputResolutionCompatibility({
+        compositionWidth: 2560,
+        compositionHeight: 1440,
+        outputResolution: "portrait-1440p",
+      });
+      expect(result.kind).toBe("aspect-mismatch");
+      expect(result.suggestedResolution).toBe("landscape-1440p");
+    });
+
+    it("keeps the 480p tier when suggesting a swap for the wrong orientation", () => {
+      const result = checkOutputResolutionCompatibility({
+        compositionWidth: 1920,
+        compositionHeight: 1080,
+        outputResolution: "portrait-480p",
+      });
+      expect(result.kind).toBe("aspect-mismatch");
+      expect(result.suggestedResolution).toBe("landscape-480p");
+    });
+
+    it("still refuses a near-16:9 composition a pixel too wide for an exact preset", () => {
+      const result = checkOutputResolutionCompatibility({
+        compositionWidth: 1921,
+        compositionHeight: 1080,
+        outputResolution: "landscape",
+      });
+      expect(result.kind).toBe("aspect-mismatch");
     });
 
     it("flags a non-integer scale factor for a same-aspect custom composition", () => {

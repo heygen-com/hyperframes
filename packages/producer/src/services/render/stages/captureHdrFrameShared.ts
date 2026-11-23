@@ -219,7 +219,7 @@ export async function captureSceneIntoBuffer(a: CaptureSceneArgs): Promise<void>
         hdrPerf,
       );
     } else {
-      blitHdrVideoLayer(
+      await blitHdrVideoLayer(
         sceneBuf,
         el,
         time,

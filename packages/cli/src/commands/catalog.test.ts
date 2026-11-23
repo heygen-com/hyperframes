@@ -1,8 +1,9 @@
 // fallow-ignore-file code-duplication
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { runCommand, type CommandDef } from "citty";
 
 import type { RegistryItem } from "@hyperframes/core";
-import { catalogRow, countUnindexed, pickByName, searchMissCommand } from "./catalog.js";
+import { catalogRow, countUnindexed, pickByName, searchMissReport } from "./catalog.js";
 
 /** The whole registry, which is what "in this registry" has to be measured against. */
 const registryNames = new Set(["fade-through", "whip-pan", "count-up"]);
@@ -72,6 +73,7 @@ describe("countUnindexed", () => {
 
 const state = vi.hoisted(() => ({
   registry: [] as Array<{ name: string; type: string; tags?: string[] }>,
+  registryUnreadable: "",
   artifactRevision: "revision-current",
   cachedVectorRevision: "revision-current",
   vectorFetches: 0,
@@ -107,12 +109,17 @@ vi.mock("../registry/resolver.js", () => ({
 }));
 
 vi.mock("../registry/remote.js", () => ({
-  fetchRegistryManifest: async () => ({
-    items: state.registry,
-    catalogArtifact: { revision: state.artifactRevision },
-  }),
+  readRegistryManifest: async () => {
+    if (state.registryUnreadable) throw new Error(state.registryUnreadable);
+    return { items: state.registry, catalogArtifact: { revision: state.artifactRevision } };
+  },
 }));
 
+// The terminal and CI switches below decide attendance; the agent running the suite must not.
+vi.mock("../telemetry/agent_runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../telemetry/agent_runtime.js")>()),
+  isAgentDriven: () => false,
+}));
 vi.mock("@clack/prompts", () => ({
   confirm: async () => state.confirmAnswer,
   isCancel: (value: unknown) => value === null,
@@ -171,6 +178,7 @@ vi.mock("../registry/localEmbedder.js", () => ({
 vi.mock("../registry/localSemantic.js", () => ({
   mediaSemanticRanking: async () => null,
   localSemanticRanking: async () => {
+    if (!state.runtimeOnDisk) throw new Error("the on-device runtime is not installed yet");
     if (state.rankingError) throw state.rankingError;
     return state.ranking;
   },
@@ -197,6 +205,7 @@ const component = (name: string): { name: string; type: string } => ({
 });
 
 interface Envelope {
+  query: string;
   tier: string;
   dropped: number;
   unindexed: number;
@@ -269,6 +278,7 @@ async function runForExit(
 }
 
 beforeEach(() => {
+  state.registryUnreadable = "";
   state.modelStatus = "ready";
   state.artifactRevision = "revision-current";
   state.cachedVectorRevision = "revision-current";
@@ -292,6 +302,69 @@ beforeEach(() => {
     { name: "whip-pan", score: 0.42 },
     { name: "fade-through", score: 0.31 },
   ];
+});
+
+describe("catalog when the registry cannot be read", () => {
+  it("exits non-zero with the reason instead of printing an empty list", async () => {
+    state.registryUnreadable =
+      "The registry could not be read: fetch failed (getaddrinfo ENOTFOUND raw.githubusercontent.com)";
+
+    const { exitCode, err } = await runForExit({ json: true });
+
+    expect(exitCode).toBe(1);
+    expect(err).toContain("The registry could not be read: fetch failed");
+    expect(err).toContain("raw.githubusercontent.com");
+    expect(err).not.toContain("[]");
+  });
+});
+
+describe("catalog on a terminal", () => {
+  it("prints registry tags with control characters escaped", async () => {
+    const esc = String.fromCharCode(27);
+    state.registry = [block("count-up", [`odd${esc}]52;c;cA==${String.fromCharCode(7)}`])];
+
+    const output = await runCatalog({});
+
+    expect(output).not.toContain(esc);
+    expect(output).toContain("odd\\x1b]52;c;cA==\\x07");
+  });
+});
+
+describe("catalog lines that repeat outside text", () => {
+  const ODD = `od${String.fromCharCode(27)}[2Jd\x07`;
+  const SHOWN = "od\\x1b[2Jd\\x07";
+
+  // fails without the fix: an item's name is printed as the registry sent it.
+  it("shows control characters in an item name as text", async () => {
+    state.registry = [block(`count-${ODD}`)];
+
+    const output = await runCatalog({});
+
+    expect(output).toContain(`count-${SHOWN}`);
+    expect(output).not.toContain("\x07");
+  });
+
+  // fails without the fix: the query is repeated as it was typed.
+  it("shows control characters in a query that matched nothing as text", async () => {
+    state.ranking = [];
+    state.modelStatus = "declined";
+
+    const { err } = await runForExit({ query: `quantum ${ODD}` });
+
+    expect(err).toContain(`No items match query "quantum ${SHOWN}".`);
+    expect(err).not.toContain("\x07");
+  });
+
+  // fails without the fix: the query is repeated as it was typed.
+  it("shows control characters in a query with no searchable words as text", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const { err } = await runForExit({ query: "実写\x07写真" });
+
+    expect(err).toContain('No searchable words in query "実写\\x07写真".');
+    expect(err).not.toContain("\x07");
+  });
 });
 
 describe("catalog --json meaning search", () => {
@@ -395,7 +468,7 @@ describe("catalog --json meaning search", () => {
     const envelope = await runEnvelope({ query: "number", words: "transition" });
 
     expect(envelope.shown).toBe(1);
-    expect(envelope.report_gap).toContain("number");
+    expect(envelope.query).toBe("number");
   });
 
   it("carries an on-device runtime failure into the JSON envelope", async () => {
@@ -459,9 +532,24 @@ describe("catalog --json meaning search", () => {
 
     expect(envelope.shown).toBeGreaterThan(0);
     expect(envelope.report_gap).toBe(
-      'npx hyperframes feedback --search-miss "make a number count up" ' +
-        '--wanted "<the move you needed>" --tier on-device',
+      'npx hyperframes feedback --search-miss --wanted "<the move you needed>" --tier on-device',
     );
+    expect(envelope.report_gap).not.toContain("make a number count up");
+  });
+
+  // fails without the fix: on Windows the envelope carried a bash-escaped line that runs "$(calc)" in PowerShell.
+  it("on Windows, hands back how to report the gap, not a line that would run the query", async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    onTestFinished(() => {
+      Object.defineProperty(process, "platform", platform);
+    });
+
+    const envelope = await runEnvelope({ query: "count up $(calc)" });
+
+    expect(envelope.query).toBe("count up $(calc)");
+    expect(envelope.report_gap).not.toContain("$(calc)");
+    expect(envelope.report_gap).toContain("--search-miss");
   });
 
   it("names the tier that actually answered in the gap-report command", async () => {
@@ -604,19 +692,12 @@ describe("a zero-result search", () => {
   });
 });
 
-describe("searchMissCommand", () => {
-  it("keeps a non-ASCII query intact", () => {
-    // Half of the gap reports received so far were CJK. A query mangled on the
-    // way into the command is a report nobody can act on.
-    expect(searchMissCommand("実写写真のみ 9:16 生活ハック", "on-device")).toContain(
-      '--search-miss "実写写真のみ 9:16 生活ハック"',
+// Each one keeps a shell meaning in PowerShell or cmd.exe however it is double-quoted.
+describe("searchMissReport", () => {
+  it("names the tier and leaves the query out", () => {
+    expect(searchMissReport("on-device")).toBe(
+      'npx hyperframes feedback --search-miss --wanted "<the move you needed>" --tier on-device',
     );
-  });
-
-  it("escapes shell metacharacters so the printed line is safe to paste", () => {
-    const cmd = searchMissCommand('a "quoted" $VAR `sub` \\ thing', "words");
-
-    expect(cmd).toContain('--search-miss "a \\"quoted\\" \\$VAR \\`sub\\` \\\\ thing"');
   });
 });
 
@@ -647,6 +728,21 @@ describe("catalog meaning search, on a terminal", () => {
 
     expect(output).toContain("None of these do it?");
     expect(output).toContain("--tier words");
+    expect(output).toContain("--search-miss --wanted");
+    expect(output).not.toContain('"count up"');
+  });
+
+  it.each([
+    ["some results", "count\nup"],
+    ["no result", "zzqx\nyyqx"],
+  ])("prints the same gap line whatever the query holds: %s", async (_n, query) => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const output = await runCatalog({ query });
+
+    expect(output).toContain("--search-miss --wanted");
+    expect(output).not.toContain(query);
   });
 
   it("offers the gap report on the on-device tier too", async () => {
@@ -734,6 +830,37 @@ describe("the on-device download offer", () => {
 
     expect([state.downloads, state.consentRecorded]).toEqual([0, []]);
     expect(err).toContain("declined, but could not save the answer in settings");
+  });
+
+  // Runs the exact command a guidance line names, so an instruction that cannot set anything up fails here.
+  const runAdvertised = async (text: string) => {
+    const named = /`hyperframes catalog ([^`]*)`/.exec(text);
+    expect(named).not.toBeNull();
+    const command = (await import("./catalog.js")).default as CommandDef;
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await runCommand(command, { rawArgs: [...named![1]!.split(" "), "--json"] });
+    } finally {
+      log.mockRestore();
+    }
+  };
+
+  it("after a first-time yes, names the one command that sets the tier up", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = true;
+    state.runtimeOnDisk = false;
+
+    const first = await asATerminal(() => runForExit({ query: "count up" }));
+    expect(first.err).toContain("Run `hyperframes catalog --on-device` once");
+
+    // Consent saved, no model, no runtime: what the plain re-run actually meets.
+    state.consentRecorded = [];
+    state.modelStatus = "unavailable";
+    const rerun = await runEnvelope({ query: "count up" });
+    expect([state.runtimeInstalls, state.downloads, rerun.tier]).toEqual([0, 0, "words"]);
+
+    await runAdvertised(first.err);
+    expect([state.runtimeInstalls, state.downloads]).toEqual([1, 1]);
   });
 
   it("says so when a no given to the thin-results offer could not be saved", async () => {
@@ -867,11 +994,27 @@ describe("the on-device download offer", () => {
       state.runtimeOnDisk = false;
       if (!savedYes) state.consentSavedMeanwhile = false;
 
-      await runEnvelope({ query: "count up" });
+      await runEnvelope({ query: "count up", "on-device": true });
 
       expect(state.runtimeInstalls).toBe(installs);
     },
   );
+
+  it("searches without installing a runtime missing beside a ready model", async () => {
+    state.runtimeOnDisk = false;
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect([state.runtimeInstalls, state.downloads, state.vectorFetches]).toEqual([0, 0, 0]);
+    expect(envelope.tier).toBe("words");
+    expect(envelope.shown).toBeGreaterThan(0);
+    expect(envelope.warnings).toEqual([
+      "on-device search is off until its runtime is installed: run `hyperframes catalog --on-device` once.",
+    ]);
+
+    await runAdvertised(envelope.warnings![0]!);
+    expect(state.runtimeInstalls).toBe(1);
+  });
 
   it("installs nothing when a person's yes cannot be saved", async () => {
     state.consentRecorded = [false];

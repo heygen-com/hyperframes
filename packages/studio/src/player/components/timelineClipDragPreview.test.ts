@@ -5,8 +5,10 @@ import {
   computeResizePreview,
   guideIfSaved,
   getTimelineDragOverlayPosition,
+  trimPreviewTime,
   type DragPreviewContext,
 } from "./timelineClipDragPreview";
+import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import {
   commitDraggedClipMove,
@@ -935,5 +937,13 @@ describe("an audio clip stays inside its partner video", () => {
 
   it("a trim carried by the video too is not held to the video's old span", () => {
     expect(trim("end", 50, ["v"]).previewDuration).toBe(58);
+  });
+});
+
+describe("trimPreviewTime", () => {
+  it.each([25, 60])("shows the last frame of the clip at %s fps", (fps) => {
+    useLinkedClipPreferences.getState().setCompositionFps(fps);
+    expect(trimPreviewTime("end", 1, 2)).toBeCloseTo(3 - 1 / fps, 9);
+    useLinkedClipPreferences.getState().setCompositionFps(30);
   });
 });

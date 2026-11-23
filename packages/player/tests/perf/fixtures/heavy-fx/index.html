@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>perf fixture: heavy-fx</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #050714;
+        overflow: hidden;
+        font-family: system-ui, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      video {
+        position: absolute;
+        object-fit: cover;
+      }
+      .glass {
+        position: absolute;
+        top: 120px;
+        width: 360px;
+        height: 240px;
+        border-radius: 24px;
+        backdrop-filter: blur(18px) saturate(1.8);
+        -webkit-backdrop-filter: blur(18px) saturate(1.8);
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .shader {
+        position: absolute;
+        left: 480px;
+        top: 270px;
+        width: 960px;
+        height: 540px;
+        mix-blend-mode: overlay;
+      }
+    </style>
+    <script src="/vendor/gsap.min.js"></script>
+    <script data-hyperframes-runtime="1" src="/vendor/hyperframe.runtime.iife.js"></script>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="1920"
+      data-height="1080"
+      data-duration="10"
+      data-fps="30"
+    ></div>
+    <script>
+      (function () {
+        var root = document.getElementById("root");
+        var tl = gsap.timeline({ paused: true });
+        function video(src, track, start, duration, css) {
+          var v = document.createElement("video");
+          v.setAttribute("data-start", String(start));
+          v.setAttribute("data-duration", String(duration));
+          v.setAttribute("data-track-index", String(track));
+          v.setAttribute("src", "../_media/" + src);
+          v.setAttribute("preload", "auto");
+          v.setAttribute("playsinline", "");
+          v.muted = true;
+          v.style.cssText = css;
+          root.appendChild(v);
+          return v;
+        }
+        // Filters, blend modes, backdrop blur and a WebGL shader redrawn on every timeline update.
+        var fx = [
+          "blur(6px)",
+          "hue-rotate(90deg) saturate(2)",
+          "contrast(1.6) brightness(0.8)",
+          "grayscale(1)",
+          "sepia(1)",
+          "drop-shadow(0 0 24px #0ff)",
+        ];
+        for (var i = 0; i < 6; i++) {
+          var v = video(
+            "h264-1080.mp4",
+            i,
+            0,
+            10,
+            "left:" +
+              (i % 3) * 640 +
+              "px;top:" +
+              Math.floor(i / 3) * 540 +
+              "px;width:640px;height:540px;filter:" +
+              fx[i] +
+              ";mix-blend-mode:" +
+              (i % 2 ? "screen" : "multiply") +
+              ";",
+          );
+          tl.fromTo(v, { scale: 1 }, { scale: 1.15, duration: 10, ease: "none" }, 0);
+        }
+        for (var j = 0; j < 4; j++) {
+          var glass = document.createElement("div");
+          glass.className = "glass";
+          glass.style.left = 100 + j * 440 + "px";
+          root.appendChild(glass);
+          tl.fromTo(glass, { y: 0 }, { y: 600, duration: 10, ease: "sine.inOut" }, 0);
+        }
+        var canvas = document.createElement("canvas");
+        canvas.width = 960;
+        canvas.height = 540;
+        canvas.className = "shader";
+        root.appendChild(canvas);
+        var gl = canvas.getContext("webgl");
+        function sh(type, text) {
+          var s = gl.createShader(type);
+          gl.shaderSource(s, text);
+          gl.compileShader(s);
+          return s;
+        }
+        var prog = gl.createProgram();
+        gl.attachShader(
+          prog,
+          sh(gl.VERTEX_SHADER, "attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}"),
+        );
+        gl.attachShader(
+          prog,
+          sh(
+            gl.FRAGMENT_SHADER,
+            "precision mediump float;uniform float t;void main(){vec2 u=gl_FragCoord.xy/vec2(960.,540.);float v=0.;for(int i=0;i<24;i++){float f=float(i);v+=sin(u.x*(8.+f)+t*(1.+f*.1))*cos(u.y*(6.+f)-t);}gl_FragColor=vec4(.5+.5*sin(v),.5+.5*cos(v*1.3),.5+.5*sin(v*.7+t),.55);}",
+          ),
+        );
+        gl.linkProgram(prog);
+        gl.useProgram(prog);
+        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+        gl.bufferData(
+          gl.ARRAY_BUFFER,
+          new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+          gl.STATIC_DRAW,
+        );
+        var loc = gl.getAttribLocation(prog, "p");
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        var tLoc = gl.getUniformLocation(prog, "t");
+        var state = { t: 0 };
+        tl.to(
+          state,
+          {
+            t: 10,
+            duration: 10,
+            ease: "none",
+            onUpdate: function () {
+              gl.uniform1f(tLoc, state.t);
+              gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            },
+          },
+          0,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

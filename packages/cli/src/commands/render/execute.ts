@@ -1,6 +1,8 @@
 // fallow-ignore-file code-duplication
-import { mkdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import type { CanvasResolution, OutputResolutionIssueKind } from "@hyperframes/core";
+import { PRORES_PROFILES } from "@hyperframes/engine";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes } from "../../ui/format.js";
 import { formatLintStartupMessage } from "../../utils/lintFormat.js";
@@ -11,17 +13,20 @@ import {
   type ProjectLintResult,
 } from "../../utils/lintProject.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
-import { failCommand, setCommandExitCode } from "../../utils/commandResult.js";
+import { makeOutputFolder } from "../../utils/outputFolder.js";
+import { CliRuntimeError, failCommand, setCommandExitCode } from "../../utils/commandResult.js";
 import {
   reportVariableIssues,
   resolveVariablesArg,
   validateVariablesAgainstProject,
 } from "../../utils/variables.js";
 import { trackRenderPreflightRejected } from "../../telemetry/events.js";
+import { renderMachineResult } from "../../ui/renderResult.js";
 import { applyRenderEnvironment, renderOutputDirectory, type RenderPlan } from "./plan.js";
 import type { RenderOptions, SingleRenderResult } from "../render.js";
 import type { RenderCancellationScope } from "../../utils/renderCancellation.js";
 import { runRenderSetupWorker } from "../../utils/cancellableProcess.js";
+import { outsideAssetsAllowed } from "../../utils/receivedRender.js";
 
 type RenderExecutor = (
   projectDir: string,
@@ -40,6 +45,7 @@ export interface RenderExecutionDependencies {
   renderDocker: RenderExecutor;
   renderLocal: RenderExecutor;
   checkResolution: ResolutionPreflight;
+  acquireRenderSlot?: (plan: RenderPlan, signal?: AbortSignal) => Promise<() => void>;
 }
 
 // Exported only through render.ts so command tests can lock the user-facing guidance.
@@ -69,7 +75,7 @@ export async function executeRenderPlan(
 ): Promise<void> {
   assertRenderActive(cancellation);
   applyRenderEnvironment(plan);
-  if (!plan.batchPath) mkdirSync(renderOutputDirectory(plan), { recursive: true });
+  if (!plan.batchPath) makeOutputFolder(renderOutputDirectory(plan));
 
   let batchModule: typeof import("../batchRender.js") | undefined;
   let preparedBatch: import("../batchRender.js").PreparedBatchRender | undefined;
@@ -89,15 +95,43 @@ export async function executeRenderPlan(
     }
   }
 
+  const variables = plan.batchPath
+    ? undefined
+    : resolveVariablesArg(plan.variablesArg, plan.variablesFileArg);
+  await runRenderLint(plan, lintProject, cancellation?.signal);
+  assertRenderActive(cancellation);
+  if (!plan.useDocker) await refuseLowDiskBeforeBrowserDownload(plan);
   const browserPath = plan.useDocker
     ? undefined
     : await ensureRenderBrowser(plan, cancellation?.signal);
   assertRenderActive(cancellation);
-  await runRenderLint(plan, lintProject, cancellation?.signal);
-  assertRenderActive(cancellation);
   await runResolutionPreflight(plan, dependencies.checkResolution);
   assertRenderActive(cancellation);
 
+  const releaseSlot = await dependencies.acquireRenderSlot?.(plan, cancellation?.signal);
+  try {
+    assertRenderActive(cancellation);
+    await executeHeldRender(plan, browserPath, variables, dependencies, cancellation, {
+      batchModule,
+      preparedBatch,
+    });
+  } finally {
+    releaseSlot?.();
+  }
+}
+
+async function executeHeldRender(
+  plan: RenderPlan,
+  browserPath: string | undefined,
+  variables: RenderOptions["variables"],
+  dependencies: RenderExecutionDependencies,
+  cancellation: RenderCancellationScope | undefined,
+  batch: {
+    batchModule?: typeof import("../batchRender.js");
+    preparedBatch?: import("../batchRender.js").PreparedBatchRender;
+  },
+): Promise<void> {
+  const { batchModule, preparedBatch } = batch;
   if (plan.batchPath && batchModule && preparedBatch) {
     await executeBatchRender(
       plan,
@@ -110,15 +144,24 @@ export async function executeRenderPlan(
     return;
   }
 
-  const variables = resolveVariablesArg(plan.variablesArg, plan.variablesFileArg);
-  if (variables && Object.keys(variables).length > 0) {
-    const issues = validateVariablesAgainstProject(plan.renderTarget, variables);
-    reportVariableIssues(issues, { strict: plan.strictVariables, quiet: plan.quiet });
-  }
-
+  reportSingleRenderNotes(plan, variables);
   const options = renderOptionsFromPlan(plan, browserPath, variables);
   const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
-  await execute(plan.project.dir, plan.outputPath, options, cancellation);
+  const result = await execute(plan.project.dir, plan.outputPath, options, cancellation);
+  renderMachineResult(result, plan.effectiveQuiet);
+}
+
+function reportSingleRenderNotes(plan: RenderPlan, variables: RenderOptions["variables"]): void {
+  if (variables && Object.keys(variables).length > 0) {
+    const issues = validateVariablesAgainstProject(plan.renderTarget, variables);
+    reportVariableIssues(issues, { strict: plan.strictVariables, quiet: plan.effectiveQuiet });
+  }
+
+  if (plan.proresProfile && !PRORES_PROFILES[plan.proresProfile].alpha && !plan.effectiveQuiet) {
+    console.log(
+      c.dim(`ProRes ${plan.proresProfile} has no alpha channel: transparent areas render black.`),
+    );
+  }
 }
 
 /**
@@ -150,13 +193,22 @@ export function renderOptionsFromPlan(
     crf: plan.crf,
     vp9CpuUsed: plan.vp9CpuUsed,
     videoBitrate: plan.videoBitrate,
+    keyframeIntervalSeconds: plan.keyframeIntervalSeconds,
+    range: plan.range,
+    proresProfile: plan.proresProfile,
+    maxBitrate: plan.maxBitrate,
+    bufferSize: plan.bufferSize,
     videoFrameFormat: plan.videoFrameFormat,
-    quiet: plan.quiet,
+    chromaSubsampling: plan.chromaSubsampling,
+    pageMotionBlur: plan.pageMotionBlur,
+    quiet: plan.effectiveQuiet,
     browserPath,
     debug: plan.debug,
     resumeSegments: plan.resumeSegments,
     keepSegments: plan.keepSegments,
     bestEffort: plan.bestEffort,
+    includeOutsideScripts: plan.includeOutsideScripts,
+    refuseOutsideFiles: plan.refuseOutsideFiles ? true : undefined,
     variables,
     entryFile: plan.entryFile,
     outputResolution: plan.outputResolution,
@@ -180,6 +232,16 @@ function assertRenderActive(cancellation?: RenderCancellationScope): void {
   cancellation?.signal.throwIfAborted();
 }
 
+async function refuseLowDiskBeforeBrowserDownload(plan: RenderPlan): Promise<void> {
+  const { checkDisk } = await import("../../browser/preflight.js");
+  await (await import("../../browser/manager.js")).sweepKilledInstalls();
+  const paths = new Set([tmpdir(), renderOutputDirectory(plan)]);
+  const low = [...paths].map((path) => checkDisk(path)).filter((outcome) => !outcome.ok);
+  if (low.length === 0) return;
+  for (const check of low) errorBox(check.title ?? "Low disk space", check.detail, check.hint);
+  failCommand();
+}
+
 async function ensureRenderBrowser(plan: RenderPlan, signal?: AbortSignal): Promise<string> {
   const { ensureBrowser } = await import("../../browser/manager.js");
   let browserSpinner:
@@ -193,7 +255,7 @@ async function ensureRenderBrowser(plan: RenderPlan, signal?: AbortSignal): Prom
     if (plan.effectiveQuiet) {
       return (await ensureBrowser({ preferManagedChrome: true, signal })).executablePath;
     }
-    const clack = await import("@clack/prompts");
+    const clack = await import("../../ui/prompts.js");
     browserSpinner = clack.spinner();
     browserSpinner.start("Checking browser...");
     const info = await ensureBrowser({
@@ -217,7 +279,7 @@ async function ensureRenderBrowser(plan: RenderPlan, signal?: AbortSignal): Prom
       normalizeErrorMessage(error),
       "Run: npx hyperframes browser ensure",
     );
-    failCommand();
+    failCommand(1, undefined, "chrome_not_found");
   }
 }
 
@@ -244,8 +306,8 @@ export async function runRenderLint(
   );
   presentRenderLintFindings(lintResult, plan.effectiveQuiet, plan.lintVerbose || willAbort);
   if (willAbort) {
-    presentRenderLintAbort(plan, definitiveEntryMismatch);
-    failCommand();
+    const message = presentRenderLintAbort(lintResult, definitiveEntryMismatch);
+    throw new CliRuntimeError(message, { presented: true });
   }
   presentRenderLintContinuation(plan);
 }
@@ -279,17 +341,18 @@ function presentRenderLintFindings(
     console.log(line);
 }
 
-function presentRenderLintAbort(plan: RenderPlan, definitiveEntryMismatch: boolean): void {
-  if (plan.effectiveQuiet) return;
-  console.log("");
-  console.log(
-    c.error(
-      definitiveEntryMismatch
-        ? "  Aborting render because the default index.html entry is blank."
-        : `  Aborting render due to lint issues (${plan.strictAll ? "--strict-all" : "--strict"} mode).`,
-    ),
-  );
-  console.log("");
+function presentRenderLintAbort(
+  lintResult: ProjectLintResult,
+  definitiveEntryMismatch: boolean,
+): string {
+  const counts = `${lintResult.totalErrors} error(s), ${lintResult.totalWarnings} warning(s)`;
+  const findings = lintResult.results.flatMap((entry) => entry.result.findings);
+  const first = findings.find((finding) => finding.severity === "error") ?? findings[0];
+  const message = definitiveEntryMismatch
+    ? "Cannot render: the default index.html entry is blank."
+    : `Cannot render: ${counts}. ${first ? `${first.code}: ${first.message}` : "Fix the project lint issues."} Run hyperframes lint for details.`;
+  errorBox(message);
+  return message;
 }
 
 function presentRenderLintContinuation(plan: RenderPlan): void {
@@ -344,7 +407,14 @@ export function batchRowRenderOptions(
     crf: plan.crf,
     vp9CpuUsed: plan.vp9CpuUsed,
     videoBitrate: plan.videoBitrate,
+    keyframeIntervalSeconds: plan.keyframeIntervalSeconds,
+    range: plan.range,
+    proresProfile: plan.proresProfile,
+    maxBitrate: plan.maxBitrate,
+    bufferSize: plan.bufferSize,
     videoFrameFormat: plan.videoFrameFormat,
+    chromaSubsampling: plan.chromaSubsampling,
+    pageMotionBlur: plan.pageMotionBlur,
     quiet: batchQuiet,
     browserPath,
     entryFile: plan.entryFile,
@@ -358,12 +428,20 @@ export function batchRowRenderOptions(
     resumeSegments: plan.resumeSegments,
     keepSegments: plan.keepSegments,
     bestEffort: plan.bestEffort,
+    includeOutsideScripts: plan.includeOutsideScripts,
+    refuseOutsideFiles: plan.refuseOutsideFiles ? true : undefined,
     exitAfterComplete: false,
     throwOnError: true,
     skipFeedback: true,
     desktopHint: false,
     manageDeParallelRouterBreaker: plan.batchConcurrency <= 1,
   };
+}
+
+function outsideAssetsAllowedOnceForEveryRow(plan: RenderPlan): boolean {
+  return outsideAssetsAllowed(plan.project.dir, plan.entryFile, (line) =>
+    console.warn(c.warn(`  ${line}`)),
+  );
 }
 
 async function executeBatchRender(
@@ -376,6 +454,7 @@ async function executeBatchRender(
 ): Promise<void> {
   const batchQuiet = plan.quiet || plan.batchJson;
   const renderOptionsBase = batchRowRenderOptions(plan, browserPath);
+  renderOptionsBase.refuseOutsideFiles ??= !outsideAssetsAllowedOnceForEveryRow(plan);
   const manifest = await batchModule.runBatchRender({
     prepared: preparedBatch,
     concurrency: plan.batchConcurrency,

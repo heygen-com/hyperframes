@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import type { CutoverResult } from "../utils/sdkCutover";
-import { studioManualEditSavesIn } from "../components/editor/manualEditsDom";
+import { studioManualEditSavesIn } from "../components/editor/manualEditGesture";
 import {
   DomEditPersistPreparedWriteError,
   DomEditPersistUnresolvableError,
@@ -116,6 +116,14 @@ describe("useDomEditPersist", () => {
       coalesceKey: undefined,
       coalesceMs: undefined,
       files: { "index.html": { before: SOURCE, after: PATCHED } },
+      targets: [
+        {
+          file: "index.html",
+          hfId: "hf-card",
+          selector: '[data-hf-id="hf-card"]',
+          selectorIndex: 0,
+        },
+      ],
     });
     expect(params.forceReloadSdkSession).toHaveBeenCalledTimes(1);
     expect(params.reloadPreview).toHaveBeenCalledTimes(1);

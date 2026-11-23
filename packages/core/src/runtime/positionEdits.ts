@@ -25,19 +25,11 @@
  */
 
 import { emitAnalyticsEvent } from "./analytics";
-import { isStylableElement } from "./domRealm";
+import { isStylableElement, type StylableElement } from "./domRealm";
 
 export const EDIT_BASE_X_ATTR = "data-hf-edit-base-x";
 export const EDIT_BASE_Y_ATTR = "data-hf-edit-base-y";
 export const EDIT_ORIGINAL_TRANSLATE_ATTR = "data-hf-edit-original-translate";
-
-/**
- * Elements a position edit can apply to: HTML elements AND SVG graphics (authored `<text>` labels,
- * shapes, groups). Both expose `.style` and honor the CSS `translate` longhand in modern Chrome, so
- * the same delta→translate compose logic works for either. (SVG was previously excluded by an
- * `instanceof HTMLElement`-only guard, which silently dropped every move on an SVG element.)
- */
-type StylableElement = HTMLElement | SVGElement;
 
 const num = (value: string | null): number => {
   const n = parseFloat(value ?? "");
@@ -45,7 +37,7 @@ const num = (value: string | null): number => {
 };
 
 /** Split "10px 20px" / "calc(1px + 2px) 3px" on top-level whitespace only. */
-const splitTopLevelWhitespace = (value: string): string[] => {
+export const splitTopLevelWhitespace = (value: string): string[] => {
   const parts: string[] = [];
   let depth = 0;
   let current = "";

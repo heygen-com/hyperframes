@@ -2,6 +2,12 @@
 // error, catching a script-fetched asset a static markup scan can't see.
 
 import puppeteer, { type Browser } from "puppeteer";
+import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
+import {
+  chromeSandboxArgs,
+  chromeSandboxEnabled,
+  launchWithChromeSandboxFallback,
+} from "@hyperframes/core/chrome-sandbox";
 import { injectScriptsAtHeadStart } from "@hyperframes/core/compiler";
 import { getVerifiedHyperframeRuntimeSource } from "./services/hyperframeRuntimeLoader.js";
 
@@ -9,12 +15,14 @@ export interface PageCheckResult {
   failures: string[];
 }
 
-export async function launchVerifyBrowser(): Promise<Browser> {
-  return puppeteer.launch({
-    headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  });
+export async function launchVerifyBrowser(sandbox = chromeSandboxEnabled()): Promise<Browser> {
+  return launchWithChromeSandboxFallback(chromeSandboxArgs(sandbox), (args) =>
+    puppeteer.launch({
+      headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      args: withHyperframesBrowserMarker(args),
+    }),
+  );
 }
 
 export async function checkPageLoads(
@@ -36,7 +44,13 @@ export async function checkPageLoads(
     failures.push(`pageerror: ${err instanceof Error ? err.message : String(err)}`);
   });
   page.on("console", (msg) => {
-    if (msg.type() === "error") failures.push(`console.error: ${msg.text()}`);
+    if (msg.type() !== "error") return;
+    const failedResourceUrl = msg.text().startsWith("Failed to load resource")
+      ? msg.location().url
+      : "";
+    failures.push(
+      `console.error: ${msg.text()}${failedResourceUrl ? ` (${failedResourceUrl})` : ""}`,
+    );
   });
   try {
     await page.goto(originUrl, { waitUntil: "domcontentloaded" });

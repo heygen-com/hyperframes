@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   collectSubCompositionDomChildren,
   collectSubCompositionHostState,
+  hydrateTimelineFromPreview,
 } from "./timelineSyncHydration";
-import type { ClipManifestClip } from "../lib/playbackTypes";
+import type { ClipManifestClip, PlaybackAdapter } from "../lib/playbackTypes";
 
 const clip = (over: Partial<ClipManifestClip>): ClipManifestClip => ({
   id: "x",
@@ -107,6 +108,26 @@ describe("collectSubCompositionHostState", () => {
     expect(rows.map((child) => child.id)).toEqual(["scene-2-title"]);
   });
 
+  it("reads a scene the preview unmounted from the markup it mounts with", () => {
+    const markup = mountScene().getElementById("scene-2-slot")!.cloneNode(true) as Element;
+    document.body.innerHTML = `<div id="scene-2-slot" data-composition-id="scene-2" data-hf-parked-scene></div>`;
+    const view = window as Window & { __hfParkedSceneMarkup?: (el: Element) => Element | null };
+    view.__hfParkedSceneMarkup = (el) => (el.hasAttribute("data-hf-parked-scene") ? markup : null);
+    try {
+      const rows = collectSubCompositionDomChildren(document, sceneClips, new Map());
+      expect(rows.map((child) => child.id)).toEqual([
+        "scene-2-video-region",
+        "scene-2-title",
+        "scene-2-caption",
+      ]);
+      expect(collectSubCompositionHostState(document, sceneClips).get("scene-2-video")).toEqual({
+        hidden: true,
+      });
+    } finally {
+      delete view.__hfParkedSceneMarkup;
+    }
+  });
+
   it("returns empty without a document, rather than throwing", () => {
     expect(collectSubCompositionHostState(null, sceneClips).size).toBe(0);
   });
@@ -116,5 +137,31 @@ describe("collectSubCompositionHostState", () => {
     const state = collectSubCompositionHostState(doc, [clip({ id: "scene-2-slot" })]);
 
     expect(state.size).toBe(0);
+  });
+});
+
+describe("hydrateTimelineFromPreview", () => {
+  it("attaches the shortcut listeners to a frame whose document it cannot read", () => {
+    const frame = {};
+    Object.defineProperty(frame, "document", {
+      get: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    });
+    const iframe = document.createElement("iframe");
+    Object.defineProperty(iframe, "contentWindow", { value: frame });
+    Object.defineProperty(iframe, "contentDocument", { value: null });
+    const attachIframeShortcutListeners = vi.fn();
+    hydrateTimelineFromPreview({
+      iframe,
+      adapter: { getDuration: () => 1 } as unknown as PlaybackAdapter,
+      processTimelineMessage: vi.fn(),
+      readSealedTimeline: vi.fn(),
+      enrichMissingCompositions: vi.fn(),
+      applyPreviewAudioState: vi.fn(),
+      attachIframeShortcutListeners,
+      syncTimelineElements: vi.fn(),
+    });
+    expect(attachIframeShortcutListeners).toHaveBeenCalledOnce();
   });
 });

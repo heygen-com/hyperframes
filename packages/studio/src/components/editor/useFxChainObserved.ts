@@ -16,7 +16,7 @@ import type { DomEditSelection } from "./domEditingTypes";
 /**
  * This is the only way agent-applied effects become visible. An agent asked to
  * fix a mix does not drive this panel — it edits the composition HTML, or runs
- * `scripts/carve.mjs`, and the rack simply finds the work already done. Not
+ * `skills/media-use/audio/scripts/carve.mjs`, and the rack simply finds the work already done. Not
  * one of the panel's own events fires for any of it.
  *
  * So: watch the chain's shape, and report it when it changes without a panel

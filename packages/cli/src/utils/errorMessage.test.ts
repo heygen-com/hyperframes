@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeErrorMessage } from "./errorMessage.js";
+import { atStep, normalizeErrorMessage } from "./errorMessage.js";
 
 describe("normalizeErrorMessage", () => {
   it("returns the message of an Error instance", () => {
@@ -27,6 +27,15 @@ describe("normalizeErrorMessage", () => {
   it("stringifies objects whose message property is not a string", () => {
     expect(normalizeErrorMessage({ message: 42 })).toBe('{"message":42}');
   });
+
+  it.each([undefined, Symbol("hidden"), () => undefined])(
+    "keeps a string fallback when toJSON returns a non-JSON value (%s)",
+    (value) => {
+      const message = normalizeErrorMessage({ code: "E_RENDER", toJSON: () => value });
+      expect(message).toBe("{code, toJSON}");
+      expect(message.toLowerCase()).toContain("code");
+    },
+  );
 
   it("falls back to a key list when JSON.stringify throws on a cycle", () => {
     const cyclic: Record<string, unknown> = { code: "E_LOOP" };
@@ -74,5 +83,21 @@ describe("normalizeErrorMessage", () => {
   it("stringifies non-object primitives", () => {
     expect(normalizeErrorMessage(42)).toBe("42");
     expect(normalizeErrorMessage(false)).toBe("false");
+  });
+});
+
+describe("atStep", () => {
+  it("adds the step to a failure's message once, and keeps the error", async () => {
+    const failure = new TypeError(
+      "Runtime.callFunctionOn timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
+    );
+    const run = () => Promise.reject(failure);
+    await expect(atStep("seeking to 2s", run)).rejects.toBe(failure);
+    await expect(atStep("seeking to 2s", run)).rejects.toBe(failure);
+    expect(failure.message).toBe("Runtime.callFunctionOn timed out. (while seeking to 2s)");
+  });
+
+  it("returns the step's value untouched", async () => {
+    await expect(atStep("seeking", async () => 7)).resolves.toBe(7);
   });
 });

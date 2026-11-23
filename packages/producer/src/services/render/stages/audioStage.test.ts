@@ -1,12 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { parseMasterFxChain, type AudioElement, type VideoElement } from "@hyperframes/engine";
 
-const { processCompositionAudioMock } = vi.hoisted(() => ({
+const { processCompositionAudioMock, constrainAacTruePeakMock } = vi.hoisted(() => ({
   processCompositionAudioMock: vi.fn(),
+  constrainAacTruePeakMock: vi.fn(async () => ({
+    success: true,
+    error: undefined as string | undefined,
+    loweredDb: undefined as number | undefined,
+  })),
 }));
+
+vi.mock("../audioPadTrim.js", () => ({ constrainAacTruePeak: constrainAacTruePeakMock }));
+const limitDeliveryPeaksMock = vi.hoisted(() => vi.fn(async () => ({ success: true })));
+vi.mock("../audioDeliveryLimit.js", () => ({ limitDeliveryPeaks: limitDeliveryPeaksMock }));
 
 vi.mock("@hyperframes/engine", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@hyperframes/engine")>();
@@ -30,6 +39,7 @@ describe("runAudioStage", () => {
 
   afterEach(() => {
     processCompositionAudioMock.mockClear();
+    constrainAacTruePeakMock.mockClear();
     for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 
@@ -40,7 +50,8 @@ describe("runAudioStage", () => {
       projectDir: workDir,
       workDir,
       compiledDir: join(workDir, "compiled"),
-      duration: 5,
+      totalFrames: 150,
+      fps: { num: 30, den: 1 },
       ffmpegProcessTimeout: 3_600_000,
       audioGain: 1,
       audios,
@@ -49,6 +60,122 @@ describe("runAudioStage", () => {
       ...overrides,
     };
   }
+
+  it.each([
+    { totalFrames: 91, fps: { num: 30, den: 1 }, seconds: 3.033333333333333 },
+    { totalFrames: 31, fps: { num: 30000, den: 1001 }, seconds: 1.0343666666666667 },
+  ])(
+    "mixes the exact frame duration: $totalFrames at $fps.num/$fps.den",
+    async ({ totalFrames, fps, seconds }) => {
+      processCompositionAudioMock.mockResolvedValueOnce({ success: true, tracksProcessed: 1 });
+      await runAudioStage(makeInput({ totalFrames, fps }));
+      expect(processCompositionAudioMock.mock.calls[0]?.[4]).toBe(seconds);
+      expect(constrainAacTruePeakMock).toHaveBeenCalledWith(
+        expect.objectContaining({ targetDurationSeconds: seconds }),
+      );
+    },
+  );
+
+  it("limits the mix's peaks before the whole-mix cut measures it", async () => {
+    processCompositionAudioMock.mockResolvedValueOnce({ success: true, tracksProcessed: 1 });
+    limitDeliveryPeaksMock.mockClear();
+    constrainAacTruePeakMock.mockClear();
+
+    await runAudioStage(makeInput());
+
+    expect(limitDeliveryPeaksMock.mock.invocationCallOrder[0]).toBeLessThan(
+      constrainAacTruePeakMock.mock.invocationCallOrder[0] as number,
+    );
+  });
+
+  it("keeps PCM through the encoded peak check and removes it afterwards", async () => {
+    const input = makeInput();
+    const pcm = join(input.workDir, "audio-source.wav");
+    processCompositionAudioMock.mockImplementationOnce(async () => {
+      writeFileSync(pcm, "retained mix");
+      return { success: true, tracksProcessed: 1 };
+    });
+    constrainAacTruePeakMock.mockImplementationOnce(async () => {
+      expect(existsSync(pcm)).toBe(true);
+      return { success: true, error: undefined, loweredDb: 1.44 };
+    });
+    const result = await runAudioStage(input);
+    expect(constrainAacTruePeakMock).toHaveBeenCalledWith({
+      audioPath: result.audioOutputPath,
+      sourcePath: pcm,
+      targetDurationSeconds: 5,
+      signal: undefined,
+      timeoutMs: 3_600_000,
+    });
+    expect(existsSync(pcm)).toBe(false);
+    expect(result.audioLoweredDb).toBe(1.44);
+  });
+
+  it("surfaces an encoded peak failure and still removes PCM", async () => {
+    const input = makeInput();
+    const pcm = join(input.workDir, "audio-source.wav");
+    processCompositionAudioMock.mockImplementationOnce(async () => {
+      writeFileSync(pcm, "retained mix");
+      return { success: true, tracksProcessed: 1 };
+    });
+    constrainAacTruePeakMock.mockResolvedValueOnce({
+      success: false,
+      error: "peak probe failed",
+      loweredDb: undefined,
+    });
+    await expect(runAudioStage(input)).rejects.toThrow("peak probe failed");
+    expect(existsSync(pcm)).toBe(false);
+  });
+
+  it("leaves the delivered PCM for assembly when asked to keep it", async () => {
+    const input = makeInput({ keepDeliverySource: true });
+    const pcm = join(input.workDir, "audio-source.wav");
+    processCompositionAudioMock.mockImplementationOnce(async () => {
+      writeFileSync(pcm, "retained mix");
+      return { success: true, tracksProcessed: 1 };
+    });
+
+    const result = await runAudioStage(input);
+
+    expect(result.deliverySourcePath).toBe(pcm);
+    expect(existsSync(pcm)).toBe(true);
+  });
+
+  it("does not hand assembly an uncut PCM whose rewrite failed and whose delete was refused", async () => {
+    const input = makeInput({ keepDeliverySource: true });
+    const pcm = join(input.workDir, "audio-source.wav");
+    processCompositionAudioMock.mockImplementationOnce(async () => {
+      writeFileSync(pcm, "uncut mix");
+      return { success: true, tracksProcessed: 1 };
+    });
+    constrainAacTruePeakMock.mockResolvedValueOnce({
+      success: true,
+      loweredDb: 2,
+      sourceStale: true,
+    });
+
+    const result = await runAudioStage(input);
+
+    expect(result.audioLoweredDb).toBe(2);
+    expect(result.deliverySourcePath).toBeUndefined();
+  });
+
+  it("removes a PCM it was asked to keep when the peak check fails", async () => {
+    const input = makeInput({ keepDeliverySource: true });
+    const pcm = join(input.workDir, "audio-source.wav");
+    processCompositionAudioMock.mockImplementationOnce(async () => {
+      writeFileSync(pcm, "retained mix");
+      return { success: true, tracksProcessed: 1 };
+    });
+    constrainAacTruePeakMock.mockResolvedValueOnce({
+      success: false,
+      error: "peak probe failed",
+      loweredDb: undefined,
+    });
+
+    await expect(runAudioStage(input)).rejects.toThrow("peak probe failed");
+    expect(existsSync(pcm)).toBe(false);
+  });
 
   it("surfaces the mixer's error as audioError when the mix fails", async () => {
     processCompositionAudioMock.mockResolvedValue({
@@ -83,7 +210,12 @@ describe("runAudioStage", () => {
       expect.any(String),
       5,
       undefined,
-      { ffmpegProcessTimeout: 3_600_000, audioGain: 1 },
+      {
+        ffmpegProcessTimeout: 3_600_000,
+        audioGain: 1,
+        keepEncoderInputAt: expect.stringMatching(/audio-source\.wav$/),
+        assetRoots: expect.any(Array),
+      },
       expect.any(String),
     );
   });
@@ -132,7 +264,13 @@ describe("runAudioStage", () => {
       expect.any(String),
       5,
       undefined,
-      { ffmpegProcessTimeout: 3_600_000, audioGain: 1, masterFxChain: chain },
+      {
+        ffmpegProcessTimeout: 3_600_000,
+        audioGain: 1,
+        masterFxChain: chain,
+        keepEncoderInputAt: expect.stringMatching(/audio-source\.wav$/),
+        assetRoots: expect.any(Array),
+      },
       expect.any(String),
     );
   });
@@ -165,6 +303,26 @@ describe("runAudioStage", () => {
     expect(result.audioError).toBeUndefined();
   });
 
+  it("logs the mixer's phase times and the peak check's as one line", async () => {
+    const phaseMs = { prepare: 11, groups: 2, mix: 30, master: 4, encode: 20 };
+    processCompositionAudioMock.mockResolvedValue({
+      success: true,
+      outputPath: "audio.m4a",
+      durationMs: 1,
+      tracksProcessed: 1,
+      phaseMs,
+    });
+    const info = vi.fn();
+
+    await runAudioStage(makeInput({ log: { info } as never }));
+
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledWith(
+      "[audio] phases",
+      expect.objectContaining({ ...phaseMs, guard: expect.any(Number) }),
+    );
+  });
+
   it("throws a structured retry signal when audio ffmpeg is externally interrupted", async () => {
     processCompositionAudioMock.mockResolvedValue({
       success: false,
@@ -177,18 +335,36 @@ describe("runAudioStage", () => {
           reason: "external_interruption",
           owner: "system",
           retryable: true,
-          detail: "ffmpeg handled signal 15",
+          detail: "private ffmpeg handled signal 15",
+          elementId: "private-element",
+          subprocess: { exitCode: 255, terminationReason: "exit" },
         },
       ],
     });
 
-    await expect(runAudioStage(makeInput())).rejects.toBeInstanceOf(EncoderInterruptedError);
+    const pending = runAudioStage(makeInput());
+    await expect(pending).rejects.toBeInstanceOf(EncoderInterruptedError);
+    await expect(pending).rejects.toMatchObject({
+      audioFailures: [
+        {
+          stage: "mix",
+          reason: "external_interruption",
+          owner: "system",
+          retryable: true,
+          subprocess: { exitCode: 255, terminationReason: "exit" },
+        },
+      ],
+    });
+    await pending.catch((error: EncoderInterruptedError) => {
+      expect(JSON.stringify(error.audioFailures)).not.toContain("private");
+    });
   });
 
   it("does not set audioError when there is no audio to mix", async () => {
     const result = await runAudioStage(makeInput({ audios: [] }));
 
     expect(processCompositionAudioMock).not.toHaveBeenCalled();
+    expect(constrainAacTruePeakMock).not.toHaveBeenCalled();
     expect(result.hasAudio).toBe(false);
     expect(result.audioError).toBeUndefined();
     expect(result.audioFailures).toBeUndefined();

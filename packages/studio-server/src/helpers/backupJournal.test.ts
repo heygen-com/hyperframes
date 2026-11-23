@@ -86,6 +86,47 @@ describe("snapshotBeforeWrite", () => {
         .sort(),
     ).toEqual(["space", "underscore"]);
   });
+
+  it("keeps separate bounded histories for long paths with the same basename", () => {
+    const projectDir = createProjectDir();
+    const directory = join(projectDir, "compositions", "scene/".repeat(30));
+    mkdirSync(join(directory, "first"), { recursive: true });
+    mkdirSync(join(directory, "second"), { recursive: true });
+    const first = join(directory, "first", "index.html");
+    const second = join(directory, "second", "index.html");
+
+    for (const { file, content } of [
+      { file: first, content: "older" },
+      { file: second, content: "other" },
+      { file: first, content: "newer" },
+    ]) {
+      writeFileSync(file, content);
+      expect(snapshotBeforeWrite(projectDir, file, { keepPerFile: 1 }).error).toBeUndefined();
+    }
+
+    const backupDir = join(projectDir, ".hyperframes", "backup");
+    const contents = readdirSync(backupDir).map((file) =>
+      readFileSync(join(backupDir, file), "utf8"),
+    );
+    expect(contents.sort()).toEqual(["newer", "other"]);
+  });
+
+  it("counts existing base64-named backups toward a long path's retention limit", () => {
+    const projectDir = createProjectDir();
+    const relativePath = `${"a".repeat(156)}.txt`;
+    const file = join(projectDir, relativePath);
+    writeFileSync(file, "current");
+    const backupDir = join(projectDir, ".hyperframes", "backup");
+    mkdirSync(backupDir, { recursive: true });
+    const legacyKey = Buffer.from(relativePath).toString("base64url");
+    writeFileSync(join(backupDir, `2000-01-01T00-00-00-000Z-${legacyKey}`), "old");
+
+    const result = snapshotBeforeWrite(projectDir, file, { keepPerFile: 1 });
+
+    if (!result.backupPath) throw new Error(result.error ?? "Missing backup path");
+    expect(readdirSync(backupDir)).toHaveLength(1);
+    expect(readFileSync(result.backupPath, "utf8")).toBe("current");
+  });
 });
 
 describe("snapshotBeforeWrite when the project folder is gone", () => {

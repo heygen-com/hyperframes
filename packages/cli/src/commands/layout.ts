@@ -1,14 +1,13 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
+import { launchWithPageNetwork } from "../browser/pageNetwork.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { resolveProject } from "../utils/project.js";
-import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { pageNavigationTimeoutMs } from "../utils/renderArgs.js";
+import { gotoWhenSent } from "../capture/navigateForCapture.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
 import {
@@ -37,9 +36,10 @@ import {
   waitForRuntimeReady,
   type SeekCompositionTimelineOptions,
 } from "../capture/captureCompositionFrame.js";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
+import { parseLayoutIssue } from "../utils/checkBrowser.js";
+import { loadBrowserScript } from "./browserScript.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 const LAYOUT_SEEK_OPTIONS: SeekCompositionTimelineOptions = AUDIT_SEEK_OPTIONS;
 // All new envelope fields are optional (?); additive changes don't bump this.
 const INSPECT_SCHEMA_VERSION = 1;
@@ -184,10 +184,7 @@ async function alignViewportToComposition(
   });
 
   await page.setViewport(size);
-  await page.goto(url, {
-    waitUntil: "domcontentloaded",
-    timeout: resolveDiagnosticNavigationTimeoutMs(),
-  });
+  await gotoWhenSent(page, url, pageNavigationTimeoutMs());
 }
 
 async function runLayoutAudit(
@@ -225,22 +222,25 @@ async function runLayoutAudit(
     const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, browser.executablePath);
     const requiresWebGpu = compositionRequiresWebGpu(html);
     const { gpuConfig, softwareWebGpu } = resolveLocalWebGpu(resolvedGpuMode, requiresWebGpu);
-    chromeBrowser = await launchManagedBrowser(puppeteer.default, {
-      headless: true,
-      executablePath: browser.executablePath,
-      args: buildChromeArgs(
-        { width: 1920, height: 1080, captureMode: "screenshot", requiresWebGpu },
-        gpuConfig,
-      ),
-    });
+    chromeBrowser = await launchWithPageNetwork(server.url, (network) =>
+      launchManagedBrowser(puppeteer.default, {
+        headless: true,
+        executablePath: browser.executablePath,
+        userDataDir: network.userDataDir,
+        args: [
+          ...buildChromeArgs(
+            { width: 1920, height: 1080, captureMode: "screenshot", requiresWebGpu },
+            gpuConfig,
+          ),
+          ...network.args,
+        ],
+      }),
+    );
 
     const page = await chromeBrowser.newPage();
     await installPageFunctionGuard(page);
     await page.setViewport({ width: 1920, height: 1080 });
-    await page.goto(server.url, {
-      waitUntil: "domcontentloaded",
-      timeout: resolveDiagnosticNavigationTimeoutMs(),
-    });
+    await gotoWhenSent(page, server.url, pageNavigationTimeoutMs());
     await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
     await alignViewportToComposition(page, server.url);
     await waitForRuntimeReady(page, opts.timeout);
@@ -286,14 +286,6 @@ async function runLayoutAudit(
   }
 }
 
-export function loadBrowserScript(name: string): string {
-  const candidates = [join(__dirname, name), join(__dirname, "commands", name)];
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return readFileSync(candidate, "utf-8");
-  }
-  throw new Error(`Missing browser script ${name}`);
-}
-
 function loadLayoutAuditScript(): string {
   return loadBrowserScript("layout-audit.browser.js");
 }
@@ -318,7 +310,7 @@ async function collectLayoutIssues(
       },
       { time, tolerance },
     );
-    issues.push(...(sampleIssues as LayoutIssue[]));
+    if (Array.isArray(sampleIssues)) issues.push(...sampleIssues.flatMap(parseLayoutIssue));
   }
   return issues;
 }
@@ -394,7 +386,10 @@ async function runMotionPass(
   await page.addScriptTag({ content: loadBrowserScript("motion-signature.browser.js") });
   await page.addScriptTag({ content: loadBrowserScript("motion-sample.browser.js") });
   const frames = await collectMotionFrames(page, times, selectors, livenessScopes);
-  return { issues: evaluateMotion(frames, spec.assertions, canvas), sampleCount: frames.length };
+  return {
+    issues: evaluateMotion(frames, spec.assertions, canvas, duration),
+    sampleCount: frames.length,
+  };
 }
 
 /** Read + validate the motion sidecar; print the error and exit on a bad spec. */
@@ -409,8 +404,7 @@ function resolveMotionSpec(specPath: string, json: boolean): MotionSpec {
         withMeta(
           {
             schemaVersion: INSPECT_SCHEMA_VERSION,
-            ok: false,
-            error: message,
+            ...jsonFailure("runtime_error", message),
             issues: [],
             errorCount: 0,
             warningCount: 0,
@@ -424,7 +418,7 @@ function resolveMotionSpec(specPath: string, json: boolean): MotionSpec {
       ),
     );
   } else {
-    console.error(`${c.error("✗")} ${message}`);
+    console.error(`${c.error("✗")} ${terminalLines(message)}`);
   }
   failCommand();
 }
@@ -450,7 +444,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
       json: { type: "boolean", description: "Output agent-readable JSON", default: false },
       samples: {
         type: "string",
-        description: "Number of midpoint samples across the duration (default: 9)",
+        description: "Number of midpoint samples across the duration",
         default: "9",
       },
       at: {
@@ -470,22 +464,22 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
       },
       tolerance: {
         type: "string",
-        description: "Allowed pixel overflow before reporting an issue (default: 2)",
+        description: "Allowed pixel overflow before reporting an issue",
         default: "2",
       },
       timeout: {
         type: "string",
-        description: "Ms to wait for runtime to initialize (default: 5000)",
+        description: "Ms to wait for runtime to initialize",
         default: "5000",
       },
       "max-issues": {
         type: "string",
-        description: "Maximum issues to print or return after static collapse (default: 80)",
+        description: "Maximum issues to print or return after static collapse",
         default: "80",
       },
       "collapse-static": {
         type: "boolean",
-        description: "Collapse repeated static issues across samples (default: true)",
+        description: "Collapse repeated static issues across samples",
         default: true,
       },
       strict: {
@@ -527,7 +521,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
           ? ` + motion spec (${motionSpec.assertions.length} assertion(s))`
           : "";
         console.log(
-          `${c.accent("◆")}  Inspecting layout for ${c.accent(project.name)} (${sampleLabel}${motionLabel})`,
+          `${c.accent("◆")}  Inspecting layout for ${c.accent(terminalText(project.name))} (${sampleLabel}${motionLabel})`,
         );
       }
 
@@ -547,7 +541,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
           );
         }
         const allIssues = collapseStatic
-          ? collapseStaticLayoutIssues(result.rawIssues, result.samples.length)
+          ? collapseStaticLayoutIssues(result.rawIssues, result.samples.length, result.samples)
           : result.rawIssues;
         const limited = limitLayoutIssues(allIssues, maxIssues);
         const summary = summarizeLayoutIssues(allIssues);
@@ -625,15 +619,14 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
         setCommandExitCode(ok ? 0 : 1);
         return;
       } catch (err) {
-        const message = normalizeErrorMessage(err);
+        const message = failureMessage(err);
         if (args.json) {
           console.log(
             JSON.stringify(
               withMeta(
                 {
                   schemaVersion: INSPECT_SCHEMA_VERSION,
-                  ok: false,
-                  error: message,
+                  ...jsonFailure("runtime_error", message),
                   issues: [],
                   errorCount: 0,
                   warningCount: 0,
@@ -648,7 +641,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
           );
           failCommand();
         }
-        console.error(`${c.error("✗")} Inspect failed: ${message}`);
+        console.error(`${c.error("✗")} Inspect failed: ${terminalLines(message)}`);
         failCommand();
       }
     },

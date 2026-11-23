@@ -161,6 +161,15 @@ describe("VideoFrameThumbnail", () => {
     expect(video.loadCalls).toBe(2);
   });
 
+  it("shows a still, full-size placeholder while the frame loads", () => {
+    render({ src: "clip.mp4" });
+    const placeholder = container.querySelector("[data-thumbnail-loading]");
+    expect(placeholder).not.toBeNull();
+    expect(placeholder?.className).not.toMatch(/\banimate-/);
+    expect(placeholder?.classList.contains("w-full")).toBe(true);
+    expect(placeholder?.classList.contains("h-full")).toBe(true);
+  });
+
   it("retries with a fresh video element when src changes", () => {
     render({ src: "a.mp4" });
     act(() => root.render(<VideoFrameThumbnail src="b.mp4" />));

@@ -1,10 +1,10 @@
 ---
-title: "Mix audio and apply effects"
-sidebarTitle: "Effects and presets"
-description: "Open a track's effect rack, fix a voice with one preset, and add individual effects in an order that works."
+title: "Mix audio"
+sidebarTitle: "Audio"
+description: "In the browser editor: effects and presets on a track, music that sits under narration, groups, muting, and automation over time."
 ---
 
-Studio carries a full mixer. Every audio track has an effect rack: filters that
+The browser editor carries a full mixer. Every audio track has an effect rack: filters that
 decide which frequencies it may occupy, dynamics that decide how its level
 behaves, character effects that change the shape of the waveform, and space
 effects that put it somewhere.
@@ -13,7 +13,9 @@ Everything you do here is written into the composition's HTML. There is no
 separate session file, so a mix survives being handed to someone else, committed,
 or rendered on another machine.
 
-## Open a track's effect rack
+## Effects and presets
+
+### Open a track's effect rack
 
 Select an audio clip on the timeline. The right panel shows an **Audio FX**
 section for it, listing the chain from top to bottom in signal order and ending
@@ -26,7 +28,7 @@ You can also reach it without the panel: the **FX** button on an audio track's
 timeline header opens a shelf of presets, with **Open rack ›** at the bottom. The
 button shows a count when the track already has effects.
 
-## Fix a voice with one preset
+### Fix a voice with one preset
 
 Presets are the fastest honest answer to "this voice sounds wrong". Each one is
 an ordinary chain you could have built by hand — open it and the individual
@@ -39,11 +41,11 @@ Start from the symptom rather than the effect list:
 | Hum or thump underneath | `rumble-cut`, or a high-pass at 80 Hz |
 | Boomy, chesty, too close to the mic | **Tame Boominess** |
 | Muffled, like it is behind cardboard | **Reduce Mud** |
-| Words hard to make out | **Add Clarity**, or [carve the music](/studio/voiceover-carve) |
+| Words hard to make out | **Add Clarity**, or [carve the music](/studio/audio-effects#make-music-sit-under-narration) |
 | Harsh and tiring over a whole listen | **Soften Harshness** |
 | Some words much louder than others | **Evenness** on a compressor, or **Even Out Levels** |
 | Room tone audible between sentences | `room-gate` |
-| Voice and music fighting each other | [A carve on the music](/studio/voiceover-carve) — not an EQ on either |
+| Voice and music fighting each other | [A carve on the music](/studio/audio-effects#make-music-sit-under-narration) — not an EQ on either |
 | Dry, recorded nowhere | `room-tight` or `room-natural` |
 | Just "amateur" | `voice-clean` |
 
@@ -69,7 +71,7 @@ tuned to be distinguishable from one another, so do not stack two. `chipmunk`,
 `giant`, and `monster` shift pitch, so they change who is speaking rather than
 what they are speaking through.
 
-## Add a single effect
+### Add a single effect
 
 Use **+ effect** in the rack. The menu groups effects the way you would reach for
 them, in four families:
@@ -103,7 +105,7 @@ look identical and you cannot tell the mud cut from the clarity lift.
 Bypass a node instead of deleting it while you are deciding — it stays in the
 chain, out of the signal path, so you can compare without losing the settings.
 
-## Use the one-knob controls
+### Use the one-knob controls
 
 Five effects have no single parameter that could honestly be their face — a
 compressor's threshold means nothing without its ratio. Those show one derived
@@ -124,7 +126,7 @@ up. Tightness and Crush are not, because neither has a trim to move.
 Editing a parameter underneath one of these knobs is allowed and simply moves the
 knob — the chain stores the mechanism, not the knob position.
 
-## Even out a drifting take
+### Even out a drifting take
 
 **Even Out Levels** measures the track's own speaking passages and writes a gain
 envelope. Its target is that track's own 80th percentile rather than an absolute
@@ -132,17 +134,17 @@ level, so an already-even track is left alone. Use it when passages drift over a
 whole take; use a compressor's **Evenness** when the problem is word-to-word
 dynamics. **Remove levelling** takes it back off.
 
-## What should happen
+### What should happen
 
 - Preview is what the render will sound like: both build the same graph from the
   same attributes.
-- A chain Studio cannot read plays **dry** in preview so the composition stays
+- A chain the browser editor cannot read plays **dry** in preview so the composition stays
   workable — but it **fails the render** rather than shipping a track that sounds
   plausible and is wrong. If preview sounds unprocessed, suspect the chain.
 - Reverb and delay make a track **longer** than its source. A bed with reverb no
   longer ends exactly at its clip length; that is expected.
 
-## Common problems
+### Common problems
 
 **Nothing sounds different.** Check the node is not bypassed, then check you are
 looking at **Audio FX** rather than the visual **Effects** section.
@@ -161,8 +163,319 @@ first; lifting the top of a muddy voice makes it muddy *and* harsh.
 between phrases and leaves the noise beneath speech untouched — a source with
 audible hiss needs a better source.
 
+## Make music sit under narration
+
+Music under narration is the most common audio problem in a video, and the
+obvious fix is the wrong one.
+
+Turning the whole music track down works, and it costs the music all of its
+presence for as long as anyone is talking — the bed goes limp through the entire
+voiceover. But a voice does not need the whole spectrum. It needs the few bands it
+actually occupies. A **carve** takes only those out of the music, so the bed keeps
+its low end and its top: still music, while the voice stays intelligible.
+
+### When to use it
+
+Whenever a music bed plays under speech. It is not a polish step to reach if
+there is time — place both tracks, carve, and listen.
+
+Skip it only when there is no narration for the music to sit under: a music video,
+a title card, a montage cut to the track.
+
+### Carve a bed
+
+The carve is a module at the top of the **music** track's rack, not a separate
+tool. Select the music clip, open its **Audio FX** section, and the module asks
+you to pick the voices this bed should make room for.
+
+A bed with exactly one candidate voice above it is **already carved**, at the
+default strength, because that is what a bed under narration wants. Several
+candidates leaves the picker waiting rather than guessing which one is the voice.
+
+<Warning>
+  The carve belongs on the **music**, never on the voice. It names the tracks it
+  makes room for, the same way a sidechain compressor does — you select the track
+  that gets quieter and pick what makes it quieter. A voice carved against itself
+  is a bug, not a subtle mix choice.
+</Warning>
+
+### Set the strength
+
+One control does the whole job. It derives how deep to cut, how many bands, how
+wide they are, how far the level may drop, and how far under the voice to aim —
+because those move together in any real mix.
+
+| Strength | What you get |
+| --- | --- |
+| Default (0.25) | A 6 dB dip in three bands — audible without sounding like a hole |
+| Around 0.5 | The dip reaches 10 dB, where a carve starts being heard as an effect |
+| Higher | Deliberate territory for a loud bed under a quiet voice |
+| 0 | Spectral only — one band, no level matching at all |
+
+**Switch the carve off** keeps the settings and stops the carve, which is
+different from clearing it: a bed with one candidate voice would otherwise be
+carved again by default the moment it was re-evaluated.
+
+### What it writes
+
+Ordinary effects. Open the rack after carving and you will find a few `peaking`
+filters and a `gain` stage — nothing hidden, nothing proprietary.
+
+Two things follow from that:
+
+- **The envelopes are editable.** The carve always follows the speech, so every
+  value becomes an automation lane you can adjust by hand afterwards. Silence
+  leaves the music alone; a loud passage pushes the carve to full depth. There is
+  no fixed-depth mode, because a fixed dip thins the bed through every pause.
+- **Re-carving is safe.** The nodes a carve writes are tagged as its own, so
+  running it again at a new strength replaces exactly those and leaves every
+  effect and lane you built by hand where it was.
+
+Inside a carved bed the signal runs through the dips first, then the level match,
+then anything you added yourself — which is why a limiter you place stays the last
+ceiling.
+
+### Point it at a group, not at clips
+
+If narration arrives as several clips, [group them](/studio/audio-effects#group-tracks) and
+carve against the group.
+
+A carve pointed at individual clips has to list every one of them, and it stays
+right only until the next edit: add a fourth narration clip and it plays outside
+the carve's awareness, so the music silently fails to duck under it. A carve
+pointed at a group resolves membership every time the analysis runs, so a clip
+added later is covered without touching the carve.
+
+The browser editor does this for you when you pick a second ungrouped voice — it creates a
+group behind them and points the carve at that instead.
+
+### What should happen
+
+- The voice is legible without the bed sounding hollowed out.
+- The music comes **back up between phrases** rather than staying flat.
+- The bed keeps its bass and its top end. A carve that removed those would just
+  be a filter.
+
+### Common problems
+
+**The music sounds notched or hollow.** Strength is too high. Come back toward
+the default. This is the one failure mode with an obvious sound.
+
+**The voice is still buried.** A carve cannot fix a bed that is simply louder than
+the voice — spectral room does not solve a level problem. Compare the two tracks'
+actual loudness first. Machine-generated speech commonly arrives far below a
+mastered music track, and that gap is arithmetic rather than taste.
+
+**The bed starts out already ducked.** A lane holds its first value backwards to
+the start of its clip. A bed that begins before the voice needs an explicit "no
+cut" point at its start.
+
+**The music pumps.** The level envelope releases slowly on purpose, because music
+that snaps back the instant a word ends sounds like a machine doing it. If it
+still pumps, the gaps between phrases are shorter than the release — lower the
+strength rather than fighting the envelope.
+
+**Nothing was carved.** The picker leaves itself alone when several tracks could
+be the voice. Name the voice explicitly.
+
+## Group tracks
+
+Five narration clips usually want one set of effects and one fader —
+not five copies that drift apart as you edit. A group gives them that: its members
+sum through a single bus, and the bus carries the group's own volume, effects, and
+automation.
+
+### When to use a group
+
+- **Narration in several clips.** One rack for the whole voice, and one thing for
+  a [carve](/studio/audio-effects#make-music-sit-under-narration) to point at.
+- **More than a couple of sound effects.** One place to turn all of them down is
+  worth more than precise individual levels you will never revisit.
+- **Anything you want to turn up or down as a unit** — an ambience layer, a music stem.
+
+A single clip does not need a group. Its own rack is already one place.
+
+### Create a group
+
+On an audio track holding more than one ungrouped clip, the **FX** button offers
+to group them first: it reads "Group these clips to add effects to all of them".
+Choose **Group**.
+
+The browser editor creates a group behind those clips and points anything that needed it — a
+carve, for instance — at the group rather than at the individual clip ids.
+
+### Read a group row
+
+A group gets its own timeline row, carrying:
+
+| Control | Does |
+| --- | --- |
+| Caret | Shows or hides the member rows beneath it |
+| `▤` and name | The group glyph and its label |
+| Count | How many members it holds |
+| **FX** | Opens the group's own rack, applying to the summed bus |
+| `∿` | Shows or hides [the group's own automation lanes](/studio/audio-effects#automate-over-time) |
+
+The caret and the `∿` toggle are independent: showing a group's members does not
+open their automation lanes, and opening the group's lanes does not expand its
+members.
+
+A group-level effect hears the **sum** of its members, not each one separately.
+That is the point of a bus — one compressor across a whole voiceover behaves
+differently from five compressors on five clips, and usually better.
+
+### Mute a track or a clip
+
+On an audio track, the speaker button where a visual track has its eye mutes the
+track: **Mute track** and **Unmute track**. For a selected clip, the same toggle sits
+at the top of its properties, and the media section has a **Muted** switch.
+
+A group row has no mute of its own; to silence a whole group, mute its members'
+tracks. Muted audio is left out of the render, so unmute anything you want in the
+export.
+
+### Membership lives on the member
+
+Worth knowing because it explains most surprises: each clip records which group it
+belongs to, rather than the group listing its members. Delete a clip and it simply
+disappears from the group; nothing dangles.
+
+Groups are **audio only** and do not nest. A group marker on a video clip is
+ignored.
+
+### What should happen
+
+- The group row appears with the members collapsed beneath it, and the
+  grouping offer disappears from that track's **FX** button.
+- Effects added to the group apply to everything under it at once.
+- Muting the group silences all members, in preview and in the render.
+
+### Common problems
+
+**The group's effects do nothing.** Check that the members actually carry the
+group, rather than that the group appears to list them.
+
+**Nothing happened when I grouped clips.** Grouping resolves the clips it was
+given against the timeline's current rows. If the track is collapsed, or its clips
+live inside a nested composition, expand it and try again.
+
+**Clips inside a nested composition are not offered grouping.** They arrive as
+separate rows rather than as one track holding several clips, so the grouping
+offer does not appear. Group them in the composition that owns them.
+
+**A track was missing from the export.** Check whether it is muted: muted audio is
+left out of the render.
+
+## Automate over time
+
+A static setting cannot say "quieter while the interview is on screen" or "fade
+out over the last three seconds". An automation lane can: it is a set of points on
+one parameter, and the value moves between them.
+
+Lanes work on a track's own **volume** and on any supported effect parameter, and
+a [group](/studio/audio-effects#group-tracks) has lanes of its own that apply to its whole bus.
+
+### Show a track's lanes
+
+Use the `∿` toggle on the track or group row. It shows a count when lanes already
+exist, and it is independent of the row's expand caret — showing a group's members
+does not open its lanes.
+
+To start automating an effect parameter, automate it from the parameter's own
+control in the rack. A parameter with a lane shows as **Automated**, and its
+static control is disabled: the lane owns the value from then on.
+
+### Draw and edit an envelope
+
+Work directly on the lane:
+
+- **Add a point** on the lane at the time you want it.
+- **Drag a point** to move it in time or value.
+- **Type an exact value** rather than dragging, when the number matters. A volume
+  lane can go above unity — the ceiling is +12 dB, not 1.
+- **Bend a segment** by dragging its curve, so the value holds and then moves late
+  rather than travelling evenly.
+- **Select a time range** to work on several points at once.
+
+With a range selected, right-click it for the shape and cleanup menu:
+
+| Item | Does |
+| --- | --- |
+| **Ramp up** / **Ramp down** | Replaces the selection with a single move in one direction |
+| **Swell** | Rises and returns |
+| **Dip** | Falls and returns — the shape most ducking wants |
+| **Simplify** | Removes redundant points while keeping the shape. Needs at least three points in the selection |
+
+A selection can also be **copied and pasted** onto another lane, and **retimed** by
+stretching its edges — useful when narration moves and its ducking should move
+with it.
+
+### Two things that surprise people
+
+**A track lane's times are relative to its clip.** A bed starting at 8 s has its
+first point at composition time 8. Move the clip and its envelope moves with it.
+
+**A group lane's times are composition time.** A group has no start of its own,
+so its lanes are measured from the beginning of the video. If you are automating
+a group bus, read the times as absolute.
+
+**A lane holds its first value backwards** to the start of the clip, and its last
+value forward to the end. So a bed that begins before the voice needs an explicit
+"no cut" point at the start, or it begins already ducked. This is the single most
+common automation mistake.
+
+### Not every knob can move
+
+A parameter can only be automated if the audio engine can schedule it directly.
+Three kinds cannot:
+
+| These | Cannot be automated because |
+| --- | --- |
+| Compressor, limiter, gate, bitcrush, pitch shift | They are configured whole rather than knob-by-knob — **no parameter on any of them can move** |
+| Saturation's type, threshold, and oversample | They rebuild the distortion curve; only its output stage can move |
+| Reverb's size and damping | They regenerate the room; its wet and dry levels can move |
+
+**A lane on one of those is silently inert** — it stores fine and never does
+anything. Pitch shift is the one that catches people out, because a rising pitch
+sounds like something a lane should do: it cannot, and the lane will not report
+it. To make a compressor's behaviour change over time, automate a `gain` stage
+*before* it instead: that changes how hard the compressor is driven, which
+is most of what automating its threshold would have done.
+
+To fade a whole preset in or out, automate the preset itself rather than its
+parts — its nodes share no single parameter, so the preset as a unit is the only
+handle that works.
+
+The [effect registry](/reference/audio-effects#effect-registry) marks every
+parameter that can move.
+
+### What should happen
+
+- The value moves between your points, in preview and in the render identically.
+- A parameter with a lane reads **Automated** and its static control is disabled.
+- A [carve](/studio/audio-effects#make-music-sit-under-narration) writes lanes of its own, and they are
+  ordinary lanes: you can edit them afterwards like any others.
+
+### Common problems
+
+**The lane does nothing.** Either the parameter is one of those above, or the
+effect it pointed at is gone. A lane whose effect was deleted is dropped silently
+rather than reported.
+
+**A newly added effect arrives already "Automated".** A lane left behind by a
+deleted effect can be inherited by the next effect that takes the same internal
+id. Remove the stale lane.
+
+**The volume lane is ignored.** A `volume` lane and a timeline tween on the same
+track's volume conflict; the lane wins. Pick one.
+
+**The envelope is right but the level is wrong.** A tween's values are absolute
+and replace a track's own gain rather than scaling it. Check whether the track
+also carries a static level.
+
+**The bed ducks before anyone speaks.** The first point is holding backwards. Add
+a point at the clip's start.
+
 ## Related topics
 
-- [Make music sit under narration](/studio/voiceover-carve)
-- [Automate a parameter over time](/studio/audio-automation)
 - [Audio effects implementation](/reference/audio-effects)

@@ -218,8 +218,10 @@ describe("trackCommandFailures: extra positionals", () => {
       ).rejects.toThrow(CliUsageError);
       expect(JSON.parse(logSpy.mock.calls[0]![0] as string)).toEqual({
         ok: false,
-        error:
-          "Unexpected extra argument for hyperframes lint: b\nUsage: hyperframes lint [DIR] [OPTIONS]",
+        error: expect.objectContaining({
+          message:
+            "Unexpected extra argument for hyperframes lint: b\nUsage: hyperframes lint [DIR] [OPTIONS]",
+        }),
       });
     },
   );
@@ -251,43 +253,28 @@ describe("trackCommandFailures: extra positionals", () => {
     },
   );
 
-  it("reads JSON mode from the parsed flag: --json=1 without a declared flag, not after --", async () => {
+  it.each(["--json", "--json=1", "--json=true", "--json=false"])(
+    "rejects %s on a command that declares no json flag, before any other check",
+    async (flag) => {
+      const bare = {
+        meta: { name: "docs" },
+        args: { topic: { type: "positional" } },
+        run: vi.fn(),
+      };
+      await expect(
+        runCommand(await wrap(bare as CommandDef), { rawArgs: ["a", "b", flag] }),
+      ).rejects.toMatchObject({ code: "json_unsupported", result: { exitCode: 2 } });
+      expect(bare.run).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not read a --json after -- as the flag", async () => {
     const bare = { meta: { name: "docs" }, args: { topic: { type: "positional" } }, run: vi.fn() };
-    await expect(
-      runCommand(await wrap(bare as CommandDef), { rawArgs: ["a", "b", "--json=1"] }),
-    ).rejects.toThrow(CliUsageError);
-    expect(JSON.parse(logSpy.mock.calls[0]![0] as string)).toMatchObject({ ok: false });
-    logSpy.mockClear();
     await expect(
       runCommand(await wrap(bare as CommandDef), { rawArgs: ["a", "b", "--", "--json"] }),
     ).rejects.toThrow(CliUsageError);
     expect(logSpy).not.toHaveBeenCalled();
     expect(errorSpy.mock.calls.flat().join("\n")).toContain("hyperframes docs: b, --json");
-  });
-
-  it("reports JSON under --json=true for a command that declares no json flag", async () => {
-    const bare = {
-      meta: { name: "snapshot" },
-      args: { dir: { type: "positional" } },
-      run: vi.fn(),
-    };
-    await expect(
-      runCommand(await wrap(bare as CommandDef), { rawArgs: ["a", "b", "--json=true"] }),
-    ).rejects.toThrow(CliUsageError);
-    expect(JSON.parse(logSpy.mock.calls[0]![0] as string)).toMatchObject({ ok: false });
-  });
-
-  it("reports text on stderr under --json=false for a command that declares no json flag", async () => {
-    const bare = {
-      meta: { name: "snapshot" },
-      args: { dir: { type: "positional" } },
-      run: vi.fn(),
-    };
-    await expect(
-      runCommand(await wrap(bare as CommandDef), { rawArgs: ["a", "b", "--json=false"] }),
-    ).rejects.toThrow(CliUsageError);
-    expect(logSpy).not.toHaveBeenCalled();
-    expect(errorSpy.mock.calls.flat().join("\n")).toContain("hyperframes snapshot: b");
   });
 
   it("runs a leaf given no more positionals than it declares", async () => {

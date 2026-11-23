@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { clearElementScreenshotIsolation, getElementScreenshotClip } from "./screenshotClip";
+import {
+  clearElementScreenshotIsolation,
+  getElementScreenshotClip,
+  THUMBNAIL_NO_AUTHORED_CODE_META,
+  thumbnailSeekReadyInBrowser,
+} from "./screenshotClip";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -81,5 +86,34 @@ describe("getElementScreenshotClip", () => {
     ]);
     expect(document.getElementById("waves")!.style.getPropertyValue("opacity")).toBe("");
     expect(document.getElementById("outside")!.style.getPropertyValue("opacity")).toBe(outside);
+  });
+});
+
+describe("thumbnailSeekReadyInBrowser", () => {
+  const mark = `<meta name="${THUMBNAIL_NO_AUTHORED_CODE_META}">`;
+  afterEach(() => {
+    for (const key of ["__timelines", "__renderReady"]) Reflect.deleteProperty(window, key);
+  });
+
+  it.each([
+    ["a registered timeline, before the runtime is ready", { __timelines: { main: {} } }, "", true],
+    [
+      "a page marked as having no code, once the runtime is ready",
+      { __renderReady: true },
+      mark,
+      true,
+    ],
+    ["a page whose code may still register a timeline", { __renderReady: true }, "", false],
+    [
+      "an empty timeline registry on such a page",
+      { __renderReady: true, __timelines: {} },
+      "",
+      false,
+    ],
+    ["a marked page whose runtime is not ready yet", {}, mark, false],
+  ])("%s", (_page, state, head, ready) => {
+    document.head.innerHTML = head;
+    for (const [key, value] of Object.entries(state)) Reflect.set(window, key, value);
+    expect(thumbnailSeekReadyInBrowser()).toBe(ready);
   });
 });

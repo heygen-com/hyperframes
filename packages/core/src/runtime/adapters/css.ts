@@ -1,6 +1,7 @@
 import type { RuntimeDeterministicAdapter } from "../types";
 import { swallow } from "../diagnostics";
 import { isHtmlElement } from "../domRealm";
+import { holdAnimationAt } from "./_holdAnimationAt";
 
 export function createCssAdapter(params?: {
   resolveStartSeconds?: (element: Element) => number;
@@ -98,18 +99,12 @@ export function createCssAdapter(params?: {
 
   const seekAnimations = (animations: Animation[], timeMs: number) => {
     for (const animation of animations) {
-      try {
-        animation.currentTime = timeMs;
-      } catch (err) {
-        // ignore animations that reject currentTime writes
-        swallow("runtime.adapters.css.site1", err);
-      }
-      try {
-        animation.pause();
-      } catch (err) {
-        // infinite unresolved animations can throw on pause before currentTime sticks
-        swallow("runtime.adapters.css.site2", err);
-      }
+      holdAnimationAt(
+        animation,
+        timeMs,
+        "runtime.adapters.css.site1",
+        "runtime.adapters.css.site2",
+      );
     }
   };
 

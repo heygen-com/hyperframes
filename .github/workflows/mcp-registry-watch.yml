@@ -1,0 +1,47 @@
+name: MCP registry watch
+
+# Hourly: a red run means the MCP registry lists a HeyGen-named server or version server.json never held. The
+# registry's GitHub login lets a job in any heygen-com repo publish io.github.heygen-com/*.
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compare the registry with server.json's history
+        run: node scripts/mcp-registry-watch.mjs
+
+  # One open issue per incident, so the alert reaches the repo's watchers, not only the cron's last editor. It links
+  # the run and never quotes registry names, which their publishers choose.
+  alert:
+    needs: watch
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the alert issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="MCP registry lists a HeyGen server this repo never published"
+          open="$(gh issue list --state open --search "in:title \"$title\"" --json number,title |
+            jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -n1)"
+          body="The hourly MCP registry watch failed: $RUN_URL. Its log names the listings server.json never held."
+          if [ -n "$open" ]; then gh issue comment "$open" --body "$body"; else gh issue create --title "$title" --body "$body"; fi

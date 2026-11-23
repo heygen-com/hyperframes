@@ -17,23 +17,34 @@
  *   - `perfStages.audioProcessMs` is set whether or not the call ran.
  */
 
+import { existsSync } from "node:fs";
 import { join } from "node:path";
+import type { Fps } from "@hyperframes/core";
 import {
   MIXED_AUDIO_FILENAME,
+  audioFailureDiagnostics,
   processCompositionAudio,
+  removeScratch,
+  collectScratchLeftovers,
+  withFfmpegProgress,
   type AudioProcessingFailure,
+  type MixResult,
 } from "@hyperframes/engine";
-import type { CompositionMetadata } from "../shared.js";
+import { audioWorkDir, type CompositionMetadata } from "../shared.js";
+import { mediaAssetRoots } from "../../assetMediaType.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
+import { limitDeliveryPeaks } from "../audioDeliveryLimit.js";
+import { constrainAacTruePeak } from "../audioPadTrim.js";
 
 export interface AudioStageInput {
   projectDir: string;
   workDir: string;
   /** `join(workDir, "compiled")`; passed through to the audio mixer for asset resolution. */
   compiledDir: string;
-  /** Composition duration (post-probe). Must be > 0 — probeStage guarantees this. */
-  duration: number;
+  /** Probed video frame count and exact frame rate define the delivered audio length. */
+  totalFrames: number;
+  fps: Fps;
   /** Timeout forwarded to ffmpeg subprocesses used by the audio mixer. */
   ffmpegProcessTimeout: number;
   /** Master gain forwarded to the audio mixer. */
@@ -41,15 +52,25 @@ export interface AudioStageInput {
   /** Read-only view of `composition.audios`. */
   audios: CompositionMetadata["audios"];
   masterFxChain?: string;
+  urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+  audioSidecarUrlByLocalPath?: ReadonlyMap<string, string>;
+  allowOutsideProjectAssets?: boolean;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   /** Where a per-track failure's detail goes. Optional so tests need not pass one. */
   log?: ProducerLogger;
+  /** Leave the delivered PCM in `workDir` for the assemble stage; its owner removes the dir. */
+  keepDeliverySource?: boolean;
+  onFfmpegProgress?: () => void;
 }
 
 export interface AudioStageResult {
+  /** Actual delivery attenuation, for the render warning and metadata. */
+  audioLoweredDb?: number;
   /** Always `join(workDir, MIXED_AUDIO_FILENAME)`. */
   audioOutputPath: string;
+  /** The PCM `audioOutputPath` encodes, when `keepDeliverySource` asked for it. */
+  deliverySourcePath?: string;
   /** True iff the audio mix actually produced a file. False when there are no audio elements. */
   hasAudio: boolean;
   /** Wall-clock ms for the audio mix phase. Zero-elements path is near-zero but always set. */
@@ -62,28 +83,117 @@ export interface AudioStageResult {
   audioError?: string;
   /** Bounded typed causes for policy, telemetry, and caller classification. */
   audioFailures?: AudioProcessingFailure[];
+  /** Wall ms per phase of the audio mix. */
+  audioPhaseMs?: MixResult["phaseMs"];
 }
 
-export async function runAudioStage(input: AudioStageInput): Promise<AudioStageResult> {
+function assertAudioNotInterrupted(failures: readonly AudioProcessingFailure[] | undefined): void {
+  const interrupted = failures?.find((failure) => failure.reason === "external_interruption");
+  if (!interrupted) return;
+  throw encoderFailureError("Audio processing failed", {
+    error: interrupted.detail,
+    failureReason: "external_interruption",
+    audioFailures: audioFailureDiagnostics([
+      interrupted,
+      ...(failures ?? []).filter((failure) => failure !== interrupted),
+    ]),
+  });
+}
+
+export function runAudioStage(input: AudioStageInput): Promise<AudioStageResult> {
+  return collectScratchLeftovers(
+    () =>
+      withFfmpegProgress(input.onFfmpegProgress ?? (() => {}), () => runAudioStageScoped(input)),
+    (left) => {
+      if (left.length > 0) input.log?.warn("[audio] scratch left behind", { count: left.length });
+    },
+  );
+}
+
+async function runAudioStageScoped(input: AudioStageInput): Promise<AudioStageResult> {
+  const stageStart = Date.now();
+  const pcmSourcePath = join(input.workDir, "audio-source.wav");
+  const duration = (input.totalFrames * input.fps.den) / input.fps.num;
+  let deliverySourcePath: string | undefined;
+  try {
+    const result = await mixAudioForDelivery(input, duration, pcmSourcePath);
+    let audioLoweredDb: number | undefined;
+    if (result.hasAudio) {
+      const guardStart = Date.now();
+      const guard = await guardDeliveryPeaks(
+        input,
+        result.audioOutputPath,
+        pcmSourcePath,
+        duration,
+      );
+      audioLoweredDb = guard.loweredDb;
+      input.log?.info("[audio] phases", { ...result.audioPhaseMs, guard: Date.now() - guardStart });
+      if (input.keepDeliverySource && !guard.sourceStale && existsSync(pcmSourcePath)) {
+        deliverySourcePath = pcmSourcePath;
+      }
+    }
+    return {
+      ...result,
+      audioLoweredDb,
+      deliverySourcePath,
+      audioProcessMs: Date.now() - stageStart,
+    };
+  } finally {
+    if (!deliverySourcePath) removeScratch(pcmSourcePath);
+  }
+}
+
+async function guardDeliveryPeaks(
+  input: AudioStageInput,
+  audioPath: string,
+  sourcePath: string,
+  duration: number,
+): Promise<{ loweredDb?: number; sourceStale?: true }> {
+  const limited = await limitDeliveryPeaks({
+    audioPath,
+    sourcePath,
+    targetDurationSeconds: duration,
+    signal: input.abortSignal,
+    timeoutMs: input.ffmpegProcessTimeout,
+    warn: (message, details) => input.log?.warn?.(message, details),
+  });
+  if (!limited.success) throw encoderFailureError("Audio true-peak limit failed", limited);
+  const peak = await constrainAacTruePeak({
+    audioPath,
+    sourcePath,
+    targetDurationSeconds: duration,
+    signal: input.abortSignal,
+    timeoutMs: input.ffmpegProcessTimeout,
+  });
+  if (!peak.success) throw encoderFailureError("Audio true-peak check failed", peak);
+  return { loweredDb: peak.loweredDb, sourceStale: peak.sourceStale };
+}
+
+async function mixAudioForDelivery(
+  input: AudioStageInput,
+  duration: number,
+  pcmSourcePath: string,
+): Promise<Omit<AudioStageResult, "audioProcessMs">> {
   const {
     projectDir,
     workDir,
     compiledDir,
-    duration,
     ffmpegProcessTimeout,
     audioGain,
     audios,
     masterFxChain,
+    urlByAbsentLocalPath,
+    audioSidecarUrlByLocalPath,
     abortSignal,
     assertNotAborted,
     log,
   } = input;
 
-  const stage3Start = Date.now();
   const audioOutputPath = join(workDir, MIXED_AUDIO_FILENAME);
   let hasAudio = false;
   let audioError: string | undefined;
   let audioFailures: AudioProcessingFailure[] | undefined;
+  let audioPhaseMs: MixResult["phaseMs"];
 
   if (audios.length > 0) {
     // processCompositionAudio reports per-track failures in its result, but an FX
@@ -97,11 +207,21 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
       audioResult = await processCompositionAudio(
         audios,
         projectDir,
-        join(workDir, "audio-work"),
+        audioWorkDir(workDir),
         audioOutputPath,
         duration,
         abortSignal,
-        { ffmpegProcessTimeout, audioGain, masterFxChain },
+        {
+          ffmpegProcessTimeout,
+          audioGain,
+          masterFxChain,
+          urlByAbsentLocalPath,
+          audioSidecarUrlByLocalPath,
+          keepEncoderInputAt: pcmSourcePath,
+          assetRoots: input.allowOutsideProjectAssets
+            ? undefined
+            : mediaAssetRoots(projectDir, compiledDir),
+        },
         compiledDir,
       );
     } catch (err) {
@@ -111,7 +231,6 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
       return {
         audioOutputPath,
         hasAudio: false,
-        audioProcessMs: Date.now() - stage3Start,
         audioError: detail,
         // Synthesised rather than left undefined. The warning policy reads
         // owner, retryability, reason and stage off this list, so reporting the
@@ -133,18 +252,11 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
     }
     assertNotAborted();
 
-    const interrupted = audioResult.failures?.find(
-      (failure) => failure.reason === "external_interruption",
-    );
-    if (interrupted) {
-      throw encoderFailureError("Audio processing failed", {
-        error: interrupted.detail,
-        failureReason: "external_interruption",
-      });
-    }
+    assertAudioNotInterrupted(audioResult.failures);
 
     hasAudio = audioResult.success;
     audioFailures = audioResult.failures;
+    audioPhaseMs = audioResult.phaseMs;
     // processCompositionAudio's error (per-element failures or the mix's own
     // error) used to be discarded here — the caller only saw hasAudio flip to
     // false with no explanation, so a real audio failure looked identical to
@@ -167,13 +279,12 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
       }
     }
   }
-  const audioProcessMs = Date.now() - stage3Start;
 
   return {
     audioOutputPath,
     hasAudio,
-    audioProcessMs,
     audioError,
     audioFailures,
+    audioPhaseMs,
   };
 }

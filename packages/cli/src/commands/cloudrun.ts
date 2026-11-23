@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { failCommand } from "../utils/commandResult.js";
+import { CliUsageError, failCommand, failUsage } from "../utils/commandResult.js";
 /**
  * `hyperframes cloudrun` — deploy + drive distributed renders on Google
  * Cloud Run + Cloud Workflows.
@@ -14,12 +14,11 @@ import { failCommand } from "../utils/commandResult.js";
  * `progress` don't need them re-passed every call.
  */
 
-import { spawnSync } from "node:child_process";
+import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { defineCommand } from "citty";
-import { type CanvasResolution } from "@hyperframes/core";
+import { defineCommand } from "../utils/defineCommand.js";
+import { type CanvasResolution, terminalLines, terminalText } from "@hyperframes/core";
 import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
@@ -29,7 +28,11 @@ import {
   validateVariablesAgainstProject,
 } from "../utils/variables.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
-import { readAllowedCompositionFpsFromDir } from "../utils/compositionFps.js";
+import { defaultCloudFps } from "../utils/compositionFps.js";
+import { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "@hyperframes/core";
+import { isMissingPackageError, missingPackageMessage } from "../utils/missingPackage.js";
+import { hyperframesConfigDir, seededConfigFile } from "../utils/configDir.js";
+import { projectCopyHint } from "../utils/projectCopyHint.js";
 
 export const examples: Example[] = [
   ["Deploy the Cloud Run render stack", "hyperframes cloudrun deploy --project my-gcp-project"],
@@ -99,21 +102,24 @@ function loadCloudRunAdapter(): Promise<CloudRunAdapter> {
   return cloudRunAdapterPromise;
 }
 
+async function cloudRunAdapter(subcommand: string): Promise<CloudRunAdapter> {
+  try {
+    return await loadCloudRunAdapter();
+  } catch (error) {
+    if (isMissingCloudRunAdapterError(error)) {
+      console.error(missingCloudRunAdapterMessage(subcommand));
+      failCommand();
+    }
+    throw error;
+  }
+}
+
 export function isMissingCloudRunAdapterError(error: unknown): boolean {
-  return (
-    (error as NodeJS.ErrnoException)?.code === "ERR_MODULE_NOT_FOUND" &&
-    normalizeErrorMessage(error).includes("@hyperframes/gcp-cloud-run")
-  );
+  return isMissingPackageError(error, "@hyperframes/gcp-cloud-run");
 }
 
 export function missingCloudRunAdapterMessage(subcommand: string): string {
-  return (
-    `${c.error("@hyperframes/gcp-cloud-run is not installed.")} The ${c.accent(`hyperframes cloudrun ${subcommand}`)} command needs it at runtime.\n` +
-    `Install it alongside the CLI:\n` +
-    `  ${c.accent("npm install -g @hyperframes/gcp-cloud-run")}\n` +
-    `Or, for an opt-in project setup:\n` +
-    `  ${c.accent("npm install @hyperframes/gcp-cloud-run")}`
-  );
+  return missingPackageMessage("@hyperframes/gcp-cloud-run", `hyperframes cloudrun ${subcommand}`);
 }
 
 export default defineCommand({
@@ -165,9 +171,15 @@ export default defineCommand({
 
     // sites / render
     "site-id": { type: "string", description: "Explicit site id (overrides content hash)" },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Upload the files a link brings in from outside the project folder. Otherwise they are left out and named.",
+      default: false,
+    },
     width: { type: "string", description: "Render width in pixels" },
     height: { type: "string", description: "Render height in pixels" },
-    fps: { type: "string", description: "Render fps (24 | 30 | 60)" },
+    fps: { type: "string", description: `Render fps (${DISTRIBUTED_FPS.join(" | ")})` },
     format: { type: "string", description: "mp4 | mov | png-sequence | webm (default: mp4)" },
     codec: { type: "string", description: "h264 | h265 (mp4 only)" },
     quality: { type: "string", description: "draft | standard | high" },
@@ -232,25 +244,6 @@ export default defineCommand({
       console.log(HELP);
       return;
     }
-    const verbsNeedingAdapter = new Set([
-      "deploy",
-      "sites",
-      "render",
-      "render-batch",
-      "progress",
-      "destroy",
-    ]);
-    if (verbsNeedingAdapter.has(subcommand)) {
-      try {
-        await loadCloudRunAdapter();
-      } catch (error) {
-        if (isMissingCloudRunAdapterError(error)) {
-          console.error(missingCloudRunAdapterMessage(subcommand));
-          failCommand();
-        }
-        throw error;
-      }
-    }
     switch (subcommand) {
       case "deploy":
         return runDeploy(args);
@@ -265,8 +258,8 @@ export default defineCommand({
       case "destroy":
         return runDestroy(args);
       default:
-        console.error(`${c.error("Unknown subcommand:")} ${subcommand}\n${HELP}`);
-        failCommand();
+        console.error(`${c.error("Unknown subcommand:")} ${terminalText(subcommand)}\n${HELP}`);
+        failUsage();
     }
   },
 });
@@ -274,10 +267,10 @@ export default defineCommand({
 // ── State helpers ─────────────────────────────────────────────────────────
 
 function stateDir(): string {
-  return join(homedir(), ".hyperframes");
+  return hyperframesConfigDir();
 }
 function statePath(): string {
-  return join(stateDir(), "cloudrun-state.json");
+  return seededConfigFile("cloudrun-state.json");
 }
 function writeState(state: StackState): void {
   mkdirSync(stateDir(), { recursive: true });
@@ -313,14 +306,20 @@ function stripUndefined<T extends Record<string, unknown>>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v != null)) as Partial<T>;
 }
 
+function assertStarted(cmd: string, res: SpawnSyncReturns<unknown>): void {
+  if ((res.error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") return;
+  throw new Error(`[cloudrun] \`${cmd}\` not found on PATH.${projectCopyHint(cmd)}`);
+}
 function run(cmd: string, cmdArgs: string[], opts: { cwd?: string } = {}): void {
   const res = spawnSync(cmd, cmdArgs, { stdio: "inherit", cwd: opts.cwd });
+  assertStarted(cmd, res);
   if (res.status !== 0) {
     throw new Error(`[cloudrun] \`${cmd} ${cmdArgs.join(" ")}\` exited with ${res.status}`);
   }
 }
 function capture(cmd: string, cmdArgs: string[], opts: { cwd?: string } = {}): string {
   const res = spawnSync(cmd, cmdArgs, { encoding: "utf8", cwd: opts.cwd });
+  assertStarted(cmd, res);
   if (res.status !== 0) {
     throw new Error(`[cloudrun] \`${cmd} ${cmdArgs.join(" ")}\` failed: ${res.stderr}`);
   }
@@ -334,15 +333,15 @@ async function runDeploy(args: Record<string, unknown>): Promise<void> {
   const project = args.project as string | undefined;
   if (!project) {
     console.error("[cloudrun deploy] --project <gcp-project-id> is required.");
-    failCommand();
+    failUsage();
   }
   const region = (args.region as string | undefined) ?? "us-central1";
   const repo = (args.repo as string | undefined) ?? "hyperframes";
-  const { getTerraformModuleDir } = await loadCloudRunAdapter();
+  const { getTerraformModuleDir } = await cloudRunAdapter("deploy");
   const tfDir = getTerraformModuleDir();
   const repoRoot = findRepoRoot(tfDir);
 
-  console.log(`→ Enabling required APIs on ${project}`);
+  console.log(`→ Enabling required APIs on ${terminalText(project)}`);
   run("gcloud", [
     "services",
     "enable",
@@ -362,7 +361,7 @@ async function runDeploy(args: Record<string, unknown>): Promise<void> {
       console.error(
         "[cloudrun deploy] --image is required when not running from a hyperframes checkout (no Dockerfile context found).",
       );
-      failCommand();
+      failUsage();
     }
     // Ensure the Artifact Registry repo exists.
     const exists =
@@ -395,7 +394,7 @@ async function runDeploy(args: Record<string, unknown>): Promise<void> {
       .replace(/[^0-9]/g, "")
       .slice(0, 14);
     image = `${region}-docker.pkg.dev/${project}/${repo}/hyperframes-render:${tag}`;
-    console.log(`→ Building + pushing ${image} via Cloud Build`);
+    console.log(`→ Building + pushing ${terminalText(image)} via Cloud Build`);
     run("gcloud", [
       "builds",
       "submit",
@@ -425,8 +424,10 @@ async function runDeploy(args: Record<string, unknown>): Promise<void> {
     workflowId: capture("terraform", ["output", "-raw", "workflow_name"], { cwd: tfDir }),
   };
   writeState(state);
-  console.log(`${c.accent("✓ deployed.")} bucket=${state.bucketName} workflow=${state.workflowId}`);
-  console.log(`  service=${state.serviceUrl}`);
+  console.log(
+    `${c.accent("✓ deployed.")} bucket=${terminalText(state.bucketName)} workflow=${terminalText(state.workflowId)}`,
+  );
+  console.log(`  service=${terminalText(state.serviceUrl)}`);
   console.log(
     `  Next: ${c.accent("hyperframes cloudrun render ./my-project --width 1920 --height 1080 --wait")}`,
   );
@@ -497,28 +498,30 @@ function writeCloudBuildConfig(image: string): string {
 async function runSites(args: Record<string, unknown>): Promise<void> {
   if (args.target !== "create") {
     console.error(
-      `[cloudrun sites] unknown verb "${String(args.target)}". Only "create" is supported.`,
+      `[cloudrun sites] unknown verb "${terminalText(String(args.target))}". Only "create" is supported.`,
     );
-    failCommand();
+    failUsage();
   }
   const projectDir = args.extra as string | undefined;
   if (!projectDir) {
     console.error("[cloudrun sites create] usage: hyperframes cloudrun sites create <projectDir>");
-    failCommand();
+    failUsage();
   }
   const state = readState(args);
-  const { deploySite } = await loadCloudRunAdapter();
+  const { deploySite } = await cloudRunAdapter("sites");
   const handle = await deploySite({
     projectDir: resolve(projectDir),
     bucketName: state.bucketName,
     siteId: args["site-id"] as string | undefined,
+    includeOutsideFiles: args["include-outside-files"] === true,
+    onNotice: (message) => console.error(terminalLines(message)),
   });
   if (args.json) {
     console.log(JSON.stringify(handle, null, 2));
   } else {
     console.log(
       `${handle.uploaded ? c.accent("✓ uploaded") : c.dim("• already present")} ` +
-        `site=${handle.siteId} (${handle.bytes} bytes)\n  ${handle.projectGcsUri}`,
+        `site=${terminalText(handle.siteId)} (${handle.bytes} bytes)\n  ${terminalText(handle.projectGcsUri)}`,
     );
   }
 }
@@ -529,12 +532,13 @@ function resolveCloudRunFps(
   args: Record<string, unknown>,
   projectDir: string,
   command: "render" | "render-batch",
-): 24 | 30 | 60 {
-  const fps =
-    parseIntFlag(args.fps) ?? readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ?? 30;
-  if (fps === 24 || fps === 30 || fps === 60) return fps;
-  console.error(`[cloudrun ${command}] --fps must be 24, 30, or 60; got ${fps}.`);
-  failCommand();
+): DistributedFps {
+  const fps = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
+  if (isDistributedFps(fps)) return fps;
+  console.error(
+    `[cloudrun ${command}] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fps}.`,
+  );
+  failUsage();
 }
 
 // fallow-ignore-next-line complexity
@@ -544,22 +548,25 @@ async function runRender(args: Record<string, unknown>): Promise<void> {
     console.error(
       "[cloudrun render] usage: hyperframes cloudrun render <projectDir> --width <px> --height <px>",
     );
-    failCommand();
+    failUsage();
   }
   const width = parsePositiveInt(args.width, "--width");
   const height = parsePositiveInt(args.height, "--height");
   if (width === undefined || height === undefined) {
     console.error("[cloudrun render] --width and --height are required.");
-    failCommand();
+    failUsage();
   }
   const fps = resolveCloudRunFps(args, projectDir, "render");
-  const state = readState(args);
   const variables = resolveAndValidateVariables(args, resolve(projectDir));
   const config = buildRenderConfig(args, fps, width, height, variables);
+  const intervalMs = parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms") ?? 5000;
+  const state = readState(args);
 
-  const { renderToCloudRun, getRenderProgress } = await loadCloudRunAdapter();
+  const { renderToCloudRun, getRenderProgress } = await cloudRunAdapter("render");
   const handle = await renderToCloudRun({
     projectDir: resolve(projectDir),
+    includeOutsideFiles: args["include-outside-files"] === true,
+    onNotice: (message) => console.error(terminalLines(message)),
     config: config as Parameters<typeof renderToCloudRun>[0]["config"],
     bucketName: state.bucketName,
     projectId: state.projectId,
@@ -573,32 +580,32 @@ async function runRender(args: Record<string, unknown>): Promise<void> {
   if (!args.wait) {
     if (args.json) console.log(JSON.stringify(handle, null, 2));
     else {
-      console.log(`${c.accent("✓ render started")} renderId=${handle.renderId}`);
-      console.log(`  output → ${handle.outputGcsUri}`);
+      console.log(`${c.accent("✓ render started")} renderId=${terminalText(handle.renderId)}`);
+      console.log(`  output → ${terminalText(handle.outputGcsUri)}`);
       console.log(
-        `  progress: ${c.accent(`hyperframes cloudrun progress ${handle.executionName}`)}`,
+        `  progress: ${c.accent(`hyperframes cloudrun progress ${terminalText(handle.executionName)}`)}`,
       );
     }
     return;
   }
 
-  const intervalMs = parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms") ?? 5000;
   let progress = await getRenderProgress({ executionName: handle.executionName });
   while (progress.status === "running") {
     await new Promise((r) => setTimeout(r, intervalMs));
     progress = await getRenderProgress({ executionName: handle.executionName });
-    if (!args.json) process.stdout.write(`\r  status=${progress.status} `);
+    if (!args.json) process.stdout.write(`\r  status=${terminalText(progress.status)} `);
   }
   if (!args.json) process.stdout.write("\n");
   if (args.json) {
     console.log(JSON.stringify(progress, null, 2));
   } else if (progress.status === "succeeded") {
     console.log(
-      `${c.accent("✓ done.")} ${progress.outputFile?.gcsUri} (${progress.costs.displayCost})`,
+      `${c.accent("✓ done.")} ${terminalText(String(progress.outputFile?.gcsUri))} (${terminalText(progress.costs.displayCost)})`,
     );
   } else {
-    console.error(`${c.error("✗ render " + progress.status)}`);
-    for (const e of progress.errors) console.error(`  ${e.state}: ${e.cause}`);
+    console.error(`${c.error("✗ render " + terminalText(progress.status))}`);
+    for (const e of progress.errors)
+      console.error(`  ${terminalText(e.state)}: ${terminalLines(e.cause)}`);
     failCommand();
   }
 }
@@ -610,20 +617,23 @@ async function runProgress(args: Record<string, unknown>): Promise<void> {
   const executionName = args.target as string | undefined;
   if (!executionName) {
     console.error("[cloudrun progress] usage: hyperframes cloudrun progress <executionName>");
-    failCommand();
+    failUsage();
   }
-  const { getRenderProgress } = await loadCloudRunAdapter();
+  const { getRenderProgress } = await cloudRunAdapter("progress");
   const progress = await getRenderProgress({ executionName });
   if (args.json) {
     console.log(JSON.stringify(progress, null, 2));
     return;
   }
-  console.log(`status=${progress.status} progress=${(progress.overallProgress * 100).toFixed(0)}%`);
+  console.log(
+    `status=${terminalText(progress.status)} progress=${(progress.overallProgress * 100).toFixed(0)}%`,
+  );
   if (progress.totalFrames)
     console.log(`frames=${progress.framesRendered}/${progress.totalFrames}`);
-  if (progress.outputFile) console.log(`output=${progress.outputFile.gcsUri}`);
-  console.log(`cost=${progress.costs.displayCost}`);
-  for (const e of progress.errors) console.error(`  error ${e.state}: ${e.cause}`);
+  if (progress.outputFile) console.log(`output=${terminalText(progress.outputFile.gcsUri)}`);
+  console.log(`cost=${terminalText(progress.costs.displayCost)}`);
+  for (const e of progress.errors)
+    console.error(`  error ${terminalText(e.state)}: ${terminalLines(e.cause)}`);
 }
 
 // ── render-batch ────────────────────────────────────────────────────────────
@@ -650,17 +660,18 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     console.error(
       "[cloudrun render-batch] usage: hyperframes cloudrun render-batch <projectDir> --batch <file.jsonl> --width <px> --height <px>",
     );
-    failCommand();
+    failUsage();
   }
   const width = parsePositiveInt(args.width, "--width");
   const height = parsePositiveInt(args.height, "--height");
   if (width === undefined || height === undefined) {
     console.error("[cloudrun render-batch] --width and --height are required.");
-    failCommand();
+    failUsage();
   }
   const fps = resolveCloudRunFps(args, projectDir, "render-batch");
+  buildRenderConfig(args, fps, width, height, undefined);
   if (!existsSync(resolve(batchPath))) {
-    console.error(`[cloudrun render-batch] batch file not found: ${batchPath}`);
+    console.error(`[cloudrun render-batch] batch file not found: ${terminalText(batchPath)}`);
     failCommand();
   }
   const entries = parseBatchFile(resolve(batchPath));
@@ -680,10 +691,10 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     return;
   }
 
-  const state = readState(args);
   const maxConcurrent =
     parsePositiveInt(args["max-concurrent"], "--max-concurrent") ?? DEFAULT_BATCH_MAX_CONCURRENT;
-  const { deploySite, renderToCloudRun } = await loadCloudRunAdapter();
+  const state = readState(args);
+  const { deploySite, renderToCloudRun } = await cloudRunAdapter("render-batch");
 
   // Upload the project once; every entry reuses the same content-addressed
   // site handle so the tar+upload cost is paid a single time.
@@ -691,6 +702,8 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     projectDir: resolve(projectDir),
     bucketName: state.bucketName,
     siteId: args["site-id"] as string | undefined,
+    includeOutsideFiles: args["include-outside-files"] === true,
+    onNotice: (message) => console.error(terminalLines(message)),
   });
 
   const results: Array<{ outputKey: string; executionName?: string; error?: string }> = [];
@@ -731,7 +744,8 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     console.log(
       `${c.accent("✓ started")} ${results.length - failed.length}/${results.length} renders`,
     );
-    for (const r of failed) console.error(`  ✗ ${r.outputKey}: ${r.error}`);
+    for (const r of failed)
+      console.error(`  ✗ ${terminalText(r.outputKey)}: ${terminalLines(r.error ?? "")}`);
   }
   if (failed.length > 0) failCommand();
 }
@@ -770,7 +784,7 @@ function parseBatchFile(path: string): BatchEntry[] {
 
 // fallow-ignore-next-line complexity
 async function runDestroy(args: Record<string, unknown>): Promise<void> {
-  const { getTerraformModuleDir } = await loadCloudRunAdapter();
+  const { getTerraformModuleDir } = await cloudRunAdapter("destroy");
   const tfDir = getTerraformModuleDir();
   const state = existsSync(statePath())
     ? (JSON.parse(readFileSync(statePath(), "utf8")) as Partial<StackState>)
@@ -780,7 +794,7 @@ async function runDestroy(args: Record<string, unknown>): Promise<void> {
   const image = (args.image as string | undefined) ?? "unused:latest";
   if (!project) {
     console.error("[cloudrun destroy] --project is required (or deploy first to cache it).");
-    failCommand();
+    failUsage();
   }
   const vars = [
     "-var",
@@ -904,7 +918,7 @@ function parsePositiveInt(raw: unknown, flagName: string): number | undefined {
   const n = parseIntFlag(raw);
   if (n === undefined) return undefined;
   if (!Number.isInteger(n) || n < 1) {
-    throw new Error(`[cloudrun] ${flagName} must be a positive integer; got ${n}`);
+    throw new CliUsageError(`[cloudrun] ${flagName} must be a positive integer; got ${n}`);
   }
   return n;
 }
@@ -918,7 +932,7 @@ function parseEnum<T extends string>(
   if (raw === undefined || raw === null || raw === "") return defaultValue;
   const s = String(raw);
   if ((allowed as readonly string[]).includes(s)) return s as T;
-  throw new Error(`${errorPrefix} must be ${allowed.join("|")}; got ${s}`);
+  throw new CliUsageError(`${errorPrefix} must be ${allowed.join("|")}; got ${s}`);
 }
 const FORMATS = ["mp4", "mov", "png-sequence", "webm"] as const;
 const CODECS = ["h264", "h265"] as const;

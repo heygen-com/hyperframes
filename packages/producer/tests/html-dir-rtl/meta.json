@@ -1,0 +1,13 @@
+{
+  "name": "html-dir-rtl",
+  "description": "Regression guard for right-to-left documents: dir=\"rtl\" on <html> must export the same frame preview shows. A magenta page background sits behind the root, so a blank export or a capture shifted by the RTL scroll origin collapses PSNR.",
+  "tags": ["regression", "rtl", "edge"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 12,
+    "workers": 1
+  }
+}

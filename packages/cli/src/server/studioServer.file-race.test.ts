@@ -152,7 +152,7 @@ describe("Studio bundle file reads", () => {
   // while the hand-authored public/ files keep revalidating. Cache policy
   // itself is owned by studioServer.staticAssets.test.ts.
   it.each([
-    ["assets/main.js", "text/javascript", "public, max-age=31536000, immutable"],
+    ["assets/main.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"],
     ["icons/logo.svg", "image/svg+xml", "no-store"],
     ["favicon.svg", "image/svg+xml", "no-store"],
   ])("preserves %s MIME and cache headers", async (name, mime, cacheControl) => {
@@ -190,7 +190,7 @@ describe("Studio bundle file reads", () => {
     };
     const response = await server.app.request("/api/runtime.js");
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("text/javascript");
+    expect(response.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await response.text()).toBe("checked runtime");
     expectClosed();
@@ -246,13 +246,14 @@ describe("Studio bundle file reads", () => {
     expect(await response.text()).toContain("HyperFrames Studio unavailable");
   });
 
-  it("still injects runtime environment into the SPA fallback", async () => {
+  it("still injects runtime environment into the Studio shell", async () => {
     vi.stubEnv("VITE_STUDIO_STATIC_TEST", "runtime-value");
-    const response = await server.app.request("/editor");
+    const response = await server.app.request("/index.html");
     expect(response.status).toBe(200);
     const text = await response.text();
     expect(text).toContain("Studio");
     expect(text).toContain('"VITE_STUDIO_STATIC_TEST":"runtime-value"');
+    expect(text).toContain('<meta name="hyperframes-local-share" content="1">');
     expectClosed();
   });
 

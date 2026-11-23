@@ -12,10 +12,7 @@
 //
 // This module hosts the pure decision so it can be unit-tested without a
 // browser. The same logic is inlined into contrast-audit.browser.js (which is
-// injected as a raw string and cannot import) and into
-// skills/hyperframes-creative/scripts/contrast-report.mjs — keep all three in
-// sync, mirroring the existing "WCAG math is duplicated" note at the top of
-// contrast-audit.browser.js.
+// injected as a raw string and cannot import) — keep both in sync.
 
 import { parseColorRGBA, type Rgba } from "./contrast-bg.js";
 
@@ -24,16 +21,16 @@ import { parseColorRGBA, type Rgba } from "./contrast-bg.js";
  *
  * - For ordinary HTML text, this is always the computed `color`.
  * - For SVG text, the rendered glyph color is `fill`, not `color`. `fill` is
- *   only trusted when it resolves to a solid rgb()/rgba() color — SVG paint
- *   keywords ("none", "context-fill") and gradient/pattern references
- *   (`url(#...)`) are not colors, so those fall back to `color` instead of
- *   fabricating black.
+ *   only trusted when it resolves to a solid rgb()/rgba() color; SVG paint
+ *   keywords ("none", "context-fill") fall back to `color`.
+ * - A `url(#...)` fill is null: the audit judges a gradient by its stops and skips anything else.
  */
 export function resolveForegroundColor(opts: {
   isSvgText: boolean;
   fill: string;
   color: string;
-}): Rgba {
+}): Rgba | null {
+  if (opts.isSvgText && opts.fill.startsWith("url(")) return null;
   if (opts.isSvgText) {
     const solid = parseColorRGBA(opts.fill);
     if (solid) return solid;

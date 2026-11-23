@@ -93,7 +93,18 @@ function cssStackingContextPath(element: Element): string {
  * the leaf itself: an element that establishes a context still compares its own
  * z-index with siblings in its parent's context.
  */
-export function resolveCssStackingContextId(node: Element): string {
+export function resolveCssStackingContextId(
+  node: Element,
+  byParent?: Map<Element | null, string>,
+): string {
+  const known = byParent?.get(node.parentElement);
+  if (known !== undefined) return known;
+  const id = nearestCssStackingContextId(node);
+  byParent?.set(node.parentElement, id);
+  return id;
+}
+
+function nearestCssStackingContextId(node: Element): string {
   const win = node.ownerDocument.defaultView;
   if (!win) return ROOT_CSS_STACKING_CONTEXT_ID;
   let cursor = node.parentElement;

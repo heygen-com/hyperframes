@@ -82,6 +82,21 @@ describe("static-dedup reuse keys on absolute frame index (time), not relative f
     expect(session.staticDedupCount).toBe(0);
   });
 
+  it("reuses across a stride gap when every skipped frame is static", async () => {
+    const session = makeSession(new Set([88, 89, 90]), fps30);
+    session.lastFrameAbsoluteIndex = 87;
+    const result = await captureFrameToBuffer(session, 0, 90 / 30);
+    expect(result.buffer).toBe(SENTINEL);
+    expect(session.lastFrameAbsoluteIndex).toBe(90);
+  });
+
+  it("does not reuse across a stride gap holding a non-static frame", async () => {
+    const session = makeSession(new Set([88, 90]), fps30);
+    session.lastFrameAbsoluteIndex = 87;
+    await expect(captureFrameToBuffer(session, 0, 90 / 30)).rejects.toThrow();
+    expect(session.staticDedupCount).toBe(0);
+  });
+
   it("advances the cached absolute index across consecutive reuse hits", async () => {
     const session = makeSession(new Set([90, 91]), fps30);
     await captureFrameToBuffer(session, 0, 90 / 30);

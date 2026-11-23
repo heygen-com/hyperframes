@@ -1,3 +1,5 @@
+import type { BundleOptions } from "@hyperframes/core/compiler";
+import { terminalLines } from "@hyperframes/core/terminal-text";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import { c } from "../ui/colors.js";
 
@@ -20,9 +22,10 @@ export async function bundleWithLocalizedFonts(
   // Injectable for tests. Production callers omit it and get the producer
   // font-localization pass (see localizeWithProducer).
   localizeFonts: (html: string) => Promise<string> = localizeWithProducer,
+  bundleOptions?: BundleOptions,
 ): Promise<string> {
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
-  const html = await bundleToSingleHtml(projectDir);
+  const html = await bundleToSingleHtml(projectDir, bundleOptions);
   return localizeFonts(html);
 }
 
@@ -76,7 +79,7 @@ export function __resetFontLocalizationWarningsForTests(): void {
 export async function localizeWithProducer(
   html: string,
   loadInjector: () => Promise<FontInjector | null> = loadFontInjector,
-  warn: (message: string) => void = (m) => console.warn(`   ${c.warn("⚠")} ${m}`),
+  warn: (message: string) => void = (m) => console.warn(`   ${c.warn("⚠")} ${terminalLines(m)}`),
 ): Promise<string> {
   const inject = await loadInjector();
   if (!inject) return html;

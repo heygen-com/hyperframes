@@ -1,8 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { synthesizeGemini, GEMINI_TTS_MODEL } from "./gemini-tts.mjs";
 import { pickProvider, resolveVoiceId, synthesizeOne } from "./tts.mjs";
 
@@ -61,6 +70,27 @@ test("Gemini preserves verbatim text, directs style separately, saves WAV and re
   });
   const result = await synthesizeOne({ ...args, provider: "gemini", style: "Warm and calm" });
   assert.deepEqual(result, { ok: true, words: null });
+  assert.deepEqual(readFileSync(args.wavAbs), wav);
+});
+
+test("Gemini replaces a link at the output instead of writing through it", async (t) => {
+  const { wav, payload, args } = fixture(t);
+  const outside = mkdtempSync(join(tmpdir(), "gemini-tts-outside-"));
+  t.after(() => rmSync(outside, { recursive: true, force: true }));
+  const kept = join(outside, "kept");
+  writeFileSync(kept, "keep me");
+  mkdirSync(dirname(args.wavAbs), { recursive: true });
+  try {
+    symlinkSync(kept, args.wavAbs);
+  } catch {
+    t.skip("symbolic links are not available here");
+    return;
+  }
+  t.mock.method(globalThis, "fetch", async () => Response.json(payload));
+  const result = await synthesizeOne({ ...args, provider: "gemini" });
+  assert.deepEqual(result, { ok: true, words: null });
+  assert.equal(readFileSync(kept, "utf8"), "keep me");
+  assert.ok(lstatSync(args.wavAbs).isFile());
   assert.deepEqual(readFileSync(args.wavAbs), wav);
 });
 
@@ -123,6 +153,16 @@ test("HTTP and network failures stay actionable without leaking the key", async 
     },
   });
   assert.match(timeout.error, /timed out/);
+  const socket = await synthesizeGemini(args, {
+    fetchImpl: async () => {
+      const cause = Object.assign(new Error("other side closed test-gemini-key"), {
+        code: "UND_ERR_SOCKET",
+      });
+      throw new TypeError("fetch failed", { cause });
+    },
+  });
+  assert.match(socket.error, /fetch failed \(UND_ERR_SOCKET: other side closed/);
+  assert.ok(!socket.error.includes("test-gemini-key"));
   assert.equal(existsSync(args.wavAbs), false);
 });
 

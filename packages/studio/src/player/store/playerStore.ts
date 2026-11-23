@@ -16,6 +16,7 @@ import {
   type AutomationSelectionSlice,
 } from "./automationSelectionSlice";
 import { createEditingModeSlice, type EditingModeSlice } from "./editingModeSlice";
+import { createPreviewQualitySlice, type PreviewQualitySlice } from "./previewQualitySlice";
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
 import { createPlaybackReadinessSlice } from "./readinessSlice";
@@ -62,6 +63,7 @@ type PlayerStoreSlices = KeyframeSlice &
   AutomationSelectionSlice &
   ThumbnailSlice &
   EditingModeSlice &
+  PreviewQualitySlice &
   ReturnType<typeof createPlaybackReadinessSlice> &
   RangeSelectionSlice;
 interface PlayerState extends PlayerStoreSlices {
@@ -96,12 +98,10 @@ interface PlayerState extends PlayerStoreSlices {
   inPoint: number | null;
   /** Work-area out-point (seconds). When set, loop ends here and E jumps here. */
   outPoint: number | null;
-
   activeTool: TimelineTool;
   setActiveTool: (tool: TimelineTool) => void;
   selectLeftward: () => void;
   selectRightward: () => void;
-
   /** Tween-relative percentage of the last-clicked keyframe diamond. Operations
    *  (drag, resize, rotate) target this instead of recomputing from playhead. */
   activeKeyframePct: number | null;
@@ -301,6 +301,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   ...createAutomationSelectionSlice(set),
   ...createEditingModeSlice(set),
+  ...createPreviewQualitySlice(set, get),
   ...createRangeSelectionSlice(),
   ...createPlaybackReadinessSlice(set),
 

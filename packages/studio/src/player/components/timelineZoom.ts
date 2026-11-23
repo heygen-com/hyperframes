@@ -2,6 +2,8 @@ import type { ZoomMode } from "../store/playerStore";
 import { STUDIO_PREVIEW_FPS } from "../lib/time";
 
 export const MIN_TIMELINE_ZOOM_PERCENT = 10;
+/** Inset so a range zoom does not sit on the viewport edge. Shared with the range box. */
+export const TIMELINE_RANGE_MARGIN_PX = 24;
 const MAX_TIMELINE_FRAME_WIDTH_PX = 48;
 // CapCut-strength steps: one button press / pinch gesture moves the zoom
 // meaningfully (user feedback, twice-doubled: 1.25×/0.8× + 0.0035 felt like
@@ -118,4 +120,57 @@ export function timelineSliderToZoomPercent(slider: number, fitPixelsPerSecond: 
   const logMax = Math.log(getMaxTimelineZoomPercent(fitPixelsPerSecond));
   const logValue = LOG_MIN + (clampedSlider / 100) * (logMax - LOG_MIN);
   return clampTimelineZoomPercent(Math.exp(logValue), fitPixelsPerSecond);
+}
+
+export interface ClipTimeSpan {
+  start: number;
+  end: number;
+}
+
+export interface SelectedClipsZoom {
+  start: number;
+  end: number;
+  zoomPercent: number;
+}
+
+/** Union of clips with a positive duration. Zero-length entries are not a range. */
+export function positiveClipSpan(
+  clips: readonly ClipTimeSpan[],
+): { start: number; end: number } | null {
+  let start = Number.POSITIVE_INFINITY;
+  let end = Number.NEGATIVE_INFINITY;
+  for (const clip of clips) {
+    if (!Number.isFinite(clip.start) || !Number.isFinite(clip.end) || !(clip.end > clip.start)) {
+      continue;
+    }
+    if (clip.start < start) start = clip.start;
+    if (clip.end > end) end = clip.end;
+  }
+  if (!Number.isFinite(start) || !(end > start)) return null;
+  return { start, end };
+}
+
+export function zoomToSelectedClips(input: {
+  clips: readonly ClipTimeSpan[];
+  viewportWidth: number;
+  contentOrigin: number;
+  fitPixelsPerSecond: number;
+  marginPx?: number;
+}): SelectedClipsZoom | null {
+  const margin = input.marginPx ?? TIMELINE_RANGE_MARGIN_PX;
+  const span = positiveClipSpan(input.clips);
+  const fitPps = input.fitPixelsPerSecond;
+  const viewport = input.viewportWidth;
+  const origin = input.contentOrigin;
+  if (!span) return null;
+  if (!Number.isFinite(fitPps) || !(fitPps > 0)) return null;
+  // A collapsed timeline is no wider than its headers, so there is no track to fit.
+  if (!Number.isFinite(viewport) || !Number.isFinite(origin) || !(viewport > origin)) return null;
+
+  const usable = Math.max(1, viewport - origin - margin * 2);
+  const zoomPercent = clampTimelineZoomPercent(
+    (usable / (span.end - span.start) / fitPps) * 100,
+    fitPps,
+  );
+  return { start: span.start, end: span.end, zoomPercent };
 }

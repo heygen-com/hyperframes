@@ -14,8 +14,11 @@ import {
   resolveLockedGopSize,
 } from "./chunkEncoder.js";
 import { renderProvenanceArgs } from "../utils/renderProvenance.js";
-import { SDR_CAPTURE_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
-import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
+import {
+  SDR_CAPTURE_TO_BT709_FILTER,
+  SDR_RGB_TO_TAGGED_BT709_FILTER,
+} from "../utils/sdrCaptureColor.js";
+import { getFfmpegBinary, getFfprobeBinary } from "../utils/ffmpegBinaries.js";
 
 const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"]).status === 0;
 
@@ -59,7 +62,7 @@ const tinyEncodeOptions = {
 };
 
 function encodeTimeoutMessage(timeoutMs: number): string {
-  return `FFmpeg killed after exceeding ffmpegEncodeTimeout (${timeoutMs} ms)`;
+  return `FFmpeg killed after writing no new frame for ffmpegEncodeTimeout (${timeoutMs} ms)`;
 }
 
 type FakeProc = EventEmitter & {
@@ -127,8 +130,8 @@ describe("ENCODER_PRESETS", () => {
     expect(ENCODER_PRESETS.draft.codec).toBe("h264");
   });
 
-  it("high uses slow preset with low CRF for better quality", () => {
-    expect(ENCODER_PRESETS.high.preset).toBe("slow");
+  it("high uses the fast preset with low CRF for better quality", () => {
+    expect(ENCODER_PRESETS.high.preset).toBe("fast");
     expect(ENCODER_PRESETS.high.quality).toBeLessThan(ENCODER_PRESETS.standard.quality);
     expect(ENCODER_PRESETS.high.codec).toBe("h264");
   });
@@ -174,11 +177,41 @@ describe("encodeFramesFromDir ffmpegEncodeTimeout", () => {
     expect(result.error).toContain("FFmpeg exited with code 143");
     expect(result.error).toContain("terminated by timeout");
     expect(result.error).toContain(encodeTimeoutMessage(1000));
-    // Regression: the timeout message used to just state what happened, leaving
-    // the user to independently discover FFMPEG_ENCODE_TIMEOUT_MS and
-    // PRODUCER_ENABLE_CHUNKED_ENCODE (both already existed) on their own.
     expect(result.error).toContain("FFMPEG_ENCODE_TIMEOUT_MS");
-    expect(result.error).toContain("PRODUCER_ENABLE_CHUNKED_ENCODE");
+    // Chunking does not help an encode that writes no frames, so it is no longer suggested.
+    expect(result.error).not.toContain("PRODUCER_ENABLE_CHUNKED_ENCODE");
+  });
+
+  it("keeps an encode going past the timeout while its frame count advances", async () => {
+    vi.useFakeTimers();
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { encodeFramesFromDir } = await import("./chunkEncoder.js");
+    const { root, framesDir } = createFrameFixture();
+
+    const encodePromise = encodeFramesFromDir(
+      framesDir,
+      "frame_%06d.png",
+      join(root, "slow.mp4"),
+      tinyEncodeOptions,
+      undefined,
+      { ffmpegEncodeTimeout: 1000 },
+    );
+
+    const proc = calls[0]!.proc;
+    for (let frame = 1; frame <= 4; frame += 1) {
+      vi.advanceTimersByTime(900);
+      proc.stderr.emit(
+        "data",
+        Buffer.from(`frame=${frame} fps=1 q=28.0 time=00:00:0${frame}.00\r`),
+      );
+    }
+    expect(proc.kill).not.toHaveBeenCalled();
+    emitClose(proc, 0);
+
+    await expect(encodePromise).resolves.toMatchObject({ success: true, framesEncoded: 2 });
   });
 
   it("keeps non-timeout ffmpeg failures unchanged", async () => {
@@ -281,7 +314,9 @@ describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
       expect(dirname(chunkPath)).not.toBe(legacyDir);
       expect(dirname(list)).toBe(dirname(chunkPath));
       expect(dirname(dirname(list))).toBe(root);
-      expect(readFileSync(list, "utf8")).toBe(`file '${chunkPath.replace(/'/g, "'\\''")}'`);
+      expect(readFileSync(list, "utf8")).toBe(
+        `file '${chunkPath.replace(/'/g, "'\\''")}'\noption format_whitelist mov,matroska\n`,
+      );
     }
     expect(readFileSync(legacyList, "utf8")).toBe("another render's concat list");
   });
@@ -868,6 +903,32 @@ describe("getEncoderPreset", () => {
     expect(preset.pixelFormat).toBe("yuva444p10le");
   });
 
+  it.each([
+    ["4444", "4444", "yuva444p10le"],
+    ["hq", "3", "yuv422p10le"],
+    ["422", "2", "yuv422p10le"],
+    ["lt", "1", "yuv422p10le"],
+    ["proxy", "0", "yuv422p10le"],
+  ] as const)("maps ProRes profile %s to -profile:v %s and %s", (name, profile, pixelFormat) => {
+    const preset = getEncoderPreset("standard", "mov", undefined, name);
+    expect(preset).toMatchObject({ codec: "prores", preset: profile, pixelFormat });
+    const args = buildEncoderArgs(
+      {
+        fps: { num: 30, den: 1 },
+        width: 1920,
+        height: 1080,
+        codec: "prores",
+        preset: preset.preset,
+        quality: 23,
+        pixelFormat,
+      },
+      ["-framerate", "30", "-i", "frames/%04d.png"],
+      "out.mov",
+    );
+    expect(args[args.indexOf("-profile:v") + 1]).toBe(profile);
+    expect(args[args.indexOf("-pix_fmt") + 1]).toBe(pixelFormat);
+  });
+
   it("uses prores 4444 for all mov quality levels", () => {
     for (const q of ["draft", "standard", "high"] as const) {
       const preset = getEncoderPreset(q, "mov");
@@ -880,6 +941,31 @@ describe("getEncoderPreset", () => {
     const preset = getEncoderPreset("standard");
     expect(preset.codec).toBe("h264");
     expect(preset.pixelFormat).toBe("yuv420p");
+  });
+
+  it("returns yuv444p for SDR mp4 when 4:4:4 chroma is requested", () => {
+    for (const q of ["draft", "standard", "high"] as const) {
+      const preset = getEncoderPreset(q, "mp4", undefined, undefined, "444");
+      expect(preset.codec).toBe("h264");
+      expect(preset.preset).toBe(ENCODER_PRESETS[q].preset);
+      expect(preset.pixelFormat).toBe("yuv444p");
+    }
+  });
+
+  it("keeps yuv420p for SDR mp4 when 4:2:0 chroma is requested explicitly", () => {
+    expect(getEncoderPreset("standard", "mp4", undefined, "420").pixelFormat).toBe("yuv420p");
+  });
+
+  it("ignores the chroma option for webm, mov and HDR presets", () => {
+    expect(getEncoderPreset("standard", "webm", undefined, undefined, "444").pixelFormat).toBe(
+      "yuva420p",
+    );
+    expect(getEncoderPreset("standard", "mov", undefined, undefined, "444").pixelFormat).toBe(
+      "yuva444p10le",
+    );
+    expect(
+      getEncoderPreset("standard", "mp4", { transfer: "pq" }, undefined, "444").pixelFormat,
+    ).toBe("yuv420p10le");
   });
 });
 
@@ -1002,6 +1088,18 @@ describe("buildEncoderArgs GPU preset mapping", () => {
     expect(presetArg(args)).toBe("p1");
   });
 
+  it("gives an NVENC build that lists only legacy presets a legacy preset, not p4", () => {
+    const legacy = new Set(["default", "slow", "medium", "fast", "hp", "hq"]);
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 18, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "nvenc",
+      legacy,
+    );
+    expect(presetArg(args)).toBe("medium");
+  });
+
   it("translates the standard medium preset to NVENC p4", () => {
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h264", preset: "medium", quality: 18, useGpu: true },
@@ -1012,7 +1110,7 @@ describe("buildEncoderArgs GPU preset mapping", () => {
     expect(presetArg(args)).toBe("p4");
   });
 
-  it("translates the high slow preset to NVENC p5", () => {
+  it("translates the slow preset to NVENC p5", () => {
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h264", preset: "slow", quality: 15, useGpu: true },
       inputArgs,
@@ -1163,6 +1261,27 @@ describe("buildEncoderArgs color space", () => {
     expect(args[vfIdx + 1]).toBe(`${SDR_CAPTURE_TO_BT709_FILTER},pad=ceil(iw/2)*2:ceil(ih/2)*2`);
   });
 
+  it("encodes 4:4:4 at odd dimensions without padding, keeping BT.709 tags", () => {
+    const args = buildEncoderArgs(
+      {
+        ...baseOptions,
+        width: 1081,
+        height: 721,
+        codec: "h264",
+        preset: "medium",
+        quality: 18,
+        pixelFormat: "yuv444p",
+      },
+      inputArgs,
+      "out.mp4",
+    );
+    expect(args[args.indexOf("-c:v") + 1]).toBe("libx264");
+    expect(args[args.indexOf("-pix_fmt") + 1]).toBe("yuv444p");
+    expect(args[args.indexOf("-vf") + 1]).toBe(SDR_CAPTURE_TO_BT709_FILTER);
+    expect(args[args.indexOf("-colorspace:v") + 1]).toBe("bt709");
+    expect(args[args.indexOf("-color_range") + 1]).toBe("tv");
+  });
+
   it("prepends range conversion to VAAPI filter chain", () => {
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
@@ -1223,10 +1342,12 @@ describe("buildEncoderArgs color space", () => {
       "out.mp4",
       "nvenc",
     );
-    expect(args[args.indexOf("-vf") + 1]).toBe("pad=ceil(iw/2)*2:ceil(ih/2)*2");
+    expect(args[args.indexOf("-vf") + 1]).toBe(
+      "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv,pad=ceil(iw/2)*2:ceil(ih/2)*2",
+    );
   });
 
-  it("leaves alpha ProRes untouched (no even-dim pad)", () => {
+  it("converts alpha ProRes to BT.709 without an even-dim pad", () => {
     const args = buildEncoderArgs(
       {
         ...baseOptions,
@@ -1238,7 +1359,7 @@ describe("buildEncoderArgs color space", () => {
       inputArgs,
       "out.mov",
     );
-    expect(args.indexOf("-vf")).toBe(-1);
+    expect(args[args.indexOf("-vf") + 1]).toBe(SDR_RGB_TO_TAGGED_BT709_FILTER);
     expect(args.join(" ")).not.toContain("pad=");
   });
 
@@ -1800,11 +1921,16 @@ describe("buildEncoderArgs HDR color space", () => {
 describe("buildConcatArgs", () => {
   it("stream-copies the concat list and writes provenance before the output", () => {
     const args = buildConcatArgs("/w/concat-list.txt", "/w/video-only.mp4");
-    expect(args.slice(0, 8)).toEqual([
+    expect(args.slice(0, 13)).toEqual([
+      "-xerror",
+      "-protocol_whitelist",
+      "file",
       "-f",
       "concat",
       "-safe",
       "0",
+      "-format_whitelist",
+      "concat,mov,matroska",
       "-i",
       "/w/concat-list.txt",
       "-c",
@@ -1820,26 +1946,27 @@ describe("buildConcatArgs", () => {
 });
 
 describe.skipIf(!HAS_FFMPEG)("buildEncoderArgs SDR colour", () => {
+  const ffmpeg = getFfmpegBinary();
+  const pixelAt = (file: string, decode: string, x: number, format = "rgb24"): number[] => [
+    ...spawnSync(ffmpeg, [
+      "-v",
+      "error",
+      "-i",
+      file,
+      "-vf",
+      `${decode}format=${format},crop=1:1:${x}:8`,
+      "-frames:v",
+      "1",
+      "-f",
+      "rawvideo",
+      "-",
+    ]).stdout,
+  ];
+
   // Chrome captures are BT.601 JPEGs. A direct YUV-to-YUV scale keeps that matrix under the BT.709
   // tag (ffmpeg 7 and older) or tints greys (8 and newer), so the encode goes through RGB.
   it("delivers Chrome's JPEG colours in the BT.709 the mp4 is tagged with", () => {
-    const ffmpeg = getFfmpegBinary();
     const dir = mkdtempSync(join(tmpdir(), "hf-sdr-colour-"));
-    const rgbAt = (file: string, decode: string, x: number): number[] => [
-      ...spawnSync(ffmpeg, [
-        "-v",
-        "error",
-        "-i",
-        file,
-        "-vf",
-        `${decode}format=rgb24,crop=1:1:${x}:8`,
-        "-frames:v",
-        "1",
-        "-f",
-        "rawvideo",
-        "-",
-      ]).stdout,
-    ];
     try {
       for (const color of ["0xC83C28", "0xFE0000", "0x101010", "0x2050E0"]) {
         const jpg = join(dir, "frame.jpg");
@@ -1879,8 +2006,8 @@ describe.skipIf(!HAS_FFMPEG)("buildEncoderArgs SDR colour", () => {
           [8, 2],
           [32, 2],
         ] as const) {
-          const captured = rgbAt(jpg, "", x);
-          const delivered = rgbAt(out, "scale=in_color_matrix=bt709:in_range=tv,", x);
+          const captured = pixelAt(jpg, "", x);
+          const delivered = pixelAt(out, "scale=in_color_matrix=bt709:in_range=tv,", x);
           const worst = Math.max(...delivered.map((v, i) => Math.abs(v - captured[i]!)));
           expect(
             worst,
@@ -1888,6 +2015,163 @@ describe.skipIf(!HAS_FFMPEG)("buildEncoderArgs SDR colour", () => {
           ).toBeLessThanOrEqual(limit);
         }
       }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  // VideoToolbox, like a libx264/libx265 given no colour options, writes only the colour its frames carry.
+  const streamTagsThrough = (args: string[], encoder: string[]): string => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-frame-tags-"));
+    try {
+      const out = join(dir, "out.mp4");
+      const vfAt = args.indexOf("-vf");
+      const vf = vfAt === -1 ? [] : ["-vf", args[vfAt + 1]!];
+      const source = ["-f", "lavfi", "-i", "color=c=0x808080:s=64x16:d=0.1"];
+      const encode = spawnSync(ffmpeg, ["-y", "-v", "error", ...source, ...vf, ...encoder, out]);
+      expect(encode.status).toBe(0);
+      const entries = "stream=color_space,color_transfer,color_primaries";
+      const probe = ["-v", "error", "-show_entries", entries, "-of", "csv=p=0", "--", out];
+      return spawnSync(getFfprobeBinary(), probe).stdout.toString().trim();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const tinyFrame = { fps: { num: 30, den: 1 }, width: 64, height: 16, preset: "ultrafast" };
+
+  it("tags BT.709 on the frames, so an encoder that reads only them tags the stream", () => {
+    const args = buildEncoderArgs(
+      { ...tinyFrame, codec: "h264", quality: 23 },
+      ["-i", "in"],
+      "o.mp4",
+    );
+
+    expect(streamTagsThrough(args, ["-c:v", "libx264", "-preset", "ultrafast"])).toBe(
+      "bt709,bt709,bt709",
+    );
+  });
+
+  it.each([
+    ["pq", "smpte2084", null],
+    ["hlg", "arib-std-b67", null],
+    ["pq", "smpte2084", "videotoolbox"],
+  ] as const)("tags HDR %s (%s) on the frames for encoder %s", (transfer, trc, gpu) => {
+    const args = buildEncoderArgs(
+      { ...tinyFrame, codec: "h265", quality: 23, hdr: { transfer }, useGpu: gpu !== null },
+      ["-i", "in"],
+      "o.mp4",
+      gpu,
+    );
+    const x265 = ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-x265-params", "log-level=error"];
+
+    expect(streamTagsThrough(args, x265)).toBe(`bt2020nc,${trc},bt2020`);
+  });
+
+  it("keeps the rightmost 8 columns of a 1080-wide (16n + 8) mp4", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-sdr-right-edge-"));
+    try {
+      const jpg = join(dir, "frame.jpg");
+      const out = join(dir, "out.mp4");
+      const synth = spawnSync(ffmpeg, [
+        "-v",
+        "error",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=0xC83C28:s=1080x16,format=rgb24",
+        "-frames:v",
+        "1",
+        "-pix_fmt",
+        "yuvj420p",
+        jpg,
+      ]);
+      expect(synth.status).toBe(0);
+      const args = buildEncoderArgs(
+        {
+          fps: { num: 30, den: 1 },
+          width: 1080,
+          height: 16,
+          codec: "h264",
+          preset: "ultrafast",
+          quality: 0,
+        },
+        ["-i", jpg],
+        out,
+      );
+      expect(spawnSync(ffmpeg, args).status).toBe(0);
+      for (const x of [1071, 1075, 1079]) {
+        const captured = pixelAt(jpg, "", x);
+        const delivered = pixelAt(out, "scale=in_color_matrix=bt709:in_range=tv,", x);
+        const worst = Math.max(...delivered.map((v, i) => Math.abs(v - captured[i]!)));
+        expect(worst, `x=${x}: capture ${captured} delivered ${delivered}`).toBeLessThanOrEqual(2);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  // Untagged HD reads as BT.709 in QuickTime, so ProRes has to be BT.709 too. MOV captures are
+  // RGBA PNGs, and the conversion must leave their alpha plane alone. The tags come from
+  // setparams because prores_ks ignores -color_* (ffmpeg 5.1 writes none, 8.1 only the matrix).
+  it("delivers PNG colours and alpha in the BT.709 the ProRes mov is tagged with", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-prores-colour-"));
+    const png = join(dir, "frame.png");
+    const out = join(dir, "out.mov");
+    try {
+      for (const color of ["0xC83C28", "0x00FF00", "0x101010"]) {
+        const synth = spawnSync(ffmpeg, [
+          "-v",
+          "error",
+          "-y",
+          "-f",
+          "lavfi",
+          "-i",
+          `color=c=${color}@0.5:s=64x16,format=rgba`,
+          "-frames:v",
+          "1",
+          png,
+        ]);
+        expect(synth.status).toBe(0);
+        const args = buildEncoderArgs(
+          {
+            fps: { num: 30, den: 1 },
+            width: 64,
+            height: 16,
+            codec: "prores",
+            preset: "4444",
+            quality: 23,
+            pixelFormat: "yuva444p10le",
+          },
+          ["-i", png],
+          out,
+        );
+        expect(spawnSync(ffmpeg, args).status).toBe(0);
+
+        const captured = pixelAt(png, "", 8, "rgba");
+        const delivered = pixelAt(out, "scale=in_color_matrix=bt709:in_range=tv,", 8, "rgba");
+        const worst = Math.max(...delivered.map((v, i) => Math.abs(v - captured[i]!)));
+        expect(worst, `${color}: capture ${captured} delivered ${delivered}`).toBeLessThanOrEqual(
+          2,
+        );
+      }
+      // Read the first frame, not the stream: a prores_ks mov's stream-level range depends on
+      // the ffprobe version (7.1 and 8.0 report unknown), while every version tags the frames.
+      const tags = spawnSync(getFfprobeBinary(), [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-read_intervals",
+        "%+#1",
+        "-show_entries",
+        "frame=color_range,color_space,color_primaries,color_transfer",
+        "-of",
+        "csv=p=0",
+        "--",
+        out,
+      ]);
+      expect(tags.stdout.toString().trim()).toBe("tv,bt709,bt709,bt709");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

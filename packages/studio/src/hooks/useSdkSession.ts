@@ -342,6 +342,7 @@ function disposeSdkSession(session: Composition): void {
     session.dispose();
   } catch (error) {
     trackStudioEvent("sdk_session_dispose_failed", {
+      error_name: error instanceof Error ? error.name : typeof error,
       error: error instanceof Error ? error.message : String(error),
     });
   }
@@ -510,6 +511,7 @@ export function useSdkSession(
           // bucket was a network error wearing a parser's label.
           trackStudioEvent("sdk_session_unavailable", {
             stage: "open",
+            error_name: error instanceof Error ? error.name : typeof error,
             error: error instanceof Error ? error.message : String(error),
           });
         }

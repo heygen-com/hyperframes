@@ -25,16 +25,20 @@
  * the next couple of hundred milliseconds, and no further event is dispatched
  * while it does.
  */
+import { fromStudioPreview } from "../../player/lib/bridgePlayback";
 import { usePlayerStore } from "../../player/store/playerStore";
 
 const AWAKE_MS = 400;
 /** How often a parked loop runs one frame anyway, in case a wake was missed. */
 export const IDLE_POLL_MS = 250;
+/** The longest a parked loop waits between polls; each idle poll doubles the wait up to this. */
+export const MAX_IDLE_POLL_MS = 4000;
 
 const subscribers = new Set<() => void>();
 
 let frameId: number | null = null;
 let idleTimerId: ReturnType<typeof setTimeout> | null = null;
+let idlePollMs = IDLE_POLL_MS;
 let awakeUntil = 0;
 let listenersAttached = false;
 let stopBootWake: (() => void) | null = null;
@@ -62,17 +66,6 @@ let lastPreviewFrame: number | null = null;
 let lastPreviewPlaying: boolean | null = null;
 
 /**
- * The preview iframe is served by the editor's own origin (`useTimelinePlayer`
- * builds its src against `window.location.origin`), so a message from anywhere
- * else is not the preview whatever its payload claims. Answered before the
- * payload is read, because a sender we do not trust controls every field in it.
- */
-function isFromPreviewOrigin(event: MessageEvent): boolean {
-  if (typeof window === "undefined") return true;
-  return event.origin === window.location.origin;
-}
-
-/**
  * `window` also receives postMessage traffic from extensions, devtools and any
  * other embed on the page. Waking on those would hold the overlays awake for
  * reasons that have nothing to do with the preview.
@@ -95,7 +88,9 @@ function previewStateOf(data: {
 }
 
 function onPreviewMessage(event: MessageEvent): void {
-  if (!isFromPreviewOrigin(event)) return;
+  // Only a preview frame Studio built, from an origin it can have (a sealed one's is opaque): anything else on the page
+  // can post the same payload. Checked before the payload is read.
+  if (!fromStudioPreview(event)) return;
   const data: unknown = event.data;
   if (!isPreviewPayload(data)) return;
   const state = previewStateOf(data);
@@ -137,10 +132,13 @@ function schedule(): void {
     frameId = requestAnimationFrame(runFrame);
     return;
   }
+  if (typeof document !== "undefined" && document.hidden) return;
+  const wait = idlePollMs;
+  idlePollMs = Math.min(idlePollMs * 2, MAX_IDLE_POLL_MS);
   idleTimerId = setTimeout(() => {
     idleTimerId = null;
     frameId = requestAnimationFrame(runFrame);
-  }, IDLE_POLL_MS);
+  }, wait);
 }
 
 /** Longest idle slice, so input that arrives during one waits at most this long for its frame. */
@@ -167,6 +165,7 @@ export function runWhenInputIdle(step: (timeLeft: () => number) => boolean): voi
 /** Something moved, or might have. Run frames at full rate for a moment. */
 export function requestOverlayFrames(): void {
   awakeUntil = performance.now() + AWAKE_MS;
+  idlePollMs = IDLE_POLL_MS;
   if (idleTimerId != null) {
     clearTimeout(idleTimerId);
     idleTimerId = null;
@@ -199,8 +198,8 @@ function detachListeners(): void {
 
 /**
  * Run `update` on the shared loop. The subscriber must be a pure poll: it is
- * called on an ordinary animation frame while the editor is active and roughly
- * four times a second while it is not.
+ * called on an ordinary animation frame while the editor is active, then
+ * less often the longer it stays idle, down to once every four seconds.
  */
 export function subscribeOverlayFrame(update: () => void): () => void {
   subscribers.add(update);
@@ -230,6 +229,7 @@ export function resetOverlayFrameLoopForTests(): void {
   frameId = null;
   idleTimerId = null;
   awakeUntil = 0;
+  idlePollMs = IDLE_POLL_MS;
   lastPreviewFrame = null;
   lastPreviewPlaying = null;
   detachListeners();

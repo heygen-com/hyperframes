@@ -6,8 +6,9 @@
 
 import { readFileSync } from "node:fs";
 import { isMainModule } from "./main-module.mjs";
+import { terminalText } from "./terminal-text.mjs";
 
-export const DEFAULT_MAX_CUBE_LUT_SIZE = 64;
+export const DEFAULT_MAX_CUBE_LUT_SIZE = 65;
 
 const DEFAULT_DOMAIN_MIN = [0, 0, 0];
 const DEFAULT_DOMAIN_MAX = [1, 1, 1];
@@ -186,7 +187,7 @@ function main(argv) {
   }
   const result = validateCubeFile(file);
   if (!result.ok) {
-    console.error(`error: ${result.error}`);
+    console.error(terminalText(`error: ${result.error}`));
     process.exit(1);
   }
   console.log(`ok: LUT_3D_SIZE ${result.size}`);

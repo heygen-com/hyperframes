@@ -1,4 +1,5 @@
 import { CompositionProbe, type ProbeResult, readPositiveDimension } from "./composition-probe.js";
+import type { StaticComposition } from "@hyperframes/core/runtime/composition-length";
 import { isControlsClick, setupControls, setupPoster } from "./controls-setup.js";
 import { adoptShadowStyles, createCompositionIframe, scaleIframeToFit } from "./iframe-dom.js";
 import { DirectTimelineClock } from "./direct-timeline-clock.js";
@@ -52,8 +53,10 @@ const ASSETS_READY_TIMEOUT_MS = 8_000;
 const ASSETS_LOADING_ATTR = "assets-loading";
 // "player" (default) draws the loading-assets card; "none" never does, like shader-loading="none".
 const ASSETS_LOADING_UI_ATTR = "assets-loading-ui";
+const BUFFERING_ATTR = "buffering";
 const LOW_POWER_IDLE_ATTR = "low-power-idle";
 const DISABLE_CLICK_TO_PLAY_ATTR = "disable-click-to-play";
+const DISABLE_FULLSCREEN_ATTR = "disable-fullscreen";
 const RANGE_START_ATTR = "range-start";
 const RANGE_END_ATTR = "range-end";
 // paint-and-idle now always has a frame to wait on, so the overlay would
@@ -120,6 +123,7 @@ class HyperframesPlayer extends HTMLElement {
 
   private shadow: ShadowRoot;
   private container: HTMLDivElement;
+  private readonly sizer = document.createElement("div");
   private iframe: HTMLIFrameElement;
   private posterEl: HTMLImageElement | null = null;
   private controlsApi: ReturnType<typeof setupControls> | null = null;
@@ -128,13 +132,21 @@ class HyperframesPlayer extends HTMLElement {
   private probe: CompositionProbe;
 
   private _ready = false;
+  private _readyBeforeRuntime = false;
   private _readyDocument: Document | null = null;
+  private _awaitingLoad = false;
+  private _documentId: string | null = null;
+  private _leftDocumentId: string | null = null;
+  private _leftDocumentUnknown = false;
+  private _runtimeAnnounces = false;
+  private _timelineHeldForLoad = false;
   private _connected = false;
   private _assetsReady = false;
   private _painted = false;
   private _pendingPlay = false;
   private _assetsGeneration = 0;
   private _assetsLoadingShowTimer: ReturnType<typeof setTimeout> | null = null;
+  private _bufferingShowTimer: ReturnType<typeof setTimeout> | null = null;
   private _currentTime = 0;
   private _duration = 0;
   private _paused = true;
@@ -169,6 +181,8 @@ class HyperframesPlayer extends HTMLElement {
 
     adoptShadowStyles(this.shadow, PLAYER_STYLES);
     ({ container: this.container, iframe: this.iframe } = createCompositionIframe());
+    this.sizer.className = "hfp-sizer";
+    this.shadow.appendChild(this.sizer);
     this.shadow.appendChild(this.container);
 
     const loaderElements = createShaderLoader();
@@ -182,6 +196,7 @@ class HyperframesPlayer extends HTMLElement {
       getPlaybackRate: () => this.playbackRate,
       getCurrentTime: () => this._currentTime,
       isPaused: () => this._paused,
+      setFrameMuted: (muted) => this._sendControl("set-media-output-muted", { muted }),
     });
 
     this._directTimelineClock = new DirectTimelineClock({
@@ -206,6 +221,7 @@ class HyperframesPlayer extends HTMLElement {
 
     this.probe = new CompositionProbe(this.iframe, {
       resolveRuntimeUrl: () => runtimeSrcFromElement(this),
+      hostOwnsDeadline: () => this.hasAttribute("no-load-timeout"),
       onReady: (result) => this._onProbeReady(result),
       onError: (message) => this._emit(new CustomEvent("error", { detail: { message } })),
     });
@@ -273,7 +289,7 @@ class HyperframesPlayer extends HTMLElement {
         // message fire before connectedCallback installs the parent message listener. Initial
         // attributes are applied below by connectedCallback; only live changes navigate here.
         if (!this.isConnected) break;
-        if (val) this._navigateSrc(val);
+        if (val || this._videoSource) this._navigateSrc(val ?? "");
         break;
       case "type": {
         const src = this.getAttribute("src");
@@ -446,6 +462,7 @@ class HyperframesPlayer extends HTMLElement {
       }
     }
     if (this._media.audioOwner === "parent") this._media.playAll();
+    else this._media.primeAll();
     this.controlsApi?.updatePlaying(true);
     if (!queuedForReady && announce) this._emit(new Event("play"));
     if (directTimelineStarted && this._directTimelineAdapter) {
@@ -480,10 +497,11 @@ class HyperframesPlayer extends HTMLElement {
     this._media.stopAdoptedMedia();
   }
 
-  seek(timeInSeconds: number) {
-    // seek()'s own contract is that it lands paused, so a play still queued
-    // from the asset-buffering window is cancelled here too — same reason as
-    // pause() above.
+  seek(timeInSeconds: number, options?: { keepPlaying?: boolean }) {
+    const playOn = options?.keepPlaying === true && (!this._paused || this._pendingPlay);
+    // A plain seek() lands paused, so a play still queued from the
+    // asset-buffering window is cancelled here too — same reason as pause()
+    // above. keepPlaying plays on from the new time, as <video>'s currentTime does.
     this._pendingPlay = false;
     if (!this._trySyncSeek(timeInSeconds) && !this._tryDirectTimelineSeek(timeInSeconds)) {
       this._sendControl("seek", {
@@ -516,6 +534,7 @@ class HyperframesPlayer extends HTMLElement {
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
     this.controlsApi?.updateTime(this._currentTime, this._duration);
+    if (playOn) this._play(false);
   }
 
   setColorGrading(target: ColorGradingTarget, grading: unknown) {
@@ -709,6 +728,13 @@ class HyperframesPlayer extends HTMLElement {
   }
   set disableClickToPlay(disabled: boolean) {
     this.toggleAttribute(DISABLE_CLICK_TO_PLAY_ATTR, disabled);
+  }
+
+  get disableFullscreen() {
+    return this.hasAttribute(DISABLE_FULLSCREEN_ATTR);
+  }
+  set disableFullscreen(disabled: boolean) {
+    this.toggleAttribute(DISABLE_FULLSCREEN_ATTR, disabled);
   }
 
   get loop() {
@@ -1093,7 +1119,11 @@ class HyperframesPlayer extends HTMLElement {
     this.controlsApi?.updateTime(0, 0);
     this._syncVideoAudio();
     adapter.timeScale?.(this.playbackRate);
-    video.src = src;
+    if (src) video.src = src;
+    else {
+      video.removeAttribute("src");
+      video.load();
+    }
   }
 
   private _teardownVideo(): void {
@@ -1225,8 +1255,18 @@ class HyperframesPlayer extends HTMLElement {
 
   private _onMessage(e: MessageEvent) {
     // The iframe window outlives its documents: a late composition message must not reach a video.
-    if (this._videoSource || this.probe.failed) return;
+    if (this._videoSource || this.probe.failed || this._fromLeftDocument(e)) return;
     this._applyThenEmit(() => this._handleRuntimeMessage(e));
+  }
+
+  /** True for a message the document a host navigation left stamped; another stamp becomes the current document's. */
+  private _fromLeftDocument(e: MessageEvent): boolean {
+    const id =
+      e.source === this.iframe.contentWindow && (e.data as { documentId?: unknown })?.documentId;
+    if (typeof id !== "string") return false;
+    if (id === this._leftDocumentId) return true;
+    this._documentId = id;
+    return false;
   }
 
   private _handleRuntimeMessage(e: MessageEvent) {
@@ -1250,6 +1290,8 @@ class HyperframesPlayer extends HTMLElement {
       setCompositionSize: (w, h) => this._setCompositionSize(w, h),
       sendControl: (action, extra) => this._sendControl(action, extra),
       getIframeDoc: () => this.iframe.contentDocument,
+      getCompositionUrl: () =>
+        this.iframe.hasAttribute("srcdoc") ? null : this.iframe.src || null,
       onRuntimeReady: () => {
         this._runtimeBridgeReady = true;
         this._replayBridgeState();
@@ -1267,11 +1309,16 @@ class HyperframesPlayer extends HTMLElement {
         this._rejectRuntimeDataDelivery(channel, requestId, message),
       onRuntimeTimelineReady: (duration, assetsReady) =>
         this._onRuntimeTimelineReady(duration, assetsReady),
+      onStaticComposition: (read) => this._onStaticComposition(read),
+      setBuffering: (buffering) => this._setBuffering(buffering),
       setRuntimeFps: (fps) => {
         this._runtimeFps = fps;
       },
       setRuntimeOwnsPlayRange: (owns) => {
         this._runtimeOwnsPlayRange = owns;
+      },
+      setRuntimeAnnounces: (announces) => {
+        this._runtimeAnnounces = announces;
       },
       shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
       setScenes: (scenes) => {
@@ -1290,13 +1337,20 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onRuntimeTimelineReady(duration: number, assetsReady: boolean | undefined) {
-    if (this._ready) return;
+    const mayBeLeft = this._awaitingLoad && this._leftDocumentUnknown;
+    if (mayBeLeft && this._runtimeAnnounces && !this._getSameOriginIframeDocument()) {
+      this._timelineHeldForLoad = true;
+      return;
+    }
+    if (this._ready && !this._readyBeforeRuntime) return;
+    const alreadyReady = this._readyBeforeRuntime;
+    this._readyBeforeRuntime = false;
     this.probe.stop();
     this._setDuration(duration);
     this._directTimelineAdapter = null;
     this._ready = true;
     this.controlsApi?.updateTime(this._currentTime, duration);
-    this._dispatchReady();
+    if (!alreadyReady) this._dispatchReady();
 
     const doc = this._getSameOriginIframeDocument();
     if (doc) this._media.setupFromIframe(doc);
@@ -1305,6 +1359,19 @@ class HyperframesPlayer extends HTMLElement {
     this._setIframeMediaMuted(this.muted);
     this._waitForAssetsReady(doc, assetsReady);
     this._playWhenWanted();
+  }
+
+  /** A sealed frame's length and size from its document, as the probe reads them; play waits for the runtime. */
+  private _onStaticComposition({ durationSeconds, compositionSize }: StaticComposition) {
+    // An open frame's own poll reads the same thing.
+    if (this._ready || this._getSameOriginIframeDocument()) return;
+    this.probe.stop();
+    this._setDuration(durationSeconds);
+    if (compositionSize) this._setCompositionSize(compositionSize.width, compositionSize.height);
+    this._ready = true;
+    this._readyBeforeRuntime = true;
+    this.controlsApi?.updateTime(0, durationSeconds);
+    this._dispatchReady();
   }
 
   private _onProbeReady(result: ProbeResult) {
@@ -1370,6 +1437,23 @@ class HyperframesPlayer extends HTMLElement {
     }, ASSETS_LOADING_SHOW_DELAY_MS);
   }
 
+  private _setBuffering(buffering: boolean): void {
+    if (buffering) {
+      if (this._bufferingShowTimer !== null || this.hasAttribute(BUFFERING_ATTR)) return;
+      this._bufferingShowTimer = setTimeout(() => {
+        this._bufferingShowTimer = null;
+        this.setAttribute(BUFFERING_ATTR, "");
+        if (this.assetsLoadingUi !== "none") this.shaderLoader.showAssetsLoading("Buffering", "");
+      }, ASSETS_LOADING_SHOW_DELAY_MS);
+      return;
+    }
+    if (this._bufferingShowTimer !== null) clearTimeout(this._bufferingShowTimer);
+    this._bufferingShowTimer = null;
+    if (!this.hasAttribute(BUFFERING_ATTR)) return;
+    this.removeAttribute(BUFFERING_ATTR);
+    this.shaderLoader.hideAssetsLoading();
+  }
+
   private _hasPendingFirstFrameAssets(doc: Document): boolean {
     const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
       scope: FIRST_FRAME_READINESS_SCOPE,
@@ -1422,8 +1506,15 @@ class HyperframesPlayer extends HTMLElement {
   /** Every host-driven navigation or teardown: the old document's handshake, asset wait and
    *  data deliveries end here. A queued play is the caller's, so only its owners clear it. */
   private _abandonComposition(reason: string): void {
+    this.probe.latchUntilNextLoad();
     this.probe.stop();
     this._ready = false;
+    this._readyBeforeRuntime = false;
+    this._awaitingLoad = true;
+    this._timelineHeldForLoad = false;
+    this._leftDocumentUnknown = this._documentId === null;
+    this._leftDocumentId = this._documentId ?? this._leftDocumentId;
+    this._documentId = null;
     this._readyDocument = null;
     this._invalidateAssetsWait();
     this._releaseDocument();
@@ -1437,6 +1528,7 @@ class HyperframesPlayer extends HTMLElement {
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
     this._stopParentTickClock();
+    this._setBuffering(false);
     this.shaderLoader.reset();
     this._media.resetForIframeLoad();
   }
@@ -1485,6 +1577,7 @@ class HyperframesPlayer extends HTMLElement {
     const changed = width !== this._compositionWidth || height !== this._compositionHeight;
     this._compositionWidth = width;
     this._compositionHeight = height;
+    this.sizer.style.aspectRatio = `${width} / ${height}`;
     this._rescale();
     if (!changed) return;
     const detail = { compositionWidth: width, compositionHeight: height };
@@ -1563,17 +1656,22 @@ class HyperframesPlayer extends HTMLElement {
   private _onIframeLoad() {
     // In video mode the iframe only ever loads about:blank; its load must not reset the video.
     if (!this._connected || this._videoSource) return;
-    // The runtime posts its timeline once its scripts ran, before or after `load`, and every
-    // host-initiated navigation clears `_ready` first. So a ready player already holds this
-    // document's handshake (an opaque origin reads as null); a paused runtime never posts it again.
+    // A runtime posts its timeline before or after `load`. One seen since a host navigation from a document that never
+    // stamped a message may be that document's: an unreadable frame's runtime that can be asked again held it, and is
+    // asked below; else it stands, as a paused runtime never posts again (an opaque origin reads null on both sides).
+    const askAgain = this._timelineHeldForLoad;
+    this._awaitingLoad = false;
+    this._timelineHeldForLoad = false;
     const doc = this._getSameOriginIframeDocument();
     if (this._ready && doc === this._readyDocument) {
       // Its asset wait scanned at DOMContentLoaded; a script may have added first-frame media since.
       if (doc && this._hasPendingFirstFrameAssets(doc)) this._waitForAssetsReady(doc);
+      if (askAgain) this._sendControl("announce-timeline");
       return;
     }
 
     this._ready = false;
+    this._readyBeforeRuntime = false;
     // The runtime installs its bridge once its scripts ran and posts `ready`, which can come before
     // the iframe's load event. Do not erase that authoritative handshake here: doing so strands
     // retained data set after load until a second `ready` that never comes. Source setters and
@@ -1581,6 +1679,7 @@ class HyperframesPlayer extends HTMLElement {
     this._invalidateAssetsWait();
     this._releaseDocument();
     this.probe.start();
+    if (askAgain) this._sendControl("announce-timeline");
   }
 
   private _setupControls() {
@@ -1609,6 +1708,9 @@ class HyperframesPlayer extends HTMLElement {
       },
       this._isAudioLocked(),
     );
+    this.controlsApi.updateTime(this._currentTime, this._duration);
+    this.controlsApi.updatePlaying(!this._paused);
+    this.controlsApi.updateSpeed(this.playbackRate);
   }
 
   // Test-instrumentation pass-throughs (match original field names).
@@ -1622,14 +1724,7 @@ class HyperframesPlayer extends HTMLElement {
     this._media.mirrorTime(t, opts);
   }
   _promoteToParentProxy() {
-    let d: Document | null = null;
-    try {
-      d = this.iframe.contentDocument;
-    } catch {
-      /* x-origin */
-    }
-    this._media.promoteToParentProxy(d, (t, o) => this._mirrorParentMediaTime(t, o));
-    this._sendControl("set-media-output-muted", { muted: true });
+    this._media.promoteToParentProxy((t, o) => this._mirrorParentMediaTime(t, o));
   }
   _observeDynamicMedia(doc: Document) {
     this._media.setupFromIframe(doc);

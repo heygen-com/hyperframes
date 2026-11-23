@@ -1,9 +1,11 @@
 ---
-title: "Export and manage renders"
-description: "Choose a format, quality, resolution, and frame rate, then manage the render queue."
+title: "Export and slideshows"
+description: "In the browser editor: set up and run renders in the Renders panel, and build a navigable slideshow."
+sidebarTitle: "Export and slideshows"
 ---
 
-Click **Export** in the top bar when the project is ready for a finished file. Studio opens the **Renders** panel.
+**Export** in the header starts a render straight away, with the settings in the **Renders** panel on the right. So
+set those first.
 
 <Frame caption="The Renders panel contains delivery settings and the render queue.">
   <img
@@ -12,44 +14,87 @@ Click **Export** in the top bar when the project is ready for a finished file. S
   />
 </Frame>
 
-## Choose the format
+## Set up the file
 
-- **MP4** — the normal choice for sharing and uploading.
-- **WebM** — useful for web delivery and some transparency workflows.
-- **MOV (ProRes)** — useful when another editing or production workflow expects a high-quality intermediate.
+| Setting | Choose |
+| --- | --- |
+| **Format** | **MP4** for sharing and uploading; **WebM** for the web and transparent overlays; **MOV** (ProRes) when another editor needs a high-quality master |
+| **Resolution** | **Auto** keeps the project's size. Bigger renders are slower and don't sharpen low-resolution footage |
+| **Frame rate** | 30 unless the destination or the footage needs 24 or 60 |
+| **Quality** | Hidden for MOV, which always uses ProRes quality |
+| **Use GPU encoding** | Faster on machines that support it |
 
-Choose the format required by the destination rather than the one with the most options.
+**About video formats**, next to the settings, explains the choices.
 
-## Choose quality and size
+## The render queue
 
-Use the project’s authored resolution unless you need a specific delivery size.
+Each export becomes a row in **Renders**, with its progress. Cancel a running one, download or delete a finished
+one, and **Hide finished** to tidy the list without deleting files.
 
-The resolution control includes **Auto** and compatible preset sizes. Increasing resolution makes the render slower and the file larger; it does not repair low-resolution source media.
+Before sending: open the file itself, watch the start and the end, check captions, cuts and sound at the busiest
+moment, and give it a name that says which version it is. If a render fails, keep the error and see
+[troubleshooting](/help#in-the-preview-and-browser-editor).
 
-Choose 24, 30, or 60 fps only when the destination or source material requires it. MOV uses a fixed ProRes quality, so the separate quality choice is hidden for that format.
+## Build a slideshow
 
-## Start and manage a render
+A slideshow is a live, navigable presentation—not one linear video. The **Slideshow** tab appears when the active composition contains a HyperFrames slideshow manifest.
 
-The render queue shows active and completed jobs. From there you can:
+<Frame caption="The Slideshow panel builds the main route from real scenes before optional branches are added.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio-slideshow-panel-v1.jpg"
+    alt="HyperFrames browser editor showing three main-line slides in the Slideshow panel beside the deck timeline"
+  />
+</Frame>
 
-- watch progress;
-- cancel an active job;
-- download a completed file;
-- delete an unwanted result;
-- choose **Hide finished** to remove completed rows from the list without deleting their files.
+### Build the main path
 
-## Before you send the file
+Start with the route everyone should see:
 
-1. Open the exported file itself.
-2. Watch the beginning and end.
-3. Check captions, cuts, audio, and the most complex transition.
-4. Confirm dimensions and duration.
-5. Use a clear filename that identifies the version.
+1. In **Slides**, check the scenes that belong in the main presentation.
+2. Use the arrows to put them in order.
+3. Select each slide and confirm that it makes one complete point.
+4. In **Slide Inspector**, add speaker notes that help the presenter rather than repeat the slide.
 
-If a render fails, keep the error and open [Studio troubleshooting](/studio/troubleshooting).
+The browser editor saves slideshow changes into the project’s manifest. Notes save after a short pause; other edits save immediately and participate in project history.
+
+### Add fragment reveals
+
+Move the playhead to the moment when the presentation should pause, then click **Mark** in Slide Inspector. That time becomes a fragment hold-point for the selected slide.
+
+Use fragments when the presenter needs to reveal part of an idea before advancing. A slide does not need a hold-point for every bullet.
+
+### Add an optional path
+
+Branches keep optional detail outside the main story:
+
+1. Open **Branches**, name a branch, and assign its slides.
+2. On the slide where the choice appears, select the visible button or object on the canvas.
+3. Open **Hotspot Tool**, choose the target branch, add a useful label, and click **Make hotspot**.
+4. Keep a clear route back to the main story.
+
+Deleting a branch removes that branch definition and every hotspot that points to it, so the browser editor asks for confirmation first. The source scenes remain in the project.
+
+### Test it as a presentation
+
+Run the presenter locally:
+
+```bash
+npx hyperframes present <project-directory>
+```
+
+Test next and previous navigation, every fragment, every hotspot, every branch, and the return path. Click **Present** or press **P** to open the synchronized audience view.
+
+<Note>
+  A slideshow stays interactive. If the result should simply play from beginning to end as an MP4,
+  use a [video workflow](/workflows) instead.
+</Note>
+
+To create the deck with an agent before refining it here, follow [Make an interactive presentation with AI](/guides/slideshow).
 
 ## Related topics
 
-- [Finish, render, and share a project](/guides/export-and-share)
 - [Render from the command line](/guides/rendering)
-- [Recover from a Studio problem](/studio/troubleshooting)
+- [Finish, render and share](/guides/export-and-share)
+- [Make an interactive presentation with AI](/guides/slideshow)
+- [Use variables and templates](/studio/assets-and-blocks#use-variables)
+- [Work with source and an agent](/studio/canvas#edit-the-source)

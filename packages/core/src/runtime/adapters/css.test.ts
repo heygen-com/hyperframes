@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { createCssAdapter } from "./css";
+import { PendingPauseAnimation } from "./pendingPauseAnimation.test-helpers";
 
 // jsdom has no Animation subclasses; the adapter tells them apart with instanceof CSSAnimation.
 class FakeAnimation {}
@@ -201,6 +202,18 @@ describe("css adapter", () => {
       el.style.removeProperty("animation-delay");
       el.style.removeProperty("animation-play-state");
       vi.restoreAllMocks();
+    });
+
+    it("holds the sought time on the first frame of a running CSS animation", () => {
+      vi.stubGlobal("CSSAnimation", PendingPauseAnimation);
+      const animation = new PendingPauseAnimation({ target: el });
+      const { adapter } = setup([animation as unknown as Animation]);
+
+      adapter.seek({ time: 2 });
+      animation.nextFrame();
+
+      expect(animation.currentTime).toBe(1000);
+      expect(animation.pauseCalls).toBe(1);
     });
 
     it("seek drives the live animation, not the one seen at discover", () => {

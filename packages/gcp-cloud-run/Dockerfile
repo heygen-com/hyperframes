@@ -21,14 +21,14 @@
 # Unlike the AWS Lambda adapter there is no ZIP-size ceiling and no runtime
 # Chrome decompression step — the binary lives in the image at a fixed path.
 
-FROM node:22.23.3-bookworm-slim AS beginframe-contract
+FROM node:22.23.5-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS beginframe-contract
 
 # ── System dependencies (identical set to the producer's render image) ───────
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     unzip \
-    ffmpeg \
+    xz-utils \
     libgbm1 \
     libnss3 \
     libatk-bridge2.0-0 \
@@ -54,16 +54,47 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && fc-cache -fv
 
+# ── FFmpeg (pinned) ──────────────────────────────────────────────────────────
+# One pinned static build (BtbN n8.0.1) instead of Debian's apt ffmpeg, so
+# regression baselines and the shipped images use the same FFmpeg version.
+# Bump the URL and sha256 together, and keep in sync with the other Dockerfiles
+# and .github/actions/install-ffmpeg-linux/action.yml.
+ARG TARGETARCH
+ARG FFMPEG_RELEASE=https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-02-28-12-59
+ARG FFMPEG_BUILD=ffmpeg-n8.0.1-66-g27b8d1a017
+ARG FFMPEG_SHA256_AMD64=26d2ecd0cefba99f9d1ea92252a3a4f743a58df4c1c3cf9f8bbaaa40b1fca5b0
+ARG FFMPEG_SHA256_ARM64=d72cc324cb65dd92a9ffe699cc95ccbacfef4def8d3ad9fe2b5164a6a71b9595
+RUN case "$TARGETARCH" in \
+      amd64) FF_ARCH=linux64; FF_SHA256="$FFMPEG_SHA256_AMD64" ;; \
+      arm64) FF_ARCH=linuxarm64; FF_SHA256="$FFMPEG_SHA256_ARM64" ;; \
+      *) echo "unsupported TARGETARCH '$TARGETARCH'" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/ffmpeg.tar.xz "$FFMPEG_RELEASE/$FFMPEG_BUILD-$FF_ARCH-gpl-8.0.tar.xz" \
+    && echo "$FF_SHA256  /tmp/ffmpeg.tar.xz" | sha256sum -c - \
+    && tar -xJf /tmp/ffmpeg.tar.xz -C /usr/local/bin --strip-components=2 --wildcards '*/bin/ffmpeg' '*/bin/ffprobe' \
+    && rm /tmp/ffmpeg.tar.xz \
+    && ffmpeg -version | grep -F "ffmpeg version ${FFMPEG_BUILD#ffmpeg-}" \
+    && ffprobe -version | grep -F "ffprobe version ${FFMPEG_BUILD#ffmpeg-}"
+
 # ── chrome-headless-shell (deterministic BeginFrame capture) ─────────────────
 # Pinned deliberately. The build-stage contract probe below launches this
 # exact executable and requires a renderer-ready warm-up plus a PNG-returning
-# HeadlessExperimental.beginFrame before the image can build.
-RUN npx --yes @puppeteer/browsers install chrome-headless-shell@148.0.7778.167 \
-      --path /opt/puppeteer \
-    && CHS="$(find /opt/puppeteer/chrome-headless-shell -name chrome-headless-shell -type f | head -n1)" \
+# HeadlessExperimental.beginFrame before the image can build. Chrome for Testing
+# publishes no linux arm64 headless shell and no checksums, so the sha256 below
+# was taken from the archive itself; bump the version and hash together.
+ARG CHROME_HEADLESS_SHELL_VERSION=158.0.8127.36
+ARG CHROME_HEADLESS_SHELL_SHA256_AMD64=2d3a23017323c54fd457a678e4351f895c4076d8050e39d5aa6247f93448b73a
+RUN case "$TARGETARCH" in \
+      amd64) CHS_SHA256="$CHROME_HEADLESS_SHELL_SHA256_AMD64" ;; \
+      *) echo "no pinned chrome-headless-shell for TARGETARCH '$TARGETARCH'" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/chs.zip "https://storage.googleapis.com/chrome-for-testing-public/$CHROME_HEADLESS_SHELL_VERSION/linux64/chrome-headless-shell-linux64.zip" \
+    && echo "$CHS_SHA256  /tmp/chs.zip" | sha256sum -c - \
+    && unzip -q /tmp/chs.zip -d /opt \
+    && rm /tmp/chs.zip \
     && mkdir -p /opt/chrome \
-    && ln -s "$CHS" /opt/chrome/chrome-headless-shell \
-    && /opt/chrome/chrome-headless-shell --version
+    && ln -s /opt/chrome-headless-shell-linux64/chrome-headless-shell /opt/chrome/chrome-headless-shell \
+    && /opt/chrome/chrome-headless-shell --version | grep -F "$CHROME_HEADLESS_SHELL_VERSION"
 
 # The chromium.ts resolver reads this first; pointing the engine straight at
 # the symlinked binary avoids the runtime cache scan.
@@ -77,12 +108,30 @@ WORKDIR /app
 # Install bun (the repo's package manager / build driver). Pin the version:
 # the container runs `bun dist/server.js` and relies on bun's ESM `require`
 # interop to load the producer bundle, so a future bun release changing that
-# behaviour shouldn't silently break the next image rebuild. Bump deliberately.
-RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.2"
+# behaviour shouldn't silently break the next image rebuild. The sha256s are
+# from the release's SHASUMS256.txt; bump the version and both hashes together.
+ARG BUN_VERSION=1.4.4
+ARG BUN_SHA256_AMD64=bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c
+ARG BUN_SHA256_ARM64=baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e
+RUN case "$TARGETARCH" in \
+      amd64) BUN_ARCH=x64; BUN_SHA256="$BUN_SHA256_AMD64" ;; \
+      arm64) BUN_ARCH=aarch64; BUN_SHA256="$BUN_SHA256_ARM64" ;; \
+      *) echo "unsupported TARGETARCH '$TARGETARCH'" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/bun.zip "https://github.com/oven-sh/bun/releases/download/bun-v$BUN_VERSION/bun-linux-$BUN_ARCH.zip" \
+    && echo "$BUN_SHA256  /tmp/bun.zip" | sha256sum -c - \
+    && mkdir -p /root/.bun/bin \
+    && unzip -q -j /tmp/bun.zip "bun-linux-$BUN_ARCH/bun" -d /root/.bun/bin \
+    && rm /tmp/bun.zip \
+    && /root/.bun/bin/bun --version | grep -Fx "$BUN_VERSION"
 ENV PATH="/root/.bun/bin:$PATH"
 
 # Install workspace dependencies. Copy manifests first for layer caching.
 COPY package.json bun.lock ./
+COPY packages/share/package.json packages/share/package.json
+COPY packages/share/tsconfig.json packages/share/tsconfig.json
+COPY packages/share/src/ packages/share/src/
+COPY packages/share/scripts/ packages/share/scripts/
 COPY packages/core/package.json packages/core/package.json
 COPY packages/engine/package.json packages/engine/package.json
 COPY packages/player/package.json packages/player/package.json
@@ -96,6 +145,7 @@ COPY packages/lint/package.json packages/lint/package.json
 COPY packages/parsers/package.json packages/parsers/package.json
 COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/sdk-playground/package.json packages/sdk-playground/package.json
+COPY packages/inspector/package.json packages/inspector/package.json
 COPY packages/studio-server/package.json packages/studio-server/package.json
 COPY scripts/package-subpaths.mjs scripts/package-subpaths.mjs
 # A corrupt tarball extraction can print an error and then hang instead of
@@ -109,6 +159,7 @@ RUN timeout 300 bun install --frozen-lockfile \
 # argument list with the production engine helper so a launcher-flag regression
 # invalidates this layer and fails the contract instead of testing a duplicate
 # hard-coded profile.
+COPY packages/core/ packages/core/
 COPY packages/parsers/ packages/parsers/
 COPY packages/engine/ packages/engine/
 COPY packages/aws-lambda/scripts/probe-beginframe.ts packages/aws-lambda/scripts/probe-beginframe.ts
@@ -130,7 +181,9 @@ RUN bun packages/aws-lambda/scripts/probe-webgpu-adapter.ts \
 # image continues from the already-proven binary and installed workspaces.
 FROM beginframe-contract AS runtime
 
-# Copy source for the packages the render path needs.
+# Copy source for the packages the render path needs, plus the shared post-emit
+# import rewrite their builds run.
+COPY scripts/rewrite-relative-import-extensions.mjs scripts/rewrite-relative-import-extensions.mjs
 COPY packages/core/ packages/core/
 COPY packages/engine/ packages/engine/
 COPY packages/producer/ packages/producer/
@@ -158,6 +211,9 @@ RUN bun run --cwd packages/parsers build \
 
 # Cloud Run injects PORT (default 8080). The server reads it.
 ENV PORT=8080
+# Render pages reach only their own project server and public addresses: not this
+# service's port, the metadata server or other loopback and private hosts.
+ENV PRODUCER_RESTRICT_PAGE_NETWORK=true
 EXPOSE 8080
 
 WORKDIR /app/packages/gcp-cloud-run

@@ -1,4 +1,12 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
 import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 import { PreviewPortUnavailableError } from "./previewLifecycle.js";
+import * as previewLifecycle from "./previewLifecycle.js";
 import {
   default as previewCommand,
   backgroundStartFailureCode,
@@ -14,9 +23,12 @@ import {
   prebuildPreview,
   handlePreviewKillAll,
   handlePreviewList,
+  localStudioDir,
+  previewHostAppError,
   previewLaunchMode,
   previewLaunchModeError,
   previewPortError,
+  stopBackgroundCommand,
   publicPreviewPid,
   previewViteArgs,
   reportPreviewShutdown,
@@ -35,6 +47,20 @@ vi.mock("../utils/cancellableProcess.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/cancellableProcess.js")>()),
   runRenderSetupWorker: lint.worker,
 }));
+// The real cleanup kills every orphaned Chrome the user owns, so no test may reach it.
+const killOrphanedProcesses = vi.hoisted(() => vi.fn(() => 0));
+vi.mock("../utils/orphanCleanup.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/orphanCleanup.js")>()),
+  killOrphanedProcesses,
+}));
+
+const studio = vi.hoisted(() => ({ find: vi.fn(), selection: vi.fn(), lint: vi.fn() }));
+vi.mock("../utils/studioSelectionClient.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/studioSelectionClient.js")>()),
+  findPreviewServerForProject: studio.find,
+  fetchStudioSelection: studio.selection,
+  fetchStudioLint: studio.lint,
+}));
 
 const tempDirs: string[] = [];
 
@@ -49,6 +75,142 @@ function tempProject(): string {
   tempDirs.push(dir);
   return dir;
 }
+
+describe.each(["status", "stop"] as const)("preview --%s port scope", (operation) => {
+  it.each([undefined, 32521])("forwards the explicit port %s", async (port) => {
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    const readStatus = vi
+      .spyOn(previewLifecycle, "readBackgroundPreviewStatus")
+      .mockResolvedValue(null);
+    const stop = vi.spyOn(previewLifecycle, "stopBackgroundPreview").mockResolvedValue(false);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const rawArgs = [
+      dir,
+      `--${operation}`,
+      "--json",
+      ...(port === undefined ? [] : ["--port", String(port)]),
+    ];
+    const previousArgv = process.argv;
+    process.argv = [process.execPath, "cli.js", "preview", ...rawArgs];
+    try {
+      await runCommand(previewCommand, { rawArgs });
+    } finally {
+      process.argv = previousArgv;
+    }
+
+    const call = operation === "status" ? readStatus : stop;
+    expect(call).toHaveBeenCalledOnce();
+    const [project, startPort, options] = call.mock.calls[0] ?? [];
+    expect(project).toBe(dir);
+    expect(startPort).toBe(port ?? 3002);
+    expect(options?.preferredPort).toBe(port);
+    expect(operation === "status" ? stop : readStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("preview --status reporting", () => {
+  it("reports an unknown listener PID without borrowing the saved wrapper's PID", async () => {
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    vi.spyOn(previewLifecycle, "readBackgroundPreviewStatus").mockResolvedValue({
+      pid: null,
+      port: 32600,
+      projectDir: dir,
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(previewCommand, { rawArgs: [dir, "--status", "--json"] });
+
+    const result = JSON.parse(log.mock.calls.flat().join("\n")).result;
+    expect(result).toMatchObject({ state: "running", pid: null, mode: "unknown" });
+    expect(result).not.toHaveProperty("logPath");
+  });
+
+  it("lists an unverified endpoint without inventing its PID or background mode", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await handlePreviewList(3002, true, {
+      scan: async () => [],
+      listManaged: async () => [{ pid: null, port: 32600, projectDir: "/tmp/preview-unverified" }],
+    });
+
+    const result = JSON.parse(log.mock.calls.flat().join("\n")).result;
+    expect(result.sessions).toMatchObject([{ port: 32600, pid: null, mode: "unknown" }]);
+  });
+
+  it("keeps existing stop targets when status cannot confirm a listener PID", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const stopManaged = vi.fn(async () => true);
+    await handlePreviewKillAll(3002, true, {
+      listManaged: async () => [{ pid: null, port: 32600, projectDir: "/tmp/preview-unverified" }],
+      stopManaged,
+      killScanned: async () => ({ killed: 0, unverified: [] }),
+    });
+
+    expect(stopManaged).toHaveBeenCalledExactlyOnceWith("/tmp/preview-unverified", 32600);
+  });
+
+  it("retains scanned metadata when the same endpoint has an unknown saved-status PID", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await handlePreviewList(3002, true, {
+      scan: async () => [
+        {
+          pid: "9876",
+          pidSource: "os",
+          port: 32600,
+          host: "[::1]",
+          projectDir: "/tmp/preview-unverified",
+          projectName: "scanned-project",
+          version: "test",
+          proven: true,
+        },
+      ],
+      listManaged: async () => [{ pid: null, port: 32600, projectDir: "/tmp/preview-unverified" }],
+    });
+
+    const result = JSON.parse(log.mock.calls.flat().join("\n")).result;
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0]).toMatchObject({
+      pid: 9876,
+      host: "[::1]",
+      projectName: "scanned-project",
+      mode: "unknown",
+    });
+    expect(result.sessions[0]).not.toHaveProperty("logPath");
+  });
+
+  it.each([true, false])("reports log ownership in JSON=%s", async (json) => {
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    const readStatus = vi.spyOn(previewLifecycle, "readBackgroundPreviewStatus");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    for (const logPath of [undefined, "/tmp/owned-preview.log"]) {
+      readStatus.mockResolvedValue({ pid: 5555, port: 32530, projectDir: dir, logPath });
+      log.mockClear();
+      await runCommand(previewCommand, {
+        rawArgs: [dir, "--status", ...(json ? ["--json"] : [])],
+      });
+      const output = log.mock.calls.flat().join("\n");
+      if (json) {
+        const result = JSON.parse(output).result;
+        expect(result).toMatchObject({
+          state: "running",
+          pid: 5555,
+          port: 32530,
+          mode: logPath ? "background" : "unknown",
+        });
+        if (logPath) expect(result.logPath).toBe(logPath);
+        else expect(result).not.toHaveProperty("logPath");
+      } else if (logPath) {
+        expect(output).toContain(`Log: ${logPath}`);
+        expect(output).toContain("Background preview running");
+      } else {
+        expect(output).not.toContain("Log:");
+        expect(output).not.toContain("Background preview running");
+        expect(output).toContain("Preview running");
+      }
+    }
+  });
+});
 
 describe("Studio handoff URLs", () => {
   it("hands off the exact timeline project route", () => {
@@ -264,6 +426,59 @@ describe("previewLaunchMode", () => {
   });
 });
 
+/** A project folder that carries its own @hyperframes/studio with a Vite config and binary. */
+function projectWithOwnStudio(): { project: string; studio: string; marker: string } {
+  const root = mkdtempSync(join(tmpdir(), "hf-preview-own-studio-"));
+  tempDirs.push(root);
+  const project = join(root, "project");
+  const studio = join(project, "node_modules", "@hyperframes", "studio");
+  const bin = join(project, "node_modules", ".bin");
+  const marker = join(root, "ran");
+  mkdirSync(studio, { recursive: true });
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(project, "package.json"), '{"name":"project"}');
+  writeFileSync(join(studio, "package.json"), '{"name":"@hyperframes/studio","version":"0.0.0"}');
+  writeFileSync(
+    join(studio, "vite.config.ts"),
+    `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "config");\nexport default {};\n`,
+  );
+  writeFileSync(join(bin, "vite"), `#!/bin/sh\necho bin > ${JSON.stringify(marker)}\n`);
+  chmodSync(join(bin, "vite"), 0o755);
+  return { project, studio: realpathSync(studio), marker };
+}
+
+describe("localStudioDir", () => {
+  const interactive = { background: false, foreground: false, interactive: true, devMode: false };
+
+  it("serves the bundled Studio when the project brings its own", () => {
+    const { project } = projectWithOwnStudio();
+    const dir = localStudioDir(project, {});
+    expect(dir).toBeNull();
+    expect(previewLaunchMode({ ...interactive, localStudio: dir !== null })).toBe("embedded");
+  });
+
+  it("ignores a Studio in a parent folder's node_modules", () => {
+    const { project } = projectWithOwnStudio();
+    const nested = join(project, "nested");
+    mkdirSync(nested);
+    writeFileSync(join(nested, "package.json"), '{"name":"nested"}');
+    expect(localStudioDir(nested, {})).toBeNull();
+  });
+
+  it("uses the project's Studio when the user opts in", () => {
+    const { project, studio } = projectWithOwnStudio();
+    const dir = localStudioDir(project, { HYPERFRAMES_LOCAL_STUDIO: "1" });
+    expect(dir).toBe(studio);
+    expect(previewLaunchMode({ ...interactive, localStudio: dir !== null })).toBe("local");
+  });
+
+  it("uses the project's Studio when it is the CLI's own", () => {
+    const { project, studio } = projectWithOwnStudio();
+    expect(localStudioDir(project, {}, studio)).toBe(studio);
+    expect(localStudioDir(project, {}, join(studio, "elsewhere"))).toBeNull();
+  });
+});
+
 describe("preview lifecycle JSON failures", () => {
   it.each([
     [
@@ -452,6 +667,50 @@ describe("startup lint", () => {
     expect(error).toHaveBeenCalledWith(expect.stringContaining("--user-data-dir"));
     expect(lint.inProcess).not.toHaveBeenCalled();
   }, 5_000);
+
+  it("prints a background start failure with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    lint.worker.mockImplementation(neverSettles);
+    vi.spyOn(previewLifecycle, "startBackgroundPreview").mockRejectedValue(
+      new Error(`background preview did not stop for /work/video${esc}[2J`),
+    );
+    const error = vi.spyOn(clack.log, "error").mockImplementation(() => {});
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    try {
+      await runCommand(previewCommand, { rawArgs: [dir, "--background"] });
+
+      expect(error).toHaveBeenCalledWith("background preview did not stop for /work/video\\x1b[2J");
+    } finally {
+      lint.worker.mockReset();
+      killOrphanedProcesses.mockClear();
+    }
+  });
+
+  it("prints a lint failure with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    lint.worker.mockRejectedValue(new Error(`bad${esc}]0;x${String.fromCharCode(7)}`));
+    vi.spyOn(previewLifecycle, "startBackgroundPreview").mockRejectedValue(
+      new Error("not started"),
+    );
+    vi.spyOn(clack.log, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(clack.log, "warn").mockImplementation(() => {});
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+
+    try {
+      await runCommand(previewCommand, { rawArgs: [dir, "--background"] });
+
+      await vi.waitFor(() =>
+        expect(warn).toHaveBeenCalledWith("Lint did not finish: bad\\x1b]0;x\\x07"),
+      );
+    } finally {
+      lint.worker.mockReset();
+      killOrphanedProcesses.mockClear();
+    }
+  });
 });
 
 describe("foreground preview JSON", () => {
@@ -600,4 +859,200 @@ describe("studio dev-server spawns", () => {
     expect(spawn).toHaveBeenCalledOnce();
     expect(spawn.mock.calls[0]?.[2]).toMatchObject({ windowsHide: true });
   });
+
+  it("runLocalStudioMode spawns nothing from a Studio the project brings", async () => {
+    const spawn = mockStudioSpawn();
+    vi.stubEnv("HYPERFRAMES_LOCAL_STUDIO", "");
+    const { project, marker } = projectWithOwnStudio();
+    try {
+      const { runLocalStudioMode } = await import("./preview.js");
+      await runLocalStudioMode(project, { json: true });
+      expect(spawn).not.toHaveBeenCalled();
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
+describe("preview inside a host app's agent run", () => {
+  const hostRun = { HYPERFRAMES_DESKTOP_PROJECT: "/projects/demo" };
+
+  it("refuses a background preview, which would outlive the run", () => {
+    expect(previewHostAppError("background", hostRun)).toMatch(/host app .* owns its preview/);
+    expect(previewHostAppError("background", hostRun)).toContain("--foreground");
+  });
+
+  it("allows a preview attached to the run, and background outside a host app", () => {
+    expect(previewHostAppError("embedded", hostRun)).toBeNull();
+    expect(previewHostAppError("local", hostRun)).toBeNull();
+    expect(previewHostAppError("background", {})).toBeNull();
+  });
+
+  it("refuses before spawning anything", async () => {
+    vi.stubEnv("HYPERFRAMES_DESKTOP_PROJECT", "/projects/demo");
+    const project = mkdtempSync(join(tmpdir(), "hf-host-preview-"));
+    writeFileSync(join(project, "index.html"), "<html><body></body></html>");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    let printed = "";
+    try {
+      await runCommand(previewCommand, { rawArgs: [project, "--background", "--json"] });
+      printed = String(log.mock.calls.at(-1)?.[0]);
+    } finally {
+      log.mockRestore();
+      vi.unstubAllEnvs();
+      rmSync(project, { recursive: true, force: true });
+    }
+    const payload = JSON.parse(printed);
+    expect(payload).toMatchObject({ ok: false, error: { code: "host-app-owns-preview" } });
+    expect(killOrphanedProcesses).not.toHaveBeenCalled();
+  });
+});
+
+describe("stopBackgroundCommand", () => {
+  it("spells the project folder so pasting the stop line runs nothing else", () => {
+    expect(stopBackgroundCommand("/work/my film", "darwin")).toBe(
+      'hyperframes preview "/work/my film" --stop',
+    );
+    expect(stopBackgroundCommand("/work/$(touch x)", "darwin")).toBe(
+      "hyperframes preview '/work/$(touch x)' --stop",
+    );
+    expect(stopBackgroundCommand("C:\\Users\\Bob\\film", "win32")).toBe(
+      'hyperframes preview "C:\\Users\\Bob\\film" --stop',
+    );
+    expect(stopBackgroundCommand("C:\\work\\$(calc)", "win32")).toBe(
+      "hyperframes preview --stop from the project folder",
+    );
+    expect(stopBackgroundCommand("C:\\work\\$(calc)&calc", "win32")).toBe(
+      "hyperframes preview --stop from the project folder",
+    );
+  });
+});
+
+// Windows refuses control characters in folder names.
+describe.skipIf(process.platform === "win32")(
+  "preview with a control character folder name",
+  () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const name = `video${esc}]0;x${String.fromCharCode(7)}${esc}[2J`;
+    const shown = "video\\x1b]0;x\\x07\\x1b[2J";
+    const colors = new RegExp(`${esc}\\[[0-9;]*m`, "g");
+
+    function projectNamedWithControls(): string {
+      const dir = join(tempProject(), name);
+      mkdirSync(dir);
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      return dir;
+    }
+
+    it.each(["--status", "--stop"])("prints it as visible escapes for %s", async (flag) => {
+      const dir = projectNamedWithControls();
+      vi.spyOn(previewLifecycle, "readBackgroundPreviewStatus").mockResolvedValue({
+        pid: 5555,
+        port: 32530,
+        projectDir: dir,
+        logPath: join(dir, "preview.log"),
+      });
+      vi.spyOn(previewLifecycle, "stopBackgroundPreview").mockResolvedValue(true);
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runCommand(previewCommand, { rawArgs: [dir, flag] });
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+      expect(human.replace(colors, "")).not.toContain(esc);
+      expect(human).toContain(shown);
+    });
+
+    it("prints it as visible escapes in --list and keeps it in --list --json", async () => {
+      const dir = projectNamedWithControls();
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      const dependencies = {
+        scan: async () => [],
+        listManaged: async () => [{ pid: 4242, port: 32600, projectDir: dir }],
+      };
+      await handlePreviewList(3002, false, dependencies);
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      log.mockClear();
+      await handlePreviewList(3002, true, dependencies);
+
+      expect(human.replace(colors, "")).not.toContain(esc);
+      expect(human).toContain(shown);
+      expect(JSON.parse(log.mock.calls.flat().join("\n")).result.sessions[0]).toMatchObject({
+        projectName: name,
+        projectDir: dir,
+      });
+    });
+  },
+);
+
+describe("preview --selection and --context on a terminal", () => {
+  // Built rather than written: a literal control character in the source is a lint error.
+  const esc = String.fromCharCode(27);
+  const bel = String.fromCharCode(7);
+  const osc = `${esc}]52;c;cHduZWQ=${bel}`;
+  const shown = "\\x1b]52;c;cHduZWQ=\\x07";
+  const colors = new RegExp(`${esc}\\[[0-9;]*m`, "g");
+  const selection = {
+    schemaVersion: 1 as const,
+    projectId: "film",
+    compositionPath: "index.html",
+    sourceFile: `scene${osc}.html`,
+    currentTime: 1.5,
+    target: { hfId: `title${esc}[2J`, selector: "#title" },
+    label: `Title${osc}`,
+    tagName: "h1",
+    boundingBox: { x: 0, y: 0, width: 10, height: 10 },
+    textContent: "Title",
+    dataAttributes: {},
+    inlineStyles: {},
+    computedStyles: {},
+    textFields: [],
+    capabilities: {},
+    thumbnailUrl: `/thumb${osc}.png`,
+  };
+
+  function serveSelection(): void {
+    studio.find.mockResolvedValue({
+      port: 32700,
+      host: "127.0.0.1",
+      projectName: `film${osc}`,
+      projectDir: "/tmp/film",
+      version: "test",
+      pid: null,
+      proven: true,
+    });
+    studio.selection.mockResolvedValue({
+      selection,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    studio.lint.mockResolvedValue({ findings: [] });
+  }
+
+  it.each(["--selection", "--context"])(
+    "prints Studio's text with control characters as visible escapes for %s",
+    async (flag) => {
+      const dir = tempProject();
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      serveSelection();
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runCommand(previewCommand, { rawArgs: [dir, flag] });
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      log.mockClear();
+      await runCommand(previewCommand, { rawArgs: [dir, flag, "--json"] });
+      const payload = JSON.parse(log.mock.calls.flat().join("\n"));
+
+      expect(human.replace(colors, "")).not.toContain(esc);
+      expect(human).toContain(`Title${shown}`);
+      if (flag === "--selection") {
+        expect(human).toContain(`scene${shown}.html`);
+        expect(human).toContain("title\\x1b[2J");
+        expect(human).toContain(`/thumb${shown}.png`);
+        expect(payload.selection.label).toBe(selection.label);
+      } else {
+        expect(human).toContain(`film${shown}`);
+        expect(payload.selection.label).toBe(selection.label);
+        expect(payload.server.projectName).toBe(`film${osc}`);
+      }
+    },
+  );
 });

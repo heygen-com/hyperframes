@@ -1,19 +1,25 @@
-import { existsSync } from "node:fs";
-import { extname, join } from "node:path";
+import { existsSync, lstatSync } from "node:fs";
+import { dirname, extname, join } from "node:path";
 import { AGENT_SOURCES, latestRecordFor, recordInPlace } from "../../../scripts/lib/manifest.mjs";
 import { regenerateIndex } from "../../../scripts/lib/index-gen.mjs";
+import { isPlainProjectPath } from "./project-path.mjs";
 
 /**
- * Where the engine may write `rel`: there, unless another file of this run has `taken` it or the file there is
- * the person's (not `reusable` and not recorded as agent-made). Then the first free `name-2.ext`, with an anomaly.
+ * Where the engine may write `rel`: there, unless another file of this run has `taken` it, a link sits there, or
+ * the file there is the person's (not `reusable` and not recorded as agent-made). Then the first free
+ * `name-2.ext`, with an anomaly. Throws when `rel`'s folder is not its own real folder in the project.
  */
 export function agentWritePath(
   hyperframesDir,
   rel,
   { anomalies, taken = new Set(), reusable = () => false },
 ) {
+  if (!isPlainProjectPath(hyperframesDir, dirname(rel))) {
+    throw new Error(`${dirname(rel)} leads outside the project folder; nothing was written there`);
+  }
   const free = (path) =>
     !taken.has(path) &&
+    !lstatSync(join(hyperframesDir, path), { throwIfNoEntry: false })?.isSymbolicLink() &&
     (!existsSync(join(hyperframesDir, path)) ||
       reusable(path) ||
       AGENT_SOURCES.includes(latestRecordFor(hyperframesDir, path)?.source));
@@ -31,19 +37,36 @@ export function agentWritePath(
   return path;
 }
 
-/** Each spoken line's file, picked before lines synthesize concurrently so two never land on one free name. */
+// A line id names its voice file, so it must be one plain file name: no folder, drive or `..`.
+const isPlainFileName = (id) => id !== "" && id !== "." && id !== ".." && !/[/\\:]/.test(id);
+
+/**
+ * Each spoken line's file, picked before lines synthesize concurrently so two never land on one free name.
+ * Throws for a line whose id is not a plain file name.
+ */
 export function voicePaths(hyperframesDir, lines, anomalies) {
   const taken = new Set();
   const paths = new Map();
-  for (const line of lines.filter((l) => String(l.text ?? "").trim())) {
-    const rel = agentWritePath(hyperframesDir, `assets/voice/${line.id}.wav`, { anomalies, taken });
+  for (const line of lines.filter((l) => String(l.text ?? "").trim() || l.audio)) {
+    const id = String(line.id);
+    if (!isPlainFileName(id)) {
+      throw new Error(
+        `line id ${JSON.stringify(id)} names its voice file, so it must be a plain name: no "/", "\\" or ":", and not empty, "." or ".."`,
+      );
+    }
+    const rel = agentWritePath(hyperframesDir, `assets/voice/${id}.wav`, { anomalies, taken });
     taken.add(rel);
-    paths.set(String(line.id), rel);
+    paths.set(id, rel);
   }
   return paths;
 }
 
-const SFX_SOURCES = { heygen: "search", local: "bundled" };
+// A cue's source as the manifest records it, and who provided it. A source missing here records as the person's
+// file, so every rerun would write a numbered copy beside it.
+const SFX_SOURCES = {
+  openverse: { source: "search", provider: "openverse.audio" },
+  local: { source: "bundled", provider: "bundled.sfx" },
+};
 
 // The files one engine run wrote, each with how it was made, for the project's media manifest.
 export function writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields, sfx }) {
@@ -55,9 +78,9 @@ export function writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields
         path: voice.path,
         type: "voice",
         source: "generated",
-        intent: textById.get(voice.id),
+        intent: textById.get(voice.id) || "your own recording",
         duration: voice.duration_s,
-        provider: ttsProvider,
+        provider: voice.source ?? ttsProvider,
       });
     }
   }
@@ -73,8 +96,7 @@ export function writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields
   }
   if (only.has("sfx")) {
     for (const cue of new Map(sfx.map((entry) => [entry.file, entry])).values()) {
-      const source = SFX_SOURCES[cue.source];
-      const provider = source === "search" ? "heygen" : "bundled.sfx";
+      const { source, provider } = SFX_SOURCES[cue.source];
       assets.push({
         path: cue.file,
         type: "sfx",

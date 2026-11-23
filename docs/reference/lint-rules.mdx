@@ -1,0 +1,957 @@
+---
+title: "Lint rules"
+sidebarTitle: "Lint rules"
+description: "Every lint finding code with its severity, what it catches, and how to fix it."
+---
+
+`hyperframes lint`, `hyperframes check` and the `@hyperframes/lint` package report findings with a stable code. This page lists every code with its severity, what it catches, and how to fix it. The codes come straight from the rule set in `packages/lint/src/rules/` plus the project-level probes that run as part of a project lint.
+
+Severities:
+
+- **Error** — the composition is broken or the render will fail or visibly diverge. Fails `hyperframes check` by default.
+- **Warning** — a quality, determinism or maintainability hazard. Does not fail `hyperframes check` unless you pass `--strict`; in `render`, warnings abort only under `--strict-all`.
+- **Info** — a heads-up that needs no action. Shown by `hyperframes lint --verbose`.
+
+<Info>
+  Looking for a code from a render or check log? Codes appear in the output of `npx hyperframes lint [dir]` — add `--json` to script over them. `check` additionally runs runtime, layout and motion audits beyond these lint rules; see [Troubleshooting](/help).
+</Info>
+
+## Structure and timeline
+
+Source: `packages/lint/src/rules/structure.ts`.
+
+The five codes marked **Warning or error** are warnings when the CLI lints a project, and errors when the browser editor
+lints the file it is editing.
+
+### `nested_structure_needs_subcomposition`
+
+**Warning or error.** A top-level timeline element contains another nested structure instead of a sub-composition mount. The timeline draws one row per top-level element, and the root composition is built only from sub-compositions.
+
+**Fix:** Move the element and its contents into a sub-composition file and mount it with `data-composition-src`.
+
+### `timeline_element_missing_timing`
+
+**Warning or error.** A timeline element has no `data-duration`, so the timeline cannot draw where it ends.
+
+**Fix:** Add `data-duration` (in seconds) to the element.
+
+### `caption_track_kind_missing`
+
+**Warning or error.** An element looks like a caption row but is not marked as one, so the timeline cannot group it on the caption track.
+
+**Fix:** Add `data-track-kind="captions"` to the element.
+
+### `multiple_caption_tracks`
+
+**Warning or error.** Captions are spread across several timeline tracks instead of one caption lane.
+
+**Fix:** Give every caption element the same `data-track-index`.
+
+### `multiple_scene_templates`
+
+**Warning.** A file has more than one `<template>` holding a composition root and no composition root outside them. Only the first one renders; the message names each template.
+
+**Fix:** Keep one composition root per file, or move the other scenes into their own files.
+
+### `clip_ends_past_root_duration`
+
+**Warning.** A clip runs past the root composition's `data-duration`, so it is cut off in previews, posters and renders.
+
+**Fix:** Extend the root `data-duration`, or make the clip end at or before it.
+
+### `nested_clip_never_visible`
+
+**Warning or error.** A timed clip sits inside another timed element, and its time window never overlaps that
+element's, so it never appears. A nested clip's `data-start` counts from the composition's start, not from the
+element around it. Runs in sub-composition files too.
+
+**Fix:** Give the clip a `data-start` inside its parent's window, in composition time, or move it out of the
+parent.
+
+## Composition contract
+
+Source: `packages/lint/src/rules/composition.ts`.
+
+### `invalid_composition_variables_declaration`
+
+**Error.** `data-composition-variables` is not valid JSON or not an array of variable declarations.
+
+**Fix:** Provide a JSON array such as `data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Hello"}]'` — single-quote the attribute, double-quote the JSON.
+
+### `invalid_variable_values_json`
+
+**Error.** `data-variable-values` is not valid JSON.
+
+**Fix:** Single-quote the attribute and double-quote the JSON keys and values, e.g. `data-variable-values='{"title":"Hello"}'`.
+
+### `unknown_variable_binding`
+
+**Warning.** An element binds a variable that is not declared in `data-composition-variables`, so the binding silently keeps the authored fallback.
+
+**Fix:** Declare the variable on the composition root (`<html>`, or the `data-composition-id` root of a template or fragment composition).
+
+### `unloadable_media_variable_default`
+
+**Error.** A variable's default is a URL the runtime refuses to load, so bound elements render their authored fallback src while the render still exits 0.
+
+**Fix:** Use a relative path, `http(s)`, `blob:`, or a `data:image/*` URI. Copy the file into the project and reference it relatively.
+
+### `deprecated_data_end`
+
+**Error.** A legacy `data-end` is used without `data-duration`, or a stale `data-end` disagrees with the `data-duration` next to it.
+
+**Fix:** Replace `data-end` with `data-duration`. The compiler generates `data-end` from `data-duration` automatically.
+
+### `deprecated_data_layer`
+
+**Error.** The legacy `data-layer` attribute is used.
+
+**Fix:** Replace it with `data-track-index`, the canonical name the browser editor and the linter read.
+
+### `duplicate_composition_id`
+
+**Error.** The same `data-composition-id` appears on several elements in one file — often a `<meta>` tag carrying the same id as the root `<div>`.
+
+**Fix:** Keep `data-composition-id` on exactly one element: the composition root. Remove it from metadata or duplicate hosts.
+
+### `invalid_parent_traversal_in_asset_path`
+
+**Error.** Asset paths use `../` to traverse above the project root; render and preview clamp or misresolve them.
+
+**Fix:** Point the path at a file inside the project — from `compositions/scene.html`, both `../assets/x.png` and `assets/x.png` reach the project's `assets` folder.
+
+### `composition_exceeds_inspection_viewport_cap`
+
+**Warning.** The composition is larger than the 4096px viewport cap that `check`, `validate`, `snapshot`, `compare` and layout audits clamp to. `render` is unaffected, but a clean inspection result no longer covers the whole canvas.
+
+**Fix:** Keep the authored size if the output needs it, and verify the region past the cap from a render rather than from inspection commands.
+
+### `composition_file_too_large`
+
+**Warning.** The HTML composition file has grown past a size where it stays easy to read, iterate on, and diff.
+
+**Fix:** Split it into sub-compositions and mount them from the parent with `data-composition-src`.
+
+### `composition_heavy_overlay_count_high`
+
+**Warning.** Many elements carry heavy overlay CSS (`filter: blur`, `radial-gradient`, `clip-path`), which can cap capture performance — including hidden ones.
+
+**Fix:** Split the composition and concat the pieces so each capture sees a small subset of heavy overlays; remove overlays that are not visible anyway.
+
+### `missing_data_no_timeline`
+
+**Warning.** A `data-composition-id` element (or the root) has neither a matching `window.__timelines` registration nor `data-no-timeline`, so the producer polls up to 45 seconds before timing out.
+
+**Fix:** Register the timeline, mount the composition with `data-composition-src`, or add `data-no-timeline` for genuinely static sections.
+
+### `negative_z_index`
+
+**Warning.** `z-index` below 0 paints the element behind its nearest stacking context's content; with no stacking-context ancestor that is the composition root, so an opaque background there hides the element entirely.
+
+**Fix:** Give the element's parent a stacking context (`isolation: isolate` is the cheapest; `transform`, `filter`, `opacity` below 1, `contain: paint`, `will-change` also work).
+
+### `requestanimationframe_in_composition`
+
+**Error.** `requestAnimationFrame` runs on wall-clock time, not the GSAP timeline, so it desyncs from frame capture and can flicker or drop frames in renders.
+
+**Fix:** Use GSAP tweens or timeline `onUpdate` callbacks for animation logic instead.
+
+### `root_composition_duration_derived`
+
+**Warning.** The root has no `data-duration` and no GSAP timeline, so its length is inferred from its clips.
+
+**Fix:** Add `data-duration="<seconds>"` to the root element to set the length yourself.
+
+### `root_composition_missing_duration_source`
+
+**Error.** The root has no `data-duration`, no GSAP timeline, and no CSS, WAAPI, Lottie or Three.js animation to infer a duration from, so the render engine cannot determine how long to capture and fails.
+
+**Fix:** Add `data-duration="<seconds>"` to the root, or add a paused GSAP timeline registered on `window.__timelines`.
+
+### `root_composition_missing_html_wrapper`
+
+**Error.** An `index.html` carrying `data-composition-id` is a bare fragment without `<!DOCTYPE html>`, `<html>` or `<body>`, so browsers quirks-mode it and the preview server mis-serves it.
+
+**Fix:** Wrap the composition in `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>...</body></html>`.
+
+### `root_zoom_rescales_a_fixed_canvas`
+
+**Error.** CSS `zoom` on the canvas rescales the painted composition inside a capture frame that does not rescale with it — the frame is sized from the root's `data-width` and `data-height` in layout pixels.
+
+**Fix:** Author at the real size: set `data-width` and `data-height` (and the root's width and height) and drop the canvas-level `zoom`. To scale the output without changing layout, pass `--output-resolution` to render. `zoom` on descendants is fine.
+
+### `split_data_attribute_selector`
+
+**Error.** A CSS selector combines two attributes inside one `[...]` block, which browsers reject — GSAP timelines or `querySelector` calls fail before they register.
+
+**Fix:** Use separate attribute selectors: `[data-composition-id="x"][data-track-index="1"]`.
+
+### `standalone_composition_wrapped_in_template`
+
+**Error.** The root `index.html` is wrapped in a `<template>` tag, so the runtime cannot play it — only sub-compositions loaded via `data-composition-src` use `<template>` wrappers.
+
+**Fix:** Remove the `<template>` wrapper and serve the composition as a real document.
+
+### `subcomposition_blanks_before_host`
+
+**Warning.** A mounted sub-composition is blank for part of its host's window because its own `data-duration` is shorter than the slot it fills.
+
+**Fix:** Set the sub-composition's `data-duration` to fill the host window, or cover the gap with another clip.
+
+### `subcomposition_linked_style_names_root_id`
+
+**Warning.** A stylesheet linked from a sub-composition has a rule on `#<root id>`, the id of the sub-composition's root. When the composition is compiled the root is merged into its host, so that selector matches nothing. The same rule in an inline `<style>` is rewritten and works.
+
+**Fix:** Move the rule into a `<style>` inside the `<template>`, or select a child element of the root in the linked file instead of the root itself.
+
+### `subcomposition_root_styled_by_class`
+
+**Error.** A sub-composition's root element is styled through class selectors, but at render every rule is scoped to `[data-composition-id=...]`, so the class-keyed styles stop applying.
+
+**Fix:** Give the root `id="root"` and style it with `#root` plus plain descendant selectors.
+
+### `subcomposition_style_outside_template`
+
+**Warning.** A sub-composition file with a `<template>` has a `<style>`, or a `<link rel="stylesheet">`
+outside `<head>`, that sits outside the template. Mounting keeps only the template's content and the
+stylesheet links in `<head>`, so those styles never apply in preview, snapshot or render.
+
+**Fix:** Move it inside `<template>`, next to the composition root.
+
+### `template_literal_selector`
+
+**Error.** `querySelector` is called with a template-literal variable, which the bundler's CSS parser crashes on.
+
+**Fix:** Use hardcoded string selectors instead of interpolated ones.
+
+### `timed_element_missing_clip_class`
+
+**Warning.** An element has timing attributes but no `class="clip"`. The runtime still times it, but the browser editor and the clip-ownership rules use `.clip` to recognise it, so it is harder to edit and to lint.
+
+**Fix:** Add `class="clip"` to the element.
+
+### `timeline_track_too_dense`
+
+**Warning.** This file has more than 3 timed elements, whatever tracks they sit on (audio, video, caption cues and sub-composition mounts are not counted), which makes the timeline harder to read, iterate on, and diff.
+
+**Fix:** Split the elements into sub-compositions and mount them from the parent with `data-composition-src`.
+
+## Document, CSS and scripts
+
+Source: `packages/lint/src/rules/core.ts`.
+
+### `host_missing_composition_id`
+
+**Error.** A `data-composition-src` host element has no `data-composition-id` of its own.
+
+**Fix:** Set `data-composition-id` on every `data-composition-src` host element.
+
+### `css_parse_error`
+
+**Error.** A `<style>` block fails to parse as CSS.
+
+**Fix:** Fix the reported CSS syntax error.
+
+### `css_transition_used`
+
+**Warning.** A CSS `transition` declaration runs on the browser clock and cannot be seeked deterministically across render workers. `transition: none` and all-zero durations are allowed.
+
+**Fix:** Keep the class or attribute swap for state, but put the visual change on the paused GSAP timeline.
+
+### `id_override_reduced_specificity`
+
+**Warning.** A selector sets position properties through `[id=...]` or `:where(#id)`, which has class-level or zero specificity, so a compound class rule on the same element can silently win.
+
+**Fix:** Use the plain `#id` selector; id specificity beats any selector built only from classes.
+
+### `id_requires_css_escape`
+
+**Error / warning.** An id starts with a digit, so `#id` selectors throw a `SyntaxError` in `querySelector` and GSAP, and CSS drops the rule. Error when such a selector is actually used in the composition, warning otherwise.
+
+**Fix:** Rename the id to start with a letter (recommended), or build selectors with `CSS.escape(id)` at runtime.
+
+### `inline_style_attribute_selector`
+
+**Error.** A selector reads the inline `style` attribute (`[style]`, `[style*=...]` and the other forms).
+GSAP writes inline styles every frame, and each write then restyles far more than the animated element.
+The preview slows to a crawl.
+
+**Fix:** Let the runtime hide hidden clips; it already hides their contents.
+For a state of your own, toggle a class or data attribute from your script and select on that.
+
+### `invalid_inline_script_syntax`
+
+**Error.** An inline `<script>` is closed with malformed syntax.
+
+**Fix:** Close inline scripts with a valid `</script>` tag.
+
+### `missing_timeline_registry`
+
+**Error.** The composition registers no `window.__timelines` registry at all.
+
+**Fix:** Register each composition timeline on `window.__timelines[compositionId]`.
+
+### `linked_files_not_checked`
+
+**Warning.** The stylesheets and scripts a file links add up to more than one page may hold (64 MB), so lint stopped reading them. Each file is read once, under any of its names; the ones past the limit are not checked, and `missing_timeline_registry` is not reported when a skipped script could hold the registry.
+
+**Fix:** Link each file once, and keep large data out of linked stylesheets and scripts.
+
+### `non_deterministic_code`
+
+**Error.** A script uses a non-deterministic value source (`Math.random`, `Date.now`, `gsap.utils.random`, `"random(...)"`), so renders can differ between frames or runs.
+
+**Fix:** Precompute the value once at build time and pass a constant, or seed and freeze it.
+
+### `repeated_id_descendant_selector`
+
+**Error.** A selector requires an id to be nested inside another element with the same id. Ids must be unique, so the selector can never match.
+
+**Fix:** Remove the duplicate ancestor: change `#x #x` to `#x`.
+
+### `root_dimensions_mismatch`
+
+**Warning.** The root's `data-width`/`data-height` were edited directly, but the scaffold's `html, body` CSS and `<meta viewport>` still hold the old resolution, and a stale `overflow: hidden` body visually clips the correctly-sized root.
+
+**Fix:** Update the body CSS and viewport to match, or scaffold with `hyperframes init --resolution portrait`.
+
+### `root_missing_composition_id`
+
+**Error.** The root composition is missing `data-composition-id`.
+
+**Fix:** Add a stable `data-composition-id` to the entry composition wrapper.
+
+### `root_missing_dimensions`
+
+**Error.** The root composition is missing `data-width` or `data-height`.
+
+**Fix:** Set numeric `data-width` and `data-height` on the entry composition root.
+
+### `runtime_hidden_style_opacity`
+
+**Error.** A selector observes the runtime-owned hidden style (used to hide native video during frame copying) and forces `opacity` to zero, which breaks the video replacement pipeline.
+
+**Fix:** Remove the rule; the runtime already hides a hidden clip and its contents.
+To fade or hide something yourself, animate it on the timeline, or toggle a class or data attribute and select on that.
+
+### `scoped_css_missing_wrapper`
+
+**Warning.** Scoped CSS targets a composition id for which no matching wrapper exists in this HTML.
+
+**Fix:** Keep the matching composition wrapper, or align the CSS scope to an existing wrapper.
+
+### `studio_missing_editable_id`
+
+**Warning.** A timeline-visible element has no `id`, so the browser editor cannot target it stably for timeline and canvas edits.
+
+**Fix:** Add a stable, human-readable id such as `id="hero-title"` to elements that agents or the browser editor should edit.
+
+### `timeline_id_mismatch`
+
+**Error.** A timeline is registered under a key for which no element carries the matching `data-composition-id`, so the runtime cannot auto-nest it.
+
+**Fix:** Make `window.__timelines["<key>"]` match the element's `data-composition-id`, or vice versa.
+
+### `unbalanced_style_tags`
+
+**Error.** A `<style>` block is never closed (following markup is parsed as CSS and disappears), or an extra `</style>` closes the stylesheet early and dumps CSS into the body as visible text.
+
+**Fix:** Keep `<style>` and `</style>` paired.
+
+### `unclosed_tag_swallowed_element`
+
+**Error.** A tag is missing its closing `>` before the next `<`, so the following element is swallowed as bogus attribute text and never becomes a real node.
+
+**Fix:** Close the previous tag's `>` before opening the next element.
+
+### `visible_markup_comment`
+
+**Error.** CSS or JS block-comment syntax (`/* ... */`) appears in visible HTML markup, where only `<!-- ... -->` is a comment — so it renders as on-screen text.
+
+**Fix:** Remove the text or convert it to a real HTML comment; keep CSS comments inside `<style>` and JS comments inside `<script>`.
+
+## GSAP animation
+
+Source: `packages/lint/src/rules/gsap.ts`.
+
+### `audio_reactive_single_tween_per_group`
+
+**Warning.** Audio-reactive captions use a single tween per group based on peak values, which sets one static value and is not perceptible as audio reactivity.
+
+**Fix:** Sample the audio data at 100-200ms intervals across each group's lifetime and create a tween per sample point.
+
+### `gsap_animates_clip_element`
+
+**Error.** GSAP sets visibility-affecting properties (`opacity`, `visibility`, `autoAlpha`) directly on a clip element whose visibility the framework owns.
+
+**Fix:** Remove the visibility or autoAlpha tween, or move the content into a child `<div>` and target that instead.
+
+### `gsap_callback_dom_measurement`
+
+**Warning.** A timeline callback reaches DOM measurement (`getBoundingClientRect`, `getTotalLength`, `getComputedStyle`, ...). Callbacks re-fire on every seek, and a cold render worker runs them against a different layout than the sequential pass.
+
+**Fix:** Do all measurement and DOM setup synchronously at build time, before registering the timeline, or derive geometry from fixed composition coordinates.
+
+### `gsap_cold_seek_hidden_fromto_missing_reveal`
+
+**Error.** An element authored hidden uses `gsap.fromTo()` whose destination vars omit `opacity`/`autoAlpha`, so cold render workers restore the hidden state and the element can stay invisible.
+
+**Fix:** Add `opacity: 1` (or `autoAlpha: 1`) to the destination vars so every seek path establishes the visible end state.
+
+### `gsap_css_transform_conflict`
+
+**Error.** An element has a CSS `transform` (for example `translateX(-50%)` centering) and a GSAP tween animates transform properties — GSAP overwrites the full CSS transform.
+
+**Fix:** Remove the transform from CSS and express it in GSAP properties instead; `tl.fromTo` with explicit start values is exempt.
+
+### `gsap_from_opacity_noop`
+
+**Error.** An element has CSS `opacity: 0` and a `gsap.from()` that also sets opacity to 0, so it animates from 0 to 0 and never appears.
+
+**Fix:** Remove `opacity: 0` from the CSS or inline style and let the `gsap.from()` own the initial hidden state.
+
+### `gsap_fullscreen_overlay_starts_visible`
+
+**Error.** A full-frame overlay starts visible before its first GSAP opacity tween, so it covers earlier render frames — often as a blank or white video.
+
+**Fix:** Author the overlay hidden in CSS, or add an immediate `gsap.set(..., { opacity: 0 })` before the reveal tween.
+
+### `gsap_function_value_hazard`
+
+**Error / warning.** A function-valued tween var reads transform-sensitive geometry, measures layout at tween init, or accesses its first parameter (which is a number, not the element). Error for transform-sensitive reads and bad member access, warning otherwise.
+
+**Fix:** Compute the value once at build time and pass a constant; for per-element logic use the second parameter: `(index, target) => ...`.
+
+### `gsap_group_selector_keyframes`
+
+**Warning.** A GSAP tween targets several elements with shared keyframes, so editing one element's keyframes in the browser editor changes all of them.
+
+**Fix:** Replace the group selector with individual `tl.to()` calls per element.
+
+### `gsap_infinite_repeat`
+
+**Error / warning.** A GSAP tween or timeline uses `repeat: -1`. Warning when the composition declares a finite `data-duration` (seeking and export are clipped to it), error when nothing bounds the timeline.
+
+**Fix:** Declare a finite `data-duration`, or replace `repeat: -1` with a finite count such as `repeat: Math.max(0, Math.floor(totalDuration / cycleDuration) - 1)`.
+
+### `gsap_non_transform_motion`
+
+**Error.** A GSAP tween animates layout properties (`left`, `top`, `width`, ...), text-reflow properties (`fontSize`, `letterSpacing`, ...) or sets `roundProps`, all of which snap to integer device pixels and stutter under frame capture.
+
+**Fix:** Animate transforms instead: positional properties become `x`/`y`/`scale`; reflow properties need per-character splits or a static final value; remove `roundProps`.
+
+### `gsap_relative_value_second_writer`
+
+**Error.** A relative tween value (`+=...`) starts while another writer is still active on the same property, so different seek paths init the relative tween from different bases and the frame snaps.
+
+**Fix:** Use absolute values or a `fromTo()` with explicit endpoints for that property. A relative value with a single writer is safe.
+
+### `gsap_repeat_ceil_overshoot`
+
+**Warning.** A repeat count computed with `Math.ceil` can overshoot the composition duration, extending the animation past it.
+
+**Fix:** Use `Math.floor` in the repeat calculation: `repeat: Math.max(0, Math.floor(totalDuration / cycleDuration) - 1)`.
+
+### `gsap_repeat_floor_unclamped`
+
+**Warning.** A repeat calculation can evaluate to `-1` when the composition is shorter than one cycle, which GSAP interprets as an infinite repeat.
+
+**Fix:** Clamp the count at zero: `repeat: Math.max(0, Math.floor(totalDuration / cycleDuration) - 1)`.
+
+### `gsap_repeat_refresh_relative_value`
+
+**Error.** `repeatRefresh: true` combined with a relative value accumulates per iteration; a cold render worker seeking into iteration N never performed the earlier accumulation, so its result differs.
+
+**Fix:** Remove `repeatRefresh: true`, or replace the relative value with absolute endpoints (a `fromTo()`).
+
+### `gsap_repeated_fromto_without_baseline`
+
+**Warning.** Several `tl.fromTo()` calls target the same element with no stable baseline, so the last-authored "from" values become the resting state for any seek before the first tween runs.
+
+**Fix:** Add `immediateRender: false` to every `fromTo` except the earliest-positioned one.
+
+### `gsap_timeline_not_registered`
+
+**Error.** A GSAP timeline is created but never registered on `window.__timelines`, so the runtime never discovers it and the animation does not play in preview or render.
+
+**Fix:** Add `window.__timelines = window.__timelines || {};` and assign the timeline under the composition's `data-composition-id`.
+
+### `gsap_timeline_registered_before_async_build`
+
+**Error.** `window.__timelines` is assigned before the timeline is built inside `document.fonts.ready`, so an empty timeline registers first and can nest empty in sub-compositions.
+
+**Fix:** Move the `window.__timelines[id] = tl` assignment to the end of the async build callback, after the tweens are added.
+
+### `gsap_timeline_return_used_as_tween`
+
+**Error.** Code captures the return of `tl.to()`/`tl.from()`/`tl.set()` expecting the tween, but those methods return the timeline itself — so a later `kill()` or overwrite hits the whole timeline.
+
+**Fix:** Put the group of tweens in a nested timeline (`gsap.timeline()` added with `tl.add(nested, 0)`) and kill that instead.
+
+### `gsap_timeline_set_initial_hide`
+
+**Warning.** The initial hidden state is set with `tl.set(..., 0)` inside the paused timeline; a zero-duration set at position 0 does not render while the playhead sits exactly at 0, so frame 0 shows the un-hidden state.
+
+**Fix:** Use `gsap.set(...)` outside the timeline, or author the hidden state directly in CSS or attributes.
+
+### `gsap_undefined_css_variable`
+
+**Warning.** GSAP animates a `var(--...)` CSS variable that no static CSS or composition-variable declaration defines, so the computed color may become invalid or transparent.
+
+**Fix:** Define the variable in CSS, declare it in `data-composition-variables`, or add a `var(--x, #fff)` fallback.
+
+### `missing_gsap_plugin`
+
+**Error.** A tween uses a plugin-specific property such as `motionPath`, but the plugin is not loaded and registered, so core GSAP ignores the property.
+
+**Fix:** Load the plugin before the animation script and register it with `gsap.registerPlugin(...)`, or express the motion with core `x`/`y` tweens.
+
+### `missing_gsap_script`
+
+**Error.** The composition uses GSAP but no GSAP script is loaded, so the animation will not run.
+
+**Fix:** Add the GSAP `<script>` tag before the animation script.
+
+### `overlapping_gsap_tweens`
+
+**Warning.** Two GSAP tweens overlap on the same target for the same properties, so the later one overwrites the earlier mid-flight.
+
+**Fix:** Shorten the earlier tween, move the later one, or add `overwrite: "auto"`.
+
+### `svg_drawon_css_dasharray_conflict`
+
+**Error.** GSAP writes `strokeDasharray` on an element whose CSS declares a multi-component `stroke-dasharray`; GSAP merges dash lists per component, so the CSS gap survives and the draw-on breaks.
+
+**Fix:** Remove the CSS `stroke-dasharray` (decorative dashes belong on a separate element), or set the full two-component value in GSAP.
+
+### `svg_round_cap_hidden_dash`
+
+**Warning.** A round or square capped path is hidden with dasharray = gap = `pathLength` and dashoffset = dash.
+
+Chrome can leave a zero-length sliver at the path end there, and the cap paints it as a dot on some curves.
+
+**Fix:** Make the gap longer than the path (`stroke-dasharray="100 120"`, `stroke-dashoffset="110"`).
+
+Or keep the element `visibility: hidden` until its draw tween starts.
+
+### `svg_measure_before_path_d`
+
+**Error / warning.** `getTotalLength()` is called on a path with no static `d` attribute, so it returns 0 and the dash animation dies. Error when no `d` assignment exists anywhere, warning when `d` is only assigned inside a function body.
+
+**Fix:** Assign the path's `d` synchronously at build time (top level, before measuring), or author a static `d` attribute in the HTML.
+
+## Media elements
+
+Source: `packages/lint/src/rules/media.ts`.
+
+### `audio_attribute_unreadable`
+
+**Error.** A `data-automation` or `data-fx-chain` is not one the render can parse: not JSON, no `"version": 1`, no `lanes` / `nodes` array, a lane without `target` or `points`, or a node without `type`. The audio mix fails on it, locally and in the cloud.
+
+**Fix:** Write it as `{"version": 1, "lanes": [...]}` (automation) or `{"version": 1, "nodes": [...]}` (effect chain), or remove the attribute.
+
+### `audio_carve_ungrouped_sources`
+
+**Warning.** A voiceover carve names its member clips directly instead of carving an `<hf-audio-group>`, so the list silently rots when clips change.
+
+**Fix:** Group the voice clips and carve against the group.
+
+### `audio_group_carve_attr`
+
+**Warning.** An `<hf-audio-group>` carries `data-fx-carve` (or a carve-derived chain), but a carve belongs on the bed clip, not the bus.
+
+**Fix:** Remove `data-fx-carve` from the group and carve the bed clip instead.
+
+### `audio_group_holds_elements`
+
+**Warning.** Elements sit inside an `<hf-audio-group>`. Most often the group was written self-closed (`<hf-audio-group id="sfx" />`), which HTML does not close on a custom element, so every later sibling lands inside it. Being inside routes no audio through the bus, and while the group has `data-hidden` those elements are hidden and silenced in preview and render.
+
+**Fix:** Close the group with `</hf-audio-group>` right after its opening tag, and give clips meant for the bus `data-audio-group`.
+
+### `audio_group_no_members`
+
+**Error.** An audio group exists that no clip joins, so its fader, effects and automation are silently dropped.
+
+**Fix:** Add `data-audio-group="<id>"` to the clips the bus is for, or delete the bus.
+
+### `audio_group_timing_attrs`
+
+**Warning.** An `<hf-audio-group>` carries timing attributes (`data-start`, `data-duration`, `data-track-index`). A group has no clip window of its own; its members carry the timing.
+
+**Fix:** Remove the timing attributes from the group and set them on the member clips.
+
+### `audio_volume_double_automation`
+
+**Warning.** An element has both a volume automation lane and a GSAP tween on `volume`; the lane wins and the tween is ignored in preview and render.
+
+**Fix:** Keep one: delete the lane to tween, or drop the tween and shape the level in the lane.
+
+### `audio_volume_tween_overrides_gain`
+
+**Warning.** An element has `data-volume` gain and a GSAP tween on `volume`; tween values are absolute and replace the gain rather than scale it.
+
+**Fix:** Write tween targets as absolute gains that already include the gain, or reset `data-volume` to 1 and let the tween carry the level.
+
+### `base64_media_prohibited`
+
+**Error.** Inline base64 audio or video is present. Base64 media bloats file size and breaks rendering.
+
+**Fix:** Use a relative path or HTTPS URL for the `src` — never embed media as base64.
+
+### `color_grading_invalid_json`
+
+**Error.** `data-color-grading` on a `<video>` or `<img>` starts with `{` or `[` but is not valid JSON, so the grade does not render.
+
+**Fix:** Use valid JSON, for example `data-color-grading='{"preset":"skin-soft","intensity":0.6,"adjust":{"highlights":-0.08}}'` — single-quote the attribute, double-quote the JSON.
+
+### `color_grading_invalid_structure`
+
+**Error.** `data-color-grading` parses as JSON but breaks the grading contract — an unsupported key, a value of the wrong type, or a number out of range. The runtime silently ignores unknown keys, so a control can look applied in the HTML yet never render. One finding is reported per problem, naming the offending path.
+
+**Fix:** Correct or remove the value the finding names, following the [Color grading](/reference/color-grading) reference.
+
+### `color_grading_non_media`
+
+**Error.** `data-color-grading` is set on an element other than `<video>`, `<img>`, `<canvas>` or
+`<hf-color-group>`, such as a wrapper or an element with a CSS background. The shader runtime only grades
+real `<video>`, `<img>` and `<canvas>` elements, plus the members of a
+[grade group](/reference/color-grading#grade-a-whole-lane), so the attribute has no effect.
+
+**Fix:** Move the attribute to the `<video>`, `<img>` or `<canvas>` element itself.
+
+### `duplicate_media_discovery_risk`
+
+**Warning.** Several matching media entries share the same source, start and duration, so the compiler can discover the same media twice.
+
+**Fix:** Remove the duplicated media nodes so discovery sees one.
+
+### `duplicate_media_id`
+
+**Error.** A media `id` is defined on multiple elements, so preview and the producer can build different media graphs.
+
+**Fix:** Give each media element a unique `id`.
+
+### `imperative_media_control`
+
+**Error.** An inline script controls managed media imperatively (`play`, `pause`, `currentTime`, ...). HyperFrames must own playback to keep preview, timeline and renders deterministic.
+
+**Fix:** Express timing with `data-start`/`data-duration` and media offsets such as `data-media-start` instead.
+
+### `media_crossorigin_breaks_preview`
+
+**Error.** The element has `crossorigin`, which forces a CORS-checked fetch; if the host omits CORS headers, the load fails silently in the browser editor preview (blank media) while renders still work.
+
+**Fix:** Remove `crossorigin` unless you read the media back through canvas, WebGL or WebAudio from a host known to send CORS headers.
+
+### `media_missing_data_start`
+
+**Error.** A media element has `src` but no `data-start`, so HyperFrames cannot own its playback and preview and render can diverge.
+
+**Fix:** Add `data-start="0"` (or the intended start) and `data-duration` if the clip should stop before the source ends.
+
+### `media_missing_id`
+
+**Error.** A timed media element has no `id`, so the renderer cannot discover it — the audio goes silent or the video freezes.
+
+**Fix:** Add a unique `id` attribute to the element.
+
+### `media_missing_src`
+
+**Error.** A timed media element has no `src` (on the element or a `<source>` child), so the renderer cannot load it.
+
+**Fix:** Add `src` to the element, or a `<source src="...">` child.
+
+### `media_preload_none`
+
+**Warning.** The element has `preload="none"`, which prevents the renderer from loading the media (the compiler strips it for renders, but preview can misbehave).
+
+**Fix:** Remove `preload="none"` or change it to `preload="auto"`.
+
+### `media_runtime_src_mutation`
+
+**Warning.** An inline script mutates the `src` of existing managed media, which races media discovery and extraction.
+
+**Fix:** Author the final static `src`, or bind `data-var-src` to a declared variable so the source is applied before discovery.
+
+### `media_src_kind_mismatch`
+
+**Error.** A media URL's kind does not match its element — for example a still image on `<video>` or a video URL on `<img>`, so the element renders nothing.
+
+**Fix:** Match the element to the media: `<img>` for stills, `<video>` for video URLs, `<audio>` for sound.
+
+### `media_variable_src_no_fallback`
+
+**Warning.** The element relies on `data-var-src` with no fallback `src`, so renders without that variable value cannot load the media, and audio extraction reads the authored `src`.
+
+**Fix:** Add a fallback `src` the composition can render with when the variable is not provided.
+
+### `nested_media_start_basis_ambiguous`
+
+**Warning.** A nested media element's `data-start` is ambiguous: composition-local or a legacy root-global timestamp, and the two read as different frames.
+
+**Fix:** Keep `data-start` composition-local, or mark the legacy basis with `data-hf-media-start-basis="global"`; otherwise convert to local time.
+
+### `placeholder_media_url`
+
+**Error.** The element uses a placeholder media URL that will 404 at render time.
+
+**Fix:** Replace it with a real, reachable media URL.
+
+### `self_closing_media_tag`
+
+**Error.** A self-closing media tag (`<video ... />`) is invalid HTML: the browser leaves the tag open and swallows all subsequent elements as invisible fallback content, making the composition invisible.
+
+**Fix:** Write explicit closing tags: `<video ...></video>`. Media elements must never be self-closed.
+
+### `speed_ramp_on_non_media`
+
+**Warning.** A speed-ramp lane sits on a non-media element; only `<video>` and `<audio>` clips can be retimed, so the lane does nothing.
+
+**Fix:** Move the rate lane onto the video or audio clip, or retime an animation with a GSAP timeline.
+
+### `video_audio_double_source`
+
+**Error.** An `<audio>` element and a `<video>` element point at the same source at the same time; the unmuted video already carries the sound, so playback echoes.
+
+**Fix:** Let the video carry its own sound (recommended), or mute the video and keep the separate `<audio>` when picture and sound must be cut independently.
+
+### `video_missing_muted`
+
+**Error.** A timed `<video>` declares neither `muted` nor `data-has-audio="true"`, so the linter cannot tell silent footage from sound-carrying footage.
+
+**Fix:** Add `data-has-audio="true"` when the file has sound, or `muted` when it is silent.
+
+### `video_muted_with_declared_audio`
+
+**Error.** A `<video>` declares `data-has-audio="true"` but also carries `muted`, so the browser editor preview silences the audio the declaration promises.
+
+**Fix:** Remove `muted` if the video should be audible, or drop `data-has-audio` and use `data-volume="0"` for silent visual video.
+
+### `video_nested_in_timed_element`
+
+**Error.** A `<video>` with `data-start` is nested inside another timed element; the frame extractor resolves the video's start without the wrapper's offset while visibility uses the wrapper's window, so the clip shows wrong frames and disappears partway.
+
+**Fix:** Time the wrapper or the video, never both: remove `data-start` from the wrapper, or move the `<video>` up to be a direct child of the stage.
+
+## Captions
+
+Source: `packages/lint/src/rules/captions.ts`.
+
+### `caption_container_relative_position`
+
+**Error.** A caption selector uses `position: relative`, which causes overflow and breaks caption stacking.
+
+**Fix:** Use `position: absolute` for all caption elements.
+
+### `caption_exit_missing_hard_kill`
+
+**Error.** Caption exit animations (`tl.to` with `opacity: 0`) have no hard `tl.set` kill, so conflicting karaoke tweens can leave captions stuck on screen.
+
+**Fix:** Add `tl.set(groupEl, { opacity: 0, visibility: "hidden" }, group.end)` after every exit tween as a deterministic kill.
+
+### `caption_fittext_scale_mismatch`
+
+**Warning.** `fitTextFontSize` uses a `maxWidth` that leaves no headroom for emphasis words scaled above 1x, so the effective width can overflow the composition.
+
+**Fix:** Reduce `maxWidth` to leave headroom for the scale factor.
+
+### `caption_overflow_clips_scaled_words`
+
+**Error.** A caption container has `overflow: hidden` while GSAP scales caption words above 1x, so scaled emphasis words and their glow are clipped.
+
+**Fix:** Use `overflow: visible` on caption containers and prevent overflow with `fitTextFontSize` and a reduced `maxWidth` instead.
+
+### `caption_text_overflow_risk`
+
+**Warning.** A caption selector has `white-space: nowrap` but no `max-width`, so long phrases clip off-screen.
+
+**Fix:** Add `max-width: 1600px` (landscape) or `900px` (portrait), keeping overflow visible.
+
+### `caption_textshadow_on_group_container`
+
+**Warning.** `textShadow` is tweened on a caption group container; with semi-transparent children the glow renders as a visible rectangle behind the whole group.
+
+**Fix:** Apply `textShadow` to individual active word elements and use scale on the group for pulsing.
+
+### `caption_transcript_not_inline`
+
+**Error.** A captions composition loads its transcript with `fetch()`, but the browser editor caption editor needs an inline `var TRANSCRIPT = [...]` array to detect and edit captions.
+
+**Fix:** Embed the transcript inline as `var TRANSCRIPT = [...]` with JSON-quoted keys.
+
+## Fonts
+
+Source: `packages/lint/src/rules/fonts.ts`.
+
+### `font_family_without_font_face`
+
+**Error.** A `@font-face`-undeclared font family is used, so the renderer cannot supply it and text falls back to a default face.
+
+**Fix:** Declare each family with `@font-face` pointing at the captured `.woff2` files, or bundle the font under `capture/assets/fonts/`.
+
+The declaration may use a quoted or unquoted family name. If `font-family` is the last descriptor in the block, its final semicolon is optional. Families named in a `font` shorthand (`font: 500 16px/1 "PingFang SC", sans-serif`) count the same as `font-family`.
+
+### `font_face_local_only`
+
+**Warning.** An `@font-face` names only `local()` sources. A local render draws the font installed on this machine; a cloud render, or another machine without it, falls back to a different font.
+
+**Fix:** Add a `url()` source pointing at a `.woff2` file inside the project, or use a Google Fonts family.
+
+### `system_font_will_alias`
+
+**Warning.** A system font family is used without a matching `@font-face`; in distributed rendering system-font capture is disabled, so the font is substituted at render time and text can reflow. Only reported when the linter runs with the `distributed: true` option (linting for distributed or Lambda renders); a local render captures the system font as designed, so it is not flagged there.
+
+**Fix:** Bundle the font with `@font-face` and a project-local file instead of relying on OS fonts.
+
+## Textures
+
+Source: `packages/lint/src/rules/textures.ts`.
+
+### `texture_class_missing_base`
+
+**Warning.** A texture material class is used without the base `hf-texture-text` class, so the texture pipeline does not engage.
+
+**Fix:** Add the base class alongside the material class, e.g. `class="hf-texture-text hf-texture-lava"`.
+
+### `texture_class_unknown`
+
+**Error.** A texture material class is not defined by any local CSS, so the text renders untextured.
+
+**Fix:** Paste the Texture Mask Text component's `<style>` block into the composition, or fix the class typo.
+
+### `texture_drop_shadow_on_text`
+
+**Warning.** A drop shadow is applied directly to textured text, which shadows the mask rather than the glyphs.
+
+**Fix:** Wrap the textured text and apply `filter: drop-shadow(...)` to the wrapper, not the `hf-texture-text` element.
+
+### `texture_text_missing_mask`
+
+**Warning.** `hf-texture-text` is used without a texture material class or a custom `mask-image`, so there is nothing to reveal.
+
+**Fix:** Add a material class such as `hf-texture-lava`, or set `mask-image` and `-webkit-mask-image` on the element.
+
+## Slideshows
+
+Source: `packages/lint/src/rules/slideshow.ts`.
+
+### `slideshow_invalid`
+
+**Error.** A slideshow island contains invalid JSON or a structure that does not match the manifest schema.
+
+**Fix:** Make the `<script type="application/hyperframes-slideshow+json">` block valid JSON matching the SlideshowManifest schema.
+If supplied, `startTime` and `endTime` must be finite JSON numbers. Quoted numbers such as `"0"`, `null`, and overflowing values such as `1e400` are invalid.
+
+### `slideshow_unresolved_ref`
+
+**Error.** The slideshow manifest references a `sceneId` with no matching scene element, or a scene with no explicit window.
+
+**Fix:** Make every `sceneId` match a scene element's `data-composition-id`, or provide explicit `startTime`/`endTime`.
+
+## Adapters: Lottie and Three.js
+
+Source: `packages/lint/src/rules/adapters.ts`.
+
+### `missing_lottie_script`
+
+**Error.** The composition uses Lottie but no Lottie script is loaded, so the animation will not render.
+
+**Fix:** Add the `lottie-web` `<script>` tag before the Lottie code.
+
+### `missing_three_script`
+
+**Error.** The composition uses Three.js but no Three.js script is loaded, so the 3D scene will not render.
+
+**Fix:** Add the Three.js `<script>` tag before the Three.js code.
+
+## Linked clips
+
+Source: `packages/lint/src/rules/linkedClips.ts`.
+
+### `linked_clip_orphan`
+
+**Warning.** A clip carries `data-link` whose partner clip no longer exists, so it edits as a group of one.
+
+**Fix:** Remove the `data-link` attribute, or restore the partner clip.
+
+### `linked_clips_out_of_sync`
+
+**Warning.** Clips sharing a `data-link` differ in their timing attributes, but linked clips are edited as one.
+
+**Fix:** Give every member the same `data-start`, `data-duration`, `data-media-start` and `data-playback-rate`, or remove `data-link` from all of them to unlink.
+
+## Project-level checks
+
+Source: the project lint pass in `packages/lint/src/project.ts`, `packages/lint/src/hyperframeLinter.ts` and `packages/lint/src/hevcPreviewLint.ts`.
+
+### `multiple_root_compositions`
+
+**Error.** Several root-level HTML files carry `data-composition-id`, so the runtime may discover multiple entry points and duplicate audio playback.
+
+**Fix:** Keep exactly one root `index.html` with `data-composition-id`; remove or rename the extra files.
+
+### `blank_root_with_standalone_composition`
+
+**Error.** The default `index.html` has no renderable content while another file holds a standalone timed composition, so default commands open an empty video.
+
+**Fix:** Move the composition into `index.html`, or mount it with `data-composition-src`; if the separate file is intentional, render it explicitly.
+
+### `missing_or_empty_sub_composition`
+
+**Error.** A `data-composition-src` points at a folder, an empty file, or a missing file, so the mount is unusable and the render pre-flight rejects it.
+
+**Fix:** Point `data-composition-src` at the HTML file (such as `<folder>/index.html`) and make sure it renders content.
+
+### `missing_local_asset`
+
+**Error.** An element references local files that do not exist in the project, so the renderer silently skips them and the video ships with missing visuals.
+
+**Fix:** Add the file to the project directory, or update the `src` to an existing file. A common cause is renamed captured assets.
+
+### `audio_file_without_element`
+
+**Warning.** The project contains audio files but no `<audio>` element in any composition, so the rendered video will be silent.
+
+**Fix:** Add an `<audio>` element referencing the file.
+
+### `audio_src_not_found`
+
+**Error.** An `<audio>` element references files that are not in the project, so the rendered video will be silent.
+
+**Fix:** Add the missing file(s) to the project directory, or update the `src` to point at existing files.
+
+### `duplicate_audio_track`
+
+**Warning.** Two audible clips overlap in time on the same `data-track-index`. Both play at once: the render mixes every audible clip whatever its track, and `data-track-index` only picks the Studio lane, so Studio draws the two over each other in that lane. An overlap like this is either an accidental duplicate or two sounds sharing one lane.
+
+**Fix:** If both should sound (a whoosh into a hit), give one its own `data-track-index`; the mix does not change. If one is a leftover duplicate, remove it or move it so the windows do not overlap.
+
+### `texture_mask_asset_not_found`
+
+**Error.** A CSS `mask-image` or `-webkit-mask-image` declaration references files that are not in the project, so the texture mask fails to load. In valid CSS, comments and text inside other declarations, such as `content` strings, are ignored.
+
+**Fix:** Add the missing mask file(s) to the project, or update the `mask-image` URL.
+
+### `missing_stylesheet_asset`
+
+**Warning.** A `url()` in a linked local stylesheet does not resolve beside that stylesheet. Browsers resolve `url()` from the stylesheet's own folder, so the font or image 404s and the render falls back silently. When the file exists in a parent folder, the fix hint names the working path.
+
+**Fix:** Change the `url()` to be relative to the stylesheet (for example `../assets/fonts/x.ttf` from `styles/main.css`), or add the file.
+
+### `inaccessible_media_url`
+
+**Error.** A remote media URL did not answer a `HEAD` request with a 2xx status (or the request failed or timed out), so the media cannot load. Reported only by the async `lintMediaUrls()` export of `@hyperframes/lint`; `hyperframes lint` and `hyperframes check` do not run it.
+
+**Fix:** Replace it with a valid, reachable media URL.
+
+### `hevc_preview_codec`
+
+**Info.** A video file uses the HEVC/H.265 codec. Renders are unaffected (FFmpeg pre-decodes), and preview automatically falls back to a cached H.264 proxy when the browser cannot decode HEVC.
+
+**Fix:** Nothing required. If preview playback still fails, run `hyperframes doctor` and check that media auto-proxying is enabled.
+
+### `video_media_start_at_or_past_eof`
+
+**Warning.** A video's `data-media-start` sits at or past the source's playable duration, so the video holds its final frame for the whole slot.
+
+**Fix:** Trim `data-media-start` below the source duration if the final-frame hold is unintended.

@@ -61,6 +61,24 @@ describe("terminal probe readiness", () => {
     expectUnready(player, onReady);
   });
 
+  it("waits past 8 s for a slow runtime when the host owns the deadline", () => {
+    const { player, iframe, onError, onReady } = mountPlayer();
+    player.setAttribute("no-load-timeout", "");
+    vi.advanceTimersByTime(20_000);
+    expect(onError).not.toHaveBeenCalled();
+    Object.assign(iframe.contentWindow!, { __player: { getDuration: () => 9 } });
+    vi.advanceTimersByTime(200);
+    expectTimelineReady(player, onReady);
+  });
+
+  it("still fails an author error at once when the host owns the deadline", () => {
+    const { player, iframe, onError } = mountPlayer();
+    player.setAttribute("no-load-timeout", "");
+    Object.assign(iframe.contentWindow!, { __hfPreviewErrors: ["Uncaught Error: author failed"] });
+    vi.advanceTimersByTime(200);
+    expect(onError.mock.calls[0][0].detail.message).toBe("Uncaught Error: author failed");
+  });
+
   it("rejects the failed document while its replacement is still navigating", () => {
     const { player, iframe, onReady } = mountPlayer();
     vi.advanceTimersByTime(8000);

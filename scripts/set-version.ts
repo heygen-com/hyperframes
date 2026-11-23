@@ -21,10 +21,12 @@ import { pathToFileURL } from "url";
 import { CLI_SEMVER_PATTERN } from "./cli-options.ts";
 
 const PACKAGES = [
+  "packages/share",
   "packages/parsers",
   "packages/lint",
   "packages/studio-server",
   "packages/core",
+  "packages/inspector",
   "packages/engine",
   "packages/player",
   "packages/producer",

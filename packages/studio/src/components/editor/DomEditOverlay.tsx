@@ -5,6 +5,7 @@ import { type DomEditSelection } from "./domEditing";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 import { useMarqueeGestures } from "./marqueeCommit";
 import { MarqueeOverlay } from "./MarqueeOverlay";
+import type { MarqueeSelectionMode } from "../../utils/marqueeGeometry";
 import { resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
 import { useZOrderCrossedFlash, ZOrderCrossedFlash } from "./useZOrderCrossedFlash";
 import { useCanvasContextMenuState } from "./useCanvasContextMenuState";
@@ -34,11 +35,13 @@ import { CanvasContextMenu } from "./CanvasContextMenu";
 import { useInlineTextEditing } from "./useInlineTextEditing";
 import { usePreviewReadOnly } from "./previewReadOnlyContext";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { countStudioManualEditSave as counted } from "./manualEditsDom";
+import { countStudioManualEditSave as counted } from "./manualEditGesture";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
+import { pointerMayHitElement } from "./previewSelection";
 import { logSelect } from "../../utils/selectDebug";
 import { useOffCanvasIndicators } from "./useOffCanvasIndicators";
+import { DomEditGestureReadout } from "./DomEditGestureReadout";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -103,7 +106,7 @@ export interface DomEditOverlayProps {
   onToggleRecording?: () => void;
   onMarqueeSelect?: (
     selections: DomEditSelection[],
-    additive: boolean,
+    mode: MarqueeSelectionMode,
   ) => DomSelectionResult | void;
   /**
    * Delete the selected canvas element.
@@ -323,12 +326,16 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     selection,
     groupSelections,
     allowCanvasMovement: allowCanvasMovement && !readOnly,
+    iframeRef,
+    overlayRef,
+    activeCompositionPathRef,
     selectionRef,
     overlayRectRef,
     groupOverlayItemsRef,
     gestureRef,
     groupGestureRef,
     blockedMoveRef,
+    waitingPressRef,
     onBlockedMoveRef,
     onManualDragStartRef,
     onPathOffsetCommitRef,
@@ -341,6 +348,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     activeCompositionPathRef,
     onMarqueeSelectRef,
     selectionRef,
+    groupSelectionsRef,
     gestures,
   });
 
@@ -379,12 +387,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       const candidate = resolveShiftClickCandidate({
         cached: hoverSelectionRef.current,
         elementAtPoint: shiftIframe
-          ? getPreviewTargetFromPointer(
-              shiftIframe,
-              event.clientX,
-              event.clientY,
-              activeCompositionPathRef.current,
-            )
+          ? getPreviewTargetFromPointer(shiftIframe, event.clientX, event.clientY)
           : null,
       });
       // Not confident: fall through untouched — no preventDefault, no suppression —
@@ -418,15 +421,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     // Confirm emptiness with a fresh SYNCHRONOUS hit-test before committing.
     if (!hoverSelectionRef.current && onMarqueeSelectRef.current && compRect.width > 0) {
       const iframe = iframeRef.current;
-      const freshTarget = iframe
-        ? getPreviewTargetFromPointer(
-            iframe,
-            event.clientX,
-            event.clientY,
-            activeCompositionPathRef.current,
-          )
-        : null;
-      if (freshTarget) return;
+      if (iframe && pointerMayHitElement(iframe, event.clientX, event.clientY)) return;
       if (overlayRef.current) {
         // Anywhere empty on the overlay starts one, not just inside the frame.
         // An element dragged past the edge sits OUT there in the grey, and a
@@ -540,6 +535,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           onBoxClick={handleBoxClick}
         />
       )}
+      <DomEditGestureReadout
+        gestureRef={gestureRef}
+        overlayRef={overlayRef}
+        iframeRef={iframeRef}
+      />
       <ChildRectOutlines rects={compRect.width > 0 ? childRects : []} />
       {/* Mounted here rather than with the selection chrome: the chrome does
           not render for every selection, and the toolbar belongs to the

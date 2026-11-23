@@ -21,6 +21,17 @@ import {
 } from "./lut-preset-provider.mjs";
 import { buildCube } from "./cube-build.mjs";
 import { validateCube, validateCubeFile } from "./cube-validate.mjs";
+import { afterEach, beforeEach } from "node:test";
+import { mediaTransport } from "./media-fetch.mjs";
+
+// These tests stub globalThis.fetch; media downloads reach the same stub.
+const transportFetch = mediaTransport.fetch;
+beforeEach(() => {
+  mediaTransport.fetch = (url, init) => globalThis.fetch(url, init);
+});
+afterEach(() => {
+  mediaTransport.fetch = transportFetch;
+});
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..", "..", "..", "..");
 

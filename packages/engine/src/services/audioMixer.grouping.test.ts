@@ -9,11 +9,10 @@ import { MIXED_AUDIO_FILENAME, parseAudioElements, processCompositionAudio } fro
 /**
  * Level arithmetic across the mix graph.
  *
- * `mixAudioTracks` corrects for amix's own normalisation with a single global
- * `masterOutputGain * tracks.length`. That correction is exact for one flat
- * amix and wrong for any other shape — and it fails SILENTLY, in the export
- * rather than in preview, because preview mixes through Web Audio and never
- * runs this graph at all.
+ * `mixAudioTracks` uses `amix=normalize=0` where supported. Older FFmpeg
+ * builds fall back to padding every input and correcting by the input count.
+ * The correction must use each mix's own count, or it fails silently in the
+ * export while preview continues to mix through Web Audio.
  *
  * Measured on a four-track mix (spike, 2026-08-14): keeping the global track
  * count on an outer amix that only has three inputs lands the whole mix
@@ -145,15 +144,12 @@ describe.skipIf(!HAS_FFMPEG)(
     });
 
     it("does not lift the survivors when a shorter track ends", async () => {
-      // amix with normalize=true rescales by the number of CURRENTLY ACTIVE
-      // inputs, so a track ending mid-composition would hand the remaining ones
-      // a level jump. `apad` to the full duration is what holds every input
-      // active for the whole graph and neutralises that — an invariant the
-      // filter string relies on without saying so.
+      // A track ending mid-composition must not change the survivors' level.
+      // The main mix disables amix normalization; the legacy fallback pads all
+      // inputs so its default normalization keeps a constant divisor.
       //
       // Measured without apad (spike, 2026-08-14): the tail runs +1.94 dB hot.
-      // Any group work that builds its own amix has to keep the padding, or
-      // inherit that bug one level down.
+      // Any grouped mix that uses default normalization still needs padding.
       const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-drop-"));
       const workDir = mkdtempSync(join(tmpdir(), "hf-grp-drop-work-"));
       tempDirs.push(projectDir, workDir);
@@ -301,6 +297,76 @@ describe.skipIf(!HAS_FFMPEG)(
       const groupedTail = meanVolumeDb(groupedOut, 3, 4);
       const flatTail = meanVolumeDb(flatOut, 3, 4);
       expect(Math.abs(groupedTail - flatTail)).toBeLessThan(0.5);
+    });
+
+    it("applies a clip's data-volume as a gain on its volume lane", async () => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-clip-lane-"));
+      const workDir = mkdtempSync(join(tmpdir(), "hf-clip-lane-work-"));
+      tempDirs.push(projectDir, workDir);
+
+      writeTone(join(projectDir, "a.wav"), 440, 2, 0.5);
+      const laneOut = join(projectDir, `lane-${MIXED_AUDIO_FILENAME}`);
+      const flatOut = join(projectDir, `flat-${MIXED_AUDIO_FILENAME}`);
+      const automation = JSON.stringify({
+        version: 1,
+        lanes: [
+          {
+            target: "volume",
+            points: [
+              { t: 0, v: 1 },
+              { t: 2, v: 1 },
+            ],
+          },
+        ],
+      });
+
+      const lane = await processCompositionAudio(
+        [{ ...track("a", 2, 0.5), automation }],
+        projectDir,
+        workDir,
+        laneOut,
+        2,
+      );
+      const flat = await processCompositionAudio([track("a", 2)], projectDir, workDir, flatOut, 2);
+      expect(lane.success).toBe(true);
+      expect(flat.success).toBe(true);
+
+      expect(meanVolumeDb(flatOut) - meanVolumeDb(laneOut)).toBeCloseTo(6.02, 0);
+    });
+
+    it("applies a group's data-volume as a gain on its volume lane", async () => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-lane-"));
+      const workDir = mkdtempSync(join(tmpdir(), "hf-grp-lane-work-"));
+      tempDirs.push(projectDir, workDir);
+
+      writeTone(join(projectDir, "a.wav"), 440, 2, 0.5);
+      const laneOut = join(projectDir, `lane-${MIXED_AUDIO_FILENAME}`);
+      const flatOut = join(projectDir, `flat-${MIXED_AUDIO_FILENAME}`);
+      const groupAutomation = JSON.stringify({
+        version: 1,
+        lanes: [
+          {
+            target: "volume",
+            points: [
+              { t: 0, v: 1 },
+              { t: 2, v: 1 },
+            ],
+          },
+        ],
+      });
+
+      const lane = await processCompositionAudio(
+        [{ ...track("a", 2), groupId: "vo", groupVolume: 0.5, groupAutomation }],
+        projectDir,
+        workDir,
+        laneOut,
+        2,
+      );
+      const flat = await processCompositionAudio([track("a", 2)], projectDir, workDir, flatOut, 2);
+      expect(lane.success).toBe(true);
+      expect(flat.success).toBe(true);
+
+      expect(meanVolumeDb(flatOut) - meanVolumeDb(laneOut)).toBeCloseTo(6.02, 0);
     });
 
     // Members sum at unity (normalize=0), so an over-unity sum used to hard-clip

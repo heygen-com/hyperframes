@@ -354,6 +354,26 @@ describe("a press while a script write is out", () => {
     await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
   });
 
+  // fails without the fix: an arrow during the wait started a nudge that the drag then ran under.
+  it("ignores an arrow pressed while a press waits, and saves only the drag", async () => {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    pointer(editor.box, "pointerdown", 150, 150);
+    const arrow = new KeyboardEvent("keydown", { key: "ArrowRight", cancelable: true });
+    act(() => void window.dispatchEvent(arrow));
+    expect(marked(editor.live.contentDocument!), "no nudge while the press waits").toHaveLength(0);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+
+    await act(async () => {
+      land();
+      await write;
+    });
+    await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+    expect(editor.onPathOffsetCommit).toHaveBeenCalledOnce();
+  });
+
   it("keeps a released press when the browser releases pointer capture", async () => {
     const editor = mountEditor(false);
     let land: () => void = () => {};
@@ -806,6 +826,7 @@ describe("an inline text edit", () => {
     overlayRoot = createRoot(document.body.appendChild(document.createElement("div")));
     act(() => overlayRoot.render(<Editor />));
     act(() => void controls!.start(byId(live, "title")));
+    byId(live, "title").textContent = "Saved title";
     const held = await reloadMidGesture();
     expect(api().iframeRef.current).toBe(live);
 

@@ -121,6 +121,10 @@ const fullPerf: RenderPerfSummary = {
   },
   tmpPeakBytes: 1024,
   captureAvgMs: 13,
+  captureSeekAvgMs: 3,
+  captureBeforeCaptureAvgMs: 1,
+  captureScreenshotAvgMs: 8,
+  encoderWaitAvgMs: 2,
   capturePeakMs: 25,
   observability: fullObservability,
 };
@@ -165,6 +169,10 @@ describe("studioRenderTelemetry", () => {
       // speedRatio = compositionDurationMs / elapsedMs = 10000 / 5000 = 2
       expect(p.speedRatio).toBe(2);
       expect(p.captureAvgMs).toBe(13);
+      expect(p.captureSeekAvgMs).toBe(3);
+      expect(p.captureBeforeCaptureAvgMs).toBe(1);
+      expect(p.captureScreenshotAvgMs).toBe(8);
+      expect(p.encoderWaitAvgMs).toBe(2);
       expect(p.capturePeakMs).toBe(25);
       expect(p.tmpPeakBytes).toBe(1024);
       // stages
@@ -257,6 +265,14 @@ describe("studioRenderTelemetry", () => {
       const p = trackRenderComplete.mock.calls[0]![0];
       expect(p.speedRatio).toBeUndefined();
     });
+  });
+
+  it("forwards the render's CPU use on both events", () => {
+    const cpu = { cpuBusyAvgPct: 57, cpuBusyPeakPct: 90, cpuCoresBusyPeak: 2 };
+    emitStudioRenderComplete(opts, 5000, fullPerf, cpu);
+    emitStudioRenderError(opts, 100, "encode", new Error("x"), undefined, cpu);
+    expect(trackRenderComplete.mock.calls[0]![0]).toMatchObject(cpu);
+    expect(trackRenderError.mock.calls[0]![0]).toMatchObject(cpu);
   });
 
   describe("emitStudioRenderError", () => {

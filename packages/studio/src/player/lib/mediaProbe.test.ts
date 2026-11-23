@@ -8,16 +8,22 @@ import {
   probeMissingSourceDurations,
   resetMediaProbeRegistry,
 } from "./mediaProbe";
+import { MediaFetchError } from "./mediaFetch";
 
 const dispose = vi.fn();
 const getDurationFromMetadata = vi.fn(async () => 5);
 const requestedSources: string[] = [];
+const sourceRetryRules: string[] = [];
 
 vi.mock("mediabunny", () => ({
   ALL_FORMATS: {},
   UrlSource: class {
-    constructor(readonly url: string) {
+    constructor(
+      readonly url: string,
+      readonly options?: { getRetryDelay?: unknown },
+    ) {
       requestedSources.push(url);
+      sourceRetryRules.push(typeof options?.getRetryDelay);
     }
   },
   Input: class {
@@ -32,6 +38,7 @@ beforeEach(() => {
   resetMediaProbeRegistry();
   vi.clearAllMocks();
   requestedSources.length = 0;
+  sourceRetryRules.length = 0;
   getDurationFromMetadata.mockResolvedValue(5);
 });
 
@@ -40,6 +47,19 @@ afterEach(() => {
 });
 
 describe("media probe registry", () => {
+  it("reports a failed range fetch as one typed line and records the probe as failed", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const failure = new MediaFetchError("probe", 403, null);
+    getDurationFromMetadata.mockRejectedValue(failure);
+
+    await expect(probeMediaUrl("/locked.mp4")).resolves.toBeNull();
+    expect(sourceRetryRules).toEqual(["function"]);
+    expect(warn.mock.calls).toEqual([
+      ["[Studio] probe range fetch failed: HTTP 403 after 0 retries"],
+    ]);
+    warn.mockRestore();
+  });
+
   it("deduplicates and caches successful probes", async () => {
     const [first, second] = await Promise.all([
       probeMediaUrl("/video.mp4"),
@@ -89,6 +109,31 @@ describe("media probe registry", () => {
     expect(getDurationFromMetadata).toHaveBeenCalledTimes(2);
   });
 
+  it("hands back every clip of one file in a single apply, so the store is written once per file", async () => {
+    const apply = vi.fn();
+    await probeMissingSourceDurations(
+      [
+        { id: "a1", tag: "audio", src: "assets/voice.wav" },
+        { id: "a2", tag: "audio", src: "assets/voice.wav" },
+        { id: "a3", tag: "audio", src: "assets/voice.wav" },
+        { id: "v1", tag: "video", src: "assets/clip.mp4" },
+      ],
+      "project-a",
+      apply,
+    );
+
+    expect(requestedSources).toHaveLength(2);
+    expect(apply).toHaveBeenCalledTimes(2);
+    expect(apply).toHaveBeenCalledWith(
+      new Map([
+        ["a1", 5],
+        ["a2", 5],
+        ["a3", 5],
+      ]),
+    );
+    expect(apply).toHaveBeenCalledWith(new Map([["v1", 5]]));
+  });
+
   it("probes a dropped clip's URL-spelled src at its own file", async () => {
     await probeMissingSourceDurations(
       [{ id: "clip", tag: "video", src: "assets/My%20clip%20%231.mp4" }],
@@ -118,7 +163,7 @@ describe("media probe registry", () => {
     expect(requestedSources).toEqual([
       `${window.location.origin}/api/projects/project-a/preview/assets/clip.mp4`,
     ]);
-    expect(apply).toHaveBeenCalledWith("clip", 5);
+    expect(apply).toHaveBeenCalledWith(new Map([["clip", 5]]));
     expect(
       applyCachedSourceDurations(
         [

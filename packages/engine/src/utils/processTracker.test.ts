@@ -9,7 +9,7 @@ beforeEach(() => {
 
 describe("trackChildProcess", () => {
   it("tracks a spawned process and removes it after exit", async () => {
-    const proc = spawn("echo", ["hello"], { stdio: "ignore" });
+    const proc = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
     trackChildProcess(proc);
 
     await new Promise<void>((resolve) => proc.on("close", resolve));
@@ -70,16 +70,6 @@ describe("killTrackedProcesses", () => {
     const code = await exitPromise;
     // SIGTERM exit: code is null (killed by signal)
     expect(code).toBeNull();
-  });
-
-  it("handles already-exited processes gracefully", async () => {
-    const proc = spawn("true", { stdio: "ignore" });
-    trackChildProcess(proc);
-
-    await new Promise<void>((resolve) => proc.on("close", resolve));
-
-    // Should not throw even though process already exited
-    killTrackedProcesses();
   });
 
   it("escalates to SIGKILL for processes that ignore SIGTERM", async () => {

@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import type { ProjectLintResult } from "./lintProject.js";
 
@@ -41,9 +42,12 @@ export function formatLintFindings(
             : c.dim("ℹ");
       const fileLabel = findingFileLabel(file, finding, multiFile);
       const loc =
-        showElementId && finding.elementId ? ` ${c.accent(`[${finding.elementId}]`)}` : "";
-      lines.push(`  ${prefix} ${fileLabel}${c.bold(finding.code)}${loc}: ${finding.message}`);
-      if (finding.fixHint) lines.push(`    ${c.dim(`Fix: ${finding.fixHint}`)}`);
+        showElementId && finding.elementId
+          ? ` ${c.accent(`[${terminalText(finding.elementId)}]`)}`
+          : "";
+      const message = terminalText(finding.message);
+      lines.push(`  ${prefix} ${fileLabel}${c.bold(finding.code)}${loc}: ${message}`);
+      if (finding.fixHint) lines.push(`    ${c.dim(`Fix: ${terminalText(finding.fixHint)}`)}`);
     };
 
     if (errorsFirst) {
@@ -76,8 +80,8 @@ function formatLintCounts(
 }
 
 /** Full findings in verbose mode, a one-line summary otherwise. `pointer` (summary
- * mode) picks the hint: "cli" names --lint-verbose, "studio" also names the lint
- * command, since preview's stdout may be read by an agent. */
+ * mode) picks the hint: both name the lint command, "studio" also the Studio badge. --lint-verbose is
+ * not named: only render, preview and publish take it, and agents tried it on lint and check. */
 export type LintMessageMode =
   | { kind: "verbose"; options?: LintFormatOptions }
   | { kind: "summary"; pointer?: "cli" | "studio" };
@@ -91,7 +95,7 @@ export function formatLintStartupMessage(
   const hint =
     mode.pointer === "studio"
       ? "see the Lint badge in Studio, or run `hyperframes lint` for full output"
-      : "run with --lint-verbose for full output";
+      : "run `hyperframes lint` for full output";
   return [`  Lint: ${counts} — ${hint}.`];
 }
 
@@ -100,7 +104,7 @@ function findingFileLabel(
   finding: import("@hyperframes/lint").HyperframeLintFinding,
   multiFile: boolean,
 ): string {
-  if (finding.line === undefined) return multiFile ? c.dim(`[${file}] `) : "";
+  if (finding.line === undefined) return multiFile ? c.dim(`[${terminalText(file)}] `) : "";
   const column = finding.column === undefined ? "" : `:${finding.column}`;
-  return c.dim(`[${finding.file ?? file}:${finding.line}${column}] `);
+  return c.dim(`[${terminalText(finding.file ?? file)}:${finding.line}${column}] `);
 }

@@ -3,7 +3,7 @@ import { buildProjectApiPath } from "../../utils/projectRouting";
 // How this project came to exist, and roughly what shape it is.
 //
 // A crash report says what broke. It does not say what the user was working ON,
-// and "a project made by /faceless-explainer with 14 compositions and 60 assets"
+// and "a project made by /slideshow with 14 compositions and 60 assets"
 // reproduces a crash that "Cannot read properties of undefined" never will.
 //
 // Held at module scope on purpose: a crash unmounts the React tree, so anything

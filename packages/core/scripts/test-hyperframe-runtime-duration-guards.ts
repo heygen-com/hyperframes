@@ -25,7 +25,7 @@ assert(
   "init.ts should not hard-clamp safe duration to media floor",
 );
 assert(
-  initSource.includes("resolveMediaWindowDurationSeconds"),
+  initSource.includes("longestMediaWindow"),
   "init.ts should compute media window duration across timed media",
 );
 

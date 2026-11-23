@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { findExistingAsset, adoptExistingAssets } from "./adopt.mjs";
+import { findExistingAsset, adoptExistingAssets, scanExistingAssets } from "./adopt.mjs";
 
 let tmp;
 function setup() {
@@ -51,6 +51,32 @@ function runTests() {
     cleanup();
   });
 
+  test("a template's own pictures are not search hits", () => {
+    setup();
+    drop("halftone-collage/clip-paper.png");
+    drop("textures/paper-grain.png");
+    drop("previews/paper-board.jpg");
+    mkdirSync(join(tmp, "compositions"));
+    writeFileSync(join(tmp, "compositions", "halftone-collage.html"), "x");
+    assert.equal(findExistingAsset(tmp, "paper form", "image"), null);
+    drop("img/paper-form.png");
+    assert.equal(
+      findExistingAsset(tmp, "paper form", "image").relativePath,
+      "assets/img/paper-form.png",
+    );
+    cleanup();
+  });
+
+  test("no search takes a component's sample page for its own, however many ask", () => {
+    setup();
+    drop("highlight-wipe/page-sample.png");
+    mkdirSync(join(tmp, "compositions"));
+    writeFileSync(join(tmp, "compositions", "highlight-wipe.html"), "x");
+    assert.equal(findExistingAsset(tmp, "criminal complaint court filing page", "image"), null);
+    assert.equal(findExistingAsset(tmp, "appeals court opinion first page", "image"), null);
+    cleanup();
+  });
+
   test("a shared stopword alone does not match", () => {
     setup();
     drop("video/the-video.mp4");
@@ -71,6 +97,47 @@ function runTests() {
     drop("sfx/who.mp3");
     drop("images/a.jpg");
     assert.equal(adoptExistingAssets(tmp).length, 2);
+    cleanup();
+  });
+
+  test("labels an audio file by its folder or its file name, not always bgm", () => {
+    setup();
+    drop("voice-intro.mp3");
+    drop("sfx-click.mp3");
+    drop("narration.mp3");
+    drop("soundtrack/main.mp3");
+    drop("track.mp3");
+    drop("soundfx/pop.mp3");
+    const types = Object.fromEntries(
+      adoptExistingAssets(tmp).map((record) => [record.path, record.type]),
+    );
+    assert.deepEqual(types, {
+      "assets/voice-intro.mp3": "voice",
+      "assets/sfx-click.mp3": "sfx",
+      "assets/narration.mp3": "voice",
+      "assets/soundtrack/main.mp3": "bgm",
+      "assets/track.mp3": "bgm",
+      "assets/soundfx/pop.mp3": "sfx",
+    });
+    cleanup();
+  });
+
+  test("prints a skipped file name from the project with control characters escaped", () => {
+    setup();
+    const name = "bad\x1b]0;owned\x07\r\nok.mp3";
+    mkdirSync(join(tmp, "assets", "dir\x1b[2J"), { recursive: true });
+    writeFileSync(join(tmp, "assets", "dir\x1b[2J", name), "");
+    const lines = [];
+    const original = console.error;
+    console.error = (line) => lines.push(String(line));
+    try {
+      assert.deepEqual(scanExistingAssets(tmp), []);
+    } finally {
+      console.error = original;
+    }
+    assert.deepEqual(lines, [
+      "media-use: skipping 0-byte asset assets/dir\\x1b[2J/bad\\x1b]0;owned\\x07\\x0d\\x0aok.mp3",
+    ]);
     cleanup();
   });
 

@@ -1,7 +1,8 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { defineCommand } from "citty";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import { defineCommand } from "../utils/defineCommand.js";
 import {
   EXTRACT_CACHE_MIN_AGE_MS,
   directorySizeBytes,
@@ -14,6 +15,7 @@ import {
   cleanupProxyCache,
   listProjectHistories,
   pruneGoneProjectHistories,
+  reclaimUncopiedBlobs,
 } from "@hyperframes/studio-server";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
@@ -26,7 +28,7 @@ import { withMeta } from "../utils/updateCheck.js";
 export const examples: Example[] = [
   ["See what HyperFrames left on disk, remove nothing", "hyperframes clean --dry-run"],
   ["Remove it", "hyperframes clean"],
-  ["Also remove snapshot folders", "hyperframes clean --snapshots"],
+  ["Also remove snapshots and saved check reports", "hyperframes clean --snapshots"],
   ["For agents", "hyperframes clean --json"],
 ];
 
@@ -128,16 +130,35 @@ function sweepProxies(sweep: Sweep, project: string): void {
   });
 }
 
+const SNAPSHOT_FOLDERS = [
+  { what: "Snapshots", path: ["snapshots"] },
+  { what: "Snapshots", path: [".hyperframes", "artifacts", "snapshots"] },
+  { what: "Check reports", path: [".hyperframes", "artifacts", "checks"] },
+];
+
+function staysUnderArtifacts(project: string, path: string, folder: readonly string[]): boolean {
+  try {
+    const allowed = join(realpathSync(project), ...folder);
+    const target = realpathSync(path);
+    const fromAllowed = relative(allowed, target);
+    return fromAllowed === "" || (!fromAllowed.startsWith("..") && !isAbsolute(fromAllowed));
+  } catch {
+    return false;
+  }
+}
+
 function sweepSnapshots(sweep: Sweep, project: string, remove: boolean): void {
-  const snapshots = join(project, "snapshots");
-  if (!existsSync(snapshots)) return;
-  if (remove) drop(sweep, "Snapshots", snapshots);
-  else
-    sweep.result.alsoReclaimable.push({
-      what: "Snapshots",
-      path: snapshots,
-      bytes: directorySizeBytes(snapshots),
-    });
+  for (const folder of SNAPSHOT_FOLDERS) {
+    const path = join(project, ...folder.path);
+    if (!existsSync(path) || !staysUnderArtifacts(project, path, folder.path)) continue;
+    if (remove) drop(sweep, folder.what, path);
+    else
+      sweep.result.alsoReclaimable.push({
+        what: folder.what,
+        path,
+        bytes: directorySizeBytes(path),
+      });
+  }
 }
 
 async function sweepHistories(sweep: Sweep, historyRoot: string, tempDir: string): Promise<void> {
@@ -150,6 +171,17 @@ async function sweepHistories(sweep: Sweep, historyRoot: string, tempDir: string
     sweep.result.removed.push({
       what: "Project history",
       path: join(historyRoot, history.id),
+      bytes: history.bytes,
+    });
+  }
+  const reclaimed = await reclaimUncopiedBlobs(historyRoot, {
+    dryRun: sweep.dryRun,
+    onError: (error) => recordError(sweep, error),
+  });
+  for (const history of reclaimed) {
+    sweep.result.removed.push({
+      what: "Video and audio copies in project history",
+      path: join(historyRoot, history.id, "blobs"),
       bytes: history.bytes,
     });
   }
@@ -211,7 +243,7 @@ function printTable(rows: Leftover[]): void {
   const whatWidth = Math.max(...rows.map((row) => row.what.length));
   for (const row of rows) {
     console.log(
-      `  ${row.what.padEnd(whatWidth)}  ${formatBytes(row.bytes).padStart(9)}  ${c.dim(row.path)}`,
+      `  ${row.what.padEnd(whatWidth)}  ${formatBytes(row.bytes).padStart(9)}  ${c.dim(terminalText(row.path))}`,
     );
   }
 }
@@ -233,7 +265,11 @@ export default defineCommand({
       description: "List what would be removed, remove nothing",
       default: false,
     },
-    snapshots: { type: "boolean", description: "Also remove snapshots/ folders", default: false },
+    snapshots: {
+      type: "boolean",
+      description: "Also remove snapshots/ and .hyperframes/artifacts/{snapshots,checks}/ folders",
+      default: false,
+    },
     json: { type: "boolean", description: "Output as JSON", default: false },
   },
   async run({ args }) {
@@ -269,6 +305,6 @@ export default defineCommand({
       );
       printTable(result.alsoReclaimable);
     }
-    for (const error of result.errors) console.log(c.warn(`  ${error}`));
+    for (const error of result.errors) console.log(c.warn(`  ${terminalLines(error)}`));
   },
 });

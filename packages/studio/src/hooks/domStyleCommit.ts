@@ -13,6 +13,11 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
+import {
+  editSealedSelection,
+  showSavedStylesOnStandIn,
+} from "../components/editor/previewSelection";
+import { afterSealedDraw, type PreviewElementEdit } from "../player/lib/previewElements";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import {
@@ -85,18 +90,25 @@ export async function commitDomStyles(
     }
   }
   let editedElement: HTMLElement | null = null;
+  let shownElement: HTMLElement | null = null;
   const previousInline = new Map<string, string>();
+  let sealedEdit: PreviewElementEdit | null = null;
 
   return runReportedDomEditCommit({
     capture: () => {
-      const el = doc ? findElementForSelection(doc, selection, activeCompPath) : null;
-      if (!el) return;
-      editedElement = el;
+      editedElement = doc ? findElementForSelection(doc, selection, activeCompPath) : null;
+      shownElement = editedElement ?? (selection.handle ? selection.element : null);
       for (const [property] of entries)
-        previousInline.set(property, el.style.getPropertyValue(property));
+        previousInline.set(property, shownElement?.style.getPropertyValue(property) ?? "");
     },
     apply: () => {
-      if (!editedElement) return;
+      if (!editedElement) {
+        sealedEdit = editSealedSelection(previewIframeRef.current, selection, {
+          styles: liveStyles,
+        });
+        if (sealedEdit && shownElement) showSavedStylesOnStandIn(shownElement, liveStyles);
+        return;
+      }
       for (const [property, value] of liveStyles) editedElement.style.setProperty(property, value);
       if (fontFamily !== undefined && doc) {
         injectPreviewGoogleFont(doc, fontFamily);
@@ -104,15 +116,18 @@ export async function commitDomStyles(
       }
     },
     persist: () =>
-      persistDomEditOperations(selection, operations, {
-        label: "Edit layer style",
-        // Inline styles are already live, so a reload would only blank the preview.
-        skipRefresh: true,
-        importedFont: importedFont ?? undefined,
-      }),
+      afterSealedDraw(sealedEdit, (drawn) =>
+        persistDomEditOperations(selection, operations, {
+          label: "Edit layer style",
+          // Live styles skip the reload; a sealed frame reloads to load a new font.
+          skipRefresh: drawn && !(sealedEdit && fontFamily !== undefined),
+          importedFont: importedFont ?? undefined,
+        }),
+      ),
     shouldRevert: ownsAny,
     revert: () => {
-      const el = editedElement;
+      sealedEdit?.restore(owned.filter(({ isLatest }) => isLatest()).map((o) => o.property));
+      const el = shownElement;
       if (!el) return;
       // ponytail: background-image fit styles are not reverted here.
       for (const { property, isLatest } of owned) {

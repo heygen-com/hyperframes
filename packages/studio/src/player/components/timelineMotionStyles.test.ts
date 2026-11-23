@@ -92,7 +92,7 @@ describe("timeline motion styles", () => {
     expect(themeCss).toContain("--timeline-clip-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.85)");
     expect(themeCss).toContain("--timeline-clip-selection-highlight: rgb(255 255 255 / 0.55)");
     expect(themeCss).toContain("--timeline-clip-radius: 12px");
-    expect(themeCss).toContain("--timeline-clip-audio-radius: 21px");
+    expect(themeCss).toContain("--timeline-clip-audio-radius: var(--timeline-clip-radius)");
     expect(themeCss).toContain("--timeline-clip-highlight: rgb(255 255 255 / 0.08)");
     expect(themeCss).toContain("--timeline-clip-shadow: 0 2px 6px rgb(0 0 0 / 0.3)");
     expect(themeCss).toContain("--timeline-clip-chip-bg: rgba(15, 22, 18, 0.73)");

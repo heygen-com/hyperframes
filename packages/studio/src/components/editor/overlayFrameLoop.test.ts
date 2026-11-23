@@ -10,6 +10,8 @@ import {
   subscribeOverlayFrame,
 } from "./overlayFrameLoop";
 import { usePlayerStore } from "../../player/store/playerStore";
+import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
+import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 
 /**
  * The editor's overlay polls run on one shared, parkable frame loop. The two
@@ -20,6 +22,8 @@ describe("overlay frame loop", () => {
   const originalRaf = window.requestAnimationFrame;
   const originalCancelRaf = window.cancelAnimationFrame;
   let queued: Array<() => void>;
+  /** The window of the preview frame Studio built, whose posts wake the loop. */
+  let preview: Window;
 
   /** Run whatever frames are queued, once. */
   const step = (): number => {
@@ -40,6 +44,9 @@ describe("overlay frame loop", () => {
   };
 
   beforeEach(() => {
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    watchPreviewFrame(frame);
+    preview = frame.contentWindow!;
     usePlayerStore.setState({ previewBooted: true });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance", "Date"] });
     queued = [];
@@ -54,6 +61,7 @@ describe("overlay frame loop", () => {
 
   afterEach(() => {
     resetOverlayFrameLoopForTests();
+    document.body.innerHTML = "";
     vi.useRealTimers();
     window.requestAnimationFrame = originalRaf;
     window.cancelAnimationFrame = originalCancelRaf;
@@ -121,6 +129,48 @@ describe("overlay frame loop", () => {
     expect(runs).toBeLessThanOrEqual(Math.ceil(1000 / IDLE_POLL_MS) + 1);
   });
 
+  it("polls less often the longer nothing happens, and fast again after a wake", () => {
+    let runs = 0;
+    subscribeOverlayFrame(() => {
+      runs += 1;
+    });
+    framesOver(10_000);
+    runs = 0;
+    // Backed off: a 4 s wait between polls, where a steady quarter-second poll would run 48 times.
+    framesOver(12_000);
+    expect(runs).toBeLessThanOrEqual(4);
+
+    window.dispatchEvent(new Event("pointermove"));
+    framesOver(500);
+    runs = 0;
+    framesOver(IDLE_POLL_MS * 2);
+    expect(runs).toBeGreaterThan(0);
+  });
+
+  it("does not poll while the page is hidden, and wakes when it shows", () => {
+    let hidden = false;
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+    try {
+      let runs = 0;
+      subscribeOverlayFrame(() => {
+        runs += 1;
+      });
+      framesOver(500);
+      hidden = true;
+      runs = 0;
+      framesOver(8_000);
+      // At most the one poll armed before the page hid; none is armed after it.
+      expect(runs).toBeLessThanOrEqual(1);
+
+      hidden = false;
+      window.dispatchEvent(new Event("visibilitychange"));
+      framesOver(200);
+      expect(runs).toBeGreaterThan(5);
+    } finally {
+      delete (document as { hidden?: boolean }).hidden;
+    }
+  });
+
   it("wakes to full rate on a pointer event", () => {
     let runs = 0;
     subscribeOverlayFrame(() => {
@@ -138,6 +188,7 @@ describe("overlay frame loop", () => {
       new MessageEvent("message", {
         data: { source: "hf-preview", type: "state", frame, isPlaying },
         origin: window.location.origin,
+        source: preview,
       }),
     );
   };
@@ -153,6 +204,67 @@ describe("overlay frame loop", () => {
     previewState(1);
     framesOver(200);
     expect(runs).toBeGreaterThan(5);
+  });
+
+  // fails without the fix: a sealed preview posts from an opaque origin, so after a seek the overlays waited for the
+  // idle poll (up to MAX_IDLE_POLL_MS) to redraw the selection at the layer's new size.
+  it("wakes to full rate when a sealed preview Studio built reports a new frame from its opaque origin", () => {
+    const { iframe, frame } = sealedPreviewFrame();
+    watchPreviewFrame(iframe);
+    let runs = 0;
+    subscribeOverlayFrame(() => {
+      runs += 1;
+    });
+    framesOver(1000);
+    runs = 0;
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "hf-preview", type: "state", frame: 3, isPlaying: false },
+        origin: "null",
+        source: frame as unknown as Window,
+      }),
+    );
+    framesOver(200);
+    expect(runs).toBeGreaterThan(5);
+  });
+
+  it("ignores an opaque-origin preview post from a frame Studio did not build", () => {
+    const stranger = sealedPreviewFrame().frame;
+    let runs = 0;
+    subscribeOverlayFrame(() => {
+      runs += 1;
+    });
+    framesOver(1000);
+    runs = 0;
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "hf-preview", type: "state", frame: 4, isPlaying: false },
+        origin: "null",
+        source: stranger as unknown as Window,
+      }),
+    );
+    framesOver(200);
+    expect(runs).toBeLessThanOrEqual(2);
+  });
+
+  // fails without the fix: any window on Studio's own origin could post the preview's payload and wake the loop.
+  it("ignores a same-origin preview post from a window that is not the preview frame Studio built", () => {
+    const stranger = document.body.appendChild(document.createElement("iframe")).contentWindow!;
+    let runs = 0;
+    subscribeOverlayFrame(() => {
+      runs += 1;
+    });
+    framesOver(1000);
+    runs = 0;
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "hf-preview", type: "state", frame: 5, isPlaying: false },
+        origin: window.location.origin,
+        source: stranger,
+      }),
+    );
+    framesOver(200);
+    expect(runs).toBeLessThanOrEqual(2);
   });
 
   it("ignores the paused heartbeat, which repeats a frame the overlays already drew", () => {
@@ -267,6 +379,7 @@ describe("overlay frame loop", () => {
       new MessageEvent("message", {
         data: { source: "hf-preview", type: "timeline", clips: [] },
         origin: window.location.origin,
+        source: preview,
       }),
     );
     framesOver(200);

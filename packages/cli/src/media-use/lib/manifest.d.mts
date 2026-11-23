@@ -11,9 +11,31 @@ export function allocateId(
   type: string,
   ext: string,
 ): Omit<Reservation, "fullPath">;
+export function withMediaLock<T>(projectDir: string, fn: () => T): T;
 export function withReservedFileSync<T>(
   projectDir: string,
   type: string,
   ext: string,
   populate: (reservation: Reservation) => T,
 ): T;
+
+export interface MediaRecord {
+  id: string;
+  type: string;
+  path: string;
+  source: string;
+  description: string;
+  duration?: number;
+  provenance?: Record<string, unknown>;
+}
+export function recordInPlace(
+  projectDir: string,
+  record: {
+    type: string;
+    path: string;
+    source: string;
+    description?: string;
+    duration?: number;
+    provenance?: Record<string, unknown>;
+  },
+): MediaRecord;

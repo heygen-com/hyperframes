@@ -28,6 +28,8 @@ export interface DockerRunArgsInput {
    * byte-for-byte parity with amd64 renders.
    */
   platform?: string;
+  /** Environment read for the render-network settings forwarded into the container. Defaults to `process.env`. */
+  hostEnv?: Readonly<Record<string, string | undefined>>;
   options: DockerRenderOptions;
 }
 
@@ -50,7 +52,14 @@ export interface DockerRenderOptions {
   crf?: number;
   vp9CpuUsed?: number;
   videoBitrate?: string;
+  keyframeIntervalSeconds?: number;
+  range?: { startSeconds: number; endSeconds?: number };
+  proresProfile?: string;
+  maxBitrate?: string;
+  bufferSize?: string;
   videoFrameFormat?: "auto" | "jpg" | "png";
+  chromaSubsampling?: "420" | "444";
+  pageMotionBlur?: "off";
   quiet: boolean;
   debug?: boolean;
   bestEffort?: boolean;
@@ -72,6 +81,7 @@ export interface DockerRenderOptions {
   protocolTimeoutMs?: number;
   /** Player readiness timeout in milliseconds. */
   playerReadyTimeoutMs?: number;
+  refuseOutsideFiles?: boolean;
 }
 
 /**
@@ -99,6 +109,19 @@ export function resolveDockerPlatform(
   return arch === "arm64" ? "linux/arm64" : "linux/amd64";
 }
 
+/** Settings the in-container engine reads to restrict the render page's network, passed through as set on the host. */
+const FORWARDED_RENDER_NETWORK_ENV = [
+  "PRODUCER_RESTRICT_PAGE_NETWORK",
+  "PRODUCER_NON_PUBLIC_CIDRS",
+];
+
+function renderNetworkEnvArgs(env: Readonly<Record<string, string | undefined>>): string[] {
+  return FORWARDED_RENDER_NETWORK_ENV.flatMap((name) => {
+    const value = env[name];
+    return value?.trim() ? ["-e", `${name}=${value}`] : [];
+  });
+}
+
 // Pure argv builder — the cognitive count tracks the number of optional CLI
 // flags it forwards, not branching depth. Each conditional spread is one
 // option = O(1) to read. Inherited from main (#1196 added platform handling);
@@ -111,6 +134,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     "run",
     "--rm",
     ...(input.hostStdoutIsTty ? ["-e", "HYPERFRAMES_STDOUT_IS_TTY=1"] : []),
+    ...renderNetworkEnvArgs(input.hostEnv ?? process.env),
     "--platform",
     platform,
     "--shm-size=2g",
@@ -142,9 +166,24 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.crf != null ? ["--crf", String(options.crf)] : []),
     ...(options.vp9CpuUsed != null ? ["--vp9-cpu-used", String(options.vp9CpuUsed)] : []),
     ...(options.videoBitrate ? ["--video-bitrate", options.videoBitrate] : []),
+    ...(options.proresProfile ? ["--prores-profile", options.proresProfile] : []),
+    ...(options.range
+      ? [
+          "--start",
+          String(options.range.startSeconds),
+          ...(options.range.endSeconds != null ? ["--end", String(options.range.endSeconds)] : []),
+        ]
+      : []),
+    ...(options.keyframeIntervalSeconds != null
+      ? ["--keyframe-interval", String(options.keyframeIntervalSeconds)]
+      : []),
+    ...(options.maxBitrate ? ["--max-bitrate", options.maxBitrate] : []),
+    ...(options.bufferSize ? ["--buffer-size", options.bufferSize] : []),
     ...(options.videoFrameFormat && options.videoFrameFormat !== "auto"
       ? ["--video-frame-format", options.videoFrameFormat]
       : []),
+    ...(options.chromaSubsampling === "444" ? ["--chroma-subsampling", "444"] : []),
+    ...(options.pageMotionBlur !== undefined ? ["--page-motion-blur", options.pageMotionBlur] : []),
     ...(options.quiet ? ["--quiet"] : []),
     ...(options.debug ? ["--debug"] : []),
     // The in-container CLI is best-effort by default. Only forward the
@@ -170,5 +209,6 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.playerReadyTimeoutMs != null
       ? ["--player-ready-timeout", String(options.playerReadyTimeoutMs)]
       : []),
+    ...(options.refuseOutsideFiles ? ["--refuse-outside-files"] : []),
   ];
 }

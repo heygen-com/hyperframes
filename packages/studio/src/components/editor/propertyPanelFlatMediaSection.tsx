@@ -52,8 +52,6 @@ export function FlatMediaSection({
   volumeAutomated,
   onAutomateVolume,
   onRemoveVolumeAutomation,
-  onCommitVolumeAt,
-  automatedVolumeValue,
   rate,
 }: {
   projectId?: string | null;
@@ -64,12 +62,10 @@ export function FlatMediaSection({
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
   onSetAttributeBatch: CommitDomAttributeBatch;
-  /** A volume lane in the timeline drives the level; the slider writes a keyframe instead. */
+  /** A volume lane in the timeline shapes the level over the clip; the Volume slider offsets all of it. */
   volumeAutomated?: boolean;
   onAutomateVolume?: () => void;
   onRemoveVolumeAutomation?: () => void;
-  onCommitVolumeAt?: (v: number) => void;
-  automatedVolumeValue?: number;
   /** Speed lane binding and presets; absent outside the Studio panel. */
   rate?: RateBinding;
   onRemoveBackground?: (
@@ -88,14 +84,7 @@ export function FlatMediaSection({
   const isVisualMedia = isVideo || isImage;
   const el = element.element;
 
-  // While a lane owns the level, the envelope's live value at the playhead is
-  // what the slider must show — the static attribute is only what the engine
-  // falls back to outside automation.
-  const volume =
-    volumeAutomated && automatedVolumeValue !== undefined
-      ? automatedVolumeValue
-      : (parseNumericValue(element.dataAttributes.volume ?? "") ?? 1);
-  const volumeFaderPosition = audioGainToFaderPosition(volume);
+  const gain = parseNumericValue(element.dataAttributes.volume ?? "") ?? 1;
   const { mediaStart, mediaStartAttr } = readClipInPoint(element.dataAttributes);
   const constantRate = Number.parseFloat(element.dataAttributes["playback-rate"] ?? "1") || 1;
   const playbackRate =
@@ -246,9 +235,7 @@ export function FlatMediaSection({
       )}
       {(isVideo || isAudio) && (
         <>
-          {/* While a lane owns the level, a commit writes a keyframe at the
-              playhead instead of the plain attribute — same slider, same
-              gesture, the write just goes through the envelope. */}
+          {/* Volume is the whole clip's level (`data-volume`); a fade or keyframes ride on top of it. */}
           <div
             className="hf-volume-row flex items-center gap-1"
             data-volume-automated={volumeAutomated ? "" : undefined}
@@ -256,25 +243,19 @@ export function FlatMediaSection({
             <div className="min-w-0 flex-1">
               <FlatSlider
                 label="Volume"
-                value={volumeFaderPosition}
+                value={audioGainToFaderPosition(gain)}
                 min={AUDIO_GAIN_FADER_MIN}
                 max={AUDIO_GAIN_FADER_MAX}
-                tier={volume === 1 ? "default" : "explicitCustom"}
-                displayValue={audioGainToText(volume)}
+                tier={gain === 1 ? "default" : "explicitCustom"}
+                displayValue={audioGainToText(gain)}
                 centerTick
-                onCommit={(next) => {
-                  const gain = audioFaderPositionToGain(next);
-                  if (volumeAutomated) {
-                    onCommitVolumeAt?.(gain);
-                  } else {
-                    void onSetAttribute("volume", formatAudioGain(gain));
-                  }
-                }}
+                onCommit={(next) =>
+                  void onSetAttribute("volume", formatAudioGain(audioFaderPositionToGain(next)))
+                }
                 onCommitText={(text) => {
-                  const gain = parseGainInput(text);
-                  if (gain === null) return false;
-                  if (volumeAutomated) onCommitVolumeAt?.(gain);
-                  else void onSetAttribute("volume", formatAudioGain(gain));
+                  const next = parseGainInput(text);
+                  if (next === null) return false;
+                  void onSetAttribute("volume", formatAudioGain(next));
                   return true;
                 }}
               />

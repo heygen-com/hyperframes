@@ -11,6 +11,15 @@ const lateUndo = (r) => Math.max(r.undo.ms ?? 0, r.undo.redoMs ?? 0) > UNDO_WRIT
 const DROPPED_FRAME_MS = 25;
 /** Smooth means no main-thread frame over this, and no more dropped frames than the blank-page control. */
 const WORK_MS = 8;
+/** A runner whose first cases take a median of over 3x their usual seconds is too slow to measure on. */
+export const SLOW_RUNNER = { cases: 4, multiple: 3 };
+/** First cases' median multiple of `expected` seconds if it marks a slow runner, else null; the control misses it. */
+export function slowRunner(results, expected) {
+  if (results.length < SLOW_RUNNER.cases) return null;
+  const multiples = results.slice(0, SLOW_RUNNER.cases).map((r) => r.seconds / expected(r));
+  const median = percentile(multiples, 50);
+  return median > SLOW_RUNNER.multiple ? median : null;
+}
 export const METRICS = [
   "tracking",
   "press",
@@ -87,6 +96,7 @@ export function score(spec, r) {
     undo:
       !r.undoTimeout &&
       r.undo.groups !== false &&
+      r.undo.listed !== false &&
       r.undo.bytes &&
       r.undo.redoBytes &&
       Math.max(r.undo.box, r.undo.redoBox) <= LIMIT_PX &&
@@ -174,7 +184,7 @@ function table(summary, meta, results) {
     `Pass: tracking, press jump, teleport, drop, reload and render ≤ ${LIMIT_PX} px; undo and redo byte-identical with the box ≤ ${LIMIT_PX} px; no more frames over ${DROPPED_FRAME_MS} ms than the blank-page control, and no frame over ${WORK_MS} ms of main-thread work.`,
     "",
     `Undo or redo left different bytes in ${summary.bytesDiffer.undo} undo and ${summary.bytesDiffer.redo} redo cases.`,
-    `The preview never held still for 1 s within 15 s in ${summary.unsettled} cases; the metrics that snapshot feeds fail.`,
+    `The preview never held still within 15 s in ${summary.unsettled} cases; the metrics that snapshot feeds fail.`,
     `An undo or redo write never landed within 60 s in ${summary.undoTimeouts} cases; undo fails there.`,
     `An undo or redo write landed later than ${UNDO_WRITE_MAX_MS} ms after its key in ${summary.undoSlow} cases; undo fails there.`,
     `The producer failed to render ${summary.renderErrors} cases; render fails there.`,

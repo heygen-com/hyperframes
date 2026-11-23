@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { assemble, type AssembleResult } from "./assemble.js";
+import { assemble, type AssembleChunkPaths, type AssembleResult } from "./assemble.js";
 import { materializePlanV2Target } from "./planV2.js";
-import { renderChunk, type EffectiveChunkResult } from "./renderChunk.js";
+import { renderChunk, type EffectiveChunkResult, type RenderChunkOptions } from "./renderChunk.js";
 
 /**
  * Direct v2 chunk-role entry point. Storage adapters may instead download the
@@ -13,12 +13,13 @@ export async function renderChunkV2(
   planV2Dir: string,
   chunkIndex: number,
   outputChunkPath: string,
+  options?: RenderChunkOptions,
 ): Promise<EffectiveChunkResult> {
   const workRoot = mkdtempSync(join(tmpdir(), "hf-plan-v2-chunk-"));
   const materializedPlanDir = join(workRoot, "plan");
   try {
     materializePlanV2Target(planV2Dir, { role: "chunk", chunkIndex }, materializedPlanDir);
-    return await renderChunk(materializedPlanDir, chunkIndex, outputChunkPath);
+    return await renderChunk(materializedPlanDir, chunkIndex, outputChunkPath, options);
   } finally {
     rmSync(workRoot, { recursive: true, force: true });
   }
@@ -30,7 +31,7 @@ export async function renderChunkV2(
  */
 export async function assembleV2(
   planV2Dir: string,
-  chunkPaths: readonly string[],
+  chunkPaths: AssembleChunkPaths,
   outputPath: string,
   options?: Parameters<typeof assemble>[4],
 ): Promise<AssembleResult> {

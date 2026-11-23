@@ -12,11 +12,18 @@ type VariablesWindow = Window & {
   __hyperframes?: { getVariables?: () => Record<string, unknown> };
 };
 
-export function readVariablesForElement(element: Element): Record<string, unknown> {
-  const win = window as VariablesWindow;
+/** The per-instance values of the inlined sub-composition an element belongs to, if any. */
+export function scopedVariablesFor(element: Element): Record<string, unknown> | undefined {
   const scope = element.closest("[data-composition-id]");
   const compositionId = scope?.getAttribute("data-composition-id")?.trim() ?? "";
-  const scoped = compositionId ? win.__hfVariablesByComp?.[compositionId] : undefined;
+  return compositionId
+    ? (window as VariablesWindow).__hfVariablesByComp?.[compositionId]
+    : undefined;
+}
+
+export function readVariablesForElement(element: Element): Record<string, unknown> {
+  const win = window as VariablesWindow;
+  const scoped = scopedVariablesFor(element);
   if (scoped) return scoped;
   const fromHelper = win.__hyperframes?.getVariables?.();
   if (fromHelper && typeof fromHelper === "object") {

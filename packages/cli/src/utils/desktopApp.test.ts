@@ -1,36 +1,75 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, win32 } from "node:path";
+import { isHyperframesProject } from "@hyperframes/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readSeen } from "./appHistory.js";
+import { loadProjectDotEnv } from "./dotEnv.js";
 import {
   AGENT_HANDOFF_FILE,
-  HANDOFF_READY,
   agentSession,
   desktopHint,
   desktopInstalled,
   openCommandFor,
   openInDesktop,
+  previewStopCommandFor,
 } from "./desktopApp.js";
 
-// The live path (ready) is what ships once the app takes handed-over folders; CI exercises it here.
 const LIVE = { ready: true, platform: "darwin" as const, env: {}, installed: () => true };
-const MAC_DOWNLOAD = "https://hyperframes.dev/studio/download";
+const MAC_DOWNLOAD = "https://hyperframes.studio/studio/download?src=cli";
 const MAC_HINT = `Keep editing by chatting with Framey in the HyperFrames desktop app → ${MAC_DOWNLOAD}`;
 const FILM = resolve("films", "a");
 const never = () => {
   throw new Error("must not run");
 };
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("openInDesktop", () => {
   it("opens and writes nothing while the app cannot take a project", () => {
-    // Only the Mac app reads a handed-over folder in a released build so far.
-    expect(HANDOFF_READY).toBe(process.platform === "darwin");
     expect(openInDesktop(FILM, { ready: false, platform: "darwin", open: never })).toEqual({
       opened: false,
       reason: "handoff-unavailable",
       downloadUrl: MAC_DOWNLOAD,
     });
+  });
+
+  it("hands the folder to the Windows app on its command line, with no override", () => {
+    const launched: string[] = [];
+    const result = openInDesktop(FILM, {
+      platform: "win32",
+      env: { LOCALAPPDATA: "C:\\Users\\a\\AppData\\Local" },
+      exists: () => true,
+      launch: (executable, dir) => (launched.push(`${executable} ${dir}`), true),
+    });
+    expect(result).toMatchObject({ opened: true, app: "the HyperFrames desktop app" });
+    expect(launched).toEqual([
+      `C:\\Users\\a\\AppData\\Local\\Programs\\HyperFrames\\HyperFrames.exe ${FILM}`,
+    ]);
+  });
+
+  it("hands the folder to the Linux AppImage on its command line, with no override", () => {
+    const launched: string[] = [];
+    const result = openInDesktop(FILM, {
+      platform: "linux",
+      env: {},
+      home: "/home/a",
+      exists: () => true,
+      read: () => JSON.stringify({ appImage: "/opt/HyperFrames.AppImage" }),
+      launch: (executable, dir) => (launched.push(`${executable} ${dir}`), true),
+    });
+    expect(result).toMatchObject({ opened: true, app: "the HyperFrames desktop app" });
+    expect(launched).toEqual([`/opt/HyperFrames.AppImage ${FILM}`]);
   });
 
   it("hands the folder to the released app when it is installed", () => {
@@ -43,9 +82,141 @@ describe("openInDesktop", () => {
     expect(asked).toEqual([`dev.hyperframes.desktop ${FILM}`]);
   });
 
-  it("falls back to Canary when only Canary is installed", () => {
-    const result = openInDesktop(FILM, { ...LIVE, open: (id) => id.endsWith(".canary") });
-    expect(result).toMatchObject({ opened: true, app: "HyperFrames Canary" });
+  it("hands over a folder preview serves from a bare index.html as a project the app accepts", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-bare-"));
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      let marked: boolean | null = null;
+      const result = openInDesktop(dir, {
+        ...LIVE,
+        open: (_id, folder) => ((marked = isHyperframesProject(readdirSync(folder))), true),
+      });
+      expect(result).toMatchObject({ opened: true });
+      expect(marked).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves the press's page id for the app only when the app took the folder", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      openInDesktop(dir, { ...LIVE, cta: "page-1", open: () => false, installed: () => false });
+      expect(existsSync(record)).toBe(false);
+      openInDesktop(dir, { ...LIVE, cta: "page-1", open: () => true });
+      expect(JSON.parse(readFileSync(record, "utf8"))).toMatchObject({ cta: "page-1" });
+      expect(JSON.parse(readFileSync(record, "utf8"))).not.toHaveProperty("doc");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("tells the app to open on the storyboard when the press came from the Storyboard tab", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-doc-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      openInDesktop(dir, { ...LIVE, cta: "page-1", doc: "storyboard", open: () => true });
+      expect(JSON.parse(readFileSync(record, "utf8"))).toMatchObject({
+        cta: "page-1",
+        doc: "storyboard",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("has the storyboard ask in place when the app is handed the folder, not after", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-order-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      let seen: unknown = null;
+      openInDesktop(dir, {
+        ...LIVE,
+        cta: "page-1",
+        doc: "storyboard",
+        open: () => {
+          seen = JSON.parse(readFileSync(record, "utf8"));
+          return true;
+        },
+      });
+      expect(seen).toMatchObject({ cta: "page-1", doc: "storyboard" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("doesn't reuse an earlier storyboard ask on a later header or plain open", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-later-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    const read = () => JSON.parse(readFileSync(record, "utf8"));
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      openInDesktop(dir, { ...LIVE, cta: "page-1", doc: "storyboard", open: () => true });
+      let seen: unknown = null;
+      openInDesktop(dir, { ...LIVE, cta: "page-2", open: () => ((seen = read()), true) });
+      expect(seen).toMatchObject({ cta: "page-2" });
+      expect(seen).not.toHaveProperty("doc");
+
+      openInDesktop(dir, { ...LIVE, cta: "page-1", doc: "storyboard", open: () => true });
+      openInDesktop(dir, { ...LIVE, open: () => ((seen = read()), true) });
+      expect(seen).toMatchObject({ cta: "page-1" });
+      expect(seen).not.toHaveProperty("doc");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("puts the earlier record back when the app didn't take the folder", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-undo-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      openInDesktop(dir, { ...LIVE, cta: "page-1", open: () => true });
+      const earlier = readFileSync(record, "utf8");
+      openInDesktop(dir, {
+        ...LIVE,
+        cta: "page-2",
+        doc: "storyboard",
+        open: () => false,
+        installed: () => true,
+      });
+      expect(readFileSync(record, "utf8")).toBe(earlier);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves a project's own marker file alone", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-marked-"));
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      writeFileSync(join(dir, "meta.json"), "{}");
+      openInDesktop(dir, { ...LIVE, open: () => true });
+      expect(existsSync(join(dir, "hyperframes.json"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("looks only for the released app unless other builds are configured", () => {
+    const asked: string[] = [];
+    const result = openInDesktop(FILM, {
+      ...LIVE,
+      installed: () => false,
+      open: (id) => (asked.push(id), false),
+    });
+    expect(asked).toEqual(["dev.hyperframes.desktop"]);
+    expect(result).toMatchObject({ opened: false, reason: "not-installed" });
+  });
+
+  it("falls back to a configured build when the released app is not installed", () => {
+    vi.stubEnv("HYPERFRAMES_DESKTOP_BUNDLE_IDS", "dev.hyperframes.desktop.next");
+    const result = openInDesktop(FILM, { ...LIVE, open: (id) => id.endsWith(".next") });
+    expect(result).toMatchObject({ opened: true, app: "dev.hyperframes.desktop.next" });
   });
 
   it("tells a missing app from one macOS could not open", () => {
@@ -61,7 +232,7 @@ describe("openInDesktop", () => {
     ).toEqual({
       opened: false,
       reason: "unsupported-platform",
-      downloadUrl: "https://hyperframes.dev/studio",
+      downloadUrl: "https://hyperframes.studio/studio",
     });
   });
 });
@@ -81,10 +252,12 @@ describe("openInDesktop on Windows", () => {
     expect(started).toEqual([`${exe("HyperFrames")} ${FILM}`]);
   });
 
-  it("falls back to Canary when only Canary is installed", () => {
-    const canary = exe("HyperFrames Canary");
-    const result = openInDesktop(FILM, { ...WIN, exists: (p) => p === canary, launch: () => true });
-    expect(result).toMatchObject({ opened: true, app: "HyperFrames Canary" });
+  it("finds a configured build only when it is named", () => {
+    const next = exe("HyperFrames Next");
+    const opts = { ...WIN, exists: (p: string) => p === next, launch: () => true };
+    expect(openInDesktop(FILM, opts)).toMatchObject({ opened: false, reason: "not-installed" });
+    vi.stubEnv("HYPERFRAMES_DESKTOP_APP_NAMES", "HyperFrames Next");
+    expect(openInDesktop(FILM, opts)).toMatchObject({ opened: true, app: "HyperFrames Next" });
   });
 
   it("tells a missing app from one that would not start, and offers the app's page", () => {
@@ -92,7 +265,7 @@ describe("openInDesktop on Windows", () => {
     expect(missing).toEqual({
       opened: false,
       reason: "not-installed",
-      downloadUrl: "https://hyperframes.dev/studio",
+      downloadUrl: "https://hyperframes.studio/studio/download?os=windows&src=cli",
     });
     const failed = openInDesktop(FILM, { ...WIN, exists: () => true, launch: () => false });
     expect(failed).toMatchObject({ opened: false, reason: "open-failed" });
@@ -106,14 +279,15 @@ describe("openInDesktop on Linux", () => {
   const LINUX = { ...LIVE, platform: "linux" as const, home, open: never, exists: () => true };
 
   it("starts the AppImage the app last recorded in its launcher.json", () => {
-    const files = { [launcher("HyperFrames Canary")]: JSON.stringify({ appImage }) };
+    vi.stubEnv("HYPERFRAMES_DESKTOP_APP_NAMES", "HyperFrames Next");
+    const files = { [launcher("HyperFrames Next")]: JSON.stringify({ appImage }) };
     const started: string[] = [];
     const result = openInDesktop(FILM, {
       ...LINUX,
       read: (p) => files[p] ?? null,
       launch: (executable, dir) => (started.push(`${executable} ${dir}`), true),
     });
-    expect(result).toMatchObject({ opened: true, app: "HyperFrames Canary" });
+    expect(result).toMatchObject({ opened: true, app: "HyperFrames Next" });
     expect(started).toEqual([`${appImage} ${FILM}`]);
   });
 
@@ -128,6 +302,65 @@ describe("openInDesktop on Linux", () => {
     });
   });
 
+  it.skipIf(process.platform === "win32")(
+    "starts the app in the home folder, not the folder the command runs in",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "open-from-home-"));
+      const realHome = join(dir, "home");
+      mkdirSync(realHome);
+      const startedIn = join(dir, "started-in");
+      const app = join(dir, "HyperFrames.AppImage");
+      writeFileSync(app, `#!/bin/sh\npwd -P > ${JSON.stringify(startedIn)}\n`);
+      chmodSync(app, 0o755);
+      vi.stubEnv("HOME", realHome);
+      const files = { [launcher("HyperFrames")]: JSON.stringify({ appImage: app }) };
+      try {
+        expect(openInDesktop(FILM, { ...LINUX, read: (p) => files[p] ?? null })).toMatchObject({
+          opened: true,
+        });
+        await vi.waitFor(() =>
+          expect(readFileSync(startedIn, "utf8").trim()).toBe(realpathSync(realHome)),
+        );
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "starts the app without the values the project's .env set, keeping the person's own",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "open-env-"));
+      const seen = join(dir, "seen");
+      const app = join(dir, "HyperFrames.AppImage");
+      writeFileSync(
+        app,
+        `#!/bin/sh\nprintf '%s|%s' "\${HEYGEN_API_KEY-unset}" "\${ELEVENLABS_API_KEY-unset}" > ${JSON.stringify(seen)}\n`,
+      );
+      chmodSync(app, 0o755);
+      writeFileSync(
+        join(dir, ".env"),
+        "HEYGEN_API_KEY=from-project\nELEVENLABS_API_KEY=from-project\n",
+      );
+      vi.stubEnv("ELEVENLABS_API_KEY", "the-person's");
+      const before = process.env.HEYGEN_API_KEY;
+      delete process.env.HEYGEN_API_KEY;
+      loadProjectDotEnv(dir, process.env, () => {});
+      const files = { [launcher("HyperFrames")]: JSON.stringify({ appImage: app }) };
+      try {
+        expect(process.env.HEYGEN_API_KEY).toBe("from-project");
+        expect(openInDesktop(FILM, { ...LINUX, read: (p) => files[p] ?? null })).toMatchObject({
+          opened: true,
+        });
+        await vi.waitFor(() => expect(readFileSync(seen, "utf8")).toBe("unset|the-person's"));
+      } finally {
+        if (before === undefined) delete process.env.HEYGEN_API_KEY;
+        else process.env.HEYGEN_API_KEY = before;
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("ignores a relative, moved, or unreadable AppImage path", () => {
     const relativeFile = { [launcher("HyperFrames")]: JSON.stringify({ appImage: "HF.AppImage" }) };
     const relativePath = { ...LINUX, read: (p: string) => relativeFile[p] ?? null, launch: never };
@@ -136,7 +369,7 @@ describe("openInDesktop on Linux", () => {
     const gone = { ...LINUX, read: (p: string) => moved[p] ?? null, exists: () => false };
     expect(openInDesktop(FILM, { ...gone, launch: never })).toMatchObject({
       reason: "not-installed",
-      downloadUrl: `${MAC_DOWNLOAD}?os=linux`,
+      downloadUrl: "https://hyperframes.studio/studio/download?os=linux&src=cli",
     });
     expect(openInDesktop(FILM, { ...LINUX, read: () => "{", launch: never })).toMatchObject({
       reason: "not-installed",
@@ -224,9 +457,34 @@ describe("openCommandFor", () => {
       "hyperframes open .",
     );
     expect(openCommandFor(join(work, "films", "a"), work)).toBe(
-      `hyperframes open ${join("films", "a")}`,
+      process.platform === "win32" ? 'hyperframes open "films\\a"' : "hyperframes open films/a",
     );
     expect(openCommandFor(join(work, "my film"), work)).toBe('hyperframes open "my film"');
+  });
+
+  it("spells a Windows folder so PowerShell and Git Bash run no part of its name", () => {
+    const work = resolve("work");
+    expect(openCommandFor(join(work, "$(calc)"), work, "win32")).toBe(
+      "hyperframes open from the project folder",
+    );
+    expect(openCommandFor(join(work, "$(calc)&calc"), work, "win32")).toBe(
+      "hyperframes open from the project folder",
+    );
+  });
+
+  it("has no Windows stop command for a folder with no safe spelling", () => {
+    const work = resolve("work");
+    expect(previewStopCommandFor(join(work, "$(calc)&calc"), 3002, work, "win32")).toBeNull();
+  });
+
+  it("names the matching `preview --stop` the same way", () => {
+    const work = resolve("work");
+    expect(previewStopCommandFor(work, 3002, work)).toBe(
+      "hyperframes preview . --stop --port 3002",
+    );
+    expect(previewStopCommandFor(join(work, "my film"), 4567, work)).toBe(
+      'hyperframes preview "my film" --stop --port 4567',
+    );
   });
 });
 
@@ -239,9 +497,9 @@ describe("desktopInstalled", () => {
     spotlight: () => false,
   };
 
-  it("finds the app where the DMG and the installer put it, Canary included", () => {
-    const canary = join("/Applications", "HyperFrames Canary.app");
-    expect(desktopInstalled({ ...nothing, exists: (p: string) => p === canary })).toBe(true);
+  it("finds the app where the DMG and the installer put it", () => {
+    const system = join("/Applications", "HyperFrames.app");
+    expect(desktopInstalled({ ...nothing, exists: (p: string) => p === system })).toBe(true);
     const mine = join(home, "Applications", "HyperFrames.app");
     expect(desktopInstalled({ ...nothing, exists: (p: string) => p === mine })).toBe(true);
   });
@@ -255,9 +513,9 @@ describe("desktopInstalled", () => {
 
   it("finds the Windows app where its installer puts it, and nothing where there is no build", () => {
     const local = win32.join("C:", "Users", "a", "AppData", "Local");
-    const canary = win32.join(local, "Programs", "HyperFrames Canary", "HyperFrames Canary.exe");
+    const app = win32.join(local, "Programs", "HyperFrames", "HyperFrames.exe");
     const windows = { ...nothing, platform: "win32" as const, env: { LOCALAPPDATA: local } };
-    expect(desktopInstalled({ ...windows, exists: (p: string) => p === canary })).toBe(true);
+    expect(desktopInstalled({ ...windows, exists: (p: string) => p === app })).toBe(true);
     expect(desktopInstalled(windows)).toBe(false);
     expect(desktopInstalled({ ...nothing, platform: "freebsd", exists: () => true })).toBe(false);
   });
@@ -269,23 +527,39 @@ describe("desktopInstalled", () => {
 });
 
 describe("desktopHint", () => {
-  const mac = { env: {}, platform: "darwin" as const };
+  const mac = { env: {}, platform: "darwin" as const, tty: true };
 
   it("points to the download while gated, and when the app is missing", () => {
     expect(desktopHint(process.cwd(), { ...mac, ready: false, installed: true })).toBe(MAC_HINT);
     expect(desktopHint(process.cwd(), { ...mac, ready: true, installed: false })).toBe(MAC_HINT);
   });
 
-  it("offers the Linux build on Linux, and nothing on Windows without the app", () => {
-    expect(desktopHint(process.cwd(), { env: {}, platform: "linux", installed: false })).toBe(
-      `Keep editing by chatting with Framey in the HyperFrames desktop app → ${MAC_DOWNLOAD}?os=linux`,
+  it("offers the Linux and Windows builds there, and nothing where there is no build", () => {
+    expect(
+      desktopHint(process.cwd(), { env: {}, platform: "linux", installed: false, tty: true }),
+    ).toBe(
+      `Keep editing by chatting with Framey in the HyperFrames desktop app → https://hyperframes.studio/studio/download?os=linux&src=cli`,
     );
-    expect(desktopHint(process.cwd(), { env: {}, platform: "win32", installed: false })).toBeNull();
-    expect(desktopHint(process.cwd(), { env: {}, platform: "win32", ready: true })).toBeNull();
+    const windowsHint = `Keep editing by chatting with Framey in the HyperFrames desktop app → https://hyperframes.studio/studio/download?os=windows&src=cli`;
+    expect(
+      desktopHint(process.cwd(), { env: {}, platform: "win32", installed: false, tty: true }),
+    ).toBe(windowsHint);
+    expect(desktopHint(process.cwd(), { env: {}, platform: "win32", ready: true, tty: true })).toBe(
+      windowsHint,
+    );
+    expect(
+      desktopHint(process.cwd(), { env: {}, platform: "freebsd", installed: false, tty: true }),
+    ).toBeNull();
   });
 
   it("points an installed Windows app to `hyperframes open`", () => {
-    const windows = { env: {}, platform: "win32" as const, ready: true, installed: true };
+    const windows = {
+      env: {},
+      platform: "win32" as const,
+      ready: true,
+      installed: true,
+      tty: true,
+    };
     expect(desktopHint(process.cwd(), windows)).toBe(
       "Keep editing by chatting with Framey in the desktop app: hyperframes open .",
     );
@@ -297,6 +571,19 @@ describe("desktopHint", () => {
     );
   });
 
+  it("tells a preview's reader that the app can't edit while the preview runs", () => {
+    const installed = { ...mac, ready: true, installed: true };
+    expect(desktopHint(process.cwd(), { ...installed, preview: "background" })).toBe(
+      "Keep editing by chatting with Framey in the desktop app: hyperframes open . (this stops the background preview)",
+    );
+    expect(desktopHint(process.cwd(), { ...installed, preview: "foreground" })).toBe(
+      "Keep editing by chatting with Framey in the desktop app: stop this preview, then run hyperframes open .",
+    );
+    expect(desktopHint(process.cwd(), { ...mac, installed: false, preview: "background" })).toBe(
+      MAC_HINT,
+    );
+  });
+
   it("says nothing inside the app, whose runs carry HYPERFRAMES_DESKTOP_PROJECT", () => {
     const inApp = {
       ...mac,
@@ -305,5 +592,24 @@ describe("desktopHint", () => {
       installed: true,
     };
     expect(desktopHint(process.cwd(), inApp)).toBeNull();
+  });
+
+  it("says nothing to CI or a script reading the output, where nobody can open the app", () => {
+    const installedMac = { ...mac, ready: true, installed: true };
+    expect(desktopHint(process.cwd(), { ...installedMac, env: { CI: "true" } })).toBeNull();
+    expect(desktopHint(process.cwd(), { ...installedMac, tty: false })).toBeNull();
+  });
+
+  it("still gives the line to a coding agent, which passes it on to the person", () => {
+    const agent = {
+      ...mac,
+      ready: true,
+      installed: true,
+      tty: false,
+      env: { CLAUDE_CODE_CHILD_SESSION: "1" },
+    };
+    expect(desktopHint(process.cwd(), agent)).toBe(
+      "Keep editing by chatting with Framey in the desktop app: hyperframes open .",
+    );
   });
 });

@@ -15,11 +15,13 @@
  * the caller can fall back to the expression path rather than corrupting audio.
  */
 
-import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
+import { readFileSync, rmSync, writeFileSync } from "fs";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { dirname, join } from "path";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 import { normaliseEnvelope } from "@hyperframes/core/media-volume-envelope";
 import { riffChunks, wavFormatTag } from "./wavChunks.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 const PCM_FORMAT = 1; // WAVE_FORMAT_PCM
 const FLOAT_FORMAT = 3; // WAVE_FORMAT_IEEE_FLOAT
@@ -176,10 +178,10 @@ export function applyVolumeEnvelopeToWav(
 
     // A private sibling directory owns the staging file; the same-filesystem
     // rename keeps a failed write from truncating the original WAV.
-    stagingDir = mkdtempSync(join(dirname(wavPath), ".hf-volume-"));
+    stagingDir = createStagingDir(dirname(wavPath), ".hf-volume-");
     const tempPath = join(stagingDir, "audio.wav");
     writeFileSync(tempPath, buffer, { flag: "wx" });
-    renameSync(tempPath, wavPath);
+    renameWithRetry(tempPath, wavPath);
     return true;
   } catch {
     // Any read/parse/write failure → leave the file untouched and let the

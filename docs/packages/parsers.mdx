@@ -108,6 +108,12 @@ const parsed: ParsedGsap = parseGsapScriptAcorn(scriptContent);
 const next = updateAnimationInScript(scriptContent, animationId, { duration: 2 });
 ```
 
+Simple-array keyframes distribute each property's values across the full tween,
+even when the arrays have different lengths. For example,
+`keyframes: { x: [0, 100, 200], opacity: [0, 1] }` places `x: 100` at 50%
+and `opacity: 1` at 100%. Unrolling a helper into editable tweens keeps those
+positions.
+
 High-level serialize / validate / keyframe-conversion helpers are on the main entry:
 
 ```typescript

@@ -20,13 +20,13 @@ import { createOwnedRenderDir } from "@hyperframes/producer";
 import { consumeCommandResult } from "../utils/commandResult.js";
 import cleanCommand, { cleanLeftovers } from "./clean.js";
 
-const history = vi.hoisted(() => ({ unreadable: false }));
+const history = vi.hoisted(() => ({ unreadable: false, message: "history unreadable" }));
 vi.mock("@hyperframes/studio-server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@hyperframes/studio-server")>();
   return {
     ...actual,
     listProjectHistories: (root: string) => {
-      if (history.unreadable) throw new Error("history unreadable");
+      if (history.unreadable) throw new Error(history.message);
       return actual.listProjectHistories(root);
     },
   };
@@ -193,6 +193,49 @@ describe("cleanLeftovers", () => {
     }
   });
 
+  // fails without the fix: the reason is printed as it arrived.
+  it("shows control characters in a failure line as text", async () => {
+    const esc = String.fromCharCode(27);
+    history.unreadable = true;
+    history.message = `history od${esc}[2Jd\x07`;
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await runCommand(cleanCommand, { rawArgs: [project, "--dry-run"] });
+      const printed = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(printed).toContain("history od\\x1b[2Jd\\x07");
+      expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+      expect(printed).not.toContain("\x07");
+      expect(consumeCommandResult().exitCode).toBe(1);
+    } finally {
+      history.unreadable = false;
+      history.message = "history unreadable";
+      log.mockRestore();
+    }
+  });
+
+  // fails without the fix: a leftover's path is printed as it is on disk.
+  it.skipIf(process.platform === "win32")(
+    "shows control characters in a listed path as text",
+    async () => {
+      const esc = String.fromCharCode(27);
+      const odd = join(scratch, `pr-${esc}[2Jd\x07`);
+      mkdirSync(odd);
+      writeFileSync(join(odd, "index.html"), '<div data-composition-id="main"></div>');
+      plant(odd, "snapshots");
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      try {
+        await runCommand(cleanCommand, { rawArgs: [odd, "--dry-run"] });
+        const printed = log.mock.calls.map((call) => call.join(" ")).join("\n");
+        expect(printed).toContain("pr-\\x1b[2Jd\\x07");
+        expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+        expect(printed).not.toContain("\x07");
+      } finally {
+        consumeCommandResult();
+        log.mockRestore();
+      }
+    },
+  );
+
   it("lists snapshots as reclaimable and removes them only when asked", async () => {
     const snapshots = plant(project, "snapshots");
 
@@ -203,4 +246,64 @@ describe("cleanLeftovers", () => {
     await run({ snapshots: true });
     expect(existsSync(snapshots)).toBe(false);
   });
+
+  it("treats saved snapshot and check artifacts like snapshots/", async () => {
+    const artifacts = join(project, ".hyperframes", "artifacts");
+    const snapshots = plant(artifacts, "snapshots");
+    const checks = plant(artifacts, "checks");
+    const state = join(project, ".hyperframes", "video-state.json");
+    writeFileSync(state, "{}");
+
+    const plain = await run();
+    expect(plain.alsoReclaimable).toEqual([
+      { what: "Snapshots", path: snapshots, bytes: 1000 },
+      { what: "Check reports", path: checks, bytes: 1000 },
+    ]);
+    expect(existsSync(snapshots) && existsSync(checks)).toBe(true);
+
+    await run({ snapshots: true });
+    expect(existsSync(snapshots) || existsSync(checks)).toBe(false);
+    expect(existsSync(state)).toBe(true);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "does not remove snapshots or checks through a symlinked artifacts folder",
+    async () => {
+      const outside = join(scratch, "outside");
+      const snapshots = plant(outside, "snapshots");
+      const checks = plant(outside, "checks");
+      mkdirSync(join(project, ".hyperframes"));
+      symlinkSync(outside, join(project, ".hyperframes", "artifacts"));
+
+      await run({ snapshots: true });
+      expect(existsSync(join(snapshots, "frame_000001.jpg"))).toBe(true);
+      expect(existsSync(join(checks, "frame_000001.jpg"))).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "does not remove snapshots through an artifacts folder linked inside the project",
+    async () => {
+      const snapshots = plant(join(project, "src"), "snapshots");
+      mkdirSync(join(project, ".hyperframes"));
+      symlinkSync(join(project, "src"), join(project, ".hyperframes", "artifacts"));
+
+      await run({ snapshots: true });
+      expect(existsSync(join(snapshots, "frame_000001.jpg"))).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "does not remove snapshots or checks through a symlinked .hyperframes folder",
+    async () => {
+      const outside = join(scratch, "outside");
+      const snapshots = plant(join(outside, "artifacts"), "snapshots");
+      const checks = plant(join(outside, "artifacts"), "checks");
+      symlinkSync(outside, join(project, ".hyperframes"));
+
+      await run({ snapshots: true });
+      expect(existsSync(join(snapshots, "frame_000001.jpg"))).toBe(true);
+      expect(existsSync(join(checks, "frame_000001.jpg"))).toBe(true);
+    },
+  );
 });

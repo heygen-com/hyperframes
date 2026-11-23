@@ -1,4 +1,4 @@
-import { failCommand } from "../../utils/commandResult.js";
+import { failCommand, failUsage } from "../../utils/commandResult.js";
 /**
  * `hyperframes cloud render` — orchestrate a cloud-rendered HyperFrames
  * composition end-to-end:
@@ -16,7 +16,7 @@ import { failCommand } from "../../utils/commandResult.js";
  *      `project: {type:"asset_id", asset_id}` shape.
  *   5. If `--no-wait`: print the `render_id` and exit immediately.
  *      Otherwise poll `GET /v3/hyperframes/renders/{id}` every
- *      `--poll-interval` (default 10s, max 60min). `--callback-url`
+ *      `--poll-interval` (default 2s, max 60min). `--callback-url`
  *      can be combined with either mode: the webhook always fires when
  *      the server-side render terminates, independent of whether the
  *      CLI is still polling.
@@ -25,21 +25,37 @@ import { failCommand } from "../../utils/commandResult.js";
  *
  * Auth comes from the existing `cli/src/auth/` chain via `cloud/auth.ts`.
  * The cloud HTTP client (`cloud/_gen/client.ts`) is generated from
- * `experiment-framework/openapi/external-api.json`; never hand-edit it.
+ * HeyGen's external API OpenAPI spec; never hand-edit it.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 
 import {
+  ASPECT_RATIO_MATCH_TOLERANCE,
   detectAspectRatioFromHtml,
   type AspectRatioDetection,
+  type SupportedAspectRatio,
 } from "../../cloud/detectAspectRatio.js";
+import {
+  CANVAS_DIMENSIONS,
+  checkOutputResolutionCompatibility,
+  type CanvasResolution,
+  terminalLines,
+  terminalText,
+} from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
+import { describeUnresolvedFontUse } from "../../cloud/fontFailure.js";
+import { resolveDefaultFpsArg } from "../../utils/renderArgs.js";
 import { resolveProject, type ProjectDir } from "../../utils/project.js";
+import { readProjectConfig } from "../../utils/projectConfig.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import {
-  buildPublishFileMap,
+  archiveKey,
+  readStaged,
+  type StagedFile,
+  stagedSize,
+  stagePublishFiles,
   type PublishArchiveResult,
   zipPublishFileMap,
 } from "../../utils/publishProject.js";
@@ -49,6 +65,19 @@ import {
   validateVariablesAgainstProject,
 } from "../../utils/variables.js";
 import { withMeta } from "../../utils/updateCheck.js";
+import {
+  type LeftOutReference,
+  type OnLeftOut,
+  type OnOutsideFile,
+  type OutsideFileReference,
+  outsideFilesNotice,
+} from "../../utils/leftOutReference.js";
+import { trackUploadLeftOut } from "../../telemetry/uploadLeftOut.js";
+import { isUnattended } from "../../utils/attendedTerminal.js";
+import {
+  confirmOutsideFiles,
+  stageWithOutsideFileApproval,
+} from "../../utils/outsideFileApproval.js";
 import type { Example } from "../_examples.js";
 
 import {
@@ -60,8 +89,20 @@ import {
   pollUntilTerminal,
 } from "../../cloud/index.js";
 import { reportApiError } from "../../cloud/errors.js";
+import { describeSwappedFonts, embedSystemFonts } from "../../cloud/fontPreflight.js";
 import { parseEnumFlag, parseIntFlag, parseNumericFlag } from "../../cloud/parsing.js";
-import { uploadZipViaDirectUpload } from "../../cloud/upload.js";
+import {
+  uploadAssetViaDirectUpload,
+  uploadZipViaDirectUpload,
+  type UploadProgressEvent,
+} from "../../cloud/upload.js";
+import {
+  OFFLOAD_MIN_BYTES,
+  offloadHeavyMedia,
+  type OffloadedMedia,
+  type OffloadOptions,
+} from "../../cloud/offload.js";
+import { resolveCloudBaseUrl } from "../../cloud/auth.js";
 import { colorStatus } from "../../cloud/statusColor.js";
 import type {
   CreateHyperframesRenderRequest,
@@ -69,7 +110,11 @@ import type {
   HyperframesRenderDetail,
 } from "../../cloud/index.js";
 import { isAbsolute, relative, resolve as resolvePath } from "node:path";
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
+import {
+  compositionEntryErrorMessage,
+  parseCompositionEntryArg,
+} from "../../utils/compositionEntry.js";
 
 const VALID_QUALITY = ["draft", "standard", "high"] as const;
 const VALID_FORMAT = ["mp4", "webm", "mov"] as const;
@@ -77,6 +122,7 @@ const VALID_RESOLUTION = ["1080p", "4k"] as const;
 const VALID_ASPECT_RATIO = ["16:9", "9:16", "1:1"] as const;
 // Mirrors the binary-byte max_bytes contract used by direct asset uploads.
 const DIRECT_UPLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
+const ZIP_BUDGET_BYTES_WITH_ROOM_FOR_ZIP_RECORDS = Math.floor(DIRECT_UPLOAD_LIMIT_BYTES * 0.95);
 const ARCHIVE_DIAGNOSTIC_THRESHOLD_BYTES = 150 * 1024 * 1024;
 const LARGEST_FILE_COUNT = 10;
 
@@ -105,7 +151,10 @@ export default defineCommand({
   meta: { name: "render", description: "Render a HyperFrames composition in the cloud" },
   args: {
     dir: { type: "positional", required: false, description: "Project directory (default: .)" },
-    fps: { type: "string", description: "Frames per second (1-240). Default: 30." },
+    fps: {
+      type: "string",
+      description: "Frames per second (1-240). Default: the composition's root data-fps, else 30.",
+    },
     quality: { type: "string", description: "draft | standard | high (default: standard)" },
     format: { type: "string", description: "mp4 | webm | mov (default: mp4)" },
     resolution: {
@@ -114,7 +163,8 @@ export default defineCommand({
     },
     "aspect-ratio": {
       type: "string",
-      description: "Aspect ratio: 16:9 | 9:16 | 1:1 (default: 16:9)",
+      description:
+        "W:H; detected from the composition, so rarely needed. The render keeps the composition's own size; 4k needs 16:9, 9:16 or 1:1",
     },
     composition: {
       type: "string",
@@ -167,7 +217,7 @@ export default defineCommand({
     wait: {
       type: "boolean",
       description:
-        "Poll until completion and download the video (default: true). Pass `--no-wait` for fire-and-forget — submits and exits with the render_id.",
+        "Poll until completion and download the video. Pass `--no-wait` for fire-and-forget — submits and exits with the render_id.",
       default: true,
     },
     output: {
@@ -193,6 +243,12 @@ export default defineCommand({
       description: "Build and inspect the project zip without authenticating or uploading",
       default: false,
     },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Upload the files the project uses from outside its folder without asking. Otherwise they are left out unless you approve them.",
+      default: false,
+    },
     "idempotency-key": {
       type: "string",
       description: "Optional Idempotency-Key for safe retries (1-255 chars from [A-Za-z0-9_:.-])",
@@ -201,15 +257,12 @@ export default defineCommand({
   // fallow-ignore-next-line complexity
   async run({ args }) {
     const asJson = Boolean(args.json);
-    const fps = parseIntFlag(args.fps, { flag: "--fps", min: 1, max: 240 });
     const quality = parseEnumFlag(args.quality, VALID_QUALITY, { flag: "--quality" });
     const format = parseEnumFlag(args.format, VALID_FORMAT, { flag: "--format" });
     const resolution = parseEnumFlag(args.resolution, VALID_RESOLUTION, {
       flag: "--resolution",
     });
-    const explicitAspectRatio = parseEnumFlag(args["aspect-ratio"], VALID_ASPECT_RATIO, {
-      flag: "--aspect-ratio",
-    });
+    const explicitAspectRatio = parseAspectRatioFlag(args["aspect-ratio"]);
     const pollIntervalMs = parsePollIntervalMs(args["poll-interval"]);
     const maxWaitMs = parseMaxWaitMs(args["max-wait"]);
     validateIdempotencyKey(args["idempotency-key"]);
@@ -224,9 +277,11 @@ export default defineCommand({
     });
     validateDryRunSource(project, args["dry-run"] ?? false);
 
-    // 4k supersampling runs through the alpha-incompatible screenshot path;
-    // reject the combination client-side instead of failing mid-render.
-    validateResolutionFormatCombo(resolution, format);
+    const fps = parseIntFlag(resolveCloudFpsArg(project, args.fps, args.composition), {
+      flag: "--fps",
+      min: 1,
+      max: 240,
+    });
 
     // Aspect ratio is derived from the composition's authored dimensions: for
     // a local dir we parse the entry HTML and auto-detect, so the user rarely
@@ -240,11 +295,16 @@ export default defineCommand({
       args.composition,
       explicitAspectRatio,
       asJson,
+      resolution,
     );
 
+    const includeOutsideFiles = args["include-outside-files"] === true;
     if (args["dry-run"]) {
       if (project.kind !== "dir") throw new Error("Dry-run project must be a local directory");
-      reportDryRun(prepareLocalArchive(project, args.composition, asJson), asJson);
+      reportDryRun(
+        await prepareLocalArchive(project, args.composition, asJson, includeOutsideFiles),
+        asJson,
+      );
       return;
     }
 
@@ -253,11 +313,26 @@ export default defineCommand({
       args["variables-file"],
       args["strict-variables"] ?? false,
       project,
+      args.composition,
     );
 
     const client = await createCloudClient();
     const preparedArchive =
-      project.kind === "dir" ? prepareLocalArchive(project, args.composition, asJson) : undefined;
+      project.kind === "dir"
+        ? await prepareLocalArchive(
+            project,
+            args.composition,
+            asJson,
+            includeOutsideFiles,
+            (file) =>
+              uploadAssetViaDirectUpload({
+                client,
+                ...file,
+                onProgress: reportUploadProgress(file.filename, asJson),
+              }),
+            variables && JSON.stringify(variables),
+          )
+        : undefined;
 
     const upload = await maybeUploadProject(
       client,
@@ -279,6 +354,7 @@ export default defineCommand({
       callbackUrl: args["callback-url"],
       callbackId: args["callback-id"],
       idempotencyKey: args["idempotency-key"],
+      reverseSessionId: reverseSessionIdOf(project),
     });
 
     const renderId = submitted.render_id;
@@ -286,22 +362,27 @@ export default defineCommand({
       if (asJson) {
         console.log(
           JSON.stringify(
-            withMeta({ render: { render_id: renderId, status: "queued" as const } }),
+            withMeta({
+              render: { render_id: renderId, status: "queued" as const },
+              swapped_fonts: preparedArchive?.swappedFonts ?? [],
+              left_out: preparedArchive?.leftOut ?? [],
+              outside_files: preparedArchive?.outsideFiles ?? [],
+            }),
             null,
             2,
           ),
         );
       } else {
         console.log("");
-        console.log(`${c.success("✓")}  Submitted ${c.accent(renderId)}`);
-        console.log(c.dim(`   Poll with: hyperframes cloud get ${renderId}`));
+        console.log(`${c.success("✓")}  Submitted ${c.accent(terminalText(renderId))}`);
+        console.log(c.dim(`   Poll with: hyperframes cloud get ${terminalText(renderId)}`));
       }
       return;
     }
 
     if (!asJson) {
       console.log("");
-      console.log(c.dim(`  Polling ${renderId} every ${pollIntervalMs / 1000}s …`));
+      console.log(c.dim(`  Polling ${terminalText(renderId)} every ${pollIntervalMs / 1000}s …`));
     }
 
     const detail = await pollWithProgress(client, renderId, asJson, {
@@ -310,7 +391,7 @@ export default defineCommand({
     });
 
     if (detail.status === "failed") {
-      handleFailedRender(detail, asJson);
+      handleFailedRender(detail, asJson, project.kind === "dir" ? (project.dir ?? ".") : undefined);
     }
 
     if (!detail.video_url) {
@@ -331,6 +412,9 @@ export default defineCommand({
             render: detail,
             output_path: outputPath,
             bytes_written: downloadResult.bytes,
+            swapped_fonts: preparedArchive?.swappedFonts ?? [],
+            left_out: preparedArchive?.leftOut ?? [],
+            outside_files: preparedArchive?.outsideFiles ?? [],
           }),
           null,
           2,
@@ -360,7 +444,7 @@ function validateIdempotencyKey(key: string | undefined): void {
   if (key === undefined) return;
   if (!IDEMPOTENCY_KEY_RE.test(key)) {
     errorBox("Invalid --idempotency-key", `Got "${key}". Must be 1-255 chars from [A-Za-z0-9_:.-]`);
-    failCommand();
+    failUsage();
   }
 }
 
@@ -370,7 +454,7 @@ export function validateDryRunSource(source: ProjectInputSource, dryRun: boolean
     "Invalid --dry-run input",
     "--dry-run inspects a local project directory and cannot be combined with --asset-id or --url.",
   );
-  failCommand();
+  failUsage();
 }
 
 // ---------------------------------------------------------------------------
@@ -401,7 +485,7 @@ function resolveProjectInput(opts: {
   const count = Number(explicit.dir) + Number(explicit.assetId) + Number(explicit.url);
   if (count > 1) {
     errorBox("Conflicting inputs", "Pass only one of: project dir, --asset-id, --url.");
-    failCommand();
+    failUsage();
   }
   if (explicit.assetId) return { kind: "asset_id", assetId: opts.assetId };
   if (explicit.url) return { kind: "url", url: opts.url };
@@ -411,18 +495,14 @@ function resolveProjectInput(opts: {
 /**
  * Resolve the aspect ratio for the submit body, validating local inputs.
  *
- * Aspect ratio is a property of the composition (its `data-width`/
- * `data-height`), not an independent render knob — the pipeline supersamples
- * to a *matching* ratio and can't reshape. So for a local dir we auto-detect
- * from the entry HTML and the user rarely needs `--aspect-ratio`. Behaviour:
+ * Aspect ratio is a property of the composition (its `data-width`/`data-height`), not a render knob: at 1080p the
+ * cloud renders at the composition's own size whatever `aspect_ratio` says, and a 4k render scales it up to a 16:9,
+ * 9:16 or 1:1 preset, the only values the API accepts. So:
  *
- *   - Local dir, no explicit flag → auto-detect and log the result.
- *   - Local dir, explicit flag that conflicts with the detected dims → hard
- *     error (the render would otherwise fail or silently ignore the request).
- *   - Local dir with a missing `--composition` entry → hard error before
- *     upload, instead of a generic server-side render failure.
- *   - `--asset-id` / `--url` → the zip isn't on disk; trust an explicit flag,
- *     otherwise let the server default (16:9) apply.
+ *   - a detected 16:9 / 9:16 / 1:1 is sent;
+ *   - any other ratio (2:1, 4:5, …) is not sent at 1080p, where the output keeps the composition's size, and is
+ *     refused before upload at 4k, where no preset fits it;
+ *   - an explicit `--aspect-ratio W:H` that contradicts the composition is refused before upload.
  *
  * Logs are suppressed in `--json` mode so machine output stays clean.
  */
@@ -430,88 +510,128 @@ function resolveProjectInput(opts: {
 export function resolveAspectRatioForSubmit(
   project: ProjectInputSource,
   compositionArg: string | undefined,
-  explicit: "16:9" | "9:16" | "1:1" | undefined,
+  explicit: string | undefined,
   asJson: boolean,
-): "16:9" | "9:16" | "1:1" | undefined {
+  resolution: "1080p" | "4k" = "1080p",
+): SupportedAspectRatio | undefined {
   if (project.kind !== "dir") {
-    if (!explicit) {
-      const reason = project.kind === "asset_id" ? "--asset-id" : "--url";
-      logDetection(asJson, `Auto-detect skipped (project is ${reason})`);
-    }
-    return explicit;
+    if (explicit && isSupportedAspectRatio(explicit)) return explicit;
+    if (explicit) refuseUnsupportedAt4k(resolution, `--aspect-ratio ${explicit}`);
+    const reason = project.kind === "asset_id" ? "--asset-id" : "--url";
+    logDetection(asJson, `Auto-detect skipped (project is ${reason}); ${KEEPS_OWN_SIZE}`);
+    return undefined;
   }
 
   const dir = project.dir ?? ".";
-  const entryRelative = compositionArg ?? "index.html";
-  const entryPath = resolvePath(dir, entryRelative);
+  const entry = parseCompositionEntryArg(compositionArg ?? "index.html", dir, statSync);
+  if (!entry.ok) {
+    const { title, message, hint } = compositionEntryErrorMessage(entry.error);
+    errorBox(title, message, hint);
+    failCommand();
+  }
+  const entryRelative = entry.value ?? "index.html";
+  const detection = detectAspectRatioFromHtml(resolvePath(dir, entryRelative));
+  const dims = detection.kind === "matched" || detection.kind === "no-match" ? detection : null;
 
-  if (!existsSync(entryPath)) {
+  if (explicit && dims && !sameRatio(explicit, dims.width / dims.height)) {
     errorBox(
-      "Composition not found",
-      `Entry file "${entryRelative}" does not exist in ${dir}.`,
-      "Pass --composition with a path that exists inside the project, or omit it to use index.html.",
+      "Aspect ratio mismatch",
+      `--aspect-ratio ${explicit} doesn't match the composition (${dims.width}×${dims.height}, ${ratioLabel(dims.width, dims.height)}).`,
+      "The renderer keeps the composition's authored aspect ratio; it can't reshape it. Drop --aspect-ratio (it's auto-detected) or re-author the composition at the target ratio.",
     );
     failCommand();
   }
-
-  const detection = detectAspectRatioFromHtml(entryPath);
-
-  if (explicit) {
-    // The renderer matches the composition's authored aspect ratio — it can't
-    // reshape. Both a `matched` ratio that differs from `explicit` AND a
-    // `no-match` (dims are known but the ratio isn't 16:9/9:16/1:1, so it can
-    // never equal the requested supported ratio) are definite conflicts.
-    // Other kinds (no-dims / no-root-div / invalid-dims / read-error) leave the
-    // ratio unknown, so we can't prove a conflict and forward the explicit value.
-    const conflictDetail =
-      detection.kind === "matched" && detection.aspectRatio !== explicit
-        ? `${detection.width}×${detection.height} → ${detection.aspectRatio}`
-        : detection.kind === "no-match"
-          ? `${detection.width}×${detection.height}, ratio ${detection.ratio.toFixed(2)} — not a supported ratio`
-          : undefined;
-    if (conflictDetail) {
-      errorBox(
-        "Aspect ratio mismatch",
-        `--aspect-ratio ${explicit} doesn't match the composition (${conflictDetail}).`,
-        "The renderer matches the composition's authored aspect ratio — it can't reshape it. Drop --aspect-ratio (it's auto-detected) or re-author the composition at the target ratio.",
-      );
-      failCommand();
-    }
-    return explicit;
+  if (detection.kind === "matched") {
+    if (resolution === "4k") refuseUnfit4kPreset(detection);
+    logDetection(asJson, summarizeDetection(detection, entryRelative));
+    return detection.aspectRatio;
   }
-
-  logDetection(asJson, summarizeDetection(detection, entryRelative));
-  return detection.kind === "matched" ? detection.aspectRatio : undefined;
+  if (detection.kind === "no-match") {
+    refuseUnsupportedAt4k(
+      resolution,
+      `This composition (${detection.width}×${detection.height}, ${ratioLabel(detection.width, detection.height)})`,
+      `Render it at 1080p, which keeps ${detection.width}×${detection.height}, or re-author it at a supported ratio.`,
+    );
+    logDetection(asJson, summarizeDetection(detection, entryRelative));
+    return undefined;
+  }
+  if (explicit && isSupportedAspectRatio(explicit)) return explicit;
+  if (explicit) refuseUnsupportedAt4k(resolution, `--aspect-ratio ${explicit}`);
+  logDetection(asJson, `${summarizeDetection(detection, entryRelative)}; ${KEEPS_OWN_SIZE}`);
+  return undefined;
 }
 
-/**
- * 4k output is produced by supersampling through the screenshot capture path,
- * which doesn't support an alpha channel. webm/mov carry alpha, so the
- * combination can't be satisfied — reject it before upload.
- */
-export function validateResolutionFormatCombo(
-  resolution: "1080p" | "4k" | undefined,
-  format: "mp4" | "webm" | "mov" | undefined,
+const KEEPS_OWN_SIZE = "the render keeps the composition's own size.";
+
+const isSupportedAspectRatio = (value: string): value is SupportedAspectRatio =>
+  (VALID_ASPECT_RATIO as readonly string[]).includes(value);
+
+function sameRatio(aspect: string, ratio: number): boolean {
+  const [w, h] = aspect.split(":").map(Number);
+  return Math.abs(w! / h! - ratio) <= ASPECT_RATIO_MATCH_TOLERANCE;
+}
+
+function ratioLabel(width: number, height: number): string {
+  if (!Number.isInteger(width) || !Number.isInteger(height)) return (width / height).toFixed(2);
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  const d = gcd(width, height);
+  return `${width / d}:${height / d}`;
+}
+
+const PRESET_4K: Record<SupportedAspectRatio, CanvasResolution> = {
+  "16:9": "landscape-4k",
+  "9:16": "portrait-4k",
+  "1:1": "square-4k",
+};
+
+/** The detector matches a ratio within a tolerance; the renderer's 4K preset has to fit the exact size. */
+function refuseUnfit4kPreset(detection: {
+  aspectRatio: SupportedAspectRatio;
+  width: number;
+  height: number;
+}): void {
+  const preset = PRESET_4K[detection.aspectRatio];
+  const compat = checkOutputResolutionCompatibility({
+    compositionWidth: detection.width,
+    compositionHeight: detection.height,
+    outputResolution: preset,
+  });
+  if (compat.ok) return;
+  const exact = CANVAS_DIMENSIONS[preset];
+  errorBox(
+    "No 4K preset fits this composition",
+    `${detection.width}×${detection.height} cannot render at 4K as ${detection.aspectRatio}: ${compat.message}`,
+    `Render it at 1080p, which keeps ${detection.width}×${detection.height}, or re-author it at ${exact.width / 2}×${exact.height / 2}.`,
+  );
+  failCommand();
+}
+
+function refuseUnsupportedAt4k(
+  resolution: "1080p" | "4k",
+  subject: string,
+  fix = "Render at 1080p, which keeps the composition's own size.",
 ): void {
-  if (resolution === "4k" && (format === "webm" || format === "mov")) {
-    errorBox(
-      "Unsupported combination",
-      `--resolution 4k cannot be combined with --format ${format}.`,
-      "The alpha (webm/mov) capture path doesn't support 4k supersampling. Render 4k as mp4, or render alpha at composition resolution.",
-    );
-    failCommand();
-  }
+  if (resolution !== "4k") return;
+  errorBox(
+    "No 4K preset for this aspect ratio",
+    `${subject} is not 16:9, 9:16 or 1:1, the only ratios a 4K cloud render can scale to.`,
+    fix,
+  );
+  failCommand();
 }
 
-const ASPECT_FALLBACK_HINT =
-  "server will default aspect_ratio to 16:9. Pass --aspect-ratio to override.";
+/** `--aspect-ratio` takes any `W:H`; only 16:9, 9:16 and 1:1 are sent, the rest are checked against the composition. */
+export function parseAspectRatioFlag(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const match = /^([1-9]\d*):([1-9]\d*)$/.exec(raw.trim());
+  if (match) return `${match[1]}:${match[2]}`;
+  errorBox("Invalid --aspect-ratio", `Got "${raw}". Use W:H, such as 16:9, 9:16, 1:1 or 2:1.`);
+  failUsage();
+}
 
 function logDetection(asJson: boolean, message: string): void {
   if (asJson) return;
-  // `matched` is the only branch with its own affirmative phrasing; the
-  // rest share the fallback hint to keep the user oriented after a miss.
-  const suffix = message.startsWith("Detected aspect ratio") ? "" : `; ${ASPECT_FALLBACK_HINT}`;
-  console.log(c.dim(`   ${message}${suffix}`));
+  console.log(c.dim(`   ${terminalText(message)}`));
 }
 
 // fallow-ignore-next-line complexity
@@ -526,7 +646,7 @@ function summarizeDetection(detection: AspectRatioDetection, entryRelative: stri
     case "invalid-dims":
       return `${entryRelative} root has invalid dims (${detection.width}×${detection.height})`;
     case "no-match":
-      return `${entryRelative} dims ${detection.width}×${detection.height} (ratio ${detection.ratio.toFixed(2)}) don't match 16:9, 9:16, or 1:1`;
+      return `Detected aspect ratio: ${ratioLabel(detection.width, detection.height)} (from ${entryRelative} dims ${detection.width}×${detection.height}); the cloud render keeps that size`;
     case "read-error":
       return `Couldn't read ${entryRelative} for aspect-ratio detection (${detection.error})`;
   }
@@ -537,6 +657,7 @@ function resolveVariablesAndValidateIfLocal(
   filePath: string | undefined,
   strict: boolean,
   source: ProjectInputSource,
+  composition: string | undefined,
 ): Record<string, unknown> | undefined {
   const variables = resolveVariablesArg(inline, filePath);
   if (!variables || Object.keys(variables).length === 0) return variables;
@@ -545,11 +666,9 @@ function resolveVariablesAndValidateIfLocal(
   // lives on the server side, so we send the variables as-is and let
   // the API surface any mismatch via `hyperframes_project_invalid`.
   if (source.kind !== "dir") return variables;
-  // `resolveProject` calls process.exit on a missing/invalid dir, so
-  // there's no need to wrap this in try/catch — if it returns, the
-  // index.html is present. The earlier impl had a dead try/catch.
-  const { indexPath } = resolveProject(source.dir);
-  const issues = validateVariablesAgainstProject(indexPath, variables);
+  const project = resolveProject(source.dir);
+  const entryPath = resolvePath(project.dir, composition ?? "index.html");
+  const issues = validateVariablesAgainstProject(entryPath, variables);
   reportVariableIssues(issues, { strict, quiet: false });
   return variables;
 }
@@ -562,57 +681,161 @@ interface UploadResult {
   projectInput: CreateHyperframesRenderRequest["project"];
 }
 
-interface ArchiveFileSummary {
+export interface ArchiveFileSummary {
   path: string;
   size_bytes: number;
 }
 
 interface PreparedLocalArchive {
   project: ProjectDir;
-  archive: PublishArchiveResult;
+  /** Absent when the files left on disk alone are over the upload limit: they are never read. */
+  archive?: PublishArchiveResult;
+  sizeBytes: number;
+  fileCount: number;
   largestFiles: ArchiveFileSummary[];
+  offloaded: OffloadedMedia[];
+  swappedFonts: string[];
+  leftOut: LeftOutReference[];
+  outsideFiles: OutsideFileReference[];
 }
 
-function summarizeLargestFiles(fileMap: Map<string, Buffer>): ArchiveFileSummary[] {
+function summarizeLargestFiles(fileMap: Map<string, StagedFile>): ArchiveFileSummary[] {
   return [...fileMap.entries()]
-    .map(([path, content]) => ({ path, size_bytes: content.byteLength }))
+    .map(([path, content]) => ({ path, size_bytes: stagedSize(content) }))
     .sort((a, b) => b.size_bytes - a.size_bytes || a.path.localeCompare(b.path))
     .slice(0, LARGEST_FILE_COUNT);
 }
 
-function prepareLocalArchive(
+async function prepareLocalArchive(
   source: ProjectInputSource,
   composition: string | undefined,
   asJson: boolean,
-): PreparedLocalArchive {
+  includeOutsideFiles: boolean,
+  upload?: OffloadOptions["upload"],
+  variablesText?: string,
+): Promise<PreparedLocalArchive> {
   const project = resolveProject(source.dir);
   if (!asJson) {
     console.log("");
-    console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
+    console.log(`${c.accent("◆")}  Zipping ${c.accent(terminalText(project.name))}`);
   }
+  const { fileMap, entryPath, leftOut, outsideFiles } = await stageAndReport(project, composition, {
+    asJson,
+    dryRun: !upload,
+    includeOutsideFiles,
+  });
+  const swappedFonts = await embedSystemFonts({
+    dir: project.dir,
+    entryFile: composition,
+    entryPath,
+    fileMap,
+  });
+  if (swappedFonts.length > 0 && !asJson) console.log(c.dim(describeSwappedFonts(swappedFonts)));
+  const offloaded = await offloadMedia(project, fileMap, entryPath, asJson, upload, variablesText);
 
+  const { archive, sizeBytes } = zipWithinUploadLimit(fileMap);
+  if (!asJson) {
+    console.log(c.dim(`   ${fileMap.size} files · ${formatBytes(sizeBytes)}`));
+  }
+  const largestFiles = summarizeLargestFiles(fileMap);
+  const prepared = {
+    project,
+    archive,
+    sizeBytes,
+    fileCount: fileMap.size,
+    largestFiles,
+    offloaded,
+    swappedFonts,
+    leftOut,
+    outsideFiles,
+  };
+  if (upload) assertArchiveFits(sizeBytes, largestFiles);
+  if (!asJson && sizeBytes >= ARCHIVE_DIAGNOSTIC_THRESHOLD_BYTES) {
+    reportLargestFiles(prepared);
+  }
+  return prepared;
+}
+
+// Media left on disk barely compresses: past the limit, its size is the report and nothing is read.
+function zipWithinUploadLimit(fileMap: Map<string, StagedFile>) {
+  const onDiskBytes = [...fileMap.values()]
+    .filter((file) => !Buffer.isBuffer(file))
+    .reduce((sum, file) => sum + stagedSize(file), 0);
+  const archive =
+    onDiskBytes > DIRECT_UPLOAD_LIMIT_BYTES
+      ? undefined
+      : zipPublishFileMap(new Map([...fileMap].map(([path, file]) => [path, readStaged(file)])));
+  return { archive, sizeBytes: archive?.buffer.byteLength ?? onDiskBytes };
+}
+
+function reportLeftOut(warning: string, reference: LeftOutReference, asJson: boolean): void {
+  if (!asJson) return console.log(c.warn(`   ${terminalLines(warning)}`));
+  console.error(c.warn(`   ${terminalLines(warning)}`));
+  console.error(JSON.stringify({ event: "left_out", ...reference }));
+}
+
+/** Asks about unapproved outside files only on a real upload a person watches; otherwise they stay out. */
+async function stageAndReport(
+  project: ProjectDir,
+  composition: string | undefined,
+  options: { asJson: boolean; dryRun: boolean; includeOutsideFiles: boolean },
+) {
+  const { asJson, dryRun } = options;
+  const { staged, outsideFiles } = await stageWithOutsideFileApproval(
+    project.dir,
+    {
+      includeAll: options.includeOutsideFiles,
+      ask: asJson || dryRun || isUnattended() ? undefined : confirmOutsideFiles,
+    },
+    (onOutsideFile) => {
+      const warnings: { warning: string; reference: LeftOutReference }[] = [];
+      const onLeftOut: OnLeftOut = (warning, reference) => warnings.push({ warning, reference });
+      return { ...stageProjectFiles(project, composition, onLeftOut, onOutsideFile), warnings };
+    },
+  );
+  for (const { warning, reference } of staged.warnings) reportLeftOut(warning, reference, asJson);
+  const leftOut = staged.warnings.map(({ reference }) => reference);
+  trackUploadLeftOut("cloud_render", leftOut, dryRun);
+  listOutsideFiles(outsideFiles, asJson);
+  return { fileMap: staged.fileMap, entryPath: staged.entryPath, leftOut, outsideFiles };
+}
+
+function listOutsideFiles(outsideFiles: OutsideFileReference[], asJson: boolean): void {
+  if (outsideFiles.length === 0) return;
+  if (!asJson) return console.log(c.dim(indentLines(outsideFilesNotice(outsideFiles))));
+  for (const reference of outsideFiles) {
+    console.error(JSON.stringify({ event: "outside_file", ...reference }));
+  }
+}
+
+const indentLines = (text: string) => text.replace(/^/gm, "   ");
+
+function stageProjectFiles(
+  project: ProjectDir,
+  composition: string | undefined,
+  onLeftOut: OnLeftOut,
+  onOutsideFile: OnOutsideFile,
+): { fileMap: Map<string, StagedFile>; entryPath: string } {
   try {
-    const fileMap = buildPublishFileMap(project.dir);
-    const entryPath = relative(
+    const entryPath = archiveKey(
+      relative(project.dir, resolvePath(project.dir, composition ?? "index.html")).replaceAll(
+        "\\",
+        "/",
+      ),
+    );
+    const fileMap = stagePublishFiles(
       project.dir,
-      resolvePath(project.dir, composition ?? "index.html"),
-    ).replaceAll("\\", "/");
+      OFFLOAD_MIN_BYTES,
+      onLeftOut,
+      onOutsideFile,
+      entryPath,
+    );
     if (!fileMap.has(entryPath)) {
       throw new Error(
         `Composition "${composition ?? "index.html"}" is excluded from the archive. Check .hyperframesignore.`,
       );
     }
-    const archive = zipPublishFileMap(fileMap);
-    if (!asJson) {
-      console.log(
-        c.dim(`   ${archive.fileCount} files · ${formatBytes(archive.buffer.byteLength)}`),
-      );
-    }
-    const prepared = { project, archive, largestFiles: summarizeLargestFiles(fileMap) };
-    if (!asJson && archive.buffer.byteLength >= ARCHIVE_DIAGNOSTIC_THRESHOLD_BYTES) {
-      reportLargestFiles(prepared);
-    }
-    return prepared;
+    return { fileMap, entryPath };
   } catch (err) {
     const msg = normalizeErrorMessage(err);
     errorBox("Zip failed", msg, "Check the project and .hyperframesignore for missing files.");
@@ -620,27 +843,160 @@ function prepareLocalArchive(
   }
 }
 
+async function offloadMedia(
+  project: ProjectDir,
+  fileMap: Map<string, StagedFile>,
+  entryPath: string,
+  asJson: boolean,
+  upload: OffloadOptions["upload"],
+  variablesText?: string,
+): Promise<OffloadedMedia[]> {
+  let offloaded: OffloadedMedia[];
+  try {
+    offloaded = await offloadHeavyMedia(project.dir, fileMap, {
+      apiBaseUrl: resolveCloudBaseUrl(),
+      upload,
+      entryPath,
+      variablesText,
+      zipBudgetBytes: ZIP_BUDGET_BYTES_WITH_ROOM_FOR_ZIP_RECORDS,
+      onFile: (item) =>
+        (asJson ? console.error : console.log)(c.dim(`   ${describeOffload(item, !upload)}`)),
+      onReencodeProgress: asJson ? reencodeProgressLines() : undefined,
+    });
+  } catch (err) {
+    reportApiError("Media upload failed", err);
+  }
+  if (!asJson) {
+    for (const item of offloaded.filter((entry) => entry.kept_in_archive)) {
+      console.log(
+        c.dim(
+          `   ${terminalText(item.path)} also stays in the zip: a script builds its path in a way that cannot be rewritten`,
+        ),
+      );
+    }
+  }
+  return offloaded;
+}
+
+/** --fps, else the entry's root data-fps (the owner local render uses), else the server default. */
+export function resolveCloudFpsArg(
+  source: ProjectInputSource,
+  fps: string | undefined,
+  composition: string | undefined,
+): string | undefined {
+  if (source.kind !== "dir") return fps;
+  const { dir } = resolveProject(source.dir);
+  const resolved = resolveDefaultFpsArg(fps, dir, resolvePath(dir, "index.html"), composition);
+  // The cloud API takes whole frame rates; a fractional data-fps (29.97) leaves it to the server.
+  return resolved !== undefined && /^\d+$/.test(resolved) ? resolved : fps;
+}
+
+export function assertArchiveFits(sizeBytes: number, largestFiles: ArchiveFileSummary[]): void {
+  if (sizeBytes <= DIRECT_UPLOAD_LIMIT_BYTES) return;
+  errorBox(
+    "Project too large for cloud render",
+    `The zip is ${formatBytes(sizeBytes)} after moving media to HeyGen assets, over the ${formatBytes(DIRECT_UPLOAD_LIMIT_BYTES)} upload limit. Largest files left in it:\n${largestFiles
+      .map((file) => `  ${formatBytes(file.size_bytes).padStart(9)}  ${terminalText(file.path)}`)
+      .join("\n")}`,
+    "Exclude files the render does not need with .hyperframesignore.",
+  );
+  failCommand();
+}
+
+/** Under --json, a line on stderr per whole percent a re-encode makes (per second when its length is unknown),
+ * so a caller can tell a long encode from a dead one. */
+export function reencodeProgressLines(
+  now: () => number = Date.now,
+): NonNullable<OffloadOptions["onReencodeProgress"]> {
+  let last = { path: "", percent: -1, at: 0 };
+  return ({ path, doneSeconds, totalSeconds }) => {
+    const percent = totalSeconds
+      ? Math.min(100, Math.floor((doneSeconds / totalSeconds) * 100))
+      : null;
+    const at = now();
+    const same = path === last.path;
+    if (same && (percent === null ? at - last.at < 1000 : percent === last.percent)) return;
+    last = { path, percent: percent ?? -1, at };
+    console.error(
+      JSON.stringify({
+        event: "reencode_progress",
+        file: path,
+        percent,
+        done_seconds: Math.round(doneSeconds * 10) / 10,
+        total_seconds: totalSeconds === null ? null : Math.round(totalSeconds * 10) / 10,
+      }),
+    );
+  };
+}
+
+/** A line per PUT progress event: JSON on stderr under --json, so a caller can tell a slow upload from a dead one. */
+function reportUploadProgress(name: string, asJson: boolean): (event: UploadProgressEvent) => void {
+  return (event) => {
+    if (event.phase !== "upload" || event.sentBytes === undefined) return;
+    const { percent, sentBytes, totalBytes, attempt = 1 } = event;
+    if (asJson) {
+      console.error(
+        JSON.stringify({
+          event: "upload_progress",
+          file: name,
+          attempt,
+          percent,
+          sent_bytes: sentBytes,
+          total_bytes: totalBytes,
+        }),
+      );
+    } else {
+      const retry = attempt > 1 ? ` (try ${attempt}, from the first byte)` : "";
+      console.log(
+        c.dim(
+          `   ${terminalText(name)}: ${percent}% · ${formatBytes(sentBytes)} of ${formatBytes(totalBytes ?? 0)}${retry}`,
+        ),
+      );
+    }
+  };
+}
+
+function describeOffload(item: OffloadedMedia, dryRun: boolean): string {
+  const verb =
+    item.action === "cached"
+      ? "already uploaded"
+      : item.action === "reencode"
+        ? dryRun
+          ? "would re-encode and upload"
+          : "re-encoded and uploaded"
+        : dryRun
+          ? "would upload"
+          : "uploaded";
+  return `${formatBytes(item.size_bytes).padStart(9)}  ${terminalText(item.path)} · ${verb}`;
+}
+
 function reportLargestFiles(prepared: PreparedLocalArchive): void {
   console.log(c.dim("   Largest included files:"));
   for (const file of prepared.largestFiles) {
-    console.log(c.dim(`   ${formatBytes(file.size_bytes).padStart(9)}  ${file.path}`));
+    console.log(
+      c.dim(`   ${formatBytes(file.size_bytes).padStart(9)}  ${terminalText(file.path)}`),
+    );
   }
   console.log(c.dim("   Exclude verified-unneeded files with .hyperframesignore."));
 }
 
 function reportDryRun(prepared: PreparedLocalArchive, asJson: boolean): void {
-  const sizeBytes = prepared.archive.buffer.byteLength;
+  const { sizeBytes } = prepared;
   if (asJson) {
     console.log(
       JSON.stringify(
         withMeta({
           archive: {
             project: prepared.project.name,
-            file_count: prepared.archive.fileCount,
+            file_count: prepared.fileCount,
             size_bytes: sizeBytes,
             upload_limit_bytes: DIRECT_UPLOAD_LIMIT_BYTES,
             exceeds_upload_limit: sizeBytes > DIRECT_UPLOAD_LIMIT_BYTES,
             largest_files: prepared.largestFiles,
+            offloaded_media: prepared.offloaded,
+            swapped_fonts: prepared.swappedFonts,
+            left_out: prepared.leftOut,
+            outside_files: prepared.outsideFiles,
           },
         }),
         null,
@@ -675,6 +1031,7 @@ async function maybeUploadProject(
 
   if (!preparedArchive) throw new Error("Local project archive was not prepared");
   const { project, archive } = preparedArchive;
+  if (!archive) throw new Error("Local project archive is over the upload limit");
 
   if (!asJson) {
     console.log("");
@@ -688,17 +1045,17 @@ async function maybeUploadProject(
       bytes: archive.buffer,
       filename: `${project.name}.zip`,
       idempotencyKey,
-      onProgress: !asJson
-        ? (ev) => {
-            if (ev.phase === "initialize") {
-              console.log(c.dim(`   initializing…`));
-            } else if (ev.phase === "upload" && ev.percent === 0) {
-              console.log(c.dim(`   uploading to S3…`));
-            } else if (ev.phase === "complete") {
-              console.log(c.dim(`   finalizing…`));
-            }
-          }
-        : undefined,
+      onProgress: (ev) => {
+        reportUploadProgress(`${project.name}.zip`, asJson)(ev);
+        if (asJson) return;
+        if (ev.phase === "initialize") {
+          console.log(c.dim(`   initializing…`));
+        } else if (ev.phase === "upload" && ev.percent === 0 && ev.attempt === undefined) {
+          console.log(c.dim(`   uploading to S3…`));
+        } else if (ev.phase === "complete") {
+          console.log(c.dim(`   finalizing…`));
+        }
+      },
     });
   } catch (err) {
     reportApiError("Upload failed", err);
@@ -706,7 +1063,7 @@ async function maybeUploadProject(
   if (!asJson) {
     console.log(
       c.dim(
-        `   asset_id: ${c.accent(uploaded.asset_id)} · ${formatDuration(Date.now() - uploadStart)}`,
+        `   asset_id: ${c.accent(terminalText(uploaded.asset_id))} · ${formatDuration(Date.now() - uploadStart)}`,
       ),
     );
   }
@@ -730,6 +1087,15 @@ interface SubmitOptions {
   callbackUrl: string | undefined;
   callbackId: string | undefined;
   idempotencyKey: string | undefined;
+  reverseSessionId: string | undefined;
+}
+
+type RenderRequestBody = CreateHyperframesRenderRequest & { reverse_session_id?: string };
+
+function reverseSessionIdOf(project: ProjectInputSource): string | undefined {
+  return project.kind === "dir"
+    ? readProjectConfig(project.dir ?? ".")?.reverseSessionId
+    : undefined;
 }
 
 async function submitRender(
@@ -745,8 +1111,8 @@ async function submitRender(
 }
 
 // fallow-ignore-next-line complexity
-function buildRenderBody(opts: SubmitOptions): CreateHyperframesRenderRequest {
-  const body: CreateHyperframesRenderRequest = { project: opts.projectInput };
+function buildRenderBody(opts: SubmitOptions): RenderRequestBody {
+  const body: RenderRequestBody = { project: opts.projectInput };
   if (opts.fps !== undefined) body.fps = opts.fps;
   if (opts.quality !== undefined) body.quality = opts.quality;
   if (opts.format !== undefined) body.format = opts.format;
@@ -757,6 +1123,7 @@ function buildRenderBody(opts: SubmitOptions): CreateHyperframesRenderRequest {
   if (opts.title !== undefined) body.title = opts.title;
   if (opts.callbackUrl !== undefined) body.callback_url = opts.callbackUrl;
   if (opts.callbackId !== undefined) body.callback_id = opts.callbackId;
+  if (opts.reverseSessionId !== undefined) body.reverse_session_id = opts.reverseSessionId;
   return body;
 }
 
@@ -776,6 +1143,7 @@ async function pollWithProgress(
   // mode stays silent altogether.
   const interactive = !asJson && process.stdout.isTTY === true;
   let lastStatus = "";
+  let logged = { status: "", at: 0 };
   try {
     return await pollUntilTerminal(client, renderId, {
       intervalMs: poll.intervalMs,
@@ -791,10 +1159,11 @@ async function pollWithProgress(
             process.stdout.write(`  ${formatTickLine(detail, elapsedMs)}`);
             lastStatus = detail.status;
           }
-        } else if (detail.status !== lastStatus) {
-          // Non-TTY: one line per status transition, no carriage returns.
+        } else if (logsTick(detail.status, elapsedMs, logged)) {
+          // Non-TTY: a line per status change and one a minute while it holds, no carriage returns.
           console.log(`  ${formatTickLine(detail, elapsedMs)}`);
           lastStatus = detail.status;
+          logged = { status: detail.status, at: elapsedMs };
         }
       },
     });
@@ -816,8 +1185,18 @@ async function pollWithProgress(
   }
 }
 
+const STILL_RUNNING_EVERY_MS = 60_000;
+
+export function logsTick(
+  status: string,
+  elapsedMs: number,
+  logged: { status: string; at: number },
+): boolean {
+  return status !== logged.status || elapsedMs - logged.at >= STILL_RUNNING_EVERY_MS;
+}
+
 function formatTickLine(detail: HyperframesRenderDetail, elapsedMs: number): string {
-  const status = colorStatus(detail.status);
+  const status = colorStatus(terminalText(detail.status));
   return `${status}  ${c.dim(formatDuration(elapsedMs))}`;
 }
 
@@ -825,14 +1204,22 @@ function formatTickLine(detail: HyperframesRenderDetail, elapsedMs: number): str
 // Terminal handlers
 // ---------------------------------------------------------------------------
 
-function handleFailedRender(detail: HyperframesRenderDetail, asJson: boolean): never {
+function handleFailedRender(
+  detail: HyperframesRenderDetail,
+  asJson: boolean,
+  projectDir?: string,
+): never {
   if (asJson) {
     console.log(JSON.stringify(withMeta({ render: detail }), null, 2));
     failCommand();
   }
+  const fontUse =
+    projectDir && detail.failure_message
+      ? describeUnresolvedFontUse(detail.failure_message, projectDir)
+      : undefined;
   errorBox(
     "Render failed",
-    detail.failure_message ?? "(no failure_message returned)",
+    [detail.failure_message ?? "(no failure_message returned)", fontUse].filter(Boolean).join("\n"),
     `Inspect: hyperframes cloud get ${detail.render_id}`,
   );
   failCommand();
@@ -855,7 +1242,7 @@ async function streamVideo(
   // `downloadToFile` creates the parent directory and preserves existing output on failure.
   if (!asJson) {
     console.log("");
-    console.log(`${c.accent("◆")}  Downloading to ${c.accent(destPath)}`);
+    console.log(`${c.accent("◆")}  Downloading to ${c.accent(terminalText(destPath))}`);
   }
   try {
     const result = await downloadToFile(url, destPath);

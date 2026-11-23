@@ -1,8 +1,11 @@
 import type { RuntimeJson, RuntimeOutboundMessage, RuntimePickerElementInfo } from "./types";
+import { PREVIEW_VIDEO_FRAME_ATTR } from "../studioPreviewMark";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
 import { swallow } from "./diagnostics";
 import { isElementNode } from "./domRealm";
+import { unproxiedSrc } from "./proxySrc";
 import { createDrawnProbe } from "./pickerDrawn";
+import { buildElementLabel } from "./elementLabel";
 
 type PickerModuleDeps = {
   postMessage: (payload: RuntimeOutboundMessage) => void;
@@ -127,11 +130,62 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     return () => style.remove();
   }
 
+  function isDecorativeVeil(el: HTMLElement, win: Window): boolean {
+    const style = win.getComputedStyle(el);
+    const opacity = Number.parseFloat(style.opacity || "1");
+    const faint = Number.isFinite(opacity) && opacity < 0.2;
+    if (faint && !(el.textContent ?? "").trim()) {
+      const image = style.backgroundImage;
+      if (image && image !== "none") return true;
+    }
+    return faintFilterPaint(el, win);
+  }
+
+  function isFilterDefinition(el: Element): boolean {
+    if (el.namespaceURI !== "http://www.w3.org/2000/svg") return false;
+    const tag = el.tagName.toLowerCase();
+    return tag === "filter" || tag === "defs" || tag.startsWith("fe");
+  }
+
+  function isFilterRect(el: Element): boolean {
+    if (el.namespaceURI !== "http://www.w3.org/2000/svg") return false;
+    if (el.tagName.toLowerCase() !== "rect") return false;
+    const attr = (el.getAttribute("filter") ?? "").trim();
+    if (attr && attr !== "none") return true;
+    const painted = el.ownerDocument.defaultView?.getComputedStyle(el).filter ?? "none";
+    return painted.startsWith("url(");
+  }
+
+  function isOnlyFilterPaint(el: Element): boolean {
+    if ((el.textContent ?? "").trim()) return false;
+    if (isFilterDefinition(el) || isFilterRect(el)) return true;
+    const children = [...el.children];
+    return children.length > 0 && children.every((child) => isOnlyFilterPaint(child));
+  }
+
+  function isFaint(el: Element, win: Window): boolean {
+    const opacity = Number.parseFloat(win.getComputedStyle(el).opacity || "1");
+    return Number.isFinite(opacity) && opacity < 0.2;
+  }
+
+  function faintFilterPaint(el: Element, win: Window): boolean {
+    if (!isOnlyFilterPaint(el)) return false;
+    for (
+      let current: Element | null = el;
+      current && current !== document.body && current !== document.documentElement;
+      current = current.parentElement
+    ) {
+      if (isFaint(current, win) && isOnlyFilterPaint(current)) return true;
+    }
+    return false;
+  }
+
   function isEffectivelyHidden(el: HTMLElement): boolean {
     const win = el.ownerDocument.defaultView;
     if (!win) return false;
     let current: HTMLElement | null = el;
     if (win.getComputedStyle(el).visibility === "hidden") return true;
+    if (isDecorativeVeil(el, win)) return true;
     while (current && current !== document.body && current !== document.documentElement) {
       const computed = win.getComputedStyle(current);
       if (computed.display === "none") return true;
@@ -140,7 +194,8 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
       if (
         Number.isFinite(opacity) &&
         opacity <= 0.01 &&
-        !current.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)
+        !current.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR) &&
+        !current.hasAttribute(PREVIEW_VIDEO_FRAME_ATTR)
       )
         return true;
       current = current.parentElement;
@@ -194,25 +249,6 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     return tag;
   }
 
-  function buildElementLabel(el: Element): string {
-    const tag = el.tagName.toLowerCase();
-    const text = (el.textContent ?? "").trim().replace(/\s+/g, " ");
-    const trimLabel = (value: string, maxChars: number) => {
-      const chars = Array.from(value);
-      return chars.length > maxChars ? `${chars.slice(0, maxChars - 1).join("")}…` : value;
-    };
-    const heading = /^h[1-6]$/.test(tag);
-    if (heading || tag === "p" || tag === "span" || tag === "div")
-      return text.length > 0 ? trimLabel(text, 56) : heading ? "Heading" : "Text";
-    if (tag === "img") return "Image";
-    if (tag === "video") return "Video";
-    if (tag === "audio") return "Audio";
-    if (tag === "svg") return "Shape";
-    if (el.getAttribute("data-composition-src")) return "Composition";
-    if (tag === "section") return "Section";
-    return `${tag.charAt(0).toUpperCase()}${tag.slice(1)}`;
-  }
-
   function getPickCandidatesFromPoint(clientX: number, clientY: number, limit?: number): Element[] {
     const maxCandidates = typeof limit === "number" && limit > 0 ? limit : 8;
     let raw: Element[] = [];
@@ -252,12 +288,13 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     const htmlEl = el as HTMLElement;
     return {
       id: htmlEl.id || null,
+      className: el.getAttribute("class") || null,
       tagName: el.tagName.toLowerCase(),
       selector: buildElementSelector(el),
       label: buildElementLabel(el),
       boundingBox: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
       textContent: el.textContent ? el.textContent.trim().slice(0, 200) : null,
-      src: el.getAttribute("src") || el.getAttribute("data-composition-src") || null,
+      src: unproxiedSrc(el) || el.getAttribute("data-composition-src") || null,
       dataAttributes,
     };
   }
@@ -288,6 +325,13 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     pickModeHighlightEl = target;
     target.classList.add("__hf-pick-highlight");
     const info = extractElementInfo(target);
+    setLastHoveredInfo(info);
+    deps.postMessage({ source: "hf-preview", type: "element-hovered", elementInfo: info });
+  }
+
+  function onPickViewportChange(): void {
+    if (!pickModeActive || !pickModeHighlightEl?.isConnected) return;
+    const info = extractElementInfo(pickModeHighlightEl);
     setLastHoveredInfo(info);
     deps.postMessage({ source: "hf-preview", type: "element-hovered", elementInfo: info });
   }
@@ -328,6 +372,8 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     document.addEventListener("mousemove", onPickMouseMove, true);
     document.addEventListener("click", onPickClick, true);
     document.addEventListener("keydown", onPickKeyDown, true);
+    document.addEventListener("scroll", onPickViewportChange, true);
+    window.addEventListener("resize", onPickViewportChange);
     emitPickerRuntimeEvent("hyperframe:picker:mode", { isPickMode: true, timestamp: Date.now() });
   }
 
@@ -346,6 +392,8 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     document.removeEventListener("mousemove", onPickMouseMove, true);
     document.removeEventListener("click", onPickClick, true);
     document.removeEventListener("keydown", onPickKeyDown, true);
+    document.removeEventListener("scroll", onPickViewportChange, true);
+    window.removeEventListener("resize", onPickViewportChange);
     emitPickerRuntimeEvent("hyperframe:picker:mode", { isPickMode: false, timestamp: Date.now() });
   }
 

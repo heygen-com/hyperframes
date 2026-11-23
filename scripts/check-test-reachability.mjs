@@ -30,14 +30,19 @@ export function matches(path, glob) {
   return regex.test(path);
 }
 
+// A negated glob is a final exclusion only under paths-filter's `some-with-excludes`; elsewhere it fails closed.
 function readFilters(source) {
   return Object.fromEntries(
     [...source.matchAll(/^            ([\w-]+):\n((?:              - .*\n)+)/gm)].map(
-      ([, name, body]) => {
+      ({ 1: name, 2: body, index }) => {
         const globs = [...body.matchAll(/^              - (["'])(.*?)\1(?:\s+#.*)?$/gm)].map(
           (match) => match[2],
         );
-        if (globs.some((glob) => glob.startsWith("!")))
+        const step = source.slice(source.lastIndexOf("- uses: dorny/paths-filter", index), index);
+        if (
+          globs.some((glob) => glob.startsWith("!")) &&
+          !/^\s+predicate-quantifier: some-with-excludes$/m.test(step)
+        )
           throw new Error("Negated path filters need an explicit reachability model");
         return [name, globs];
       },
@@ -45,28 +50,37 @@ function readFilters(source) {
   );
 }
 
+const filterMatches = (globs, path) =>
+  globs.some((glob) => !glob.startsWith("!") && matches(path, glob)) &&
+  !globs.some((glob) => glob.startsWith("!") && matches(path, glob.slice(1)));
+
 function jobField(body, key) {
   return body.match(new RegExp(`^    ${key}: (.*)$`, "m"))?.[1] ?? "";
+}
+
+// `needs` as a one-line list, a multi-line list or a block list, whichever the formatter wrote.
+function jobNeeds(body) {
+  const value = body.match(/^    needs:(.*(?:\n(?:      .*| *))*)/m)?.[1] ?? "";
+  return value
+    .replace(/#.*$/gm, "")
+    .replace(/^\s*- /gm, "")
+    .split(/[\s,[\]]+/)
+    .filter(Boolean);
 }
 
 function readJob(block) {
   const name = block.match(/^  ([\w-]+):/)[1];
   const body = block.slice(block.indexOf("\n") + 1);
   const condition = jobField(body, "if");
-  const needs = jobField(body, "needs");
-  return {
-    name,
-    body,
-    condition,
-    needs: needs.replace(/[[\]]/g, "").split(/,\s*/).filter(Boolean),
-  };
+  const needs = jobNeeds(body);
+  return { name, body, condition, needs };
 }
 
 // Reject unsupported control syntax instead of treating it as an unconditional job.
 export function readWorkflow(source) {
   if (/^\s+(?:paths|paths-ignore|branches-ignore):/m.test(source.split("jobs:\n")[0]))
     throw new Error("Workflow trigger restrictions need an explicit reachability model");
-  if (/^    (?:needs|if):\s*$/m.test(source))
+  if (/^    if:\s*$/m.test(source) || /^    needs:\s*\n      (?![-[])/m.test(source))
     throw new Error("Block job conditions and dependencies need an explicit reachability model");
   if (/^\s+(?:- )?working-directory:/m.test(source))
     throw new Error("Working-directory overrides need an explicit reachability model");
@@ -82,7 +96,7 @@ function conditionEnabled(condition, path, filters) {
   const resolved = condition
     .replace(/needs\.changes\.outputs\.([\w-]+) == 'true'/g, (_, name) => {
       if (!filters[name]) throw new Error(`Unknown path filter: ${name}`);
-      return String(filters[name].some((glob) => matches(path, glob)));
+      return String(filterMatches(filters[name], path));
     })
     .replace(/always\(\)/g, "true")
     .replace(/github.event_name == 'pull_request'/g, "true")
@@ -182,6 +196,20 @@ function selectionGlobs(testConfig, key, fallback) {
   return strings(selection[1]);
 }
 
+// Literal inline `projects: [{ test: {...} }]`; a project without a literal test block selects nothing.
+function projectOptions(config) {
+  const start = config.match(/\bprojects:\s*\[/);
+  if (!start) return undefined;
+  const body = config.slice(start.index + start[0].length);
+  return [...body.matchAll(/\btest:\s*\{/g)].map((block) =>
+    flatOptions(
+      optionTokens(body.slice(block.index + block[0].length)).filter(
+        (token) => !/^\/[/*]/.test(token),
+      ),
+    ),
+  );
+}
+
 function runnerSelection(cwd, files, read) {
   const configurations = files.filter(
     (path) => posix.dirname(path) === cwd && /(?:vitest|vite)\.config\./.test(path),
@@ -193,18 +221,21 @@ function runnerSelection(cwd, files, read) {
       .map((name) => read(posix.join(cwd, `${name}.config.ts`)))
       .find((value) => value !== undefined) ?? "";
   const testConfig = testOptions(config);
-  if (/\bprojects:|\bworkspace:/.test(testConfig))
-    throw new Error(`Unsupported test projects in ${cwd}`);
-  return {
-    includes: selectionGlobs(testConfig, "include", ["**/*.test.{mjs,ts,tsx}"]),
-    excludes: selectionGlobs(testConfig, "exclude", ["**/node_modules/**", "**/.git/**"]),
-  };
+  if (/\bworkspace:/.test(testConfig)) throw new Error(`Unsupported test workspace in ${cwd}`);
+  const projects = /\bprojects:/.test(testConfig) ? projectOptions(config) : undefined;
+  return (projects ?? [testConfig]).map((options) => ({
+    includes: selectionGlobs(options, "include", ["**/*.test.{mjs,ts,tsx}"]),
+    excludes: selectionGlobs(options, "exclude", ["**/node_modules/**", "**/.git/**"]),
+  }));
 }
 
-function selectedByRunner(relative, args, { includes, excludes }) {
-  if (excludes.some((glob) => matches(relative, glob))) return false;
-  if (!includes.some((glob) => matches(relative, glob))) return false;
-  return args.length === 0 || args.some((arg) => relative.includes(arg));
+function selectedByRunner(relative, args, selections) {
+  const selected = selections.some(
+    ({ includes, excludes }) =>
+      includes.some((glob) => matches(relative, glob)) &&
+      !excludes.some((glob) => matches(relative, glob)),
+  );
+  return selected && (args.length === 0 || args.some((arg) => relative.includes(arg)));
 }
 
 function runnerArguments(tokens, node, command) {
@@ -243,7 +274,7 @@ function runnerTests(command, cwd, files, read) {
   const { node, vitest, args } = runner;
   const selection = vitest
     ? runnerSelection(cwd, files, read)
-    : { includes: ["**/*.test.{mjs,ts,tsx}"], excludes: [] };
+    : [{ includes: ["**/*.test.{mjs,ts,tsx}"], excludes: [] }];
   return files.filter((file) => {
     if (!TEST.test(file)) return false;
     const relative = posix.relative(cwd, file);

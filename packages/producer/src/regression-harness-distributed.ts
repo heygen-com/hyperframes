@@ -25,7 +25,7 @@
  * capture jitter, so the harness can't use it as a per-test gate.
  *
  * Not every fixture can run in distributed-simulated mode. Distributed mode
- * refuses HDR mp4, NTSC framerates, and non-{24,30,60} fps at plan time.
+ * refuses HDR mp4, NTSC framerates, and fps outside DISTRIBUTED_FPS at plan time.
  * Fixtures that don't meet the constraints are skipped — the harness logs
  * the reason and the fixture is treated as "passed (skipped)" in
  * distributed-simulated mode.
@@ -33,8 +33,14 @@
 
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import type { Fps } from "@hyperframes/core";
-import { assemble, plan, renderChunk } from "./distributed.js";
+import {
+  DISTRIBUTED_FPS,
+  type DistributedFps,
+  type Fps,
+  isDistributedFps,
+} from "@hyperframes/core";
+import { assemble, renderChunk } from "./distributed.js";
+import { plan } from "./services/distributed/plan.js";
 import { PLAN_AUDIO_RELATIVE_PATH, type DistributedFormat } from "./services/distributed/shared.js";
 
 /**
@@ -70,12 +76,12 @@ export type DistributedSupportResult = { supported: true } | { supported: false;
  * Decide whether a fixture's `renderConfig` is one the distributed pipeline
  * can actually run. Two hard gates:
  *
- *   - fps must be `{ num: 24|30|60, den: 1 }`. `DistributedRenderConfig.fps`
- *     accepts only the three integer values, and rationals like
+ *   - fps must be `{ num: <DISTRIBUTED_FPS member>, den: 1 }`. `DistributedRenderConfig.fps`
+ *     accepts only those integer values, and rationals like
  *     `{ num: 30000, den: 1001 }` (NTSC) trip the type system at the call
  *     site. We surface this gate in code rather than only in TS so the
  *     harness can skip the fixture cleanly instead of throwing.
- *   - hdr must not be `true`. Distributed mode is SDR-only at v1.
+ *   - hdr must not be `true`. Distributed mode is SDR-only.
  *
  * Callers that want the structured reason can read it off the returned
  * `reason` field; the message is intended to be log-friendly.
@@ -92,10 +98,10 @@ export function checkDistributedSupport(renderConfig: {
     };
   }
   const fpsNum = renderConfig.fps.num;
-  if (fpsNum !== 24 && fpsNum !== 30 && fpsNum !== 60) {
+  if (!isDistributedFps(fpsNum)) {
     return {
       supported: false,
-      reason: `fps ${fpsNum} not in {24, 30, 60} (DistributedRenderConfig.fps is a closed set)`,
+      reason: `fps ${fpsNum} not in {${DISTRIBUTED_FPS.join(", ")}} (DistributedRenderConfig.fps is a closed set)`,
     };
   }
   if (renderConfig.hdr === true) {
@@ -120,7 +126,7 @@ export interface RunDistributedSimulatedInput {
   /** Where to write the assembled final mp4 / mov / png-sequence directory. */
   renderedOutputPath: string;
   /** From the fixture's renderConfig — must pass `checkDistributedSupport`. */
-  fps: 24 | 30 | 60;
+  fps: DistributedFps;
   format: DistributedFormat;
   /**
    * Codec for `format: "mp4"`. Defaults to `"h264"`; pass `"h265"` to
@@ -134,6 +140,7 @@ export interface RunDistributedSimulatedInput {
   maxParallelChunks?: number;
   /** Forwarded to `plan()` and re-applied by `renderChunk()` at boot. */
   variables?: Record<string, unknown>;
+  allowOutsideProjectAssets?: boolean;
 }
 
 /**
@@ -184,6 +191,7 @@ export async function runDistributedSimulatedRender(
       variables: input.variables,
     },
     planDir,
+    { allowOutsideProjectAssets: input.allowOutsideProjectAssets },
   );
 
   // Step B: render every chunk. Sequential to keep the harness predictable —

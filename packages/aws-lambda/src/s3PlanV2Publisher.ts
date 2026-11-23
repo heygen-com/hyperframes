@@ -8,7 +8,14 @@ import {
   type PlanV2ArtifactPublisher,
   type PlanV2PublishBlob,
 } from "@hyperframes/producer/distributed";
-import { parseS3Uri, uploadContentAddressedFileToS3 } from "./s3Transport.js";
+import { CONTENT_STORE_PREFIX } from "./contentStore.js";
+import {
+  ensureContentStoreObject,
+  formatS3Uri,
+  parseS3Uri,
+  putContentStoreFile,
+  uploadContentAddressedFileToS3,
+} from "./s3Transport.js";
 
 export interface S3PlanV2ArtifactPublisherOptions {
   readonly s3: S3Client;
@@ -66,15 +73,18 @@ export class S3PlanV2ArtifactPublisher implements PlanV2ArtifactPublisher {
   readonly artifactPrefix: string;
   readonly manifestUri: string;
   readonly #s3: S3Client;
+  readonly #bucket: string;
   readonly #temporaryRoot: string;
   readonly #publishedDigests = new Set<string>();
   #state: "open" | "committed" | "aborted" = "open";
 
   constructor(options: Readonly<S3PlanV2ArtifactPublisherOptions>) {
     const outputPrefix = `${trimTrailingSlash(options.planOutputS3Prefix)}/v2`;
-    parseS3Uri(outputPrefix);
+    const { bucket } = parseS3Uri(outputPrefix);
     this.#s3 = options.s3;
-    this.artifactPrefix = `${outputPrefix}/artifacts/sha256`;
+    this.#bucket = bucket;
+    // Shared by every render, so a blob the SDK or an earlier render uploaded is reused, not re-sent.
+    this.artifactPrefix = formatS3Uri({ bucket, key: CONTENT_STORE_PREFIX });
     this.manifestUri = `${outputPrefix}/manifest.json`;
     this.#temporaryRoot = options.temporaryRoot ?? tmpdir();
     mkdirSync(this.#temporaryRoot, { recursive: true });
@@ -83,14 +93,21 @@ export class S3PlanV2ArtifactPublisher implements PlanV2ArtifactPublisher {
   async putBlob(blob: Readonly<PlanV2PublishBlob>): Promise<void> {
     this.#assertOpen("publish a blob");
     const digest = assertSha256(blob.sha256, "S3 published blob sha256");
+    if (this.#publishedDigests.has(digest)) return;
     const sourceSize = statSync(blob.sourcePath).size;
     if (sourceSize !== blob.sizeBytes) {
       throw new PlanV2IntegrityError(
         `S3 published blob size changed for ${digest}: expected ${blob.sizeBytes}, got ${sourceSize}`,
       );
     }
-    const uri = `${this.artifactPrefix}/${digest.slice(0, 2)}/${digest}`;
-    await uploadContentAddressedFileToS3(this.#s3, blob.sourcePath, uri, digest);
+    await putContentStoreFile(this.#s3, blob.sourcePath, this.#bucket, digest);
+    this.#publishedDigests.add(digest);
+  }
+
+  async referenceStoredBlob(blob: Readonly<Omit<PlanV2PublishBlob, "sourcePath">>): Promise<void> {
+    this.#assertOpen("reference a stored blob");
+    const digest = assertSha256(blob.sha256, "S3 referenced blob sha256");
+    await ensureContentStoreObject(this.#s3, this.#bucket, digest, blob.sizeBytes);
     this.#publishedDigests.add(digest);
   }
 
@@ -124,9 +141,8 @@ export class S3PlanV2ArtifactPublisher implements PlanV2ArtifactPublisher {
 
   async abort(): Promise<void> {
     if (this.#state === "open") this.#state = "aborted";
-    // Remote CAS blobs are immutable and may already be reused by a retry.
-    // Without a committed manifest they are unreachable and expire under the
-    // render bucket's intermediate-object lifecycle policy.
+    // Remote CAS blobs are immutable and may already be reused by a retry or
+    // another render. They expire under the shared content store's lifecycle.
   }
 
   #assertOpen(operation: string): void {

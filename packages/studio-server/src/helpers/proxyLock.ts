@@ -1,0 +1,123 @@
+import {
+  closeSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeSync,
+} from "node:fs";
+import { basename, dirname, join } from "node:path";
+
+const POLL_MS = 500;
+const UNREADABLE_LOCK_MS = 10_000;
+
+function lockPathFor(cachePath: string): string {
+  return join(dirname(cachePath), `.lock-${basename(cachePath)}`);
+}
+
+export class CopyLockStalledError extends Error {
+  constructor(copy: string, stallMs: number) {
+    super(
+      `another process holds the copy of ${copy} and has made no progress for ${Math.round(stallMs / 1000)}s`,
+    );
+    this.name = "CopyLockStalledError";
+  }
+}
+
+type Sightings = Map<string, { mtimeMs: number; seenAt: number }>;
+
+function changedNoLaterThanFirstSeen(sightings: Sightings, file: string, mtimeMs: number): number {
+  const earlier = sightings.get(file);
+  const seenAt = earlier?.mtimeMs === mtimeMs ? earlier.seenAt : Date.now();
+  sightings.set(file, { mtimeMs, seenAt });
+  return Math.min(mtimeMs, seenAt);
+}
+
+function lastActivityMs(
+  cachePath: string,
+  lockPath: string,
+  unguessablePieceName: string | undefined,
+  sightings: Sightings,
+): number {
+  const name = basename(cachePath);
+  const isPiece = (file: string) =>
+    unguessablePieceName !== undefined &&
+    (file.startsWith(unguessablePieceName) ||
+      (file.startsWith(".tmp-") && file.includes(`-${unguessablePieceName}`)));
+  const mine = (file: string) =>
+    file === basename(lockPath) ||
+    (file.startsWith(".tmp-") && file.endsWith(`-${name}`)) ||
+    isPiece(file);
+  let newest = 0;
+  for (const file of readdirSync(dirname(cachePath))) {
+    if (!mine(file)) continue;
+    const changed = statSync(join(dirname(cachePath), file), { throwIfNoEntry: false })?.mtimeMs;
+    newest = Math.max(newest, changedNoLaterThanFirstSeen(sightings, file, changed ?? 0));
+  }
+  return newest;
+}
+
+function ownerIsAlive(lockPath: string): boolean {
+  try {
+    const pid = Number(readFileSync(lockPath, "utf8"));
+    if (!Number.isInteger(pid) || pid <= 0) {
+      return Date.now() - statSync(lockPath).mtimeMs < UNREADABLE_LOCK_MS;
+    }
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (err) {
+      return (err as NodeJS.ErrnoException).code === "EPERM";
+    }
+  } catch {
+    return false;
+  }
+}
+
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** The right to make the copy at `cachePath`; null once `copyMade` holds; throws on a stalled live owner. */
+export async function acquireCopyLock(
+  cachePath: string,
+  copyMade: (path: string) => boolean,
+  signal: AbortSignal,
+  stallMs: number,
+  unguessablePieceName?: string,
+): Promise<(() => void) | null> {
+  const lockPath = lockPathFor(cachePath);
+  const sightings: Sightings = new Map();
+  for (;;) {
+    signal.throwIfAborted();
+    if (copyMade(cachePath)) return null;
+    try {
+      const fd = openSync(lockPath, "wx");
+      writeSync(fd, String(process.pid));
+      closeSync(fd);
+      if (!copyMade(cachePath)) return () => rmSync(lockPath, { force: true });
+      rmSync(lockPath, { force: true });
+      return null;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+    if (!ownerIsAlive(lockPath)) rmSync(lockPath, { force: true });
+    else if (
+      Date.now() - lastActivityMs(cachePath, lockPath, unguessablePieceName, sightings) >
+      stallMs
+    )
+      throw new CopyLockStalledError(basename(cachePath), stallMs);
+    else await pause(POLL_MS, signal);
+  }
+}

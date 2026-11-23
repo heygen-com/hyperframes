@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { classifyChromeProcesses, readChromePids } from "./frameCapture.js";
+import { describe, expect, it, vi } from "vitest";
+import { classifyChromeProcesses, closeCaptureSession, readChromePids } from "./frameCapture.js";
 
 describe("classifyChromeProcesses", () => {
   it("splits CDP SystemInfo.getProcessInfo rows by type and keeps the browser pid", () => {
@@ -86,5 +86,26 @@ describe("readChromePids", () => {
     );
     // Still detached: a failed probe must not leak a CDP session per tick.
     expect(cdp.wasDetached()).toBe(true);
+  });
+});
+
+describe("closeCaptureSession", () => {
+  it("does not wait on a final memory sample that never answers", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = {
+        chromeMemory: { stop: () => {}, sampleOnce: () => new Promise<void>(() => {}) },
+        pageReleased: true,
+        browserReleased: true,
+      };
+      let closed = false;
+      void closeCaptureSession(session as never).then(() => (closed = true));
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(closed).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(closed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

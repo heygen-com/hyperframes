@@ -7,13 +7,11 @@ const smoke = readFileSync(smokePath, "utf-8");
 const dockerfile = readFileSync(join(import.meta.dir, "../Dockerfile"), "utf-8");
 
 describe("GCP smoke ownership and protocol safety", () => {
-  it("defaults to v2 and retains explicit v1/v2 protocol arguments", () => {
-    expect(smoke).toContain('PROTOCOLS="${PROTOCOLS:-v2}"');
-    expect(smoke).toContain("--protocols)");
+  it("runs only the Plan v2 protocol", () => {
+    expect(smoke).toContain('PROTOCOL="v2"');
+    expect(smoke).not.toContain("--protocols)");
     expect(smoke).toContain("PlanProtocol: $protocol");
-    expect(smoke).toContain("decodedFramesEqual");
-    expect(smoke).toContain("decodedAudioEqual");
-    expect(smoke).toContain("normalizedMetadataEqual");
+    expect(smoke).not.toContain("PlanProtocol: v1");
     expect(smoke).toContain('.CaptureMode == "beginframe"');
     expect(smoke).toContain("expected every chunk to use beginframe");
   });
@@ -70,5 +68,21 @@ describe("GCP smoke ownership and protocol safety", () => {
     const cleanup = smoke.slice(cleanupStart, cleanupEnd);
     expect(cleanup).not.toContain("|| true");
     expect(cleanup).toContain("exit 7");
+  });
+});
+
+describe("GCP render image", () => {
+  it("holds render pages to their project server and public addresses", () => {
+    expect(dockerfile).toMatch(/^ENV PRODUCER_RESTRICT_PAGE_NETWORK=true$/m);
+  });
+
+  it("lets a deployment turn the restriction off through Terraform, on by default", () => {
+    const main = readFileSync(join(import.meta.dir, "main.tf"), "utf-8");
+    const variables = readFileSync(join(import.meta.dir, "variables.tf"), "utf-8");
+    expect(main).toContain('name  = "PRODUCER_RESTRICT_PAGE_NETWORK"');
+    expect(main).toContain('value = var.restrict_page_network ? "true" : "false"');
+    expect(variables).toMatch(
+      /variable "restrict_page_network" \{\s*type\s*= bool[\s\S]*?default\s*= true\s*\}/,
+    );
   });
 });

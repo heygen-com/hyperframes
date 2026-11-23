@@ -1,5 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { findMusicAudioSrc } from "./beatFile";
+import {
+  audioRelPathForSrc,
+  beatFilePathForSrc,
+  findMusicAudioSrc,
+  parseBeats,
+  serializeBeats,
+} from "./beatFile";
+
+describe("beat file source paths", () => {
+  it.each([
+    ["assets/100% beat.wav?v=1#listen", "assets/100% beat.wav"],
+    ["assets/100%20beat%.wav?v=1#listen", "assets/100 beat%.wav"],
+    ["https://example.test/assets/100%20beat%.wav?v=1", "assets/100 beat%.wav"],
+    ["/api/projects/demo/preview/assets/100%20beat%.wav?v=1", "assets/100 beat%.wav"],
+    ["/api/projects/demo/preview/comp/assets/100%20beat%.wav#listen", "assets/100 beat%.wav"],
+  ])("resolves filename punctuation in %s", (src, path) => {
+    expect(audioRelPathForSrc(src)).toBe(path);
+    expect(beatFilePathForSrc(src)).toBe(`beats/${path}.json`);
+  });
+
+  it.each([
+    ["assets/bed.wav?cache=1", "assets/bed.wav"],
+    ["audio/bed.wav", "audio/bed.wav"],
+    ["assets/a%2520%3F%23.wav?cache=1#listen", "assets/a%20?#.wav"],
+    ["/api/projects/demo/preview/comp/assets/a%2520%3F%23.wav?cache=1", "assets/a%20?#.wav"],
+    ["assets/100% beat.wav", "assets/100% beat.wav"],
+  ])("preserves the source identity of %s", (src, path) => {
+    expect(audioRelPathForSrc(src)).toBe(path);
+    expect(beatFilePathForSrc(src)).toBe(`beats/${path}.json`);
+  });
+
+  it.each([null, undefined, "", "blob:temporary", "data:audio/wav;base64,AAAA"])(
+    "does not persist a beat path for %s",
+    (src) => {
+      expect(audioRelPathForSrc(src)).toBeNull();
+      expect(beatFilePathForSrc(src)).toBeNull();
+    },
+  );
+});
 
 describe("findMusicAudioSrc", () => {
   it("finds a video with sound tagged as music", () => {
@@ -89,5 +127,26 @@ describe("findMusicAudioSrc", () => {
         '<audio id="music" data-timeline-role="voiceover" src="speech.wav"><audio id="bgm" src="right.wav">',
       ),
     ).toBe("right.wav");
+  });
+});
+
+describe("serializeBeats", () => {
+  it("writes version 1 with the audio path and each beat's time and strength, rounded to the millisecond", () => {
+    const text = serializeBeats([0.31249, 0.9375], [0.87654, 1], "assets/song.mp3");
+    expect(text).toBe(
+      `${JSON.stringify(
+        {
+          version: 1,
+          audio: "assets/song.mp3",
+          beats: [
+            { time: 0.312, strength: 0.877 },
+            { time: 0.938, strength: 1 },
+          ],
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    expect(parseBeats(text)).toEqual({ times: [0.312, 0.938], strengths: [0.877, 1] });
   });
 });

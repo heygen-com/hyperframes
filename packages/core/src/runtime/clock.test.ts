@@ -284,6 +284,82 @@ describe("TransportClock", () => {
       expect(clock.getSource()).toBe("audio");
     });
 
+    /**
+     * Plays 1/60 s ticks against an element whose time moves in `stepMs` steps at `speed`; frames are 30 fps. Frames
+     * count from the 7th tick: until the element's second update the clock does not know its step.
+     */
+    function playStepping(ticks: number, stepMs: number, speed = 1, stallAfterMs = Infinity) {
+      const { clock, advance, getMs } = createClock({ duration: 60 });
+      const el = createMockAudioEl(0, false);
+      clock.play();
+      clock.attachAudioSource({ el, compositionStart: 0, mediaStart: 0 });
+      let last = 0;
+      let skipped = 0;
+      let heldTicks = 0;
+      let longestHold = 0;
+      let mostAhead = 0;
+      let back = 0;
+      let previous = 0;
+      for (let tick = 1; tick <= ticks; tick++) {
+        advance(1000 / 60);
+        const played = Math.min(getMs(), stallAfterMs) * speed;
+        el.currentTime = (Math.floor(played / stepMs) * stepMs) / 1000;
+        const now = clock.now();
+        if (now < previous) back += 1;
+        previous = now;
+        mostAhead = Math.max(mostAhead, now - el.currentTime);
+        const frame = Math.floor(now * 30 + 1e-6);
+        if (tick > 6 && frame > last + 1) skipped += 1;
+        heldTicks = frame === last ? heldTicks + 1 : 0;
+        if (tick > 6) longestHold = Math.max(longestHold, heldTicks);
+        last = frame;
+      }
+      return { skipped, longestHold, mostAhead, back, end: clock.now() };
+    }
+
+    it("moves on every display frame between the element's time updates, never skipping a film frame", () => {
+      for (const stepMs of [30, 40, 50]) {
+        const run = playStepping(240, stepMs);
+        expect(run.skipped, `${stepMs} ms steps: film frames skipped`).toBe(0);
+        // A 30 fps frame spans two 60 Hz ticks: held for one extra tick, never two.
+        expect(run.longestHold, `${stepMs} ms steps: ticks a frame is held`).toBeLessThanOrEqual(1);
+        expect(run.back, `${stepMs} ms steps: reads that went back`).toBe(0);
+        expect(run.mostAhead, `${stepMs} ms steps: lead over the element`).toBeLessThanOrEqual(
+          stepMs / 1000 + 1e-9,
+        );
+      }
+    });
+
+    it("stops within one of the element's own updates when the element stops moving", () => {
+      const run = playStepping(120, 40, 1, 1000);
+      expect(run.end).toBeLessThanOrEqual(1 + 0.04 + 1e-9);
+    });
+
+    it("stays within one update of an element that plays slightly slower than the wall clock", () => {
+      const run = playStepping(600, 40, 0.98);
+      expect(run.mostAhead).toBeLessThanOrEqual(0.04 + 1e-9);
+      expect(run.back).toBe(0);
+    });
+
+    it("names the clock it follows: an audio element, WebAudio, or neither", () => {
+      const { clock } = createClock({ duration: 10 });
+      expect(clock.followedClock()).toBe("monotonic");
+      clock.play();
+      expect(clock.followedClock()).toBe("monotonic");
+      clock.attachAudioSource({
+        el: createMockAudioEl(3.5, false),
+        compositionStart: 0,
+        mediaStart: 0,
+      });
+      expect(clock.followedClock()).toBe("audio");
+      clock.attachAudioSource({ currentTimeSeconds: 2, webAudio: true });
+      expect(clock.followedClock()).toBe("webaudio");
+      clock.attachAudioSource({ currentTimeSeconds: 2 });
+      expect(clock.followedClock()).toBe("audio");
+      clock.detachAudioSource();
+      expect(clock.followedClock()).toBe("monotonic");
+    });
+
     it("falls back to monotonic when audio is paused", () => {
       const { clock, advance } = createClock({ duration: 10 });
       const audioEl = createMockAudioEl(3.5, true);
@@ -338,7 +414,7 @@ describe("TransportClock", () => {
       expect(clock.getSource()).toBe("monotonic");
     });
 
-    it("holds, never rewinds, the playhead for a clip that started late, then follows it", () => {
+    it("never rewinds the playhead for a clip that started late, and runs on while it catches up", () => {
       const { clock, advance } = createClock({ duration: 30 });
       clock.play();
       advancePolled(clock, advance, 6300);
@@ -347,20 +423,43 @@ describe("TransportClock", () => {
       expect(clock.now()).toBeCloseTo(6.3, 5);
       advance(100);
       sfx.currentTime = 0.02;
-      expect(clock.now()).toBeCloseTo(6.3, 5);
+      expect(clock.now()).toBeCloseTo(6.4, 5); // steering catches the clip up; the playhead does not wait
       advance(100);
-      sfx.currentTime = 0.12;
-      expect(clock.now()).toBeCloseTo(6.37, 5);
+      sfx.currentTime = 0.4; // now it is ahead of the playhead: the playhead follows it
+      expect(clock.now()).toBeCloseTo(6.65, 5);
     });
 
-    it("holds the playhead while its element seeks, even to a time ahead", () => {
+    it("keeps the playhead moving while a just-played element is frozen behind it, as WebKit leaves it", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.play();
+      advancePolled(clock, advance, 6300);
+      const take = createMockAudioEl(0, false); // playing, its time frozen at its start
+      clock.attachAudioSource({ el: take, compositionStart: 6, mediaStart: 0 });
+      let previous = clock.now();
+      for (let i = 0; i < 20; i++) {
+        advance(16);
+        const now = clock.now();
+        expect(now).toBeGreaterThan(previous);
+        previous = now;
+      }
+    });
+
+    it("keeps the playhead moving while the element it follows is seeked", () => {
       const { clock, advance } = createClock({ duration: 30 });
       clock.play();
       advancePolled(clock, advance, 2000);
-      const voice = Object.assign(createMockAudioEl(3, false), { seeking: true });
+      const voice = Object.assign(createMockAudioEl(0.1, false), { seeking: false });
       clock.attachAudioSource({ el: voice, compositionStart: 2, mediaStart: 0 });
-      advance(150);
-      expect(clock.now()).toBeCloseTo(2, 5);
+      expect(clock.now()).toBeCloseTo(2.1, 5);
+      voice.seeking = true;
+      voice.currentTime = 3; // WebKit reports the target at once
+      let previous = clock.now();
+      for (let i = 0; i < 20; i++) {
+        advance(16);
+        const now = clock.now();
+        expect(now).toBeGreaterThan(previous);
+        previous = now;
+      }
     });
 
     it("holds the playhead on an element that is buffering behind it", () => {
@@ -384,6 +483,24 @@ describe("TransportClock", () => {
       expect(clock.now()).toBeCloseTo(5.016, 5);
     });
 
+    it("a Play waits for audio that has not started where it began, but never pulls back to audio far behind", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.seek(5);
+      clock.play();
+      advance(16);
+      expect(clock.now()).toBeCloseTo(5.016, 5);
+      const voice = createMockAudioEl(5, false);
+      clock.attachAudioSource({ el: voice, compositionStart: 0, mediaStart: 0 });
+      advance(100);
+      expect(clock.now()).toBe(5);
+
+      clock.pause();
+      clock.play();
+      advance(16);
+      voice.currentTime = 1;
+      expect(clock.now()).toBeCloseTo(5.016, 5);
+    });
+
     it("does not freeze on a short native loop that wraps", () => {
       const { clock, advance } = createClock({ duration: 30 });
       clock.play();
@@ -395,14 +512,18 @@ describe("TransportClock", () => {
       expect(clock.now()).toBeCloseTo(0.316, 5);
     });
 
-    it("holds the playhead for a looping bed that starts late", () => {
+    it("keeps the playhead moving for a looping bed that starts late", () => {
       const { clock, advance } = createClock({ duration: 30 });
       clock.play();
       advancePolled(clock, advance, 2000);
-      const bed = Object.assign(createMockAudioEl(0, false), { loop: true, duration: 8 });
+      const bed = Object.assign(createMockAudioEl(0, false), {
+        loop: true,
+        duration: 8,
+        readyState: 4,
+      });
       clock.attachAudioSource({ el: bed, compositionStart: 1.9, mediaStart: 0 });
       advance(16);
-      expect(clock.now()).toBeCloseTo(2, 5);
+      expect(clock.now()).toBeCloseTo(2.016, 5);
     });
 
     it("continues from the last audio time when the element drops out", () => {

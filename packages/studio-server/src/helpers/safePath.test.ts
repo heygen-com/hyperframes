@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isPrivateProjectFile, walkDir } from "./safePath";
+import { isPrivateProjectFile, isWritableProjectFile, walkDir } from "./safePath";
 
 const hooks = vi.hoisted(() => ({ unreadable: new Map<string, string>() }));
 vi.mock("node:fs", async (importOriginal) => {
@@ -50,6 +50,26 @@ describe("walkDir", () => {
     expect(files).toContain(".hyperframes/examples/preset.html");
     expect(files).toContain("compositions/scene.html");
     expect(files).not.toContain(".hyperframes/backup/snapshot.html");
+  });
+
+  it("hides a nested project's backup files too", () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, "sub", ".HyperFrames", "Backup"), { recursive: true });
+    writeFileSync(join(projectDir, "sub", ".HyperFrames", "Backup", "snapshot.html"), "backup");
+    writeFileSync(join(projectDir, "sub", "index.html"), "sub");
+
+    expect(walkDir(projectDir)).toEqual(["sub/index.html"]);
+  });
+
+  it("leaves a render's scratch dir out, so its compiled index.html is not listed as a composition", () => {
+    const projectDir = createProjectDir();
+    const work = join(projectDir, "work-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d-Ab12Cd");
+    mkdirSync(join(work, "compiled"), { recursive: true });
+    writeFileSync(join(work, "compiled", "index.html"), "scratch");
+    writeFileSync(join(projectDir, "index.html"), "root");
+    writeFileSync(join(projectDir, "video.mp4"), "output");
+
+    expect(walkDir(projectDir).sort()).toEqual(["index.html", "video.mp4"]);
   });
 
   it.each(["EACCES", "EPERM", "ENOENT", "ENOTDIR"])(
@@ -100,6 +120,61 @@ describe("isPrivateProjectFile", () => {
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/prepared-assets")).toBe(false);
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/requests/1/before.png")).toBe(false);
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/requests-old/x")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/prepared-assets/downloads/a.gif")).toBe(
+      true,
+    );
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/Prepared-Assets/DOWNLOADS/a.gif")).toBe(
+      true,
+    );
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/prepared-assets/downloads")).toBe(true);
     expect(isPrivateProjectFile("/p", "/p/agent-handoff.json")).toBe(false);
+  });
+
+  it("names a nested project's .hyperframes/ records, Studio's file names included", () => {
+    expect(isPrivateProjectFile("/p", "/p/sub/.hyperframes/app-history.jsonl")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/a/b/.hyperframes/agent-handoff.json")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/sub/.hyperframes/studio-motion.json")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/sub/.hyperframes/prepared-assets/gif/a.mp4")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/sub/index.html")).toBe(false);
+  });
+});
+
+describe("isWritableProjectFile and the project's package.json", () => {
+  function projectRunning(pkg: object) {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "package.json"), JSON.stringify(pkg));
+    return (path: string) => isWritableProjectFile(projectDir, join(projectDir, path));
+  }
+
+  it("refuses the script files package.json runs, in any spelling the write rule folds", () => {
+    const writable = projectRunning({
+      main: "server.js",
+      bin: { tool: "./bin/tool.mjs" },
+      scripts: { build: "node ./build.mjs && tsx scripts/gen.ts --out=dist", dev: "vite" },
+    });
+    for (const path of ["server.js", "Server.JS", "bin/tool.mjs", "build.mjs", "scripts/gen.ts"])
+      expect(writable(path), path).toBe(false);
+  });
+
+  it("still writes composition scripts, folders and files package.json does not name", () => {
+    const writable = projectRunning({ scripts: { build: "vite build --outDir dist" } });
+    for (const path of ["script.js", "compositions/scene.js", "dist", "index.html"])
+      expect(writable(path), path).toBe(true);
+  });
+
+  it("reads a package.json changed since the last write", () => {
+    const projectDir = createProjectDir();
+    const pkg = join(projectDir, "package.json");
+    writeFileSync(pkg, JSON.stringify({ scripts: {} }));
+    expect(isWritableProjectFile(projectDir, join(projectDir, "run.js"))).toBe(true);
+    writeFileSync(pkg, JSON.stringify({ scripts: { start: "node run.js" } }));
+    expect(isWritableProjectFile(projectDir, join(projectDir, "run.js"))).toBe(false);
+  });
+
+  it("writes as before when package.json is missing or not JSON", () => {
+    const projectDir = createProjectDir();
+    expect(isWritableProjectFile(projectDir, join(projectDir, "run.js"))).toBe(true);
+    writeFileSync(join(projectDir, "package.json"), "{ not json");
+    expect(isWritableProjectFile(projectDir, join(projectDir, "run.js"))).toBe(true);
   });
 });

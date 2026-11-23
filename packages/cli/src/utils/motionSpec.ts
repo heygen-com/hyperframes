@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
+import { readJsonFileText } from "./jsonFlag.js";
 import { basename, join } from "node:path";
 
 /**
@@ -133,7 +134,7 @@ export function findMotionSpec(projectDir: string): string | null {
 export function readMotionSpec(path: string): MotionSpecParse {
   let raw: unknown;
   try {
-    raw = JSON.parse(readFileSync(path, "utf-8"));
+    raw = JSON.parse(readJsonFileText(path));
   } catch (err) {
     return { ok: false, errors: [`could not read ${basename(path)}: ${(err as Error).message}`] };
   }

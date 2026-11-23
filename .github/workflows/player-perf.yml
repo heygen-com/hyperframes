@@ -21,15 +21,17 @@ jobs:
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 8
     outputs:
-      perf: ${{ steps.filter.outputs.perf }}
+      perf: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.perf }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
       # The API path can fail the perf workflow on transient listFiles timeouts.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
+        timeout-minutes: 3
+      - name: Fetch the history the diffs read
+        timeout-minutes: 2
+        uses: ./.github/actions/fetch-history
       # HEAD is the PR merge ref; its first parent is the current base tip, unlike the payload's
       # base.sha, which goes stale and would count the base's newer commits as the PR's changes.
       - name: Find the pull request's current base
@@ -39,6 +41,9 @@ jobs:
           git rev-parse --verify -q HEAD^2 > /dev/null || { echo "::error::HEAD is not the pull request merge commit"; exit 1; }
           sha="$(git rev-parse --verify HEAD^1)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Find a release-only diff
+        id: release
+        uses: ./.github/actions/release-only-diff
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         with:
@@ -130,6 +135,20 @@ jobs:
         env:
           PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: bun run test:browser-raster
+
+      - name: Verify the player takes the box its embed asks for (load shard only)
+        if: matrix.shard == 'load'
+        working-directory: packages/player
+        env:
+          PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+        run: bun run test:browser-box
+
+      - name: Verify a sealed player's sound plays where its frame may not start it (load shard only)
+        if: matrix.shard == 'load'
+        working-directory: packages/player
+        env:
+          PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+        run: bun run test:browser-sealed-audio
 
       - name: Run player perf — ${{ matrix.shard }} (measure mode)
         working-directory: packages/player

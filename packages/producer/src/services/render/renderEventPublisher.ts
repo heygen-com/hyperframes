@@ -3,6 +3,8 @@ import type { ProducerLogger } from "../../logger.js";
 import type { ProgressCallback, RenderJob } from "../renderOrchestrator.js";
 import { updateJobStatus } from "./shared.js";
 
+const FLUSH_TIMEOUT_MS = 10_000;
+
 function snapshotJob(job: RenderJob): RenderJob {
   return {
     ...job,
@@ -39,7 +41,15 @@ export class OrderedRenderEventPublisher {
   }
 
   async flush(): Promise<void> {
-    await this.tail;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const drained = await Promise.race([
+      this.tail.then(() => true),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), FLUSH_TIMEOUT_MS);
+      }),
+    ]);
+    clearTimeout(timer);
+    if (!drained) this.log.warn("Render event sink did not drain; continuing without it");
   }
 }
 

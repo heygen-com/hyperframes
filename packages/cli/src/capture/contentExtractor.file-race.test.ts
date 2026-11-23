@@ -8,6 +8,7 @@ const hooks = vi.hoisted(() => ({
   afterStat: () => {},
   beforeRead: () => {},
   descriptor: -1,
+  closed: [] as number[],
 }));
 
 vi.mock("node:fs", async (importOriginal) => {
@@ -24,6 +25,10 @@ vi.mock("node:fs", async (importOriginal) => {
       const stat = actual.fstatSync(fd);
       hooks.afterStat();
       return stat;
+    },
+    closeSync: (fd: number) => {
+      actual.closeSync(fd);
+      hooks.closed.push(fd);
     },
     readFileSync: (path: fs.PathOrFileDescriptor) => {
       hooks.beforeRead();
@@ -49,6 +54,7 @@ describe("caption image file reads", () => {
     hooks.afterStat = () => {};
     hooks.beforeRead = () => {};
     hooks.descriptor = -1;
+    hooks.closed = [];
     sentBody = "";
     fetchMock.mockClear();
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
@@ -63,10 +69,10 @@ describe("caption image file reads", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  async function expectClosed() {
-    const actual = await vi.importActual<typeof fs>("node:fs");
+  // Probing the number with fstat races its reuse by any file opened after the close.
+  function expectClosed() {
     expect(hooks.descriptor).toBeGreaterThanOrEqual(0);
-    expect(() => actual.fstatSync(hooks.descriptor)).toThrow(/EBADF/);
+    expect(hooks.closed).toEqual([hooks.descriptor]);
   }
 
   it("reads the checked image when its directory entry is replaced", async () => {
@@ -77,7 +83,7 @@ describe("caption image file reads", () => {
     expect(await captionImagesWithGemini(dir, () => {}, [])).toEqual({ "hero.png": "A hero." });
     expect(sentBody).toContain(Buffer.from("original image").toString("base64"));
     expect(sentBody).not.toContain(Buffer.from("replacement image").toString("base64"));
-    await expectClosed();
+    expectClosed();
   });
 
   it.each([4_000_000, 4_000_001])("preserves the inline size limit for %i bytes", async (size) => {
@@ -88,7 +94,7 @@ describe("caption image file reads", () => {
     expect(captions).toEqual(size === 4_000_000 ? { "hero.png": "A hero." } : {});
     expect(fetchMock).toHaveBeenCalledTimes(size === 4_000_000 ? 1 : 0);
     expect(read).toHaveBeenCalledTimes(size === 4_000_000 ? 1 : 0);
-    await expectClosed();
+    expectClosed();
   });
 
   it.each(["stat", "read"])("closes the image and reports a failed %s", async (step) => {
@@ -101,6 +107,6 @@ describe("caption image file reads", () => {
     expect(await captionImagesWithGemini(dir, () => {}, warnings)).toEqual({});
     expect(warnings).toEqual(["OpenRouter vision failed for 1 asset(s); captions omitted."]);
     expect(fetchMock).not.toHaveBeenCalled();
-    await expectClosed();
+    expectClosed();
   });
 });

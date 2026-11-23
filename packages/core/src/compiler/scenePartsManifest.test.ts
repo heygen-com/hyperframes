@@ -87,4 +87,23 @@ describe("addScenePartsManifest", () => {
     expect(ba.scenes).toEqual(ab.scenes);
     expect(ba.shared).not.toBe(ab.shared);
   });
+
+  it("leaves the shared fonts style out of the shared hash, so a scene that brings a font still swaps", () => {
+    const withFonts = (faces: string) =>
+      doc("one", "<h1>t</h1>").replace(
+        "<head>",
+        `<head><style data-hf-scene-fonts>${faces}</style>`,
+      );
+    const one = manifestOf(
+      addScenePartsManifest(withFonts('@font-face{font-family:"A";src:url(a.woff2)}')),
+    );
+    const two = manifestOf(
+      addScenePartsManifest(
+        withFonts(
+          '@font-face{font-family:"A";src:url(a.woff2)}\n@font-face{font-family:"B";src:url(b.woff2)}',
+        ),
+      ),
+    );
+    expect(two.shared).toBe(one.shared);
+  });
 });

@@ -27,12 +27,8 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # Dispatch on the ref to render: the run then checks out that ref and writes only that ref's cache.
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Git ref to render (branch / tag / SHA)."
-        required: false
-        default: ""
 
 concurrency:
   group: windows-render-${{ github.ref }}
@@ -43,16 +39,24 @@ jobs:
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 8
+    permissions:
+      actions: read
+      contents: read
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      code: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.code }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
       # The API path can fail the workflow on transient listFiles timeouts
       # before the Windows render jobs even start.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
+        timeout-minutes: 3
+      - name: Fetch the history the diffs read
+        timeout-minutes: 2
+        uses: ./.github/actions/fetch-history
+      - name: Check whether this commit already passed before a title or body edit
+        id: edit
+        uses: ./.github/actions/edit-already-passed
       # HEAD is the PR merge ref; its first parent is the current base tip, unlike the payload's
       # base.sha, which goes stale and would count the base's newer commits as the PR's changes.
       - name: Find the pull request's current base
@@ -62,8 +66,12 @@ jobs:
           git rev-parse --verify -q HEAD^2 > /dev/null || { echo "::error::HEAD is not the pull request merge commit"; exit 1; }
           sha="$(git rev-parse --verify HEAD^1)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Find a release-only diff
+        id: release
+        uses: ./.github/actions/release-only-diff
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
+        if: steps.edit.outputs.passed != 'true'
         with:
           token: ""
           base: ${{ steps.base.outputs.sha }}
@@ -86,7 +94,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.sha }}
       - uses: ./.github/actions/preflight
 
   render-windows:
@@ -113,7 +121,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.sha }}
           lfs: true
 
       - name: Show platform info
@@ -209,7 +217,7 @@ jobs:
         run: bun install --frozen-lockfile --linker=hoisted
 
       # The CLI bundle consumes Engine and Producer from source, but copies the
-      # built Studio and Player artifacts. Build only that dependency chain;
+      # built Studio, Player and Inspector artifacts. Build only that dependency chain;
       # cloud adapters, SDK playground, and other publish-only packages are not
       # exercised by this Windows render smoke test.
       - name: Build render prerequisites
@@ -219,6 +227,7 @@ jobs:
           bun run --cwd packages/core build
           bun run --filter @hyperframes/player build
           bun run --filter @hyperframes/studio build
+          bun run --filter @hyperframes/inspector build
           bun run --filter @hyperframes/cli build
 
       # -----------------------------------------------------------------
@@ -231,8 +240,7 @@ jobs:
 
       - name: Scaffold canary composition
         shell: pwsh
-        # init's --skip-skills flag is neutered (see init.ts); opt out of the
-        # GitHub skills check via this env so the canary scaffold stays offline.
+        # Skip skill installation and GitHub checks to keep the canary scaffold offline.
         env:
           HYPERFRAMES_SKIP_SKILLS: "1"
         run: |
@@ -412,7 +420,7 @@ jobs:
     needs: [changes, preflight]
     if: needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -425,9 +433,22 @@ jobs:
             studio_shard: 2/2
           - lane: core
             packages: --filter @hyperframes/core --filter @hyperframes/player --filter @hyperframes/shader-transitions
-          - lane: engine-cli
+          # Engine and CLI run the same two packages in thirds with Vitest's --shard: halves sat at 842-934 s of
+          # the 960 s step deadline, so a slow runner failed them.
+          - lane: engine-cli-1
             packages: --filter @hyperframes/engine --filter @hyperframes/cli
+            test_shard: 1/3
+            process_tests: true
+          - lane: engine-cli-2
+            packages: --filter @hyperframes/engine --filter @hyperframes/cli
+            test_shard: 2/3
+            process_tests: true
+            once_checks: true
             runtime_contract: true
+          - lane: engine-cli-3
+            packages: --filter @hyperframes/engine --filter @hyperframes/cli
+            test_shard: 3/3
+            process_tests: true
 
     steps:
       - name: Disable Windows Defender real-time monitoring
@@ -438,9 +459,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.ref || github.sha }}
-          # Only the engine-cli lane reads an LFS file (engine's ffprobe test parses a producer HDR PNG).
-          lfs: ${{ matrix.lane == 'engine-cli' }}
+          ref: ${{ github.sha }}
+          # Only the engine-cli lanes read an LFS file (engine's ffprobe test parses a producer HDR PNG).
+          lfs: ${{ matrix.process_tests == true }}
 
       # -----------------------------------------------------------------
       # Install FFmpeg so vitest suites that gate on `HAS_FFMPEG`
@@ -487,37 +508,63 @@ jobs:
           bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
           bun run --cwd packages/core build
 
+      - if: contains(matrix.packages, '@hyperframes/cli')
+        uses: ./.github/actions/opencv-test-cache
+
+      - name: Prepare browser for process tests
+        if: matrix.process_tests
+        shell: pwsh
+        run: node --import tsx packages/cli/scripts/prepare-process-test-browser.mjs
+
+      # Step limits stay under the job limit minus setup (~5 min), so a hung run fails its step and keeps the log.
       - name: Run Studio shard ${{ matrix.studio_shard }}
         if: matrix.studio_shard
         shell: pwsh
-        run: bun run --cwd packages/studio test -- --shard=${{ matrix.studio_shard }} --maxWorkers=2
+        timeout-minutes: 16
+        run: bun run --cwd packages/studio test -- --shard=${{ matrix.studio_shard }} --maxWorkers=2 --reporter=verbose
 
       - name: Run ${{ matrix.lane }} package tests
         if: matrix.packages
         shell: pwsh
+        timeout-minutes: 20
         # Each package starts its own Vitest pool. Bound every pool so concurrent
         # package scripts cannot oversubscribe the hosted Windows runner.
-        run: bun run ${{ matrix.packages }} test -- --maxWorkers=2
+        # timeout-minutes did not fire on a hung run, so the script enforces the 16 minutes itself.
+        run: ./scripts/ci/run-with-deadline.ps1 -Minutes 16 -Command 'bun run ${{ matrix.packages }} test -- --maxWorkers=2 --reporter=verbose ${{ matrix.test_shard && format('--shard={0}', matrix.test_shard) || '' }}'
 
       - name: Verify waveform cache writes on Windows
-        if: matrix.lane == 'engine-cli'
+        if: matrix.once_checks
         shell: pwsh
         run: bun run --cwd packages/studio-server test -- src/helpers/waveform.test.ts src/helpers/waveform.file-race.test.ts --maxWorkers=2
 
+      - name: Verify media src resolution on Windows
+        if: matrix.once_checks
+        shell: pwsh
+        run: bun run --cwd packages/parsers test -- src/assetResolution.test.ts --maxWorkers=2
+
       - name: Verify producer lint entry reads on Windows
-        if: matrix.lane == 'engine-cli'
+        if: matrix.once_checks
         shell: pwsh
         run: bunx vitest run packages/producer/src/services/hyperframeLint.file-race.test.ts --maxWorkers=2
 
       - name: Verify Windows frame staging
-        if: matrix.lane == 'engine-cli'
+        if: matrix.once_checks
         shell: pwsh
         run: bunx vitest run packages/producer/src/services/windowsFrameStaging.test.ts --maxWorkers=2
 
       - name: Verify catalog file operations on Windows
-        if: matrix.lane == 'engine-cli'
+        if: matrix.once_checks
         shell: pwsh
         run: bunx vitest run scripts/catalog/catalog-payload-assets.file-race.test.ts scripts/catalog/catalog-payload-assets.cache-race.test.ts --maxWorkers=2
+
+      - name: Upload test step log
+        if: always() && matrix.packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-step-log-${{ matrix.lane }}
+          path: ${{ runner.temp }}/deadline-step.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Run runtime contract test
         if: matrix.runtime_contract

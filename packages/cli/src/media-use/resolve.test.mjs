@@ -8,25 +8,27 @@ import {
   existsSync,
   readdirSync,
   chmodSync,
+  symlinkSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { appendRecord, findByPrompt, readManifest } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
 import { getProvider } from "./lib/providers.mjs";
-import {
-  HEYGEN_INSTALL_COMMAND,
-  HEYGEN_NOT_FOUND_MESSAGE,
-  HEYGEN_UPDATE_COMMAND,
-} from "./lib/heygen-cli.mjs";
+import { HEYGEN_INSTALL_COMMAND, HEYGEN_UPDATE_COMMAND } from "./lib/heygen-cli.mjs";
 import { freezeLocalFile } from "./lib/freeze.mjs";
 import { cachePut, cacheGet, importFromCache } from "./lib/cache.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..", "..", "..");
 const RESOLVE_CLI = join(import.meta.dirname, "resolve.mjs");
+// Appended to a spawned resolve's fetch stub: its media downloads reach the same stub.
+const ROUTE_DOWNLOADS = `
+const { mediaTransport } = await import(${JSON.stringify(pathToFileURL(join(import.meta.dirname, "lib", "media-fetch.mjs")).href)});
+mediaTransport.fetch = (url, init) => globalThis.fetch(url, init);`;
 // The "Test: skills" CI job has no ffmpeg on PATH (by design). The smart-grade
 // test shells to ffmpeg, so it's skipped there and runs where ffmpeg exists.
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
@@ -78,8 +80,8 @@ function runResolve(args, opts = {}) {
 }
 
 function spawnResolve(args, opts = {}) {
-  const { env, ...rest } = opts;
-  return spawnSync(process.execPath, [RESOLVE_CLI, ...args], {
+  const { env, nodeArgs = [], ...rest } = opts;
+  return spawnSync(process.execPath, [...nodeArgs, RESOLVE_CLI, ...args], {
     cwd: REPO_ROOT,
     encoding: "utf8",
     env: { ...process.env, DO_NOT_TRACK: "1", ...env },
@@ -88,9 +90,9 @@ function spawnResolve(args, opts = {}) {
 }
 
 function spawnResolveAsync(args, opts = {}) {
-  const { env, ...rest } = opts;
+  const { env, nodeArgs = [], ...rest } = opts;
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [RESOLVE_CLI, ...args], {
+    const child = spawn(process.execPath, [...nodeArgs, RESOLVE_CLI, ...args], {
       cwd: REPO_ROOT,
       env: { ...process.env, DO_NOT_TRACK: "1", ...env },
       stdio: ["ignore", "pipe", "pipe"],
@@ -105,6 +107,31 @@ function spawnResolveAsync(args, opts = {}) {
     child.once("error", reject);
     child.once("close", (status, signal) => resolve({ status, signal, stdout, stderr }));
   });
+}
+
+const OPENVERSE_BY_WHOOSH = {
+  id: "ov-whoosh",
+  title: "Swoosh",
+  creator: "Ana",
+  license: "by",
+  foreign_landing_url: "https://freesound.org/s/1",
+  url: "https://cdn.openverse.test/swoosh.mp3",
+  filetype: "mp3",
+  duration: 820,
+  attribution: '"Swoosh" by Ana is licensed under CC BY 4.0.',
+};
+
+// Node args that stand Openverse in for the spawned resolve: `results` answers every search, 429 rate-limits it.
+function openverseImport(results) {
+  const stub = `const real = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+  const u = String(url);
+  if (u.startsWith("https://api.openverse.org/"))
+    return ${results === 429 ? 'new Response("", { status: 429 })' : `Response.json({ results: ${JSON.stringify(results)} })`};
+  if (u.startsWith("https://cdn.openverse.test/")) return new Response("ID3 openverse bytes");
+  return real(url, init);
+};`;
+  return [`--import=data:text/javascript,${encodeURIComponent(stub + ROUTE_DOWNLOADS)}`];
 }
 
 function makeFrame(dir, name, color) {
@@ -160,18 +187,82 @@ function test(name, fn) {
 
 // --- manifest cache hit ---
 
-test("bundled SFX resolve without HeyGen on PATH", () => {
+test("SFX resolve from Openverse with the licence on the record and a credit", () => {
   setup();
   const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
     env: { HOME: tmp, PATH: tmp },
+    nodeArgs: openverseImport([OPENVERSE_BY_WHOOSH]),
   });
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(result.stdout);
   assert.equal(parsed.ok, true);
-  assert.equal(parsed.provenance.provider, "bundled.sfx");
-  assert.equal(parsed.advisory?.message, HEYGEN_NOT_FOUND_MESSAGE);
-  assert.equal(parsed.advisory.message.includes("| bash"), false);
-  assert.ok(existsSync(join(tmp, parsed.path)));
+  assert.equal(parsed.provenance.provider, "openverse.audio");
+  assert.equal(parsed.provenance.license, "by");
+  assert.equal(parsed.provenance.credit, OPENVERSE_BY_WHOOSH.attribution);
+  assert.equal(parsed.advisory, undefined);
+  assert.equal(readFileSync(join(tmp, parsed.path), "utf8"), "ID3 openverse bytes");
+  assert.equal(
+    readFileSync(join(tmp, ".media/audio/sfx/CREDITS.md"), "utf8").split("\n").at(-2),
+    `- \`${parsed.path}\`: ${OPENVERSE_BY_WHOOSH.attribution} Source: ${OPENVERSE_BY_WHOOSH.foreign_landing_url}`,
+  );
+  cleanup();
+});
+
+// Node args that hold each resolve just after its credits read until two have read (2 s at most), and give each
+// sound its own bytes.
+function creditRaceImport(barrier) {
+  const stub = `import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+const read = fs.readFileSync;
+fs.readFileSync = (path, ...rest) => {
+  if (!String(path).endsWith("CREDITS.md")) return read(path, ...rest);
+  let text, error;
+  try {
+    text = read(path, ...rest);
+  } catch (e) {
+    error = e;
+  }
+  fs.writeFileSync(${JSON.stringify(barrier)} + "/" + process.pid, "");
+  const until = Date.now() + 2000;
+  while (fs.readdirSync(${JSON.stringify(barrier)}).length < 2 && Date.now() < until)
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  if (error) throw error;
+  return text;
+};
+syncBuiltinESMExports();
+const prior = globalThis.fetch;
+globalThis.fetch = async (url, init) =>
+  String(url).startsWith("https://cdn.openverse.test/") ? new Response("ID3 " + url) : prior(url, init);`;
+  return [`--import=data:text/javascript,${encodeURIComponent(stub + ROUTE_DOWNLOADS)}`];
+}
+
+test("two SFX resolves at once each keep their Openverse credit line", async () => {
+  setup();
+  const barrier = join(tmp, "credit-barrier");
+  mkdirSync(barrier);
+  const runs = await Promise.all(
+    ["swoosh", "thud"].map((intent) =>
+      spawnResolveAsync(["--type", "sfx", "--intent", intent, "--project", tmp, "--json"], {
+        env: { HOME: tmp, PATH: tmp },
+        nodeArgs: [
+          ...openverseImport([
+            {
+              ...OPENVERSE_BY_WHOOSH,
+              id: `ov-${intent}`,
+              url: `https://cdn.openverse.test/${intent}.mp3`,
+            },
+          ]),
+          ...creditRaceImport(barrier),
+        ],
+      }),
+    ),
+  );
+  for (const run of runs) assert.equal(run.status, 0, run.stderr);
+  const credited = readFileSync(join(tmp, ".media/audio/sfx/CREDITS.md"), "utf8")
+    .split("\n")
+    .filter((line) => line.startsWith("- "))
+    .map((line) => line.slice(3, line.indexOf("`:")));
+  assert.deepEqual(credited.sort(), runs.map((run) => JSON.parse(run.stdout).path).sort());
   cleanup();
 });
 
@@ -195,6 +286,23 @@ test("missing bundled SFX install returns a typed recovery command", () => {
   assert.equal(parsed.fix, "npx hyperframes skills update media-use");
   assert.match(parsed.error, /bundled SFX assets are missing or incomplete/);
   assert.match(parsed.error, /manifest not found/);
+  // Repairing a skill is the person's step: the message names it for them, not the agent.
+  assert.match(parsed.error, /For the user: `npx hyperframes skills update media-use` repairs/);
+  assert.doesNotMatch(parsed.error, /Repair the installed/);
+  cleanup();
+});
+
+test("--doctor addresses the bundled SFX repair to the person", () => {
+  setup();
+  const result = spawnResolve(["--doctor"], {
+    env: {
+      HOME: tmp,
+      PATH: tmp,
+      HYPERFRAMES_MEDIA_USE_SFX_DIR: join(tmp, "missing-sfx-library"),
+    },
+  });
+  assert.match(result.stdout, /For the user: `npx hyperframes skills update media-use` repairs it/);
+  assert.doesNotMatch(result.stdout, /fix: npx hyperframes skills/);
   cleanup();
 });
 
@@ -207,24 +315,28 @@ function writeFakeHeygen(body, exitCode = 0) {
   return binDir;
 }
 
-test("bundled SFX advises update when the HeyGen CLI is outdated", () => {
+test("an Openverse rate limit resolves SFX from the bundled library", () => {
   setup();
-  const binDir = writeFakeHeygen('echo "heygen v0.1.5 does not support --headers" >&2', 1);
   const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
-    env: { HOME: tmp, PATH: binDir },
+    env: { HOME: tmp, PATH: tmp },
+    nodeArgs: openverseImport(429),
   });
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(result.stdout);
   assert.equal(parsed.provenance.provider, "bundled.sfx");
-  assert.match(parsed.advisory?.message ?? "", /heygen update/);
+  assert.match(
+    result.stderr,
+    /Openverse rate limit reached \(HTTP 429\); using the bundled sound effects/,
+  );
+  assert.equal(existsSync(join(tmp, ".media/audio/sfx/CREDITS.md")), false);
   cleanup();
 });
 
-test("bundled SFX does not advise installation after a healthy catalog miss", () => {
+test("a sound Openverse has no licensed match for comes from the bundled library", () => {
   setup();
-  const binDir = writeFakeHeygen(`echo '{"data":[]}'`);
   const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
-    env: { HOME: tmp, PATH: binDir },
+    env: { HOME: tmp, PATH: tmp },
+    nodeArgs: openverseImport([{ ...OPENVERSE_BY_WHOOSH, license: "by-nc" }]),
   });
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(result.stdout);
@@ -233,12 +345,12 @@ test("bundled SFX does not advise installation after a healthy catalog miss", ()
   cleanup();
 });
 
-test("explicit local bundled SFX resolution does not advise installation", () => {
+test("explicit local bundled SFX resolution never asks Openverse", () => {
   for (const extraArgs of [["--local-only"], ["--provider", "bundled.sfx"]]) {
     setup();
     const result = spawnResolve(
       ["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json", ...extraArgs],
-      { env: { HOME: tmp, PATH: tmp } },
+      { env: { HOME: tmp, PATH: tmp }, nodeArgs: openverseImport([OPENVERSE_BY_WHOOSH]) },
     );
     assert.equal(result.status, 0, result.stderr);
     const parsed = JSON.parse(result.stdout);
@@ -266,12 +378,40 @@ test("music without the HeyGen CLI fails naming it and the host app's own tool",
   cleanup();
 });
 
-test("a sound effect nothing bundled matches fails the same way without the HeyGen CLI", async () => {
+test("a sound effect nothing matches is a plain miss that never names the HeyGen CLI", async () => {
   setup();
-  // The local media index answers 404, so the miss never depends on the network.
+  // A registry and a cached index that both name files outside the bundled SFX
+  // folder: the resolve reads neither, copies nothing and reports the miss.
+  const tampered = JSON.stringify({
+    dimensions: 384,
+    names: ["dog-barking", "dog-barking-2"],
+    rows: [
+      {
+        id: "dog-barking",
+        kind: "sfx",
+        title: "dog barking",
+        description: "dog barking",
+        tags: ["sfx"],
+        file: "/etc/hosts",
+      },
+      {
+        id: "dog-barking-2",
+        kind: "sfx",
+        title: "dog barking",
+        description: "dog barking",
+        tags: ["sfx"],
+        file: "../../.ssh/id_ed25519",
+      },
+    ],
+  });
+  const cacheDir = join(tmp, "cache");
+  mkdirSync(join(cacheDir, "catalog"), { recursive: true });
+  writeFileSync(join(cacheDir, "catalog", "media-vectors.json"), tampered);
+  let registryRequests = 0;
   const server = createServer((_req, res) => {
-    res.writeHead(404);
-    res.end();
+    registryRequests++;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(tampered);
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
@@ -281,18 +421,81 @@ test("a sound effect nothing bundled matches fails the same way without the HeyG
         env: {
           HOME: tmp,
           PATH: tmp,
+          HYPERFRAMES_CACHE_DIR: cacheDir,
           HYPERFRAMES_REGISTRY: `http://127.0.0.1:${server.address().port}`,
         },
+        nodeArgs: openverseImport([]),
       },
     );
     assert.equal(result.status, 1, result.stderr);
     const parsed = JSON.parse(result.stdout);
-    assert.equal(parsed.code, "heygen_cli_missing");
-    assert.match(parsed.error, /host app's own sound-effect tool/);
+    assert.equal(parsed.code, undefined);
+    assert.match(
+      parsed.error,
+      /^no sound effect matched "dog barking": HeyGen sound search \(min score 0\.4\)/,
+    );
+    assert.equal(registryRequests, 0);
+    assert.equal(existsSync(join(tmp, ".media/audio/sfx")), false);
   } finally {
     server.close();
     cleanup();
   }
+});
+
+test("a HeyGen sound effect under the confident score is flagged with its score, not returned silently", () => {
+  setup();
+  const sound = { id: "s1", audio_url: "https://cdn.openverse.test/crumple.mp3", score: 0.43 };
+  const binDir = writeFakeHeygen(`echo '${JSON.stringify({ data: [sound] })}'`);
+  const result = spawnResolve(
+    ["--type", "sfx", "--intent", "rubber stamp", "--project", tmp, "--json"],
+    { env: { HOME: tmp, PATH: binDir }, nodeArgs: openverseImport([]) },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.provenance.provider, "heygen.audio.sounds");
+  assert.deepEqual(parsed.match, { score: 0.43, min_score: 0.4, low_confidence: true });
+  assert.match(result.stderr, /low-confidence match for "rubber stamp".*search score 0\.43/);
+
+  const again = spawnResolve(
+    ["--type", "sfx", "--intent", "rubber stamp", "--project", tmp, "--json"],
+    { env: { HOME: tmp, PATH: binDir }, nodeArgs: openverseImport([]) },
+  );
+  assert.equal(again.status, 0, again.stderr);
+  const reused = JSON.parse(again.stdout);
+  assert.equal(reused._source, "cached", "a second identical resolve reuses the first sound");
+  assert.deepEqual(reused.match, { score: 0.43, min_score: 0.4, low_confidence: true });
+  assert.match(again.stderr, /low-confidence match for "rubber stamp"/);
+  cleanup();
+});
+
+test("a HeyGen sound search with no match says so with the min score it used", () => {
+  setup();
+  const binDir = writeFakeHeygen(`echo '{"data":[]}'`);
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
+    env: { HOME: tmp, PATH: binDir },
+    nodeArgs: openverseImport([]),
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).provenance.provider, "bundled.sfx");
+  assert.match(result.stderr, /HeyGen sound search matched nothing for "whoosh" at min score 0\.4/);
+  cleanup();
+});
+
+test("a project sound found by one shared word of its file name is flagged, not handed back as a match", () => {
+  setup();
+  mkdirSync(join(tmp, "assets/sfx"), { recursive: true });
+  writeFileSync(join(tmp, "assets/sfx/paper-crumple-sound.mp3"), "crumple");
+  const result = spawnResolve(
+    ["--type", "sfx", "--intent", "rubber stamp sound", "--project", tmp, "--json"],
+    { env: { HOME: tmp, PATH: tmp } },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.path, "assets/sfx/paper-crumple-sound.mp3");
+  assert.equal(parsed.match.low_confidence, true);
+  assert.deepEqual(parsed.match.matched_words, ["sound"]);
+  assert.match(result.stderr, /low-confidence match for "rubber stamp sound"/);
+  cleanup();
 });
 
 test("music with an outdated HeyGen CLI fails naming the update", () => {
@@ -311,20 +514,6 @@ test("music with an outdated HeyGen CLI fails naming the update", () => {
   cleanup();
 });
 
-test("human bundled fallback prints the install hint once", () => {
-  setup();
-  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp], {
-    env: { HOME: tmp, PATH: tmp },
-  });
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(
-    result.stderr.match(/Install the CLI from https:\/\/developers\.heygen\.com\/cli/g)?.length,
-    1,
-  );
-  assert.match(result.stdout, /resolved sfx_001/);
-  cleanup();
-});
-
 test("project manifest hit skips providers", () => {
   setup();
   const record = makeRecord({ provenance: { prompt: "cached query", provider: "test" } });
@@ -339,6 +528,266 @@ test("project manifest hit skips providers", () => {
   assert.equal(parsed.id, "bgm_001");
   assert.equal(parsed._source, "cached");
   cleanup();
+});
+
+// An Openverse sound recorded in the manifest under `path`, its file written at `file`.
+function recordedSound(path, file) {
+  appendRecord(
+    tmp,
+    makeRecord({
+      id: "sfx_001",
+      type: "sfx",
+      path,
+      provenance: {
+        provider: "openverse.audio",
+        license: "by",
+        credit: "Sam Sound",
+        source_url: "https://freesound.org/s/1/",
+        prompt: "whoosh",
+      },
+    }),
+  );
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, "outside bytes");
+}
+
+for (const [name, place] of [
+  [
+    "leaves the project through ..",
+    () => ["../outside/boom.mp3", join(tmp, "..", "outside", "boom.mp3")],
+  ],
+  [
+    "is absolute",
+    () => [join(tmp, "..", "outside", "boom.mp3"), join(tmp, "..", "outside", "boom.mp3")],
+  ],
+  [
+    "goes through a folder link out of the project",
+    () => {
+      mkdirSync(join(tmp, "assets"), { recursive: true });
+      mkdirSync(join(tmp, "..", "outside"), { recursive: true });
+      symlinkSync(join(tmp, "..", "outside"), join(tmp, "assets", "linked"), "dir");
+      return ["assets/linked/boom.mp3", join(tmp, "..", "outside", "boom.mp3")];
+    },
+  ],
+]) {
+  test(`a manifest record whose path ${name} is neither reused nor credited`, () => {
+    setup();
+    tmp = join(tmp, "proj");
+    mkdirSync(tmp);
+    try {
+      const [path, file] = place();
+      recordedSound(path, file);
+      const result = spawnResolve(
+        ["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"],
+        {
+          env: { HOME: tmp, PATH: tmp },
+          nodeArgs: openverseImport([OPENVERSE_BY_WHOOSH]),
+        },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.notEqual(parsed._source, "cached");
+      assert.notEqual(parsed.path, path);
+      assert.equal(readFileSync(file, "utf8"), "outside bytes");
+      assert.ok(!readFileSync(join(tmp, ".media/audio/sfx/CREDITS.md"), "utf8").includes(path));
+    } finally {
+      tmp = dirname(tmp);
+      cleanup();
+    }
+  });
+}
+
+// Node args that log, into `log`, every path naming evil-host that resolve asks the file system about.
+function fsProbeLog(log) {
+  const spy = `import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+const append = fs.appendFileSync;
+for (const name of ["existsSync", "statSync", "lstatSync", "realpathSync", "openSync", "accessSync", "readFileSync"]) {
+  const real = fs[name];
+  const spied = function (path, ...rest) {
+    if (String(path).includes("evil-host")) append(${JSON.stringify(log)}, String(path) + "\\n");
+    return real.call(this, path, ...rest);
+  };
+  Object.assign(spied, real);
+  fs[name] = spied;
+}
+syncBuiltinESMExports();`;
+  return [`--import=data:text/javascript,${encodeURIComponent(spy)}`];
+}
+
+// fails without the fix: resolve asked the file system whether //evil-host/share/boom.mp3 exists, which on
+// Windows signs in to that host.
+for (const path of [
+  "//evil-host/share/boom.mp3",
+  "\\\\evil-host\\share\\boom.mp3",
+  "//?/UNC/evil-host/share/boom.mp3",
+  "\\\\?\\UNC\\evil-host\\share\\boom.mp3",
+]) {
+  test(`a manifest record naming the share ${JSON.stringify(path)} is refused without looking at it`, () => {
+    setup();
+    try {
+      const log = join(tmp, "probes.log");
+      writeFileSync(log, "");
+      appendRecord(
+        tmp,
+        makeRecord({ id: "sfx_001", type: "sfx", path, provenance: { prompt: "whoosh" } }),
+      );
+      const result = spawnResolve(
+        ["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"],
+        {
+          env: { HOME: tmp, PATH: tmp },
+          nodeArgs: [...fsProbeLog(log), ...openverseImport([OPENVERSE_BY_WHOOSH])],
+        },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.notEqual(parsed._source, "cached");
+      assert.notEqual(parsed.path, path);
+      assert.equal(readFileSync(log, "utf8"), "");
+      assert.ok(
+        !readFileSync(join(tmp, ".media/audio/sfx/CREDITS.md"), "utf8").includes("evil-host"),
+      );
+    } finally {
+      cleanup();
+    }
+  });
+}
+
+// fails without the fix: the manifest's own provider claim wrote "Sam Sound" into the credits file.
+test("a manifest record inside the project is reused, but its provider claim writes no credit", () => {
+  setup();
+  recordedSound("assets/sfx/boom.mp3", join(tmp, "assets", "sfx", "boom.mp3"));
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
+    env: { HOME: tmp, PATH: tmp },
+    nodeArgs: openverseImport([]),
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout)._source, "cached");
+  assert.equal(existsSync(join(tmp, ".media/audio/sfx/CREDITS.md")), false);
+  cleanup();
+});
+
+test("an Openverse sound reused from the cache in another project is credited there", () => {
+  setup();
+  const first = join(tmp, "first");
+  const second = join(tmp, "second");
+  for (const project of [first, second]) mkdirSync(project);
+  const resolveIn = (project, sounds) =>
+    spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", project, "--json"], {
+      env: { HOME: tmp, PATH: tmp },
+      nodeArgs: openverseImport(sounds),
+    });
+  assert.equal(resolveIn(first, [OPENVERSE_BY_WHOOSH]).status, 0);
+  const reused = resolveIn(second, []);
+  assert.equal(reused.status, 0, reused.stderr);
+  const parsed = JSON.parse(reused.stdout);
+  assert.equal(parsed._source, "reused");
+  assert.ok(
+    readFileSync(join(second, ".media/audio/sfx/CREDITS.md"), "utf8").includes(
+      `\`${parsed.path}\`: ${OPENVERSE_BY_WHOOSH.attribution}`,
+    ),
+  );
+  cleanup();
+});
+
+test("a manifest hit prints control characters from the record as visible escapes", () => {
+  setup();
+  const record = makeRecord({
+    id: "bgm_001\x1b]52;c;aGk=\x07",
+    provenance: { prompt: "cached query", provider: "test" },
+  });
+  appendRecord(tmp, record);
+  const filePath = join(tmp, record.path);
+  mkdirSync(join(filePath, ".."), { recursive: true });
+  writeFileSync(filePath, "cached audio");
+
+  const out = runResolve(["--type", "bgm", "--intent", "cached query", "--project", tmp]);
+  assert.ok(out.includes("resolved bgm_001\\x1b]52;c;aGk=\\x07 →"), out);
+  for (const raw of ["\x07", "\x1b"])
+    assert.ok(!out.includes(raw), "no raw control character reaches the terminal");
+  const json = JSON.parse(
+    runResolve(["--type", "bgm", "--intent", "cached query", "--project", tmp, "--json"]).trim(),
+  );
+  assert.equal(json.id, record.id, "--json keeps the record as it is");
+  cleanup();
+});
+
+test("recipe and stats output print control characters as visible escapes", () => {
+  setup();
+  try {
+    const recipe = join(tmp, ".media", "recipes", "promo");
+    mkdirSync(recipe, { recursive: true });
+    const name = "promo\x1b[2K";
+    writeFileSync(
+      join(recipe, "recipe.json"),
+      JSON.stringify({ name, version: 1, workflow: "w\x07" }),
+    );
+    writeFileSync(join(recipe, "frame.md"), "# frame\n");
+    const used = runResolve(["--type", "recipe", "--entity", "promo", "--project", tmp]);
+    assert.ok(used.includes("resolved recipe promo\\x1b[2K (v1, w\\x07)"), used);
+
+    const missing = spawnResolve(["--type", "recipe", "--entity", "nope", "--project", tmp]);
+    assert.notEqual(missing.status, 0);
+    assert.ok(missing.stderr.includes("known: promo\\x1b[2K"), missing.stderr);
+    for (const raw of ["\x07", "\x1b"])
+      assert.ok(!missing.stderr.includes(raw), "no raw control character reaches the terminal");
+
+    const home = join(process.env.HYPERFRAMES_MEDIA_HOME, ".media");
+    mkdirSync(home, { recursive: true });
+    const miss = {
+      ts: new Date().toISOString(),
+      type: "sfx\x1b[8m",
+      intent: "boom\x1b]52;c;agk=\x07",
+    };
+    writeFileSync(join(home, "misses.jsonl"), `${JSON.stringify(miss)}\n`);
+    const stats = runResolve(["--stats", "--project", tmp]);
+    assert.ok(stats.includes("  sfx\\x1b[8m:"), stats);
+    assert.ok(stats.includes("boom\\x1b]52;c;agk=\\x07"), stats);
+    for (const out of [used, stats])
+      for (const raw of ["\x07", "\x1b"])
+        assert.ok(!out.includes(raw), "no raw control character reaches the terminal");
+  } finally {
+    cleanup();
+  }
+});
+
+test("argument errors and the similar-asset hint print control characters as visible escapes", () => {
+  setup();
+  try {
+    const record = makeRecord({ provenance: { prompt: "cached query", provider: "test" } });
+    appendRecord(tmp, record);
+    const filePath = join(tmp, record.path);
+    mkdirSync(join(filePath, ".."), { recursive: true });
+    writeFileSync(filePath, "cached audio");
+    const evil = "\x1b]52;c;aGk=\x07";
+    const shown = "\\x1b]52;c;aGk=\\x07";
+    const runs = [
+      ["unknown media type", "--type", `bgm${evil}`, "--intent", "x"],
+      ["unknown provider", "--type", "bgm", "--intent", "x", "--provider", `p${evil}`],
+      ["file not found", "--type", "bgm", "--from", join(tmp, `missing${evil}.wav`)],
+      ["no reusable global asset", "--type", "bgm", "--reuse", `ab${evil}`],
+      [
+        "similar cached asset",
+        "--type",
+        "bgm",
+        "--intent",
+        `cached query song${evil}`,
+        "--local-only",
+      ],
+    ];
+    for (const [line, ...args] of runs) {
+      const { stderr } = spawnResolve([...args, "--project", tmp]);
+      const printed = stderr.split("\n").find((l) => l.includes(line)) ?? "";
+      assert.ok(printed.includes(shown), `${line}\n${stderr}`);
+      for (const raw of ["\x07", "\x1b"])
+        assert.ok(
+          !stderr.includes(raw),
+          `no raw control character reaches the terminal: ${stderr}`,
+        );
+    }
+  } finally {
+    cleanup();
+  }
 });
 
 test("entity hit matches across icon/image (figma-imported brand marks)", () => {
@@ -1238,7 +1687,7 @@ test("--from rejects invalid lut cube without registering or leaving a frozen fi
   assert.equal(proc.status, 1, proc.stderr);
   const parsed = JSON.parse(proc.stdout);
   assert.equal(parsed.ok, false);
-  assert.match(parsed.error, /^ingested LUT is invalid: LUT_3D_SIZE 999 exceeds max 64/);
+  assert.match(parsed.error, /^ingested LUT is invalid: LUT_3D_SIZE 999 exceeds max 65/);
   assert.equal(readManifest(tmp).length, 0);
   const lutDir = join(tmp, ".media/luts");
   assert.deepEqual(existsSync(lutDir) ? readdirSync(lutDir) : [], []);
@@ -1346,7 +1795,7 @@ async function captureResolveEvent({ provider, type = "bgm", intent }) {
     // never touch the real developer machine, and point the host at the local
     // server. HEYGEN_CONFIG_DIR is sandboxed too -- runResolve's env is
     // {...process.env, ...env}, so a developer with that var set to a real
-    // credentials dir would otherwise have heygenAccountDistinctId() read
+    // credentials dir would otherwise have heygenAccount() read
     // their real email into this test's local-server payload despite HOME
     // being sandboxed (HEYGEN_CONFIG_DIR, not HOME, resolves the credentials
     // path). Every other test in this file keeps its untouched default env.
@@ -1403,6 +1852,7 @@ test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real intercept
 for (const [provider, type, expected] of [
   ["heygen.tts", "voice", "network_paid"],
   ["heygen.audio.sounds", "bgm", "network_free"],
+  ["openverse.audio", "sfx", "network_free"],
   ["bundled.sfx", "sfx", "local"],
 ]) {
   test(`a resolve won by ${provider} sends provider_tier: ${expected}`, async () => {
@@ -1456,3 +1906,84 @@ async function main() {
 }
 
 main();
+
+// A variant's file must never answer a later default request for the same intent or entity.
+test("a logo variant is not reused for the default logo, in the project or the global cache", () => {
+  setup();
+  const icons = [
+    {
+      slug: "slack",
+      title: "Slack",
+      aliases: [],
+      collection: "brands",
+      license: "MIT",
+      variants: { default: "/icons/slack/default.svg", wordmark: "/icons/slack/wordmark.svg" },
+    },
+  ];
+  const stub = `const real = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+  const u = String(url);
+  if (u.endsWith("/src/data/icons.json")) return Response.json(${JSON.stringify(icons)});
+  if (u.includes("/public/icons/slack/")) return new Response("<svg xmlns='http://www.w3.org/2000/svg'/>");
+  return real(url, init);
+};`;
+  const nodeArgs = [`--import=data:text/javascript,${encodeURIComponent(stub + ROUTE_DOWNLOADS)}`];
+  const base = ["--type", "logo", "--intent", "Slack logo", "--entity", "Slack", "--json"];
+  const variant = JSON.parse(
+    spawnResolve([...base, "--variant", "wordmark", "--project", tmp], { nodeArgs }).stdout.trim(),
+  );
+  assert.equal(variant.provenance.variant, "wordmark");
+  const otherProject = mkdtempSync(join(tmpdir(), "mu-resolve-other-"));
+  for (const project of [tmp, otherProject]) {
+    const plain = JSON.parse(
+      spawnResolve([...base, "--project", project], { nodeArgs }).stdout.trim(),
+    );
+    assert.equal(plain.provenance.variant, "default", `default logo in ${project}`);
+  }
+  rmSync(otherProject, { recursive: true, force: true });
+  cleanup();
+});
+
+test("a local generator's private output folder is gone once the file is in the project", () => {
+  setup();
+  const privateTmp = join(tmp, "tmp");
+  mkdirSync(privateTmp);
+  // A stand-in for `hyperframes tts`: write a few bytes to the --output path it is given.
+  const entry = join(tmp, "fake-cli.mjs");
+  writeFileSync(
+    entry,
+    'import { writeFileSync } from "node:fs";\n' +
+      'const at = process.argv.indexOf("--output");\n' +
+      'writeFileSync(process.argv[at + 1], "RIFF-voice");\n',
+  );
+  const result = spawnResolve(
+    [
+      "--type",
+      "voice",
+      "--intent",
+      "hello there",
+      "--project",
+      tmp,
+      "--provider",
+      "kokoro.local",
+      "--json",
+    ],
+    {
+      env: {
+        HOME: tmp,
+        TMPDIR: privateTmp,
+        TEMP: privateTmp,
+        TMP: privateTmp,
+        HYPERFRAMES_CLI_ENTRY: entry,
+      },
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(readFileSync(join(tmp, parsed.path), "utf8"), "RIFF-voice");
+  assert.deepEqual(
+    readdirSync(privateTmp).filter((name) => name.startsWith("media-use-")),
+    [],
+  );
+  cleanup();
+});

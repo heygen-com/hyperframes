@@ -1,9 +1,27 @@
-import type { CheckFinding } from "./checkTypes.js";
+import type { CheckFinding, CheckSeverity } from "./checkTypes.js";
 
 const SEVERITY = { info: 0, warning: 1, error: 2 } satisfies Record<
   CheckFinding["severity"],
   number
 >;
+
+export function findingAtRoot(
+  code: string,
+  severity: CheckSeverity,
+  message: string,
+  sourceFile: string,
+): CheckFinding {
+  return {
+    code,
+    severity,
+    message,
+    selector: "[data-composition-id]",
+    dataAttributes: {},
+    sourceFile,
+    bbox: { x: 0, y: 0, width: 0, height: 0 },
+    time: 0,
+  };
+}
 
 /** Element identity is scoped to the source document, not the whole project. */
 export function findingElementKey(finding: Pick<CheckFinding, "sourceFile" | "selector">): string {

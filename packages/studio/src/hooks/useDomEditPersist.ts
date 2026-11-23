@@ -16,18 +16,14 @@ import {
   writePreparedContent,
 } from "./useDomEditCommitsHelpers";
 import { importedFontFaceCssFor } from "../utils/studioFontHelpers";
-import { countStudioManualEditSave } from "../components/editor/manualEditsDom";
+import { countStudioManualEditSave } from "../components/editor/manualEditGesture";
 import type { CutoverResult } from "../utils/sdkCutover";
 import { reseekPreviewRuntime } from "./timelineTrackVisibility";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
-import { readProjectFileContent } from "../utils/studioFileHistory";
+import { editContextTarget, readProjectFileContent } from "../utils/studioFileHistory";
 
-export interface RecordEditInput {
-  label: string;
-  coalesceKey?: string;
-  coalesceMs?: number;
-  files: Record<string, { before: string; after: string }>;
-}
+import type { RecordEditInput } from "../utils/studioFileHistory";
+export type { RecordEditInput } from "../utils/studioFileHistory";
 
 export interface UseDomEditPersistParams {
   activeCompPath: string | null;
@@ -164,6 +160,7 @@ export function useDomEditPersist({
 
         await editHistory.recordEdit({
           ...history,
+          targets: [editContextTarget(targetPath, selection)],
           files: { [targetPath]: { before: originalContent, after: finalContent } },
         });
         return { patchData, patchedContent, finalContent };

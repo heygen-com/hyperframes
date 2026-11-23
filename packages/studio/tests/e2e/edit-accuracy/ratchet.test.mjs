@@ -1,3 +1,8 @@
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { accurate, bankable, comment, flipped, gate, QUARANTINED } from "./ratchet.mjs";
 import { entry, score } from "./report.mjs";
@@ -62,7 +67,7 @@ describe("quarantine", () => {
     const fresh = baseline({});
     expect(gate(fresh, fresh, [run("a"), run("b")], q)).toMatchObject({
       unbanked: ["b"],
-      ok: false,
+      ok: true,
     });
     expect(
       gate(base, baseline({ a: good, b: good }), [run("a", 9), run("b")], q).overclaimed,
@@ -120,7 +125,7 @@ describe("gate", () => {
     expect(lucky.ok).toBe(true);
     const real = gate(before, before, [run("a"), run("b"), run("b"), run("b", 9)]);
     expect(real.unbanked).toEqual(["b"]);
-    expect(real.ok).toBe(false);
+    expect(real.ok).toBe(true);
   });
 
   it("fails a regression that fails 2 of 3 runs", () => {
@@ -138,10 +143,12 @@ describe("gate", () => {
     expect(g.ok).toBe(true);
   });
 
-  it("fails a newly passing case until baseline.json banks it", () => {
+  it("reports a newly passing case that baseline.json does not bank, without failing on it", () => {
     const before = baseline({ a: good, b: { ...good, drop: 9 } });
-    expect(gate(before, before, [run("a"), run("b")]).unbanked).toEqual(["b"]);
-    expect(gate(before, base, [run("a"), run("b")]).ok).toBe(true);
+    const g = gate(before, before, [run("a"), run("b")]);
+    expect(g).toMatchObject({ unbanked: ["b"], ok: true });
+    expect(comment(g)).toContain("- b");
+    expect(gate(before, base, [run("a"), run("b")]).unbanked).toEqual([]);
   });
 
   it("fails when baseline.json claims a pass the run does not reproduce", () => {
@@ -154,6 +161,19 @@ describe("gate", () => {
     const g = gate(base, base, [run("a")]);
     expect(g.missing).toEqual(["b"]);
     expect(g.reasons.join()).toContain("fell from 2 to 1");
+  });
+
+  it("does not count a case retired from the grid with its baseline.json entry, and lists it", () => {
+    const g = gate(base, baseline({ a: good }), [run("a")]);
+    expect(g).toMatchObject({ basePassing: 1, missing: [], retired: ["b"], ok: true });
+    expect(comment(g)).toContain("Retired");
+  });
+
+  it("counts only the cases that ran when a run covers part of the grid, still failing a regression", () => {
+    const slice = new Set(["a"]);
+    expect(gate(base, base, [run("a")], {}, slice)).toMatchObject({ missing: [], ok: true });
+    const g = gate(base, base, [run("a", 3), run("a", 3), run("a")], {}, slice);
+    expect(g).toMatchObject({ regressed: ["a"], ok: false });
   });
 });
 
@@ -173,5 +193,77 @@ describe("teleport in the gate", () => {
     };
     expect(accurate(entry(score({ id: "move-x" }, r)))).toBe(false);
     expect(accurate(entry(score({ id: "nudge-x" }, { ...r, teleport: null })))).toBe(true);
+  });
+});
+
+describe("gate command, as CI runs it", () => {
+  const script = fileURLToPath(new URL("./ratchet.mjs", import.meta.url));
+  /** Runs `gate --shards <shards>` over the given shard results; returns its exit code, comment and verdict. */
+  function runGate(shards, shardCases, grid = "pr") {
+    const dir = mkdtempSync(join(tmpdir(), "edit-accuracy-gate-"));
+    const base = join(dir, "base.json");
+    writeFileSync(base, JSON.stringify(baseline({ a: good, b: good })));
+    const results = shardCases.map((cases, i) => {
+      const path = join(dir, `shard-${i}.json`);
+      writeFileSync(
+        path,
+        JSON.stringify({ meta: { grid: `${grid} shard ${i + 1}/${shards}` }, cases }),
+      );
+      return path;
+    });
+    const out = join(dir, "out");
+    const run = spawnSync(
+      process.execPath,
+      [script, "gate", "--shards", String(shards), base, base, out, ...results],
+      {
+        encoding: "utf8",
+      },
+    );
+    const report = JSON.parse(readFileSync(join(out, "gate.json"), "utf8"));
+    return {
+      code: run.status,
+      comment: readFileSync(join(out, "comment.md"), "utf8"),
+      verdict: report.verdict,
+    };
+  }
+
+  it("says the shards did not run when none reported results, never that accuracy fell", () => {
+    const g = runGate(5, []);
+    expect(g.code).toBe(2);
+    expect(g.verdict).toBe(
+      "Edit accuracy did not run: 0 of 5 shards reported results; see the shard jobs.",
+    );
+    expect(g.comment).toContain("0 of 5 shards reported results");
+    expect(g.comment).not.toMatch(/fell|accurate \d/);
+  });
+
+  it("says the shards did not all run when the cases that ran hold, so a missing shard is not a drop", () => {
+    const g = runGate(2, [[run("a")]]);
+    expect(g.code).toBe(2);
+    expect(g.verdict).toBe(
+      "Edit accuracy did not run: 1 of 2 shards reported results; see the shard jobs.",
+    );
+  });
+
+  it("says a full grid with a shard missing did not run, not that the missing cases fell", () => {
+    const g = runGate(2, [[run("a")]], "full");
+    expect(g.code).toBe(2);
+    expect(g.verdict).toBe(
+      "Edit accuracy did not run: 1 of 2 shards reported results; see the shard jobs.",
+    );
+    expect(g.comment).not.toMatch(/fell/);
+  });
+
+  it("still says accuracy fell when a case that ran regressed, even with a shard missing", () => {
+    const g = runGate(2, [[run("a", 9), run("a", 9), run("a", 9)]]);
+    expect(g.code).toBe(1);
+    expect(g.verdict).toBe("Edit accuracy fell against the base branch; see the PR comment.");
+    expect(g.comment).toContain("1 of 2 shards reported results");
+  });
+
+  it("passes when every shard reported and nothing fell", () => {
+    const g = runGate(2, [[run("a")], [run("b")]]);
+    expect(g.code).toBe(0);
+    expect(g.verdict).toBe("Edit accuracy holds against the base branch.");
   });
 });

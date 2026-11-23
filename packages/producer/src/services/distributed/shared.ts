@@ -243,6 +243,10 @@ function readVideoMetadata(
       record.videoStreamLeadSeconds === undefined
         ? 0
         : readFiniteNumber(record.videoStreamLeadSeconds, `${field}.videoStreamLeadSeconds`),
+    mediaTimeOffsetSeconds:
+      record.mediaTimeOffsetSeconds === undefined
+        ? 0
+        : readFiniteNumber(record.mediaTimeOffsetSeconds, `${field}.mediaTimeOffsetSeconds`),
     width: readPositiveInteger(record.width, `${field}.width`),
     height: readPositiveInteger(record.height, `${field}.height`),
     fps: readFiniteNumber(record.fps, `${field}.fps`),
@@ -250,6 +254,12 @@ function readVideoMetadata(
     hasAudio: readBoolean(record.hasAudio, `${field}.hasAudio`),
     isVFR: readBoolean(record.isVFR, `${field}.isVFR`),
     hasAlpha: readBoolean(record.hasAlpha, `${field}.hasAlpha`),
+    // Optional: plans from producers without the decode probe keep today's png for vp8/vp9.
+    ...(record.alphaPlaneDecoded === undefined
+      ? {}
+      : {
+          alphaPlaneDecoded: readBoolean(record.alphaPlaneDecoded, `${field}.alphaPlaneDecoded`),
+        }),
     colorSpace,
   };
 }
@@ -434,6 +444,11 @@ export interface SyntheticRenderJobInput {
   producerConfig?: RenderConfig["producerConfig"];
   /** Render-time overrides consumed by the plan browser probe. */
   variables?: RenderConfig["variables"];
+  strictVariables?: RenderConfig["strictVariables"];
+  expectedOutputDimensions?: RenderConfig["expectedOutputDimensions"];
+  pageMotionBlur?: RenderConfig["pageMotionBlur"];
+  allowOutsideProjectAssets?: boolean;
+  includeOutsideScripts?: boolean;
 }
 
 /**
@@ -461,6 +476,11 @@ export function buildSyntheticRenderJob(input: SyntheticRenderJobInput): RenderJ
     strictness: input.strictness,
     producerConfig: input.producerConfig,
     variables: input.variables,
+    strictVariables: input.strictVariables,
+    expectedOutputDimensions: input.expectedOutputDimensions,
+    pageMotionBlur: input.pageMotionBlur,
+    allowOutsideProjectAssets: input.allowOutsideProjectAssets,
+    includeOutsideScripts: input.includeOutsideScripts,
   };
   return createRenderJob(renderConfig);
 }

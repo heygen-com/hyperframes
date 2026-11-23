@@ -1,12 +1,18 @@
+import {
+  waitForRenderCancellation,
+  cancelAndVerifyArtifacts,
+} from "../../../../test-utils/renderCancellation";
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,6 +23,7 @@ import {
   HistoryBusyError,
   HistoryClosedError,
 } from "@hyperframes/studio-server";
+import { thumbnailSeekReadyInBrowser } from "@hyperframes/studio-server/screenshot-clip";
 import { loadHyperframeRuntimeSource } from "@hyperframes/core";
 import { loadRuntimeSource } from "./runtimeSource.js";
 import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
@@ -43,6 +50,47 @@ vi.mock("@hyperframes/producer", () => ({
   createRenderJob: (opts: Record<string, unknown>) => ({ ...opts, perfSummary: undefined }),
   executeRenderJob: (...args: Parameters<typeof producerState.executeRenderJob>) =>
     producerState.executeRenderJob(...args),
+}));
+// Stand-ins for the HEIF and GIF steps: each writes a converted file where a real conversion would.
+const imagePrep = vi.hoisted(() => ({
+  convert: async (html: string, options: { outputDir: string }) => {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(options.outputDir, { recursive: true });
+    writeFileSync(`${options.outputDir}/converted`, "image");
+    return { html, preparedAssets: new Map<string, string>() };
+  },
+}));
+vi.mock("../../../producer/src/services/heifImagePrep.js", () => ({
+  prepareHeifImageInputs: async (html: string, options: { outputDir: string }) => ({
+    ...(await imagePrep.convert(html, options)),
+    preparedImages: [],
+  }),
+}));
+// Remote GIF sources: the stand-in download writes `body` and the GIF step records what it was handed.
+const remoteGif = vi.hoisted(() => ({
+  body: "GIF89a",
+  requested: [] as string[],
+  sourceAssets: undefined as Map<string, string> | undefined,
+}));
+vi.mock("../../../producer/src/utils/urlDownloader.js", () => ({
+  downloadToTemp: async (url: string, destDir: string) => {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    remoteGif.requested.push(url);
+    mkdirSync(destDir, { recursive: true });
+    const path = `${destDir}/download_${remoteGif.requested.length}.gif`;
+    writeFileSync(path, remoteGif.body);
+    return path;
+  },
+  writeUrlDownloadTelemetry: () => {},
+}));
+vi.mock("../../../producer/src/services/animatedGifPrep.js", () => ({
+  prepareAnimatedGifInputs: async (
+    html: string,
+    options: { outputDir: string; sourceAssets?: Map<string, string> },
+  ) => {
+    remoteGif.sourceAssets = options.sourceAssets;
+    return { ...(await imagePrep.convert(html, options)), preparedGifs: [] };
+  },
 }));
 const engineState = vi.hoisted(() => ({
   acquireBrowser: async (..._args: unknown[]): Promise<unknown> => {
@@ -73,6 +121,22 @@ vi.mock("../browser/preflight.js", async (importOriginal) => ({
 }));
 vi.mock("../browser/manager.js", () => ({
   ensureBrowser: async () => ({ executablePath: undefined, source: "system" }),
+}));
+
+const cpuSamplerState = vi.hoisted(() => ({
+  samplers: [] as { requesterOptedIn: boolean; stopped: boolean }[],
+}));
+vi.mock("../telemetry/renderCpu.js", () => ({
+  startRenderCpuSampler: (requesterOptedIn = true) => {
+    const sampler = { requesterOptedIn, stopped: false };
+    cpuSamplerState.samplers.push(sampler);
+    return {
+      stop: () => {
+        sampler.stopped = true;
+        return { cpuBusyAvgPct: 57, cpuBusyPeakPct: 90 };
+      },
+    };
+  },
 }));
 
 // Lets one test hold the project history in its opening; every other test opens the real one.
@@ -188,6 +252,27 @@ describe("createStudioServer project history (D-491)", () => {
       await server.shutdown();
     },
   );
+
+  // A preview an agent starts inside a host app's run can outlive it; holding the lock, it refused every later run.
+  it("never opens the history inside a host app's run, which owns it", async () => {
+    const opens: unknown[] = [];
+    historyState.open = async (options) => {
+      opens.push(options);
+      throw new Error("the history was opened");
+    };
+    vi.stubEnv("HYPERFRAMES_DESKTOP_PROJECT", "/a/project");
+    try {
+      const projectDir = tmpProject();
+      server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+      const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+      expect((await server.app.request(historyUrl)).status).toBe(404);
+      expect(opens).toEqual([]);
+      await server.shutdown();
+    } finally {
+      vi.unstubAllEnvs();
+      historyState.open = null;
+    }
+  });
 
   it("never makes a request wait on another process's history lock again once it was busy", async () => {
     const waits: unknown[] = [];
@@ -346,6 +431,91 @@ describe("createStudioServer shutdown", () => {
     const meta = JSON.parse(readFileSync(outputPath.replace(/\.mp4$/, ".meta.json"), "utf8"));
     expect(meta.audioLoweredDb).toBe(1.44);
   });
+
+  it("stops measuring CPU however a render ends, and never for an opted-out requester", async () => {
+    cpuSamplerState.samplers = [];
+    const outDir = mkdtempSync(join(tmpdir(), "hf-render-cpu-"));
+    server = createStudioServer({ projectDir: tmpProject() });
+
+    producerState.executeRenderJob = async () => {};
+    const done = server.adapter.startRender(startRenderOpts("job-done", join(outDir, "a.mp4")));
+    await vi.waitFor(() => expect(done.status, done.error).toBe("complete"), { timeout: 5_000 });
+
+    producerState.executeRenderJob = async () => {
+      throw new Error("boom");
+    };
+    const failed = server.adapter.startRender({
+      ...startRenderOpts("job-failed", join(outDir, "b.mp4")),
+      telemetryOptOut: true,
+    });
+    await vi.waitFor(() => expect(failed.status).toBe("failed"), { timeout: 5_000 });
+
+    let started!: () => void;
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    producerState.executeRenderJob = (_job, _dir, _outputPath, _onProgress, signal) => {
+      started();
+      return new Promise((_resolve, reject) => {
+        const onAbort = () => reject(Object.assign(new Error("cancelled"), { name: "AbortError" }));
+        if (signal.aborted) onAbort();
+        else signal.addEventListener("abort", onAbort);
+      });
+    };
+    const cancelled = server.adapter.startRender(
+      startRenderOpts("job-cancelled", join(outDir, "c.mp4")),
+    );
+    await untilStarted(startedPromise, cancelled);
+    cancelled.cancel?.();
+    await vi.waitFor(() => expect(cancelled.status).toBe("cancelled"), { timeout: 5_000 });
+
+    expect(cpuSamplerState.samplers).toEqual([
+      { requesterOptedIn: true, stopped: true },
+      { requesterOptedIn: false, stopped: true },
+      { requesterOptedIn: true, stopped: true },
+    ]);
+    rmSync(outDir, { recursive: true, force: true });
+  });
+
+  it("forwards GIF loop count and writes a metadata sidecar without overwriting output", async () => {
+    producerState.executeRenderJob = async (job, _dir, outputPath) => {
+      expect(job).toMatchObject({ format: "gif", gifLoop: 3 });
+      writeFileSync(outputPath, "GIF89a");
+    };
+    const projectDir = tmpProject();
+    const outputPath = join(projectDir, "out.gif");
+    server = createStudioServer({ projectDir });
+    const state = server.adapter.startRender({
+      ...startRenderOpts("gif-job", outputPath),
+      format: "gif",
+      gifLoop: 3,
+    });
+    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"));
+    expect(readFileSync(outputPath, "utf8")).toBe("GIF89a");
+    expect(JSON.parse(readFileSync(join(projectDir, "out.meta.json"), "utf8"))).toMatchObject({
+      status: "complete",
+    });
+  });
+
+  it.each([false, true])(
+    "removes cancelled GIF output and sidecar (late completion: %s)",
+    async (lateCompletion) => {
+      const projectDir = tmpProject();
+      const outputPath = join(projectDir, "out.gif");
+      const metaPath = join(projectDir, "out.meta.json");
+      producerState.executeRenderJob = async (_job, _dir, output, _progress, signal) => {
+        writeFileSync(output, "partial-gif");
+        writeFileSync(metaPath, "{}");
+        await waitForRenderCancellation(signal, lateCompletion);
+      };
+      server = createStudioServer({ projectDir });
+      const state = server.adapter.startRender({
+        ...startRenderOpts("gif-job", outputPath),
+        format: "gif",
+      });
+      await cancelAndVerifyArtifacts(state, outputPath, metaPath);
+    },
+  );
 
   it("cancels an in-flight render's signal and waits for it before draining the browser pool", async () => {
     const events: string[] = [];
@@ -550,11 +720,14 @@ describe("Studio thumbnail capture", () => {
   afterEach(async () => {
     await server?.shutdown();
   });
-  function fakePageBrowser(onEvaluate = () => {}) {
+  function fakePageBrowser(
+    onEvaluate = () => {},
+    waitForFunction = async (_ready: () => boolean) => {},
+  ) {
     const screenshot = vi.fn(async () => Buffer.from("jpeg"));
     const evaluate = vi.fn(async () => onEvaluate());
     const page = new Proxy(
-      { screenshot, evaluate },
+      { screenshot, evaluate, waitForFunction },
       {
         get: (target, key) =>
           key === "then"
@@ -582,6 +755,18 @@ describe("Studio thumbnail capture", () => {
     signal,
   });
 
+  it("holds a thumbnail's shot on the thumbnail readiness rule", async () => {
+    const waits: unknown[] = [];
+    const { screenshot } = fakePageBrowser(undefined, async (ready) => {
+      expect(screenshot).not.toHaveBeenCalled();
+      waits.push(ready);
+    });
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    await expect(server.adapter.generateThumbnail?.(opts(dir))).resolves.toBeInstanceOf(Buffer);
+    expect(waits[0]).toBe(thumbnailSeekReadyInBrowser);
+  });
+
   it("stops a thumbnail whose request is aborted before its screenshot", async () => {
     let abortOnEvaluate: AbortController | undefined;
     const { screenshot } = fakePageBrowser(() => abortOnEvaluate?.abort());
@@ -598,6 +783,42 @@ describe("Studio thumbnail capture", () => {
     expect(screenshot).toHaveBeenCalledTimes(1);
   });
 
+  // fails without the fix: the thumbnail browser launched with no page server, so with
+  // PRODUCER_RESTRICT_PAGE_NETWORK on its proxy refused the Studio's own preview and every thumbnail failed.
+  it("gives the thumbnail browser the preview's server, and a new browser for a preview on another host", async () => {
+    fakePageBrowser();
+    const launch = vi.spyOn(engineState, "acquireBrowser");
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    const at = (previewUrl: string) => ({ ...opts(dir), previewUrl });
+    await server.adapter.generateThumbnail?.(at("http://127.0.0.1:4100/api/projects/demo/preview"));
+    await server.adapter.generateThumbnail?.(at("http://127.0.0.1:4100/api/projects/demo/preview"));
+    await server.adapter.generateThumbnail?.(at("http://localhost:4200/api/projects/demo/preview"));
+    expect(
+      launch.mock.calls.map((call) => (call[1] as { pageServerUrl?: string }).pageServerUrl),
+    ).toEqual([
+      "http://127.0.0.1:4100/api/projects/demo/preview",
+      "http://localhost:4200/api/projects/demo/preview",
+    ]);
+  });
+
+  // fails without the fix: the direct host came from each preview URL, which a request's loopback Host header
+  // can name, so a request could open another local port to the thumbnail page and two spellings of one server
+  // closed each other's browser.
+  it("gives the thumbnail browser the server's own origin, whatever host a request named", async () => {
+    fakePageBrowser();
+    const launch = vi.spyOn(engineState, "acquireBrowser");
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir, origin: () => "http://127.0.0.1:4100" });
+    const at = (previewUrl: string) => ({ ...opts(dir), previewUrl });
+    await server.adapter.generateThumbnail?.(at("http://127.0.0.1:4100/api/projects/demo/preview"));
+    await server.adapter.generateThumbnail?.(at("http://localhost:4100/api/projects/demo/preview"));
+    await server.adapter.generateThumbnail?.(at("http://localhost:9999/api/projects/demo/preview"));
+    expect(
+      launch.mock.calls.map((call) => (call[1] as { pageServerUrl?: string }).pageServerUrl),
+    ).toEqual(["http://127.0.0.1:4100"]);
+  });
+
   it("undoes a row's isolation after its screenshot, since the page is reused", async () => {
     const { screenshot, evaluate } = fakePageBrowser();
     const dir = tmpProject();
@@ -610,6 +831,55 @@ describe("Studio thumbnail capture", () => {
     );
     expect(clears).toHaveLength(1);
     expect(clears[0]).toBeGreaterThan(screenshot.mock.invocationCallOrder[0]!);
+  });
+
+  it("serves thumbnail capture documents in an opaque origin", async () => {
+    const dir = tmpProject();
+    writeFileSync(join(dir, "index.html"), '<div data-composition-id="main"></div>');
+    server = createStudioServer({ projectDir: dir, projectName: "demo" });
+    const capture = await server.app.request(
+      "http://localhost/api/projects/demo/preview?hf-capture=1",
+    );
+    expect(capture.headers.get("content-security-policy")).toBe("sandbox allow-scripts");
+    const preview = await server.app.request("http://localhost/api/projects/demo/preview", {
+      headers: { "Sec-Fetch-Site": "same-origin" },
+    });
+    expect(preview.headers.get("content-security-policy")).toBeNull();
+  });
+
+  it("grants the capture page's loads on its own session before it navigates", async () => {
+    const calls: string[] = [];
+    const session = {
+      send: vi.fn(async (method: string) => void calls.push(method)),
+      on: vi.fn(),
+    };
+    const page = new Proxy(
+      {
+        createCDPSession: async () => session,
+        goto: async () => void calls.push("goto"),
+        screenshot: async () => Buffer.from("jpeg"),
+      },
+      {
+        get: (target, key) =>
+          key === "then"
+            ? undefined
+            : key in target
+              ? target[key as keyof typeof target]
+              : async () => {},
+      },
+    );
+    engineState.acquireBrowser = async () => ({
+      browser: { connected: true, newPage: async () => page, on: () => {} },
+      release: async () => {},
+    });
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    const previewUrl = "http://127.0.0.1:3002/api/projects/demo/preview?hf-capture=1";
+    await expect(
+      server.adapter.generateThumbnail?.({ ...opts(dir), previewUrl }),
+    ).resolves.toBeInstanceOf(Buffer);
+    expect(calls.slice(0, 2)).toEqual(["Fetch.enable", "goto"]);
+    expect(session.on).toHaveBeenCalledWith("Fetch.requestPaused", expect.any(Function));
   });
 
   it("reuses the cached project signature instead of walking the project per thumbnail", async () => {
@@ -667,6 +937,14 @@ describe("host guarding on identity-bearing responses", () => {
     });
     expect(res.status).toBe(403);
     expect(await res.text()).not.toContain('distinctId":"');
+  });
+
+  it("gives the thumbnail browser the origin it listens on, not the request's", async () => {
+    let listening: string | undefined;
+    server = createStudioServer({ projectDir: tmpProject(), origin: () => listening });
+    expect(server.adapter.serverOrigin?.()).toBeUndefined();
+    listening = "http://127.0.0.1:3002";
+    expect(server.adapter.serverOrigin?.()).toBe("http://127.0.0.1:3002");
   });
 
   it("serves the identity endpoint on a loopback Host", async () => {
@@ -756,10 +1034,25 @@ describe("Studio file-change SSE", () => {
     );
     server = createStudioServer({ projectDir });
     const projectUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}`;
-    expect((await server.app.request(`${projectUrl}/preview`)).status).toBe(200);
-    expect((await server.app.request(`${projectUrl}/preview/assets/logo.png`)).status).toBe(200);
+    // An unread asset body keeps logo.png open, and Windows refuses to move a folder holding an open file.
+    for (const path of [`${projectUrl}/preview`, `${projectUrl}/preview/assets/logo.png`]) {
+      const response = await server.app.request(path);
+      expect(response.status).toBe(200);
+      await response.arrayBuffer();
+    }
     return { projectDir, projectUrl };
   }
+
+  it("leaves no timer behind once the tab disconnects, so a stopping CLI can exit", async () => {
+    server = createStudioServer({ projectDir: tmpProject() });
+    const timeouts = vi.spyOn(globalThis, "setTimeout");
+    const [stream] = await subscribe(1);
+    await stream!.cancel();
+
+    const keepAlive = timeouts.mock.calls.filter(([, ms]) => (ms ?? 0) >= 30_000);
+    timeouts.mockRestore();
+    expect(keepAlive).toEqual([]);
+  });
 
   it("marks a notes write as not affecting the preview, so the tab does not reload", async () => {
     const { projectDir } = await previewedProject();
@@ -921,4 +1214,211 @@ describe("Studio file-change SSE", () => {
     const [payload] = await Promise.all(streams.map(nextEvent));
     expect(payload).toContain('"projectId":"demo-project"');
   });
+});
+
+describe("createStudioServer /api write guard allowed hosts", () => {
+  const TUNNEL_HOST = "demo.tunnels.example";
+
+  async function tunnelWrite(projectDir: string): Promise<Response> {
+    // A write from the Studio page behind a tunnel, driven through the
+    // CLI's own /api/* forwarder, the way a browser save reaches the API.
+    return server!.app.request(
+      `http://${TUNNEL_HOST}/api/projects/${encodeURIComponent(basename(projectDir))}/files/planted.html`,
+      {
+        method: "POST",
+        headers: {
+          Host: TUNNEL_HOST,
+          Origin: `https://${TUNNEL_HOST}`,
+          "X-Forwarded-Proto": "https",
+          "Content-Type": "text/plain",
+        },
+        body: "<html>planted</html>",
+      },
+    );
+  }
+
+  it("refuses a tunnel write without the env var, naming the host and the var", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    delete process.env.HYPERFRAMES_PREVIEW_ALLOWED_HOSTS;
+    server = createStudioServer({ projectDir });
+
+    const res = await tunnelWrite(projectDir);
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain(TUNNEL_HOST);
+    expect(body.error).toContain("HYPERFRAMES_PREVIEW_ALLOWED_HOSTS");
+    expect(existsSync(join(projectDir, "planted.html"))).toBe(false);
+  });
+
+  it("accepts a tunnel write when HYPERFRAMES_PREVIEW_ALLOWED_HOSTS names the host", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    process.env.HYPERFRAMES_PREVIEW_ALLOWED_HOSTS = `other.example, ${TUNNEL_HOST}`;
+    try {
+      server = createStudioServer({ projectDir });
+      const res = await tunnelWrite(projectDir);
+      expect(res.status).toBe(201);
+      expect(existsSync(join(projectDir, "planted.html"))).toBe(true);
+    } finally {
+      delete process.env.HYPERFRAMES_PREVIEW_ALLOWED_HOSTS;
+    }
+  });
+});
+
+describe("createStudioServer Host check on every route", () => {
+  const FOREIGN_HOST = "rebound.example:3002";
+
+  function read(path: string, host: string, extra: Record<string, string> = {}): Promise<Response> {
+    return Promise.resolve(
+      server!.app.request(`http://${host}${path}`, { headers: { Host: host, ...extra } }),
+    );
+  }
+
+  function routes(projectDir: string): string[] {
+    const id = encodeURIComponent(basename(projectDir));
+    return [
+      "/__hyperframes_config",
+      "/api/projects",
+      `/api/projects/${id}/files/index.html`,
+      "/api/events",
+      "/",
+    ];
+  }
+
+  it("refuses reads on every route for a Host the server does not answer on", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>secret-body</html>");
+    delete process.env.HYPERFRAMES_PREVIEW_ALLOWED_HOSTS;
+    server = createStudioServer({ projectDir });
+
+    for (const path of routes(projectDir)) {
+      const res = await read(path, FOREIGN_HOST);
+      expect(res.status, path).toBe(403);
+      const text = await res.text();
+      expect(text, path).not.toContain("secret-body");
+      expect(text, path).not.toContain(projectDir);
+      expect(text, path).toContain("HYPERFRAMES_PREVIEW_ALLOWED_HOSTS");
+    }
+  });
+
+  it("does not let X-Forwarded-Host stand in for the Host header", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>secret-body</html>");
+    server = createStudioServer({ projectDir });
+
+    const res = await read("/__hyperframes_config", FOREIGN_HOST, {
+      "X-Forwarded-Host": "localhost:3002",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("answers loopback names", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>secret-body</html>");
+    server = createStudioServer({ projectDir });
+
+    for (const host of ["localhost:3002", "127.0.0.1:3002", "[::1]:3002"]) {
+      const config = await read("/__hyperframes_config", host);
+      expect(config.status, host).toBe(200);
+      const file = await read(
+        `/api/projects/${encodeURIComponent(basename(projectDir))}/files/index.html`,
+        host,
+      );
+      expect(file.status, host).toBe(200);
+      expect(await file.text(), host).toContain("secret-body");
+    }
+  });
+
+  it("answers a host named in HYPERFRAMES_PREVIEW_ALLOWED_HOSTS", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>secret-body</html>");
+    process.env.HYPERFRAMES_PREVIEW_ALLOWED_HOSTS = "demo.tunnels.example";
+    try {
+      server = createStudioServer({ projectDir });
+      const res = await read("/__hyperframes_config", "demo.tunnels.example");
+      expect(res.status).toBe(200);
+      const other = await read("/__hyperframes_config", FOREIGN_HOST);
+      expect(other.status).toBe(403);
+    } finally {
+      delete process.env.HYPERFRAMES_PREVIEW_ALLOWED_HOSTS;
+    }
+  });
+});
+
+describe("createStudioServer preview image preparation", () => {
+  const html = '<div data-composition-id="main"><img src="photo.png"></div>';
+  const prepared = (projectDir: string) =>
+    ["heif", "gif"].filter((kind) =>
+      existsSync(join(projectDir, ".hyperframes", "prepared-assets", kind, "converted")),
+    );
+
+  it("prepares HEIF and GIF images inside a project's own .hyperframes folder", async () => {
+    const projectDir = tmpProject();
+    server = createStudioServer({ projectDir });
+
+    await server.adapter.transformPreviewHtml?.({
+      html,
+      project: { id: "p", dir: projectDir },
+      activeCompositionPath: "index.html",
+    });
+
+    expect(prepared(projectDir)).toEqual(["heif", "gif"]);
+  });
+
+  async function prepareRemoteGif(body: string, src: string) {
+    remoteGif.body = body;
+    remoteGif.requested = [];
+    remoteGif.sourceAssets = undefined;
+    const projectDir = tmpProject();
+    server = createStudioServer({ projectDir });
+    await server.adapter.transformPreviewHtml?.({
+      html: `<div data-composition-id="main"><img src="${src}"></div>`,
+      project: { id: "p", dir: projectDir },
+      activeCompositionPath: "index.html",
+    });
+    return projectDir;
+  }
+
+  it("hands a downloaded GIF to the GIF step", async () => {
+    await prepareRemoteGif("GIF89a-frames", "https://cdn.example.test/loop.gif?v=2");
+    expect(remoteGif.requested).toEqual(["https://cdn.example.test/loop.gif?v=2"]);
+    expect([...(remoteGif.sourceAssets?.keys() ?? [])]).toEqual([
+      "https://cdn.example.test/loop.gif?v=2",
+    ]);
+  });
+
+  it("discards a downloaded body that is not a GIF", async () => {
+    const projectDir = await prepareRemoteGif('{"secret":1}', "https://cdn.example.test/a.gif");
+    expect(remoteGif.sourceAssets?.size).toBe(0);
+    const downloads = join(projectDir, ".hyperframes", "prepared-assets", "downloads");
+    expect(readdirSync(downloads)).toEqual([]);
+  });
+
+  it.each(["https://intranet.example.test/api?.gif", "https://intranet.example.test/api#.gif"])(
+    "does not download %s, whose path does not end in .gif",
+    async (src) => {
+      await prepareRemoteGif("GIF89a", src);
+      expect(remoteGif.requested).toEqual([]);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "serves images unprepared when .hyperframes is a link, and writes nothing where it points",
+    async () => {
+      const projectDir = tmpProject();
+      const outside = tmpProject();
+      symlinkSync(outside, join(projectDir, ".hyperframes"));
+      server = createStudioServer({ projectDir });
+
+      const served = await server.adapter.transformPreviewHtml?.({
+        html,
+        project: { id: "p", dir: projectDir },
+        activeCompositionPath: "index.html",
+      });
+
+      expect(served).toContain('src="photo.png"');
+      expect(readdirSync(outside)).toEqual([]);
+    },
+  );
 });

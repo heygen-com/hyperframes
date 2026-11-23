@@ -3,8 +3,10 @@ import {
   applyCurve,
   shapeProgress,
   fxAutomationTarget,
+  gainedVolumePoints,
   HF_AUDIO_AUTOMATION_ATTR,
   HF_AUDIO_AUTOMATION_DATA_KEY,
+  isBentSegment,
   isConstantLane,
   parseAutomation,
   parseAutomationTarget,
@@ -358,7 +360,7 @@ describe("sampling", () => {
     // A via point pulled out to (5, -3) clamps to (0.999, 0.001) — exactly on the
     // steady region's edge, where `edge - viaX` is 0 and the conic's weight used
     // to divide out to Infinity, then NaN a few steps later. NaN reaching
-    // setValueCurveAtTime silences the node for the rest of the render.
+    // the AudioParam silences the node for the rest of the render.
     for (const x of [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1]) {
       const y = shapeProgress(x, { viaX: 5, viaY: -3 });
       expect(Number.isFinite(y)).toBe(true);
@@ -457,7 +459,7 @@ describe("sampling", () => {
   });
 
   it("stays monotone for every via point, so a render never sags mid-segment", () => {
-    // Not cosmetic: a segment is baked into setValueCurveAtTime, and progress
+    // Not cosmetic: a segment is baked into the AudioParam's ramps, and progress
     // that dipped backwards is a rising fader audibly dropping. This is the
     // property the Fritsch-Carlson tangent limit is there to guarantee, so it is
     // swept rather than spot-checked.
@@ -570,5 +572,61 @@ describe("chain node ids", () => {
       nodes: [{ type: "peaking", id: "n7", params: {} }],
     });
     expect(parseAudioFxChain(json).nodes[0]!.id).toBe("n7");
+  });
+});
+
+describe("gainedVolumePoints", () => {
+  const ramp: HfAutomationLane = {
+    target: "volume",
+    points: [
+      { t: 0, v: 0 },
+      { t: 10, v: 3 },
+    ],
+  };
+
+  it("caps gain times the lane at every instant, not only at the breakpoints", () => {
+    const points = gainedVolumePoints(ramp, 2);
+    expect(points).toHaveLength(3);
+    expect(points[1]!.t).toBeCloseTo((MAX_AUDIO_GAIN / 2 / 3) * 10, 9);
+    expect(points[1]!.v).toBeCloseTo(MAX_AUDIO_GAIN, 9);
+    // Halfway, gain 2 times 1.5 is 3, under the ceiling: the ramp to the crossing keeps it.
+    expect(sampleAutomationLane({ target: "volume", points }, 5)).toBeCloseTo(3, 9);
+  });
+
+  it("leaves only the ceiling's share of the lane when the gain plays ahead", () => {
+    const constant: HfAutomationLane = { target: "volume", points: [{ t: 0, v: 3 }] };
+    expect(gainedVolumePoints(constant, 2, true)[0]!.v).toBeCloseTo(MAX_AUDIO_GAIN / 2, 9);
+    expect(gainedVolumePoints(constant, 0.5, true)[0]!.v).toBe(3);
+  });
+
+  it("leaves a ramp at the ceiling until its falling product comes back under it", () => {
+    const falling: HfAutomationLane = {
+      target: "volume",
+      points: [
+        { t: 0, v: 3 },
+        { t: 10, v: 0 },
+      ],
+    };
+    const points = gainedVolumePoints(falling, 2);
+    expect(points).toHaveLength(3);
+    expect(sampleAutomationLane({ target: "volume", points }, 2)).toBeCloseTo(MAX_AUDIO_GAIN, 9);
+    expect(sampleAutomationLane({ target: "volume", points }, 5)).toBeCloseTo(3, 9);
+  });
+
+  it("keeps zero gain muted without dividing by zero", () => {
+    expect(gainedVolumePoints(ramp, 0, true).map((p) => p.v)).toEqual([0, 0]);
+  });
+
+  it("draws a bent segment that crosses the ceiling as capped samples", () => {
+    const bent: HfAutomationLane = {
+      target: "volume",
+      points: [
+        { t: 0, v: 0, viaX: 0.5, viaY: 0.8 },
+        { t: 2, v: 3 },
+      ],
+    };
+    const points = gainedVolumePoints(bent, 2);
+    expect(points.length).toBeGreaterThan(30);
+    expect(points.every((p) => p.v <= MAX_AUDIO_GAIN + 1e-9 && !isBentSegment(p))).toBe(true);
   });
 });

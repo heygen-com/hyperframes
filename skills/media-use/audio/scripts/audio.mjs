@@ -1,17 +1,16 @@
 #!/usr/bin/env node
 // audio.mjs — the shared HyperFrames audio engine. ONE implementation of TTS +
-// BGM + SFX for every video workflow (product-launch, general-video, pr-to-video,
-// …). Workflows do NOT vendor a copy: they write a neutral `audio_request.json`
-// (a tiny per-workflow adapter maps their storyboard/scenes into it) and call:
+// BGM + SFX. Callers do NOT vendor a copy: they write a neutral
+// `audio_request.json` (mapping their storyboard/scenes into it) and call:
 //
 //   node <MEDIA_DIR>/scripts/audio.mjs --request ./audio_request.json --hyperframes . --out ./audio_meta.json
 //
-// The three capabilities degrade on ONE switch — whether HeyGen is configured
-// (credential present, NOT the CLI). This mirrors the table in ../SKILL.md:
+// TTS and BGM degrade on ONE switch — whether HeyGen is configured (credential
+// present, NOT the CLI). SFX needs no credential. This mirrors ../SKILL.md:
 //
 //   TTS : HeyGen REST → ElevenLabs → Kokoro (CLI)
 //   BGM : HeyGen retrieve  → (no credential) Lyria/MusicGen generate
-//   SFX : HeyGen retrieve  → (no credential) bundled 19-file library
+//   SFX : Openverse (CC0 / CC BY) → (offline, rate limited, no match) bundled library
 //
 // ── audio_request.json (input) ────────────────────────────────────────────────
 //   {
@@ -27,20 +26,20 @@
 //   }
 //
 // ── audio_meta.json (output, id-keyed) ───────────────────────────────────────
-//   { tts_provider, voice_id,
+//   { tts_provider, voice_id, voice_credit,
 //     bgm: { path, volume, mode, query?, duration_s? } | null,
 //     bgm_pending, bgm_provider, bgm_pid, bgm_log, bgm_mode, bgm_target_duration_s, …,
 //     voices: [ { id, path, duration_s, words: [{id,text,start,end}] } ],
-//     sfx:    [ { id, name, file, source, offset_s, duration_s, volume } ],
+//     sfx:    [ { id, name, file, source, offset_s, duration_s, volume, license?, credit? } ],
 //     total_duration_s }
 //
 // --only tts,bgm,sfx  runs a subset and MERGES into an existing --out (so a
-// workflow can do TTS+BGM early, then SFX later once cues exist). When BGM uses
+// caller can do TTS+BGM early, then SFX later once cues exist). When BGM uses
 // the generate path it is spawned detached (bgm_pending:true) — run wait-bgm.mjs
 // before assembling.
 
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { heygenAuthHeaders, heygenCredential, loadEnvFromDir } from "./lib/heygen.mjs";
 import {
@@ -52,10 +51,14 @@ import {
   withWordIds,
 } from "./lib/tts.mjs";
 import { generateBgmDetached, inferBgmPrompt, retrieveBgm } from "./lib/bgm.mjs";
-import { resolveSfx } from "./lib/sfx.mjs";
+import { BUNDLED_SFX_DIR, resolveSfx } from "./lib/sfx.mjs";
+import { voiceCredit } from "./lib/voice-credit.mjs";
+import { parseWords, recordingSource, scaleWords, stretchToWav } from "./lib/recording.mjs";
 import { mapWithConcurrency } from "./lib/concurrency.mjs";
 import { openAudioMeta } from "./lib/audio-meta.mjs";
 import { recordInManifest, voicePaths, writtenAssets } from "./lib/media-record.mjs";
+import { engineBgmLog, projectPath } from "./lib/project-path.mjs";
+import { terminalText } from "../../scripts/lib/terminal-text.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -65,7 +68,7 @@ const flag = (name, def) => {
 };
 const has = (name) => argv.includes(`--${name}`);
 const die = (m) => {
-  console.error(`✗ audio engine: ${m}`);
+  console.error(`✗ audio engine: ${m}`.split("\n").map(terminalText).join("\n"));
   process.exit(1);
 };
 const r3 = (x) => Number(x.toFixed(3));
@@ -83,7 +86,7 @@ const ttsConcurrency = Math.max(1, Number(process.env.HYPERFRAMES_TTS_CONCURRENC
 const hyperframesDir = resolve(flag("hyperframes", "."));
 const requestPath = resolve(flag("request", join(hyperframesDir, "audio_request.json")));
 const outPath = resolve(flag("out", join(hyperframesDir, "audio_meta.json")));
-const sfxLibDir = resolve(flag("sfx-lib", join(HERE, "..", "assets", "sfx")));
+const sfxLibDir = resolve(flag("sfx-lib", BUNDLED_SFX_DIR));
 const lyriaRecipe = resolve(flag("lyria-recipe", join(HERE, "lyria-recipe.py")));
 const onlyArg = flag("only", "tts,bgm,sfx");
 const only = new Set(
@@ -119,7 +122,17 @@ loadEnvFromDir(hyperframesDir);
 const heygenOK = heygenCredential() !== null;
 
 // ── merge base: preserve sections not selected by --only ──────────────────────
-const audioMeta = openAudioMeta(outPath);
+// An output inside the project must stay there: a link planted at audio_meta.json must not lead outside.
+const outRel = relative(hyperframesDir, outPath);
+const outInProject = outRel !== ".." && !outRel.startsWith(`..${sep}`) && !isAbsolute(outRel);
+if (outInProject && !projectPath(hyperframesDir, outRel))
+  die(`${outPath} leads outside the project folder; replace it with a regular file`);
+let audioMeta;
+try {
+  audioMeta = openAudioMeta(outPath);
+} catch (e) {
+  die(`audio_meta.json at ${outPath}: ${e.message}`);
+}
 const prev = audioMeta.value;
 const anomalies = [];
 
@@ -128,42 +141,72 @@ let voices = prev.voices ?? [];
 let ttsProvider = prev.tts_provider ?? null;
 let voiceId = prev.voice_id ?? null;
 if (only.has("tts") && lines.length) {
+  // Every voice file and recording path is checked before any TTS runs.
+  let paths;
+  const recordings = new Map();
   try {
-    ttsProvider = pickProvider(
-      providerOverride || (request.provider === "auto" ? null : request.provider),
-    );
+    paths = voicePaths(hyperframesDir, lines, anomalies);
+    for (const line of lines.filter((l) => l.audio))
+      recordings.set(String(line.id), recordingSource(hyperframesDir, line.audio));
   } catch (e) {
     die(e.message);
   }
-  voiceId = await resolveVoiceId({
-    provider: ttsProvider,
-    userVoice: voiceOverride || request.voice,
-    lang,
-  });
-  console.error(`· tts: ${ttsProvider} · voice ${voiceId} · ${lines.length} line(s)`);
-  const paths = voicePaths(hyperframesDir, lines, anomalies);
+  if (lines.some((l) => !l.audio)) {
+    try {
+      ttsProvider = pickProvider(
+        providerOverride || (request.provider === "auto" ? null : request.provider),
+      );
+    } catch (e) {
+      die(e.message);
+    }
+    voiceId = await resolveVoiceId({
+      provider: ttsProvider,
+      userVoice: voiceOverride || request.voice,
+      lang,
+    });
+  } else {
+    ttsProvider = "recording"; // every line is the person's own recording: no TTS provider to pick
+    voiceId = null;
+  }
+  console.error(terminalText(`· tts: ${ttsProvider} · voice ${voiceId} · ${lines.length} line(s)`));
+  // A line with `audio` is the person's own recording (path inside the project), with optional
+  // `words`; `speed` applies to it like to a generated voice. Returns synthesizeOne's shape.
+  const useRecording = (line, abs) => {
+    const made = stretchToWav(recordings.get(String(line.id)), abs, speed);
+    if (!made.ok) return made;
+    try {
+      const given = parseWords(line.words);
+      return { ok: true, words: given && scaleWords(given, speed), source: "recording" };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  };
   const synthLine = async (line) => {
     const id = String(line.id);
     const text = String(line.text ?? "").trim();
-    if (!text) {
+    if (!text && !line.audio) {
       anomalies.push(`line ${id}: empty text — skipped`);
       return null;
     }
     const rel = paths.get(id);
     const abs = join(hyperframesDir, rel);
-    const { ok, words, error } = await synthesizeOne({
-      provider: ttsProvider,
-      text,
-      voiceId,
-      lang,
-      speed,
-      model: flag("tts-model", request.tts_model),
-      style: flag("style", line.style ?? request.style),
-      wavAbs: abs,
-      hyperframesDir,
-    });
+    const { ok, words, error, source } = line.audio
+      ? useRecording(line, abs)
+      : await synthesizeOne({
+          provider: ttsProvider,
+          text,
+          voiceId,
+          lang,
+          speed,
+          model: flag("tts-model", request.tts_model),
+          style: flag("style", line.style ?? request.style),
+          wavAbs: abs,
+          hyperframesDir,
+        });
     if (!ok) {
-      anomalies.push(`line ${id}: TTS failed — omitted${error ? ` (${error})` : ""}`);
+      anomalies.push(
+        `line ${id}: ${line.audio ? "recording" : "TTS"} failed — omitted${error ? ` (${error})` : ""}`,
+      );
       return null;
     }
     let wordArr = words; // heygen: native; else transcribe
@@ -173,23 +216,33 @@ if (only.has("tts") && lines.length) {
       anomalies.push(`line ${id}: bad voice duration — omitted`);
       return null;
     }
-    return { id, path: rel, duration_s: r3(dur), words: withWordIds(wordArr) };
+    return {
+      id,
+      path: rel,
+      duration_s: r3(dur),
+      words: withWordIds(wordArr),
+      ...(source && { source }),
+    };
   };
   const results = await mapWithConcurrency(lines, ttsConcurrency, synthLine);
   voices = results.filter(Boolean);
   for (const v of voices)
-    console.error(`  voice ${v.id}: ${v.path} (${v.duration_s}s, ${v.words.length} words)`);
+    console.error(
+      terminalText(`  voice ${v.id}: ${v.path} (${v.duration_s}s, ${v.words.length} words)`),
+    );
 }
 const hasVoice = voices.length > 0;
 const totalDuration = r3(voices.reduce((a, v) => a + (v.duration_s || 0), 0));
 
 // ── BGM ─────────────────────────────────────────────────────────────────────
 let bgm = prev.bgm ?? null;
+// A running job's pid and log carry over only with the engine's own log in assets/bgm.
+const ownJob = engineBgmLog(hyperframesDir, prev.bgm_log) !== null;
 const bgmFields = {
   bgm_pending: prev.bgm_pending ?? false,
   bgm_provider: prev.bgm_provider ?? null,
-  bgm_pid: prev.bgm_pid ?? null,
-  bgm_log: prev.bgm_log ?? null,
+  bgm_pid: ownJob ? (prev.bgm_pid ?? null) : null,
+  bgm_log: ownJob ? prev.bgm_log : null,
   bgm_mode: prev.bgm_mode ?? null,
   bgm_target_duration_s: prev.bgm_target_duration_s ?? null,
   bgm_seed_duration_s: prev.bgm_seed_duration_s ?? null,
@@ -200,8 +253,8 @@ if (only.has("bgm")) {
   Object.keys(bgmFields).forEach((k) => (bgmFields[k] = k === "bgm_pending" ? false : null));
   // Mode resolution. An EXPLICIT mode (flag or request.bgm.mode) is strict:
   // "retrieve" means retrieve-or-nothing — it never silently starts a detached
-  // generate (a caller with no wait-bgm step, e.g. product-launch, must not get
-  // a pending job it can't await). Only the UNSET/auto default picks generate
+  // generate (a caller with no wait-bgm step must not get a pending job it
+  // can't await). Only the UNSET/auto default picks generate
   // when HeyGen is absent.
   const explicitMode = bgmModeOverride || request.bgm?.mode || null;
   let mode = noBgm ? "none" : explicitMode || (heygenOK ? "retrieve" : "generate");
@@ -226,7 +279,7 @@ if (only.has("bgm")) {
       if (bgm) {
         bgmFields.bgm_provider = "heygen";
         bgmFields.bgm_mode = "retrieve";
-        console.error(`  bgm: ${bgm.path} (retrieve "${bgm.query}")`);
+        console.error(terminalText(`  bgm: ${bgm.path} (retrieve "${bgm.query}")`));
       } else {
         anomalies.push(`bgm: no music match for "${request.bgm?.query ?? ""}" — skipped`);
       }
@@ -262,7 +315,9 @@ if (only.has("bgm")) {
       bgmFields.bgm_target_duration_s = gen.target_duration_s ?? null;
       bgmFields.bgm_seed_duration_s = gen.seed_duration_s ?? null;
       bgmFields.bgm_loop_count = gen.loop_count ?? null;
-      console.error(`  bgm: launched ${gen.provider} (detached, pid ${gen.pid}) → ${gen.path}`);
+      console.error(
+        terminalText(`  bgm: launched ${gen.provider} (detached, pid ${gen.pid}) → ${gen.path}`),
+      );
     }
   }
 }
@@ -275,12 +330,12 @@ if (only.has("sfx")) {
       .map((name) => ({ id: String(l.id), name: String(name).trim() }))
       .filter((c) => c.name),
   );
-  const headers = heygenOK && cues.length ? heygenAuthHeaders() : null;
-  const res = await resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxLibDir });
+  const res = await resolveSfx({ cues, hyperframesDir, sfxLibDir });
   sfx = res.sfx;
   anomalies.push(...res.anomalies);
+  const openverse = sfx.filter((s) => s.source === "openverse").length;
   console.error(
-    `· sfx: ${sfx.length} cue(s) resolved (${heygenOK ? "heygen retrieval" : "bundled library"})`,
+    `· sfx: ${sfx.length} cue(s) resolved (${openverse} Openverse, ${sfx.length - openverse} bundled library)`,
   );
 }
 
@@ -288,6 +343,7 @@ if (only.has("sfx")) {
 const meta = {
   tts_provider: ttsProvider,
   voice_id: voiceId,
+  voice_credit: voiceCredit(voices, ttsProvider),
   bgm,
   ...bgmFields,
   voices,
@@ -299,13 +355,15 @@ audioMeta.write(meta);
 const written = writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields, sfx });
 anomalies.push(...recordInManifest(hyperframesDir, written));
 
-console.log(`✓ audio engine → ${outPath}`);
+console.log(terminalText(`✓ audio engine → ${outPath}`));
 console.log(`  heygen: ${heygenOK ? "yes" : "no"}  ·  ran: ${[...only].join(",")}`);
 console.log(
-  `  voices: ${voices.length}  ·  bgm: ${bgm ? `${bgmFields.bgm_provider}${bgmFields.bgm_pending ? " (pending)" : ""}` : "none"}  ·  sfx: ${sfx.length}`,
+  terminalText(
+    `  voices: ${voices.length}  ·  bgm: ${bgm ? `${bgmFields.bgm_provider}${bgmFields.bgm_pending ? " (pending)" : ""}` : "none"}  ·  sfx: ${sfx.length}`,
+  ),
 );
 console.log(`  total voice duration: ${totalDuration}s`);
 if (anomalies.length) {
   console.log(`\nanomalies (non-fatal):`);
-  for (const a of anomalies) console.log(`  - ${a}`);
+  for (const a of anomalies) console.log(terminalText(`  - ${a}`));
 }

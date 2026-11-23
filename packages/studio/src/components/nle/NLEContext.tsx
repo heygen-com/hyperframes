@@ -11,6 +11,19 @@ import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { createStableContext } from "../../utils/hmrStableContext";
 import { studioApiFetch } from "../../utils/studioApiFetch";
 import { previewReloadBegun } from "../../player/previewReloading";
+import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
+
+/** The `data-composition-src` of the preview's host for composition `compId`, read over its editing port. */
+export async function hostCompositionSrc(
+  iframe: HTMLIFrameElement,
+  compId: string,
+): Promise<string | undefined> {
+  const selector = `[data-composition-id="${CSS.escape(compId)}"][data-composition-src]`;
+  const handle = (await queryPreviewElements(iframe, selector))?.matches[0]?.handle;
+  if (!handle) return undefined;
+  const [host] = (await describePreviewElements(iframe, [handle])) ?? [];
+  return host?.attributes.find(([name]) => name === "data-composition-src")?.[1] || undefined;
+}
 
 export function shouldDisableTimelineWhileCompositionLoading(compositionLoading: boolean): boolean {
   return compositionLoading;
@@ -23,7 +36,10 @@ export interface NLEContextValue {
   play: () => void;
   pause: () => void;
   togglePlay: () => void;
-  seek: (time: number, options?: { keepPlaying?: boolean; follow?: boolean }) => boolean;
+  seek: (
+    time: number,
+    options?: { keepPlaying?: boolean; follow?: boolean; settled?: boolean },
+  ) => boolean;
   refreshPlayer: () => void;
   onIframeLoad: () => void;
   // The hidden reload iframe NLEPreview renders next to the live one during a full reload.
@@ -168,35 +184,20 @@ export function NLEProvider({
     onCompositionChange,
   });
 
-  // Wrap handleDrillDown to also scan the iframe DOM for data-composition-src
+  // Drill into a sub-composition: its src from compIdToSrc, else from its host in the preview, else the clip's own.
   const iframeRef_ = iframeRef;
   const handleDrillDown = useCallback(
     (element: TimelineElement) => {
       if (!element.compositionSrc) return;
       usePlayerStore.getState().setSelectedElementId(null);
-      // Check compIdToSrc map first; then scan iframe DOM; then fall through to drillDown
       const compId = element.id;
-      let resolvedPath = compIdToSrc.get(compId);
-      if (!resolvedPath) {
-        try {
-          const doc = iframeRef_.current?.contentDocument;
-          if (doc) {
-            const host = doc.querySelector(
-              `[data-composition-id="${CSS.escape(compId)}"][data-composition-src]`,
-            );
-            if (host) {
-              resolvedPath = host.getAttribute("data-composition-src") || undefined;
-            }
-          }
-        } catch {
-          /* cross-origin */
-        }
-      }
-      // Delegate with the resolved compositionSrc (may be same as original)
-      drillDown({
-        id: compId,
-        compositionSrc: resolvedPath ?? element.compositionSrc,
-      });
+      const known = compIdToSrc.get(compId);
+      const iframe = iframeRef_.current;
+      const resolve =
+        known || !iframe ? Promise.resolve(known) : hostCompositionSrc(iframe, compId);
+      void resolve.then((resolvedPath) =>
+        drillDown({ id: compId, compositionSrc: resolvedPath ?? element.compositionSrc }),
+      );
     },
     [compIdToSrc, drillDown, iframeRef_],
   );

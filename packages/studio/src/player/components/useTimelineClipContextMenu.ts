@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { ClipContextMenuState } from "./TimelineProvider";
 import { selectClipWithLinks } from "./timelineLinkSelection";
+import { menuAnchor } from "../../components/ui/menuPosition";
 
 /** A clicked member of an active multi-selection keeps the whole group
  *  selected, so the context menu it opens acts on all of it. */
@@ -22,8 +23,7 @@ export function useClipContextMenu(
       }
       dismissGapMenu();
       setClipContextMenu({
-        x: e.clientX,
-        y: e.clientY,
+        anchor: menuAnchor(e.target, e.clientX, e.clientY),
         element: el,
         sessionEpoch: usePlayerStore.getState().timelineSessionEpoch,
       });

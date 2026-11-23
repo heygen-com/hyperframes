@@ -26,6 +26,9 @@ vi.mock("../browser/ffmpeg.js", () => ({
   findFFprobe: () => "/fake/bin/ffprobe",
   getFFmpegInstallHint: () => "install ffmpeg",
 }));
+vi.mock("../utils/cancellableProcess.js", () => ({
+  runCancellableProcess: async () => ({ stdout: JSON.stringify({ streams: [{}] }), stderr: "" }),
+}));
 vi.mock("./inference.js", () => ({
   createSession: async () => ({
     provider: "test",
@@ -36,6 +39,8 @@ vi.mock("./inference.js", () => ({
 vi.mock("@hyperframes/engine", () => ({
   DEFAULT_VP9_CPU_USED: 4,
   SDR_RGB_TO_BT709_FILTER: "scale=out_color_matrix=bt709:out_range=tv:flags=neighbor",
+  SDR_RGB_TO_TAGGED_BT709_FILTER:
+    "scale=out_color_matrix=bt709:out_range=tv:flags=neighbor,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv",
   renderProvenanceArgs: () => [],
   extractMediaMetadata: async () => ({ width: 1, height: 1, fps: 1, durationSeconds: 1 }),
 }));

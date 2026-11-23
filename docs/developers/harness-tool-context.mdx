@@ -1,0 +1,119 @@
+---
+title: "Running the CLI from an agent harness"
+description: "How an agent harness declares what it supports through HF_TOOL_CONTEXT, and what the CLI reports back."
+---
+
+An agent harness (Claude Code, Codex, your own) runs `hyperframes` commands on the agent's behalf.
+`HF_TOOL_CONTEXT` lets the harness tell one invocation what it supports, so the CLI can do more for
+it: report the images it produced, or wait its turn instead of racing another command in the same
+project. Without the variable, every command behaves exactly as it does in a terminal.
+
+```bash
+export HF_TOOL_CONTEXT='{"version":1,"capabilities":{
+  "events": {"transport": {"type": "ndjson-file", "path": "/tmp/call-42/events.ndjson"}},
+  "project-lock": {"waitMs": 90000}
+}}'
+npx hyperframes snapshot --at 1,3
+```
+
+The harness sets the variable for one tool call, reads what the call produced, and removes its files.
+
+## The declaration
+
+| Field | Value |
+| --- | --- |
+| `version` | `1`. Any other version, or a value that is not JSON, is treated as no declaration. |
+| `capabilities` | An object keyed by capability name. Each value configures that capability. |
+
+The CLI ignores capability names it does not know, and a known capability whose value is invalid, so
+a harness can declare capabilities newer than the CLI it runs. The variable carries data only: no
+capability runs code the harness names.
+
+## `events`: what a command produced
+
+```json
+{ "transport": { "type": "ndjson-file", "path": "/absolute/events.ndjson" } }
+```
+
+The CLI appends one JSON object per line to `path`. It never creates the parent directory, and a
+write that fails prints a warning without failing the command. Read the file after the command
+exits; several commands in one shell call append to the same file.
+
+Each line is an event:
+
+```json
+{
+  "version": 1,
+  "type": "artifact.created",
+  "command": "snapshot",
+  "artifact": { "role": "contact-sheet", "path": "/project/.hyperframes/artifacts/snapshots/…/contact-sheet.jpg", "mediaType": "image/jpeg" }
+}
+```
+
+| Command | `role` | What it is |
+| --- | --- | --- |
+| `snapshot` | `frame` | Each captured frame (PNG) |
+| `snapshot` | `contact-sheet` | Each page of the grid of frames made for review (JPEG) |
+| `check` | `check-report` | The saved JSON report |
+| `check` | `frame` | Each frame the browser check captured |
+| `check` | `finding` | Each crop around a finding |
+
+Paths are absolute and stay where the command saved them. What to do with an artifact is the
+harness's decision: attach the contact sheet to the tool result, link the report, or ignore it.
+Ignore event types and roles you do not know; new ones are added without a version change.
+
+## `project-lock`: one browser command at a time
+
+```json
+{ "waitMs": 90000 }
+```
+
+`check` and `snapshot` take a lock on the project before they start a browser, and release it when
+they finish. A second command waits up to `waitMs` milliseconds for the lock, then fails, naming the
+command and process that hold it. A lock whose process has exited is taken over. A
+`project.lock.break` left by a killed process is not: the timeout names that file and its process
+id, and says to delete it to continue. The lock is the file `.hyperframes/project.lock`.
+
+Choose `waitMs` below your tool call's own timeout, so a wait ends in the CLI's message rather than
+the harness killing the call.
+
+## `check-review`: review switches for `check`
+
+```json
+{ "skipContrastInMotion": true, "findingFrames": true, "inspect": true }
+```
+
+Each field is a boolean and defaults to `false`; a value that is not `true` is
+off, and unknown fields are ignored. Without the capability, `check` output is
+the same as in a terminal.
+
+| Field | What it does |
+| --- | --- |
+| `skipContrastInMotion` | Leaves out contrast failures measured while a GSAP tween moves the text or an ancestor, or while the text is partly transparent (see [check](/packages/cli#check)). Counts, `ok` and persistence leave them out too. |
+| `findingFrames` | Saves one plain, unannotated full frame for each distinct `frameTime` of the error and warning findings in `layout` and `contrast` that have a bbox (not `motion` or `craft`), and adds two fields to each of those findings: `frameTime`, the middle sample of the longest held run in its `times` (the same gap rule as `heldMs`), and `frame`, the absolute path of that PNG, shared by every finding at that time. The `bbox` is measured at the finding's `time`, so an element that moves can sit elsewhere on the frame. Only finite, nonnegative sample times are eligible; a finding with no eligible time gets no frame. At most 60 distinct times are captured, errors first. The frames go in the run's snapshot folder but are not listed in `snapshots`, not recorded in project history and not reported as `events`. |
+| `inspect` | Only with `findingFrames` on; alone it does nothing. While each frame is on screen, runs the [component inspector](https://github.com/heygen-com/hyperframes/tree/main/packages/inspector) on every finding framed at that time and adds its report, unchanged, as the finding's `inspect` field: `results` (the element, how many GSAP animations target it), and `snippets`, each with its source `id` (`file:start-end`), `kind` (`html opening tag`, `matched CSS candidate`, `animation creation` and so on) and the exact source `code`. The target is the finding's `data-hf-id` when it has one, else its `selector`, without descendants, under the inspector's default 12,000-byte budget. A selector that matches multiple elements is treated as an inspection failure, so unrelated source snippets are not attached. A finding whose inspection fails gets `inspect: { "error": "<message>" }` instead; the check itself never fails because of it. Inspection counts toward the `frames` phase of the check deadline. A timeout or stop ends capture without attaching frame or inspection fields. Only GSAP animations are seen, not CSS animations, Web Animations or canvas drawing. |
+
+## Inspecting a live preview
+
+The `@hyperframes/inspector/live` API reads components, timelines and element maps
+across every composition, including scenes parked away from the preview playhead.
+Each query temporarily mounts those scenes without seeking and releases its own
+hold when it finishes or fails. Concurrent queries keep their scenes mounted until
+each finishes; Studio's selection hold remains independent. The preview then
+restores the scene window for the current playhead. If scenes remain parked after
+mounting, the query reports `scenes_not_mounted` with their names instead of
+reporting their elements as missing. Mounting runs the scenes' scripts through the
+preview's normal scene lifecycle.
+
+## Hooks that run code
+
+Running your own command before or after a CLI command is not a `HF_TOOL_CONTEXT` capability and
+never will be: anything that sets an environment variable could then run code. Such hooks, when they
+exist, come only from configuration the person controls.
+
+## Conformance
+
+`packages/cli/src/utils/toolContext.test.ts` and `projectLock.test.ts` pin the parsing, event and
+lock behavior above. A harness is correct when it sets the variable for each call it wants the
+behavior on, reads `events` only after the call exits, and works the same when the CLI ignores a
+capability.

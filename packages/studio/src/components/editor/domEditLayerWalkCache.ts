@@ -47,6 +47,7 @@ import {
   resolveDomLayerIdentity,
 } from "./domEditingElement";
 import type { DomEditSelection } from "./domEditingTypes";
+import type { KeptIndexes } from "../../utils/sourceScopedSelectorIndex";
 
 /** How an element is addressed. Survives style writes; see `readIdentity`. */
 export type DomEditLayerIdentity = Pick<
@@ -160,16 +161,20 @@ export interface DomEditLayerWalkCache {
   ingest(records: MutationRecord[]): void;
   /** Forget every entry — the fallback for anything not attributable. */
   invalidateAll(): void;
+  /** Selector occurrence indexes, kept across walks and dropped with `identities`, which derive from them. */
+  readonly selectorIndex: KeptIndexes;
 }
 
 export function createDomEditLayerWalkCache(): DomEditLayerWalkCache {
   let presence = new WeakMap<HTMLElement, PresenceMemo>();
   let identities = new WeakMap<HTMLElement, IdentityMemo>();
   let scope: string | null = null;
+  const selectorIndex: KeptIndexes = new Map();
 
   const invalidateAll = () => {
     presence = new WeakMap();
     identities = new WeakMap();
+    selectorIndex.clear();
   };
 
   const drop = (el: HTMLElement | null) => {
@@ -262,6 +267,7 @@ export function createDomEditLayerWalkCache(): DomEditLayerWalkCache {
       }
     },
     invalidateAll,
+    selectorIndex,
   };
 }
 

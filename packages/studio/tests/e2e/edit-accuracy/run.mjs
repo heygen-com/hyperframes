@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // Edit accuracy bench: real gestures in the built CLI Studio (build core, parsers, lint, studio-server first).
 // bun run --cwd packages/studio test:edit-accuracy -- --grid full|pr --jobs N [--shard i/n] [--filter re]
-//   [--lock path: the suite lock, taken per chunk] [--rerun: a confirmation run for the gate]
+//   [--lock path: the suite lock, taken per chunk] [--rerun: a confirmation run for the gate, with screenshots]
+//   [--shots: screenshots on a first run too]
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { loadavg, tmpdir } from "node:os";
@@ -11,11 +12,11 @@ import { parseArgs } from "node:util";
 import { execSync, spawn } from "node:child_process";
 import puppeteer from "puppeteer-core";
 import { resolveHeadlessShellPath } from "../../../../engine/src/index.ts";
-import { buildGrid, writeFixture } from "./grid.mjs";
+import { buildGrid, expectedSeconds, shardCases, writeFixture } from "./grid.mjs";
 import { killServers, runCase, startServer, stopServer } from "./case.mjs";
 import { runSequence } from "./sequences.mjs";
-import { METRICS, score, writeReport } from "./report.mjs";
-import { renderBox } from "./render.mjs";
+import { METRICS, SLOW_RUNNER, score, slowRunner, writeReport } from "./report.mjs";
+import { holdProducerBrowser, renderBox } from "./render.mjs";
 import { aabb, boxDistance } from "./geometry.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -33,11 +34,16 @@ const { values: opt } = parseArgs({
     lock: { type: "string" },
     // Marks a confirmation run of cases that regressed, so the gate keeps it out of the banked baseline.
     rerun: { type: "boolean", default: false },
+    shots: { type: "boolean", default: false },
   },
 });
 const [shard, shards] = opt.shard.split("/").map(Number);
 const filter = new RegExp(opt.filter);
-const cases = buildGrid(opt.grid).filter((c, i) => filter.test(c.id) && i % shards === shard - 1);
+const cases = shardCases(
+  buildGrid(opt.grid).filter((c) => filter.test(c.id)),
+  shard,
+  shards,
+);
 const runId = new Date().toISOString().replace(/[:.]/g, "-");
 const out = resolve(opt.out ?? join(HERE, "../evidence/edit-accuracy", runId));
 const chrome = resolveHeadlessShellPath();
@@ -121,6 +127,7 @@ async function runOne(spec, browser, decoder, port) {
       files,
       url: `http://127.0.0.1:${served.port}/#project/case`,
       evidence,
+      shots: opt.rerun || opt.shots,
     });
     await stopServer(server);
     server = null;
@@ -152,19 +159,28 @@ function acquireLock(path) {
   });
 }
 
+// Set once the first cases show a slow runner: no new case starts, and the run exits 75 (see the end).
+let slow = null;
+
 // The suite lock is taken per chunk, so a full grid never holds it for its whole run.
 const LOCK_CHUNK = 8;
 
 // fallow-ignore-next-line complexity
 async function runChunks(queue, browsers, decoders, results) {
-  for (let start = 0; start < queue.length; start += opt.lock ? LOCK_CHUNK : queue.length) {
+  for (
+    let start = 0;
+    start < queue.length && slow === null;
+    start += opt.lock ? LOCK_CHUNK : queue.length
+  ) {
     const chunk = queue.slice(start, opt.lock ? start + LOCK_CHUNK : queue.length);
     const release = opt.lock ? await acquireLock(opt.lock) : () => undefined;
     try {
       await Promise.all(
         browsers.map(async (browser, i) => {
-          for (let spec = chunk.shift(); spec; spec = chunk.shift())
+          for (let spec = chunk.shift(); spec && slow === null; spec = chunk.shift()) {
             results.push(await runOne(spec, browser, decoders[i], Number(opt.port) + i));
+            slow = slowRunner(results, expectedSeconds);
+          }
         }),
       );
     } finally {
@@ -218,11 +234,28 @@ const browsers = await Promise.all(
     }),
   ),
 );
+// One producer Chrome for the run; each render still gets its own page and file server.
+const producerRoot = mkdtempSync(join(tmpdir(), "hf-edit-accuracy-producer-"));
+liveRoots.add(producerRoot);
+const releaseProducer = await holdProducerBrowser(producerRoot);
 try {
   const decoders = await Promise.all(browsers.map((b) => b.newPage()));
   await runChunks([...cases], browsers, decoders, results);
 } finally {
-  await Promise.all(browsers.map((b) => b.close()));
+  await Promise.all([releaseProducer(), ...browsers.map((b) => b.close())]);
+}
+// CI reads slow-runner.json to re-run the shard once on a fresh runner.
+if (slow !== null) {
+  const first = results.slice(0, SLOW_RUNNER.cases);
+  const seconds = Object.fromEntries(first.map((r) => [r.id, [r.seconds, expectedSeconds(r)]]));
+  writeFileSync(
+    join(out, "slow-runner.json"),
+    JSON.stringify({ seconds, median: slow, ...SLOW_RUNNER }),
+  );
+  console.error(
+    `runner too slow: the first ${SLOW_RUNNER.cases} cases took a median ${slow.toFixed(2)}x their usual seconds, over ${SLOW_RUNNER.multiple}x; stopping`,
+  );
+  process.exit(75);
 }
 results.sort((a, b) => a.id.localeCompare(b.id));
 const meta = {

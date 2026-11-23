@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
 import { cleanupStudioServerRoot, makeStudioServerRoot } from "./studioServerTestFixture.js";
 
@@ -81,5 +82,133 @@ describe("studio preview document", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("ETag")).toBeNull();
+  });
+});
+
+describe("bundled GSAP", () => {
+  const plugin = "/api/vendor/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js";
+
+  function writeMotionPathComposition(): void {
+    fs.writeFileSync(
+      path.join(projectDir, "index.html"),
+      `<!doctype html>
+<html><head><script src="vendor/gsap.min.js"></script></head>
+<body><div id="root" data-composition-id="main" data-width="320" data-height="180">
+<div id="card"></div>
+<script>gsap.to("#card", { motionPath: { path: [{ x: 10, y: 10 }] } });</script>
+</div></body></html>`,
+    );
+  }
+
+  it("serves Studio's GSAP dependencies same-origin instead of from jsDelivr", async () => {
+    writeMotionPathComposition();
+    expect(server.adapter.gsapLocalRoot).toBe("/api/vendor/npm");
+    const html = await (await server.app.request("/api/projects/film/preview")).text();
+    expect(html).toContain(`src="${plugin}"`);
+    expect(html).toContain('<meta name="hyperframes-gsap-base-url" content="/api/vendor/npm">');
+    expect(html).not.toContain("jsdelivr");
+
+    for (const file of ["gsap.min.js", "CustomEase.min.js", "MotionPathPlugin.min.js"]) {
+      const response = await server.app.request(`/api/vendor/npm/gsap@3.15.0/dist/${file}`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Content-Type")).toContain("javascript");
+      expect(await response.text()).toMatch(/^\/\*!\n \* \w+ 3\.15\.0/);
+    }
+  });
+
+  it.each([
+    "/api/vendor/npm/gsap@3.14.2/dist/gsap.min.js",
+    "/api/vendor/npm/gsap@3.15.0/dist/package.json",
+    "/api/vendor/npm/gsap@3.15.0/dist/..%2Fpackage.json",
+    "/api/vendor/npm/react@3.15.0/dist/gsap.min.js",
+  ])("serves only the bundled GSAP files: %s", async (url) => {
+    expect((await server.app.request(url)).status).toBe(404);
+  });
+
+  it("uses HYPERFRAMES_GSAP_BASE_URL over the bundled copy", async () => {
+    writeMotionPathComposition();
+    const mirror = "https://mirror.example/npm";
+    const previous = process.env.HYPERFRAMES_GSAP_BASE_URL;
+    process.env.HYPERFRAMES_GSAP_BASE_URL = mirror;
+    try {
+      server.watcher.close();
+      server = createStudioServer({ projectDir, projectName: "film" });
+      const html = await (await server.app.request("/api/projects/film/preview")).text();
+      expect(html).toContain(`src="${mirror}/gsap@3.15.0/dist/MotionPathPlugin.min.js"`);
+      expect(html).not.toContain("/api/vendor/npm");
+    } finally {
+      if (previous === undefined) delete process.env.HYPERFRAMES_GSAP_BASE_URL;
+      else process.env.HYPERFRAMES_GSAP_BASE_URL = previous;
+    }
+  });
+});
+
+describe("preview image prep and files outside the project", () => {
+  const heic = fileURLToPath(
+    new URL("../../../producer/tests/fixtures/heic/rotated-grid.heic", import.meta.url),
+  );
+  const outsidePhoto = () => path.join(root, "Pictures", "IMG_0001.HEIC");
+  const preparedHeif = () => path.join(projectDir, ".hyperframes", "prepared-assets", "heif");
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(outsidePhoto()));
+    fs.copyFileSync(heic, outsidePhoto());
+    fs.writeFileSync(
+      path.join(projectDir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-width="320" data-height="180">
+<img id="photo" src="../Pictures/IMG_0001.HEIC" data-start="0" data-duration="1">
+</div></body></html>`,
+    );
+  });
+
+  async function previewPhotoSrc(): Promise<string | undefined> {
+    const html = await (await server.app.request("/api/projects/film/preview")).text();
+    return html.match(/<img [^>]*id="photo"[^>]*src="([^"]+)"/)?.[1];
+  }
+
+  it("converts no outside photo for a received project, as its render would not", async () => {
+    fs.mkdirSync(path.join(projectDir, ".hyperframes"), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["index.html"] }),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await previewPhotoSrc()).not.toContain("prepared-assets");
+      expect(await previewPhotoSrc()).not.toContain("prepared-assets");
+      expect(fs.existsSync(preparedHeif())).toBe(false);
+      const refusals = warn.mock.calls.filter(([line]) => String(line).includes("someone else"));
+      expect(refusals).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("still converts a photo inside a received project, with outside files refused", async () => {
+    fs.mkdirSync(path.join(projectDir, ".hyperframes"), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["index.html"] }),
+    );
+    fs.mkdirSync(path.join(projectDir, "photos"));
+    fs.copyFileSync(heic, path.join(projectDir, "photos", "IMG_0002.HEIC"));
+    fs.writeFileSync(
+      path.join(projectDir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-width="320" data-height="180">
+<img id="photo" src="photos/IMG_0002.HEIC" data-start="0" data-duration="1">
+</div></body></html>`,
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await previewPhotoSrc()).toMatch(/^\.hyperframes\/prepared-assets\/heif\//);
+      expect(fs.readdirSync(preparedHeif())).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("still converts an outside photo for the developer's own project, as its render does", async () => {
+    expect(await previewPhotoSrc()).toMatch(/^\.hyperframes\/prepared-assets\/heif\//);
+    expect(fs.readdirSync(preparedHeif())).toHaveLength(1);
   });
 });

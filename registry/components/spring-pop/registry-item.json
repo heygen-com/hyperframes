@@ -8,7 +8,7 @@
   "jobs": ["reveal"],
   "family": "effects",
   "profile": "burst",
-  "evidence": "Video Primitives v1 Easing section (--ease-overshoot: back.out(1.7), taste rules 4-5) + hyperframes-animation rules/spring-pop-entrance.md playful overshoot variation",
+  "evidence": "Video Primitives v1 Easing section (--ease-overshoot: back.out(1.7), taste rules 4-5) + hyperframes/animation rules/spring-pop-entrance.md playful overshoot variation",
   "syncPoints": [{ "id": "pop-settle", "phase": "in", "offset": 0.6 }],
   "files": [
     {

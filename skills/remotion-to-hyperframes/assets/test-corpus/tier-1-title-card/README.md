@@ -33,8 +33,8 @@ cd remotion-src && npm install && npm run render
 # Render HyperFrames translation
 cd ../hf-src && npx hyperframes render --output ../hf.mp4
 
-# Compare with the eval harness (from skill scripts/)
-../../../scripts/render_diff.sh ./remotion-src/out/baseline.mp4 ./hf.mp4 ./diff
+# Compare with the HF CLI
+npx hyperframes diff ../remotion-src/out/baseline.mp4 ../hf.mp4 --out ../diff
 ```
 
 `expected.json` documents the SSIM threshold (0.95) for this fixture; the

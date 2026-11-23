@@ -6,7 +6,7 @@
  * mutually exclusively (caption edit mode returns before the DOM overlay).
  */
 
-const CANVAS_NUDGE_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+import { matchesKey, type StudioKeyAction } from "../../player/components/studioShortcuts";
 
 export const CANVAS_NUDGE_STEP_PX = 1;
 export const CANVAS_NUDGE_SHIFT_STEP_PX = 10;
@@ -16,22 +16,25 @@ export const CANVAS_NUDGE_COMMIT_DEBOUNCE_MS = 400;
 type CanvasNudgeKeyEvent = Pick<
   KeyboardEvent,
   "altKey" | "ctrlKey" | "metaKey" | "shiftKey" | "key"
->;
+> & { code?: string };
 
-/**
- * Arrow key → composition-px delta (Shift = 10). Null when the key is not a
- * plain/Shift arrow, so browser and app shortcut chords pass through.
- */
+const NUDGES: ReadonlyArray<[StudioKeyAction, number, number, number]> = [
+  ["nudgeLeft", -1, 0, CANVAS_NUDGE_STEP_PX],
+  ["nudgeRight", 1, 0, CANVAS_NUDGE_STEP_PX],
+  ["nudgeUp", 0, -1, CANVAS_NUDGE_STEP_PX],
+  ["nudgeDown", 0, 1, CANVAS_NUDGE_STEP_PX],
+  ["nudgeLeftTen", -1, 0, CANVAS_NUDGE_SHIFT_STEP_PX],
+  ["nudgeRightTen", 1, 0, CANVAS_NUDGE_SHIFT_STEP_PX],
+  ["nudgeUpTen", 0, -1, CANVAS_NUDGE_SHIFT_STEP_PX],
+  ["nudgeDownTen", 0, 1, CANVAS_NUDGE_SHIFT_STEP_PX],
+];
+
+/** Nudge key (default: arrows, Shift = 10) to a composition-px delta; null for any other key. */
 export function resolveCanvasNudgeDelta(
   event: CanvasNudgeKeyEvent,
 ): { dx: number; dy: number } | null {
-  if (event.metaKey || event.ctrlKey || event.altKey) return null;
-  if (!CANVAS_NUDGE_KEYS.has(event.key)) return null;
-  const step = event.shiftKey ? CANVAS_NUDGE_SHIFT_STEP_PX : CANVAS_NUDGE_STEP_PX;
-  return {
-    dx: event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0,
-    dy: event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0,
-  };
+  const hit = NUDGES.find(([action]) => matchesKey(event, action));
+  return hit ? { dx: hit[1] * hit[3], dy: hit[2] * hit[3] } : null;
 }
 
 export interface CanvasNudgeTarget {

@@ -19,6 +19,8 @@ import { textureRules } from "./rules/textures";
 import { fontRules } from "./rules/fonts";
 import { slideshowRules } from "./rules/slideshow";
 import { structureRules } from "./rules/structure";
+import { shaderRules } from "./rules/shaders";
+import { rootPathRules } from "./rules/rootPaths";
 
 // Rules are grouped by source module so a timing can be attributed to
 // something a human can act on. Individual rules stay anonymous: an
@@ -46,6 +48,8 @@ const RULE_GROUPS: ReadonlyArray<{
   { group: "fonts", rules: fontRules },
   { group: "slideshow", rules: slideshowRules },
   { group: "structure", rules: structureRules },
+  { group: "shaders", rules: shaderRules },
+  { group: "rootPaths", rules: rootPathRules },
 ];
 
 /**
@@ -74,6 +78,7 @@ function dedupeKeyFor(finding: HyperframeLintFinding): string {
     finding.selector || "",
     finding.elementId || "",
     finding.message,
+    ...(finding.code === "shader_unbounded_cosine_pow" ? [finding.line, finding.column] : []),
   ].join("|");
 }
 
@@ -136,6 +141,7 @@ export async function lintHyperframeHtml(
   const findings = rawFindings.map((finding) => {
     if (
       finding.line !== undefined ||
+      finding.code === "shader_unbounded_cosine_pow" ||
       finding.code === "invalid_inline_script_syntax" ||
       finding.code === "non_deterministic_code" ||
       [

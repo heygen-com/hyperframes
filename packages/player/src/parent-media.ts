@@ -13,38 +13,44 @@ import { selectMediaObserverTargets } from "./mediaObserverScope.js";
 import { isRealmElement, isRealmHtmlMediaElement } from "./media-element-guards.js";
 import { isInClipWindow } from "@hyperframes/core/runtime/clip-window";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
+import { readLinkTiming } from "@hyperframes/core/media-link";
+import { mediaFileOf, parentCopyOf, type ParentCopy } from "@hyperframes/core/audible-video";
+import { mediaElementTime, startsSoundOnlyInsideATap } from "@hyperframes/core/runtime/media-clock";
+import {
+  MEDIA_SYNC_TOLERANCE_SECONDS,
+  forgetSteering,
+  steerMedia,
+} from "@hyperframes/core/runtime/media-steer";
 
-/** Minimum absolute drift before a currentTime correction is attempted. */
-const MIRROR_DRIFT_THRESHOLD_SECONDS = 0.05;
+/** An offset that moved less than this since the last sample is not growing: the element is not stalled. */
+const SETTLED_OFFSET_DELTA_SECONDS = 0.004;
 
 /**
- * How many *consecutive* over-threshold samples are required before issuing a
- * `currentTime` write. Absorbs single-sample jitter (GC pause, slow bridge
- * tick) without thrashing. Forced calls bypass this gate.
- *
- * Worst-case correction latency ≈ this × bridgeMaxPostIntervalMs (80 ms in
- * core/runtime/state.ts) = 160 ms — well under human A/V re-sync tolerance.
+ * How far ahead of its window a paused proxy is positioned at its media start, so the cut
+ * only has to `play()`: a seek into unbuffered media lands about 80 ms late.
  */
-const MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES = 2;
+const PRESEEK_SECONDS = 1.5;
+
+const HAVE_FUTURE_DATA = 3;
 
 export interface ProxyEntry {
   el: HTMLMediaElement;
   start: number;
   duration: number;
+  /** Where in the file the clip begins (`data-media-start`); the proxy plays `t - start + mediaStart`. */
+  mediaStart: number;
   /**
    * The iframe media element this proxy mirrors, when adopted from the DOM.
    * Its `data-start`/`data-duration` are re-read each tick so live timeline
    * edits (trim/move) bound the proxy correctly. Null for URL-driven proxies.
    */
   source?: HTMLMediaElement | null;
-  /**
-   * Count of consecutive steady-state samples in which the proxy's
-   * `currentTime` was found drifted beyond `MIRROR_DRIFT_THRESHOLD_SECONDS`.
-   * Reset on every in-threshold sample. A write is only issued once this
-   * reaches `MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES`, absorbing
-   * single-sample jitter without thrashing.
-   */
-  driftSamples: number;
+  /** The offset behind the timeline (+) at the last drift sample; steering is only trusted when it stopped growing. */
+  lastOffset?: number;
+  /** Seconds a seek of this playing proxy takes to land (smoothed); a seek aims this far ahead so it lands on time. */
+  seekLatency?: number;
+  /** When the seek still landing was issued (ms); unset when none is pending. */
+  seekIssuedAt?: number;
 }
 
 export class ParentMediaManager {
@@ -56,6 +62,9 @@ export class ParentMediaManager {
    *  replaced or cleared instead of accumulating on every attribute change. */
   private _urlAudioEntry: ProxyEntry | null = null;
   private _urlAudioSrc: string | null = null;
+  /** A sealed film's copies, keyed by the clip they play, from its runtime's list. */
+  private _listed = new Map<string, ProxyEntry>();
+  private _filmSilenced = false;
 
   private readonly _dispatchEvent: (event: Event) => void;
   private readonly _getMuted: () => boolean;
@@ -63,6 +72,7 @@ export class ParentMediaManager {
   private readonly _getPlaybackRate: () => number;
   private readonly _getCurrentTime: () => number;
   private readonly _isPaused: () => boolean;
+  private readonly _setFrameMuted: (muted: boolean) => void;
 
   constructor(opts: {
     dispatchEvent: (event: Event) => void;
@@ -71,6 +81,8 @@ export class ParentMediaManager {
     getPlaybackRate: () => number;
     getCurrentTime: () => number;
     isPaused: () => boolean;
+    /** Silences the film's own media while a copy plays it instead, and gives it back after. */
+    setFrameMuted: (muted: boolean) => void;
   }) {
     this._dispatchEvent = opts.dispatchEvent;
     this._getMuted = opts.getMuted;
@@ -78,6 +90,7 @@ export class ParentMediaManager {
     this._getPlaybackRate = opts.getPlaybackRate;
     this._getCurrentTime = opts.getCurrentTime;
     this._isPaused = opts.isPaused;
+    this._setFrameMuted = opts.setFrameMuted;
   }
 
   get audioOwner(): "runtime" | "parent" {
@@ -96,8 +109,10 @@ export class ParentMediaManager {
     this.pauseAll();
     for (const m of this._entries) if (m !== this._urlAudioEntry) m.el.src = "";
     this._entries = this._urlAudioEntry ? [this._urlAudioEntry] : [];
+    this._listed.clear();
+    this._filmSilenced = false;
     if (this._urlAudioSrc && !this._urlAudioEntry)
-      this._urlAudioEntry = this._createEntry(this._urlAudioSrc, "audio", 0, Infinity);
+      this._urlAudioEntry = this._createEntry(urlAudio(this._urlAudioSrc));
     this.teardownObserver();
     if (wasPromoted) {
       this._dispatchEvent(
@@ -115,6 +130,8 @@ export class ParentMediaManager {
       m.el.src = "";
     }
     this._entries = [];
+    this._listed.clear();
+    this._filmSilenced = false;
     this._urlAudioEntry = null;
     this._urlAudioSrc = null;
     this._audioOwner = "runtime";
@@ -135,7 +152,10 @@ export class ParentMediaManager {
 
   private _playEntry(m: ProxyEntry): void {
     if (!m.el.src) return;
-    m.el.play().catch((err: unknown) => this._reportPlaybackError(err));
+    m.el.play().catch((err: unknown) => {
+      this._syncFrameMute();
+      this._reportPlaybackError(err);
+    });
   }
 
   // Play only if the current playhead is inside the clip's (live) window, so
@@ -156,6 +176,7 @@ export class ParentMediaManager {
     // gate never closes and the proxy plays past its clip end.
     const timing = readClipTiming(m.source);
     m.start = timing.start ?? 0;
+    m.mediaStart = readLinkTiming(m.source).mediaStart;
     m.duration =
       timing.duration != null && timing.duration > 0 ? timing.duration : Number.POSITIVE_INFINITY;
   }
@@ -166,10 +187,45 @@ export class ParentMediaManager {
     return isInClipWindow(timeSeconds, m.start, m.start + m.duration);
   }
 
+  private _preseekUpcoming(m: ProxyEntry, timelineSeconds: number): void {
+    const ahead = m.start - timelineSeconds;
+    if (ahead <= 0 || ahead > PRESEEK_SECONDS || !m.el.paused) return;
+    if (Math.abs(m.el.currentTime - m.mediaStart) > MEDIA_SYNC_TOLERANCE_SECONDS) {
+      this._seekTo(m, m.mediaStart);
+    }
+  }
+
+  // The one writer of a proxy's position: every seek lands here. A seek of a playing proxy aims ahead by
+  // the time its seeks take to land: aimed at the playhead it lands behind it and the next tick seeks again.
+  private _seekTo(m: ProxyEntry, mediaSeconds: number, playing = false): void {
+    const lead = playing ? (m.seekLatency ?? 0) * this._getPlaybackRate() : 0;
+    m.seekIssuedAt = playing ? performance.now() : undefined;
+    m.el.currentTime = mediaElementTime(mediaSeconds + lead);
+  }
+
+  private _noteSeekLanded(m: ProxyEntry): void {
+    if (m.seekIssuedAt === undefined) return;
+    const landed = (performance.now() - m.seekIssuedAt) / 1000;
+    m.seekLatency = m.seekLatency === undefined ? landed : (m.seekLatency + landed) / 2;
+    m.seekIssuedAt = undefined;
+  }
+
+  // Back to the authored rate with no drift history: the proxy was seeked, paused or left its window.
+  private _releaseSteering(m: ProxyEntry): void {
+    forgetSteering(m.el);
+    m.lastOffset = undefined;
+    const rate = this._getPlaybackRate();
+    if (m.el.playbackRate !== rate) m.el.playbackRate = rate;
+  }
+
+  private _mediaTime(m: ProxyEntry, timelineSeconds: number): number {
+    return timelineSeconds - m.start + m.mediaStart;
+  }
+
   private _gateEntryPlayback(m: ProxyEntry, timeSeconds: number): boolean {
     if (!this._inWindow(m, timeSeconds)) {
       if (!m.el.paused) m.el.pause();
-      m.driftSamples = 0;
+      this._releaseSteering(m);
       return false;
     }
     if (this._audioOwner === "parent" && !this._isPaused() && m.el.paused) this._playEntry(m);
@@ -180,14 +236,22 @@ export class ParentMediaManager {
     for (const m of this._entries) this._playEntryIfActive(m);
   }
 
+  /** iOS lets an element start with sound later only if it was played inside a tap; do it for every copy. */
+  primeAll(): void {
+    if (!startsSoundOnlyInsideATap()) return;
+    for (const m of this._entries) {
+      if (!m.el.paused) continue;
+      m.el.play().catch(() => {});
+      m.el.pause();
+    }
+  }
+
   pauseAll(): void {
     for (const m of this._entries) m.el.pause();
   }
 
   stopAdoptedMedia(): void {
-    for (const m of this._entries) {
-      if (m.source) m.el.pause();
-    }
+    for (const m of this._filmCopies()) m.el.pause();
   }
 
   seekAll(timeInSeconds: number): void {
@@ -195,7 +259,7 @@ export class ParentMediaManager {
       // Re-read live bounds so a trim/move just before a paused scrub gates and
       // positions against the current clip window, not the adopt-time one.
       this._refreshEntryBounds(m);
-      if (this._inWindow(m, timeInSeconds)) m.el.currentTime = timeInSeconds - m.start;
+      if (this._inWindow(m, timeInSeconds)) this._jumpTo(m, this._mediaTime(m, timeInSeconds));
     }
   }
 
@@ -210,7 +274,7 @@ export class ParentMediaManager {
     for (const m of this._entries) {
       this._refreshEntryBounds(m);
       if (this._inWindow(m, timeInSeconds)) {
-        m.el.currentTime = timeInSeconds - m.start;
+        this._jumpTo(m, this._mediaTime(m, timeInSeconds));
         this._playEntry(m);
       } else if (!m.el.paused) {
         m.el.pause();
@@ -219,55 +283,53 @@ export class ParentMediaManager {
   }
 
   /**
-   * Mirror parent-proxy `currentTime` to the iframe timeline, with optional
-   * jitter-coalescing. Pass `{ force: true }` for alignment moments (ownership
-   * promotion, new proxy initialization) where drift must be corrected
-   * immediately.
+   * Mirror parent-proxy `currentTime` to the iframe timeline. Drift is steered by rate and
+   * seeked only past the player's one drift policy (`steerMedia`). Pass `{ force: true }`
+   * for alignment moments (ownership promotion, new proxy initialization) where a proxy off
+   * the playhead must be seeked immediately.
    */
   mirrorTime(timelineSeconds: number, options?: { force?: boolean }): void {
     const force = options?.force === true;
     for (const m of this._entries) {
       this._refreshEntryBounds(m);
+      this._preseekUpcoming(m, timelineSeconds);
+      // A proxy entering its window that was not pre-positioned (a user seek) is seeked once, before it plays.
+      const entering = m.el.paused;
       if (!this._gateEntryPlayback(m, timelineSeconds)) continue;
-      const relTime = timelineSeconds - m.start;
-      if (Math.abs(m.el.currentTime - relTime) > MIRROR_DRIFT_THRESHOLD_SECONDS) {
-        m.driftSamples += 1;
-        if (force || m.driftSamples >= MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES) {
-          m.el.currentTime = relTime;
-          m.driftSamples = 0;
-        }
-      } else {
-        m.driftSamples = 0;
+      const target = this._mediaTime(m, timelineSeconds);
+      const offset = target - m.el.currentTime;
+      if (force || entering) {
+        if (Math.abs(offset) > MEDIA_SYNC_TOLERANCE_SECONDS) this._jumpTo(m, target);
+        continue;
       }
+      this._steer(m, target, offset);
     }
   }
 
-  /**
-   * Take ownership of audible playback in response to the runtime's
-   * `media-autoplay-blocked` signal. Idempotent.
-   *
-   * The caller is responsible for muting the iframe's own media output via the
-   * postMessage bridge (`set-media-output-muted`) after calling this.
-   */
+  private _steer(m: ProxyEntry, target: number, offset: number): void {
+    const settled =
+      m.lastOffset !== undefined && Math.abs(offset - m.lastOffset) < SETTLED_OFFSET_DELTA_SECONDS;
+    m.lastOffset = offset;
+    const { rate, seek } = steerMedia(m.el, offset, this._getPlaybackRate(), settled, true);
+    if (seek) this._jumpTo(m, target, true);
+    else if (Math.abs(m.el.playbackRate - rate) > 1e-6) m.el.playbackRate = rate;
+  }
+
+  private _jumpTo(m: ProxyEntry, mediaSeconds: number, playing = false): void {
+    this._seekTo(m, mediaSeconds, playing);
+    this._releaseSteering(m);
+  }
+
   /**
    * Take ownership of audible playback. Idempotent. The `onMirror` callback
    * is called with the current timeline time and `{ force: true }` so the
    * caller's mirror implementation runs (enabling test spies on the player
    * to fire). If omitted, `mirrorTime` is called directly.
    */
-  promoteToParentProxy(
-    iframeDoc: Document | null,
-    onMirror?: (t: number, opts: { force: boolean }) => void,
-  ): void {
+  promoteToParentProxy(onMirror?: (t: number, opts: { force: boolean }) => void): void {
     if (this._audioOwner === "parent") return;
     this._audioOwner = "parent";
 
-    // Synchronously mute iframe media to close the race window.
-    if (iframeDoc) {
-      for (const el of iframeDoc.querySelectorAll("video, audio")) {
-        if (isRealmHtmlMediaElement(el)) el.muted = true;
-      }
-    }
     for (const m of [...this._entries]) this._repointToSource(m);
 
     // One-shot alignment — bypass jitter-coalescing gate.
@@ -304,7 +366,7 @@ export class ParentMediaManager {
   setupFromUrl(audioSrc: string): void {
     if (this._urlAudioSrc === audioSrc && this._urlAudioEntry) return;
     this.teardownUrlAudio();
-    const entry = this._createEntry(audioSrc, "audio", 0, Infinity);
+    const entry = this._urlTaken(audioSrc) ? null : this._createEntry(urlAudio(audioSrc));
     // Null when the composition already has a proxy for this URL: that one stays the
     // composition's, and a reset creates ours once that document's proxies are gone.
     this._urlAudioEntry = entry;
@@ -344,62 +406,98 @@ export class ParentMediaManager {
     );
   }
 
-  /**
-   * Create a parent-frame media element and start preloading it. Returns the
-   * new entry, or `null` if a proxy for this src already exists (dedup).
-   */
-  private _createEntry(
-    src: string,
-    tag: "audio" | "video",
-    start: number,
-    duration: number,
-    source?: HTMLMediaElement | null,
-  ): ProxyEntry | null {
-    if (this._urlTaken(src)) return null;
+  /** Copies for a sealed film, from its runtime's list: only files under the composition's own folder. */
+  setupFromList(list: unknown, compositionUrl: string | null): void {
+    const wanted = new Map<string, ParentCopy>();
+    const refused: string[] = [];
+    for (const copy of readCopies(list)) {
+      const src = underComposition(copy.src, compositionUrl);
+      if (src) wanted.set(JSON.stringify(copy), { ...copy, src });
+      else refused.push(copy.src);
+    }
+    for (const [key, entry] of this._listed) {
+      if (wanted.has(key)) continue;
+      this._removeEntry(entry);
+      this._listed.delete(key);
+    }
+    for (const [key, copy] of wanted) {
+      if (this._listed.has(key)) continue;
+      const entry = this._createEntry(copy, null, "anonymous");
+      this._listed.set(key, entry);
+      this._copyAdded(entry);
+    }
+    if (refused.length === 0) return;
+    const error = new Error("a sealed film's media outside the composition's folder is not copied");
+    this._dispatchEvent(
+      new CustomEvent("playbackerror", { detail: { source: "parent-proxy", error, refused } }),
+    );
+  }
 
-    const el = tag === "video" ? document.createElement("video") : new Audio();
+  /** Create a parent-frame media element and start preloading it. */
+  private _createEntry(
+    copy: ParentCopy,
+    source?: HTMLMediaElement | null,
+    crossOrigin = source?.getAttribute("crossorigin") ?? null,
+  ): ProxyEntry {
+    const el = copy.kind === "video" ? document.createElement("video") : new Audio();
     el.preload = "auto";
-    el.src = src;
+    if (crossOrigin != null) el.setAttribute("crossorigin", crossOrigin);
+    el.src = copy.src;
     el.load();
     el.muted = this._getMuted();
     el.volume = this._getVolume();
     const rate = this._getPlaybackRate();
     if (rate !== 1) el.playbackRate = rate;
 
-    const entry: ProxyEntry = { el, start, duration, driftSamples: 0, source };
+    const entry: ProxyEntry = {
+      el,
+      start: copy.start,
+      duration: copy.duration,
+      mediaStart: copy.mediaStart,
+      source,
+    };
+    el.addEventListener("seeked", () => this._noteSeekLanded(entry));
+    for (const change of ["playing", "waiting", "pause", "ended", "error"])
+      el.addEventListener(change, () => this._syncFrameMute());
     this._entries.push(entry);
     return entry;
   }
 
-  /** Resolve an iframe media element's source to an absolute URL, or null. */
-  private _resolveIframeMediaSrc(iframeEl: HTMLMediaElement): string | null {
-    const rawSrc =
-      iframeEl.getAttribute("src") || iframeEl.querySelector("source")?.getAttribute("src");
-    return rawSrc ? new URL(rawSrc, iframeEl.ownerDocument.baseURI).href : null;
+  /** Every copy of the film's own media: all but the player's `audio-src` track. */
+  private _filmCopies(): ProxyEntry[] {
+    return this._entries.filter((m) => m !== this._urlAudioEntry);
   }
 
-  // fallow-ignore-next-line complexity
-  private _adoptIframeMedia(iframeEl: HTMLMediaElement): void {
-    // Skip elements the preloader has demoted: the observer adopts one when its preload turns
-    // "auto" and drops its proxy, which fetches the whole file, when it turns back.
-    if (iframeEl.preload === "metadata" || iframeEl.preload === "none") return;
-
-    const src = this._resolveIframeMediaSrc(iframeEl);
-    if (!src) return;
-
-    const timing = readClipTiming(iframeEl);
-    const start = timing.start ?? 0;
-    const duration = timing.duration ?? Number.POSITIVE_INFINITY;
-    const tag = iframeEl.tagName === "VIDEO" ? ("video" as const) : ("audio" as const);
-
-    const created = this._createEntry(src, tag, start, duration, iframeEl);
-
-    // If already under parent ownership and playing, the new proxy must catch
-    // up immediately — bypass the jitter-coalescing gate.
-    if (created && this._audioOwner === "parent") {
-      this.mirrorTime(this._getCurrentTime(), { force: true });
-      if (!this._isPaused()) this._playEntryIfActive(created);
+  // The film is silent exactly while a copy of its media is heard instead, read from each
+  // copy's own state so the order its events arrive in cannot leave the film muted.
+  private _syncFrameMute(): void {
+    const heard =
+      this._audioOwner === "parent" &&
+      this._filmCopies().some(
+        ({ el }) => !el.paused && !el.ended && !el.error && el.readyState >= HAVE_FUTURE_DATA,
+      );
+    if (heard === this._filmSilenced) return;
+    this._filmSilenced = heard;
+    const frameDoc = this._entries.find((m) => m.source)?.source?.ownerDocument;
+    if (heard) {
+      for (const el of frameDoc?.querySelectorAll("video, audio") ?? []) {
+        if (isRealmHtmlMediaElement(el)) el.muted = true;
+      }
     }
+    this._setFrameMuted(heard);
+  }
+
+  // A copy made while the parent owns playback catches up at once, past the jitter gate.
+  private _copyAdded(entry: ProxyEntry): void {
+    if (this._audioOwner !== "parent") return;
+    this.mirrorTime(this._getCurrentTime(), { force: true });
+    if (!this._isPaused()) this._playEntryIfActive(entry);
+  }
+
+  private _adoptIframeMedia(iframeEl: HTMLMediaElement): void {
+    if (this._entries.some((m) => m.source === iframeEl)) return;
+    const copy = parentCopyOf(iframeEl);
+    if (copy) this._copyAdded(this._createEntry(copy, iframeEl));
   }
 
   // The runtime re-points a clip (its preview copy, a new bound file). A proxy that is not
@@ -412,22 +510,18 @@ export class ParentMediaManager {
     if (!this._isPaused()) this._playEntryIfActive(entry);
   }
 
-  /** One proxy per file: a second clip on the same file is heard through the first one's proxy.
-   * A proxy's file is its clip's current one (a clip that left the page owns none). */
-  private _urlTaken(src: string, except?: ProxyEntry): boolean {
+  /** Whether a clip's proxy already plays this file. A proxy's file is its clip's current one
+   * (a clip that left the page owns none). */
+  private _urlTaken(src: string): boolean {
     return this._entries.some((m) => {
-      if (m === except || (m.source && !m.source.isConnected)) return false;
-      return ((m.source && this._resolveIframeMediaSrc(m.source)) || m.el.src) === src;
+      if (m.source && !m.source.isConnected) return false;
+      return ((m.source && mediaFileOf(m.source)) || m.el.src) === src;
     });
   }
 
   private _repointToSource(entry: ProxyEntry): boolean {
-    const src = entry.source ? this._resolveIframeMediaSrc(entry.source) : null;
+    const src = entry.source ? mediaFileOf(entry.source) : null;
     if (!src || entry.el.src === src) return false;
-    if (this._urlTaken(src, entry)) {
-      this._removeEntry(entry);
-      return false;
-    }
     entry.el.src = src;
     entry.el.load();
     return true;
@@ -442,6 +536,7 @@ export class ParentMediaManager {
     entry.el.pause();
     entry.el.src = "";
     this._entries.splice(this._entries.indexOf(entry), 1);
+    this._syncFrameMute();
   }
 
   private _observeDynamicMedia(doc: Document): void {
@@ -519,5 +614,46 @@ export class ParentMediaManager {
       obs.observe(target, observeOpts);
     }
     this._mediaObserver = obs;
+  }
+}
+
+function urlAudio(src: string): ParentCopy {
+  return { kind: "audio", src, start: 0, duration: Number.POSITIVE_INFINITY, mediaStart: 0 };
+}
+
+/** The well-formed clips of a list from the film; the frame is not trusted. */
+function readCopies(list: unknown): ParentCopy[] {
+  if (!Array.isArray(list)) return [];
+  return list.filter((item): item is ParentCopy => {
+    if (typeof item !== "object" || item === null) return false;
+    const c = item as Record<string, unknown>;
+    return (
+      (c.kind === "audio" || c.kind === "video") &&
+      typeof c.src === "string" &&
+      Number.isFinite(c.start) &&
+      typeof c.duration === "number" &&
+      c.duration >= 0 &&
+      Number.isFinite(c.mediaStart)
+    );
+  });
+}
+
+/** The file's address on the composition's own origin when it is under its folder; otherwise null. */
+function underComposition(src: string, compositionUrl: string | null): string | null {
+  if (!compositionUrl) return null;
+  try {
+    const file = new URL(src);
+    const base = new URL(compositionUrl);
+    const web = /^https?:$/;
+    if (!web.test(file.protocol) || !web.test(base.protocol)) return null;
+    const folder = base.pathname.slice(0, base.pathname.lastIndexOf("/") + 1);
+    if (file.origin !== base.origin || !file.pathname.startsWith(folder)) return null;
+    const parts = file.pathname.slice(folder.length).split("/").map(decodeURIComponent);
+    if (parts.some((part) => /[/\\]/.test(part) || part === "." || part === "..")) return null;
+    const path = parts.map(encodeURIComponent).join("/");
+    const query = file.search ? "?" + file.search.slice(1) : "";
+    return base.origin + folder + path + query;
+  } catch {
+    return null;
   }
 }

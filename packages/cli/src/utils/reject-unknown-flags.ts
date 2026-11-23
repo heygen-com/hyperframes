@@ -1,21 +1,33 @@
 import type { ArgDef, ArgsDef, CommandDef } from "citty";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { CliUsageError } from "./commandResult.js";
 import { c } from "../ui/colors.js";
+import { closestMatch } from "./didYouMean.js";
 
 // citty is permissive: an unrecognized flag (e.g. `render --out x` when the flag
 // is `--output`/`-o`) is silently ignored instead of rejected, so the value is
 // dropped and the command falls back to its default — a silent wrong result. We
 // reject unknown flags up front with a clear message.
 
-// Global flags citty / the CLI understand on every command.
-const ALWAYS_KNOWN = new Set(["help", "h", "version", "v", "json"]);
+// Global flags citty / the CLI understand on every command. `--json` is not one: a command
+// supports it by declaring a `json` arg, and every other command rejects it.
+const ALWAYS_KNOWN = new Set(["help", "h", "version", "v"]);
 
 // A camelCase arg name (`gifLoop`) is passed as `--gif-loop`; a kebab name is
 // passed as-is. Accept both spellings so the validator matches citty's parsing.
+function kebabCase(name: string): string {
+  return name.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+}
+
 function nameVariants(name: string): string[] {
-  const kebab = name.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
   const camel = name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-  return [name, kebab, camel];
+  return [name, kebabCase(name), camel];
+}
+
+function visibleLongFlags(args: ArgsDef | undefined): string[] {
+  return Object.entries(args ?? {})
+    .filter(([, def]) => def?.type !== "positional" && !(def && "hidden" in def && def.hidden))
+    .map(([name]) => kebabCase(name));
 }
 
 // Every spelling of one declared arg: name variants plus aliases. `def` may be undefined.
@@ -43,8 +55,18 @@ function longFlagName(tok: string): string {
   return name.startsWith("no-") ? name.slice(3) : name;
 }
 
+// A negative number (`-18`, `-0.5`) is a value: no flag is spelled with digits.
+function isNegativeNumber(tok: string): boolean {
+  return /^-(\d+\.?\d*|\.\d+)$/.test(tok);
+}
+
+// Dash-prefixed and not a bare `-` (stdin) or a negative number: the only tokens that can name a flag.
+function canNameFlag(tok: string): boolean {
+  return tok.startsWith("-") && tok !== "-" && !isNegativeNumber(tok);
+}
+
 function unknownFlagIn(tok: string, known: Set<string>): string | null {
-  if (tok === "-" || !tok.startsWith("-")) return null; // positional or flag value
+  if (!canNameFlag(tok)) return null; // positional or flag value
   if (tok.startsWith("--")) {
     const name = longFlagName(tok);
     return name && !known.has(name) ? `--${name}` : null;
@@ -55,12 +77,44 @@ function unknownFlagIn(tok: string, known: Set<string>): string | null {
   return null;
 }
 
+// Flags agents carry over from other commands or tools, and the one that means the same here.
+const FLAG_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
+  from: ["start"],
+  to: ["end"],
+  start: ["from"],
+  end: ["to"],
+  o: ["out", "output"],
+  search: ["query"],
+};
+
+function unknownFlagError(flag: string, visible: string[], path: string): CliUsageError {
+  const command = `hyperframes ${path ? `${path} ` : ""}`.trim();
+  if (flag === "--json") {
+    return new CliUsageError(`${command} has no JSON output.`, {
+      code: "json_unsupported",
+      hint: "Run it without --json.",
+    });
+  }
+  const name = flag.replace(/^--?/, "");
+  const match =
+    FLAG_SYNONYMS[name]?.find((s) => visible.includes(s)) ??
+    (flag.startsWith("--") ? closestMatch(name, visible) : undefined);
+  const hint = [
+    match && `Did you mean --${match}?`,
+    visible.length > 0 && `Its flags: ${visible.map((f) => `--${f}`).join(", ")}.`,
+    `Run 'hyperframes ${path ? `${path} ` : ""}--help' for what each does.`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return new CliUsageError(`Unknown flag: ${flag}`, { hint, code: "unknown_flag" });
+}
+
 /**
  * Throw on the first flag in `rawArgs` not declared by `cmd` (its args + aliases
  * + the global set). Only dash-prefixed tokens are inspected, so positionals and
  * flag values pass through untouched. Stops at `--`.
  */
-export function assertKnownFlags(cmd: CommandDef<ArgsDef>, rawArgs: string[]): void {
+export function assertKnownFlags(cmd: CommandDef<ArgsDef>, rawArgs: string[], path = ""): void {
   if (!Array.isArray(rawArgs)) return;
   // citty types `args` as Resolvable<ArgsDef> (it may be a fn/promise); every
   // hyperframes command uses a static object, so treat anything else as "no
@@ -71,7 +125,7 @@ export function assertKnownFlags(cmd: CommandDef<ArgsDef>, rawArgs: string[]): v
   for (const tok of rawArgs) {
     if (tok === "--") break;
     const bad = unknownFlagIn(tok, known);
-    if (bad) throw new Error(`Unknown flag: ${bad}`);
+    if (bad) throw unknownFlagError(bad, visibleLongFlags(args), path);
   }
 }
 
@@ -124,7 +178,7 @@ export function swallowedFlagUsageError(flagName: string, next: string): CliUsag
 function throwSwallowedFlagError(flagName: string, next: string): never {
   const hint = `pass one: --${flagName} <value> or --${flagName}=<value>`;
   const message = swallowedValueMessage(flagName, next, hint);
-  console.error(c.error(message));
+  console.error(c.error(terminalText(message)));
   throw new CliUsageError(message, { presented: true });
 }
 
@@ -135,7 +189,7 @@ export interface SwallowGuardResult {
 
 // End of argv and a bare `-` (stdin) are never a swallow; `--` or a known flag spelling is.
 function looksLikeSwallowedFlag(next: string | undefined, known: Set<string>): boolean {
-  if (next === undefined || next === "-") return false;
+  if (next === undefined || next === "-" || isNegativeNumber(next)) return false;
   return next === "--" || (next.startsWith("-") && unknownFlagIn(next, known) === null);
 }
 

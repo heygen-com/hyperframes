@@ -1,6 +1,6 @@
 // packages/core/src/slideshow/parseSlideshow.test.ts
 import { describe, it, expect } from "vitest";
-import { parseSlideshowManifest, resolveSlideshow } from "./parseSlideshow";
+import { parseSlideshowManifest, resolveSlideshow, slideshowIslandRegex } from "./parseSlideshow";
 
 const ISLAND = `<!doctype html><html><body>
 <script type="application/hyperframes-slideshow+json">
@@ -30,6 +30,74 @@ describe("parseSlideshowManifest", () => {
     expect(m?.slideSequences?.[0].id).toBe("deep");
   });
 
+  it.each([
+    'type = "application/hyperframes-slideshow+json"',
+    "type\t=\t'application/hyperframes-slideshow+json'",
+    'type\n =\r\n "application/hyperframes-slideshow+json"',
+    'type\f=\f"application/hyperframes-slideshow+json"',
+  ])("reads a slideshow island with HTML whitespace in %s", (attribute) => {
+    const manifest = { slides: [{ sceneId: "a" }, { sceneId: "b" }] };
+    const json = JSON.stringify(manifest);
+    const island = `<script id="deck" ${attribute}>${json}</script>`;
+    const html = `<html><body>${island}</body></html>`;
+    expect(parseSlideshowManifest(html)).toEqual(manifest);
+    expect(slideshowIslandRegex("i").exec(html)?.[1]).toBe(json);
+    expect((island + island).replace(slideshowIslandRegex("gi"), "")).toBe("");
+  });
+
+  it("finds the island in every page exactly where the island regex does", () => {
+    const viaRegex = (html: string) => {
+      const raw = slideshowIslandRegex("i").exec(html)?.[1]?.trim();
+      return raw
+        ? parseSlideshowManifest(
+            `<script type="application/hyperframes-slideshow+json">${raw}</script>`,
+          )
+        : null;
+    };
+    const outcome = (read: () => unknown) => {
+      try {
+        return { value: read() };
+      } catch (error) {
+        return { error: String(error) };
+      }
+    };
+    const tokens = [
+      "<script",
+      "<SCRIPT ",
+      ">",
+      "</script>",
+      "</SCRIPT>",
+      "</script >",
+      ' type="application/hyperframes-slideshow+json"',
+      " TYPE = 'APPLICATION/HYPERFRAMES-SLIDESHOW+JSON'",
+      ' type="text/javascript"',
+      '{"slides":[{"sceneId":"a"}]}',
+      "{",
+      " ",
+      "\n",
+      "x",
+    ];
+    let seed = 3;
+    const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let i = 0; i < 20_000; i++) {
+      const html = Array.from(
+        { length: 1 + Math.floor(next() * 16) },
+        () => tokens[Math.floor(next() * tokens.length)],
+      ).join("");
+      expect(
+        outcome(() => parseSlideshowManifest(html)),
+        html,
+      ).toEqual(outcome(() => viaRegex(html)));
+    }
+  });
+
+  it("reads a 4 MB page of unclosed script tags in well under a second", () => {
+    const html = "<script ".repeat(500_000);
+    const started = performance.now();
+    expect(parseSlideshowManifest(html)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it("throws when slideSequences is present but not an array", () => {
     const html = `<script type="application/hyperframes-slideshow+json">
       { "slides": [{ "sceneId": "a" }], "slideSequences": {} }
@@ -48,6 +116,22 @@ describe("parseSlideshowManifest", () => {
     </script>`;
     expect(() => parseSlideshowManifest(html)).toThrow();
   });
+
+  it.each(['"0"', "null", "true", "{}", "[]", "1e400"])(
+    "rejects nonnumeric or nonfinite slide bounds %s in main-line and branch slides",
+    (value) => {
+      for (const field of ["startTime", "endTime"]) {
+        const slide = `{"sceneId":"a","${field}":${value}}`;
+        for (const manifest of [
+          `{"slides":[${slide}]}`,
+          `{"slides":[],"slideSequences":[{"id":"deep","label":"Deep","slides":[${slide}]}]}`,
+        ]) {
+          const html = `<script type="application/hyperframes-slideshow+json">${manifest}</script>`;
+          expect(() => parseSlideshowManifest(html)).toThrow("not a valid SlideshowManifest");
+        }
+      }
+    },
+  );
 
   it.each([
     null,

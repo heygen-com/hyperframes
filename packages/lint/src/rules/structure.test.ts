@@ -15,9 +15,33 @@ const STRUCTURE = new Set([
   "caption_track_kind_missing",
   "multiple_caption_tracks",
   "clip_ends_past_root_duration",
+  "nested_clip_never_visible",
 ]);
 const has = (found: Awaited<ReturnType<typeof codes>>, code: string) =>
   found.some((f) => f.code === code);
+
+describe("nested_clip_never_visible", () => {
+  const shot = (clipStart: number) =>
+    `<div id="shot2" class="clip" data-start="5" data-duration="5"><video id="v1" class="clip" src="a.mp4" data-start="${clipStart}" data-duration="2"></video></div>`;
+  const neverVisible = (found: Awaited<ReturnType<typeof codes>>) =>
+    found.filter((f) => f.code === "nested_clip_never_visible");
+
+  it("flags a nested clip whose window misses its parent's", async () => {
+    const [finding] = neverVisible(await codes(shot(0)));
+    expect(finding).toMatchObject({ elementId: "v1", severity: "warning" });
+    expect(finding?.message).toContain("only shows from 5s to 10s");
+  });
+  it("leaves a nested clip that plays inside its parent's window", async () => {
+    expect(neverVisible(await codes(shot(6)))).toEqual([]);
+  });
+  it("leaves nested audio alone: it plays whether or not its parent shows", async () => {
+    const body = `<div id="shot2" class="clip" data-start="5" data-duration="5"><audio id="a1" class="clip" src="a.mp3" data-start="0" data-duration="2"></audio></div>`;
+    expect(neverVisible(await codes(body))).toEqual([]);
+  });
+  it("checks sub-composition files too", async () => {
+    expect(neverVisible(await codes(shot(0), { isSubComposition: true }))).toHaveLength(1);
+  });
+});
 
 describe("nested_structure_needs_subcomposition", () => {
   it("flags a timed div that contains another div", async () => {

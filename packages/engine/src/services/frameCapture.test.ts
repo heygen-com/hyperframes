@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { Protocol } from "puppeteer-core";
-import { COMPOSITION_SOURCE_URL } from "@hyperframes/core";
+import { COMPOSITION_SOURCE_URL, SCENE_CALLBACK_ERROR_PREFIX } from "@hyperframes/core";
 import type { CaptureSession } from "./frameCapture.js";
+import type { SubTimelineWaitMemo } from "../types.js";
 import {
   buildZeroDurationDiagnostic,
   pollHfReady,
@@ -164,7 +165,7 @@ describe("classifyPageError", () => {
   });
 
   // initializeSession registers its listeners before the incomplete fake session makes it throw.
-  async function listenedSession() {
+  async function listenedSession(memo: SubTimelineWaitMemo = {}) {
     const runtimeListeners = new Map<string, (event: unknown) => void>();
     const pageListeners = new Map<string, (event: unknown) => void>();
     const listen =
@@ -179,10 +180,45 @@ describe("classifyPageError", () => {
       pageErrors: [] as string[],
       warnings: [] as { code: string }[],
       browserConsoleBuffer: [],
+      subTimelineWaitMemo: memo,
     } as unknown as CaptureSession;
     await initializeSession(session).catch(() => {});
     return { session, pageListeners, runtimeListeners };
   }
+
+  it("keeps browser diagnostics on stderr and in the session buffer", async () => {
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { session, pageListeners } = await listenedSession();
+      const emit = (type: string, text: string, url = "") =>
+        pageListeners.get("console")?.({
+          type: () => type,
+          text: () => text,
+          location: () => ({ url }),
+        });
+      emit("info", "[hyperframes] render runtime fps");
+      emit("warn", "GPU readback warning");
+      emit("error", "[HyperFrames] composition script error: scene TypeError: x");
+      emit("error", "Failed to load resource", "https://fonts.gstatic.com/font.woff2");
+
+      expect(stderr.mock.calls).toEqual([
+        ["[Browser:WARN] GPU readback warning"],
+        ["[Browser:ERROR] [HyperFrames] composition script error: scene TypeError: x"],
+      ]);
+      expect(stdout).not.toHaveBeenCalled();
+      expect(session.browserConsoleBuffer).toEqual([
+        "[HyperFrames] render runtime fps",
+        "[Browser:WARN] GPU readback warning",
+        "[Browser:ERROR] [HyperFrames] composition script error: scene TypeError: x",
+        "[Browser] Failed to load resource",
+      ]);
+      expect(session.pageErrors).toEqual(["runtime-error:scene TypeError: x"]);
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
+  });
 
   it("records the page's uncaught errors from scripts it loaded from the server", async () => {
     const { session, pageListeners, runtimeListeners } = await listenedSession();
@@ -220,6 +256,26 @@ describe("classifyPageError", () => {
       "runtime-error:vfx-frame: #host: no paint arrived",
       "runtime-error:scene TypeError: x",
     ]);
+  });
+
+  it("logs a scene callback error once per render, and never as a page error", async () => {
+    const memo: SubTimelineWaitMemo = {};
+    const sessions = [await listenedSession(memo), await listenedSession(memo)];
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const text = `${SCENE_CALLBACK_ERROR_PREFIX} "scene" TypeError: x`;
+    for (const { pageListeners } of sessions) {
+      for (let i = 0; i < 2; i++) {
+        pageListeners.get("console")?.({
+          type: () => "warn",
+          text: () => text,
+          location: () => ({}),
+        });
+      }
+    }
+    const logged = log.mock.calls.filter(([line]) => String(line).includes('"scene" TypeError: x'));
+    expect(logged).toHaveLength(1);
+    for (const { session } of sessions) expect(session.pageErrors).toEqual([]);
+    log.mockRestore();
   });
 
   it("refuses to capture another frame once a VFX chain has failed", async () => {
@@ -394,6 +450,14 @@ describe("navigation diagnostics", () => {
     expect(sanitizeDiagnosticUrl("/relative/path.png?token=secret#frag")).toBe(
       "/relative/path.png",
     );
+  });
+
+  it("keeps only the path of bare and dot-relative URLs", () => {
+    expect(sanitizeDiagnosticUrl("./assets/bg.webp?example=REDACT_ME#fragment")).toBe(
+      "/assets/bg.webp",
+    );
+    expect(sanitizeDiagnosticUrl("assets/bg.webp?example=REDACT_ME")).toBe("/assets/bg.webp");
+    expect(sanitizeDiagnosticUrl("//user:pw@cdn.test/bg.jpg?t=1")).toBe("/bg.jpg");
   });
 
   it("formats page.goto failures with mode, timeout, elapsed time, and sanitized URL", () => {
@@ -606,6 +670,35 @@ describe("buildZeroDurationDiagnostic", () => {
   it("omits the buildReady hint entirely when nothing is pending or rejected", () => {
     const message = buildZeroDurationDiagnostic(baseDiag);
     expect(message).not.toContain("buildReady");
+  });
+
+  it("headlines a pending setup as a setup timeout, not a zero duration", () => {
+    const message = buildZeroDurationDiagnostic(
+      { ...baseDiag, pendingBuildReadyKeys: ["clockwork"] },
+      45000,
+    );
+    expect(message).toMatch(
+      /^\[FrameCapture\] Composition setup did not finish within 45000ms\.\n/,
+    );
+    expect(message).not.toContain("zero duration");
+    expect(message).toContain("data-duration: 6s");
+    expect(message).toContain("requestAnimationFrame callbacks wait until the first frame");
+    expect(message).toContain("Await the library's own readiness promise instead");
+  });
+
+  it("does not guess at duration inference while setup is still pending", () => {
+    const message = buildZeroDurationDiagnostic({ ...baseDiag, hasTimeline: false });
+    expect(message).toContain("Composition setup did not finish.");
+    expect(message).not.toContain("No GSAP timeline registered");
+  });
+
+  it("keeps the zero-duration headline once the runtime is ready", () => {
+    const message = buildZeroDurationDiagnostic(
+      { ...baseDiag, renderReady: true, hasTimeline: false, declaredDuration: -1 },
+      45000,
+    );
+    expect(message).toMatch(/^\[FrameCapture\] Composition has zero duration\.\n/);
+    expect(message).toContain("No GSAP timeline registered");
   });
 
   it("names a rejected buildReady key separately from a pending one", () => {

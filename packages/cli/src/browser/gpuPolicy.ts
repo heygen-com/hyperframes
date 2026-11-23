@@ -1,4 +1,4 @@
-import { resolveConfig, usesSoftwareWebGpu } from "@hyperframes/engine";
+import { resolveConfig, usesSoftwareWebGpu, type GpuProbeLifecycle } from "@hyperframes/engine";
 
 export type BrowserGpuMode = "auto" | "hardware" | "software";
 export type ResolvedBrowserGpuMode = Exclude<BrowserGpuMode, "auto">;
@@ -16,9 +16,10 @@ export function resolveLocalBrowserGpuMode(
 export async function resolveCaptureBrowserGpuMode(
   requestedMode: BrowserGpuMode,
   chromePath?: string,
+  probeLifecycle?: GpuProbeLifecycle,
 ): Promise<ResolvedBrowserGpuMode> {
   const { resolveBrowserGpuMode } = await import("@hyperframes/engine");
-  return resolveBrowserGpuMode(requestedMode, { chromePath });
+  return resolveBrowserGpuMode(requestedMode, { chromePath, probeLifecycle });
 }
 
 // `compositionRequiresWebGpu` and the launch-time WebGPU guard now live in
