@@ -175,8 +175,8 @@ describe("draft ends by number", () => {
   });
 });
 
-// fails without the fix: a sealed drag of a GSAP-held layer drew a CSS translate on top of GSAP's, which the browser
-// keeps at another precision than GSAP's own x/y, so the sealed drop point and saved x came out 0.001 px off.
+// fails without the fix: a sealed drag of a GSAP-held layer drew an unrounded CSS translate on top of GSAP's, where an
+// open preview gives GSAP the rounded x/y, so the sealed drop point and saved x came out 0.001 px off.
 describe("moves through GSAP", () => {
   function gsapHeld() {
     const { element, handle } = card("translate: 4px 2px; width: 50px");
@@ -190,30 +190,30 @@ describe("moves through GSAP", () => {
     return { element, handle, position, move };
   }
 
-  it("moves GSAP's x/y from where they were at the first draw, with no translate on top", () => {
+  it("draws GSAP's x/y where Studio's drag puts them, with no translate on top", () => {
     const { element, position, move } = gsapHeld();
-    move(-5, 3);
-    move(-10, 6);
+    move(35, 33);
+    move(30, 36);
     expect([position, element.style.translate]).toEqual([{ x: 30, y: 36 }, "none"]);
   });
 
   it("puts GSAP's x/y and the translate back when the draft is restored", () => {
     const { element, handle, position, move } = gsapHeld();
-    move(-10, 6);
+    move(30, 36);
     drawDrafts([{ handle, end: "restore" }]);
     expect([position, element.style.translate]).toEqual([{ x: 40, y: 30 }, "4px 2px"]);
   });
 
   it("leaves GSAP where the drag drew it when the draft ends keeping its size", () => {
     const { element, handle, position, move } = gsapHeld();
-    move(-10, 6);
+    move(30, 36);
     drawDrafts([{ handle, end: "keep-size" }]);
     expect([position, element.style.translate]).toEqual([{ x: 30, y: 36 }, "4px 2px"]);
   });
 
   it("leaves a position set over the port after the draw when the draft is restored", () => {
     const { handle, position, move } = gsapHeld();
-    move(-10, 6);
+    move(30, 36);
     gsapSet({ handle, props: { x: 12, y: 7 } });
     drawDrafts([{ handle, end: "restore" }]);
     expect(position).toEqual({ x: 12, y: 7 });

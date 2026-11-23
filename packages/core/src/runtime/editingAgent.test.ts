@@ -692,7 +692,7 @@ describe("installEditingAgent", () => {
         set: (_: Element, props: Partial<typeof position>) => Object.assign(position, props),
       },
     });
-    const translate = { x: -5, y: 3, route: "gsap" };
+    const translate = { x: 35, y: 33, route: "gsap" };
     const drafts = [{ handle: handleFor(held), translate, size: null }];
     expect(await ask(port, { v: 1, id: 1, kind: "draft", params: { drafts } })).toMatchObject({
       ok: true,

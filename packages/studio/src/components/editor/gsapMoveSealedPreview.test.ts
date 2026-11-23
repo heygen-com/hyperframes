@@ -153,14 +153,8 @@ const press = () =>
     currentTarget: { setPointerCapture() {} },
   }) as unknown as React.PointerEvent<HTMLElement>;
 
-/** Presses the box on a sealed frame, drags it 10 page px right and lets go, as the overlay does. */
-async function dragBoxOnSealedFrame(
-  script: string,
-  beforePress?: (iframe: HTMLIFrameElement) => void,
-  beforeEnd?: (standIn: Element, member: ManualOffsetDragMember) => void,
-  save?: (iframe: HTMLIFrameElement, standIn: Element) => Promise<unknown>,
-) {
-  const box = document.getElementById("box")!;
+/** Presses the box on a sealed frame, as the overlay does. */
+async function pressBoxOnSealedFrame(beforePress?: (iframe: HTMLIFrameElement) => void) {
   const iframe = opaqueFrame();
   beforePress?.(iframe);
   const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
@@ -172,6 +166,19 @@ async function dragBoxOnSealedFrame(
   const started = startGesture("drag", press(), opts, { selection, rect, start, snap: read!.snap });
   expect(opts.onBlockedMoveRef.current).not.toHaveBeenCalled();
   const member = opts.gestureRef.current!.pathOffsetMember!;
+  return { iframe, standIn, selection, start, started, member };
+}
+
+/** Presses the box on a sealed frame, drags it 10 page px right and lets go, as the overlay does. */
+async function dragBoxOnSealedFrame(
+  script: string,
+  beforePress?: (iframe: HTMLIFrameElement) => void,
+  beforeEnd?: (standIn: Element, member: ManualOffsetDragMember) => void,
+  save?: (iframe: HTMLIFrameElement, standIn: Element) => Promise<unknown>,
+) {
+  const box = document.getElementById("box")!;
+  const { iframe, standIn, selection, start, started, member } =
+    await pressBoxOnSealedFrame(beforePress);
 
   // A page px is two frame px: the frame shows 1920 px in 960.
   applyManualOffsetDragDraft(member, 10, 0);
@@ -235,6 +242,40 @@ it("draws a sealed drag of a GSAP-held layer with the writes an open preview's d
   if (!open.ok) throw new Error("no open member");
   applyManualOffsetDragDraft(open.member, 20, 0);
   expect(writes(element)).toEqual(sealed);
+});
+
+/** The frame's writes for a drag of `frameDx` frame px, sealed then open: a page px is two frame px sealed. */
+async function sealedAndOpenWrites(script: string, frameDx: number) {
+  mount(script);
+  const { member } = await pressBoxOnSealedFrame();
+  const from = drawnAt(box()).x;
+  applyManualOffsetDragDraft(member, frameDx / 2, 0);
+  await vi.waitFor(() => expect(drawnAt(box()).x).toBeGreaterThan(from + frameDx - 1));
+  const sealed = [writes(box()), drawnAt(box())];
+  mount(script);
+  const element = box();
+  const rect = { left: 300, top: 200, width: 100, height: 50, editScaleX: 1, editScaleY: 1 };
+  const selection = makeSelection("box", element);
+  const open = createManualOffsetDragMember({
+    key: "box",
+    selection,
+    element,
+    rect,
+    gesture: "drag",
+  });
+  if (!open.ok) throw new Error("no open member");
+  applyManualOffsetDragDraft(open.member, frameDx, 0);
+  return { sealed, open: [writes(element), drawnAt(element)] };
+}
+
+// fails without the fix: a sealed drag gave the frame the unrounded offset, where an open preview's drag rounds the
+// position it writes to 3 decimals, so the drawn box and the drop point measured from it came out up to 0.0005 px off.
+it.each([
+  ["a GSAP-held layer, on GSAP's route", SCRIPT],
+  ["a layer GSAP leaves alone, on its own translate", timeline("")],
+])("draws a sealed drag of %s at the position an open drag rounds to", async (_name, script) => {
+  const { sealed, open } = await sealedAndOpenWrites(script, 20.00074);
+  expect(sealed[1]).toEqual(open[1]);
 });
 
 it("puts a cancelled sealed drag of a GSAP-held layer back where GSAP had it", async () => {

@@ -125,9 +125,9 @@ function drawTranslate(element: Styled, offset: DraftTranslate): void {
     return void element.style.setProperty("translate", movedTranslate(saved.translate, offset));
   const gsap = frameGsap();
   const read = (axis: string) => Number(gsap?.getProperty?.(element, axis)) || 0;
-  const base = (saved.gsapPosition ??= { x: read("x"), y: read("y") });
+  saved.gsapPosition ??= { x: read("x"), y: read("y") };
   element.style.setProperty("translate", "none");
-  saved.gsapDrawn = { x: base.x + offset.x, y: base.y + offset.y };
+  saved.gsapDrawn = { x: offset.x, y: offset.y };
   gsap?.set?.(element, { ...saved.gsapDrawn });
 }
 
