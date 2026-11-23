@@ -6,7 +6,11 @@ import {
   parseTimelineFromDOM,
   mergeTimelineElementsPreservingDowngrades,
 } from "./timelineDOM";
-import { isTimelineIgnoredElement } from "./timelineElementHelpers";
+import {
+  deriveTimelineStoreKey,
+  isTimelineIgnoredElement,
+  splitTimelineElementKey,
+} from "./timelineElementHelpers";
 import { clipTimingStart, resolveClipTimingBasis } from "../../hooks/gsapShared";
 import { toAuthoredStart } from "../store/timelineElement";
 import { computeResizePreview } from "../components/timelineClipDragPreview";
@@ -371,6 +375,48 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
 // fails without the fix: a sealed reload names a clip from its element when the frame's document copy arrives and from
 // its place in the list when it doesn't, so every clip changed name across an agent cut and the timeline lost them.
 describe("a clip's name across a sealed reload", () => {
+  const named = (id: string) => ({
+    id,
+    label: "Title",
+    kind: "element" as const,
+    tagName: "div",
+    start: 0,
+    duration: 5,
+    track: 0,
+    compositionId: null,
+    parentCompositionId: null,
+    compositionSrc: null,
+    assetUrl: null,
+  });
+
+  it("is the runtime's id for a layer named only by data-hf-id, reached or not", () => {
+    const doc = makeDoc(
+      `<div data-composition-id="root"><div data-hf-id="hf-7" class="clip card"></div></div>`,
+    );
+    const host = doc.querySelector("[data-hf-id]");
+    const reached = createTimelineElementFromManifestClip({
+      clip: named("hf-7"),
+      fallbackIndex: 2,
+      doc,
+      hostEl: host,
+    });
+    const unreached = createTimelineElementFromManifestClip({
+      clip: named("hf-7"),
+      fallbackIndex: 2,
+      doc: null,
+    });
+    expect([reached.key, unreached.key]).toEqual(["index.html#hf-7", "index.html#hf-7"]);
+    // The GSAP and keyframe caches and the reveal match all read the id after the "#".
+    expect(splitTimelineElementKey(reached.key!)).toEqual({
+      sourceFile: "index.html",
+      domId: "hf-7",
+    });
+    expect(reached.domId).toBeUndefined();
+    expect(deriveTimelineStoreKey({ hfId: "hf-7", selector: ".card", selectorIndex: 0 })).toBe(
+      reached.key,
+    );
+  });
+
   it("is the same whether or not the frame's element for it can be reached", () => {
     const clip = {
       id: "title",
