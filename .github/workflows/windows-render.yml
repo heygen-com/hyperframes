@@ -15,15 +15,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@v4
+        with:
+          ref: dcloudpro/unreadable-file-left-out
+          path: src
+          lfs: false
+      - name: build
+        shell: pwsh
+        working-directory: src
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          bun run --filter "@hyperframes/{parsers,lint,studio-server}" build
+          bun run --filter @hyperframes/core build
+          bun run --filter @hyperframes/cli build
       - name: probe
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
           $root = 'C:\zp'; New-Item -ItemType Directory $root | Out-Null
           Set-Location $root
-          npm i --no-audit --no-fund hyperframes@0.9.79 *> npm.log
-          $cli = "$root\node_modules\hyperframes\dist\cli.js"
-          if (-not (Test-Path $cli)) { Get-ChildItem "$root\node_modules\hyperframes" -Recurse -Depth 2 | Select -First 30 FullName; $cli = (Get-Content "$root\node_modules\hyperframes\package.json" | ConvertFrom-Json).bin.hyperframes; $cli = Join-Path "$root\node_modules\hyperframes" $cli }
+          $cli = "$env:GITHUB_WORKSPACE\src\packages\cli\dist\cli.js"
           "cli: $cli"
           function NewProj($name) {
             $d = "$root\p\$name"; New-Item -ItemType Directory $d -Force | Out-Null
@@ -41,6 +53,9 @@ jobs:
 
           $d = NewProj locked; [IO.File]::WriteAllBytes("$d\clip.mp4", (New-Object byte[] 5000000))
           $fs = [IO.File]::Open("$d\clip.mp4", 'Open', 'ReadWrite', 'None'); Probe locked $d; $fs.Close()
+
+          $d = NewProj lockedused; Set-Content "$d\index.html" '<!doctype html><html><body><div id="root" data-composition-id="main" data-width="1080" data-height="1920" data-duration="2"><video src="clip.mp4"></video></div></body></html>'; [IO.File]::WriteAllBytes("$d\clip.mp4", (New-Object byte[] 5000000))
+          $fs = [IO.File]::Open("$d\clip.mp4", 'Open', 'ReadWrite', 'None'); Probe lockedused $d; $fs.Close()
 
           $d = NewProj lockedsmall; Set-Content "$d\notes.txt" 'x'
           $fs = [IO.File]::Open("$d\notes.txt", 'Open', 'ReadWrite', 'None'); Probe lockedsmall $d; $fs.Close()
