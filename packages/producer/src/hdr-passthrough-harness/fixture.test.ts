@@ -192,7 +192,9 @@ describe("INELIGIBLE_CASES", () => {
       "overlay_continuous_animation",
       "canvas",
       "video_count",
-      "overlay_unverified",
+      // No generated composition reaches the per-frame probes' decline (overlay_unverified) any
+      // more: audio-controls-gsap, which did, now declines on the media controls' SVG icons
+      // first. The probes' decline is covered by overlayCapture.test.ts.
       "seek_callback",
       "overlay_unreadable",
       "video_animated",

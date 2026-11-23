@@ -782,10 +782,18 @@ from ffmpeg's frame count and reports 35–80%.
   filter, link, `<switch>`, element in another namespace (editor metadata
   included), external reference or attribute outside the static set
   declines.
-- The encoder takes one frame at a time, as the layered path's does
-  ("Encoder pacing"), so it no longer encodes several input frames at once
-  while the composite runs ahead; and the passthrough needs Linux to read
-  the encoder's thread states.
+- The encoder takes one frame at a time, each once it has gone idle, as the
+  layered path's does ("Encoder pacing"): the encode costs the encoder's
+  per-frame latency times the frame count, which grows with the host's
+  load. On a host at load average 110-130 the 20 s fixtures' flag-on renders
+  took 462-611 s against 555-708 s flag off (the commit before: about 190 s
+  against 517 s), so a loaded host keeps little of the speedup. The
+  passthrough needs Linux to read the encoder's thread states.
+- The capture page's census allows fewer of anything than the analysis
+  page held (the runtime's own observers vary). A page that made the
+  runtime keep one more observer on the analysis page only could hide one
+  observer of its own on the capture page; it would have to tell the pages
+  apart first, by the analysis page's pauses.
 - Event targets are found with `Runtime.queryObjects`, which collects
   garbage first: only a page that watches its own collection
   (`FinalizationRegistry`, `WeakRef`) can notice.
@@ -998,3 +1006,91 @@ and two 3 s `control` renders (from frame 29, 34/90 and 26/90), all at
 52-73 dB, spread over whole frames. The encoder was not deterministic when
 fed faster than it encodes; see "Encoder pacing" for the measurements and
 the fix, and the next section for the renders after it.
+
+With the encode paced as the layered path feeds its encoder, the capture
+page never paused, its load census held to the analysis page's, and SVG
+images limited to plain static SVG (main merged at 590617475f):
+
+Flag-on renders of 3 s fixtures, 20 to 26 at a time beside the other
+lanes (load average 80-180 on 32 cores), each against a flag-off render of
+the same fixture in the same batch:
+
+| ffmpeg | transfer | fixtures                                                           | renders | decode identical | took the passthrough |
+| ------ | -------- | ------------------------------------------------------------------ | ------- | ---------------- | -------------------- |
+| 7.0.2  | HLG      | `control`, `gc-fr-remove`, `slot-then-direct`, `cis-hidden-toggle` | 46      | 46               | 39                   |
+| 8.0.1  | HLG      | the same                                                           | 26      | 26               | 24                   |
+| 7.0.2  | PQ       | `captions`, `captions-gsap`                                        | 24      | 24               | 24                   |
+| 8.0.1  | PQ       | the same                                                           | 24      | 24               | 24                   |
+
+All 120 decode identical to flag off (framemd5, 90/90 each). The 7 HLG
+7.0.2 fallbacks are the census's first version, which held the runtime's
+own animation-frame requests and observers to exact equality (2 or 3, 5 or
+7 from one load to the next); the second run of that row, with the census
+as described, took the passthrough 20 times out of 20. The 2 HLG 8.0.1
+fallbacks are encoders the host's `earlyoom` stopped (`received signal
+15`) when memory ran short; a flag-off render in another batch died the
+same way. Before this change the same fixtures had decoded different from
+flag off in 3 of about 20 renders.
+
+The 20 s fixtures on ffmpeg 8.0.1 take the passthrough and decode identical
+to flag off (framemd5 600/600, stream and frame side data equal), with
+about a dozen renders running beside them (load average 110-130):
+
+| transfer | `captions` off / on        | `captions-gsap` off / on   |
+| -------- | -------------------------- | -------------------------- |
+| HLG      | 565.1 s / 467.0 s, 600/600 | 708.1 s / 610.5 s, 600/600 |
+| PQ       | 554.6 s / 462.3 s, 600/600 | 706.2 s / 603.2 s, 600/600 |
+
+What the pacing costs: the encode now takes one frame at a time, so its
+time is the encoder's own per-frame latency times the frame count instead
+of its throughput. In the 20 s renders above it took 372-520 s (0.62-0.87 s
+a frame), 220-326 s of it waiting for the encoder to go idle, against a
+capture of 58-75 s; the commit before took 190 s for the whole flag-on
+`captions` render under similar load, of which the composite was well
+under a minute. On the 3 s `captions-gsap` fixture (HLG, ffmpeg 8.0.1, one
+render at a time, alternating, load average 115-125): job time 53.6 /
+54.8 / 55.0 s of stage before against 82.8 / 93.9 / 95.6 s after, the
+encode 52.6-59.3 s of it (29-35 s waiting for idle). Measured alone on the
+recorded `control` inputs at load average 67, a paced encode of 90 frames
+took 11.8 s against 7.9 s unpaced: the cost grows with the host's load,
+since every frame waits for its own encode, where the layered path hides
+the encoder behind a capture that is slower still. The load census adds
+2-4 s to the first page gate on each page under load (nine
+`Runtime.queryObjects`, each collecting garbage); the capture page pauses 0
+times, where it paused 28 times (0.39-0.48 s) before.
+
+Flag off renders identical to main (590617475f) on ten fixtures: four
+SDR producer fixtures, `hdr-hlg-regression`, `hdr-regression`,
+`hdr-hlg-audio-windows`, the 3 s PQ `captions`, `errname-raf` and
+`dbg-timer` (video framemd5, audio and stream metadata). The engine
+change is a process id on the streaming encoder.
+
+The generated 3 s sets, both sides rendered (HLG on ffmpeg 7.0.2, all 80
+projects; PQ on ffmpeg 8.0.1, 31 of them), take the route they expect: the
+positive fixtures, `tostring-painter`, `scroll-clamp`,
+`lazy-decode-popover`, `pause-timer` and `pause-mark` take the passthrough
+and decode identical to flag off (90/90); the four new SVG fixtures
+(`svg-comment-css`, `svg-comment-keyframes`, `svg-cdata-css`,
+`svg-xhtml-style`) decline with `overlay_non_gsap_animation`; every
+repeatable fallback decodes identical to flag off. `audio-controls-gsap`
+now declines with `overlay_non_gsap_animation` instead of
+`overlay_unverified`: the media controls' own icons are SVG images with
+`style` attributes.
+
+The earlier rounds' fixtures (183 projects, both sides rendered, HLG on
+ffmpeg 7.0.2, and 15 of them again on 8.0.1) take the routes they took
+before but for the round-7 blockers: the SVG images that split
+`animation` or `@keyframes` with a comment or CDATA section, or carry an
+XHTML `<style>` in `<metadata>` (`svg-comment-split`,
+`svg-comment-split-file`, `svg-cdata-split`, `svg-xhtml-style`,
+`svg-xhtml-style-default`), took the passthrough with 0/90 frames
+identical and now fall back with `overlay_non_gsap_animation` on both
+versions; `dbg-timer` took it with 0/90 and now takes it with 90/90 on
+both; `control`, `gc-fr-remove`, `slot-then-direct` and
+`cis-hidden-toggle`, which had decoded 26-35/90, decode 90/90. All 43
+passthrough renders and every repeatable fallback decode identical to flag
+off; the 42 that do not are fallbacks on wall-clock content (animated
+images and SVG, marquees, a CSS `@starting-style` transition), whose two
+flag-off renders share no frame either. On the commit before, `dbg-timer`,
+`svg-comment-split` and `svg-xhtml-style` still took the passthrough with
+0/90 frames identical in this run, and the capture page paused 28 times.

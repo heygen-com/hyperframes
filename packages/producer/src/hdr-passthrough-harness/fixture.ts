@@ -1020,10 +1020,12 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     assets: ["tone"],
   },
   {
-    // GSAP turns an <audio>'s controls on for 0.6 s: no page code runs, the media control's
-    // playback position changes on every frame, and only the per-frame probes decline it.
+    // GSAP turns an <audio>'s controls on for 0.6 s: no page code runs and the media control's
+    // playback position changes on every frame. The controls' own icons are SVG images with style
+    // attributes, which the SVG allowlist declines once a seek shows them; before that, only the
+    // per-frame probes declined it.
     name: "audio-controls-gsap",
-    reason: "overlay_unverified",
+    reason: "overlay_non_gsap_animation",
     composition: {
       overlayHtml: `<audio id="aud" class="clip" src="assets/tone.m4a" data-start="0" data-duration="3" data-track-index="3" data-volume="0" style="${BADGE_STYLE};width:640px;height:64px"></audio>`,
       timelineScript: `tl.set("#aud", { controls: true }, 1.0); tl.set("#aud", { controls: false }, 1.6);`,
