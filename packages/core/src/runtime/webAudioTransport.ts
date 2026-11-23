@@ -24,6 +24,7 @@ import { rateAt, sourceTimeAt, timeAtSourceTime } from "../speedRamp.js";
 import { classifyWebAudioMediaRoute, reportWebAudioMediaRoute } from "./webAudioRoute.js";
 import { assetUrl } from "./assetUrl.js";
 import { mediaElementTime } from "./mediaClock.js";
+import { sourceLengthOf } from "./sourceLength.js";
 import { clampFadesToDuration, fadeGain, readElementFades } from "../audioFade.js";
 
 const MASTER_FX_ATTRS: FxAttributes = { automation: null };
@@ -979,10 +980,12 @@ export class WebAudioTransport {
       const sourceNode = this._ctx.createBufferSource();
       sourceNode.buffer = buffer;
       sourceNode.playbackRate.value = sourceRate;
-      if (el.loop && buffer.duration > mediaStart) {
+      const sourceLength = sourceLengthOf(el);
+      const loopEnd = Number.isFinite(sourceLength) ? sourceLength : buffer.duration;
+      if (el.loop && loopEnd > mediaStart) {
         sourceNode.loop = true;
         sourceNode.loopStart = mediaStart;
-        sourceNode.loopEnd = buffer.duration;
+        sourceNode.loopEnd = loopEnd;
       }
 
       const gainNode = this._ctx.createGain();
