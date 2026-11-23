@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -238,22 +245,23 @@ describe("deploySite", () => {
 const FFMPEG = process.env.HYPERFRAMES_FFMPEG_PATH?.trim() || "ffmpeg";
 const HAS_FFMPEG = spawnSync(FFMPEG, ["-version"]).status === 0;
 
-describe.skipIf(!HAS_FFMPEG)("deploySite audio sidecars", { timeout: 60_000 }, () => {
+describe.skipIf(!HAS_FFMPEG)("deploySite audio sidecars", () => {
+  function appendMp4FreeBoxEveryReaderSkips(file: string, bytes: number): void {
+    const free = Buffer.alloc(bytes);
+    free.writeUInt32BE(bytes, 0);
+    free.write("free", 4, "latin1");
+    appendFileSync(file, free);
+  }
+
   function addLargeVideo(): void {
+    const take = join(projectDir, "assets", "take.mp4");
     const made = spawnSync(FFMPEG, [
-      ...[
-        "-v",
-        "error",
-        "-y",
-        "-f",
-        "lavfi",
-        "-i",
-        "color=c=gray:size=640x360:rate=25:duration=30,noise=alls=100:allf=t+u",
-      ],
-      ...["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=30"],
-      ...["-c:v", "mpeg4", "-b:v", "16M", "-c:a", "aac", join(projectDir, "assets", "take.mp4")],
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=25:duration=2"],
+      ...["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2"],
+      ...["-c:v", "mpeg4", "-c:a", "aac", take],
     ]);
     expect(made.status).toBe(0);
+    appendMp4FreeBoxEveryReaderSkips(take, AUDIO_SIDECAR_MIN_BYTES);
   }
 
   it("stores a large video's audio beside it, and leaves the site's file list as it was", async () => {
@@ -299,7 +307,7 @@ describe.skipIf(!HAS_FFMPEG)("deploySite audio sidecars", { timeout: 60_000 }, (
   });
 });
 
-describe.skipIf(!HAS_FFMPEG)("deploySite probe facts", { timeout: 60_000 }, () => {
+describe.skipIf(!HAS_FFMPEG)("deploySite probe facts", () => {
   function addVideo(): void {
     const made = spawnSync(FFMPEG, [
       ...["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=25:duration=2"],
