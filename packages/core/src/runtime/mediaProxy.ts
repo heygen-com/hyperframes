@@ -510,17 +510,21 @@ function decodesItsFile(el: HTMLMediaElement, file: string): boolean {
 
 let playingItsFile: HTMLMediaElement | null = null;
 
-const stillPlaysItsFile = (el: HTMLMediaElement) =>
-  el.isConnected && isActiveAtPlayhead(el) && !swappedElements.has(el) && proxyRequested.has(el);
+const copyStillComing = (el: HTMLMediaElement) =>
+  el.isConnected && !swappedElements.has(el) && proxyRequested.has(el);
 
-/** The one clip on screen whose copy is still being made plays its own file meanwhile; every other stays held, so
- * at most one oversized file decodes at a time. */
-export function playItsFileWhileCopying(el: HTMLMediaElement): void {
-  if (!heldForCopy.has(el) || el.getAttribute("src") !== null) return;
-  if (playingItsFile && playingItsFile !== el && stillPlaysItsFile(playingItsFile)) return;
+/** Each media tick re-decides a clip whose copy is still being made: the one on screen plays its own file, and every
+ * other, one that played its file and left the screen included, is held, so at most one oversized file decodes. */
+export function decideFileTurn(el: HTMLMediaElement, onScreen: boolean): void {
+  if (el === playingItsFile && !(onScreen && copyStillComing(el))) {
+    playingItsFile = null;
+    if (copyStillComing(el)) holdForCopy(el);
+  }
+  if (playingItsFile && !playingItsFile.isConnected) playingItsFile = null;
+  if (!onScreen || playingItsFile || !heldForCopy.has(el) || el.getAttribute("src") !== null)
+    return;
   const before = heldForCopy.get(el);
-  const authored = authoredSrcOf(el);
-  const src = before ? before.written : authored;
+  const src = before ? before.written : authoredSrcOf(el);
   if (src === null || !decodesItsFile(el, src)) return;
   playingItsFile = el;
   heldForCopy.delete(el);
