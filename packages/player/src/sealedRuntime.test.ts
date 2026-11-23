@@ -75,6 +75,8 @@ describe("a sealed player brings its own runtime", () => {
     for (const head of [
       '<script data-note="data-hyperframes-preview-runtime"></script>',
       '<script>var tag = "<script data-hyperframes-preview-runtime src=x>";</script>',
+      '<script>var end = "</scripted"; var tag = "<script data-hyperframes-preview-runtime src=x>";</script>',
+      '<SCRIPT>var end = "</SCRIPTS"; var tag = "<script data-hyperframes-preview-runtime>";</SCRIPT>',
     ]) {
       fetchMock.mockResolvedValueOnce(new Response(page(head)));
       expect(await srcdocOf(player({ "sandbox-origin": "", src: sameSite() }))).toContain("built:");

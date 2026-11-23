@@ -50,8 +50,14 @@ function linksRuntime(html: string): boolean {
 }
 
 function afterScript(html: string, from: number): number {
-  const close = html.toLowerCase().indexOf("</script", from);
-  return close < 0 ? html.length : close;
+  const lower = html.toLowerCase();
+  for (
+    let close = lower.indexOf("</script", from);
+    close >= 0;
+    close = lower.indexOf("</script", close + 1)
+  )
+    if (CLOSING_TAG_BOUNDARIES.has(lower[close + "</script".length])) return close;
+  return html.length;
 }
 
 function tagAttributes(text: string): Map<string, string> {
@@ -83,6 +89,7 @@ function tagAttributes(text: string): Map<string, string> {
 
 type OpeningTag = { index: number; end: number };
 const OPENING_TAG_BOUNDARIES = new Set<string | undefined>([">", " ", "\t", "\n", "\r", "\f"]);
+const CLOSING_TAG_BOUNDARIES = new Set<string | undefined>([...OPENING_TAG_BOUNDARIES, "/"]);
 
 /** Find an opening tag in one linear pass, without a backtracking regex over caller-owned HTML. */
 function findOpeningTag(html: string, tagName: string, start = 0): OpeningTag | null {
