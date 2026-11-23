@@ -91,6 +91,12 @@ npx skills add heygen-com/hyperframes     # pick "Core Skills" in the picker
 npx hyperframes skills update
 ```
 
+Or install them with the GitHub CLI:
+
+```bash
+gh skill install heygen-com/hyperframes
+```
+
 Then try: _Using `/hyperframes`, create a 10-second product intro with a fade-in title, a background video, and subtle background music._
 
 ### Claude Code plugin
