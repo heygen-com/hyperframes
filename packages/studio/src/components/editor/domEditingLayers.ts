@@ -94,6 +94,22 @@ function spaceBefore(node: Node): Pick<DomEditTextField, "spaceBefore"> {
   return space ? { spaceBefore: space } : {};
 }
 
+function withTextNodeEdgesAsSeparators(fields: DomEditTextField[]): DomEditTextField[] {
+  return fields.map((field, index) => {
+    const next = { ...field };
+    if (field.source === "text-node") {
+      const lead = /^\s*/.exec(field.value)![0];
+      next.value = field.value.slice(lead.length);
+      if (lead) next.spaceBefore = lead;
+      if (index < fields.length - 1) next.value = next.value.trimEnd();
+    }
+    const previous = fields[index - 1];
+    const trail = previous?.source === "text-node" ? /\s*$/.exec(previous.value)![0] : "";
+    if (trail) next.spaceBefore = trail + (next.spaceBefore ?? "");
+    return next;
+  });
+}
+
 // fallow-ignore-next-line complexity
 export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
   const childElements = Array.from(el.children).filter(isHtmlElement).filter(isEditableTextLeaf);
@@ -135,7 +151,7 @@ export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
           childIdx++;
         }
       }
-      return fields;
+      return withTextNodeEdgesAsSeparators(fields);
     }
 
     return childElements.map((child, index) => ({

@@ -18,6 +18,11 @@ import {
 } from "../components/editor/domEditInlineText";
 import { previewStandIn } from "../components/editor/previewDrafts";
 import { buildNextDomTextFields, planDomTextCommit } from "./domEditTextCommitPlan";
+import {
+  markAddedSpaceEdges,
+  respaceAddedFields,
+  withoutAddedField,
+} from "../components/editor/textFieldSpacing";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import {
   drawFileAgain,
@@ -404,7 +409,7 @@ export function useDomEditTextCommits({
     (commit: InlineTextEditCommit) =>
       commitRichText(
         commit.element,
-        commit.html,
+        respaceAddedFields(commit.html, commit.previousHtml),
         commit.previousHtml,
         requestedOrder(commit) ?? nextTextSaveOrder(),
       ),
@@ -550,7 +555,7 @@ export function useDomEditTextCommits({
         added = nextField.key;
         const next = [...fields];
         next.splice(insertionIndex >= 0 ? insertionIndex + 1 : next.length, 0, nextField);
-        return next;
+        return markAddedSpaceEdges(next, nextField.key);
       });
       return added;
     },
@@ -568,9 +573,7 @@ export function useDomEditTextCommits({
         return;
       }
 
-      await commitDomTextFields(domEditSelection, (fields) =>
-        fields.filter((entry) => entry.key !== fieldKey),
-      );
+      await commitDomTextFields(domEditSelection, (fields) => withoutAddedField(fields, fieldKey));
     },
     [commitDomTextFields, domEditSelection, handleDomTextCommit],
   );

@@ -6,6 +6,7 @@ import {
 } from "../components/editor/domEditing";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { buildTextFieldChildOperations } from "./domEditTextFieldCommitOps";
+import { respaceAddedFields } from "../components/editor/textFieldSpacing";
 
 interface DomTextCommitPlan {
   usesSerializedTextFields: boolean;
@@ -22,20 +23,6 @@ export function buildNextDomTextFields(
   return textFields.map((field) => (field.key === fieldKey ? { ...field, value } : field));
 }
 
-const joinsWords = (before: string, after: string) =>
-  /\S$/.test(before) && /^[^\s\p{P}]/u.test(after);
-
-export function spacedAround(fields: DomEditTextField[], key: string): DomEditTextField[] {
-  const at = fields.findIndex((field) => field.key === key);
-  return fields.map((field, index) => {
-    const before = fields[index - 1];
-    const beside = at >= 0 && (index === at || index === at + 1);
-    return beside && before && !field.spaceBefore && joinsWords(before.value, field.value)
-      ? { ...field, spaceBefore: " " }
-      : field;
-  });
-}
-
 export const usesSerializedTextFields = (fields: DomEditTextField[]) =>
   fields.length > 1 || fields.some((field) => field.source === "child");
 
@@ -45,10 +32,12 @@ export function planDomTextCommit(
   plainTextContent: string,
 ): DomTextCommitPlan {
   const serialized = usesSerializedTextFields(nextTextFields);
-  const nextContent = serialized ? serializeDomEditTextFields(nextTextFields) : plainTextContent;
-  const childOperations = serialized
-    ? buildTextFieldChildOperations(originalTextFields, nextTextFields)
-    : null;
+  const markup = serialized ? serializeDomEditTextFields(nextTextFields) : plainTextContent;
+  const nextContent = serialized ? respaceAddedFields(markup) : markup;
+  const childOperations =
+    serialized && nextContent === markup
+      ? buildTextFieldChildOperations(originalTextFields, nextTextFields)
+      : null;
   // Per-child operations when the layers still line up one-for-one. Structure
   // changes write the element's markup because no stable child address exists.
   const operations =
