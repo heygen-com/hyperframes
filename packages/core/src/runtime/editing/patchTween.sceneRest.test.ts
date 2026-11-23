@@ -136,6 +136,29 @@ describe("patch-tweens when the player's seek paints a tick later, as a Studio p
       -60, -47,
     ]);
   });
+
+  it("draws a patched hold on a yoyo timeline's second pass without rewinding it to the first", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true" data-duration="10">` +
+      `<div id="target"></div><div id="other"></div></div>`;
+    const pass = gsap.timeline({ repeat: 1, yoyo: true });
+    pass.set("#target", { x: 200 }, 0).to("#other", { x: 120, duration: 1 }, 0);
+    const main = gsap.timeline({ paused: true }).to({}, { duration: 10 }, 0).add(pass, 0);
+    window.__timelines = { main } as unknown as Record<string, RuntimeTimelineLike>;
+    initSandboxRuntimeModular();
+    window.__player?.seek(1.25);
+    vi.spyOn(window.__player!, "seek").mockImplementation(() => undefined);
+    const secondPass = pass.totalTime();
+    expect(secondPass).toBeGreaterThan(1);
+
+    const reply = patchTweens({
+      patches: [{ selector: "#target", change: { kind: "set", props: { x: -60 } } }],
+      seek: true,
+    });
+
+    expect(reply).toEqual({ patched: true });
+    expect([gsap.getProperty("#target", "x"), pass.totalTime()]).toEqual([-60, secondPass]);
+  });
 });
 
 // The reply reads GSAP's internal _initted: an upgrade that changes it fails here, not every reply.

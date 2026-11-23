@@ -348,7 +348,7 @@ const renderedOnceReached = (tween: PatchableTween): boolean => {
 function drawWhatTheSeekLeft(tweens: readonly PatchableTween[]): void {
   for (const tween of tweens) {
     const parent = tween.parent as RuntimeTimelineLike | undefined;
-    const time = parent?.time?.();
+    const time = parent?.totalTime?.();
     if (parent && typeof time === "number" && !renderedOnceReached(tween))
       redrawGsapTimelineAt(parent, time);
   }
