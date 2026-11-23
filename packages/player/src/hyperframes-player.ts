@@ -44,6 +44,15 @@ import {
 // timeline itself respects. Clamping here also shields the native
 // HTMLMediaElement.playbackRate setter, which throws for extreme values in
 // production browsers.
+type ErrorListener = {
+  listener: EventListenerOrEventListenerObject;
+  capture: boolean;
+  once: boolean;
+};
+
+const capturing = (options?: boolean | EventListenerOptions): boolean =>
+  typeof options === "boolean" ? options : options?.capture === true;
+
 function parseUrl(src: string): URL | null {
   try {
     return new URL(src, document.baseURI);
@@ -173,7 +182,7 @@ class HyperframesPlayer extends HTMLElement {
   private _compositionWidth = 1920;
   private _compositionHeight = 1080;
   private _rescaleWarned = false;
-  private readonly _errorListeners = new Set<EventListenerOrEventListenerObject>();
+  private _errorListeners: ErrorListener[] = [];
   private _directTimelineAdapter: DirectTimelineAdapter | null = null;
   private _directTimelineClock: DirectTimelineClock;
   private _parentTickRaf: number | null = null;
@@ -1714,12 +1723,13 @@ class HyperframesPlayer extends HTMLElement {
 
   private _emitError(detail: { message: string; code?: number | null }): void {
     this._afterEvents(() => {
-      if (this._errorListeners.size === 0 && !this.onerror) {
+      if (this._errorListeners.length === 0 && !this.onerror) {
         console.warn(`[hyperframes-player] error with no listener: ${detail.message}`, {
           src: this.getAttribute("src"),
         });
       }
       this.dispatchEvent(new CustomEvent("error", { detail }));
+      this._errorListeners = this._errorListeners.filter((entry) => !entry.once);
     });
   }
 
@@ -1728,7 +1738,7 @@ class HyperframesPlayer extends HTMLElement {
     listener: EventListenerOrEventListenerObject,
     options?: boolean | AddEventListenerOptions,
   ): void {
-    if (type === "error") this._errorListeners.add(listener);
+    if (type === "error") this._trackErrorListener(listener, options);
     super.addEventListener(type, listener, options);
   }
 
@@ -1737,8 +1747,39 @@ class HyperframesPlayer extends HTMLElement {
     listener: EventListenerOrEventListenerObject,
     options?: boolean | EventListenerOptions,
   ): void {
-    if (type === "error") this._errorListeners.delete(listener);
+    if (type === "error") this._untrackErrorListener(listener, capturing(options));
     super.removeEventListener(type, listener, options);
+  }
+
+  /** The DOM keys a listener on the function and its capture flag, and drops a once or aborted one by itself. */
+  private _trackErrorListener(
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    const capture = capturing(options);
+    const signal = typeof options === "object" ? options.signal : undefined;
+    if (
+      signal?.aborted ||
+      this._errorListeners.some((entry) => entry.listener === listener && entry.capture === capture)
+    )
+      return;
+    this._errorListeners.push({
+      listener,
+      capture,
+      once: typeof options === "object" && options.once === true,
+    });
+    signal?.addEventListener("abort", () => this._untrackErrorListener(listener, capture), {
+      once: true,
+    });
+  }
+
+  private _untrackErrorListener(
+    listener: EventListenerOrEventListenerObject,
+    capture: boolean,
+  ): void {
+    this._errorListeners = this._errorListeners.filter(
+      (entry) => entry.listener !== listener || entry.capture !== capture,
+    );
   }
 
   /** A composition from another origin than the page's: no player, sealed or not, can add the runtime to it. */

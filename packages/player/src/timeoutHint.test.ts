@@ -5,6 +5,9 @@ type Player = HTMLElement & { iframeElement: HTMLIFrameElement; _onIframeLoad():
 const PLAIN = "Composition timeline not found after 8s";
 const HINTED = `${PLAIN}. A player can't add the HyperFrames runtime to a composition from another site: include the runtime script in it.`;
 
+const unheard = (warn: { mock: { calls: unknown[][] } }) =>
+  warn.mock.calls.filter(([text]) => String(text).includes("error with no listener")).length;
+
 /** A player whose film's frame can't be read, as a frame from another site, or a sealed one, can't be. */
 function load(src: string, { sealed, listen = true }: { sealed: boolean; listen?: boolean }) {
   const player = document.createElement("hyperframes-player") as Player;
@@ -67,6 +70,39 @@ describe("the timeline timeout", () => {
       });
     },
   );
+
+  it("warns for the next error once a once-listener has heard one", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { player } = load("https://films.example/film.html", { sealed: true, listen: false });
+    player.addEventListener("error", () => {}, { once: true });
+    vi.advanceTimersByTime(8000);
+    expect(unheard(warn)).toBe(0);
+    player._onIframeLoad();
+    vi.advanceTimersByTime(8000);
+    expect(unheard(warn)).toBe(1);
+  });
+
+  it("keeps a listener added with and without capture until both are removed", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { player } = load("https://films.example/film.html", { sealed: true, listen: false });
+    const heard = vi.fn();
+    player.addEventListener("error", heard, true);
+    player.addEventListener("error", heard);
+    player.removeEventListener("error", heard);
+    vi.advanceTimersByTime(8000);
+    expect(heard).toHaveBeenCalledOnce();
+    expect(unheard(warn)).toBe(0);
+  });
+
+  it("warns once the signal that added the only listener aborts", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { player } = load("https://films.example/film.html", { sealed: true, listen: false });
+    const added = new AbortController();
+    player.addEventListener("error", () => {}, { signal: added.signal });
+    added.abort();
+    vi.advanceTimersByTime(8000);
+    expect(unheard(warn)).toBe(1);
+  });
 
   it.each([
     ["an error listener", (player: Player) => player.addEventListener("error", () => {})],

@@ -87,6 +87,54 @@ try {
     "Composition timeline not found after 8s. A player can't add the HyperFrames runtime to a composition from another site: include the runtime script in it.",
   );
 
+  // fails without the fix: Chrome drops a once or aborted listener without calling removeEventListener, so the
+  // player kept counting it and the next unheard error reached no one.
+  const listenerPage = await browser.newPage();
+  const unheard: string[] = [];
+  listenerPage.on("console", (message) => {
+    if (message.text().includes("error with no listener")) unheard.push(message.text());
+  });
+  await listenerPage.goto(`${server.origin}/host.html?fixture=direct-timeline&sealed=1`, {
+    waitUntil: "domcontentloaded",
+  });
+  await listenerPage.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
+  await listenerPage.evaluate(
+    (url) => {
+      const heard: string[] = [];
+      Object.assign(window, { __heard: heard });
+      const once = document.createElement("hyperframes-player");
+      once.setAttribute("sandbox-origin", "");
+      once.addEventListener("error", () => heard.push("once"), { once: true });
+      once.setAttribute("src", url);
+      document.body.appendChild(once);
+      const aborted = document.createElement("hyperframes-player");
+      aborted.setAttribute("sandbox-origin", "");
+      const added = new AbortController();
+      aborted.addEventListener("error", () => heard.push("aborted"), { signal: added.signal });
+      added.abort();
+      aborted.setAttribute("src", url);
+      document.body.appendChild(aborted);
+      Object.assign(window, { __again: () => once.setAttribute("src", `${url}?again`) });
+    },
+    `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
+  );
+  await listenerPage.waitForFunction(
+    () => (window as { __heard?: string[] }).__heard?.includes("once") === true,
+    { timeout: 15_000 },
+  );
+  await listenerPage.evaluate(() => (window as { __again?: () => void }).__again?.());
+  for (let waited = 0; unheard.length < 2 && waited < 15_000; waited += 250)
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  assert.equal(
+    unheard.length,
+    2,
+    "the aborted listener's error and the once listener's second error both warn",
+  );
+  assert.deepEqual(await listenerPage.evaluate(() => (window as { __heard?: string[] }).__heard), [
+    "once",
+  ]);
+  await listenerPage.close();
+
   const trusted = await browser.newPage();
   await trusted.goto(`${server.origin}/host.html?fixture=direct-timeline`, {
     waitUntil: "domcontentloaded",
