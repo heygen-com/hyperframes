@@ -326,8 +326,34 @@ const VIRTUAL_TIME_SHIM = String.raw`(function() {
     } catch {}
   }
 
+  // What page code has asked to run on seeks, for a caller that must know whether a frame depends on the
+  // seeks before it and not on its time alone (the HDR passthrough reuses one capture across frames it
+  // seeks out of order). Distinct animation-frame callbacks are kept up to a cap; film-time timers are
+  // counted. A registration whose caller is the renderer's own code (an injected script, a
+  // hyperframes:// script the compiler adds, a DevTools evaluation) is left out; anything else, the
+  // composition's scripts and the libraries it loads, counts.
+  var CALLBACKS_KEPT = 32;
+  var RENDERER_CALLER = /(?:\(|at )(?:hyperframes:\/\/|pptr:)/;
+  var frameCallbacks = [];
+  var rendererFrameCallbacks = [];
+  var frameCallbacksOverflow = false;
+  var filmTimers = 0;
+  // stack: an Error stack taken in the shim's wrapper, so its third line is the wrapper's caller.
+  function calledByPage(stack) {
+    var caller = typeof stack === "string" ? stack.split("\n")[2] : undefined;
+    return !caller || !RENDERER_CALLER.test(caller);
+  }
+  function noteFrameCallback(callback, stack) {
+    var list = calledByPage(stack) ? frameCallbacks : rendererFrameCallbacks;
+    if (list.length < CALLBACKS_KEPT) list.push(callback);
+    else if (list === frameCallbacks) frameCallbacksOverflow = true;
+  }
+
   window.requestAnimationFrame = function(callback) {
     if (typeof callback !== "function") return 0;
+    if (frameCallbacks.indexOf(callback) < 0 && rendererFrameCallbacks.indexOf(callback) < 0) {
+      noteFrameCallback(callback, new Error().stack);
+    }
     var entry = { id: rafId++, callback: callback, cancelled: false };
     rafQueue.push(entry);
     return entry.id;
@@ -389,10 +415,12 @@ const VIRTUAL_TIME_SHIM = String.raw`(function() {
   }
   window.setTimeout = function(callback, delay) {
     if (!rendering || typeof callback !== "function") return originalSetTimeout.apply(null, arguments);
+    if (calledByPage(new Error().stack)) filmTimers++;
     return addTimer(callback, delay, Array.prototype.slice.call(arguments, 2), false);
   };
   window.setInterval = function(callback, delay) {
     if (!rendering || typeof callback !== "function") return originalSetInterval.apply(null, arguments);
+    if (calledByPage(new Error().stack)) filmTimers++;
     return addTimer(callback, delay, Array.prototype.slice.call(arguments, 2), true);
   };
   window.clearTimeout = function(id) {
@@ -427,6 +455,24 @@ const VIRTUAL_TIME_SHIM = String.raw`(function() {
     seekToTime: seekToTime,
     getTime: function() {
       return virtualNowMs;
+    },
+    // Page-side only (holds functions): see noteFrameCallback.
+    callbackActivity: function() {
+      var pendingFrames = [];
+      for (var i = 0; i < rafQueue.length; i++) {
+        if (!rafQueue[i].cancelled) pendingFrames.push(rafQueue[i].callback);
+      }
+      var pendingTimers = 0;
+      for (var j = 0; j < timerQueue.length; j++) {
+        if (!timerQueue[j].cancelled) pendingTimers++;
+      }
+      return {
+        frameCallbacks: frameCallbacks.slice(),
+        frameCallbacksOverflow: frameCallbacksOverflow,
+        pendingFrames: pendingFrames,
+        filmTimers: filmTimers,
+        pendingTimers: pendingTimers,
+      };
     },
   };
 })();`;

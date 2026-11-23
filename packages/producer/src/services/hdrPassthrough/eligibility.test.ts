@@ -90,6 +90,7 @@ interface PageSpec {
   build?: (ctx: { root: FakeElement; wrap: FakeElement; video: FakeElement }) => {
     timelines?: Record<string, FakeTimeline>;
     globalTimeline?: FakeTimeline;
+    globals?: Record<string, unknown>;
   };
 }
 
@@ -129,7 +130,11 @@ function makeSession(spec: PageSpec = {}): {
 }
 
 function deps(meta: VideoMetadata = metadata(), exists = true): EligibilityDeps {
-  return { fileExists: () => exists, probeMetadata: async () => meta };
+  return {
+    fileExists: () => exists,
+    probeMetadata: async () => meta,
+    checkBlend: async () => ({ exact: true }),
+  };
 }
 
 function captions(ctx: { root: FakeElement }) {
@@ -181,6 +186,72 @@ describe("checkPassthroughEligibility", () => {
 
     const short = makeInput({ videos: [videoElement({ mediaStart: 12 })] });
     expect(await check(short)).toMatchObject({ eligible: false, reason: "source_unsupported" });
+  });
+
+  it("declines an ffmpeg whose blend does not match the layered path, before opening the page", async () => {
+    const { session, opened } = makeSession();
+    let checks = 0;
+    const offByOne: EligibilityDeps = {
+      ...deps(),
+      checkBlend: async () => {
+        checks++;
+        return {
+          exact: false,
+          detail: "maskedmerge misses the layered blend on 7748 of 49152 samples",
+        };
+      },
+    };
+    const result = await checkPassthroughEligibility({ input: makeInput(), session }, offByOne);
+    expect(result).toMatchObject({
+      eligible: false,
+      reason: "ffmpeg_unsupported",
+      detail: "maskedmerge misses the layered blend on 7748 of 49152 samples",
+    });
+    expect(checks).toBe(1);
+    expect(opened()).toBe(false);
+
+    // An exact blend passes the gate.
+    let exactChecks = 0;
+    const exact: EligibilityDeps = {
+      ...deps(),
+      checkBlend: async () => {
+        exactChecks++;
+        return { exact: true };
+      },
+    };
+    expect((await check(makeInput(), { build: captions }, exact)).eligible).toBe(true);
+    expect(exactChecks).toBe(1);
+  });
+
+  it("declines page code that runs on seeks and keeps state across them", async () => {
+    const activity = (frameCallbacks: unknown[], filmTimers = 0) => ({
+      __HF_VIRTUAL_TIME__: {
+        callbackActivity: () => ({
+          frameCallbacks,
+          frameCallbacksOverflow: false,
+          pendingFrames: frameCallbacks,
+          filmTimers,
+          pendingTimers: filmTimers,
+        }),
+      },
+    });
+    const loop = () => {};
+    const raf = await check(makeInput(), {
+      build: (ctx) => ({ ...captions(ctx), globals: activity([loop]) }),
+    });
+    expect(raf).toMatchObject({
+      eligible: false,
+      reason: "seek_callback",
+      detail: "1 requestAnimationFrame callback(s)",
+    });
+    const timer = await check(makeInput(), {
+      build: (ctx) => ({ ...captions(ctx), globals: activity([], 2) }),
+    });
+    expect(timer).toMatchObject({
+      eligible: false,
+      reason: "seek_callback",
+      detail: "2 film-time timer(s), 2 pending",
+    });
   });
 
   it("rejects two videos before opening the page", async () => {

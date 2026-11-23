@@ -504,6 +504,21 @@ describe("writeOverlayStates", () => {
     await expect(writeOverlayStates(args, source)).rejects.toThrow(/expected 16/);
   });
 
+  it("names the verified state, not the next one, when a verification capture has the wrong size", async () => {
+    // The last state is verified after the loop, when it is the last of two merged states: a short
+    // verification capture there is state 1's, not "state 2" (the merged count).
+    const states = [state(0, 0, 4), state(1, 4, 8)];
+    const empty = new Uint8Array(width * height * 4);
+    const caption = syntheticRgba(width * height, 31);
+    const { args } = makeArgs(states);
+    const { source } = fakeSource(states, ["gap", "cue"], [empty, caption], (frame) =>
+      frame === 7 ? { key: "short", pixels: new Uint8Array(4) } : undefined,
+    );
+    await expect(writeOverlayStates(args, source)).rejects.toThrow(
+      "overlay state 1 has 4 bytes, expected 16",
+    );
+  });
+
   it("falls back when a frame the planner called static renders a different overlay", async () => {
     // A seek-driven script the static analysis cannot see rewrites a counter from frame 50 on:
     // the candidate's capture frame (40) shows the old text, the probe of frame 50 the new one.

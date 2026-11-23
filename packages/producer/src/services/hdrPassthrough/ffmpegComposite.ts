@@ -32,6 +32,7 @@ const MICROS_PER_SECOND = 1_000_000;
  */
 const SWS_THREADS = 4;
 const THREADED_SCALE = `scale=threads=${SWS_THREADS}`;
+const convert = (pixFmt: string): string => `${THREADED_SCALE},format=${pixFmt}`;
 
 /** GPU encoder resolved by the caller (`getCachedGpuEncoder`), so the builder stays pure. */
 export interface CompositeGpuSelection {
@@ -104,7 +105,6 @@ function quoteConcatPath(path: string): string {
 function buildCompositeFilterGraph(request: CompositeRequest, tail: string): string {
   const { video, plan } = request;
   const fpsFilter = `fps=${fpsToFfmpegArg(plan.fps)}:start_time=0`;
-  const convert = (pixFmt: string): string => `${THREADED_SCALE},format=${pixFmt}`;
   const videoChain = [fpsFilter];
   if (video.width !== plan.width || video.height !== plan.height) {
     // Same scale/crop as the layered path's HDR frame extraction, which also
@@ -118,14 +118,28 @@ function buildCompositeFilterGraph(request: CompositeRequest, tail: string): str
     videoChain.push(convert("rgb48le"));
   }
   videoChain.push(convert("gbrp16le"));
+  // Overlay frames are converted once per concat entry, before `fps` repeats
+  // them onto the output grid.
+  const blend = buildBlendFilters(videoChain.join(","), fpsFilter);
+  return `${blend},${withThreadedOutputConversion(tail)}[vout]`;
+}
+
+/**
+ * The blend half of the composite graph, shared with the blend self-test
+ * (`ffmpegBlendCheck.ts`) so the two cannot drift apart: `[0:v]` through
+ * `videoChain` (ending in `gbrp16le`), the `rgba64le` overlay on `[1:v]` split
+ * into its colour planes and its alpha widened to a `gbrp16le` mask (each
+ * followed by `overlayFilter` when set), the `maskedmerge`, and the repack to
+ * `rgb48le`. The last chain is left open for the caller's tail and label.
+ */
+export function buildBlendFilters(videoChain: string, overlayFilter?: string): string {
+  const after = overlayFilter ? `,${overlayFilter}` : "";
   return [
-    `[0:v]${videoChain.join(",")}[v]`,
-    // Overlay frames are converted once per concat entry, before `fps`
-    // repeats them onto the output grid.
+    `[0:v]${videoChain}[v]`,
     `[1:v]format=rgba64le,split[oc][oa]`,
-    `[oc]format=gbrp16le,${fpsFilter}[o]`,
-    `[oa]extractplanes=a,mergeplanes=0x000000:gbrp16le,${fpsFilter}[m]`,
-    `[v][o][m]maskedmerge,${convert("rgb48le")},${withThreadedOutputConversion(tail)}[vout]`,
+    `[oc]format=gbrp16le${after}[o]`,
+    `[oa]extractplanes=a,mergeplanes=0x000000:gbrp16le${after}[m]`,
+    `[v][o][m]maskedmerge,${convert("rgb48le")}`,
   ].join(";");
 }
 

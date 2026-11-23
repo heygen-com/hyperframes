@@ -18,7 +18,7 @@ import {
   initializeSession,
 } from "@hyperframes/engine";
 import { noteStaticDedupActivity, reportFrameProgress } from "../render/shared.js";
-import { checkPassthroughEligibility } from "./eligibility.js";
+import { checkPassthroughEligibility, findSeekCallbacks } from "./eligibility.js";
 import { planOverlayStates } from "./planner.js";
 import { OverlayStateMismatchError, captureOverlayStates } from "./overlayCapture.js";
 import { compositeAndEncode } from "./ffmpegComposite.js";
@@ -28,6 +28,7 @@ import type {
   HdrPassthroughOutcome,
   HdrPassthroughResult,
   LazyOverlaySession,
+  PassthroughIneligibleReason,
 } from "./types.js";
 
 /** Overlay PNGs live under the render's frames dir so workDir cleanup owns them. */
@@ -38,44 +39,81 @@ const CAPTURE_PROGRESS_START = 25;
 const ENCODE_PROGRESS_START = 35;
 const PROGRESS_END = 80;
 
+/** How the overlay session opens and closes a capture session; injectable for tests. */
+export interface OverlaySessionDeps {
+  /** Opens a ready session, or throws having closed whatever it opened. */
+  open: (input: HdrPassthroughInput) => Promise<CaptureSession>;
+  close: (session: CaptureSession) => Promise<void>;
+}
+
 /**
  * A DOM capture session configured like the layered stage's `domSession`
  * (screenshot mode, transparent background, the render's video-frame
- * injector), opened on first `get()`.
+ * injector). A session that fails to initialise is closed before the error
+ * propagates.
  */
-export function createLazyOverlaySession(input: HdrPassthroughInput): LazyOverlaySession {
+async function openOverlaySession(input: HdrPassthroughInput): Promise<CaptureSession> {
+  if (!input.fileServer) {
+    throw new Error("fileServer must be initialized before HDR passthrough");
+  }
+  // captureAlphaPng hangs under begin-frame control; same constraint as the layered stage.
+  const session = await createCaptureSession(
+    input.fileServer.url,
+    input.framesDir,
+    input.buildCaptureOptions(),
+    input.createRenderVideoFrameInjector(),
+    { ...input.cfg, forceScreenshot: true },
+  );
+  try {
+    await initializeSession(session);
+    input.assertNotAborted();
+    await initTransparentBackground(session.page, { clearCompositionRoot: true });
+    return session;
+  } catch (error) {
+    await closeCaptureSession(session).catch(() => undefined);
+    throw error;
+  }
+}
+
+const DEFAULT_SESSION_DEPS: OverlaySessionDeps = {
+  open: openOverlaySession,
+  close: closeCaptureSession,
+};
+
+/**
+ * The overlay session, opened on first `get()`. `close()` waits for an open
+ * still in flight and closes what it opened, so a close that races the open
+ * never leaves a browser page behind; `get()` after `close()` rejects.
+ */
+export function createLazyOverlaySession(
+  input: HdrPassthroughInput,
+  deps: OverlaySessionDeps = DEFAULT_SESSION_DEPS,
+): LazyOverlaySession {
   let opening: Promise<CaptureSession> | undefined;
-  let session: CaptureSession | undefined;
+  let closed = false;
   return {
     get opened() {
       return opening !== undefined;
     },
     get() {
-      opening ??= (async () => {
-        if (!input.fileServer) {
-          throw new Error("fileServer must be initialized before HDR passthrough");
-        }
-        // captureAlphaPng hangs under begin-frame control; same constraint as the layered stage.
-        session = await createCaptureSession(
-          input.fileServer.url,
-          input.framesDir,
-          input.buildCaptureOptions(),
-          input.createRenderVideoFrameInjector(),
-          { ...input.cfg, forceScreenshot: true },
-        );
-        await initializeSession(session);
-        input.assertNotAborted();
-        await initTransparentBackground(session.page, { clearCompositionRoot: true });
-        return session;
-      })();
+      if (closed) {
+        return Promise.reject(new Error("hdrPassthrough: the overlay session is closed"));
+      }
+      opening ??= deps.open(input);
       return opening;
     },
     async close() {
-      const opened = session;
-      session = undefined;
-      if (!opened) return;
+      if (closed) return;
+      closed = true;
+      if (!opening) return;
+      let session: CaptureSession;
       try {
-        await closeCaptureSession(opened);
+        session = await opening;
+      } catch {
+        return; // a failed open closed what it had opened
+      }
+      try {
+        await deps.close(session);
       } catch (error) {
         input.log.warn("[Render] HDR passthrough: closing the overlay session failed", {
           error: error instanceof Error ? error.message : String(error),
@@ -83,6 +121,20 @@ export function createLazyOverlaySession(input: HdrPassthroughInput): LazyOverla
       }
     },
   };
+}
+
+/**
+ * A decline found after eligibility (overlay capture's own checks): the
+ * passthrough falls back with `reason`, logged like an ineligible composition.
+ */
+class PassthroughDeclinedError extends Error {
+  constructor(
+    readonly reason: PassthroughIneligibleReason,
+    readonly detail: string,
+  ) {
+    super(`${reason}: ${detail}`);
+    this.name = "PassthroughDeclinedError";
+  }
 }
 
 /**
@@ -149,6 +201,9 @@ async function runHdrPassthrough(
     unique: overlays.uniqueCount,
     captureMs: overlays.captureMs,
   });
+  // A callback first registered on a frame only capture visited.
+  const lateCallbacks = await findSeekCallbacks(page.page);
+  if (lateCallbacks) throw new PassthroughDeclinedError("seek_callback", lateCallbacks);
   await session.close();
   input.assertNotAborted();
 
@@ -224,6 +279,10 @@ export async function attemptHdrPassthrough(
     return { kind: "completed", result };
   } catch (error) {
     if (isAbort(input, error)) throw error;
+    if (error instanceof PassthroughDeclinedError) {
+      log.info(`[Render] HDR passthrough off: ${error.reason} (${error.detail})`);
+      return { kind: "fallback", reason: error.reason, detail: error.detail };
+    }
     if (error instanceof OverlayStateMismatchError) {
       log.info(`[Render] HDR passthrough off: overlay_unverified (${error.message})`);
       return { kind: "fallback", reason: "overlay_unverified", detail: error.message };

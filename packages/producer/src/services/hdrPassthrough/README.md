@@ -25,9 +25,11 @@ the source video while it encodes.
 capture_hdr_layered stage (renderOrchestrator)
   └─ flag on and HDR content: attemptHdrPassthrough            index.ts
        ├─ checkPassthroughEligibility                           eligibility.ts
-       │    render / video gates, in-page layout gates, animation gates,
+       │    render / video gates, ffmpeg blend self-test         ffmpegBlendCheck.ts
+       │    in-page layout gates, animation gates,
        │    analyzeOverlayTiming → frames where the overlay can change,
-       │    hf-seek listeners on window (DevTools listener lookup)
+       │    hf-seek listeners on window (DevTools listener lookup),
+       │    page callbacks that run on seeks (virtual-time shim record)
        ├─ planOverlayStates → candidate states                  planner.ts
        ├─ captureOverlayStates → one PNG per distinct overlay   overlayCapture.ts
        │    probe each candidate (seek + overlayFingerprint.ts),
@@ -44,7 +46,9 @@ Fallback rules:
   at info level and takes the layered path.
 - A frame the planner called static that renders a different overlay
   (overlay capture's verification probes) logs `HDR passthrough off:
-overlay_unverified (...)` and takes the layered path.
+overlay_unverified (...)` and takes the layered path. A page callback that
+  runs on seeks and was first registered during capture logs
+  `HDR passthrough off: seek_callback (...)` the same way.
 - Any other error inside the passthrough logs `HDR passthrough failed; falling back
 to the layered HDR composite` and takes the layered path. The layered
   encoder overwrites any partial output.
@@ -63,6 +67,11 @@ The passthrough runs only when it can reproduce the layered output:
   with no border radius or clipping ancestor, no blend mode, nothing painted
   under it, `object-fit` that maps it 1:1 (or a same-aspect cover scale), no
   loop, playback-rate change or late start;
+- an ffmpeg whose `maskedmerge` rounds exactly like the layered blend (see
+  "ffmpeg" below; `ffmpeg_unsupported` otherwise);
+- no page code that runs on seeks and keeps state across them: an
+  animation-frame callback, a film-time timer or a GSAP ticker listener of the
+  page's own (`seek_callback`; see "History-dependent drivers" below);
 - overlays that change only at frames the planner can see: clip windows and
   GSAP tweens or `set()` calls. Anything animating on its own clock declines
   (CSS / Web Animations, canvas, iframes, frame sources, timeline callbacks,
@@ -101,9 +110,52 @@ the layered path:
 On the generated fixtures, including the rational-rate, odd-canvas,
 fractional-duration and deep-seek edge cases, the result is bit-identical to
 the layered render with ffmpeg 7.0 and with 8.0 (the version the Dockerfiles
-and CI pin). `maskedmerge` rounds differently on older ffmpeg (4.2 is 1 LSB
-off on about a sixth of partial-alpha samples), which the parity thresholds
-absorb; the harness records the ffmpeg version in each report.
+and CI pin).
+
+## ffmpeg
+
+`maskedmerge`'s 16-bit rounding is a property of the ffmpeg build: 7.0 and
+8.0 match the layered blend on every sample, 4.2 is 1 LSB off on about a
+sixth of the partial-alpha ones, and 5.x / 6.x have not been measured. So
+eligibility does not trust a version number. Once per process and ffmpeg
+binary (the one `runFfmpeg` resolves, so the one the composite runs), it
+blends a 256x64 frame through the composite's own blend filters
+(`buildBlendFilters`): every 8-bit alpha, random overlay and video colours,
+and the 0 / 65535 extremes, 49152 samples. It compares the result with
+`blitRgba8OverRgb48le` on the same pixels and declines with
+`ffmpeg_unsupported` unless every sample matches; an ffmpeg that cannot run
+the check declines too. The check takes about 0.15 s. On 4.2.7 it logs
+`HDR passthrough off: ffmpeg_unsupported (/usr/bin/ffmpeg: maskedmerge misses
+the layered blend on 7748 of 49152 samples (up to 1 LSB))`.
+
+## History-dependent drivers
+
+Capture reads each frame from a fresh seek, out of order, and many frames
+more than once; the layered path seeks every frame once, in order. A driver
+whose output depends on the time alone renders the same either way, which
+the verification probes check frame by frame. A driver that keeps state
+across seeks does not, and its probes can agree with each other while
+disagreeing with the layered render: a `requestAnimationFrame` counter that
+shows "WAIT" for its first three callbacks has stopped changing long before
+capture starts; a film-time interval that appends a mark has already fired
+up to the furthest frame eligibility seeked, and a backward seek un-fires
+nothing.
+
+The virtual-time shim (`fileServer.ts`) records, from page load, every
+distinct animation-frame callback and counts every film-time timer whose
+caller is page code (anything but the renderer's own `hyperframes://` and
+DevTools scripts). Eligibility declines with `seek_callback` when the page
+has registered any, or added a listener to GSAP's ticker. GSAP's own ticker
+also runs from an animation frame; it is told apart by sleeping and waking
+it (which cancels and re-requests its frame), and only renders the root
+timeline, whose children the planner already requires to be registered,
+paused timelines. The record is read again after capture, for a callback
+first registered on a frame only capture visited.
+
+What the record cannot see, a setter on a runtime seek-time global or a
+wrapped runtime function that keeps state of its own, is left to the
+verification probes, which catch it whenever the state shows on a probed
+frame.
 
 ## Capture dedup
 
@@ -155,9 +207,14 @@ from ffmpeg's frame count and reports 35–80%.
   stats are not collected on the passthrough path.
 - mp4 only; no alpha, HDR images or shader transitions.
 - The fingerprint cannot see inside closed shadow roots.
-- Verification reads each frame from a fresh seek, as the layered path
-  does. A driver whose output depends on the order or history of seeks
-  rather than on the time alone can still differ.
+- Verification reads each frame from a fresh seek. A driver that keeps
+  state across seeks without an animation frame or timer (a stateful setter
+  on a runtime seek-time global) and whose state never shows on a probed
+  frame differently from the layered render can still differ.
+- For a driver that counts seeks, a fallback render is not bit-identical to
+  a flag-off render either: the layered path makes one seek fewer before
+  frame 0 after a fallback (`raf-counter` shows `n=4` where flag off shows
+  `n=5`). Both are the layered path; the passthrough itself never shipped.
 - `hf-seek` listeners are read once, after the page loads; one added later
   is left to the verification probes.
 - With a warm extraction cache, deferral costs a probe (about 0.3 s) that a

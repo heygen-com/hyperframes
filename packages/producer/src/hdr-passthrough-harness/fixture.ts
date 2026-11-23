@@ -537,8 +537,10 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
   // ends and capture frame. Only a probe of every frame sees it.
   {
     // A raw requestAnimationFrame loop: rAF runs on virtual time on every seek.
+    // Eligibility declines any animation-frame callback of the page's own
+    // (`seek_callback`) before capture's probes would see the flash.
     name: "flash-raf",
-    reason: "overlay_unverified",
+    reason: "seek_callback",
     composition: {
       cues: [],
       headHtml: `<script>requestAnimationFrame(function loop(now) { const el = document.getElementById("seek-counter"); if (el) el.textContent = (now >= 1650 && now < 1750) ? "FLASH" : ""; requestAnimationFrame(loop); });</script>`,
@@ -553,6 +555,57 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
       headHtml: `<script>(() => { let time; Object.defineProperty(window, "__hfTypegpuTime", { configurable: true, get: () => time, set(t) { time = t; const el = document.getElementById("seek-counter"); if (el) el.textContent = (t >= 1.65 && t < 1.75) ? "FLASH" : ""; } }); })();</script>`,
       overlayHtml: `<div id="seek-counter" style="${BADGE_STYLE};color:#fff;font:700 40px sans-serif"></div>`,
     },
+  },
+  // Drivers whose output depends on the order or number of seeks, not on the
+  // time alone. The layered path seeks every frame once, in order; the
+  // passthrough probes frames out of order and more than once, so the state
+  // such a driver keeps differs between the two.
+  {
+    // One more on every requestAnimationFrame callback, i.e. on every seek.
+    name: "raf-counter",
+    reason: "seek_callback",
+    composition: {
+      cues: [],
+      headHtml: `<script>let n = 0; requestAnimationFrame(function loop() { n++; const el = document.getElementById("seek-counter"); if (el) el.textContent = "n=" + n; requestAnimationFrame(loop); });</script>`,
+      overlayHtml: `<div id="seek-counter" style="${BADGE_STYLE};color:#fff;font:700 40px sans-serif"></div>`,
+    },
+  },
+  {
+    // The same counter, shown only for its first three callbacks: by the time
+    // the passthrough probes, it never changes again.
+    name: "raf-warmup",
+    reason: "seek_callback",
+    composition: {
+      cues: [],
+      headHtml: `<script>let n = 0; requestAnimationFrame(function loop() { n++; const el = document.getElementById("seek-counter"); if (el) el.textContent = n <= 3 ? "WAIT" : ""; requestAnimationFrame(loop); });</script>`,
+      overlayHtml: `<div id="seek-counter" style="${BADGE_STYLE};color:#fff;font:700 40px sans-serif"></div>`,
+    },
+  },
+  {
+    // A film-time interval (started from the first animation frame, as the
+    // timers-on-film-time regression does) that appends a mark every 0.5 s.
+    // A seek fires every timer due by then and a backward seek un-fires none.
+    name: "timer-append",
+    reason: "seek_callback",
+    composition: {
+      cues: [],
+      headHtml: `<script>requestAnimationFrame(() => { setInterval(() => { const el = document.getElementById("seek-counter"); if (el) el.textContent += "#"; }, 500); });</script>`,
+      overlayHtml: `<div id="seek-counter" style="${BADGE_STYLE};width:auto;color:#fff;font:700 40px sans-serif"></div>`,
+    },
+  },
+  {
+    // A GSAP .from() with lazy init (immediateRender: false) reads the box's
+    // \`left\` the first time the playhead reaches it, and a seek-time setter
+    // (no GSAP, no listener) writes that \`left\` too.
+    name: "gsap-from-lazy",
+    reason: "overlay_unverified",
+    composition: {
+      headHtml: `<script>(() => { let time; Object.defineProperty(window, "__hfTypegpuTime", { configurable: true, get: () => time, set(t) { time = t; const el = document.getElementById("box"); if (el) el.style.left = t < 1 ? "200px" : "900px"; } }); })();</script>`,
+      overlayHtml: `<div id="box" style="position:absolute;top:48px;left:200px;width:128px;height:128px;background:#36f"></div>`,
+      timelineScript:
+        'tl.from("#box", { left: 0, opacity: 0, duration: 0.3, immediateRender: false }, 1.5);',
+    },
+    assets: ["gsap"],
   },
   {
     name: "canvas",
@@ -681,6 +734,23 @@ function rateValue(rate: string): number {
   return Number(num) / Number(den);
 }
 
+/**
+ * The `captions-gsap` fixture's additions: a badge that a lazily initialised
+ * GSAP `.from()` (`immediateRender: false`, so it reads its end values the
+ * first time the playhead reaches it) slides in at 1 s, and a `set()` that
+ * recolours it at 2 s. GSAP is the only writer, so the end values it reads
+ * are the same however the frames are seeked: flag on must take the
+ * passthrough, and the GSAP ticker's own animation frame must not count as a
+ * history-dependent driver.
+ */
+const CAPTIONS_GSAP: Pick<CompositionOptions, "overlayHtml" | "timelineScript"> = {
+  overlayHtml: `<div id="badge" style="position:absolute;top:48px;left:900px;width:128px;height:128px;background:#36f"></div>`,
+  timelineScript: [
+    'tl.from("#badge", { left: 200, opacity: 0, duration: 0.3, immediateRender: false }, 1);',
+    'tl.set("#badge", { backgroundColor: "#f63" }, 2);',
+  ].join("\n      "),
+};
+
 /** Reason the `transformed` fixture must report (the layout probe runs before the transform gate). */
 const TRANSFORMED_REASON = "not_full_canvas";
 
@@ -760,15 +830,20 @@ function runFfmpegOrThrow(ffmpegPath: string, args: string[], what: string): voi
   }
 }
 
+/** GSAP as the fixtures load it (`assets/gsap.min.js`), from the core package's dependency. */
+function gsapAsset(): { source: string; name: string } {
+  const require = createRequire(import.meta.url);
+  const source = require.resolve("gsap/dist/gsap.min.js", {
+    paths: [resolve(fileURLToPath(new URL("../../../core", import.meta.url)))],
+  });
+  return { source, name: "gsap.min.js" };
+}
+
 /** Source path of each negative-fixture asset, generating the animated images once. */
 function negativeAssetSources(
   outDir: string,
   ffmpegPath: string,
 ): Record<NegativeAsset, { source: string; name: string }> {
-  const require = createRequire(import.meta.url);
-  const gsapPath = require.resolve("gsap/dist/gsap.min.js", {
-    paths: [resolve(fileURLToPath(new URL("../../../core", import.meta.url)))],
-  });
   const images = {} as Record<AnimatedImageFormat, { source: string; name: string }>;
   for (const format of ["gif", "webp", "apng", "avif"] as const) {
     const name = ANIMATED_IMAGE_FILES[format];
@@ -778,7 +853,7 @@ function negativeAssetSources(
     }
     images[format] = { source, name };
   }
-  return { gsap: { source: gsapPath, name: "gsap.min.js" }, ...images };
+  return { gsap: gsapAsset(), ...images };
 }
 
 /** Run ffmpeg to write `path` unless it already exists (non-empty) and `--force` is off. */
@@ -894,6 +969,20 @@ function generateFixtures(options: GenerateOptions): GeneratedFixtures {
         sourcePath: offsetSourcePath,
         name: "captions-offset",
         html: buildCompositionHtml({ ...base, compositionId: "hdr-passthrough-captions-offset" }),
+      }),
+    },
+    {
+      name: "captions-gsap",
+      expect: "passthrough",
+      dir: writeProject({
+        ...project,
+        name: "captions-gsap",
+        html: buildCompositionHtml({
+          ...base,
+          ...CAPTIONS_GSAP,
+          compositionId: "hdr-passthrough-captions-gsap",
+        }),
+        extraAssets: [gsapAsset()],
       }),
     },
     {

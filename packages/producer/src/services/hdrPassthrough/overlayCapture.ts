@@ -429,7 +429,7 @@ async function verifyMergedState(run: StateRun, state: OpenState): Promise<void>
     if (hash === undefined) {
       const rgba8 = await source.capture(frame, time);
       run.captureCount += 1;
-      assertOverlaySize(rgba8, args.plan, run.merged.length);
+      assertOverlaySize(rgba8, args.plan, run.merged.indexOf(state));
       hash = hashOverlayPixels(rgba8);
       if (hash === state.hash) pixelsByKey.set(key, { hash, pngPath: state.pngPath });
     }

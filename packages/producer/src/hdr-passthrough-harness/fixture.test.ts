@@ -191,6 +191,7 @@ describe("INELIGIBLE_CASES", () => {
       "canvas",
       "video_count",
       "overlay_unverified",
+      "seek_callback",
     ]) {
       expect(reasons.has(reason)).toBe(true);
     }
@@ -207,9 +208,25 @@ describe("INELIGIBLE_CASES", () => {
       "seek-time-setter",
       "flash-raf",
       "flash-setter",
+      "raf-counter",
+      "raf-warmup",
+      "timer-append",
+      "gsap-from-lazy",
     ]) {
       expect(names).toContain(name);
     }
+  });
+
+  it("drives the history-dependent cases from seeks, not from the frame time alone", () => {
+    const find = (name: string) => INELIGIBLE_CASES.find((c) => c.name === name)!;
+    for (const name of ["raf-counter", "raf-warmup"]) {
+      expect(find(name).composition.headHtml).toMatch(/n\+\+.*requestAnimationFrame\(loop\)/);
+    }
+    expect(find("timer-append").composition.headHtml).toContain("setInterval");
+    const lazy = find("gsap-from-lazy");
+    expect(lazy.composition.timelineScript).toContain("immediateRender: false");
+    expect(lazy.composition.headHtml).toContain("__hfTypegpuTime");
+    expect(lazy.assets).toContain("gsap");
   });
 
   it("drives the seek-hook cases from the runtime's seek, not from GSAP", () => {
@@ -222,9 +239,13 @@ describe("INELIGIBLE_CASES", () => {
   });
 
   it("puts each flash case in one cue-free state, away from a sampling grid", () => {
-    for (const name of ["flash-raf", "flash-setter"]) {
+    for (const [name, reason] of [
+      // The raf loop is declined before capture; the setter is left to capture's per-frame probes.
+      ["flash-raf", "seek_callback"],
+      ["flash-setter", "overlay_unverified"],
+    ] as const) {
       const c = INELIGIBLE_CASES.find((x) => x.name === name)!;
-      expect(c.reason).toBe("overlay_unverified");
+      expect(c.reason).toBe(reason);
       expect(c.composition.cues).toEqual([]);
       expect(c.composition.timelineScript).toBeUndefined();
       const html = buildCompositionHtml({

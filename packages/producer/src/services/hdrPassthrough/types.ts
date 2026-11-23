@@ -89,6 +89,9 @@ export interface LazyOverlaySession {
 export type PassthroughIneligibleReason =
   // render-level gates
   | "not_hdr"
+  // the resolved ffmpeg's maskedmerge does not round like the layered blend
+  // (ffmpegBlendCheck.ts)
+  | "ffmpeg_unsupported"
   | "output_format"
   | "alpha_output"
   | "output_scale"
@@ -132,6 +135,10 @@ export type PassthroughIneligibleReason =
   | "unresolvable_clip_start"
   | "analysis_limit"
   | "too_many_states"
+  // page code that runs on seeks and keeps state across them (animation-frame
+  // callbacks, film-time timers, GSAP ticker listeners): its output can depend
+  // on the order of seeks, which capture does not share with the layered path
+  | "seek_callback"
   // overlay capture (see overlayCapture.writeOverlayStates): a frame the
   // planner called static rendered a different overlay
   | "overlay_unverified";

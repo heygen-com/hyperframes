@@ -19,9 +19,11 @@ import {
   resolvePlayableVideoDuration,
   resolveProjectRelativeSrc,
   videoStartOnMediaTimeline,
+  type CaptureSession,
   type VideoMetadata,
 } from "@hyperframes/engine";
 import { probeVideoLayout } from "../render/videoLayerPassthroughPlan.js";
+import { type BlendCheckResult, checkFfmpegBlend } from "./ffmpegBlendCheck.js";
 import { analyzeOverlayTiming } from "./planner.js";
 import type {
   CheckPassthroughEligibilityArgs,
@@ -281,16 +283,132 @@ function findVideoCornerRadius(videoId: string): string | null {
   return null;
 }
 
-/** Filesystem and probe access, injectable for tests. */
+/**
+ * Runs in the page; must stay self-contained. Leaves GSAP's ticker as it found it.
+ *
+ * Finds page code that runs on seeks and keeps state across them: an
+ * animation-frame callback (the virtual-time shim runs every pending one on
+ * every seek), a film-time timer (a seek fires every timer due by then, and a
+ * backward seek un-fires none) or a listener on GSAP's ticker (which runs from
+ * the ticker's animation frame). What such code shows on a frame can depend on
+ * how many seeks came before it and in what order, not on the frame's time
+ * alone. The layered path seeks every frame once, in order; overlay capture
+ * seeks candidates and verification frames out of order, so its probes could
+ * agree with each other and still not with the layered render. The shim
+ * records every distinct callback since the page loaded, so a callback that
+ * ran once and stopped still counts.
+ *
+ * GSAP's own ticker runs from an animation frame too. It is told apart by
+ * sleeping it (which cancels its pending frame) and waking it again; it only
+ * renders the root timeline, whose children the planner requires to be
+ * registered (and paused) timelines. Any other ticker listener counts.
+ */
+export function inspectSeekCallbacks(): string | null {
+  type Activity = {
+    frameCallbacks: unknown[];
+    frameCallbacksOverflow: boolean;
+    pendingFrames: unknown[];
+    filmTimers: number;
+    pendingTimers: number;
+  };
+  type Ticker = { sleep: () => void; wake: () => void; _listeners?: unknown };
+  const w = window as unknown as {
+    __HF_VIRTUAL_TIME__?: { callbackActivity?: () => Activity };
+    gsap?: { ticker?: Partial<Ticker>; core?: { Timeline?: { updateRoot?: unknown } } };
+  };
+  const shim = w.__HF_VIRTUAL_TIME__;
+  const read = shim?.callbackActivity;
+  if (typeof read !== "function") return "no virtual-time callback record";
+  const pending = () => read().pendingFrames;
+  const without = (list: unknown[], drop: unknown[]) => list.filter((fn) => !drop.includes(fn));
+
+  // GSAP's ticker frame callback: the one sleeping cancels, or (asleep already) the one waking
+  // requests. The ticker is left awake or asleep as it was found; null when there is no GSAP.
+  const findGsapTick = (ticker: Ticker): unknown => {
+    const before = pending();
+    ticker.sleep();
+    const asleep = pending();
+    const cancelled = without(before, asleep);
+    ticker.wake();
+    if (cancelled.length > 0) return cancelled.length === 1 ? cancelled[0] : null;
+    const requested = without(pending(), asleep);
+    ticker.sleep();
+    return requested.length === 1 ? requested[0] : null;
+  };
+  // A finding for GSAP's ticker listeners (anything but GSAP's root timeline update).
+  const tickerListeners = (ticker: Partial<Ticker>): string | null => {
+    const listeners = ticker._listeners;
+    if (!Array.isArray(listeners)) return "GSAP ticker listeners unreadable";
+    const updateRoot = w.gsap?.core?.Timeline?.updateRoot;
+    const extra = listeners.filter((listener) => listener !== updateRoot).length;
+    return extra > 0 ? `${extra} GSAP ticker listener(s)` : null;
+  };
+
+  const activity = read();
+  if (activity.filmTimers > 0) {
+    return `${activity.filmTimers} film-time timer(s), ${activity.pendingTimers} pending`;
+  }
+  if (activity.frameCallbacksOverflow) return "many requestAnimationFrame callbacks";
+  const ticker = w.gsap?.ticker;
+  const usable =
+    !!ticker && typeof ticker.sleep === "function" && typeof ticker.wake === "function";
+  const listenerFinding = usable ? tickerListeners(ticker) : null;
+  if (listenerFinding) return listenerFinding;
+  const gsapTick = usable ? findGsapTick(ticker as Ticker) : null;
+  const others = without(activity.frameCallbacks, [gsapTick]).length;
+  return others > 0 ? `${others} requestAnimationFrame callback(s)` : null;
+}
+
+/**
+ * `seek_callback` finding for the overlay page (see `inspectSeekCallbacks`),
+ * or `null`. Eligibility calls it after the timing analysis has seeked the
+ * whole composition; the passthrough calls it again after overlay capture, so
+ * a callback first registered on a frame only capture visited still declines.
+ */
+export async function findSeekCallbacks(page: CaptureSession["page"]): Promise<string | null> {
+  return page.evaluate(inspectSeekCallbacks);
+}
+
+/** Filesystem, probe and ffmpeg access, injectable for tests. */
 export interface EligibilityDeps {
   fileExists: (path: string) => boolean;
   probeMetadata: (path: string, signal: AbortSignal | undefined) => Promise<VideoMetadata>;
+  /** Whether the composite's ffmpeg blends exactly like the layered path (`checkFfmpegBlend`). */
+  checkBlend: (signal: AbortSignal | undefined) => Promise<BlendCheckResult>;
 }
 
 const DEFAULT_DEPS: EligibilityDeps = {
   fileExists: existsSync,
   probeMetadata: (path, signal) => extractMediaMetadata(path, { signal }),
+  checkBlend: checkFfmpegBlend,
 };
+
+/**
+ * The in-page gates on the video before the timing analysis: no shader
+ * transitions, the layout probe, no corner radius, nothing animating the
+ * video. The video's fit, or the first failing gate.
+ */
+async function checkPageLayout(
+  page: CaptureSession["page"],
+  videoId: string,
+  canvas: { width: number; height: number },
+  duration: number,
+): Promise<Ineligible | { fit: "fill" | "cover" }> {
+  const transitionCount = await page.evaluate(() => {
+    const hf = (window as unknown as { __hf?: { transitions?: unknown[] } }).__hf;
+    return Array.isArray(hf?.transitions) ? hf.transitions.length : 0;
+  });
+  if (transitionCount > 0) return ineligible("shader_transitions", `${transitionCount}`);
+  const layout = await probeVideoLayout(page, videoId, canvas, duration);
+  if ("reason" in layout) {
+    return ineligible(asReason(layout.reason, LAYOUT_REASONS, "not_full_canvas"));
+  }
+  const corner = await page.evaluate(findVideoCornerRadius, videoId);
+  if (corner) return ineligible("clip_or_mask", corner);
+  const animation = await page.evaluate(inspectVideoAnimation, videoId, duration);
+  if (animation) return ineligible(animation.reason, animation.detail);
+  return { fit: layout.fit };
+}
 
 /**
  * Contract:
@@ -313,13 +431,18 @@ const DEFAULT_DEPS: EligibilityDeps = {
  * video stream starts less than the layered path's hide threshold after
  * `mediaStart`.
  *
+ * ffmpeg gate (no page): `ffmpeg_unsupported` unless the blend self-test
+ * (`checkFfmpegBlend`, cached per binary) finds the resolved ffmpeg's
+ * `maskedmerge` exact against the layered blend.
+ *
  * Page gates (`await session.get()`): `shader_transitions`; layout at sampled
  * times via `probeVideoLayout` (the SDR video-layer probe, same reasons);
  * `clip_or_mask` for a border radius on the video or a clipping ancestor;
  * `video_animated` / `not_shown` via `inspectVideoAnimation`; then overlay
  * timing via `planner.analyzeOverlayTiming` with
  * `maxStates = DEFAULT_MAX_OVERLAY_STATES`, whose failure reason is returned
- * as-is.
+ * as-is; last, `seek_callback` for page code that runs on seeks and keeps
+ * state across them (`findSeekCallbacks`).
  *
  * Leaves the page seeked to time 0 and with no DOM mask applied.
  */
@@ -357,24 +480,14 @@ export async function checkPassthroughEligibility(
     canvas: { width, height },
   });
   if (sourceGate) return sourceGate;
+  const blend = await deps.checkBlend(input.abortSignal);
+  if (!blend.exact) return ineligible("ffmpeg_unsupported", blend.detail);
 
   input.assertNotAborted();
   const captureSession = await session.get();
   const { page } = captureSession;
-  const transitionCount = await page.evaluate(() => {
-    const hf = (window as unknown as { __hf?: { transitions?: unknown[] } }).__hf;
-    return Array.isArray(hf?.transitions) ? hf.transitions.length : 0;
-  });
-  if (transitionCount > 0) return ineligible("shader_transitions", `${transitionCount}`);
-
-  const layout = await probeVideoLayout(page, element.id, { width, height }, composition.duration);
-  if ("reason" in layout) {
-    return ineligible(asReason(layout.reason, LAYOUT_REASONS, "not_full_canvas"));
-  }
-  const corner = await page.evaluate(findVideoCornerRadius, element.id);
-  if (corner) return ineligible("clip_or_mask", corner);
-  const animation = await page.evaluate(inspectVideoAnimation, element.id, composition.duration);
-  if (animation) return ineligible(animation.reason, animation.detail);
+  const layout = await checkPageLayout(page, element.id, { width, height }, composition.duration);
+  if ("eligible" in layout) return layout;
 
   input.assertNotAborted();
   const timing = await analyzeOverlayTiming({
@@ -385,6 +498,8 @@ export async function checkPassthroughEligibility(
     maxStates: DEFAULT_MAX_OVERLAY_STATES,
   });
   if (!timing.ok) return ineligible(timing.reason, timing.detail);
+  const seekCallbacks = await findSeekCallbacks(page);
+  if (seekCallbacks) return ineligible("seek_callback", seekCallbacks);
 
   return {
     eligible: true,

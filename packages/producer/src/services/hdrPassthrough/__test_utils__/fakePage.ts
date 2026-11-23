@@ -296,6 +296,16 @@ export function createFakePage(options: FakePageOptions): {
     gsap: options.globalTimeline ? { globalTimeline: options.globalTimeline } : undefined,
     getComputedStyle: computedStyle,
     fetch: dataUrlFetch,
+    // The virtual-time shim's record of seek callbacks: none.
+    __HF_VIRTUAL_TIME__: {
+      callbackActivity: () => ({
+        frameCallbacks: [],
+        frameCallbacksOverflow: false,
+        pendingFrames: [],
+        filmTimers: 0,
+        pendingTimers: 0,
+      }),
+    },
     ...options.globals,
   };
   const g = globalThis as Record<string, unknown>;
