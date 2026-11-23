@@ -338,7 +338,10 @@ describe("corsForSealedMedia", () => {
     const foreign = video.querySelectorAll("source")[1]!;
     foreign.dispatchEvent(new Event("error"));
     playsFrom(video, `${PREVIEW}media/own.mp4`);
-    expect([video.getAttribute("crossorigin"), foreign.hasAttribute("type")]).toEqual(["anonymous", true]);
+    expect([video.getAttribute("crossorigin"), foreign.hasAttribute("type")]).toEqual([
+      "anonymous",
+      true,
+    ]);
   });
 
   it("pins out a failed copy of the playing URL and a foreign source after it", async () => {
@@ -354,7 +357,11 @@ describe("corsForSealedMedia", () => {
     first!.dispatchEvent(new Event("error"));
     foreign!.dispatchEvent(new Event("error"));
     playsFrom(video, `${PREVIEW}media/own.mp4`);
-    expect([first, foreign, last].map((el) => el!.hasAttribute("type"))).toEqual([true, true, false]);
+    expect([first, foreign, last].map((el) => el!.hasAttribute("type"))).toEqual([
+      true,
+      true,
+      false,
+    ]);
   });
 
   it("follows the first source the browser would pick when the list changes", async () => {

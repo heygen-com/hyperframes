@@ -192,9 +192,11 @@ function pinTo(media: HTMLMediaElement, keep: Element | null): void {
 
 function playingSource(media: HTMLMediaElement, chosen: string, home: string): Element | null {
   const erred = erredThisPick.get(media);
-  return [...media.querySelectorAll("source")].find(
-    (el) => candidate(media, el, home) === chosen && !erred?.has(el),
-  ) ?? null;
+  return (
+    [...media.querySelectorAll("source")].find(
+      (el) => candidate(media, el, home) === chosen && !erred?.has(el),
+    ) ?? null
+  );
 }
 
 function unpin(media: HTMLMediaElement): void {
