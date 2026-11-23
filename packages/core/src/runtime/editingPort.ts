@@ -26,7 +26,7 @@ import {
   type EditingElementMatch,
 } from "./editingElement";
 import type { EditingElementBox, EditingElementGeometry } from "./editingGeometry";
-import type { EditingGestureStart } from "./editingGestureStart";
+import type { EditingGestureBase, EditingGestureStart } from "./editingGestureStart";
 import type { GsapSnapshot } from "./editing/gsapSnapshot";
 import type { MotionPathFrameHome } from "./editing/motionPathHome";
 import type { EditingLayer, EditingStackingSibling } from "./editingLayers";
@@ -136,7 +136,7 @@ export {
   type EditingElementGeometry,
   type ElementTransformSnapshot,
 } from "./editingGeometry";
-export type { EditingGestureStart } from "./editingGestureStart";
+export type { EditingGestureBase, EditingGestureStart } from "./editingGestureStart";
 export { MAX_CAPTION_TRANSFORM } from "./editing/captionTransform";
 export {
   MAX_SNAPSHOT_CHANNELS,
@@ -190,6 +190,7 @@ export const EDITING_REQUEST_KINDS = [
   "layers",
   "draft",
   "gesture-start",
+  "gesture-base",
   "console-errors",
   "watch-keys",
   "restore-attributes",
@@ -234,6 +235,7 @@ export interface EditingRuntimeSnapshot {
 }
 
 export { MAX_DRAFT_PX };
+export const EDITING_REQUEST_TIMEOUT_MS = 5_000;
 export const MAX_DRAFT_DEG = 36_000;
 export const MAX_WATCHED_KEYS = 32;
 
@@ -329,6 +331,10 @@ export interface EditingRequests {
   "gesture-start": {
     params: { handles: EditingElementHandle[] };
     result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
+  };
+  "gesture-base": {
+    params: { handles: EditingElementHandle[] };
+    result: { elements: Array<EditingGestureBase | null> };
   };
   "console-errors": { params: { from: number }; result: { errors: string[]; truncated: boolean } };
   /** The frame cancels these combos outside the elements that own keys, and forwards them and their
@@ -601,6 +607,7 @@ const PARAM_PARSERS: {
   layers: (params) => noParams(params) ?? layerParams(params),
   draft: draftList,
   "gesture-start": handleList,
+  "gesture-base": handleList,
   "console-errors": (params) =>
     hasKeys(params, "from") && isOffset(params.from) ? { from: params.from } : null,
   "watch-keys": comboList,
@@ -738,7 +745,7 @@ export function createEditingPortClient(options: {
   timeoutMs?: number;
   host?: Window;
 }): EditingPortClient {
-  const { iframe, timeoutMs = 5_000, host = window } = options;
+  const { iframe, timeoutMs = EDITING_REQUEST_TIMEOUT_MS, host = window } = options;
   const pending = new Map<number, Pending>();
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
@@ -862,7 +869,13 @@ export function createEditingPortClient(options: {
 }
 
 export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";
-export type { TextEditEndedEvent } from "./editing/textEdit";
+export {
+  caretRangeAt,
+  takePlainTextOnly,
+  textEditResult,
+  type TextEditEndedEvent,
+  type TextEditResult,
+} from "./editing/textEdit";
 export {
   parsePausedFrameAsk,
   PAUSED_FRAME_BYTES,

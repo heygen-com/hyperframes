@@ -554,6 +554,7 @@ class Engine {
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
   adopting = new Map<string, Adoption>();
+  claimsAsked = new Map<string, number>();
   wentAhead = new Set<string>();
   wentAheadBeforeReopen = new Set<string>();
   reading = new Map<string, Promise<unknown>>();
@@ -1256,7 +1257,7 @@ class Engine {
     if (!taken.length) return this.claimNothing(coalesceKey);
     const held = this.heldFor(coalesceKey, taken);
     if (!held) await this.commitClaim();
-    await this.commitPendingWrittenBefore(taken);
+    await this.commitPendingUnasked();
     const group = held ?? this.newGroup(who, label);
     for (const change of taken) addChange(group, change.path, change.before, change.after);
     this.markWentAhead(pending, group);
@@ -1291,30 +1292,36 @@ class Engine {
     return null;
   }
 
-  async commitPendingWrittenBefore(taken: readonly HistoryFileChange[]): Promise<void> {
-    const writtenAt = Math.max(
-      ...(await Promise.all(taken.map((change) => this.mtimeOf(change.path)))),
+  async commitPendingUnasked(): Promise<void> {
+    const asked = [...(this.outside?.changes.values() ?? [])].filter((change) =>
+      this.claimsAsked.has(change.path),
     );
-    const later: HistoryFileChange[] = [];
-    if (Number.isFinite(writtenAt))
-      for (const change of [...(this.outside?.changes.values() ?? [])])
-        if ((await this.mtimeOf(change.path)) > writtenAt) later.push(change);
-    for (const change of later) this.outside!.changes.delete(change.path);
-    await this.commitPending();
-    if (!later.length) return;
-    const outside = this.outsideGroup();
-    for (const change of later) outside.changes.set(change.path, change);
+    for (const change of asked) this.outside!.changes.delete(change.path);
+    try {
+      await this.commitPending((path) => this.claimsAsked.has(path));
+    } finally {
+      if (asked.length) {
+        const outside = this.outsideGroup();
+        for (const change of asked) outside.changes.set(change.path, change);
+      }
+    }
   }
 
-  async mtimeOf(path: string): Promise<number> {
-    return (await stat(join(this.dir, path)).catch(() => null))?.mtimeMs ?? -Infinity;
+  countAsked(paths: readonly string[], step: 1 | -1): void {
+    for (const path of paths) {
+      const left = (this.claimsAsked.get(path) ?? 0) + step;
+      if (left > 0) this.claimsAsked.set(path, left);
+      else this.claimsAsked.delete(path);
+    }
   }
 
   /** Commits every other writer's pending changes, oldest first; open windows stay open. */
-  async commitPending(): Promise<void> {
+  async commitPending(keep: (path: string) => boolean = () => false): Promise<void> {
     await this.commitOutside();
-    for (const window of [...this.windows])
-      if (window.changes.size) await this.commitCut(window, [...window.changes.keys()]);
+    for (const window of [...this.windows]) {
+      const cut = [...window.changes.keys()].filter((path) => !keep(path));
+      if (cut.length) await this.commitCut(window, cut);
+    }
   }
 
   pendingElsewhere(): boolean {
@@ -1995,17 +2002,28 @@ class Engine {
       unsavedBlobBytes: () => this.unsavedBlobBytes(),
       claim: async (who, label, paths, options = {}) => {
         const owed = (path: string) => this.adopting.get(this.logPath(path));
-        await Promise.all(
-          paths.map((path) =>
-            orAfter(
-              Promise.resolve(owed(path)?.retryNow()),
-              this.firstCopyWaitMs(this.logPath(path)),
-              undefined,
+        const named = paths.map((path) => this.logPath(path));
+        this.countAsked(named, 1);
+        let queued = false;
+        try {
+          await Promise.all(
+            paths.map((path) =>
+              orAfter(
+                Promise.resolve(owed(path)?.retryNow()),
+                this.firstCopyWaitMs(this.logPath(path)),
+                undefined,
+              ),
             ),
-          ),
-        );
-        const pending = paths.filter(owed).map((path) => this.logPath(path));
-        return this.queue(() => this.claimNow(who, label, paths, options, pending));
+          );
+          const pending = paths.filter(owed).map((path) => this.logPath(path));
+          queued = true;
+          return this.queue(() => {
+            this.countAsked(named, -1);
+            return this.claimNow(who, label, paths, options, pending);
+          });
+        } finally {
+          if (!queued) this.countAsked(named, -1);
+        }
       },
       noteChange: (path) => {
         if (!this.closed) this.noteChange(path);

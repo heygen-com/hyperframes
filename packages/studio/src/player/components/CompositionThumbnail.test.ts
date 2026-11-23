@@ -5,7 +5,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MockResizeObserver, reportResize } from "../../hooks/resizeObserverTestUtils";
 import { thumbnailScheduler } from "../lib/thumbnailScheduler";
-import { buildCompositionThumbnailUrl, CompositionThumbnail } from "./CompositionThumbnail";
+import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
+import {
+  buildCompositionThumbnailUrl,
+  CompositionThumbnail,
+  compositionThumbnailRequest,
+} from "./CompositionThumbnail";
 
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   configurable: true,
@@ -253,5 +258,32 @@ describe("CompositionThumbnail", () => {
     });
     expect(MockImage.instances).toHaveLength(1);
     expect(MockImage.instances[0]?.src).toBe("blob:composition-thumbnail");
+  });
+});
+
+describe("compositionThumbnailRequest", () => {
+  // fails without the fix: each full-size still was weighed as a 240x135 poster, so 96 of them (8.3 MB each decoded)
+  // stayed cached before the 64 MiB byte budget ever counted them full.
+  it("keeps no more full-size stills than the byte budget holds once their cards are gone", async () => {
+    let made = 0;
+    URL.createObjectURL = vi.fn(() => `blob:still-${++made}`);
+    const project = "/api/projects/demo/preview";
+    for (let write = 1; write <= 40; write++) {
+      const request = compositionThumbnailRequest(
+        `/api/projects/demo/thumbnail/index.html?v=${write}`,
+        project,
+      );
+      const lease = thumbnailScheduler.acquire(request, () => {});
+      await vi.waitFor(() => expect(MockImage.instances.length).toBe(write));
+      const probe = MockImage.instances[write - 1]!;
+      probe.naturalWidth = 1920;
+      probe.naturalHeight = 1080;
+      probe.onload?.();
+      await vi.waitFor(() => expect(thumbnailScheduler.getSnapshot(request).status).toBe("ready"));
+      lease.release();
+    }
+    const kept = made - vi.mocked(URL.revokeObjectURL).mock.calls.length;
+    const fit = Math.floor(TIMELINE_VIEWPORT_BUDGETS.thumbnailCacheBytes / (1920 * 1080 * 4));
+    expect(kept).toBeLessThanOrEqual(fit);
   });
 });

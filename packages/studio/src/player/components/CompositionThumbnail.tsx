@@ -3,12 +3,12 @@ import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
 import {
   createThumbnailKey,
+  decodedImageBytes,
   type ThumbnailPriority,
   type ThumbnailRequest,
 } from "../lib/thumbnailScheduler";
-import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
 import { ThumbnailTiles } from "./ThumbnailTiles";
-import { computeThumbnailStrip, probeImageAspect } from "./thumbnailUtils";
+import { computeThumbnailStrip, probeImageSize } from "./thumbnailUtils";
 import { studioApiFetch } from "../../utils/studioApiFetch";
 
 interface CompositionThumbnailProps {
@@ -114,13 +114,10 @@ async function loadCompositionImage(url: string, signal: AbortSignal) {
   if (signal.aborted) throw new DOMException("Aborted", "AbortError");
   const objectUrl = URL.createObjectURL(blob);
   try {
-    const aspect = await probeImageAspect(objectUrl, signal);
+    const { width, height } = await probeImageSize(objectUrl, signal);
     return {
-      value: { kind: "image" as const, url: objectUrl, aspect },
-      weight:
-        TIMELINE_VIEWPORT_BUDGETS.posterMaxPhysicalWidth *
-        TIMELINE_VIEWPORT_BUDGETS.posterMaxPhysicalHeight *
-        4,
+      value: { kind: "image" as const, url: objectUrl, aspect: width / height },
+      weight: decodedImageBytes(width, height),
       dispose: () => URL.revokeObjectURL(objectUrl),
     };
   } catch (error) {
