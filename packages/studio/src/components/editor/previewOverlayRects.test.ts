@@ -507,6 +507,26 @@ describe("a press held across a preview change on an opaque frame", () => {
     press.changing = false;
   });
 
+  // fails without the fix: the overlay re-renders its handlers, and the older replay's answer reached the new
+  // handlers' copy of the outline, so it cleared the outline of a press made through them.
+  it("keeps a press's outline made after a re-render when the replay before it answers", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const iframe = opaqueFrame();
+    const { opts, down } = await pressDuringChange(stale, { box, iframe });
+    await vi.waitFor(() => expect(held.has(iframe)).toBe(true));
+    const rerendered = createPreviewGestureStarts(opts, vi.fn(), vi.fn());
+    press.changing = true;
+    rerendered.startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    held.get(iframe)!();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(true);
+    press.changing = false;
+    rerendered.endWaitingPress();
+  });
+
   // fails without the fix: the frame the replay drew in answered after a reload had swapped it out, and the outline
   // went before the swapped-in frame showed the replay.
   it("waits on the frame swapped in after the replay, not the one it drew in", async () => {

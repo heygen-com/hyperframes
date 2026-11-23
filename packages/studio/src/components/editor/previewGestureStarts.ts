@@ -7,7 +7,6 @@ import { findElementForSelection, type DomEditSelection } from "./domEditing";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
 import { resolveCenterResizeScale } from "./domEditResizeLocal";
 import {
-  PRESS_WAITING_ATTR,
   type WaitingPressState,
   type GestureKind,
   type ResizeHandle,
@@ -22,7 +21,7 @@ import { setStudioWaitingPressCancel } from "../../utils/studioPendingEdits";
 import { playheadMoment } from "../../hooks/editMoment";
 import type { EditMoment } from "./manualEditsTypes";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
-import { previewDraftsSent } from "./previewDrafts";
+import { pressOutlineOf } from "./pressOutline";
 import {
   askShownGestureStarts,
   UNANSWERED,
@@ -36,9 +35,6 @@ type ShownStart = (
   waited: boolean,
   overChannel?: OverChannel,
 ) => boolean;
-
-/** The outline's third state, after idle and a press waiting on a save: a replay waiting on `frame`'s draw. */
-type ReplayDrawWait = { frame: HTMLIFrameElement };
 
 const MAX_SETTLED_WAIT_FRAMES = 60;
 export const PRESS_WAIT_MAX_MS = 10_000;
@@ -56,22 +52,8 @@ export function createPreviewGestureStarts(
     setStudioWaitingPressCancel(press && (() => dropPress(press)));
   };
 
-  let drawWait: ReplayDrawWait | null = null;
-  const clearWaitingMark = () => {
-    drawWait = null;
-    opts.boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
-    opts.rafPausedRef.current = false;
-  };
-  const showOnceReplayDrawn = (wait: ReplayDrawWait) =>
-    void previewDraftsSent(wait.frame).then(() => {
-      if (drawWait !== wait) return;
-      const shown = opts.iframeRef.current;
-      if (shown && shown !== wait.frame) {
-        wait.frame = shown;
-        return showOnceReplayDrawn(wait);
-      }
-      clearWaitingMark();
-    });
+  const outline = pressOutlineOf(opts);
+  const clearWaitingMark = outline.idle;
 
   /** Points the press queued right behind `press` at `next` instead. */
   const unlink = (press: WaitingPressState, next: WaitingPressState | null) => {
@@ -193,9 +175,7 @@ export function createPreviewGestureStarts(
       ended: false,
     };
     opts.waitingPressRef.current = press;
-    drawWait = null;
-    opts.boxRef.current?.setAttribute(PRESS_WAITING_ATTR, "true");
-    opts.rafPausedRef.current = true;
+    outline.waitOnSave();
     let shownFrames = 0;
     let settledFrames = 0;
     const since = performance.now();
@@ -267,8 +247,7 @@ export function createPreviewGestureStarts(
       if (press.released) releaseActiveGesture(press.released);
       const replayedIn = opts.iframeRef.current;
       if (!channel || !replayedIn || opts.waitingPressRef.current) return idleUnlessPressWaits();
-      drawWait = { frame: replayedIn };
-      showOnceReplayDrawn(drawWait);
+      outline.waitOnDraw(replayedIn);
     };
     press.frame = requestAnimationFrame(poll);
     return true;
