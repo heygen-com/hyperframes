@@ -207,20 +207,25 @@ export function endInlineEditOn(element: HTMLElement): Promise<void> {
   );
 }
 
-// A frame may never say its edit ended: Studio taking focus back ends it, saving, as the frame's blur would.
-function useSealedSessionEnds(
+// A drain or an unmount keeps the typed words, as blur does. Read through a ref
+// so a new onCommit never closes the session mid-edit.
+function useSessionEnds(
   session: InlineTextEditSession | null,
   openRef: { current: InlineTextEditSession | null },
-  save: { current: () => unknown },
+  latestSave: () => unknown,
 ) {
+  const save = useRef(latestSave);
+  save.current = latestSave;
+  useEffect(() => settleWhileOpen(session, openRef, save), [session, openRef]);
   useEffect(() => () => session?.keyboard?.(), [session]);
+  // A frame may never say its edit ended: Studio taking focus back ends it, saving, as the frame's blur would.
   useEffect(() => {
     const studioWindow = session?.sealed?.iframe.ownerDocument.defaultView;
     if (!studioWindow) return undefined;
     const backInStudio = () => openRef.current === session && save.current();
     studioWindow.addEventListener("focus", backInStudio);
     return () => studioWindow.removeEventListener("focus", backInStudio);
-  }, [session, openRef, save]);
+  }, [session, openRef]);
 }
 
 function settleWhileOpen(
@@ -500,12 +505,7 @@ export function useInlineTextEdit({
     };
   }, [session, commit]);
 
-  // A drain or an unmount keeps the typed words, as blur does. Read through a ref
-  // so a new onCommit never closes the session mid-edit.
-  const saveRef = useRef(save);
-  saveRef.current = save;
-  useEffect(() => settleWhileOpen(session, openRef, saveRef), [session]);
-  useSealedSessionEnds(session, openRef, saveRef);
+  useSessionEnds(session, openRef, save);
 
   return { session, start, commit, cancel };
 }

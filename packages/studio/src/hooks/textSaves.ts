@@ -1,3 +1,4 @@
+import type { TextWriteOrder } from "./domEditCommitRunner";
 import { EDITING_REQUEST_TIMEOUT_MS } from "@hyperframes/core/runtime/editing-port";
 import { previewChangesOutsideTextSaves } from "../player/previewReloading";
 
@@ -78,3 +79,10 @@ export function fieldSave(newestOn: Map<string, number>, field: string, number: 
     done: () => void (newest() && newestOn.delete(field)),
   };
 }
+
+export type TextSaveBookkeeping = {
+  text: TextWriteOrder;
+  /** The newest panel save per element field: an older one on the same field is superseded, another field's is not. */
+  newestFieldSave: Map<string, number>;
+  styleVersions: Map<string, symbol>;
+};

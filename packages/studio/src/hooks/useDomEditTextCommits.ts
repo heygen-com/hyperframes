@@ -44,6 +44,7 @@ import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
 import { endInlineEditOn, textSaveEnded, type InlineTextEditCommit } from "./useInlineTextEdit";
 import {
   fieldSave,
+  type TextSaveBookkeeping,
   landedTextFor,
   nextTextSaveOrder,
   queueTextSave,
@@ -155,14 +156,13 @@ export function useDomEditTextCommits({
   readOnlyPreview,
   reloadPreview,
 }: UseDomEditTextCommitsParams) {
-  const latestReadOnlyPreviewRef = useRef(readOnlyPreview);
-  latestReadOnlyPreviewRef.current = readOnlyPreview;
-  const latestSelectionRef = useRef(domEditSelection);
-  latestSelectionRef.current = domEditSelection;
-  const textWritesRef = useRef<TextWriteOrder>(textWriteOrder());
-  /** The newest panel save per element field: an older one on the same field is superseded, another field's is not. */
-  const newestFieldSaveRef = useRef(new Map<string, number>());
-  const domStyleCommitVersionRef = useRef(new Map<string, symbol>());
+  const latestRef = useRef({ readOnlyPreview, selection: domEditSelection });
+  latestRef.current = { readOnlyPreview, selection: domEditSelection };
+  const writesRef = useRef<TextSaveBookkeeping>({
+    text: textWriteOrder(),
+    newestFieldSave: new Map(),
+    styleVersions: new Map(),
+  });
 
   const {
     handleDomAttributeCommit,
@@ -192,7 +192,7 @@ export function useDomEditTextCommits({
           previewIframeRef,
           persistDomEditOperations,
           showToast,
-          versions: domStyleCommitVersionRef.current,
+          versions: writesRef.current.styleVersions,
           resolveImportedFontAsset,
           resync: refreshDomEditSelectionFromPreview,
         },
@@ -231,10 +231,10 @@ export function useDomEditTextCommits({
       const ending = endInlineEditOn(selection.element);
       const number = nextTextSaveOrder();
       const field = `${getDomEditTargetKey(selection)}|${fieldKey ?? ""}`;
-      newestFieldSaveRef.current.set(field, number);
+      writesRef.current.newestFieldSave.set(field, number);
       await ending;
       const claim = claimTextFor(
-        textWritesRef.current,
+        writesRef.current.text,
         selection.element,
         getDomEditTargetKey(selection),
         number,
@@ -265,7 +265,7 @@ export function useDomEditTextCommits({
         ...write.steps,
         persist: () =>
           claim.write(async () => {
-            const save = fieldSave(newestFieldSaveRef.current, field, number);
+            const save = fieldSave(writesRef.current.newestFieldSave, field, number);
             const result = await afterSealedDraw(write.sealedEdit(), (drawn) =>
               persistDomEditOperations(landed, textCommit.operations, {
                 label: "Edit text",
@@ -326,7 +326,7 @@ export function useDomEditTextCommits({
           void editPreviewElement(sealed.iframe, sealed.handle, { html: back, expect: html });
         else if (element.isConnected && element.innerHTML === html) element.innerHTML = back;
       };
-      if (latestReadOnlyPreviewRef.current) return putBack();
+      if (latestRef.current.readOnlyPreview) return putBack();
       const refuse = (reason: string) => {
         console.error("[Studio] text edit not saved:", reason, element);
         showToast(textEditNotSaved(reason), "error");
@@ -338,7 +338,7 @@ export function useDomEditTextCommits({
         : await liveInlineTextSelection(element, doc, buildDomSelectionFromTarget);
       if (typeof selection === "string") return refuse(selection);
       const claim = claimTextFor(
-        textWritesRef.current,
+        writesRef.current.text,
         element,
         getDomEditTargetKey(selection),
         number,
@@ -374,7 +374,7 @@ export function useDomEditTextCommits({
         revert: putBack,
         onError: (error) => reportDomEditPersistFailure(selection, operations, error, showToast),
         // Re-select only what is still selected: the selection may have moved on, or a host cleared it.
-        shouldResync: () => claim() && latestSelectionRef.current?.element === element,
+        shouldResync: () => claim() && latestRef.current.selection?.element === element,
         resync: () =>
           sealed
             ? refreshDomEditSelectionFromPreview(selection)
@@ -421,7 +421,7 @@ export function useDomEditTextCommits({
       const number = nextTextSaveOrder();
       await ending;
       const claim = claimTextFor(
-        textWritesRef.current,
+        writesRef.current.text,
         snapshot.element,
         getDomEditTargetKey(snapshot),
         number,
