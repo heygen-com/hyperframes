@@ -6,6 +6,7 @@ import { useLinkedClipPreferences } from "../utils/linkedClipPreferences";
 import { previewFrameOpaque } from "../player/lib/previewChannel";
 import { previewStageSize } from "../player/lib/bridgePlayback";
 import { getIframeGsap, type IframeGsap } from "./gsapShared";
+import type { EditingGestureBase } from "@hyperframes/core/runtime/editing-port";
 
 export interface GestureSample {
   time: number;
@@ -47,6 +48,11 @@ interface GsapRuntime {
 // ---------------------------------------------------------------------------
 // Extracted helpers — pure functions, no refs, no React.
 // ---------------------------------------------------------------------------
+
+const baseReader = (base: EditingGestureBase): IframeGsap => ({
+  getProperty: (_element, prop) =>
+    ({ x: base.x, y: base.y, opacity: base.opacity, scaleX: base.scale })[prop] ?? Number.NaN,
+});
 
 function readBasePosition(element: HTMLElement, gsap: IframeGsap | null): BasePosition {
   let baseOpacity = 1;
@@ -304,10 +310,15 @@ export function useGestureRecording() {
   }, []);
 
   const startRecording = useCallback(
-    (element: HTMLElement, iframeEl: HTMLIFrameElement, elementEndTime?: number): boolean => {
+    (
+      element: HTMLElement,
+      iframeEl: HTMLIFrameElement,
+      elementEndTime?: number,
+      sealedBase?: EditingGestureBase | null,
+    ): boolean => {
       if (isRecordingRef.current) return true;
       const sealed = previewFrameOpaque(iframeEl);
-      const gsap = getIframeGsap(iframeEl);
+      const gsap = sealed ? (sealedBase ? baseReader(sealedBase) : null) : getIframeGsap(iframeEl);
       const scale = computeIframeScale(iframeEl);
       if (scale === null || (sealed && !gsap)) return false;
       isRecordingRef.current = true;

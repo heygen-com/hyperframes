@@ -25,7 +25,8 @@ import {
 } from "./gsapShared";
 import { useStableHandlers } from "./useStableHandlers";
 import { previewFrameOpaque } from "../player/lib/previewChannel";
-import { settleGsapSnapshot } from "./gsapFrameSnapshot";
+import { previewGestureBase } from "../player/lib/previewElements";
+import type { EditingGestureBase } from "@hyperframes/core/runtime/editing-port";
 import { progressAtTime, runEaseOf, timeAtProgress, warpsTime } from "../utils/gsapKeyframeEases";
 import { countOf } from "../utils/countOf";
 
@@ -419,11 +420,11 @@ export function useGestureCommit({
         return;
       }
 
-      const begin = () => {
+      const begin = (sealedBase?: EditingGestureBase | null) => {
         if (isGestureRecordingRef.current) return;
         const elementEnd = recordingEnd(sel);
         const startTime = usePlayerStore.getState().currentTime;
-        if (!gestureRecording.startRecording(sel.element, iframe, elementEnd)) {
+        if (!gestureRecording.startRecording(sel.element, iframe, elementEnd, sealedBase)) {
           showToast("Preview not ready. Try again", "error");
           return;
         }
@@ -436,8 +437,9 @@ export function useGestureCommit({
         setGestureState("recording");
         armAutoStop(elementEnd);
       };
-      if (previewFrameOpaque(iframe)) void settleGsapSnapshot(iframe).then(begin);
-      else begin();
+      if (!previewFrameOpaque(iframe)) begin();
+      else if (!sel.handle) begin(null);
+      else void previewGestureBase(iframe, [sel.handle]).then((bases) => begin(bases?.[0] ?? null));
     },
     [
       gestureRecording,
