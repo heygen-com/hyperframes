@@ -245,8 +245,9 @@ describe("deploySite", () => {
 const FFMPEG = process.env.HYPERFRAMES_FFMPEG_PATH?.trim() || "ffmpeg";
 const HAS_FFMPEG = spawnSync(FFMPEG, ["-version"]).status === 0;
 const FFPROBE = process.env.HYPERFRAMES_FFPROBE_PATH?.trim() || "ffprobe";
+const HAS_FFMPEG_AND_FFPROBE = HAS_FFMPEG && spawnSync(FFPROBE, ["-version"]).status === 0;
 
-describe.skipIf(!HAS_FFMPEG)("deploySite audio sidecars", () => {
+describe.skipIf(!HAS_FFMPEG_AND_FFPROBE)("deploySite audio sidecars", () => {
   function appendMp4FreeBoxEveryReaderSkips(file: string, bytes: number): void {
     const free = Buffer.alloc(bytes);
     free.writeUInt32BE(bytes, 0);
@@ -270,7 +271,7 @@ describe.skipIf(!HAS_FFMPEG)("deploySite audio sidecars", () => {
     writeFileSync(file, media);
     const probed = spawnSync(
       FFPROBE,
-      ["-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", file],
+      ["-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", "--", file],
       { encoding: "utf8" },
     );
     expect(probed.status).toBe(0);
@@ -320,7 +321,7 @@ describe.skipIf(!HAS_FFMPEG)("deploySite audio sidecars", () => {
   });
 });
 
-describe.skipIf(!HAS_FFMPEG)("deploySite probe facts", () => {
+describe.skipIf(!HAS_FFMPEG_AND_FFPROBE)("deploySite probe facts", () => {
   function addVideo(): void {
     const made = spawnSync(FFMPEG, [
       ...["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=25:duration=2"],
