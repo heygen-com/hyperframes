@@ -178,11 +178,13 @@ test("rejects tagged PQ or HLG instead of silently producing SDR", { skip: !HAS_
 
 async function runWithLinkAtOldTempName(input, output, outsideFile) {
   const child = spawn(process.execPath, [SCRIPT, "--input", input, "--out", output, "--json"]);
+  let stdout = "";
+  child.stdout.on("data", (chunk) => (stdout += chunk));
   const extension = output.slice(output.lastIndexOf("."));
   const oldTempName = `${output.slice(0, -extension.length)}.part-${child.pid}${extension}`;
   symlinkSync(outsideFile, oldTempName);
-  const [status] = await once(child, "exit");
-  return { status, oldTempName };
+  const [status] = await once(child, "close");
+  return { status, stdout, oldTempName };
 }
 
 for (const [kind, source, outName, makeSource] of [
@@ -200,12 +202,19 @@ for (const [kind, source, outName, makeSource] of [
       const input = join(dir, source);
       const output = join(dir, outName);
       const outsideFile = join(elsewhere.dir, "outside-the-project.bin");
+      const otherOutsideFile = join(elsewhere.dir, "also-outside-the-project.bin");
       ffmpeg(["-f", "lavfi", "-i", "testsrc2=size=16x12:rate=3", ...makeSource, input]);
+      symlinkSync(otherOutsideFile, output);
 
-      const { status, oldTempName } = await runWithLinkAtOldTempName(input, output, outsideFile);
+      const { status, stdout, oldTempName } = await runWithLinkAtOldTempName(
+        input,
+        output,
+        outsideFile,
+      );
 
-      assert.equal(status, 0);
+      assert.equal(status, 0, stdout);
       assert.equal(existsSync(outsideFile), false);
+      assert.equal(existsSync(otherOutsideFile), false);
       assert.equal(lstatSync(output).isFile(), true);
       assert.equal(lstatSync(oldTempName).isSymbolicLink(), true);
       assert.deepEqual(

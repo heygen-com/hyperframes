@@ -188,7 +188,7 @@ function processImage(inputPath, outPath, metadata, options) {
     );
     renameSync(staging.file, outPath);
   } finally {
-    rmSync(staging.folder, { recursive: true, force: true });
+    rmSync(staging.folder, { recursive: true, force: true, maxRetries: 3 });
   }
 }
 
@@ -274,6 +274,8 @@ async function processVideo(inputPath, outPath, metadata, options) {
   const encoderError = text(encoder.stderr);
   const decoderDone = once(decoder, "close").then(([code]) => code ?? 1);
   const encoderDone = once(encoder, "close").then(([code]) => code ?? 1);
+  decoderDone.catch(() => {});
+  encoderDone.catch(() => {});
 
   try {
     const frame = Buffer.allocUnsafe(frameBytes);
@@ -303,7 +305,7 @@ async function processVideo(inputPath, outPath, metadata, options) {
     encoder.kill("SIGKILL");
     throw error;
   } finally {
-    rmSync(staging.folder, { recursive: true, force: true });
+    rmSync(staging.folder, { recursive: true, force: true, maxRetries: 3 });
   }
 }
 
