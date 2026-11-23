@@ -417,21 +417,6 @@ function showStill(
   el.setAttribute("poster", url.href);
 }
 
-/** A capture page draws one frame and never plays, so it shows the server's still of that frame and makes no copy. */
-function showCaptureStill(el: HTMLMediaElement, originalSrc: string, variant: string): void {
-  const shown = shownScale().then((scale) => {
-    showStill(el, originalSrc, variant, scale === null ? null : shownBox(el, scale));
-    const poster = stills.has(el) ? el.getAttribute("poster") : null;
-    if (poster === null) return;
-    const image = new Image();
-    return new Promise((drawn) => {
-      image.onload = image.onerror = drawn;
-      image.src = poster;
-    });
-  });
-  holdFrameCaptures(shown);
-}
-
 function dropStill(el: HTMLMediaElement): void {
   if (stills.delete(el)) el.removeAttribute("poster");
 }
@@ -608,10 +593,6 @@ export function swapToProxy(
   lightFacts?: PreviewSourceFacts,
 ): void {
   if (swappedElements.has(el)) return;
-  if (!lightFacts && capturePageIn(document)) {
-    showCaptureStill(el, currentSrcValue(el), copyVariant(entry));
-    return;
-  }
   giveBackWhenDue(el);
   if (proxyRequested.has(el) && proxyRequested.get(el) === el.getAttribute("src")) return;
   const originalSrc = currentSrcValue(el);

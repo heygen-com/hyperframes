@@ -742,53 +742,37 @@ describe("waiting for the proxy copy", () => {
       mark.content = STUDIO_PREVIEW_CAPTURE_MODE;
     };
 
-    // fails without the fix: a thumbnail capture page started a full playable copy of a video the browser cannot
-    // decode, and the server made it before the copy the person's preview was waiting on.
-    it("makes no copy of a video the browser cannot decode, and shows the server's still of its frame", async () => {
+    // fails without the fix: a thumbnail capture page asked for its copy ahead of the rest whenever its clip was at the
+    // playhead, and the server made it before the copy the person's preview was waiting on.
+    it("asks for its copy behind the rest, even with the clip at the playhead", async () => {
       vi.useFakeTimers();
       onCapturePage();
-      const route = stubProxyRoute(202);
+      const route = stubProxyRoute(202, 206);
       const el = createVideo("/clip.mov");
       clipAt(el);
 
       swapToProxy(el, HEVC_ENTRY, "proactive");
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(3_000);
 
-      const poster = new URL(el.getAttribute("poster")!, document.baseURI);
-      expect(poster.pathname).toBe("/clip.mov");
-      expect(poster.searchParams.get("hf-proxy-still")).toBe("5.0");
-      expect([route.mock.calls.length, el.getAttribute("src")]).toEqual([0, "/clip.mov"]);
-      expect(el.load).not.toHaveBeenCalled();
+      expect(route.mock.calls.map((call) => (call[1] as RequestInit).headers)).toEqual([
+        { Range: "bytes=0-0", "X-HF-Proxy-Priority": "0" },
+        { Range: "bytes=0-0", "X-HF-Proxy-Priority": "0" },
+      ]);
     });
 
-    it("holds the frame capture until the still has drawn", async () => {
+    // `hyperframes check` pages carry the same capture mark, and audit each sample time with the copy's frames.
+    it("still swaps to its copy once it is served", async () => {
       vi.useFakeTimers();
       onCapturePage();
-      stubProxyRoute(202);
-      const images: { onload: (() => void) | null; src: string }[] = [];
-      vi.stubGlobal(
-        "Image",
-        class {
-          onload: (() => void) | null = null;
-          onerror: (() => void) | null = null;
-          src = "";
-          constructor() {
-            images.push(this);
-          }
-        },
-      );
+      stubProxyRoute(206);
       const el = createVideo("/clip.mov");
       clipAt(el);
+
       swapToProxy(el, HEVC_ENTRY, "proactive");
       await vi.advanceTimersByTimeAsync(0);
-      let captured = false;
-      void waitForSeekCompletion().then(() => (captured = true));
-      await vi.advanceTimersByTimeAsync(100);
-      expect(captured).toBe(false);
 
-      images[0]!.onload!();
-      await vi.advanceTimersByTimeAsync(0);
-      expect([captured, images[0]!.src]).toEqual([true, el.getAttribute("poster")]);
+      expect(proxyVariant(el)).toBe("h264");
+      expect(el.load).toHaveBeenCalledTimes(1);
     });
   });
 
