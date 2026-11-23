@@ -431,6 +431,7 @@ describe("a press held across a preview change on an opaque frame", () => {
       selectionRef: { current: selection },
       overlayRectRef: { current: overlayRect },
       setOverlayRect: vi.fn((rect: OverlayRect | null) => (opts.overlayRectRef.current = rect)),
+      onBlockedMoveRef: { current: vi.fn() },
     } as unknown as UseDomEditOverlayGesturesOptions;
     const starts = createPreviewGestureStarts(opts, vi.fn(), vi.fn());
     const down = {
@@ -640,6 +641,20 @@ describe("a press held across a preview change on an opaque frame", () => {
     // fails without the fix: the gesture drew through the stand-in of the frame it was pressed on, now removed.
     expect(started.selection.element).not.toBe(turned);
     expect(standInHandle(started.selection.element)).toBe(started.selection.handle);
+  });
+
+  // fails without the fix: a press the frame never answered, with no box drawn to start from, ended with nothing.
+  it("says the preview didn't answer when it never does and no box was drawn", async () => {
+    const turned = makeSelection("turned", document.getElementById("turned")!);
+    const { opts } = await pressDuringChange(turned, { iframe: silentFrame() });
+    await vi.waitFor(() => expect(opts.onBlockedMoveRef.current).toHaveBeenCalledOnce(), {
+      timeout: 3000,
+    });
+    expect(press.start).not.toHaveBeenCalled();
+    expect(opts.onBlockedMoveRef.current).toHaveBeenCalledWith(
+      turned,
+      "The preview didn't answer, so Studio can't move this layer. Try again.",
+    );
   });
 
   it("starts from the box Studio drew when the frame shown never answers", async () => {

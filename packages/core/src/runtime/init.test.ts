@@ -919,6 +919,77 @@ describe("initSandboxRuntimeModular", () => {
     expect(clip.style.height).toBe("0.5px");
   });
 
+  // fails without the fix: a root with no declared size posted no stage size at all, so a sealed Studio, which can't
+  // measure the frame itself, had no scale for its overlay.
+  describe("a root that declares no size", () => {
+    const capture = () => {
+      const outbound: Array<Record<string, unknown>> = [];
+      vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+        if (typeof message === "object" && message !== null)
+          outbound.push(message as Record<string, unknown>);
+      });
+      return () => outbound.filter((m) => m.type === "stage-size");
+    };
+    const mountUndeclared = (width: number, height: number) => {
+      document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="4"></div>`;
+      const root = document.querySelector<HTMLElement>("[data-composition-id]")!;
+      Object.defineProperty(root, "offsetWidth", { value: width, configurable: true });
+      Object.defineProperty(root, "offsetHeight", { value: height, configurable: true });
+      window.__timelines = { main: createMockTimeline(4) };
+      return root;
+    };
+
+    it("posts its measured layout box as measuredSize, with no width or height a host would size by", () => {
+      const sent = capture();
+      mountUndeclared(1280, 720);
+      initSandboxRuntimeModular();
+      expect(sent().length).toBeGreaterThan(0);
+      for (const message of sent()) {
+        expect(message.measuredSize).toEqual({ width: 1280, height: 720 });
+        expect(message).not.toHaveProperty("width");
+        expect(message).not.toHaveProperty("height");
+      }
+    });
+
+    it("posts the box again when the root resizes, and stops at teardown", () => {
+      let resized: (() => void) | null = null;
+      const disconnect = vi.fn();
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          constructor(callback: () => void) {
+            resized = callback;
+          }
+          observe() {}
+          disconnect() {
+            disconnect();
+          }
+        },
+      );
+      try {
+        const sent = capture();
+        const root = mountUndeclared(1280, 720);
+        initSandboxRuntimeModular();
+        Object.defineProperty(root, "offsetWidth", { value: 640, configurable: true });
+        resized!();
+        expect(sent().at(-1)?.measuredSize).toEqual({ width: 640, height: 720 });
+        window.__hfRuntimeTeardown?.();
+        expect(disconnect).toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("leaves measuredSize off a root that declares its size", () => {
+      const sent = capture();
+      document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="4" data-width="1920" data-height="1080"></div>`;
+      window.__timelines = { main: createMockTimeline(4) };
+      initSandboxRuntimeModular();
+      expect(sent().length).toBeGreaterThan(0);
+      for (const message of sent()) expect(message).not.toHaveProperty("measuredSize");
+    });
+  });
+
   it("reports the explicit root's size when another composition comes first", () => {
     const outbound: Array<Record<string, unknown>> = [];
     vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
