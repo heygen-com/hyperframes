@@ -250,7 +250,10 @@ export function createPreviewGestureStarts(
         return showLayerOnceFrameDrewReplay();
       if (press.moved) moveActiveGesture(press.moved);
       if (press.released) releaseActiveGesture(press.released);
-      if (channel) void previewDraftsSent(channel).then(showLayerOnceFrameDrewReplay);
+      const replayedIn = opts.iframeRef.current;
+      if (channel && replayedIn)
+        void previewDraftsSent(replayedIn).then(showLayerOnceFrameDrewReplay);
+      else if (channel) showLayerOnceFrameDrewReplay();
     };
     press.frame = requestAnimationFrame(poll);
     return true;

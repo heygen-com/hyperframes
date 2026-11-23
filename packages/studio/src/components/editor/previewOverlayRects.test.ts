@@ -27,10 +27,14 @@ vi.mock("./overlayFrameLoop", () => ({
 }));
 
 const press = vi.hoisted(() => ({ changing: true, start: vi.fn((..._args: unknown[]) => true) }));
-const replay = vi.hoisted(() => ({ drawn: Promise.resolve() as Promise<void> }));
+const replay = vi.hoisted(() => ({
+  drawn: Promise.resolve() as Promise<void>,
+  drawnIn: null as HTMLIFrameElement | null,
+}));
 vi.mock("./previewDrafts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./previewDrafts")>()),
-  previewDraftsSent: () => replay.drawn,
+  previewDraftsSent: (iframe: HTMLIFrameElement) =>
+    !replay.drawnIn || iframe === replay.drawnIn ? replay.drawn : Promise.resolve(),
 }));
 vi.mock("./domEditOverlayStartGesture", () => ({
   startGesture: press.start,
@@ -434,6 +438,29 @@ describe("a press held across a preview change on an opaque frame", () => {
     await vi.waitFor(() => expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false));
     expect(opts.rafPausedRef.current).toBe(false);
     replay.drawn = Promise.resolve();
+  });
+
+  // fails without the fix: the outline waited on the frame pressed, which a reload had replaced, so it went while
+  // the replacement frame's draw of the replay was still on its way.
+  it("keeps the waiting outline until the frame the change swapped in has drawn the replay", async () => {
+    let drawn = () => {};
+    replay.drawn = new Promise<void>((resolve) => (drawn = resolve));
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const swappedIn = opaqueFrame();
+    replay.drawnIn = swappedIn;
+    await pressDuringChange(stale, {
+      box,
+      whileWaiting: (o) => (o.iframeRef.current = swappedIn),
+    });
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(true);
+    drawn();
+    await vi.waitFor(() => expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false));
+    replay.drawn = Promise.resolve();
+    replay.drawnIn = null;
   });
 
   it("re-finds the pressed element on the page shown and starts on its box, read over the channel", async () => {
