@@ -411,12 +411,11 @@ type Seen = {
   ours: number;
   corsLoads: number;
   selections: number;
-  failedWithCors: string[];
 };
 
 async function installDriver(frame: Frame) {
   await frame.evaluate(() => {
-    const state = new Map<string, { video: HTMLVideoElement; last: number; failed: Set<string> }>();
+    const state = new Map<string, { video: HTMLVideoElement; last: number }>();
     const touch = (video: HTMLVideoElement) => {
       const entry = state.get(video.dataset.table ?? "");
       if (entry) entry.last = performance.now();
@@ -500,9 +499,6 @@ async function installDriver(frame: Frame) {
         const video = target?.closest?.("video[data-table]") as HTMLVideoElement | null;
         if (!video) return;
         touch(video);
-        const src = target === video ? video.currentSrc : (target as HTMLSourceElement).src;
-        if (video.hasAttribute("crossorigin") && src)
-          state.get(video.dataset.table!)!.failed.add(src);
         const during = video.dataset.authorDuringRetry;
         if (during) {
           delete video.dataset.authorDuringRetry;
@@ -574,7 +570,7 @@ async function installDriver(frame: Frame) {
           );
           if (attr) video.src = sources[0]!.src;
           else video.append(...sources.map(sourceEl));
-          state.set(key, { video, last: performance.now(), failed: new Set() });
+          state.set(key, { video, last: performance.now() });
           document.body.append(video);
         },
         edit(
@@ -661,7 +657,7 @@ async function installDriver(frame: Frame) {
               (video.readyState >= 2 || video.error !== null || video.networkState === 3),
           ),
         read(key: string) {
-          const { video, failed } = state.get(key)!;
+          const { video } = state.get(key)!;
           let pixels = "none";
           if (video.readyState >= 2) {
             const context = document.createElement("canvas").getContext("2d")!;
@@ -697,7 +693,6 @@ async function installDriver(frame: Frame) {
             ours: Number(video.dataset.ours ?? 0),
             corsLoads: Number(video.dataset.corsLoads ?? 0),
             selections: Number(video.dataset.selections ?? 1),
-            failedWithCors: [...failed],
           };
         },
       },
@@ -970,8 +965,7 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
       const readable =
         unsealed.pixels === "readable" &&
         !foreign(kind) &&
-        SENDS_CORS.has(kind) &&
-        (sequence.keepsCors?.includes(el) || !seen.failedWithCors.includes(seen.currentSrc));
+        SENDS_CORS.has(kind);
       if (!readable || seen.pixels === "readable") continue;
       const line = `${where}: plays ${idOf(seen.currentSrc)} unreadable ${JSON.stringify(seen)}`;
       if (mixed(list) && !foreign(kind)) {
@@ -987,7 +981,9 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
   sequences.forEach((sequence, index) => {
     for (const [el, kinds] of history(sequence).everListed) {
       const tryAndRangePerLoad = 2 * final.get(`${index}-${el}`)!.loads;
-      for (const id of kinds.keys()) budget.set(id, (budget.get(id) ?? 0) + tryAndRangePerLoad);
+      const corsQuestion = 1;
+      for (const id of kinds.keys())
+        budget.set(id, (budget.get(id) ?? 0) + tryAndRangePerLoad + corsQuestion);
     }
   });
   // A skip that grows past a tenth of the comparisons would weaken the oracle without saying so.
