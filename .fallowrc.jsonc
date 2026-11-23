@@ -1,5 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/config-schema.json",
+  // Resolve workspace exports as bun does, to their source: without it fallow took Studio's vite alias for
+  // @hyperframes/core/runtime-script in player source and reported a player -> studio package cycle.
+  "resolve": { "conditions": ["bun"] },
   "entry": [
     // IconButton, Tabs and cn are exported before their first consumer exists.
     "packages/studio/src/components/ui/index.ts",
