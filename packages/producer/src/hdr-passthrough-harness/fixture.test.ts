@@ -395,6 +395,9 @@ describe("INELIGIBLE_CASES", () => {
       "picker-icon-gif",
       "scroll-button-gif",
       "shadow-worker-canvas",
+      "animated-webp",
+      "animated-apng",
+      "animated-avif",
     ]);
   });
 

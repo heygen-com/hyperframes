@@ -737,3 +737,16 @@ change and with it (3 s, HLG, ffmpeg 7.0.2):
 
 The wall-clock fixtures' layered render is not repeatable either (two
 flag-off renders share no frame), so only their fallback is checked.
+
+The generated 3 s sets (`--ineligible`, HLG on ffmpeg 7.0.2 and PQ on
+ffmpeg 8.0.1, both sides rendered) pass but for wall-clock and seek-count
+cases: every fixture takes the route and reason it expects, the positive
+ones and `tostring-painter` decode identical through the passthrough, and
+every repeatable fallback (`error-getters-raf` and `builtins-counter`
+included) decodes identical to flag off. The SVG SMIL, shadow-root CSS
+animation and animated WebP / APNG / AVIF fixtures are now marked
+`wallClock`: two flag-off renders of each share no frame. `raf-counter`'s
+fallback still differs from flag off by the seek-count limitation above.
+Flag off renders identical to main (`origin/main` at 2cc423b3c6) on twelve
+producer fixtures, the HDR regression fixture, a PQ caption fixture and the
+`errname-raf` and `shim-tostring` pages.

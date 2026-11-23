@@ -1148,6 +1148,8 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
       // The compiler turns an animated GIF into a video, so a GIF overlay
       // makes a second video; the other formats stay images and are sniffed.
       reason: format === "gif" ? "video_count" : "overlay_non_gsap_animation",
+      // An animated image plays on the wall clock: two flag-off renders share no frame.
+      ...(format === "gif" ? {} : { wallClock: true as const }),
       composition: { overlayHtml: imageBadge(format) },
       assets: [format],
     }),
