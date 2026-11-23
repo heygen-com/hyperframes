@@ -46,10 +46,10 @@ export function parseGsapSet(params: unknown): GsapSetParams | null {
 type FrameGsap = { set?: (target: Element, vars: Record<string, number>) => void };
 
 export function gsapSet({ handle, props, drafts }: GsapSetParams): { applied: boolean } {
+  if (drafts) drawDrafts(drafts);
   const element = elementForHandle(handle);
   const gsap = (window as { gsap?: FrameGsap }).gsap;
   if (!element || typeof gsap?.set !== "function") return { applied: false };
-  if (drafts) drawDrafts(drafts);
   gsap.set(element, { ...props });
   return { applied: true };
 }
