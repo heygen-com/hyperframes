@@ -52,6 +52,24 @@ function normalizeComment(raw?: string): string | undefined {
   return raw || undefined;
 }
 
+async function reportSearchMiss(rawWanted?: string, rawTier?: string): Promise<void> {
+  if (!shouldTrack()) {
+    console.log(c.dim("Telemetry is disabled. Nothing sent."));
+    return;
+  }
+  const wanted = normalizeComment(rawWanted);
+  if (!wanted) {
+    console.error(c.error("Describe the move you needed with --wanted"));
+    failUsage();
+  }
+  const tier = normalizeComment(rawTier);
+  trackCatalogSearchMiss({ wanted, tier });
+  // Ack before the forward, which is best-effort and bounded, so the
+  // reporter is never left waiting on it.
+  console.log(c.dim("Logged the gap. Thanks — that is how the catalog grows."));
+  await submitCatalogSearchMiss({ wanted, tier, cliVersion: VERSION });
+}
+
 /**
  * Compact PostHog join keys appended to the environment string that rides
  * along with the forwarded report (and therefore lands verbatim in the wild
@@ -327,24 +345,7 @@ export default defineCommand({
     // A search miss is a different report from a rating: it names a gap in the
     // catalog rather than scoring an experience, so it carries no rating and
     // must not land in the same number.
-    if (args["search-miss"] !== undefined && args["search-miss"] !== false) {
-      if (!shouldTrack()) {
-        console.log(c.dim("Telemetry is disabled. Nothing sent."));
-        return;
-      }
-      const wanted = normalizeComment(args.wanted);
-      if (!wanted) {
-        console.error(c.error("Describe the move you needed with --wanted"));
-        failUsage();
-      }
-      const tier = normalizeComment(args.tier);
-      trackCatalogSearchMiss({ wanted, tier });
-      // Ack before the forward, which is best-effort and bounded, so the
-      // reporter is never left waiting on it.
-      console.log(c.dim("Logged the gap. Thanks — that is how the catalog grows."));
-      await submitCatalogSearchMiss({ wanted, tier, cliVersion: VERSION });
-      return;
-    }
+    if (args["search-miss"]) return reportSearchMiss(args.wanted, args.tier);
 
     const comment = normalizeComment(args.comment);
     const rating = reportRating(args.rating, comment, args["file-issue"] === true);
