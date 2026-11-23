@@ -14,10 +14,12 @@ async function loadTelemetryCommand(options?: {
   configEnabled?: boolean;
   devMode?: boolean;
   apiKey?: string;
+  commandCount?: unknown;
 }) {
   const config = {
     ...baseConfig,
     telemetryEnabled: options?.configEnabled ?? true,
+    ...(options?.commandCount === undefined ? {} : { commandCount: options.commandCount }),
   };
   const writeConfigWithResult = vi.fn(() =>
     options?.writeSucceeds === false
@@ -220,5 +222,13 @@ describe("telemetry lines for people", () => {
     await expect(runSubcommand(command, "disable")).rejects.toThrow();
     expect(said.join("\n")).toContain(`EACCES ${SHOWN}`);
     expect(said.join("\n")).not.toContain("\x07");
+  });
+
+  // fails without the fix: a count that is not a number in the settings file was printed as stored.
+  it("shows control characters in the tracked command count as text", async () => {
+    const { command } = await loadTelemetryCommand({ commandCount: "12\u0007" });
+    const output = await runWithCapturedOutput(command, "status");
+    expect(output).toContain("12\\x07");
+    expect(output).not.toContain("\u0007");
   });
 });

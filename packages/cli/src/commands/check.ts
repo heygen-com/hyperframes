@@ -795,7 +795,7 @@ function printHumanReport(report: CheckReport): void {
     console.log(
       `Scope: ${report.scope.range ? report.scope.range.join("–") + "s" : "full timeline"}; ${report.scope.hiddenFindings} findings hidden by component filter. Counts/status include hidden findings.`,
     );
-    for (const note of report.scope.notes) console.log(note);
+    for (const note of report.scope.notes) console.log(terminalLines(note));
   }
   printSection("Lint", report.lint);
   if (report.browserSkipped) {
