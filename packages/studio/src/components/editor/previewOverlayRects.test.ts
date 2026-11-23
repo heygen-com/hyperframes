@@ -403,6 +403,23 @@ describe("a press held across a preview change on an opaque frame", () => {
   ) {
     press.changing = true;
     press.start.mockClear();
+    const { opts, overlay, down, starts } = pressOn(selection, { iframe, overlayRect, box });
+    starts.startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(press.start).not.toHaveBeenCalled();
+    whileWaiting(opts);
+    press.changing = false;
+    return { opts, overlay, down, ...starts };
+  }
+
+  function pressOn(
+    selection: DomEditSelection,
+    {
+      iframe,
+      overlayRect,
+      box,
+    }: { iframe: HTMLIFrameElement; overlayRect: OverlayRect | null; box: HTMLDivElement | null },
+  ) {
     const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]) as HTMLDivElement;
     const opts = {
       waitingPressRef: { current: null },
@@ -424,13 +441,26 @@ describe("a press held across a preview change on an opaque frame", () => {
       preventDefault: vi.fn(),
       stopPropagation: vi.fn(),
     };
-    starts.startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(press.start).not.toHaveBeenCalled();
-    whileWaiting(opts);
-    press.changing = false;
-    return { opts, overlay, down, ...starts };
+    return { opts, overlay, down, starts };
   }
+
+  // fails without the fix: the box said only that a press waited, so the edit bench could not tell a press waiting on
+  // the frame's answer, its outline resting on the layer, from one waiting on a save, its layer still where it was.
+  it.each([
+    [false, "frame"],
+    [true, "save"],
+  ])(
+    "says why a press on an opaque frame waits, the preview changing: %s",
+    async (changing, reason) => {
+      const turned = document.getElementById("turned")!;
+      const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+      const box = document.createElement("div");
+      press.changing = changing;
+      const { starts, down } = pressOn(stale, { iframe: opaqueFrame(), overlayRect: null, box });
+      starts.startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+      expect(box.getAttribute(PRESS_WAITING_ATTR)).toBe(reason);
+    },
+  );
 
   // fails without the fix: the outline went at once while the frame still showed the layer where the last save put
   // it, so for one frame the layer showed at the drag's start (312 px on the edit bench's seqheldtwice case).

@@ -17,7 +17,7 @@ import {
   startGroupDrag as _startGroupDrag,
 } from "./domEditOverlayStartGesture";
 import { giveUpOnPreviewChange, isPreviewChanging } from "../../player/previewReloading";
-import { setStudioWaitingPressCancel } from "../../utils/studioPendingEdits";
+import { isStudioEditSaving, setStudioWaitingPressCancel } from "../../utils/studioPendingEdits";
 import { playheadMoment } from "../../hooks/editMoment";
 import type { EditMoment } from "./manualEditsTypes";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
@@ -175,7 +175,8 @@ export function createPreviewGestureStarts(
       ended: false,
     };
     opts.waitingPressRef.current = press;
-    outline.waitOnSave();
+    const onSave = !!press.after || isPreviewChanging() || isStudioEditSaving();
+    outline.waitOnSave(onSave ? "save" : "frame");
     let shownFrames = 0;
     let settledFrames = 0;
     const since = performance.now();
