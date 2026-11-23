@@ -20,6 +20,7 @@ import {
 import { naturalVideoSize } from "../mediaDisplaySize";
 import { escapeCssString } from "./editingElement";
 import {
+  authoredSrcOf,
   heldForCopy,
   heldPosters,
   inPointOf,
@@ -490,6 +491,41 @@ function holdForCopy(el: HTMLMediaElement): boolean {
     }),
   );
   return true;
+}
+
+// A file deeper than 8 bits plays only where the browser names its codec at that depth; elsewhere it stays held.
+const DEEP_CODEC_MIME: Record<string, string> = {
+  h264: 'video/mp4; codecs="avc1.6E0028"',
+  hevc: 'video/mp4; codecs="hvc1.2.4.L120.B0"',
+  vp9: 'video/webm; codecs="vp09.02.10.10"',
+  av1: 'video/mp4; codecs="av01.0.08M.10"',
+};
+
+function decodesItsFile(el: HTMLMediaElement, file: string): boolean {
+  const facts = sourceFactsOfSrc(file);
+  if (!facts || facts.bitDepth <= 8) return true;
+  const mime = facts.codec === undefined ? undefined : DEEP_CODEC_MIME[facts.codec];
+  return mime !== undefined && el.canPlayType(mime) !== "";
+}
+
+let playingItsFile: HTMLMediaElement | null = null;
+
+const stillPlaysItsFile = (el: HTMLMediaElement) =>
+  el.isConnected && isActiveAtPlayhead(el) && !swappedElements.has(el) && proxyRequested.has(el);
+
+/** The one clip on screen whose copy is still being made plays its own file meanwhile; every other stays held, so
+ * at most one oversized file decodes at a time. */
+export function playItsFileWhileCopying(el: HTMLMediaElement): void {
+  if (!heldForCopy.has(el) || el.getAttribute("src") !== null) return;
+  if (playingItsFile && playingItsFile !== el && stillPlaysItsFile(playingItsFile)) return;
+  const before = heldForCopy.get(el);
+  const authored = authoredSrcOf(el);
+  const src = before ? before.written : authored;
+  if (src === null || !decodesItsFile(el, src)) return;
+  playingItsFile = el;
+  heldForCopy.delete(el);
+  recordOpenedAtInPoint(el, before?.authored ?? src, src, before?.holdsWhenIdle);
+  el.setAttribute("src", src);
 }
 
 /** Without a copy (`giveBack` set), a clip held until due stays held; any other gets its src back as the runtime's. */

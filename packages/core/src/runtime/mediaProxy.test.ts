@@ -1294,6 +1294,78 @@ describe("preview quality: lighter copies of heavy files", () => {
       }
     });
 
+    async function twoHeldOnScreen(facts: PreviewSourceFacts = HEAVY) {
+      vi.useFakeTimers();
+      let made = false;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) =>
+          !String(url).includes("hf-proxy") || made ? new Response("x", { status: 206 }) : making(),
+        ),
+      );
+      const staged = await stage({ "/a.mp4": facts, "/b.mp4": facts });
+      const media = await import("./media");
+      const [a, b] = [staged.video("/a.mp4"), staged.video("/b.mp4")];
+      for (const el of [a, b]) staged.maybeProxyProactively(el);
+      await vi.advanceTimersByTimeAsync(0);
+      const clip = (el: HTMLVideoElement) => ({
+        el,
+        start: 0,
+        mediaStart: 0,
+        duration: 10,
+        end: 10,
+        volume: null,
+        playbackRate: 1,
+        loop: false,
+        sourceDuration: null,
+      });
+      media.syncRuntimeMedia({
+        clips: [clip(a), clip(b)],
+        timeSeconds: 1,
+        playing: false,
+        playbackRate: 1,
+        getCompositionDuration: () => 0,
+      });
+      return { ...staged, a, b, made: () => (made = true) };
+    }
+
+    // fails without the fix: every clip near the playhead stayed held with no picture until its copy was made, so a
+    // 4K clip on screen showed a frozen frame for as long as its copy took (6.7 s for a 15 s clip).
+    it("lets one clip on screen play its own file while its copy is made, and keeps the rest held", async () => {
+      const { a, b, playItsFileWhileCopying } = await twoHeldOnScreen();
+      expect([a.hasAttribute("src"), b.hasAttribute("src")]).toEqual([false, false]);
+
+      playItsFileWhileCopying(a);
+      playItsFileWhileCopying(b);
+
+      expect([a.getAttribute("src"), b.getAttribute("src")]).toEqual(["/a.mp4", null]);
+    });
+
+    it("still swaps the clip that played its own file to its copy once the copy is made", async () => {
+      const { a, playItsFileWhileCopying, made } = await twoHeldOnScreen();
+      playItsFileWhileCopying(a);
+
+      made();
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(params(a).get("hf-proxy-box")).toBe("2048x1218");
+    });
+
+    it("keeps a file deeper than 8 bits held where the browser does not name its codec at that depth", async () => {
+      const { a, playItsFileWhileCopying } = await twoHeldOnScreen({
+        ...HEAVY,
+        bitDepth: 10,
+        codec: "h264",
+      });
+      a.canPlayType = vi.fn((mime: string) =>
+        mime.includes("avc1.6E") ? "" : "probably",
+      ) as never;
+
+      playItsFileWhileCopying(a);
+
+      expect(a.hasAttribute("src")).toBe(false);
+    });
+
     it("is not given its file back as its clip comes due", async () => {
       const { el, preload } = await waitingForItsCopy(making);
 
