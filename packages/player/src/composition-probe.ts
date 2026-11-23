@@ -147,34 +147,39 @@ export class CompositionProbe {
 
     const tick = () => {
       attempts++;
-      let outcome: ProbeOutcome = null;
-      try {
-        outcome = this._poll(attempts);
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === "SecurityError")) {
-          outcome = {
-            kind: "error",
-            message: error instanceof Error ? error.message : String(error),
-          };
-        }
-      }
-      if (outcome?.kind === "ready") {
-        this.stop();
-        this._callbacks.onReady(outcome.result);
-      } else if (outcome) {
-        this.stop();
-        this._failure = { document: this._iframe.contentDocument, deadline: false };
-        this._callbacks.onError(outcome.message);
-      } else if (!limitReached && performance.now() - this._startedAt >= this._limitMs) {
-        limitReached = true;
-        if (this._callbacks.hostOwnsDeadline?.()) return;
-        if (this._interval) clearInterval(this._interval);
-        this._interval = setInterval(tick, LATE_POLL_MS);
-        this._failure = { document: this._iframe.contentDocument, deadline: true };
-        this._callbacks.onError(`Composition timeline not found after ${this._limitMs / 1000}s`);
-      }
+      const outcome = this._readOutcomeAcrossOrigins(attempts);
+      if (outcome) return this._settle(outcome);
+      if (limitReached || performance.now() - this._startedAt < this._limitMs) return;
+      limitReached = true;
+      if (!this._callbacks.hostOwnsDeadline?.()) this._failAtLimit(tick);
     };
     this._interval = setInterval(tick, POLL_MS);
+  }
+
+  private _readOutcomeAcrossOrigins(attempts: number): ProbeOutcome {
+    try {
+      return this._poll(attempts);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "SecurityError") return null;
+      return { kind: "error", message: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  private _settle(outcome: NonNullable<ProbeOutcome>): void {
+    this.stop();
+    if (outcome.kind === "ready") {
+      this._callbacks.onReady(outcome.result);
+      return;
+    }
+    this._failure = { document: this._iframe.contentDocument, deadline: false };
+    this._callbacks.onError(outcome.message);
+  }
+
+  private _failAtLimit(tick: () => void): void {
+    if (this._interval) clearInterval(this._interval);
+    this._interval = setInterval(tick, LATE_POLL_MS);
+    this._failure = { document: this._iframe.contentDocument, deadline: true };
+    this._callbacks.onError(`Composition timeline not found after ${this._limitMs / 1000}s`);
   }
 
   private _poll(attempts: number): ProbeOutcome {
