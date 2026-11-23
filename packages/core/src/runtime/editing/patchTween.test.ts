@@ -57,6 +57,19 @@ describe("a draft's hold on x/y across a batch that edits a tween", () => {
     expect(position).toEqual({ x: 40, y: 30 });
   });
 
+  // fails without the fix: a failed batch dropped every queued axis, an earlier batch's that landed too, so the drawing
+  // batch after it never released x and a restore threw the drawn tween's x back to 40.
+  it("leaves x to an edit an earlier batch deferred when a batch between them fails", () => {
+    const { position, restore } = draggedOverTween();
+    expect(patchTweens({ patches: [tweenX("#a", 50)], seek: false })).toEqual({ patched: true });
+    expect(patchTweens({ patches: [tweenX("#missing", 1)], seek: false })).toEqual({
+      patched: false,
+    });
+    expect(patchTweens({ patches: [tweenX("#b", 5)], seek: true })).toEqual({ patched: true });
+    restore();
+    expect(position).toEqual({ x: 30, y: 30 });
+  });
+
   it("leaves x to a deferred edit once the group's drawing batch lands", () => {
     const { position, restore } = draggedOverTween();
     expect(patchTweens({ patches: [tweenX("#a", 50)], seek: false })).toEqual({ patched: true });

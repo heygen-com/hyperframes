@@ -520,6 +520,7 @@ export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
   if (swapWaiting()) return { patched: false };
   const renderAt = lastTweenPatch(patches);
   const patchedTweens: PatchableTween[] = [];
+  const deferred: typeof undrawnTweenAxes = [];
   const missed = patches.find(({ selector, change }, index) => {
     if (change.kind === "global-set") {
       const written = applyGlobalSet(target, selector, change.props);
@@ -529,7 +530,7 @@ export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
     const defer = !(seek && index === renderAt);
     if (!patchTween(target, selector, change, undefined, defer, patchedTweens)) return true;
     for (const written of patchedTweens.at(-1)?.targets?.() ?? []) {
-      if (defer) undrawnTweenAxes.push([written, positionAxes(change)]);
+      if (defer) deferred.push([written, positionAxes(change)]);
       else yieldDrawnPosition(written, positionAxes(change));
     }
     return false;
@@ -537,9 +538,11 @@ export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
   if (seek) drawWhatTheSeekLeft(patchedTweens);
   const shown = !seek || patchedTweens.every(renderedOnceReached);
   const patched = missed === undefined && shown;
-  if (patched && seek)
+  if (patched) undrawnTweenAxes.push(...deferred);
+  if (patched && seek) {
     for (const [written, axes] of undrawnTweenAxes) yieldDrawnPosition(written, axes);
-  if (!patched || seek) undrawnTweenAxes = [];
+    undrawnTweenAxes = [];
+  }
   if (patched && endsDrafts) drawDrafts(endsDrafts);
   return { patched };
 }
