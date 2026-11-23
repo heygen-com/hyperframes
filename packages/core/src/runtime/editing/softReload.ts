@@ -5,9 +5,11 @@ import {
   GSAP_BASE_URL_META,
   GSAP_PLUGIN_LOAD_ATTR,
   NO_PATH_TWEEN_META,
-  motionPathPluginUrl,
+  isGsapCoreUrl,
+  previewMotionPathSrc,
   namesMotionPath,
 } from "../../gsapCdn";
+import { INLINED_FILE_ATTR } from "../../compiler/scriptRuns";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { escapeCssString } from "../editingElement";
 import { applyAuthoredTiming } from "../../studioPreviewMark";
@@ -337,11 +339,29 @@ export function finalizeSoftReload(win: SoftReloadWindow, currentTime: number): 
   if (wasPlaying) win.__player?.play?.();
 }
 
-export function previewMotionPathUrl(doc: Document, version?: string): string {
-  const baseUrl = doc.head.querySelector<HTMLMetaElement>(
-    `meta[name="${GSAP_BASE_URL_META}"]`,
-  )?.content;
-  return motionPathPluginUrl(version, baseUrl);
+const scriptFile = (script: Element) =>
+  script.getAttribute("src") ?? script.getAttribute(INLINED_FILE_ATTR);
+
+function pageGsapFile(doc: Document): string | null {
+  for (const script of doc.querySelectorAll(`script[src], script[${INLINED_FILE_ATTR}]`)) {
+    const file = scriptFile(script);
+    if (file && isGsapCoreUrl(file)) return file;
+  }
+  return null;
+}
+
+const gsapMirror = (doc: Document) =>
+  doc.head.querySelector<HTMLMetaElement>(`meta[name="${GSAP_BASE_URL_META}"]`)?.content;
+
+function previewMotionPathUrl(doc: Document, version?: string, pageOwned = true): string | null {
+  return previewMotionPathSrc({
+    gsapFile: pageGsapFile(doc),
+    mirror: gsapMirror(doc),
+    version,
+    documentUrl: doc.URL,
+    baseUrl: doc.baseURI,
+    pageOwned,
+  });
 }
 
 function runSuppressed(win: SoftReloadWindow, reload: () => void): boolean {
@@ -411,8 +431,10 @@ function whenMotionPathLoaded(
     win.__hfMotionPathWaiters = undefined;
     for (const [onReady, onFailed] of waiters) (loaded ? onReady : onFailed)();
   };
+  const src = previewMotionPathUrl(doc, win.gsap?.version);
+  if (!src) return settle(false);
   const pluginScript = doc.createElement("script");
-  pluginScript.src = previewMotionPathUrl(doc, win.gsap?.version);
+  pluginScript.src = src;
   pluginScript.setAttribute(GSAP_PLUGIN_LOAD_ATTR, "");
   pluginScript.onload = () => settle(Boolean(win.MotionPathPlugin));
   // Running the script without the plugin would leave a motionPath tween that cannot play.
@@ -469,6 +491,8 @@ export function preloadMotionPath(
 ): void {
   if (win.MotionPathPlugin || win.__hfMotionPathWaiters || !win.gsap) return;
   if (doc.querySelector(`meta[name="${NO_PATH_TWEEN_META}"]`)) return;
+  // Ahead of any path tween, only a request that stays local: the document's origin or the host's mirror.
+  if (!previewMotionPathUrl(doc, win.gsap.version, false)) return;
   const register = () => win.MotionPathPlugin && win.gsap?.registerPlugin?.(win.MotionPathPlugin);
   whenMotionPathLoaded(win, doc, register, () => {});
 }

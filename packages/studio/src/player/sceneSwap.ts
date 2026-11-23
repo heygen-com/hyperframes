@@ -120,7 +120,14 @@ function reachableSwap(iframe: HTMLIFrameElement): ApplySwap | null {
   return typeof swap === "function" ? (html, signal) => swap.call(win, html, signal) : null;
 }
 
-function sealedSwap(iframe: HTMLIFrameElement): ApplySwap {
+const sceneSwapAnswers = new WeakMap<HTMLIFrameElement, boolean>();
+
+export function notePreviewSceneSwap(iframe: HTMLIFrameElement, sceneSwap: unknown): void {
+  if (typeof sceneSwap === "boolean") sceneSwapAnswers.set(iframe, sceneSwap);
+}
+
+function sealedSwap(iframe: HTMLIFrameElement): ApplySwap | null {
+  if (sceneSwapAnswers.get(iframe) === false) return null;
   return async (html) => {
     const reply: unknown = await previewRequest(
       iframe,

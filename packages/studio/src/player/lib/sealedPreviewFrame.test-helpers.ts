@@ -8,6 +8,9 @@ function postLater(init: MessageEventInit): void {
   setTimeout(() => window.dispatchEvent(new MessageEvent("message", init)));
 }
 
+const SCENE_OPENED_ON_ITS_OWN =
+  "http://localhost/api/projects/demo/preview/comp/compositions/scene5.html";
+
 export interface SealedPreviewFrame {
   iframe: HTMLIFrameElement;
   /** The frame's window as Studio sees it: only `postMessage` answers, and it reaches the runtime. */
@@ -27,6 +30,7 @@ export function sealedPreviewFrame(
   });
   const iframe = detachedFakeIframe(frame);
   Object.defineProperty(iframe, "contentDocument", { value: null });
+  Object.defineProperty(iframe, "src", { value: SCENE_OPENED_ON_ITS_OWN, configurable: true });
   let onPageUntilPlayerRemovesIt = true;
   Object.defineProperty(iframe, "isConnected", {
     configurable: true,
