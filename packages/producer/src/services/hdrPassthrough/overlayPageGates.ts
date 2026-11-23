@@ -3,9 +3,10 @@
  * reach, in the order the passthrough needs them.
  *
  * `inspectPageState` reads, through DevTools only, what the page registered
- * while it loaded, scripts compiled where only the renderer's should be,
- * builtins the page replaced, and what a seek runs that the page provided
- * (listeners, GSAP's callbacks and targets, the runtime's globals). It runs
+ * while it loaded (on the capture page, which is never paused, as a census
+ * equal to the analysis page's), scripts compiled where only the renderer's
+ * should be, builtins the page replaced, and what a seek runs that the page
+ * provided (listeners, GSAP's callbacks and targets, the runtime's globals). It runs
  * before any of the passthrough's in-page probes: until it passes, a probe
  * that runs in the page could call a builtin the page swapped for one with
  * side effects.
@@ -16,6 +17,7 @@
  */
 
 import { type CaptureSession, getCdpSession } from "@hyperframes/engine";
+import { compareLoadCensus, type LoadCensus, readLoadCensus } from "./loadCensus.js";
 import { CAPTURE_OBJECT_GROUP, findChangedIntrinsics, MainWorld } from "./mainWorld.js";
 import { findUnsupportedCss, findUnsupportedElements } from "./ownClock.js";
 import {
@@ -54,17 +56,33 @@ export function pageGateTimings(page: Page): { state: number[]; content: number[
 
 const seekCallback = (detail: string): PageFinding => ({ reason: "seek_callback", detail });
 
+/** Each overlay page's census, read on its first state gate (ready, not seeked yet). */
+const censuses = new WeakMap<Page, LoadCensus>();
+
+/** The census the first `inspectPageState` on `page` read (`loadCensus.ts`). */
+export function loadCensusOf(page: Page): LoadCensus | undefined {
+  return censuses.get(page);
+}
+
 /**
  * The DevTools-only gates (see the module comment), or null. Also hands the
  * elements GSAP writes to the fingerprint (`setFingerprintTargets`). A read
- * that fails is a finding: unread is not empty.
+ * that fails is a finding: unread is not empty. The first call on a page
+ * reads its load census (`loadCensus.ts`); on the capture page it must
+ * equal `analysisCensus`, the analysis page's.
  */
-export function inspectPageState(page: Page): Promise<PageFinding | null> {
-  return timed(page, "state", () => readPageState(page));
+export function inspectPageState(
+  page: Page,
+  analysisCensus?: LoadCensus,
+): Promise<PageFinding | null> {
+  return timed(page, "state", () => readPageState(page, analysisCensus));
 }
 
 // fallow-ignore-next-line complexity
-async function readPageState(page: Page): Promise<PageFinding | null> {
+async function readPageState(
+  page: Page,
+  analysisCensus: LoadCensus | undefined,
+): Promise<PageFinding | null> {
   const watch = pageCodeWatchOf(page);
   if (!watch) return seekCallback("no page code watch");
   const unavailable =
@@ -72,12 +90,24 @@ async function readPageState(page: Page): Promise<PageFinding | null> {
   if (unavailable) return seekCallback(unavailable);
   const registered = watch.registrations.findings();
   if (registered) return seekCallback(registered);
+  if (watch.role === "capture" && !analysisCensus) {
+    return seekCallback("no load census from the analysis page");
+  }
   const compiled = await watch.origins.findUntrustedCompiles();
   if (compiled) return seekCallback(compiled);
   const captureId = watch.registrations.captureId();
   if (!captureId) return seekCallback("the document's builtins were never captured");
   try {
     const world = new MainWorld(await getCdpSession(page), captureId, CAPTURE_OBJECT_GROUP);
+    let census = censuses.get(page);
+    if (!census) {
+      census = await readLoadCensus(page, world, watch.origins);
+      censuses.set(page, census);
+    }
+    if (watch.role === "capture" && analysisCensus) {
+      const differs = compareLoadCensus(analysisCensus, census);
+      if (differs) return seekCallback(differs);
+    }
     const replaced = await findChangedIntrinsics(world);
     if (replaced) return seekCallback(replaced);
     const reachable = await readSeekReachable(world, watch.origins);

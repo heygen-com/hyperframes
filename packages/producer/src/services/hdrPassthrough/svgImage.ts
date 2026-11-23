@@ -4,47 +4,65 @@
  * An SVG shown as an image runs no script and loads nothing, but it still
  * animates on the browser's own clock: SMIL animation elements and CSS
  * animations or transitions in its stylesheets. Capture would freeze such an
- * image on its first frame. A scan of the raw bytes for animation names is
- * not enough: a namespace prefix (`<s:animate>` with `xmlns:s` bound to the
- * SVG namespace) and XML character references (`anim&#97;tion`, `&#64;keyframes`
- * inside `<style>`) both reach the browser as the names a scan looks for only
- * after XML parsing.
+ * image on its first frame. Telling a static stylesheet from an animating one
+ * means reading CSS the way the browser does, and every reader short of the
+ * browser's own misses a spelling: a namespace prefix (`<s:animate>`), XML
+ * character references (`anim&#97;tion`), a comment or CDATA section that
+ * splits a name the browser joins back (`anim<!---->ation`), a `<style>` in
+ * the XHTML namespace that the browser applies.
  *
- * So the document is parsed the way the browser's XML parser reads it, with
- * namespaces resolved and character references decoded, and checked against
- * an allowlist. Anything the parser here does not read exactly declines: a
- * DOCTYPE (an internal subset can define entities), an entity reference other
- * than the five predefined ones, a processing instruction other than the XML
- * declaration, a name or attribute it cannot parse, mismatched tags, an
- * unbound prefix. Then:
+ * So only plain static SVG passes: shapes, paths, gradients, patterns, clips,
+ * masks, markers and text, styled by presentation attributes. The document is
+ * parsed as XML, with namespaces resolved and character references decoded,
+ * and anything else declines:
  *
- * - every element in the SVG namespace is a static one (`STATIC_SVG_ELEMENTS`,
- *   by exact local name: no animation element, `<discard>`, `<image>`,
- *   `<feImage>`, `<foreignObject>`, `<script>` or anything unlisted), and an
- *   element in any other namespace sits inside `<metadata>`, which renders
- *   nothing;
- * - `<style>` text and `style` attributes, decoded, have no animation,
- *   transition or keyframes, no CSS escape (`\\`), no `@import`, no `data:` and
- *   no `url()` other than a fragment;
- * - no attribute holds `data:`, a `url()` other than a fragment, an `href`
- *   other than a fragment, or an event handler.
+ * - any element not in `STATIC_SVG_ELEMENTS` (by exact local name, in the SVG
+ *   namespace), in any namespace and anywhere, `<metadata>` included: every
+ *   `<style>`, animation element, `<discard>`, `<image>`, `<foreignObject>`,
+ *   `<script>`, filter, link and anything unlisted;
+ * - any attribute not in `STATIC_SVG_ATTRIBUTES` (presentation and geometry
+ *   attributes, no namespace), other than `xml:space`, `xml:lang`, namespace
+ *   declarations and a fragment `href` / `xlink:href`: every `style`
+ *   attribute and event handler;
+ * - any attribute value with `data:`, a CSS escape, or a `url()` other than a
+ *   fragment;
+ * - any comment, CDATA section, DOCTYPE, entity reference other than the five
+ *   predefined ones, processing instruction other than the XML declaration,
+ *   name or attribute the parser cannot read, mismatched tag or unbound
+ *   prefix.
  */
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const XML_NS = "http://www.w3.org/XML/1998/namespace";
 const XLINK_NS = "http://www.w3.org/1999/xlink";
 
-/** SVG elements that paint only what their attributes and the stylesheet say. Exact local names. */
-const STATIC_SVG_ELEMENTS: ReadonlySet<string> = new Set(
-  (
-    "svg g defs symbol use path rect circle ellipse line polyline polygon text tspan textPath " +
-    "linearGradient radialGradient stop clipPath mask pattern filter title desc metadata marker " +
-    "style switch view a feBlend feColorMatrix feComponentTransfer feComposite " +
-    "feConvolveMatrix feDiffuseLighting feDisplacementMap feDistantLight feDropShadow feFlood " +
-    "feFuncA feFuncB feFuncG feFuncR feGaussianBlur feMerge feMergeNode feMorphology feOffset " +
-    "fePointLight feSpecularLighting feSpotLight feTile feTurbulence"
-  ).split(/\s+/),
-);
+const words = (text: string): ReadonlySet<string> => new Set(text.trim().split(/\s+/));
+
+/** SVG elements that paint only what their attributes say. Exact local names, SVG namespace. */
+const STATIC_SVG_ELEMENTS = words(`
+  svg g defs symbol use path rect circle ellipse line polyline polygon text tspan textPath
+  linearGradient radialGradient stop clipPath mask pattern marker title desc metadata
+`);
+
+/** Attributes without a namespace that set geometry or a static presentation property. */
+const STATIC_SVG_ATTRIBUTES = words(`
+  id class version baseProfile width height viewBox preserveAspectRatio x y transform
+  cx cy r rx ry x1 y1 x2 y2 points d pathLength
+  gradientUnits gradientTransform spreadMethod fx fy fr offset
+  patternUnits patternContentUnits patternTransform clipPathUnits maskUnits maskContentUnits
+  markerWidth markerHeight markerUnits refX refY orient
+  dx dy rotate textLength lengthAdjust startOffset method spacing side
+  fill fill-opacity fill-rule stroke stroke-width stroke-opacity stroke-linecap
+  stroke-linejoin stroke-miterlimit stroke-dasharray stroke-dashoffset opacity color
+  stop-color stop-opacity font-family font-size font-weight font-style font-variant
+  font-stretch text-anchor dominant-baseline alignment-baseline baseline-shift
+  letter-spacing word-spacing text-decoration writing-mode direction unicode-bidi
+  clip-path clip-rule mask display visibility overflow paint-order shape-rendering
+  text-rendering vector-effect color-interpolation
+`);
+
+/** Attributes in the XML namespace that change nothing the image paints over time. */
+const STATIC_XML_ATTRIBUTES = words("space lang");
 
 const PREDEFINED_ENTITIES: Readonly<Record<string, string>> = {
   lt: "<",
@@ -84,26 +102,28 @@ function decodeReferences(raw: string): string {
   });
 }
 
-/** What in decoded CSS from an SVG image declines, or null. */
-function cssVerdict(css: string): string | null {
-  if (css.includes("\\")) return "an SVG whose CSS has an escape";
-  if (/animation|transition|keyframes/i.test(css)) return "an SVG whose CSS animates";
-  if (/@import/i.test(css)) return "an SVG whose CSS imports";
-  if (/data:/i.test(css)) return "an SVG that embeds content";
-  if (/url\(\s*["']?(?!#)/i.test(css)) return "an SVG with an external reference";
-  return null;
+/** An `href` (plain or XLink) that points inside the document. */
+function isFragmentHref(value: string): boolean {
+  return value.trimStart().startsWith("#");
 }
 
-/** An `href` (plain or XLink) that points outside the document. */
-function isExternalHref(ns: string | null, local: string, value: string): boolean {
-  return (ns === null || ns === XLINK_NS) && local === "href" && !value.trimStart().startsWith("#");
+/** Whether an attribute's name is off the static allowlists, as a verdict, or null. */
+function attributeNameVerdict(ns: string | null, local: string, value: string): string | null {
+  if ((ns === null || ns === XLINK_NS) && local === "href") {
+    return isFragmentHref(value) ? null : "an SVG with an external reference";
+  }
+  if (ns === null) {
+    return STATIC_SVG_ATTRIBUTES.has(local) ? null : `an SVG with a ${local} attribute`;
+  }
+  if (ns === XML_NS && STATIC_XML_ATTRIBUTES.has(local)) return null;
+  return `an SVG with an attribute outside the static set (${local})`;
 }
 
 /** What in one decoded attribute declines, or null. */
 function attributeVerdict(ns: string | null, local: string, value: string): string | null {
-  if (ns === null && local === "style") return cssVerdict(value);
-  if (isExternalHref(ns, local, value)) return "an SVG with an external reference";
-  if (ns === null && /^on/i.test(local)) return "an SVG with an event handler";
+  const name = attributeNameVerdict(ns, local, value);
+  if (name) return name;
+  if (value.includes("\\")) return "an SVG with an escape in an attribute";
   if (/data:/i.test(value)) return "an SVG that embeds content";
   if (/url\(\s*["']?(?!#)/i.test(value)) return "an SVG with an external reference";
   return null;
@@ -119,8 +139,6 @@ interface OpenElement {
   ns: string | null;
   local: string;
   scope: Scope;
-  /** Inside `<metadata>` (this element or an ancestor). */
-  inMetadata: boolean;
 }
 
 function resolve(scope: Scope, qname: string, isElement: boolean): [string | null, string] {
@@ -237,13 +255,10 @@ function checkAttributes(tag: RawTag, scope: Scope): void {
 function openElement(tag: RawTag, parent: OpenElement | undefined): OpenElement {
   const scope = scopeOf(tag, parent);
   const [ns, local] = resolve(scope, tag.qname, true);
-  const isSvg = ns === SVG_NS;
-  const inMetadata = parent?.inMetadata === true || (isSvg && local === "metadata");
-  if (isSvg && !STATIC_SVG_ELEMENTS.has(local)) decline(`an SVG with a <${local}> element`);
-  // Only `<metadata>` holds elements of other namespaces, and it renders nothing.
-  if (!isSvg && !inMetadata) decline("an SVG with an element outside the SVG namespace");
+  if (ns !== SVG_NS) decline("an SVG with an element outside the SVG namespace");
+  if (!STATIC_SVG_ELEMENTS.has(local)) decline(`an SVG with a <${local}> element`);
   checkAttributes(tag, scope);
-  return { qname: tag.qname, ns, local, scope, inMetadata };
+  return { qname: tag.qname, ns, local, scope };
 }
 
 /** The parser's state between tokens. */
@@ -253,22 +268,13 @@ interface Walk {
   rootSeen: boolean;
 }
 
-/** Text inside `<style>` is CSS. */
-function checkStyleText(top: OpenElement | undefined, css: string): void {
-  if (top?.ns !== SVG_NS || top.local !== "style") return;
-  const verdict = cssVerdict(css);
-  if (verdict) decline(verdict);
-}
-
 function readText(walk: Walk): void {
   const { cursor } = walk;
-  const top = walk.stack.at(-1);
   const at = cursor.text.indexOf("<", cursor.pos);
   const raw = cursor.text.slice(cursor.pos, at < 0 ? cursor.text.length : at);
   cursor.pos += raw.length;
   const decoded = decodeReferences(raw);
-  if (!top && decoded.trim() !== "") decline(UNREADABLE);
-  checkStyleText(top, decoded);
+  if (walk.stack.length === 0 && decoded.trim() !== "") decline(UNREADABLE);
 }
 
 function readEndTag(walk: Walk): void {
@@ -295,17 +301,13 @@ function readStartTag(walk: Walk): void {
   if (!tag.selfClosing) walk.stack.push(element);
 }
 
-/** Markup at the cursor: a comment, CDATA, an end or start tag; a declaration or PI declines. */
+/** Markup at the cursor: an end or start tag; a comment, CDATA, declaration or PI declines. */
 function readMarkup(walk: Walk): void {
   const { cursor } = walk;
   if (cursor.startsWith("<!--")) {
-    cursor.pos += 4;
-    cursor.until("-->");
+    decline("an SVG with a comment");
   } else if (cursor.startsWith("<![CDATA[")) {
-    const top = walk.stack.at(-1);
-    if (!top) decline(UNREADABLE);
-    cursor.pos += 9;
-    checkStyleText(top, cursor.until("]]>"));
+    decline("an SVG with a CDATA section");
   } else if (cursor.startsWith("<!")) {
     decline("an SVG with a DOCTYPE or declaration");
   } else if (cursor.startsWith("<?")) {
@@ -331,8 +333,8 @@ function walkDocument(text: string): void {
 
 /**
  * Why an SVG image document is not known to be static, as a log detail, or
- * null when it is: parsed as XML, every element and its CSS on the allowlist
- * (see the module comment).
+ * null when it is: parsed as XML, every element and attribute on the static
+ * allowlists (see the module comment).
  */
 export function svgImageVerdict(text: string): string | null {
   try {

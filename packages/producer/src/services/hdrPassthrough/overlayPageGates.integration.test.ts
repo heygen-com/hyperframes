@@ -10,8 +10,15 @@ import { resolve } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { VIRTUAL_TIME_SHIM } from "../fileServer.js";
-import { inspectPageContent, inspectPageState } from "./overlayPageGates.js";
-import { armPageCodeWatch, attachPageCodeWatch, type PageCodeWatch } from "./pageCodeWatch.js";
+import { getCdpSession } from "@hyperframes/engine";
+import type { LoadCensus } from "./loadCensus.js";
+import { inspectPageContent, inspectPageState, loadCensusOf } from "./overlayPageGates.js";
+import {
+  armPageCodeWatch,
+  attachPageCodeWatch,
+  type OverlayPageRole,
+  type PageCodeWatch,
+} from "./pageCodeWatch.js";
 
 const GSAP = readFileSync(
   resolve(import.meta.dirname, "../../../../core/node_modules/gsap/dist/gsap.min.js"),
@@ -49,7 +56,7 @@ interface PageSpec {
 
 const inline = (text: string) => `<script>${text}</script>`;
 
-describe("the overlay page gates in Chrome", () => {
+describe("the overlay page gates in Chrome", { timeout: 60_000 }, () => {
   let browser: Browser;
   let server: Server;
   let origin: string;
@@ -98,16 +105,20 @@ describe("the overlay page gates in Chrome", () => {
   });
 
   /** A loaded page whose watch was armed before it navigated, as the overlay session's is. */
-  async function load(next: PageSpec, settleMs = 150): Promise<PageCodeWatch> {
+  async function load(
+    next: PageSpec,
+    settleMs = 150,
+    role: OverlayPageRole = "analysis",
+  ): Promise<PageCodeWatch> {
     spec = next;
-    const watch = await armPageCodeWatch(page as never, [VIRTUAL_TIME_SHIM, RUNTIME]);
+    const watch = await armPageCodeWatch(page as never, [VIRTUAL_TIME_SHIM, RUNTIME], role);
     attachPageCodeWatch(page as never, watch);
     await page.goto(`${origin}/`);
     await new Promise((done) => setTimeout(done, settleMs));
     await watch.start();
     return watch;
   }
-  const state = () => inspectPageState(page as never);
+  const state = (census?: LoadCensus) => inspectPageState(page as never, census);
   const content = () => inspectPageContent(page as never, "video", true);
 
   it("passes a page that only uses GSAP on elements, the runtime and static content", async () => {
@@ -332,5 +343,128 @@ describe("the overlay page gates in Chrome", () => {
         detail: expect.stringContaining("an animated GIF"),
       });
     }
+  });
+
+  describe("on the capture page", () => {
+    /** Times the page's own pauses on a clock the shim leaves alone, and flags any over 1 ms. */
+    const PAUSE_TIMER = inline(`(function () {
+      function ts() { return new Event("x").timeStamp; }
+      function mark() { return performance.mark("x").startTime; }
+      var best = 1e9;
+      for (var i = 0; i < 5; i++) {
+        var a = ts(), m = mark();
+        setTimeout(function () {}, 1e9);
+        debugger;
+        best = Math.min(best, ts() - a, mark() - m);
+      }
+      window.pausedFor = best;
+    })();`);
+
+    /** The analysis page's census of `next`, then a fresh capture page of it, watched from now. */
+    async function analysisThenCapture(next: PageSpec): Promise<LoadCensus> {
+      await load(next);
+      expect(await state()).toBeNull();
+      const census = loadCensusOf(page as never);
+      expect(census).toBeDefined();
+      await page.close();
+      page = await browser.newPage();
+      await load(next, 150, "capture");
+      return census as LoadCensus;
+    }
+
+    it("is never paused, by a breakpoint, a debugger statement or between scripts", async () => {
+      const pauses = async (role: OverlayPageRole) => {
+        await page.close();
+        page = await browser.newPage();
+        const client = await getCdpSession(page as never);
+        let paused = 0;
+        const count = () => paused++;
+        client.on("Debugger.paused", count);
+        await load({ head: PAUSE_TIMER, body: inline("debugger;") }, 150, role);
+        client.off("Debugger.paused", count);
+        const seen = await page.evaluate(
+          () => (window as unknown as { pausedFor: number }).pausedFor,
+        );
+        return { paused, seen };
+      };
+      // The analysis page's watch pauses it (which the page can time); the capture page's never does.
+      expect((await pauses("analysis")).paused).toBeGreaterThan(0);
+      const capture = await pauses("capture");
+      expect(capture.paused).toBe(0);
+      expect(capture.seen).toBeLessThan(1);
+    }, 60_000);
+
+    it("passes a page that loads as it did on the analysis page", async () => {
+      const census = await analysisThenCapture({ head: PAUSE_TIMER });
+      expect(await state(census)).toBeNull();
+      expect(await content()).toBeNull();
+    }, 60_000);
+
+    it("declines without the analysis page's census", async () => {
+      await load({}, 150, "capture");
+      expect(await state()).toMatchObject({
+        reason: "seek_callback",
+        detail: "no load census from the analysis page",
+      });
+    }, 60_000);
+
+    it("still finds a builtin the page replaced, from a capture taken before its scripts", async () => {
+      const census = await analysisThenCapture({});
+      await page.close();
+      page = await browser.newPage();
+      await load({ head: inline("Array.prototype.filter = Array.prototype.map;") }, 150, "capture");
+      expect(await state(census)).toMatchObject({
+        reason: "seek_callback",
+        detail: expect.stringMatching(/builtin\(s\) the page replaced/),
+      });
+    }, 60_000);
+
+    it.each([
+      [
+        "a MutationObserver with a builtin callback",
+        "new MutationObserver(HTMLElement.prototype.showPopover.bind(document.body)).observe(document.body, { attributes: true, subtree: true });",
+        "MutationObserver instances: 2 against 1",
+      ],
+      [
+        "a ResizeObserver",
+        "window.keep = new ResizeObserver(Math.max);",
+        "ResizeObserver instances: 1 against 0",
+      ],
+      [
+        "a custom element it uses",
+        'customElements.define("x-badge", class extends HTMLElement {}); document.body.appendChild(document.createElement("x-badge"));',
+        "custom elements in the document: 1 against 0",
+      ],
+      [
+        "a worker",
+        'window.keep = new Worker(URL.createObjectURL(new Blob(["1"], { type: "text/javascript" })));',
+        "Worker instances: 1 against 0",
+      ],
+      [
+        "an animation frame",
+        "requestAnimationFrame(function () {});",
+        "animation-frame callbacks by page: 1 against 0",
+      ],
+      [
+        "a builtin animation frame",
+        "requestAnimationFrame(Math.max);",
+        "animation-frame callbacks by no script: 1 against 0",
+      ],
+    ])(
+      "declines %s registered only when not paused",
+      async (_name, code, detail) => {
+        const key = `hf-census-${Math.random()}`;
+        // The analysis page's load leaves the key; the capture page's load finds it and registers.
+        const once = inline(
+          `if (localStorage.getItem(${JSON.stringify(key)})) { ${code} } else { localStorage.setItem(${JSON.stringify(key)}, "1"); }`,
+        );
+        const census = await analysisThenCapture({ body: once });
+        expect(await state(census)).toMatchObject({
+          reason: "seek_callback",
+          detail: expect.stringContaining(detail),
+        });
+      },
+      60_000,
+    );
   });
 });

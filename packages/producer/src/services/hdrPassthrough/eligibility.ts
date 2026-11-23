@@ -20,12 +20,21 @@ import {
   resolveProjectRelativeSrc,
   videoStartOnMediaTimeline,
   type CaptureSession,
+  type ElementStackingInfo,
   type VideoMetadata,
 } from "@hyperframes/engine";
+import { seekInjectAndQueryStacking } from "../render/stages/captureHdrFrameShared.js";
 import { probeVideoLayout } from "../render/videoLayerPassthroughPlan.js";
 import { type BlendCheckResult, checkFfmpegBlend } from "./ffmpegBlendCheck.js";
 import { evaluateIsolated } from "./isolatedWorld.js";
-import { inspectPageContent, inspectPageState, type PageFinding } from "./overlayPageGates.js";
+import { canPaceEncoder } from "./encoderPacing.js";
+import type { LoadCensus } from "./loadCensus.js";
+import {
+  inspectPageContent,
+  inspectPageState,
+  loadCensusOf,
+  type PageFinding,
+} from "./overlayPageGates.js";
 import { analyzeOverlayTiming } from "./planner.js";
 import type {
   CheckPassthroughEligibilityArgs,
@@ -292,8 +301,17 @@ export interface EligibilityDeps {
   probeMetadata: (path: string, signal: AbortSignal | undefined) => Promise<VideoMetadata>;
   /** Whether the composite's ffmpeg blends exactly like the layered path (`checkFfmpegBlend`). */
   checkBlend: (signal: AbortSignal | undefined) => Promise<BlendCheckResult>;
+  /** Whether the encoder can be fed as the layered path feeds it (`encoderPacing.canPaceEncoder`). */
+  canPaceEncoder: () => boolean;
   /** The DevTools-only page gates (`overlayPageGates.inspectPageState`). */
   inspectState: (page: CaptureSession["page"]) => Promise<PageFinding | null>;
+  /** The census the first state gate read on the page (`overlayPageGates.loadCensusOf`). */
+  loadCensus: (page: CaptureSession["page"]) => LoadCensus | undefined;
+  /** The video's stacking entry at time 0, as a capture probe reads it. */
+  videoLayerAt0: (
+    page: CaptureSession["page"],
+    videoId: string,
+  ) => Promise<ElementStackingInfo | undefined>;
   /** The content gates (`overlayPageGates.inspectPageContent`). */
   inspectContent: (
     page: CaptureSession["page"],
@@ -306,7 +324,22 @@ const DEFAULT_DEPS: EligibilityDeps = {
   fileExists: existsSync,
   probeMetadata: (path, signal) => extractMediaMetadata(path, { signal }),
   checkBlend: checkFfmpegBlend,
+  canPaceEncoder,
   inspectState: inspectPageState,
+  loadCensus: loadCensusOf,
+  videoLayerAt0: async (page, videoId) =>
+    (
+      await seekInjectAndQueryStacking(
+        page,
+        0,
+        null,
+        new Set([videoId]),
+        undefined,
+        "domLayerSeekMs",
+        "domLayerInjectMs",
+        "stackingQueryMs",
+      )
+    ).find((entry) => entry.id === videoId),
   inspectContent: inspectPageContent,
 };
 
@@ -337,6 +370,19 @@ async function checkPageLayout(
   return { fit: layout.fit };
 }
 
+/** The ffmpeg gates: the blend self-test, then whether the encode can be paced. */
+async function checkFfmpegGates(
+  deps: EligibilityDeps,
+  signal: AbortSignal | undefined,
+): Promise<Ineligible | null> {
+  const blend = await deps.checkBlend(signal);
+  if (!blend.exact) return ineligible("ffmpeg_unsupported", blend.detail);
+  if (!deps.canPaceEncoder()) {
+    return ineligible("ffmpeg_unsupported", "the encoder's threads cannot be read (no /proc)");
+  }
+  return null;
+}
+
 /**
  * Contract:
  *
@@ -360,7 +406,9 @@ async function checkPageLayout(
  *
  * ffmpeg gate (no page): `ffmpeg_unsupported` unless the blend self-test
  * (`checkFfmpegBlend`, cached per binary) finds the resolved ffmpeg's
- * `maskedmerge` exact against the layered blend.
+ * `maskedmerge` exact against the layered blend, and unless the host shows
+ * the encoder's thread states, which the encode is paced by
+ * (`encoderPacing.ts`).
  *
  * Page gates (`await session.get()`), first through DevTools only and
  * before any seek or in-page probe (`overlayPageGates.inspectPageState`):
@@ -416,8 +464,8 @@ export async function checkPassthroughEligibility(
     canvas: { width, height },
   });
   if (sourceGate) return sourceGate;
-  const blend = await deps.checkBlend(input.abortSignal);
-  if (!blend.exact) return ineligible("ffmpeg_unsupported", blend.detail);
+  const ffmpegGate = await checkFfmpegGates(deps, input.abortSignal);
+  if (ffmpegGate) return ffmpegGate;
 
   input.assertNotAborted();
   const captureSession = await session.get();
@@ -427,6 +475,7 @@ export async function checkPassthroughEligibility(
   // is gone from the global timeline afterwards, as is a native listener added with `once`).
   const state = await deps.inspectState(page);
   if (state) return ineligible(state.reason, state.detail);
+  const loadCensus = deps.loadCensus(page);
   const layout = await checkPageLayout(page, element.id, { width, height }, composition.duration);
   if ("eligible" in layout) return layout;
 
@@ -444,6 +493,8 @@ export async function checkPassthroughEligibility(
   // Again after the analysis seeked the whole composition.
   const seeked = await deps.inspectState(page);
   if (seeked) return ineligible(seeked.reason, seeked.detail);
+  // What the capture page's video layer must be on every frame (`createVideoLayerGuard`).
+  const videoLayer = await deps.videoLayerAt0(page, element.id);
 
   return {
     eligible: true,
@@ -462,5 +513,7 @@ export async function checkPassthroughEligibility(
       metadata,
     },
     timing: timing.timing,
+    loadCensus,
+    videoLayer,
   };
 }

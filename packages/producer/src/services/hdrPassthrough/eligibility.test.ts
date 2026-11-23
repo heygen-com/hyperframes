@@ -137,7 +137,10 @@ function deps(meta: VideoMetadata = metadata(), exists = true): EligibilityDeps 
     fileExists: () => exists,
     probeMetadata: async () => meta,
     checkBlend: async () => ({ exact: true }),
+    canPaceEncoder: () => true,
     inspectState: async () => null,
+    loadCensus: () => undefined,
+    videoLayerAt0: async () => undefined,
     inspectContent: async () => null,
   };
 }
@@ -226,6 +229,16 @@ describe("checkPassthroughEligibility", () => {
     };
     expect((await check(makeInput(), { build: captions }, exact)).eligible).toBe(true);
     expect(exactChecks).toBe(1);
+  });
+
+  it("declines a host where the encoder cannot be paced, before opening the page", async () => {
+    const { session, opened } = makeSession();
+    const result = await checkPassthroughEligibility(
+      { input: makeInput(), session },
+      { ...deps(), canPaceEncoder: () => false },
+    );
+    expect(result).toMatchObject({ eligible: false, reason: "ffmpeg_unsupported" });
+    expect(opened()).toBe(false);
   });
 
   it("runs the DevTools-only page gates before any seek or in-page probe", async () => {

@@ -179,8 +179,10 @@ export class VideoLayerChangedError extends Error {
  * A check of the video's stacking entry on every probed and captured frame.
  * The composite always lays the full-opacity source in one place, so the
  * entry must be fully opaque and, field for field (`VIDEO_LAYER_FIELDS`),
- * the entry of the first frame checked, which eligibility's layout gates
- * already hold to the canvas. Overlay fingerprints leave the video out, so
+ * `expected`, the analysis page's entry at frame 0, which eligibility's
+ * layout gates hold to the canvas (without it, the entry of the first frame
+ * checked). The capture page loads on its own, never paused, so a page that
+ * lays its video out differently there declines too. Overlay fingerprints leave the video out, so
  * without this a stylesheet rule that reaches the video through a selector
  * (`:has()`, a sibling combinator) and fires on a caption's clip window or a
  * GSAP `set()` of another element would dim the layered render only.
@@ -188,8 +190,11 @@ export class VideoLayerChangedError extends Error {
  */
 export function createVideoLayerGuard(
   videoId: string,
+  expected?: ElementStackingInfo,
 ): (frame: number, stacking: readonly ElementStackingInfo[]) => void {
-  let baseline: { frame: number; entry: ElementStackingInfo } | undefined;
+  let baseline: { frame: number | string; entry: ElementStackingInfo } | undefined = expected
+    ? { frame: "0 on the analysis page", entry: expected }
+    : undefined;
   return (frame, stacking) => {
     const entry = stacking.find((e) => e.id === videoId);
     if (!entry) throw new VideoLayerChangedError(frame, "missing from the element stacking");
@@ -558,8 +563,9 @@ async function storeOverlayPixels(
  *   6. Call `onStateCaptured(framesCovered, i + 1, states.length)` after
  *      each candidate with the cumulative `endFrame - startFrame` so far.
  *   7. On every probe and capture, hold the video's own stacking entry to
- *      the first one (`createVideoLayerGuard`); a frame where it differs
- *      throws `VideoLayerChangedError`.
+ *      the analysis page's (`args.analysisVideoLayer`, or the first one
+ *      checked, `createVideoLayerGuard`); a frame where it differs throws
+ *      `VideoLayerChangedError`.
  *
  * The result's `plan` holds the merged states (one per run of identical
  * overlay output, tiling `[0, totalFrames)` like the input) and `overlays`
@@ -573,7 +579,7 @@ export async function captureOverlayStates(
   args: CaptureOverlayStatesArgs,
 ): Promise<CapturedOverlaySet> {
   const { session, plan, video } = args;
-  const checkVideoLayer = createVideoLayerGuard(video.id);
+  const checkVideoLayer = createVideoLayerGuard(video.id, args.analysisVideoLayer);
   return writeOverlayStates(args, {
     probe: (frame, time) =>
       probeOverlay(session, time, video.id, (stacking) => checkVideoLayer(frame, stacking)),

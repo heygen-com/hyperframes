@@ -411,8 +411,9 @@ function isoSequence(b: Uint8Array): boolean {
 /**
  * Why an image's bytes are not a known static image, or null when they are:
  * a single-frame GIF, a PNG without `acTL`, a WebP without animation, an
- * AVIF/HEIF that is no sequence, a JPEG, BMP or ICO, or an SVG whose XML
- * holds only static elements and CSS (`svgImageVerdict`).
+ * AVIF/HEIF that is no sequence, a JPEG, BMP or ICO, or an SVG of plain
+ * static shapes, gradients and text styled by presentation attributes
+ * (`svgImageVerdict`).
  */
 export function imageVerdict(bytes: Uint8Array): string | null {
   const format = IMAGE_FORMATS.find(([recognises]) => recognises(bytes));

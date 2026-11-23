@@ -29,7 +29,10 @@ capture_hdr_layered stage (renderOrchestrator)
        │    no shared reference-background read, watched from
        │    the moment it opens:
        │    scripts by exact text as V8 compiles them           scriptOrigins.ts
-       │    registrations while it loads (debugger pauses),     registrationWatch.ts
+       │    analysis page: registrations while it loads         registrationWatch.ts
+       │      (debugger pauses)
+       │    capture page: never paused; breakpoints off,        unpausedWatch.ts
+       │      builtins captured by a new-document script
        │    builtins captured before any page script            mainWorld.ts
        │    images and stylesheets it loads                     ownClock.ts
        │    call counts from load                               pageCodeWatch.ts
@@ -50,19 +53,25 @@ capture_hdr_layered stage (renderOrchestrator)
        │    load; close the analysis page
        ├─ planOverlayStates → candidate states                  planner.ts
        ├─ a fresh capture page: the DevTools-only gates before
-       │    its first seek, then the layered DOM session's steps
-       │    before frame 0 (scene reads, the seek and stacking
-       │    query at the video's start)
+       │    its first seek, its load census equal to the         loadCensus.ts
+       │    analysis page's, then the layered DOM session's
+       │    steps before frame 0 (scene reads, the seek and
+       │    stacking query at the video's start)
        ├─ captureOverlayStates → one PNG per distinct overlay   overlayCapture.ts
        │    walk every frame once, in order (seek + fingerprint  overlayFingerprint.ts
        │    in an isolated world, hashed in Node), screenshot    isolatedWorld.ts
        │    only unseen fingerprints, fold candidates that
        │    render the same overlay, decline a frame that
        │    differs from its candidate's first,
-       │    hold the video's own layer still on every probe,
+       │    hold the video's own layer to the analysis page's
+       │    on every probe,
        │    then run the page and content gates again and
        │    decline if any page function ran since load          pageCodeWatch.ts
        └─ compositeAndEncode → videoOnlyPath                    ffmpegComposite.ts
+            ffmpeg composites to raw rgb48le; the layered
+            encoder (spawnStreamingEncoder, the layered
+            options) takes one frame at a time, each once its     encoderPacing.ts
+            threads are idle
             completed → the render records the reference background the capture page read
      completed → assemble muxes audio as usual
      fallback  → (extract deferred video frames) → runCaptureHdrStage
@@ -178,25 +187,65 @@ the layered path:
   `gbrp16le` (`out = round(signal * a + video * (1 - a))`, the layered blend),
   and converts back to `rgb48le` before the encoder's own frame
   filter. ffmpeg's `overlay` filter blends RGB at 8 bits and is not used.
-- The encoder options are the ones the layered stage gives
-  `spawnStreamingEncoder` (codec, preset, CRF or bitrate, delivery caps, GOP
-  lock, GPU selection, x265 colour parameters, BT.2020 tags); only the raw
-  stdin input and `-vf` are replaced by the file inputs and the composite
-  graph.
-- The layered encoder reads raw frames, which carry no side data. The
-  composite decodes the source file, and ffmpeg 8 carries the source's
-  mastering display and content light level through the graph, where the mp4
-  muxer writes them as container `mdcv` / `clli` boxes, and defaults
-  libx265's `dolbyvision` to `auto`, which copies Dolby Vision RPUs. The
-  graph starts with `sidedata=mode=delete` (every type), and libx265 gets
-  `-dolbyvision 0` when the binary has the option (8.0 does, 7.0 has none and
-  rejects it). The harness compares the stream's side data and every side
-  data value on the first frame, not just the types.
+- The composite writes those `rgb48le` frames as raw video to a pipe, and
+  the encoder is the layered stage's own: `spawnStreamingEncoder` with the
+  options the layered stage gives it (codec, preset, CRF or bitrate,
+  delivery caps, GOP lock, GPU selection, HDR transfer, raw `rgb48le`
+  input), so its command line, `-vf` frame filter and thread count are the
+  layered encoder's byte for byte, and frames reach it through the same
+  `writeFrame`. Raw frames carry no side data, as the layered path's do: the
+  source's mastering display, content light level and Dolby Vision metadata
+  never reach the encoder. The harness compares the stream's side data and
+  every side data value on the first frame, not just the types.
+- The encoder gets one frame at a time, each once it has gone idle after
+  the previous one ("Encoder pacing" below).
 
 On the generated fixtures, including the rational-rate, odd-canvas,
 fractional-duration and deep-seek edge cases, the result is bit-identical to
 the layered render with ffmpeg 7.0 and with 8.0 (the version the Dockerfiles
-and CI pin).
+and CI pin); the HEVC bitstream is byte-identical to the layered encoder's
+for the same frames.
+
+## Encoder pacing
+
+libx265 encodes up to 16 frames at once (`frame-threads`), with its
+lookahead and rate control beside the frame encoders on one thread pool.
+For identical frames and options its bitstream still depends on when the
+frames arrive. On the recorded inputs of a 3 s `control` render that
+differed (90 frames), 20 to 40 encodes at a time on a host at load average
+140-320, by HEVC bitstream:
+
+| how frames reach the encoder                                 | runs | differ from the rest |
+| ------------------------------------------------------------ | ---- | -------------------- |
+| the old in-process composite (graph straight into libx265)   | 60   | 0 (1 of 10 earlier)  |
+| `yuv420p10le` from a file, as fast as it reads               | 160  | 15                   |
+| `rgb48le` on stdin as fast as it reads, layered command line | 60   | 4                    |
+| the same, `-x265-params frame-threads=1`                     | 40   | 0 (another stream)   |
+| `rgb48le` piped from a separate composite process            | 80   | 0                    |
+| one frame every 0.1 s or 0.3 s                               | 40   | 0                    |
+| one frame each time the encoder's threads are idle           | 60   | 0                    |
+
+Every paced run, and the majority of every other row, is byte for byte the
+flag-off render's bitstream (the old composite's bitstream differed in
+bytes but decoded the same). The filter graph's own frames were identical
+on every run (80 framemd5s).
+The divergence starts at a referenced B-frame whose average QP moves (22.8
+to 5.7 in one run, with its intra share up fivefold) and spreads to every
+frame after it; the frame types stay the same. Fed as fast as it can
+encode, input queues up while earlier frames are in flight, and which work
+runs before which on the shared pool is timing. The layered path never
+queues: capture hands the encoder one frame at a time, far slower than it
+encodes, so each frame finds the encoder idle, and the flag-off bitstream
+repeats. The composite used to feed its in-process encoder straight from
+the filter graph and was in the first row: 3 of about 20 renders under load
+decoded different from flag off across whole frames.
+
+So `compositeAndEncode` reads the composite's raw frames and hands each to
+the layered encoder only once none of the encoder process's threads is
+running or in uninterruptible wait, three polls in a row 2 ms apart
+(`/proc/<pid>/task/<tid>/stat`). Where the thread states cannot be read
+(not Linux) eligibility declines with `ffmpeg_unsupported`. A frame that
+does not go idle within 120 s fails the attempt, which falls back.
 
 ## ffmpeg
 
@@ -236,8 +285,10 @@ after any page function that ran on it since load declines with
 `seek_callback`). The capture page:
 
 - loads with the same capture options as the layered DOM session
-  (`overlayPages.ts`, below), and is watched the same way as the analysis
-  page; the DevTools-only gates run before its first seek;
+  (`overlayPages.ts`, below), and is watched from outside like the analysis
+  page but never paused ("The capture page is never paused"); the
+  DevTools-only gates, with its load census against the analysis page's,
+  run before its first seek;
 - takes the layered DOM session's steps before frame 0
   (`runCaptureHdrStage`): the transparent background, the scene reads
   (`readLayeredScenes`), and the seek, frame injection and stacking query at
@@ -301,14 +352,60 @@ The passthrough installs nothing in any page it does not open itself. Every
 render, flag on or off, SDR or HDR, passthrough taken or not, serves the
 virtual-time shim exactly as it is without the feature (`VIRTUAL_TIME_SHIM`
 in `fileServer.ts`); the layered path, including after a fallback, renders a
-page the passthrough never touched. The passthrough's own overlay page,
+page the passthrough never touched. The passthrough's own overlay pages,
 opened only once the render, video and ffmpeg gates have passed (so only
-for an HDR render that will attempt it), gets no script, wrapper or global
-either: everything below is read through DevTools, from a second session,
-and from an isolated world. What the page can observe is timing: the
-debugger pauses while the page loads ("Registrations"), and
+for an HDR render that will attempt it), get no wrapper or global either:
+everything below is read through DevTools, from a second session, and from
+an isolated world. On the capture page one script DevTools adds to the new
+document takes the builtin capture before any page script runs and keeps
+it under a random 128-bit name in the global lexical scope, which no page
+script can list. What a page can observe is timing: on the analysis page
+the debugger pauses while it loads ("Registrations"); on both,
 `Runtime.queryObjects` collects garbage, which a page that watches its own
 collection (`FinalizationRegistry`, `WeakRef`) can notice.
+
+## The capture page is never paused
+
+A page can time the analysis page's pauses on a clock the shim does not
+replace (`Event#timeStamp` around a `setTimeout` the watch breaks on, the
+start times of `performance.mark()` around one) and paint differently when
+it was paused. When capture ran on a page watched the same way, it was
+paused too and painted that way, while the layered session, never paused,
+painted the other: `dbg-timer` decoded 0/90 identical to flag off. Now:
+
+- The capture page's breakpoints are deactivated before it navigates
+  (`Debugger.setBreakpointsActive`; `Debugger.setSkipAllPauses` does not
+  survive the navigation), so no breakpoint, instrumentation breakpoint or
+  page `debugger` statement pauses it. A pause that happens anyway declines.
+- Its builtins are captured by a new-document script instead of at a
+  paused first statement (`unpausedWatch.ts`).
+- What it registered while it loaded is not watched there but counted once
+  it is ready, before its first seek, and compared with the same count on
+  the analysis page (`loadCensus.ts`): live observers, workers, offscreen
+  canvases and view transitions (`Runtime.queryObjects` on prototypes the
+  capture took), defined custom elements and customized built-ins in the
+  document and its open shadow roots, service worker registrations, the
+  shim's pending animation-frame callbacks and film-time timers whose
+  callback is page script or no script (read from the shim's closure over
+  DevTools; the runtime's own vary load to load), and windows the page
+  opened. The analysis page's watch saw who registered
+  each of its own; a count on the capture page above the analysis page's
+  declines (`seek_callback`). Fewer is allowed: the runtime makes some of
+  its observers only once a wall-clock wait finishes, so the same page
+  holds 5 or 7 MutationObservers from one load to the next.
+- Its video layer must equal the analysis page's at frame 0, on every frame
+  (`createVideoLayerGuard`), so a page that lays out its video differently
+  when not paused declines (`video_animated`).
+- Everything eligibility concluded on the analysis page that capture uses
+  is checked again on the capture page: the plan's states by the
+  verification probes and per-state pixel consistency, the DevTools-only
+  and content gates, the call counts.
+
+The analysis page still pauses. A page that paints differently when paused
+then shows the analysis page's paint in the plan and the capture page's in
+the PNGs; the capture page's own probes and screenshots are the ones that
+reach the output, and they are the unpaused page's, as the layered
+session's are.
 
 ## Registrations
 
@@ -316,8 +413,10 @@ What a page registers to run on seeks or on its own clock cannot be read
 back once registered: nothing reads an observer's callback, the registry's
 lifecycle callbacks or a timer's, and wrapping the constructors in the page
 changes what the page sees (`String(MutationObserver)`, an error's stack).
-`registrationWatch.ts` watches the registrations as they happen, from
-outside, with the debugger:
+`registrationWatch.ts` watches the analysis page's registrations as they
+happen, from outside, with the debugger (the capture page is never paused,
+and is compared with the analysis page instead: "The capture page is never
+paused"):
 
 - every script's first statement pauses until the page's own scripts start.
   At the first one in a document, before any page script has run, the main
@@ -647,9 +746,19 @@ from ffmpeg's frame count and reports 35–80%.
   cannot be read back. The runtime's own pass (they are made from its
   scripts). A registration made before the document's first script runs
   is not seen; there is none to make.
-- The registration watch pauses the page at the first statement of each
-  script until the page's own scripts start, and at each registration call
-  while it loads: the page loads a little slower, and sees nothing else.
+- The registration watch pauses the analysis page at the first statement of
+  each script until the page's own scripts start, and at each registration
+  call while it loads. The capture page is never paused, but it has the
+  debugger enabled (to read the scripts V8 compiles) and V8 call counts on
+  once it is ready. Neither changes what page script can read; what remains
+  is timing that page code would have to measure around script compiles
+  while the page loads (the debugger records each one), or while running
+  after load, which declines.
+- A registration the capture page makes while it loads is found by what it
+  leaves behind once the page is ready ("The capture page is never
+  paused"): one that is gone by then (an observer collected, a timer that
+  fired, a wall-clock timer still pending with a builtin callback) is not
+  counted; what it changed is in the page the census and the probes read.
 - What a builtin the page hands over runs is found where the renderer, GSAP
   or the browser calls page objects on a seek (listed in "Callbacks that
   run no page script"). One reached some other way is not: a promise
@@ -664,11 +773,19 @@ from ffmpeg's frame count and reports 35–80%.
   writes the DOM would decline on the callback anyway).
 - The allowlists decline content that would render the same: a `<button>`,
   a form control nobody focuses, a `<canvas>` nobody draws on, an image
-  format the passthrough does not decode (JPEG XL), an SVG image with an
-  external reference, a DOCTYPE, a CSS escape or editor elements outside
-  `<metadata>` (Inkscape's `sodipodi:namedview`), an SVG in another
+  format the passthrough does not decode (JPEG XL), an SVG in another
   encoding than UTF-8, a cross-origin stylesheet whose text the network
-  record does not hold.
+  record does not hold. SVG images pass only as plain static SVG (shapes,
+  paths, gradients, patterns, clips, masks, markers and text, styled by
+  presentation attributes, `svgImage.ts`): any `<style>` (static or not, in
+  any namespace), `style` attribute, comment, CDATA section, DOCTYPE,
+  filter, link, `<switch>`, element in another namespace (editor metadata
+  included), external reference or attribute outside the static set
+  declines.
+- The encoder takes one frame at a time, as the layered path's does
+  ("Encoder pacing"), so it no longer encodes several input frames at once
+  while the composite runs ahead; and the passthrough needs Linux to read
+  the encoder's thread states.
 - Event targets are found with `Runtime.queryObjects`, which collects
   garbage first: only a page that watches its own collection
   (`FinalizationRegistry`, `WeakRef`) can notice.
@@ -878,12 +995,6 @@ HDR fixtures (`hdr-hlg-regression`, `hdr-hlg-audio-windows`,
 Three passthrough renders out of about 50 in this run did not decode
 identical to flag off: the PQ 20 s `captions` row above (from frame 255),
 and two 3 s `control` renders (from frame 29, 34/90 and 26/90), all at
-52-73 dB, spread over whole frames. The overlay PNGs and the concat list of
-the second `control` one were byte-identical to those of nine renders that
-matched. Replaying its composite command ten times at once on those inputs,
-the composite graph's frames (`-f framemd5` before the encoder) were
-identical every time, and one of the ten libx265 encodes differed (21/90).
-The encoder, fed as fast as the graph runs and encoding up to 16 frames at
-once (`frame-threads=16`), is not deterministic under load; the layered
-encoder gets one frame at a time from capture. This is open: the
-passthrough has no check for it.
+52-73 dB, spread over whole frames. The encoder was not deterministic when
+fed faster than it encodes; see "Encoder pacing" for the measurements and
+the fix, and the next section for the renders after it.

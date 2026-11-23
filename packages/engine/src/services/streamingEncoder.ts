@@ -221,6 +221,8 @@ export interface StreamingEncoder {
   getExitError: () => string | undefined;
   /** Machine-readable cause available after FFmpeg exits unexpectedly mid-write. */
   getExitFailureReason?: () => "external_interruption" | undefined;
+  /** The FFmpeg process id, while it has one. */
+  readonly pid?: number;
 }
 
 /**
@@ -645,6 +647,7 @@ export function spawnFfmpegStream(
   let inputFrameIndex = 0;
   let drainWaitMs = 0;
   const encoder: StreamingEncoder = {
+    pid: ffmpeg.pid,
     writeFrame: async (buffer: Buffer): Promise<boolean> => {
       const stdin = ffmpeg.stdin;
       if (exitStatus !== "running") {

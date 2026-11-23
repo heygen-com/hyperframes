@@ -34,10 +34,17 @@ import {
   captureOverlayStates,
 } from "./overlayCapture.js";
 import { releaseIsolated } from "./isolatedWorld.js";
-import { inspectPageContent, inspectPageState, pageGateTimings } from "./overlayPageGates.js";
+import { censusForLog } from "./loadCensus.js";
+import {
+  inspectPageContent,
+  inspectPageState,
+  loadCensusOf,
+  pageGateTimings,
+} from "./overlayPageGates.js";
 import {
   armPageCodeWatch,
   attachPageCodeWatch,
+  type OverlayPageRole,
   type PageCodeWatch,
   pageCodeWatchOf,
 } from "./pageCodeWatch.js";
@@ -73,6 +80,7 @@ export interface OverlaySessionDeps {
   open: (
     input: HdrPassthroughInput,
     recordReferenceBackground: CaptureOptions["recordReferenceBackground"],
+    role: OverlayPageRole,
   ) => Promise<CaptureSession>;
   close: (session: CaptureSession) => Promise<void>;
 }
@@ -83,12 +91,14 @@ export interface OverlaySessionDeps {
  * injector, its capture options with the shared memos copied and
  * `recordReferenceBackground` replaced: `overlayPages.ts`), with the page
  * code watch armed before it navigates and counting once it is ready
- * (`pageCodeWatch.ts`). A session that fails to initialise is closed before
- * the error propagates.
+ * (`pageCodeWatch.ts`): the debugger watches the analysis page's
+ * registrations as it loads, and never pauses the capture page. A session
+ * that fails to initialise is closed before the error propagates.
  */
 async function openOverlaySession(
   input: HdrPassthroughInput,
   recordReferenceBackground: CaptureOptions["recordReferenceBackground"],
+  role: OverlayPageRole,
 ): Promise<CaptureSession> {
   const fileServer = input.fileServer;
   if (!fileServer) {
@@ -98,10 +108,11 @@ async function openOverlaySession(
   // script the renderer sends is known by its text (`scriptOrigins.ts`).
   let watch: PageCodeWatch | undefined;
   const onPageOpened = async (page: CaptureSession["page"]) => {
-    watch = await armPageCodeWatch(page, [
-      ...fileServer.injectedScriptTexts(),
-      POSITION_SEEK_REAPPLY_SCRIPT,
-    ]);
+    watch = await armPageCodeWatch(
+      page,
+      [...fileServer.injectedScriptTexts(), POSITION_SEEK_REAPPLY_SCRIPT],
+      role,
+    );
     attachPageCodeWatch(page, watch);
   };
   // captureAlphaPng hangs under begin-frame control; same constraint as the layered stage.
@@ -140,13 +151,14 @@ const DEFAULT_SESSION_DEPS: OverlaySessionDeps = {
  * The overlay session, opened on first `get()`. `close()` waits for an open
  * still in flight and closes what it opened, so a close that races the open
  * never leaves a browser page behind; `get()` after `close()` rejects.
- * `recordReferenceBackground` goes to `deps.open`: `undefined` for the
- * analysis page.
+ * `recordReferenceBackground` and `role` go to `deps.open`: `undefined` and
+ * `analysis` for the analysis page.
  */
 export function createLazyOverlaySession(
   input: HdrPassthroughInput,
   deps: OverlaySessionDeps = DEFAULT_SESSION_DEPS,
   recordReferenceBackground?: CaptureOptions["recordReferenceBackground"],
+  role: OverlayPageRole = "analysis",
 ): LazyOverlaySession {
   let opening: Promise<CaptureSession> | undefined;
   let closed = false;
@@ -158,7 +170,7 @@ export function createLazyOverlaySession(
       if (closed) {
         return Promise.reject(new Error("hdrPassthrough: the overlay session is closed"));
       }
-      opening ??= deps.open(input, recordReferenceBackground);
+      opening ??= deps.open(input, recordReferenceBackground, role);
       return opening;
     },
     async close() {
@@ -268,8 +280,9 @@ async function runHdrPassthrough(
   // Fingerprints stand in for pixels only while no page code runs after load (pageCodeWatch.ts).
   const pageCode = pageCodeWatchOf(page.page);
   if (!pageCode) throw new PassthroughDeclinedError("seek_callback", "no page code watch");
-  // This page loaded on its own: what it registered meanwhile, before any seek or in-page probe.
-  const loaded = await inspectPageState(page.page);
+  // This page loaded on its own, never paused: what it registered meanwhile, against what the
+  // analysis page registered, before any seek or in-page probe.
+  const loaded = await inspectPageState(page.page, eligible.loadCensus);
   if (loaded) throw new PassthroughDeclinedError(loaded.reason, loaded.detail);
   await replayLayeredPrelude(input, page);
   input.assertNotAborted();
@@ -278,6 +291,7 @@ async function runHdrPassthrough(
     session: page,
     plan,
     video: eligible.video,
+    analysisVideoLayer: eligible.videoLayer,
     outDir: join(input.framesDir, OVERLAY_DIR_NAME),
     onVerifyProbe: () => noteStaticDedupActivity(job),
     onStateCaptured: (_framesCovered, statesDone, statesTotal) => {
@@ -307,7 +321,7 @@ async function runHdrPassthrough(
   });
   // A callback first registered, or content first attached, on a frame only capture visited; read
   // before the watch stops, so a probe here that reached page code is counted too.
-  const lateState = await inspectPageState(page.page);
+  const lateState = await inspectPageState(page.page, eligible.loadCensus);
   if (lateState) throw new PassthroughDeclinedError(lateState.reason, lateState.detail);
   const lateContent = await inspectPageContent(page.page, eligible.video.id, true);
   if (lateContent) throw new PassthroughDeclinedError(lateContent.reason, lateContent.detail);
@@ -316,6 +330,8 @@ async function runHdrPassthrough(
   log.info("[Render] HDR passthrough: page gates", {
     ...pageGateTimings(page.page),
     ...pageCode.registrations.stats(),
+    analysisCensus: censusForLog(eligible.loadCensus),
+    captureCensus: censusForLog(loadCensusOf(page.page)),
   });
   const pageCodeRan = await pageCode.stop();
   if (pageCodeRan) throw new PassthroughDeclinedError("seek_callback", pageCodeRan);
@@ -352,6 +368,11 @@ async function runHdrPassthrough(
     },
   });
   job.framesRendered = totalFrames;
+  log.info("[Render] HDR passthrough: encoded", {
+    frames: composite.framesEncoded,
+    encodeMs: composite.encodeMs,
+    idleWaitMs: composite.idleWaitMs,
+  });
 
   return {
     lastBrowserConsole: page.browserConsoleBuffer,
@@ -428,7 +449,12 @@ export async function attemptHdrPassthrough(
     const referenceBackground = mirrorReferenceBackground(
       input.buildCaptureOptions().recordReferenceBackground,
     );
-    capture = createLazyOverlaySession(input, deps.sessions, referenceBackground.recordOnPage);
+    capture = createLazyOverlaySession(
+      input,
+      deps.sessions,
+      referenceBackground.recordOnPage,
+      "capture",
+    );
     const result = await deps.run(input, eligibility, capture);
     await referenceBackground.commit();
     return { kind: "completed", result };

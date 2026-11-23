@@ -27,13 +27,15 @@
  *
  * The watch also holds what the passthrough records about the page from the
  * moment it opens: the scripts, the registrations while it loads
- * (`registrationWatch.ts`) and the images and stylesheets it loads
- * (`ownClock.ts`).
+ * (`registrationWatch.ts` on the analysis page, which the debugger pauses;
+ * `unpausedWatch.ts` on the capture page, which is never paused) and the
+ * images and stylesheets it loads (`ownClock.ts`).
  */
 
 import { type CaptureSession, getCdpSession } from "@hyperframes/engine";
 import { recordResources, type ResourceRecord } from "./ownClock.js";
 import { armRegistrationWatch, type RegistrationWatch } from "./registrationWatch.js";
+import { armUnpausedWatch } from "./unpausedWatch.js";
 import {
   recordScriptOrigins,
   type ScriptOrigin,
@@ -66,8 +68,16 @@ export async function findPageCodeInCoverage(
   return first === undefined ? null : `${count} page function(s) ran after load, first ${first}`;
 }
 
+/**
+ * Which overlay page a watch is for: the analysis page, whose registrations
+ * the debugger watches as it loads, or the capture page, which is never
+ * paused (`unpausedWatch.ts`).
+ */
+export type OverlayPageRole = "analysis" | "capture";
+
 /** The overlay page's watch: armed before navigation, counting from `start()`. */
 export interface PageCodeWatch {
+  readonly role: OverlayPageRole;
   /** The page's scripts, by how V8 compiled them. */
   readonly origins: ScriptOriginRecord;
   /** What the page registered while it loaded (`registrationWatch.ts`). */
@@ -87,8 +97,9 @@ export interface PageCodeWatch {
  * registers or evaluates anything on it: its scripts are recorded as they
  * are compiled (`recordScriptOrigins`), with the renderer's own texts
  * (`rendererScripts`, plus everything the renderer sends the page from
- * now on); its registrations as it loads (`armRegistrationWatch`); and the
- * images and stylesheets it loads (`recordResources`). Uses the page's
+ * now on); its registrations as it loads (`armRegistrationWatch` on the
+ * analysis page, `armUnpausedWatch` on the capture page); and the images and
+ * stylesheets it loads (`recordResources`). Uses the page's
  * cached engine CDP session and never detaches it (see
  * `findSeekHookListeners`). Starting precise coverage resets V8's call
  * counts, so only calls made after `start()` are reported. Anything that
@@ -97,10 +108,14 @@ export interface PageCodeWatch {
 export async function armPageCodeWatch(
   page: CaptureSession["page"],
   rendererScripts: readonly string[],
+  role: OverlayPageRole = "analysis",
 ): Promise<PageCodeWatch> {
   const origins: ScriptOriginRecord = await recordScriptOrigins(page, rendererScripts);
   const client = await getCdpSession(page);
-  const registrations = await armRegistrationWatch(client, origins);
+  const registrations =
+    role === "capture"
+      ? await armUnpausedWatch(client)
+      : await armRegistrationWatch(client, origins);
   const resources = await recordResources(client);
   let state: "armed" | "counting" | "stopped" = "armed";
   let startError: string | undefined;
@@ -118,6 +133,7 @@ export async function armPageCodeWatch(
     await client.send("Debugger.disable").catch(() => undefined);
   };
   return {
+    role,
     origins,
     registrations,
     resources,

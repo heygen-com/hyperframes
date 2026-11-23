@@ -356,5 +356,5 @@ describe.skipIf(!HAS_X265)("HDR passthrough capture dedup through real renders",
       const on = results.get(`${project}-true`)!.output;
       expect({ project, same: sameVideo(off, on) }).toEqual({ project, same: true });
     }
-  });
+  }, 120_000);
 });

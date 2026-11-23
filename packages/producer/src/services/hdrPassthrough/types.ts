@@ -20,9 +20,11 @@
  * See README.md in this directory for the design, eligibility and pixel contract.
  */
 
+import type { LoadCensus } from "./loadCensus.js";
 import type { Fps } from "@hyperframes/core";
 import type {
   CaptureSession,
+  ElementStackingInfo,
   HdrTransfer,
   VideoColorSpace,
   VideoMetadata,
@@ -205,6 +207,16 @@ export type PassthroughEligibility =
       reason?: undefined;
       video: PassthroughVideo;
       timing: OverlayTiming;
+      /**
+       * What the analysis page held once it loaded (`loadCensus.ts`); the
+       * capture page must hold the same.
+       */
+      loadCensus?: LoadCensus;
+      /**
+       * The video's stacking entry on the analysis page at frame 0, once its
+       * gates passed; the capture page's must be the same on every frame.
+       */
+      videoLayer?: ElementStackingInfo;
     }
   | {
       eligible: false;
@@ -332,6 +344,8 @@ export interface CaptureOverlayStatesArgs {
   video: PassthroughVideo;
   /** Directory to write PNGs into (created if missing). */
   outDir: string;
+  /** The video's stacking entry the analysis page held (`EligiblePassthrough.videoLayer`). */
+  analysisVideoLayer?: ElementStackingInfo;
   /** Called after each state with the cumulative frames those states cover. */
   onStateCaptured?: (framesCovered: number, statesDone: number, statesTotal: number) => void;
   /**
@@ -370,8 +384,10 @@ export interface CompositeRequest {
 }
 
 export interface CompositeResult {
-  /** ffmpeg wall-clock ms. */
+  /** Wall-clock ms from the encoder's spawn to its exit. */
   encodeMs: number;
+  /** Of that, ms spent waiting for the encoder to go idle after each frame. */
+  idleWaitMs: number;
   /** Frames ffmpeg reported encoding; equals `plan.totalFrames` on success. */
   framesEncoded: number;
   /** Bytes written to `outputPath`. */

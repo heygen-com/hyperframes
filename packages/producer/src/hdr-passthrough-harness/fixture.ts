@@ -1193,6 +1193,77 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
       ),
     },
   },
+  // CSS the browser joins back together after XML parsing, and an XHTML <style> the image applies:
+  // any <style>, comment or CDATA section, or element outside the static SVG set declines.
+  {
+    // A comment splits "animation" in <style>; the browser concatenates the text either side.
+    name: "svg-comment-css",
+    wallClock: true,
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      overlayHtml: svgImage(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><style>rect{anim<!---->ation:spin 1s linear infinite} @keyframes spin{0%{fill:red}50%{fill:blue}100%{fill:red}}</style><rect width="10" height="10" fill="red"/></svg>',
+      ),
+    },
+  },
+  {
+    // A comment splits "@keyframes".
+    name: "svg-comment-keyframes",
+    wallClock: true,
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      overlayHtml: svgImage(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><style>rect{animation:spin 1s linear infinite} @key<!---->frames spin{0%{fill:red}50%{fill:blue}100%{fill:red}}</style><rect width="10" height="10" fill="red"/></svg>',
+      ),
+    },
+  },
+  {
+    // A CDATA section splits "animation".
+    name: "svg-cdata-css",
+    wallClock: true,
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      overlayHtml: svgImage(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><style>rect{anim<![CDATA[ation]]>:spin 1s linear infinite} @keyframes spin{0%{fill:red}50%{fill:blue}100%{fill:red}}</style><rect width="10" height="10" fill="red"/></svg>',
+      ),
+    },
+  },
+  {
+    // An XHTML <style> inside <metadata>, which the image applies.
+    name: "svg-xhtml-style",
+    wallClock: true,
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      overlayHtml: svgImage(
+        '<svg xmlns="http://www.w3.org/2000/svg" xmlns:h="http://www.w3.org/1999/xhtml" viewBox="0 0 10 10"><metadata><h:style>rect{animation:spin 1s linear infinite} @keyframes spin{0%{fill:red}50%{fill:blue}100%{fill:red}}</h:style></metadata><rect width="10" height="10" fill="red"/></svg>',
+      ),
+    },
+  },
+  // Pages that time their own pauses while they load, on clocks the virtual-time shim leaves
+  // alone, and paint a flag when they were paused. The capture page is never paused, as the
+  // layered session is not, so both take the passthrough and decode identical to flag off.
+  {
+    // Event#timeStamp around the shim's setTimeout.
+    name: "pause-timer",
+    reason: "",
+    takesPassthrough: true,
+    composition: {
+      headHtml: `<script>(function(){function ts(){return new Event("x").timeStamp;}var best=1e9;for(var i=0;i<5;i++){var a=ts();setTimeout(function(){},1e9);debugger;best=Math.min(best,ts()-a);}if(best>1)document.documentElement.className="paused";})();</script><style>#flag{display:none;${TEXT_STYLE};background:#0a0}.paused #flag{display:block}</style>`,
+      overlayHtml: '<div id="flag">PAUSED</div>',
+    },
+    assets: ["gsap"],
+  },
+  {
+    // performance.mark() start times across script boundaries.
+    name: "pause-mark",
+    reason: "",
+    takesPassthrough: true,
+    composition: {
+      headHtml: `<script>window.__gap=1e9;window.__at=performance.mark("a").startTime;</script><script>window.__gap=Math.min(window.__gap,performance.mark("b").startTime-window.__at);window.__at=performance.mark("c").startTime;setTimeout(function(){},1e9);window.__gap=Math.min(window.__gap,performance.mark("d").startTime-window.__at);</script><script>if(window.__gap>1)document.documentElement.className="paused";</script><style>#flag{display:none;${TEXT_STYLE};background:#0a0}.paused #flag{display:block}</style>`,
+      overlayHtml: '<div id="flag">PAUSED</div>',
+    },
+    assets: ["gsap"],
+  },
   // Animated images in pseudo-elements no list of pseudo-elements named: declined by the image's
   // own bytes and by the CSS and element allowlists.
   {

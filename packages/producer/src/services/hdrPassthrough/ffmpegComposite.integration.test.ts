@@ -4,6 +4,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,8 +15,14 @@ import {
   getEncoderPreset,
   getFfmpegBinary,
   getFfprobeBinary,
+  spawnStreamingEncoder,
 } from "@hyperframes/engine";
-import { compositeAndEncode } from "./ffmpegComposite.js";
+import { ENCODER_IDLE, procThreadStates, waitUntilIdle } from "./encoderPacing.js";
+import {
+  buildCompositeDecodeArgs,
+  compositeAndEncode,
+  compositeEncoderOptions,
+} from "./ffmpegComposite.js";
 import type { CapturedOverlay, CompositeRequest, OverlayState } from "./types.js";
 
 const FFMPEG = getFfmpegBinary();
@@ -91,6 +98,17 @@ function writeBoxPng(path: string, alpha: number): void {
 function ffmpeg(args: string[]): void {
   const result = spawnSync(FFMPEG, ["-v", "error", "-y", ...args], { encoding: "utf-8" });
   if (result.status !== 0) throw new Error(`ffmpeg failed: ${result.stderr}`);
+}
+
+/** MD5 of the output's HEVC bitstream, copied out of the container. */
+function bitstreamMd5(path: string): string {
+  const result = spawnSync(
+    FFMPEG,
+    ["-v", "error", "-i", path, "-map", "0:v", "-c", "copy", "-f", "hevc", "-"],
+    { maxBuffer: 256 * 1024 * 1024 },
+  );
+  if (result.status !== 0) throw new Error(`copy failed: ${result.stderr.toString()}`);
+  return createHash("md5").update(result.stdout).digest("hex");
 }
 
 function decodeRgb48(path: string): Buffer {
@@ -225,6 +243,7 @@ describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
   let src: Buffer;
   let framesReported: number[];
   let framesEncoded: number;
+  let layeredPath: string;
 
   beforeAll(async () => {
     dir = mkdtempSync(join(tmpdir(), "hdr-passthrough-composite-"));
@@ -256,6 +275,23 @@ describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
     framesEncoded = (await compositeAndEncode(request)).framesEncoded;
     out = decodeRgb48(outputPath);
     src = decodeRgb48(srcPath);
+
+    // The layered stage's encoder, fed the composited frames the way capture feeds it: one at a
+    // time, each once the encoder has long gone quiet.
+    const concat = join(request.workDir, "hdr-passthrough-overlays.ffconcat");
+    const raw = spawnSync(FFMPEG, buildCompositeDecodeArgs(request, concat), {
+      maxBuffer: 256 * 1024 * 1024,
+    });
+    if (raw.status !== 0) throw new Error(`composite failed: ${raw.stderr.toString()}`);
+    layeredPath = join(dir, "out", "layered-video-only.mp4");
+    const layered = await spawnStreamingEncoder(layeredPath, compositeEncoderOptions(request));
+    for (let frame = 0; frame < TOTAL_FRAMES; frame++) {
+      await layered.writeFrame(raw.stdout.subarray(frame * FRAME_BYTES, (frame + 1) * FRAME_BYTES));
+      await new Promise((done) => setTimeout(done, 250));
+      const pid = layered.pid ?? 0;
+      await waitUntilIdle(() => procThreadStates(pid), { ...ENCODER_IDLE, calmPolls: 10 });
+    }
+    expect((await layered.close()).success).toBe(true);
   }, 120_000);
 
   afterAll(() => {
@@ -282,6 +318,10 @@ describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
       codec_name: "hevc",
       r_frame_rate: "30/1",
     });
+  });
+
+  it("writes the bitstream the layered encoder writes for the same frames", () => {
+    expect(bitstreamMd5(outputPath)).toBe(bitstreamMd5(layeredPath));
   });
 
   it("tags the output as HLG BT.2020", () => {

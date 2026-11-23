@@ -130,7 +130,11 @@ describe("createLazyOverlaySession close", () => {
 });
 
 describe("attemptHdrPassthrough pages", () => {
-  type Opened = { n: number; record: CaptureOptions["recordReferenceBackground"] };
+  type Opened = {
+    n: number;
+    record: CaptureOptions["recordReferenceBackground"];
+    role?: string;
+  };
 
   function harness(options: { analysisRan?: string; runFails?: boolean } = {}) {
     const events: string[] = [];
@@ -146,9 +150,9 @@ describe("attemptHdrPassthrough pages", () => {
     let capturePage: CaptureSession | undefined;
     const deps: PassthroughDeps = {
       sessions: {
-        open: async (_input, record) => {
+        open: async (_input, record, role) => {
           const n = opened.length + 1;
-          opened.push({ n, record });
+          opened.push({ n, record, role });
           events.push(`open ${n}`);
           return { page: { n } } as unknown as CaptureSession;
         },
@@ -191,6 +195,8 @@ describe("attemptHdrPassthrough pages", () => {
     const h = harness();
     const outcome = await attemptHdrPassthrough(h.input, h.deps);
     expect(outcome.kind).toBe("completed");
+    // The debugger watches the analysis page as it loads; the capture page is never paused.
+    expect(h.opened.map((page) => page.role)).toEqual(["analysis", "capture"]);
     const { analysisPage, capturePage } = h.pages();
     expect(capturePage).toBeDefined();
     expect(capturePage).not.toBe(analysisPage);

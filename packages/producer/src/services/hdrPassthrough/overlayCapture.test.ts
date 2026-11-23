@@ -296,6 +296,16 @@ describe("createVideoLayerGuard", () => {
     expect(() => check(42, [video(change), caption])).toThrow(/at frame 42/);
   });
 
+  it("holds the capture page's video to the analysis page's from its first frame", () => {
+    const check = createVideoLayerGuard("video", video());
+    check(0, [video(), caption]);
+    // A page laid out differently on the capture page alone (it loaded there unpaused).
+    const moved = createVideoLayerGuard("video", video());
+    expect(() => moved(0, [video({ width: 300 }), caption])).toThrow(
+      /at frame 0 \(width 1 -> 300, against frame 0 on the analysis page\)/,
+    );
+  });
+
   it("throws on a first frame that is not fully opaque, and on a missing video", () => {
     expect(() => createVideoLayerGuard("video")(0, [video({ opacity: 0.3 })])).toThrow(
       /opacity 0.3/,

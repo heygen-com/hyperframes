@@ -1,31 +1,43 @@
 /**
- * HDR passthrough composite: one ffmpeg run that overlays the cached state
- * PNGs onto the source HDR video and encodes the video-only output.
+ * HDR passthrough composite: one ffmpeg run overlays the cached state PNGs
+ * onto the source HDR video and writes the composited frames as raw
+ * `rgb48le`, and the layered path's own encoder (`spawnStreamingEncoder`,
+ * with the options the layered stage gives it) encodes them, one frame at a
+ * time, each once the encoder has gone idle (`encoderPacing.ts`).
  */
 
-import { execFile } from "node:child_process";
-import { mkdirSync, statSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { promisify } from "node:util";
 import { fpsToFfmpegArg, fpsToNumber } from "@hyperframes/core";
 import {
-  buildStreamingArgs,
+  ManagedChildProcess,
   ffmpegSeekSeconds,
-  ffmpegStatsReader,
   formatFfmpegError,
-  getCachedGpuEncoder,
   getFfmpegBinary,
-  getCachedNvencPresets,
-  runFfmpeg,
-  type GpuEncoder,
+  spawnStreamingEncoder,
+  trackChildProcess,
+  type StreamingEncoder,
   type StreamingEncoderOptions,
 } from "@hyperframes/engine";
+import {
+  ENCODER_IDLE,
+  type IdleWaitOptions,
+  procThreadStates,
+  waitUntilIdle,
+} from "./encoderPacing.js";
 import type { CapturedOverlay, CompositeRequest, CompositeResult } from "./types.js";
 
 /** File name of the concat list written into `CompositeRequest.workDir`. */
 const CONCAT_LIST_NAME = "hdr-passthrough-overlays.ffconcat";
 
 const MICROS_PER_SECOND = 1_000_000;
+
+/** Bytes per pixel of the raw frames the layered encoder reads. */
+const RGB48_BYTES_PER_PIXEL = 6;
+
+/** The layered stage's inactivity limit for its HDR encoder (`runCaptureHdrStage`). */
+const LAYERED_ENCODER_TIMEOUT_MS = 3_600_000;
 
 /**
  * Slice threads for the swscale format conversions in the composite graph.
@@ -36,52 +48,6 @@ const MICROS_PER_SECOND = 1_000_000;
 const SWS_THREADS = 4;
 const THREADED_SCALE = `scale=threads=${SWS_THREADS}`;
 const convert = (pixFmt: string): string => `${THREADED_SCALE},format=${pixFmt}`;
-
-/**
- * Drops every side data type from the decoded source frames. ffmpeg 8 carries
- * the source's mastering display, content light level and Dolby Vision
- * metadata through the filter graph to the encoder and the mp4 muxer (as
- * `mdcv` / `clli` boxes); the layered encoder reads raw frames on stdin and
- * never sees them. ffmpeg 7.0 does not propagate them, so on 7.0 this is a no-op.
- */
-const DROP_SOURCE_SIDE_DATA = "sidedata=mode=delete";
-
-/** GPU encoder resolved by the caller (`getCachedGpuEncoder`), so the builder stays pure. */
-export interface CompositeGpuSelection {
-  encoder: GpuEncoder;
-  nvencPresets?: ReadonlySet<string>;
-  /**
-   * The resolved ffmpeg's libx265 wrapper has a `dolbyvision` option
-   * (`hasX265DolbyVisionOption`). ffmpeg 8 defaults it to `auto`, which
-   * would copy a source's Dolby Vision RPUs into the output; the layered
-   * encoder never sees any. When set, a libx265 encode gets `-dolbyvision 0`.
-   */
-  x265DolbyVisionOption?: boolean;
-}
-
-const execFileAsync = promisify(execFile);
-const dolbyVisionOptionCache = new Map<string, Promise<boolean>>();
-
-/**
- * Whether the libx265 wrapper of the ffmpeg `runFfmpeg` resolves has a
- * `dolbyvision` option (8.0 has it; 7.0 has none and rejects the flag), read
- * from its encoder help once per binary per process. Throws when the help
- * cannot be read, which makes the passthrough fall back rather than encode
- * with an unknown default.
- */
-function hasX265DolbyVisionOption(): Promise<boolean> {
-  const binary = getFfmpegBinary();
-  let pending = dolbyVisionOptionCache.get(binary);
-  if (!pending) {
-    pending = execFileAsync(binary, ["-hide_banner", "-h", "encoder=libx265"], {
-      timeout: 30_000,
-      maxBuffer: 4 * 1024 * 1024,
-    }).then(({ stdout }) => /^\s*-dolbyvision\s/m.test(stdout));
-    dolbyVisionOptionCache.set(binary, pending);
-    pending.catch(() => dolbyVisionOptionCache.delete(binary));
-  }
-  return pending;
-}
 
 /**
  * Concat-demuxer playlist for the overlay states. Adjacent states that share
@@ -136,23 +102,16 @@ function quoteConcatPath(path: string): string {
  * `out = round(video * (1 - a) + signal * a)` with `a = alpha8 * 257 / 65535`,
  * `blitRgba8OverRgb48le`'s blend. ffmpeg 7 and 8 round it exactly that way (every
  * alpha, 102400 random samples per plane); 4.2 is 1 LSB off on about a sixth of the
- * partial-alpha samples. The result is repacked to `rgb48le` before `tail`, so the
- * RGB → YUV conversion is the one the layered encoder runs on its rgb48le
- * stdin. Swscale's planar and packed RGB paths round chroma differently;
- * going through `rgb48le` on both sides keeps the video pixels bit-identical
- * to the layered path wherever the overlay is transparent. ffmpeg's
- * `overlay` filter blends RGB at 8 bits only, so it cannot be used here.
- * `tail` is the encoder-side frame filter `buildStreamingArgs` emits for the
- * HDR raw-input path (colour tags, even-dimension pad, vaapi upload).
- *
- * The chain starts with `DROP_SOURCE_SIDE_DATA`: the layered encoder reads raw
- * frames that carry no side data, so nothing the source's frames carry may
- * reach this encoder either.
+ * partial-alpha samples. The result is repacked to `rgb48le`, the frames the
+ * layered blend hands its encoder. ffmpeg's `overlay` filter blends RGB at 8
+ * bits only, so it cannot be used here. Raw output carries no side data: the
+ * source's mastering display, content light level and Dolby Vision metadata
+ * stop here, as they do in the layered path's raw frames.
  */
-function buildCompositeFilterGraph(request: CompositeRequest, tail: string): string {
+function buildCompositeFilterGraph(request: CompositeRequest): string {
   const { video, plan } = request;
   const fpsFilter = `fps=${fpsToFfmpegArg(plan.fps)}:start_time=0`;
-  const videoChain = [DROP_SOURCE_SIDE_DATA, fpsFilter];
+  const videoChain = [fpsFilter];
   if (video.width !== plan.width || video.height !== plan.height) {
     // Same scale/crop as the layered path's HDR frame extraction, which also
     // converts to rgb48le in that one swscale pass.
@@ -167,8 +126,7 @@ function buildCompositeFilterGraph(request: CompositeRequest, tail: string): str
   videoChain.push(convert("gbrp16le"));
   // Overlay frames are converted once per concat entry, before `fps` repeats
   // them onto the output grid.
-  const blend = buildBlendFilters(videoChain.join(","), fpsFilter);
-  return `${blend},${withThreadedOutputConversion(tail)}[vout]`;
+  return `${buildBlendFilters(videoChain.join(","), fpsFilter)}[vout]`;
 }
 
 /**
@@ -191,19 +149,8 @@ export function buildBlendFilters(videoChain: string, overlayFilter?: string): s
 }
 
 /**
- * The encoder tail is a single `setparams` (colour tags) on the software and
- * nvenc paths; the RGB → YUV conversion ffmpeg inserts after it runs on one
- * thread. Ending the graph on a threaded `scale` moves that conversion into
- * it (same swscale path, so the same pixels). Tails that pad or upload are
- * left as they are, so their format negotiation is the layered encoder's.
- */
-function withThreadedOutputConversion(tail: string): string {
-  if (tail === "" || tail.includes(",")) return tail;
-  return `${tail},${THREADED_SCALE}`;
-}
-
-/**
- * Builds the full ffmpeg argv (without the binary) for `compositeAndEncode`.
+ * The ffmpeg argv (without the binary) of the composite: the source video
+ * and the overlays in, `rgb48le` frames of the plan's size out on stdout.
  * Pure; exported for argument-level unit tests.
  *
  *   - Input 0: the source video, seeked to `video.mediaStart` with the HDR
@@ -212,22 +159,42 @@ function withThreadedOutputConversion(tail: string): string {
  *     `video.duration` plus one output frame of slack.
  *   - Input 1: the overlay PNGs through the concat demuxer
  *     (`buildOverlayConcatList`).
- *   - Filter: `buildCompositeFilterGraph`.
- *   - Encoder: the encoder half of engine `buildStreamingArgs` for the
- *     layered stage's exact `spawnStreamingEncoder` options (codec, preset,
- *     crf/bitrate, delivery caps, GOP lock, GPU selection, `-x265-params`,
- *     bt2020 colour tags, `-tag:v hvc1`, provenance), with its `-vf` swapped
- *     for the composite graph, and `-dolbyvision 0` for libx265 when
- *     `gpu.x265DolbyVisionOption` says the binary has it.
- *     `-frames:v plan.totalFrames`, `-an`.
+ *   - Filter: `buildCompositeFilterGraph`; `-frames:v plan.totalFrames`.
  */
-export function buildCompositeArgs(
+export function buildCompositeDecodeArgs(
   request: CompositeRequest,
   concatListPath: string,
-  gpu: CompositeGpuSelection = { encoder: null },
 ): string[] {
-  const { video, plan, encoder, hdr, outputPath } = request;
-  const options: StreamingEncoderOptions = {
+  const { video, plan } = request;
+  // Not clamped at 0: when every stream starts after 0 (an mp4 without an edit
+  // list, a remuxed transport stream) and `mediaStart` sits inside that offset,
+  // the seek is negative. ffmpeg then reads from the start and keeps the
+  // stream's own lead, which `fps=...:start_time=0` fills by holding the first
+  // frame, exactly as the layered extraction keeps the negative seek and holds
+  // its first frame until the stream starts. Clamping would play the video
+  // early by the offset.
+  const seek = ffmpegSeekSeconds(video.metadata, video.mediaStart);
+  const readSeconds = video.duration + 1 / fpsToNumber(plan.fps);
+  return [
+    ...["-hide_banner", "-nostdin", "-v", "error"],
+    ...["-ss", seek.toFixed(6), "-t", readSeconds.toFixed(6), "-i", video.srcPath],
+    ...["-f", "concat", "-safe", "0", "-i", concatListPath],
+    ...["-filter_complex", buildCompositeFilterGraph(request), "-map", "[vout]"],
+    ...["-frames:v", String(plan.totalFrames), "-an"],
+    ...["-f", "rawvideo", "-pix_fmt", "rgb48le", "pipe:1"],
+  ];
+}
+
+/**
+ * The options the layered stage gives `spawnStreamingEncoder` for the same
+ * render (`runCaptureHdrStage`): codec, preset, CRF or bitrate, delivery
+ * caps and GOP lock, GPU selection, pixel format, HDR transfer and raw
+ * `rgb48le` input. The encoder builds its own argv from them, so the
+ * passthrough's encode runs the layered path's exact command line.
+ */
+export function compositeEncoderOptions(request: CompositeRequest): StreamingEncoderOptions {
+  const { plan, encoder, hdr } = request;
+  return {
     fps: plan.fps,
     width: plan.width,
     height: plan.height,
@@ -241,80 +208,93 @@ export function buildCompositeArgs(
     hdr,
     rawInputFormat: "rgb48le",
   };
-  const streaming = buildStreamingArgs(options, outputPath, gpu.encoder, gpu.nvencPresets);
-
-  // Split the stdin raw-frame input off the streaming argv: global options
-  // before it (vaapi device), encoder + output options after it.
-  const inputStart = streaming.findIndex(
-    (arg, i) => arg === "-f" && streaming[i + 1] === "rawvideo",
-  );
-  const inputEnd = streaming.findIndex((arg, i) => arg === "-i" && streaming[i + 1] === "-");
-  const vfIndex = streaming.indexOf("-vf", inputEnd);
-  const outIndex = streaming.lastIndexOf("-y");
-  if (inputStart < 0 || inputEnd < inputStart || vfIndex < 0 || outIndex < vfIndex) {
-    throw new Error(
-      `hdrPassthrough: unsupported encoder layout for codec ${encoder.preset.codec ?? "default"}`,
-    );
-  }
-  const tail = streaming[vfIndex + 1] ?? "";
-  const noDolbyVision =
-    gpu.x265DolbyVisionOption === true && streaming.includes("libx265")
-      ? ["-dolbyvision", "0"]
-      : [];
-  const encoderArgs = [
-    ...streaming.slice(inputEnd + 2, vfIndex),
-    ...noDolbyVision,
-    "-filter_complex",
-    buildCompositeFilterGraph(request, tail),
-    "-map",
-    "[vout]",
-    ...streaming.slice(vfIndex + 2, outIndex),
-    "-frames:v",
-    String(plan.totalFrames),
-    "-an",
-    ...streaming.slice(outIndex),
-  ];
-
-  // Not clamped at 0: when every stream starts after 0 (an mp4 without an edit
-  // list, a remuxed transport stream) and `mediaStart` sits inside that offset,
-  // the seek is negative. ffmpeg then reads from the start and keeps the
-  // stream's own lead, which `fps=...:start_time=0` fills by holding the first
-  // frame, exactly as the layered extraction keeps the negative seek and holds
-  // its first frame until the stream starts. Clamping would play the video
-  // early by the offset.
-  const seek = ffmpegSeekSeconds(video.metadata, video.mediaStart);
-  const readSeconds = video.duration + 1 / fpsToNumber(plan.fps);
-  return [
-    ...streaming.slice(0, inputStart),
-    "-ss",
-    seek.toFixed(6),
-    "-t",
-    readSeconds.toFixed(6),
-    "-i",
-    video.srcPath,
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-i",
-    concatListPath,
-    ...encoderArgs,
-  ];
 }
 
-function abortError(signal: AbortSignal): unknown {
-  return signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
+/** The processes `compositeAndEncode` runs; injectable for tests. */
+export interface CompositeDeps {
+  spawnEncoder: (
+    outputPath: string,
+    options: StreamingEncoderOptions,
+    signal: AbortSignal,
+  ) => Promise<StreamingEncoder>;
+  /** Spawns the composite, frames on stdout; `wait` settles when it exits. */
+  spawnComposite: (
+    args: string[],
+    signal: AbortSignal,
+  ) => { frames: AsyncIterable<Buffer>; wait: () => Promise<{ ok: boolean; error: string }> };
+  /** Resolves once the encoder (`pid`) has gone idle (`encoderPacing.ts`). */
+  waitForEncoder: (pid: number | undefined, options: IdleWaitOptions) => Promise<void>;
+}
+
+function spawnComposite(args: string[], signal: AbortSignal) {
+  const child = spawn(getFfmpegBinary(), args, {
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  trackChildProcess(child);
+  const managed = new ManagedChildProcess(child, { signal });
+  const stdout = child.stdout;
+  if (!stdout) throw new Error("hdrPassthrough: the composite has no stdout");
+  return {
+    frames: stdout as AsyncIterable<Buffer>,
+    wait: async () => {
+      const outcome = await managed.wait();
+      const ok = outcome.reason === "exit" && outcome.exitCode === 0;
+      return { ok, error: ok ? "" : formatFfmpegError(outcome.exitCode, outcome.stderr) };
+    },
+  };
+}
+
+const DEFAULT_COMPOSITE_DEPS: CompositeDeps = {
+  spawnEncoder: (outputPath, options, signal) =>
+    spawnStreamingEncoder(outputPath, options, signal, {
+      ffmpegStreamingTimeout: LAYERED_ENCODER_TIMEOUT_MS,
+    }),
+  spawnComposite,
+  waitForEncoder: (pid, options) =>
+    pid === undefined
+      ? Promise.reject(new Error("hdrPassthrough: the encoder has no process id"))
+      : waitUntilIdle(() => procThreadStates(pid), options),
+};
+
+/**
+ * Whole frames of `frameBytes` from a byte stream, each a fresh buffer;
+ * throws on a trailing partial frame.
+ */
+async function* wholeFrames(chunks: AsyncIterable<Buffer>, frameBytes: number) {
+  let pending: Buffer[] = [];
+  let pendingBytes = 0;
+  for await (const chunk of chunks) {
+    pending.push(chunk);
+    pendingBytes += chunk.length;
+    if (pendingBytes < frameBytes) continue;
+    const joined = Buffer.concat(pending, pendingBytes);
+    let start = 0;
+    for (; start + frameBytes <= joined.length; start += frameBytes) {
+      yield joined.subarray(start, start + frameBytes);
+    }
+    pending = start < joined.length ? [joined.subarray(start)] : [];
+    pendingBytes = joined.length - start;
+  }
+  if (pendingBytes > 0) throw new Error("hdrPassthrough: the composite ended inside a frame");
 }
 
 /**
- * Writes the concat list into `request.workDir`, runs ffmpeg with
- * `buildCompositeArgs` under `request.abortSignal`, forwards ffmpeg's
- * encoded-frame count to `onFramesEncoded`, and resolves with timing + size.
- * Throws (caller falls back) on non-zero exit, on
- * `framesEncoded !== plan.totalFrames`, or when `outputPath` is missing or
- * empty. An abort rethrows the signal's reason.
+ * Writes the concat list into `request.workDir`, runs the composite
+ * (`buildCompositeDecodeArgs`) and the layered encoder
+ * (`compositeEncoderOptions`) under `request.abortSignal`, handing each
+ * composited frame to the encoder once it has gone idle after the previous
+ * one, and resolves with timing + size. `onFramesEncoded` hears each frame
+ * the encoder has taken. Throws (caller falls back) when either process
+ * fails, when the composite yields other than `plan.totalFrames` frames, or
+ * when the encoder reports another count or an empty file; both processes
+ * are stopped first. An abort rethrows the signal's reason.
  */
-export async function compositeAndEncode(request: CompositeRequest): Promise<CompositeResult> {
+// fallow-ignore-next-line complexity
+export async function compositeAndEncode(
+  request: CompositeRequest,
+  deps: CompositeDeps = DEFAULT_COMPOSITE_DEPS,
+): Promise<CompositeResult> {
   const { plan, overlays, abortSignal, outputPath } = request;
   abortSignal?.throwIfAborted();
 
@@ -323,41 +303,65 @@ export async function compositeAndEncode(request: CompositeRequest): Promise<Com
   const concatListPath = join(request.workDir, CONCAT_LIST_NAME);
   writeFileSync(concatListPath, buildOverlayConcatList(overlays.overlays, plan.fps));
 
-  const gpuEncoder = request.encoder.useGpu ? await getCachedGpuEncoder() : null;
-  const nvencPresets = gpuEncoder === "nvenc" ? await getCachedNvencPresets() : undefined;
-  const x265DolbyVisionOption = gpuEncoder === null ? await hasX265DolbyVisionOption() : false;
-  const args = buildCompositeArgs(request, concatListPath, {
-    encoder: gpuEncoder,
-    nvencPresets,
-    x265DolbyVisionOption,
-  });
+  const stop = new AbortController();
+  const signal = abortSignal ? AbortSignal.any([abortSignal, stop.signal]) : stop.signal;
+  const started = Date.now();
+  const encoder = await deps.spawnEncoder(outputPath, compositeEncoderOptions(request), signal);
+  const composite = deps.spawnComposite(buildCompositeDecodeArgs(request, concatListPath), signal);
+  const frameBytes = plan.width * plan.height * RGB48_BYTES_PER_PIXEL;
+  let framesWritten = 0;
+  let idleWaitMs = 0;
+  try {
+    for await (const frame of wholeFrames(composite.frames, frameBytes)) {
+      if (framesWritten >= plan.totalFrames) {
+        throw new Error("hdrPassthrough: the composite wrote more frames than the plan");
+      }
+      if (!(await encoder.writeFrame(frame))) {
+        throw new Error(
+          `hdrPassthrough: the encoder stopped: ${encoder.getExitError() ?? "exited early"}`,
+        );
+      }
+      framesWritten++;
+      const waitStart = Date.now();
+      await deps.waitForEncoder(encoder.pid, { ...ENCODER_IDLE, signal });
+      idleWaitMs += Date.now() - waitStart;
+      request.onFramesEncoded?.(framesWritten);
+    }
+    const decoded = await composite.wait();
+    if (!decoded.ok) throw new Error(`hdrPassthrough: ffmpeg composite failed: ${decoded.error}`);
+    if (framesWritten !== plan.totalFrames) {
+      throw new Error(
+        `hdrPassthrough: the composite wrote ${framesWritten} frames, expected ${plan.totalFrames}`,
+      );
+    }
+  } catch (error) {
+    stop.abort(error);
+    await encoder.close().catch(() => undefined);
+    await composite.wait().catch(() => undefined);
+    if (abortSignal?.aborted) throw abortSignal.reason;
+    throw error;
+  }
 
   let framesEncoded = 0;
-  const readStats = ffmpegStatsReader(({ frames }) => {
-    if (frames === undefined || frames <= framesEncoded) return;
-    framesEncoded = frames;
-    request.onFramesEncoded?.(frames);
+  const result = await encoder.close((frames) => {
+    framesEncoded = Math.max(framesEncoded, frames);
   });
-  const result = await runFfmpeg(args, { signal: abortSignal, onStderr: readStats });
-  if (abortSignal?.aborted) throw abortError(abortSignal);
+  if (abortSignal?.aborted) throw abortSignal.reason;
   if (!result.success) {
-    throw new Error(
-      `hdrPassthrough: ffmpeg composite failed: ${formatFfmpegError(result.exitCode, result.stderr)}`,
-    );
+    throw new Error(`hdrPassthrough: encode failed: ${result.error ?? "unknown error"}`);
   }
   if (framesEncoded !== plan.totalFrames) {
     throw new Error(
       `hdrPassthrough: ffmpeg encoded ${framesEncoded} frames, expected ${plan.totalFrames}`,
     );
   }
-  let fileSize = 0;
-  try {
-    fileSize = statSync(outputPath).size;
-  } catch {
-    fileSize = 0;
+  if (result.fileSize <= 0) {
+    throw new Error(`hdrPassthrough: the encode wrote no output at ${outputPath}`);
   }
-  if (fileSize <= 0) {
-    throw new Error(`hdrPassthrough: ffmpeg composite wrote no output at ${outputPath}`);
-  }
-  return { encodeMs: result.durationMs, framesEncoded, fileSize };
+  return {
+    encodeMs: Date.now() - started,
+    idleWaitMs,
+    framesEncoded,
+    fileSize: result.fileSize,
+  };
 }

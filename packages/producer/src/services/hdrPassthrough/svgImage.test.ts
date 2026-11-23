@@ -13,31 +13,73 @@ describe("svgImageVerdict", () => {
     [
       "a character reference spelling animation in <style>",
       `<svg ${SVG}><style>rect{anim&#97;tion:spin 1s linear infinite} &#64;keyframes spin{to{fill:blue}}</style><rect/></svg>`,
-      "an SVG whose CSS animates",
+      "an SVG with a <style> element",
     ],
     [
-      "a hex character reference spelling @keyframes",
-      `<svg ${SVG}><style>&#x40;key&#x66;rames s{to{opacity:0}}</style></svg>`,
-      "an SVG whose CSS animates",
+      "a static <style>",
+      `<svg ${SVG}><style>rect { fill: #f00 }</style><rect/></svg>`,
+      "an SVG with a <style> element",
     ],
     [
-      "a CSS escape",
-      `<svg ${SVG}><style>rect{anim\\61tion:spin 1s infinite}</style></svg>`,
-      "an SVG whose CSS has an escape",
+      "a comment splitting animation inside <style>",
+      `<svg ${SVG}><style>rect{anim<!---->ation:spin 1s infinite}@keyframes spin{to{fill:blue}}</style><rect/></svg>`,
+      "an SVG with a <style> element",
     ],
     [
-      "an animation in CDATA",
-      `<svg ${SVG}><style><![CDATA[rect{transition:fill 1s}]]></style></svg>`,
-      "an SVG whose CSS animates",
+      "a comment splitting @keyframes inside an XHTML <style> in <metadata>",
+      `<svg ${SVG} xmlns:h="http://www.w3.org/1999/xhtml"><metadata><h:style>rect{animation:s 1s infinite}@key<!---->frames s{to{fill:blue}}</h:style></metadata><rect/></svg>`,
+      "an SVG with an element outside the SVG namespace",
+    ],
+    [
+      "CDATA splitting animation",
+      `<svg ${SVG}><g>anim<![CDATA[ation]]></g></svg>`,
+      "an SVG with a CDATA section",
+    ],
+    [
+      "an XHTML <style> under its default namespace in <metadata>",
+      `<svg ${SVG}><metadata><style xmlns="http://www.w3.org/1999/xhtml">rect{animation:s 1s infinite}</style></metadata><rect/></svg>`,
+      "an SVG with an element outside the SVG namespace",
+    ],
+    ["a comment", `<svg ${SVG}><!-- icon --><rect/></svg>`, "an SVG with a comment"],
+    [
+      "a static style attribute",
+      `<svg ${SVG}><rect style="stroke:blue"/></svg>`,
+      "an SVG with a style attribute",
     ],
     [
       "an animation in a style attribute",
       `<svg ${SVG}><rect style="animation-name:&#x73;"/></svg>`,
-      "an SVG whose CSS animates",
+      "an SVG with a style attribute",
+    ],
+    [
+      "an event handler",
+      `<svg ${SVG}><rect onload="x()"/></svg>`,
+      "an SVG with a onload attribute",
+    ],
+    [
+      "an attribute in another namespace",
+      `<svg ${SVG} xmlns:q="urn:q"><rect q:fill="red"/></svg>`,
+      "an SVG with an attribute outside the static set (fill)",
+    ],
+    [
+      "an escape in a presentation attribute",
+      `<svg ${SVG}><rect fill="\\72 ed"/></svg>`,
+      "an SVG with an escape in an attribute",
+    ],
+    [
+      "a filter",
+      `<svg ${SVG}><filter id="f"><feFlood/></filter></svg>`,
+      "an SVG with a <filter> element",
+    ],
+    ["a link", `<svg ${SVG}><a href="#x"><rect/></a></svg>`, "an SVG with a <a> element"],
+    [
+      "editor metadata in another namespace",
+      `<svg ${SVG}><metadata><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/></metadata></svg>`,
+      "an SVG with an element outside the SVG namespace",
     ],
     [
       "a DOCTYPE with an entity",
-      `<!DOCTYPE svg [<!ENTITY a "animation">]><svg ${SVG}><style>rect{&a;:s 1s}</style></svg>`,
+      `<!DOCTYPE svg [<!ENTITY a "animation">]><svg ${SVG}><rect/></svg>`,
       "an SVG with a DOCTYPE or declaration",
     ],
     [
@@ -88,16 +130,12 @@ describe("svgImageVerdict", () => {
   it.each([
     ["shapes", `<svg ${SVG} width="4" height="4"><rect width="4" height="4" fill="red"/></svg>`],
     [
-      "a declaration, comments, gradients and a local use",
-      `<?xml version="1.0" encoding="UTF-8"?>\n<!-- icon --><svg ${SVG} xmlns:xlink="http://www.w3.org/1999/xlink"><defs><linearGradient id="g"><stop offset="0"/></linearGradient><path id="p" d="M0 0h4"/></defs><use xlink:href="#p" fill="url(#g)"/></svg>`,
+      "a declaration, gradients and a local use",
+      `<?xml version="1.0" encoding="UTF-8"?>\n<svg ${SVG} xmlns:xlink="http://www.w3.org/1999/xlink"><defs><linearGradient id="g"><stop offset="0" stop-color="#fff"/></linearGradient><path id="p" d="M0 0h4"/></defs><use xlink:href="#p" fill="url(#g)"/></svg>`,
     ],
     [
-      "static CSS and references",
-      `<svg ${SVG}><style>rect { fill: #f00 } g &gt; rect { opacity: .5 }</style><text>&#169; &amp; co</text><rect style="stroke:blue"/></svg>`,
-    ],
-    [
-      "editor metadata in another namespace",
-      `<svg ${SVG}><metadata><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description/></rdf:RDF></metadata><circle r="2"/></svg>`,
+      "text, references and metadata text",
+      `<svg ${SVG}><metadata>made by hand</metadata><text x="1" y="3" font-size="2" xml:space="preserve">&#169; &amp; co</text></svg>`,
     ],
     ["a byte order mark", `﻿<svg ${SVG}><g/></svg>`],
   ])("accepts %s", (_name, text) => {

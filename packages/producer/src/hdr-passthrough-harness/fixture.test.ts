@@ -278,6 +278,13 @@ describe("INELIGIBLE_CASES", () => {
     expect(svg("svg-prefixed-smil")).not.toMatch(/<animate/);
     expect(svg("svg-reference-css")).toContain("anim&#97;tion");
     expect(svg("svg-reference-css")).not.toMatch(/animation|@keyframes/);
+    // Split names the browser joins back after parsing, and an XHTML stylesheet it applies.
+    expect(svg("svg-comment-css")).toContain("anim<!---->ation");
+    expect(svg("svg-comment-css")).not.toContain("animation");
+    expect(svg("svg-comment-keyframes")).toContain("@key<!---->frames");
+    expect(svg("svg-comment-keyframes")).not.toContain("@keyframes");
+    expect(svg("svg-cdata-css")).toContain("anim<![CDATA[ation]]>");
+    expect(svg("svg-xhtml-style")).toContain("<metadata><h:style>");
   });
 
   it("drives the seek-hook cases from the runtime's seek, not from GSAP", () => {
@@ -423,6 +430,10 @@ describe("INELIGIBLE_CASES", () => {
       "paint-worklet",
       "svg-prefixed-smil",
       "svg-reference-css",
+      "svg-comment-css",
+      "svg-comment-keyframes",
+      "svg-cdata-css",
+      "svg-xhtml-style",
       "picker-icon-gif",
       "scroll-button-gif",
       "shadow-worker-canvas",
@@ -432,12 +443,14 @@ describe("INELIGIBLE_CASES", () => {
     ]);
   });
 
-  it("expects the passthrough only where the page reads back a record or keeps seek history", () => {
+  it("expects the passthrough only where the page reads back a record, keeps seek history or times a pause", () => {
     const takes = INELIGIBLE_CASES.filter((c) => c.takesPassthrough);
     expect(takes.map((c) => c.name)).toEqual([
       "tostring-painter",
       "scroll-clamp",
       "lazy-decode-popover",
+      "pause-timer",
+      "pause-mark",
     ]);
     for (const c of takes) expect(c.wallClock).toBeUndefined();
   });

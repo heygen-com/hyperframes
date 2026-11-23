@@ -16,8 +16,9 @@
  *   apart, list what changed since load) run in the page through
  *   intrinsics captured before any page script ran (`CAPTURE_SOURCE`, taken
  *   by `registrationWatch.ts` at the first statement of the document's
- *   first script), on objects with no prototype, reading own descriptors
- *   only;
+ *   first script on the analysis page, and by a script DevTools adds to the
+ *   new document on the capture page, `unpausedWatch.ts`), on objects with
+ *   no prototype, reading own descriptors only;
  * - and before any of the passthrough's in-page probes runs, every builtin
  *   of the main world is compared with what it was at that point
  *   (`findChangedIntrinsics`): a builtin, getter or prototype the page
@@ -41,8 +42,8 @@ type Client = Awaited<ReturnType<typeof getCdpSession>>;
 export const CAPTURE_OBJECT_GROUP = "hf-hdr-passthrough-capture";
 
 /**
- * Evaluated at the first statement of the document's first script, before
- * any page script: every own property of the global object and of each
+ * Evaluated before any page script (at the first statement of the document's
+ * first script, or as a new-document script): every own property of the global object and of each
  * global constructor, its prototype and the namespaces the probes use, and
  * the references the passthrough's other checks start from. Plain ES5 text,
  * never transpiled.
@@ -142,6 +143,7 @@ export const CAPTURE_SOURCE = String.raw`(function () {
     addWorkletModule: ref(["Worklet", "prototype", "addModule"]),
     transferControlToOffscreen: ref(["HTMLCanvasElement", "prototype", "transferControlToOffscreen"]),
     OffscreenCanvas: ref(["OffscreenCanvas"]),
+    ViewTransition: ref(["ViewTransition"]),
     startViewTransition: ref(["Document", "prototype", "startViewTransition"]),
     open: ref(["open"])
   };

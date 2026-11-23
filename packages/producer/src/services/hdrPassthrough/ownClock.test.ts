@@ -63,7 +63,7 @@ describe("imageVerdict", () => {
     [
       "SVG with CSS animation",
       '<svg xmlns="http://www.w3.org/2000/svg"><style>@keyframes s{to{opacity:0}}</style></svg>',
-      "an SVG whose CSS animates",
+      "an SVG with a <style> element",
     ],
     [
       "SVG embedding a data: GIF",
@@ -78,7 +78,7 @@ describe("imageVerdict", () => {
     [
       "SVG whose CSS animation is spelled with character references",
       '<svg xmlns="http://www.w3.org/2000/svg"><style>rect{anim&#97;tion:s 1s infinite} &#64;keyframes s{to{fill:blue}}</style><rect/></svg>',
-      "an SVG whose CSS animates",
+      "an SVG with a <style> element",
     ],
     ["truncated GIF", gif(1).slice(0, 20), "a GIF the passthrough cannot read"],
     ["unknown format", ascii("JXL?"), "an image of a format the passthrough does not read"],
