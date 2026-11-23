@@ -188,6 +188,7 @@ function pinTo(media: HTMLMediaElement, chosen: string): void {
 
 function unpin(media: HTMLMediaElement): void {
   for (const [el, type] of pinned.get(media) ?? []) {
+    if (el.getAttribute("type") !== PINNED_OUT) continue;
     if (type === null) el.removeAttribute("type");
     else el.setAttribute("type", type);
   }

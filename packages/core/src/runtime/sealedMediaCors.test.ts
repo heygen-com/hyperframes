@@ -311,6 +311,22 @@ describe("corsForSealedMedia", () => {
       "anonymous",
     ]);
   });
+  it("keeps a type the composition writes on a source sitting out a reload", async () => {
+    vi.stubGlobal("origin", "null");
+    observer = corsForSealedMedia();
+    const video = add(
+      `<video><source src="https://cdn.example.com/x.webm"><source src="media/own.mp4"></video>`,
+    ).querySelector("video")!;
+    await settled();
+    vi.spyOn(video, "load").mockImplementation(() => {});
+    const [foreign] = video.querySelectorAll("source");
+    foreign!.dispatchEvent(new Event("error"));
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    foreign!.setAttribute("type", "video/webm");
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    expect(foreign!.getAttribute("type")).toBe("video/webm");
+  });
+
   it("follows the first source the browser would pick when the list changes", async () => {
     vi.stubGlobal("origin", "null");
     observer = corsForSealedMedia();
