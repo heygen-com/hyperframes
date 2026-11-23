@@ -7,6 +7,7 @@ import type { TimelineAssetKind } from "./timelineAssetDrop";
 import { roundToCenti } from "./rounding";
 import { studioApiFetch } from "./studioApiFetch";
 import { encodeUrlPath } from "@hyperframes/parsers";
+import { keyHint } from "../player/components/studioShortcuts";
 
 export interface EditingFile {
   path: string;
@@ -33,6 +34,10 @@ export interface AgentModalAnchorPoint {
 
 export function getTimelineElementLabel(element: TimelineElement): string {
   return element.label || element.id || element.tag;
+}
+
+export function deletedNotice(label: string, count: number): string {
+  return `Deleted ${label}. Undo (${keyHint("undo")}) restores ${count === 1 ? "it" : "them"}.`;
 }
 
 function normalizeProjectAssetPath(value: string): string {

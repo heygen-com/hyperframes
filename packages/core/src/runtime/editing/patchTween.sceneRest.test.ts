@@ -72,10 +72,10 @@ describe("patch-tweens on a scene that rests", () => {
     ]);
   });
 
-  it("answers not patched when the patched set sits in a child timeline that already ended", () => {
+  it("draws the patched set in a child timeline that already ended, and answers patched", () => {
     load(1, (a) => a.add(gsap.timeline().set("#a", { x: 40 }, 0), 0));
-    expect(patchA(300)).toEqual({ patched: false });
-    expect(shownX("#a")).toBe(40);
+    expect(patchA(300)).toEqual({ patched: true });
+    expect(shownX("#a")).toBe(300);
   });
 
   it("answers patched for a keyframe-step edit once the tween that replaced it renders", () => {
@@ -92,10 +92,72 @@ describe("patch-tweens on a scene that rests", () => {
     expect(shownX("#a")).toBe(90);
   });
 
-  it("answers not patched when nothing draws the scene it changed", () => {
+  it("draws the patch itself when no player seeks the scene it changed", () => {
     load(1);
     delete window.__player;
-    expect(patchA(300)).toEqual({ patched: false });
+    expect(patchA(300)).toEqual({ patched: true });
+    expect(shownX("#a")).toBe(300);
+  });
+});
+
+// fails without the fix: a Studio preview's seek paints a tick later, so the frame answered not patched while
+// the patched hold painted next tick under the drag's drawn offset (the 312 px flash on the edit bench).
+describe("patch-tweens when the player's seek paints a tick later, as a Studio preview's does", () => {
+  beforeEach(() => {
+    resetRuntimeFixtureDom();
+    window.gsap = gsap as unknown as typeof window.gsap;
+  });
+  afterEach(() => {
+    window.__hfRuntimeTeardown?.();
+    vi.restoreAllMocks();
+    delete window.__player;
+    delete window.__playerReady;
+    delete window.__hf;
+  });
+
+  it("draws a patched root hold in the patch's own task, and answers patched", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true" data-duration="10">` +
+      `<div id="target"></div><div id="other"></div></div>`;
+    const main = gsap.timeline({ paused: true });
+    main.to("#other", { x: 120, duration: 10 }, 0).set("#target", { x: 200, y: 126 }, 0);
+    window.__timelines = { main } as unknown as Record<string, RuntimeTimelineLike>;
+    initSandboxRuntimeModular();
+    window.__player?.seek(1.5);
+    vi.spyOn(window.__player!, "seek").mockImplementation(() => undefined);
+
+    const reply = patchTweens({
+      patches: [{ selector: "#target", change: { kind: "set", props: { x: -60, y: -47 } } }],
+      seek: true,
+    });
+
+    expect(reply).toEqual({ patched: true });
+    expect([gsap.getProperty("#target", "x"), gsap.getProperty("#target", "y")]).toEqual([
+      -60, -47,
+    ]);
+  });
+
+  it("draws a patched hold on a yoyo timeline's second pass without rewinding it to the first", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true" data-duration="10">` +
+      `<div id="target"></div><div id="other"></div></div>`;
+    const pass = gsap.timeline({ repeat: 1, yoyo: true });
+    pass.set("#target", { x: 200 }, 0).to("#other", { x: 120, duration: 1 }, 0);
+    const main = gsap.timeline({ paused: true }).to({}, { duration: 10 }, 0).add(pass, 0);
+    window.__timelines = { main } as unknown as Record<string, RuntimeTimelineLike>;
+    initSandboxRuntimeModular();
+    window.__player?.seek(1.25);
+    vi.spyOn(window.__player!, "seek").mockImplementation(() => undefined);
+    const secondPass = pass.totalTime();
+    expect(secondPass).toBeGreaterThan(1);
+
+    const reply = patchTweens({
+      patches: [{ selector: "#target", change: { kind: "set", props: { x: -60 } } }],
+      seek: true,
+    });
+
+    expect(reply).toEqual({ patched: true });
+    expect([gsap.getProperty("#target", "x"), pass.totalTime()]).toEqual([-60, secondPass]);
   });
 });
 
