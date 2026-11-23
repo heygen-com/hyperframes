@@ -1982,18 +1982,23 @@ describe("claim: a writer that records after writing", () => {
     utimesSync(file, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
 
   // fails without the fix: the import's claim logged the save as a change from outside, the save's own claim then
-  // found nothing, and Cmd+Z took back the import instead of the edit.
+  // found nothing, and Cmd+Z took back the import instead of the edit. Both files share one modified time, as two
+  // writes a few milliseconds apart do on a file system with a coarse clock.
   it("a save made while an import is still taken in keeps its own step: Cmd+Z undoes the edit, the media stays", async () => {
     const { history, write, read, has, projectDir } = await project(
       { "index.html": "<h1>Hello</h1>" },
       { quietMs: 60_000 },
     );
     write("assets/logo.png", "png");
-    backdate(join(projectDir, "assets/logo.png"));
     write("index.html", "<h1>Two</h1>");
+    const at = new Date();
+    for (const file of ["assets/logo.png", "index.html"])
+      utimesSync(join(projectDir, file), at, at);
     await pendingOutside(history, "index.html");
-    await history.claim(you, "Imported media", ["assets/logo.png"]);
-    await history.claim(you, "Edited", ["index.html"]);
+    await Promise.all([
+      history.claim(you, "Imported media", ["assets/logo.png"]),
+      history.claim(you, "Edited", ["index.html"]),
+    ]);
     expect(history.list().map((entry) => entry.label)).toEqual(["Imported media", "Edited"]);
     expect(await history.step("back", you)).toMatchObject({ ok: true });
     expect(read("index.html")).toBe("<h1>Hello</h1>");
