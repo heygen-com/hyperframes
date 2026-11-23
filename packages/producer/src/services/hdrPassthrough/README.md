@@ -374,6 +374,11 @@ from ffmpeg's frame count and reports 35–80%.
   a flag-off render either: the layered path makes one seek fewer before
   frame 0 after a fallback (`raf-counter` shows `n=4` where flag off shows
   `n=5`). Both are the layered path; the passthrough itself never shipped.
+  The same holds for a page that counts the builtins the renderer's page
+  code calls: one that counts `indexOf`, `split`, `test` and `exec` calls
+  shows 15 more before frame 0 after a fallback, then the same count per
+  frame. The shim's callback record is not the cause: a flag-off render with
+  the record forced into its shim decodes identical to one without.
 - `hf-seek` listeners are read once, after the page loads; one added later
   is left to the verification probes.
 - With a warm extraction cache, deferral costs a probe (about 0.3 s) that a
@@ -413,3 +418,33 @@ the noise). The 3 s fixtures where a selector dims the video between layout
 samples, or page code on seeks changes a popover, highlight, `:state()`,
 selection, option, validity or shadow-root canvas, fall back and decode
 identical to flag off.
+
+With script origins from how V8 compiled each script and the watch counting
+from load (eligibility's probes included), on main merged at 7f54fded08 and
+ffmpeg 8.0.1, the 20 s fixtures still take the passthrough and decode
+identical to flag off (framemd5 600/600, stream and frame side data equal):
+
+| transfer | `captions` off / on     | `captions-gsap` off / on |
+| -------- | ----------------------- | ------------------------ |
+| HLG      | 281.5 s / 161.5 s, 1.7x | 330.0 s / 183.1 s, 1.8x  |
+| PQ       | 989.8 s / 249.1 s, 4.0x | 298.0 s / 82.2 s, 3.6x   |
+
+The host ran up to four renders and the integration lanes at once, so the
+ratios are not comparable with the tables above. The watch's own cost, on
+`captions-gsap` 20 s HLG flag on, renders run alone and alternated with the
+watch armed and with it stubbed out (a local switch, not in the tree): job
+time 35.9 / 73.6 / 55.4 s with it against 39.8 / 76.4 / 50.7 s without,
+capture 12.3 / 17.8 / 15.7 s against 14.0 / 17.3 / 14.7 s, inside the
+noise. In isolation, 600 seek-and-read evaluations on one page took 16-27 %
+longer with the watch (231-376 ms against 199-303 ms), about 0.1 ms a seek.
+
+The 3 s fixtures whose page code defines the seek-time setter through an
+inserted script, eval, `new Function`, a renderer or DevTools script name, a
+string timer or a file named like GSAP, or the GSAP proxy through an inserted
+script, all fall back with `seek_callback` and decode identical to flag off
+(HLG on ffmpeg 7.0.2, PQ on ffmpeg 8.0.1); before this change the first
+three took the passthrough with 15/90, 0/90 and 15/90 frames identical (HLG,
+7.0.2). `builtins-counter` falls back and decodes identical on both. A page
+that counts the builtins it replaced on every animation frame
+(`pst-builtins`, SDR) renders identical to main with the flag off (60/60;
+60/60 differed before) and identical to flag off with it on.

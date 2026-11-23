@@ -772,15 +772,18 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     assets: ["gsap"],
   },
   {
-    // A page that replaces builtins the renderer's page scripts call and shows how often they ran,
-    // from an animation-frame loop. It declines on the loop; the flag-on render's layered fallback
-    // must still match the flag-off render frame for frame, so nothing the passthrough adds to the
-    // page may call what the page replaced.
+    // A page that replaces the builtins a shim could parse stacks and keep lists with, and shows
+    // how many ran while its own requestAnimationFrame / setTimeout / setInterval calls were in
+    // progress, i.e. inside the shim's wrappers: zero with the shim as it is without the feature.
+    // It declines on its animation-frame loop; the flag-on render's layered fallback must still
+    // match the flag-off render frame for frame, so the callback record the passthrough adds to
+    // the shim must call none of them. (It counts only calls inside the wrappers: a fallback render
+    // seeks its page a different number of times before frame 0, see the README's limitations.)
     name: "builtins-counter",
     reason: "seek_callback",
     composition: {
       cues: [],
-      headHtml: `<script>(() => { window.__calls = 0; const count = (owner, key) => { const original = owner[key]; owner[key] = function () { window.__calls++; return original.apply(this, arguments); }; }; count(Array.prototype, "indexOf"); count(Array.prototype, "push"); count(Array.prototype, "slice"); count(String.prototype, "split"); count(String.prototype, "indexOf"); count(String.prototype, "slice"); count(RegExp.prototype, "test"); count(RegExp.prototype, "exec"); Error.prepareStackTrace = function (error, frames) { window.__calls++; return String(error); }; requestAnimationFrame(function loop() { const el = document.getElementById("seek-counter"); if (el) el.textContent = "calls=" + window.__calls; requestAnimationFrame(loop); }); })();</script>`,
+      headHtml: `<script>(() => { let inside = false; window.__leaks = 0; const watch = (owner, key) => { const original = owner[key]; owner[key] = function () { if (inside) window.__leaks++; return original.apply(this, arguments); }; }; for (const key of ["indexOf", "includes", "lastIndexOf"]) watch(Array.prototype, key); for (const key of ["split", "indexOf", "lastIndexOf", "slice"]) watch(String.prototype, key); for (const key of ["test", "exec"]) watch(RegExp.prototype, key); Error.prepareStackTrace = function (error) { if (inside) window.__leaks++; return String(error); }; const register = (fn, ...args) => { inside = true; try { return fn(...args); } finally { inside = false; } }; const noop = () => {}; requestAnimationFrame(function loop() { const el = document.getElementById("seek-counter"); if (el) el.textContent = "leaks=" + window.__leaks; register(requestAnimationFrame, loop); clearTimeout(register(setTimeout, noop, 1e9)); clearInterval(register(setInterval, noop, 1e9)); }); })();</script>`,
       overlayHtml: `<div id="seek-counter" style="${BADGE_STYLE};width:auto;color:#fff;font:700 40px sans-serif"></div>`,
     },
   },

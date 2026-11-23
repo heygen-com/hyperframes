@@ -345,17 +345,19 @@ describe("INELIGIBLE_CASES", () => {
     expect(find("setter-highlight").composition.headHtml).toContain("CSS.highlights.set");
   });
 
-  it("counts the builtins the page replaced on screen, from an animation-frame loop", () => {
+  it("shows the builtins that ran inside the shim's wrappers, from an animation-frame loop", () => {
     const c = INELIGIBLE_CASES.find((x) => x.name === "builtins-counter")!;
     expect(c.reason).toBe("seek_callback");
-    for (const builtin of [
-      'Array.prototype, "indexOf"',
-      'String.prototype, "split"',
-      'RegExp.prototype, "test"',
-    ]) {
+    for (const builtin of ['"split"', '"indexOf"', '"test"', '"exec"', "Error.prepareStackTrace"]) {
       expect(c.composition.headHtml).toContain(builtin);
     }
-    expect(c.composition.headHtml).toContain("requestAnimationFrame(function loop");
+    for (const call of [
+      "register(requestAnimationFrame",
+      "register(setTimeout",
+      "register(setInterval",
+    ]) {
+      expect(c.composition.headHtml).toContain(call);
+    }
   });
 
   it("ships the assets each case references", () => {
