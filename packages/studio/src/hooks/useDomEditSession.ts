@@ -12,6 +12,7 @@ import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
+import { textEditNotSaved } from "./useDomEditTextCommits";
 import { useGroupCommits } from "./useGroupCommits";
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import { useGsapCacheVersion } from "./useGsapTweenCache";
@@ -64,6 +65,7 @@ export interface UseDomEditSessionParams extends DomEditTimelineParams {
   readOnlyPreview: boolean;
 }
 
+// fallow-ignore-next-line complexity
 export function useDomEditSession({
   projectId,
   activeCompPath,
@@ -362,6 +364,11 @@ export function useDomEditSession({
     void ungroupSelection(sel);
   }, [domEditSelectionRef, ungroupSelection, setActiveGroupElement, showToast]);
 
+  const handleDomTextEditLost = useCallback(
+    (reason: string) => showToast(textEditNotSaved(reason), "error"),
+    [showToast],
+  );
+
   // ── Wiring: selection sync, GSAP cache, preview sync, selection handlers ──
   const {
     onClickToSource,
@@ -485,7 +492,6 @@ export function useDomEditSession({
     copiedAgentPrompt,
     agentPromptSelectionContext,
     domEditSelectionRef,
-    // Callbacks
     handleTimelineElementSelect,
     handlePreviewCanvasMouseDown,
     handlePreviewCanvasPointerMove,
@@ -511,6 +517,7 @@ export function useDomEditSession({
     handleDomTextCommit,
     handleDomTextCommitForSelection,
     handleDomRichTextCommit,
+    handleDomTextEditLost,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,

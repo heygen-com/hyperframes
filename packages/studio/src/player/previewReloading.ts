@@ -3,6 +3,8 @@ import { thumbnailScheduler } from "./lib/thumbnailScheduler";
 let reloading = false;
 let reloadRequested = false;
 let scriptWrites = 0;
+let changes = 0;
+export const previewChangesOutsideTextSaves = (): number => changes;
 // A press gave up on the change in progress (a save that never returns); later ones do not wait on it again.
 let givenUp = false;
 
@@ -21,6 +23,7 @@ export function giveUpOnPreviewChange(): void {
 }
 
 export function setPreviewReloading(next: boolean): void {
+  if (next) changes += 1;
   reloading = next;
   thumbnailScheduler.setPreviewReloading(next);
   noteIdle();
@@ -28,6 +31,7 @@ export function setPreviewReloading(next: boolean): void {
 
 /** Studio asked for a reload that has not begun yet; `previewReloadBegun` closes that gap. */
 export function requestPreviewReload(): void {
+  changes += 1;
   reloadRequested = true;
   noteIdle();
 }
@@ -39,6 +43,7 @@ export function previewReloadBegun(): void {
 
 /** A script write, scene swap or history step counts from its send until its preview update is applied, or it fails. */
 export async function whileScriptWrites<T>(write: () => Promise<T>): Promise<T> {
+  changes += 1;
   scriptWrites += 1;
   noteIdle();
   try {
