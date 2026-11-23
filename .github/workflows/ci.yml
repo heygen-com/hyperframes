@@ -1193,8 +1193,11 @@ jobs:
             node packages/studio/tests/e2e/timeline-snap-release.mjs || failed "snap release"
           STUDIO_URL="http://localhost:5316/#project/aroll-backdrop" \
             node packages/studio/tests/e2e/aroll-backdrop.mjs || failed "script-hidden backdrop"
-          STUDIO_URL="http://localhost:5316/#project/fade-handles" \
+          STUDIO_URL="http://localhost:5316/" \
             node packages/studio/tests/e2e/preview-failure-retry.mjs || failed "preview failure retry"
+          rm -rf packages/studio/data/projects/inline-text-caret
+          cp -R packages/studio/tests/e2e/fixtures/inline-text-caret \
+            packages/studio/data/projects/inline-text-caret
           rm -rf packages/studio/data/projects/graded-video-transitions
           cp -R packages/studio/tests/e2e/fixtures/graded-video-transitions \
             packages/studio/data/projects/graded-video-transitions

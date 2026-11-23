@@ -466,10 +466,9 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       // Standing aside is the only way the caret below can be reached, and is
       // what keeps selection, drag and marquee from firing mid-edit.
       className={`absolute inset-0 z-10 outline-hidden ${
-        inlineText.editing || hostInput || previewFailed
-          ? "pointer-events-none"
-          : "pointer-events-auto"
+        inlineText.editing || hostInput ? "pointer-events-none" : "pointer-events-auto"
       }`}
+      inert={previewFailed}
       data-editing-text={inlineText.editing ? "true" : undefined}
       tabIndex={-1}
       aria-label="Composition canvas"
