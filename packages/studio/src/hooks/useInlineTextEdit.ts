@@ -424,6 +424,10 @@ export function useInlineTextEdit({
     return handedOff(open.element, saving);
   }, [onCommit, teardown, endSealed]);
   const commit = useCallback(() => void save(), [save]);
+  const previewFailed = usePlayerStore((state) => state.previewFailed);
+  useEffect(() => {
+    if (previewFailed) commit();
+  }, [previewFailed, commit]);
 
   const cancel = useCallback(() => {
     const open = openRef.current;

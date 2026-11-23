@@ -55,6 +55,13 @@ describe("the canvas menu's way in", () => {
     expect(menu().contextMenu).toMatchObject({ x: 40, y: 30 });
   });
 
+  it("closes an open menu when the preview fails", async () => {
+    const { menu, release } = mountHeld();
+    await release();
+    act(() => usePlayerStore.getState().setPreviewFailed(true));
+    expect(menu().contextMenu).toBeNull();
+  });
+
   it("stays shut when the preview fails while the right-click's hit test is still out", async () => {
     const { menu, release } = mountHeld();
     act(() => usePlayerStore.getState().setPreviewFailed(true));

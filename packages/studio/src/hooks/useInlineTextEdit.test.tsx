@@ -689,6 +689,20 @@ describe("an undo that lands while a text edit is open", () => {
     act(() => root.unmount());
   });
 
+  it("saves an open edit when the preview fails, as leaving it does", () => {
+    const element = heading("Motion");
+    const { controls, root, onCommit } = mount();
+    act(() => {
+      controls().start(element);
+    });
+    element.textContent = "Motion kept";
+    act(() => usePlayerStore.getState().setPreviewFailed(true));
+    usePlayerStore.getState().setPreviewFailed(false);
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ html: "Motion kept" }));
+    act(() => root.unmount());
+  });
+
   it("refuses to open an edit while the preview has failed, so a press already on its way does nothing", () => {
     const element = heading();
     const { controls, root, onPause } = mount();
