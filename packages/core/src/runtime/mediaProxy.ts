@@ -49,7 +49,7 @@ import {
   type PreviewSourceFacts,
   wantsLighterCopy,
 } from "../previewProxyBox";
-import { capturePageIn, PREVIEW_FILE_SIZE_ATTR } from "../studioPreviewMark";
+import { capturePageIn, captureStillsIn, PREVIEW_FILE_SIZE_ATTR } from "../studioPreviewMark";
 
 /**
  * One entry per project-root-relative asset pathname, injected by the
@@ -477,12 +477,13 @@ function emitUnavailableDiagnostic(
 }
 
 /** Holds `el` with no src while its copy is made (readers still see its file); false with no src to hold. */
-function holdForCopy(el: HTMLMediaElement): boolean {
+function holdForCopy(el: HTMLMediaElement, holdsCaptures = true): boolean {
   const authored = unproxiedSrc(el);
   if (authored === null) return false;
   heldForCopy.set(el, inPointOf(el));
   recordOpenedAtInPoint(el, authored, null);
   stopMediaDownload(el);
+  if (!holdsCaptures) return true;
   holdFrameCaptures(
     new Promise((landed) => {
       el.addEventListener("loadeddata", landed, { once: true });
@@ -658,9 +659,37 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
 }
 
 function lightenIfHeavy(el: HTMLMediaElement, entry: MediaCodecMapEntry | null): void {
-  if (capturePageIn(document) || swappedElements.has(el) || proxyRequested.has(el)) return;
+  if (swappedElements.has(el) || proxyRequested.has(el)) return;
+  if (capturePageIn(document)) return holdForCaptureStill(el);
   const facts = sourceFactsOf(el);
   if (facts) swapToProxy(el, entry, "light", facts);
+}
+
+const captureStills = new WeakSet<HTMLMediaElement>();
+
+/** On a one-shot capture, a file with at least twice the pixels it is drawn at (#7723's rule) is never decoded. */
+function holdForCaptureStill(el: HTMLMediaElement): void {
+  const facts = captureStillsIn(document) && isVideoElement(el) ? sourceFactsOf(el) : null;
+  const box = facts ? shownBox(el, 1) : null;
+  if (facts && box && isOversizedForPreview(facts, box) && holdForCopy(el, false))
+    captureStills.add(el);
+}
+
+/** Each media pass: such a clip on screen shows the server's frame at the playhead; a capture waits for it. */
+export function standInCaptureStill(el: HTMLMediaElement, onScreen: boolean): void {
+  const file = onScreen && captureStills.has(el) ? unproxiedSrc(el) : null;
+  const at = file === null ? undefined : sourceTimeAtPlayhead(el);
+  if (file === null || at === undefined) return;
+  const url = new URL(
+    appendProxyParam(file, copyVariant(codecEntryOf(el)), shownBox(el, 1), true),
+    document.baseURI,
+  );
+  url.searchParams.set(PREVIEW_PROXY_STILL_PARAM, at.toFixed(3));
+  if (el.getAttribute("poster") === url.href) return;
+  el.setAttribute("poster", url.href);
+  const drawn = new Image();
+  holdFrameCaptures(new Promise((landed) => (drawn.onload = drawn.onerror = landed)));
+  drawn.src = url.href;
 }
 
 function applyPreviewQuality(el: HTMLMediaElement): void {

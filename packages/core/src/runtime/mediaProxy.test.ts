@@ -29,7 +29,11 @@ vi.mock("./bridge", () => ({
 import { postRuntimeMessage } from "./bridge";
 import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
 import { resetCopyReporting } from "./previewCopies";
-import { STUDIO_PREVIEW_CAPTURE_MODE, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
+import {
+  CAPTURE_STILLS,
+  STUDIO_PREVIEW_CAPTURE_MODE,
+  STUDIO_PREVIEW_MARK_META,
+} from "../studioPreviewMark";
 
 const postRuntimeMessageMock = vi.mocked(postRuntimeMessage);
 
@@ -1352,6 +1356,88 @@ describe("preview quality: lighter copies of heavy files", () => {
       } finally {
         mark.remove();
       }
+    });
+
+    describe("on a one-shot capture page that asked for stills", () => {
+      const marks: HTMLMetaElement[] = [];
+      beforeEach(() => {
+        for (const [name, content] of [
+          [STUDIO_PREVIEW_MARK_META, STUDIO_PREVIEW_CAPTURE_MODE],
+          [CAPTURE_STILLS, ""],
+        ]) {
+          const mark = document.head.appendChild(document.createElement("meta"));
+          mark.name = name!;
+          mark.content = content!;
+          marks.push(mark);
+        }
+      });
+      afterEach(() => marks.splice(0).forEach((mark) => mark.remove()));
+
+      const loads: Array<{ src: string; onload: (() => void) | null }> = [];
+      async function capturedAt(seconds: number, facts = HEAVY) {
+        loads.length = 0;
+        vi.stubGlobal(
+          "Image",
+          class {
+            onload: (() => void) | null = null;
+            onerror: (() => void) | null = null;
+            set src(src: string) {
+              loads.push(Object.assign(this, { src }));
+            }
+          },
+        );
+        vi.useFakeTimers();
+        const fetches = vi.fn(async () => new Response("x", { status: 206 }));
+        vi.stubGlobal("fetch", fetches);
+        const staged = await stage({ "/video.mp4": facts });
+        const el = staged.video();
+        staged.maybeProxyProactively(el);
+        const media = await import("./media");
+        const clip = { el, start: 0, mediaStart: 4, duration: 10, end: 10, volume: null };
+        media.syncRuntimeMedia({
+          clips: [{ ...clip, playbackRate: 1, loop: false, sourceDuration: null }],
+          timeSeconds: seconds,
+          playing: false,
+          playbackRate: 1,
+          getCompositionDuration: () => 0,
+        });
+        const seeks = await import("./adapters/seek-dispatch");
+        let captured = false;
+        void seeks.waitForSeekCompletion().then(() => (captured = true));
+        staged.standInCaptureStill(el, true);
+        await vi.advanceTimersByTimeAsync(100);
+        return { el, fetches, captured: () => captured };
+      }
+
+      // fails without the fix: the page decoded each 4K original on screen to paint a frame taken at tile size; three
+      // such clips at once took a Desktop poster page to 3.1 GB, and its memory guard closed it before the poster.
+      it("never loads a file twice its box, and shows the server's frame at the playhead, which the capture waits for", async () => {
+        const { el, fetches, captured } = await capturedAt(1.25);
+
+        expect([el.hasAttribute("src"), fetches.mock.calls.length]).toEqual([false, 0]);
+        const poster = new URL(el.getAttribute("poster")!, document.baseURI);
+        expect([...poster.searchParams]).toEqual([
+          ["hf-proxy", "auto"],
+          ["hf-proxy-box", "2048x1218"],
+          ["hf-proxy-light", "1"],
+          ["hf-proxy-still", "5.250"],
+        ]);
+        expect(loads.map((load) => load.src)).toEqual([poster.href]);
+        expect(captured()).toBe(false);
+        loads[0]!.onload!();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(captured()).toBe(true);
+      });
+
+      it("keeps a file under twice its box, and decodes it as before", async () => {
+        const { el } = await capturedAt(1.25, LIGHT);
+
+        expect([el.getAttribute("src"), el.hasAttribute("poster"), loads.length]).toEqual([
+          "/video.mp4",
+          false,
+          0,
+        ]);
+      });
     });
 
     it("is not given its file back as its clip comes due", async () => {
