@@ -23,10 +23,11 @@ fs.renameSync = ((from: fs.PathLike, to: fs.PathLike) => {
 syncBuiltinESMExports();
 
 const { openProjectHistory } = await import("../projectHistory.js");
+const onlyHeldFilesOwed = (path: string) => (path === "index.html" ? 60_000 : 100);
 const history = await openProjectHistory({
   projectDir: projectDir!,
   historyRoot: historyRoot!,
-  firstCopyFileMs: 100,
+  firstCopyFileMs: onlyHeldFilesOwed,
   now: () => Date.now() + 60_000,
   ...(closedWindow && { closedWindow: JSON.parse(closedWindow) }),
 });

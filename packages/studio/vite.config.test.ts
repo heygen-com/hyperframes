@@ -1,8 +1,24 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
-import config, { stableStylesCssPlugin } from "./vite.config";
+import { createServer } from "vite";
+import { describe, expect, it, vi } from "vitest";
+import config, { devProjectApi, stableStylesCssPlugin } from "./vite.config";
+
+const watchers = vi.hoisted(() => ({ open: new Set<object>(), closed: new Set<object>() }));
+vi.mock("chokidar", async (importOriginal) => {
+  const chokidar = await importOriginal<typeof import("chokidar")>();
+  return {
+    ...chokidar,
+    watch: (...args: Parameters<typeof chokidar.watch>) => {
+      const watcher = chokidar.watch(...args);
+      const close = watcher.close.bind(watcher);
+      watchers.open.add(watcher);
+      watcher.close = () => (watchers.closed.add(watcher), close());
+      return watcher;
+    },
+  };
+});
 
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf8")) as {
   publishConfig: { exports: Record<string, string> };
@@ -85,5 +101,20 @@ describe("stableStylesCssPlugin", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("devProjectApi", () => {
+  // fails without the fix: the project watcher closed only with an http server, so `vitest list` never exited.
+  it("closes its project watcher when a server with no http server closes", async () => {
+    const server = await createServer({
+      configFile: false,
+      logLevel: "silent",
+      plugins: [devProjectApi()],
+      server: { middlewareMode: true, ws: false },
+    });
+    expect(watchers.open.size).toBe(1);
+    await server.close();
+    expect(watchers.closed).toEqual(watchers.open);
   });
 });

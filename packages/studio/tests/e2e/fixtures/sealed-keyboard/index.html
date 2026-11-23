@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Sealed keyboard</title>
+    <style>
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: #0f172a;
+      }
+      #plain {
+        position: absolute;
+        left: 120px;
+        top: 120px;
+        width: 480px;
+        height: 320px;
+        background: #22c55e;
+      }
+      #field {
+        position: absolute;
+        left: 900px;
+        top: 120px;
+        width: 720px;
+        height: 160px;
+        font: 64px sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <main
+      id="root"
+      data-composition-id="root"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="10"
+    >
+      <div id="plain" class="clip" data-start="0" data-duration="10" data-track-index="1"></div>
+      <input id="field" class="clip" data-start="0" data-duration="10" data-track-index="2" />
+    </main>
+  </body>
+</html>

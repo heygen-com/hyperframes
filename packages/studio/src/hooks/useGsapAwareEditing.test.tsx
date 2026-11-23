@@ -288,6 +288,25 @@ describe("useGsapAwareEditing keeps the box route a resize chose at press", () =
   });
 });
 
+describe("useGsapAwareEditing tells the resize how its save wrote the size", () => {
+  // fails without the fix: a scale tween on the element read as "saved as scale" whatever the writer did.
+  it.each([
+    ["as GSAP scale keys", { status: "persisted", savedAsScale: true }, true],
+    ["as width and height, beside an instant scale hold", { status: "element-size" }, false],
+    ["as width and height in a size tween", { status: "persisted" }, false],
+  ])("%s", async (_, outcome, asScale) => {
+    mocks.resize.mockResolvedValue(outcome);
+    const animation = { id: "a", propertyGroup: "scale" } as GsapAnimation;
+    const h = mountResizeHandler([animation]);
+    const route: { plainTranslate: boolean; sizeSavedAsScale?: boolean } = {
+      plainTranslate: false,
+    };
+    await act(() => h.resize(h.selection, { width: 300, height: 200 }, undefined, vi.fn(), route));
+    expect(route.sizeSavedAsScale).toBe(asScale);
+    act(() => h.root.unmount());
+  });
+});
+
 describe("useGsapAwareEditing refuses a group GSAP took over before writing any member", () => {
   it("writes no member when one CSS-route member has been folded since the press", async () => {
     const stageElementPositionOffset = vi.fn(() => ({ save: vi.fn(), rollback: vi.fn() }));

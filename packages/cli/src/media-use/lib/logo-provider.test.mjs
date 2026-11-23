@@ -15,6 +15,17 @@ import {
   faviconSearch,
 } from "./logo-provider.mjs";
 import { getProviders, runProviders } from "./registry.mjs";
+import { afterEach, beforeEach } from "node:test";
+import { mediaTransport } from "./media-fetch.mjs";
+
+// These tests stub globalThis.fetch; media downloads reach the same stub.
+const transportFetch = mediaTransport.fetch;
+beforeEach(() => {
+  mediaTransport.fetch = (url, init) => globalThis.fetch(url, init);
+});
+afterEach(() => {
+  mediaTransport.fetch = transportFetch;
+});
 
 test("entityFrom strips filler words from the intent; --entity wins", () => {
   assert.equal(entityFrom("LinkedIn logo"), "linkedin");

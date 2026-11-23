@@ -92,11 +92,25 @@ function copyGsapVendorFiles() {
   }
   const vendorDir = join(DIST, "vendor", "npm");
   rmSync(vendorDir, { recursive: true, force: true });
-  const dest = join(vendorDir, `gsap@${version}`, "dist");
-  mkdirSync(dest, { recursive: true });
-  for (const file of GSAP_VENDOR_FILES) {
-    copyFileSync(join(gsapRoot, "dist", file), join(dest, file));
-    chmodSync(join(dest, file), 0o644);
+  // Older versions templates still name ship too, as the CDN's exact files: package.json's `gsap-<version>` aliases
+  // (src/server/gsapVendor.test.ts pins their bytes).
+  const cliManifest = join(REPO_ROOT, "packages", "cli", "package.json");
+  const cliRequire = createRequire(cliManifest);
+  const aliases = Object.keys(JSON.parse(readFileSync(cliManifest, "utf-8")).devDependencies ?? {});
+  const roots = [
+    gsapRoot,
+    ...aliases
+      .filter((name) => /^gsap-\d+\.\d+\.\d+$/.test(name))
+      .map((name) => dirname(cliRequire.resolve(`${name}/package.json`))),
+  ];
+  for (const root of roots) {
+    const { version: shipped } = JSON.parse(readFileSync(join(root, "package.json"), "utf-8"));
+    const dest = join(vendorDir, `gsap@${shipped}`, "dist");
+    mkdirSync(dest, { recursive: true });
+    for (const file of GSAP_VENDOR_FILES) {
+      copyFileSync(join(root, "dist", file), join(dest, file));
+      chmodSync(join(dest, file), 0o644);
+    }
   }
 }
 

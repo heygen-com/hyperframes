@@ -137,7 +137,7 @@ describe("useRazorSplit linked clips", () => {
       await split?.(video, 2);
     });
     const targets = JSON.parse(bodies[0] ?? "{}").files[0].targets.map(
-      (cut: { originalId: string }) => cut.originalId,
+      (cut: { target: { id: string } }) => cut.target.id,
     );
     expect(targets).toEqual(["talk", "talk-audio"]);
     act(() => root.unmount());

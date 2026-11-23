@@ -37,7 +37,7 @@ const num = (value: string | null): number => {
 };
 
 /** Split "10px 20px" / "calc(1px + 2px) 3px" on top-level whitespace only. */
-const splitTopLevelWhitespace = (value: string): string[] => {
+export const splitTopLevelWhitespace = (value: string): string[] => {
   const parts: string[] = [];
   let depth = 0;
   let current = "";

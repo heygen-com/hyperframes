@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "./editingAgent";
+import { handleFor } from "./editingHandles";
 import { PREVIEW_FOR_ANOTHER_SITE_META, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 
 const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
@@ -61,6 +62,25 @@ describe("installEditingAgent", () => {
     expect(message).toEqual({ source: "hf-preview", type: "editing-port", v: 1 });
     expect(targetOrigin).toBe("*");
     expect(transfer).toHaveLength(1);
+  });
+
+  // fails without the fix: the plugin preload ran before the handoff, so a page it threw on never got a port.
+  it("hands the port over before the optional plugin preload", () => {
+    Object.defineProperty(window, "gsap", {
+      configurable: true,
+      get: () => {
+        throw new Error("page gsap getter");
+      },
+    });
+    const reported = (event: ErrorEvent) => event.preventDefault();
+    window.addEventListener("error", reported);
+    try {
+      post(parent, CONNECT);
+      expect(handoff).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener("error", reported);
+      Reflect.deleteProperty(window, "gsap");
+    }
   });
 
   it("hands a fresh port to each later connect from the parent and keeps the earlier one working", async () => {
@@ -210,6 +230,7 @@ describe("installEditingAgent", () => {
           "live-retime",
           "assets-unloaded",
           "text-edit",
+          "serve-paused-frames",
         ],
       },
     });
@@ -421,6 +442,27 @@ describe("installEditingAgent", () => {
       {
         drafts: [{ handle: H, translate: null, size: null, rotate: { angle: NaN, route: "gsap" } }],
       },
+      {
+        drafts: [
+          { handle: H, translate: null, size: null, rotate: { angle: 1, route: "transform" } },
+        ],
+      },
+      ...[
+        "url(x.png)",
+        "rotate(1deg);color:red",
+        "translate(1px",
+        "scale(2) /* x",
+        "x".repeat(513),
+      ].map((value) => ({
+        drafts: [
+          {
+            handle: H,
+            translate: null,
+            size: null,
+            rotate: { angle: 1, route: "transform", value },
+          },
+        ],
+      })),
     ].map((params, index) => [
       { v: 1, id: 150 + index, kind: "draft", params },
       150 + index,
@@ -619,6 +661,23 @@ describe("installEditingAgent", () => {
     });
   });
 
+  // fails without the fix: the frame refused a turn drawn inside a translating transform, so it never turned.
+  it("draws a turn inside a translating transform through the port", async () => {
+    const port = connectedPort();
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<div id="spun" style="transform: translate(-50%, -50%)"></div>',
+    );
+    const spun = document.getElementById("spun")!;
+    const value = "translate(-50%, -50%) rotate(20deg)";
+    const rotate = { angle: 20, route: "transform", value };
+    const drafts = [{ handle: handleFor(spun), translate: null, size: null, rotate }];
+    expect(await ask(port, { v: 1, id: 1, kind: "draft", params: { drafts } })).toMatchObject({
+      ok: true,
+    });
+    expect(spun.style.transform).toBe(value);
+  });
+
   it("answers computed styles for the element a selector names", async () => {
     document.body.innerHTML = `<p id="title" style="color: rgb(1, 2, 3); opacity: 0.5">Hi</p>
       <canvas data-hf-preview-video-canvas style="opacity: 0.25"></canvas>
@@ -758,6 +817,31 @@ describe("installEditingAgent", () => {
         forwarded("keydown", " ", "Space", true),
         forwarded("keyup", " ", "Space"),
       ]);
+    });
+
+    it("leaves a key typed into a field inside a shadow root to the field", async () => {
+      const host = document.createElement("div");
+      document.body.append(host);
+      const field = host
+        .attachShadow({ mode: "open" })
+        .appendChild(document.createElement("input"));
+      field.focus();
+      const port = connectedPort();
+      await watch(port, ["b"]);
+      const seen = collect(port);
+
+      const event = new KeyboardEvent("keydown", {
+        key: "b",
+        code: "KeyB",
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      });
+      field.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(await received(port, seen)).toEqual([]);
+      host.remove();
     });
 
     it("leaves a key the film cancelled before it", async () => {

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import type { Browser, Page } from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { NO_PATH_TWEEN_META } from "@hyperframes/core/gsap-cdn";
 import { closeTestChrome, launchTestChrome } from "../../tests/chromeTestUtils";
 import {
   buildStudioBundle,
@@ -14,7 +15,10 @@ import {
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 const require = createRequire(import.meta.url);
-const STUDIO_MARK = '<meta name="hyperframes-studio-preview" content="1" />';
+// A srcdoc preview has no origin of its own, so its plugin comes from a configured mirror, as Studio configures one.
+const STUDIO_MARK =
+  '<meta name="hyperframes-studio-preview" content="1" />' +
+  '<meta name="hyperframes-gsap-base-url" content="https://fixture.hyperframes.test/npm" />';
 const MODES = process.env.HF_PARITY_MODE ? [process.env.HF_PARITY_MODE] : ["unsealed", "sealed"];
 let browser: Browser;
 let studioBundle: string;
@@ -51,8 +55,8 @@ function timeline(key: "main" | "other", name: string, x: number, motion = false
   })();${motion ? "\n// motionPath: held until the plugin loads" : ""}`;
 }
 
-/** A Studio preview page with two timelines, "main" and "other", GSAP and the runtime inline. */
-function previewHtml(): string {
+/** A Studio preview page with two timelines, "main" (`main`'s script tag) and "other", GSAP and the runtime inline. */
+function previewHtml(main = `<script>${timeline("main", "file", 120)}</script>`): string {
   const gsap = readFileSync(require.resolve("gsap/dist/gsap.min.js"), "utf8");
   const runtime = readFileSync(require.resolve("@hyperframes/core/runtime"), "utf8");
   const box = (id: string, track: number, style: string) =>
@@ -65,7 +69,7 @@ function previewHtml(): string {
       ${box("target", 1, "left: 100px; top: 100px")}${box("b", 2, "left: 600px; top: 100px")}
       <div id="c" data-hf-id="c" class="clip box" data-start="0" data-duration="4" data-track-index="3" style="left: 0px; top: 500px"></div>
     </div>
-    <script>${gsap}</script><script>${timeline("main", "file", 120)}</script><script>${timeline("other", "file", 120)}</script>
+    <script>${gsap}</script>${main}<script>${timeline("other", "file", 120)}</script>
     <script>${runtime}</script></body></html>`;
 }
 
@@ -300,21 +304,120 @@ describe.each(MODES)("a re-run waiting for the MotionPath plugin, %s", (mode) =>
   });
 });
 
+const PATH_TWEEN = `(function () {
+  window.__timelines = window.__timelines || {};
+  var tl = gsap.timeline({ paused: true });
+  tl.to("#target", { motionPath: { path: [{ x: 0, y: 0 }, { x: 50, y: 0 }] }, duration: 4, ease: "none" }, 0);
+  window.__timelines["main"] = tl;
+})();`;
+const PATH_TWEEN_URL = "https://fixture.hyperframes.test/path-tween.js";
+
+/** Studio meeting a freshly loaded preview: the same-origin preload (NLEContext), then the editing port. */
+const connect = (page: Page) =>
+  page.evaluate(async () => {
+    const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+    const iframe = document.querySelector("iframe")!;
+    studio.ensureMotionPathPluginLoaded(iframe);
+    await studio.previewRequest(iframe, "runtime-snapshot", {});
+  });
+const pluginScripts = ({ frame }: Preview) =>
+  frame.evaluate(() => document.querySelectorAll('script[src*="MotionPathPlugin"]').length);
+
 // Parity: a same-origin preview gets the plugin on load (NLEContext), and a sealed one when Studio connects.
 it.each(MODES)(
   "the first motion-path re-run after load finds the plugin loaded (%s)",
   async (mode) => {
-    const { page, frame, release } = await openPreview(mode);
+    const { page, frame, release } = await openSharedPreview(
+      browser,
+      studioBundle,
+      previewHtml(`<script>${PATH_TWEEN}</script>`),
+      mode,
+    );
     await release(200);
-    await page.evaluate(async () => {
-      const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
-      const iframe = document.querySelector("iframe")!;
-      studio.ensureMotionPathPluginLoaded(iframe);
-      await studio.previewRequest(iframe, "runtime-snapshot", {});
-    });
+    await connect(page);
     await frame.waitForFunction(() => "MotionPathPlugin" in window, { timeout: 5_000 });
     expect(await rerun(page, timeline("main", "older", 60, true), 1)).toBe("applied");
     await page.close();
+  },
+);
+
+// fails without the fix: the preload read only inline scripts, so this page's plugin was never requested.
+it.each(MODES)(
+  "a path tween from an external script gets the plugin when Studio connects (%s)",
+  async (mode) => {
+    const preview = await openSharedPreview(
+      browser,
+      studioBundle,
+      previewHtml(`<script src="${PATH_TWEEN_URL}"></script>`),
+      mode,
+      { [PATH_TWEEN_URL]: PATH_TWEEN },
+    );
+    await preview.release(200);
+    await connect(preview.page);
+    expect(await pluginScripts(preview)).toBe(1);
+    await preview.frame.waitForFunction(() => "MotionPathPlugin" in window, { timeout: 5_000 });
+    await preview.page.close();
+  },
+);
+
+const LATE_PATH_TWEEN = `(function () {
+  window.__timelines = window.__timelines || {};
+  var tl = gsap.timeline({ paused: true });
+  window.__timelines["main"] = tl;
+  window.buildPathTween = function () {
+    tl.to("#target", { motionPath: { path: [{ x: 0, y: 0 }, { x: 50, y: 0 }] }, duration: 4, ease: "none" }, 0);
+  };
+})();`;
+
+const LATE_TWEEN_CASES = MODES.flatMap((mode) =>
+  [PATH_TWEEN_URL, "https://fixture.hyperframes.test/authored/gsap.js"].map(
+    (url) => [mode, url] as const,
+  ),
+);
+
+// fails without the fix: an external script that builds its first path tween after connect, named gsap.js, got no
+// plugin and stayed at 0.
+it.each(LATE_TWEEN_CASES)(
+  "a path tween an external script builds after connect plays (%s, %s)",
+  async (mode, url) => {
+    const preview = await openSharedPreview(
+      browser,
+      studioBundle,
+      previewHtml(`<script src="${url}"></script>`),
+      mode,
+      { [url]: LATE_PATH_TWEEN },
+    );
+    await preview.release(200);
+    await connect(preview.page);
+    await preview.frame.waitForFunction(() => "MotionPathPlugin" in window, { timeout: 5_000 });
+    await preview.frame.evaluate(() =>
+      (window as unknown as { buildPathTween(): void }).buildPathTween(),
+    );
+    await preview.seek(4);
+    const x = await preview.frame.evaluate(() =>
+      Number(
+        (
+          window as unknown as { gsap: { getProperty(t: string, p: string): unknown } }
+        ).gsap.getProperty("#target", "x"),
+      ),
+    );
+    expect(x).toBeCloseTo(50, 0);
+    await preview.page.close();
+  },
+);
+
+// fails without the fix: every preview Studio connected to requested the plugin.
+it.each(MODES)(
+  "a page the preview builder marked as path-free requests no plugin (%s)",
+  async (mode) => {
+    const marked = previewHtml().replace(
+      STUDIO_MARK,
+      `${STUDIO_MARK}<meta name="${NO_PATH_TWEEN_META}">`,
+    );
+    const preview = await openSharedPreview(browser, studioBundle, marked, mode);
+    await connect(preview.page);
+    expect(await pluginScripts(preview)).toBe(0);
+    await preview.page.close();
   },
 );
 

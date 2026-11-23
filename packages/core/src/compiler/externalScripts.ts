@@ -17,10 +17,11 @@ export function ensureExternalScriptTag(
   doc: Document,
   src: string,
   attributes: ExternalScriptAttributes = {},
-): void {
-  const existing = [...doc.querySelectorAll("script[src]")].filter(
-    (el) => el.getAttribute("src")?.trim() === src,
-  );
+  tagsWithSrc?: Element[],
+): Element[] {
+  const existing =
+    tagsWithSrc ??
+    [...doc.querySelectorAll("script[src]")].filter((el) => el.getAttribute("src")?.trim() === src);
   const requirements = new Set(
     [attributes.integrity, ...existing.map((el) => el.getAttribute("integrity"))]
       .map((value) =>
@@ -49,4 +50,5 @@ export function ensureExternalScriptTag(
     el.setAttribute("src", src);
     doc.body.appendChild(el);
   }
+  return elements;
 }

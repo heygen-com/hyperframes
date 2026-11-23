@@ -53,7 +53,7 @@ function sized(element: Element, [x, y, width, height]: number[]) {
   return element;
 }
 
-/** The card sits in a mirrored parent: a px of translate x moves it a px left, y moves it down. */
+/** In a mirrored parent: a px of translate x moves it left, y moves it down; it grows leftward. */
 function mirroredCard(card: HTMLElement) {
   sized(card, [0, 0, 200, 100]);
   card.getBoundingClientRect = () => {
@@ -62,9 +62,13 @@ function mirroredCard(card: HTMLElement) {
       .map((axis) =>
         [...axis.matchAll(/-?[\d.]+px/g)].reduce((sum, [px]) => sum + Number.parseFloat(px), 0),
       );
-    const left = 600 - x;
+    const [width, height] = [
+      parseFloat(card.style.width) || 200,
+      parseFloat(card.style.height) || 100,
+    ];
+    const left = 600 - x - (width - 200);
     const top = 300 + y;
-    return { x: left, y: top, width: 200, height: 100, left, top } as DOMRect;
+    return { x: left, y: top, width, height, left, top } as DOMRect;
   };
 }
 
@@ -154,6 +158,8 @@ describe("a gesture's start on an opaque frame", () => {
       screenToOffset: { a: -2, b: 0, c: 0, d: 2 },
       gsap: { x: 200, y: 5, moving: false },
       gsapRotation: 0,
+      grow: { a: -0.25, b: 0, c: 0, d: 0.25 },
+      cssRotation: null,
     });
     const selection = { ...makeSelection("card", standIn), handle };
     const made = createManualOffsetDragMember({

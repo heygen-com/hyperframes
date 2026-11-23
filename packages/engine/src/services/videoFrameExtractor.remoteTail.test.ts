@@ -5,7 +5,13 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { usableCpuCount } from "./systemMemory.js";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+// Four CPUs everywhere: extraction gets 2 slots, so tail reads beyond them show on any host.
+vi.mock("./systemMemory.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./systemMemory.js")>()),
+  usableCpuCount: () => 4,
+}));
 import type { VideoElement } from "../types.js";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { declareContentAddressedUrl } from "../utils/ffprobe.js";

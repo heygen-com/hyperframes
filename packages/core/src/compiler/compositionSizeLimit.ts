@@ -62,6 +62,7 @@ const limitText = `One render generates at most ${megabytes(MAX_EXPANDED_COMPOSI
 
 export const REMOTE_SCRIPTS = "remote scripts";
 export const REMOTE_STYLESHEETS = "remote stylesheets";
+export const LOCAL_SCRIPTS = "local scripts";
 export const ENTRY_PAGE = "the entry page";
 
 function generatedTooLarge(file: string, bytes: number): string {
@@ -75,6 +76,12 @@ function generatedTooLarge(file: string, bytes: number): string {
     return (
       `Variable-bound media sources add up to ${megabytes(bytes)}. ${limitText}. ` +
       "Use shorter URLs or bind fewer elements."
+    );
+  }
+  if (file === LOCAL_SCRIPTS) {
+    return (
+      `Local scripts copied into their tags add up to ${megabytes(bytes)}. ${limitText}. ` +
+      "Name each script file in one tag."
     );
   }
   if (file === REMOTE_SCRIPTS || file === REMOTE_STYLESHEETS) {

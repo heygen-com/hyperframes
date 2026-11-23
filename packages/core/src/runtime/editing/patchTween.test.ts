@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parsePatchTweens, patchTweens } from "./patchTween";
+import { drawDrafts } from "../editingDraft";
+import { handleFor } from "../editingHandles";
+import { parsePatchTweens, parsePatchTweensRequest, patchTweens } from "./patchTween";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -137,5 +139,89 @@ describe("patch-tweens parser", () => {
       change: { kind: "set", props: { x: 1 } },
     }));
     expect(parsePatchTweens({ patches: many, seek: true })).toBeNull();
+  });
+});
+
+// fails without the fix: a sealed move's save set GSAP's x/y while the drag's drawn translate was still on, so
+// one frame showed the layer moved twice before the teardown's draft end arrived.
+describe("patch-tweens ending a gesture's draft", () => {
+  const moved = () => {
+    frameWithSets();
+    const set = vi.fn();
+    Object.assign(window, { gsap: { set } });
+    const element = document.getElementById("b")!;
+    const handle = handleFor(element);
+    const { drafts } = drawDrafts([{ handle, translate: { x: 90, y: 60 }, size: null }]);
+    return { element, handle, set, draft: drafts[handle]! };
+  };
+  const save = {
+    selector: "#b",
+    change: { kind: "global-set", props: { x: 130, y: 80 } },
+  } as const;
+
+  it("drops the drawn translate in the same task that sets the saved position", () => {
+    const { element, handle, set, draft } = moved();
+
+    const reply = patchTweens({
+      patches: [save],
+      seek: true,
+      endsDrafts: [{ handle, draft, end: "keep-size" }],
+    });
+
+    expect(reply).toEqual({ patched: true });
+    expect(set).toHaveBeenCalledExactlyOnceWith(element, { x: 130, y: 80 });
+    expect(element.style.translate).toBe("");
+  });
+
+  it("leaves a live draft alone when the patch ends none", () => {
+    const { element } = moved();
+
+    patchTweens({ patches: [save], seek: true });
+
+    expect(element.style.translate).not.toBe("");
+  });
+
+  it("leaves a newer draft alone when the end names an older one", () => {
+    const { element, handle, draft } = moved();
+    drawDrafts([{ handle, end: "keep" }]);
+    drawDrafts([{ handle, translate: { x: 5, y: 0 }, size: null }]);
+
+    patchTweens({ patches: [save], seek: true, endsDrafts: [{ handle, draft, end: "keep-size" }] });
+
+    expect(element.style.translate).not.toBe("");
+  });
+
+  it("ends nothing when a patch does not land, so Studio's own end still finds the draft", () => {
+    const { element, handle, draft } = moved();
+    Reflect.deleteProperty(window, "gsap");
+
+    const reply = patchTweens({
+      patches: [save],
+      seek: true,
+      endsDrafts: [{ handle, draft, end: "keep-size" }],
+    });
+
+    expect(reply).toEqual({ patched: false });
+    expect(element.style.translate).not.toBe("");
+    drawDrafts([{ handle, draft, end: "keep-size" }]);
+    expect(element.style.translate).toBe("");
+  });
+
+  it("parses the ends it carries and refuses a malformed one", () => {
+    const handle = "0123456789abcdef:1";
+    const base = { patches: [save], seek: true };
+    expect(
+      parsePatchTweensRequest({ ...base, endsDrafts: [{ handle, draft: 3, end: "keep-size" }] }),
+    ).toEqual({
+      ...base,
+      endsDrafts: [{ handle, draft: 3, end: "keep-size" }],
+    });
+    expect(
+      parsePatchTweensRequest({ ...base, endsDrafts: [{ handle, draft: 0, end: "keep" }] }),
+    ).toBeNull();
+    expect(
+      parsePatchTweensRequest({ ...base, endsDrafts: [{ handle, end: "keep-size" }] }),
+    ).toBeNull();
+    expect(parsePatchTweensRequest({ ...base, endsDrafts: "all" })).toBeNull();
   });
 });

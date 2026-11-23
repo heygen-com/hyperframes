@@ -51,7 +51,9 @@ globalThis.fetch = async (url) => String(url).endsWith("/voices/speech")
   ? new Response(JSON.stringify({ data: { audio_url: "https://audio.example/a",
       word_timestamps: [{ word: "Hello", start: 0, end: 0.4 }] } }),
       { headers: { "content-type": "application/json" } })
-  : new Response(readFileSync(process.env.TTS_AUDIO));`;
+  : new Response(readFileSync(process.env.TTS_AUDIO));
+const { mediaTransport } = await import(${JSON.stringify(new URL("../../scripts/lib/media-fetch.mjs", import.meta.url).href)});
+mediaTransport.fetch = (url, init) => globalThis.fetch(url, init);`;
 
 const hasFfmpeg = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
 const canLink = (() => {

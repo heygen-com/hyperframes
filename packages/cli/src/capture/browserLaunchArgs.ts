@@ -33,7 +33,13 @@ export function captureBrowserArgs(
     "--disable-dev-shm-usage",
     ...(disableWebgl
       ? ["--disable-gpu"]
-      : ["--enable-webgl", "--ignore-gpu-blocklist", "--use-gl=angle", "--use-angle=swiftshader"]),
+      : [
+          "--enable-webgl",
+          "--ignore-gpu-blocklist",
+          "--use-gl=angle",
+          "--use-angle=swiftshader",
+          "--disable-gpu-compositing",
+        ]),
     "--disable-blink-features=AutomationControlled",
     "--disable-background-timer-throttling",
     "--disable-renderer-backgrounding",
