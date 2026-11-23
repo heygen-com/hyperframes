@@ -83,6 +83,14 @@ function throughFrame(f, [x, y]) {
   return [fr.left + fr.width / 2 + d[0], fr.top + fr.height / 2 + d[1]];
 }
 
+/** Studio is reloading the preview or saving an edit, so a press made now waits for it. */
+export function studioReloadingOrSaving() {
+  const root = document.documentElement;
+  return (
+    root.hasAttribute("data-studio-edits-saving") || root.hasAttribute("data-preview-changing")
+  );
+}
+
 /** The element's quad in top-frame px, crossing each iframe through its element's own transform. */
 export function quadOf(el, top = el.ownerDocument.defaultView.top) {
   const r = el.getBoundingClientRect();
@@ -273,7 +281,7 @@ function frameSampler() {
     const waiting = document.querySelector("[data-dom-edit-press-waiting]");
     return {
       ...(outline && { outline: quadOf(outline) }),
-      ...(waiting && { waitingQuad: quadOf(waiting) }),
+      ...(waiting && { waitingQuad: quadOf(waiting), waitingOnStudio: studioReloadingOrSaving() }),
     };
   };
   // Each push becomes a sample paired with the pointer at the push's own stamp, so a late push is never scored
@@ -365,7 +373,7 @@ function frameSampler() {
 
 /** The page script with the geometry it calls, for evaluateOnNewDocument; scoped so no page global clashes. */
 export const frameSamplerScript = `(() => {
-${[mul, apply, rotation, ownLinear, parentOf, linear, boxSize, styleBoxSize, throughFrame, quadOf].map(String).join("\n")}
+${[mul, apply, rotation, ownLinear, parentOf, linear, boxSize, styleBoxSize, throughFrame, quadOf, studioReloadingOrSaving].map(String).join("\n")}
 (${frameSampler})();
 })();`;
 
@@ -444,12 +452,24 @@ function trackers(gesture, first, p0) {
 
 const round = (v) => Math.round(v * 100) / 100;
 
+/** Until the pointer moves, a box waiting only on the frame is Studio's resting outline: the element is read. */
+function untilPointerMoves(frames) {
+  const [x, y] = frames[0]?.pointer ?? [];
+  const moved = frames.findIndex((f) => f.pointer[0] !== x || f.pointer[1] !== y);
+  const atRest = (i) => moved < 0 || i < moved;
+  return frames.map((f, i) =>
+    f.waitingQuad && !f.waitingOnStudio && atRest(i) ? { ...f, waitingQuad: undefined } : f,
+  );
+}
+
 /** Fails a frame whose tracked point outran the pointer or left its path; after release, the release point. */
 // fallow-ignore-next-line complexity
 export function scoreTeleport(gesture, samples) {
-  const frames = samples
-    .filter((s) => s.quad && s.root && s.pointer)
-    .map((s) => ({ ...s, map: compositionMapper(s.root, COMPOSITION) }));
+  const frames = untilPointerMoves(
+    samples
+      .filter((s) => s.quad && s.root && s.pointer)
+      .map((s) => ({ ...s, map: compositionMapper(s.root, COMPOSITION) })),
+  );
   if (frames.length < 2) {
     const count = (f) => samples.filter(f).length;
     const failed = samples.find((s) => s.error)?.error;

@@ -42,6 +42,18 @@ describe("scoreTeleport", () => {
       pass: true,
     });
   });
+  // fails without the fix: a sealed press anchored on Studio's outline, which sits off the element in both modes.
+  it("scores a press that waits with the pointer still like one that never waited", () => {
+    const sealed = drag.map((f, i) => (i < 2 ? { ...f, waitingQuad: box(0.2) } : f));
+    expect(scoreTeleport("move", sealed).max).toBe(scoreTeleport("move", drag).max);
+  });
+  // fails without the fix: a press that waited on Studio's save was scored from the stale element, not the box shown.
+  it("scores a press that waits on Studio from the box Studio shows", () => {
+    const waiting = drag.map((f, i) =>
+      i < 2 ? { ...f, quad: box(312), waitingQuad: f.quad, waitingOnStudio: true } : f,
+    );
+    expect(scoreTeleport("move", waiting).max).toBe(scoreTeleport("move", drag).max);
+  });
   it("rejects a jumping outline while the element waits", () => {
     const jumped = waitingDrag.map((f, i) => (i === 4 ? { ...f, waitingQuad: box(f.t + 37) } : f));
     expect(scoreTeleport("move", [...jumped, frame(50, false)]).pass).toBe(false);
@@ -377,7 +389,7 @@ describe("frameSamplerScript in a sealed preview", () => {
         querySelectorAll: () => [].concat(iframe),
         querySelector: (selector) => (selector.includes("press-waiting") ? studio.waiting : null),
         createElement: () => ({ style: {}, isConnected: true }),
-        documentElement: { append() {} },
+        documentElement: { append() {}, hasAttribute: () => false },
       },
       ResizeObserver: class {
         constructor(f) {

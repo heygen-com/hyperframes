@@ -27,7 +27,7 @@ import {
   timedWrite,
   waitForFiles,
 } from "./case.mjs";
-import { scoreTeleport, stopFrames } from "./teleport.mjs";
+import { scoreTeleport, stopFrames, studioReloadingOrSaving } from "./teleport.mjs";
 
 // The frame sampler sees every painted frame, so a path needs few pointer steps (each costs a CDP read).
 const STEP_PX = 28;
@@ -478,10 +478,7 @@ export async function shownOnceRested(busy, frame, settle, options) {
 // A sealed press waits for the previous save, then replays, and a sealed undo shows only once the preview applies it.
 const studioBusy = (page) =>
   page.evaluate(
-    () =>
-      Boolean(document.querySelector("[data-dom-edit-press-waiting]")) ||
-      document.documentElement.hasAttribute("data-studio-edits-saving") ||
-      document.documentElement.hasAttribute("data-preview-changing"),
+    `Boolean(document.querySelector("[data-dom-edit-press-waiting]")) || (${studioReloadingOrSaving})()`,
   );
 
 async function untilSaved(watcher, owed) {
