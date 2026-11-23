@@ -26,7 +26,11 @@ import {
 
 import { RUNTIME_CDN_URL, runtimeCdnUrlForVersion } from "./runtime-url.js";
 
-const TIMELINE_NOT_FOUND = "Composition timeline not found after 8s";
+const POLL_MS = 200;
+const DEADLINE_POLLS = 40;
+const TIMELINE_NOT_FOUND = `Composition timeline not found after ${(POLL_MS * DEADLINE_POLLS) / 1000}s`;
+const ANOTHER_SITE_FIX =
+  "A player can't add the HyperFrames runtime to a composition from another site: include the runtime script in it.";
 
 export { runtimeCdnUrlForVersion };
 
@@ -44,6 +48,7 @@ export interface ProbeCallbacks {
   onRuntimeInjected?: () => void;
   resolveRuntimeUrl?: () => string;
   hostOwnsDeadline?: () => boolean;
+  fromAnotherSite?: () => boolean;
 }
 
 /**
@@ -130,12 +135,15 @@ export class CompositionProbe {
           this._callbacks.onError(outcome.message);
         } else this._callbacks.onReady(outcome.result);
       }
-    }, 200);
+    }, POLL_MS);
   }
 
   private _deadlineOutcome(attempts: number): ProbeOutcome {
-    if (attempts < 40 || this._callbacks.hostOwnsDeadline?.()) return null;
-    return { kind: "error", message: TIMELINE_NOT_FOUND };
+    if (attempts < DEADLINE_POLLS || this._callbacks.hostOwnsDeadline?.()) return null;
+    const message = this._callbacks.fromAnotherSite?.()
+      ? `${TIMELINE_NOT_FOUND}. ${ANOTHER_SITE_FIX}`
+      : TIMELINE_NOT_FOUND;
+    return { kind: "error", message };
   }
 
   private _poll(attempts: number): ProbeOutcome {

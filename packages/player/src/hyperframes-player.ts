@@ -173,6 +173,7 @@ class HyperframesPlayer extends HTMLElement {
   private _compositionWidth = 1920;
   private _compositionHeight = 1080;
   private _rescaleWarned = false;
+  private readonly _errorListeners = new Set<EventListenerOrEventListenerObject>();
   private _directTimelineAdapter: DirectTimelineAdapter | null = null;
   private _directTimelineClock: DirectTimelineClock;
   private _parentTickRaf: number | null = null;
@@ -237,8 +238,9 @@ class HyperframesPlayer extends HTMLElement {
     this.probe = new CompositionProbe(this.iframe, {
       resolveRuntimeUrl: () => runtimeSrcFromElement(this),
       hostOwnsDeadline: () => this.hasAttribute("no-load-timeout"),
+      fromAnotherSite: () => this._filmFromAnotherSite(),
       onReady: (result) => this._onProbeReady(result),
-      onError: (message) => this._emit(new CustomEvent("error", { detail: { message } })),
+      onError: (message) => this._emitError({ message }),
     });
 
     this.addEventListener("click", (event) => {
@@ -1136,7 +1138,7 @@ class HyperframesPlayer extends HTMLElement {
       },
       () => {
         if (load !== this._documentLoad) return;
-        this._emit(new CustomEvent("error", { detail: { message: SEALED_RUNTIME_LOAD_FAILED } }));
+        this._emitError({ message: SEALED_RUNTIME_LOAD_FAILED });
       },
     );
   }
@@ -1185,7 +1187,7 @@ class HyperframesPlayer extends HTMLElement {
         },
         onError: (message, code) => {
           if (!this._paused) this.pause();
-          this._emit(new CustomEvent("error", { detail: { message, code } }));
+          this._emitError({ message, code });
         },
         onPlayRejected: (error) => this._onVideoPlayRejected(error),
       });
@@ -1708,6 +1710,42 @@ class HyperframesPlayer extends HTMLElement {
   /** Every event the player raises goes through here, so an update's events keep their order. */
   private _emit(event: Event): void {
     this._afterEvents(() => this.dispatchEvent(event));
+  }
+
+  private _emitError(detail: { message: string; code?: number | null }): void {
+    this._afterEvents(() => {
+      if (this._errorListeners.size === 0 && !this.onerror) {
+        console.warn(`[hyperframes-player] error with no listener: ${detail.message}`, {
+          src: this.getAttribute("src"),
+        });
+      }
+      this.dispatchEvent(new CustomEvent("error", { detail }));
+    });
+  }
+
+  override addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    if (type === "error") this._errorListeners.add(listener);
+    super.addEventListener(type, listener, options);
+  }
+
+  override removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void {
+    if (type === "error") this._errorListeners.delete(listener);
+    super.removeEventListener(type, listener, options);
+  }
+
+  /** A composition from another origin than the page's: no player, sealed or not, can add the runtime to it. */
+  private _filmFromAnotherSite(): boolean {
+    if (this.hasAttribute("srcdoc")) return false;
+    const url = parseUrl(this.getAttribute("src") ?? "");
+    return url !== null && url.origin !== location.origin;
   }
 
   private _rescale() {

@@ -82,7 +82,10 @@ try {
     openCrossSite,
     "a cross-site film without the runtime fails sealed exactly as unsealed",
   );
-  assert.equal(openCrossSite.error, "Composition timeline not found after 8s");
+  assert.equal(
+    openCrossSite.error,
+    "Composition timeline not found after 8s. A player can't add the HyperFrames runtime to a composition from another site: include the runtime script in it.",
+  );
 
   const trusted = await browser.newPage();
   await trusted.goto(`${server.origin}/host.html?fixture=direct-timeline`, {
