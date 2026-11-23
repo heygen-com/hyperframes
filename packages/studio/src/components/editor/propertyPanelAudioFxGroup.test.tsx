@@ -406,7 +406,7 @@ describe("AudioFxGroup dynamic carve", () => {
     }
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ arrayBuffer: async () => new ArrayBuffer(8) })),
+      vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })),
     );
     vi.stubGlobal(
       "OfflineAudioContext",
@@ -436,7 +436,7 @@ describe("AudioFxGroup dynamic carve", () => {
     });
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ arrayBuffer: async () => new ArrayBuffer(8) })),
+      vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })),
     );
     vi.stubGlobal(
       "OfflineAudioContext",
@@ -465,7 +465,7 @@ describe("AudioFxGroup dynamic carve", () => {
   async function levelledLane(data: Float32Array, dataAttributes: Record<string, string>) {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ arrayBuffer: async () => new ArrayBuffer(8) })),
+      vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })),
     );
     vi.stubGlobal(
       "OfflineAudioContext",
@@ -492,6 +492,22 @@ describe("AudioFxGroup dynamic carve", () => {
     return (t: number) =>
       lane.points.reduce((best, p) => (Math.abs(p.t - t) < Math.abs(best.t - t) ? p : best));
   }
+
+  it("Even Out Levels never fetches a clip whose file runs past ten minutes", async () => {
+    stubDecode();
+    vi.stubGlobal("mediaHeaderSeconds", () => 3600);
+    const { host, onSetAttributeQuiet } = mount({ "fx-chain": CHAIN });
+    document.getElementById("bed")?.setAttribute("src", "bed.wav");
+    act(() => byTextButton(host, "Audio FX")?.click());
+    act(() => byTextButton(host, "+ effect")?.click());
+    await act(async () => {
+      byTextButton(host, "Even Out Levels")?.click();
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(writeTo(onSetAttributeQuiet.mock.calls, "data-automation")).toBeFalsy();
+  });
 
   /** A 300 Hz tone, 16 s long: quiet between `quietFrom` and `quietTo`, loud elsewhere. */
   function toneWithQuietPassage(quietFrom: number, quietTo: number): Float32Array {
@@ -856,6 +872,36 @@ describe("AudioFxGroup dynamic carve", () => {
     expect(nodes.some((n) => n.type === "peaking")).toBe(true);
   });
 
+  it("leaves out a bed whose file runs past ten minutes, never fetched, and still carves for the voice", async () => {
+    stubDecode();
+    vi.stubGlobal("mediaHeaderSeconds", (url: string) => (url.includes("bed") ? 3600 : 60));
+    const { host, onSetAttributeQuiet } = mount(
+      {
+        "fx-chain": JSON.stringify({ version: 1, nodes: [] }),
+        "fx-carve": JSON.stringify({ enabled: true, sources: ["vo"], strength: 0.3 }),
+        start: "0",
+      },
+      false,
+    );
+    document.getElementById("vo")!.setAttribute("src", "voice.wav");
+    document.getElementById("bed")!.setAttribute("src", "bed.m4a");
+    const dial = host.querySelector<HTMLInputElement>(".hf-fx-carve input[type=range]")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(dial, "0.6");
+      dial.dispatchEvent(new Event("input", { bubbles: true }));
+      dial.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    });
+    const fetched = (
+      globalThis.fetch as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls.map((c) => String(c[0]));
+    expect(fetched.some((u) => u.includes("voice.wav"))).toBe(true);
+    expect(fetched.some((u) => u.includes("bed.m4a"))).toBe(false);
+    const chainWrite = writeTo(onSetAttributeQuiet.mock.calls, "data-fx-chain");
+    expect(parseWrite(chainWrite!).nodes.some((n: { fromCarve?: boolean }) => n.fromCarve)).toBe(
+      true,
+    );
+  });
+
   it("analyses every named voice, not just the first", async () => {
     // The point of a list: a bed running under a narrator and an interview answer
     // should make room for both, so both are decoded and summed onto the bed's clock
@@ -1013,7 +1059,7 @@ describe("AudioFxGroup dynamic carve", () => {
     function stubFiles(files: Record<string, Float32Array>): void {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async (url: string) => ({ arrayBuffer: async () => url })),
+        vi.fn(async (url: string) => ({ ok: true, arrayBuffer: async () => url })),
       );
       vi.stubGlobal(
         "OfflineAudioContext",

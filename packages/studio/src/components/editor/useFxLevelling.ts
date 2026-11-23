@@ -15,6 +15,7 @@ import {
 } from "@hyperframes/core/audio-fx";
 import { levellingResult, removeLevelling } from "@hyperframes/core/audio-leveller";
 import type { HfAutomation, HfAutomationPoint } from "@hyperframes/core/audio-automation";
+import { decodeAudioWithin } from "@hyperframes/core/audio-decode";
 import { timeAtSourceTime } from "@hyperframes/core/speed-ramp";
 import {
   automationAttrValue,
@@ -64,9 +65,10 @@ export function useFxLevelling(
       (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext })
         .webkitOfflineAudioContext;
     if (!Ctor) return null;
-    const res = await studioApiFetch(new URL(src, doc.baseURI).href);
-    const buffer = await new Ctor(1, 1, DECODE_SAMPLE_RATE).decodeAudioData(
-      await res.arrayBuffer(),
+    const buffer = await decodeAudioWithin(
+      new Ctor(1, 1, DECODE_SAMPLE_RATE),
+      new URL(src, doc.baseURI).href,
+      { fetch: (url) => studioApiFetch(url) },
     );
     const next = { src, samples: buffer.getChannelData(0), sampleRate: buffer.sampleRate };
     decoded.current = next;

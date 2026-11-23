@@ -22,6 +22,7 @@ import {
   mixCarveSources,
 } from "@hyperframes/core/audio-carve";
 import { fxAutomationTarget, type HfAutomationLane } from "@hyperframes/core/audio-automation";
+import { decodeAudioWithin } from "@hyperframes/core/audio-decode";
 import { clipStart } from "./propertyPanelAudioFxGroupUtils.js";
 import { clipAudioOnItsClock, type ClipClock } from "./clipAudioClock.js";
 import { studioApiFetch } from "../../utils/studioApiFetch";
@@ -96,9 +97,10 @@ export async function measureCarve(
   if (!Ctor) return null;
   // Each clip as it plays: trimmed to its in-point and duration, and at its own speed.
   const decode = async (relative: string, clock: ClipClock): Promise<Float32Array> => {
-    const res = await studioApiFetch(new URL(relative, doc.baseURI).href);
-    const buffer = await new Ctor(1, 1, DECODE_SAMPLE_RATE).decodeAudioData(
-      await res.arrayBuffer(),
+    const buffer = await decodeAudioWithin(
+      new Ctor(1, 1, DECODE_SAMPLE_RATE),
+      new URL(relative, doc.baseURI).href,
+      { fetch: (url) => studioApiFetch(url) },
     );
     return clipAudioOnItsClock(buffer.getChannelData(0), DECODE_SAMPLE_RATE, clock);
   };

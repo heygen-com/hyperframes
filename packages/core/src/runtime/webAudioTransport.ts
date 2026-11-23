@@ -26,6 +26,7 @@ import { assetUrl } from "./assetUrl.js";
 import { mediaElementTime } from "./mediaClock.js";
 import { sourceLengthOf } from "./sourceLength.js";
 import { clampFadesToDuration, fadeGain, readElementFades } from "../audioFade.js";
+import { AudioTooLong, assertDecodableLength } from "../audioDecode.js";
 
 const MASTER_FX_ATTRS: FxAttributes = { automation: null };
 
@@ -410,6 +411,13 @@ export class WebAudioTransport {
     if (this._bufferCache.has(src)) return this._bufferCache.get(src)!;
     if (this._failedSrcs.has(src)) return null;
     if (!this._ctx) return null;
+
+    try {
+      await assertDecodableLength(src, el.duration);
+    } catch (err) {
+      if (err instanceof AudioTooLong && err.seconds !== null) this._failedSrcs.add(src);
+      return null;
+    }
 
     // Fetch the bytes. A network error or non-OK status (e.g. a 404 for an
     // asset that simply has not been uploaded yet) is TRANSIENT — return null
