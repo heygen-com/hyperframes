@@ -546,16 +546,33 @@ describe("recordReceivedFiles", () => {
       `const fs = require("node:fs");
        const files = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).files;
        process.stdout.write("read");
+       const t0 = Date.now();
        setTimeout(() => {
+         const t1 = Date.now();
          fs.writeFileSync(process.argv[1], JSON.stringify({ files: [...files, "theirs.html"] }));
-         fs.rmSync(process.argv[2]);
+         const t2 = Date.now();
+         try { fs.rmSync(process.argv[2]); } catch (e) { process.stderr.write("RM " + e.code + " after " + (Date.now() - t2) + "ms\n"); throw e; }
+         process.stderr.write("TIMES timer=" + (t1 - t0) + " write=" + (t2 - t1) + " rm=" + (Date.now() - t2) + "\n");
        }, 300);`,
       record(root),
       lock(root),
     ]);
+    let err = "";
+    other.stderr.on("data", (d) => (err += d));
     await new Promise((resolve) => other.stdout.once("data", resolve));
-    recordReceivedFiles(root, ["mine.html"]);
-    await new Promise((resolve) => other.once("exit", resolve));
+    const w0 = Date.now();
+    let threw: unknown = null;
+    try {
+      recordReceivedFiles(root, ["mine.html"]);
+    } catch (e) {
+      threw = e;
+    }
+    const waited = Date.now() - w0;
+    const code = await new Promise((resolve) => other.once("exit", resolve));
+    console.log(
+      `PROBE waited=${waited}ms threw=${threw ? String(threw) : "no"} child=${code} ${err.trim().replace(/\n/g, " | ")}`,
+    );
+    if (threw) throw threw;
     expect(listed(root)).toEqual(["hyperframes.json", "mine.html", "theirs.html"]);
   });
 
