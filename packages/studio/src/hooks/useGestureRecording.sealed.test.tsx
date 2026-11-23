@@ -15,6 +15,11 @@ vi.mock("../player/lib/previewChannel", async (load) => ({
   ...(await load<typeof import("../player/lib/previewChannel")>()),
   previewFrameOpaque: () => frame.sealed,
 }));
+const drafts = vi.hoisted(() => ({ draw: vi.fn(), end: vi.fn() }));
+vi.mock("../components/editor/previewDrafts", () => ({
+  drawPreviewDraft: drafts.draw,
+  endPreviewDraft: drafts.end,
+}));
 vi.mock("../player/lib/bridgePlayback", async (load) => ({
   ...(await load<typeof import("../player/lib/bridgePlayback")>()),
   previewStageSize: () => frame.stage,
@@ -35,6 +40,8 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
   vi.spyOn(performance, "now").mockImplementation(() => nowMs);
   frame.sealed = true;
+  drafts.draw.mockClear();
+  drafts.end.mockClear();
   usePlayerStore.setState({ currentTime: 0, duration: 10, requestedSeekTime: null });
 });
 
@@ -106,6 +113,22 @@ describe("a gesture recording on a sealed preview", () => {
   it("starts from the layer's GSAP offset the frame reported", () => {
     frame.stage = { width: 1920, height: 1080 };
     expect(recordOnSealedFrame(100, { ...AT_REST, x: 240, y: 80 }).last).toEqual({ x: 440, y: 80 });
+  });
+
+  // fails without the fix: the frame's layer stood still while recording, since only an unsealed frame's GSAP moved it.
+  it("draws the layer moving live on the frame, and puts it back when the recording stops", () => {
+    frame.stage = { width: 1920, height: 1080 };
+    recordOnSealedFrame(100, { ...AT_REST, x: 240, y: 80 });
+    const [standIn, last] = drafts.draw.mock.lastCall!;
+    expect(last).toEqual({ translate: { x: 200, y: 0 } });
+    expect(drafts.end.mock.calls).toEqual([[standIn, "restore"]]);
+  });
+
+  it("draws nothing over the channel for an unsealed frame, whose GSAP moves the layer", () => {
+    frame.sealed = false;
+    frame.stage = { width: 1920, height: 1080 };
+    recordOnSealedFrame(100, null);
+    expect([drafts.draw.mock.calls, drafts.end.mock.calls]).toEqual([[], []]);
   });
 
   it("scales the pointer by the film's own width, not 1920", () => {
