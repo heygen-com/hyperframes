@@ -47,17 +47,19 @@ function setOf<T>(map: WeakMap<HTMLMediaElement, Set<T>>, media: HTMLMediaElemen
 const has = (map: WeakMap<HTMLMediaElement, Set<string>>, media: HTMLMediaElement, url: string) =>
   map.get(media)?.has(url) ?? false;
 
+function candidate(media: HTMLMediaElement, el: HTMLSourceElement, home: string): string | null {
+  const src = el.getAttribute("src");
+  const type = el.getAttribute("type");
+  const query = el.getAttribute("media");
+  const playable = !type || (type !== PINNED_OUT && media.canPlayType(type));
+  if (!src || !playable || (query && !matchMedia(query).matches)) return null;
+  return resolved(src, home);
+}
+
 function selectable(media: HTMLMediaElement, home: string): string[] {
   const own = media.getAttribute("src");
   if (media.hasAttribute("src")) return own ? [resolved(own, home)] : [];
-  return [...media.querySelectorAll("source")].flatMap((el) => {
-    const src = el.getAttribute("src");
-    const type = el.getAttribute("type");
-    const query = el.getAttribute("media");
-    const playable = !type || (type !== PINNED_OUT && media.canPlayType(type));
-    if (!src || !playable || (query && !matchMedia(query).matches)) return [];
-    return [resolved(src, home)];
-  });
+  return [...media.querySelectorAll("source")].flatMap((el) => candidate(media, el, home) ?? []);
 }
 
 const isHome = (url: string, home: string) => originOf(url, home) === originOf(home, home);
@@ -176,10 +178,10 @@ function wasDown(media: HTMLMediaElement, url: string): void {
 const PINNED_OUT = "video/x-hyperframes-pinned-out";
 const pinned = new WeakMap<HTMLMediaElement, Array<[HTMLSourceElement, string | null]>>();
 
-function pinTo(media: HTMLMediaElement, chosen: string): void {
+function pinTo(media: HTMLMediaElement, chosen: string, home: string): void {
   const held: Array<[HTMLSourceElement, string | null]> = [];
   for (const el of media.querySelectorAll("source")) {
-    if (el.src === chosen) break;
+    if (candidate(media, el, home) === chosen) break;
     held.push([el, el.getAttribute("type")]);
     el.setAttribute("type", PINNED_OUT);
   }
@@ -207,7 +209,7 @@ function failed(event: Event, home: string): void {
   if (has(down, media, url)) return;
   setOf(refused, media).add(url);
   write(media, null);
-  pinTo(media, url);
+  pinTo(media, url, home);
   reload(media);
 }
 
@@ -222,7 +224,7 @@ function firstFrame(event: Event, home: string): void {
   if (has(refused, media, chosen)) return warnOnce(media, chosen);
   if (!isHome(chosen, home) || !selectable(media, home).includes(chosen)) return;
   write(media, "anonymous");
-  pinTo(media, chosen);
+  pinTo(media, chosen, home);
   reload(media);
 }
 
