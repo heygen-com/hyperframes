@@ -1556,6 +1556,7 @@ class HyperframesPlayer extends HTMLElement {
       duration: this._duration,
       compositionWidth: this._compositionWidth,
       compositionHeight: this._compositionHeight,
+      readyMs: this._videoSource ? null : Math.round(this.probe.elapsedMs()),
     };
     this._emit(new CustomEvent("ready", { detail }));
     // Once ready: covers a size message that never came, and lets a zero-size player warn.

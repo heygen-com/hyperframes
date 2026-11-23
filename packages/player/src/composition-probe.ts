@@ -4,7 +4,7 @@
  *
  * The probe interval polls every 200 ms until one of:
  *   - An adapter or the document resolves with a positive duration, or
- *   - 40 attempts (~8 s) expire without a result, unless the host owns the deadline.
+ *   - this system's `loadLimitMs` passes (reported once; polling goes on), unless the host owns the deadline.
  *
  * The `CompositionProbe` class owns the interval; the caller must call
  * `stop()` on disconnect or src change.
@@ -60,6 +60,19 @@ export function readPositiveDimension(value: string | null): number | null {
 
 export { readCompositionSizeFromDocument };
 
+const POLL_MS = 200;
+
+type PlatformNavigator = Pick<Navigator, "userAgent"> & { userAgentData?: { platform?: string } };
+
+/** How long a film may load before it counts as failed: about p99 of first frames on that OS, plus 30%. */
+export function loadLimitMs(nav: PlatformNavigator = navigator): number {
+  const platform = nav.userAgentData?.platform || nav.userAgent;
+  if (/Android|CrOS|Chrome OS/i.test(platform)) return 120_000;
+  if (/Win/.test(platform)) return 90_000;
+  if (/Linux|X11/i.test(platform)) return 30_000;
+  return 120_000;
+}
+
 type ProbeOutcome =
   | { kind: "ready"; result: ProbeResult }
   | { kind: "error"; message: string }
@@ -80,13 +93,16 @@ export class CompositionProbe {
   private _runtimeInjected = false;
   private _runtimeScript: HTMLScriptElement | null = null;
   private _failure: { document: Document | null; deadline: boolean } | null = null;
+  private _startedAt = 0;
+  private _limitMs = 0;
 
   get failed(): boolean {
-    if (this._failure === null) return false;
-    const unreadableFrameMayStillPost =
-      this._failure.deadline && this._iframe.contentDocument === null;
-    if (unreadableFrameMayStillPost) return false;
+    if (this._failure === null || this._failure.deadline) return false;
     return this._failure.document === this._iframe.contentDocument;
+  }
+
+  elapsedMs(): number {
+    return performance.now() - this._startedAt;
   }
 
   constructor(
@@ -104,6 +120,8 @@ export class CompositionProbe {
     this.stop();
     this._failure = null;
     this._runtimeInjected = false;
+    this._startedAt = performance.now();
+    this._limitMs = loadLimitMs();
     let attempts = 0;
 
     this._interval = setInterval(() => {
@@ -119,21 +137,22 @@ export class CompositionProbe {
           };
         }
       }
-      const deadline = outcome === null;
-      outcome ??= this._deadlineOutcome(attempts);
-      if (outcome) {
+      if (outcome?.kind === "ready") {
         this.stop();
-        if (outcome.kind === "error") {
-          this._failure = { document: this._iframe.contentDocument, deadline };
-          this._callbacks.onError(outcome.message);
-        } else this._callbacks.onReady(outcome.result);
+        this._callbacks.onReady(outcome.result);
+      } else if (outcome) {
+        this.stop();
+        this._failure = { document: this._iframe.contentDocument, deadline: false };
+        this._callbacks.onError(outcome.message);
+      } else if (this._pastLimit(attempts)) {
+        this._failure = { document: this._iframe.contentDocument, deadline: true };
+        this._callbacks.onError(`Composition timeline not found after ${this._limitMs / 1000}s`);
       }
-    }, 200);
+    }, POLL_MS);
   }
 
-  private _deadlineOutcome(attempts: number): ProbeOutcome {
-    if (attempts < 40 || this._callbacks.hostOwnsDeadline?.()) return null;
-    return { kind: "error", message: "Composition timeline not found after 8s" };
+  private _pastLimit(attempts: number): boolean {
+    return attempts === this._limitMs / POLL_MS && !this._callbacks.hostOwnsDeadline?.();
   }
 
   private _poll(attempts: number): ProbeOutcome {

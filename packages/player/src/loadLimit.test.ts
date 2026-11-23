@@ -1,0 +1,109 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CompositionProbe, loadLimitMs } from "./composition-probe.js";
+import type { HyperframesPlayer } from "./hyperframes-player.js";
+
+describe("loadLimitMs", () => {
+  it.each([
+    [{ userAgentData: { platform: "Windows" }, userAgent: "" }, 90_000],
+    [{ userAgentData: { platform: "macOS" }, userAgent: "" }, 120_000],
+    [{ userAgentData: { platform: "Linux" }, userAgent: "" }, 30_000],
+    [{ userAgentData: { platform: "Chrome OS" }, userAgent: "" }, 120_000],
+    [{ userAgentData: { platform: "Android" }, userAgent: "" }, 120_000],
+    [{ userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0" }, 90_000],
+    [{ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) Safari/605.1.15" }, 120_000],
+    [{ userAgent: "Mozilla/5.0 (X11; Linux x86_64) Chrome/131.0" }, 30_000],
+    [{ userAgent: "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) Chrome/131.0" }, 120_000],
+    [{ userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/131.0" }, 120_000],
+    [{ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Safari/604.1" }, 120_000],
+    [{ userAgent: "" }, 120_000],
+  ])("gives %o %i ms", (nav, limit) => {
+    expect(loadLimitMs(nav)).toBe(limit);
+  });
+});
+
+describe("a film past its load limit", () => {
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  const LINUX = 30_000;
+
+  function openFrame() {
+    const iframe = document.createElement("iframe");
+    document.body.appendChild(iframe);
+    iframe.contentDocument!.body.innerHTML = '<div data-composition-id="main"></div>';
+    const onReady = vi.fn();
+    const onError = vi.fn();
+    const probe = new CompositionProbe(iframe, { onReady, onError });
+    probe.start();
+    return { win: iframe.contentWindow!, onReady, onError };
+  }
+
+  function mountPlayer() {
+    const player = document.createElement("hyperframes-player") as HyperframesPlayer;
+    document.body.appendChild(player);
+    const iframe = player.shadowRoot!.querySelector("iframe")!;
+    iframe.contentDocument!.body.innerHTML = '<div data-composition-id="main"></div>';
+    const events: string[] = [];
+    const readies: Array<{ readyMs: number | null }> = [];
+    player.addEventListener("error", (event: Event) =>
+      events.push(`error ${(event as CustomEvent<{ message: string }>).detail.message}`),
+    );
+    player.addEventListener("ready", (event) => {
+      events.push("ready");
+      readies.push((event as CustomEvent<{ readyMs: number | null }>).detail);
+    });
+    iframe.dispatchEvent(new Event("load"));
+    const postTimeline = () =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: iframe.contentWindow,
+          data: { source: "hf-preview", type: "timeline", durationInFrames: 120 },
+        }),
+      );
+    return { player, events, readies, postTimeline };
+  }
+
+  it("is still loading at 8 s and fails once at the system's limit, naming it", () => {
+    expect(loadLimitMs()).toBe(LINUX);
+    const { onError } = openFrame();
+    vi.advanceTimersByTime(8_000);
+    expect(onError).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(LINUX - 8_000);
+    expect(onError).toHaveBeenCalledExactlyOnceWith("Composition timeline not found after 30s");
+    vi.advanceTimersByTime(LINUX);
+    expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it("still resolves a timeline its document gets after the limit", () => {
+    const { win, onReady, onError } = openFrame();
+    vi.advanceTimersByTime(LINUX + 10_000);
+    expect(onError).toHaveBeenCalledOnce();
+    Object.assign(win, { __player: { getDuration: () => 6 } });
+    vi.advanceTimersByTime(200);
+    expect(onReady).toHaveBeenCalledOnce();
+    expect(onReady.mock.calls[0][0].duration).toBe(6);
+  });
+
+  it("fires ready for a timeline posted after the limit, after its error", () => {
+    const { player, events, postTimeline } = mountPlayer();
+    vi.advanceTimersByTime(LINUX);
+    postTimeline();
+    expect(events).toEqual(["error Composition timeline not found after 30s", "ready"]);
+    expect(player.ready).toBe(true);
+  });
+
+  it("reports how long the frame took from its load to its timeline", () => {
+    const { readies, postTimeline } = mountPlayer();
+    vi.advanceTimersByTime(1_200);
+    postTimeline();
+    expect(readies).toHaveLength(1);
+    expect(readies[0]!.readyMs).toBeGreaterThanOrEqual(1_200);
+  });
+});

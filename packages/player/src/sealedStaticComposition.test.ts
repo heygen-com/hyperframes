@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadLimitMs } from "./composition-probe.js";
+
+const LIMIT = loadLimitMs();
 
 type Player = HTMLElement & {
   ready: boolean;
@@ -36,7 +39,7 @@ function framedPlayer(sealed = true) {
   return { player, events, postStatic, postTimeline };
 }
 
-describe("a sealed film whose runtime boots after the 8 s check", () => {
+describe("a sealed film whose runtime boots late", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     await import("./hyperframes-player.js");
@@ -48,7 +51,7 @@ describe("a sealed film whose runtime boots after the 8 s check", () => {
 
   // fails without the fix: a sealed player could only wait for the runtime's timeline, so a film whose runtime booted
   // at 10 s showed "Composition timeline not found after 8s" while the same film unsealed was ready from its document.
-  it("is ready from its document's static read, with no 8 s error, and the runtime's timeline still lands", () => {
+  it("is ready from its document's static read, with no load error, and the runtime's timeline still lands", () => {
     const { player, events, postStatic, postTimeline } = framedPlayer();
     vi.advanceTimersByTime(1000);
     postStatic();
@@ -73,16 +76,16 @@ describe("a sealed film whose runtime boots after the 8 s check", () => {
   ])("ignores a static read with %s", (_name, over) => {
     const { player, events, postStatic } = framedPlayer();
     postStatic(over);
-    vi.advanceTimersByTime(8000);
-    expect(events).toEqual(["error Composition timeline not found after 8s"]);
+    vi.advanceTimersByTime(LIMIT);
+    expect(events).toEqual([`error Composition timeline not found after ${LIMIT / 1000}s`]);
     expect(player.ready).toBe(false);
   });
 
   it("ignores a static read posted by any window but its own frame", () => {
     const { player, events, postStatic } = framedPlayer();
     postStatic({}, window);
-    vi.advanceTimersByTime(8000);
-    expect(events).toEqual(["error Composition timeline not found after 8s"]);
+    vi.advanceTimersByTime(LIMIT);
+    expect(events).toEqual([`error Composition timeline not found after ${LIMIT / 1000}s`]);
     expect(player.ready).toBe(false);
   });
 

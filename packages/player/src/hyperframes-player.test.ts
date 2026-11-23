@@ -2424,7 +2424,9 @@ describe("HyperframesPlayer runtime ready handshake", () => {
 
     expect(player.ready).toBe(true);
     expect(player.duration).toBe(4);
-    expect(readyEvents).toEqual([{ duration: 4, compositionWidth: 1920, compositionHeight: 1080 }]);
+    expect(readyEvents).toEqual([
+      { duration: 4, compositionWidth: 1920, compositionHeight: 1080, readyMs: expect.any(Number) },
+    ]);
   });
 
   it("reports the picture size in ready and as public properties", () => {
@@ -2435,7 +2437,9 @@ describe("HyperframesPlayer runtime ready handshake", () => {
 
     player._onMessage(timelineMessage(120, { compositionWidth: 1080, compositionHeight: 1920 }));
 
-    expect(readyEvents).toEqual([{ duration: 4, compositionWidth: 1080, compositionHeight: 1920 }]);
+    expect(readyEvents).toEqual([
+      { duration: 4, compositionWidth: 1080, compositionHeight: 1920, readyMs: expect.any(Number) },
+    ]);
     expect(player.compositionWidth).toBe(1080);
     expect(player.compositionHeight).toBe(1920);
   });
@@ -2452,7 +2456,9 @@ describe("HyperframesPlayer runtime ready handshake", () => {
       compositionSize: { width: 1080, height: 1350 },
     });
 
-    expect(readyEvents).toEqual([{ duration: 5, compositionWidth: 1080, compositionHeight: 1350 }]);
+    expect(readyEvents).toEqual([
+      { duration: 5, compositionWidth: 1080, compositionHeight: 1350, readyMs: expect.any(Number) },
+    ]);
   });
 
   it("fires a timeline message's events only after the whole message is applied", () => {
@@ -3069,7 +3075,9 @@ describe("HyperframesPlayer video mode", () => {
 
     loadMetadata(videoOf(player));
 
-    expect(readies).toEqual([{ duration: 6, compositionWidth: 1080, compositionHeight: 1920 }]);
+    expect(readies).toEqual([
+      { duration: 6, compositionWidth: 1080, compositionHeight: 1920, readyMs: null },
+    ]);
     expect(player.ready).toBe(true);
   });
 
