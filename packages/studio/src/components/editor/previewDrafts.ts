@@ -1,7 +1,7 @@
 /**
  * A gesture on a preview frame Studio cannot script edits the selection's stand-in element. What the
  * gesture draws on the stand-in is drawn on the frame's own element too, over the frame's channel,
- * so the preview follows the pointer. One request is in flight per frame; draws in one task, or waiting, merge.
+ * so the preview follows the pointer. One request is in flight per frame; draws until a microtask, or waiting, merge.
  */
 import {
   MAX_DESCRIBE_HANDLES,
@@ -25,7 +25,7 @@ interface Queue {
   drawn: Map<string, Entry>;
   sending: boolean;
   sent: Array<() => void>;
-  sendsAtTaskEnd: boolean;
+  sendQueued: boolean;
 }
 
 const standIns = new WeakMap<Element, { iframe: HTMLIFrameElement; handle: string }>();
@@ -51,7 +51,7 @@ export function previewDraftLive(standIn: Element): boolean {
 function queueFor(iframe: HTMLIFrameElement): Queue {
   let queue = queues.get(iframe);
   if (!queue) {
-    queue = { ops: [], drawn: new Map(), sending: false, sent: [], sendsAtTaskEnd: false };
+    queue = { ops: [], drawn: new Map(), sending: false, sent: [], sendQueued: false };
     queues.set(iframe, queue);
   }
   return queue;
@@ -78,11 +78,11 @@ function send(iframe: HTMLIFrameElement, queue: Queue): void {
     });
 }
 
-function sendAtTaskEnd(iframe: HTMLIFrameElement, queue: Queue): void {
-  if (queue.sendsAtTaskEnd) return;
-  queue.sendsAtTaskEnd = true;
+function sendOnMicrotask(iframe: HTMLIFrameElement, queue: Queue): void {
+  if (queue.sendQueued) return;
+  queue.sendQueued = true;
   queueMicrotask(() => {
-    queue.sendsAtTaskEnd = false;
+    queue.sendQueued = false;
     send(iframe, queue);
   });
 }
@@ -107,7 +107,7 @@ export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
   const waiting = queue.ops[last];
   if (waiting && !("end" in waiting)) queue.ops[last] = op;
   else queue.ops.push(op);
-  sendAtTaskEnd(target.iframe, queue);
+  sendOnMicrotask(target.iframe, queue);
 }
 
 /** A gesture's commit started: the save that patches `selector` may carry this draft's end. */

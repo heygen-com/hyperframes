@@ -5,6 +5,7 @@ import { usePlayerStore } from "../store/playerStore";
 import { createTimelineElementFromManifestClip } from "../lib/timelineDOM";
 import type { ClipManifestClip } from "../lib/playbackTypes";
 import { createPreviewMessageHandler, type ClipManifestMessage } from "./previewMessageRouter";
+import { sceneSwapFor } from "../sceneSwap";
 import { detachedFakeIframe, serveEditingRequests } from "./timelinePlayerTestHarness";
 
 const closers: Array<() => void> = [];
@@ -73,6 +74,24 @@ function handlerFor(frame: Record<string, unknown>, iframe: HTMLIFrameElement) {
       }),
     );
 }
+
+describe("what a sealed frame's timeline message says about its load", () => {
+  it("takes each load's word on whether it can swap scenes", () => {
+    const frame: Record<string, unknown> = {};
+    const iframe = detachedFakeIframe(frame);
+    Object.defineProperty(frame, "document", {
+      get: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    });
+    const post = handlerFor(frame, iframe);
+    const timeline = { source: "hf-preview", type: "timeline", clips: [], durationInFrames: 300 };
+    post({ ...timeline, sceneSwap: false });
+    expect(sceneSwapFor(iframe)).toBeNull();
+    post({ ...timeline, sceneSwap: true });
+    expect(sceneSwapFor(iframe)).not.toBeNull();
+  });
+});
 
 describe("clip fields a preview frame sends", () => {
   it("keeps only clips with numeric timing and a whole-number track from a timeline message", () => {
