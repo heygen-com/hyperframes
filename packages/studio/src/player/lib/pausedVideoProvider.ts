@@ -36,9 +36,6 @@ function readableDocument(iframe: HTMLIFrameElement): Document | null {
   }
 }
 
-/** Closes once the frame holds a document other than the one served. A frame served while its page still loads fires
- * `load` for that same page; closing then would leave its runtime waiting on asks nobody answers. A frame Studio cannot
- * read closes on its next load, as it always did. */
 function closeOnNextDocument(iframe: HTMLIFrameElement, close: () => void): void {
   const served = readableDocument(iframe);
   const onLoad = () => {
