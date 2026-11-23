@@ -126,4 +126,18 @@ it("reads the frame's GSAP values again once a saved script reruns in place", as
   await settleGsapSnapshot(iframe);
 
   expect(frameGsap(iframe)?.getProperty(frameQuery(iframe, "#b")!, "scaleX")).toBe(1.542);
+  const reads = () =>
+    previewRequest.mock.calls.filter(([, kind]) => kind === "gsap-snapshot").length;
+  expect(reads()).toBe(2);
+
+  previewRequest.mockImplementation(async (_frame: unknown, kind: string) =>
+    kind === "gsap-snapshot" ? shown(scaleX) : { result: "cannot-soft-reload" },
+  );
+  applySoftReload(iframe, SAVED, {
+    authoredHtml: file(SAVED),
+    previousHtml: PREVIOUS,
+    currentTimeOverride: 2,
+  });
+  await settle();
+  expect(reads()).toBe(2);
 });
