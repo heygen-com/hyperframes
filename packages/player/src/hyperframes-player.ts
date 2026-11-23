@@ -44,12 +44,6 @@ import {
 // timeline itself respects. Clamping here also shields the native
 // HTMLMediaElement.playbackRate setter, which throws for extreme values in
 // production browsers.
-type ErrorListener = {
-  listener: EventListenerOrEventListenerObject;
-  capture: boolean;
-  once: boolean;
-};
-
 const capturing = (options?: boolean | EventListenerOptions): boolean =>
   typeof options === "boolean" ? options : options?.capture === true;
 
@@ -182,7 +176,12 @@ class HyperframesPlayer extends HTMLElement {
   private _compositionWidth = 1920;
   private _compositionHeight = 1080;
   private _rescaleWarned = false;
-  private _errorListeners: ErrorListener[] = [];
+  private _errorHeard = false;
+  private readonly _errorStandIns = new WeakMap<
+    EventListenerOrEventListenerObject,
+    Map<boolean, EventListener>
+  >();
+  private readonly _errorStandInSet = new WeakSet<EventListenerOrEventListenerObject>();
   private _directTimelineAdapter: DirectTimelineAdapter | null = null;
   private _directTimelineClock: DirectTimelineClock;
   private _parentTickRaf: number | null = null;
@@ -1723,13 +1722,11 @@ class HyperframesPlayer extends HTMLElement {
 
   private _emitError(detail: { message: string; code?: number | null }): void {
     this._afterEvents(() => {
-      if (this._errorListeners.length === 0 && !this.onerror) {
-        console.warn(`[hyperframes-player] error with no listener: ${detail.message}`, {
-          src: this.getAttribute("src"),
-        });
-      }
+      this._errorHeard = false;
       this.dispatchEvent(new CustomEvent("error", { detail }));
-      this._errorListeners = this._errorListeners.filter((entry) => !entry.once);
+      if (!this._errorHeard && !this.onerror) {
+        console.warn(`[hyperframes-player] error with no listener: ${detail.message}`);
+      }
     });
   }
 
@@ -1738,8 +1735,11 @@ class HyperframesPlayer extends HTMLElement {
     listener: EventListenerOrEventListenerObject,
     options?: boolean | AddEventListenerOptions,
   ): void {
-    if (type === "error") this._trackErrorListener(listener, options);
-    super.addEventListener(type, listener, options);
+    super.addEventListener(
+      type,
+      type === "error" ? this._heardBy(listener, capturing(options)) : listener,
+      options,
+    );
   }
 
   override removeEventListener(
@@ -1747,39 +1747,34 @@ class HyperframesPlayer extends HTMLElement {
     listener: EventListenerOrEventListenerObject,
     options?: boolean | EventListenerOptions,
   ): void {
-    if (type === "error") this._untrackErrorListener(listener, capturing(options));
-    super.removeEventListener(type, listener, options);
+    super.removeEventListener(
+      type,
+      type === "error" ? this._heardBy(listener, capturing(options)) : listener,
+      options,
+    );
   }
 
-  /** The DOM keys a listener on the function and its capture flag, and drops a once or aborted one by itself. */
-  private _trackErrorListener(
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions,
-  ): void {
-    const capture = capturing(options);
-    const signal = typeof options === "object" ? options.signal : undefined;
-    if (
-      signal?.aborted ||
-      this._errorListeners.some((entry) => entry.listener === listener && entry.capture === capture)
-    )
-      return;
-    this._errorListeners.push({
-      listener,
-      capture,
-      once: typeof options === "object" && options.once === true,
-    });
-    signal?.addEventListener("abort", () => this._untrackErrorListener(listener, capture), {
-      once: true,
-    });
-  }
-
-  private _untrackErrorListener(
+  /** The one stand-in the DOM holds for an error listener: it marks the error heard, so once, signal and capture stay the
+   *  browser's to apply. */
+  private _heardBy(
     listener: EventListenerOrEventListenerObject,
     capture: boolean,
-  ): void {
-    this._errorListeners = this._errorListeners.filter(
-      (entry) => entry.listener !== listener || entry.capture !== capture,
-    );
+  ): EventListenerOrEventListenerObject {
+    if (this._errorStandInSet.has(listener)) return listener;
+    const byCapture = this._errorStandIns.get(listener) ?? new Map<boolean, EventListener>();
+    this._errorStandIns.set(listener, byCapture);
+    let standIn = byCapture.get(capture);
+    if (!standIn) {
+      const player = this;
+      standIn = function (this: unknown, event: Event) {
+        player._errorHeard = true;
+        if (typeof listener === "function") listener.call(this, event);
+        else listener.handleEvent(event);
+      };
+      byCapture.set(capture, standIn);
+      this._errorStandInSet.add(standIn);
+    }
+    return standIn;
   }
 
   /** A composition from another origin than the page's: no player, sealed or not, can add the runtime to it. */

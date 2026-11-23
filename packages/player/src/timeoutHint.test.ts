@@ -65,9 +65,8 @@ describe("the timeline timeout", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       load("https://films.example/film.html", { sealed, listen: false });
       vi.advanceTimersByTime(8000);
-      expect(warn).toHaveBeenCalledWith(`[hyperframes-player] error with no listener: ${HINTED}`, {
-        src: "https://films.example/film.html",
-      });
+      // The composition URL can carry a signed query, so the warning names only the error.
+      expect(warn).toHaveBeenCalledWith(`[hyperframes-player] error with no listener: ${HINTED}`);
     },
   );
 

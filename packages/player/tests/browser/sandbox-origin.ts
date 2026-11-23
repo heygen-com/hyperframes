@@ -114,25 +114,75 @@ try {
       added.abort();
       aborted.setAttribute("src", url);
       document.body.appendChild(aborted);
-      Object.assign(window, { __again: () => once.setAttribute("src", `${url}?again`) });
+      // A once-listener that installs the next one while the first error dispatches: the second error is heard.
+      const replaced = document.createElement("hyperframes-player");
+      replaced.setAttribute("sandbox-origin", "");
+      replaced.addEventListener(
+        "error",
+        () => {
+          heard.push("first");
+          replaced.addEventListener("error", () => heard.push("second"), { once: true });
+        },
+        { once: true },
+      );
+      replaced.setAttribute("src", url);
+      document.body.appendChild(replaced);
+      // A callback removed and added again, then the first registration's signal aborts. Engines differ on whether
+      // that drops the new registration; either way the error reaches it or warns.
+      const readded = document.createElement("hyperframes-player");
+      readded.setAttribute("sandbox-origin", "");
+      const first = new AbortController();
+      const listen = () => heard.push("readded");
+      readded.addEventListener("error", listen, { signal: first.signal });
+      readded.removeEventListener("error", listen);
+      readded.addEventListener("error", listen);
+      first.abort();
+      readded.setAttribute("src", url);
+      document.body.appendChild(readded);
+      Object.assign(window, {
+        __again: () => {
+          once.setAttribute("src", `${url}?again`);
+          replaced.setAttribute("src", `${url}?again`);
+        },
+      });
     },
     `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
   );
-  await listenerPage.waitForFunction(
-    () => (window as { __heard?: string[] }).__heard?.includes("once") === true,
-    { timeout: 15_000 },
-  );
+  const heardAll = (...names: string[]) =>
+    listenerPage
+      .waitForFunction(
+        (wanted: string[]) =>
+          wanted.every((name) => (window as { __heard?: string[] }).__heard?.includes(name)),
+        { timeout: 30_000 },
+        names,
+      )
+      .catch(async (error: unknown) => {
+        const heard = await listenerPage.evaluate(() => (window as { __heard?: string[] }).__heard);
+        throw new Error(
+          `waited for ${names.join(", ")}; heard ${JSON.stringify(heard)}, warned ${unheard.length}`,
+          {
+            cause: error,
+          },
+        );
+      });
+  await heardAll("once", "first");
   await listenerPage.evaluate(() => (window as { __again?: () => void }).__again?.());
+  await heardAll("second");
   for (let waited = 0; unheard.length < 2 && waited < 15_000; waited += 250)
     await new Promise((resolve) => setTimeout(resolve, 250));
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  const heard =
+    (await listenerPage.evaluate(() => (window as { __heard?: string[] }).__heard)) ?? [];
   assert.equal(
     unheard.length,
-    2,
-    "the aborted listener's error and the once listener's second error both warn",
+    heard.includes("readded") ? 2 : 3,
+    "every error either reached a listener or warned, never both",
   );
-  assert.deepEqual(await listenerPage.evaluate(() => (window as { __heard?: string[] }).__heard), [
-    "once",
-  ]);
+  assert.deepEqual(heard.filter((name) => name !== "readded").sort(), ["first", "once", "second"]);
+  assert.ok(
+    unheard.every((text) => !text.includes("index.html")),
+    "the warning carries no composition URL",
+  );
   await listenerPage.close();
 
   const trusted = await browser.newPage();
