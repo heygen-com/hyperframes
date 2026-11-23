@@ -25,9 +25,12 @@ jobs:
         shell: pwsh
         working-directory: src
         run: |
-          bun install --frozen-lockfile --ignore-scripts
-          bun run --filter "@hyperframes/{parsers,lint,studio-server}" build
-          bun run --filter @hyperframes/core build
+          bun install --frozen-lockfile --linker=hoisted
+          bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+          bun run --cwd packages/core build
+          bun run --filter @hyperframes/player build
+          bun run --filter @hyperframes/studio build
+          bun run --filter @hyperframes/inspector build
           bun run --filter @hyperframes/cli build
       - name: probe
         shell: pwsh
