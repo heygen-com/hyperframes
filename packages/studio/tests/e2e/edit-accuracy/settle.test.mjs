@@ -277,6 +277,31 @@ describe("the box a press is measured against", () => {
     expect(shown.actual[0][0]).toBe(0);
   });
 
+  // fails without the fix: the press itself read the waiting outline, so a sealed press jumped 0.2 px.
+  it("reads the element at the press, before the pointer moves", async () => {
+    const shown = await measureShown(
+      { page: { $: async (selector) => (selector.includes('="frame"') ? null : marker([true])) } },
+      "move",
+      read,
+      async () => quad(260),
+      false,
+    );
+    expect(shown.m.visible[0][0]).toBe(0);
+  });
+
+  // fails without the fix: a press made while Studio saved read the element, still where the last save
+  // left it, 312 px from the box Studio draws at the pointer.
+  it("reads the waiting box at the press while it waits on a save", async () => {
+    const shown = await measureShown(
+      { page: { $: async () => marker([true]) } },
+      "move",
+      read,
+      async () => quad(260),
+      false,
+    );
+    expect(shown.m.visible[0][0]).toBe(260);
+  });
+
   it("reads the element when nothing waits", async () => {
     const shown = await measureShown({ page: page([]) }, "move", read, async () => quad(260));
     expect(shown.m.visible[0][0]).toBe(0);

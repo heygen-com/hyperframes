@@ -97,6 +97,7 @@ export interface ManualOffsetDragMember {
   plainTranslate: boolean;
   gsapOwnsPosition: boolean;
   frameDraftRoute?: "gsap";
+  committedOnFrame?: { x: number; y: number; route?: "gsap" };
   sizeSavedAsScale?: boolean;
   /**
    * The element's GSAP x/y at gesture start, captured in JS so a mid-drag
@@ -456,7 +457,9 @@ function drawMemberOffset(
   offset: { x: number; y: number },
   commit: boolean,
 ): void {
-  drawPreviewDraft(member.element, { translate: frameDraftTranslate(member, offset) });
+  const translate = frameDraftTranslate(member, offset);
+  drawPreviewDraft(member.element, { translate });
+  if (commit) member.committedOnFrame = translate;
   if (member.plainTranslate) writeTranslatePx(member.element, offset);
   else if (applyOffsetDragDraftViaGsap(member.element, offset, member.baseGsap)) return;
   else if (commit) applyStudioPathOffset(member.element, offset);

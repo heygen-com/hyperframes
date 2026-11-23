@@ -59,14 +59,18 @@ export {
   previewPointerTargets,
   queryPreviewElements,
   type PreviewElement,
+  type PreviewElementEdit,
   type PreviewElementHit,
 } from "./player/lib/previewElements";
 export {
+  editSealedSelection,
   findPreviewElementForSelection,
   findPreviewElementForTimelineElement,
   readable,
+  resolveFoundSelection,
   standInFor,
   standInHandle,
+  type PreviewSelectionOptions,
 } from "./components/editor/previewSelection";
 export { PREVIEW_QUALITY_LEVELS, type PreviewQuality } from "@hyperframes/core/preview-quality";
 export type {

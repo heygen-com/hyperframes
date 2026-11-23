@@ -17,14 +17,16 @@ import {
   startGroupDrag as _startGroupDrag,
 } from "./domEditOverlayStartGesture";
 import { giveUpOnPreviewChange, isPreviewChanging } from "../../player/previewReloading";
-import { setStudioWaitingPressCancel } from "../../utils/studioPendingEdits";
+import { isStudioEditSaving, setStudioWaitingPressCancel } from "../../utils/studioPendingEdits";
 import { playheadMoment } from "../../hooks/editMoment";
 import type { EditMoment } from "./manualEditsTypes";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import { pressOutlineOf } from "./pressOutline";
 import {
   askShownGestureStarts,
+  PRESS_WAIT_MAX_MS,
   UNANSWERED,
+  unansweredMoveReason,
   type OverChannel,
   type Shown,
 } from "./previewGestureStartRead";
@@ -37,7 +39,7 @@ type ShownStart = (
 ) => boolean;
 
 const MAX_SETTLED_WAIT_FRAMES = 60;
-export const PRESS_WAIT_MAX_MS = 10_000;
+export { PRESS_WAIT_MAX_MS };
 
 export function createPreviewGestureStarts(
   opts: UseDomEditOverlayGesturesOptions,
@@ -175,7 +177,8 @@ export function createPreviewGestureStarts(
       ended: false,
     };
     opts.waitingPressRef.current = press;
-    outline.waitOnSave();
+    const onSave = !!press.after || isPreviewChanging() || isStudioEditSaving();
+    outline.waitOnSave(onSave ? "save" : "frame");
     let shownFrames = 0;
     let settledFrames = 0;
     const since = performance.now();
@@ -237,8 +240,9 @@ export function createPreviewGestureStarts(
         return;
       }
       endWaitingPress(press, !!channel);
-      const replayed = replay(startsFrom(step));
-      outline.replayEnded(replayed && channel ? opts.iframeRef.current : null);
+      const read = startsFrom(step);
+      if (read === false) sayWhyNotStarted(step);
+      outline.replayEnded(replay(read) && channel ? opts.iframeRef.current : null);
     };
     const replay = (read: ReturnType<typeof startsFrom>): boolean => {
       const pointerDown = down as unknown as React.PointerEvent<HTMLElement>;
@@ -246,6 +250,11 @@ export function createPreviewGestureStarts(
       if (press.moved) moveActiveGesture(press.moved);
       if (press.released) releaseActiveGesture(press.released);
       return true;
+    };
+    const sayWhyNotStarted = (step: "lost" | "run" | "drawn") => {
+      const pressed = opts.selectionRef.current;
+      if (step === "drawn" && channel && pressed)
+        opts.onBlockedMoveRef.current(pressed, unansweredMoveReason(channel));
     };
     press.frame = requestAnimationFrame(poll);
     return true;

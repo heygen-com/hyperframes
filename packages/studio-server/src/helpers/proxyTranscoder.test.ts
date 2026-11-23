@@ -1568,6 +1568,48 @@ describe("resolveProxy", () => {
       await thumb;
     });
 
+    // fails without the fix: two copies nobody watched (thumbnail capture pages') held both slots, and the copy the
+    // preview waited on started only when one of them finished.
+    it("starts the copy a viewer waits on at once, even when other copies fill every slot", async () => {
+      const { calls, resolveProxy, projectDir } = await oneSlot(8, 2);
+      const clip = clips(projectDir, [
+        "thumb-a",
+        "thumb-b",
+        "preview",
+        "second-preview",
+        "thumb-c",
+      ]);
+
+      const thumbs = [
+        resolveProxy(projectDir, clip["thumb-a"]!),
+        resolveProxy(projectDir, clip["thumb-b"]!),
+      ];
+      const preview = resolveProxy(projectDir, clip.preview!, "h264", undefined, {
+        priority: true,
+      });
+      const second = resolveProxy(projectDir, clip["second-preview"]!, "h264", undefined, {
+        priority: true,
+      });
+      const thumbC = resolveProxy(projectDir, clip["thumb-c"]!);
+      await flush();
+      expect(calls.map(clipOf)).toEqual(["thumb-a", "thumb-b", "preview"]);
+
+      succeed(calls[0]!);
+      await thumbs[0];
+      await flush();
+      expect(calls.map(clipOf).slice(3)).toEqual([]);
+      succeed(calls[2]!);
+      await preview;
+      await flush();
+      expect(calls.map(clipOf).slice(3)).toEqual(["second-preview"]);
+      for (const call of [calls[1]!, calls[3]!]) succeed(call);
+      await Promise.all([thumbs[1], second]);
+      await flush();
+      expect(calls.map(clipOf).slice(4)).toEqual(["thumb-c"]);
+      succeed(calls[4]!);
+      await thumbC;
+    });
+
     it("runs a background copy's encode at the lowest priority, until a viewer asks for it", async () => {
       const setPriority = vi.spyOn(os, "setPriority").mockImplementation(() => {});
       const { calls, resolveProxy, projectDir } = await oneSlot();

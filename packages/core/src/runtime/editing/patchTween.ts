@@ -3,7 +3,7 @@
 // a sealed frame on itself through the editing port.
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { recordLiveSet, swapWaiting } from "./softReload";
-import { drawDrafts } from "../editingDraft";
+import { drawDrafts, yieldDrawnPosition } from "../editingDraft";
 import { markRestingScenesForRedraw } from "../sceneRest";
 import { redrawGsapTimelineAt } from "../adapters/gsap";
 import type { RuntimeTimelineLike } from "../types";
@@ -494,6 +494,14 @@ export function parsePatchTweensRequest(params: unknown): PatchTweensParams | nu
   return ends.length ? { ...parsed, endsDrafts: ends } : parsed;
 }
 
+const positionAxes = (change: RuntimeTweenChange) =>
+  (change.kind === "keyframes"
+    ? change.keyframes.flatMap(Object.keys)
+    : Object.keys(change.props)
+  ).filter((channel): channel is "x" | "y" => channel === "x" || channel === "y");
+
+let undrawnTweenAxes: Array<[Element, ("x" | "y")[]]> = [];
+
 /** The frame patching its own timelines: every patch must land, and it renders once at the end. */
 export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
   patched: boolean;
@@ -513,14 +521,25 @@ export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
   const renderAt = lastTweenPatch(patches);
   const patchedTweens: PatchableTween[] = [];
   const missed = patches.find(({ selector, change }, index) => {
-    if (change.kind === "global-set")
-      return applyGlobalSet(target, selector, change.props) === null;
+    if (change.kind === "global-set") {
+      const written = applyGlobalSet(target, selector, change.props);
+      if (written) yieldDrawnPosition(written, positionAxes(change));
+      return written === null;
+    }
     const defer = !(seek && index === renderAt);
-    return !patchTween(target, selector, change, undefined, defer, patchedTweens);
+    if (!patchTween(target, selector, change, undefined, defer, patchedTweens)) return true;
+    for (const written of patchedTweens.at(-1)?.targets?.() ?? []) {
+      if (defer) undrawnTweenAxes.push([written, positionAxes(change)]);
+      else yieldDrawnPosition(written, positionAxes(change));
+    }
+    return false;
   });
   if (seek) drawWhatTheSeekLeft(patchedTweens);
   const shown = !seek || patchedTweens.every(renderedOnceReached);
   const patched = missed === undefined && shown;
+  if (patched && seek)
+    for (const [written, axes] of undrawnTweenAxes) yieldDrawnPosition(written, axes);
+  if (!patched || seek) undrawnTweenAxes = [];
   if (patched && endsDrafts) drawDrafts(endsDrafts);
   return { patched };
 }

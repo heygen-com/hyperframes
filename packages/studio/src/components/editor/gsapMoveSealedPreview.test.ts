@@ -21,6 +21,7 @@ import {
   type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
 import { armPreviewDraftEnd, drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
+import { manualOffsetMoveRevert } from "./gestureUndoRevert";
 import { patchSealedPreview } from "../../hooks/sealedTweenPatch";
 import { takePreviewTicket } from "../../utils/sealedPreviewLedger";
 import { previewAnswer, previewRequest } from "../../player/lib/previewChannel";
@@ -182,7 +183,7 @@ async function dragBoxOnSealedFrame(
 
   // A page px is two frame px: the frame shows 1920 px in 960.
   applyManualOffsetDragDraft(member, 10, 0);
-  await vi.waitFor(() => expect(drawnAt(box)).toEqual({ x: 120, y: 40 }));
+  await vi.waitFor(() => expect(drawnAt(box)).toEqual({ x: start.gsap!.x + 20, y: start.gsap!.y }));
 
   const offset = applyManualOffsetDragCommit(member, 10, 0);
   const commit = vi.fn(async () => undefined);
@@ -584,6 +585,31 @@ it("a sealed move's save ends its draft in the same frame message, and the teard
   expect(draftEnds()).toEqual([]);
   expect(iframe).toBeDefined();
 });
+
+// fails without the fix: the undo's redraw on GSAP's route sent the press position (the stand-in keeps no path offset
+// there), and skipped a draft of (0, 0) as a relative move of nothing; the layer stayed where the undo had put it.
+it.each([
+  [
+    "(0, 0)",
+    timeline(`tl.to("#box", { x: -40, y: 0, duration: 1, ease: "none" }, 0);`),
+    { x: -20, y: 0 },
+  ],
+  ["(120, 40)", SCRIPT, { x: 100, y: 40 }],
+])(
+  "puts a sealed GSAP move that ended at %s back there when its undo does not go through",
+  async (_name, script, start) => {
+    mount(script);
+    const { member } = await dragBoxOnSealedFrame(script);
+    const box = document.getElementById("box")!;
+    const end = { x: start.x + 20, y: start.y };
+    await vi.waitFor(() => expect(drawnAt(box)).toEqual(end));
+    const putBack = manualOffsetMoveRevert([member])();
+    // The undo's write reaching the frame, which the redraw must paint over.
+    gsap.set(box, start);
+    putBack();
+    await vi.waitFor(() => expect(drawnAt(box)).toEqual(end));
+  },
+);
 
 // fails without the fix: a gesture with no save ended its draft as {translate:null} then {end:keep}, two messages.
 it("a sealed move with no save ends its draft once, as one end", async () => {

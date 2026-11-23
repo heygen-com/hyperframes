@@ -50,7 +50,11 @@ function showMemberPosition(member: ManualOffsetDragMember, position: MemberPosi
 }
 
 function redrawMemberOnFrame(member: ManualOffsetDragMember): void {
-  const { element } = member;
+  const { element, committedOnFrame } = member;
+  if (member.frameDraftRoute === "gsap") {
+    if (committedOnFrame !== undefined) drawPreviewDraft(element, { translate: committedOnFrame });
+    return;
+  }
   const offset = member.plainTranslate
     ? readTranslatePx(element)
     : readAppliedStudioPathOffset(element);

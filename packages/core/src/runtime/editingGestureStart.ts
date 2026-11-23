@@ -176,7 +176,8 @@ export type EditingGestureBase = {
 export function gestureBase(handle: EditingElementHandle): EditingGestureBase | null {
   const element = elementForHandle(handle);
   const gsap = (window as GsapWindow).gsap;
-  if (!element || !gsap?.getProperty) return null;
+  if (!element) return null;
+  if (!gsap?.getProperty) return { x: 0, y: 0, opacity: 1, scale: 1 };
   const read = (property: string) => Number(gsap.getProperty?.(element, property));
   const base = { x: read("x"), y: read("y"), opacity: read("opacity"), scale: read("scaleX") };
   return Object.values(base).every(Number.isFinite) ? { ...base, drawsProps: true } : null;

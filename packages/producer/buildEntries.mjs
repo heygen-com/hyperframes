@@ -9,4 +9,5 @@ export const WORKERS = [
   { entry: "src/services/shaderTransitionWorker.ts", outfile: "dist/shaderTransitionWorker.js" },
   { entry: "src/services/healthWorkerThread.ts", outfile: "dist/healthWorkerThread.js" },
   { entry: "src/services/hyperframeLintWorker.ts", outfile: "dist/hyperframeLintWorker.js" },
+  { entry: "src/services/compileWorker.ts", outfile: "dist/compileWorker.js" },
 ];

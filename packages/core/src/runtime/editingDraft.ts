@@ -29,8 +29,7 @@ interface Before {
   translate: string[];
   /** GSAP's rotation before the first GSAP turn drawn, to put back on "restore". */
   gsapRotation?: number;
-  gsapPosition?: { x: number; y: number };
-  gsapDrawn?: { x: number; y: number };
+  gsapPosition?: { x?: number; y?: number };
   drewTransform?: boolean;
   propsSet?: string[];
   putMarkBack?: () => void;
@@ -140,22 +139,22 @@ function drawTranslate(element: Styled, offset: DraftTranslate): void {
     return void element.style.setProperty("translate", movedTranslate(saved.translate, offset));
   const gsap = frameGsap();
   const read = (axis: string) => Number(gsap?.getProperty?.(element, axis)) || 0;
-  saved.gsapPosition ??= { x: read("x"), y: read("y") };
+  const position = (saved.gsapPosition ??= {});
+  position.x ??= read("x");
+  position.y ??= read("y");
   element.style.setProperty("translate", "none");
-  saved.gsapDrawn = { x: offset.x, y: offset.y };
-  gsap?.set?.(element, { ...saved.gsapDrawn });
+  gsap?.set?.(element, { x: offset.x, y: offset.y });
 }
 
-const SAME_PX = 0.001;
+/** An axis written after the draw (a gsap-set, a save's patch) is that write's from then on: a restore leaves it. */
+export function yieldDrawnPosition(element: Element, axes: readonly ("x" | "y")[]): void {
+  const position = before.get(element)?.gsapPosition;
+  for (const axis of axes) if (position) delete position[axis];
+}
 
-/** Only while GSAP still holds the drawn x/y: a save that set its own since keeps it. */
 function restoreGsapPosition(element: Styled): void {
-  const { gsapPosition, gsapDrawn } = before.get(element) ?? {};
-  const gsap = frameGsap();
-  const holds = (axis: "x" | "y") =>
-    Math.abs((Number(gsap?.getProperty?.(element, axis)) || 0) - gsapDrawn![axis]) < SAME_PX;
-  if (gsapPosition && gsapDrawn && holds("x") && holds("y"))
-    gsap?.set?.(element, { ...gsapPosition });
+  const { gsapPosition } = before.get(element) ?? {};
+  if (gsapPosition) frameGsap()?.set?.(element, { ...gsapPosition });
 }
 
 export function writeDrawnSize(
