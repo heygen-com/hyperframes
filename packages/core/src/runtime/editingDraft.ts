@@ -26,6 +26,8 @@ interface Before {
   translate: string[];
   /** GSAP's rotation before the first GSAP turn drawn, to put back on "restore". */
   gsapRotation?: number;
+  gsapPosition?: { x: number; y: number };
+  gsapDrawn?: { x: number; y: number };
   drewTransform?: boolean;
 }
 
@@ -115,8 +117,30 @@ export function movedTranslate(
   return `calc(${x} + ${offset.x}px) calc(${y} + ${offset.y}px)${z ? ` ${z}` : ""}`;
 }
 
-function drawTranslate(element: Styled, offset: { x: number; y: number }): void {
-  element.style.setProperty("translate", movedTranslate(beforeOf(element).translate, offset));
+type DraftTranslate = NonNullable<Extract<EditingDraft, { translate: unknown }>["translate"]>;
+
+function drawTranslate(element: Styled, offset: DraftTranslate): void {
+  const saved = beforeOf(element);
+  if (offset.route !== "gsap")
+    return void element.style.setProperty("translate", movedTranslate(saved.translate, offset));
+  const gsap = frameGsap();
+  const read = (axis: string) => Number(gsap?.getProperty?.(element, axis)) || 0;
+  const base = (saved.gsapPosition ??= { x: read("x"), y: read("y") });
+  element.style.setProperty("translate", "none");
+  saved.gsapDrawn = { x: base.x + offset.x, y: base.y + offset.y };
+  gsap?.set?.(element, { ...saved.gsapDrawn });
+}
+
+const SAME_PX = 0.001;
+
+/** Only while GSAP still holds the drawn x/y: a save that set its own since keeps it. */
+function restoreGsapPosition(element: Styled): void {
+  const { gsapPosition, gsapDrawn } = before.get(element) ?? {};
+  const gsap = frameGsap();
+  const holds = (axis: "x" | "y") =>
+    Math.abs((Number(gsap?.getProperty?.(element, axis)) || 0) - gsapDrawn![axis]) < SAME_PX;
+  if (gsapPosition && gsapDrawn && holds("x") && holds("y"))
+    gsap?.set?.(element, { ...gsapPosition });
 }
 
 export function writeDrawnSize(
@@ -163,6 +187,7 @@ function end(element: Styled, ending: EditingDraftEnd): void {
   if (!saved || ("draft" in ending && ending.draft !== saved.draft)) return;
   if (ending.end === "restore") {
     restore(element, DRAWN);
+    restoreGsapPosition(element);
     restoreGsapRotation(element);
   }
   if (ending.end === "keep-size") restore(element, ["translate"]);

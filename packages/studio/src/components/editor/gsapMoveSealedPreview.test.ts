@@ -17,6 +17,7 @@ import {
   applyManualOffsetDragDraft,
   createManualOffsetDragMember,
   endManualOffsetDragMembers,
+  restoreManualOffsetDragMembers,
   type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
 import { armPreviewDraftEnd, drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
@@ -213,6 +214,39 @@ it("leaves no Studio offset on the stand-in once a sealed drag ends on GSAP's ro
   expect((standIn as HTMLElement).style.getPropertyValue("--hf-studio-offset-x")).toBe("");
 });
 
+const writes = (box: HTMLElement) => [box.style.transform, box.style.translate];
+
+// fails without the fix: the sealed draft drew a CSS translate on top of GSAP's, at another precision than the x/y an
+// open preview's drag gives GSAP, so a sealed drop point and the x it saved came out 0.001 px off.
+it("draws a sealed drag of a GSAP-held layer with the writes an open preview's drag makes", async () => {
+  mount(SCRIPT);
+  let sealed: string[] = [];
+  await dragBoxOnSealedFrame(SCRIPT, undefined, () => (sealed = writes(box())));
+  mount(SCRIPT);
+  const rect = { left: 300, top: 200, width: 100, height: 50, editScaleX: 1, editScaleY: 1 };
+  const element = box();
+  const open = createManualOffsetDragMember({
+    key: "box",
+    selection: makeSelection("box", element),
+    element,
+    rect,
+    gesture: "drag",
+  });
+  if (!open.ok) throw new Error("no open member");
+  applyManualOffsetDragDraft(open.member, 20, 0);
+  expect(writes(element)).toEqual(sealed);
+});
+
+it("puts a cancelled sealed drag of a GSAP-held layer back where GSAP had it", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(SCRIPT, undefined, (_standIn, member) =>
+    restoreManualOffsetDragMembers([member]),
+  );
+  await vi.waitFor(() =>
+    expect([box().style.translate, drawnAt(box())]).toEqual(["", { x: 100, y: 40 }]),
+  );
+});
+
 // fails without the fix: ending the draft on GSAP's route took back the size a resize had drawn too.
 it("keeps the size a sealed resize drew when its anchor ends on GSAP's route", async () => {
   mount(SCRIPT);
@@ -241,7 +275,7 @@ it("drags a layer its tween moves in a sealed preview: it moves live and saves a
   mount(SCRIPT);
   const { started, start, anim, outcome, commit } = await dragBoxOnSealedFrame(SCRIPT);
 
-  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true });
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true, drawsTranslate: true });
   expect(started).toBe(true);
   expect(outcome).toEqual({ status: "persisted" });
   expect(commit).toHaveBeenCalledTimes(1);
@@ -287,7 +321,7 @@ it("saves nothing for a moving layer when the sealed preview's tweens can't be r
   mount(script, SPANS);
   const { start, outcome, commit } = await dragBoxOnSealedFrame(script);
 
-  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true });
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true, drawsTranslate: true });
   // Routed without the frame's tweens, the move would save a `set` that pins the layer.
   expect(outcome).toEqual({
     status: "blocked",
@@ -302,7 +336,7 @@ it("still saves a layer GSAP only holds when the sealed preview's tweens can't b
   mount(script, SPANS);
   const { start, outcome, commit } = await dragBoxOnSealedFrame(script);
 
-  expect(start.gsap).toEqual({ x: 100, y: 40, moving: false });
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: false, drawsTranslate: true });
   expect(outcome).toEqual({ status: "persisted" });
   expect(commit).toHaveBeenCalledTimes(1);
   // The hold's own `set` takes the new place, as when the frame's tweens are read.
@@ -332,7 +366,7 @@ it("a resize in a sealed preview keeps the anchor of a layer its tween moves on 
     start,
   });
 
-  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true });
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true, drawsTranslate: true });
   expect(result.ok && result.member.plainTranslate).toBe(false);
 });
 
@@ -460,7 +494,7 @@ it("keeps a sealed element's move start when GSAP's rotation is out of range, an
   const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]);
   const { start } = (await measurePreviewGestureStart(iframe, overlay, [handle]))!.elements[0]!;
 
-  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true });
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true, drawsTranslate: true });
   expect(start.gsapRotation).toBeUndefined();
 });
 

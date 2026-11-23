@@ -12,7 +12,7 @@ import {
 import { previewRequest } from "../../player/lib/previewChannel";
 
 type Drawn = {
-  translate: { x: number; y: number } | null;
+  translate: { x: number; y: number; route?: "gsap" } | null;
   size: { width: number; height: number } | null;
   rotate?: EditingDraftRotate | null;
 };
@@ -86,6 +86,14 @@ function sendOnMicrotask(iframe: HTMLIFrameElement, queue: Queue): void {
     send(iframe, queue);
   });
 }
+
+type DraftedMember = { initialOffset: { x: number; y: number }; frameDraftRoute?: "gsap" };
+
+export const frameDraftTranslate = (member: DraftedMember, offset: { x: number; y: number }) => ({
+  x: offset.x - member.initialOffset.x,
+  y: offset.y - member.initialOffset.y,
+  ...(member.frameDraftRoute && { route: member.frameDraftRoute }),
+});
 
 /** Draws `part` of the stand-in's draft on its frame element; any other element is left alone. */
 export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
