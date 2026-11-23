@@ -162,7 +162,8 @@ export type LeftOutReason =
   | "private"
   | "network_share"
   | "script"
-  | "not_approved";
+  | "not_approved"
+  | "unreadable";
 
 const WHY: Record<Exclude<LeftOutReason, "file_type">, string> = {
   private: "which holds secrets or tool data",
@@ -171,6 +172,7 @@ const WHY: Record<Exclude<LeftOutReason, "file_type">, string> = {
   network_share: "which is on another computer's network share or is a Windows device path",
   script: "which is a script outside the project",
   not_approved: "which is outside the project and was not approved for upload",
+  unreadable: "which could not be read",
 };
 
 export const INCLUDE_OUTSIDE_FILES_HINT = "Pass --include-outside-files to upload it.";

@@ -2961,10 +2961,19 @@ same share as the project is copied like any other. To include such a
 file, move it into the project folder. Under `--json`, the result lists those
 as `left_out`, each with the `file` that points at it, the `reference` as
 written, its `path` from the project folder, the `reason` (`blocklisted`,
-`received`, `file_type`, `private`, `network_share` or `not_approved`) and `levels_up`, how many folders above the project
+`received`, `file_type`, `private`, `network_share`, `script`, `not_approved` or `unreadable`) and `levels_up`, how many folders above the project
 it is. A full run also prints each as a `{"event":"left_out",…}`
 line on stderr, so a wrapper can ask with `--dry-run --json` before uploading
 and still hear about each one during the run.
+
+A file or folder in the project that cannot be read is left out the same way
+instead of stopping the upload, with a warning saying why. Its entry has the
+reason `unreadable` and a `cause`: `locked` (another app has it open), `denied`
+(the computer does not allow reading it), `missing` (it was deleted, or is a
+link to a file that is gone) or `drive` (its drive could not read it). When a
+page the video plays uses that file, a second entry names that page as `file`,
+so a wrapper can ask before uploading a video that would miss it. The page the
+video starts from must be readable: if it is not, the command stops and names it.
 
 Which files came in with an imported project is kept in the project's
 `.hyperframes/received-files.json`. A project without that file is read as
