@@ -1737,7 +1737,7 @@ class HyperframesPlayer extends HTMLElement {
   ): void {
     super.addEventListener(
       type,
-      type === "error" ? this._heardBy(listener, capturing(options)) : listener,
+      type === "error" && listener ? this._heardBy(listener, capturing(options)) : listener,
       options,
     );
   }
@@ -1749,13 +1749,13 @@ class HyperframesPlayer extends HTMLElement {
   ): void {
     super.removeEventListener(
       type,
-      type === "error" ? this._heardBy(listener, capturing(options)) : listener,
+      type === "error" && listener ? this._heardBy(listener, capturing(options)) : listener,
       options,
     );
   }
 
-  /** The one stand-in the DOM holds for an error listener: it marks the error heard, so once, signal and capture stay the
-   *  browser's to apply. */
+  /** The one stand-in the DOM holds for an error listener: it marks the error heard, and leaves once, signal
+   *  and capture to the browser. */
   private _heardBy(
     listener: EventListenerOrEventListenerObject,
     capture: boolean,
@@ -1765,9 +1765,8 @@ class HyperframesPlayer extends HTMLElement {
     this._errorStandIns.set(listener, byCapture);
     let standIn = byCapture.get(capture);
     if (!standIn) {
-      const player = this;
-      standIn = function (this: unknown, event: Event) {
-        player._errorHeard = true;
+      standIn = (event: Event) => {
+        this._errorHeard = true;
         if (typeof listener === "function") listener.call(this, event);
         else listener.handleEvent(event);
       };

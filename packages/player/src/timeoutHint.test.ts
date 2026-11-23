@@ -39,7 +39,7 @@ describe("the timeline timeout", () => {
     document.body.innerHTML = "";
   });
 
-  // fails without the fix: the error said only that no timeline was found, for a film whose fix is to include the runtime.
+  // fails without the fix: the error said only that no timeline was found, not that the film must bring the runtime.
   it.each([true, false])(
     "names the fix for a film from another site, the same sealed or not (sealed: %s)",
     (sealed) => {
