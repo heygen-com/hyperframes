@@ -47,45 +47,42 @@ try {
     true,
     "removing the policy must reload into the documented trusted mode",
   );
-  // A sealed player adds the runtime to a composition from its own site, so the missing-runtime
-  // error belongs to one from another origin (localhost against 127.0.0.1).
-  const direct = await browser.newPage();
-  await direct.goto(`${server.origin}/host.html?fixture=direct-timeline&sealed=1`, {
-    waitUntil: "domcontentloaded",
-  });
-  await direct.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
-  await direct.evaluate(
-    (url) => {
-      document.querySelector("hyperframes-player")!.setAttribute("src", url);
-    },
-    `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
+  // fails without the fix: a sealed player told a cross-site film without the runtime more than an unsealed one.
+  const crossSiteFilm = async (sealed: boolean) => {
+    const page = await browser.newPage();
+    await page.goto(
+      `${server.origin}/host.html?fixture=direct-timeline${sealed ? "&sealed=1" : ""}`,
+      {
+        waitUntil: "domcontentloaded",
+      },
+    );
+    await page.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
+    await page.evaluate(
+      (url) => {
+        const player = document.querySelector("hyperframes-player")!;
+        const events: string[] = [];
+        (window as { __events?: string[] }).__events = events;
+        for (const type of ["ready", "error", "durationchange", "play"])
+          player.addEventListener(type, () => events.push(type));
+        window.__playerError = undefined;
+        player.setAttribute("src", url);
+      },
+      `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
+    );
+    await page.waitForFunction(() => window.__playerError !== undefined, { timeout: 15_000 });
+    return page.evaluate(() => ({
+      error: String(window.__playerError),
+      events: (window as { __events?: string[] }).__events,
+    }));
+  };
+  const sealedCrossSite = await crossSiteFilm(true);
+  const openCrossSite = await crossSiteFilm(false);
+  assert.deepEqual(
+    sealedCrossSite,
+    openCrossSite,
+    "a cross-site film without the runtime fails sealed exactly as unsealed",
   );
-  await direct.waitForFunction(() => window.__playerError !== undefined, { timeout: 15_000 });
-  const sealedError = String(await direct.evaluate(() => window.__playerError));
-  assert.match(
-    sealedError,
-    /include the runtime script/,
-    "a sealed timeout must name the runtime script",
-  );
-  assert.match(sealedError, /without sandbox-origin/, "a sealed timeout must name the trusted way");
-
-  const elsewhere = await browser.newPage();
-  await elsewhere.goto(`${server.origin}/host.html?fixture=direct-timeline`, {
-    waitUntil: "domcontentloaded",
-  });
-  await elsewhere.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
-  await elsewhere.evaluate(
-    (url) => {
-      document.querySelector("hyperframes-player")!.setAttribute("src", url);
-    },
-    `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
-  );
-  await elsewhere.waitForFunction(() => window.__playerError !== undefined, { timeout: 15_000 });
-  assert.doesNotMatch(
-    String(await elsewhere.evaluate(() => window.__playerError)),
-    /sandbox-origin/,
-    "a default player with a composition on another origin is not told it is sealed",
-  );
+  assert.equal(openCrossSite.error, "Composition timeline not found after 8s");
 
   const trusted = await browser.newPage();
   await trusted.goto(`${server.origin}/host.html?fixture=direct-timeline`, {

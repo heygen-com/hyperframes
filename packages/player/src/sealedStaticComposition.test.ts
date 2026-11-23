@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SEALED_TIMELINE_NOT_FOUND } from "./composition-probe.js";
+const TIMEOUT = "Composition timeline not found after 8s";
 
 type Player = HTMLElement & {
   ready: boolean;
@@ -76,7 +76,7 @@ describe("a sealed film whose runtime boots after the 8 s check", () => {
     const { player, events, postStatic } = framedPlayer();
     postStatic(over);
     vi.advanceTimersByTime(8000);
-    expect(events).toEqual([`error ${SEALED_TIMELINE_NOT_FOUND}`]);
+    expect(events).toEqual([`error ${TIMEOUT}`]);
     expect(player.ready).toBe(false);
   });
 
@@ -84,7 +84,7 @@ describe("a sealed film whose runtime boots after the 8 s check", () => {
     const { player, events, postStatic } = framedPlayer();
     postStatic({}, window);
     vi.advanceTimersByTime(8000);
-    expect(events).toEqual([`error ${SEALED_TIMELINE_NOT_FOUND}`]);
+    expect(events).toEqual([`error ${TIMEOUT}`]);
     expect(player.ready).toBe(false);
   });
 
