@@ -23,6 +23,8 @@ npx hyperframes lambda render ./my-project --width 1920 --height 1080 --wait
 npx hyperframes lambda destroy
 ```
 
+`destroy` deletes their deployed stack: ask the person first and run it only after they say yes.
+
 ## Choose Lambda or local rendering
 
 - **Local `render`** — dev-loop iteration, single host, anything under a few minutes at 1080p.
@@ -155,6 +157,8 @@ Prints one snapshot — overall percent, frames rendered, Lambda invocations, ac
 ```bash
 npx hyperframes lambda destroy
 ```
+
+Ask the person before `destroy` and run it only after they say yes: it deletes their deployed Lambda stack.
 
 Calls `sam delete --no-prompts` and drops the local state file. **The render S3 bucket is configured `Retain`** so it survives stack destruction — empty + delete it via the AWS console / CLI if you want the storage back.
 

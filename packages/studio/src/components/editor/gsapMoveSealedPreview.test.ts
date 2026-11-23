@@ -2,7 +2,7 @@
 
 import { gsap } from "gsap";
 import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeSelection } from "../../hooks/domSelectionTestHarness";
 import { freezeDragStamp } from "../../hooks/draggedGsapPosition";
 import { settleGsapSnapshot } from "../../hooks/gsapFrameSnapshot";
@@ -19,7 +19,7 @@ import {
   endManualOffsetDragMembers,
   type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
-import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
+import { armPreviewDraftEnd, drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
 import { patchSealedPreview } from "../../hooks/sealedTweenPatch";
 import { takePreviewTicket } from "../../utils/sealedPreviewLedger";
 import { previewAnswer, previewRequest } from "../../player/lib/previewChannel";
@@ -533,6 +533,78 @@ it("a save the frame cannot apply leaves the end to go alone, so the draft still
 
   await vi.waitFor(() => expect(document.getElementById("box")!.style.translate).toBe(""));
   expect(draftEnds()).toEqual([expect.objectContaining({ end: "keep-size" })]);
+});
+
+const savedEnds = () =>
+  (patchRequests() as unknown as Array<[unknown, unknown, { endsDrafts?: unknown[] }]>).at(-1)?.[2]
+    .endsDrafts;
+const regrab = (x: number) => (standIn: Element) =>
+  drawPreviewDraft(standIn, { translate: { x, y: 0 } });
+const box = () => document.getElementById("box")!;
+
+describe("a newer gesture that takes the element before the older save lands", () => {
+  // fails without the fix: the older save took the end of the draft the regrab now drew on, and its patch
+  // cleared the regrab's translate for a frame (the mid-drag flash of seqheldtwice-tlhold-px on the edit bench).
+  it("leaves the regrab's draft alone when the older save lands", async () => {
+    mount(SCRIPT);
+    await dragBoxOnSealedFrame(SCRIPT, undefined, regrab(7), async (iframe) => {
+      await savePosition({ kind: "global-set", props: { x: 110, y: 40 } })(iframe);
+      expect(savedEnds()).toBeUndefined();
+      expect(drawnTranslate(box())[0]).not.toBe(0);
+    });
+  });
+
+  it("puts a cancelled regrab back where the older save left it, not where the older drag began", async () => {
+    mount(SCRIPT);
+    await dragBoxOnSealedFrame(SCRIPT, undefined, regrab(7), async (iframe, standIn) => {
+      await savePosition({ kind: "global-set", props: { x: 110, y: 40 } })(iframe);
+      endPreviewDraft(standIn, "restore");
+      await vi.waitFor(() => expect(box().style.translate).toBe(""));
+      expect(drawnAt(box())).toEqual({ x: 110, y: 40 });
+    });
+  });
+
+  it("leaves the regrab's draft alone when the older save fails", async () => {
+    mount(SCRIPT);
+    await dragBoxOnSealedFrame(SCRIPT, undefined, regrab(7), async (iframe) => {
+      await drawsSettled();
+      vi.mocked(previewRequest).mockClear();
+      vi.mocked(previewAnswer).mockClear();
+      const ticket = takePreviewTicket(iframe, {
+        scriptText: SCRIPT,
+        snapshot: null,
+        attributes: false,
+        timing: false,
+      });
+      const patch = {
+        selector: "#gone",
+        change: { kind: "global-set" as const, props: { x: 1, y: 1 } },
+      };
+      patchSealedPreview(ticket, [patch], true, () => undefined);
+      await vi.waitFor(() => expect(patchRequests()).toHaveLength(1));
+      await vi.mocked(previewAnswer).mock.results.at(-1)!.value;
+      await drawsSettled();
+      expect(draftEnds()).toEqual([]);
+      expect(drawnTranslate(box())[0]).not.toBe(0);
+    });
+  });
+
+  it("ends only the newest gesture's draft when three saves land out of order", async () => {
+    mount(SCRIPT);
+    await dragBoxOnSealedFrame(SCRIPT, undefined, regrab(7), async (iframe, standIn) => {
+      armPreviewDraftEnd(standIn, "#box");
+      regrab(9)(standIn);
+      await savePosition({ kind: "global-set", props: { x: 105, y: 40 } })(iframe);
+      expect(savedEnds()).toBeUndefined();
+      await savePosition({ kind: "global-set", props: { x: 103, y: 40 } })(iframe);
+      expect(savedEnds()).toBeUndefined();
+      expect(drawnTranslate(box())[0]).not.toBe(0);
+      armPreviewDraftEnd(standIn, "#box");
+      await savePosition({ kind: "global-set", props: { x: 110, y: 40 } })(iframe);
+      expect(savedEnds()).toEqual([expect.objectContaining({ end: "keep-size" })]);
+      expect([box().style.translate, drawnAt(box())]).toEqual(["", { x: 110, y: 40 }]);
+    });
+  });
 });
 
 it("a failed save's restore still takes the draft back", async () => {

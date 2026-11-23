@@ -92,7 +92,8 @@ function gestureCorners(
   written: { width: number; height: number },
 ): NonNullable<Corners> {
   const rad = (g.actualRotation * Math.PI) / 180;
-  const [w, h] = [(written.width * g.editScaleX) / 2, (written.height * g.editScaleY) / 2];
+  const [sx, sy] = [g.editScaleX * g.contentScaleX, g.editScaleY * g.contentScaleY];
+  const [w, h] = [(written.width * sx) / 2, (written.height * sy) / 2];
   const at = (u: number, v: number) => ({
     x: g.centerX + u * Math.cos(rad) - v * Math.sin(rad),
     y: g.centerY + u * Math.sin(rad) + v * Math.cos(rad),
