@@ -972,10 +972,27 @@ export type BundlePrivateFiles = "vcs-and-secrets" | "studio";
 
 type DeferredScriptChunk = string | (() => string);
 
+/** The page's script tags by `src`, collected at first use; a pin carried to a new spelling adds its tag. */
+function scriptTagsBySrc(doc: Document): () => Map<string, Element[]> {
+  let index: Map<string, Element[]> | undefined;
+  return () => {
+    if (index) return index;
+    index = new Map();
+    for (const el of doc.querySelectorAll("script[src]")) {
+      const src = el.getAttribute("src")?.trim() ?? "";
+      const tags = index.get(src);
+      if (tags) tags.push(el);
+      else index.set(src, [el]);
+    }
+    return index;
+  };
+}
+
 /** Whether a local script stays external because a tag pins its file; the page's pins are indexed once. */
 function localScriptPins(
   doc: Document,
   resolvePath: (src: string) => string | null,
+  tagsBySrc: () => Map<string, Element[]>,
 ): (src: string) => boolean {
   let pins: Map<string, Map<string, ExternalScriptAttributes>> | undefined;
   const carried = new Set<string>();
@@ -999,7 +1016,9 @@ function localScriptPins(
     if (!pinned) return false;
     if (!carried.has(src)) {
       carried.add(src);
-      for (const attributes of pinned.values()) ensureExternalScriptTag(doc, src, attributes);
+      const index = tagsBySrc();
+      for (const attributes of pinned.values())
+        index.set(src, ensureExternalScriptTag(doc, src, attributes, index.get(src) ?? []));
     }
     return true;
   };
@@ -1296,12 +1315,15 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   const compVariablesByComp: Record<string, Record<string, unknown>> = {
     ...subCompResult.variablesByComp,
   };
-  const keepsEntryPinned = localScriptPins(document, resolveEntryUrl);
+  const pageScriptTags = scriptTagsBySrc(document);
+  const keepsEntryPinned = localScriptPins(document, resolveEntryUrl, pageScriptTags);
   const seenCompScripts: SeenCompScripts = {
     srcs: new Set(),
     paths: new Set(),
-    keepsPinned: localScriptPins(document, (value) =>
-      resolveWithinProject(projectDir, decodedUrlPath(value)),
+    keepsPinned: localScriptPins(
+      document,
+      (value) => resolveWithinProject(projectDir, decodedUrlPath(value)),
+      pageScriptTags,
     ),
   };
   const scriptFile = (src: string) => (isRelativeUrl(src) && resolveEntryUrl(src)) || src;
@@ -1471,8 +1493,9 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     templateEl.remove();
   }
 
-  // A file named by several tags runs once, as a composition's scripts do: a copy per tag grew the page past memory.
-  const inlinedRootPaths = new Set<string>();
+  // A file named by several tags of one kind runs once, as a composition's scripts do: a copy per tag grew the page
+  // past memory. A nomodule or data-block tag is another kind, so the regular tag beside it keeps its copy.
+  const inlinedRootRuns = new Set<string>();
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
     if (!src || !isRelativeUrl(src)) continue;
@@ -1482,13 +1505,14 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     // both drops module semantics and changes the import base URL.
     if ((el.getAttribute("type") || "").trim().toLowerCase() === "module") continue;
     const jsPath = resolveEntryUrl(src);
-    if (jsPath && inlinedRootPaths.has(jsPath)) {
+    const run = `${(el.getAttribute("type") || "").trim().toLowerCase()} ${el.hasAttribute("nomodule")} ${jsPath}`;
+    if (jsPath && inlinedRootRuns.has(run)) {
       el.remove();
       continue;
     }
     const js = jsPath ? readScriptOnce(jsPath) : null;
     if (!jsPath || js == null) continue;
-    inlinedRootPaths.add(jsPath);
+    inlinedRootRuns.add(run);
     el.setAttribute(INLINED_FILE_ATTR, src);
     el.removeAttribute("src");
     el.textContent = js;
