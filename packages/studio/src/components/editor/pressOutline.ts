@@ -10,7 +10,7 @@ type OutlineRefs = Pick<
   "boxRef" | "rafPausedRef" | "iframeRef" | "waitingPressRef"
 >;
 type ReplayDrawWait = { frame: HTMLIFrameElement };
-export type PressWait = "frame" | "save";
+type PressWait = "frame" | "save";
 
 function createPressOutline({ boxRef, rafPausedRef, iframeRef, waitingPressRef }: OutlineRefs) {
   let drawWait: ReplayDrawWait | null = null;
