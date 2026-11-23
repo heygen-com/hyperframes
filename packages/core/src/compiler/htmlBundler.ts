@@ -1497,8 +1497,8 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     templateEl.remove();
   }
 
-  // A file named by several tags of one kind runs once, as a composition's scripts do: a copy per tag grew the page
-  // past memory. Kinds are regular, nomodule, and a data block per type; every copy is charged to the page's budget.
+  // A file named by several regular (or nomodule) tags runs once, as a composition's scripts do: a copy per tag grew
+  // the page past memory. Data blocks each keep their text; every copy is charged to the page's budget.
   const inlinedRootRuns = new Set<string>();
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
@@ -1509,18 +1509,15 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     // both drops module semantics and changes the import base URL.
     if ((el.getAttribute("type") || "").trim().toLowerCase() === "module") continue;
     const jsPath = resolveEntryUrl(src);
-    const dataType = isJavaScriptType(el)
-      ? null
-      : (el.getAttribute("type") || "").trim().toLowerCase();
-    const run = `${dataType === null ? `js ${el.hasAttribute("nomodule")}` : `data ${dataType}`} ${jsPath}`;
-    if (jsPath && inlinedRootRuns.has(run)) {
+    const run = isJavaScriptType(el) ? `${el.hasAttribute("nomodule")} ${jsPath}` : null;
+    if (jsPath && run !== null && inlinedRootRuns.has(run)) {
       el.remove();
       continue;
     }
     const js = jsPath ? readScriptOnce(jsPath) : null;
     if (!jsPath || js == null) continue;
     budget.chargeGenerated(LOCAL_SCRIPTS, Buffer.byteLength(js));
-    inlinedRootRuns.add(run);
+    if (run !== null) inlinedRootRuns.add(run);
     el.setAttribute(INLINED_FILE_ATTR, src);
     el.removeAttribute("src");
     el.textContent = js;
