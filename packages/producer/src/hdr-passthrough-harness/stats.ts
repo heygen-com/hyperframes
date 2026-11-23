@@ -129,8 +129,16 @@ export interface ProbeSummary {
   videoFrames: number | null;
   /** Container duration, seconds. */
   durationSec: number | null;
-  /** Side-data types on the first decoded video frame (mastering display, CLL, ...). */
+  /**
+   * Side data on the first decoded video frame (mastering display, CLL, ...),
+   * one `describeSideData` entry each: type and values, sorted.
+   */
   frameSideData: string[];
+  /**
+   * Side data on the video stream (container `mdcv` / `clli` boxes, Dolby
+   * Vision configuration, display matrix), described the same way.
+   */
+  streamSideData: string[];
   hasAudio: boolean;
   audioCodec: string | null;
   audioSampleRate: number | null;
@@ -153,10 +161,13 @@ interface FfprobeStream {
   nb_read_packets?: string;
   sample_rate?: string;
   channels?: number;
+  side_data_list?: FfprobeSideData[];
 }
 
+type FfprobeSideData = { side_data_type?: string } & Record<string, unknown>;
+
 interface FfprobeFrame {
-  side_data_list?: Array<{ side_data_type?: string }>;
+  side_data_list?: FfprobeSideData[];
 }
 
 interface FfprobeJson {
@@ -172,9 +183,31 @@ function numberOrNull(value: string | number | undefined): number | null {
 }
 
 /**
+ * One side-data entry as a comparable string: its type, then every other
+ * field ffprobe printed for it as `key=value`, keys sorted
+ * (`Content light level metadata {max_average=400,max_content=1000}`).
+ * Values matter: a mastering display with other primaries is other metadata.
+ */
+function describeSideData(entry: FfprobeSideData): string {
+  const type = typeof entry.side_data_type === "string" ? entry.side_data_type : "?";
+  const fields = Object.keys(entry)
+    .filter((key) => key !== "side_data_type")
+    .sort()
+    .map(
+      (key) => `${key}=${typeof entry[key] === "string" ? entry[key] : JSON.stringify(entry[key])}`,
+    );
+  return fields.length > 0 ? `${type} {${fields.join(",")}}` : type;
+}
+
+function describeSideDataList(list: FfprobeSideData[] | undefined): string[] {
+  return (list ?? []).map(describeSideData).sort();
+}
+
+/**
  * Build a {@link ProbeSummary} from `ffprobe -count_packets -show_streams
  * -show_format -of json` output, plus optional `-show_frames` output for the
- * first video frame (for HDR side data).
+ * first video frame (for HDR side data). The video stream's own side data
+ * comes from `-show_streams`.
  */
 export function summarizeProbe(streamsJson: string, firstFrameJson?: string): ProbeSummary {
   const parsed = JSON.parse(streamsJson) as FfprobeJson;
@@ -182,10 +215,6 @@ export function summarizeProbe(streamsJson: string, firstFrameJson?: string): Pr
   const video = streams.find((stream) => stream.codec_type === "video");
   const audio = streams.find((stream) => stream.codec_type === "audio");
   const frames = firstFrameJson ? ((JSON.parse(firstFrameJson) as FfprobeJson).frames ?? []) : [];
-  const sideData = (frames[0]?.side_data_list ?? [])
-    .map((entry) => entry.side_data_type)
-    .filter((type): type is string => typeof type === "string")
-    .sort();
   return {
     videoCodec: video?.codec_name ?? null,
     videoProfile: video?.profile ?? null,
@@ -200,7 +229,8 @@ export function summarizeProbe(streamsJson: string, firstFrameJson?: string): Pr
     codecTag: video?.codec_tag_string ?? null,
     videoFrames: numberOrNull(video?.nb_read_packets),
     durationSec: numberOrNull(parsed.format?.duration),
-    frameSideData: sideData,
+    frameSideData: describeSideDataList(frames[0]?.side_data_list),
+    streamSideData: describeSideDataList(video?.side_data_list),
     hasAudio: audio !== undefined,
     audioCodec: audio?.codec_name ?? null,
     audioSampleRate: numberOrNull(audio?.sample_rate),
@@ -255,13 +285,15 @@ export function compareProbes(
     };
   });
 
-  const sideA = reference.frameSideData.join(",");
-  const sideB = candidate.frameSideData.join(",");
-  results.push({
-    name: "frameSideData",
-    ok: sideA === sideB,
-    detail: sideA === sideB ? `[${sideA}]` : `layered=[${sideA}] passthrough=[${sideB}]`,
-  });
+  for (const name of ["frameSideData", "streamSideData"] as const) {
+    const sideA = reference[name].join("; ");
+    const sideB = candidate[name].join("; ");
+    results.push({
+      name,
+      ok: sideA === sideB,
+      detail: sideA === sideB ? `[${sideA}]` : `layered=[${sideA}] passthrough=[${sideB}]`,
+    });
+  }
 
   if (reference.durationSec === null || candidate.durationSec === null) {
     results.push({ name: "duration", ok: false, detail: "duration missing from ffprobe" });

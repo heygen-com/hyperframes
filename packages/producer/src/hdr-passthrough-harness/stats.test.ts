@@ -51,6 +51,7 @@ function probeFixture(overrides: Partial<ProbeSummary> = {}): ProbeSummary {
     videoFrames: 600,
     durationSec: 20,
     frameSideData: [],
+    streamSideData: [],
     hasAudio: true,
     audioCodec: "aac",
     audioSampleRate: 48000,
@@ -108,6 +109,9 @@ describe("summarizeProbe", () => {
           color_range: "tv",
           codec_tag_string: "hvc1",
           nb_read_packets: "600",
+          side_data_list: [
+            { side_data_type: "Content light level metadata", max_content: 1000, max_average: 400 },
+          ],
         },
         { codec_type: "audio", codec_name: "aac", sample_rate: "48000", channels: 2 },
       ],
@@ -117,8 +121,8 @@ describe("summarizeProbe", () => {
       frames: [
         {
           side_data_list: [
-            { side_data_type: "Mastering display metadata" },
-            { side_data_type: "Content light level metadata" },
+            { side_data_type: "Mastering display metadata", red_x: "34000/50000" },
+            { side_data_type: "H.26[45] User Data Unregistered SEI message" },
           ],
         },
       ],
@@ -127,7 +131,11 @@ describe("summarizeProbe", () => {
     expect(summary).toEqual(
       probeFixture({
         colorTransfer: "smpte2084",
-        frameSideData: ["Content light level metadata", "Mastering display metadata"],
+        frameSideData: [
+          "H.26[45] User Data Unregistered SEI message",
+          "Mastering display metadata {red_x=34000/50000}",
+        ],
+        streamSideData: ["Content light level metadata {max_average=400,max_content=1000}"],
       }),
     );
   });
@@ -171,6 +179,29 @@ describe("compareProbes", () => {
       30,
     );
     expect(results.find((result) => result.name === "frameSideData")?.ok).toBe(false);
+  });
+
+  it("compares side data values, not just types", () => {
+    const mastering = (green: string) =>
+      `Mastering display metadata {green_x=${green},green_y=39850/50000}`;
+    const results = compareProbes(
+      probeFixture({ frameSideData: [mastering("13250/50000")] }),
+      probeFixture({ frameSideData: [mastering("8500/50000")] }),
+      30,
+    );
+    expect(results.find((result) => result.name === "frameSideData")?.ok).toBe(false);
+  });
+
+  it("compares the video stream's side data (container mdcv / clli boxes)", () => {
+    // ffmpeg 8 carried the source's mastering display into the passthrough's container while the
+    // layered output had none; the decoded frames were identical.
+    const results = compareProbes(
+      probeFixture(),
+      probeFixture({ streamSideData: ["Mastering display metadata {red_x=35400/50000}"] }),
+      30,
+    );
+    const failed = results.filter((result) => !result.ok).map((result) => result.name);
+    expect(failed).toEqual(["streamSideData"]);
   });
 });
 

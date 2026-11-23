@@ -93,7 +93,12 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   only for its first three callbacks, `raf-warmup`; a film-time
   `setInterval` that appends a mark every 0.5 s, `timer-append`: all
   `seek_callback`; a lazily initialised GSAP `.from()` whose end value a
-  seek-time setter also writes, `gsap-from-lazy`: `overlay_unverified`), an
+  seek-time setter also writes, `gsap-from-lazy`: `overlay_unverified`; a
+  `gsap.delayedCall` that recolours a badge at 1.5 s on GSAP's global
+  timeline, `gsap-delayed-call`: `seek_callback`), a fade the capture
+  fingerprint cannot see, inside a closed shadow root (`closed-shadow-root`)
+  or an `<object>`'s SVG document (`embedded-document`), both
+  `overlay_unreadable`, an
   animated GIF (`video_count`:
   the compiler turns it into a second video), a canvas (`canvas`), and
   a GSAP tween that changes the overlay on every frame
@@ -167,7 +172,8 @@ Layered (flag off) is the reference.
 | codec, profile, size, rate, tag, colour range, audio codec / rate / channels | identical                                                                                                             |
 | video packet count                                                           | identical, and equal to duration x fps                                                                                |
 | container duration                                                           | within 1 frame                                                                                                        |
-| HDR side data on the first frame                                             | same set (the HDR encode path writes mastering display + CLL for HLG too)                                             |
+| HDR side data on the first frame                                             | same entries, type and values (the HDR encode path writes mastering display + CLL for HLG too)                        |
+| video stream side data (container `mdcv` / `clli`, Dolby Vision config)      | same entries, type and values                                                                                         |
 | audio stream                                                                 | present on both                                                                                                       |
 | decoded frames (`framemd5`)                                                  | all identical (default; `--no-require-identical` drops it)                                                            |
 | PSNR, mean of per-frame `psnr_avg`                                           | >= 45 dB                                                                                                              |
@@ -362,6 +368,35 @@ because 4.2.7 cannot run the layered HDR frame extraction at all
 ffmpeg_unsupported (/usr/bin/ffmpeg: maskedmerge misses the layered blend on
 7748 of 49152 samples (up to 1 LSB))` and then fails in that extraction
 exactly as flag off does.
+
+### With the fingerprint blind-spot gate, the global-timeline gate and side data dropped
+
+2026-11-22, same host, load average 60-90 on 32 cores, ffmpeg 7.0.2 unless
+noted, `framemd5` and stream / frame side data values checked. Compare job
+times only within a row.
+
+| Fixture                                  | off: job | on: job | flag-on route (candidates / screenshots / verify)       | off vs on          |
+| ---------------------------------------- | -------- | ------- | ------------------------------------------------------- | ------------------ |
+| HLG `captions` 20 s                      | 198.3 s  | 29.6 s  | passthrough, 21 states (84 / 11 / 516)                  | identical, 600/600 |
+| HLG `captions-gsap` 20 s                 | 415.4 s  | 129.8 s | passthrough, 32 states (97 / 21 / 503)                  | identical, 600/600 |
+| PQ `captions` 20 s                       | 472.7 s  | 79.3 s  | passthrough, 21 states (84 / 11 / 516)                  | identical, 600/600 |
+| PQ `captions-gsap` 20 s                  | 376.5 s  | 55.7 s  | passthrough, 32 states (97 / 21 / 503)                  | identical, 600/600 |
+| PQ `captions` 3 s, ffmpeg n8.0.1         | 56.8 s   | 13.1 s  | passthrough; no stream side data on either side         | identical, 90/90   |
+| `ineligible-closed-shadow-root` 3 s (PQ) | 53.1 s   | 53.3 s  | fallback `overlay_unreadable` (1 closed shadow root(s)) | identical, 90/90   |
+| `ineligible-embedded-document` 3 s (PQ)  | 40.4 s   | 33.0 s  | fallback `overlay_unreadable` (1 `<object>`)            | identical, 90/90   |
+| `ineligible-gsap-delayed-call` 3 s (PQ)  | 31.8 s   | 51.9 s  | fallback `seek_callback` (delayedCall at 1.500s)        | identical, 90/90   |
+
+Before these gates, a 256 px square faded in at 1 s inside a closed shadow
+root, or inside an `<object>`'s SVG document, took the passthrough with 27
+candidates and 3 screenshots and shipped 19/90 frames identical (worst
+PSNR 28.0 dB): every candidate fingerprinted equal, so the fade merged away
+and the square showed on the wrong frames. A `gsap.delayedCall(1.5, ...)`
+that recolours a badge took it too and showed the recoloured badge from
+frame 0 (0/90 identical). With ffmpeg n8.0.1, PQ `captions` passed with
+90/90 identical frames while the passthrough output carried the source's
+mastering display (BT.2020 primaries) and content light level as container
+`mdcv` / `clli` boxes the layered output has none of; the harness compared
+only side data types on the first frame, so it did not fail.
 
 One repeat of the earlier passthrough render of `ineligible-raf-warmup`
 (before the gate) decoded 28/90 frames identical to the first run of the

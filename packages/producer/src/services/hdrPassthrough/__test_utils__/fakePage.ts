@@ -179,6 +179,8 @@ export interface FakePageOptions {
   windowListeners?: readonly string[];
   /** Make the DevTools listener lookup fail. */
   listenersUnreadable?: boolean;
+  /** Closed shadow roots the DevTools DOM snapshot reports (page script cannot see them). */
+  closedShadowRoots?: number;
 }
 
 /** The DevTools calls the planner's listener lookup sends, answered from the options. */
@@ -187,11 +189,54 @@ interface FakeCdpSession {
   detach(): Promise<void>;
 }
 
+/**
+ * A `DOMSnapshot.captureSnapshot` result for the fake tree: one document,
+ * every element by tag name, plus `closedShadowRoots` closed shadow roots.
+ */
+function fakeDomSnapshot(options: FakePageOptions): {
+  documents: Array<{
+    nodes: {
+      parentIndex: number[];
+      nodeName: number[];
+      shadowRootType: { index: number[]; value: number[] };
+    };
+  }>;
+  strings: string[];
+} {
+  const strings: string[] = [];
+  const intern = (text: string) => {
+    const at = strings.indexOf(text);
+    return at >= 0 ? at : strings.push(text) - 1;
+  };
+  const elements = allElements(options.root);
+  const nodeName = elements.map((el) => intern(el.tagName.toUpperCase()));
+  const parentIndex = elements.map((el) =>
+    el.parentElement ? elements.indexOf(el.parentElement) : -1,
+  );
+  // Each closed shadow root: a host under the root holding one node, flattened as the snapshot does.
+  const index: number[] = [];
+  const value: number[] = [];
+  for (let i = 0; i < (options.closedShadowRoots ?? 0); i++) {
+    nodeName.push(intern("DIV"));
+    parentIndex.push(0);
+    nodeName.push(intern("SPAN"));
+    parentIndex.push(nodeName.length - 2);
+    index.push(nodeName.length - 1);
+    value.push(intern("closed"));
+  }
+  return {
+    documents: [{ nodes: { parentIndex, nodeName, shadowRootType: { index, value } } }],
+    strings,
+  };
+}
+
 function fakeCdpSession(options: FakePageOptions): FakeCdpSession {
   return {
     async send(method) {
       if (options.listenersUnreadable) throw new Error(`${method}: target closed`);
       switch (method) {
+        case "DOMSnapshot.captureSnapshot":
+          return fakeDomSnapshot(options);
         case "Runtime.evaluate":
           return { result: { type: "object", objectId: "window-1" } };
         case "DOMDebugger.getEventListeners":

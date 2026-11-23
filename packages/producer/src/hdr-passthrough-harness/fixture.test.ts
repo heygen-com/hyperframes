@@ -192,6 +192,7 @@ describe("INELIGIBLE_CASES", () => {
       "video_count",
       "overlay_unverified",
       "seek_callback",
+      "overlay_unreadable",
     ]) {
       expect(reasons.has(reason)).toBe(true);
     }
@@ -212,9 +213,23 @@ describe("INELIGIBLE_CASES", () => {
       "raf-warmup",
       "timer-append",
       "gsap-from-lazy",
+      "closed-shadow-root",
+      "embedded-document",
+      "gsap-delayed-call",
     ]) {
       expect(names).toContain(name);
     }
+  });
+
+  it("tweens content the fingerprint cannot read, and uses GSAP's global timeline", () => {
+    const find = (name: string) => INELIGIBLE_CASES.find((c) => c.name === name)!;
+    expect(find("closed-shadow-root").composition.timelineScript).toContain('mode: "closed"');
+    expect(find("closed-shadow-root").composition.timelineScript).toContain("tl.to(inner");
+    expect(find("embedded-document").composition.overlayHtml).toContain("<object");
+    expect(find("embedded-document").composition.timelineScript).toContain("contentDocument");
+    const delayed = find("gsap-delayed-call");
+    expect(delayed.composition.timelineScript).toContain("gsap.delayedCall(1.5");
+    expect(delayed.composition.timelineScript).not.toContain("tl.");
   });
 
   it("drives the history-dependent cases from seeks, not from the frame time alone", () => {

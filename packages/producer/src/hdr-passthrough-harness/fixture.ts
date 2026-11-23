@@ -607,6 +607,42 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     },
     assets: ["gsap"],
   },
+  // Overlay content the capture fingerprint cannot read: a tween there changes
+  // pixels and no fingerprint, so frames that render differently would merge.
+  {
+    // A fade inside a closed shadow root (`shadowRoot` is null to page script).
+    name: "closed-shadow-root",
+    reason: "overlay_unreadable",
+    composition: {
+      overlayHtml: `<div id="host" style="${BADGE_STYLE}"></div>`,
+      timelineScript:
+        'const inner = (() => { const root = document.getElementById("host").attachShadow({ mode: "closed" }); root.innerHTML = \'<div id="inner" style="width:128px;height:128px;background:#36f;opacity:0"></div>\'; return root.getElementById("inner"); })(); tl.to(inner, { opacity: 1, duration: 0.3 }, 1);',
+    },
+    assets: ["gsap"],
+  },
+  {
+    // A fade inside an <object>'s SVG document, which the fingerprint walk never enters.
+    name: "embedded-document",
+    reason: "overlay_unreadable",
+    composition: {
+      overlayHtml: `<object id="host" type="image/svg+xml" data="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Crect id='r' width='128' height='128' fill='%2336f' opacity='0'/%3E%3C/svg%3E" style="${BADGE_STYLE}"></object>`,
+      timelineScript:
+        'const host = document.getElementById("host"); const build = () => { const r = host.contentDocument && host.contentDocument.getElementById("r"); if (r && tl.getChildren().length === 0) tl.to(r, { opacity: 1, duration: 0.3 }, 1); }; host.addEventListener("load", build); build();',
+    },
+    assets: ["gsap"],
+  },
+  {
+    // A gsap.delayedCall: GSAP's global timeline fires it on the ticker's own
+    // clock (the seeks so far), not at its film time, and drops it once fired.
+    name: "gsap-delayed-call",
+    reason: "seek_callback",
+    composition: {
+      overlayHtml: `<div id="badge" style="${BADGE_STYLE};background:#36f"></div>`,
+      timelineScript:
+        'gsap.delayedCall(1.5, () => { document.getElementById("badge").style.background = "#f63"; });',
+    },
+    assets: ["gsap"],
+  },
   {
     name: "canvas",
     reason: "canvas",

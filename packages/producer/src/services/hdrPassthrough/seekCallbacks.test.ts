@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createContext, Script } from "node:vm";
 import { VIRTUAL_TIME_SHIM } from "../fileServer.js";
-import { inspectSeekCallbacks } from "./eligibility.js";
+import { inspectGsapGlobalTimeline, inspectSeekCallbacks } from "./eligibility.js";
 
 const GSAP_SOURCE = readFileSync(
   createRequire(import.meta.resolve("@hyperframes/core")).resolve("gsap/dist/gsap.min.js"),
@@ -18,6 +18,7 @@ interface Page {
   /** Seeks frame by frame at 30 fps through `[fromMs, untilMs]`, as the layered path does. */
   seekFrames: (untilMs: number, fromMs?: number) => void;
   inspect: () => string | null;
+  inspectGlobal: () => string | null;
 }
 
 function page(options: { gsap?: boolean } = {}): Page {
@@ -42,17 +43,20 @@ function page(options: { gsap?: boolean } = {}): Page {
       run(
         `for (let f = Math.round(${fromMs} * 30 / 1000); f * 1000 / 30 <= ${untilMs}; f++) window.__HF_VIRTUAL_TIME__.seekToTime(f * 1000 / 30);`,
       ),
-    inspect: () => {
-      const g = globalThis as Record<string, unknown>;
-      const previous = g.window;
-      g.window = run("globalThis");
-      try {
-        return inspectSeekCallbacks();
-      } finally {
-        g.window = previous;
-      }
-    },
+    inspect: () => inPage(run, inspectSeekCallbacks),
+    inspectGlobal: () => inPage(run, inspectGsapGlobalTimeline),
   };
+}
+
+function inPage<T>(run: (code: string) => unknown, fn: () => T): T {
+  const g = globalThis as Record<string, unknown>;
+  const previous = g.window;
+  g.window = run("globalThis");
+  try {
+    return fn();
+  } finally {
+    g.window = previous;
+  }
 }
 
 describe("inspectSeekCallbacks", () => {
@@ -155,6 +159,67 @@ describe("inspectSeekCallbacks", () => {
       );
       p.seekFrames(500);
       expect(p.inspect()).toBe("1 requestAnimationFrame callback(s)");
+    });
+  });
+
+  describe("GSAP's global timeline", () => {
+    // A registered, paused root as the runtime expects, plus whatever the case adds.
+    const registered =
+      "window.tl = gsap.timeline({ paused: true }); tl.to({ x: 0 }, { x: 1, duration: 1 }, 0); window.__timelines = { main: tl };";
+
+    it("finds nothing next to registered timelines and a gsap.set", () => {
+      const p = page({ gsap: true });
+      p.run(
+        `${registered} gsap.set({ y: 0 }, { y: 1 }); gsap.timeline({ paused: true }).to({ z: 0 }, { z: 1 });`,
+      );
+      expect(p.inspectGlobal()).toBeNull();
+      p.seekFrames(1000);
+      expect(p.inspectGlobal()).toBeNull();
+      expect(p.inspect()).toBeNull();
+    });
+
+    it("finds a delayedCall, which fires on the ticker's clock and is then gone", () => {
+      const p = page({ gsap: true });
+      p.run(
+        `${registered} window.fired = []; gsap.delayedCall(1.5, () => { window.fired.push(window.__HF_VIRTUAL_TIME__.getTime()); });`,
+      );
+      expect(p.inspectGlobal()).toBe(
+        "1 GSAP animation(s) on the global timeline outside the registered timelines (delayedCall at 1.500s)",
+      );
+      // The inspect that runs after the seeks (the seek_callback slot) reports it too while it is pending.
+      p.seekFrames(500);
+      expect(p.inspect()).toBeNull();
+      expect(p.inspectGlobal()).not.toBeNull();
+      // Out of order, as eligibility and capture seek, it fires on the first long jump; afterwards
+      // nothing on the page shows it ever existed, so eligibility reads this before its first seek.
+      p.run("gsap.ticker.lagSmoothing(0); window.__HF_VIRTUAL_TIME__.seekToTime(2900);");
+      expect(p.run<number[]>("fired")).toEqual([2900]);
+      expect(p.inspectGlobal()).toBeNull();
+    });
+
+    it("finds a playing tween of a plain object and an unregistered timeline", () => {
+      const plain = page({ gsap: true });
+      plain.run(`${registered} gsap.to({ n: 0 }, { n: 10, duration: 2, onUpdate: () => {} });`);
+      expect(plain.inspectGlobal()).toBe(
+        "1 GSAP animation(s) on the global timeline outside the registered timelines (tween at 0.000s)",
+      );
+      const timeline = page({ gsap: true });
+      timeline.run(`${registered} gsap.timeline().to({ n: 0 }, { n: 1, duration: 1 });`);
+      expect(timeline.inspectGlobal()).toContain("(timeline at 0.000s)");
+    });
+
+    it("finds a callback in a paused timeline that is not registered", () => {
+      const p = page({ gsap: true });
+      p.run(`${registered} gsap.timeline({ paused: true }).call(() => {}, [], 1);`);
+      expect(p.inspectGlobal()).toContain("1 GSAP animation(s) on the global timeline");
+    });
+
+    it("reads a registered timeline behind the runtime's proxy", () => {
+      const p = page({ gsap: true });
+      p.run(
+        "window.tl = gsap.timeline(); tl.to({ x: 0 }, { x: 1, duration: 1 }); window.__timelines = { main: { __hfReal: tl } };",
+      );
+      expect(p.inspectGlobal()).toBeNull();
     });
   });
 

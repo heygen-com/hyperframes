@@ -21,6 +21,7 @@ import { noteStaticDedupActivity, reportFrameProgress } from "../render/shared.j
 import { checkPassthroughEligibility, findSeekCallbacks } from "./eligibility.js";
 import { planOverlayStates } from "./planner.js";
 import { OverlayStateMismatchError, captureOverlayStates } from "./overlayCapture.js";
+import { findFingerprintBlindSpots } from "./overlayFingerprint.js";
 import { compositeAndEncode } from "./ffmpegComposite.js";
 import type {
   EligiblePassthrough,
@@ -201,9 +202,11 @@ async function runHdrPassthrough(
     unique: overlays.uniqueCount,
     captureMs: overlays.captureMs,
   });
-  // A callback first registered on a frame only capture visited.
+  // A callback first registered, or unreadable content first attached, on a frame only capture visited.
   const lateCallbacks = await findSeekCallbacks(page.page);
   if (lateCallbacks) throw new PassthroughDeclinedError("seek_callback", lateCallbacks);
+  const lateBlindSpot = await findFingerprintBlindSpots(page.page);
+  if (lateBlindSpot) throw new PassthroughDeclinedError("overlay_unreadable", lateBlindSpot);
   await session.close();
   input.assertNotAborted();
 

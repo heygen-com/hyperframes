@@ -139,6 +139,10 @@ export type PassthroughIneligibleReason =
   // callbacks, film-time timers, GSAP ticker listeners): its output can depend
   // on the order of seeks, which capture does not share with the layered path
   | "seek_callback"
+  // overlay content the capture fingerprint cannot read (a closed shadow root,
+  // an <iframe> / <object> / <embed> anywhere, shadow trees included), so two
+  // frames could fingerprint equal and render differently
+  | "overlay_unreadable"
   // overlay capture (see overlayCapture.writeOverlayStates): a frame the
   // planner called static rendered a different overlay
   | "overlay_unverified";

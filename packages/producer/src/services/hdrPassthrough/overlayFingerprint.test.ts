@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import type { ElementStackingInfo } from "@hyperframes/engine";
-import { overlayFingerprintKey, stackingFingerprint } from "./overlayFingerprint.js";
+import {
+  type DomSnapshotLike,
+  findBlindSpotsInSnapshot,
+  overlayFingerprintKey,
+  stackingFingerprint,
+} from "./overlayFingerprint.js";
 
 function entry(id: string, overrides: Partial<ElementStackingInfo> = {}): ElementStackingInfo {
   return {
@@ -52,5 +57,67 @@ describe("overlayFingerprintKey", () => {
     expect(overlayFingerprintKey({ kind: "digest", value: "a" }, "b[]")).not.toBe(
       overlayFingerprintKey({ kind: "digest", value: "ab" }, "[]"),
     );
+  });
+});
+
+/**
+ * A snapshot of one or more documents: node names, each node's parent (default: the node before
+ * it), and the shadow tree type of the nodes inside one (`trees`, node index -> type).
+ */
+function snapshot(
+  ...documents: Array<{ names: string[]; parents?: number[]; trees?: Record<number, string> }>
+): DomSnapshotLike {
+  const strings: string[] = [];
+  const intern = (text: string) => {
+    const at = strings.indexOf(text);
+    return at >= 0 ? at : strings.push(text) - 1;
+  };
+  return {
+    strings,
+    documents: documents.map(({ names, parents, trees = {} }) => ({
+      nodes: {
+        parentIndex: parents ?? names.map((_, i) => i - 1),
+        nodeName: names.map(intern),
+        shadowRootType: {
+          index: Object.keys(trees).map(Number),
+          value: Object.values(trees).map(intern),
+        },
+      },
+    })),
+  };
+}
+
+describe("findBlindSpotsInSnapshot", () => {
+  it("finds nothing in a page of plain elements, open and user-agent shadow roots", () => {
+    // VIDEO hosts its controls (user-agent), DIV an open tree holding SPAN and its text.
+    const page = snapshot({
+      names: ["#document", "HTML", "BODY", "VIDEO", "DIV", "DIV", "SPAN", "#text"],
+      parents: [-1, 0, 1, 2, 3, 2, 5, 6],
+      trees: { 4: "user-agent", 6: "open", 7: "open" },
+    });
+    expect(findBlindSpotsInSnapshot(page)).toBeNull();
+  });
+
+  it("counts closed shadow roots by host, as the snapshot flattens their trees", () => {
+    // Two hosts (3 and 6); host 3's closed tree holds two elements and a text node.
+    const page = snapshot({
+      names: ["#document", "HTML", "BODY", "DIV", "B", "#text", "DIV", "I", "I"],
+      parents: [-1, 0, 1, 2, 3, 4, 2, 6, 3],
+      trees: { 4: "closed", 5: "closed", 7: "closed", 8: "closed" },
+    });
+    expect(findBlindSpotsInSnapshot(page)).toBe("2 closed shadow root(s)");
+  });
+
+  it("finds every element that embeds a document, whatever case its name is in", () => {
+    const page = snapshot(
+      { names: ["#document", "HTML", "OBJECT", "embed", "IFRAME", "OBJECT"] },
+      { names: ["#document", "svg"] },
+    );
+    expect(findBlindSpotsInSnapshot(page)).toBe("2 <object>, 1 <embed>, 1 <iframe>");
+  });
+
+  it("finds a content document even when no embedding element is named", () => {
+    const page = snapshot({ names: ["#document", "HTML"] }, { names: ["#document"] });
+    expect(findBlindSpotsInSnapshot(page)).toBe("1 embedded document(s)");
   });
 });

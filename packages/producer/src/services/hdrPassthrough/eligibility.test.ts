@@ -91,6 +91,7 @@ interface PageSpec {
     timelines?: Record<string, FakeTimeline>;
     globalTimeline?: FakeTimeline;
     globals?: Record<string, unknown>;
+    closedShadowRoots?: number;
   };
 }
 
@@ -251,6 +252,83 @@ describe("checkPassthroughEligibility", () => {
       eligible: false,
       reason: "seek_callback",
       detail: "2 film-time timer(s), 2 pending",
+    });
+  });
+
+  it("declines a GSAP delayedCall on the global timeline, even one the first seeks fire", async () => {
+    // GSAP drops a fired delayedCall from its global timeline; this one is gone after the first
+    // read, as one the layout probe's seeks fire would be. The read before any seek still sees it.
+    class FiresOnFirstSeek extends FakeTimeline {
+      private reads = 0;
+      override getChildren(nested: boolean, tweens: boolean, timelines: boolean) {
+        const children = super.getChildren(nested, tweens, timelines);
+        if (this.reads++ === 0) return children;
+        return children.filter((child) => !child.targets().some((t) => typeof t === "function"));
+      }
+    }
+    const withDelayedCall = (global: FakeTimeline) => (ctx: { root: FakeElement }) => {
+      const page = captions(ctx);
+      for (const child of page.globalTimeline.getChildren(false, true, true)) {
+        global.add(child as FakeTimeline, 0);
+      }
+      const callback = () => {};
+      global.tween({
+        start: 1.5,
+        duration: 0,
+        targets: [callback as unknown as FakeElement],
+        vars: { onComplete: callback },
+      });
+      return { ...page, globalTimeline: global };
+    };
+    const pending = await check(makeInput(), { build: withDelayedCall(new FakeTimeline()) });
+    expect(pending).toMatchObject({
+      eligible: false,
+      reason: "seek_callback",
+      detail:
+        "1 GSAP animation(s) on the global timeline outside the registered timelines (delayedCall at 1.500s)",
+    });
+    const fired = await check(makeInput(), { build: withDelayedCall(new FiresOnFirstSeek()) });
+    expect(fired).toMatchObject({ eligible: false, reason: "seek_callback" });
+  });
+
+  it("declines a playing tween of a plain object on the global timeline", async () => {
+    const result = await check(makeInput(), {
+      build: (ctx) => {
+        const page = captions(ctx);
+        page.globalTimeline.tween({ start: 0, duration: 2, vars: { x: 100 } });
+        return page;
+      },
+    });
+    expect(result).toMatchObject({
+      eligible: false,
+      reason: "seek_callback",
+      detail:
+        "1 GSAP animation(s) on the global timeline outside the registered timelines (tween at 0.000s)",
+    });
+  });
+
+  it("declines overlay content the fingerprint cannot read", async () => {
+    const closed = await check(makeInput(), {
+      build: (ctx) => ({ ...captions(ctx), closedShadowRoots: 2 }),
+    });
+    expect(closed).toMatchObject({
+      eligible: false,
+      reason: "overlay_unreadable",
+      detail: "2 closed shadow root(s)",
+    });
+
+    const object = await check(makeInput(), {
+      build: (ctx) => {
+        ctx.root.append(
+          new FakeElement("object", "badge", { type: "image/svg+xml", data: "badge.svg" }),
+        );
+        return captions(ctx);
+      },
+    });
+    expect(object).toMatchObject({
+      eligible: false,
+      reason: "overlay_unreadable",
+      detail: "1 <object>",
     });
   });
 

@@ -24,6 +24,7 @@ import {
 } from "@hyperframes/engine";
 import { probeVideoLayout } from "../render/videoLayerPassthroughPlan.js";
 import { type BlendCheckResult, checkFfmpegBlend } from "./ffmpegBlendCheck.js";
+import { findFingerprintBlindSpots } from "./overlayFingerprint.js";
 import { analyzeOverlayTiming } from "./planner.js";
 import type {
   CheckPassthroughEligibilityArgs,
@@ -360,13 +361,92 @@ export function inspectSeekCallbacks(): string | null {
 }
 
 /**
- * `seek_callback` finding for the overlay page (see `inspectSeekCallbacks`),
- * or `null`. Eligibility calls it after the timing analysis has seeked the
- * whole composition; the passthrough calls it again after overlay capture, so
- * a callback first registered on a frame only capture visited still declines.
+ * Runs in the page; must stay self-contained. Read-only.
+ *
+ * GSAP's ticker renders its global timeline from the ticker's animation
+ * frame, so on every seek, on the ticker's own clock: the seeks it has seen
+ * so far, lag-smoothed, not the frame's time. The runtime seeks the
+ * registered timelines and the roots they hang from to film time; anything
+ * else on the global timeline that plays (a `gsap.delayedCall`, a tween of a
+ * plain object, an unregistered timeline, element target or not) fires or
+ * moves on that clock, which overlay capture's out-of-order seeks do not
+ * share with the layered path's in-order ones. Every playing child that is
+ * not on a registered timeline's chain counts, as does a paused one holding
+ * a callback or a function target (`delayedCall`'s). Paused children without
+ * either do nothing on their own: the runtime's filler roots, and the
+ * element-targeting ones the planner already reports.
+ *
+ * GSAP drops a child from the global timeline once it completes, so a
+ * `delayedCall` that has fired leaves no trace: eligibility reads this before
+ * its first seek as well as after the analysis, and the passthrough again
+ * after capture.
+ */
+// fallow-ignore-next-line complexity
+export function inspectGsapGlobalTimeline(): string | null {
+  type Node = {
+    parent?: Node | null;
+    paused?: () => boolean;
+    getChildren?: (nested: boolean, tweens: boolean, timelines: boolean) => Node[];
+    targets?: () => unknown[];
+    vars?: Record<string, unknown>;
+    startTime?: () => number;
+  };
+  const w = window as unknown as {
+    __timelines?: Record<string, unknown>;
+    gsap?: { globalTimeline?: Node };
+  };
+  const globalTimeline = w.gsap?.globalTimeline;
+  if (!globalTimeline) return null;
+  if (typeof globalTimeline.getChildren !== "function") return "GSAP global timeline unreadable";
+  const CALLBACKS = [
+    "onStart",
+    "onUpdate",
+    "onComplete",
+    "onRepeat",
+    "onReverseComplete",
+    "onInterrupt",
+  ];
+  // Registered timelines and every ancestor up to the global timeline: seeked to film time.
+  const seeked = new Set<unknown>();
+  for (const entry of Object.values(w.__timelines ?? {})) {
+    const real = (entry as { __hfReal?: Node } | null | undefined)?.__hfReal;
+    for (let node = (real ?? entry) as Node | null | undefined; node; node = node.parent) {
+      if (node === globalTimeline) break;
+      seeked.add(node);
+    }
+  }
+  const targetsOf = (node: Node): unknown[] =>
+    typeof node.targets === "function" ? node.targets() : [];
+  const callsBack = (node: Node) =>
+    CALLBACKS.some((key) => typeof node.vars?.[key] === "function") ||
+    targetsOf(node).some((target) => typeof target === "function");
+  const kind = (node: Node): string => {
+    const at = typeof node.startTime === "function" ? ` at ${node.startTime().toFixed(3)}s` : "";
+    if (targetsOf(node).some((target) => typeof target === "function")) return `delayedCall${at}`;
+    return `${typeof node.getChildren === "function" ? "timeline" : "tween"}${at}`;
+  };
+  const found: Node[] = [];
+  for (const child of globalTimeline.getChildren(false, true, true)) {
+    if (seeked.has(child)) continue;
+    const paused = typeof child.paused === "function" && child.paused();
+    const nested =
+      typeof child.getChildren === "function" ? child.getChildren(true, true, true) : [];
+    if (!paused || [child, ...nested].some(callsBack)) found.push(child);
+  }
+  if (found.length === 0) return null;
+  const first = found[0] as Node;
+  return `${found.length} GSAP animation(s) on the global timeline outside the registered timelines (${kind(first)})`;
+}
+
+/**
+ * `seek_callback` finding for the overlay page (see `inspectSeekCallbacks`
+ * and `inspectGsapGlobalTimeline`), or `null`. Eligibility calls it after the
+ * timing analysis has seeked the whole composition; the passthrough calls it
+ * again after overlay capture, so a callback first registered on a frame only
+ * capture visited still declines.
  */
 export async function findSeekCallbacks(page: CaptureSession["page"]): Promise<string | null> {
-  return page.evaluate(inspectSeekCallbacks);
+  return (await page.evaluate(inspectSeekCallbacks)) ?? page.evaluate(inspectGsapGlobalTimeline);
 }
 
 /** Filesystem, probe and ffmpeg access, injectable for tests. */
@@ -441,8 +521,11 @@ async function checkPageLayout(
  * `video_animated` / `not_shown` via `inspectVideoAnimation`; then overlay
  * timing via `planner.analyzeOverlayTiming` with
  * `maxStates = DEFAULT_MAX_OVERLAY_STATES`, whose failure reason is returned
- * as-is; last, `seek_callback` for page code that runs on seeks and keeps
- * state across them (`findSeekCallbacks`).
+ * as-is; then `overlay_unreadable` for overlay content the fingerprint
+ * cannot read (`findFingerprintBlindSpots`); last,
+ * `seek_callback` for page code that runs on seeks and keeps state across
+ * them (`findSeekCallbacks`, plus `inspectGsapGlobalTimeline` read before the
+ * first seek).
  *
  * Leaves the page seeked to time 0 and with no DOM mask applied.
  */
@@ -486,6 +569,9 @@ export async function checkPassthroughEligibility(
   input.assertNotAborted();
   const captureSession = await session.get();
   const { page } = captureSession;
+  // Before the first seek: a GSAP delayedCall the seeks below fire is gone from the global
+  // timeline afterwards. Reported in the seek_callback slot so earlier gates keep their order.
+  const unseekedGsap = await page.evaluate(inspectGsapGlobalTimeline);
   const layout = await checkPageLayout(page, element.id, { width, height }, composition.duration);
   if ("eligible" in layout) return layout;
 
@@ -498,7 +584,9 @@ export async function checkPassthroughEligibility(
     maxStates: DEFAULT_MAX_OVERLAY_STATES,
   });
   if (!timing.ok) return ineligible(timing.reason, timing.detail);
-  const seekCallbacks = await findSeekCallbacks(page);
+  const blindSpot = await findFingerprintBlindSpots(page);
+  if (blindSpot) return ineligible("overlay_unreadable", blindSpot);
+  const seekCallbacks = unseekedGsap ?? (await findSeekCallbacks(page));
   if (seekCallbacks) return ineligible("seek_callback", seekCallbacks);
 
   return {

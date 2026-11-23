@@ -3,8 +3,10 @@
  * PNGs onto the source HDR video and encodes the video-only output.
  */
 
+import { execFile } from "node:child_process";
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import { fpsToFfmpegArg, fpsToNumber } from "@hyperframes/core";
 import {
   buildStreamingArgs,
@@ -12,6 +14,7 @@ import {
   ffmpegStatsReader,
   formatFfmpegError,
   getCachedGpuEncoder,
+  getFfmpegBinary,
   getCachedNvencPresets,
   runFfmpeg,
   type GpuEncoder,
@@ -34,10 +37,50 @@ const SWS_THREADS = 4;
 const THREADED_SCALE = `scale=threads=${SWS_THREADS}`;
 const convert = (pixFmt: string): string => `${THREADED_SCALE},format=${pixFmt}`;
 
+/**
+ * Drops every side data type from the decoded source frames. ffmpeg 8 carries
+ * the source's mastering display, content light level and Dolby Vision
+ * metadata through the filter graph to the encoder and the mp4 muxer (as
+ * `mdcv` / `clli` boxes); the layered encoder reads raw frames on stdin and
+ * never sees them. ffmpeg 7.0 does not propagate them, so on 7.0 this is a no-op.
+ */
+const DROP_SOURCE_SIDE_DATA = "sidedata=mode=delete";
+
 /** GPU encoder resolved by the caller (`getCachedGpuEncoder`), so the builder stays pure. */
 export interface CompositeGpuSelection {
   encoder: GpuEncoder;
   nvencPresets?: ReadonlySet<string>;
+  /**
+   * The resolved ffmpeg's libx265 wrapper has a `dolbyvision` option
+   * (`hasX265DolbyVisionOption`). ffmpeg 8 defaults it to `auto`, which
+   * would copy a source's Dolby Vision RPUs into the output; the layered
+   * encoder never sees any. When set, a libx265 encode gets `-dolbyvision 0`.
+   */
+  x265DolbyVisionOption?: boolean;
+}
+
+const execFileAsync = promisify(execFile);
+const dolbyVisionOptionCache = new Map<string, Promise<boolean>>();
+
+/**
+ * Whether the libx265 wrapper of the ffmpeg `runFfmpeg` resolves has a
+ * `dolbyvision` option (8.0 has it; 7.0 has none and rejects the flag), read
+ * from its encoder help once per binary per process. Throws when the help
+ * cannot be read, which makes the passthrough fall back rather than encode
+ * with an unknown default.
+ */
+function hasX265DolbyVisionOption(): Promise<boolean> {
+  const binary = getFfmpegBinary();
+  let pending = dolbyVisionOptionCache.get(binary);
+  if (!pending) {
+    pending = execFileAsync(binary, ["-hide_banner", "-h", "encoder=libx265"], {
+      timeout: 30_000,
+      maxBuffer: 4 * 1024 * 1024,
+    }).then(({ stdout }) => /^\s*-dolbyvision\s/m.test(stdout));
+    dolbyVisionOptionCache.set(binary, pending);
+    pending.catch(() => dolbyVisionOptionCache.delete(binary));
+  }
+  return pending;
 }
 
 /**
@@ -101,11 +144,15 @@ function quoteConcatPath(path: string): string {
  * `overlay` filter blends RGB at 8 bits only, so it cannot be used here.
  * `tail` is the encoder-side frame filter `buildStreamingArgs` emits for the
  * HDR raw-input path (colour tags, even-dimension pad, vaapi upload).
+ *
+ * The chain starts with `DROP_SOURCE_SIDE_DATA`: the layered encoder reads raw
+ * frames that carry no side data, so nothing the source's frames carry may
+ * reach this encoder either.
  */
 function buildCompositeFilterGraph(request: CompositeRequest, tail: string): string {
   const { video, plan } = request;
   const fpsFilter = `fps=${fpsToFfmpegArg(plan.fps)}:start_time=0`;
-  const videoChain = [fpsFilter];
+  const videoChain = [DROP_SOURCE_SIDE_DATA, fpsFilter];
   if (video.width !== plan.width || video.height !== plan.height) {
     // Same scale/crop as the layered path's HDR frame extraction, which also
     // converts to rgb48le in that one swscale pass.
@@ -170,7 +217,9 @@ function withThreadedOutputConversion(tail: string): string {
  *     layered stage's exact `spawnStreamingEncoder` options (codec, preset,
  *     crf/bitrate, delivery caps, GOP lock, GPU selection, `-x265-params`,
  *     bt2020 colour tags, `-tag:v hvc1`, provenance), with its `-vf` swapped
- *     for the composite graph. `-frames:v plan.totalFrames`, `-an`.
+ *     for the composite graph, and `-dolbyvision 0` for libx265 when
+ *     `gpu.x265DolbyVisionOption` says the binary has it.
+ *     `-frames:v plan.totalFrames`, `-an`.
  */
 export function buildCompositeArgs(
   request: CompositeRequest,
@@ -208,8 +257,13 @@ export function buildCompositeArgs(
     );
   }
   const tail = streaming[vfIndex + 1] ?? "";
+  const noDolbyVision =
+    gpu.x265DolbyVisionOption === true && streaming.includes("libx265")
+      ? ["-dolbyvision", "0"]
+      : [];
   const encoderArgs = [
     ...streaming.slice(inputEnd + 2, vfIndex),
+    ...noDolbyVision,
     "-filter_complex",
     buildCompositeFilterGraph(request, tail),
     "-map",
@@ -271,9 +325,11 @@ export async function compositeAndEncode(request: CompositeRequest): Promise<Com
 
   const gpuEncoder = request.encoder.useGpu ? await getCachedGpuEncoder() : null;
   const nvencPresets = gpuEncoder === "nvenc" ? await getCachedNvencPresets() : undefined;
+  const x265DolbyVisionOption = gpuEncoder === null ? await hasX265DolbyVisionOption() : false;
   const args = buildCompositeArgs(request, concatListPath, {
     encoder: gpuEncoder,
     nvencPresets,
+    x265DolbyVisionOption,
   });
 
   let framesEncoded = 0;

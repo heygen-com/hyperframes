@@ -148,13 +148,13 @@ function states(): OverlayState[] {
   });
 }
 
-function hlgSource(path: string): void {
+function hlgSource(path: string, extraX265Params = ""): void {
   ffmpeg([
     ...["-f", "lavfi", "-i", `testsrc2=s=${WIDTH}x${HEIGHT}:r=30:d=2`],
     ...["-c:v", "libx265", "-preset", "ultrafast", "-pix_fmt", "yuv420p10le"],
     ...[
       "-x265-params",
-      "log-level=error:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc",
+      `log-level=error:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc${extraX265Params}`,
     ],
     ...["-color_primaries", "bt2020", "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc"],
     path,
@@ -397,5 +397,75 @@ describe.skipIf(!HAS_X265)("compositeAndEncode with a source that starts after 0
       // A clamped seek shows `frame` itself: the stream played early by the offset.
       if (frame >= STREAM_OFFSET_FRAMES) expect(error(expected)).toBeLessThan(error(frame));
     }
+  });
+});
+
+// A source whose frames carry mastering display and content light level metadata (BT.2020
+// primaries, 1000 nits), as camera HDR files do. The layered encoder reads raw frames and never
+// sees it; ffmpeg 8 carries it through the composite graph, and the mp4 muxer would write it as
+// container mdcv / clli boxes the layered output does not have.
+const SOURCE_MASTERING =
+  ":master-display=G(8500,39850)B(6550,2300)R(35400,14600)WP(15635,16450)L(10000000,1):max-cll=1000,400";
+
+describe.skipIf(!HAS_X265)("compositeAndEncode with source HDR side data", () => {
+  let outSideData: unknown[];
+
+  const streamSideData = (path: string): unknown[] => {
+    const probe = spawnSync(
+      FFPROBE,
+      [
+        ...["-v", "error", "-select_streams", "v:0", "-show_entries", "stream_side_data"],
+        ...["-of", "json", "--", path],
+      ],
+      { encoding: "utf-8" },
+    );
+    if (probe.status !== 0) throw new Error(`ffprobe failed: ${probe.stderr}`);
+    return JSON.parse(probe.stdout).streams?.[0]?.side_data_list ?? [];
+  };
+  const firstFrameSideData = (path: string): string[] => {
+    const probe = spawnSync(
+      FFPROBE,
+      [
+        ...["-v", "error", "-select_streams", "v:0", "-read_intervals", "%+#1"],
+        ...["-show_entries", "frame_side_data", "-of", "json", "--", path],
+      ],
+      { encoding: "utf-8" },
+    );
+    if (probe.status !== 0) throw new Error(`ffprobe failed: ${probe.stderr}`);
+    const list: Array<{ side_data_type?: string }> =
+      JSON.parse(probe.stdout).frames?.[0]?.side_data_list ?? [];
+    return list.map((entry) => entry.side_data_type ?? "");
+  };
+  let srcFrameSideData: string[];
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), "hdr-passthrough-composite-sidedata-"));
+    const srcPath = join(dir, "mastered.mp4");
+    hlgSource(srcPath, SOURCE_MASTERING);
+    const clear = join(dir, "sidedata-clear.png");
+    writeBoxPng(clear, 0);
+    const state: OverlayState = { index: 0, startFrame: 0, endFrame: 30, captureFrame: 15 };
+    const outputPath = join(dir, "out", "sidedata-video-only.mp4");
+    const request = await compositeRequest({
+      srcPath,
+      mediaStart: 0,
+      overlays: [{ state, pngPath: clear, hash: "clear" }],
+      totalFrames: 30,
+      outputPath,
+    });
+    await compositeAndEncode(request);
+    srcFrameSideData = firstFrameSideData(srcPath);
+    outSideData = streamSideData(outputPath);
+  }, 120_000);
+
+  afterAll(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("writes none of the source's side data into the output stream", () => {
+    // The source really carries it, so the check below is not vacuous.
+    expect(srcFrameSideData).toContain("Mastering display metadata");
+    expect(srcFrameSideData).toContain("Content light level metadata");
+    expect(outSideData).toEqual([]);
   });
 });

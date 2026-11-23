@@ -32,10 +32,18 @@
  * masks them. Anything unaccounted for can only make two equal overlays look
  * different (an extra capture), never two different ones look equal, as
  * long as it is in this list.
+ *
+ * Page script cannot read a closed shadow root (`shadowRoot` is null) or the
+ * document inside an `<object>` / `<embed>` / frame, so a tween there changes
+ * pixels and no fingerprint. Equal fingerprints then merge frames that render
+ * differently, and verification accepts them without a screenshot.
+ * `findFingerprintBlindSpots` finds that content through the DevTools DOM
+ * snapshot, which reads both, and the passthrough declines it
+ * (`overlay_unreadable`).
  */
 
 import { createHash } from "node:crypto";
-import type { CaptureSession, ElementStackingInfo } from "@hyperframes/engine";
+import { type CaptureSession, type ElementStackingInfo, getCdpSession } from "@hyperframes/engine";
 
 /** What the in-page collector returns: a sha256 when the page can hash, else the text. */
 export type PageFingerprint = { kind: "digest"; value: string } | { kind: "text"; value: string };
@@ -106,6 +114,9 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
     if (shadow) {
       parts.push("<#shadow>");
       visitChildren(shadow);
+      // A shadow root's own <style> sheets are not in document.styleSheets; insertRule (or a
+      // tween of one of their rules) changes them without touching the DOM text.
+      for (const sheet of Array.from(shadow.styleSheets ?? [])) pushSheet(sheet);
       for (const sheet of shadow.adoptedStyleSheets ?? []) pushSheet(sheet);
       parts.push("</#shadow>");
     }
@@ -214,4 +225,96 @@ export async function readOverlayFingerprint(
 ): Promise<string> {
   const page = await session.page.evaluate(collectOverlayPageFingerprint, videoId);
   return overlayFingerprintKey(page, stackingFingerprint(stacking, videoId));
+}
+
+/** The part of a `DOMSnapshot.captureSnapshot` result `findBlindSpotsInSnapshot` reads. */
+export interface DomSnapshotLike {
+  documents: Array<{
+    nodes: {
+      parentIndex?: number[];
+      nodeName?: number[];
+      /** Set on every node inside a shadow tree, to that tree's type. */
+      shadowRootType?: { index: number[]; value: number[] };
+    };
+  }>;
+  strings: string[];
+}
+
+/** Elements whose content is another document, which page script may not be able to read. */
+const EMBEDDING_ELEMENTS: ReadonlySet<string> = new Set([
+  "iframe",
+  "frame",
+  "object",
+  "embed",
+  "portal",
+  "fencedframe",
+]);
+
+type SnapshotNodes = DomSnapshotLike["documents"][number]["nodes"];
+
+/**
+ * Closed shadow roots in one snapshot document. The snapshot flattens a
+ * shadow tree into its host and marks each node in it with the tree's type,
+ * so this counts the hosts of closed-tree nodes.
+ */
+function closedShadowHosts(nodes: SnapshotNodes, strings: readonly string[]): number {
+  const types = nodes.shadowRootType ?? { index: [], value: [] };
+  const inClosedTree = new Set<number>();
+  types.index.forEach((node, i) => {
+    if (strings[types.value[i] ?? -1] === "closed") inClosedTree.add(node);
+  });
+  const hosts = new Set<number>();
+  for (const node of inClosedTree) {
+    const parent = nodes.parentIndex?.[node] ?? -1;
+    if (!inClosedTree.has(parent)) hosts.add(parent);
+  }
+  return Math.max(hosts.size, inClosedTree.size > 0 ? 1 : 0);
+}
+
+/**
+ * What in a DOM snapshot the overlay fingerprint cannot read, or `null`:
+ * closed shadow roots with content (user-agent ones are the browser's own
+ * controls; an empty one paints nothing a change could show) and elements
+ * that embed another document, wherever they sit, shadow trees included. A
+ * snapshot with more than one document has content documents too. Every
+ * `<object>` / `<embed>` counts, whatever it shows: what it loads is not in
+ * the fingerprint either.
+ */
+export function findBlindSpotsInSnapshot(snapshot: DomSnapshotLike): string | null {
+  const { strings } = snapshot;
+  let closed = 0;
+  const embedding = new Map<string, number>();
+  for (const { nodes } of snapshot.documents) {
+    closed += closedShadowHosts(nodes, strings);
+    for (const name of nodes.nodeName ?? []) {
+      const tag = (strings[name] ?? "").toLowerCase();
+      if (EMBEDDING_ELEMENTS.has(tag)) embedding.set(tag, (embedding.get(tag) ?? 0) + 1);
+    }
+  }
+  const found = [...embedding].map(([tag, count]) => `${count} <${tag}>`);
+  if (closed > 0) found.unshift(`${closed} closed shadow root(s)`);
+  if (embedding.size === 0 && snapshot.documents.length > 1) {
+    found.push(`${snapshot.documents.length - 1} embedded document(s)`);
+  }
+  return found.length > 0 ? found.join(", ") : null;
+}
+
+/**
+ * `findBlindSpotsInSnapshot` on a DevTools DOM snapshot of the page, which
+ * pierces closed shadow roots and frames. A snapshot that fails is reported
+ * too: unread is not empty. Uses the page's cached engine CDP session and
+ * never detaches it (see `findSeekHookListeners`); a DOM snapshot enables no
+ * domain and sends no events afterwards.
+ */
+export async function findFingerprintBlindSpots(
+  page: CaptureSession["page"],
+): Promise<string | null> {
+  try {
+    const client = await getCdpSession(page);
+    const snapshot = await client.send("DOMSnapshot.captureSnapshot", { computedStyles: [] });
+    return findBlindSpotsInSnapshot(snapshot);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return `DOM snapshot failed (${detail})`;
+  }
 }

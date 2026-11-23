@@ -29,7 +29,9 @@ capture_hdr_layered stage (renderOrchestrator)
        │    in-page layout gates, animation gates,
        │    analyzeOverlayTiming → frames where the overlay can change,
        │    hf-seek listeners on window (DevTools listener lookup),
-       │    page callbacks that run on seeks (virtual-time shim record)
+       │    content the fingerprint cannot read (DevTools DOM snapshot),
+       │    page callbacks that run on seeks (virtual-time shim record,
+       │    GSAP's global timeline, read before the first seek too)
        ├─ planOverlayStates → candidate states                  planner.ts
        ├─ captureOverlayStates → one PNG per distinct overlay   overlayCapture.ts
        │    probe each candidate (seek + overlayFingerprint.ts),
@@ -48,7 +50,9 @@ Fallback rules:
   (overlay capture's verification probes) logs `HDR passthrough off:
 overlay_unverified (...)` and takes the layered path. A page callback that
   runs on seeks and was first registered during capture logs
-  `HDR passthrough off: seek_callback (...)` the same way.
+  `HDR passthrough off: seek_callback (...)` the same way, and content the
+  fingerprint cannot read that first appeared during capture logs
+  `HDR passthrough off: overlay_unreadable (...)`.
 - Any other error inside the passthrough logs `HDR passthrough failed; falling back
 to the layered HDR composite` and takes the layered path. The layered
   encoder overwrites any partial output.
@@ -70,8 +74,13 @@ The passthrough runs only when it can reproduce the layered output:
 - an ffmpeg whose `maskedmerge` rounds exactly like the layered blend (see
   "ffmpeg" below; `ffmpeg_unsupported` otherwise);
 - no page code that runs on seeks and keeps state across them: an
-  animation-frame callback, a film-time timer or a GSAP ticker listener of the
-  page's own (`seek_callback`; see "History-dependent drivers" below);
+  animation-frame callback, a film-time timer, a GSAP ticker listener of the
+  page's own, or anything playing on GSAP's global timeline outside the
+  registered timelines, such as a `gsap.delayedCall` (`seek_callback`; see
+  "History-dependent drivers" below);
+- no overlay content the capture fingerprint cannot read: a closed shadow
+  root, or an `<iframe>`, `<object>`, `<embed>` or frame anywhere, shadow
+  trees included (`overlay_unreadable`; see "Capture dedup" below);
 - overlays that change only at frames the planner can see: clip windows and
   GSAP tweens or `set()` calls. Anything animating on its own clock declines
   (CSS / Web Animations, canvas, iframes, frame sources, timeline callbacks,
@@ -106,6 +115,15 @@ the layered path:
   lock, GPU selection, x265 colour parameters, BT.2020 tags); only the raw
   stdin input and `-vf` are replaced by the file inputs and the composite
   graph.
+- The layered encoder reads raw frames, which carry no side data. The
+  composite decodes the source file, and ffmpeg 8 carries the source's
+  mastering display and content light level through the graph, where the mp4
+  muxer writes them as container `mdcv` / `clli` boxes, and defaults
+  libx265's `dolbyvision` to `auto`, which copies Dolby Vision RPUs. The
+  graph starts with `sidedata=mode=delete` (every type), and libx265 gets
+  `-dolbyvision 0` when the binary has the option (8.0 does, 7.0 has none and
+  rejects it). The harness compares the stream's side data and every side
+  data value on the first frame, not just the types.
 
 On the generated fixtures, including the rational-rate, odd-canvas,
 fractional-duration and deep-seek edge cases, the result is bit-identical to
@@ -147,10 +165,18 @@ caller is page code (anything but the renderer's own `hyperframes://` and
 DevTools scripts). Eligibility declines with `seek_callback` when the page
 has registered any, or added a listener to GSAP's ticker. GSAP's own ticker
 also runs from an animation frame; it is told apart by sleeping and waking
-it (which cancels and re-requests its frame), and only renders the root
-timeline, whose children the planner already requires to be registered,
-paused timelines. The record is read again after capture, for a callback
-first registered on a frame only capture visited.
+it (which cancels and re-requests its frame). It renders GSAP's global
+timeline on its own clock, the seeks it has seen so far, lag-smoothed: the
+registered timelines and the roots they hang from are seeked to film time by
+the runtime, but anything else that plays there (a `gsap.delayedCall`, a
+tween of a plain object, an unregistered timeline, element target or not)
+fires on that clock, which capture's out-of-order seeks do not share with
+the layered path. Eligibility declines (`seek_callback`) any playing child
+of the global timeline off a registered timeline's chain, and any paused one
+holding a callback. GSAP drops a fired `delayedCall` from the global
+timeline, so this is read before eligibility's first seek as well as after
+the analysis. The record and the global timeline are read again after
+capture, for a callback first registered on a frame only capture visited.
 
 What the record cannot see, a setter on a runtime seek-time global or a
 wrapped runtime function that keeps state of its own, is left to the
@@ -163,7 +189,7 @@ The planner's states are candidates: a superset of the frames where the
 overlay can change (a clip cut claims the frames around it, a `set()` the
 frames around its time). Capture seeks to each candidate and reads a
 fingerprint of everything the overlay's pixels depend on: DOM attributes and
-text (including open shadow roots), normalised inline styles, the CSSOM,
+text (including open shadow roots and their own sheets), normalised inline styles, the CSSOM,
 scroll and form state, image and font load state, CSS / Web Animation times,
 non-CSS values written by GSAP tweens, and the stacking order. The video's own
 nodes and script text are left out. A new fingerprint is captured through the
@@ -171,6 +197,15 @@ unchanged layered capture path; a repeated one reuses its PNG; a candidate
 whose fingerprint or captured pixels match the state before it is merged into
 it. A candidate whose overlay differs in any way starts its own state, so a
 one-frame change is never merged away.
+
+That holds only for what the fingerprint can read. Page script cannot enter
+a closed shadow root (`shadowRoot` is null) or, in general, the document of
+an `<object>`, `<embed>` or frame: a tween there changes pixels and no
+fingerprint, so every candidate of a change run would merge and every
+verification probe would match without a screenshot. Eligibility reads a
+DevTools DOM snapshot (`DOMSnapshot.captureSnapshot`, which pierces both)
+and declines such content with `overlay_unreadable`; the snapshot is read
+again after capture.
 
 The frames between capture frames are the planner's word, which holds only
 for drivers its static analysis sees. When a merged state closes, each of
@@ -206,7 +241,11 @@ from ffmpeg's frame count and reports 35–80%.
 - The stage is still reported as `capture_hdr_layered`, and HDR per-frame perf
   stats are not collected on the passthrough path.
 - mp4 only; no alpha, HDR images or shader transitions.
-- The fingerprint cannot see inside closed shadow roots.
+- Content the fingerprint cannot read declines the whole composition,
+  including a closed shadow root or `<object>` that never changes.
+- A closed shadow root with no content is not in the DOM snapshot; one that
+  gains content and loses it again between eligibility and the end of
+  capture is not seen.
 - Verification reads each frame from a fresh seek. A driver that keeps
   state across seeks without an animation frame or timer (a stateful setter
   on a runtime seek-time global) and whose state never shows on a probed

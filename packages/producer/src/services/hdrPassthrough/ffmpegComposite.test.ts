@@ -114,7 +114,7 @@ function request(overrides: RequestOverrides = {}): CompositeRequest {
 }
 
 const GRAPH_1080 = [
-  "[0:v]fps=30:start_time=0,scale=threads=4,format=rgb48le,scale=threads=4,format=gbrp16le[v]",
+  "[0:v]sidedata=mode=delete,fps=30:start_time=0,scale=threads=4,format=rgb48le,scale=threads=4,format=gbrp16le[v]",
   "[1:v]format=rgba64le,split[oc][oa]",
   "[oc]format=gbrp16le,fps=30:start_time=0[o]",
   "[oa]extractplanes=a,mergeplanes=0x000000:gbrp16le,fps=30:start_time=0[m]",
@@ -181,7 +181,7 @@ describe("buildCompositeArgs", () => {
       "/w/list.ffconcat",
     );
     expect(args[args.indexOf("-filter_complex") + 1]).toStartWith(
-      "[0:v]fps=30:start_time=0,scale=1920:1080:force_original_aspect_ratio=increase:threads=4,crop=1920:1080,format=rgb48le,scale=threads=4,format=gbrp16le[v];",
+      "[0:v]sidedata=mode=delete,fps=30:start_time=0,scale=1920:1080:force_original_aspect_ratio=increase:threads=4,crop=1920:1080,format=rgb48le,scale=threads=4,format=gbrp16le[v];",
     );
   });
 
@@ -214,6 +214,34 @@ describe("buildCompositeArgs", () => {
     expect(args[args.indexOf("-filter_complex") + 1]).toEndWith(
       "range=tv,format=nv12,hwupload[vout]",
     );
+  });
+
+  it("drops every side data type the source frames carry before anything else", () => {
+    // ffmpeg 8 carries the source's mastering display / content light level through the graph
+    // and the mp4 muxer writes them as container boxes the layered output does not have.
+    const graph = buildCompositeArgs(request(), "/w/list.ffconcat");
+    const chain = graph[graph.indexOf("-filter_complex") + 1] ?? "";
+    expect(chain).toStartWith("[0:v]sidedata=mode=delete,");
+    expect(chain.match(/sidedata=/g)).toHaveLength(1);
+  });
+
+  it("turns libx265's Dolby Vision copy off when the binary has the option", () => {
+    const on = buildCompositeArgs(request(), "/w/list.ffconcat", {
+      encoder: null,
+      x265DolbyVisionOption: true,
+    });
+    const at = on.indexOf("-dolbyvision");
+    expect(on.slice(at, at + 2)).toEqual(["-dolbyvision", "0"]);
+    expect(at).toBeGreaterThan(on.indexOf("libx265"));
+    expect(at).toBeLessThan(on.indexOf("-y"));
+    // ffmpeg 7.0's libx265 has no such option and rejects the flag.
+    expect(buildCompositeArgs(request(), "/w/list.ffconcat")).not.toContain("-dolbyvision");
+    const nvenc = buildCompositeArgs(request({ useGpu: true }), "/w/list.ffconcat", {
+      encoder: "nvenc",
+      nvencPresets: new Set(["p4"]),
+      x265DolbyVisionOption: true,
+    });
+    expect(nvenc).not.toContain("-dolbyvision");
   });
 
   it("falls back to software when GPU was requested but none was detected", () => {

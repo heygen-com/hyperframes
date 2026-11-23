@@ -5,7 +5,11 @@
 import { resolve } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { collectOverlayPageFingerprint, type PageFingerprint } from "./overlayFingerprint.js";
+import {
+  collectOverlayPageFingerprint,
+  findFingerprintBlindSpots,
+  type PageFingerprint,
+} from "./overlayFingerprint.js";
 
 const GSAP_PATH = resolve(
   import.meta.dirname,
@@ -104,6 +108,24 @@ describe("collectOverlayPageFingerprint in Chrome", () => {
     expect(after).not.toEqual(before);
   });
 
+  it("changes on a CSSOM rule inserted into an open shadow root's own sheet", async () => {
+    await page.evaluate(() => {
+      const host = document.createElement("div");
+      host.id = "badge-host";
+      document.getElementById("root")!.appendChild(host);
+      host.attachShadow({ mode: "open" }).innerHTML =
+        '<style id="inner-sheet">.b { opacity: 1; }</style><div class="b">badge</div>';
+    });
+    const [before, after] = await around(() => {
+      const shadow = document.getElementById("badge-host")!.shadowRoot!;
+      (shadow.getElementById("inner-sheet") as HTMLStyleElement).sheet!.insertRule(
+        ".b{opacity:.5}",
+        1,
+      );
+    });
+    expect(after).not.toEqual(before);
+  });
+
   it("changes as a CSS animation advances, with no DOM change", async () => {
     await page.evaluate(() => {
       document.getElementById("cue")!.style.setProperty("animation", "pulse 1s linear paused");
@@ -175,4 +197,92 @@ describe("collectOverlayPageFingerprint in Chrome", () => {
     const [before, after] = await around(change);
     expect(after).toEqual(before);
   });
+});
+
+// Content page script cannot read: a closed shadow root, a document inside an <object> /
+// <embed> / frame. The fingerprint cannot change when it changes, so the passthrough declines
+// it; the DevTools DOM snapshot sees it.
+describe("findFingerprintBlindSpots in Chrome", () => {
+  let browser: Browser;
+  let page: Page;
+  const SVG = encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect id="r" width="8" height="8"/></svg>',
+  );
+
+  beforeAll(async () => {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+  }, 30_000);
+
+  afterAll(async () => {
+    await browser?.close();
+  });
+
+  beforeEach(async () => {
+    await page?.close();
+    page = await browser.newPage();
+    await page.setContent(PAGE);
+  });
+
+  const blindSpots = () => findFingerprintBlindSpots(page as never);
+
+  it("finds nothing on a page script can read, open shadow roots and UA controls included", async () => {
+    await page.evaluate(() => {
+      const host = document.createElement("div");
+      document.getElementById("root")!.appendChild(host);
+      host.attachShadow({ mode: "open" }).innerHTML = "<span>open</span>";
+      const input = document.createElement("input");
+      input.type = "range";
+      document.getElementById("root")!.appendChild(input);
+    });
+    expect(await blindSpots()).toBeNull();
+  });
+
+  it("finds a closed shadow root, which the fingerprint walk cannot enter", async () => {
+    await page.evaluate(() => {
+      const host = document.createElement("div");
+      document.getElementById("root")!.appendChild(host);
+      host.attachShadow({ mode: "closed" }).innerHTML = '<div style="opacity:0">badge</div>';
+    });
+    expect(
+      await page.evaluate(() => document.querySelector("#root > div:last-child")!.shadowRoot),
+    ).toBeNull();
+    expect(await blindSpots()).toBe("1 closed shadow root(s)");
+  });
+
+  it("finds a declarative closed shadow root", async () => {
+    await page.setContent(
+      '<div id="host"><template shadowrootmode="closed"><b>closed</b></template></div>',
+    );
+    expect(await blindSpots()).toBe("1 closed shadow root(s)");
+  });
+
+  it("finds an <object> document", async () => {
+    await page.evaluate(
+      (svg) =>
+        new Promise<void>((done) => {
+          const object = document.createElement("object");
+          object.type = "image/svg+xml";
+          object.data = `data:image/svg+xml,${svg}`;
+          object.addEventListener("load", () => done());
+          object.addEventListener("error", () => done());
+          document.getElementById("root")!.appendChild(object);
+        }),
+      SVG,
+    );
+    expect(await blindSpots()).toBe("1 <object>");
+  }, 30_000);
+
+  it("finds an iframe inside a shadow root", async () => {
+    await page.setContent('<div id="host"></div>');
+    await page.evaluate(() => {
+      const shadow = document.getElementById("host")!.attachShadow({ mode: "open" });
+      shadow.innerHTML = '<iframe srcdoc="<p>inner</p>"></iframe>';
+    });
+    // The engine's own iframe gate queries the light DOM only.
+    expect(await page.evaluate(() => document.querySelector("iframe"))).toBeNull();
+    expect(await blindSpots()).toBe("1 <iframe>");
+  }, 30_000);
 });
