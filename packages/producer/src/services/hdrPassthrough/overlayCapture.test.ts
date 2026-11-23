@@ -11,12 +11,14 @@ import {
   getSrgbToSignalLut,
 } from "@hyperframes/engine";
 import {
+  createVideoLayerGuard,
   encodePngRgba16,
   hashOverlayPixels,
   mapOverlayToSignalRgba16,
   overlayElementIdsAboveVideo,
   OverlayStateMismatchError,
   type OverlayStateSource,
+  VideoLayerChangedError,
   verificationFrames,
   writeOverlayStates,
 } from "./overlayCapture.js";
@@ -257,6 +259,49 @@ describe("overlayElementIdsAboveVideo", () => {
 
   it("throws when the video is not in the stacking", () => {
     expect(() => overlayElementIdsAboveVideo([el("bg", 0)], "video")).toThrow(/missing/);
+  });
+});
+
+describe("createVideoLayerGuard", () => {
+  const video = (overrides: Partial<ElementStackingInfo> = {}): ElementStackingInfo => ({
+    ...el("video", 1, true),
+    ...overrides,
+  });
+  const caption = el("caption", 5);
+
+  it("accepts a video that holds still while the overlay changes", () => {
+    const check = createVideoLayerGuard("video");
+    check(0, [video(), caption]);
+    check(1, [video(), { ...caption, opacity: 0.5 }]);
+    // The frame injector hides the native video on a capture and not on a probe.
+    check(2, [video({ visible: false, renderFrameVisible: true }), caption]);
+  });
+
+  it.each<[string, Partial<ElementStackingInfo>]>([
+    // A stylesheet rule such as `#root:has(#cue:not([style*=hidden])) video { opacity: .3 }`.
+    ["dimmed", { opacity: 0.3 }],
+    ["hidden by opacity", { opacity: 0 }],
+    ["moved", { x: 4 }],
+    ["resized", { width: 300 }],
+    ["transformed", { transform: "matrix(-1, 0, 0, 1, 320, 0)" }],
+    ["rounded", { borderRadius: [8, 8, 8, 8] }],
+    ["refitted", { objectFit: "contain" }],
+    ["repositioned", { objectPosition: "0% 0%" }],
+    ["clipped", { clipRect: { x: 0, y: 0, width: 100, height: 100 } }],
+    ["restacked", { zIndex: 9 }],
+  ])("throws on the first frame the video is %s", (_name, change) => {
+    const check = createVideoLayerGuard("video");
+    check(0, [video(), caption]);
+    check(41, [video(), caption]);
+    expect(() => check(42, [video(change), caption])).toThrow(VideoLayerChangedError);
+    expect(() => check(42, [video(change), caption])).toThrow(/at frame 42/);
+  });
+
+  it("throws on a first frame that is not fully opaque, and on a missing video", () => {
+    expect(() => createVideoLayerGuard("video")(0, [video({ opacity: 0.3 })])).toThrow(
+      /opacity 0.3/,
+    );
+    expect(() => createVideoLayerGuard("video")(3, [caption])).toThrow(/missing/);
   });
 });
 

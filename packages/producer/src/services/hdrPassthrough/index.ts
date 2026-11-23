@@ -20,8 +20,13 @@ import {
 import { noteStaticDedupActivity, reportFrameProgress } from "../render/shared.js";
 import { checkPassthroughEligibility, findSeekCallbacks } from "./eligibility.js";
 import { planOverlayStates } from "./planner.js";
-import { OverlayStateMismatchError, captureOverlayStates } from "./overlayCapture.js";
+import {
+  OverlayStateMismatchError,
+  VideoLayerChangedError,
+  captureOverlayStates,
+} from "./overlayCapture.js";
 import { findFingerprintBlindSpots } from "./overlayFingerprint.js";
+import { watchPageCode } from "./pageCodeWatch.js";
 import { compositeAndEncode } from "./ffmpegComposite.js";
 import type {
   EligiblePassthrough,
@@ -173,6 +178,8 @@ async function runHdrPassthrough(
 
   const page = await session.get();
   input.assertNotAborted();
+  // Fingerprints stand in for pixels only while no page code runs on seeks (pageCodeWatch.ts).
+  const pageCode = await watchPageCode(page.page);
   const overlays = await captureOverlayStates({
     input,
     session: page,
@@ -193,6 +200,9 @@ async function runHdrPassthrough(
         statesTotal,
       );
     },
+  }).catch(async (error: unknown) => {
+    await pageCode.dispose();
+    throw error;
   });
   log.info("[Render] HDR passthrough: overlay states captured", {
     states: overlays.overlays.length,
@@ -202,6 +212,8 @@ async function runHdrPassthrough(
     unique: overlays.uniqueCount,
     captureMs: overlays.captureMs,
   });
+  const pageCodeRan = await pageCode.stop();
+  if (pageCodeRan) throw new PassthroughDeclinedError("seek_callback", pageCodeRan);
   // A callback first registered, or unreadable content first attached, on a frame only capture visited.
   const lateCallbacks = await findSeekCallbacks(page.page);
   if (lateCallbacks) throw new PassthroughDeclinedError("seek_callback", lateCallbacks);
@@ -285,6 +297,10 @@ export async function attemptHdrPassthrough(
     if (error instanceof PassthroughDeclinedError) {
       log.info(`[Render] HDR passthrough off: ${error.reason} (${error.detail})`);
       return { kind: "fallback", reason: error.reason, detail: error.detail };
+    }
+    if (error instanceof VideoLayerChangedError) {
+      log.info(`[Render] HDR passthrough off: video_animated (${error.message})`);
+      return { kind: "fallback", reason: "video_animated", detail: error.message };
     }
     if (error instanceof OverlayStateMismatchError) {
       log.info(`[Render] HDR passthrough off: overlay_unverified (${error.message})`);

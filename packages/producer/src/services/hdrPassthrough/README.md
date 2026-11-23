@@ -36,7 +36,9 @@ capture_hdr_layered stage (renderOrchestrator)
        ├─ captureOverlayStates → one PNG per distinct overlay   overlayCapture.ts
        │    probe each candidate (seek + overlayFingerprint.ts),
        │    screenshot only unseen fingerprints, merge identical neighbours,
-       │    re-probe every frame of each merged state
+       │    re-probe every frame of each merged state,
+       │    hold the video's own layer still on every probe,
+       │    record every page function that runs meanwhile        pageCodeWatch.ts
        └─ compositeAndEncode → videoOnlyPath                    ffmpegComposite.ts
      completed → assemble muxes audio as usual
      fallback  → (extract deferred video frames) → runCaptureHdrStage
@@ -50,9 +52,12 @@ Fallback rules:
   (overlay capture's verification probes) logs `HDR passthrough off:
 overlay_unverified (...)` and takes the layered path. A page callback that
   runs on seeks and was first registered during capture logs
-  `HDR passthrough off: seek_callback (...)` the same way, and content the
-  fingerprint cannot read that first appeared during capture logs
-  `HDR passthrough off: overlay_unreadable (...)`.
+  `HDR passthrough off: seek_callback (...)` the same way, as does any page
+  function that ran while capture seeked (see "Page code on seeks" below).
+  Content the fingerprint cannot read that first appeared during capture logs
+  `HDR passthrough off: overlay_unreadable (...)`, and a frame where the
+  video's own layer is not the one the composite lays logs
+  `HDR passthrough off: video_animated (...)`.
 - Any other error inside the passthrough logs `HDR passthrough failed; falling back
 to the layered HDR composite` and takes the layered path. The layered
   encoder overwrites any partial output.
@@ -88,8 +93,13 @@ The passthrough runs only when it can reproduce the layered output:
   APNG / AVIF, `hf-seek` listeners on `window`), as does a run of per-frame
   changes longer than a short transition, or more states than the analysis
   limit. A seek-driven writer none of these name (a setter on a runtime
-  global, a wrapped runtime function) is caught by capture's verification
-  probes when it changes the overlay on a probed frame.
+  global, a wrapped runtime function, an accessor GSAP writes through) is
+  page code that runs on capture's seeks, which declines the passthrough
+  after capture (`seek_callback`) if the verification probes have not
+  already declined it (`overlay_unverified`);
+- a video that holds still on every frame: the gates above sample its layout
+  at nine times, and capture checks its layer on every frame it probes
+  (`video_animated`; see "Capture dedup" below).
 
 `PassthroughIneligibleReason` in `types.ts` lists every reason.
 
@@ -179,9 +189,46 @@ the analysis. The record and the global timeline are read again after
 capture, for a callback first registered on a frame only capture visited.
 
 What the record cannot see, a setter on a runtime seek-time global or a
-wrapped runtime function that keeps state of its own, is left to the
-verification probes, which catch it whenever the state shows on a probed
-frame.
+wrapped runtime function that keeps state of its own, runs on capture's
+seeks, which the page-code watch below declines.
+
+The record must not change the render it watches, flag on or off. Each
+wrapper reads its caller from a stack taken from the realm's own `Error`
+with the page's `Error.prepareStackTrace` and `Error.stackTraceLimit` set
+aside as own data properties and put back as they were, so a hook the page
+installs never runs for it (a hook that throws would otherwise throw out of
+`requestAnimationFrame`, and a counting one would count). A hook that cannot
+be set aside (non-configurable) makes the caller page code without reading
+the stack.
+
+## Page code on seeks
+
+The fingerprint reads what page script can read back. Much of what paints it
+cannot: `:focus` it can (the focused element is in it), but not
+`:popover-open`, custom highlights (`CSS.highlights`), the selection, a
+custom element's `:state()`, option selection beyond `selectedIndex`,
+validity. Page code that runs on a seek can change any of these, through a
+setter on `__hfTypegpuTime`, a replaced `__hf.seek`, an accessor on a GSAP
+tween target, a custom element reacting to an attribute GSAP writes or a
+MutationObserver. Every probe then fingerprints equal while the pixels
+differ, and no screenshot is taken.
+
+So fingerprints stand in for pixels only while no page code runs.
+`pageCodeWatch.ts` turns on V8's precise call counts
+(`Profiler.startPreciseCoverage` with `callCount`, which resets the counts)
+when capture starts and reads them when it ends. Any function that ran in a
+script that is neither the renderer's (`hyperframes://`, which the compiler
+and file server tag their scripts with, DevTools evaluations, scripts added
+before navigation) nor a GSAP distribution file (`gsap@<v>/dist/<file>.js`,
+which the compiler keeps as the inlined CDN script's address, or a local
+`gsap.min.js`) declines the passthrough with `seek_callback`, naming the
+first one. The composition's inline code is `hyperframes-composition://`, so
+it counts. The runtime and GSAP write only what the fingerprint reads: DOM
+attributes and styles, and the values of GSAP's tween targets, which the
+fingerprint reads back.
+
+A record that cannot be started or read declines too. On the 20 s fixtures
+the counts add nothing measurable to capture (see "Validation").
 
 ## Capture dedup
 
@@ -189,7 +236,8 @@ The planner's states are candidates: a superset of the frames where the
 overlay can change (a clip cut claims the frames around it, a `set()` the
 frames around its time). Capture seeks to each candidate and reads a
 fingerprint of everything the overlay's pixels depend on: DOM attributes and
-text (including open shadow roots and their own sheets), normalised inline styles, the CSSOM,
+text (including open shadow roots and their own sheets), normalised inline styles, the CSSOM
+(`@import`ed sheets included), the focused element,
 scroll and form state, image and font load state, CSS / Web Animation times,
 non-CSS values written by GSAP tweens, and the stacking order. The video's own
 nodes and script text are left out. A new fingerprint is captured through the
@@ -217,6 +265,20 @@ names (a raw `requestAnimationFrame` loop, a setter on a runtime seek-time
 global, a wrapped seek, a film-time timer): any sampling grid misses a
 change shorter than its gap, and a periodic driver can alias with it. It
 costs one probe (seek + fingerprint, no screenshot) per frame.
+
+The video's own stacking entry is left out of the fingerprint, but not
+unchecked. The composite lays the full-opacity source in one place on every
+frame, while the layered compositor blits the video from its entry
+(opacity, box, transform, radius, clip, `object-fit` / `object-position`,
+z-order) frame by frame. A stylesheet rule that reaches the video through a
+selector (`#root:has(#cue:not([style*=hidden])) video { opacity: .3 }`, a
+sibling combinator) and fires on a caption's clip window or a GSAP `set()`
+of another element changes that entry with no tween or animation on the
+video, between eligibility's nine layout samples. So every probe and capture
+checks the entry the stacking query already returns: fully opaque and,
+field for field, the entry of the first frame probed. Any other frame falls
+back (`video_animated`). Paintability is left out of the check: the frame
+injector hides the native video on a capture and not on a probe.
 
 ## Video frame extraction
 
@@ -246,10 +308,17 @@ from ffmpeg's frame count and reports 35–80%.
 - A closed shadow root with no content is not in the DOM snapshot; one that
   gains content and loses it again between eligibility and the end of
   capture is not seen.
-- Verification reads each frame from a fresh seek. A driver that keeps
-  state across seeks without an animation frame or timer (a stateful setter
-  on a runtime seek-time global) and whose state never shows on a probed
-  frame differently from the layered render can still differ.
+- Page code compiled with no script address (`eval`, `new Function`) runs
+  in a script with an empty URL, as DevTools evaluations do, and the
+  page-code watch leaves it out. A setter built that way is left to the
+  verification probes.
+- GSAP is recognised by its file name. GSAP bundled into a script of the
+  page's own, a GSAP plugin loaded from a file under another name, and any
+  other library that runs on seeks count as page code and decline, as does a
+  page function GSAP calls on a tween's first render (a function-based
+  value) when that render falls inside capture.
+- Page code that runs only on eligibility's seeks (one that removes itself
+  after its first call) is not in the record.
 - For a driver that counts seeks, a fallback render is not bit-identical to
   a flag-off render either: the layered path makes one seek fewer before
   frame 0 after a fallback (`raf-counter` shows `n=4` where flag off shows

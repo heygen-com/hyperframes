@@ -74,6 +74,45 @@ const SEEK_LISTENER_HTML = `<div id="seek-counter" style="position:absolute;top:
     });
   </script>`;
 
+/**
+ * The video dimmed while one short clip is on screen, by a stylesheet rule alone: the clip's window
+ * falls between eligibility's layout samples, and no tween or animation targets the video.
+ */
+const DIM_CLIP_HTML = `<style>#root:has(#dim:not([style*="hidden"])) #bg { opacity: 0.3; }</style>
+  <div id="dim" data-start="1.4" data-duration="0.2" data-track-index="2"></div>`;
+
+/**
+ * A custom highlight the overlay fingerprint cannot read, toggled by a setter on the seek-time global
+ * the WebGPU adapter assigns, and by an accessor a GSAP set() writes through.
+ */
+const HIGHLIGHT_STYLE = `<style>::highlight(hf) { background-color: #f00; color: #ff0; }</style>
+  <div id="mark" style="position:absolute;top:8px;left:8px;color:#fff;font:700 20px sans-serif">MARK</div>`;
+const HIGHLIGHT_APPLY = `const applyHighlight = (on) => {
+      if (!on) return CSS.highlights.delete("hf");
+      const range = new Range();
+      range.selectNodeContents(document.getElementById("mark"));
+      CSS.highlights.set("hf", new Highlight(range));
+    };`;
+const SETTER_HIGHLIGHT_HTML = `${HIGHLIGHT_STYLE}
+  <script>
+    ${HIGHLIGHT_APPLY}
+    let seekTime;
+    Object.defineProperty(window, "__hfTypegpuTime", {
+      configurable: true,
+      get: () => seekTime,
+      set(t) { seekTime = t; applyHighlight(t >= 1 && t < 2); },
+    });
+  </script>`;
+const PROXY_HIGHLIGHT_HTML = `${HIGHLIGHT_STYLE}
+  <script>
+    ${HIGHLIGHT_APPLY}
+    let lit = 0;
+    window.highlightProxy = {};
+    Object.defineProperty(highlightProxy, "on", { get: () => lit, set(v) { lit = v; applyHighlight(v === 1); } });
+  </script>`;
+const PROXY_HIGHLIGHT_SCRIPT =
+  "tl.set(highlightProxy, { on: 1 }, 1.0); tl.set(highlightProxy, { on: 0 }, 2.0);";
+
 function compositionHtml(cues: readonly Cue[], script: string, extraHtml = ""): string {
   const captions = cues
     .map(
@@ -131,6 +170,8 @@ interface RenderResult {
 }
 
 let root: string;
+
+const PROJECTS = ["multi", "held", "seek", "dim", "setter", "proxy"];
 
 function recordingLogger(messages: string[], onCapture: (stats: CaptureStats) => void) {
   const logger: ProducerLogger = {
@@ -228,7 +269,10 @@ describe.skipIf(!HAS_X265)("HDR passthrough capture dedup through real renders",
     writeProject("multi", compositionHtml(MULTI_TWEEN_CUES, MULTI_TWEEN_SCRIPT));
     writeProject("held", compositionHtml([HELD_CUE], HELD_SCRIPT));
     writeProject("seek", compositionHtml([HELD_CUE], HELD_SCRIPT, SEEK_LISTENER_HTML));
-    for (const project of ["multi", "held", "seek"]) {
+    writeProject("dim", compositionHtml([HELD_CUE], HELD_SCRIPT, DIM_CLIP_HTML));
+    writeProject("setter", compositionHtml([], "", SETTER_HIGHLIGHT_HTML));
+    writeProject("proxy", compositionHtml([], PROXY_HIGHLIGHT_SCRIPT, PROXY_HIGHLIGHT_HTML));
+    for (const project of PROJECTS) {
       for (const passthrough of [false, true]) {
         results.set(`${project}-${passthrough}`, await render(project, passthrough));
       }
@@ -277,8 +321,29 @@ describe.skipIf(!HAS_X265)("HDR passthrough capture dedup through real renders",
     );
   });
 
+  it("falls back when a stylesheet rule dims the video during a clip window", () => {
+    const on = results.get("dim-true")!;
+    expect(on.messages).toContain(
+      "[Render] HDR passthrough off: video_animated (hdrPassthrough: the video's layer changes at frame 42 (opacity 0.3))",
+    );
+  });
+
+  it.each([
+    ["a seek-time setter", "setter"],
+    ["an accessor a GSAP set() writes through", "proxy"],
+  ])("falls back when %s changes state the fingerprint cannot read", (_name, project) => {
+    const on = results.get(`${project}-true`)!;
+    expect(on.messages).toContainEqual(
+      expect.stringMatching(
+        new RegExp(
+          `^\\[Render\\] HDR passthrough off: seek_callback \\(\\d+ page function\\(s\\) ran on seeks, first .+ in hyperframes-composition://body\\)$`,
+        ),
+      ),
+    );
+  });
+
   it("matches the layered HDR path bit for bit", () => {
-    for (const project of ["multi", "held", "seek"]) {
+    for (const project of PROJECTS) {
       const off = results.get(`${project}-false`)!.output;
       const on = results.get(`${project}-true`)!.output;
       expect(sameVideo(off, on)).toBe(true);

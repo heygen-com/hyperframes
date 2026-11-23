@@ -643,6 +643,59 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     },
     assets: ["gsap"],
   },
+  // The video's own layer changing after eligibility: a stylesheet rule that reaches the video
+  // through a selector dims it while a cue is up. The cue's window (frames 42-47) falls between
+  // eligibility's layout samples, and nothing tweens or animates the video itself.
+  {
+    // On a clip window, with no script at all.
+    name: "video-dim-clip",
+    reason: "video_animated",
+    composition: {
+      cues: [{ id: "dimcue", text: "DIM", startSec: 1.4, durationSec: 0.2 }],
+      headHtml:
+        '<style>#root:has(#dimcue:not([style*="hidden"])) #hdr-source { opacity: 0.3; }</style>',
+    },
+  },
+  {
+    // On a GSAP set() of another element's attribute.
+    name: "video-dim-gsap",
+    reason: "video_animated",
+    composition: {
+      cues: [],
+      headHtml: '<style>#root:has(#flag[data-on="1"]) #hdr-source { opacity: 0.3; }</style>',
+      overlayHtml: '<div id="flag" data-on="0"></div>',
+      timelineScript:
+        'tl.set("#flag", { attr: { "data-on": "1" } }, 1.4); tl.set("#flag", { attr: { "data-on": "0" } }, 1.6);',
+    },
+    assets: ["gsap"],
+  },
+  // Page code that runs on seeks and changes what paints where the overlay fingerprint cannot
+  // read it (a custom highlight here; `:focus`, `:popover-open`, the selection or a custom
+  // element's `:state()` the same way). Every probe fingerprints equal, so only the record of
+  // page code that ran during capture declines it.
+  {
+    // A setter on the seek-time global the WebGPU adapter assigns on every seek.
+    name: "setter-highlight",
+    reason: "seek_callback",
+    composition: {
+      cues: [],
+      headHtml: `<style>::highlight(hf) { background-color: #f00; color: #ff0; }</style><script>(() => { let time; const apply = (on) => { if (!on) return CSS.highlights.delete("hf"); const range = new Range(); range.selectNodeContents(document.getElementById("hl")); CSS.highlights.set("hf", new Highlight(range)); }; Object.defineProperty(window, "__hfTypegpuTime", { configurable: true, get: () => time, set(t) { time = t; apply(t >= 1 && t < 2); } }); })();</script>`,
+      overlayHtml: `<div id="hl" style="${BADGE_STYLE};width:auto;color:#fff;font:700 40px sans-serif">HIGHLIGHT</div>`,
+    },
+  },
+  {
+    // An accessor on a plain object a GSAP set() on the registered timeline writes through.
+    name: "gsap-proxy-highlight",
+    reason: "seek_callback",
+    composition: {
+      cues: [],
+      headHtml: `<style>::highlight(hf) { background-color: #f00; color: #ff0; }</style><script>(() => { let on = 0; const apply = (lit) => { if (!lit) return CSS.highlights.delete("hf"); const range = new Range(); range.selectNodeContents(document.getElementById("hl")); CSS.highlights.set("hf", new Highlight(range)); }; window.highlightProxy = {}; Object.defineProperty(window.highlightProxy, "on", { get: () => on, set(v) { on = v; apply(v === 1); } }); })();</script>`,
+      overlayHtml: `<div id="hl" style="${BADGE_STYLE};width:auto;color:#fff;font:700 40px sans-serif">HIGHLIGHT</div>`,
+      timelineScript:
+        "tl.set(window.highlightProxy, { on: 1 }, 1.0); tl.set(window.highlightProxy, { on: 0 }, 2.0);",
+    },
+    assets: ["gsap"],
+  },
   {
     name: "canvas",
     reason: "canvas",

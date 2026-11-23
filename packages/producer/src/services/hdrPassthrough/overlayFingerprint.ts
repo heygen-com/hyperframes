@@ -16,8 +16,9 @@
  *
  *   - the DOM tree with every attribute (inline styles, GSAP's writes, the
  *     runtime's clip visibility) and every text node, open shadow roots too;
- *   - the CSSOM of every stylesheet, which `insertRule` can change without
- *     touching the DOM;
+ *   - the CSSOM of every stylesheet, `@import`ed ones included, which
+ *     `insertRule` can change without touching the DOM;
+ *   - the focused element, which the browser moves when it stops rendering;
  *   - state the DOM does not reflect: element and window scroll, form values,
  *     image load state, font loading status;
  *   - every CSS / Web Animation's play state and current time (a transition
@@ -32,6 +33,11 @@
  * masks them. Anything unaccounted for can only make two equal overlays look
  * different (an extra capture), never two different ones look equal, as
  * long as it is in this list.
+ *
+ * Page script can change what paints and none of this reads (`:popover-open`,
+ * custom highlights, the selection, a custom element's `:state()`); the
+ * passthrough declines any page code that runs on capture's seeks
+ * (`pageCodeWatch.ts`), so only the runtime and GSAP write while it probes.
  *
  * Page script cannot read a closed shadow root (`shadowRoot` is null) or the
  * document inside an `<object>` / `<embed>` / frame, so a tween there changes
@@ -62,6 +68,10 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
   const skipped = new Set<Node>();
   const video = w.__hfMediaEl?.(videoId) ?? document.getElementById(videoId);
   if (video) skipped.add(video);
+  // Focus paints (`:focus`, `:focus-within`, a caret), and the browser moves it without page code
+  // when the focused element stops rendering.
+  const focused = new Set<Element>();
+  if (document.activeElement) focused.add(document.activeElement);
   for (const img of Array.from(document.querySelectorAll(".__render_frame__"))) skipped.add(img);
 
   const visitChildren = (node: Node | ShadowRoot) => {
@@ -109,9 +119,11 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
     } else if (el instanceof HTMLImageElement) {
       parts.push(` @img=${el.complete},${el.naturalWidth}x${el.naturalHeight},${el.currentSrc}`);
     }
+    if (focused.has(el)) parts.push(" @focus");
     parts.push(">");
     const shadow = el.shadowRoot;
     if (shadow) {
+      if (shadow.activeElement) focused.add(shadow.activeElement);
       parts.push("<#shadow>");
       visitChildren(shadow);
       // A shadow root's own <style> sheets are not in document.styleSheets; insertRule (or a
@@ -125,10 +137,18 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
     if (el.localName !== "script" && el.localName !== "noscript") visitChildren(el);
     parts.push("</>");
   };
+  const sheetsSeen = new Set<CSSStyleSheet>();
   const pushSheet = (sheet: CSSStyleSheet) => {
+    if (sheetsSeen.has(sheet)) return;
+    sheetsSeen.add(sheet);
     parts.push(`@sheet ${sheet.disabled ? "off" : "on"} ${sheet.media?.mediaText ?? ""}`);
     try {
-      for (const rule of Array.from(sheet.cssRules)) parts.push(rule.cssText);
+      for (const rule of Array.from(sheet.cssRules)) {
+        parts.push(rule.cssText);
+        // An @import's own rules are not in its cssText.
+        const imported = (rule as CSSRule & { styleSheet?: CSSStyleSheet | null }).styleSheet;
+        if (imported) pushSheet(imported);
+      }
     } catch {
       // A cross-origin sheet cannot change without its <link> changing, which the DOM walk sees.
       parts.push(`@opaque ${sheet.href ?? ""}`);

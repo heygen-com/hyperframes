@@ -338,13 +338,47 @@ const VIRTUAL_TIME_SHIM = String.raw`(function() {
   var rendererFrameCallbacks = [];
   var frameCallbacksOverflow = false;
   var filmTimers = 0;
-  // stack: an Error stack taken in the shim's wrapper, so its third line is the wrapper's caller.
-  function calledByPage(stack) {
-    var caller = typeof stack === "string" ? stack.split("\n")[2] : undefined;
+  // The caller is read from a stack the page never sees, without running the page's stack hooks: a page
+  // that installs Error.prepareStackTrace must render exactly as it would without this record (a hook
+  // that throws would otherwise throw out of requestAnimationFrame). Taken from the realm's own Error,
+  // with both hooks set aside as own data properties and put back as they were. A hook that cannot be
+  // set aside, or a stack that cannot be read, makes the caller page code.
+  var OriginalError = Error;
+  var defineProperty = Object.defineProperty;
+  var getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+  var STACK_HOOKS = ["prepareStackTrace", "stackTraceLimit"];
+  // Frames: readStackAside, calledByPage, the shim's wrapper, the wrapper's caller, one to spare.
+  var STACK_FRAMES = 5;
+  function readStackAside() {
+    var saved = [];
+    for (var i = 0; i < STACK_HOOKS.length; i++) {
+      var found = getOwnPropertyDescriptor(OriginalError, STACK_HOOKS[i]);
+      if (found && !found.configurable) return null;
+      saved.push(found);
+    }
+    try {
+      defineProperty(OriginalError, "prepareStackTrace", { value: undefined, writable: true, configurable: true });
+      defineProperty(OriginalError, "stackTraceLimit", { value: STACK_FRAMES, writable: true, configurable: true });
+      var stack = new OriginalError().stack;
+      return typeof stack === "string" ? stack : null;
+    } catch (err) {
+      return null;
+    } finally {
+      for (var j = 0; j < STACK_HOOKS.length; j++) {
+        if (saved[j]) defineProperty(OriginalError, STACK_HOOKS[j], saved[j]);
+        else delete OriginalError[STACK_HOOKS[j]];
+      }
+    }
+  }
+  // Whether the code that called the shim's wrapper is the page's. Call from the wrapper itself: the
+  // stack's first line is the message, then readStackAside, this function, the wrapper and its caller.
+  function calledByPage() {
+    var stack = readStackAside();
+    var caller = stack === null ? undefined : stack.split("\n")[4];
     return !caller || !RENDERER_CALLER.test(caller);
   }
-  function noteFrameCallback(callback, stack) {
-    var list = calledByPage(stack) ? frameCallbacks : rendererFrameCallbacks;
+  function noteFrameCallback(callback, byPage) {
+    var list = byPage ? frameCallbacks : rendererFrameCallbacks;
     if (list.length < CALLBACKS_KEPT) list.push(callback);
     else if (list === frameCallbacks) frameCallbacksOverflow = true;
   }
@@ -352,7 +386,7 @@ const VIRTUAL_TIME_SHIM = String.raw`(function() {
   window.requestAnimationFrame = function(callback) {
     if (typeof callback !== "function") return 0;
     if (frameCallbacks.indexOf(callback) < 0 && rendererFrameCallbacks.indexOf(callback) < 0) {
-      noteFrameCallback(callback, new Error().stack);
+      noteFrameCallback(callback, calledByPage());
     }
     var entry = { id: rafId++, callback: callback, cancelled: false };
     rafQueue.push(entry);
@@ -415,12 +449,12 @@ const VIRTUAL_TIME_SHIM = String.raw`(function() {
   }
   window.setTimeout = function(callback, delay) {
     if (!rendering || typeof callback !== "function") return originalSetTimeout.apply(null, arguments);
-    if (calledByPage(new Error().stack)) filmTimers++;
+    if (calledByPage()) filmTimers++;
     return addTimer(callback, delay, Array.prototype.slice.call(arguments, 2), false);
   };
   window.setInterval = function(callback, delay) {
     if (!rendering || typeof callback !== "function") return originalSetInterval.apply(null, arguments);
-    if (calledByPage(new Error().stack)) filmTimers++;
+    if (calledByPage()) filmTimers++;
     return addTimer(callback, delay, Array.prototype.slice.call(arguments, 2), true);
   };
   window.clearTimeout = function(id) {

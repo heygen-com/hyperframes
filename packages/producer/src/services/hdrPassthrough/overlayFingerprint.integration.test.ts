@@ -126,6 +126,35 @@ describe("collectOverlayPageFingerprint in Chrome", () => {
     expect(after).not.toEqual(before);
   });
 
+  it("changes when focus moves", async () => {
+    await page.evaluate(() => {
+      const input = document.createElement("input");
+      input.id = "field";
+      document.getElementById("cue")!.appendChild(input);
+      input.focus();
+    });
+    const [before, after] = await around(() => document.getElementById("field")!.blur());
+    expect(after).not.toEqual(before);
+  });
+
+  it("changes on a CSSOM rule inserted into an @import-ed sheet", async () => {
+    await page.evaluate(
+      () =>
+        new Promise<void>((done) => {
+          const style = document.createElement("style");
+          style.textContent = '@import url("data:text/css,.caption%7Bopacity:1%7D");';
+          style.addEventListener("load", () => done());
+          document.head.appendChild(style);
+        }),
+    );
+    const [before, after] = await around(() => {
+      const style = document.head.lastElementChild as HTMLStyleElement;
+      const rule = style.sheet!.cssRules[0] as CSSImportRule;
+      rule.styleSheet!.insertRule(".caption{opacity:.5}", 1);
+    });
+    expect(after).not.toEqual(before);
+  });
+
   it("changes as a CSS animation advances, with no DOM change", async () => {
     await page.evaluate(() => {
       document.getElementById("cue")!.style.setProperty("animation", "pulse 1s linear paused");

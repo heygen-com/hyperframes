@@ -145,6 +145,72 @@ export function overlayElementIdsAboveVideo(
 }
 
 /**
+ * The fields of the video's stacking entry the layered compositor blits the
+ * video from on every frame (`blitHdrVideoLayer`) and orders its layers by.
+ * Its paintability is left out: the frame injector hides the native video on
+ * a capture and not on a probe.
+ */
+const VIDEO_LAYER_FIELDS = [
+  "zIndex",
+  "x",
+  "y",
+  "width",
+  "height",
+  "layoutWidth",
+  "layoutHeight",
+  "opacity",
+  "isHdr",
+  "transform",
+  "borderRadius",
+  "objectFit",
+  "objectPosition",
+  "clipRect",
+] as const satisfies ReadonlyArray<keyof ElementStackingInfo>;
+
+/** Thrown when the video's own layer is not the one the composite lays on a frame. */
+export class VideoLayerChangedError extends Error {
+  constructor(frame: number, detail: string) {
+    super(`hdrPassthrough: the video's layer changes at frame ${frame} (${detail})`);
+    this.name = "VideoLayerChangedError";
+  }
+}
+
+/**
+ * A check of the video's stacking entry on every probed and captured frame.
+ * The composite always lays the full-opacity source in one place, so the
+ * entry must be fully opaque and, field for field (`VIDEO_LAYER_FIELDS`),
+ * the entry of the first frame checked, which eligibility's layout gates
+ * already hold to the canvas. Overlay fingerprints leave the video out, so
+ * without this a stylesheet rule that reaches the video through a selector
+ * (`:has()`, a sibling combinator) and fires on a caption's clip window or a
+ * GSAP `set()` of another element would dim the layered render only.
+ * Throws `VideoLayerChangedError`.
+ */
+export function createVideoLayerGuard(
+  videoId: string,
+): (frame: number, stacking: readonly ElementStackingInfo[]) => void {
+  let baseline: { frame: number; entry: ElementStackingInfo } | undefined;
+  return (frame, stacking) => {
+    const entry = stacking.find((e) => e.id === videoId);
+    if (!entry) throw new VideoLayerChangedError(frame, "missing from the element stacking");
+    if (entry.opacity !== 1) throw new VideoLayerChangedError(frame, `opacity ${entry.opacity}`);
+    if (!baseline) {
+      baseline = { frame, entry };
+      return;
+    }
+    const was = baseline.entry;
+    const changed = VIDEO_LAYER_FIELDS.filter(
+      (field) => JSON.stringify(entry[field]) !== JSON.stringify(was[field]),
+    );
+    if (changed.length === 0) return;
+    const detail = changed
+      .map((f) => `${f} ${JSON.stringify(was[f])} -> ${JSON.stringify(entry[f])}`)
+      .join(", ");
+    throw new VideoLayerChangedError(frame, `${detail}, against frame ${baseline.frame}`);
+  };
+}
+
+/**
  * Where the overlay pixels come from. `probe(frame, time)` puts the page at
  * `time` (`frame / fps`) and returns the overlay fingerprint there (equal
  * fingerprints render equal pixels); `capture(frame, time)` returns the 8-bit
@@ -189,6 +255,7 @@ async function captureOverlayRgba(
   videoId: string,
   width: number,
   height: number,
+  checkStacking: (stacking: ElementStackingInfo[]) => void,
 ): Promise<Uint8Array> {
   const { page } = session;
   const stacking = await seekInjectAndQueryStacking(
@@ -201,6 +268,7 @@ async function captureOverlayRgba(
     "domLayerInjectMs",
     "stackingQueryMs",
   );
+  checkStacking(stacking);
   const overlayIds = overlayElementIdsAboveVideo(stacking, videoId);
   const showIds = selectDomLayerShowIds(overlayIds, stacking);
   if (showIds.length === 0) return new Uint8Array(width * height * 4);
@@ -233,6 +301,7 @@ async function probeOverlay(
   session: CaptureSession,
   time: number,
   videoId: string,
+  checkStacking: (stacking: ElementStackingInfo[]) => void,
 ): Promise<string> {
   const stacking = await seekInjectAndQueryStacking(
     session.page,
@@ -244,6 +313,7 @@ async function probeOverlay(
     "domLayerInjectMs",
     "stackingQueryMs",
   );
+  checkStacking(stacking);
   return readOverlayFingerprint(session, videoId, stacking);
 }
 
@@ -498,6 +568,9 @@ async function storeOverlayPixels(
  *   7. When a merged state closes, re-probe each of its candidates at every
  *      frame but the capture frame; a frame whose overlay renders different pixels throws
  *      `OverlayStateMismatchError`.
+ *   8. On every probe and capture, hold the video's own stacking entry to
+ *      the first one (`createVideoLayerGuard`); a frame where it differs throws
+ *      `VideoLayerChangedError`.
  *
  * The result's `plan` holds the merged states (one per run of identical
  * overlay output, tiling `[0, totalFrames)` like the input) and `overlays`
@@ -511,8 +584,13 @@ export async function captureOverlayStates(
   args: CaptureOverlayStatesArgs,
 ): Promise<CapturedOverlaySet> {
   const { session, plan, video } = args;
+  const checkVideoLayer = createVideoLayerGuard(video.id);
   return writeOverlayStates(args, {
-    probe: (_frame, time) => probeOverlay(session, time, video.id),
-    capture: (_frame, time) => captureOverlayRgba(session, time, video.id, plan.width, plan.height),
+    probe: (frame, time) =>
+      probeOverlay(session, time, video.id, (stacking) => checkVideoLayer(frame, stacking)),
+    capture: (frame, time) =>
+      captureOverlayRgba(session, time, video.id, plan.width, plan.height, (stacking) =>
+        checkVideoLayer(frame, stacking),
+      ),
   });
 }

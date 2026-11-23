@@ -193,6 +193,7 @@ describe("INELIGIBLE_CASES", () => {
       "overlay_unverified",
       "seek_callback",
       "overlay_unreadable",
+      "video_animated",
     ]) {
       expect(reasons.has(reason)).toBe(true);
     }
@@ -216,6 +217,10 @@ describe("INELIGIBLE_CASES", () => {
       "closed-shadow-root",
       "embedded-document",
       "gsap-delayed-call",
+      "video-dim-clip",
+      "video-dim-gsap",
+      "setter-highlight",
+      "gsap-proxy-highlight",
     ]) {
       expect(names).toContain(name);
     }
@@ -279,6 +284,38 @@ describe("INELIGIBLE_CASES", () => {
     expect(raf.composition.headHtml).toContain("requestAnimationFrame(function loop");
     const setter = INELIGIBLE_CASES.find((c) => c.name === "flash-setter")!;
     expect(setter.composition.headHtml).toContain("__hfTypegpuTime");
+  });
+
+  it("dims the video through a selector alone, between the layout samples", () => {
+    const find = (name: string) => INELIGIBLE_CASES.find((c) => c.name === name)!;
+    for (const name of ["video-dim-clip", "video-dim-gsap"]) {
+      const c = find(name);
+      expect(c.reason).toBe("video_animated");
+      expect(c.composition.headHtml).toMatch(/#root:has\(.*\) #hdr-source \{ opacity: 0\.3; \}/);
+      expect(c.composition.videoStyle).toBeUndefined();
+      expect(c.composition.timelineScript ?? "").not.toContain("hdr-source");
+    }
+    expect(find("video-dim-clip").composition.cues).toEqual([
+      { id: "dimcue", text: "DIM", startSec: 1.4, durationSec: 0.2 },
+    ]);
+    expect(find("video-dim-clip").composition.timelineScript).toBeUndefined();
+    expect(find("video-dim-gsap").composition.timelineScript).toContain('"data-on": "1" } }, 1.4)');
+  });
+
+  it("changes unreadable state only from page code that runs on seeks", () => {
+    const find = (name: string) => INELIGIBLE_CASES.find((c) => c.name === name)!;
+    for (const name of ["setter-highlight", "gsap-proxy-highlight"]) {
+      const c = find(name);
+      expect(c.reason).toBe("seek_callback");
+      expect(c.composition.headHtml).toContain("CSS.highlights.set");
+      expect(c.composition.cues).toEqual([]);
+      expect(c.composition.headHtml).not.toContain("requestAnimationFrame");
+    }
+    expect(find("setter-highlight").composition.headHtml).toContain("__hfTypegpuTime");
+    expect(find("setter-highlight").composition.timelineScript).toBeUndefined();
+    expect(find("gsap-proxy-highlight").composition.timelineScript).toContain(
+      "tl.set(window.highlightProxy",
+    );
   });
 
   it("ships the assets each case references", () => {

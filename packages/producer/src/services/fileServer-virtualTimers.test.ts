@@ -108,3 +108,55 @@ describe("virtual-time shim timers", () => {
     expect(run("order")).toEqual(["timer", "frame"]);
   });
 });
+
+// The shim reads its callers' stacks to tell page code from the renderer's. The page must never see
+// that: its own stack hooks do not run, and are left exactly as it set them.
+describe("virtual-time shim caller stacks", () => {
+  const activity = "window.__HF_VIRTUAL_TIME__.callbackActivity()";
+
+  it("never runs a throwing Error.prepareStackTrace the page installs", () => {
+    const { run } = page();
+    run(`window.hookCalls = 0;
+      window.hook = function () { hookCalls++; throw new TypeError("stack formatting disabled"); };
+      Error.prepareStackTrace = hook;`);
+    run("requestAnimationFrame(() => {}); requestAnimationFrame(() => {});");
+    run("window.__HF_VIRTUAL_TIME__.seekToTime(0);");
+    run("setTimeout(() => {}, 10); setInterval(() => {}, 20);");
+    expect(run("hookCalls")).toBe(0);
+    expect(run("Error.prepareStackTrace === hook")).toBe(true);
+    // Still recorded as the page's own.
+    expect(run(`${activity}.frameCallbacks.length`)).toBe(2);
+    expect(run(`${activity}.filmTimers`)).toBe(2);
+  });
+
+  it("leaves a counting hook and the stack limit as the page set them", () => {
+    const { run } = page();
+    run(`window.hookCalls = 0;
+      Error.prepareStackTrace = function (error, frames) { hookCalls++; return "pst"; };
+      Error.stackTraceLimit = 2;`);
+    run("for (let i = 0; i < 5; i++) requestAnimationFrame(() => {});");
+    expect(run("hookCalls")).toBe(0);
+    expect(run("Error.stackTraceLimit")).toBe(2);
+    expect(run("new Error().stack")).toBe("pst");
+    expect(run("hookCalls")).toBe(1);
+  });
+
+  it("leaves no hook behind on a page that set none", () => {
+    const { run } = page();
+    run("requestAnimationFrame(() => {});");
+    expect(run("Object.getOwnPropertyDescriptor(Error, 'prepareStackTrace')")).toBeUndefined();
+  });
+
+  it("counts the caller as page code when the hook cannot be set aside", () => {
+    const { run } = page();
+    run(`window.hookCalls = 0;
+      Object.defineProperty(Error, "prepareStackTrace", {
+        value: function () { hookCalls++; throw new TypeError("no"); },
+        writable: false,
+        configurable: false,
+      });`);
+    run("requestAnimationFrame(() => {});\n//# sourceURL=hyperframes://injected/2");
+    expect(run("hookCalls")).toBe(0);
+    expect(run(`${activity}.frameCallbacks.length`)).toBe(1);
+  });
+});
