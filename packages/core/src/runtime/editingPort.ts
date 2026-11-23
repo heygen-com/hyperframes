@@ -264,7 +264,7 @@ export type { EditingDraftEnd };
 export type EditingDraft =
   | {
       handle: EditingElementHandle;
-      translate: { x: number; y: number } | null;
+      translate: { x: number; y: number; route?: "gsap" } | null;
       size: { width: number; height: number } | null;
       rotate?: EditingDraftRotate | null;
     }
@@ -508,6 +508,13 @@ const isRotateRoute = (value: unknown): value is Record<string, unknown> =>
     value.route === "transform" &&
     isTransformList(value.value));
 
+function draftTranslate(value: unknown): boolean {
+  if (!hasKeys(value, "route,x,y")) return draftPart(value, "x,y", -MAX_DRAFT_PX);
+  return (
+    value.route === "gsap" && isDraftPx(value.x, -MAX_DRAFT_PX) && isDraftPx(value.y, -MAX_DRAFT_PX)
+  );
+}
+
 function draftRotate(value: unknown): boolean {
   if (value === undefined || value === null) return true;
   if (!isRotateRoute(value)) return false;
@@ -524,11 +531,7 @@ function drawnParts(value: Record<string, unknown>): boolean {
   const { translate, size, rotate } = value;
   if (!hasKeys(value, "handle,size,translate") && !hasKeys(value, "handle,rotate,size,translate"))
     return false;
-  return (
-    draftPart(translate, "x,y", -MAX_DRAFT_PX) &&
-    draftPart(size, "height,width", 0) &&
-    draftRotate(rotate)
-  );
+  return draftTranslate(translate) && draftPart(size, "height,width", 0) && draftRotate(rotate);
 }
 
 function draftList(params: unknown): EditingParams<"draft"> | null {

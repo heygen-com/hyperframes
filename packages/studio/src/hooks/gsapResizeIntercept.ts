@@ -417,6 +417,8 @@ export async function tryGsapResizeIntercept(
       return false;
     }
     const dropPoint = scaleDraftDropPoint;
+    const nextResizeReadsItsSizeFrom = draftEl ?? selection.element;
+    draw(() => clearStudioBoxSize(nextResizeReadsItsSizeFrom));
     // Measure from the pre-gesture position: the scale route never saves the draft's translation, and
     // the position write composes the residual onto that same base.
     const preGesture = () => {
