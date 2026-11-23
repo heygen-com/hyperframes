@@ -1005,6 +1005,19 @@ it("keeps the inline text its handoff saved when a field added from the panel fo
   );
 });
 
+it("keeps the inline text its handoff saved when the panel then edits another field", async () => {
+  const { title, iframe, selection } = await sealedTitle([], undefined, SPANS);
+  const { persist, text } = sourceFile(undefined, SPANS);
+  const { controls, commits } = wiredEditor(iframe, selection, persist);
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.querySelector("span")!.textContent = "Uno";
+  const second = selection.textFields[1]!.key;
+  await act(() => commits().handleDomTextCommitForSelection(selection, "Dos", second));
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+  expect(text("title")).toBe("<span>Uno</span> <span>Dos</span>");
+});
+
 it("saves the draft before both panel saves when its end reply is late and the newer panel save fails", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   const { iframe, holdEndReplies } = await sealedTitleHoldingEnds();
