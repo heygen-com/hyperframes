@@ -203,7 +203,7 @@ describe("gesture drafts on an opaque frame", () => {
     expect(sent).toEqual([[expect.objectContaining({ translate: { x: -50, y: -20 }, size })]]);
   });
 
-  it("keeps what each draw in one task set: a later field wins, and a size drawn earlier stays", async () => {
+  it("keeps what each draw before one send set: a later field wins, and a size drawn earlier stays", async () => {
     const element = await standIn(sealedPreviewFrame().iframe, "#card");
     vi.mocked(previewRequest).mockClear();
     drawPreviewDraft(element, { size: null });
@@ -217,7 +217,7 @@ describe("gesture drafts on an opaque frame", () => {
     ]);
   });
 
-  it("sends a draw waiting in this task before a save that carries its end", async () => {
+  it("sends a draw still waiting for its microtask before a save that carries its end", async () => {
     const iframe = sealedPreviewFrame().iframe;
     const element = await standIn(iframe, "#card");
     const member = dragMember(element);

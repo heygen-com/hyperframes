@@ -81,10 +81,15 @@ function measureGrowResponse(
   layout: { width: number; height: number },
 ): EditingGestureStart["grow"] {
   const { style } = element;
-  const kept = SIZE_PROPERTIES.map(
+  const kept = [...SIZE_PROPERTIES, "translate"].map(
     (name) => [name, style.getPropertyValue(name), style.getPropertyPriority(name)] as const,
   );
+  const translateAsTheResizeDraftDrawsIt = movedTranslate(computedTranslateAxes(element), {
+    x: 0,
+    y: 0,
+  });
   const centre = (width: number, height: number): Point | null => {
+    style.setProperty("translate", translateAsTheResizeDraftDrawsIt);
     writeDrawnSize(style, { width, height });
     const box = element.getBoundingClientRect();
     return box.width > 0 || box.height > 0
