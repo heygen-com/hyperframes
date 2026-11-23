@@ -6,6 +6,7 @@ import { useLinkedClipPreferences } from "../utils/linkedClipPreferences";
 import { previewFrameOpaque } from "../player/lib/previewChannel";
 import { previewStageSize } from "../player/lib/bridgePlayback";
 import { getIframeGsap, type IframeGsap } from "./gsapShared";
+import { drawPreviewDraft, endPreviewDraft } from "../components/editor/previewDrafts";
 import type { EditingGestureBase } from "@hyperframes/core/runtime/editing-port";
 
 export interface GestureSample {
@@ -222,6 +223,8 @@ function resolveGestureProperties(
 // ---------------------------------------------------------------------------
 
 interface RecordingRefs {
+  /** A sealed frame's stand-in, whose draft shows the recording live. */
+  drawsOn: HTMLElement | null;
   pointer: { x: number; y: number };
   startPointer: { x: number; y: number };
   hasMoved: boolean;
@@ -260,10 +263,13 @@ function createRecordingRefs(): RecordingRefs {
     cleanup: null,
     playhead: null,
     lastTime: Infinity,
+    drawsOn: null,
   };
 }
 
 function releaseRuntimePreview(r: RecordingRefs): void {
+  if (r.drawsOn) endPreviewDraft(r.drawsOn, "restore");
+  r.drawsOn = null;
   const runtime = r.runtime;
   if (!runtime) return;
   const { element, savedVisibility, savedTranslate } = runtime;
@@ -350,6 +356,7 @@ export function useGestureRecording() {
       // --- Phase 3: Connect to the iframe GSAP runtime ---
       r.runtime = connectGsapRuntime(element, iframeEl, elementEndTime);
       const { currentTime, duration } = usePlayerStore.getState();
+      r.drawsOn = sealed ? element : null;
       r.playhead = sealed
         ? { start: currentTime, end: Math.min(elementEndTime ?? Infinity, duration) }
         : null;
@@ -446,6 +453,12 @@ export function useGestureRecording() {
           }
         } else if (r.playhead) {
           usePlayerStore.getState().requestSeek(Math.min(r.playhead.start + time, r.playhead.end));
+        }
+        if (r.drawsOn && ("x" in properties || "y" in properties)) {
+          const { x = r.basePosition.x, y = r.basePosition.y } = properties;
+          drawPreviewDraft(r.drawsOn, {
+            translate: { x: x - r.basePosition.x, y: y - r.basePosition.y },
+          });
         }
 
         recordSample(r, time, properties);
