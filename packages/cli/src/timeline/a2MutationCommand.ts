@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core/terminal-text";
 import { applyFileMutations, fileContentVersion } from "@hyperframes/studio-server";
 import type { AppliedFileMutation } from "@hyperframes/studio-server";
 import { readFileSync } from "node:fs";
@@ -198,7 +199,7 @@ async function applyAndPrint(args: {
     return;
   }
   console.log(
-    `${args.verb} ${args.row.ref}: ${args.row.start}-${args.row.end}s -> ${args.nextStart}-${args.nextStart + args.nextDuration}s\nreceipt: ${receipt?.version ?? "unchanged"}`,
+    `${args.verb} ${terminalText(args.row.ref)}: ${args.row.start}-${args.row.end}s -> ${args.nextStart}-${args.nextStart + args.nextDuration}s\nreceipt: ${terminalText(receipt?.version ?? "unchanged")}`,
   );
 }
 
@@ -231,7 +232,7 @@ async function printPlan(
   if (json) console.log(JSON.stringify(withMeta(result), null, 2));
   else
     console.log(
-      `${formatTimeline(timeline)}\n\nplanned:\n${formatTimeline(plannedTimeline)}\n\ndiff:\n${diff(before, after)}`,
+      `${formatTimeline(timeline)}\n\nplanned:\n${formatTimeline(plannedTimeline)}\n\ndiff:\n${terminalLines(diff(before, after))}`,
     );
 }
 

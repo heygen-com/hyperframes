@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core/terminal-text";
 import {
   applyFileMutations,
   fileContentVersion,
@@ -385,6 +386,6 @@ export async function runUndo(args: Record<string, unknown>): Promise<void> {
     console.log(
       undo.batch
         ? `undid ${receipts.length} file${receipts.length === 1 ? "" : "s"}`
-        : `undid ${undo.receipts[0]!.file}`,
+        : `undid ${terminalText(undo.receipts[0]!.file)}`,
     );
 }

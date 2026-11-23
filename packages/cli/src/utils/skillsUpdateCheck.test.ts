@@ -224,6 +224,13 @@ describe("skillsUpdateCheck", () => {
     expect(await noticeTextFor({ skillsOutdatedCount: 2, skillsMissingCount: 1 })).toBeNull();
   });
 
+  // fails without the fix: a count that is not a number in the settings file was printed as stored
+  it("shows control characters in the stale-skills count as text", async () => {
+    const text = await noticeTextFor({ skillsOutdatedCount: 0, skillsMissingCount: "2\u0007" });
+    expect(text).toContain("02\\x07 HyperFrames skills out of date or missing");
+    expect(text).not.toContain("\u0007");
+  });
+
   it("prints the stale-skills notice without a TTY, so an agent hears it", async () => {
     gate.noTty = true;
     const text = await noticeTextFor({ skillsOutdatedCount: 2, skillsMissingCount: 1 });
