@@ -278,7 +278,6 @@ describe("corsForSealedMedia", () => {
     expect([video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([false, 0]);
   });
 
-  // fails without the fix: unsealed reads an own source's pixels in a mixed list; sealed left it without CORS.
   it("opts in an own source that plays first in a list naming another host", async () => {
     vi.stubGlobal("origin", "null");
     observer = corsForSealedMedia();

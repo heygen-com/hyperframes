@@ -171,7 +171,6 @@ function wasDown(media: HTMLMediaElement, url: string): void {
   setOf(down, media).add(url);
 }
 
-// With CORS the browser picks `chosen` again only if every source before it is ours or is down.
 function picksAgainWithCors(media: HTMLMediaElement, chosen: string, home: string): boolean {
   if (!isHome(chosen, home)) return false;
   const urls = selectable(media, home);
