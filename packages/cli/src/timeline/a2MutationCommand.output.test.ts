@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -62,4 +62,18 @@ it("shows control characters in a planned change's diff as text", async () => {
   expect(diff).toContain('title="a\\x07b"');
   expect(diff).toContain("\n");
   expect(diff).not.toContain("\u0007");
+});
+
+// fails without the fix: each changed line of a file with Windows line endings ended in a visible \x0d
+it("leaves a Windows line ending out of a planned change's diff and still shows one inside a line", async () => {
+  const dir = project('id="clip" title="a\rb"');
+  const file = join(dir, "index.html");
+  writeFileSync(file, readFileSync(file, "utf8").replaceAll("\n", "\r\n"));
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+  await runMutation("move", { dir, ref: "#clip", time: "4", plan: true });
+
+  const lines = printed(log).split("\ndiff:\n")[1]!.split("\n");
+  expect(lines.filter((line) => line.includes('title="a\\x0db"'))).toHaveLength(2);
+  expect(lines.filter((line) => line.endsWith("\\x0d") || line.includes("\r"))).toEqual([]);
 });

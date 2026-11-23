@@ -232,7 +232,7 @@ async function printPlan(
   if (json) console.log(JSON.stringify(withMeta(result), null, 2));
   else
     console.log(
-      `${formatTimeline(timeline)}\n\nplanned:\n${formatTimeline(plannedTimeline)}\n\ndiff:\n${terminalLines(diff(before, after))}`,
+      `${formatTimeline(timeline)}\n\nplanned:\n${formatTimeline(plannedTimeline)}\n\ndiff:\n${terminalLines(diff(before, after).replace(/\r$/gm, ""))}`,
     );
 }
 
