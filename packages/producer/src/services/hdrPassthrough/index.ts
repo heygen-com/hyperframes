@@ -126,6 +126,7 @@ async function runHdrPassthrough(
     plan,
     video: eligible.video,
     outDir: join(input.framesDir, OVERLAY_DIR_NAME),
+    onVerifyProbe: () => noteStaticDedupActivity(job),
     onStateCaptured: (_framesCovered, statesDone, statesTotal) => {
       noteStaticDedupActivity(job);
       reportFrameProgress(

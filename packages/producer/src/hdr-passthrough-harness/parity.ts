@@ -22,7 +22,7 @@ import { spawnSync } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseArgs } from "node:util";
+import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import {
   DEFAULT_THRESHOLDS,
   checkHdrTags,
@@ -530,34 +530,45 @@ function numberOption(value: string | undefined, fallback: number, name: string)
   return parsed;
 }
 
+/**
+ * Command-line options. `--require-identical` is on by default: the
+ * passthrough's contract is decoded frames identical to the layered render
+ * (or a fallback), which the PSNR / SSIM thresholds alone do not enforce.
+ * `--no-require-identical` turns it off.
+ */
+const PARITY_OPTIONS = {
+  fixtures: { type: "string" },
+  project: { type: "string" },
+  out: { type: "string" },
+  only: { type: "string", default: "both" },
+  expect: { type: "string", default: "passthrough" },
+  "expect-reason": { type: "string" },
+  transfer: { type: "string" },
+  projects: { type: "string" },
+  duration: { type: "string" },
+  fps: { type: "string", default: "30" },
+  workers: { type: "string", default: "1" },
+  quality: { type: "string", default: "standard" },
+  "render-arg": { type: "string", multiple: true, default: [] },
+  cli: { type: "string" },
+  ffmpeg: { type: "string", default: process.env.FFMPEG_PATH ?? "ffmpeg" },
+  ffprobe: { type: "string", default: process.env.FFPROBE_PATH ?? "ffprobe" },
+  "timeout-min": { type: "string", default: "120" },
+  "skip-render": { type: "boolean", default: false },
+  "require-identical": { type: "boolean", default: true },
+  "min-mean-psnr": { type: "string" },
+  "min-psnr": { type: "string" },
+  "min-mean-ssim": { type: "string" },
+  "min-ssim": { type: "string" },
+} satisfies ParseArgsOptionsConfig;
+
+/** Parse the harness's command line. */
+export function parseParityArgs(args: string[]) {
+  return parseArgs({ args, options: PARITY_OPTIONS, allowNegative: true }).values;
+}
+
 function main(): void {
-  const { values } = parseArgs({
-    options: {
-      fixtures: { type: "string" },
-      project: { type: "string" },
-      out: { type: "string" },
-      only: { type: "string", default: "both" },
-      expect: { type: "string", default: "passthrough" },
-      "expect-reason": { type: "string" },
-      transfer: { type: "string" },
-      projects: { type: "string" },
-      duration: { type: "string" },
-      fps: { type: "string", default: "30" },
-      workers: { type: "string", default: "1" },
-      quality: { type: "string", default: "standard" },
-      "render-arg": { type: "string", multiple: true, default: [] },
-      cli: { type: "string" },
-      ffmpeg: { type: "string", default: process.env.FFMPEG_PATH ?? "ffmpeg" },
-      ffprobe: { type: "string", default: process.env.FFPROBE_PATH ?? "ffprobe" },
-      "timeout-min": { type: "string", default: "120" },
-      "skip-render": { type: "boolean", default: false },
-      "require-identical": { type: "boolean", default: false },
-      "min-mean-psnr": { type: "string" },
-      "min-psnr": { type: "string" },
-      "min-mean-ssim": { type: "string" },
-      "min-ssim": { type: "string" },
-    },
-  });
+  const values = parseParityArgs(process.argv.slice(2));
   const only = values.only;
   if (only !== "off" && only !== "on" && only !== "both")
     throw new Error("--only must be off|on|both");

@@ -182,7 +182,12 @@ describe("encodePngRgba16", () => {
     const png = encodePngRgba16(width, height, rgba16);
 
     const decoded = decodeRgba16Png(png);
-    expect(decoded).toMatchObject({ width, height, bitDepth: 16, colorType: 6 });
+    expect(decoded).toMatchObject({
+      width,
+      height,
+      bitDepth: 16,
+      colorType: 6,
+    });
     expect(decoded.data.equals(rgba16)).toBe(true);
 
     const rgb48 = decodePngToRgb48le(png);
@@ -318,7 +323,10 @@ describe("writeOverlayStates", () => {
     const at = (frame: number) => {
       const index = states.findIndex((s) => frame >= s.startFrame && frame < s.endFrame);
       expect(index).toBeGreaterThanOrEqual(0);
-      return { index, ...(override?.(frame) ?? { key: keys[index]!, pixels: pixels[index]! }) };
+      return {
+        index,
+        ...(override?.(frame) ?? { key: keys[index]!, pixels: pixels[index]! }),
+      };
     };
     const source: OverlayStateSource = {
       async probe(frame, time) {
@@ -378,9 +386,19 @@ describe("writeOverlayStates", () => {
       [26, 3, 4],
       [40, 4, 4],
     ]);
-    // Each candidate's capture frame; a state's first and last frame once the next one opens.
-    expect(probedFrames).toEqual([4, 17, 0, 9, 25, 10, 24, 32, 26, 39]);
-    expect(result.verifyProbeCount).toBe(6);
+    // Each candidate's capture frame; the rest of a state's frames once the next one opens.
+    const others = (start: number, end: number, capture: number) =>
+      Array.from({ length: end - start }, (_, i) => start + i).filter((f) => f !== capture);
+    expect(probedFrames).toEqual([
+      4,
+      17,
+      ...others(0, 10, 4),
+      25,
+      ...others(10, 25, 17),
+      32,
+      ...others(26, 40, 32),
+    ]);
+    expect(result.verifyProbeCount).toBe(9 + 14 + 13);
     // frame / fps, the layered loop's frame-time formula.
     expect(times).toEqual(probedFrames.map((f) => (f * 1001) / 30000));
 
@@ -421,7 +439,12 @@ describe("writeOverlayStates", () => {
       hashOverlayPixels(caption),
       hashOverlayPixels(empty),
     ]);
-    expect(result.plan).toMatchObject({ totalFrames: 90, width, height, fps: args.plan.fps });
+    expect(result.plan).toMatchObject({
+      totalFrames: 90,
+      width,
+      height,
+      fps: args.plan.fps,
+    });
   });
 
   it("keeps a one-frame change inside a held overlay as its own state", async () => {
@@ -483,8 +506,7 @@ describe("writeOverlayStates", () => {
 
   it("falls back when a frame the planner called static renders a different overlay", async () => {
     // A seek-driven script the static analysis cannot see rewrites a counter from frame 50 on:
-    // the candidate's capture frame (40) shows the old text, the probe half a second later
-    // (frame 55) the new one.
+    // the candidate's capture frame (40) shows the old text, the probe of frame 50 the new one.
     const states = [state(0, 0, 20), state(1, 20, 21), state(2, 21, 60)];
     const caption = syntheticRgba(width * height, 11);
     const counter = syntheticRgba(width * height, 12);
@@ -500,29 +522,46 @@ describe("writeOverlayStates", () => {
     const failure = writeOverlayStates(args, source);
 
     await expect(failure).rejects.toBeInstanceOf(OverlayStateMismatchError);
-    await expect(failure).rejects.toThrow(/frame 55 differs from its state \[21, 60\)/);
-    expect(capturedFrames).toEqual([9, 20, 55]);
+    await expect(failure).rejects.toThrow(/frame 50 differs from its state \[21, 60\)/);
+    expect(capturedFrames).toEqual([9, 20, 50]);
   });
 
-  it("probes long candidates at least every half second", async () => {
-    // fps 30000/1001: a gap of ceil(14.985) = 15 frames. A change only on frames 28..34 sits
-    // between the first frame (0) and the capture frame (49), so only an interior probe sees it.
-    const states = [state(0, 0, 100)];
+  it("probes every frame of a long candidate, so a one-frame blip falls back", async () => {
+    // A requestAnimationFrame loop or seek-time setter the planner cannot see flashes the
+    // overlay on frame 51 only, well away from the candidate's ends and capture frame (44).
+    const states = [state(0, 0, 90)];
     const base = syntheticRgba(width * height, 13);
     const blip = syntheticRgba(width * height, 14);
     const { args } = makeArgs(states);
     const { source, probedFrames } = fakeSource(states, ["a"], [base], (frame) =>
-      frame >= 28 && frame < 35 ? { key: "blip", pixels: blip } : undefined,
+      frame === 51 ? { key: "blip", pixels: blip } : undefined,
     );
 
-    await expect(writeOverlayStates(args, source)).rejects.toThrow(/frame 30 differs/);
-    expect(probedFrames.slice(0, 4)).toEqual([49, 0, 15, 30]);
+    await expect(writeOverlayStates(args, source)).rejects.toThrow(
+      /frame 51 differs from its state \[0, 90\)/,
+    );
+    expect(probedFrames).toEqual([
+      44,
+      ...Array.from({ length: 52 }, (_, f) => f).filter((f) => f !== 44),
+    ]);
+  });
+
+  it("catches a periodic change whose period would alias with a sampling grid", async () => {
+    // A two-frame pulse every 15 frames, starting at frame 7: off every multiple of 15.
+    const states = [state(0, 0, 120)];
+    const base = syntheticRgba(width * height, 18);
+    const pulse = syntheticRgba(width * height, 19);
+    const { args } = makeArgs(states);
+    const { source } = fakeSource(states, ["a"], [base], (frame) =>
+      frame % 15 === 7 || frame % 15 === 8 ? { key: "pulse", pixels: pulse } : undefined,
+    );
+
+    await expect(writeOverlayStates(args, source)).rejects.toThrow(/frame 7 differs/);
   });
 
   it("checks every candidate's own first and last frame, not only the merged state's", async () => {
     // Two candidates with the same overlay merge into [0, 20). A change on frames 9..10 sits at
-    // the first candidate's last frame, which neither capture frame (4, 14) nor the merged
-    // state's edges (0, 19) would show.
+    // the first candidate's last frame, which neither capture frame (4, 14) shows.
     const states = [state(0, 0, 10), state(1, 10, 20)];
     const base = syntheticRgba(width * height, 16);
     const other = syntheticRgba(width * height, 17);
@@ -534,7 +573,7 @@ describe("writeOverlayStates", () => {
     await expect(writeOverlayStates(args, source)).rejects.toThrow(
       /frame 9 differs from its state \[0, 20\)/,
     );
-    expect(probedFrames).toEqual([4, 14, 0, 9]);
+    expect(probedFrames).toEqual([4, 14, 0, 1, 2, 3, 5, 6, 7, 8, 9]);
   });
 
   it("accepts a verification probe with a new fingerprint but the state's pixels", async () => {
@@ -545,11 +584,13 @@ describe("writeOverlayStates", () => {
       frame === 9 ? { key: "a'", pixels: new Uint8Array(pixels) } : undefined,
     );
 
-    const result = await writeOverlayStates(args, source);
+    let ticks = 0;
+    const result = await writeOverlayStates({ ...args, onVerifyProbe: () => (ticks += 1) }, source);
 
+    expect(ticks).toBe(9);
     expect(capturedFrames).toEqual([4, 9]);
     expect(result.captureCount).toBe(2);
-    expect(result.verifyProbeCount).toBe(2);
+    expect(result.verifyProbeCount).toBe(9);
     expect(result.plan.states).toEqual([
       { index: 0, startFrame: 0, endFrame: 10, captureFrame: 4 },
     ]);
@@ -557,22 +598,12 @@ describe("writeOverlayStates", () => {
 });
 
 describe("verificationFrames", () => {
-  it("probes the first and last frame of a state", () => {
-    expect(verificationFrames(10, 20, new Set([14]), 30)).toEqual([10, 19]);
+  it("probes every frame of a state except its capture frame", () => {
+    expect(verificationFrames(10, 20, 14)).toEqual([10, 11, 12, 13, 15, 16, 17, 18, 19]);
   });
 
-  it("skips frames already probed and one-frame states", () => {
-    expect(verificationFrames(5, 6, new Set([5]), 30)).toEqual([]);
-    expect(verificationFrames(5, 7, new Set([5, 6]), 30)).toEqual([]);
-  });
-
-  it("fills gaps longer than the limit between probed frames", () => {
-    expect(verificationFrames(0, 100, new Set([49]), 30)).toEqual([0, 30, 79, 99]);
-    expect(verificationFrames(0, 10, new Set(), 4)).toEqual([0, 4, 8, 9]);
-  });
-
-  it("ignores probed frames outside the state and empty ranges", () => {
-    expect(verificationFrames(10, 12, new Set([3, 40]), 30)).toEqual([10, 11]);
-    expect(verificationFrames(10, 10, new Set(), 30)).toEqual([]);
+  it("has nothing to probe in a one-frame state or an empty range", () => {
+    expect(verificationFrames(5, 6, 5)).toEqual([]);
+    expect(verificationFrames(10, 10, 10)).toEqual([]);
   });
 });

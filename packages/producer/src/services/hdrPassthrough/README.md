@@ -32,7 +32,7 @@ capture_hdr_layered stage (renderOrchestrator)
        ├─ captureOverlayStates → one PNG per distinct overlay   overlayCapture.ts
        │    probe each candidate (seek + overlayFingerprint.ts),
        │    screenshot only unseen fingerprints, merge identical neighbours,
-       │    re-probe each candidate's ends and every 0.5 s inside it
+       │    re-probe every frame of each merged state
        └─ compositeAndEncode → videoOnlyPath                    ffmpegComposite.ts
      completed → assemble muxes audio as usual
      fallback  → (extract deferred video frames) → runCaptureHdrStage
@@ -120,13 +120,16 @@ whose fingerprint or captured pixels match the state before it is merged into
 it. A candidate whose overlay differs in any way starts its own state, so a
 one-frame change is never merged away.
 
-The frames between capture frames are the planner's word. When a merged
-state closes, each of its candidates is probed again at its first and last
-frame and at least every 0.5 s in between. A fingerprint the state has not
-seen is screenshotted; pixels that differ from the state's fall back
-(`overlay_unverified`) rather than ship a stale overlay. On the caption
-fixtures this adds about six probes (about 20 ms each) per cue: 62 for 10
-cues, 182 for 30.
+The frames between capture frames are the planner's word, which holds only
+for drivers its static analysis sees. When a merged state closes, each of
+its candidates is probed again at every frame but its capture frame. A fingerprint the
+state has not seen is screenshotted; pixels that differ from the state's
+fall back (`overlay_unverified`) rather than ship a stale overlay. The probe
+is exhaustive because it is the safety net for drivers no static check
+names (a raw `requestAnimationFrame` loop, a setter on a runtime seek-time
+global, a wrapped seek, a film-time timer): any sampling grid misses a
+change shorter than its gap, and a periodic driver can alias with it. It
+costs one probe (seek + fingerprint, no screenshot) per frame.
 
 ## Video frame extraction
 
@@ -141,8 +144,8 @@ calibration (sample frames only). A completed passthrough never decodes them.
 ## Progress
 
 Overlay capture reports in the 25–35% band and keeps the stall watchdog alive
-per state. The encode drives `framesRendered` from ffmpeg's frame count and
-reports 35–80%.
+per state and per verification probe. The encode drives `framesRendered`
+from ffmpeg's frame count and reports 35–80%.
 
 ## Limitations
 
@@ -152,9 +155,9 @@ reports 35–80%.
   stats are not collected on the passthrough path.
 - mp4 only; no alpha, HDR images or shader transitions.
 - The fingerprint cannot see inside closed shadow roots.
-- Verification samples frames: an undetected driver that changes the overlay
-  only between probes (a blip shorter than 0.5 s inside a long candidate,
-  away from its ends) is not caught.
+- Verification reads each frame from a fresh seek, as the layered path
+  does. A driver whose output depends on the order or history of seeks
+  rather than on the time alone can still differ.
 - `hf-seek` listeners are read once, after the page loads; one added later
   is left to the verification probes.
 - With a warm extraction cache, deferral costs a probe (about 0.3 s) that a
@@ -168,4 +171,5 @@ caption fixtures plus one negative fixture per fallback class. On 1080p30
 caption fixtures from 20 s to 3 min, HLG and PQ, the passthrough output
 decodes to the same frames as the layered render, 9-14x faster (a 16 min
 render takes about 13 min instead of an estimated 2.4 h); its "Measured"
-section has the numbers.
+section has the numbers. Probing every frame in verification adds about
+15-18 ms per frame (5-9x on the 20 s fixtures on a loaded host).

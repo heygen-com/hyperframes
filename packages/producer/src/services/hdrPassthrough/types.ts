@@ -316,6 +316,12 @@ export interface CaptureOverlayStatesArgs {
   outDir: string;
   /** Called after each state with the cumulative frames those states cover. */
   onStateCaptured?: (framesCovered: number, statesDone: number, statesTotal: number) => void;
+  /**
+   * Called after every verification probe. Verification probes every frame,
+   * so a long merged state runs for a while between `onStateCaptured` calls;
+   * this keeps the stall watcher alive meanwhile.
+   */
+  onVerifyProbe?: () => void;
 }
 
 // ── ffmpeg composite ───────────────────────────────────────────────────────

@@ -145,13 +145,6 @@ export function overlayElementIdsAboveVideo(
 }
 
 /**
- * Longest run of frames inside one candidate state that the verification
- * pass leaves unprobed, in seconds of composition time. Every candidate is
- * also probed at its first and last frame.
- */
-const VERIFY_MAX_GAP_SECONDS = 0.5;
-
-/**
  * Where the overlay pixels come from. `probe(frame, time)` puts the page at
  * `time` (`frame / fps`) and returns the overlay fingerprint there (equal
  * fingerprints render equal pixels); `capture(frame, time)` returns the 8-bit
@@ -164,33 +157,21 @@ export interface OverlayStateSource {
 
 /**
  * Frames of one candidate state `[startFrame, endFrame)` the verification
- * pass probes: the first and last frame, plus interior frames so that no two
- * probed frames (`alreadyProbed` included) are more than `maxGapFrames`
- * apart. Excludes frames in `alreadyProbed`. Sorted ascending.
+ * pass probes: every frame except `captureFrame`, which the candidate probe
+ * already read. Sorted ascending.
+ *
+ * Exhaustive on purpose. The verification is the safety net for overlay
+ * drivers the planner cannot see (a requestAnimationFrame loop, a setter on
+ * a seek-time global, a wrapped seek); any sampling grid misses a change
+ * shorter than its gap, and a periodic driver can alias with it.
  */
 export function verificationFrames(
   startFrame: number,
   endFrame: number,
-  alreadyProbed: ReadonlySet<number>,
-  maxGapFrames: number,
+  captureFrame: number,
 ): number[] {
-  if (endFrame <= startFrame) return [];
-  const gap = Math.max(1, Math.floor(maxGapFrames));
-  const anchors = [
-    ...new Set([
-      startFrame,
-      endFrame - 1,
-      ...[...alreadyProbed].filter((f) => f >= startFrame && f < endFrame),
-    ]),
-  ].sort((a, b) => a - b);
   const frames: number[] = [];
-  for (let i = 0; i < anchors.length; i++) {
-    const at = anchors[i] as number;
-    if (!alreadyProbed.has(at)) frames.push(at);
-    const next = anchors[i + 1];
-    if (next === undefined) break;
-    for (let f = at + gap; f < next; f += gap) frames.push(f);
-  }
+  for (let f = startFrame; f < endFrame; f++) if (f !== captureFrame) frames.push(f);
   return frames;
 }
 
@@ -310,8 +291,8 @@ export class OverlayStateMismatchError extends Error {
  *
  * The other frames of a candidate are the planner's claim, which holds only
  * for drivers its static analysis sees. Once a merged state is closed, each
- * of its candidates is probed again at its first and last frame and at least
- * every `VERIFY_MAX_GAP_SECONDS` in between (`verificationFrames`). A
+ * of its candidates is probed at every frame but its capture frame
+ * (`verificationFrames`). A
  * fingerprint not seen in the state is screenshotted; pixels that differ
  * from the state's throw `OverlayStateMismatchError`, which the caller turns
  * into a fallback to the layered path instead of a render with stale
@@ -331,7 +312,6 @@ export async function writeOverlayStates(
     pathByHash: new Map(),
     pixelsByKey: new Map(),
     merged: [],
-    maxGapFrames: Math.ceil((VERIFY_MAX_GAP_SECONDS * plan.fps.num) / plan.fps.den),
     captureCount: 0,
     verifyProbeCount: 0,
   };
@@ -378,7 +358,6 @@ interface StateRun {
   /** Pixels each fingerprint seen so far renders to. */
   pixelsByKey: Map<string, CapturedPixels>;
   merged: OpenState[];
-  maxGapFrames: number;
   captureCount: number;
   verifyProbeCount: number;
 }
@@ -437,13 +416,14 @@ async function foldCandidate(run: StateRun, candidate: OverlayState): Promise<vo
 async function verifyMergedState(run: StateRun, state: OpenState): Promise<void> {
   const { args, source, pixelsByKey } = run;
   const frames = state.candidates.flatMap((c) =>
-    verificationFrames(c.startFrame, c.endFrame, new Set([c.captureFrame]), run.maxGapFrames),
+    verificationFrames(c.startFrame, c.endFrame, c.captureFrame),
   );
   for (const frame of frames) {
     args.input.assertNotAborted();
     const time = frameTime(args.plan, frame);
     const key = await source.probe(frame, time);
     run.verifyProbeCount += 1;
+    args.onVerifyProbe?.();
     if (state.keys.has(key)) continue;
     let hash = pixelsByKey.get(key)?.hash;
     if (hash === undefined) {
@@ -515,9 +495,8 @@ async function storeOverlayPixels(
  *   5. A candidate whose pixels equal the state before it folds into it too.
  *   6. Call `onStateCaptured(framesCovered, i + 1, states.length)` with the
  *      cumulative `endFrame - startFrame` of candidates done so far.
- *   7. When a merged state closes, re-probe each of its candidates at its
- *      first and last frame and at least every `VERIFY_MAX_GAP_SECONDS` in
- *      between; a frame whose overlay renders different pixels throws
+ *   7. When a merged state closes, re-probe each of its candidates at every
+ *      frame but the capture frame; a frame whose overlay renders different pixels throws
  *      `OverlayStateMismatchError`.
  *
  * The result's `plan` holds the merged states (one per run of identical

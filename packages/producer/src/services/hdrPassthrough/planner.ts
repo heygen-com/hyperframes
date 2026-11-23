@@ -46,8 +46,8 @@ const TOLERATED_CAUSES: ReadonlySet<StaticDedupIneligibleCause> = new Set([
   // CSS/WAAPI, canvas, frame sources and iframes; `findUnseekedAnimationDrivers`,
   // `findAnimatedImages` and `findSeekHookListeners` reject the drivers that can
   // be named, whether or not GSAP is present. For any other script that writes
-  // the DOM on its own schedule, overlay capture re-probes every merged state
-  // and falls back on a mismatch (`writeOverlayStates`).
+  // the DOM on its own schedule, overlay capture re-probes every frame of every
+  // merged state and falls back on a mismatch (`writeOverlayStates`).
   "no_gsap_tweens",
 ]);
 

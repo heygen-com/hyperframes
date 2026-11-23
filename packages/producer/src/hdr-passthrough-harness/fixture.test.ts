@@ -205,6 +205,8 @@ describe("INELIGIBLE_CASES", () => {
       "animated-avif",
       "hf-seek-listener",
       "seek-time-setter",
+      "flash-raf",
+      "flash-setter",
     ]) {
       expect(names).toContain(name);
     }
@@ -217,6 +219,30 @@ describe("INELIGIBLE_CASES", () => {
     expect(setter.composition.headHtml).toContain("__hfTypegpuTime");
     expect(setter.composition.headHtml).not.toContain("addEventListener");
     for (const c of [listener, setter]) expect(c.composition.timelineScript).toBeUndefined();
+  });
+
+  it("puts each flash case in one cue-free state, away from a sampling grid", () => {
+    for (const name of ["flash-raf", "flash-setter"]) {
+      const c = INELIGIBLE_CASES.find((x) => x.name === name)!;
+      expect(c.reason).toBe("overlay_unverified");
+      expect(c.composition.cues).toEqual([]);
+      expect(c.composition.timelineScript).toBeUndefined();
+      const html = buildCompositionHtml({
+        videoSrc: "assets/v.mp4",
+        durationSec: 3,
+        width: 1920,
+        height: 1080,
+        cues: [],
+        ...c.composition,
+        compositionId: name,
+      });
+      expect(html).toContain("FLASH");
+      expect(html).not.toContain(`class="clip caption"`);
+    }
+    const raf = INELIGIBLE_CASES.find((c) => c.name === "flash-raf")!;
+    expect(raf.composition.headHtml).toContain("requestAnimationFrame(function loop");
+    const setter = INELIGIBLE_CASES.find((c) => c.name === "flash-setter")!;
+    expect(setter.composition.headHtml).toContain("__hfTypegpuTime");
   });
 
   it("ships the assets each case references", () => {

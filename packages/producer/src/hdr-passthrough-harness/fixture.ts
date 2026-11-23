@@ -419,10 +419,12 @@ export interface IneligibleCase {
   name: string;
   /** `PassthroughIneligibleReason` the flag-on render must log. */
   reason: string;
+  /** Overrides on the `captions` composition; `cues: []` drops the captions. */
   composition: Pick<
     CompositionOptions,
     "videoStyle" | "videoWrapperStyle" | "headHtml" | "overlayHtml" | "timelineScript"
-  >;
+  > &
+    Partial<Pick<CompositionOptions, "cues">>;
   assets?: readonly NegativeAsset[];
 }
 
@@ -528,6 +530,28 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     composition: {
       headHtml: `<script>(() => { let time; Object.defineProperty(window, "__hfTypegpuTime", { configurable: true, get: () => time, set(t) { time = t; const el = document.getElementById("seek-counter"); if (el) el.textContent = "t=" + Math.floor(t * 4) / 4; } }); })();</script>`,
       overlayHtml: `<div id="seek-counter" style="${BADGE_STYLE};color:#fff;font:700 40px sans-serif">t=0</div>`,
+    },
+  },
+  // A three-frame flash (frames 50-52 at 30 fps) with no caption cues, so the
+  // whole composition is one candidate state and the flash sits far from its
+  // ends and capture frame. Only a probe of every frame sees it.
+  {
+    // A raw requestAnimationFrame loop: rAF runs on virtual time on every seek.
+    name: "flash-raf",
+    reason: "overlay_unverified",
+    composition: {
+      cues: [],
+      headHtml: `<script>requestAnimationFrame(function loop(now) { const el = document.getElementById("seek-counter"); if (el) el.textContent = (now >= 1650 && now < 1750) ? "FLASH" : ""; requestAnimationFrame(loop); });</script>`,
+      overlayHtml: `<div id="seek-counter" style="${BADGE_STYLE};color:#fff;font:700 40px sans-serif"></div>`,
+    },
+  },
+  {
+    name: "flash-setter",
+    reason: "overlay_unverified",
+    composition: {
+      cues: [],
+      headHtml: `<script>(() => { let time; Object.defineProperty(window, "__hfTypegpuTime", { configurable: true, get: () => time, set(t) { time = t; const el = document.getElementById("seek-counter"); if (el) el.textContent = (t >= 1.65 && t < 1.75) ? "FLASH" : ""; } }); })();</script>`,
+      overlayHtml: `<div id="seek-counter" style="${BADGE_STYLE};color:#fff;font:700 40px sans-serif"></div>`,
     },
   },
   {

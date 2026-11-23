@@ -78,7 +78,11 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   AVIF images and an `hf-seek` listener that rewrites a counter
   (`overlay_non_gsap_animation`), the same counter driven by a setter on the
   runtime's seek-time global, which no static check names
-  (`overlay_unverified`: capture's verification probes catch it), an animated GIF (`video_count`:
+  (`overlay_unverified`: capture's verification probes catch it), a
+  three-frame flash on frames 50-52 of a cue-free composition from a raw
+  `requestAnimationFrame` loop (`flash-raf`) and from the same setter
+  (`flash-setter`), which only a probe of every frame sees
+  (`overlay_unverified`), an animated GIF (`video_count`:
   the compiler turns it into a second video), a canvas (`canvas`), and
   a GSAP tween that changes the overlay on every frame
   (`overlay_continuous_animation`). Run these with `--only on`: the check is
@@ -95,7 +99,7 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   source with one keyframe every 300 frames. Each records its own rate and
   duration in the manifest, which `parity.ts` renders and checks with.
   Every positive case must decode to the same frames as the layered render
-  (run with `--require-identical`).
+  (`framemd5`, which `parity.ts` checks by default).
 
 `fixtures.json` in the output directory records the projects, the transfer
 and what each expects; `parity.ts --fixtures` reads it.
@@ -123,7 +127,7 @@ Useful options:
 | `--projects a,b`         | Only these manifest projects (with `--fixtures`)                                                                                                   |
 | `--only off` / `on`      | Render one side only (single-output checks: render ok, HDR tags, audio, frames)                                                                    |
 | `--skip-render`          | Re-run the comparison on existing `off.mp4` / `on.mp4`                                                                                             |
-| `--require-identical`    | Also fail unless every decoded frame matches (`framemd5`), not just the PSNR / SSIM thresholds                                                     |
+| `--no-require-identical` | Drop the default `framemd5` check (every decoded frame must match) and pass on the PSNR / SSIM thresholds alone                                    |
 | `--fps <rate>`           | Render rate for `--project`: `30` or `30000/1001` (manifest projects use their own)                                                                |
 | `--project <dir>`        | Any project instead of the generated fixtures (`--duration` enables the frame check, `--expect passthrough\|fallback`, `--expect-reason <reason>`) |
 | `--render-arg <arg>`     | Extra CLI argument for both sides, repeatable (for example `--render-arg=--gpu`)                                                                   |
@@ -153,6 +157,7 @@ Layered (flag off) is the reference.
 | container duration                                                           | within 1 frame                                                                                       |
 | HDR side data on the first frame                                             | same set (the HDR encode path writes mastering display + CLL for HLG too)                            |
 | audio stream                                                                 | present on both                                                                                      |
+| decoded frames (`framemd5`)                                                  | all identical (default; `--no-require-identical` drops it)                                           |
 | PSNR, mean of per-frame `psnr_avg`                                           | >= 45 dB                                                                                             |
 | PSNR, worst frame                                                            | >= 40 dB                                                                                             |
 | SSIM, mean of per-frame `All`                                                | >= 0.990                                                                                             |
@@ -164,6 +169,12 @@ wrote rather than an 8-bit downconvert. A frame with MSE 0 counts as 100 dB.
 
 ### Why these numbers
 
+The contract is bit-identical decoded frames, so `framemd5` is checked by
+default and is the gate; PSNR and SSIM are there to say how far apart two
+outputs are, not to excuse a difference. A small stale overlay does not
+move them much: a 128 px badge missing on three frames of a 3 s clip scored
+80.5 dB mean, 55.0 dB worst and SSIM 0.9996, well inside every threshold.
+
 On the generated fixtures the two sides come out bit-identical: the
 passthrough converts the source to `rgb48le` exactly as the layered frame
 extraction does, blends the same LUT-mapped overlay pixels at 16 bits, and
@@ -171,11 +182,11 @@ hands the encoder the same `rgb48le` frames, so x265 makes the same
 decisions. The thresholds leave room for what can still differ on other
 content: the 16-bit `maskedmerge` rounds 1 LSB away from the Node blend on
 some partial-alpha pixels, and one changed input pixel makes the CRF encoder
-diverge for the rest of the GOP. 45 dB mean / 40 dB worst is the level where
-that encoder noise sits and a real defect does not: a caption shown on the
-wrong frame, a missing overlay state or an 8-bit (banded) blend costs a
-frame well below 40 dB, and a wrong transfer mapping (overlays in SDR
-instead of HLG signal) pulls every caption frame down. Read the worst frame
+diverge for the rest of the GOP. With `--no-require-identical`, 45 dB mean /
+40 dB worst is the level where that encoder noise sits: a full caption shown
+on the wrong frame or an 8-bit (banded) blend costs a frame well below 40 dB,
+and a wrong transfer mapping (overlays in SDR instead of HLG signal) pulls
+every caption frame down, but a small overlay wrong on a few frames can pass. Read the worst frame
 index (`psnr.min ... at frame N`) against the cue boundaries before
 loosening a threshold: a dip exactly at a boundary is the off-by-one this
 gate exists to catch.
@@ -238,6 +249,28 @@ ends and every 0.5 s inside it. "verify" is the number of extra probes.
 All 18 `--ineligible` classes (3 s) fell back with their expected reason,
 including `hf-seek-listener` (`overlay_non_gsap_animation`) and
 `seek-time-setter` (`overlay_unverified`).
+
+### With exhaustive verification
+
+Same host (load average about 25), 2026-11-22, ffmpeg 7.0.2, `framemd5`
+checked, after overlay capture started probing every frame of every
+merged state instead of every 0.5 s. "verify" is the number of extra probes:
+every frame but the 84 capture frames.
+
+| Fixture                       | off: job | on: job | overlay states (candidates / screenshots / verify) | capture | speedup (job) | off vs on          |
+| ----------------------------- | -------- | ------- | -------------------------------------------------- | ------- | ------------- | ------------------ |
+| HLG `captions` 20 s           | 206.0 s  | 37.0 s  | 21 (84 / 11 / 516)                                 | 13.5 s  | 5.6x          | identical, 600/600 |
+| HLG `captions-offset` 20 s    | 277.2 s  | 32.1 s  | 21 (84 / 11 / 516)                                 | 11.6 s  | 8.6x          | identical, 600/600 |
+| PQ `captions` 20 s            | 206.0 s  | 40.0 s  | 21 (84 / 11 / 516)                                 | 12.9 s  | 5.2x          | identical, 600/600 |
+| PQ `captions-offset` 20 s     | 247.9 s  | 31.1 s  | 21 (84 / 11 / 516)                                 | 12.8 s  | 8.0x          | identical, 600/600 |
+| `ineligible-flash-raf` 3 s    | 39.1 s   | 33.8 s  | fallback `overlay_unverified` at frame 50          | -       | 1.16x         | identical, 90/90   |
+| `ineligible-flash-setter`     | 33.1 s   | 29.6 s  | fallback `overlay_unverified` at frame 50          | -       | 1.12x         | identical, 90/90   |
+| `ineligible-seek-time-setter` | 44.7 s   | 42.6 s  | fallback `overlay_unverified` at frame 8           | -       | 1.05x         | identical, 90/90   |
+
+The probes cost about 8-9 s of capture on 600 frames (about 15-18 ms each).
+Before this change the two flash fixtures took the passthrough and shipped
+without the flash: 49/90 frames identical, the badge missing on frames
+50-52 and the encoder drifting to the end of the GOP, at 80.5 dB mean PSNR.
 
 ### Edge cases
 

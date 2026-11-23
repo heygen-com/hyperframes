@@ -8,6 +8,7 @@ import {
   checkSingleOutput,
   defaultCliCommand,
   fixtureExpectReason,
+  parseParityArgs,
   selectProjects,
 } from "./parity.js";
 
@@ -160,5 +161,13 @@ describe("buildRenderArgs with a rational rate", () => {
   it("passes the rate to the CLI as given", () => {
     const args = buildRenderArgs({ ...renderOptions, side: "on", fps: "30000/1001" });
     expect(args[args.indexOf("--fps") + 1]).toBe("30000/1001");
+  });
+});
+
+describe("parseParityArgs", () => {
+  it("requires decoded frames to be identical unless told otherwise", () => {
+    expect(parseParityArgs(["--project", "/fx/captions"])["require-identical"]).toBe(true);
+    expect(parseParityArgs(["--require-identical"])["require-identical"]).toBe(true);
+    expect(parseParityArgs(["--no-require-identical"])["require-identical"]).toBe(false);
   });
 });
