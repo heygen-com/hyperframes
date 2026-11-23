@@ -407,17 +407,22 @@ export class WebAudioTransport {
     return bytes;
   }
 
+  /** A source known to run too long is not asked again; one whose length was unread is, as a failed fetch is. */
+  private async decodableLength(src: string, el: HTMLMediaElement): Promise<boolean> {
+    try {
+      await assertDecodableLength(src, el.duration);
+      return true;
+    } catch (err) {
+      if (err instanceof AudioTooLong && err.seconds !== null) this._failedSrcs.add(src);
+      return false;
+    }
+  }
+
   private async fetchAndDecode(src: string, el: HTMLMediaElement): Promise<AudioBuffer | null> {
     if (this._bufferCache.has(src)) return this._bufferCache.get(src)!;
     if (this._failedSrcs.has(src)) return null;
     if (!this._ctx) return null;
-
-    try {
-      await assertDecodableLength(src, el.duration);
-    } catch (err) {
-      if (err instanceof AudioTooLong && err.seconds !== null) this._failedSrcs.add(src);
-      return null;
-    }
+    if (!(await this.decodableLength(src, el))) return null;
 
     // Fetch the bytes. A network error or non-OK status (e.g. a 404 for an
     // asset that simply has not been uploaded yet) is TRANSIENT — return null
