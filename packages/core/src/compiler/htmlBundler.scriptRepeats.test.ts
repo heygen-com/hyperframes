@@ -6,6 +6,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
 import { SCENE_PART_ATTR } from "../sceneParts";
 import { bundleToSingleHtml } from "./htmlBundler";
+import { AFTER_FONTS_SCRIPT_TYPE } from "./scriptRuns";
 
 const dirs: string[] = [];
 afterAll(() => {
@@ -154,4 +155,47 @@ ${host("a", 0, "a.html")}${host("b", 1, "b.html")}${host("c", 2)}
     // Both scenes name it, so it runs for the film, not inside one scene's part.
     expect(lib?.getAttribute(SCENE_PART_ATTR)).toBeNull();
   });
+
+  it.each([
+    ["nomodule", '<script nomodule src="a.js"></script>'],
+    ["data block", '<script type="text/plain" src="a.js"></script>'],
+  ])("keeps the regular script after a %s tag naming the same file", async (_, first) => {
+    const dir = project({
+      "index.html": page(`${first}\n<script src="a.js"></script>`),
+      "a.js": "window.a = 1;",
+    });
+
+    const html = await bundleToSingleHtml(dir, PREVIEW);
+
+    const { document } = parseHTML(html);
+    const copies = [...document.querySelectorAll("script")].filter((el) =>
+      el.textContent?.includes("window.a = 1;"),
+    );
+    expect(copies).toHaveLength(2);
+    const runs = (el: Element) =>
+      !el.hasAttribute("nomodule") && el.getAttribute("type") === AFTER_FONTS_SCRIPT_TYPE;
+    expect(copies.some(runs)).toBe(true);
+  });
+
+  it(
+    "carries a pin to 20,000 spellings of its file in bounded time",
+    { timeout: 20_000 },
+    async () => {
+      const dir = project({
+        "index.html": page(
+          '<script src="pinned.js" integrity="sha384-YQ=="></script>\n' +
+            tags(20_000, (i) => `pinned.js?v=${i}`),
+        ),
+        "pinned.js": "window.pinned = 1;",
+      });
+      const started = performance.now();
+
+      const html = await bundleToSingleHtml(dir, PREVIEW);
+
+      expect(performance.now() - started).toBeLessThan(10_000);
+      expect(html).not.toContain("window.pinned = 1;");
+      const { document } = parseHTML(html);
+      expect(document.querySelectorAll('script[src^="pinned.js"][integrity]')).toHaveLength(20_001);
+    },
+  );
 });
