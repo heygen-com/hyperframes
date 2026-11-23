@@ -1,6 +1,7 @@
 import { TIMELINE_VIEWPORT_BUDGETS, type TimelineViewportBudgets } from "./timelineViewportBudgets";
 import {
   createThumbnailKey,
+  decodedImageBytes,
   type ThumbnailLoadedResult,
   type ThumbnailValue,
 } from "./thumbnailScheduler";
@@ -236,7 +237,7 @@ function loadedResult(
       : { kind: "filmstrip", urls, aspect };
   return {
     value,
-    weight: width * height * 4 * decoded.length,
+    weight: decodedImageBytes(width, height) * decoded.length,
     dispose: () => releaseDecodedResources(resources),
   };
 }

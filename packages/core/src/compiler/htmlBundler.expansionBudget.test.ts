@@ -1,11 +1,12 @@
 // @vitest-environment node
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { MAX_COMPOSITION_HTML_BYTES, MAX_EXPANDED_COMPOSITION_BYTES } from "./compositionSizeLimit";
 import { bundleToSingleHtml } from "./htmlBundler";
 
+const MIB = 1024 * 1024;
 const dirs: string[] = [];
 afterAll(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
@@ -113,6 +114,101 @@ describe("preview bundle expansion budget", () => {
 
     expect(error).toMatchObject({ code: "COMPOSITION_TOO_LARGE" });
     expect(String(error)).toContain('Composition file "huge.html"');
+  });
+
+  it("refuses one stylesheet linked past the page's size limit", async () => {
+    const links = '<link rel="stylesheet" href="a.css">'.repeat(70);
+    const dir = project({
+      "index.html": root("").replace("<body>", `<head>${links}</head><body>`),
+      "a.css": `/*${"x".repeat(MIB)}*/`,
+    });
+
+    const error = await bundleToSingleHtml(dir, { inlineAssets: false, staticGuard: false }).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toMatchObject({
+      code: "COMPOSITION_TOO_LARGE",
+      publicMetadata: { exceeded: "generated" },
+    });
+    expect(String(error)).toContain("Link each stylesheet once");
+  });
+
+  it("refuses one stylesheet imported past the page's size limit", async () => {
+    const dir = project({
+      "index.html": root("").replace(
+        "<body>",
+        '<head><link rel="stylesheet" href="a.css"></head><body>',
+      ),
+      "a.css": '@import "b.css";\n'.repeat(70),
+      "b.css": `/*${"x".repeat(MIB)}*/`,
+    });
+
+    const error = await bundleError(dir);
+
+    expect(error).toMatchObject({
+      code: "COMPOSITION_TOO_LARGE",
+      publicMetadata: { exceeded: "generated" },
+    });
+    expect(String(error)).toContain("import each file once");
+  });
+
+  it("refuses @imports that copy the same file past the limit", async () => {
+    // Each level imports the next twice: 2^11 copies of a 64 KiB sheet.
+    const files: Record<string, string> = {
+      "index.html": root("").replace(
+        "<body>",
+        '<head><link rel="stylesheet" href="s0.css"></head><body>',
+      ),
+      "s11.css": `/*${"x".repeat(64 * 1024)}*/`,
+    };
+    for (let level = 0; level < 11; level += 1) {
+      const next = `s${level + 1}.css`;
+      files[`s${level}.css`] = `@import "${next}";\n@import url(${next}) print;\n`;
+    }
+
+    const error = await bundleError(project(files));
+
+    expect(error).toMatchObject({
+      code: "COMPOSITION_TOO_LARGE",
+      publicMetadata: { exceeded: "generated" },
+    });
+  }, 30_000);
+
+  it.each([
+    [
+      "a mounted scene file",
+      (tags: string) => ({ index: root(mounts("scene.html", 1)), scene: scene(tags) }),
+    ],
+    [
+      "an inline template",
+      (tags: string) => ({
+        index: root(
+          `<template id="scene-template"><div data-composition-id="scene" data-width="320" data-height="180">${tags}</div></template>` +
+            '<div data-composition-id="scene" data-start="0" data-duration="2"></div>',
+        ),
+        scene: "",
+      }),
+    ],
+  ])("refuses %s naming one script file by many names past the limit", async (_, page) => {
+    const names = Array.from({ length: 70 }, (_, i) => `alias-${i}.js`);
+    const { index, scene: sceneHtml } = page(
+      names.map((n) => `<script src="${n}"></script>`).join(""),
+    );
+    const dir = project({
+      "index.html": index,
+      "scene.html": sceneHtml,
+      "a.js": `//${"x".repeat(MIB)}`,
+    });
+    for (const name of names) symlinkSync(join(dir, "a.js"), join(dir, name));
+
+    const error = await bundleError(dir);
+
+    expect(error).toMatchObject({
+      code: "COMPOSITION_TOO_LARGE",
+      publicMetadata: { exceeded: "generated" },
+    });
+    expect(String(error)).toContain("Name each script file in one tag.");
   });
 
   it("still bundles a scene mounted a few times, once per mount", async () => {

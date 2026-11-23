@@ -719,9 +719,15 @@ async function waitingQuad(page, map) {
 }
 
 /** The box as the preview shows it: the waiting marker's quad while a press waits for its replay, else the element. */
-export async function measureShown(ctx, gesture, read = measure, quadOf = contentQuad) {
+export async function measureShown(
+  ctx,
+  gesture,
+  read = measure,
+  quadOf = contentQuad,
+  pointerMoved = true,
+) {
   for (;;) {
-    const waiting = await ctx.page.$("[data-dom-edit-press-waiting]");
+    const waiting = pointerMoved ? await ctx.page.$("[data-dom-edit-press-waiting]") : null;
     try {
       const m = await read(ctx);
       if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);
@@ -740,8 +746,8 @@ export async function measureShown(ctx, gesture, read = measure, quadOf = conten
   }
 }
 
-export async function sample(ctx, gesture, point, pointerScreen) {
-  const { m, actual } = await measureShown(ctx, gesture);
+export async function sample(ctx, gesture, point, pointerScreen, pointerMoved = true) {
+  const { m, actual } = await measureShown(ctx, gesture, measure, contentQuad, pointerMoved);
   return { m, actual, p: point(m), c: m.map.toComp(pointerScreen) };
 }
 
@@ -929,7 +935,7 @@ export async function pointerGesture(ctx, gesture, pre, route) {
   traceBench("press", { gesture });
   await ctx.page.mouse.down();
   await nextFrame(ctx.page);
-  const s0 = await sample(ctx, gesture, g.point, press);
+  const s0 = await sample(ctx, gesture, g.point, press, false);
   traceBench("pressed", { gesture, jump: pre && quadDistance(s0.m.visible, pre.visible) });
   await recording(ctx.page, true);
   const errors = [];

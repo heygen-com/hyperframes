@@ -26,7 +26,7 @@ import {
   type EditingElementMatch,
 } from "./editingElement";
 import type { EditingElementBox, EditingElementGeometry } from "./editingGeometry";
-import type { EditingGestureStart } from "./editingGestureStart";
+import type { EditingGestureBase, EditingGestureStart } from "./editingGestureStart";
 import type { GsapSnapshot } from "./editing/gsapSnapshot";
 import type { MotionPathFrameHome } from "./editing/motionPathHome";
 import type { EditingLayer, EditingStackingSibling } from "./editingLayers";
@@ -136,7 +136,7 @@ export {
   type EditingElementGeometry,
   type ElementTransformSnapshot,
 } from "./editingGeometry";
-export type { EditingGestureStart } from "./editingGestureStart";
+export type { EditingGestureBase, EditingGestureStart } from "./editingGestureStart";
 export { MAX_CAPTION_TRANSFORM } from "./editing/captionTransform";
 export {
   MAX_SNAPSHOT_CHANNELS,
@@ -190,6 +190,7 @@ export const EDITING_REQUEST_KINDS = [
   "layers",
   "draft",
   "gesture-start",
+  "gesture-base",
   "console-errors",
   "watch-keys",
   "restore-attributes",
@@ -329,6 +330,10 @@ export interface EditingRequests {
   "gesture-start": {
     params: { handles: EditingElementHandle[] };
     result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
+  };
+  "gesture-base": {
+    params: { handles: EditingElementHandle[] };
+    result: { elements: Array<EditingGestureBase | null> };
   };
   "console-errors": { params: { from: number }; result: { errors: string[]; truncated: boolean } };
   /** The frame cancels these combos outside the elements that own keys, and forwards them and their
@@ -598,6 +603,7 @@ const PARAM_PARSERS: {
   layers: (params) => noParams(params) ?? layerParams(params),
   draft: draftList,
   "gesture-start": handleList,
+  "gesture-base": handleList,
   "console-errors": (params) =>
     hasKeys(params, "from") && isOffset(params.from) ? { from: params.from } : null,
   "watch-keys": comboList,
