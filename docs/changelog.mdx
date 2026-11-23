@@ -11,12 +11,13 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 <Update
   label="HyperFrames v0.9.84"
   description="Released - 2026-11-23"
-  tags={["Release", "CLI", "Studio", "Core"]}
+  tags={["Release", "Lint", "CLI", "Studio"]}
 >
 A new blank project opens on an empty timeline again. Leftover render folders are cleaned up reliably on macOS and Windows, and capture finishes on a small host with no GPU.
 
 ## Fixes
 
+- **Lint:** A page with thousands of scripts and tags lints in seconds ([148f9deb7](https://github.com/heygen-com/hyperframes/commit/148f9deb771f1c47f834f609e9cc667ab15f36c5), [#8551](https://github.com/heygen-com/hyperframes/pull/8551)).
 - **CLI:** Keep objects sliding offscreen in one shot ([b734a4114](https://github.com/heygen-com/hyperframes/commit/b734a411420e7d5e738d6a07b6a5ac097f40ee74), [#8552](https://github.com/heygen-com/hyperframes/pull/8552)).
 - **Core:** A sealed resize keeps a layer centred by a % translate under the pointer ([effc9586b](https://github.com/heygen-com/hyperframes/commit/effc9586b98cc0d8cb134d6f9251c347098f19af), [#8547](https://github.com/heygen-com/hyperframes/pull/8547)).
 - **Studio:** A sealed preview that can't swap scenes reloads without asking first ([35a0d81c2](https://github.com/heygen-com/hyperframes/commit/35a0d81c2b0e66308bf7049c1bf4f97dced62fac), [#8544](https://github.com/heygen-com/hyperframes/pull/8544)).
