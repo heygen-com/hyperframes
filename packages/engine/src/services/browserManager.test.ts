@@ -742,6 +742,8 @@ describe("resolveBrowserGpuMode", () => {
     _resetAutoBrowserGpuModeCacheForTests();
     // A named shell skips discovery, which starts any older Chrome in the user's cache to test it.
     vi.stubEnv("PRODUCER_HEADLESS_SHELL_PATH", process.execPath);
+    // A desktop session's WAYLAND_DISPLAY adds a second Linux probe; these cases count one.
+    vi.stubEnv("WAYLAND_DISPLAY", undefined);
   });
 
   afterEach(() => {

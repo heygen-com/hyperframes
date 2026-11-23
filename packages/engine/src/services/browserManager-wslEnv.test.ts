@@ -108,10 +108,19 @@ describe("WSL GPU without WAYLAND_DISPLAY", () => {
     expect(await captureWithoutWaylandDisplay("software")).toBe(false);
   });
 
-  it("tries only once outside WSL", async () => {
+  it("also retries without WAYLAND_DISPLAY on a native Linux Wayland desktop", async () => {
     const launch = fakeChrome(offWayland);
     const linux = { ...wsl, release: "6.8.0-45-generic", readProcVersion: () => "Linux 6.8.0" };
     expect(await resolveBrowserGpuMode("auto", { platform: "linux", wslHost: linux })).toBe(
+      "hardware",
+    );
+    expect(await captureWithoutWaylandDisplay("hardware")).toBe(true);
+    expect(launch).toHaveBeenCalledTimes(2);
+  });
+
+  it("tries only once outside Linux", async () => {
+    const launch = fakeChrome(offWayland);
+    expect(await resolveBrowserGpuMode("auto", { platform: "darwin", wslHost: wsl })).toBe(
       "software",
     );
     expect(launch).toHaveBeenCalledTimes(1);

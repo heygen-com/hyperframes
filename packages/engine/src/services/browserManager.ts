@@ -47,7 +47,7 @@ import {
   chromeSandboxEnabled,
   launchWithChromeSandboxFallback,
 } from "@hyperframes/core/chrome-sandbox";
-import { describeWslGpuAccess, detectWsl, type WslHostFacts } from "./wslHost.js";
+import { describeWslGpuAccess, type WslHostFacts } from "./wslHost.js";
 import {
   BrowserLeasePool,
   type BrowserLaunchFingerprint,
@@ -546,7 +546,7 @@ interface GpuProbeOutcome {
   aborted?: true;
   /** Under WSL, what we checked on its GPU path (see describeWslGpuAccess). */
   wslAccess?: string[];
-  /** Under WSL, Chrome reached the GPU only without WSLg's WAYLAND_DISPLAY. */
+  /** On Linux (WSLg or a native Wayland session), Chrome reached the GPU only without WAYLAND_DISPLAY. */
   withoutWaylandDisplay?: boolean;
 }
 
@@ -613,8 +613,13 @@ async function probeAutoBrowserGpuMode(options: GpuProbeOptions): Promise<GpuPro
 
   const probed = await probeWebGlMode(ppt, options);
   if (probed.mode === "hardware") return probed;
-  // Chrome 150+ uses WSLg Wayland EGL, which lacks offscreen configs: https://issues.chromium.org/issues/567222741
-  if (detectWsl(options.wslHost) && process.env.WAYLAND_DISPLAY !== undefined) {
+  // Chrome 150+ picks Wayland EGL when WAYLAND_DISPLAY is set, and it lacks offscreen configs:
+  // https://issues.chromium.org/issues/567222741. Seen under WSLg (#5548) and on a native
+  // GNOME Wayland desktop with Mesa (AMD radeonsi), where headless WebGL is otherwise unavailable.
+  if (
+    (options.platform ?? process.platform) === "linux" &&
+    process.env.WAYLAND_DISPLAY !== undefined
+  ) {
     const env = envWithoutWaylandDisplay();
     const retried = await probeWebGlMode(ppt, options, env, "without WAYLAND_DISPLAY: ");
     if (retried.mode === "hardware") return { mode: "hardware", withoutWaylandDisplay: true };
