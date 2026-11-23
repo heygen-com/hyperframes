@@ -17,6 +17,7 @@ import {
   type HfAudioFxChain,
   type HfAudioFxNode,
 } from "./audioFx.js";
+import { windowSizeFor } from "./audioAnalysis";
 import { fft } from "./fft";
 
 export const HF_AUDIO_CARVE_ATTR = "data-fx-carve";
@@ -24,8 +25,7 @@ export const HF_AUDIO_CARVE_ATTR = "data-fx-carve";
 /** Third-octave centres spanning the range speech actually occupies. */
 const CANDIDATE_CENTERS_HZ = [160, 250, 400, 630, 1000, 1600, 2500, 4000, 6000] as const;
 
-const FRAME = 4096;
-const HOP = 2048;
+const FRAME_SECONDS = 4096 / 48_000;
 
 export interface HfCarveBand {
   freq: number;
@@ -352,6 +352,8 @@ function powerSpectrum(
   mono: Float32Array,
   sampleRate: number,
 ): { freqs: number[]; power: number[] } {
+  const FRAME = windowSizeFor(sampleRate, FRAME_SECONDS);
+  const HOP = FRAME / 2;
   const n = Math.max(mono.length, FRAME);
   const padded =
     mono.length >= FRAME
@@ -601,6 +603,7 @@ export function analyseCarveDynamics(
 ): HfCarveDynamics[] {
   if (voice.length === 0 || bands.length === 0) return [];
 
+  const FRAME = windowSizeFor(sampleRate, FRAME_SECONDS);
   const window = new Float32Array(FRAME);
   for (let i = 0; i < FRAME; i++) window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (FRAME - 1));
 
@@ -692,6 +695,7 @@ export function analyseCarveDuck(
 ): { t: number; v: number }[] {
   if (voice.length === 0 || profile.duckDb <= 0) return [];
 
+  const FRAME = windowSizeFor(sampleRate, FRAME_SECONDS);
   const hop = Math.max(FRAME, Math.ceil(voice.length / POINT_BUDGET));
   const bedOffset = Math.round(offsetSeconds * sampleRate);
 

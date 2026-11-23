@@ -173,7 +173,10 @@ function rmsFrames(
   return frames;
 }
 
-const fftSizeFor = (sampleRate: number) => 2 ** Math.round(Math.log2(sampleRate * 0.023));
+export const windowSizeFor = (sampleRate: number, seconds: number): number =>
+  2 ** Math.round(Math.log2(sampleRate * seconds));
+
+const fftSizeFor = (sampleRate: number) => windowSizeFor(sampleRate, 0.023);
 
 /** Magnitude spectra of Hann-windowed frames centred on each hop, limited to `band`. */
 /** The FFT bins inside `band`, as [first, end). */
