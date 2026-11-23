@@ -24,7 +24,8 @@ import {
 } from "@hyperframes/engine";
 import { probeVideoLayout } from "../render/videoLayerPassthroughPlan.js";
 import { type BlendCheckResult, checkFfmpegBlend } from "./ffmpegBlendCheck.js";
-import { findFingerprintBlindSpots } from "./overlayFingerprint.js";
+import { findNativeCallbacks } from "./nativeCallbacks.js";
+import { inspectDomSnapshot } from "./overlayFingerprint.js";
 import { analyzeOverlayTiming } from "./planner.js";
 import type {
   CheckPassthroughEligibilityArgs,
@@ -303,6 +304,11 @@ function findVideoCornerRadius(videoId: string): string | null {
  * sleeping it (which cancels its pending frame) and waking it again; it only
  * renders the root timeline, whose children the planner requires to be
  * registered (and paused) timelines. Any other ticker listener counts.
+ *
+ * The record also counts observers whose callback runs no page script (a
+ * builtin, bound function, callable Proxy or WebAssembly export, which V8's
+ * call counts never see run) and custom element definitions, whose
+ * lifecycle callbacks nothing reads back: any of either counts.
  */
 export function inspectSeekCallbacks(): string | null {
   type Activity = {
@@ -312,6 +318,9 @@ export function inspectSeekCallbacks(): string | null {
     filmTimers: number;
     stringTimers: number;
     pendingTimers: number;
+    nativeObservers: number;
+    nativeObserverKinds: unknown[];
+    customElementDefinitions: number;
   };
   type Ticker = { sleep: () => void; wake: () => void; _listeners?: unknown };
   const w = window as unknown as {
@@ -346,11 +355,29 @@ export function inspectSeekCallbacks(): string | null {
     return extra > 0 ? `${extra} GSAP ticker listener(s)` : null;
   };
 
+  // Callbacks the browser runs on seeks that V8's call counts cannot see (see the record).
+  const invisibleCallbacks = (activity: Activity): string | null => {
+    const { nativeObservers, customElementDefinitions } = activity;
+    if (typeof nativeObservers !== "number" || typeof customElementDefinitions !== "number") {
+      return "virtual-time callback record unreadable";
+    }
+    if (nativeObservers < 0) return "observer record unavailable";
+    if (nativeObservers > 0) {
+      const kinds = Array.isArray(activity.nativeObserverKinds) ? activity.nativeObserverKinds : [];
+      return `${nativeObservers} observer(s) with a callback that runs no page script (${[...new Set(kinds)].join(", ")})`;
+    }
+    return customElementDefinitions > 0
+      ? `${customElementDefinitions} custom element definition(s)`
+      : null;
+  };
+
   const activity = read();
   // A string timer runs code the page compiled with no page frame on the stack, which the page code
   // watch could not tell from a DevTools evaluation if it took a renderer script's name.
   if (typeof activity.stringTimers !== "number") return "virtual-time callback record unreadable";
   if (activity.stringTimers > 0) return `${activity.stringTimers} string timer(s)`;
+  const unseen = invisibleCallbacks(activity);
+  if (unseen) return unseen;
   if (activity.filmTimers > 0) {
     return `${activity.filmTimers} film-time timer(s), ${activity.pendingTimers} pending`;
   }
@@ -444,14 +471,27 @@ export function inspectGsapGlobalTimeline(): string | null {
 }
 
 /**
- * `seek_callback` finding for the overlay page (see `inspectSeekCallbacks`
- * and `inspectGsapGlobalTimeline`), or `null`. Eligibility calls it after the
+ * `seek_callback` finding for the overlay page (see `inspectSeekCallbacks`,
+ * `inspectGsapGlobalTimeline` and `findNativeCallbacks`), or `null`. Eligibility calls it after the
  * timing analysis has seeked the whole composition; the passthrough calls it
  * again after overlay capture, so a callback first registered on a frame only
  * capture visited still declines.
  */
 export async function findSeekCallbacks(page: CaptureSession["page"]): Promise<string | null> {
-  return (await page.evaluate(inspectSeekCallbacks)) ?? page.evaluate(inspectGsapGlobalTimeline);
+  return (
+    (await page.evaluate(inspectSeekCallbacks)) ??
+    (await page.evaluate(inspectGsapGlobalTimeline)) ??
+    findNativeCallbacks(page)
+  );
+}
+
+/**
+ * The `seek_callback` findings read before eligibility's first seek: a GSAP
+ * `delayedCall` the seeks fire is gone from the global timeline afterwards,
+ * as is a native listener added with `once`.
+ */
+async function findUnseekedCallbacks(page: CaptureSession["page"]): Promise<string | null> {
+  return (await page.evaluate(inspectGsapGlobalTimeline)) ?? findNativeCallbacks(page);
 }
 
 /** Filesystem, probe and ffmpeg access, injectable for tests. */
@@ -527,9 +567,11 @@ async function checkPageLayout(
  * timing via `planner.analyzeOverlayTiming` with
  * `maxStates = DEFAULT_MAX_OVERLAY_STATES`, whose failure reason is returned
  * as-is; then `overlay_unreadable` for overlay content the fingerprint
- * cannot read (`findFingerprintBlindSpots`); last,
+ * cannot read and `video_count` / `overlay_non_gsap_animation` for content
+ * that paints on its own clock (`inspectDomSnapshot`); last,
  * `seek_callback` for page code that runs on seeks and keeps state across
- * them (`findSeekCallbacks`, plus `inspectGsapGlobalTimeline` read before the
+ * them and for callbacks that run no page script (`findSeekCallbacks`, plus
+ * `inspectGsapGlobalTimeline` and `findNativeCallbacks` read before the
  * first seek).
  *
  * Leaves the page seeked to time 0 and with no DOM mask applied.
@@ -575,8 +617,9 @@ export async function checkPassthroughEligibility(
   const captureSession = await session.get();
   const { page } = captureSession;
   // Before the first seek: a GSAP delayedCall the seeks below fire is gone from the global
-  // timeline afterwards. Reported in the seek_callback slot so earlier gates keep their order.
-  const unseekedGsap = await page.evaluate(inspectGsapGlobalTimeline);
+  // timeline afterwards, as is a native listener added with `once`. Reported in the seek_callback
+  // slot so earlier gates keep their order.
+  const unseeked = await findUnseekedCallbacks(page);
   const layout = await checkPageLayout(page, element.id, { width, height }, composition.duration);
   if ("eligible" in layout) return layout;
 
@@ -589,9 +632,9 @@ export async function checkPassthroughEligibility(
     maxStates: DEFAULT_MAX_OVERLAY_STATES,
   });
   if (!timing.ok) return ineligible(timing.reason, timing.detail);
-  const blindSpot = await findFingerprintBlindSpots(page);
-  if (blindSpot) return ineligible("overlay_unreadable", blindSpot);
-  const seekCallbacks = unseekedGsap ?? (await findSeekCallbacks(page));
+  const snapshotFinding = await inspectDomSnapshot(page, element.id);
+  if (snapshotFinding) return ineligible(snapshotFinding.reason, snapshotFinding.detail);
+  const seekCallbacks = unseeked ?? (await findSeekCallbacks(page));
   if (seekCallbacks) return ineligible("seek_callback", seekCallbacks);
 
   return {

@@ -334,28 +334,76 @@ export function findUnseekedAnimationDrivers(): string[] {
  *
  * Images that animate on the browser's own clock, which no adapter seeks:
  * animated GIF, APNG, animated WebP, AVIF/HEIF sequences, and SVG documents
- * with SMIL or CSS animation. Reads every `<img>`, SVG `<image>` and CSS
- * `background-image` URL and sniffs the bytes, not the extension. An image
- * that cannot be read is reported too: unknown is not static.
+ * with SMIL or CSS animation. Reads every image an element or its
+ * pseudo-elements paint, in the document and in every open shadow tree:
+ * `<img>`, `<input type=image>`, SVG `<image>` / `<feImage>` / external
+ * `<use>`, and the CSS image properties (background, `content`,
+ * `list-style-image`, border and mask images) of each element and its
+ * `::before`, `::after`, `::marker` and other pseudo-elements. It sniffs the
+ * bytes, not the extension. A CSS Paint worklet image (`paint()`) runs page
+ * code of its own on every paint and is reported as such. An image that
+ * cannot be read is reported too: unknown is not static.
  */
 // fallow-ignore-next-line complexity
-async function findAnimatedImages(): Promise<string[]> {
+export async function findAnimatedImages(): Promise<string[]> {
   const urls = new Set<string>();
+  const found: string[] = [];
   const add = (raw: string | null | undefined) => {
     const url = (raw ?? "").trim();
-    if (url !== "") urls.add(url);
+    if (url === "" || url.startsWith("#")) return;
+    try {
+      urls.add(new URL(url, document.baseURI).href);
+    } catch {
+      found.push(`unreadable image ${url.slice(0, 32)}`);
+    }
   };
-  for (const el of Array.from(document.querySelectorAll("img"))) {
-    const img = el as Element & { currentSrc?: string; src?: string };
-    add(img.currentSrc || img.src || el.getAttribute("src"));
+  const IMAGE_PROPERTIES = [
+    "background-image",
+    "content",
+    "list-style-image",
+    "border-image-source",
+    "mask-image",
+    "-webkit-mask-image",
+    "-webkit-mask-box-image-source",
+    "mask-border-source",
+  ];
+  const PSEUDOS = [
+    null,
+    "::before",
+    "::after",
+    "::marker",
+    "::first-letter",
+    "::first-line",
+    "::backdrop",
+    "::placeholder",
+    "::file-selector-button",
+  ];
+  let paintWorklets = 0;
+  const addCss = (style: CSSStyleDeclaration) => {
+    for (const property of IMAGE_PROPERTIES) {
+      const value = style.getPropertyValue(property) ?? "";
+      if (value === "" || value === "none" || value === "normal") continue;
+      if (/(^|[\s,(])paint\(/.test(value)) paintWorklets++;
+      for (const m of value.matchAll(/url\(\s*(["']?)(.*?)\1\s*\)/g)) add(m[2]);
+    }
+  };
+  // The document and every open shadow tree; closed ones decline as overlay_unreadable.
+  const scopes: Array<Document | ShadowRoot> = [document];
+  for (let i = 0; i < scopes.length; i++) {
+    const scope = scopes[i] as Document | ShadowRoot;
+    for (const el of Array.from(scope.querySelectorAll("*"))) {
+      if (el.shadowRoot) scopes.push(el.shadowRoot);
+      const tag = el.localName;
+      if (tag === "img" || (tag === "input" && (el as HTMLInputElement).type === "image")) {
+        const img = el as Element & { currentSrc?: string; src?: string };
+        add(img.currentSrc || img.src || el.getAttribute("src"));
+      } else if (tag === "image" || tag === "feImage" || tag === "use") {
+        add(el.getAttribute("href") ?? el.getAttribute("xlink:href"));
+      }
+      for (const pseudo of PSEUDOS) addCss(window.getComputedStyle(el, pseudo));
+    }
   }
-  for (const el of Array.from(document.querySelectorAll("image"))) {
-    add(el.getAttribute("href") ?? el.getAttribute("xlink:href"));
-  }
-  for (const el of Array.from(document.querySelectorAll("*"))) {
-    const bg = window.getComputedStyle(el).backgroundImage ?? "";
-    for (const m of bg.matchAll(/url\(\s*(["']?)(.*?)\1\s*\)/g)) add(m[2]);
-  }
+  if (paintWorklets > 0) found.push(`CSS paint worklet (${paintWorklets})`);
 
   const ascii = (b: Uint8Array, at: number, n: number) =>
     String.fromCharCode(...Array.from(b.subarray(at, at + n)));
@@ -440,7 +488,6 @@ async function findAnimatedImages(): Promise<string[]> {
     return format && format[2](b) ? format[0] : null;
   };
 
-  const found: string[] = [];
   const short = (url: string) => (url.startsWith("data:") ? url.slice(0, 32) : url);
   for (const url of urls) {
     try {
@@ -453,6 +500,19 @@ async function findAnimatedImages(): Promise<string[]> {
     }
   }
   return found;
+}
+
+/**
+ * `findUnseekedAnimationDrivers` and `findAnimatedImages` again, for the
+ * passthrough to run after overlay capture: a driver can first appear on a
+ * frame only capture visited. A description of the first few, or `null`.
+ */
+export async function findOwnClockDrivers(page: Page): Promise<string | null> {
+  const found = [
+    ...(await page.evaluate(findUnseekedAnimationDrivers)),
+    ...(await page.evaluate(findAnimatedImages)),
+  ];
+  return found.length > 0 ? found.slice(0, 5).join(", ") : null;
 }
 
 /**

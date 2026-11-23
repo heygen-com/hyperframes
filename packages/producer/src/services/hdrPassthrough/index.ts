@@ -19,13 +19,13 @@ import {
 } from "@hyperframes/engine";
 import { noteStaticDedupActivity, reportFrameProgress } from "../render/shared.js";
 import { checkPassthroughEligibility, findSeekCallbacks } from "./eligibility.js";
-import { planOverlayStates } from "./planner.js";
+import { findOwnClockDrivers, planOverlayStates } from "./planner.js";
 import {
   OverlayStateMismatchError,
   VideoLayerChangedError,
   captureOverlayStates,
 } from "./overlayCapture.js";
-import { findFingerprintBlindSpots } from "./overlayFingerprint.js";
+import { inspectDomSnapshot } from "./overlayFingerprint.js";
 import { armPageCodeWatch, attachPageCodeWatch, pageCodeWatchOf } from "./pageCodeWatch.js";
 import { POSITION_SEEK_REAPPLY_SCRIPT } from "../htmlCompiler.js";
 import { compositeAndEncode } from "./ffmpegComposite.js";
@@ -228,11 +228,14 @@ async function runHdrPassthrough(
   });
   const pageCodeRan = await pageCode.stop();
   if (pageCodeRan) throw new PassthroughDeclinedError("seek_callback", pageCodeRan);
-  // A callback first registered, or unreadable content first attached, on a frame only capture visited.
+  // A callback first registered, or unreadable or self-animating content first attached, on a
+  // frame only capture visited.
   const lateCallbacks = await findSeekCallbacks(page.page);
   if (lateCallbacks) throw new PassthroughDeclinedError("seek_callback", lateCallbacks);
-  const lateBlindSpot = await findFingerprintBlindSpots(page.page);
-  if (lateBlindSpot) throw new PassthroughDeclinedError("overlay_unreadable", lateBlindSpot);
+  const lateSnapshot = await inspectDomSnapshot(page.page, eligible.video.id);
+  if (lateSnapshot) throw new PassthroughDeclinedError(lateSnapshot.reason, lateSnapshot.detail);
+  const lateDrivers = await findOwnClockDrivers(page.page);
+  if (lateDrivers) throw new PassthroughDeclinedError("overlay_non_gsap_animation", lateDrivers);
   await session.close();
   input.assertNotAborted();
 

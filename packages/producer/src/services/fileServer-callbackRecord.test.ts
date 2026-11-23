@@ -63,6 +63,16 @@ describe("virtualTimeShimFor", () => {
 
 type Run = <T = unknown>(code: string) => T;
 
+/** Stand-ins for the platform's observers and custom element registry, kept as `__original`. */
+const PLATFORM_STUBS = `
+  globalThis.MutationObserver = class MutationObserver { constructor(callback) { this.callback = callback; } };
+  globalThis.WebKitMutationObserver = MutationObserver;
+  globalThis.ResizeObserver = class ResizeObserver { constructor(callback) { this.callback = callback; } };
+  globalThis.CustomElementRegistry = class CustomElementRegistry { define(name, constructor) { this[name] = constructor; } };
+  globalThis.customElements = new CustomElementRegistry();
+  globalThis.__original = { MutationObserver, ResizeObserver, define: CustomElementRegistry.prototype.define };
+`;
+
 function page(shim: string, setup = ""): Run {
   const context = createContext({});
   new Script(`
@@ -73,6 +83,7 @@ function page(shim: string, setup = ""): Run {
     globalThis.clearInterval = () => undefined;
     globalThis.performance = { now: () => 0 };
     globalThis.__renderReady = true;
+    ${PLATFORM_STUBS}
   `).runInContext(context);
   new Script(shim).runInContext(context);
   const run: Run = <T>(code: string) => new Script(code).runInContext(context) as T;
@@ -131,6 +142,12 @@ const ACTIVITY = `
   setInterval(function e() {}, 20);
   window.__HF_VIRTUAL_TIME__.seekToTime(100);
   requestAnimationFrame(function f() {});
+  new MutationObserver(function g() {});
+  new MutationObserver(Math.max);
+  new ResizeObserver(Math.max.bind(null));
+  class Counted extends MutationObserver {}
+  new Counted(function h() {});
+  customElements.define("hf-x", class {});
 `;
 
 describe("the callback record is invisible to the page", () => {
@@ -162,6 +179,64 @@ describe("the callback record is invisible to the page", () => {
     expect(activity.frameCallbacks.length).toBe(4);
     expect(activity.filmTimers).toBe(2);
     expect(activity.stringTimers).toBe(1);
+  });
+});
+
+describe("the callback record's observers and custom elements", () => {
+  const activity = "window.__HF_VIRTUAL_TIME__.callbackActivity()";
+
+  it("leaves the platform's constructors alone with the passthrough off", () => {
+    const run = page(VIRTUAL_TIME_SHIM);
+    expect(run("MutationObserver === __original.MutationObserver")).toBe(true);
+    expect(run("CustomElementRegistry.prototype.define === __original.define")).toBe(true);
+  });
+
+  it("counts observers whose callback runs no page script, and every definition", () => {
+    const run = page(RECORD_SHIM);
+    run(`
+      new MutationObserver(function () {});
+      new ResizeObserver(() => {});
+      new MutationObserver(Math.max);
+      new WebKitMutationObserver(Function.prototype.call.bind(Math.max));
+      new ResizeObserver(new Proxy(function () {}, {}));
+      new MutationObserver();
+      customElements.define("hf-a", class {});
+      customElements.define("hf-b", class {});
+    `);
+    expect(run(`${activity}.nativeObservers`)).toBe(4);
+    expect(run(`${activity}.nativeObserverKinds`)).toEqual([
+      "MutationObserver",
+      "MutationObserver",
+      "ResizeObserver",
+      "MutationObserver",
+    ]);
+    expect(run(`${activity}.customElementDefinitions`)).toBe(2);
+  });
+
+  it("keeps a wrapped constructor behaving and looking like the original", () => {
+    const run = page(RECORD_SHIM);
+    expect(run("MutationObserver === __original.MutationObserver")).toBe(false);
+    expect(run("MutationObserver.prototype.constructor === MutationObserver")).toBe(true);
+    expect(run("WebKitMutationObserver === MutationObserver")).toBe(true);
+    expect(run("MutationObserver.name")).toBe("MutationObserver");
+    expect(run("MutationObserver.prototype === __original.MutationObserver.prototype")).toBe(true);
+    expect(run("new MutationObserver(Math.min).callback === Math.min")).toBe(true);
+    expect(run("new MutationObserver(Math.min) instanceof MutationObserver")).toBe(true);
+    expect(
+      run(
+        "(class extends MutationObserver {}) && new (class extends MutationObserver {})(Math.min).callback === Math.min",
+      ),
+    ).toBe(true);
+    const descriptor = run<PropertyDescriptor>(
+      "Object.getOwnPropertyDescriptor(globalThis, 'MutationObserver')",
+    );
+    expect([descriptor.writable, descriptor.enumerable, descriptor.configurable]).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    run(`customElements.define("hf-c", Math.min);`);
+    expect(run(`customElements["hf-c"] === Math.min`)).toBe(true);
   });
 });
 

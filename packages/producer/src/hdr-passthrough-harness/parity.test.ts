@@ -8,6 +8,7 @@ import {
   checkSingleOutput,
   defaultCliCommand,
   fixtureExpectReason,
+  fixturePixelChecks,
   parseParityArgs,
   selectProjects,
 } from "./parity.js";
@@ -109,6 +110,14 @@ describe("checkSingleOutput", () => {
       { fps: 30, transfer: "hlg", durationSec: 20 },
     );
     expect(results).toEqual([{ name: "off.render", ok: false, detail: "exit 1" }]);
+  });
+});
+
+describe("fixturePixelChecks", () => {
+  it("compares pixels unless the fixture says its layered render is not repeatable", () => {
+    expect(fixturePixelChecks({})).toBe(true);
+    expect(fixturePixelChecks({ repeatable: true })).toBe(true);
+    expect(fixturePixelChecks({ repeatable: false })).toBe(false);
   });
 });
 

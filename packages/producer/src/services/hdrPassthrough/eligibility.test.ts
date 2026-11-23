@@ -92,6 +92,8 @@ interface PageSpec {
     globalTimeline?: FakeTimeline;
     globals?: Record<string, unknown>;
     closedShadowRoots?: number;
+    nativeListeners?: readonly string[];
+    onceNativeListeners?: readonly string[];
   };
 }
 
@@ -234,6 +236,9 @@ describe("checkPassthroughEligibility", () => {
           filmTimers,
           stringTimers,
           pendingTimers: filmTimers,
+          nativeObservers: 0,
+          nativeObserverKinds: [],
+          customElementDefinitions: 0,
         }),
       },
     });
@@ -314,6 +319,91 @@ describe("checkPassthroughEligibility", () => {
       detail:
         "1 GSAP animation(s) on the global timeline outside the registered timelines (tween at 0.000s)",
     });
+  });
+
+  it("declines callbacks that run no page script, read before the first seek", async () => {
+    const listener = await check(makeInput(), {
+      build: (ctx) => ({ ...captions(ctx), nativeListeners: ["toggle"] }),
+    });
+    expect(listener).toMatchObject({
+      eligible: false,
+      reason: "seek_callback",
+      detail:
+        '1 page callback(s) that run no page script, first a "toggle" listener on the page that is native function max',
+    });
+    // A `once` listener the first seek fires is gone by the end of the analysis.
+    const once = await check(makeInput(), {
+      build: (ctx) => ({ ...captions(ctx), onceNativeListeners: ["hf-later"] }),
+    });
+    expect(once).toMatchObject({ eligible: false, reason: "seek_callback" });
+    expect((once as { detail?: string }).detail).toContain('"hf-later" listener');
+
+    const record = (fields: Record<string, unknown>) => ({
+      __HF_VIRTUAL_TIME__: {
+        callbackActivity: () => ({
+          frameCallbacks: [],
+          frameCallbacksOverflow: false,
+          pendingFrames: [],
+          filmTimers: 0,
+          stringTimers: 0,
+          pendingTimers: 0,
+          nativeObservers: 0,
+          nativeObserverKinds: [],
+          customElementDefinitions: 0,
+          ...fields,
+        }),
+      },
+    });
+    const observer = await check(makeInput(), {
+      build: (ctx) => ({
+        ...captions(ctx),
+        globals: record({ nativeObservers: 1, nativeObserverKinds: ["MutationObserver"] }),
+      }),
+    });
+    expect(observer).toMatchObject({
+      eligible: false,
+      reason: "seek_callback",
+      detail: "1 observer(s) with a callback that runs no page script (MutationObserver)",
+    });
+    const element = await check(makeInput(), {
+      build: (ctx) => ({ ...captions(ctx), globals: record({ customElementDefinitions: 2 }) }),
+    });
+    expect(element).toMatchObject({ detail: "2 custom element definition(s)" });
+  });
+
+  it("declines content that paints on its own clock, from the DOM snapshot", async () => {
+    const cases: Array<[FakeElement, string, string]> = [
+      [new FakeElement("marquee", "m"), "overlay_non_gsap_animation", "1 <marquee>"],
+      [
+        new FakeElement("progress", "p"),
+        "overlay_non_gsap_animation",
+        "1 indeterminate <progress>",
+      ],
+      [
+        new FakeElement("audio", "a", { controls: "" }),
+        "overlay_non_gsap_animation",
+        "1 <audio controls>",
+      ],
+    ];
+    for (const [element, reason, detail] of cases) {
+      const verdict = await check(makeInput(), {
+        build: (ctx) => {
+          ctx.root.append(element);
+          return captions(ctx);
+        },
+      });
+      expect(verdict).toMatchObject({ eligible: false, reason, detail });
+    }
+    const silent = await check(makeInput(), {
+      build: (ctx) => {
+        ctx.root.append(
+          new FakeElement("audio", "voice"),
+          new FakeElement("progress", "p", { value: "1" }),
+        );
+        return captions(ctx);
+      },
+    });
+    expect(silent.eligible).toBe(true);
   });
 
   it("declines overlay content the fingerprint cannot read", async () => {

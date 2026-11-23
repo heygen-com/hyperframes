@@ -33,6 +33,9 @@ function page(options: { gsap?: boolean } = {}): Page {
     globalThis.document = { createElement: () => ({ style: {} }), documentElement: { style: {} } };
     globalThis.navigator = { userAgent: "" };
     globalThis.__renderReady = true;
+    globalThis.MutationObserver = class MutationObserver { constructor(callback) { this.callback = callback; } };
+    globalThis.CustomElementRegistry = class CustomElementRegistry { define() {} };
+    globalThis.customElements = new CustomElementRegistry();
   `).runInContext(context);
   new Script(virtualTimeShimFor({ experimentalHdrPassthrough: true })).runInContext(context);
   if (options.gsap) new Script(GSAP_SOURCE).runInContext(context);
@@ -64,6 +67,26 @@ describe("inspectSeekCallbacks", () => {
     const p = page();
     p.seekFrames(1000);
     expect(p.inspect()).toBeNull();
+  });
+
+  it("passes an observer whose callback is a page function, which the call counts see", () => {
+    const p = page();
+    p.run("new MutationObserver(function () {});");
+    expect(p.inspect()).toBeNull();
+  });
+
+  it("finds an observer whose callback is a bound builtin, which no call count sees", () => {
+    const p = page();
+    p.run("new MutationObserver(Math.max.bind(null, 1));");
+    expect(p.inspect()).toBe(
+      "1 observer(s) with a callback that runs no page script (MutationObserver)",
+    );
+  });
+
+  it("finds a custom element definition, whose reactions nothing reads back", () => {
+    const p = page();
+    p.run('customElements.define("hf-x", class {});');
+    expect(p.inspect()).toBe("1 custom element definition(s)");
   });
 
   it("finds a requestAnimationFrame loop that counts seeks", () => {

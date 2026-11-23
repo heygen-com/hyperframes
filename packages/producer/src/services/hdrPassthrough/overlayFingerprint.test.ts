@@ -3,6 +3,7 @@ import type { ElementStackingInfo } from "@hyperframes/engine";
 import {
   type DomSnapshotLike,
   findBlindSpotsInSnapshot,
+  findOwnClockElementsInSnapshot,
   overlayFingerprintKey,
   stackingFingerprint,
 } from "./overlayFingerprint.js";
@@ -65,7 +66,13 @@ describe("overlayFingerprintKey", () => {
  * it), and the shadow tree type of the nodes inside one (`trees`, node index -> type).
  */
 function snapshot(
-  ...documents: Array<{ names: string[]; parents?: number[]; trees?: Record<number, string> }>
+  ...documents: Array<{
+    names: string[];
+    parents?: number[];
+    trees?: Record<number, string>;
+    /** Node index -> its attributes. */
+    attributes?: Record<number, Record<string, string>>;
+  }>
 ): DomSnapshotLike {
   const strings: string[] = [];
   const intern = (text: string) => {
@@ -74,10 +81,16 @@ function snapshot(
   };
   return {
     strings,
-    documents: documents.map(({ names, parents, trees = {} }) => ({
+    documents: documents.map(({ names, parents, trees = {}, attributes = {} }) => ({
       nodes: {
         parentIndex: parents ?? names.map((_, i) => i - 1),
         nodeName: names.map(intern),
+        attributes: names.map((_, i) =>
+          Object.entries(attributes[i] ?? {}).flatMap(([name, value]) => [
+            intern(name),
+            intern(value),
+          ]),
+        ),
         shadowRootType: {
           index: Object.keys(trees).map(Number),
           value: Object.values(trees).map(intern),
@@ -119,5 +132,48 @@ describe("findBlindSpotsInSnapshot", () => {
   it("finds a content document even when no embedding element is named", () => {
     const page = snapshot({ names: ["#document", "HTML"] }, { names: ["#document"] });
     expect(findBlindSpotsInSnapshot(page)).toBe("1 embedded document(s)");
+  });
+});
+
+describe("findOwnClockElementsInSnapshot", () => {
+  const SOURCE = { id: "hdr-source" };
+
+  it("finds nothing besides the source video, silent audio and determinate progress", () => {
+    const page = snapshot({
+      names: ["#document", "HTML", "BODY", "VIDEO", "DIV", "AUDIO", "PROGRESS", "DIV"],
+      parents: [-1, 0, 1, 2, 3, 2, 2, 6],
+      trees: { 4: "user-agent", 7: "user-agent" },
+      attributes: { 3: SOURCE, 5: { src: "voice.m4a" }, 6: { value: "0.5" } },
+    });
+    expect(findOwnClockElementsInSnapshot(page, "hdr-source")).toBeNull();
+  });
+
+  it("finds a second video, in a shadow tree or not, and a missing source", () => {
+    const page = snapshot({
+      names: ["#document", "HTML", "BODY", "VIDEO", "DIV", "VIDEO", "VIDEO"],
+      parents: [-1, 0, 1, 2, 2, 4, 2],
+      trees: { 5: "open" },
+      attributes: { 3: SOURCE, 6: SOURCE },
+    });
+    expect(findOwnClockElementsInSnapshot(page, "hdr-source")).toEqual({
+      reason: "video_count",
+      detail: "2 <video> besides the source",
+    });
+    expect(
+      findOwnClockElementsInSnapshot(snapshot({ names: ["#document"] }), "hdr-source"),
+    ).toEqual({ reason: "video_count", detail: "the source video is not in the page" });
+  });
+
+  it("finds audio controls, marquees and indeterminate progress bars anywhere", () => {
+    const page = snapshot({
+      names: ["#document", "HTML", "BODY", "VIDEO", "audio", "DIV", "MARQUEE", "PROGRESS"],
+      parents: [-1, 0, 1, 2, 2, 2, 5, 5],
+      trees: { 6: "open", 7: "open" },
+      attributes: { 3: SOURCE, 4: { controls: "" } },
+    });
+    expect(findOwnClockElementsInSnapshot(page, "hdr-source")).toEqual({
+      reason: "overlay_non_gsap_animation",
+      detail: "1 <audio controls>, 1 <marquee>, 1 indeterminate <progress>",
+    });
   });
 });

@@ -357,6 +357,8 @@ interface ProjectOptions {
   thresholds: ParityThresholds;
   /** Fail unless every decoded frame of the two outputs is identical. */
   requireIdentical: boolean;
+  /** Check the two outputs' pixels; off for a fixture whose layered render is not repeatable. */
+  pixelChecks: boolean;
 }
 
 function readFfmpegVersion(tools: Tools): string | null {
@@ -392,14 +394,19 @@ function runProject(tools: Tools, options: ProjectOptions): ProjectReport {
       ),
     );
     metrics = computeMetrics(tools, off.outputPath, on.outputPath, options.outDir);
-    checks.push(
-      ...checkPixelParity(metrics.psnr, metrics.ssim, off.probe.videoFrames, options.thresholds),
-    );
+    if (options.pixelChecks) {
+      checks.push(
+        ...checkPixelParity(metrics.psnr, metrics.ssim, off.probe.videoFrames, options.thresholds),
+      );
+    } else {
+      const detail = "not compared: the layered render paints on the wall clock";
+      checks.push({ name: "parity.pixels", ok: true, detail });
+    }
     framemd5 = compareFrameHashes(
       frameHashes(tools, off.outputPath),
       frameHashes(tools, on.outputPath),
     );
-    if (options.requireIdentical) {
+    if (options.requireIdentical && options.pixelChecks) {
       checks.push({
         name: "parity.framemd5",
         ok: framemd5.identical,
@@ -490,7 +497,19 @@ interface FixtureManifest {
     /** A project's own rate (`30000/1001`) and duration, when they differ from the manifest's. */
     fps?: number | string;
     durationSec?: number;
+    /** `false`: the layered render paints on the wall clock and is not repeatable. */
+    repeatable?: boolean;
   }>;
+}
+
+/**
+ * Whether a fixture's two outputs can be compared pixel for pixel: not for
+ * one whose layered render paints on the wall clock (a `<marquee>`, an
+ * animated image), where two flag-off renders share no frame either. Its
+ * fallback and reason are still checked.
+ */
+export function fixturePixelChecks(project: { repeatable?: boolean }): boolean {
+  return project.repeatable !== false;
 }
 
 /**
@@ -640,6 +659,7 @@ function main(): void {
         },
         thresholds,
         requireIdentical: values["require-identical"],
+        pixelChecks: fixturePixelChecks(project),
       });
     }
   } else if (values.project) {
@@ -660,6 +680,7 @@ function main(): void {
       },
       thresholds,
       requireIdentical: values["require-identical"],
+      pixelChecks: true,
     });
   } else {
     throw new Error("pass --fixtures <dir> (from fixture.ts) or --project <dir>");

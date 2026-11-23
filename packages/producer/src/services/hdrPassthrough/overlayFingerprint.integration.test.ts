@@ -8,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   collectOverlayPageFingerprint,
   findFingerprintBlindSpots,
+  inspectDomSnapshot,
   type PageFingerprint,
 } from "./overlayFingerprint.js";
 
@@ -105,6 +106,92 @@ describe("collectOverlayPageFingerprint in Chrome", () => {
     ],
   ])("changes on %s", async (_name, change) => {
     const [before, after] = await around(change);
+    expect(after).not.toEqual(before);
+  });
+
+  // Paint state no attribute, text or style holds, which a builtin handed to an observer or a
+  // listener can set with no page script running.
+  it.each<[string, string, () => void]>([
+    [
+      "a popover opened",
+      '<div id="pop" popover="manual">P</div>',
+      () => document.getElementById("pop")!.showPopover(),
+    ],
+    [
+      "a dialog shown modal instead of open",
+      '<dialog id="dlg" open>D</dialog>',
+      () => {
+        const dialog = document.getElementById("dlg") as HTMLDialogElement;
+        dialog.close();
+        dialog.showModal();
+      },
+    ],
+    [
+      "the document selection",
+      '<p id="para">selected</p>',
+      () => getSelection()!.selectAllChildren(document.getElementById("para")!),
+    ],
+    [
+      "a text control's selection",
+      '<input id="field" value="text" />',
+      () => (document.getElementById("field") as HTMLInputElement).setSelectionRange(1, 3),
+    ],
+    [
+      "a custom highlight",
+      '<style>::highlight(hf) { color: red; }</style><p id="para">lit</p>',
+      () => {
+        const range = new Range();
+        range.selectNodeContents(document.getElementById("para")!);
+        CSS.highlights.set("hf", new Highlight(range));
+      },
+    ],
+    [
+      "an option selected in a multiple select",
+      '<select id="multi" multiple><option selected>a</option><option>b</option></select>',
+      // selectedIndex stays 0: only the second option's own selectedness changes.
+      () => ((document.getElementById("multi") as HTMLSelectElement).options[1]!.selected = true),
+    ],
+    [
+      "a custom validity message",
+      '<style>input:invalid { outline: 2px solid red; }</style><input id="field" />',
+      () => (document.getElementById("field") as HTMLInputElement).setCustomValidity("no"),
+    ],
+    [
+      "the URL fragment a :target rule paints",
+      '<style>:target { color: red; }</style><p id="aim">aim</p>',
+      () => history.replaceState(null, "", "#aim"),
+    ],
+    ["design mode", "", () => (document.designMode = "on")],
+  ])("changes on %s", async (_name, markup, change) => {
+    await page.evaluate((html) => {
+      document.getElementById("root")!.insertAdjacentHTML("beforeend", html);
+    }, markup);
+    const [before, after] = await around(change);
+    expect(after).not.toEqual(before);
+  });
+
+  it("changes on a custom state the page's CSS names", async () => {
+    await page.evaluate(() => {
+      customElements.define(
+        "hf-stateful",
+        class extends HTMLElement {
+          constructor() {
+            super();
+            (window as unknown as { internals: ElementInternals }).internals =
+              this.attachInternals();
+          }
+        },
+      );
+      document
+        .getElementById("root")!
+        .insertAdjacentHTML(
+          "beforeend",
+          "<style>hf-stateful:state(lit) { color: red; }</style><hf-stateful>s</hf-stateful>",
+        );
+    });
+    const [before, after] = await around(() =>
+      (window as unknown as { internals: ElementInternals }).internals.states.add("lit"),
+    );
     expect(after).not.toEqual(before);
   });
 
@@ -330,4 +417,85 @@ describe("findFingerprintBlindSpots in Chrome", () => {
     expect(await page.evaluate(() => document.querySelector("iframe"))).toBeNull();
     expect(await blindSpots()).toBe("1 <iframe>");
   }, 30_000);
+});
+
+// Content that paints on its own clock or from state the runtime drives: user-agent shadow trees
+// that animate, audio controls the runtime's seeks move, a second video the composition's video
+// list does not hold. The DOM snapshot reads every shadow tree.
+describe("inspectDomSnapshot in Chrome", () => {
+  let browser: Browser;
+  let page: Page;
+
+  beforeAll(async () => {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+  }, 30_000);
+
+  afterAll(async () => {
+    await browser?.close();
+  });
+
+  beforeEach(async () => {
+    await page?.close();
+    page = await browser.newPage();
+    await page.setContent(PAGE);
+  });
+
+  const add = (html: string, shadow = false) =>
+    page.evaluate(
+      (markup, inShadow) => {
+        const root = document.getElementById("root")!;
+        if (!inShadow) return root.insertAdjacentHTML("beforeend", markup);
+        const host = document.createElement("div");
+        root.appendChild(host);
+        host.attachShadow({ mode: "open" }).innerHTML = markup;
+      },
+      html,
+      shadow,
+    );
+  const inspect = () => inspectDomSnapshot(page as never, "video");
+
+  it("finds nothing besides the source, silent audio and a determinate progress bar", async () => {
+    await add(
+      '<audio src="voice.m4a"></audio><progress value="0.5"></progress><meter value="0.5"></meter>',
+    );
+    expect(await inspect()).toBeNull();
+  });
+
+  it.each<[string, string, boolean, { reason: string; detail: string }]>([
+    [
+      "a marquee",
+      "<marquee>m</marquee>",
+      false,
+      { reason: "overlay_non_gsap_animation", detail: "1 <marquee>" },
+    ],
+    [
+      "an indeterminate progress bar in a shadow root",
+      "<progress></progress>",
+      true,
+      { reason: "overlay_non_gsap_animation", detail: "1 indeterminate <progress>" },
+    ],
+    [
+      "audio controls",
+      '<audio controls src="voice.m4a"></audio>',
+      false,
+      { reason: "overlay_non_gsap_animation", detail: "1 <audio controls>" },
+    ],
+    [
+      "a video in a shadow root",
+      "<video muted autoplay></video>",
+      true,
+      { reason: "video_count", detail: "1 <video> besides the source" },
+    ],
+  ])("finds %s", async (_label, markup, shadow, finding) => {
+    await add(markup, shadow);
+    expect(await inspect()).toEqual(finding);
+  });
+
+  it("reports unreadable content first", async () => {
+    await add("<marquee>m</marquee><iframe></iframe>");
+    expect(await inspect()).toEqual({ reason: "overlay_unreadable", detail: "1 <iframe>" });
+  });
 });

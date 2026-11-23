@@ -179,6 +179,10 @@ export interface FakePageOptions {
   windowListeners?: readonly string[];
   /** Make the DevTools listener lookup fail. */
   listenersUnreadable?: boolean;
+  /** Event types of page listeners whose handler is a builtin (`findNativeCallbacks`). */
+  nativeListeners?: readonly string[];
+  /** As `nativeListeners`, but gone after the first seek, like a `once` listener the seek fires. */
+  onceNativeListeners?: readonly string[];
   /** Closed shadow roots the DevTools DOM snapshot reports (page script cannot see them). */
   closedShadowRoots?: number;
 }
@@ -199,6 +203,7 @@ function fakeDomSnapshot(options: FakePageOptions): {
       parentIndex: number[];
       nodeName: number[];
       shadowRootType: { index: number[]; value: number[] };
+      attributes: number[][];
     };
   }>;
   strings: string[];
@@ -213,6 +218,12 @@ function fakeDomSnapshot(options: FakePageOptions): {
   const parentIndex = elements.map((el) =>
     el.parentElement ? elements.indexOf(el.parentElement) : -1,
   );
+  const attributes = elements.map((el) =>
+    Object.entries({ ...el.attrs, ...(el.id ? { id: el.id } : {}) }).flatMap(([name, v]) => [
+      intern(name),
+      intern(v),
+    ]),
+  );
   // Each closed shadow root: a host under the root holding one node, flattened as the snapshot does.
   const index: number[] = [];
   const value: number[] = [];
@@ -221,31 +232,59 @@ function fakeDomSnapshot(options: FakePageOptions): {
     parentIndex.push(0);
     nodeName.push(intern("SPAN"));
     parentIndex.push(nodeName.length - 2);
+    attributes.push([], []);
     index.push(nodeName.length - 1);
     value.push(intern("closed"));
   }
   return {
-    documents: [{ nodes: { parentIndex, nodeName, shadowRootType: { index, value } } }],
+    documents: [{ nodes: { parentIndex, nodeName, shadowRootType: { index, value }, attributes } }],
     strings,
   };
 }
 
-function fakeCdpSession(options: FakePageOptions): FakeCdpSession {
+/** `DOMDebugger.getEventListeners`: page script handlers, then builtin ones. */
+function fakeListeners(options: FakePageOptions, seeked: boolean): unknown {
+  const script = { type: "function", objectId: "fn-script" };
+  const native = {
+    type: "function",
+    objectId: "fn-native",
+    description: "function max() { [native code] }",
+  };
+  const natives = [
+    ...(options.nativeListeners ?? []),
+    ...(seeked ? [] : (options.onceNativeListeners ?? [])),
+  ];
   return {
-    async send(method) {
+    listeners: [
+      ...(options.windowListeners ?? []).map((type) => ({ type, scriptId: "3", handler: script })),
+      ...natives.map((type) => ({ type, scriptId: "0", handler: native })),
+    ],
+  };
+}
+
+/** `Runtime.getProperties`: the page script handler has a source location; nothing else has any. */
+function fakeProperties(objectId: unknown): unknown {
+  const internalProperties = objectId === "fn-script" ? [{ name: "[[FunctionLocation]]" }] : [];
+  return { result: [], internalProperties };
+}
+
+function fakeCdpSession(options: FakePageOptions, seeked: () => boolean): FakeCdpSession {
+  const answers: Record<string, (params?: Record<string, unknown>) => unknown> = {
+    "DOMSnapshot.captureSnapshot": () => fakeDomSnapshot(options),
+    "Runtime.evaluate": () => ({ result: { type: "object", objectId: "window-1" } }),
+    "DOMDebugger.getEventListeners": () => fakeListeners(options, seeked()),
+    "Runtime.queryObjects": () => ({
+      objects: { type: "object", subtype: "array", objectId: "objects-1" },
+    }),
+    "Runtime.getProperties": (params) => fakeProperties(params?.objectId),
+    "Runtime.releaseObjectGroup": () => ({}),
+  };
+  return {
+    async send(method, params) {
       if (options.listenersUnreadable) throw new Error(`${method}: target closed`);
-      switch (method) {
-        case "DOMSnapshot.captureSnapshot":
-          return fakeDomSnapshot(options);
-        case "Runtime.evaluate":
-          return { result: { type: "object", objectId: "window-1" } };
-        case "DOMDebugger.getEventListeners":
-          return { listeners: (options.windowListeners ?? []).map((type) => ({ type })) };
-        case "Runtime.releaseObjectGroup":
-          return {};
-        default:
-          throw new Error(`fake CDP session: unexpected ${method}`);
-      }
+      const answer = answers[method];
+      if (!answer) throw new Error(`fake CDP session: unexpected ${method}`);
+      return answer(params);
     },
     async detach() {},
   };
@@ -283,8 +322,12 @@ const INITIAL_STYLE: Record<string, string> = {
   backgroundImage: "none",
 };
 
-function computedStyle(el: FakeElement): Record<string, string> {
-  return { ...INITIAL_STYLE, ...el.style };
+/** `getComputedStyle`: the element's overrides (none for a pseudo-element), read by camelCase or CSS name. */
+function computedStyle(el: FakeElement, pseudo?: string | null): Record<string, unknown> {
+  const style: Record<string, unknown> = { ...INITIAL_STYLE, ...(pseudo ? {} : el.style) };
+  style.getPropertyValue = (name: string) =>
+    String(style[name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())] ?? "");
+  return style;
 }
 
 /** `window.fetch` for `data:` URLs only, so image sniffing runs without a network. */
@@ -325,6 +368,7 @@ export function createFakePage(options: FakePageOptions): {
     getElementById: (id: string) => elements().find((el) => el.id === id) ?? null,
     querySelectorAll: (selector: string) => elements().filter((el) => matches(el, selector)),
     querySelector: (selector: string) => elements().find((el) => matches(el, selector)) ?? null,
+    baseURI: "http://fake.test/",
     getAnimations: () => elements().flatMap((el) => el.animations),
   };
   const win = {
@@ -350,13 +394,17 @@ export function createFakePage(options: FakePageOptions): {
         filmTimers: 0,
         stringTimers: 0,
         pendingTimers: 0,
+        nativeObservers: 0,
+        nativeObserverKinds: [],
+        customElementDefinitions: 0,
       }),
     },
     ...options.globals,
   };
   const g = globalThis as Record<string, unknown>;
   const page = {
-    createCDPSession: async (): Promise<FakeCdpSession> => fakeCdpSession(options),
+    createCDPSession: async (): Promise<FakeCdpSession> =>
+      fakeCdpSession(options, () => seeks.length > 0),
     evaluate: async (fn: unknown, ...args: unknown[]): Promise<unknown> => {
       const stub = options.stubs?.get(fn);
       if (stub) return stub(...args);

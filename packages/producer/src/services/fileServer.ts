@@ -446,9 +446,10 @@ const VIRTUAL_TIME_SHIM = String.raw`(function() {
 // it cannot classify counts as page code.
 //
 // Distinct animation-frame callbacks are kept up to a cap; film-time timers and string timers are
-// counted. A registration from the renderer's own code (a `hyperframes://injected/<n>` script the file
-// server adds, the compiler's `hyperframes://position-seek-reapply`, a `pptr:` DevTools evaluation) is
-// kept apart; the page code watch declines any page script that takes one of those names
+// counted, as are observers whose callback runs no page script and custom element definitions. A
+// registration from the renderer's own code (a `hyperframes://injected/<n>` script the file server
+// adds, the compiler's `hyperframes://position-seek-reapply`, a `pptr:` DevTools evaluation) is kept
+// apart; the page code watch declines any page script that takes one of those names
 // (`RENDERER_SCRIPT_NAMES` in `hdrPassthrough/scriptOrigins.ts`), so the name is the renderer's.
 const CALLBACK_RECORD_STATE = String.raw`
   var CALLBACKS_KEPT = 32;
@@ -553,6 +554,74 @@ const CALLBACK_RECORD_STATE = String.raw`
     if (list.length < CALLBACKS_KEPT) recordAdd(list, callback);
     else if (byPage) frameCallbacksOverflow = true;
   }
+  // Observer callbacks and custom element reactions run from the browser, on the seeks that mutate,
+  // resize or move what they watch. V8's call counts see a page function that runs there, but not a
+  // builtin, a bound function, a callable Proxy or a WebAssembly export, which run no page script:
+  // so an observer whose callback is one of those is counted here, as is every custom element
+  // definition (the registry keeps the lifecycle callbacks it read at define time, which nothing can
+  // read back). The constructors are wrapped in Proxies of themselves, which forward everything else.
+  var RecordProxy = Proxy;
+  var recordConstruct = Reflect.construct;
+  var recordApply = Reflect.apply;
+  var recordFunctionText = recordUncurry(Function.prototype.toString);
+  var NATIVE_CODE = "{ [native code] }";
+  var OBSERVERS = ["MutationObserver", "ResizeObserver", "IntersectionObserver", "PerformanceObserver", "ReportingObserver"];
+  var OBSERVER_ALIASES = ["WebKitMutationObserver"];
+  var nativeObservers = 0;
+  var nativeObserverKinds = [];
+  var customElementDefinitions = 0;
+  // Whether calling callback runs no page script: a function's source never ends like native code's.
+  function isNativeCallback(callback) {
+    var text;
+    try {
+      text = recordFunctionText(callback);
+    } catch (err) {
+      return true;
+    }
+    return text.length >= NATIVE_CODE.length && recordSlice(text, text.length - NATIVE_CODE.length) === NATIVE_CODE;
+  }
+  // Replaces owner[name] when it is a data property holding original, keeping its attributes.
+  function recordReplace(owner, name, original, replacement) {
+    var found = owner ? recordDescriptor(owner, name) : undefined;
+    if (!found || !recordHasOwn(found, "value") || found.value !== original || !found.configurable) return;
+    recordDefine(owner, name, { __proto__: null, value: replacement, writable: found.writable, enumerable: found.enumerable, configurable: true });
+  }
+  function recordWrapObserver(name) {
+    var found = recordDescriptor(window, name);
+    var original = found && recordHasOwn(found, "value") ? found.value : undefined;
+    if (typeof original !== "function") return;
+    var wrapped = new RecordProxy(original, {
+      __proto__: null,
+      construct: function(target, args, newTarget) {
+        if (args.length === 0 || isNativeCallback(args[0])) {
+          nativeObservers++;
+          if (nativeObserverKinds.length < CALLBACKS_KEPT) recordAdd(nativeObserverKinds, name);
+        }
+        return recordConstruct(target, args, newTarget);
+      },
+    });
+    recordReplace(window, name, original, wrapped);
+    var prototype = recordDescriptor(original, "prototype");
+    if (prototype && recordHasOwn(prototype, "value")) recordReplace(prototype.value, "constructor", original, wrapped);
+    for (var i = 0; i < OBSERVER_ALIASES.length; i++) recordReplace(window, OBSERVER_ALIASES[i], original, wrapped);
+  }
+  try {
+    for (var recordO = 0; recordO < OBSERVERS.length; recordO++) recordWrapObserver(OBSERVERS[recordO]);
+    var recordRegistry = recordDescriptor(window, "CustomElementRegistry");
+    var recordRegistryPrototype = recordRegistry && typeof recordRegistry.value === "function" ? recordDescriptor(recordRegistry.value, "prototype") : undefined;
+    var recordDefineMethod = recordRegistryPrototype ? recordDescriptor(recordRegistryPrototype.value, "define") : undefined;
+    if (recordDefineMethod && typeof recordDefineMethod.value === "function") {
+      recordReplace(recordRegistryPrototype.value, "define", recordDefineMethod.value, new RecordProxy(recordDefineMethod.value, {
+        __proto__: null,
+        apply: function(target, thisArg, args) {
+          customElementDefinitions++;
+          return recordApply(target, thisArg, args);
+        },
+      }));
+    }
+  } catch (err) {
+    nativeObservers = -1;
+  }
 `;
 
 /** Notes a new animation-frame callback; runs right after the wrapper's own callback check. */
@@ -583,6 +652,9 @@ const CALLBACK_RECORD_READ = String.raw`    callbackActivity: function() {
         filmTimers: filmTimers,
         stringTimers: stringTimers,
         pendingTimers: pendingTimers,
+        nativeObservers: nativeObservers,
+        nativeObserverKinds: recordCopy(nativeObserverKinds),
+        customElementDefinitions: customElementDefinitions,
       };
     },
 `;

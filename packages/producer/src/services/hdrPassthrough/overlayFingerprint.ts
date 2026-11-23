@@ -26,6 +26,10 @@
  *     never merges);
  *   - the current value of every non-CSS property a GSAP tween writes on its
  *     target (`scrollTop`, a custom element's property, a plain object);
+ *   - the paint state no attribute holds, which a builtin can set with no
+ *     page script running: pseudo-classes the browser keeps
+ *     (`:popover-open`, `:modal`, `:target`, validity), the custom states
+ *     the page's CSS names, the selection, custom highlights, `designMode`;
  *   - the element stacking the layered compositor groups layers from.
  *
  * The passthrough video and its injected replacement frame are left out:
@@ -34,10 +38,11 @@
  * different (an extra capture), never two different ones look equal, as
  * long as it is in this list.
  *
- * Page script can change what paints and none of this reads (`:popover-open`,
- * custom highlights, the selection, a custom element's `:state()`); the
- * passthrough declines any page code that runs on capture's seeks
- * (`pageCodeWatch.ts`), so only the runtime and GSAP write while it probes.
+ * Page script can still change what paints and none of this reads, and can
+ * keep state across seeks; the passthrough declines any page code that runs
+ * on capture's seeks (`pageCodeWatch.ts`) and any callback that runs no
+ * page script (`nativeCallbacks.ts`), so only the runtime and GSAP write
+ * while it probes.
  *
  * Page script cannot read a closed shadow root (`shadowRoot` is null) or the
  * document inside an `<object>` / `<embed>` / frame, so a tween there changes
@@ -74,6 +79,17 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
   if (document.activeElement) focused.add(document.activeElement);
   for (const img of Array.from(document.querySelectorAll(".__render_frame__"))) skipped.add(img);
 
+  // Every node visited, in order, for the paint state read after the walk.
+  const nodeIndex = new Map<Node, number>();
+  const elements: Element[] = [];
+  // A text control's selection paints (highlighted text, the caret) and no attribute holds it.
+  const pushTextSelection = (el: HTMLInputElement | HTMLTextAreaElement) => {
+    try {
+      parts.push(` @sel=${el.selectionStart},${el.selectionEnd},${el.selectionDirection}`);
+    } catch {
+      // Input types without a text selection.
+    }
+  };
   const visitChildren = (node: Node | ShadowRoot) => {
     for (const child of Array.from(node.childNodes)) visit(child);
   };
@@ -84,11 +100,14 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
       return;
     }
     if (node.nodeType === 3 || node.nodeType === 4) {
+      nodeIndex.set(node, nodeIndex.size);
       parts.push(JSON.stringify((node as CharacterData).data));
       return;
     }
     if (node.nodeType !== 1) return;
     const el = node as Element;
+    nodeIndex.set(el, nodeIndex.size);
+    elements.push(el);
     parts.push(`<${el.tagName}`);
     const inline = (el as Element & { style?: CSSStyleDeclaration }).style;
     for (const attr of Array.from(el.attributes)) {
@@ -112,8 +131,10 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
     }
     if (el instanceof HTMLInputElement) {
       parts.push(` @value=${JSON.stringify(el.value)},${el.checked},${el.indeterminate}`);
+      pushTextSelection(el);
     } else if (el instanceof HTMLTextAreaElement) {
       parts.push(` @value=${JSON.stringify(el.value)}`);
+      pushTextSelection(el);
     } else if (el instanceof HTMLSelectElement) {
       parts.push(` @selected=${el.selectedIndex}`);
     } else if (el instanceof HTMLImageElement) {
@@ -149,6 +170,13 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
       parts.push(`@anim unreadable ${Math.random()}`);
     }
   };
+  // The custom states (`:state(x)`, legacy `:--x`) the page's CSS names: only those can paint.
+  const customStates = new Set<string>();
+  const noteCustomStates = (cssText: string) => {
+    for (const m of cssText.matchAll(/:state\(\s*([^)\s]+)\s*\)|:--([\w-]+)/g)) {
+      customStates.add(m[1] ? `:state(${m[1]})` : `:--${m[2]}`);
+    }
+  };
   const sheetsSeen = new Set<CSSStyleSheet>();
   const pushSheet = (sheet: CSSStyleSheet) => {
     if (sheetsSeen.has(sheet)) return;
@@ -157,6 +185,7 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
     try {
       for (const rule of Array.from(sheet.cssRules)) {
         parts.push(rule.cssText);
+        noteCustomStates(rule.cssText);
         // An @import's own rules are not in its cssText.
         const imported = (rule as CSSRule & { styleSheet?: CSSStyleSheet | null }).styleSheet;
         if (imported) pushSheet(imported);
@@ -167,6 +196,76 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
     }
   };
 
+  // Paint state that no attribute, text or style holds, which a builtin can change with no page
+  // script running (a bound `showPopover`, `selectAllChildren` or `CustomStateSet#add` handed to
+  // an observer): pseudo-classes the browser keeps, the custom states the page's CSS names, the
+  // document selection, custom highlights, the URL fragment (`:target`) and `designMode`.
+  const STATE_SELECTORS = [
+    ":popover-open",
+    ":modal",
+    ":open",
+    ":target",
+    ":target-within",
+    ":fullscreen",
+    ":picture-in-picture",
+    ":autofill",
+    ":user-invalid",
+    ":user-valid",
+    ":invalid",
+    "option:checked",
+    ":default",
+    ":focus-visible",
+    ":not(:defined)",
+  ];
+  const where = (node: Node | null | undefined) =>
+    !node ? "-" : node === document ? "doc" : String(nodeIndex.get(node) ?? `?${node.nodeName}`);
+  const pushRanges = (label: string, ranges: Iterable<AbstractRange>) => {
+    for (const r of ranges) {
+      parts.push(
+        `${label} ${where(r.startContainer)}:${r.startOffset}-${where(r.endContainer)}:${r.endOffset}`,
+      );
+    }
+  };
+  const pushStates = () => {
+    const selectors = [...STATE_SELECTORS, ...customStates].filter((selector) => {
+      try {
+        document.documentElement.matches(selector);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    const any = selectors.join(",");
+    if (any === "") return;
+    elements.forEach((el, i) => {
+      if (!el.matches(any)) return;
+      parts.push(`@state ${i} ${selectors.filter((selector) => el.matches(selector)).join(" ")}`);
+    });
+  };
+  const pushSelection = () => {
+    const selection = document.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const ranges: AbstractRange[] = [];
+    for (let i = 0; i < selection.rangeCount; i++) ranges.push(selection.getRangeAt(i));
+    const direction = (selection as { direction?: string }).direction ?? "";
+    parts.push(`@selection ${selection.type} ${direction}`);
+    pushRanges("@range", ranges);
+  };
+  type Highlights = Map<string, Set<AbstractRange> & { priority?: number; type?: string }>;
+  const pushHighlights = () => {
+    const highlights = (window.CSS as { highlights?: Highlights } | undefined)?.highlights;
+    for (const [name, highlight] of highlights ?? []) {
+      parts.push(`@highlight ${name} ${highlight.priority ?? ""} ${highlight.type ?? ""}`);
+      pushRanges("@range", highlight);
+    }
+  };
+  const pushPaintState = () => {
+    pushStates();
+    pushSelection();
+    pushHighlights();
+    parts.push(`@document ${document.designMode} ${JSON.stringify(location.hash)}`);
+  };
+
   visit(document.documentElement);
   for (const sheet of Array.from(document.styleSheets)) pushSheet(sheet);
   for (const sheet of document.adoptedStyleSheets ?? []) pushSheet(sheet);
@@ -174,6 +273,7 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
     `@window ${window.scrollX},${window.scrollY},${window.innerWidth}x${window.innerHeight}`,
   );
   parts.push(`@fonts ${document.fonts?.status ?? ""},${document.fonts?.size ?? ""}`);
+  pushPaintState();
   pushAnimations(document);
 
   // Non-CSS values GSAP tweens write on their targets: CSS ones land in the style attribute.
@@ -260,6 +360,8 @@ export interface DomSnapshotLike {
       nodeName?: number[];
       /** Set on every node inside a shadow tree, to that tree's type. */
       shadowRootType?: { index: number[]; value: number[] };
+      /** Per node, `[name, value, name, value, ...]` string indices. */
+      attributes?: number[][];
     };
   }>;
   strings: string[];
@@ -325,6 +427,110 @@ export function findBlindSpotsInSnapshot(snapshot: DomSnapshotLike): string | nu
 }
 
 /**
+ * Content in a DOM snapshot that paints on its own clock or from state the
+ * runtime drives, which no fingerprint reads, or `null`: any `<video>`
+ * besides the passthrough source (one in a shadow tree or added by script
+ * is not in the composition's video list), an `<audio controls>` (the
+ * runtime sets every audio element's `currentTime` on a seek, and the
+ * controls paint it), a `<marquee>` and an indeterminate `<progress>` (both
+ * animate inside user-agent shadow trees). The snapshot pierces every
+ * shadow tree, user-agent ones included.
+ */
+export function findOwnClockElementsInSnapshot(
+  snapshot: DomSnapshotLike,
+  videoId: string,
+): { reason: "video_count" | "overlay_non_gsap_animation"; detail: string } | null {
+  const { strings } = snapshot;
+  let sources = 0;
+  let otherVideos = 0;
+  const counts = new Map<string, number>();
+  for (const { nodes } of snapshot.documents) {
+    (nodes.nodeName ?? []).forEach((name, i) => {
+      const tag = (strings[name] ?? "").toLowerCase();
+      if (!OWN_CLOCK_TAGS.has(tag)) return;
+      const attrs = attributesOf(nodes, i, strings);
+      if (tag === "video") {
+        if (attrs.get("id") === videoId && sources === 0) sources++;
+        else otherVideos++;
+        return;
+      }
+      const what = ownClockElement(tag, attrs);
+      if (what) counts.set(what, (counts.get(what) ?? 0) + 1);
+    });
+  }
+  if (otherVideos > 0 || sources === 0) {
+    const detail =
+      sources === 0
+        ? "the source video is not in the page"
+        : `${otherVideos} <video> besides the source`;
+    return { reason: "video_count", detail };
+  }
+  if (counts.size === 0) return null;
+  return {
+    reason: "overlay_non_gsap_animation",
+    detail: [...counts].map(([what, n]) => `${n} ${what}`).join(", "),
+  };
+}
+
+const OWN_CLOCK_TAGS: ReadonlySet<string> = new Set(["video", "audio", "marquee", "progress"]);
+
+/** One snapshot node's attributes, by lower-case name. */
+function attributesOf(
+  nodes: SnapshotNodes,
+  index: number,
+  strings: readonly string[],
+): Map<string, string> {
+  const pairs = nodes.attributes?.[index] ?? [];
+  const attrs = new Map<string, string>();
+  for (let a = 0; a + 1 < pairs.length; a += 2) {
+    attrs.set(
+      (strings[pairs[a] as number] ?? "").toLowerCase(),
+      strings[pairs[a + 1] as number] ?? "",
+    );
+  }
+  return attrs;
+}
+
+/** What an `<audio>`, `<marquee>` or `<progress>` that paints on its own is, or `null`. */
+function ownClockElement(tag: string, attrs: ReadonlyMap<string, string>): string | null {
+  if (tag === "audio") return attrs.has("controls") ? "<audio controls>" : null;
+  if (tag === "marquee") return "<marquee>";
+  return attrs.has("value") ? null : "indeterminate <progress>";
+}
+
+async function captureDomSnapshot(page: CaptureSession["page"]): Promise<DomSnapshotLike> {
+  const client = await getCdpSession(page);
+  return client.send("DOMSnapshot.captureSnapshot", { computedStyles: [] });
+}
+
+/**
+ * The DOM snapshot gates: content the fingerprint cannot read
+ * (`overlay_unreadable`, `findBlindSpotsInSnapshot`), then content that
+ * paints on a clock or from state it does not read
+ * (`findOwnClockElementsInSnapshot`), from one snapshot. A snapshot that
+ * fails is `overlay_unreadable`: unread is not empty. Uses the page's cached
+ * engine CDP session and never detaches it (see `findSeekHookListeners`).
+ */
+export async function inspectDomSnapshot(
+  page: CaptureSession["page"],
+  videoId: string,
+): Promise<{
+  reason: "overlay_unreadable" | "video_count" | "overlay_non_gsap_animation";
+  detail: string;
+} | null> {
+  let snapshot: DomSnapshotLike;
+  try {
+    snapshot = await captureDomSnapshot(page);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { reason: "overlay_unreadable", detail: `DOM snapshot failed (${detail})` };
+  }
+  const blindSpot = findBlindSpotsInSnapshot(snapshot);
+  if (blindSpot) return { reason: "overlay_unreadable", detail: blindSpot };
+  return findOwnClockElementsInSnapshot(snapshot, videoId);
+}
+
+/**
  * `findBlindSpotsInSnapshot` on a DevTools DOM snapshot of the page, which
  * pierces closed shadow roots and frames. A snapshot that fails is reported
  * too: unread is not empty. Uses the page's cached engine CDP session and
@@ -335,9 +541,7 @@ export async function findFingerprintBlindSpots(
   page: CaptureSession["page"],
 ): Promise<string | null> {
   try {
-    const client = await getCdpSession(page);
-    const snapshot = await client.send("DOMSnapshot.captureSnapshot", { computedStyles: [] });
-    return findBlindSpotsInSnapshot(snapshot);
+    return findBlindSpotsInSnapshot(await captureDomSnapshot(page));
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     return `DOM snapshot failed (${detail})`;

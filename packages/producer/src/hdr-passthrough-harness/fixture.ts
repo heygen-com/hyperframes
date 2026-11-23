@@ -412,13 +412,65 @@ export function buildAnimatedImageArgs(format: AnimatedImageFormat, outputPath: 
 }
 
 /** Extra project content a negative fixture needs beyond its composition options. */
-type NegativeAsset = "gsap" | "fake-gsap" | AnimatedImageFormat;
+type NegativeAsset =
+  | "gsap"
+  | "fake-gsap"
+  | "tone"
+  | "sdr-video"
+  | "paint-worklet"
+  | AnimatedImageFormat;
+
+/** ffmpeg arguments for a 3 s mono sine tone: the audio an `<audio controls>` fixture plays. */
+function buildToneArgs(outputPath: string): string[] {
+  return [
+    "-hide_banner",
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:duration=3",
+    "-c:a",
+    "aac",
+    outputPath,
+  ];
+}
+
+/** ffmpeg arguments for a small 3 s SDR H.264 clip: a second, self-playing video. */
+function buildSdrVideoArgs(outputPath: string): string[] {
+  return [
+    "-hide_banner",
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=30:duration=3",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    outputPath,
+  ];
+}
+
+/** A CSS Paint worklet that keeps a paint count: page code that runs on every paint. */
+const PAINT_WORKLET = `let paints = 0;
+registerPaint("hf-counter", class { paint(ctx, size) { paints++; ctx.fillStyle = paints % 2 ? "#e33" : "#3a6"; ctx.fillRect(0, 0, size.width, size.height); } });
+`;
+const PAINT_WORKLET_FILE = "paint-counter.js";
 
 /**
- * A highlight setter on the seek-time global, as script text: the page code a
- * seek runs that changes what paints where no fingerprint can read it.
+ * A highlight setter on the seek-time global, as script text: page code a
+ * seek runs that keeps state across seeks. The highlight goes on the first
+ * time a seek reaches 1 s and stays on, so the layered render lights it at
+ * frame 30, while every capture probe after eligibility's first seek past
+ * 1 s sees it lit and fingerprints the same (the fingerprint reads
+ * highlights): only the record of page code that ran declines it.
  */
-const HIGHLIGHT_SETTER = `(() => { let time; const apply = (on) => { if (!on) return CSS.highlights.delete("hf"); const range = new Range(); range.selectNodeContents(document.getElementById("hl")); CSS.highlights.set("hf", new Highlight(range)); }; Object.defineProperty(window, "__hfTypegpuTime", { configurable: true, get: () => time, set(t) { time = t; apply(t >= 1 && t < 2); } }); })();`;
+const HIGHLIGHT_SETTER = `(() => { let time; const apply = (on) => { if (!on) return CSS.highlights.delete("hf"); const range = new Range(); range.selectNodeContents(document.getElementById("hl")); CSS.highlights.set("hf", new Highlight(range)); }; Object.defineProperty(window, "__hfTypegpuTime", { configurable: true, get: () => time, set(t) { time = t; if (t >= 1) apply(true); } }); })();`;
 const HIGHLIGHT_STYLE = "<style>::highlight(hf) { background-color: #f00; color: #ff0; }</style>";
 
 /** The fake GSAP file: page code under a GSAP distribution file name. */
@@ -437,6 +489,40 @@ function highlightSetterCase(name: string, script: string): IneligibleCase {
   };
 }
 
+/** A popover the native-callback cases open; red, top left. */
+const POPOVER_STYLE =
+  "<style>[popover] { position: absolute; inset: auto; top: 48px; left: 48px; margin: 0; padding: 0 24px; border: 0; background: #e33; color: #fff; font: 700 40px sans-serif; }</style>";
+const POPOVER_HTML = '<div id="pop" popover="manual">POPOVER</div>';
+const POPOVER_TRIGGER =
+  '<div id="trig" style="position:absolute;top:900px;left:48px;color:#fff;font:700 40px sans-serif">T</div>';
+/** A builtin that opens the popover, bound so it takes no page code to call. */
+const SHOW_POPOVER =
+  'Reflect.apply.bind(null, HTMLElement.prototype.showPopover, document.getElementById("pop"), [])';
+
+/**
+ * A popover opened by a builtin the page hands to the browser or to GSAP, with
+ * no page function on the stack: V8's call counts never see it, the popover
+ * stays open on every later probe, and the layered path opens it only at
+ * 1.5 s. `script` runs after the overlay is in the page, with `tl` in scope.
+ */
+function nativePopoverCase(
+  name: string,
+  script: string,
+  overlayHtml = POPOVER_TRIGGER,
+): IneligibleCase {
+  return {
+    name,
+    reason: "seek_callback",
+    composition: {
+      cues: [],
+      headHtml: POPOVER_STYLE,
+      overlayHtml: `${overlayHtml}${POPOVER_HTML}`,
+      timelineScript: script,
+    },
+    assets: ["gsap"],
+  };
+}
+
 /** One class of composition the passthrough must decline, and the reason it must log. */
 export interface IneligibleCase {
   name: string;
@@ -449,6 +535,12 @@ export interface IneligibleCase {
   > &
     Partial<Pick<CompositionOptions, "cues">>;
   assets?: readonly NegativeAsset[];
+  /**
+   * The case paints on the wall clock, so its layered render is not repeatable
+   * (two flag-off renders share no frame): the parity harness checks only the
+   * fallback and its reason, not the pixels.
+   */
+  wallClock?: true;
 }
 
 const BADGE_STYLE = "position:absolute;top:48px;right:48px;width:128px;height:128px";
@@ -707,10 +799,9 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     },
     assets: ["gsap"],
   },
-  // Page code that runs on seeks and changes what paints where the overlay fingerprint cannot
-  // read it (a custom highlight here; `:focus`, `:popover-open`, the selection or a custom
-  // element's `:state()` the same way). Every probe fingerprints equal, so only the record of
-  // page code that ran during capture declines it.
+  // Page code that runs on seeks and keeps what it painted across them (a custom highlight that
+  // stays lit once a seek reaches 1 s). Every probe after eligibility's seeks fingerprints equal,
+  // so only the record of page code that ran during capture declines it.
   // A setter on the seek-time global the WebGPU adapter assigns on every seek.
   highlightSetterCase("setter-highlight", `<script>${HIGHLIGHT_SETTER}</script>`),
   {
@@ -786,6 +877,114 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
       headHtml: `<script>(() => { let inside = false; window.__leaks = 0; const watch = (owner, key) => { const original = owner[key]; owner[key] = function () { if (inside) window.__leaks++; return original.apply(this, arguments); }; }; for (const key of ["indexOf", "includes", "lastIndexOf"]) watch(Array.prototype, key); for (const key of ["split", "indexOf", "lastIndexOf", "slice"]) watch(String.prototype, key); for (const key of ["test", "exec"]) watch(RegExp.prototype, key); Error.prepareStackTrace = function (error) { if (inside) window.__leaks++; return String(error); }; const register = (fn, ...args) => { inside = true; try { return fn(...args); } finally { inside = false; } }; const noop = () => {}; requestAnimationFrame(function loop() { const el = document.getElementById("seek-counter"); if (el) el.textContent = "leaks=" + window.__leaks; register(requestAnimationFrame, loop); clearTimeout(register(setTimeout, noop, 1e9)); clearInterval(register(setInterval, noop, 1e9)); }); })();</script>`,
       overlayHtml: `<div id="seek-counter" style="${BADGE_STYLE};width:auto;color:#fff;font:700 40px sans-serif"></div>`,
     },
+  },
+  // Builtins as callbacks: an observer, a listener, an `on*` handler, a custom element reaction, an
+  // accessor and a Proxy trap on a tween target, a function-based tween value.
+  nativePopoverCase(
+    "observer-popover",
+    `tl.set("#trig", { attr: { "data-k": "1" } }, 1.5); new MutationObserver(HTMLElement.prototype.showPopover.bind(document.getElementById("pop"))).observe(document.getElementById("trig"), { attributes: true });`,
+  ),
+  nativePopoverCase(
+    "listener-popover",
+    `tl.set("#det", { attr: { open: "" } }, 1.5); document.getElementById("det").addEventListener("toggle", ${SHOW_POPOVER});`,
+    '<details id="det" style="position:absolute;top:900px;left:48px;color:#fff;font:700 40px sans-serif"><summary>D</summary>x</details>',
+  ),
+  {
+    // A text selection, which paints and no fingerprint read before, from an `on*` handler.
+    name: "handler-selection",
+    reason: "seek_callback",
+    composition: {
+      cues: [],
+      headHtml:
+        "<style>#sel { position: absolute; top: 48px; left: 48px; color: #fff; font: 700 60px sans-serif; } ::selection { background: #3a6; color: #000; }</style>",
+      overlayHtml:
+        '<details id="det" style="position:absolute;top:900px;left:48px;color:#fff;font:700 40px sans-serif"><summary>D</summary>x</details><div id="sel">SELECTED</div>',
+      timelineScript: `tl.set("#det", { attr: { open: "" } }, 1.5); document.getElementById("det").ontoggle = Selection.prototype.selectAllChildren.bind(getSelection(), document.getElementById("sel"));`,
+    },
+    assets: ["gsap"],
+  },
+  nativePopoverCase(
+    "custom-element-popover",
+    `class HfPop extends HTMLElement { static observedAttributes = ["data-k"]; } HfPop.prototype.attributeChangedCallback = HTMLElement.prototype.showPopover; customElements.define("hf-pop", HfPop); tl.set("#ce-pop", { attr: { "data-k": "1" } }, 1.5);`,
+    '<hf-pop id="ce-pop" popover="manual">ELEMENT</hf-pop>',
+  ),
+  nativePopoverCase(
+    "tween-native-setter",
+    `const target = {}; Object.defineProperty(target, "on", { get: Number, set: ${SHOW_POPOVER} }); tl.set(target, { on: 1 }, 1.5);`,
+  ),
+  nativePopoverCase(
+    "tween-proxy-trap",
+    `tl.set(new Proxy({ on: 0 }, { get: ${SHOW_POPOVER} }), { on: 1 }, 1.5);`,
+  ),
+  nativePopoverCase(
+    "tween-function-value",
+    `tl.set("#trig", { attr: { "data-k": ${SHOW_POPOVER} } }, 1.5);`,
+  ),
+  // Content that paints on its own clock or from state the runtime drives, where the page's
+  // fingerprint reads nothing: the controls of an audio element the runtime seeks, user-agent
+  // shadow trees that animate, images painted by a pseudo-element or inside a shadow root, a
+  // video in a shadow root, and a paint worklet.
+  {
+    name: "audio-controls",
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      overlayHtml: `<audio class="clip" src="assets/tone.m4a" data-start="0" data-duration="3" data-track-index="3" data-volume="0" controls style="${BADGE_STYLE};width:640px;height:64px"></audio>`,
+    },
+    assets: ["tone"],
+  },
+  {
+    name: "marquee",
+    wallClock: true,
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      overlayHtml: `<marquee scrollamount="40" truespeed style="${BADGE_STYLE};width:640px;color:#ff0;font:700 60px sans-serif">MARQUEE</marquee>`,
+    },
+  },
+  {
+    name: "indeterminate-progress",
+    wallClock: true,
+    reason: "overlay_non_gsap_animation",
+    composition: { overlayHtml: `<progress style="${BADGE_STYLE};width:640px"></progress>` },
+  },
+  {
+    name: "pseudo-element-gif",
+    wallClock: true,
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      headHtml: `<style>#badge::before { content: url(assets/${ANIMATED_IMAGE_FILES.gif}); }</style>`,
+      overlayHtml: `<div id="badge" style="${BADGE_STYLE}"></div>`,
+    },
+    assets: ["gif"],
+  },
+  {
+    name: "shadow-root-gif",
+    wallClock: true,
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      overlayHtml: `<div id="host" style="${BADGE_STYLE}"></div>`,
+      timelineScript: `document.getElementById("host").attachShadow({ mode: "open" }).innerHTML = '<img src="assets/${ANIMATED_IMAGE_FILES.gif}">';`,
+    },
+    assets: ["gsap", "gif"],
+  },
+  {
+    name: "shadow-root-video",
+    wallClock: true,
+    reason: "video_count",
+    composition: {
+      overlayHtml: `<div id="host" style="${BADGE_STYLE}"></div>`,
+      timelineScript: `document.getElementById("host").attachShadow({ mode: "open" }).innerHTML = '<video autoplay muted loop playsinline src="assets/sdr.mp4" style="width:320px;height:180px"></video>';`,
+    },
+    assets: ["gsap", "sdr-video"],
+  },
+  {
+    name: "paint-worklet",
+    wallClock: true,
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      headHtml: `<style>#painted { background-image: paint(hf-counter); }</style><script>CSS.paintWorklet.addModule("assets/${PAINT_WORKLET_FILE}");</script>`,
+      overlayHtml: `<div id="painted" style="${BADGE_STYLE}"></div>`,
+    },
+    assets: ["paint-worklet"],
   },
   {
     name: "canvas",
@@ -940,6 +1139,8 @@ interface FixtureProject {
   expect: "passthrough" | "fallback";
   /** For `fallback`: the reason the flag-on render must log. */
   expectReason?: string;
+  /** `false` when the layered render itself is not repeatable: no pixel checks. */
+  repeatable?: false;
   dir: string;
   /** The project's own render rate and duration, when they differ from the manifest's. */
   fps?: number | string;
@@ -1037,9 +1238,21 @@ function negativeAssetSources(
   }
   const fakeGsap = join(outDir, "assets", FAKE_GSAP_FILE);
   writeFileSync(fakeGsap, `${HIGHLIGHT_SETTER}\n`);
+  const worklet = join(outDir, "assets", PAINT_WORKLET_FILE);
+  writeFileSync(worklet, PAINT_WORKLET);
+  const generated = (name: string, args: (path: string) => string[]) => {
+    const source = join(outDir, "assets", name);
+    if (!existsSync(source) || statSync(source).size === 0) {
+      runFfmpegOrThrow(ffmpegPath, args(source), source);
+    }
+    return { source, name };
+  };
   return {
     gsap: gsapAsset(),
     "fake-gsap": { source: fakeGsap, name: FAKE_GSAP_FILE },
+    tone: generated("tone.m4a", buildToneArgs),
+    "sdr-video": generated("sdr.mp4", buildSdrVideoArgs),
+    "paint-worklet": { source: worklet, name: PAINT_WORKLET_FILE },
     ...images,
   };
 }
@@ -1202,6 +1415,7 @@ function generateFixtures(options: GenerateOptions): GeneratedFixtures {
         name,
         expect: "fallback",
         expectReason: negative.reason,
+        ...(negative.wallClock ? { repeatable: false as const } : {}),
         dir: writeProject({
           ...project,
           name,

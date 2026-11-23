@@ -4,6 +4,7 @@ import {
   FAKE_GSAP_FILE,
   FIXTURE_FPS,
   INELIGIBLE_CASES,
+  type IneligibleCase,
   STREAM_OFFSET_SECONDS,
   buildAnimatedImageArgs,
   buildCaptionCues,
@@ -360,12 +361,56 @@ describe("INELIGIBLE_CASES", () => {
     }
   });
 
+  it("hands the browser and GSAP builtins, not page functions, in the native-callback cases", () => {
+    const find = (name: string) => INELIGIBLE_CASES.find((c) => c.name === name)!;
+    for (const name of [
+      "observer-popover",
+      "listener-popover",
+      "handler-selection",
+      "custom-element-popover",
+      "tween-native-setter",
+      "tween-proxy-trap",
+      "tween-function-value",
+    ]) {
+      const c = find(name);
+      expect(c.reason).toBe("seek_callback");
+      // Only builtins run on seeks: the page's only functions are a class body and no callbacks.
+      expect(c.composition.timelineScript).not.toMatch(/=>|function\s*\(/);
+      expect(c.composition.timelineScript).toMatch(/\.bind\(|prototype\.showPopover;/);
+    }
+  });
+
+  it("marks only the cases that paint on the wall clock as not repeatable", () => {
+    const wallClock = INELIGIBLE_CASES.filter((c) => c.wallClock).map((c) => c.name);
+    expect(wallClock).toEqual([
+      "marquee",
+      "indeterminate-progress",
+      "pseudo-element-gif",
+      "shadow-root-gif",
+      "shadow-root-video",
+      "paint-worklet",
+    ]);
+  });
+
   it("ships the assets each case references", () => {
     const gsap = INELIGIBLE_CASES.filter((c) => c.composition.timelineScript !== undefined);
     expect(gsap.length).toBeGreaterThan(0);
     for (const c of gsap) expect(c.assets).toContain("gsap");
     for (const c of INELIGIBLE_CASES.filter((c) => c.name.startsWith("animated-"))) {
       expect(c.assets).toHaveLength(1);
+    }
+    const uses = (c: IneligibleCase, text: string) =>
+      [c.composition.headHtml, c.composition.overlayHtml, c.composition.timelineScript].some(
+        (part) => part?.includes(text),
+      );
+    for (const [text, asset] of [
+      ["assets/tone.m4a", "tone"],
+      ["assets/sdr.mp4", "sdr-video"],
+      ["assets/animated.gif", "gif"],
+      ["assets/paint-counter.js", "paint-worklet"],
+    ] as const) {
+      for (const c of INELIGIBLE_CASES.filter((x) => uses(x, text)))
+        expect(c.assets).toContain(asset);
     }
   });
 });
