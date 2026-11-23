@@ -30,7 +30,12 @@ const tags = (count: number, src: (i: number) => string) =>
   Array.from({ length: count }, (_, i) => `<script src="${src(i)}"></script>`).join("\n");
 
 // Studio's preview build: the lint pass (staticGuard) is off there, and slow on such pages on its own.
-const PREVIEW = { inlineAssets: false, staticGuard: false, sceneParts: true } as const;
+const PREVIEW = {
+  runtime: "placeholder",
+  inlineAssets: false,
+  staticGuard: false,
+  sceneParts: true,
+} as const;
 const FOUR_MIB = 4 * 1024 * 1024;
 const MIB = 1024 * 1024;
 
@@ -156,12 +161,9 @@ ${host("a", 0, "a.html")}${host("b", 1, "b.html")}${host("c", 2)}
     expect(lib?.getAttribute(SCENE_PART_ATTR)).toBeNull();
   });
 
-  it.each([
-    ["nomodule", '<script nomodule src="a.js"></script>'],
-    ["data block", '<script type="text/plain" src="a.js"></script>'],
-  ])("keeps the regular script after a %s tag naming the same file", async (_, first) => {
+  it("keeps the regular script after a nomodule tag naming the same file", async () => {
     const dir = project({
-      "index.html": page(`${first}\n<script src="a.js"></script>`),
+      "index.html": page('<script nomodule src="a.js"></script>\n<script src="a.js"></script>'),
       "a.js": "window.a = 1;",
     });
 
@@ -175,6 +177,32 @@ ${host("a", 0, "a.html")}${host("b", 1, "b.html")}${host("c", 2)}
     const runs = (el: Element) =>
       !el.hasAttribute("nomodule") && el.getAttribute("type") === AFTER_FONTS_SCRIPT_TYPE;
     expect(copies.some(runs)).toBe(true);
+  });
+
+  it("inlines one file at most four times, whatever types its tags name", async () => {
+    const body = `window.a = 1; //${"x".repeat(64 * 1024)}`;
+    const typed = Array.from(
+      { length: 100 },
+      (_, i) => `<script type="x${i}" src="a.js"></script>`,
+    );
+    const dir = project({
+      "index.html": page(
+        `${typed.join("\n")}\n<script nomodule src="a.js"></script>\n<script src="a.js"></script>`,
+      ),
+      "a.js": body,
+    });
+
+    const html = await bundleToSingleHtml(dir, PREVIEW);
+
+    expect(html.length).toBeLessThan(4 * body.length + 64 * 1024);
+    const { document } = parseHTML(html);
+    const copies = [...document.querySelectorAll("script")].filter((el) =>
+      el.textContent?.includes("window.a = 1;"),
+    );
+    expect(copies.filter((el) => el.getAttribute("type")?.startsWith("x"))).toHaveLength(2);
+    expect(copies.some((el) => el.hasAttribute("nomodule"))).toBe(true);
+    expect(copies.some((el) => el.getAttribute("type") === AFTER_FONTS_SCRIPT_TYPE)).toBe(true);
+    expect(document.querySelectorAll('script[type^="x"][src="a.js"]')).toHaveLength(98);
   });
 
   it(
