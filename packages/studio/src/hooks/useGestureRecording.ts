@@ -3,6 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlayerStore, liveTime } from "../player/store/playerStore";
 import { frameToSeconds, secondsToFrame } from "../player/lib/time";
 import { useLinkedClipPreferences } from "../utils/linkedClipPreferences";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
+import { previewStageSize } from "../player/lib/bridgePlayback";
+import { getIframeGsap, type IframeGsap } from "./gsapShared";
 
 export interface GestureSample {
   time: number;
@@ -45,26 +48,17 @@ interface GsapRuntime {
 // Extracted helpers — pure functions, no refs, no React.
 // ---------------------------------------------------------------------------
 
-function readBasePosition(element: HTMLElement, iframeEl: HTMLIFrameElement): BasePosition {
+function readBasePosition(element: HTMLElement, gsap: IframeGsap | null): BasePosition {
   let baseOpacity = 1;
   let baseScale = 1;
   let baseX = 0;
   let baseY = 0;
 
-  try {
-    const gsap = (
-      iframeEl.contentWindow as Window & {
-        gsap?: { getProperty: (el: Element, prop: string) => number };
-      }
-    ).gsap;
-    if (gsap?.getProperty) {
-      baseOpacity = Number(gsap.getProperty(element, "opacity")) || 1;
-      baseScale = Number(gsap.getProperty(element, "scaleX")) || 1;
-      baseX = Number(gsap.getProperty(element, "x")) || 0;
-      baseY = Number(gsap.getProperty(element, "y")) || 0;
-    }
-  } catch {
-    /* cross-origin guard */
+  if (gsap) {
+    baseOpacity = Number(gsap.getProperty(element, "opacity")) || 1;
+    baseScale = Number(gsap.getProperty(element, "scaleX")) || 1;
+    baseX = Number(gsap.getProperty(element, "x")) || 0;
+    baseY = Number(gsap.getProperty(element, "y")) || 0;
   }
 
   // Path-offset CSS vars live on the element regardless of whether
@@ -158,8 +152,12 @@ function recordSample(r: RecordingRefs, time: number, properties: Record<string,
   r.trail.push({ x: r.pointer.x, y: r.pointer.y });
 }
 
-function computeIframeScale(iframeEl: HTMLIFrameElement): number {
+function computeIframeScale(iframeEl: HTMLIFrameElement): number | null {
   const iframeRect = iframeEl.getBoundingClientRect();
+  if (previewFrameOpaque(iframeEl)) {
+    const stage = previewStageSize(iframeEl);
+    return stage && stage.width > 0 ? iframeRect.width / stage.width : null;
+  }
   const doc = iframeEl.contentDocument;
   const root = doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement;
   const declaredWidth = Number(root?.getAttribute("data-width")) || 1920;
@@ -231,6 +229,8 @@ interface RecordingRefs {
   samples: GestureSample[];
   trail: Array<{ x: number; y: number }>;
   cleanup: (() => void) | null;
+  /** Where a recording without the in-frame runtime moves the film's playhead. */
+  playhead: { start: number; end: number } | null;
 }
 
 function createRecordingRefs(): RecordingRefs {
@@ -249,6 +249,7 @@ function createRecordingRefs(): RecordingRefs {
     samples: [],
     trail: [],
     cleanup: null,
+    playhead: null,
   };
 }
 
@@ -303,8 +304,12 @@ export function useGestureRecording() {
   }, []);
 
   const startRecording = useCallback(
-    (element: HTMLElement, iframeEl: HTMLIFrameElement, elementEndTime?: number) => {
-      if (isRecordingRef.current) return;
+    (element: HTMLElement, iframeEl: HTMLIFrameElement, elementEndTime?: number): boolean => {
+      if (isRecordingRef.current) return true;
+      const sealed = previewFrameOpaque(iframeEl);
+      const gsap = getIframeGsap(iframeEl);
+      const scale = computeIframeScale(iframeEl);
+      if (scale === null || (sealed && !gsap)) return false;
       isRecordingRef.current = true;
 
       const r = refs.current;
@@ -317,7 +322,7 @@ export function useGestureRecording() {
       setRecordingDuration(0);
 
       // --- Phase 1: Read base position from GSAP + CSS vars ---
-      const base = readBasePosition(element, iframeEl);
+      const base = readBasePosition(element, gsap);
       r.cssVarOffset = { x: base.cssOffX, y: base.cssOffY };
       r.accumulated = { opacity: base.baseOpacity, scale: base.baseScale, z: 0 };
       r.basePosition = { x: base.baseX, y: base.baseY };
@@ -325,10 +330,14 @@ export function useGestureRecording() {
       // --- Phase 2: iframe → studio scale, measured BEFORE clearing the path offset ---
       // The pointer deltas in the RAF loop are in studio-viewport pixels; divide by
       // this scale to convert them to the iframe's composition pixels.
-      r.scale = computeIframeScale(iframeEl);
+      r.scale = scale;
 
       // --- Phase 3: Connect to the iframe GSAP runtime ---
       r.runtime = connectGsapRuntime(element, iframeEl, elementEndTime);
+      const { currentTime, duration } = usePlayerStore.getState();
+      r.playhead = sealed
+        ? { start: currentTime, end: Math.min(elementEndTime ?? Infinity, duration) }
+        : null;
       // Clear the optimistic path offset only while a live runtime owns the
       // preview. releaseRuntimePreview restores it on every exit path.
       if (r.runtime && (base.cssOffX || base.cssOffY)) {
@@ -416,6 +425,8 @@ export function useGestureRecording() {
             // continues). `r.runtime` is nulled so we don't retry on every frame.
             releaseRuntimePreview(r);
           }
+        } else if (r.playhead) {
+          usePlayerStore.getState().requestSeek(Math.min(r.playhead.start + time, r.playhead.end));
         }
 
         recordSample(r, time, properties);
@@ -435,6 +446,7 @@ export function useGestureRecording() {
         document.removeEventListener("keyup", handleKeyChange);
         document.removeEventListener("pointermove", captureStart);
       };
+      return true;
     },
     [], // No deps — uses refs only for all mutable state
   );

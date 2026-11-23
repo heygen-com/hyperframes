@@ -24,6 +24,8 @@ import {
   tweenTargetsElement,
 } from "./gsapShared";
 import { useStableHandlers } from "./useStableHandlers";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
+import { settleGsapSnapshot } from "./gsapFrameSnapshot";
 import { progressAtTime, runEaseOf, timeAtProgress, warpsTime } from "../utils/gsapKeyframeEases";
 import { countOf } from "../utils/countOf";
 
@@ -417,18 +419,25 @@ export function useGestureCommit({
         return;
       }
 
-      const store = usePlayerStore.getState();
-      recordingMethodRef.current = method;
-      recordingStartTimeRef.current = store.currentTime;
-      const elementEnd = recordingEnd(sel);
-      capturedSelectionRef.current = sel;
-      capturedAnimationsRef.current = domEditSessionRef.current.selectedGsapAnimations ?? [];
-      gestureRecording.startRecording(sel.element, iframe, elementEnd);
-      gestureStateRef.current = "recording";
-      isGestureRecordingRef.current = true;
-      setGestureState("recording");
-
-      armAutoStop(elementEnd);
+      const begin = () => {
+        if (isGestureRecordingRef.current) return;
+        const elementEnd = recordingEnd(sel);
+        const startTime = usePlayerStore.getState().currentTime;
+        if (!gestureRecording.startRecording(sel.element, iframe, elementEnd)) {
+          showToast("Preview not ready. Try again", "error");
+          return;
+        }
+        recordingMethodRef.current = method;
+        recordingStartTimeRef.current = startTime;
+        capturedSelectionRef.current = sel;
+        capturedAnimationsRef.current = domEditSessionRef.current.selectedGsapAnimations ?? [];
+        gestureStateRef.current = "recording";
+        isGestureRecordingRef.current = true;
+        setGestureState("recording");
+        armAutoStop(elementEnd);
+      };
+      if (previewFrameOpaque(iframe)) void settleGsapSnapshot(iframe).then(begin);
+      else begin();
     },
     [
       gestureRecording,

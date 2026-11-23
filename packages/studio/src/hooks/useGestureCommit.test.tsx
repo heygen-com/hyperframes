@@ -15,7 +15,7 @@ import { xAtTime } from "./gsapPlaybackTestHarness";
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 const gestureRecording = vi.hoisted(() => ({
-  startRecording: vi.fn(),
+  startRecording: vi.fn(() => true),
   stopRecording: vi.fn(() => [
     { time: 0, properties: { x: 0, y: 0, opacity: 1 } },
     { time: 0.5, properties: { x: 50, y: 25, opacity: 0.5 } },
