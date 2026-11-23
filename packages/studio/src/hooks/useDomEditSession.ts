@@ -65,6 +65,7 @@ export interface UseDomEditSessionParams extends DomEditTimelineParams {
   readOnlyPreview: boolean;
 }
 
+// fallow-ignore-next-line complexity
 export function useDomEditSession({
   projectId,
   activeCompPath,
@@ -491,7 +492,6 @@ export function useDomEditSession({
     copiedAgentPrompt,
     agentPromptSelectionContext,
     domEditSelectionRef,
-    // Callbacks
     handleTimelineElementSelect,
     handlePreviewCanvasMouseDown,
     handlePreviewCanvasPointerMove,

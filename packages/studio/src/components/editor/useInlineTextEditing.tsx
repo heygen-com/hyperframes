@@ -16,6 +16,11 @@ import {
 import type { DomEditSelection } from "./domEditingTypes";
 
 type KeyChord = Pick<KeyboardEvent, "key" | "shiftKey" | "ctrlKey" | "metaKey" | "altKey">;
+type Press = { clientX: number; clientY: number; currentTarget?: EventTarget | null };
+
+const pressedOnSelectionBox = (event: Press) =>
+  event.currentTarget instanceof Element &&
+  event.currentTarget.matches('[data-dom-edit-selection-box="true"]');
 
 const isPlainEnter = (event: KeyChord) =>
   event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
@@ -36,8 +41,8 @@ export function useInlineTextEditing(
   { enterFromWindow = false }: { enterFromWindow?: boolean } = {},
 ): {
   editing: boolean;
-  /** Open an edit when this press pairs with the last one; `onSelection`: it landed on the selection's box. */
-  startFromPress: (event: { clientX: number; clientY: number }, onSelection?: boolean) => boolean;
+  /** Open an edit when this press pairs with the last one. */
+  startFromPress: (event: Press) => boolean;
   /** Handle a key on the canvas. Returns true when it opened an edit. */
   handleKeyDown: (event: KeyChord) => boolean;
   /**
@@ -65,19 +70,19 @@ export function useInlineTextEditing(
    * meant the first double press on any element opened nothing, which is every
    * double press that matters.
    */
-  const elementUnderPress = (event: { clientX: number; clientY: number }, onSelection: boolean) => {
+  const elementUnderPress = (event: Press) => {
     const iframe = actions?.previewIframeRef?.current;
     if (!iframe) return null;
     // A sealed frame cannot be hit-tested from here: only a press on the selection's box is known to be on it.
     if (previewFrameOpaque(iframe))
-      return onSelection ? (selectionRef.current?.element ?? null) : null;
+      return pressedOnSelectionBox(event) ? (selectionRef.current?.element ?? null) : null;
     // The same hit test the canvas uses to decide what was clicked; a plain
     // elementFromPoint only finds wrappers, since Studio suppresses pointer events.
     return getPreviewTargetFromPointer(iframe, event.clientX, event.clientY);
   };
 
   /** A point on Studio's canvas, in the scaled composition's coordinates. */
-  const compositionPoint = (event: { clientX: number; clientY: number }) => {
+  const compositionPoint = (event: Press) => {
     const iframe = actions?.previewIframeRef?.current;
     if (!iframe) return undefined;
     // A sealed frame's window cannot be read; its viewport is the frame element's own box.
@@ -88,6 +93,29 @@ export function useInlineTextEditing(
     const box = iframe.getBoundingClientRect();
     const scale = box.width / width || 1;
     return { x: (event.clientX - box.left) / scale, y: (event.clientY - box.top) / scale };
+  };
+
+  /** The element this press opens when it pairs with the last one, else null. */
+  const pairedPress = (event: Press) => {
+    const iframe = actions?.previewIframeRef?.current;
+    const element = elementUnderPress(event);
+    const press = { x: event.clientX, y: event.clientY, at: Date.now(), element };
+    const sealed = Boolean(iframe && previewFrameOpaque(iframe));
+    const paired = isDoublePress(lastPressRef.current, press, sealed);
+    lastPressRef.current = press;
+    return paired ? element : null;
+  };
+
+  const openTextAt = (element: HTMLElement, event: Press) => {
+    const selection = selectionRef.current;
+    if (selection?.handle && selection.element === element)
+      return (
+        canEditSealedTextInline(selection) && inlineText.start(element, compositionPoint(event))
+      );
+    if (!canEditElementTextInline(element)) return false;
+    // The caret opens where the press landed, which means mapping the point
+    // out of Studio's coordinates and into the composition's own.
+    return inlineText.start(element, compositionPoint(event));
   };
 
   // Enter opens the selected element's text, the way every design tool does,
@@ -131,27 +159,10 @@ export function useInlineTextEditing(
       </>
     ),
     handleKeyDown,
-    startFromPress: (event, onSelection = false) => {
+    startFromPress: (event) => {
       if (inlineText.session) return false;
-      const element = elementUnderPress(event, onSelection);
-      const press = { x: event.clientX, y: event.clientY, at: Date.now(), element };
-      const last = lastPressRef.current;
-      const iframe = actions?.previewIframeRef?.current;
-      // A sealed first press may be on a layer the frame has not picked yet, so the pair is by time and place.
-      const sealed = Boolean(iframe && previewFrameOpaque(iframe));
-      const paired = isDoublePress(sealed && last ? { ...last, element } : last, press);
-      lastPressRef.current = press;
-
-      if (!paired || !element) return false;
-      const selection = selectionRef.current;
-      if (selection?.handle && selection.element === element)
-        return (
-          canEditSealedTextInline(selection) && inlineText.start(element, compositionPoint(event))
-        );
-      if (!canEditElementTextInline(element)) return false;
-      // The caret opens where the press landed, which means mapping the point
-      // out of Studio's coordinates and into the composition's own.
-      return inlineText.start(element, compositionPoint(event));
+      const element = pairedPress(event);
+      return element !== null && openTextAt(element, event);
     },
   };
 }

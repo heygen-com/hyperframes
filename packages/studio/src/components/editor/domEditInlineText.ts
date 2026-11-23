@@ -85,11 +85,15 @@ const DOUBLE_PRESS_SLOP_PX = 6;
  * suppresses the compatibility mouse events and stops the browser pairing the
  * two presses at all: no `dblclick` is dispatched, and `detail` stays 1.
  */
-export function isDoublePress(previous: PressMark | null, next: PressMark): boolean {
+export function isDoublePress(
+  previous: PressMark | null,
+  next: PressMark,
+  pairByPlaceOnly = false,
+): boolean {
   if (!previous) return false;
   return (
     next.element !== null &&
-    previous.element === next.element &&
+    (pairByPlaceOnly || previous.element === next.element) &&
     next.at - previous.at <= DOUBLE_PRESS_MS &&
     Math.abs(next.x - previous.x) <= DOUBLE_PRESS_SLOP_PX &&
     Math.abs(next.y - previous.y) <= DOUBLE_PRESS_SLOP_PX

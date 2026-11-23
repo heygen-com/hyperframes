@@ -56,12 +56,18 @@ async function sealedCanvas(
 }
 
 const press = { clientX: 40, clientY: 20 };
+/** A press on the selection's box, which hands the canvas its own event. */
+const onBox = () => {
+  const box = document.createElement("div");
+  box.setAttribute("data-dom-edit-selection-box", "true");
+  return { ...press, currentTarget: box };
+};
 const editable = (id: string) => document.getElementById(id)!.getAttribute("contenteditable");
 
 it("opens a sealed heading's text edit on a double press, as on a live preview", async () => {
   const { canvas } = await sealedCanvas("title");
-  act(() => void canvas().startFromPress(press, true));
-  act(() => void canvas().startFromPress(press, true));
+  act(() => void canvas().startFromPress(onBox()));
+  act(() => void canvas().startFromPress(onBox()));
   await vi.waitFor(() => expect(editable("title")).toBe("true"));
 });
 
@@ -69,7 +75,7 @@ it("opens a sealed heading's text edit on a double press whose first press selec
   const { canvas, select, selectionRef } = await sealedCanvas("other");
   act(() => void canvas().startFromPress(press));
   selectionRef.current = await select("title");
-  act(() => void canvas().startFromPress(press, true));
+  act(() => void canvas().startFromPress(onBox()));
   await vi.waitFor(() => expect(editable("title")).toBe("true"));
 });
 
@@ -93,8 +99,8 @@ function droppingEnds(port: MessagePort) {
 it("reports through the edit session a sealed edit whose end the frame never answers", async () => {
   actions.handleDomTextEditLost.mockClear();
   const { canvas } = await sealedCanvas("title", droppingEnds);
-  act(() => void canvas().startFromPress(press, true));
-  act(() => void canvas().startFromPress(press, true));
+  act(() => void canvas().startFromPress(onBox()));
+  act(() => void canvas().startFromPress(onBox()));
   await vi.waitFor(() => expect(editable("title")).toBe("true"));
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
@@ -122,7 +128,7 @@ it("asks a sealed frame to put the caret where the second press landed, in the f
   const iframe = actions.previewIframeRef.current!;
   Object.defineProperty(iframe, "clientWidth", { value: 800 });
   iframe.getBoundingClientRect = () => ({ left: 10, top: 10, width: 400, height: 225 }) as DOMRect;
-  act(() => void canvas().startFromPress(press, true));
-  act(() => void canvas().startFromPress(press, true));
+  act(() => void canvas().startFromPress(onBox()));
+  act(() => void canvas().startFromPress(onBox()));
   await vi.waitFor(() => expect(starts).toEqual([{ x: 60, y: 20 }]));
 });
