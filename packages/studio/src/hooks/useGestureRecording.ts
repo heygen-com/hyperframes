@@ -470,12 +470,6 @@ export function useGestureRecording() {
             translate: { x: x - r.basePosition.x, y: y - r.basePosition.y },
           });
         }
-        if (r.drawsOn && ("x" in properties || "y" in properties)) {
-          const { x = r.basePosition.x, y = r.basePosition.y } = properties;
-          drawPreviewDraft(r.drawsOn, {
-            translate: { x: x - r.basePosition.x, y: y - r.basePosition.y },
-          });
-        }
 
         recordSample(r, time, properties);
 
