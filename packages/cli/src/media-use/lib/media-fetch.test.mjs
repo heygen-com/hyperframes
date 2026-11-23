@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import dns from "node:dns";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { createServer } from "node:http";
+import http, { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -116,6 +116,37 @@ test("refuses a public-looking name that resolves to a private address without c
     /non-public address/,
   );
   assert.equal(served, 0);
+});
+
+test("every download opens its own connection, so a reused socket never skips the address check", async (t) => {
+  const server = createServer((_req, res) => res.end("media"));
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const realLookup = dns.lookup;
+  t.mock.method(dns, "lookup", (host, options, callback) =>
+    host === "media.example"
+      ? callback(null, options?.all ? [{ address: "127.0.0.1", family: 4 }] : "127.0.0.1", 4)
+      : realLookup(host, options, callback),
+  );
+  const seen = [];
+  const request = http.request;
+  t.mock.method(http, "request", (url, options, callback) => {
+    seen.push(options);
+    return request(url, options, callback);
+  });
+  for (let i = 0; i < 2; i++)
+    await assert.rejects(
+      fetchMedia(`http://media.example:${server.address().port}/a`),
+      /non-public/,
+    );
+  assert.equal(seen.length, 2);
+  for (const options of seen) {
+    assert.equal(options.agent, false);
+    assert.equal(typeof options.lookup, "function");
+  }
 });
 
 test("bounds redirect loops", async () => {

@@ -83,6 +83,7 @@ function publicFetch(url, { method = "GET", signal } = {}) {
       {
         method,
         signal,
+        agent: false,
         lookup: publicOnlyLookup,
         headers: { accept: "*/*", "user-agent": "node" },
       },
