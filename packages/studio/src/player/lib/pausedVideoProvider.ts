@@ -160,12 +160,8 @@ export function pausedFrameHost(
 
   const close = () => {
     if (closed) return;
-    // An ask still in flight is answered, so the runtime falls back to its own frames instead of waiting out its cap.
-    for (const [id, control] of inFlight) {
-      control.abort();
-      reply({ type: "failed", id, message: "Preview frames closed" });
-    }
     closed = true;
+    for (const control of inFlight.values()) control.abort();
     inFlight.clear();
     void decoder?.then((actual) => actual.dispose()).catch(() => {});
     port.close();
