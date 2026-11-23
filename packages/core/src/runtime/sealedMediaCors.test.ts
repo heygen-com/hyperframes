@@ -212,7 +212,12 @@ describe("corsForSealedMedia", () => {
     playsFrom(video, `${PREVIEW}media/blip.mp4`);
     await settled();
     expect([fetch.mock.calls, video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([
-      [[`${PREVIEW}media/blip.mp4`, { method: "HEAD", mode: "cors", cache: "no-store", redirect: "error" }]],
+      [
+        [
+          `${PREVIEW}media/blip.mp4`,
+          { method: "HEAD", mode: "cors", cache: "no-store", redirect: "error" },
+        ],
+      ],
       false,
       3,
     ]);
@@ -223,7 +228,10 @@ describe("corsForSealedMedia", () => {
     vi.stubGlobal("origin", "null");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     let answer!: (response: Response) => void;
-    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => (answer = resolve))));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>((resolve) => (answer = resolve))),
+    );
     observer = corsForSealedMedia();
     const host = add(`<video src="media/slow.mp4"></video>`);
     await settled();
