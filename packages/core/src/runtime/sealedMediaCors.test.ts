@@ -7,6 +7,7 @@ let observer: MutationObserver | null = null;
 
 // MutationObserver callbacks run as a microtask after the insertion.
 const settled = () => Promise.resolve();
+const answered = () => new Promise<void>((resolve) => setTimeout(resolve));
 
 /** The first frame of a load, of `url`: what makes a no-CORS fallback count as having played. */
 function playsFrom(media: HTMLMediaElement, url: string) {
@@ -27,7 +28,8 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await answered();
   observer?.disconnect();
   observer = null;
   vi.unstubAllGlobals();
@@ -127,6 +129,7 @@ describe("corsForSealedMedia", () => {
     expect(load).toHaveBeenCalledTimes(1);
     expect(warn).not.toHaveBeenCalled();
     playsFrom(video, `${PREVIEW}media/plain-host.mp4`);
+    await answered();
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]![0]).toContain(`${PREVIEW}media/plain-host.mp4`);
 
@@ -145,6 +148,7 @@ describe("corsForSealedMedia", () => {
     vi.spyOn(first, "load").mockImplementation(() => {});
     first.dispatchEvent(new Event("error"));
     playsFrom(first, `${PREVIEW}media/refused.mp4`);
+    await answered();
 
     const second = add(`<video src="media/refused.mp4"></video>`).querySelector("video")!;
     first.src = `${PREVIEW}media/refused.mp4`;
@@ -182,6 +186,7 @@ describe("corsForSealedMedia", () => {
     const load = vi.spyOn(video, "load").mockImplementation(() => {});
     video.querySelector("source")!.dispatchEvent(new Event("error"));
     playsFrom(video, `${PREVIEW}media/no-cors-a.mp4`);
+    await answered();
     playsFrom(video, `${PREVIEW}media/no-cors-a.mp4`);
     expect([video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([false, 1]);
     expect(warn.mock.calls.map(([line]) => String(line).split(" ")[1])).toEqual([
@@ -201,7 +206,8 @@ describe("corsForSealedMedia", () => {
     const load = vi.spyOn(video, "load").mockImplementation(() => {});
     video.dispatchEvent(new Event("error"));
     playsFrom(video, `${PREVIEW}media/blip.mp4`);
-    await vi.waitFor(() => expect(video.getAttribute("crossorigin")).toBe("anonymous"));
+    await answered();
+    expect(video.getAttribute("crossorigin")).toBe("anonymous");
     video.dispatchEvent(new Event("error"));
     playsFrom(video, `${PREVIEW}media/blip.mp4`);
     await settled();
@@ -223,7 +229,8 @@ describe("corsForSealedMedia", () => {
     const load = vi.spyOn(video, "load").mockImplementation(() => {});
     video.dispatchEvent(new Event("error"));
     playsFrom(video, `${PREVIEW}media/no-cors.mp4`);
-    await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
+    await answered();
+    expect(warn).toHaveBeenCalledTimes(1);
     expect([video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([false, 1]);
     warn.mockRestore();
   });

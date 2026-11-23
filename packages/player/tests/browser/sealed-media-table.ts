@@ -962,10 +962,7 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
         problems.push(`${where}: ${canPlay ? "does not play" : "plays"} ${JSON.stringify(seen)}`);
       if (!seen.playing) continue;
       const kind = kinds.get(idOf(seen.currentSrc))!;
-      const readable =
-        unsealed.pixels === "readable" &&
-        !foreign(kind) &&
-        SENDS_CORS.has(kind);
+      const readable = unsealed.pixels === "readable" && !foreign(kind) && SENDS_CORS.has(kind);
       if (!readable || seen.pixels === "readable") continue;
       const line = `${where}: plays ${idOf(seen.currentSrc)} unreadable ${JSON.stringify(seen)}`;
       if (mixed(list) && !foreign(kind)) {
