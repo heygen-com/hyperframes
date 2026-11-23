@@ -7,7 +7,6 @@ import { findElementForSelection, type DomEditSelection } from "./domEditing";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
 import { resolveCenterResizeScale } from "./domEditResizeLocal";
 import {
-  PRESS_WAITING_ATTR,
   type WaitingPressState,
   type GestureKind,
   type ResizeHandle,
@@ -22,6 +21,7 @@ import { setStudioWaitingPressCancel } from "../../utils/studioPendingEdits";
 import { playheadMoment } from "../../hooks/editMoment";
 import type { EditMoment } from "./manualEditsTypes";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
+import { pressOutlineOf } from "./pressOutline";
 import {
   askShownGestureStarts,
   PRESS_WAIT_MAX_MS,
@@ -54,10 +54,8 @@ export function createPreviewGestureStarts(
     setStudioWaitingPressCancel(press && (() => dropPress(press)));
   };
 
-  const clearWaitingMark = () => {
-    opts.boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
-    opts.rafPausedRef.current = false;
-  };
+  const outline = pressOutlineOf(opts);
+  const clearWaitingMark = outline.idle;
 
   /** Points the press queued right behind `press` at `next` instead. */
   const unlink = (press: WaitingPressState, next: WaitingPressState | null) => {
@@ -65,14 +63,17 @@ export function createPreviewGestureStarts(
       if (p.after === press) p.after = next;
   };
 
-  const endWaitingPress = (press: WaitingPressState | null = opts.waitingPressRef.current) => {
+  const endWaitingPress = (
+    press: WaitingPressState | null = opts.waitingPressRef.current,
+    keepMark = false,
+  ) => {
     for (let p = press; p && !p.ended; p = p.after) {
       p.ended = true;
       cancelAnimationFrame(p.frame);
     }
     if (press === opts.waitingPressRef.current) {
       opts.waitingPressRef.current = null;
-      clearWaitingMark();
+      if (!keepMark) clearWaitingMark();
     }
     // A press queued behind this one keeps waiting, on nothing that has ended.
     else if (press) unlink(press, null);
@@ -176,8 +177,7 @@ export function createPreviewGestureStarts(
       ended: false,
     };
     opts.waitingPressRef.current = press;
-    opts.boxRef.current?.setAttribute(PRESS_WAITING_ATTR, "true");
-    opts.rafPausedRef.current = true;
+    outline.waitOnSave();
     let shownFrames = 0;
     let settledFrames = 0;
     const since = performance.now();
@@ -238,12 +238,17 @@ export function createPreviewGestureStarts(
         press.frame = requestAnimationFrame(poll);
         return;
       }
-      endWaitingPress(press);
+      endWaitingPress(press, !!channel);
       const read = startsFrom(step);
-      if (read === false) return sayWhyNotStarted(step);
-      if (!start(down as unknown as React.PointerEvent<HTMLElement>, at, true, read)) return;
+      if (read === false) sayWhyNotStarted(step);
+      outline.replayEnded(replay(read) && channel ? opts.iframeRef.current : null);
+    };
+    const replay = (read: ReturnType<typeof startsFrom>): boolean => {
+      const pointerDown = down as unknown as React.PointerEvent<HTMLElement>;
+      if (read === false || !start(pointerDown, at, true, read)) return false;
       if (press.moved) moveActiveGesture(press.moved);
       if (press.released) releaseActiveGesture(press.released);
+      return true;
     };
     const sayWhyNotStarted = (step: "lost" | "run" | "drawn") => {
       const pressed = opts.selectionRef.current;

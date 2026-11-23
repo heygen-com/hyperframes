@@ -625,7 +625,7 @@ describe("publish --update / --space ownership preflight", () => {
 });
 
 describe("publish with a committed team descriptor (SECOPS-2048)", () => {
-  // `.hyperframes/project.json` travels with every copy of a folder; only this machine's own
+  // The committed team descriptor travels with every copy of a folder; only this machine's own
   // record (outside the folder, keyed by its path) may make it pick the project to overwrite.
   async function runWithDescriptor(options: {
     team: { projectId: string; spaceId?: string };
