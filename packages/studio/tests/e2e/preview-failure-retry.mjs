@@ -11,6 +11,8 @@ if (!STUDIO_URL) {
 const ORIGIN = new URL(STUDIO_URL).origin;
 const FAILURE = '[data-testid="composition-preview-error"]';
 const SELECTION_BOX = '[data-dom-edit-selection-box="true"]';
+const CANVAS_MENU = "body > div.fixed.z-200";
+const TEXT_TOOLBAR = '[role="toolbar"][aria-label="Text formatting"]';
 
 const painted = (page) =>
   page.waitForFunction(() => document.querySelector("hyperframes-player")?.painted === true, {
@@ -51,6 +53,18 @@ async function failThenRetry(page) {
     ),
   );
   const button = await page.waitForSelector(`${FAILURE} button`, { timeout: 10_000 });
+  const leftOpen = await page.evaluate(
+    ({ menu, toolbar }) => ({
+      menu: !!document.querySelector(menu),
+      toolbar: !!document.querySelector(toolbar),
+    }),
+    { menu: CANVAS_MENU, toolbar: TEXT_TOOLBAR },
+  );
+  assert.deepEqual(
+    leftOpen,
+    { menu: false, toolbar: false },
+    "a failed preview leaves no canvas menu or text toolbar open",
+  );
   const box = await button.boundingBox();
   const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   const onTop = await page.evaluate(({ x, y }) => {
@@ -100,6 +114,18 @@ try {
   assert.equal(await selectedId(page), selected, "the selection comes back as after any reload");
   console.log("a selected layer over the stage: retry takes the click, the selection comes back");
 
+  const centre = await page.evaluate(() => {
+    const box = document
+      .querySelector("hyperframes-player")
+      .shadowRoot.querySelector("iframe")
+      .getBoundingClientRect();
+    return { x: box.x + box.width / 2 - 60, y: box.y + box.height / 2 - 60 };
+  });
+  await page.mouse.click(centre.x, centre.y, { button: "right" });
+  await page.waitForSelector(CANVAS_MENU, { timeout: 10_000 });
+  await failThenRetry(page);
+  console.log("a canvas menu open over the stage: the failure closes it, retry takes the click");
+
   await open(page, "inline-text-caret");
   const title = await stagePoint(page, "title");
   // One press selects the title and Enter opens its text with the caret at the end, as inline-text-caret.mjs does.
@@ -119,6 +145,7 @@ try {
   );
   await page.keyboard.press("End");
   await page.keyboard.type(" kept");
+  await page.waitForSelector(TEXT_TOOLBAR, { timeout: 10_000 });
   await failThenRetry(page);
   const saved = await page.waitForFunction(
     async (origin) => {

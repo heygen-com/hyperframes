@@ -459,6 +459,14 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     onCanvasPointerMoveRef,
     onSelectionChangeRef,
   });
+  const endPortalledToolsRef = useRef(() => {});
+  endPortalledToolsRef.current = () => {
+    closeContextMenu();
+    inlineText.commit();
+  };
+  useEffect(() => {
+    if (previewFailed) endPortalledToolsRef.current();
+  }, [previewFailed]);
 
   return (
     <div

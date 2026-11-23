@@ -41,6 +41,7 @@ export function useInlineTextEditing(
   { enterFromWindow = false }: { enterFromWindow?: boolean } = {},
 ): {
   editing: boolean;
+  commit: () => void;
   /** Open an edit when this press pairs with the last one. */
   startFromPress: (event: Press) => boolean;
   /** Handle a key on the canvas. Returns true when it opened an edit. */
@@ -159,6 +160,7 @@ export function useInlineTextEditing(
       </>
     ),
     handleKeyDown,
+    commit: inlineText.commit,
     startFromPress: (event) => {
       if (inlineText.session) return false;
       const element = pairedPress(event);
