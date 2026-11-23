@@ -972,6 +972,8 @@ export type BundlePrivateFiles = "vcs-and-secrets" | "studio";
 
 type DeferredScriptChunk = string | (() => string);
 
+const DATA_BLOCK_COPIES = 2;
+
 /** The page's script tags by `src`, collected at first use; a pin carried to a new spelling adds its tag. */
 function scriptTagsBySrc(doc: Document): () => Map<string, Element[]> {
   let index: Map<string, Element[]> | undefined;
@@ -1494,8 +1496,9 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   }
 
   // A file named by several tags of one kind runs once, as a composition's scripts do: a copy per tag grew the page
-  // past memory. A nomodule or data-block tag is another kind, so the regular tag beside it keeps its copy.
+  // past memory. Kinds are regular, nomodule, and a data block per type, at most DATA_BLOCK_COPIES types per file.
   const inlinedRootRuns = new Set<string>();
+  const dataBlockCopies = new Map<string, number>();
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
     if (!src || !isRelativeUrl(src)) continue;
@@ -1505,13 +1508,21 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     // both drops module semantics and changes the import base URL.
     if ((el.getAttribute("type") || "").trim().toLowerCase() === "module") continue;
     const jsPath = resolveEntryUrl(src);
-    const run = `${(el.getAttribute("type") || "").trim().toLowerCase()} ${el.hasAttribute("nomodule")} ${jsPath}`;
+    const dataType = isJavaScriptType(el)
+      ? null
+      : (el.getAttribute("type") || "").trim().toLowerCase();
+    const run = `${dataType === null ? `js ${el.hasAttribute("nomodule")}` : `data ${dataType}`} ${jsPath}`;
     if (jsPath && inlinedRootRuns.has(run)) {
       el.remove();
       continue;
     }
     const js = jsPath ? readScriptOnce(jsPath) : null;
     if (!jsPath || js == null) continue;
+    if (dataType !== null) {
+      const copies = dataBlockCopies.get(jsPath) ?? 0;
+      if (copies >= DATA_BLOCK_COPIES) continue;
+      dataBlockCopies.set(jsPath, copies + 1);
+    }
     inlinedRootRuns.add(run);
     el.setAttribute(INLINED_FILE_ATTR, src);
     el.removeAttribute("src");
