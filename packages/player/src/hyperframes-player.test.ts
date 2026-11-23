@@ -2425,7 +2425,13 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     expect(player.ready).toBe(true);
     expect(player.duration).toBe(4);
     expect(readyEvents).toEqual([
-      { duration: 4, compositionWidth: 1920, compositionHeight: 1080, readyMs: expect.any(Number) },
+      {
+        duration: 4,
+        compositionWidth: 1920,
+        compositionHeight: 1080,
+        readyMs: expect.any(Number),
+        loadLimitMs: expect.any(Number),
+      },
     ]);
   });
 
@@ -2438,7 +2444,13 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     player._onMessage(timelineMessage(120, { compositionWidth: 1080, compositionHeight: 1920 }));
 
     expect(readyEvents).toEqual([
-      { duration: 4, compositionWidth: 1080, compositionHeight: 1920, readyMs: expect.any(Number) },
+      {
+        duration: 4,
+        compositionWidth: 1080,
+        compositionHeight: 1920,
+        readyMs: expect.any(Number),
+        loadLimitMs: expect.any(Number),
+      },
     ]);
     expect(player.compositionWidth).toBe(1080);
     expect(player.compositionHeight).toBe(1920);
@@ -2457,7 +2469,13 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     });
 
     expect(readyEvents).toEqual([
-      { duration: 5, compositionWidth: 1080, compositionHeight: 1350, readyMs: expect.any(Number) },
+      {
+        duration: 5,
+        compositionWidth: 1080,
+        compositionHeight: 1350,
+        readyMs: expect.any(Number),
+        loadLimitMs: expect.any(Number),
+      },
     ]);
   });
 
@@ -3076,7 +3094,13 @@ describe("HyperframesPlayer video mode", () => {
     loadMetadata(videoOf(player));
 
     expect(readies).toEqual([
-      { duration: 6, compositionWidth: 1080, compositionHeight: 1920, readyMs: null },
+      {
+        duration: 6,
+        compositionWidth: 1080,
+        compositionHeight: 1920,
+        readyMs: null,
+        loadLimitMs: null,
+      },
     ]);
     expect(player.ready).toBe(true);
   });

@@ -105,6 +105,10 @@ export class CompositionProbe {
     return performance.now() - this._startedAt;
   }
 
+  get limitMs(): number {
+    return this._limitMs;
+  }
+
   constructor(
     private readonly _iframe: HTMLIFrameElement,
     private readonly _callbacks: ProbeCallbacks,

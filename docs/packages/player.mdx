@@ -134,7 +134,7 @@ player.addEventListener("timeupdate", (event) => {
 
 | Event          | Detail            | Description                                                  |
 | -------------- | ----------------- | ------------------------------------------------------------ |
-| `ready`        | `{ duration, compositionWidth, compositionHeight, readyMs }` | Composition loaded and timeline discovered. `readyMs`: milliseconds from the frame's load to its timeline (`null` for a video) |
+| `ready`        | `{ duration, compositionWidth, compositionHeight, readyMs, loadLimitMs }` | Composition loaded and timeline discovered. `readyMs`: milliseconds from the frame's load to its timeline; `loadLimitMs`: the load limit it had. Both `null` for a video |
 | `durationchange` | `{ duration }`  | The duration changed after `ready`                           |
 | `resize`       | `{ compositionWidth, compositionHeight }` | The composition's size changed           |
 | `timeupdate`   | `{ currentTime }` | Playback position changed, approximately 10 times per second |

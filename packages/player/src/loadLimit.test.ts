@@ -51,13 +51,13 @@ describe("a film past its load limit", () => {
     const iframe = player.shadowRoot!.querySelector("iframe")!;
     iframe.contentDocument!.body.innerHTML = '<div data-composition-id="main"></div>';
     const events: string[] = [];
-    const readies: Array<{ readyMs: number | null }> = [];
+    const readies: Array<{ readyMs: number | null; loadLimitMs: number | null }> = [];
     player.addEventListener("error", (event: Event) =>
       events.push(`error ${(event as CustomEvent<{ message: string }>).detail.message}`),
     );
     player.addEventListener("ready", (event) => {
       events.push("ready");
-      readies.push((event as CustomEvent<{ readyMs: number | null }>).detail);
+      readies.push((event as CustomEvent<(typeof readies)[number]>).detail);
     });
     iframe.dispatchEvent(new Event("load"));
     const postTimeline = () =>
@@ -99,11 +99,12 @@ describe("a film past its load limit", () => {
     expect(player.ready).toBe(true);
   });
 
-  it("reports how long the frame took from its load to its timeline", () => {
+  it("reports how long the frame took from its load to its timeline, and the limit it had", () => {
     const { readies, postTimeline } = mountPlayer();
     vi.advanceTimersByTime(1_200);
     postTimeline();
     expect(readies).toHaveLength(1);
     expect(readies[0]!.readyMs).toBeGreaterThanOrEqual(1_200);
+    expect(readies[0]!.loadLimitMs).toBe(LINUX);
   });
 });
