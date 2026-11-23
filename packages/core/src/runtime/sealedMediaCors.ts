@@ -47,21 +47,23 @@ function setOf<T>(map: WeakMap<HTMLMediaElement, Set<T>>, media: HTMLMediaElemen
 const has = (map: WeakMap<HTMLMediaElement, Set<string>>, media: HTMLMediaElement, url: string) =>
   map.get(media)?.has(url) ?? false;
 
+function candidate(media: HTMLMediaElement, el: HTMLSourceElement, home: string): string | null {
+  const src = el.getAttribute("src");
+  const type = el.getAttribute("type");
+  const query = el.getAttribute("media");
+  const playable = !type || (type !== PINNED_OUT && media.canPlayType(type));
+  if (!src || !playable || (query && !matchMedia(query).matches)) return null;
+  return resolved(src, home);
+}
+
 function selectable(media: HTMLMediaElement, home: string): string[] {
   const own = media.getAttribute("src");
   if (media.hasAttribute("src")) return own ? [resolved(own, home)] : [];
-  return [...media.querySelectorAll("source")].flatMap((el) => {
-    const src = el.getAttribute("src");
-    const type = el.getAttribute("type");
-    const query = el.getAttribute("media");
-    if (!src || (type && !media.canPlayType(type)) || (query && !matchMedia(query).matches))
-      return [];
-    return [resolved(src, home)];
-  });
+  return [...media.querySelectorAll("source")].flatMap((el) => candidate(media, el, home) ?? []);
 }
 
 const isHome = (url: string, home: string) => originOf(url, home) === originOf(home, home);
-// As unsealed Studio reads pixels: only the preview's own host; a list naming another host stays as written.
+// As unsealed Studio reads pixels: only the preview's own host; a list naming another host loads as written first.
 const allHome = (urls: string[], home: string) =>
   urls.length > 0 && urls.every((url) => isHome(url, home));
 
@@ -128,7 +130,10 @@ function play(this: HTMLMediaElement): Promise<void> {
 
 // Only the composition's own load() tries a down source again, as the browser would; the runtime's keep the mark.
 function load(this: HTMLMediaElement): void {
-  if (!loadedByRuntime(this)) down.delete(this);
+  if (!loadedByRuntime(this)) {
+    down.delete(this);
+    unpin(this);
+  }
   nativeLoad.call(this);
 }
 
@@ -170,7 +175,45 @@ function wasDown(media: HTMLMediaElement, url: string): void {
   if (setOf(refused, media).delete(url)) setOf(down, media).add(url);
 }
 
+const PINNED_OUT = "video/x-hyperframes-pinned-out";
+const pinned = new WeakMap<HTMLMediaElement, Array<[HTMLSourceElement, string | null]>>();
+const erredThisPick = new WeakMap<HTMLMediaElement, Set<Element>>();
+
+function pinTo(media: HTMLMediaElement, keep: Element | null): void {
+  if (!keep || keep === media) return;
+  const held: Array<[HTMLSourceElement, string | null]> = [];
+  for (const el of media.querySelectorAll("source")) {
+    if (el === keep) break;
+    held.push([el, el.getAttribute("type")]);
+    el.setAttribute("type", PINNED_OUT);
+  }
+  if (held.length) pinned.set(media, held);
+}
+
+function playingSource(media: HTMLMediaElement, chosen: string, home: string): Element | null {
+  const erred = erredThisPick.get(media);
+  return (
+    [...media.querySelectorAll("source")].find(
+      (el) => candidate(media, el, home) === chosen && !erred?.has(el),
+    ) ?? null
+  );
+}
+
+function unpin(media: HTMLMediaElement): void {
+  for (const [el, type] of pinned.get(media) ?? []) {
+    if (el.getAttribute("type") !== PINNED_OUT) continue;
+    if (type === null) el.removeAttribute("type");
+    else el.setAttribute("type", type);
+  }
+  pinned.delete(media);
+}
+
 function failed(event: Event, home: string): void {
+  const target = event.target as Element | null;
+  const owner = target?.nodeType === 1 ? mediaOf(target) : null;
+  if (owner && target !== owner) setOf(erredThisPick, owner).add(target!);
+  if (owner && pinned.get(owner)?.some(([el]) => el === target)) return;
+  if (owner) unpin(owner);
   const found = failure(event, home);
   if (!found) return;
   const { media, url } = found;
@@ -178,6 +221,7 @@ function failed(event: Event, home: string): void {
   if (has(down, media, url)) return;
   setOf(refused, media).add(url);
   write(media, null);
+  pinTo(media, event.target as Element);
   reload(media);
 }
 
@@ -185,12 +229,14 @@ function failed(event: Event, home: string): void {
 function firstFrame(event: Event, home: string): void {
   const media = event.target as HTMLMediaElement;
   if (!isMedia(media) || authored.has(media)) return;
+  unpin(media);
   const chosen = media.currentSrc;
   down.get(media)?.delete(chosen);
   if (media.hasAttribute("crossorigin")) return;
   if (has(refused, media, chosen)) return warnOnce(media, chosen);
-  if (!allHome(selectable(media, home), home)) return;
+  if (!isHome(chosen, home) || !selectable(media, home).includes(chosen)) return;
   write(media, "anonymous");
+  pinTo(media, playingSource(media, chosen, home));
   reload(media);
 }
 
@@ -217,6 +263,7 @@ let home = "";
 // One function each, so a second start adds no second listener.
 const onError = (event: Event) => failed(event, home);
 const onFirstFrame = (event: Event) => firstFrame(event, home);
+const onPickStart = (event: Event) => erredThisPick.delete(event.target as HTMLMediaElement);
 
 /** In a sealed document, opts the preview server's own media into CORS as it parses or changes src, before it loads;
  * a source that refuses CORS on an element plays there without it, after one more load. */
@@ -247,6 +294,7 @@ export function corsForSealedMedia(): MutationObserver | null {
   // Media events do not bubble; capture listeners on the document hear every element's.
   document.addEventListener("error", onError, true);
   document.addEventListener("loadeddata", onFirstFrame, true);
+  document.addEventListener("loadstart", onPickStart, true);
   const media = HTMLMediaElement.prototype;
   if (media.play !== play) [nativePlay, media.play] = [media.play, play];
   if (media.load !== load) [nativeLoad, media.load] = [media.load, load];

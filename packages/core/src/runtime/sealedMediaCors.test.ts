@@ -265,7 +265,32 @@ describe("corsForSealedMedia", () => {
     expect([video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([false, 3]);
   });
 
-  it("leaves a list naming another host as written, also once its own source plays", async () => {
+  it("loads a list naming another host as written, and keeps it so while the other host's source plays", async () => {
+    vi.stubGlobal("origin", "null");
+    observer = corsForSealedMedia();
+    const video = add(
+      `<video><source src="https://cdn.example.com/x.webm"><source src="media/own.mp4"></video>`,
+    ).querySelector("video")!;
+    await settled();
+    expect(video.hasAttribute("crossorigin")).toBe(false);
+    const load = vi.spyOn(video, "load").mockImplementation(() => {});
+    playsFrom(video, "https://cdn.example.com/x.webm");
+    expect([video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([false, 0]);
+  });
+
+  it("opts in an own source that plays first in a list naming another host", async () => {
+    vi.stubGlobal("origin", "null");
+    observer = corsForSealedMedia();
+    const video = add(
+      `<video><source src="media/own.mp4"><source src="https://cdn.example.com/x.webm"></video>`,
+    ).querySelector("video")!;
+    await settled();
+    const load = vi.spyOn(video, "load").mockImplementation(() => {});
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    expect([video.getAttribute("crossorigin"), load.mock.calls.length]).toEqual(["anonymous", 1]);
+  });
+
+  it("opts in an own source reached after another host's failed, and keeps that source through the reload", async () => {
     vi.stubGlobal("origin", "null");
     observer = corsForSealedMedia();
     const video = add(
@@ -273,9 +298,72 @@ describe("corsForSealedMedia", () => {
     ).querySelector("video")!;
     await settled();
     const load = vi.spyOn(video, "load").mockImplementation(() => {});
+    const [foreign] = video.querySelectorAll("source");
+    foreign!.dispatchEvent(new Event("error"));
     playsFrom(video, `${PREVIEW}media/own.mp4`);
-    expect([video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([false, 0]);
+    expect([video.getAttribute("crossorigin"), load.mock.calls.length]).toEqual(["anonymous", 1]);
+    expect(foreign!.hasAttribute("type")).toBe(true);
+    foreign!.dispatchEvent(new Event("error"));
+    expect(load).toHaveBeenCalledTimes(1);
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    expect([foreign!.hasAttribute("type"), video.getAttribute("crossorigin")]).toEqual([
+      false,
+      "anonymous",
+    ]);
   });
+  it("keeps a type the composition writes on a source sitting out a reload", async () => {
+    vi.stubGlobal("origin", "null");
+    observer = corsForSealedMedia();
+    const video = add(
+      `<video><source src="https://cdn.example.com/x.webm"><source src="media/own.mp4"></video>`,
+    ).querySelector("video")!;
+    await settled();
+    vi.spyOn(video, "load").mockImplementation(() => {});
+    const [foreign] = video.querySelectorAll("source");
+    foreign!.dispatchEvent(new Event("error"));
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    foreign!.setAttribute("type", "video/webm");
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    expect(foreign!.getAttribute("type")).toBe("video/webm");
+  });
+
+  it("pins out every source ahead of the one playing, past a skipped copy of its URL", async () => {
+    vi.stubGlobal("origin", "null");
+    observer = corsForSealedMedia();
+    const video = add(
+      `<video><source src="media/own.mp4" type="video/x-unplayable"><source src="https://cdn.example.com/x.webm"><source src="media/own.mp4"></video>`,
+    ).querySelector("video")!;
+    await settled();
+    vi.spyOn(video, "load").mockImplementation(() => {});
+    const foreign = video.querySelectorAll("source")[1]!;
+    foreign.dispatchEvent(new Event("error"));
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    expect([video.getAttribute("crossorigin"), foreign.hasAttribute("type")]).toEqual([
+      "anonymous",
+      true,
+    ]);
+  });
+
+  it("pins out a failed copy of the playing URL and a foreign source after it", async () => {
+    vi.stubGlobal("origin", "null");
+    observer = corsForSealedMedia();
+    const video = add(
+      `<video><source src="media/own.mp4"><source src="https://cdn.example.com/x.webm"><source src="media/own.mp4"></video>`,
+    ).querySelector("video")!;
+    await settled();
+    vi.spyOn(video, "load").mockImplementation(() => {});
+    video.dispatchEvent(new Event("loadstart"));
+    const [first, foreign, last] = video.querySelectorAll("source");
+    first!.dispatchEvent(new Event("error"));
+    foreign!.dispatchEvent(new Event("error"));
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    expect([first, foreign, last].map((el) => el!.hasAttribute("type"))).toEqual([
+      true,
+      true,
+      false,
+    ]);
+  });
+
   it("follows the first source the browser would pick when the list changes", async () => {
     vi.stubGlobal("origin", "null");
     observer = corsForSealedMedia();
