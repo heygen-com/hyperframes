@@ -36,13 +36,16 @@ const calleeName = (call: ts.CallExpression) =>
     ? call.expression.name.text
     : call.expression.getText();
 
+/** The process's own streams, also under the bare names a file takes them out of `process` by. */
+const PROCESS_STREAM = /^(process\.)?(stdout|stderr)$/;
+
 function printsToTerminal(call: ts.CallExpression): boolean {
   if (!ts.isPropertyAccessExpression(call.expression)) return false;
   const target = call.expression.expression.getText();
   const method = call.expression.name.text;
   if (target === "console") return CONSOLE_PRINTS.has(method);
   if (target === "clack.log") return true;
-  return method === "write" && (target === "process.stderr" || target === "process.stdout");
+  return method === "write" && PROCESS_STREAM.test(target);
 }
 
 const shownAsWritten = (node: ts.Node) =>
@@ -247,8 +250,8 @@ it("finds a value printed as it came in a file that runs before a command", () =
 
 // The CLI's print calls, counted per file: `console` prints, `clack.log` lines, `clack.intro`,
 // `outro`, `note` and `cancel`, the lines of a spinner (a name that says so: `s`, `spin`, `spinner`,
-// `…Spinner`), and writes to the process's own stdout and stderr. A print made any other way is not
-// seen here.
+// `…Spinner`), and writes to the process's own stdout and stderr (as `process.stdout` or a bare
+// `stdout`). A print made any other way is not seen here.
 //
 // A print call is "plain" when all it prints is text the CLI wrote, by shape: literals, counts,
 // numbers and their formatting, constants set from those, colour helpers around those, and anything
@@ -271,7 +274,11 @@ const PRINTS_FOR_ANOTHER_PROGRAM: Record<string, { calls: number; why: string }>
   "commands/render.ts": { calls: 1, why: "passes on the container's stderr as it arrives" },
   "fontLocalizeCli.ts": { calls: 2, why: "a pipe tool: what it was handed goes back out" },
   "renderSetupWorker.ts": { calls: 2, why: "the result and failure lines its parent parses" },
+  "ui/progress.ts": { calls: 1, why: "the `@hf-progress` line a parent process parses" },
+  "ui/renderDiagnostic.ts": { calls: 1, why: "the `@hf-diagnostic` line a parent process parses" },
+  "ui/renderResult.ts": { calls: 1, why: "the `@hf-result` line a parent process parses" },
   "utils/cancellableProcess.ts": { calls: 2, why: "passes on its own worker's stderr" },
+  "utils/jsonError.ts": { calls: 1, why: "the `--json` failure body, one JSON line" },
   "whisper/sherpaWorker.ts": { calls: 3, why: "prefixed lines `whisper/sherpa.ts` parses" },
 };
 
@@ -484,6 +491,8 @@ it("counts a print call by what it prints", () => {
   expect(count("console.log(row.name);")).toBe(1);
   expect(count("console.log(describe(total));")).toBe(1);
   expect(count("process.stdout.write(bytes);")).toBe(1);
+  expect(count("stderr.write(bytes);")).toBe(1);
+  expect(count("child.stdout.write(bytes);")).toBe(0);
   expect(count("function show(total: string) { console.log(total); }")).toBe(1);
 });
 
