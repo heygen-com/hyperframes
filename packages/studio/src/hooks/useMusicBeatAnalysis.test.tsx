@@ -53,7 +53,7 @@ async function opened(elements: TimelineElement[]) {
     </FileManagerProvider>,
   );
   await act(async () => {
-    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    await new Promise((settled) => setTimeout(settled, 0));
   });
   const beats = usePlayerStore.getState().beatAnalysis?.beatTimes ?? null;
   act(() => root.unmount());
