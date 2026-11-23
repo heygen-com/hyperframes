@@ -368,6 +368,38 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
   });
 });
 
+// fails without the fix: a sealed reload names a clip from its element when the frame's document copy arrives and from
+// its place in the list when it doesn't, so every clip changed name across an agent cut and the timeline lost them.
+describe("a clip's name across a sealed reload", () => {
+  it("is the same whether or not the frame's element for it can be reached", () => {
+    const clip = {
+      id: "title",
+      label: "Title",
+      kind: "element" as const,
+      tagName: "div",
+      start: 0,
+      duration: 5,
+      track: 0,
+      compositionId: null,
+      parentCompositionId: null,
+      compositionSrc: null,
+      assetUrl: null,
+    };
+    const doc = makeDoc(
+      `<div data-composition-id="root"><div id="title" class="clip"></div></div>`,
+    );
+    const reached = createTimelineElementFromManifestClip({
+      clip,
+      fallbackIndex: 3,
+      doc,
+      hostEl: doc.getElementById("title"),
+    });
+    const unreached = createTimelineElementFromManifestClip({ clip, fallbackIndex: 3, doc: null });
+    expect(unreached.key).toBe(reached.key);
+    expect(unreached.id).toBe(reached.id);
+  });
+});
+
 describe("a sealed preview's text rows", () => {
   const LOOK = {
     fontFamily: "Inter",
