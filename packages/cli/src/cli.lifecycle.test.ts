@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -30,6 +30,37 @@ afterEach(async () => {
 });
 
 const PLAIN = "(no --json)";
+
+async function answersWithItsTextAsGiven(argv: string[], given: string, exit: number) {
+  const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  let answered = "";
+  const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+    answered += String(chunk);
+    return true;
+  }) as never);
+  try {
+    mockTelemetry();
+    process.argv = ["node", "cli.ts", ...argv, "--json"];
+    await import("./cli.js");
+
+    const said = errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+    expect(said).toContain(given.replace("\u0007", "\\x07"));
+    expect(said).not.toContain("\u0007");
+    const body = JSON.parse(answered.trim().split("\n").at(-1) ?? "") as {
+      ok: boolean;
+      error: { message: string };
+    };
+    expect(body.ok).toBe(false);
+    expect(process.exitCode).toBe(exit);
+    expect(body.error.message).toContain(given);
+    expect(body.error.message).not.toContain("\\x07");
+  } finally {
+    outSpy.mockRestore();
+    errorSpy.mockRestore();
+    exitSpy.mockRestore();
+  }
+}
 
 describe("CLI lifecycle", () => {
   it("queues a command failure before exit, without waiting on a network flush", async () => {
@@ -474,6 +505,104 @@ describe("CLI lifecycle", () => {
     } finally {
       errorSpy.mockRestore();
       exitSpy.mockRestore();
+    }
+  });
+
+  // fails without the fix: the envelope's message was the line as people see it, escapes included.
+  it.each([
+    [
+      "an unknown lambda subcommand",
+      ["lambda", "de\u0007ploy"],
+      "Unknown subcommand: de\u0007ploy",
+      2,
+    ],
+    ["an unknown lambda sites verb", ["lambda", "sites", "cr\u0007eate"], 'verb "cr\u0007eate"', 2],
+    [
+      "a lambda stack with no state",
+      ["lambda", "progress", "r1", "--stack-name", "st\u0007ack"],
+      'no stack state for "st\u0007ack"',
+      1,
+    ],
+    [
+      "an unknown cloudrun subcommand",
+      ["cloudrun", "de\u0007ploy"],
+      "Unknown subcommand: de\u0007ploy",
+      2,
+    ],
+    [
+      "an unknown cloudrun sites verb",
+      ["cloudrun", "sites", "cr\u0007eate"],
+      'verb "cr\u0007eate"',
+      2,
+    ],
+    [
+      "a missing cloudrun batch file",
+      [
+        "cloudrun",
+        "render-batch",
+        ".",
+        "--batch",
+        "ba\u0007tch.jsonl",
+        "--width",
+        "8",
+        "--height",
+        "8",
+      ],
+      "batch file not found: ba\u0007tch.jsonl",
+      1,
+    ],
+  ])("answers a --json run for %s with its text as given", async (_name, argv, given, exit) => {
+    await answersWithItsTextAsGiven(argv, given, exit);
+  });
+
+  const STACK = {
+    stackName: "other",
+    region: "us-east-1",
+    bucketName: "some-bucket",
+    stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:render",
+    functionName: "render",
+    lambdaMemoryMb: 1024,
+  };
+  const stackFile = (dir: string, text: string) => {
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(join(dir, ".hyperframes", "lambda-stack-st\u0007ack.json"), text);
+  };
+  const LAMBDA_PROGRESS = ["lambda", "progress", "r1", "--stack-name", "st\u0007ack"];
+
+  // fails without the fix: the envelope's message was the line as people see it, escapes included.
+  // A control character in a file name is refused on Windows.
+  it.skipIf(process.platform === "win32").each([
+    [
+      "a lambda stack file that cannot be read",
+      (dir: string) => stackFile(dir, "{"),
+      LAMBDA_PROGRESS,
+      "lambda-stack-st\u0007ack.json is not valid JSON",
+    ],
+    [
+      "a lambda stack file that names another stack",
+      (dir: string) => stackFile(dir, JSON.stringify(STACK)),
+      LAMBDA_PROGRESS,
+      'names stack "other", not "st\u0007ack"',
+    ],
+    [
+      "a beats run whose music file is missing",
+      (dir: string) =>
+        writeFileSync(
+          join(dir, "index.html"),
+          '<div data-composition-id="main" data-duration="5"><audio data-timeline-role="music" src="mu\u0007sic.mp3"></audio></div>',
+        ),
+      ["beats"],
+      "Audio file not found: mu\u0007sic.mp3",
+    ],
+  ])("answers a --json run for %s with its text as given", async (_name, write, argv, given) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cli-given-"));
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(dir);
+    try {
+      write(dir);
+      await answersWithItsTextAsGiven(argv, given, 1);
+    } finally {
+      cwd.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 

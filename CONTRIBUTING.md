@@ -53,6 +53,10 @@ bun run format:check    # Check formatting without writing
 
 Git hooks (via [lefthook](https://github.com/evilmartians/lefthook)) run automatically after `bun install` and enforce linting + formatting on staged files before each commit.
 
+#### Printing a value in the CLI
+
+When a CLI line for people repeats a value the CLI did not write (a name from a project file, a path, another program's output), pass it through `terminalText` or `terminalLines` from `@hyperframes/core`, so a control character in it shows as visible text. A test counts, per file, the print calls whose value is not plainly the CLI's own text (`packages/cli/src/printedFailureText.wiring.test.ts`). If it fails on your change, it says which file and what to do: wrap the value, or, when the CLI wrote the value itself, change that file's number in `packages/cli/src/printedValues.baseline.json` in the same PR. Output meant for another program (`--json`, a path printed as a command's whole answer) is not wrapped; such a print call is named in the list at the top of that test.
+
 #### Type-safety conventions
 
 We aim for honest types — code that lies to the compiler eventually lies to users. The underlying convention is:

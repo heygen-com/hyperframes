@@ -265,10 +265,17 @@ describe("gestureBase", () => {
     expect(gestureBase(handleFor(card))).toEqual({ x: 12, y: -4, opacity: 0.5, scale: 1.5 });
   });
 
-  it("answers null without GSAP, or for an element this load does not have", () => {
+  // fails without the fix: a page without GSAP answered null, so a sealed recording refused to start where the
+  // unsealed recorder starts from x 0, y 0, opacity 1 and scale 1.
+  it("answers the values at rest on a page without GSAP, as the unsealed recorder starts", () => {
     const card = turnedCard("");
-    expect(gestureBase(handleFor(card))).toBeNull();
+    expect(gestureBase(handleFor(card))).toEqual({ x: 0, y: 0, opacity: 1, scale: 1 });
+  });
+
+  it("answers null for an element this load does not have", () => {
     gsapWith([]);
+    expect(gestureBase("0123456789abcdef:999")).toBeNull();
+    Reflect.deleteProperty(window, "gsap");
     expect(gestureBase("0123456789abcdef:999")).toBeNull();
   });
 });

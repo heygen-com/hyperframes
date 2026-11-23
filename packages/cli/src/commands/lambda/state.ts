@@ -1,5 +1,5 @@
 import { failCommand } from "../../utils/commandResult.js";
-import { terminalText } from "@hyperframes/core";
+import { printFailureLine } from "../../utils/jsonError.js";
 /**
  * Persists `hyperframes lambda` stack outputs (bucket, state-machine ARN,
  * region) so `render` / `progress` / `destroy` don't need to re-derive
@@ -155,22 +155,24 @@ export function requireStack(stackName: string, cwd: string = process.cwd()): St
   const path = stateFilePath(stackName, cwd);
   const deploy = `Run \`hyperframes lambda deploy${stackName === DEFAULT_STACK_NAME ? "" : ` --stack-name=${stackName}`}\``;
   if (typeof stack === "string") {
-    console.error(terminalText(`[hyperframes lambda] ${path} ${stack}. ${deploy} to rewrite it.`));
+    printFailureLine((show) =>
+      show(`[hyperframes lambda] ${path} ${stack}. ${deploy} to rewrite it.`),
+    );
     failCommand();
   }
   if (!stack) {
     const known = listStackNames(cwd);
     const hint = known.length ? ` Known stacks here: ${known.join(", ")}.` : "";
-    console.error(
-      terminalText(
+    printFailureLine((show) =>
+      show(
         `[hyperframes lambda] no stack state for "${stackName}" at ${path}. ${deploy} first.${hint}`,
       ),
     );
     failCommand();
   }
   if (!sameFileOnCaseInsensitiveDisk(String(stack.stackName), stackName)) {
-    console.error(
-      terminalText(
+    printFailureLine((show) =>
+      show(
         `[hyperframes lambda] ${path} names stack "${stack.stackName}", not "${stackName}". ${deploy} to rewrite it.`,
       ),
     );

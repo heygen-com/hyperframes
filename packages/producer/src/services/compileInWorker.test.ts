@@ -1,0 +1,146 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { Worker } from "node:worker_threads";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { compileForRenderInWorker } from "./compileInWorker.js";
+import { compileForRender } from "./htmlCompiler.js";
+import { extractSafeRenderErrorMetadata } from "../server.js";
+
+const FAKE = resolve(import.meta.dirname, "__fixtures__/compileWorkerFake.mjs");
+const REAL = resolve(import.meta.dirname, "__fixtures__/compileWorkerTs.mjs");
+
+const cleanups: Array<() => void> = [];
+afterEach(() => {
+  for (const cleanup of cleanups.splice(0)) cleanup();
+});
+
+describe("compileForRenderInWorker", () => {
+  it("ends a compile stuck in a synchronous pass at its deadline, with a typed non-retryable error", async () => {
+    const terminate = vi.spyOn(Worker.prototype, "terminate");
+    cleanups.push(() => terminate.mockRestore());
+    const began = performance.now();
+    const error = await compileForRenderInWorker(
+      "hang",
+      "x.html",
+      "d",
+      {},
+      {
+        entry: FAKE,
+        timeoutMs: 300,
+      },
+    ).catch((e: unknown) => e);
+    expect(performance.now() - began).toBeLessThan(3_000);
+    expect(extractSafeRenderErrorMetadata(error)).toEqual({
+      errorCode: "COMPILE_TIMEOUT",
+      errorOwner: "user",
+      retryable: false,
+      errorMetadata: { timeoutMs: 300 },
+    });
+    // The stuck thread itself ends, not only the promise.
+    await vi.waitFor(() => expect(terminate).toHaveBeenCalled(), { timeout: 5_000 });
+    await expect(terminate.mock.results[0]?.value).resolves.toBeTypeOf("number");
+  });
+
+  it("keeps the main thread answering /health while the compile is stuck", async () => {
+    const server: Server = createServer((_req, res) => res.end("ok"));
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    cleanups.push(() => server.close());
+    const { port } = server.address() as AddressInfo;
+
+    let settled = false;
+    const compile = compileForRenderInWorker(
+      "hang",
+      "x.html",
+      "d",
+      {},
+      {
+        entry: FAKE,
+        timeoutMs: 1_500,
+      },
+    ).catch(() => {});
+    void compile.then(() => (settled = true));
+    const health = await fetch(`http://127.0.0.1:${port}/health`).then((r) => r.text());
+    expect(health).toBe("ok");
+    expect(settled).toBe(false);
+    await compile;
+  });
+
+  it("ends the compile with the render's abort reason when the render is cancelled", async () => {
+    const controller = new AbortController();
+    const reason = new Error("render cancelled");
+    setTimeout(() => controller.abort(reason), 100);
+    const began = performance.now();
+    const error = await compileForRenderInWorker(
+      "hang",
+      "x.html",
+      "d",
+      { abortSignal: controller.signal },
+      { entry: FAKE, timeoutMs: 10_000 },
+    ).catch((e: unknown) => e);
+    expect(error).toBe(reason);
+    expect(performance.now() - began).toBeLessThan(3_000);
+  });
+
+  it("keeps a typed compile error's code, owner, retryability and metadata across the thread", async () => {
+    const error = await compileForRenderInWorker("typed", "x.html", "d", {}, { entry: FAKE }).catch(
+      (e: unknown) => e,
+    );
+    expect(extractSafeRenderErrorMetadata(error)).toEqual({
+      errorCode: "COMPOSITION_TOO_LARGE",
+      errorOwner: "user",
+      retryable: false,
+      errorMetadata: { bytes: 2, limitBytes: 1 },
+    });
+  });
+
+  it("brings a real compile's typed refusal back with its wire fields", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-compile-worker-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!doctype html><html><head></head><body><main data-composition-id="main" data-start="0" data-width="320" data-height="180" data-duration="1">${"<i></i>".repeat(100_001)}</main></body></html>`,
+    );
+    const error = await compileForRenderInWorker(
+      dir,
+      join(dir, "index.html"),
+      dir,
+      {},
+      {
+        entry: REAL,
+      },
+    ).catch((e: unknown) => e);
+    expect(extractSafeRenderErrorMetadata(error)).toMatchObject({
+      errorCode: "COMPOSITION_TOO_LARGE",
+      errorOwner: "user",
+      retryable: false,
+      errorMetadata: { exceeded: "elements" },
+    });
+  }, 60_000);
+
+  it("compiles a project on the real worker exactly as in-process", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-compile-worker-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    mkdirSync(join(dir, "downloads"));
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!doctype html><html><head></head><body>
+<main data-composition-id="main" data-start="0" data-width="320" data-height="180" data-duration="1"><p>x</p></main>
+</body></html>`,
+    );
+    const html = join(dir, "index.html");
+    const downloads = join(dir, "downloads");
+    const logged: string[] = [];
+    const log = {
+      error: (m: string) => logged.push(m),
+      warn: (m: string) => logged.push(m),
+      info: (m: string) => logged.push(m),
+      debug: (m: string) => logged.push(m),
+    };
+    const inProcess = await compileForRender(dir, html, downloads, { log });
+    const onWorker = await compileForRenderInWorker(dir, html, downloads, { log }, { entry: REAL });
+    expect(onWorker).toEqual(inProcess);
+  }, 60_000);
+});
