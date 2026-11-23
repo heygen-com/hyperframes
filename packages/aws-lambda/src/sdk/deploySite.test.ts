@@ -244,6 +244,7 @@ describe("deploySite", () => {
 
 const FFMPEG = process.env.HYPERFRAMES_FFMPEG_PATH?.trim() || "ffmpeg";
 const HAS_FFMPEG = spawnSync(FFMPEG, ["-version"]).status === 0;
+const FFPROBE = process.env.HYPERFRAMES_FFPROBE_PATH?.trim() || "ffprobe";
 
 describe.skipIf(!HAS_FFMPEG)("deploySite audio sidecars", () => {
   function appendMp4FreeBoxEveryReaderSkips(file: string, bytes: number): void {
@@ -264,6 +265,18 @@ describe.skipIf(!HAS_FFMPEG)("deploySite audio sidecars", () => {
     appendMp4FreeBoxEveryReaderSkips(take, AUDIO_SIDECAR_MIN_BYTES);
   }
 
+  function streamTypes(media: Buffer): string[] {
+    const file = join(scratch, "probed.m4a");
+    writeFileSync(file, media);
+    const probed = spawnSync(
+      FFPROBE,
+      ["-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", file],
+      { encoding: "utf8" },
+    );
+    expect(probed.status).toBe(0);
+    return probed.stdout.trim().split("\n");
+  }
+
   it("stores a large video's audio beside it, and leaves the site's file list as it was", async () => {
     addLargeVideo();
     const s3 = new FakeS3();
@@ -275,7 +288,7 @@ describe.skipIf(!HAS_FFMPEG)("deploySite audio sidecars", () => {
     expect(take?.sizeBytes).toBeGreaterThan(AUDIO_SIDECAR_MIN_BYTES);
     const sidecar = audioSidecarUri("test-bucket", take?.sha256 ?? "").replace("s3://", "");
     expect(s3.existing.has(sidecar)).toBe(true);
-    expect(s3.bodies.get(sidecar)?.length).toBeLessThan((take?.sizeBytes ?? 0) / 4);
+    expect(streamTypes(s3.bodies.get(sidecar) ?? Buffer.alloc(0))).toEqual(["audio"]);
     expect(sitePaths(s3, site.siteId)).toEqual([
       "assets/style.css",
       "assets/take.mp4",
