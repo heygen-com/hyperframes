@@ -228,6 +228,29 @@ describe("moves through GSAP", () => {
     },
   );
 
+  // fails without the fix: a write of x alone also dropped the draft's y, so a restore kept the cancelled drag's y.
+  it("puts back only the axis no later write took when the draft is restored", () => {
+    const { handle, position, move } = gsapHeld();
+    move(30, 36);
+    gsapSet({ handle, props: { x: 25 } });
+    drawDrafts([{ handle, end: "restore" }]);
+    expect(position).toEqual({ x: 25, y: 30 });
+  });
+
+  // fails without the fix: the hold dropped only when the whole batch landed, so a restore after a batch with a missed
+  // patch threw back the position an earlier patch had already written.
+  it("keeps a patch's position written before a later patch in the batch misses", () => {
+    const { handle, position, move } = gsapHeld();
+    move(30, 36);
+    const patches = [
+      { selector: "#card", change: { kind: "global-set" as const, props: { x: 50, y: 60 } } },
+      { selector: "#missing", change: { kind: "global-set" as const, props: { x: 1 } } },
+    ];
+    expect(patchTweens({ patches, seek: false }).patched).toBe(false);
+    drawDrafts([{ handle, end: "restore" }]);
+    expect(position).toEqual({ x: 50, y: 60 });
+  });
+
   it("leaves the position a save's patch sets after the draw when the draft is restored", () => {
     const { handle, position, move } = gsapHeld();
     move(30, 36);

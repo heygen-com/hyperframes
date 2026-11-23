@@ -494,15 +494,13 @@ export function parsePatchTweensRequest(params: unknown): PatchTweensParams | nu
   return ends.length ? { ...parsed, endsDrafts: ends } : parsed;
 }
 
-/** The frame patching its own timelines: every patch must land, and it renders once at the end. */
-const writesPosition = (change: RuntimeTweenChange) =>
+const positionAxes = (change: RuntimeTweenChange) =>
   (change.kind === "keyframes"
     ? change.keyframes.flatMap(Object.keys)
     : Object.keys(change.props)
-  ).some((channel) => channel === "x" || channel === "y");
-const yieldAt = (selector: string) =>
-  document.querySelectorAll(selector).forEach(yieldDrawnPosition);
+  ).filter((channel): channel is "x" | "y" => channel === "x" || channel === "y");
 
+/** The frame patching its own timelines: every patch must land, and it renders once at the end. */
 export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
   patched: boolean;
 } {
@@ -521,16 +519,20 @@ export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
   const renderAt = lastTweenPatch(patches);
   const patchedTweens: PatchableTween[] = [];
   const missed = patches.find(({ selector, change }, index) => {
-    if (change.kind === "global-set")
-      return applyGlobalSet(target, selector, change.props) === null;
+    if (change.kind === "global-set") {
+      const written = applyGlobalSet(target, selector, change.props);
+      if (written) yieldDrawnPosition(written, positionAxes(change));
+      return written === null;
+    }
     const defer = !(seek && index === renderAt);
-    return !patchTween(target, selector, change, undefined, defer, patchedTweens);
+    if (!patchTween(target, selector, change, undefined, defer, patchedTweens)) return true;
+    for (const written of patchedTweens.at(-1)?.targets?.() ?? [])
+      yieldDrawnPosition(written, positionAxes(change));
+    return false;
   });
   if (seek) drawWhatTheSeekLeft(patchedTweens);
   const shown = !seek || patchedTweens.every(renderedOnceReached);
   const patched = missed === undefined && shown;
-  if (patched)
-    for (const { selector, change } of patches) if (writesPosition(change)) yieldAt(selector);
   if (patched && endsDrafts) drawDrafts(endsDrafts);
   return { patched };
 }
