@@ -223,9 +223,9 @@ describe("gesture drafts on an opaque frame", () => {
     const member = dragMember(element);
     applyManualOffsetDragDraft(member, 10, 0);
     await settled();
-    armPreviewDraftEnd(element, "#card");
     vi.mocked(previewRequest).mockClear();
     applyManualOffsetDragDraft(member, 12, 0);
+    armPreviewDraftEnd(element, "#card");
     const ends = takePreviewDraftEnds(iframe, ["#card"]);
     // without the flush the draw still waits, so the end can't ride the save and a late draw could undo it
     expect(draftRequests()).toHaveLength(1);

@@ -45,7 +45,11 @@ export {
   formatTime,
 } from "./player";
 export { usePreviewIframeStore } from "./player/store/previewIframeStore";
-export { previewEditingClient, previewFrameOpaque } from "./player/lib/previewChannel";
+export {
+  previewDocumentCopy,
+  previewEditingClient,
+  previewFrameOpaque,
+} from "./player/lib/previewChannel";
 export {
   describePreviewElements,
   previewAncestors,
