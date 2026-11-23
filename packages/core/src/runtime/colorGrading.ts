@@ -3553,6 +3553,8 @@ function drawEntry(entry: ColorGradingEntry): boolean {
     return true;
   } catch (err) {
     entry.drawError = err instanceof Error ? err.message : "Shader draw failed";
+    entry.canvas.style.display = "none";
+    restoreSourceElement(entry);
     swallow("runtime.colorGrading.drawEntry", err);
     return false;
   }
