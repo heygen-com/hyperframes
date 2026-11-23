@@ -4,14 +4,15 @@ import { EDITING_ELEMENT_HANDLE, type EditingElementHandle } from "../editingEle
 import { elementForHandle } from "../editingHandles";
 import { isStylableElement, type StylableElement } from "../domRealm";
 import { sanitizeRichTextChildren } from "../../utils/richTextSanitize";
-import { isTextMarkup, MAX_EDIT_VALUE } from "./editElement";
+import { openTextEdits, isTextMarkup, MAX_EDIT_VALUE } from "./editElement";
+import { isEditableText } from "./textMarkup";
 
 type Point = { x: number; y: number };
 export type TextEditParams =
   | { handle: EditingElementHandle; action: "start"; caret: Point | null }
   | { handle: EditingElementHandle; action: "end"; keep: boolean };
 export type TextEditResult = { applied: boolean; html: string | null; previous: string | null };
-/** Posted to the starting port when Enter or Escape in the frame ends the session; null html was refused. */
+/** Posted to the starting port when Enter, Escape or a blur ends the session in the frame; null html was refused. */
 export type TextEditEndedEvent = {
   handle: EditingElementHandle;
   html: string | null;
@@ -41,16 +42,27 @@ export function parseTextEdit(params: unknown): TextEditParams | null {
   return null;
 }
 
-const isMarkupOrNull = (value: unknown) =>
+const isValue = (value: unknown) =>
   value === null || (typeof value === "string" && value.length <= MAX_EDIT_VALUE);
+const isTextMarkupOrNull = (value: unknown): value is string | null =>
+  value === null || (typeof value === "string" && isTextMarkup(value));
 
 export function textEditEndedEvent(data: unknown, version: number): TextEditEndedEvent | null {
   if (!isRecord(data) || !keysAre(data, "event,handle,html,previous,v")) return null;
   if (data.v !== version || data.event !== "text-edit-ended" || !isHandle(data.handle)) return null;
   const { handle, html, previous } = data;
-  if (!isMarkupOrNull(html) || typeof previous !== "string" || !isMarkupOrNull(previous))
+  if (!isValue(html) || typeof previous !== "string" || !isValue(previous)) return null;
+  if (!isTextMarkupOrNull(html) || !isTextMarkupOrNull(previous))
+    return { handle, html: null, previous: "" };
+  return { handle, html, previous };
+}
+
+export function textEditResult(reply: unknown): TextEditResult | null {
+  if (!isRecord(reply) || !keysAre(reply, "applied,html,previous")) return null;
+  const { applied, html, previous } = reply;
+  if (typeof applied !== "boolean" || !isTextMarkupOrNull(html) || !isTextMarkupOrNull(previous))
     return null;
-  return { handle, html: html as string | null, previous };
+  return { applied, html, previous };
 }
 
 type Editable = StylableElement & HTMLElement;
@@ -87,8 +99,9 @@ function close(keep: boolean): { html: string | null; previous: string } | null 
   session = null;
   open.stop();
   const { element } = open;
-  const html = keep && element.isConnected ? keptMarkup(element) : null;
-  if (html === null) element.innerHTML = open.original;
+  openTextEdits.delete(element);
+  const html = keep ? keptMarkup(element) : null;
+  if (html === null || !element.isConnected) element.innerHTML = open.original;
   element.removeAttribute("contenteditable");
   element.style.outline = open.outline;
   element.style.outlineOffset = open.outlineOffset;
@@ -104,7 +117,7 @@ export function endTextEdit(): void {
   close(false);
 }
 
-function caretRangeAt(doc: Document, at: Point): Range | null {
+export function caretRangeAt(doc: Document, at: Point): Range | null {
   const legacy = doc as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null };
   if (typeof legacy.caretRangeFromPoint === "function")
     return legacy.caretRangeFromPoint(at.x, at.y);
@@ -132,12 +145,7 @@ function placeCaret(element: Editable, at: Point | null): void {
   selection.addRange(range);
 }
 
-function listen(element: Editable, endInFrame: () => void): () => void {
-  const onKeyDown = (event: KeyboardEvent) => {
-    if ((event.key !== "Enter" || event.shiftKey) && event.key !== "Escape") return;
-    event.preventDefault();
-    endInFrame();
-  };
+export function takePlainTextOnly(element: HTMLElement): () => void {
   const insertPlainText = (text: string | undefined) => {
     if (text) element.ownerDocument.execCommand("insertText", false, text);
   };
@@ -150,22 +158,35 @@ function listen(element: Editable, endInFrame: () => void): () => void {
     event.preventDefault();
     insertPlainText(event.dataTransfer?.getData("text/plain"));
   };
+  element.addEventListener("paste", onPaste);
+  element.addEventListener("dragover", onDragOver);
+  element.addEventListener("drop", onDrop);
+  return () => {
+    element.removeEventListener("paste", onPaste);
+    element.removeEventListener("dragover", onDragOver);
+    element.removeEventListener("drop", onDrop);
+  };
+}
+
+function listen(element: Editable, endInFrame: () => void): () => void {
+  const onKeyDown = (event: KeyboardEvent) => {
+    if ((event.key !== "Enter" || event.shiftKey) && event.key !== "Escape") return;
+    event.preventDefault();
+    endInFrame();
+  };
   const removed = new MutationObserver(() => {
-    if (!element.isConnected) close(false);
+    if (!element.isConnected) endInFrame();
   });
   removed.observe(element.ownerDocument, { childList: true, subtree: true });
   const view = element.ownerDocument.defaultView;
-  const events = [
-    ["keydown", onKeyDown],
-    ["paste", onPaste],
-    ["dragover", onDragOver],
-    ["drop", onDrop],
-  ] as const;
-  for (const [type, listener] of events) element.addEventListener(type, listener as EventListener);
+  const releasePlainText = takePlainTextOnly(element);
+  element.addEventListener("keydown", onKeyDown);
+  element.addEventListener("blur", endInFrame);
   view?.addEventListener("pagehide", endTextEdit);
   return () => {
-    for (const [type, listener] of events)
-      element.removeEventListener(type, listener as EventListener);
+    releasePlainText();
+    element.removeEventListener("keydown", onKeyDown);
+    element.removeEventListener("blur", endInFrame);
     view?.removeEventListener("pagehide", endTextEdit);
     removed.disconnect();
   };
@@ -179,7 +200,7 @@ function start(
 ) {
   close(false);
   const element = elementForHandle(handle);
-  if (!isStylableElement(element) || !isTextMarkup(element.innerHTML)) return NOTHING;
+  if (!isStylableElement(element) || !isEditableText(element)) return NOTHING;
   const editable = element as Editable;
   const open: Session = {
     handle,
@@ -196,6 +217,7 @@ function start(
     if (ended) port.postMessage({ v: version, event: "text-edit-ended", handle, ...ended });
   });
   session = open;
+  openTextEdits.add(editable);
   editable.style.outline = EDITING_OUTLINE;
   editable.style.outlineOffset = "2px";
   editable.setAttribute("contenteditable", "true");

@@ -235,6 +235,7 @@ export interface EditingRuntimeSnapshot {
 }
 
 export { MAX_DRAFT_PX };
+export const EDITING_REQUEST_TIMEOUT_MS = 5_000;
 export const MAX_DRAFT_DEG = 36_000;
 export const MAX_WATCHED_KEYS = 32;
 
@@ -782,7 +783,7 @@ export function createEditingPortClient(options: {
   timeoutMs?: number;
   host?: Window;
 }): EditingPortClient {
-  const { iframe, timeoutMs = 5_000, host = window } = options;
+  const { iframe, timeoutMs = EDITING_REQUEST_TIMEOUT_MS, host = window } = options;
   const pending = new Map<number, Pending>();
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
@@ -906,7 +907,13 @@ export function createEditingPortClient(options: {
 }
 
 export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";
-export type { TextEditEndedEvent } from "./editing/textEdit";
+export {
+  caretRangeAt,
+  takePlainTextOnly,
+  textEditResult,
+  type TextEditEndedEvent,
+  type TextEditResult,
+} from "./editing/textEdit";
 export {
   parsePausedFrameAsk,
   PAUSED_FRAME_BYTES,
