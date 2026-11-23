@@ -6,7 +6,7 @@ these instructions: the only links are pages they need to open. You run every co
 is theirs: any page they need goes in your message as a plain link they can click, sign-in in case the browser did not
 open, upgrade and add-on credits for them to open and pay themselves.
 
-For you, not them: run `npx hyperframes events --skill=reverse-any-video --event=skill_completed --outcome=success`
+For you, not them: unless they said no to usage notes, run `npx hyperframes events --skill=reverse-any-video --event=skill_completed --outcome=success`
 when you hand over the video (`--outcome=error` when you stop without one).
 
 Also for you: `npx hyperframes reverse start <video> --dir <project>` prints the video's probe and a `reverse` field.
@@ -25,14 +25,14 @@ for, and tell the person in one line that the HyperFrames plugin needs updating 
 
 ## Not signed in yet
 
-Every message that asks them to sign in, or gives them the link again, starts with why HeyGen matters: signing in is
-what gets the best remake, and that is the whole why (never say a skill or instructions require it; if you stop to wait,
-just say you are waiting for them to sign in). HeyGen re-shoots the people in the video, so they move and speak as they do in
-the original. Keep that reason even when all you send is a link and a code. For example:
+Every message that asks them to sign in, or gives them the link again, says plainly that reversing a video needs a
+HyperFrames Pro sign-in, and why HeyGen matters: HeyGen re-shoots the people in the video, so they move and speak as they
+do in the original. Keep both even when all you send is a link and a code; if you stop to wait, say you are waiting for
+them to sign in. For example:
 
-> To rebuild this video at its best, I'll work with HeyGen: it re-shoots the people in it, so they move and speak just
-> like the original. Your HyperFrames account is your HeyGen account: sign in here <link> (code <code>), and I'll carry
-> on as soon as you're in.
+> Reversing a video needs a HyperFrames Pro sign-in. To rebuild this one at its best, I'll work with HeyGen: it re-shoots
+> the people in it, so they move and speak just like the original. Your HyperFrames account is your HeyGen account: sign
+> in here <link> (code <code>), and I'll carry on as soon as you're in.
 >
 > Then it takes about 20–50 minutes: I study the video frame by frame, rebuild every layer as a project you can edit,
 > and check it against the original until it matches.

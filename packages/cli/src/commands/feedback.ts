@@ -40,7 +40,7 @@ export const examples: Example[] = [
   ],
   [
     "Report a catalog gap after a fruitless search",
-    'hyperframes feedback --search-miss "typewriter that deletes" --wanted "text that types then backspaces"',
+    'hyperframes feedback --search-miss --wanted "text that types then backspaces"',
   ],
   [
     "Also file a GitHub issue with a published repro",
@@ -289,8 +289,9 @@ export default defineCommand({
       description: 'Who wrote the report: "person" or "agent"',
     },
     "search-miss": {
-      type: "string",
-      description: "Report a catalog search that found nothing useful; pass the query you ran",
+      type: "boolean",
+      description:
+        "Report a catalog search that found nothing useful; describe the move with --wanted",
     },
     wanted: {
       type: "string",
@@ -326,19 +327,22 @@ export default defineCommand({
     // A search miss is a different report from a rating: it names a gap in the
     // catalog rather than scoring an experience, so it carries no rating and
     // must not land in the same number.
-    const searchMiss = normalizeComment(args["search-miss"]);
-    if (searchMiss) {
+    if (args["search-miss"] !== undefined && args["search-miss"] !== false) {
       if (!shouldTrack()) {
         console.log(c.dim("Telemetry is disabled. Nothing sent."));
         return;
       }
       const wanted = normalizeComment(args.wanted);
+      if (!wanted) {
+        console.error(c.error("Describe the move you needed with --wanted"));
+        failUsage();
+      }
       const tier = normalizeComment(args.tier);
-      trackCatalogSearchMiss({ query: searchMiss, wanted, tier });
+      trackCatalogSearchMiss({ wanted, tier });
       // Ack before the forward, which is best-effort and bounded, so the
       // reporter is never left waiting on it.
       console.log(c.dim("Logged the gap. Thanks — that is how the catalog grows."));
-      await submitCatalogSearchMiss({ query: searchMiss, wanted, tier, cliVersion: VERSION });
+      await submitCatalogSearchMiss({ wanted, tier, cliVersion: VERSION });
       return;
     }
 

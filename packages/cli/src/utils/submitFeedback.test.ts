@@ -137,7 +137,6 @@ describe("submitCatalogSearchMiss", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await submitCatalogSearchMiss({
-      query: "typewriter that deletes",
       wanted: "text that types then backspaces",
       tier: "on-device",
       cliVersion: "0.7.106",
@@ -147,7 +146,6 @@ describe("submitCatalogSearchMiss", () => {
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://api.example.com/v1/hyperframes/catalog_search_miss");
     expect(JSON.parse(String(init?.body))).toEqual({
-      query: "typewriter that deletes",
       wanted: "text that types then backspaces",
       tier: "on-device",
       cli_version: "0.7.106",
@@ -158,10 +156,10 @@ describe("submitCatalogSearchMiss", () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await submitCatalogSearchMiss({ query: "q".repeat(900), cliVersion: "0.7.106" });
+    await submitCatalogSearchMiss({ wanted: "w".repeat(900), cliVersion: "0.7.106" });
 
     const [, init] = fetchMock.mock.calls[0]!;
-    expect(JSON.parse(String(init?.body)).query).toHaveLength(500);
+    expect(JSON.parse(String(init?.body)).wanted).toHaveLength(500);
   });
 
   it("never throws when the forward fails", async () => {
@@ -173,7 +171,7 @@ describe("submitCatalogSearchMiss", () => {
     );
 
     await expect(
-      submitCatalogSearchMiss({ query: "a query", cliVersion: "0.7.106" }),
+      submitCatalogSearchMiss({ wanted: "a move", cliVersion: "0.7.106" }),
     ).resolves.toBeUndefined();
   });
 });
