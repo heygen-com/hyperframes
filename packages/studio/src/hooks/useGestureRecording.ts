@@ -84,7 +84,7 @@ function readBasePosition(element: HTMLElement, gsap: IframeGsap | null): BasePo
 function connectGsapRuntime(
   element: HTMLElement,
   iframeEl: HTMLIFrameElement,
-  elementEndTime: number | undefined,
+  recordingEnd: number,
 ): GsapRuntime | null {
   try {
     const win = iframeEl.contentWindow as Window & {
@@ -101,14 +101,12 @@ function connectGsapRuntime(
         )?.[1] ?? null)
       : null;
     if (win?.gsap?.set && tl?.seek && element.id) {
-      const tlDuration = tl.duration();
       return {
         timeline: tl,
         gsap: win.gsap,
         element,
         startTime: win.__player?.getTime() ?? 0,
-        maxSeekTime:
-          elementEndTime != null && elementEndTime < tlDuration ? elementEndTime : tlDuration,
+        maxSeekTime: recordingEnd,
         savedVisibility: element.style.visibility,
         savedTranslate: element.style.getPropertyValue("translate"),
         putMarkBack: null,
@@ -354,12 +352,11 @@ export function useGestureRecording() {
       r.scale = scale;
 
       // --- Phase 3: Connect to the iframe GSAP runtime ---
-      r.runtime = connectGsapRuntime(element, iframeEl, elementEndTime);
       const { currentTime, duration } = usePlayerStore.getState();
+      const recordingEnd = Math.min(elementEndTime ?? Infinity, duration);
+      r.runtime = connectGsapRuntime(element, iframeEl, recordingEnd);
       r.drawsOn = sealed ? element : null;
-      r.playhead = sealed
-        ? { start: currentTime, end: Math.min(elementEndTime ?? Infinity, duration) }
-        : null;
+      r.playhead = sealed ? { start: currentTime, end: recordingEnd } : null;
       const seekable = r.runtime
         ? { start: r.runtime.startTime, end: r.runtime.maxSeekTime }
         : r.playhead;
