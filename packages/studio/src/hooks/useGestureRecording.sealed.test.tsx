@@ -122,6 +122,14 @@ describe("a gesture recording on a sealed preview", () => {
     expect(samples.at(-1)?.time).toBe(0.5);
   });
 
+  it("saves no sample past a layer end that falls between frames", () => {
+    frame.stage = { width: 1920, height: 1080 };
+    usePlayerStore.setState({ currentTime: 2 });
+    const { samples } = recordOnSealedFrame(100, AT_REST, 2.52);
+    expect(usePlayerStore.getState().requestedSeekTime).toBe(2.52);
+    expect(samples.at(-1)?.time).toBe(0.5);
+  });
+
   it("refuses to record when the frame hasn't reported the layer's values", () => {
     frame.stage = { width: 1920, height: 1080 };
     const { started, samples } = recordOnSealedFrame(100, null);

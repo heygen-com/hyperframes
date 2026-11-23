@@ -143,7 +143,8 @@ function recordSample(r: RecordingRefs, time: number, properties: Record<string,
   // include it. Subtracting it made the committed gesture play shoved off by the
   // offset (the offset was removed twice).
   const fps = useLinkedClipPreferences.getState().compositionFps;
-  const frame = secondsToFrame(time, fps);
+  let frame = secondsToFrame(time, fps);
+  if (frameToSeconds(frame, fps) > r.lastTime + 1e-9) frame = Math.max(0, frame - 1);
   const sample = { time: frameToSeconds(frame, fps), properties: { ...properties } };
   const lastIndex = r.samples.length - 1;
   const lastSample = r.samples[lastIndex];
