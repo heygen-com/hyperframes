@@ -1382,7 +1382,7 @@ describe("preview quality: lighter copies of heavy files", () => {
 
       const poster = new URL(el.getAttribute("poster")!, document.baseURI);
       expect([...poster.searchParams]).toEqual([
-        ["hf-proxy", "h264"],
+        ["hf-proxy", "auto"],
         ["hf-proxy-box", "2048x1218"],
         ["hf-proxy-light", "1"],
         ["hf-proxy-still", "5.0"],
