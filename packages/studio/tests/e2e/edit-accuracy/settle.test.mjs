@@ -277,6 +277,18 @@ describe("the box a press is measured against", () => {
     expect(shown.actual[0][0]).toBe(0);
   });
 
+  // fails without the fix: the press itself read the waiting outline, so a sealed press jumped 0.2 px.
+  it("reads the element at the press, before the pointer moves", async () => {
+    const shown = await measureShown(
+      { page: page([marker([true])]) },
+      "move",
+      read,
+      async () => quad(260),
+      false,
+    );
+    expect(shown.m.visible[0][0]).toBe(0);
+  });
+
   it("reads the element when nothing waits", async () => {
     const shown = await measureShown({ page: page([]) }, "move", read, async () => quad(260));
     expect(shown.m.visible[0][0]).toBe(0);

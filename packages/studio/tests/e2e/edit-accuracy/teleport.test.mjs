@@ -42,6 +42,11 @@ describe("scoreTeleport", () => {
       pass: true,
     });
   });
+  // fails without the fix: a sealed press anchored on Studio's outline, which sits off the element in both modes.
+  it("scores a press that waits with the pointer still like one that never waited", () => {
+    const sealed = drag.map((f, i) => (i < 2 ? { ...f, waitingQuad: box(0.2) } : f));
+    expect(scoreTeleport("move", sealed).max).toBe(scoreTeleport("move", drag).max);
+  });
   it("rejects a jumping outline while the element waits", () => {
     const jumped = waitingDrag.map((f, i) => (i === 4 ? { ...f, waitingQuad: box(f.t + 37) } : f));
     expect(scoreTeleport("move", [...jumped, frame(50, false)]).pass).toBe(false);
