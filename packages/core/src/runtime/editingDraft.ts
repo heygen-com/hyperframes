@@ -3,10 +3,12 @@
  * resize here, on the element's inline style, so the preview moves with the pointer. What the
  * element had before its first draft is kept until the parent ends the draft or the frame loads again.
  */
+import { seekGsapTimeline } from "./adapters/gsap";
 import { isStylableElement, type StylableElement as Styled } from "./domRealm";
 import { elementForHandle } from "./editingHandles";
 import type { EditingDraftEnd, EditingDraftReply } from "./editingDraftEnd";
 import type { EditingDraft, EditingDraftRotate } from "./editingPort";
+import type { RuntimeTimelineLike } from "./types";
 
 export const SIZE_PROPERTIES = [
   "box-sizing",
@@ -26,7 +28,7 @@ interface Before {
   translate: string[];
   /** GSAP's rotation before the first GSAP turn drawn, to put back on "restore". */
   gsapRotation?: number;
-  gsapPosition?: { x?: number; y?: number };
+  gsapPosition?: { x: number; y: number };
   drewTransform?: boolean;
 }
 
@@ -124,22 +126,34 @@ function drawTranslate(element: Styled, offset: DraftTranslate): void {
     return void element.style.setProperty("translate", movedTranslate(saved.translate, offset));
   const gsap = frameGsap();
   const read = (axis: string) => Number(gsap?.getProperty?.(element, axis)) || 0;
-  const position = (saved.gsapPosition ??= {});
-  position.x ??= read("x");
-  position.y ??= read("y");
+  saved.gsapPosition ??= { x: read("x"), y: read("y") };
   element.style.setProperty("translate", "none");
   gsap?.set?.(element, { x: offset.x, y: offset.y });
 }
 
-/** An axis written after the draw (a gsap-set, a save's patch) is that write's from then on: a restore leaves it. */
-export function yieldDrawnPosition(element: Element, axes: readonly ("x" | "y")[]): void {
+export function rebaseDrawnPosition(element: Element, props: Record<string, unknown>): void {
   const position = before.get(element)?.gsapPosition;
-  for (const axis of axes) if (position) delete position[axis];
+  for (const axis of ["x", "y"] as const) {
+    const value = props[axis];
+    if (position && typeof value === "number" && Number.isFinite(value)) position[axis] = value;
+  }
 }
 
 function restoreGsapPosition(element: Styled): void {
   const { gsapPosition } = before.get(element) ?? {};
   if (gsapPosition) frameGsap()?.set?.(element, { ...gsapPosition });
+}
+
+function redrawTimelines(): void {
+  const timelines = Object.values(
+    (window as { __timelines?: Record<string, RuntimeTimelineLike> }).__timelines ?? {},
+  );
+  for (const timeline of timelines) {
+    const time = timeline.totalTime?.();
+    if (typeof time !== "number") continue;
+    seekGsapTimeline(timeline, 0, true);
+    seekGsapTimeline(timeline, time, true);
+  }
 }
 
 export function writeDrawnSize(
@@ -214,5 +228,6 @@ export function drawDrafts(drafts: readonly EditingDraft[]): EditingDraftReply {
     const saved = before.get(element);
     if (saved) numbers[draft.handle] = saved.draft;
   }
+  if (drafts.some((draft) => "end" in draft && draft.end === "restore")) redrawTimelines();
   return { drawn, drafts: numbers };
 }

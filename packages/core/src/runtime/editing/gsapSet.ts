@@ -1,7 +1,7 @@
 // Studio's live value preview (a 3D-transform slider mid-drag) in a frame it cannot script.
 import { EDITING_ELEMENT_HANDLE, type EditingElementHandle } from "../editingElement";
 import { elementForHandle } from "../editingHandles";
-import { yieldDrawnPosition } from "../editingDraft";
+import { rebaseDrawnPosition } from "../editingDraft";
 
 const GSAP_SET_CHANNELS = new Set([
   "x",
@@ -38,8 +38,6 @@ export function parseGsapSet(params: unknown): GsapSetParams | null {
   return valid && entries.length > 0 ? { handle, props: props as Record<string, number> } : null;
 }
 
-const AXES = ["x", "y"] as const;
-
 type FrameGsap = { set?: (target: Element, vars: Record<string, number>) => void };
 
 export function gsapSet({ handle, props }: GsapSetParams): { applied: boolean } {
@@ -47,9 +45,6 @@ export function gsapSet({ handle, props }: GsapSetParams): { applied: boolean } 
   const gsap = (window as { gsap?: FrameGsap }).gsap;
   if (!element || typeof gsap?.set !== "function") return { applied: false };
   gsap.set(element, { ...props });
-  yieldDrawnPosition(
-    element,
-    AXES.filter((axis) => axis in props),
-  );
+  rebaseDrawnPosition(element, props);
   return { applied: true };
 }
