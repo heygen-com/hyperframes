@@ -232,20 +232,28 @@ function optIn(media: HTMLMediaElement, chosen: string, home: string): void {
 }
 
 const probed = new WeakMap<HTMLMediaElement, Set<string>>();
+const probing = new WeakMap<HTMLMediaElement, Set<string>>();
 
 function askHost(media: HTMLMediaElement, url: string, home: string): void {
+  if (!isHome(url, home)) return warnOnce(media, url);
   const asked = setOf(probed, media);
-  if (asked.has(url) || !isHome(url, home)) return warnOnce(media, url);
+  if (asked.has(url)) return has(probing, media, url) ? undefined : warnOnce(media, url);
   asked.add(url);
-  fetch(url, { method: "HEAD", mode: "cors", cache: "no-store" }).then(
+  setOf(probing, media).add(url);
+  const answered = () => probing.get(media)?.delete(url);
+  fetch(url, { method: "HEAD", mode: "cors", cache: "no-store", redirect: "error" }).then(
     (answer) => {
+      answered();
       if (!answer.ok) return warnOnce(media, url);
       const still = media.currentSrc === url && !media.hasAttribute("crossorigin");
       if (!still || authored.has(media) || !selectable(media, home).includes(url)) return;
       setOf(refused, media).delete(url);
       optIn(media, url, home);
     },
-    () => warnOnce(media, url),
+    () => {
+      answered();
+      warnOnce(media, url);
+    },
   );
 }
 
