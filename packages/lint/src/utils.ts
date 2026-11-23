@@ -224,6 +224,28 @@ export function readAttr(tagSource: string, attr: string): string | null {
   return readAttributeValue(tagSource, attr, false) || null;
 }
 
+const tagAttributes = new WeakMap<OpenTag, Map<string, string>>();
+
+/** `readAttr` for a parsed tag, parsing the tag once: rules ask every tag again for each script. */
+export function readTagAttr(tag: OpenTag, attr: string): string | null {
+  let attributes = tagAttributes.get(tag);
+  if (!attributes) {
+    const found = new Map<string, string>();
+    const parser = new Parser(
+      {
+        onattribute(name, value) {
+          const key = name.toLowerCase();
+          if (!found.has(key)) found.set(key, value);
+        },
+      },
+      { decodeEntities: false, lowerCaseAttributeNames: false, lowerCaseTags: true },
+    );
+    parser.end(tag.raw);
+    tagAttributes.set(tag, (attributes = found));
+  }
+  return attributes.get(attr.toLowerCase()) || null;
+}
+
 export function hasAttrName(tagSource: string, attr: string): boolean {
   return readDecodedAttr(tagSource, attr) !== null;
 }

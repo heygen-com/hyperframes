@@ -1256,7 +1256,7 @@ class Engine {
     if (!taken.length) return this.claimNothing(coalesceKey);
     const held = this.heldFor(coalesceKey, taken);
     if (!held) await this.commitClaim();
-    await this.commitPending();
+    await this.commitPendingWrittenBefore(taken);
     const group = held ?? this.newGroup(who, label);
     for (const change of taken) addChange(group, change.path, change.before, change.after);
     this.markWentAhead(pending, group);
@@ -1289,6 +1289,25 @@ class Engine {
   async claimNothing(coalesceKey: string | undefined): Promise<null> {
     if (coalesceKey !== this.claimed?.key) await this.commitClaim();
     return null;
+  }
+
+  async commitPendingWrittenBefore(taken: readonly HistoryFileChange[]): Promise<void> {
+    const writtenAt = Math.max(
+      ...(await Promise.all(taken.map((change) => this.mtimeOf(change.path)))),
+    );
+    const later: HistoryFileChange[] = [];
+    if (Number.isFinite(writtenAt))
+      for (const change of [...(this.outside?.changes.values() ?? [])])
+        if ((await this.mtimeOf(change.path)) > writtenAt) later.push(change);
+    for (const change of later) this.outside!.changes.delete(change.path);
+    await this.commitPending();
+    if (!later.length) return;
+    const outside = this.outsideGroup();
+    for (const change of later) outside.changes.set(change.path, change);
+  }
+
+  async mtimeOf(path: string): Promise<number> {
+    return (await stat(join(this.dir, path)).catch(() => null))?.mtimeMs ?? -Infinity;
   }
 
   /** Commits every other writer's pending changes, oldest first; open windows stay open. */

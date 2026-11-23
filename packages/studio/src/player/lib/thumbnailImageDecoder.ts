@@ -1,4 +1,4 @@
-import type { ThumbnailLoadedResult } from "./thumbnailScheduler";
+import { decodedImageBytes, type ThumbnailLoadedResult } from "./thumbnailScheduler";
 import { TIMELINE_VIEWPORT_BUDGETS } from "./timelineViewportBudgets";
 
 function thumbnailSource(source: string): string {
@@ -66,7 +66,10 @@ export async function decodeImageThumbnail(
     signal.throwIfAborted();
     const width = image.naturalWidth || TIMELINE_VIEWPORT_BUDGETS.posterMaxPhysicalWidth;
     const height = image.naturalHeight || TIMELINE_VIEWPORT_BUDGETS.posterMaxPhysicalHeight;
-    return { value: { kind: "image", url, aspect: width / height }, weight: width * height * 4 };
+    return {
+      value: { kind: "image", url, aspect: width / height },
+      weight: decodedImageBytes(width, height),
+    };
   } finally {
     image.src = "";
   }
