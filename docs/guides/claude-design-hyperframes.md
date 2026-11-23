@@ -458,7 +458,7 @@ Run before delivering. Check with actual code, not assumptions.
         overflow: hidden;
       }
     </style>
-    <script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player/dist/hyperframes-player.js"></script>
   </head>
   <body>
     <hyperframes-player

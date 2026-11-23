@@ -32,12 +32,12 @@
     "unpacked": 915000
   },
   "@hyperframes/player": {
-    "packed": 172000,
-    "unpacked": 590000
+    "packed": 437000,
+    "unpacked": 1396000
   },
   "@hyperframes/producer": {
     "packed": 993551,
-    "unpacked": 3491355
+    "unpacked": 3527000
   },
   "@hyperframes/sdk": {
     "packed": 90662,

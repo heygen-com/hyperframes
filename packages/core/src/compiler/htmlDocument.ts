@@ -5,11 +5,10 @@ import {
   escapeInlineScriptSource,
   indexOfLower,
   lowerAscii,
+  RUNTIME_BOOTSTRAP_ATTR,
   startsWithLower,
 } from "./htmlTokens.js";
-export { escapeInlineScriptSource };
-
-export const RUNTIME_BOOTSTRAP_ATTR = "data-hyperframes-preview-runtime";
+export { escapeInlineScriptSource, RUNTIME_BOOTSTRAP_ATTR };
 
 const RUNTIME_FILES = [
   "hyperframe.runtime.iife.js",

@@ -11,7 +11,10 @@ npm install @hyperframes/player
 Or load directly via CDN:
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>
+<script
+  type="module"
+  src="https://cdn.jsdelivr.net/npm/@hyperframes/player/dist/hyperframes-player.js"
+></script>
 ```
 
 If you need a classic `<script>` tag instead of ESM, use the explicit global build:

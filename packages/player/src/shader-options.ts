@@ -5,6 +5,7 @@
  */
 
 import {
+  carriesRuntime,
   ensureRuntimeBeforeBodyScripts,
   inlineRuntimeBeforeBodyScripts,
   withBaseHref,
@@ -175,15 +176,20 @@ export async function prepareSealedSrcdocForElement(
   const doc =
     runtimeSrcFromElement(el) !== RUNTIME_CDN_URL
       ? prepareSrcdocForElement(el, html)
-      : inlineRuntimeBeforeBodyScripts(
+      : await withSealedRuntime(
           injectShaderOptionsIntoSrcdoc(
             html,
             normalizeShaderCaptureScale(el.getAttribute(SHADER_CAPTURE_SCALE_ATTR)),
             getShaderModeFromElement(el),
           ),
-          await sealedRuntimeSource(),
         );
   return base ? withBaseHref(doc, base) : doc;
+}
+
+async function withSealedRuntime(page: string): Promise<string> {
+  return carriesRuntime(page)
+    ? page
+    : inlineRuntimeBeforeBodyScripts(page, await sealedRuntimeSource());
 }
 
 export function runtimeSrcFromElement(el: Element): string {

@@ -1,16 +1,16 @@
 import { escapeInlineScriptSource } from "@hyperframes/core/compiler/html-tokens";
-
-export const bundleScriptUrl =
-  typeof document !== "undefined" && document.currentScript instanceof HTMLScriptElement
-    ? document.currentScript.src
-    : null;
+import { runtimeBeside } from "./runtime-beside-bundle.js";
 
 let source: Promise<string> | undefined;
 
 export function sealedRuntimeSource(): Promise<string> {
-  // The esm build splits this into its own chunk; the cjs and iife builds alias it to runtime-beside-bundle.
+  // esm: the bundler resolves this, else the file beside the module; cjs/iife alias it.
   source ??= import("@hyperframes/core/runtime-script")
-    .then((runtime) => runtime.getHyperframeRuntimeScript())
+    .then(
+      (runtime) => runtime.getHyperframeRuntimeScript(),
+      (error: unknown) =>
+        import.meta.url ? runtimeBeside(import.meta.url) : Promise.reject(error),
+    )
     .then(escapeInlineScriptSource);
   source.catch(() => (source = undefined));
   return source;

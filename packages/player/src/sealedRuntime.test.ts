@@ -59,6 +59,31 @@ describe("a sealed player brings its own runtime", () => {
     expect(el.iframeElement.hasAttribute("srcdoc")).toBe(false);
   });
 
+  it("loads a preview that links the runtime by its marker, as Studio's does, by src", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        page('<script data-hyperframes-preview-runtime="1" src="/api/runtime.js"></script>'),
+      ),
+    );
+    const el = player({ "sandbox-origin": "", src: sameSite() });
+
+    await vi.waitFor(() => expect(el.iframeElement.src).toBe(sameSite()));
+    expect(el.iframeElement.hasAttribute("srcdoc")).toBe(false);
+  });
+
+  it("still adds the runtime when a script only mentions Studio's marker", async () => {
+    for (const head of [
+      '<script data-note="data-hyperframes-preview-runtime"></script>',
+      '<script>var tag = "<script data-hyperframes-preview-runtime src=x>";</script>',
+      '<script>var end = "</scripted"; var tag = "<script data-hyperframes-preview-runtime src=x>";</script>',
+      '<SCRIPT>var end = "</SCRIPTS"; var tag = "<script data-hyperframes-preview-runtime>";</SCRIPT>',
+    ]) {
+      fetchMock.mockResolvedValueOnce(new Response(page(head)));
+      expect(await srcdocOf(player({ "sandbox-origin": "", src: sameSite() }))).toContain("built:");
+      document.body.replaceChildren();
+    }
+  });
+
   it("still adds the runtime when a page only compares or names it", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(
