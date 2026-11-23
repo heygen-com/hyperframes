@@ -341,6 +341,22 @@ describe("corsForSealedMedia", () => {
     expect([video.getAttribute("crossorigin"), foreign.hasAttribute("type")]).toEqual(["anonymous", true]);
   });
 
+  it("pins out a failed copy of the playing URL and a foreign source after it", async () => {
+    vi.stubGlobal("origin", "null");
+    observer = corsForSealedMedia();
+    const video = add(
+      `<video><source src="media/own.mp4"><source src="https://cdn.example.com/x.webm"><source src="media/own.mp4"></video>`,
+    ).querySelector("video")!;
+    await settled();
+    vi.spyOn(video, "load").mockImplementation(() => {});
+    video.dispatchEvent(new Event("loadstart"));
+    const [first, foreign, last] = video.querySelectorAll("source");
+    first!.dispatchEvent(new Event("error"));
+    foreign!.dispatchEvent(new Event("error"));
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    expect([first, foreign, last].map((el) => el!.hasAttribute("type"))).toEqual([true, true, false]);
+  });
+
   it("follows the first source the browser would pick when the list changes", async () => {
     vi.stubGlobal("origin", "null");
     observer = corsForSealedMedia();

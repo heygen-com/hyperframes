@@ -177,11 +177,12 @@ function wasDown(media: HTMLMediaElement, url: string): void {
 
 const PINNED_OUT = "video/x-hyperframes-pinned-out";
 const pinned = new WeakMap<HTMLMediaElement, Array<[HTMLSourceElement, string | null]>>();
+const erredThisPick = new WeakMap<HTMLMediaElement, Set<Element>>();
 
 function pinTo(media: HTMLMediaElement, chosen: string, home: string): void {
   const held: Array<[HTMLSourceElement, string | null]> = [];
   for (const el of media.querySelectorAll("source")) {
-    if (candidate(media, el, home) === chosen) break;
+    if (candidate(media, el, home) === chosen && !erredThisPick.get(media)?.has(el)) break;
     held.push([el, el.getAttribute("type")]);
     el.setAttribute("type", PINNED_OUT);
   }
@@ -200,6 +201,7 @@ function unpin(media: HTMLMediaElement): void {
 function failed(event: Event, home: string): void {
   const target = event.target as Element | null;
   const owner = target?.nodeType === 1 ? mediaOf(target) : null;
+  if (owner && target !== owner) setOf(erredThisPick, owner).add(target!);
   if (owner && pinned.get(owner)?.some(([el]) => el === target)) return;
   if (owner) unpin(owner);
   const found = failure(event, home);
@@ -251,6 +253,7 @@ let home = "";
 // One function each, so a second start adds no second listener.
 const onError = (event: Event) => failed(event, home);
 const onFirstFrame = (event: Event) => firstFrame(event, home);
+const onPickStart = (event: Event) => erredThisPick.delete(event.target as HTMLMediaElement);
 
 /** In a sealed document, opts the preview server's own media into CORS as it parses or changes src, before it loads;
  * a source that refuses CORS on an element plays there without it, after one more load. */
@@ -281,6 +284,7 @@ export function corsForSealedMedia(): MutationObserver | null {
   // Media events do not bubble; capture listeners on the document hear every element's.
   document.addEventListener("error", onError, true);
   document.addEventListener("loadeddata", onFirstFrame, true);
+  document.addEventListener("loadstart", onPickStart, true);
   const media = HTMLMediaElement.prototype;
   if (media.play !== play) [nativePlay, media.play] = [media.play, play];
   if (media.load !== load) [nativeLoad, media.load] = [media.load, load];
