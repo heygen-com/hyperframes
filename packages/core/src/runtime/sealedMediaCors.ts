@@ -208,12 +208,17 @@ function unpin(media: HTMLMediaElement): void {
   pinned.delete(media);
 }
 
-function failed(event: Event, home: string): void {
-  const target = event.target as Element | null;
+function pinnedOutError(target: Element | null): boolean {
   const owner = target?.nodeType === 1 ? mediaOf(target) : null;
-  if (owner && target !== owner) setOf(erredThisPick, owner).add(target!);
-  if (owner && pinned.get(owner)?.some(([el]) => el === target)) return;
-  if (owner) unpin(owner);
+  if (!owner) return false;
+  if (target !== owner) setOf(erredThisPick, owner).add(target!);
+  if (pinned.get(owner)?.some(([el]) => el === target)) return true;
+  unpin(owner);
+  return false;
+}
+
+function failed(event: Event, home: string): void {
+  if (pinnedOutError(event.target as Element | null)) return;
   const found = failure(event, home);
   if (!found) return;
   const { media, url } = found;
