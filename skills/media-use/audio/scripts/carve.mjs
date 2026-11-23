@@ -238,6 +238,7 @@ function mediaElements(html) {
  */
 function detectTracks(html, given, classify, overlaps) {
   const all = mediaElements(html);
+  const startOf = clipStartResolver(html);
   const kindOf = (el) => classify(el.id, unescapeAttr(attrOf(el.tag, "src") ?? ""));
   const spanOf = (el) => {
     const raw = attrOf(el.tag, "data-duration");
@@ -303,10 +304,43 @@ function detectTracks(html, given, classify, overlaps) {
   return { bed, voices: usable, all };
 }
 
-const startOf = (tag) => {
-  const raw = Number(attrOf(tag, "data-start"));
-  return Number.isFinite(raw) ? raw : 0;
-};
+const REFERENCE_ID = /^[A-Za-z0-9_.:-]+$/;
+const REFERENCE_OFFSET = /^([A-Za-z0-9_.:-]+?)\s*([+-])\s*(\d*\.?\d+)$/;
+
+/**
+ * Where a clip starts on the timeline, read the way the render reads `data-start`: seconds, or a
+ * clip id with an optional `+ n` / `- n`, meaning "when that clip ends". `Number()` alone reads
+ * `data-start="intro"` as 0 while the render plays the clip when `#intro` ends. Same rules as
+ * `resolveReferencedStart` in `packages/parsers/src/referenceResolver.ts`: an unknown id is 0, a
+ * target with no `data-duration` or `data-end` adds nothing, and a cycle stops at 0.
+ */
+export function clipStartResolver(html) {
+  const byId = new Map();
+  for (const [tag] of html.matchAll(/<[a-z][^>]*>/gi)) {
+    for (const name of ["id", "data-composition-id"]) {
+      const key = attrOf(tag, name);
+      if (key && !byId.has(`${name}=${key}`)) byId.set(`${name}=${key}`, tag);
+    }
+  }
+  const find = (id) => byId.get(`id=${id}`) ?? byId.get(`data-composition-id=${id}`);
+  const startOf = (tag, visiting = new Set()) => {
+    const raw = (attrOf(tag, "data-start") ?? "").trim();
+    const seconds = Number(raw);
+    if (Number.isFinite(seconds)) return seconds;
+    const ref = REFERENCE_ID.test(raw) ? [raw, raw, "+", "0"] : REFERENCE_OFFSET.exec(raw);
+    const target = ref && find(ref[1]);
+    if (!target || visiting.has(tag)) return 0;
+    visiting.add(tag);
+    const start = startOf(target, visiting);
+    visiting.delete(tag);
+    const duration = Number(attrOf(target, "data-duration"));
+    const end = Number(attrOf(target, "data-end"));
+    const length = duration > 0 ? duration : end > start ? end - start : 0;
+    const offset = Number(ref[3]) * (ref[2] === "-" ? -1 : 1);
+    return Math.max(0, start + length + offset);
+  };
+  return (tag) => startOf(tag);
+}
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -314,6 +348,7 @@ async function main() {
   const compDir = dirname(compPath);
 
   const html = readFileSync(compPath, "utf-8");
+  const startOf = clipStartResolver(html);
   const {
     bed: bedEl,
     voices,
