@@ -230,7 +230,39 @@ function failed(event: Event, home: string): void {
   reload(media);
 }
 
-// Played without CORS from our own host and never refused here: opt back in, so a source that can serve it does.
+function optIn(media: HTMLMediaElement, chosen: string, home: string): void {
+  write(media, "anonymous");
+  pinTo(media, playingSource(media, chosen, home));
+  reload(media);
+}
+
+const probed = new WeakMap<HTMLMediaElement, Set<string>>();
+const probing = new WeakMap<HTMLMediaElement, Set<string>>();
+
+function askHost(media: HTMLMediaElement, url: string, home: string): void {
+  if (!isHome(url, home)) return warnOnce(media, url);
+  const asked = setOf(probed, media);
+  if (asked.has(url)) return has(probing, media, url) ? undefined : warnOnce(media, url);
+  asked.add(url);
+  setOf(probing, media).add(url);
+  const answered = () => probing.get(media)?.delete(url);
+  fetch(url, { method: "HEAD", mode: "cors", cache: "no-store", redirect: "error" }).then(
+    (answer) => {
+      answered();
+      if (!answer.ok) return warnOnce(media, url);
+      const still = media.currentSrc === url && !media.hasAttribute("crossorigin");
+      if (!still || authored.has(media) || !selectable(media, home).includes(url)) return;
+      setOf(refused, media).delete(url);
+      optIn(media, url, home);
+    },
+    () => {
+      answered();
+      warnOnce(media, url);
+    },
+  );
+}
+
+// Played without CORS from our own host: opt back in; refused here once, ask the host once if that was a refusal.
 function firstFrame(event: Event, home: string): void {
   const media = event.target as HTMLMediaElement;
   if (!isMedia(media) || authored.has(media)) return;
@@ -238,11 +270,9 @@ function firstFrame(event: Event, home: string): void {
   const chosen = media.currentSrc;
   down.get(media)?.delete(chosen);
   if (media.hasAttribute("crossorigin")) return;
-  if (has(refused, media, chosen)) return warnOnce(media, chosen);
+  if (has(refused, media, chosen)) return askHost(media, chosen, home);
   if (!isHome(chosen, home) || !selectable(media, home).includes(chosen)) return;
-  write(media, "anonymous");
-  pinTo(media, playingSource(media, chosen, home));
-  reload(media);
+  optIn(media, chosen, home);
 }
 
 // Chrome tries an exhausted element's sources again on a crossorigin write; only an insertion resumes it.
