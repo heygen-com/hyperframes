@@ -550,17 +550,26 @@ function drawnParts(value: Record<string, unknown>): boolean {
   return !parts.includes(false) && draftPropsWithOneXYWriter(props, translate);
 }
 
+const isPropsShape = (
+  value: unknown,
+): value is { seconds: number; values: Record<string, unknown> } =>
+  hasKeys(value, "seconds,values") &&
+  isPlainRecord(value.values) &&
+  Number.isFinite(value.seconds) &&
+  (value.seconds as number) >= 0;
+
+const isDraftValue = ([key, value]: [string, unknown]) =>
+  DRAFT_GSAP_PROPS.includes(key) && isDraftPx(value, -MAX_DRAFT_PX);
+
+const setsPosition = (keys: string[]) => keys.includes("x") || keys.includes("y");
+
 function draftPropsWithOneXYWriter(value: unknown, translate: unknown): boolean {
   if (value === undefined || value === null) return true;
-  if (!hasKeys(value, "seconds,values") || !isPlainRecord(value.values)) return false;
-  const { seconds, values } = value;
-  if (!Number.isFinite(seconds) || (seconds as number) < 0) return false;
-  const named = Object.keys(values);
-  if (!named.length || (translate !== null && (named.includes("x") || named.includes("y"))))
+  if (!isPropsShape(value)) return false;
+  const entries = Object.entries(value.values);
+  if (!entries.length || (translate !== null && setsPosition(entries.map(([key]) => key))))
     return false;
-  return named.every(
-    (key) => DRAFT_GSAP_PROPS.includes(key) && isDraftPx(values[key], -MAX_DRAFT_PX),
-  );
+  return entries.every(isDraftValue);
 }
 
 function draftList(params: unknown): EditingParams<"draft"> | null {
