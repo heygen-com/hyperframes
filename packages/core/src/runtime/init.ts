@@ -4108,6 +4108,13 @@ export function initSandboxRuntimeModular(): void {
   let liveRootDurationOverrideSeconds = 0;
   let lastPostedManifest = "";
   let lastTimeline: ReturnType<typeof collectRuntimeTimelinePayload> | null = null;
+  // Only a preview served with a scene manifest can swap; elsewhere the caller reloads directly.
+  const scenesSwappable = readSceneParts(document) !== null;
+  const timelineMessage = (payload: ReturnType<typeof collectRuntimeTimelinePayload>) => ({
+    ...payload,
+    assetsReady: assetsSettled,
+    sceneSwap: scenesSwappable,
+  });
   const computeClipTreeSignature = (): string => {
     let sig = "";
     for (const el of document.querySelectorAll("[data-start]")) {
@@ -4180,7 +4187,7 @@ export function initSandboxRuntimeModular(): void {
     }
 
     lastTimeline = payload;
-    postRuntimeMessage({ ...payload, assetsReady: assetsSettled });
+    postRuntimeMessage(timelineMessage(payload));
     if (!assetsReadyStarted) {
       assetsReadyStarted = true;
       settleFirstFrameCompositionReadiness(document, ({ timedOut }) => {
@@ -5042,8 +5049,7 @@ export function initSandboxRuntimeModular(): void {
       await (windowWork ?? Promise.resolve());
     }
   };
-  // Only a preview served with a scene manifest can swap; elsewhere the caller reloads directly.
-  if (readSceneParts(document)) {
+  if (scenesSwappable) {
     window.__hfSwapScenes = swapScenes;
     window.__hfHoldScenes = holdScenes;
     window.__hfParkedSceneMarkup = parkedSceneMarkup;
@@ -6889,7 +6895,7 @@ export function initSandboxRuntimeModular(): void {
     },
     onScrubAudio: scrubAudio.scrub,
     onAnnounceTimeline: () => {
-      if (lastTimeline) postRuntimeMessage({ ...lastTimeline, assetsReady: assetsSettled });
+      if (lastTimeline) postRuntimeMessage(timelineMessage(lastTimeline));
     },
     onRequestPreviewFacts: () =>
       postRuntimeMessage({

@@ -20,6 +20,8 @@ import {
   hasRuntimeMediaChanges,
   hasScriptedAudioVolumeAutomation,
   hasVariableBoundMedia,
+  probeHoldFitsCapture,
+  probeVideoHold,
   reportedLengthSource,
 } from "./probeStage.js";
 
@@ -37,6 +39,8 @@ let afterMediaPreflight: (() => void) | null = null;
 let fileServerCloseCallCount = 0;
 let browserMediaResults: unknown[] = [];
 let browserMediaError: Error | null = null;
+// Media sizes the mocked FFmpeg probe reports, by resolved path; any other path fails to probe.
+const mediaSizes = new Map<string, { width: number; height: number }>();
 
 type MockSession = {
   id: number;
@@ -95,6 +99,7 @@ function resetRetryMocks() {
   afterMediaPreflight = null;
   fileServerCloseCallCount = 0;
   browserMediaResults = [];
+  mediaSizes.clear();
 }
 
 mock.module("../../assetMediaType.js", () => ({
@@ -116,6 +121,12 @@ mock.module("@hyperframes/engine", () => ({
   parseImageElements,
   resolveReferencedStart,
   videoAudioId,
+  resolveProjectRelativeSrc: (src: string, projectDir: string) => `${projectDir}/${src}`,
+  extractMediaMetadata: async (path: string) => {
+    const size = mediaSizes.get(path);
+    if (!size) throw new Error(`ffprobe failed: ${path}`);
+    return size;
+  },
   createCaptureSession: async (
     _url: string,
     _dir: string,
@@ -1626,6 +1637,67 @@ describe("runProbeStage — render variable threading", () => {
 
     expect(capturedOptions[0]).toMatchObject({
       variables: { short: true, sceneCount: 2 },
+    });
+  });
+});
+
+describe("probeVideoHold", () => {
+  it("holds each readable local video with its size, leaving runtime-set and remote sources live", async () => {
+    resetRetryMocks();
+    mediaSizes.set("/p/4k.mp4", { width: 3840, height: 2160 });
+    const html = `<body>
+      <video id="local" src="4k.mp4"></video>
+      <video id="bound" src="4k.mp4" data-var-src="clip"></video>
+      <video id="sourced"><source src="4k.mp4" data-var-src="clip"></video>
+      <video id="remote" src="https://cdn.example/4k.mp4"></video>
+      <video id="unreadable" src="missing.mp4"></video>
+    </body>`;
+    const videos = ["local", "bound", "sourced", "remote", "unreadable"].map((id) => ({
+      id,
+      src:
+        id === "remote"
+          ? "https://cdn.example/4k.mp4"
+          : id === "unreadable"
+            ? "missing.mp4"
+            : "4k.mp4",
+    }));
+
+    expect(await probeVideoHold(videos, html, "/p", "/p/compiled")).toEqual({
+      skipReadinessVideoIds: ["local"],
+      videoMetadataHints: [{ id: "local", width: 3840, height: 2160 }],
+    });
+  });
+});
+
+describe("probeHoldFitsCapture", () => {
+  it("lets capture reuse the probe page only when capture holds every video the probe held", () => {
+    expect(probeHoldFitsCapture(["a", "b"], ["a", "b", "c"])).toBe(true);
+    expect(probeHoldFitsCapture(["a", "b"], ["a"])).toBe(false);
+    expect(probeHoldFitsCapture(undefined, [])).toBe(true);
+  });
+});
+
+describe("runProbeStage — video hold", () => {
+  // fails without the fix: the probe page loaded every clip live, so 40 clips of one 4K file froze Chrome.
+  it("opens the probe page with the composition's local videos held at their FFmpeg size", async () => {
+    resetRetryMocks();
+    capturedOptions.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({ stageForceScreenshot: false });
+    mediaSizes.set(`${input.projectDir}/4k.mp4`, { width: 3840, height: 2160 });
+    input.composition.videos = [
+      { id: "c0", src: "4k.mp4", start: 0, end: 2, mediaStart: 0, hasAudio: false },
+      { id: "c1", src: "4k.mp4", start: 2, end: 4, mediaStart: 30, hasAudio: false },
+    ] as never[];
+
+    await runProbeStage(input);
+
+    expect(capturedOptions[0]).toMatchObject({
+      skipReadinessVideoIds: ["c0", "c1"],
+      videoMetadataHints: [
+        { id: "c0", width: 3840, height: 2160 },
+        { id: "c1", width: 3840, height: 2160 },
+      ],
     });
   });
 });

@@ -91,6 +91,36 @@ function newHome(): string {
   return home;
 }
 
+describe("takeHistoryOwnership where every write is refused (the desktop app's sandboxed agents)", () => {
+  const refuseWrites = () =>
+    vi.mocked(writeFileSync).mockImplementation((path) => {
+      throw Object.assign(new Error(`EPERM: operation not permitted, open '${String(path)}'`), {
+        code: "EPERM",
+        syscall: "open",
+      });
+    });
+
+  // fails without the fix: EPERM writing the claim draft, though the lock was plainly held. Windows retries these
+  // codes as a file locked for a moment, so it waits out the deadline as before.
+  it.skipIf(platform === "win32")(
+    "finds a live owner's lock busy at once, since it could never take it",
+    async () => {
+      const home = newHome();
+      writeFileSync(join(home, "owner.pid"), String(process.ppid));
+      refuseWrites();
+      // A wait for the owner would outlast the test's own timeout.
+      await expect(takeHistoryOwnership(home, 60_000)).rejects.toThrow(HistoryBusyError);
+    },
+  );
+
+  it("still fails with the refused write when no live owner holds the lock", async () => {
+    const home = newHome();
+    writeFileSync(join(home, "owner.pid"), "2147483646");
+    refuseWrites();
+    await expect(takeHistoryOwnership(home, 100)).rejects.toMatchObject({ code: "EPERM" });
+  });
+});
+
 function withoutHardLinks(code = "ENOTSUP"): void {
   vi.mocked(linkSync).mockImplementation(() => {
     throw Object.assign(new Error("hard links are not supported"), { code });

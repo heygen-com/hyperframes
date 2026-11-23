@@ -34,7 +34,7 @@ import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
 import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
 import { maxZIndex } from "./editing/maxZIndex";
-import { gestureStart } from "./editingGestureStart";
+import { gestureBase, gestureStart } from "./editingGestureStart";
 import { gsapSnapshot } from "./editing/gsapSnapshot";
 import { motionPathHome } from "./editing/motionPathHome";
 import { cropLift } from "./editing/cropLift";
@@ -206,6 +206,7 @@ const HANDLERS: Handlers = {
   layers: ({ group, offset }) => layersOf(group, offset),
   draft: ({ drafts }) => drawDrafts(drafts),
   "gesture-start": ({ handles }) => gestureStart(handles),
+  "gesture-base": ({ handles }) => ({ elements: handles.map(gestureBase) }),
   "console-errors": ({ from }) => {
     const seen = watchConsoleErrors();
     const errors = seen.slice(from, from + MAX_QUERY_MATCHES);
@@ -303,7 +304,6 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     const port = channel.port1;
     ports.add(port);
     serve(port);
-    preloadMotionPath();
     try {
       // "*" as every runtime post does (bridge.ts): the frame is not told its parent's origin.
       parent.postMessage(
@@ -315,7 +315,9 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       swallow("editingAgent.handoff", err);
       port.close();
       ports.delete(port);
+      return;
     }
+    preloadMotionPath();
   };
   window.addEventListener("message", onMessage);
   return {

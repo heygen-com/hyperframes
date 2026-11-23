@@ -716,6 +716,66 @@ describe("waiting for the proxy copy", () => {
     expect(active.hasAttribute("poster")).toBe(false);
   });
 
+  describe("on a hidden capture page", () => {
+    const clipAt = (el: HTMLVideoElement) =>
+      syncRuntimeMedia({
+        clips: [
+          {
+            el,
+            start: 0,
+            mediaStart: 4,
+            duration: 10,
+            end: 10,
+            volume: null,
+            playbackRate: 1,
+            loop: false,
+            sourceDuration: null,
+          },
+        ],
+        timeSeconds: 1,
+        playing: false,
+        playbackRate: 1,
+      });
+    const onCapturePage = () => {
+      const mark = document.head.appendChild(document.createElement("meta"));
+      mark.name = STUDIO_PREVIEW_MARK_META;
+      mark.content = STUDIO_PREVIEW_CAPTURE_MODE;
+    };
+
+    // fails without the fix: a thumbnail capture page asked for its copy ahead of the rest whenever its clip was at the
+    // playhead, and the server made it before the copy the person's preview was waiting on.
+    it("asks for its copy behind the rest, even with the clip at the playhead", async () => {
+      vi.useFakeTimers();
+      onCapturePage();
+      const route = stubProxyRoute(202, 206);
+      const el = createVideo("/clip.mov");
+      clipAt(el);
+
+      swapToProxy(el, HEVC_ENTRY, "proactive");
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(route.mock.calls.map((call) => (call[1] as RequestInit).headers)).toEqual([
+        { Range: "bytes=0-0", "X-HF-Proxy-Priority": "0" },
+        { Range: "bytes=0-0", "X-HF-Proxy-Priority": "0" },
+      ]);
+    });
+
+    // `hyperframes check` pages carry the same capture mark, and audit each sample time with the copy's frames.
+    it("still swaps to its copy once it is served", async () => {
+      vi.useFakeTimers();
+      onCapturePage();
+      stubProxyRoute(206);
+      const el = createVideo("/clip.mov");
+      clipAt(el);
+
+      swapToProxy(el, HEVC_ENTRY, "proactive");
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(proxyVariant(el)).toBe("h264");
+      expect(el.load).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("ignores the original's own metadata and error while the copy is being made", async () => {
     vi.useFakeTimers();
     window.__HF_MEDIA_CODEC_MAP__ = {};

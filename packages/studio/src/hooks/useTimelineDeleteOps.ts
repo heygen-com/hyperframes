@@ -8,7 +8,7 @@ import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { saveServerRewriteWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
-import { getTimelineElementLabel } from "../utils/studioHelpers";
+import { deletedNotice, getTimelineElementLabel } from "../utils/studioHelpers";
 import {
   buildPatchTarget,
   removeIframeTimelineElements,
@@ -251,10 +251,7 @@ export function useTimelineDeleteOps({
         // A failed ripple already showed its own toast above; the user did one
         // thing (delete), so they get one message, not this generic follow-up too.
         if (!rippleFailed) {
-          showToast(
-            `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
-            "info",
-          );
+          showToast(deletedNotice(label, sameFile.length), "info");
         }
         if (rippleChanges && !rippleFailed && !rippleNoticeShownRef.current) {
           rippleNoticeShownRef.current = true;

@@ -13,7 +13,7 @@ import {
   swapPending,
   unsettledBy,
 } from "./case.mjs";
-import { heldSize, keyedBy, restedFor } from "./sequences.mjs";
+import { heldSize, keyedBy, restedFor, shownOnceRested } from "./sequences.mjs";
 
 describe("settling on the shown preview", () => {
   const read = (pending, x = 0, frames = "a") => ({
@@ -313,6 +313,16 @@ describe("the end of a sequence", () => {
   it("says how long until the first of the clear reads, the undo's time to show", async () => {
     const { busy, frame, now } = reads([true, true, false, false]);
     expect(await restedFor(busy, frame, { now })).toBe(20);
+  });
+
+  // fails without the fix: the undo was read while its reload was on the way, 240-329 px from where it landed.
+  it("reads an undo's box once Studio says its reload is done, and how long that took", async () => {
+    const { busy, frame, now, read } = reads([true, true, true, false, false]);
+    const settle = async () => (read() > 3 ? "undone" : "before");
+    expect(await shownOnceRested(busy, frame, settle, { now })).toEqual({
+      box: "undone",
+      shownMs: 30,
+    });
   });
 
   it("gives up with a reason when an edit never stops saving", async () => {

@@ -5,6 +5,17 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { appendRecord } from "../../../scripts/lib/manifest.mjs";
 import { BUNDLED_SFX_DIR, findSoundEffect, resolveSfx } from "./sfx.mjs";
+import { afterEach, beforeEach } from "node:test";
+import { mediaTransport } from "../../../scripts/lib/media-fetch.mjs";
+
+// These tests stub globalThis.fetch; media downloads reach the same stub.
+const transportFetch = mediaTransport.fetch;
+beforeEach(() => {
+  mediaTransport.fetch = (url, init) => globalThis.fetch(url, init);
+});
+afterEach(() => {
+  mediaTransport.fetch = transportFetch;
+});
 
 // No real network: each test serves Openverse's answers; by default it is unreachable.
 const offline = async () => {

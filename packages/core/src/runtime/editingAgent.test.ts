@@ -64,6 +64,25 @@ describe("installEditingAgent", () => {
     expect(transfer).toHaveLength(1);
   });
 
+  // fails without the fix: the plugin preload ran before the handoff, so a page it threw on never got a port.
+  it("hands the port over before the optional plugin preload", () => {
+    Object.defineProperty(window, "gsap", {
+      configurable: true,
+      get: () => {
+        throw new Error("page gsap getter");
+      },
+    });
+    const reported = (event: ErrorEvent) => event.preventDefault();
+    window.addEventListener("error", reported);
+    try {
+      post(parent, CONNECT);
+      expect(handoff).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener("error", reported);
+      Reflect.deleteProperty(window, "gsap");
+    }
+  });
+
   it("hands a fresh port to each later connect from the parent and keeps the earlier one working", async () => {
     const old = connectedPort();
     post(parent, CONNECT);
@@ -183,6 +202,7 @@ describe("installEditingAgent", () => {
           "layers",
           "draft",
           "gesture-start",
+          "gesture-base",
           "console-errors",
           "watch-keys",
           "restore-attributes",

@@ -482,6 +482,40 @@ describe("scheduleBackgroundInstall", () => {
     }
   });
 
+  // fails without the fix: the version stored in the settings file was printed as stored
+  it.each([
+    [true, "auto-updated to v0.4.4\\x07\n"],
+    [false, "auto-update to v0.4.4\\x07 failed"],
+  ])(
+    "shows control characters in a finished update's version as text (ok=%s)",
+    async (ok, shown) => {
+      setupMocks({
+        installer: { kind: "npm", command: "npm install -g hyperframes@0.4.4" },
+        config: {
+          completedUpdate: { version: "0.4.4\u0007", ok, finishedAt: new Date().toISOString() },
+        },
+      });
+      const { reportCompletedUpdate } = await import("./autoUpdate.js");
+      const stderrWrite = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+      const originalIsTTY = process.stderr.isTTY;
+      Object.defineProperty(process.stderr, "isTTY", { value: true, configurable: true });
+
+      try {
+        reportCompletedUpdate();
+
+        const printed = stderrWrite.mock.calls.map(([text]) => String(text)).join("");
+        expect(printed).toContain(shown);
+        expect(printed).not.toContain("\u0007");
+      } finally {
+        stderrWrite.mockRestore();
+        Object.defineProperty(process.stderr, "isTTY", {
+          value: originalIsTTY,
+          configurable: true,
+        });
+      }
+    },
+  );
+
   describe("the detached child's settings write", () => {
     const home = mkdtempSync(join(tmpdir(), "hf-auto-update-"));
     const dir = join(home, ".hyperframes");

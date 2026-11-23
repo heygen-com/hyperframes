@@ -8,21 +8,15 @@ import {
   applyCaptionModelToIframe,
   isCaptionPreviewVisible,
 } from "../captions/components/CaptionOverlayUtils";
-import {
-  APP_HOTKEY_ACTIONS,
-  type HotkeyCallbacks,
-  dispatchModifierKey,
-  dispatchPlainKey,
-} from "./appHotkeysDispatch";
+import { type HotkeyCallbacks, dispatchModifierKey, dispatchPlainKey } from "./appHotkeysDispatch";
 import {
   useEditHistoryActions,
   type EditHistoryHandle,
   type UseEditHistoryActionsOptions,
 } from "./useEditHistoryActions";
 import { useStableHandlers } from "./useStableHandlers";
-import { createEditingPortClient } from "@hyperframes/core/runtime/editing-port";
 import { previewFrameOpaque } from "../player/lib/previewChannel";
-import { getStudioKey, subscribeStudioKeys } from "../player/components/studioShortcuts";
+import { keepKeyboardOutOfSealedFrame } from "../player/lib/sealedFrameKeyboard";
 
 function iframeContentWindow(iframe: HTMLIFrameElement | null): Window | null {
   try {
@@ -30,31 +24,6 @@ function iframeContentWindow(iframe: HTMLIFrameElement | null): Window | null {
   } catch {
     return null;
   }
-}
-
-// A port of its own: watch-keys replaces a port's whole list, and playback watches its keys on the shared one.
-function forwardSealedFrameKeys(iframe: HTMLIFrameElement, onKeyDown: (e: KeyboardEvent) => void) {
-  const client = createEditingPortClient({ iframe });
-  const watch = (combos: string[]) => void client.request("watch-keys", { combos }).catch(() => {});
-  const watchApp = () => watch(APP_HOTKEY_ACTIONS.map(getStudioKey));
-  watchApp();
-  const stopRebinds = subscribeStudioKeys(watchApp);
-  // The frame can report keys and take focus, but only a real press or click activates Studio's own window.
-  const pressedByPerson = () =>
-    iframe.ownerDocument.hasFocus() &&
-    (iframe.getRootNode() as Document | ShadowRoot).activeElement === iframe &&
-    iframe.ownerDocument.defaultView?.navigator.userActivation?.isActive === true;
-  const stopKeys = client.onKey((key) => {
-    if (key.type === "keydown" && pressedByPerson()) onKeyDown(new KeyboardEvent(key.type, key));
-  });
-  return () => {
-    stopRebinds();
-    stopKeys();
-    void client
-      .request("watch-keys", { combos: [] })
-      .catch(() => {})
-      .finally(() => client.dispose());
-  };
 }
 
 function safeAddListener(t: EventTarget | null, type: string, h: EventListener, capture = false) {
@@ -281,7 +250,7 @@ export function useAppHotkeys({
       previewHistoryCleanupRef.current?.();
       previewHistoryCleanupRef.current = null;
       if (iframe && previewFrameOpaque(iframe)) {
-        previewHistoryCleanupRef.current = forwardSealedFrameKeys(iframe, handleAppKeyDown);
+        previewHistoryCleanupRef.current = keepKeyboardOutOfSealedFrame(iframe);
         return;
       }
       const win = iframeContentWindow(iframe);

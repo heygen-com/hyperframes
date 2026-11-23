@@ -11,6 +11,7 @@
  * Neither a saved API key nor a project `.env` key replaces an expired login (60s skew).
  */
 
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { isHeaderSafe, readStore } from "./store.js";
 import { ErrInvalidStore, ErrLoginExpired, ErrNotConfigured, isAuthError } from "./errors.js";
 import { assertOAuthIdentity } from "./config.js";
@@ -118,7 +119,7 @@ function noteProjectKey(credential: ResolvedCredential): ResolvedCredential {
   if (dir !== undefined && !projectKeyNoted) {
     projectKeyNoted = true;
     process.stderr.write(
-      `[hyperframes] Using ${name} from this folder's .env (${join(dir, ".env")}): uploads and renders go to that key's HeyGen account.\n`,
+      `[hyperframes] Using ${name} from this folder's .env (${terminalText(join(dir, ".env"))}): uploads and renders go to that key's HeyGen account.\n`,
     );
   }
   return credential;

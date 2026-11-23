@@ -396,6 +396,16 @@ describe("compileTimingAttrs", () => {
   });
 });
 
+// 5,000 clips: main rescanned the page once per clip, about a minute for this page.
+const CLIPS = 5_000;
+const manyClips = (attrs: string) =>
+  Array.from(
+    { length: CLIPS },
+    (_, i) => `<audio id="a${i}" src="a.mp3" data-start="1"${attrs}>`,
+  ).join("");
+const eachClip = (duration: number) =>
+  Array.from({ length: CLIPS }, (_, i) => ({ id: `a${i}`, duration }));
+
 describe("injectDurations", () => {
   it("adds data-duration and data-end for resolved elements", () => {
     const html = '<video id="v1" src="a.mp4" data-start="2">';
@@ -412,6 +422,24 @@ describe("injectDurations", () => {
     expect(result).toContain('id="hf-video-0"');
     expect(result).toContain('data-duration="4"');
     expect(result).toContain('data-end="5"');
+  });
+
+  it("writes 5,000 clips' durations in one scan of the page", () => {
+    const started = performance.now();
+    const result = injectDurations(manyClips(""), eachClip(4));
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(result.match(/data-duration="4" data-end="5"/g)).toHaveLength(CLIPS);
+  });
+
+  it("keeps the first duration when a clip is listed twice, and fills every tag with that id", () => {
+    const html = '<video id="v1" data-start="1"><audio id="v1" data-start="2">';
+    const result = injectDurations(html, [
+      { id: "v1", duration: 4 },
+      { id: "v1", duration: 9 },
+    ]);
+    expect(result).toBe(
+      '<video id="v1" data-start="1" data-duration="4" data-end="5"><audio id="v1" data-start="2" data-duration="4" data-end="6">',
+    );
   });
 
   it("does not overwrite existing data-duration", () => {
@@ -481,6 +509,14 @@ describe("clampDurations", () => {
 
     expect(result).toContain('data-duration="5"');
     expect(result).toContain('data-end="7"');
+  });
+
+  it("clamps 5,000 clips in one scan of the page, the last clamp for a clip winning", () => {
+    const clamps = [...eachClip(3), ...eachClip(2)];
+    const started = performance.now();
+    const result = clampDurations(manyClips(' data-duration="10" data-end="11"'), clamps);
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(result.match(/data-duration="2" data-end="3"/g)).toHaveLength(CLIPS);
   });
 });
 

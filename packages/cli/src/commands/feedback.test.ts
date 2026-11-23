@@ -10,8 +10,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../telemetry/client.js", () => ({ shouldTrack: () => true, flush: mocks.flush }));
 const trackRenderFeedback = vi.hoisted(() => vi.fn());
 const trackFeedbackComment = vi.hoisted(() => vi.fn());
+const trackCatalogSearchMiss = vi.hoisted(() => vi.fn());
 vi.mock("../telemetry/events.js", () => ({
-  trackCatalogSearchMiss: vi.fn(),
+  trackCatalogSearchMiss,
   trackFeedbackComment,
   trackRenderFeedback,
 }));
@@ -26,12 +27,30 @@ vi.mock("../utils/submitFeedback.js", () => ({
 
 it.each([
   ["a rating", { rating: "8" }, mocks.submitFeedback],
-  ["a catalog search miss", { "search-miss": "typewriter" }, mocks.submitCatalogSearchMiss],
+  [
+    "a catalog search miss",
+    { "search-miss": true, wanted: "typewriter" },
+    mocks.submitCatalogSearchMiss,
+  ],
 ])("sends %s without waiting on the telemetry upload", async (_, args, submit) => {
   vi.spyOn(console, "log").mockImplementation(() => {});
   const { default: feedback } = await import("./feedback.js");
   await feedback.run?.({ args } as never);
   expect(submit).toHaveBeenCalled();
+});
+
+it("reports a catalog gap by the move wanted, never the query that was searched", async () => {
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  const { default: feedback } = await import("./feedback.js");
+  const query = "typewriter that deletes";
+  await feedback.run?.({
+    args: { "search-miss": query, wanted: "text that types then backspaces", tier: "words" },
+  } as never);
+  expect(mocks.submitCatalogSearchMiss).toHaveBeenLastCalledWith(
+    expect.objectContaining({ wanted: "text that types then backspaces", tier: "words" }),
+  );
+  expect(JSON.stringify(mocks.submitCatalogSearchMiss.mock.lastCall)).not.toContain(query);
+  expect(JSON.stringify(trackCatalogSearchMiss.mock.calls)).not.toContain(query);
 });
 
 it("tells person feedback from agent feedback, with the email only an app's env can attach", async () => {

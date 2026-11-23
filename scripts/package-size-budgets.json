@@ -5,7 +5,7 @@
   },
   "@hyperframes/cli": {
     "packed": 8577627,
-    "unpacked": 25500000
+    "unpacked": 25830000
   },
   "@hyperframes/core": {
     "packed": 1948041,
@@ -37,7 +37,7 @@
   },
   "@hyperframes/producer": {
     "packed": 993551,
-    "unpacked": 3527000
+    "unpacked": 3702639
   },
   "@hyperframes/sdk": {
     "packed": 90662,

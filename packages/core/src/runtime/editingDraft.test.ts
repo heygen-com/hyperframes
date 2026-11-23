@@ -104,6 +104,18 @@ describe("drafts", () => {
     expect(element.style.translate).toBe("-50% -50%");
   });
 
+  // fails without the fix: a sealed scale resize's cancel of its size draft put back the transform GSAP had at the
+  // gesture's start, so the new scale and position GSAP drew were wiped and the box showed off its drop until a reload.
+  it("leaves a transform it never drew to GSAP when it puts the rest back", () => {
+    const { element, handle } = card("transform: translate(10px, 0px); width: 50px");
+    drawDrafts([{ handle, translate: { x: 5, y: 0 }, size: { width: 80, height: 40 } }]);
+    element.style.transform = "translate(30px, 0px) scale(1.5, 1.5)";
+    drawDrafts([{ handle, end: "restore" }]);
+    expect(element.style.transform).toBe("translate(30px, 0px) scale(1.5, 1.5)");
+    expect(element.style.width).toBe("50px");
+    expect(element.style.translate).toBe("");
+  });
+
   it("puts back only the part a draft stops drawing", () => {
     const { element, handle } = card("height: 30px");
     drawDrafts([{ handle, translate: { x: 1, y: 2 }, size: { width: 10, height: 10 } }]);

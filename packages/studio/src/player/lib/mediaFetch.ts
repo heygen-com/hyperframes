@@ -194,6 +194,7 @@ export function mediaUrlSourceOptions(reader: MediaReader) {
     return typedResponse(response, asked, request);
   };
   const getRetryDelay = (_previousAttempts: number, error: unknown): number | null => {
+    if (isAbort(error)) return null;
     const start = error instanceof MediaFetchError ? error.start : null;
     const failed = failuresByStart.get(start) ?? 0;
     const clientError =

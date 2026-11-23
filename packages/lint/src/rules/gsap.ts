@@ -40,6 +40,7 @@ import type { HyperframeLintFinding, LintRule } from "../types";
 import type { OpenTag } from "../utils";
 import {
   readAttr,
+  readTagAttr,
   readDecodedAttr,
   truncateSnippet,
   stripJsComments,
@@ -464,15 +465,15 @@ function collectSimpleStyleRules(styles: LintContext["styles"]): Map<string, str
 
 function tagSimpleSelectors(tag: OpenTag): string[] {
   const selectors: string[] = [];
-  const id = readAttr(tag.raw, "id");
+  const id = readTagAttr(tag, "id");
   if (id) selectors.push(`#${id}`);
-  const classes = readAttr(tag.raw, "class")?.split(/\s+/).filter(Boolean) ?? [];
+  const classes = readTagAttr(tag, "class")?.split(/\s+/).filter(Boolean) ?? [];
   for (const className of classes) selectors.push(`.${className}`);
   return selectors;
 }
 
 function combinedTagStyle(tag: OpenTag, styleRules: Map<string, string>): string {
-  const styles = [readAttr(tag.raw, "style") || ""];
+  const styles = [readTagAttr(tag, "style") || ""];
   for (const selector of tagSimpleSelectors(tag)) {
     const ruleStyle = styleRules.get(selector);
     if (ruleStyle) styles.push(ruleStyle);
@@ -947,8 +948,10 @@ function matchesTemplateParts(id: string, parts: string[]): boolean {
 // denote: literal getElementById/querySelector lookups, template-literal ids
 // matched against the document's actual ids, and script-assigned class names
 // (createElementNS + setAttribute("class", ...)). Anything else stays unresolved.
-function resolveScriptElementTokens(source: string, tags: OpenTag[]): Map<string, Set<string>> {
-  const documentIds = tags.map((tag) => readAttr(tag.raw, "id")).filter((id) => id !== null);
+function resolveScriptElementTokens(
+  source: string,
+  documentIds: readonly string[],
+): Map<string, Set<string>> {
   const tokensByVar = new Map<string, Set<string>>();
   const add = (name: string, token: string): void => {
     const tokens = tokensByVar.get(name) ?? new Set<string>();
@@ -1172,6 +1175,22 @@ export const gsapRules: LintRule<LintContext>[] = [
 
     const styleRules = collectSimpleStyleRules(styles);
     const reportedVisibleOverlayKeys = new Set<string>();
+    const visibleOverlays = tags.flatMap((tag) => {
+      const selectors = tagSimpleSelectors(tag);
+      if (selectors.length === 0) return [];
+      const authoredStyle = combinedTagStyle(tag, styleRules);
+      if (!authoredStyle || !styleLooksFullFrameOverlay(authoredStyle)) return [];
+      if (styleHasHiddenInitialState(authoredStyle)) return [];
+      return [{ tag, selectors, overlayKey: readTagAttr(tag, "id") || String(tag.index) }];
+    });
+    const overlaysByToken = new Map<string, number[]>();
+    visibleOverlays.forEach(({ selectors }, at) => {
+      for (const token of selectors) {
+        const list = overlaysByToken.get(token);
+        if (list) list.push(at);
+        else overlaysByToken.set(token, [at]);
+      }
+    });
 
     for (const script of scripts) {
       const gsapWindows = await cachedExtractGsapWindows(script.content);
@@ -1262,22 +1281,26 @@ export const gsapRules: LintRule<LintContext>[] = [
       }
 
       // gsap_fullscreen_overlay_starts_visible
-      for (const tag of tags) {
-        const selectors = tagSimpleSelectors(tag);
-        if (selectors.length === 0) continue;
-        const overlayKey = readAttr(tag.raw, "id") || String(tag.index);
+      const windowTokens = new Map(
+        gsapWindows.map((win) => [win, targetedSelectorTokens(win.targetSelector)]),
+      );
+      const showsOrHides = (win: GsapWindow) =>
+        win.properties.some((prop) =>
+          ["opacity", "autoAlpha", "visibility", "display"].includes(prop),
+        );
+      // Only overlays some visibility tween names can be flagged; walking every overlay per script made it quadratic.
+      const targeted = new Set<number>();
+      for (const win of gsapWindows.filter(showsOrHides))
+        for (const token of windowTokens.get(win)!)
+          for (const at of overlaysByToken.get(token) ?? []) targeted.add(at);
+      for (const at of [...targeted].sort((a, b) => a - b)) {
+        const { tag, selectors, overlayKey } = visibleOverlays[at]!;
         if (reportedVisibleOverlayKeys.has(overlayKey)) continue;
-        const authoredStyle = combinedTagStyle(tag, styleRules);
-        if (!authoredStyle || !styleLooksFullFrameOverlay(authoredStyle)) continue;
-        if (styleHasHiddenInitialState(authoredStyle)) continue;
 
         const visibilityWindows = gsapWindows
           .filter((win) => {
-            const tokens = targetedSelectorTokens(win.targetSelector);
-            if (!selectors.some((selector) => tokens.has(selector))) return false;
-            return win.properties.some((prop) =>
-              ["opacity", "autoAlpha", "visibility", "display"].includes(prop),
-            );
+            const tokens = windowTokens.get(win)!;
+            return selectors.some((selector) => tokens.has(selector)) && showsOrHides(win);
           })
           .sort((a, b) => a.position - b.position);
         const startsHiddenAtZero = visibilityWindows.some(
@@ -1298,9 +1321,7 @@ export const gsapRules: LintRule<LintContext>[] = [
         const firstVisible = visibilityWindows.find((win) => makesOverlayVisible(win));
         if (!firstVisible) continue;
         const selector =
-          selectors.find((candidate) =>
-            targetedSelectorTokens(firstVisible.targetSelector).has(candidate),
-          ) ||
+          selectors.find((candidate) => windowTokens.get(firstVisible)!.has(candidate)) ||
           selectors[0] ||
           tag.name;
         // A window only re-hides the overlay if it is a DIFFERENT tween that ends
@@ -2429,9 +2450,10 @@ export const gsapRules: LintRule<LintContext>[] = [
     }
     if (multiDashTokens.size === 0) return findings;
 
+    const documentIds = tags.flatMap((tag) => readTagAttr(tag, "id") ?? []);
     for (const script of scripts) {
       const source = stripJsComments(script.content);
-      const varTokens = resolveScriptElementTokens(source, tags);
+      const varTokens = resolveScriptElementTokens(source, documentIds);
       const reported = new Set<string>();
 
       const writerPattern =
@@ -2608,9 +2630,10 @@ export const gsapRules: LintRule<LintContext>[] = [
     // CSS `d: path(...)` supplies geometry statically — treat like a static attribute.
     const cssProvidesD = styles.some((style) => /\bd\s*:\s*path\(/.test(style.content));
 
+    const documentIds = tags.flatMap((tag) => readTagAttr(tag, "id") ?? []);
     for (const script of scripts) {
       const source = stripJsComments(script.content);
-      const varTokens = resolveScriptElementTokens(source, tags);
+      const varTokens = resolveScriptElementTokens(source, documentIds);
       const functionRanges = collectFunctionBodyRanges(source);
       const createdVars = new Set(
         [...source.matchAll(/([A-Za-z_$][\w$]*)\s*=\s*document\.createElementNS\(/g)].map(
