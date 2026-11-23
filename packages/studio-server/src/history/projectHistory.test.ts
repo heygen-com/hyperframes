@@ -1971,6 +1971,53 @@ describe("openProjectHistory", () => {
 });
 
 describe("claim: a writer that records after writing", () => {
+  /** A save the history has seen but not yet logged: the change is pending outside when the next claim runs. */
+  async function pendingOutside(history: Awaited<ReturnType<typeof open>>, path: string) {
+    history.noteChange(path);
+    await vi.waitFor(() =>
+      expect(history.next("back", you)?.files.map((file) => file.path)).toContain(path),
+    );
+  }
+  const backdate = (file: string) =>
+    utimesSync(file, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
+
+  // fails without the fix: the import's claim logged the save as a change from outside, the save's own claim then
+  // found nothing, and Cmd+Z took back the import instead of the edit.
+  it("a save made while an import is still taken in keeps its own step: Cmd+Z undoes the edit, the media stays", async () => {
+    const { history, write, read, has, projectDir } = await project(
+      { "index.html": "<h1>Hello</h1>" },
+      { quietMs: 60_000 },
+    );
+    write("assets/logo.png", "png");
+    backdate(join(projectDir, "assets/logo.png"));
+    write("index.html", "<h1>Two</h1>");
+    await pendingOutside(history, "index.html");
+    await history.claim(you, "Imported media", ["assets/logo.png"]);
+    await history.claim(you, "Edited", ["index.html"]);
+    expect(history.list().map((entry) => entry.label)).toEqual(["Imported media", "Edited"]);
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect(read("index.html")).toBe("<h1>Hello</h1>");
+    expect(has("assets/logo.png")).toBe(true);
+  });
+
+  it("a change made before a claim's own files is still logged ahead of the claim", async () => {
+    const { history, write, projectDir } = await project(
+      { "index.html": "v1" },
+      { quietMs: 60_000 },
+    );
+    write("style.css", "h1 {}");
+    backdate(join(projectDir, "style.css"));
+    await pendingOutside(history, "style.css");
+    write("index.html", "v2");
+    await history.claim(you, "Edited", ["index.html"]);
+    expect(
+      history.list().map((entry) => [entry.who.kind, entry.files.map((file) => file.path)]),
+    ).toEqual([
+      ["outside", ["style.css"]],
+      ["person", ["index.html"]],
+    ]);
+  });
+
   it("files the claimed paths' writes as the claimer's entry; other outside writes stay outside, logged first", async () => {
     const { history, write, read } = await project({ "index.html": "A", "notes.md": "n" });
     write("index.html", "B");
