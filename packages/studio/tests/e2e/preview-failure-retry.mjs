@@ -50,9 +50,18 @@ try {
   await page.waitForFunction(() => document.querySelector("hyperframes-player")?.painted === true, {
     timeout: 60_000,
   });
-  const canvasBack = await page.$eval('[aria-label="Composition canvas"]', (el) =>
-    el.classList.contains("pointer-events-auto"),
-  );
+  const canvasBack = await page
+    .waitForFunction(
+      () =>
+        document
+          .querySelector('[aria-label="Composition canvas"]')
+          ?.classList.contains("pointer-events-auto"),
+      { timeout: 10_000 },
+    )
+    .then(
+      () => true,
+      () => false,
+    );
   assert.ok(canvasBack, "the editing canvas takes clicks again once the retried preview shows");
   console.log("preview failure retry: ok");
 } finally {
