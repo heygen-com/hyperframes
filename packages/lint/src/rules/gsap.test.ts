@@ -3270,6 +3270,39 @@ describe("SVG draw-on rules", () => {
     expect(performance.now() - started).toBeLessThan(3000);
   });
 
+  it("lints 5,000 script tags naming one file in linear time", async () => {
+    const html = `<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  ${'<script src="lib.js"></script>\n'.repeat(5000)}
+</body></html>`;
+    const started = performance.now();
+    await lintHyperframeHtml(html);
+    expect(performance.now() - started).toBeLessThan(3000);
+  });
+
+  it("lints 2,000 timeline scripts beside 2,000 named elements in linear time", async () => {
+    const elements = Array.from(
+      { length: 2000 },
+      (_, i) => `<div id="e${i}" class="c${i}" style="position:absolute;inset:0"></div>`,
+    ).join("\n");
+    const scripts = Array.from(
+      { length: 2000 },
+      (_, i) => `<script>
+    const el = document.getElementById("e${i}");
+    const tl = gsap.timeline({ paused: true });
+    tl.set(el, { strokeDasharray: 1 }, 0).to(el, { opacity: 1 }, 0);
+  </script>`,
+    ).join("\n");
+    const html = `<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">${elements}</div>
+  <style>#e0 { stroke-dasharray: 4 2 }</style>
+  ${scripts}
+</body></html>`;
+    const started = performance.now();
+    await lintHyperframeHtml(html);
+    expect(performance.now() - started).toBeLessThan(6000);
+  });
+
   it("scans a closed style block of many unclosed rules in linear time", async () => {
     const html = `<html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
