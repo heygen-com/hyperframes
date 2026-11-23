@@ -295,16 +295,18 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
       .catch(() => null)
       .then((answer) => {
         if (readingRef.current === read) readingRef.current = null;
-        if (!read.dropped && answer === UNANSWERED && selections[0])
-          p.onBlockedMoveRef.current(selections[0], unansweredMoveReason(iframe));
-        const shown = answer === UNANSWERED ? null : answer;
-        if (read.dropped || !shown) return;
-        const targets = found.targets.map((target, i) => ({ ...target, ...shown.shown[i] }));
-        const session = beginSession({ targets, isGroup: found.isGroup }, false);
-        if (!session || session === "refused") return;
-        session.accum = read.accum;
-        startBurst(session);
+        if (!read.dropped) startFrom(answer);
       });
+    const startFrom = (answer: Awaited<ReturnType<typeof askShownGestureStarts>> | null) => {
+      if (answer === UNANSWERED && selections[0])
+        p.onBlockedMoveRef.current(selections[0], unansweredMoveReason(iframe));
+      if (!answer || answer === UNANSWERED) return;
+      const targets = found.targets.map((target, i) => ({ ...target, ...answer.shown[i] }));
+      const session = beginSession({ targets, isGroup: found.isGroup }, false);
+      if (!session || session === "refused") return;
+      session.accum = read.accum;
+      startBurst(session);
+    };
     return read;
   };
 

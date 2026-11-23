@@ -239,14 +239,16 @@ export function createPreviewGestureStarts(
         return;
       }
       endWaitingPress(press);
-      const pointerDown = down as unknown as React.PointerEvent<HTMLElement>;
       const read = startsFrom(step);
-      const pressed = opts.selectionRef.current;
-      if (read === false && step === "drawn" && channel && pressed)
-        opts.onBlockedMoveRef.current(pressed, unansweredMoveReason(channel));
-      if (read === false || !start(pointerDown, at, true, read)) return;
+      if (read === false) return sayWhyNotStarted(step);
+      if (!start(down as unknown as React.PointerEvent<HTMLElement>, at, true, read)) return;
       if (press.moved) moveActiveGesture(press.moved);
       if (press.released) releaseActiveGesture(press.released);
+    };
+    const sayWhyNotStarted = (step: "lost" | "run" | "drawn") => {
+      const pressed = opts.selectionRef.current;
+      if (step === "drawn" && channel && pressed)
+        opts.onBlockedMoveRef.current(pressed, unansweredMoveReason(channel));
     };
     press.frame = requestAnimationFrame(poll);
     return true;

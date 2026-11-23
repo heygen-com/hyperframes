@@ -96,17 +96,6 @@ export async function measurePreviewGestureStart(
 export type Shown = { selection: DomEditSelection; rect: OverlayRect; start?: PreviewGestureStart };
 export type OverChannel = { shown: Shown[]; snap?: SnapContext };
 
-/** An opaque frame's `selections` on the page it shows now and what a gesture on them starts from. */
-export async function readShownGestureStarts(
-  iframe: HTMLIFrameElement,
-  overlay: HTMLDivElement | null,
-  path: string | null,
-  selections: DomEditSelection[],
-): Promise<OverChannel | null> {
-  const answer = await askShownGestureStarts(iframe, overlay, path, selections);
-  return answer === UNANSWERED ? null : answer;
-}
-
 export const UNANSWERED = "unanswered";
 export const PRESS_WAIT_MAX_MS = 10_000;
 
