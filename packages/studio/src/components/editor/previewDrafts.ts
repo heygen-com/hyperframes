@@ -113,19 +113,20 @@ export function armPreviewDraftEnd(element: Element, selector: string | null): v
   if (entry && selector) entry.saving = selector;
 }
 
-/** Ends a save patching `selectors` carries; one with draws waiting or no number ends alone. */
+/** Ends a save patching each selector carries; one with draws waiting or no number ends alone. */
 export function takePreviewDraftEnds(
   iframe: HTMLIFrameElement,
-  selectors: readonly string[],
+  endBySelector: ReadonlyMap<string, "keep-size" | "restore">,
 ): EditingDraftEnd[] {
   const queue = queueFor(iframe);
   send(iframe, queue);
   const ends: EditingDraftEnd[] = [];
   for (const [handle, entry] of queue.drawn) {
     const waiting = queue.ops.some((op) => op.handle === handle);
-    if (!entry.draft || !entry.saving || !selectors.includes(entry.saving) || waiting) continue;
+    const end = entry.saving && endBySelector.get(entry.saving);
+    if (!entry.draft || !end || waiting) continue;
     queue.drawn.delete(handle);
-    ends.push({ handle, draft: entry.draft, end: "keep-size" });
+    ends.push({ handle, draft: entry.draft, end });
   }
   return ends;
 }

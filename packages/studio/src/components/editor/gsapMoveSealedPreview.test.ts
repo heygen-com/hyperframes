@@ -466,7 +466,7 @@ const patchRequests = () =>
 const drawsSettled = () => new Promise((resolve) => setTimeout(resolve, 30));
 
 /** The save a sealed move on GSAP's route sends: the new x and y as a base set, as patch-tweens. */
-function savePosition(change: { kind: "global-set" | "set"; props: { x: number; y: number } }) {
+function savePosition(change: { kind: "global-set" | "set"; props: Record<string, number> }) {
   return async (iframe: HTMLIFrameElement) => {
     await drawsSettled();
     vi.mocked(previewRequest).mockClear();
@@ -499,6 +499,26 @@ it("a sealed move's save ends its draft in the same frame message, and the teard
   await drawsSettled();
   expect(draftEnds()).toEqual([]);
   expect(iframe).toBeDefined();
+});
+
+// fails without the fix: the scale save and the end that drops the drawn size went as two messages, so the frame
+// could paint one frame between them at the size before the resize (60 px off on the edit bench's scale resizes).
+it("a sealed resize saved as GSAP scale drops its drawn size in the save's own frame message", async () => {
+  mount(SCRIPT);
+  const sizedAsScale = (standIn: Element, member: ManualOffsetDragMember) => {
+    drawPreviewDraft(standIn, { size: { width: 300, height: 200 } });
+    member.sizeSavedAsScale = true;
+    applyManualOffsetDragCommit(member, 10, 0);
+  };
+  const save = savePosition({ kind: "global-set", props: { scale: 1.25 } });
+  await dragBoxOnSealedFrame(SCRIPT, undefined, sizedAsScale, save);
+  const [[, , params]] = patchRequests() as unknown as [
+    [unknown, unknown, { endsDrafts?: unknown[] }],
+  ];
+  expect(params.endsDrafts).toEqual([expect.objectContaining({ end: "restore" })]);
+  await drawsSettled();
+  expect(draftEnds()).toEqual([]);
+  expect(document.getElementById("box")!.style.width).toBe("");
 });
 
 // fails without the fix: a gesture with no save ended its draft as {translate:null} then {end:keep}, two messages.

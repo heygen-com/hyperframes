@@ -26,12 +26,16 @@ const sealedGroupPatched = new WeakMap<HTMLIFrameElement, Promise<boolean>>();
 const channelsOf = (change: RuntimeTweenChange) =>
   change.kind === "keyframes" ? change.keyframes.flatMap(Object.keys) : Object.keys(change.props);
 
-const selectorsNotWritingScale = (
+function draftEndsBySelector(
   patches: ReadonlyArray<{ selector: string; change: RuntimeTweenChange }>,
-) =>
-  patches
-    .filter(({ change }) => !channelsOf(change).some((channel) => channel.startsWith("scale")))
-    .map(({ selector }) => selector);
+): Map<string, "keep-size" | "restore"> {
+  const ends = new Map<string, "keep-size" | "restore">();
+  for (const { selector, change } of patches) {
+    const scale = channelsOf(change).some((channel) => channel.startsWith("scale"));
+    if (scale || !ends.has(selector)) ends.set(selector, scale ? "restore" : "keep-size");
+  }
+  return ends;
+}
 
 /** A sealed preview patches its own tweens; a refusal or no answer runs `fallback` after the group's last write. */
 export function patchSealedPreview(
@@ -41,7 +45,7 @@ export function patchSealedPreview(
   fallback: () => void,
 ): void {
   const { iframe } = ticket;
-  const endsDrafts = takePreviewDraftEnds(iframe, selectorsNotWritingScale(patches));
+  const endsDrafts = takePreviewDraftEnds(iframe, draftEndsBySelector(patches));
   const request = {
     patches: patches.map(wirePatch),
     seek: lastWrite,
