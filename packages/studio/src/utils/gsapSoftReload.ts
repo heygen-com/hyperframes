@@ -203,6 +203,10 @@ export function sealedRerun(
 }
 
 // Everything sent comes from the files Studio saved, never from the frame; the reply only says whether it applied.
+function rereadOnceRerun(iframe: HTMLIFrameElement, result: SoftReloadResult): void {
+  if (result !== "cannot-soft-reload" && result !== "superseded") rereadGsapSnapshot(iframe);
+}
+
 function softReloadSealed(
   iframe: HTMLIFrameElement,
   scriptText: string,
@@ -237,7 +241,7 @@ function softReloadSealed(
       answer === PREVIEW_REJECTED || answer === PREVIEW_STALE
         ? "cannot-soft-reload"
         : sealedSoftReloadResult(answer);
-    if (result !== "cannot-soft-reload" && result !== "superseded") rereadGsapSnapshot(iframe);
+    rereadOnceRerun(iframe, result);
     if (!ticketNeedsRecovery(ticket)) return;
     if (result === "cannot-soft-reload") onAsyncFailure?.();
     else if (result !== "superseded") onShownInPlace?.();
