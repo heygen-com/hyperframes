@@ -25,6 +25,7 @@ import {
 import { parseTimelineFromDOM } from "../lib/timelineDOM";
 import { previewClipManifest, previewFrameOpaque } from "../lib/previewChannel";
 import { wellFormedClips } from "../lib/manifestClips";
+import { notePreviewSceneSwap } from "../sceneSwap";
 import { frameOrigins } from "../lib/bridgePlayback";
 
 /** What `processTimelineMessage` accepts — the clip-manifest postMessage. */
@@ -41,6 +42,7 @@ interface PreviewMessage {
   source?: string;
   type?: string;
   clips?: unknown;
+  sceneSwap?: unknown;
   isPlaying?: unknown;
   copies?: unknown;
   health?: unknown;
@@ -221,6 +223,7 @@ export function createPreviewMessageHandler(
       return;
     }
     if (data.type === "timeline" && Array.isArray(data.clips)) {
+      if (iframe) notePreviewSceneSwap(iframe, data.sceneSwap);
       const message = { ...data, clips: wellFormedClips(data.clips) };
       handleTimelineMessage(deps, iframe, message as unknown as ClipManifestMessage, enriched);
     }
