@@ -9,6 +9,7 @@ const gesture = (resizeGrow?: GestureState["resizeGrow"]) =>
     actualHeight: 160,
     editScaleX: 0.5,
     editScaleY: 0.5,
+    ...{ contentScaleX: 1, contentScaleY: 1 },
     ...{ actualRotation: 0, centerX: 0, centerY: 0, startX: 60, startY: 40 },
     resizeGrow,
   }) as GestureState;
@@ -29,11 +30,16 @@ describe("a sealed resize's centre pin", () => {
 
 // fails without the fix: the sealed pin ignored the wanted size, so the grabbed corner sat up to half a px short of the
 // pointer where an unsealed draft, which measures the corners, shifts the box by half the rounding remainder.
-it("moves a sealed box by the same rounding remainder an unsealed draft measures", () => {
+// A box drawn 1.5x on screen, all of it Studio's zoom or most of it the element's own scale.
+it.each([
+  [1.5, 1],
+  [0.5, 3],
+])("moves a sealed box by the same rounding remainder an unsealed draft measures", (edit, own) => {
   const angle = 30 * (Math.PI / 180);
   const g = {
     ...gesture(),
-    ...{ actualWidth: 300, actualHeight: 150, editScaleX: 1.5, editScaleY: 1.5 },
+    ...{ actualWidth: 300, actualHeight: 150, editScaleX: edit, editScaleY: edit },
+    ...{ contentScaleX: own, contentScaleY: own },
     ...{ actualRotation: 30, centerX: 400, centerY: 300, startX: 680, startY: 500 },
   } as GestureState;
   const sizes = { wanted: { width: 300.6, height: 150.3 }, written: { width: 301, height: 150 } };
