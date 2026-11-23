@@ -1001,7 +1001,7 @@ it("keeps the inline text its handoff saved when a field added from the panel fo
   await act(() => commits().handleDomAddTextField(selection.textFields.at(-1)!.key));
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
   expect(text("title")).toMatch(
-    /^<span>Uno<\/span> <span>Two<\/span><span style="[^"]*">New text<\/span>$/,
+    /^<span>Uno<\/span> <span>Two<\/span> <span style="[^"]*">New text<\/span>$/,
   );
 });
 

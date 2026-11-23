@@ -1,4 +1,5 @@
 import { isClipHiddenByRuntime, PREVIEW_ONLY_ATTRS } from "@hyperframes/core/studio-preview-mark";
+import { withTextNodeEdgesAsSeparators } from "./textFieldSpacing";
 import { existsInSourceFile } from "./probeSourceElement";
 import { isAudibleVideoNode } from "../../player/lib/timelineElementHelpers";
 import type { PatchOperation } from "../../utils/sourcePatcher";
@@ -92,22 +93,6 @@ function spaceBefore(node: Node): Pick<DomEditTextField, "spaceBefore"> {
     at = at.previousSibling;
   }
   return space ? { spaceBefore: space } : {};
-}
-
-function withTextNodeEdgesAsSeparators(fields: DomEditTextField[]): DomEditTextField[] {
-  return fields.map((field, index) => {
-    const next = { ...field };
-    if (field.source === "text-node") {
-      const lead = /^\s*/.exec(field.value)![0];
-      next.value = field.value.slice(lead.length);
-      if (lead) next.spaceBefore = lead;
-      if (index < fields.length - 1) next.value = next.value.trimEnd();
-    }
-    const previous = fields[index - 1];
-    const trail = previous?.source === "text-node" ? /\s*$/.exec(previous.value)![0] : "";
-    if (trail) next.spaceBefore = trail + (next.spaceBefore ?? "");
-    return next;
-  });
 }
 
 // fallow-ignore-next-line complexity

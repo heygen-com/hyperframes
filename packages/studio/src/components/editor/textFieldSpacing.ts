@@ -1,7 +1,7 @@
 import type { DomEditTextField } from "./domEditingTypes";
 
 /** Names the edges of a text layer added from the panel whose separator Studio writes: before, after or both. */
-export const ADDED_SPACE_ATTR = "data-hf-space";
+const ADDED_SPACE_ATTR = "data-hf-space";
 
 type Edge = "before" | "after";
 
@@ -22,7 +22,7 @@ const edgesOf = (value: string | null): Edge[] =>
 const edgesValue = (edges: Edge[]): string | null =>
   edges.length === 2 ? "both" : (edges[0] ?? null);
 
-export function addedSpaceEdges(field: DomEditTextField): Edge[] {
+function addedSpaceEdges(field: DomEditTextField): Edge[] {
   return edgesOf(field.attributes.find((a) => a.name === ADDED_SPACE_ATTR)?.value ?? null);
 }
 
@@ -40,6 +40,23 @@ export function markAddedSpaceEdges(fields: DomEditTextField[], key: string): Do
       ? { ...field, attributes: [...field.attributes, { name: ADDED_SPACE_ATTR, value }] }
       : field,
   );
+}
+
+/** A plain-text run's edge whitespace is the separator beside it, so editing the run cannot join two words. */
+export function withTextNodeEdgesAsSeparators(fields: DomEditTextField[]): DomEditTextField[] {
+  return fields.map((field, index) => {
+    const next = { ...field };
+    if (field.source === "text-node") {
+      const lead = /^\s*/.exec(field.value)![0];
+      next.value = field.value.slice(lead.length);
+      if (lead) next.spaceBefore = lead;
+      if (index < fields.length - 1) next.value = next.value.trimEnd();
+    }
+    const previous = fields[index - 1];
+    const trail = previous?.source === "text-node" ? /\s*$/.exec(previous.value)![0] : "";
+    if (trail) next.spaceBefore = trail + (next.spaceBefore ?? "");
+    return next;
+  });
 }
 
 /** Takes a removed added field's separators with it, so the text around it reads as before the add. */
@@ -87,7 +104,7 @@ function clearSpace(nodes: Text[], edge: Edge): void {
   }
 }
 
-function hadSpace(previous: Element | null, key: string | null, edge: Edge): boolean {
+function hadSpace(previous: ParentNode | null, key: string | null, edge: Edge): boolean {
   if (!previous || !key) return false;
   const span = Array.from(previous.children).find(
     (el) => el.getAttribute("data-hf-text-key") === key,
