@@ -113,6 +113,10 @@ function attachStudioSaveAttempt(error: unknown, attempt: number): unknown {
   return error;
 }
 
+export function getStudioSaveErrorTone(error: unknown): "info" | "error" {
+  return error instanceof Error && "tone" in error && error.tone === "info" ? "info" : "error";
+}
+
 export function getStudioSaveErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error.trim()) return error;

@@ -11,7 +11,6 @@ const SHOWN = "od\\x1b[2Jd\\x07";
 const fake = vi.hoisted(() => ({
   lines: [] as string[],
   attended: false,
-  json: false,
   confirmAnswer: false,
   templates: [] as Array<Record<string, string>>,
   fetchRemoteTemplate: vi.fn(),
@@ -21,10 +20,6 @@ const fake = vi.hoisted(() => ({
 vi.mock("../utils/attendedTerminal.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/attendedTerminal.js")>()),
   isUnattended: () => !fake.attended,
-}));
-vi.mock("../utils/jsonError.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../utils/jsonError.js")>()),
-  isJsonRun: () => fake.json,
 }));
 vi.mock("@clack/prompts", () => {
   const say = (message: string) => void fake.lines.push(message);
@@ -89,7 +84,6 @@ function oddFile(name: string): string {
 beforeEach(() => {
   fake.lines.length = 0;
   fake.attended = false;
-  fake.json = false;
   fake.confirmAnswer = false;
   fake.templates = [];
   fake.fetchRemoteTemplate.mockReset().mockRejectedValue(new Error(`gone ${ODD}\nsecond line`));
@@ -136,6 +130,15 @@ describe("init output without prompts", () => {
       `Failed to scaffold example "ex-${SHOWN}": gone ${SHOWN}\nsecond line`,
     );
     expectNoControlCharacters();
+  });
+
+  // fails without the fix: a spinner drew the video's status in a run that asks nothing.
+  it("prints a video's status as lines, without a spinner", async () => {
+    const video = join(work, "clip.mov");
+    copyFileSync(new URL("./__fixtures__/mpeg4.mp4", import.meta.url), video);
+    await run({ name: join(work, "f"), video, "skip-transcribe": true });
+    expect(printed()).toContain("Transcoded to clip.mp4\n");
+    expect(printed()).not.toContain("(spinner)");
   });
 
   // Windows refuses control characters in file and folder names.
@@ -185,17 +188,6 @@ describe("init output with prompts", () => {
     await expect(run({ name: join(work, "film"), ...args })).rejects.toThrow();
     expect(printed()).toContain(line);
     expectNoControlCharacters();
-  });
-
-  // fails without the fix: a run that asked for JSON went to the questions, and a spinner drew the video's status on stdout.
-  it.each([undefined, "gone"])("asks and spins nothing in a JSON run: %s", async (example) => {
-    fake.json = true;
-    const video = join(work, "clip.mov");
-    copyFileSync(new URL("./__fixtures__/mpeg4.mp4", import.meta.url), video);
-    await run({ name: join(work, "f"), video, example, "skip-transcribe": true }).catch(String);
-    expect(printed()).toContain("Transcoded to clip.mp4\n");
-    expect(printed()).toContain(example ? 'Failed to scaffold example "gone"' : "Get started:");
-    expect(printed()).not.toContain("(spinner)");
   });
 
   // fails without the fix: the example name and the reason are printed as they arrived.

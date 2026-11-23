@@ -93,8 +93,10 @@ describe("element handles over the editing port", () => {
       children: [{ text: "Hi " }, { handle: expect.stringMatching(EDITING_ELEMENT_HANDLE) }],
       rect: { x: 0, y: 0, width: 0, height: 0 },
       truncated: false,
+      textMarkup: true,
     });
     expect(root).toMatchObject({ tag: "div", selector: '[data-composition-id="card__hf1"]' });
+    expect(root!.textMarkup).toBe(false);
     expect(root!.matchesBefore).toBeNull();
     expect(JSON.parse(JSON.stringify(described))).toEqual(described);
   });

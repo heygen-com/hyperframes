@@ -12,7 +12,7 @@ import {
   type EditingRect,
 } from "./editingElement";
 import { elementForHandle } from "./editingHandles";
-import { composeElementTransform, type PlanarTransformOps } from "./elementTransform";
+import { composeElementTransform } from "./elementTransform";
 
 export type EditingCorner = "nw" | "ne" | "sw" | "se";
 export type EditingCorners = Record<EditingCorner, { x: number; y: number }>;
@@ -32,6 +32,7 @@ export interface EditingElementBox {
   } | null;
   /** Inline `clip-path`, else the computed one; null when longer than MAX_ELEMENT_VALUE. */
   clipPath: string | null;
+  layout: { width: number; height: number };
 }
 
 export interface EditingElementGeometry extends EditingElementBox {
@@ -102,17 +103,10 @@ export function readElementTransformSnapshot(
   const DOMMatrixCtor = (win as Window & typeof globalThis).DOMMatrix;
   if (!DOMMatrixCtor) return null;
   const cs = win.getComputedStyle(element);
-  // The corner math transforms points, so this keeps the full matrix, translation included.
-  const ops: PlanarTransformOps<DOMMatrix> = {
-    identity: () => new DOMMatrixCtor(),
-    fromTransform: (value) => new DOMMatrixCtor(value),
-    fromRotate: (degrees) => new DOMMatrixCtor().rotateSelf(degrees),
-    compose: (outer, inner) => outer.multiply(inner),
-  };
   try {
     const matrix = composeElementTransform(
       element,
-      ops,
+      DOMMatrixCtor,
       (node) => (node === element ? cs : win.getComputedStyle(node)),
       memo,
     );
@@ -201,10 +195,17 @@ function clipPathOf(element: HTMLElement): string | null {
   return value.length <= MAX_ELEMENT_VALUE ? value : null;
 }
 
+function layoutOf(element: Element): EditingElementBox["layout"] {
+  const { offsetWidth = 0, offsetHeight = 0 } = element as Partial<HTMLElement>;
+  return { width: offsetWidth, height: offsetHeight };
+}
+
 const finiteCorners = (corners: EditingCorners | null) =>
   corners && Object.values(corners).every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
     ? corners
     : null;
+
+const turnedMirroredOrSkewed = ({ a, b, c, d }: DOMMatrix) => b !== 0 || c !== 0 || a < 0 || d < 0;
 
 export function boxOf(
   element: HTMLElement,
@@ -213,13 +214,17 @@ export function boxOf(
   const transform = readElementTransformSnapshot(window, element, memo);
   const turned = transform ? rotationDegreesFromMatrix(transform.matrix) : 0;
   const angle = Math.abs(turned) < ROTATION_GATE_EPSILON_DEG ? 0 : turned;
-  const corners = angle && transform ? elementCornerPoints(window, element, transform) : null;
+  const corners =
+    transform && turnedMirroredOrSkewed(transform.matrix)
+      ? elementCornerPoints(window, element, transform)
+      : null;
   return {
     rect: rectOf(element),
     angle,
     corners: finiteCorners(corners),
     source: sourceOf(element),
     clipPath: clipPathOf(element),
+    layout: layoutOf(element),
   };
 }
 

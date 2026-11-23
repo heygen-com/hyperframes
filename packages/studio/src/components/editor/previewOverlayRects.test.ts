@@ -9,8 +9,12 @@ import { queryPreviewElements } from "../../player/lib/previewElements";
 import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness";
 import type { DomEditSelection } from "./domEditing";
 import { orientedGroupAwareOverlayRect, type OverlayRect } from "./domEditOverlayGeometry";
-import type { UseDomEditOverlayGesturesOptions } from "./domEditOverlayGestures";
+import {
+  PRESS_WAITING_ATTR,
+  type UseDomEditOverlayGesturesOptions,
+} from "./domEditOverlayGestures";
 import { createPreviewGestureStarts } from "./previewGestureStarts";
+import { standInHandle } from "./previewSelection";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
 import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 
@@ -23,6 +27,13 @@ vi.mock("./overlayFrameLoop", () => ({
 }));
 
 const press = vi.hoisted(() => ({ changing: true, start: vi.fn((..._args: unknown[]) => true) }));
+const replay = vi.hoisted(() => ({
+  sent: (_iframe: HTMLIFrameElement) => Promise.resolve(),
+}));
+vi.mock("./previewDrafts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./previewDrafts")>()),
+  previewDraftsSent: (iframe: HTMLIFrameElement) => replay.sent(iframe),
+}));
 vi.mock("./domEditOverlayStartGesture", () => ({
   startGesture: press.start,
   startGroupDrag: vi.fn(() => true),
@@ -38,6 +49,11 @@ installReactActEnvironment();
 // The 2D slice of each that the overlay reads; one set for both frames, which share this window.
 class FakeDOMMatrix {
   a = 1;
+  m13 = 0;
+  m23 = 0;
+  m14 = 0;
+  m24 = 0;
+  m44 = 1;
   b = 0;
   c = 0;
   d = 1;
@@ -56,9 +72,6 @@ class FakeDOMMatrix {
     out.e = this.a * o.e + this.c * o.f + this.e;
     out.f = this.b * o.e + this.d * o.f + this.f;
     return out;
-  }
-  rotateSelf() {
-    return this;
   }
   transformPoint(p: { x: number; y: number }) {
     return { x: this.a * p.x + this.c * p.y + this.e, y: this.b * p.x + this.d * p.y + this.f };
@@ -178,8 +191,18 @@ const settled = async (overlay: Awaited<ReturnType<typeof overlayOn>>) => {
   return { overlayRect, childRects, group: groupOverlayItems.map((item) => item.rect), hoverRect };
 };
 
-const close = (rect: OverlayRect | null) =>
-  rect && Object.fromEntries(Object.entries(rect).map(([key, value]) => [key, +value.toFixed(9)]));
+const rounded = (value: unknown): unknown =>
+  typeof value === "number"
+    ? +value.toFixed(9)
+    : value && typeof value === "object"
+      ? Object.fromEntries(Object.entries(value).map(([key, v]) => [key, rounded(v)]))
+      : value;
+// Drawn fields only: a live rect works out its own scale when it cuts a crop, a frame's arrives with it.
+const close = (rect: OverlayRect | null) => {
+  if (!rect) return rect;
+  const { ownScale: _ownScale, ...drawn } = rect;
+  return rounded(drawn);
+};
 const closeAll = (shown: Awaited<ReturnType<typeof settled>>) => ({
   overlayRect: close(shown.overlayRect),
   childRects: shown.childRects.map(close),
@@ -201,6 +224,107 @@ describe("overlay rects on an opaque frame match a scriptable one", () => {
     expect(closeAll(remote)).toEqual(closeAll(live));
     if (picked.selection === "gone") expect(live.overlayRect).toBeNull();
     else expect(live.overlayRect).not.toBeNull();
+  });
+
+  // fails without the fix: the hug cut the crop at the editor zoom alone, 175 px wide in both frames.
+  it("cuts a scaled layer's crop at its own scale, the same in both", async () => {
+    const grown = sized(document.createElement("div"), [1000, 100, 400, 200]);
+    grown.id = "grown";
+    grown.style.setProperty("clip-path", "inset(0px 50px 0px 0px)");
+    grown.style.setProperty("transform", "matrix(2, 0, 0, 2, 0, 0)");
+    Object.defineProperty(grown, "offsetWidth", { value: 200, configurable: true });
+    Object.defineProperty(grown, "offsetHeight", { value: 100, configurable: true });
+    document.querySelector("[data-composition-id]")!.append(grown);
+    for (const frame of [liveFrame, opaqueFrame]) {
+      const { group } = await settled(
+        await overlayOn(frame(), { selection: null, group: ["grp", "grown"] }),
+      );
+      expect(group[1]).toMatchObject({ width: 150, height: 100 });
+    }
+  });
+
+  // fails without the fix: the cut took the turned layer's upright box, 167.4 or 173.2 px wide, not 179.9.
+  it("cuts a turned, scaled layer's crop at its own scale, along its own edges, the same in both", async () => {
+    const [cos, sin] = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)];
+    const [width, height] = [2 * (200 * cos + 100 * sin), 2 * (200 * sin + 100 * cos)];
+    const spun = sized(document.createElement("div"), [1000, 100, width, height]);
+    spun.id = "spun";
+    spun.style.setProperty("clip-path", "inset(0px 50px 0px 0px)");
+    spun.style.setProperty(
+      "transform",
+      `matrix(${2 * cos}, ${2 * sin}, ${-2 * sin}, ${2 * cos}, 0, 0)`,
+    );
+    Object.defineProperty(spun, "offsetWidth", { value: 200, configurable: true });
+    Object.defineProperty(spun, "offsetHeight", { value: 100, configurable: true });
+    document.querySelector("[data-composition-id]")!.append(spun);
+    for (const frame of [liveFrame, opaqueFrame]) {
+      const { group } = await settled(
+        await overlayOn(frame(), { selection: null, group: ["grp", "spun"] }),
+      );
+      const [cutW, cutH] = [2 * 150, 2 * 100];
+      expect(group[1]!.width).toBeCloseTo((cutW * cos + cutH * sin) / 2, 6);
+      expect(group[1]!.height).toBeCloseTo((cutW * sin + cutH * cos) / 2, 6);
+    }
+  });
+
+  // fails without the fix: the crop was cut out of the upright box, 81.1 x 106.1 where the cut is 88.4 square.
+  const layer = (id: string, transform: string, clip: string, box = [1000, 100, 200, 100]) => {
+    const element = sized(document.createElement("div"), box);
+    element.id = id;
+    if (clip) element.style.setProperty("clip-path", clip);
+    if (transform) element.style.setProperty("transform", transform);
+    Object.defineProperty(element, "offsetWidth", { value: 200, configurable: true });
+    Object.defineProperty(element, "offsetHeight", { value: 100, configurable: true });
+    document.querySelector("[data-composition-id]")!.append(element);
+  };
+  const pairIn = async (frame: () => HTMLIFrameElement, ids: [string, string]) => {
+    const { group } = await settled(await overlayOn(frame(), { selection: null, group: ids }));
+    return [group[0]!, group[1]!] as const;
+  };
+
+  // fails without the fix: a scaled layer's insets crossing past its width drew a box live, none sealed.
+  it("shrinks crossed insets until they meet, as CSS does, the same in both", async () => {
+    const half = "matrix(0.5, 0, 0, 0.5, 0, 0)";
+    layer("whole", half, "", [1050, 125, 100, 50]);
+    layer("met", half, "inset(0px 300px 0px 100px)", [1050, 125, 100, 50]);
+    for (const frame of [liveFrame, opaqueFrame]) {
+      const [whole, met] = await pairIn(frame, ["whole", "met"]);
+      expect(met.width).toBeCloseTo(0, 6);
+      expect(met.left - whole.left).toBeCloseTo(((200 * 100) / 400) * 0.5 * 0.5, 6);
+    }
+  });
+
+  // fails without the fix: a mirrored layer's right inset cut its visual left live and its visual right sealed.
+  it("cuts a mirrored layer's right inset off its visual left, the same in both", async () => {
+    layer("plain", "", "inset(0px 50px 0px 0px)");
+    layer("mirrored", "matrix(-1, 0, 0, 1, 0, 0)", "inset(0px 50px 0px 0px)");
+    for (const frame of [liveFrame, opaqueFrame]) {
+      const [plain, mirrored] = await pairIn(frame, ["plain", "mirrored"]);
+      expect(mirrored.width).toBeCloseTo(plain.width, 6);
+      expect(mirrored.left - plain.left).toBeCloseTo(50 / 2, 6);
+    }
+  });
+
+  it("bounds a turned layer's cropped box by its cut corners, the same in both", async () => {
+    const half = Math.SQRT1_2;
+    const side = (200 + 100) * half;
+    const spun = sized(document.createElement("div"), [1000, 100, side, side]);
+    spun.id = "spun";
+    spun.style.setProperty("clip-path", "inset(0px 50px 0px 0px)");
+    spun.style.setProperty("transform", `matrix(${half}, ${half}, ${-half}, ${half}, 0, 0)`);
+    Object.defineProperty(spun, "offsetWidth", { value: 200, configurable: true });
+    Object.defineProperty(spun, "offsetHeight", { value: 100, configurable: true });
+    document.querySelector("[data-composition-id]")!.append(spun);
+    for (const frame of [liveFrame, opaqueFrame]) {
+      const { group } = await settled(
+        await overlayOn(frame(), { selection: null, group: ["grp", "spun"] }),
+      );
+      const cut = ((150 + 100) * half) / 2;
+      expect(group[1]).toMatchObject({
+        width: expect.closeTo(cut, 6),
+        height: expect.closeTo(cut, 6),
+      });
+    }
   });
 
   it("covers what each case decides", async () => {
@@ -238,24 +362,60 @@ describe("overlay rects on an opaque frame match a scriptable one", () => {
   });
 });
 
+/** A sealed frame whose runtime never answers, as a frame the page has dropped. */
+function silentFrame() {
+  const frameWindow = new Proxy({ postMessage() {} } as Record<string, unknown>, {
+    get: (target, key) => {
+      if (key === "postMessage") return target.postMessage;
+      throw new DOMException("blocked", "SecurityError");
+    },
+  });
+  const iframe = detachedFakeIframe(frameWindow);
+  Object.defineProperty(iframe, "contentDocument", { value: null });
+  return sized(iframe, [100, 50, 960, 540]) as HTMLIFrameElement;
+}
+
 describe("a press held across a preview change on an opaque frame", () => {
-  async function pressDuringChange(selection: DomEditSelection) {
+  afterEach(() => {
+    replay.sent = () => Promise.resolve();
+  });
+
+  /** Holds each frame's answer to the replay's draws until the test lets it go. */
+  function holdDraws() {
+    const held = new Map<HTMLIFrameElement, () => void>();
+    replay.sent = (iframe) => new Promise<void>((resolve) => held.set(iframe, resolve));
+    return held;
+  }
+
+  async function pressDuringChange(
+    selection: DomEditSelection,
+    {
+      iframe = opaqueFrame(),
+      overlayRect = null,
+      whileWaiting = () => {},
+      box = null,
+    }: {
+      iframe?: HTMLIFrameElement;
+      overlayRect?: OverlayRect | null;
+      whileWaiting?: (opts: UseDomEditOverlayGesturesOptions) => void;
+      box?: HTMLDivElement | null;
+    } = {},
+  ) {
     press.changing = true;
     press.start.mockClear();
-    const iframe = opaqueFrame();
     const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]) as HTMLDivElement;
     const opts = {
       waitingPressRef: { current: null },
-      boxRef: { current: null },
+      boxRef: { current: box },
       rafPausedRef: { current: false },
       iframeRef: { current: iframe },
       overlayRef: { current: overlay },
       activeCompositionPathRef: { current: "index.html" },
       selectionRef: { current: selection },
-      overlayRectRef: { current: null },
-      setOverlayRect: vi.fn(),
+      overlayRectRef: { current: overlayRect },
+      setOverlayRect: vi.fn((rect: OverlayRect | null) => (opts.overlayRectRef.current = rect)),
     } as unknown as UseDomEditOverlayGesturesOptions;
-    const { startGesture } = createPreviewGestureStarts(opts, vi.fn(), vi.fn());
+    const starts = createPreviewGestureStarts(opts, vi.fn(), vi.fn());
     const down = {
       pointerId: 1,
       clientX: 5,
@@ -264,12 +424,150 @@ describe("a press held across a preview change on an opaque frame", () => {
       preventDefault: vi.fn(),
       stopPropagation: vi.fn(),
     };
-    startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    starts.startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(press.start).not.toHaveBeenCalled();
+    whileWaiting(opts);
     press.changing = false;
-    return { opts, overlay };
+    return { opts, overlay, down, ...starts };
   }
+
+  // fails without the fix: the outline went at once while the frame still showed the layer where the last save put
+  // it, so for one frame the layer showed at the drag's start (312 px on the edit bench's seqheldtwice case).
+  it("keeps the waiting outline until the frame has drawn the replayed drag", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const iframe = opaqueFrame();
+    const { opts } = await pressDuringChange(stale, { box, iframe });
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce());
+    expect([box.hasAttribute(PRESS_WAITING_ATTR), opts.rafPausedRef.current]).toEqual([true, true]);
+    held.get(iframe)!();
+    await vi.waitFor(() => expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false));
+    expect(opts.rafPausedRef.current).toBe(false);
+  });
+
+  // fails without the fix: the outline waited on the frame pressed, which a reload had replaced, so it went while
+  // the replacement frame's draw of the replay was still on its way.
+  it("keeps the waiting outline until the frame the change swapped in has drawn the replay", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const swappedIn = opaqueFrame();
+    await pressDuringChange(stale, {
+      box,
+      whileWaiting: (o) => (o.iframeRef.current = swappedIn),
+    });
+    await vi.waitFor(() => expect(held.has(swappedIn)).toBe(true));
+    expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(true);
+    held.get(swappedIn)!();
+    await vi.waitFor(() => expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false));
+  });
+
+  // fails without the fix: the older replay's frame answering cleared the outline the newer replay still held.
+  it("keeps a newer replay's outline when an older replay's frame answers first", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const [first, second] = [opaqueFrame(), opaqueFrame()];
+    const { opts, startGesture, down } = await pressDuringChange(stale, { box, iframe: first });
+    await vi.waitFor(() => expect(held.has(first)).toBe(true));
+    opts.iframeRef.current = second;
+    press.changing = true;
+    startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    press.changing = false;
+    await vi.waitFor(() => expect(held.has(second)).toBe(true));
+    held.get(first)!();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(true);
+    held.get(second)!();
+    await vi.waitFor(() => expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false));
+  });
+
+  it("keeps a press's outline that comes while the replay before it waits on its frame", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const iframe = opaqueFrame();
+    const { opts, startGesture, down } = await pressDuringChange(stale, { box, iframe });
+    await vi.waitFor(() => expect(held.has(iframe)).toBe(true));
+    press.changing = true;
+    startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    held.get(iframe)!();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect([box.hasAttribute(PRESS_WAITING_ATTR), opts.waitingPressRef.current]).toEqual([
+      true,
+      expect.anything(),
+    ]);
+    press.changing = false;
+  });
+
+  // fails without the fix: the overlay re-renders its handlers, and the older replay's answer reached the new
+  // handlers' copy of the outline, so it cleared the outline of a press made through them.
+  it("keeps a press's outline made after a re-render when the replay before it answers", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const iframe = opaqueFrame();
+    const { opts, down } = await pressDuringChange(stale, { box, iframe });
+    await vi.waitFor(() => expect(held.has(iframe)).toBe(true));
+    const rerendered = createPreviewGestureStarts(opts, vi.fn(), vi.fn());
+    press.changing = true;
+    rerendered.startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    held.get(iframe)!();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(true);
+    press.changing = false;
+    rerendered.endWaitingPress();
+  });
+
+  // fails without the fix: the frame the replay drew in answered after a reload had swapped it out, and the outline
+  // went before the swapped-in frame showed the replay.
+  it("waits on the frame swapped in after the replay, not the one it drew in", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const [drewIn, swappedIn] = [opaqueFrame(), opaqueFrame()];
+    const { opts } = await pressDuringChange(stale, { box, iframe: drewIn });
+    await vi.waitFor(() => expect(held.has(drewIn)).toBe(true));
+    opts.iframeRef.current = swappedIn;
+    held.get(drewIn)!();
+    await vi.waitFor(() => expect(held.has(swappedIn)).toBe(true));
+    expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(true);
+    held.get(swappedIn)!();
+    await vi.waitFor(() => expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false));
+  });
+
+  it("drops the outline at once when the overlay leaves, and a late answer changes nothing", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const iframe = opaqueFrame();
+    const { opts, startGesture, down, endWaitingPress } = await pressDuringChange(stale, {
+      box,
+      iframe,
+    });
+    await vi.waitFor(() => expect(held.has(iframe)).toBe(true));
+    endWaitingPress();
+    expect([box.hasAttribute(PRESS_WAITING_ATTR), opts.rafPausedRef.current]).toEqual([
+      false,
+      false,
+    ]);
+    press.changing = true;
+    startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    held.get(iframe)!();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(true);
+    press.changing = false;
+  });
 
   it("re-finds the pressed element on the page shown and starts on its box, read over the channel", async () => {
     const turned = document.getElementById("turned")!;
@@ -287,6 +585,86 @@ describe("a press held across a preview change on an opaque frame", () => {
     const live = orientedGroupAwareOverlayRect(overlay, liveFrame(), turned);
     expect(close(started.rect)).toEqual(close(live));
     expect(started.rect.angle).toBeCloseTo(36.87, 2);
+  });
+
+  // fails without the fix: the press read over the frame it was pressed on, which the change had removed, so no
+  // answer came and the drag was dropped.
+  it("reads over the frame shown once the change ends, when the change swapped frames", async () => {
+    const turned = document.getElementById("turned")!;
+    const pressedOn = opaqueFrame();
+    await pressDuringChange(makeSelection("turned", turned), {
+      iframe: pressedOn,
+      whileWaiting: (opts) => {
+        opts.iframeRef.current = opaqueFrame();
+        Object.defineProperty(pressedOn, "contentWindow", { value: null });
+      },
+    });
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce(), { timeout: 3000 });
+    const [, , , started] = press.start.mock.calls[0] as [
+      unknown,
+      unknown,
+      unknown,
+      { selection: DomEditSelection },
+    ];
+    expect(started.selection.id).toBe("turned");
+    // fails without the fix: the gesture drew through the stand-in of the frame it was pressed on, now removed.
+    expect(started.selection.element).not.toBe(turned);
+    expect(standInHandle(started.selection.element)).toBe(started.selection.handle);
+  });
+
+  it("starts from the box Studio drew when the frame shown never answers", async () => {
+    const turned = makeSelection("turned", document.getElementById("turned")!);
+    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
+    await pressDuringChange(turned, { iframe: silentFrame(), overlayRect: drawn });
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce(), { timeout: 3000 });
+    const [, , , started] = press.start.mock.calls[0] as [
+      unknown,
+      unknown,
+      unknown,
+      { selection: DomEditSelection; rect: OverlayRect },
+    ];
+    expect(started).toMatchObject({ selection: turned, rect: drawn });
+    expect(started.selection.element).toBe(turned.element);
+  });
+
+  // fails without the fix: the waiting box's redraws had already moved the box the drag started from.
+  it("starts from the box as it was at the press, though the pointer moved while it waited", async () => {
+    const turned = makeSelection("turned", document.getElementById("turned")!);
+    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
+    await pressDuringChange(turned, {
+      iframe: silentFrame(),
+      overlayRect: drawn,
+      whileWaiting: (opts) => opts.waitingPressRef.current!.draw!(30, 0),
+    });
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce(), { timeout: 3000 });
+    const [, , , started] = press.start.mock.calls[0] as [
+      unknown,
+      unknown,
+      unknown,
+      { rect: OverlayRect },
+    ];
+    expect(started.rect).toEqual(drawn);
+  });
+
+  it("asks the frame shown again when a swap comes after its first ask", async () => {
+    const turned = document.getElementById("turned")!;
+    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
+    const { opts, overlay } = await pressDuringChange(makeSelection("turned", turned), {
+      iframe: silentFrame(),
+      overlayRect: drawn,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    opts.iframeRef.current = opaqueFrame();
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce(), { timeout: 3000 });
+    const [, , , started] = press.start.mock.calls[0] as [
+      unknown,
+      unknown,
+      unknown,
+      { rect: OverlayRect },
+    ];
+    expect(close(started.rect)).toEqual(
+      close(orientedGroupAwareOverlayRect(overlay, liveFrame(), turned)),
+    );
   });
 
   it("drops the press when the page shown no longer has the element", async () => {

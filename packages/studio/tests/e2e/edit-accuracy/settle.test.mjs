@@ -13,7 +13,7 @@ import {
   swapPending,
   unsettledBy,
 } from "./case.mjs";
-import { heldSize, keyedBy } from "./sequences.mjs";
+import { heldSize, keyedBy, restedFor, shownOnceRested } from "./sequences.mjs";
 
 describe("settling on the shown preview", () => {
   const read = (pending, x = 0, frames = "a") => ({
@@ -287,5 +287,48 @@ describe("the box a press is measured against", () => {
       quad(260),
     );
     expect(shown.m.visible[0][0]).toBe(0);
+  });
+});
+
+// fails without the fix: the sequence read the file once its write count was met, while a sealed press that waited for
+// the previous save was still saving, so the last gesture's edit looked lost.
+describe("the end of a sequence", () => {
+  // Each frame advances a fake clock by 10 ms, so the times are exact.
+  const reads = (states) => {
+    let [at, ms] = [0, 0];
+    return {
+      busy: async () => states[Math.min(at++, states.length - 1)],
+      frame: async () => void (ms += 10),
+      now: () => ms,
+      read: () => at,
+    };
+  };
+
+  it("waits until no press waits and no edit saves, two reads in a row", async () => {
+    const { busy, frame, now, read } = reads([true, true, false, true, false, false, true]);
+    await restedFor(busy, frame, { now });
+    expect(read()).toBe(6);
+  });
+
+  it("says how long until the first of the clear reads, the undo's time to show", async () => {
+    const { busy, frame, now } = reads([true, true, false, false]);
+    expect(await restedFor(busy, frame, { now })).toBe(20);
+  });
+
+  // fails without the fix: the undo was read while its reload was on the way, 240-329 px from where it landed.
+  it("reads an undo's box once Studio says its reload is done, and how long that took", async () => {
+    const { busy, frame, now, read } = reads([true, true, true, false, false]);
+    const settle = async () => (read() > 3 ? "undone" : "before");
+    expect(await shownOnceRested(busy, frame, settle, { now })).toEqual({
+      box: "undone",
+      shownMs: 30,
+    });
+  });
+
+  it("gives up with a reason when an edit never stops saving", async () => {
+    const { busy, frame, now } = reads([true]);
+    await expect(restedFor(busy, frame, { now, timeout: 30 })).rejects.toThrow(
+      /still waiting or saving/,
+    );
   });
 });

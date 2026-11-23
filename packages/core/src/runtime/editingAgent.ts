@@ -32,17 +32,16 @@ import { elementGeometry } from "./editingGeometry";
 import { pointerTargetsAt } from "./editingTargets";
 import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
-import { restoreAttributes } from "./editing/restoreAttributes";
 import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
 import { maxZIndex } from "./editing/maxZIndex";
-import { gestureStart } from "./editingGestureStart";
+import { gestureBase, gestureStart } from "./editingGestureStart";
 import { gsapSnapshot } from "./editing/gsapSnapshot";
 import { motionPathHome } from "./editing/motionPathHome";
 import { cropLift } from "./editing/cropLift";
 import { stackingFamily } from "./editingLayers";
 import { gsapSet } from "./editing/gsapSet";
 import { patchTweens } from "./editing/patchTween";
-import { softReload } from "./editing/softReload";
+import { preloadMotionPath, restoreAttributesOrRerun, softReload } from "./editing/softReload";
 import { holdScenes, markScenesStale, swapScenes } from "./editing/scenes";
 import { liveRetime } from "./editing/liveRetime";
 import { previewAssetsUnloaded } from "../lottieReadiness";
@@ -66,6 +65,7 @@ import { documentMarkup } from "./editing/documentMarkup";
 import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
 import { editElement } from "./editing/editElement";
 import { endTextEdit, textEdit } from "./editing/textEdit";
+import { portPausedVideoProvider } from "./editing/pausedFrames";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -206,13 +206,14 @@ const HANDLERS: Handlers = {
   layers: ({ group, offset }) => layersOf(group, offset),
   draft: ({ drafts }) => drawDrafts(drafts),
   "gesture-start": ({ handles }) => gestureStart(handles),
+  "gesture-base": ({ handles }) => ({ elements: handles.map(gestureBase) }),
   "console-errors": ({ from }) => {
     const seen = watchConsoleErrors();
     const errors = seen.slice(from, from + MAX_QUERY_MATCHES);
     return { errors, truncated: from + errors.length < seen.length };
   },
   "watch-keys": ({ combos }, port) => watchKeys(port, combos),
-  "restore-attributes": (params) => restoreAttributes(params),
+  "restore-attributes": restoreAttributesOrRerun,
   "caption-words": captionWords,
   "caption-transform": captionTransform,
   "color-grading-status": colorGradingStatus,
@@ -237,6 +238,15 @@ const HANDLERS: Handlers = {
   "swap-scenes": swapScenes,
   "live-retime": liveRetime,
   "assets-unloaded": () => ({ unloaded: previewAssetsUnloaded(document, window.__hfLottie) }),
+  "serve-paused-frames": ({ channel }) => {
+    const install = window.__hf?.setPausedVideoFrameProvider;
+    if (!install) {
+      channel.close();
+      return { served: false };
+    }
+    install(portPausedVideoProvider(channel));
+    return { served: true };
+  },
   "text-edit": (params, port) => textEdit(params, port, EDITING_PROTOCOL_VERSION),
 };
 
@@ -305,7 +315,9 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       swallow("editingAgent.handoff", err);
       port.close();
       ports.delete(port);
+      return;
     }
+    preloadMotionPath();
   };
   window.addEventListener("message", onMessage);
   return {

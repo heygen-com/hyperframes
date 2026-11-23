@@ -1,5 +1,6 @@
 import type { Stats } from "node:fs";
-import { realpath, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
+import { realpathOff, resolveExistingWithinProjectOff } from "@hyperframes/core/safe-path";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { isPrivateProjectPath } from "./safePath.js";
 
@@ -12,11 +13,13 @@ export const folderGoneOff = (dir: string): Promise<boolean> =>
     (error: NodeJS.ErrnoException) => error.code === "ENOENT" || error.code === "ENOTDIR",
   );
 
-/** The real path; for a path not there (yet, or any more), the nearest existing folder's real path plus the rest. */
+/** The real path, or for a missing path its nearest folder's plus the rest; throws for one that will not resolve. */
 export async function realFilePathOff(filePath: string): Promise<string> {
   try {
-    return await realpath(filePath);
-  } catch {
+    return await realpathOff(filePath);
+  } catch (error) {
+    const { code } = error as NodeJS.ErrnoException;
+    if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
     const dir = dirname(filePath);
     return dir === filePath ? filePath : join(await realFilePathOff(dir), basename(filePath));
   }
@@ -28,9 +31,17 @@ export async function isPrivateProjectFileOff(
 ): Promise<boolean> {
   const rel = (from: string, to: string) => relative(from, to).split(sep).join("/");
   if (isPrivateProjectPath(rel(projectDir, filePath))) return true;
-  const [realDir, realFile] = await Promise.all([
-    realFilePathOff(projectDir),
-    realFilePathOff(filePath),
-  ]);
-  return isPrivateProjectPath(rel(realDir, realFile));
+  const unresolvable = null;
+  const real = await Promise.all([realFilePathOff(projectDir), realFilePathOff(filePath)]).catch(
+    () => unresolvable,
+  );
+  return real === unresolvable || isPrivateProjectPath(rel(real[0], real[1]));
+}
+
+export async function resolveExistingProjectFileOff(
+  base: string,
+  relativePath: string,
+): Promise<string | null> {
+  const file = await resolveExistingWithinProjectOff(base, relativePath);
+  return file === null || (await isPrivateProjectFileOff(base, file)) ? null : file;
 }

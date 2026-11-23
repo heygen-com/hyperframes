@@ -6,6 +6,8 @@
     "packages/producer/src/**/*.test.ts",
     // Studio's browser-journey helpers are plain .mjs under tests/e2e; their unit tests live beside them.
     "packages/studio/tests/e2e/**/*.test.mjs",
+    // Mounted by inlineTextGenerated.browser.test.ts through buildStudioBundle, which imports it by path in a string.
+    "packages/studio/tests/inlineTextMount.ts",
     "packages/aws-lambda/src/**/*.test.ts",
     "packages/gcp-cloud-run/src/**/*.test.ts",
     "packages/gcp-cloud-run/terraform/*.test.ts",
@@ -1070,6 +1072,10 @@
       // useColorGradingController.ts: the hook's complexity is inherited; the sealed-preview
       // status read adds no branch to it, but its import lines shift the hook's fingerprint.
       "packages/studio/src/components/editor/useColorGradingController.ts",
+      // The timeline drag hooks' complexity is inherited; passing the drop options through
+      // adds no branch to them, but any edit re-flags the whole hook.
+      "packages/studio/src/player/components/useTimelineProviderState.tsx",
+      "packages/studio/src/player/components/useTimelineClipDrag.ts",
     ],
   },
 }

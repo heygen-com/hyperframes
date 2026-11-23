@@ -2,7 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, win32 } from "node:path";
-import { isHyperframesProject } from "@hyperframes/core";
+import { isHyperframesProject, terminalText } from "@hyperframes/core";
 import { addCatchUpNote, noteHandoff, seenPath } from "./appHistory.js";
 import { createProjectConfig } from "./projectConfig.js";
 import { isCI } from "./attendedTerminal.js";
@@ -161,7 +161,7 @@ function leaveHandoff(dir: string, session: AgentSession | null): AgentSession |
   if (!session || !writeRecord(dir, "agent-handoff.json", JSON.stringify(session))) return null;
   if (!noteHandoff(dir))
     console.warn(
-      `◇  Couldn't note the hand-off in ${seenPath(dir)}, so \`catch-up\` won't see it.`,
+      `◇  Couldn't note the hand-off in ${terminalText(seenPath(dir))}, so \`catch-up\` won't see it.`,
     );
   addCatchUpNote(dir);
   return session;
@@ -173,7 +173,7 @@ function markBareIndexAsProject(dir: string): void {
       createProjectConfig(dir);
   } catch (error) {
     console.warn(
-      `◇  Couldn't add hyperframes.json to ${dir}, so the app may not open it: ${error}`,
+      `◇  Couldn't add hyperframes.json to ${terminalText(dir)}, so the app may not open it: ${terminalText(String(error))}`,
     );
   }
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { gestureStart } from "./editingGestureStart";
+import { gestureBase, gestureStart } from "./editingGestureStart";
 import { handleFor } from "./editingHandles";
 
 type Tween = { vars: Record<string, unknown>; targets: () => unknown[]; duration: () => number };
@@ -59,6 +59,11 @@ const GSAP_RENDERS = { _gsap: { renderTransform: () => {} } };
 /** jsdom has no DOMMatrix: a 2D one reading `matrix(...)` and composing as the browser's does. */
 class Matrix2D {
   a = 1;
+  m13 = 0;
+  m23 = 0;
+  m14 = 0;
+  m24 = 0;
+  m44 = 1;
   b = 0;
   c = 0;
   d = 1;
@@ -80,7 +85,66 @@ const tween = (target: unknown, vars: Record<string, unknown>, duration = 0): Tw
   duration: () => duration,
 });
 
+/** A 200x100 box whose centre moves `share` of its drawn growth: 0.5 from its corner, 0 self-centred. */
+function growingCard(share: number | (() => number)): HTMLElement {
+  document.body.innerHTML = `<main data-composition-id="main"><div id="card" style="width: 200px"></div></main>`;
+  const card = document.getElementById("card")!;
+  Object.defineProperty(card, "offsetWidth", { value: 200 });
+  Object.defineProperty(card, "offsetHeight", { value: 100 });
+  card.getBoundingClientRect = () => {
+    const width = parseFloat(card.style.width) || 200;
+    const height = parseFloat(card.style.height) || 100;
+    const k = typeof share === "number" ? share : share();
+    const [cx, cy] = [200 + (width - 200) * k, 100 + (height - 100) * k];
+    const [x, y] = [cx - width / 2, cy - height / 2];
+    return {
+      x,
+      y,
+      width,
+      height,
+      left: x,
+      top: y,
+      right: x + width,
+      bottom: y + height,
+    } as DOMRect;
+  };
+  return card;
+}
+
 describe("gesture start", () => {
+  it("says how far a box's centre moves as its drawn size grows, and puts its size back", () => {
+    const plain = growingCard(0.5);
+    expect(gestureStart([handleFor(plain)]).elements[0]!.grow).toEqual({
+      a: 0.5,
+      b: 0,
+      c: 0,
+      d: 0.5,
+    });
+    expect(plain.getAttribute("style")).toBe("width: 200px;");
+    const centred = growingCard(0);
+    expect(gestureStart([handleFor(centred)]).elements[0]!.grow).toEqual({
+      a: 0,
+      b: 0,
+      c: 0,
+      d: 0,
+    });
+  });
+  // fails without the fix: the probe grew a `translate: -50%` box with its % live and read 0, but the draft that pins
+  // a sealed resize turns that % into px, so the box grew from its corner and drifted half its growth from the pointer.
+  it("measures a %-translated box's growth as the draft draws it, its % turned into px", () => {
+    // Its centre stays put while the % is live, and moves half its growth once the % is px.
+    const card = growingCard(() =>
+      card.style.getPropertyValue("translate").includes("%") ? 0 : 0.5,
+    );
+    card.style.setProperty("translate", "-50% -50%");
+    expect(gestureStart([handleFor(card)]).elements[0]!.grow).toEqual({
+      a: 0.5,
+      b: 0,
+      c: 0,
+      d: 0.5,
+    });
+    expect(card.getAttribute("style")).toBe("width: 200px; translate: -50% -50%;");
+  });
   it("reads a GSAP-held element's x/y, its layout size and how it moves, and puts its translate back", () => {
     const card = turnedCard("translate: 10px 20px");
     Object.assign(card, { _gsap: { renderTransform: () => {} } });
@@ -131,6 +195,18 @@ describe("gesture start", () => {
     expect(getProperty.mock.calls.some(([, name]) => name === "rotation")).toBe(turn !== null);
   });
 
+  // fails without the fix: a sealed stand-in has no stylesheet, so a rotate started at 0 instead of 30.
+  it("reads the CSS turn a layer GSAP does not turn shows, for a stand-in that cannot", () => {
+    Object.assign(window, { DOMMatrix: Matrix2D });
+    const card = turnedCard("transform: matrix(0.866025, 0.5, -0.5, 0.866025, 0, 0)");
+    gsapWith([tween(card, { opacity: 0 }, 2)]);
+    const { cssRotation } = gestureStart([handleFor(card)]).elements[0]!;
+    expect(cssRotation!.angle).toBeCloseTo(30, 3);
+    expect(cssRotation!.target).toMatchObject({ property: "transform", before: "" });
+    gsapWith([tween(card, { rotation: 20 }, 2)], { x: 0, y: 0, rotation: 12 });
+    expect(gestureStart([handleFor(card)]).elements[0]!.cssRotation).toBeNull();
+  });
+
   it("does not own a box that only fades", () => {
     const card = turnedCard("");
     gsapWith([tween(card, { opacity: 0, keyframes: { "50%": { scale: 2 } } }, 3)]);
@@ -172,5 +248,29 @@ describe("gesture start", () => {
 
   it("answers null for an element this load does not have", () => {
     expect(gestureStart(["0123456789abcdef:999"]).elements).toEqual([null]);
+  });
+});
+
+// fails without the fix: a sealed recording had no read for a layer no tween touches, so it started a static
+// opacity and scale at 1 where the unsealed recorder reads them from GSAP.
+describe("gestureBase", () => {
+  it("reads GSAP's x, y, opacity and scale for a layer no tween touches", () => {
+    const card = turnedCard("");
+    gsapWith([], { x: 12, y: -4, opacity: 0.5, scaleX: 1.5 });
+    expect(gestureBase(handleFor(card))).toEqual({ x: 12, y: -4, opacity: 0.5, scale: 1.5 });
+  });
+
+  // fails without the fix: a page without GSAP answered null, so a sealed recording refused to start where the
+  // unsealed recorder starts from x 0, y 0, opacity 1 and scale 1.
+  it("answers the values at rest on a page without GSAP, as the unsealed recorder starts", () => {
+    const card = turnedCard("");
+    expect(gestureBase(handleFor(card))).toEqual({ x: 0, y: 0, opacity: 1, scale: 1 });
+  });
+
+  it("answers null for an element this load does not have", () => {
+    gsapWith([]);
+    expect(gestureBase("0123456789abcdef:999")).toBeNull();
+    Reflect.deleteProperty(window, "gsap");
+    expect(gestureBase("0123456789abcdef:999")).toBeNull();
   });
 });

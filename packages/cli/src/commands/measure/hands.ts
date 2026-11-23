@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
 import { jsonArg, num, runMeasure, videoArg, window } from "../../measure/command.js";
@@ -67,7 +68,7 @@ export default defineCommand({
           which: choice(args.which, "--which", HAND_CHOICES, "largest"),
           fps: num(args.fps, "--fps", 15),
         },
-        (message) => console.error(message),
+        (message) => console.error(terminalText(message)),
       );
       return {
         video: info.path,

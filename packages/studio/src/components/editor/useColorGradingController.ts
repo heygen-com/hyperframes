@@ -3,7 +3,6 @@ import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { onPreviewContentReplaced } from "../../player/sceneSwap";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
-  HF_COLOR_GRADING_ATTR,
   hasHfColorGradingAuthoredValues,
   isHfColorGradingActive,
   normalizeHfColorGrading,
@@ -12,13 +11,9 @@ import {
   type HfColorGradingTarget,
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
-import {
-  addStudioPendingEditFlushListener,
-  trackStudioPendingEdit,
-} from "../../utils/studioPendingEdits";
 import type { DomEditSelection } from "./domEditing";
 import { selectionIdentityKey, stripQueryAndHash } from "./propertyPanelHelpers";
-import { bumpDomEditCommitVersion } from "../../hooks/domEditCommitRunner";
+import { COLOR_GRADING_DATA_KEY, useColorGradingPersistence } from "./useColorGradingPersistence";
 import {
   acceptStudioRuntimeMessage,
   postRuntimeControlMessage,
@@ -36,7 +31,6 @@ import { previewFrameOpaque } from "../../player/lib/previewChannel";
 
 export type { ColorGradingPresetPreviews, ColorGradingPreviewOptions };
 
-const COLOR_GRADING_DATA_KEY = HF_COLOR_GRADING_ATTR.replace(/^data-/, "");
 const RUNTIME_STATUS_REFRESH_DELAYS = [50, 250, 1000, 2500] as const;
 const MEDIA_METADATA_CACHE = new Map<string, MediaMetadata | null>();
 
@@ -191,13 +185,13 @@ export function useColorGradingController({
   projectId,
   element,
   previewIframeRef,
-  onSetAttributeLive,
+  onSetAttributeQuiet,
   onApplyScope,
 }: {
   projectId: string;
   element: DomEditSelection;
   previewIframeRef?: RefObject<HTMLIFrameElement | null>;
-  onSetAttributeLive: (
+  onSetAttributeQuiet: (
     attr: string,
     value: string | null,
     onSettled?: (ok: boolean) => void,
@@ -220,15 +214,8 @@ export function useColorGradingController({
     [element, projectId],
   );
   const [mediaMetadata, setMediaMetadata] = useState<MediaMetadata | null>(null);
-  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingPersistValueRef = useRef<string | null | undefined>(undefined);
-  const pendingPersistGradingRef = useRef<NormalizedHfColorGrading | null>(null);
-  // Capture the edited element because selection can change before persistence.
-  const pendingPersistIdentityRef = useRef<string | null>(null);
   // Keep a confirmed value so an optimistic edit can be reverted on failure.
   const confirmedGradingRef = useRef(grading);
-  // Prevent an older same-element write from settling over a newer edit.
-  const gradingVersionRef = useRef(0);
   const statusTimersRef = useRef<number[]>([]);
   const latestGradingRef = useRef(grading);
   const compareEnabledRef = useRef(compareEnabled);
@@ -252,23 +239,40 @@ export function useColorGradingController({
     setMediaMetadata(null);
   }
 
-  // Flush a pending write through the outgoing selection's committed callback.
+  const onSaveFailed = useCallback((reverted: NormalizedHfColorGrading) => {
+    latestGradingRef.current = reverted;
+    setGrading(reverted);
+    setRuntimeStatus({ state: "unavailable", message: "Save failed, changes reverted" });
+  }, []);
+  const { schedulePersist, isPersistPending } = useColorGradingPersistence({
+    identityKey,
+    identityKeyRef,
+    latestGradingRef,
+    confirmedGradingRef,
+    onSetAttributeQuiet,
+    onSaveFailed,
+  });
+
+  const authoredGrading = element.dataAttributes[COLOR_GRADING_DATA_KEY] ?? null;
+  const authoredGradingRef = useRef(authoredGrading);
+  if (authoredGradingRef.current !== authoredGrading) {
+    authoredGradingRef.current = authoredGrading;
+    const fromElement = readColorGradingFromElement(element);
+    if (
+      !isPersistPending() &&
+      serializeHfColorGrading(fromElement) !== serializeHfColorGrading(latestGradingRef.current)
+    ) {
+      latestGradingRef.current = fromElement;
+      confirmedGradingRef.current = fromElement;
+      setGrading(fromElement);
+    }
+  }
+
   useEffect(() => {
     return () => {
       for (const timer of statusTimersRef.current) clearTimeout(timer);
       statusTimersRef.current = [];
-      if (persistTimerRef.current) {
-        clearTimeout(persistTimerRef.current);
-        persistTimerRef.current = null;
-      }
-      if (pendingPersistValueRef.current === undefined) return;
-      const value = pendingPersistValueRef.current;
-      pendingPersistValueRef.current = undefined;
-      pendingPersistGradingRef.current = null;
-      pendingPersistIdentityRef.current = null;
-      trackStudioPendingEdit(onSetAttributeLive(COLOR_GRADING_DATA_KEY, value));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- identityKey is the intended trigger; see comment above
   }, [identityKey]);
 
   const target = useMemo(
@@ -333,73 +337,7 @@ export function useColorGradingController({
     refreshRuntimeStatus();
   }, [refreshRuntimeStatus]);
 
-  const persistColorGradingValue = useCallback(
-    (
-      value: string | null,
-      attemptedGrading: NormalizedHfColorGrading,
-      attemptIdentityKey: string,
-      isLatestAttempt: () => boolean,
-      setAttributeLive: (
-        attr: string,
-        value: string | null,
-        onSettled?: (ok: boolean) => void,
-      ) => void | Promise<void>,
-    ) => {
-      const applySettled = (ok: boolean) => {
-        if (identityKeyRef.current !== attemptIdentityKey) return;
-        if (!isLatestAttempt()) return;
-        if (ok) {
-          confirmedGradingRef.current = attemptedGrading;
-          return;
-        }
-        const reverted = confirmedGradingRef.current;
-        latestGradingRef.current = reverted;
-        setGrading(reverted);
-        setRuntimeStatus({ state: "unavailable", message: "Save failed, changes reverted" });
-      };
-      // The callback is the primary result signal; the rejection path supports
-      // other setAttributeLive implementations.
-      const result = setAttributeLive(COLOR_GRADING_DATA_KEY, value ?? null, applySettled);
-      return trackStudioPendingEdit(
-        Promise.resolve(result).then(
-          () => undefined,
-          () => applySettled(false),
-        ),
-      );
-    },
-    [],
-  );
-
-  const flushPendingPersist = useCallback(() => {
-    if (persistTimerRef.current) {
-      clearTimeout(persistTimerRef.current);
-      persistTimerRef.current = null;
-    }
-    if (pendingPersistValueRef.current === undefined) return undefined;
-    const value = pendingPersistValueRef.current;
-    const attemptedGrading = pendingPersistGradingRef.current ?? latestGradingRef.current;
-    const attemptIdentityKey = pendingPersistIdentityRef.current ?? identityKeyRef.current;
-    pendingPersistValueRef.current = undefined;
-    pendingPersistGradingRef.current = null;
-    pendingPersistIdentityRef.current = null;
-    const isLatestAttempt = bumpDomEditCommitVersion(gradingVersionRef);
-    return persistColorGradingValue(
-      value,
-      attemptedGrading,
-      attemptIdentityKey,
-      isLatestAttempt,
-      onSetAttributeLive,
-    );
-  }, [onSetAttributeLive, persistColorGradingValue]);
-
-  useEffect(() => addStudioPendingEditFlushListener(flushPendingPersist), [flushPendingPersist]);
-
-  useEffect(() => {
-    return () => {
-      clearStatusTimers();
-      void flushPendingPersist();
-    };
-  }, [clearStatusTimers, flushPendingPersist]);
+  useEffect(() => () => clearStatusTimers(), [clearStatusTimers]);
 
   const postColorGrading = useCallback(
     (nextGrading: NormalizedHfColorGrading) => {
@@ -440,7 +378,10 @@ export function useColorGradingController({
     const refreshAndReplay = () => {
       const nextGrading = latestGradingRef.current;
       const active = isHfColorGradingActive(nextGrading);
-      if (active) postColorGrading(nextGrading);
+      const notInTheFileYet =
+        serializeHfColorGrading(nextGrading) !==
+        serializeHfColorGrading(confirmedGradingRef.current);
+      if (notInTheFileYet) postColorGrading(nextGrading);
       postCompare(compareEnabledRef.current && active);
       scheduleRuntimeStatusRefresh();
     };
@@ -486,37 +427,9 @@ export function useColorGradingController({
         if (!active) setCompareEnabled(false);
       }
       scheduleRuntimeStatusRefresh();
-      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
-      pendingPersistValueRef.current = hasHfColorGradingAuthoredValues(nextGrading)
-        ? serializeHfColorGrading(nextGrading)
-        : null;
-      pendingPersistGradingRef.current = nextGrading;
-      pendingPersistIdentityRef.current = identityKeyRef.current;
-      const attemptIdentityKey = identityKeyRef.current;
-      const isLatestAttempt = bumpDomEditCommitVersion(gradingVersionRef);
-      persistTimerRef.current = setTimeout(() => {
-        const value = pendingPersistValueRef.current;
-        const attemptedGrading = pendingPersistGradingRef.current ?? nextGrading;
-        pendingPersistValueRef.current = undefined;
-        pendingPersistGradingRef.current = null;
-        pendingPersistIdentityRef.current = null;
-        persistTimerRef.current = null;
-        void persistColorGradingValue(
-          value ?? null,
-          attemptedGrading,
-          attemptIdentityKey,
-          isLatestAttempt,
-          onSetAttributeLive,
-        );
-      }, 350);
+      schedulePersist(nextGrading);
     },
-    [
-      onSetAttributeLive,
-      persistColorGradingValue,
-      postColorGrading,
-      postCompare,
-      scheduleRuntimeStatusRefresh,
-    ],
+    [postColorGrading, postCompare, schedulePersist, scheduleRuntimeStatusRefresh],
   );
 
   const commitCompare = useCallback(

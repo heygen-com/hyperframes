@@ -134,6 +134,7 @@ import {
 import { sampleProcessRss } from "../utils/processRss.js";
 import type { CompositionLengthSource } from "@hyperframes/core/runtime/composition-length";
 import { assertVariablesMatchPage } from "./variablesCheck.js";
+import { describeLateImage, type RawResourceTiming } from "./lateImageTiming.js";
 export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailure.js";
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
@@ -2613,7 +2614,7 @@ export async function waitForShownLateImages(
   const timeoutMs = session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const { arrived, waiting, broken } = await session.page.evaluate(async (urls: string[]) => {
+    const reading = await session.page.evaluate(async (urls: string[]) => {
       const listed = new Set(urls);
       const found = Array.from(document.querySelectorAll("img")).filter((img) =>
         listed.has(img.src),
@@ -2641,9 +2642,24 @@ export async function waitForShownLateImages(
         arrived: loaded.map((img) => img.src),
         waiting: shown.filter((img) => !img.complete).map((img) => img.src),
         broken: shown.filter((img) => img.complete).map((img) => img.src),
+        timings: Object.fromEntries(
+          loaded.map((img) => [
+            img.src,
+            performance.getEntriesByName(img.src, "resource").at(-1)?.toJSON(),
+          ]),
+        ),
+        origin: location.origin,
       };
     }, Array.from(lateImages));
-    for (const source of arrived) lateImages.delete(source);
+    const { arrived, waiting, broken } = reading;
+    for (const source of arrived) {
+      if (!lateImages.delete(source)) continue;
+      const timing = reading.timings?.[source] as RawResourceTiming | undefined;
+      console.warn("[FrameCapture:late_image_arrived]", {
+        frameIndex,
+        ...describeLateImage(source, reading.origin ?? "", timing),
+      });
+    }
     const missing = Date.now() >= deadline ? [...waiting, ...broken] : broken;
     if (missing.length > 0) {
       const stopped = new ImageMissingFromFrameError(

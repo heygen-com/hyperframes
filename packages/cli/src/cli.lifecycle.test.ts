@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -28,6 +28,39 @@ afterEach(async () => {
   for (const path of MOCKED_MODULES) vi.doUnmock(path);
   vi.resetModules();
 });
+
+const PLAIN = "(no --json)";
+
+async function answersWithItsTextAsGiven(argv: string[], given: string, exit: number) {
+  const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  let answered = "";
+  const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+    answered += String(chunk);
+    return true;
+  }) as never);
+  try {
+    mockTelemetry();
+    process.argv = ["node", "cli.ts", ...argv, "--json"];
+    await import("./cli.js");
+
+    const said = errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+    expect(said).toContain(given.replace("\u0007", "\\x07"));
+    expect(said).not.toContain("\u0007");
+    const body = JSON.parse(answered.trim().split("\n").at(-1) ?? "") as {
+      ok: boolean;
+      error: { message: string };
+    };
+    expect(body.ok).toBe(false);
+    expect(process.exitCode).toBe(exit);
+    expect(body.error.message).toContain(given);
+    expect(body.error.message).not.toContain("\\x07");
+  } finally {
+    outSpy.mockRestore();
+    errorSpy.mockRestore();
+    exitSpy.mockRestore();
+  }
+}
 
 describe("CLI lifecycle", () => {
   it("queues a command failure before exit, without waiting on a network flush", async () => {
@@ -476,6 +509,104 @@ describe("CLI lifecycle", () => {
   });
 
   // fails without the fix: the envelope's message was the line as people see it, escapes included.
+  it.each([
+    [
+      "an unknown lambda subcommand",
+      ["lambda", "de\u0007ploy"],
+      "Unknown subcommand: de\u0007ploy",
+      2,
+    ],
+    ["an unknown lambda sites verb", ["lambda", "sites", "cr\u0007eate"], 'verb "cr\u0007eate"', 2],
+    [
+      "a lambda stack with no state",
+      ["lambda", "progress", "r1", "--stack-name", "st\u0007ack"],
+      'no stack state for "st\u0007ack"',
+      1,
+    ],
+    [
+      "an unknown cloudrun subcommand",
+      ["cloudrun", "de\u0007ploy"],
+      "Unknown subcommand: de\u0007ploy",
+      2,
+    ],
+    [
+      "an unknown cloudrun sites verb",
+      ["cloudrun", "sites", "cr\u0007eate"],
+      'verb "cr\u0007eate"',
+      2,
+    ],
+    [
+      "a missing cloudrun batch file",
+      [
+        "cloudrun",
+        "render-batch",
+        ".",
+        "--batch",
+        "ba\u0007tch.jsonl",
+        "--width",
+        "8",
+        "--height",
+        "8",
+      ],
+      "batch file not found: ba\u0007tch.jsonl",
+      1,
+    ],
+  ])("answers a --json run for %s with its text as given", async (_name, argv, given, exit) => {
+    await answersWithItsTextAsGiven(argv, given, exit);
+  });
+
+  const STACK = {
+    stackName: "other",
+    region: "us-east-1",
+    bucketName: "some-bucket",
+    stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:render",
+    functionName: "render",
+    lambdaMemoryMb: 1024,
+  };
+  const stackFile = (dir: string, text: string) => {
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(join(dir, ".hyperframes", "lambda-stack-st\u0007ack.json"), text);
+  };
+  const LAMBDA_PROGRESS = ["lambda", "progress", "r1", "--stack-name", "st\u0007ack"];
+
+  // fails without the fix: the envelope's message was the line as people see it, escapes included.
+  // A control character in a file name is refused on Windows.
+  it.skipIf(process.platform === "win32").each([
+    [
+      "a lambda stack file that cannot be read",
+      (dir: string) => stackFile(dir, "{"),
+      LAMBDA_PROGRESS,
+      "lambda-stack-st\u0007ack.json is not valid JSON",
+    ],
+    [
+      "a lambda stack file that names another stack",
+      (dir: string) => stackFile(dir, JSON.stringify(STACK)),
+      LAMBDA_PROGRESS,
+      'names stack "other", not "st\u0007ack"',
+    ],
+    [
+      "a beats run whose music file is missing",
+      (dir: string) =>
+        writeFileSync(
+          join(dir, "index.html"),
+          '<div data-composition-id="main" data-duration="5"><audio data-timeline-role="music" src="mu\u0007sic.mp3"></audio></div>',
+        ),
+      ["beats"],
+      "Audio file not found: mu\u0007sic.mp3",
+    ],
+  ])("answers a --json run for %s with its text as given", async (_name, write, argv, given) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cli-given-"));
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(dir);
+    try {
+      write(dir);
+      await answersWithItsTextAsGiven(argv, given, 1);
+    } finally {
+      cwd.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // fails without the fix: the envelope's message was the line as people see it, escapes included.
   it("answers a --json run for a missing file with the file's name as given", async () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -534,18 +665,17 @@ describe("CLI lifecycle", () => {
       "Invalid --quality 'be\u0007st'.",
       2,
     ],
-    // `docs` has no --json flag of its own; --json before the command name still reaches it.
-    ["an unknown docs topic", ["--json", "docs", "to\u0007pic"], "Unknown topic: to\u0007pic", 2],
-    // The rows below put --json first too: the command then prints its lines for people.
+    // The rows below run without --json: with it these commands refuse or answer in their own JSON.
+    ["an unknown docs topic", [PLAIN, "docs", "to\u0007pic"], "Unknown topic: to\u0007pic", 2],
     [
       "an unknown telemetry subcommand",
-      ["--json", "telemetry", "fo\u0007o"],
+      [PLAIN, "telemetry", "fo\u0007o"],
       "Unknown subcommand: fo\u0007o",
       2,
     ],
     [
       "a telemetry preference that cannot be saved",
-      ["--json", "telemetry", "disable"],
+      [PLAIN, "telemetry", "disable"],
       "Reason: EACCES /ho\u0007me",
       1,
       () =>
@@ -559,21 +689,21 @@ describe("CLI lifecycle", () => {
     ],
     [
       "a catalog query with no searchable words",
-      ["--json", "catalog", "--query", "!!\u0007"],
+      [PLAIN, "catalog", "--query", "!!\u0007"],
       'No searchable words in query "!!\u0007".',
       1,
       () => mockCatalogRegistry(),
     ],
     [
       "a catalog whose registry cannot be read",
-      ["--json", "catalog"],
+      ["catalog"],
       "The registry could not be read: no route to ho\u0007st",
       1,
       () => mockCatalogRegistry("The registry could not be read: no route to ho\u0007st"),
     ],
     [
       "speech that cannot be generated",
-      ["--json", "tts", "hello", "--voice", "af_\u0007x"],
+      [PLAIN, "tts", "hello", "--voice", "af_\u0007x"],
       "no model at /mo\u0007dels",
       1,
       () =>
@@ -584,7 +714,7 @@ describe("CLI lifecycle", () => {
         })),
     ],
   ] as [string, string[], string, number, (() => void)?][])(
-    "answers a --json run for %s with the value as given",
+    "shows %s as text, and answers a --json run with the value as given",
     async (_name, argv, given, exit, mock) => {
       const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -602,19 +732,21 @@ describe("CLI lifecycle", () => {
       try {
         mockTelemetry();
         mock?.();
-        process.argv = ["node", "cli.ts", ...argv, ...(argv[0] === "--json" ? [] : ["--json"])];
+        const plain = argv[0] === PLAIN;
+        process.argv = ["node", "cli.ts", ...(plain ? argv.slice(1) : [...argv, "--json"])];
         await import("./cli.js");
 
         const said =
           errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n") + written;
         expect(said).toContain(given.replace("\u0007", "\\x07"));
         expect(said).not.toContain("\u0007");
+        expect(process.exitCode).toBe(exit);
+        if (plain) return;
         const body = JSON.parse(answered.trim().split("\n").at(-1) ?? "") as {
           ok: boolean;
           error: { message: string };
         };
         expect(body.ok).toBe(false);
-        expect(process.exitCode).toBe(exit);
         expect(body.error.message).toContain(given);
         expect(body.error.message).not.toContain("\\x07");
       } finally {

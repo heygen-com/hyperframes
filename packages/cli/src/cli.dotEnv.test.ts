@@ -69,7 +69,7 @@ it.each(
     const definition = {
       default: {
         meta: { name: command },
-        args: {},
+        args: { json: { type: "boolean" } },
         run: () => {
           observed = [
             process.env.HYPERFRAMES_BROWSER_PATH,

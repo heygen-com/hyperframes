@@ -55,6 +55,7 @@ export type HyperframeLinterOptions = {
     rootRelativePath: string;
   }>;
   scriptsOutsideProjectUnread?: string[];
+  linkedFilesOverLimit?: Array<{ href: string; kind: "stylesheet" | "script" }>;
   /**
    * Set to `true` when linting compositions destined for distributed / Lambda
    * rendering, where system-font capture (`allowSystemFontCapture`) is

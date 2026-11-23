@@ -123,7 +123,7 @@ describe("telemetry queue delivery", () => {
       const { trackRenderFeedback, trackCatalogSearchMiss } = await import("./events.js");
       trackEvent("cli_command", { command: "lint" });
       trackRenderFeedback({ rating: 9 });
-      trackCatalogSearchMiss({ query: "confetti" });
+      trackCatalogSearchMiss({ wanted: "confetti" });
       await flush();
       expect(sentBatch(fetchMock).map((e) => [e.event, e.properties.client])).toEqual([
         ["cli_command", "example-app/1.2.3/stable"],

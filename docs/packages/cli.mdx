@@ -47,8 +47,57 @@ default to the current directory: `npx hyperframes check ./my-video`. A few
 take it as a flag instead — `add`, `transcribe`, `feedback`, `skills`, `history`, and
 the `timeline` edit commands use `--dir`.
 
-**`--json` for agents and scripts.** Most commands accept it, and the ones
-that do not reject it with exit 2. The payload is wrapped with a `_meta` field
+**Control characters in a few printed lines.** `figma component` (the
+`imported component` line), `usage` (the reason on a `Usage unknown` line),
+`measure hands` (its notices) and `compare` and `keyframes` (the notice
+about files left out) print control characters in a repeated value as visible
+text such as `\x1b` and `\x07`, and keep the value on its line, with a line break
+shown as `\x0a`. [`capture`](#capture) does the same for its warnings and failure
+reason. So do the notices that repeat the reason something went wrong: the
+`[studio]` lines of `preview`, the `Error:` line and its hint that `auth login`
+prints when sign-in is not set up, the `Browser close failed` and
+`Browser shutdown failed` lines, the port and `--remote-debugging-port` messages
+of `play` and `present`, and the notices about telemetry settings, project
+history, the received-files record, the media scan before a preview, the desktop
+app project file, render priority, a file approval that could not be saved and
+`HF_TOOL_CONTEXT` events.
+So do these lines when they repeat a name, a path or a value read from a file:
+the result, refusal and diff lines of the `timeline` edit commands, the scope
+notes of `check`, the clips named on the person line of `diff`, the process id in
+`preview --list`, the count in `telemetry status`, the auto-update and
+out-of-date skills notices, the path in the FFmpeg install hint, the
+`data-fps` warning of a cloud render, the font summary of `capture`, the notice
+that a key comes from a folder's `.env`, and the plain progress lines of a run
+with no terminal attached.
+The same lines show the Unicode marks that switch text direction
+(U+202A to U+202E and U+2066 to U+2069) and the line and paragraph separators
+(U+2028 and U+2029) as visible text such as `\u202e`. Right-to-left letters, the
+marks U+200E, U+200F and U+061C, and the zero-width characters (U+200B to U+200D
+and U+FEFF) are printed as they are: they reorder and hide nothing, and ordinary
+Arabic, Hebrew, Persian and emoji text needs them. These lines follow all of
+these rules for text you typed or a project supplied, and no others are changed
+here: the `Unknown command:` line and the suggestion under it, the
+`Unknown flag:` line, the `Missing value for --<flag>` line, the
+`Unexpected extra argument` line, the `.env:` notices at start-up, and the line
+the `measure <file>` shortcut prints. Other lines a command prints are as they
+were.
+`--json` output is not changed by this.
+When a `--json` run fails, the `error.message` it answers with carries a repeated
+value as it was given, not in the visible-text form; `lambda`, `cloudrun` and
+`beats` do this too.
+
+**`--json` for agents and scripts.** Most commands accept it, before or after
+the command name: `hyperframes --json info` is the same run as
+`hyperframes info --json`. The commands that have no JSON output refuse it in
+either position, without running: they print a `json_unsupported` error as JSON
+and exit 2. Those are `init`, `auth login`, `auth logout`, `auth refresh`,
+`billing`, `browser`, `docs`, `events`, `feedback`, the `figma` subcommands,
+`play`, `present`, `publish` and `templates`, and five command words run with no
+subcommand: `auth`, `cloud`, `figma`, `media-use` and `skills` (so
+`skills --json` installs nothing; `skills check` and `skills update` do accept
+the flag). A `--json` after `--` is an
+argument, not the flag, so it does not turn JSON output or the JSON form of a
+failure on. The payload is wrapped with a `_meta` field
 so a script can spot an outdated CLI from any command's output, without a
 second call:
 
@@ -409,6 +458,14 @@ the page exposed. It is raw material for an agent, not a finished composition;
 the `/hyperframes` skill uses it when a real product has to appear on screen. Dynamic sites, protected pages, and unusual media loaders produce
 partial results, so read `dropped`, the warnings, and the contact sheets before
 you build.
+
+Each warning, and the reason on a `Capture failed:` line, is printed on one
+line: a line break inside the text is shown as `\x0a` instead of starting a new
+terminal line. `--json` output is unchanged and carries the full text. The
+`Design style extraction failed` line printed during a capture follows the same
+rule. When a capture fails because no browser can be set up on Linux ARM64, the
+reason stays on the `Capture failed:` line and the setup commands follow it on
+lines of their own, ready to copy.
 
 Downloaded fonts are saved under `assets/fonts/`, and their CSS references point
 to those local files. Distinct URLs such as `demo.woff2?v=1` and
@@ -1317,6 +1374,10 @@ npx hyperframes check [dir] --at 1.5,4,7.25
 npx hyperframes check [dir] --strict       # warnings fail too
 ```
 
+When `check` or the deprecated `validate` fails because no browser can be set up
+on Linux ARM64, the reason stays on the failure line and the setup commands
+follow it on lines of their own, ready to copy. `--json` output is unchanged.
+
 `check` runs the linter first. A lint error fails the check but does not stop
 it: the browser checks still run and both are reported, unless the lint error
 leaves no composition to load (a root with no `data-composition-id`).
@@ -1381,9 +1442,11 @@ and ends a copy that makes no progress for 3 minutes (`HYPERFRAMES_PROXY_STALL_M
 For a long project, run `hyperframes check --prepare-media` first, then the check itself finds
 every copy ready.
 
-A Chrome that is not ready 3 minutes after the check begins to start it ends the check with a runtime
-finding that says Chrome did not start and how long each step took. On a first run Chrome may still be
-downloading: run `hyperframes browser ensure` once, then run check again.
+A Chrome that is not ready 3 minutes after the check begins to start it ends the check with a
+`check_deadline` finding that says Chrome did not start and how long each step took. On a first run Chrome
+may still be downloading: run `hyperframes browser ensure` once, then run check again. A check that makes
+no progress for 2 minutes, or for its `--timeout` plus 10 seconds when that is longer, also ends with
+`check_deadline`, naming the phase it was in and the script that had not finished.
 
 `--caption-zone` and `--frame-check` refuse a ranged check when none of their
 configured seek samples falls inside `--range`; a requested gate never silently
@@ -2909,10 +2972,19 @@ same share as the project is copied like any other. To include such a
 file, move it into the project folder. Under `--json`, the result lists those
 as `left_out`, each with the `file` that points at it, the `reference` as
 written, its `path` from the project folder, the `reason` (`blocklisted`,
-`received`, `file_type`, `private`, `network_share` or `not_approved`) and `levels_up`, how many folders above the project
+`received`, `file_type`, `private`, `network_share`, `script`, `not_approved` or `unreadable`) and `levels_up`, how many folders above the project
 it is. A full run also prints each as a `{"event":"left_out",…}`
 line on stderr, so a wrapper can ask with `--dry-run --json` before uploading
 and still hear about each one during the run.
+
+A file or folder in the project that cannot be read is left out the same way
+instead of stopping the upload, with a warning saying why. Its entry has the
+reason `unreadable` and a `cause`: `locked` (another app has it open), `denied`
+(the computer does not allow reading it), `missing` (it was deleted, or is a
+link to a file that is gone) or `drive` (its drive could not read it). When a
+page the video plays uses that file, a second entry names that page as `file`,
+so a wrapper can ask before uploading a video that would miss it. The page the
+video starts from must be readable: if it is not, the command stops and names it.
 
 Which files came in with an imported project is kept in the project's
 `.hyperframes/received-files.json`. A project without that file is read as

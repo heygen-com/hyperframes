@@ -1,9 +1,9 @@
 // fallow-ignore-file code-duplication
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { runCommand, type CommandDef } from "citty";
 
 import type { RegistryItem } from "@hyperframes/core";
-import { catalogRow, countUnindexed, pickByName, searchMissCommand } from "./catalog.js";
+import { catalogRow, countUnindexed, pickByName, searchMissReport } from "./catalog.js";
 
 /** The whole registry, which is what "in this registry" has to be measured against. */
 const registryNames = new Set(["fade-through", "whip-pan", "count-up"]);
@@ -205,6 +205,7 @@ const component = (name: string): { name: string; type: string } => ({
 });
 
 interface Envelope {
+  query: string;
   tier: string;
   dropped: number;
   unindexed: number;
@@ -467,7 +468,7 @@ describe("catalog --json meaning search", () => {
     const envelope = await runEnvelope({ query: "number", words: "transition" });
 
     expect(envelope.shown).toBe(1);
-    expect(envelope.report_gap).toContain("number");
+    expect(envelope.query).toBe("number");
   });
 
   it("carries an on-device runtime failure into the JSON envelope", async () => {
@@ -531,9 +532,24 @@ describe("catalog --json meaning search", () => {
 
     expect(envelope.shown).toBeGreaterThan(0);
     expect(envelope.report_gap).toBe(
-      'npx hyperframes feedback --search-miss "make a number count up" ' +
-        '--wanted "<the move you needed>" --tier on-device',
+      'npx hyperframes feedback --search-miss --wanted "<the move you needed>" --tier on-device',
     );
+    expect(envelope.report_gap).not.toContain("make a number count up");
+  });
+
+  // fails without the fix: on Windows the envelope carried a bash-escaped line that runs "$(calc)" in PowerShell.
+  it("on Windows, hands back how to report the gap, not a line that would run the query", async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    onTestFinished(() => {
+      Object.defineProperty(process, "platform", platform);
+    });
+
+    const envelope = await runEnvelope({ query: "count up $(calc)" });
+
+    expect(envelope.query).toBe("count up $(calc)");
+    expect(envelope.report_gap).not.toContain("$(calc)");
+    expect(envelope.report_gap).toContain("--search-miss");
   });
 
   it("names the tier that actually answered in the gap-report command", async () => {
@@ -676,19 +692,12 @@ describe("a zero-result search", () => {
   });
 });
 
-describe("searchMissCommand", () => {
-  it("keeps a non-ASCII query intact", () => {
-    // Half of the gap reports received so far were CJK. A query mangled on the
-    // way into the command is a report nobody can act on.
-    expect(searchMissCommand("実写写真のみ 9:16 生活ハック", "on-device")).toContain(
-      '--search-miss "実写写真のみ 9:16 生活ハック"',
+// Each one keeps a shell meaning in PowerShell or cmd.exe however it is double-quoted.
+describe("searchMissReport", () => {
+  it("names the tier and leaves the query out", () => {
+    expect(searchMissReport("on-device")).toBe(
+      'npx hyperframes feedback --search-miss --wanted "<the move you needed>" --tier on-device',
     );
-  });
-
-  it("escapes shell metacharacters so the printed line is safe to paste", () => {
-    const cmd = searchMissCommand('a "quoted" $VAR `sub` \\ thing', "words");
-
-    expect(cmd).toContain('--search-miss "a \\"quoted\\" \\$VAR \\`sub\\` \\\\ thing"');
   });
 });
 
@@ -719,26 +728,22 @@ describe("catalog meaning search, on a terminal", () => {
 
     expect(output).toContain("None of these do it?");
     expect(output).toContain("--tier words");
+    expect(output).toContain("--search-miss --wanted");
+    expect(output).not.toContain('"count up"');
   });
 
-  // fails without the fix: the command was printed with the query rewritten, so pasting it reported other text.
   it.each([
     ["some results", "count\nup"],
     ["no result", "zzqx\nyyqx"],
-  ])(
-    "explains the gap report in words when the query cannot be shown as typed: %s",
-    async (_n, query) => {
-      state.modelStatus = "declined";
-      state.ranking = null;
+  ])("prints the same gap line whatever the query holds: %s", async (_n, query) => {
+    state.modelStatus = "declined";
+    state.ranking = null;
 
-      const output = await runCatalog({ query });
+    const output = await runCatalog({ query });
 
-      expect(output).toContain(
-        "Run hyperframes feedback with your query as --search-miss, the move you needed as --wanted, and --tier words.",
-      );
-      expect(output).not.toContain('--search-miss "');
-    },
-  );
+    expect(output).toContain("--search-miss --wanted");
+    expect(output).not.toContain(query);
+  });
 
   it("offers the gap report on the on-device tier too", async () => {
     const output = await runCatalog({ query: "make a number count up" });

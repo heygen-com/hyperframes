@@ -85,6 +85,7 @@ describe("createEditingPortClient", () => {
           "layers",
           "draft",
           "gesture-start",
+          "gesture-base",
           "console-errors",
           "watch-keys",
           "restore-attributes",
@@ -113,6 +114,7 @@ describe("createEditingPortClient", () => {
           "live-retime",
           "assets-unloaded",
           "text-edit",
+          "serve-paused-frames",
         ],
       });
     } finally {

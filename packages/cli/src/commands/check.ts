@@ -20,7 +20,7 @@ import type { Example } from "./_examples.js";
 import { parseAt } from "./layout.js";
 import { c } from "../ui/colors.js";
 import { registerBrowserSessionCleanup } from "../browser/launch.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { normalizeErrorMessage, splitStepsWrittenByCli } from "../utils/errorMessage.js";
 import { CliUsageError, failUsage, setCommandExitCode } from "../utils/commandResult.js";
 import { swallowedFlagUsageError } from "../utils/reject-unknown-flags.js";
 import { formatLayoutIssue } from "../utils/layoutAudit.js";
@@ -371,7 +371,9 @@ export function createCheckCommand(
           if (report.saved) {
             console.log(terminalText(`Report: ${report.saved.report}`));
             console.log(
-              `Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`,
+              terminalText(
+                `Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`,
+              ),
             );
           }
         }
@@ -422,7 +424,9 @@ function reportCheckFailure(
     const code = usage ? error.code : "runtime_error";
     console.log(JSON.stringify(addMeta(jsonFailure(code, message)), null, 2));
   } else {
-    console.error(`${c.error("✗")} Check failed: ${terminalText(message)}`);
+    const { summary, stepsWrittenByCli } = splitStepsWrittenByCli(message);
+    console.error(`${c.error("✗")} Check failed: ${terminalText(summary)}`);
+    if (stepsWrittenByCli) console.error(`\n${stepsWrittenByCli}\n`);
   }
   if (usage) failUsage();
   setCommandExitCode(1);
@@ -489,7 +493,8 @@ async function runPrepareMedia(
     console.log(
       `${mark}  Browser-playable copies: ${files.length - failed.length}/${files.length} ready`,
     );
-    for (const file of failed) console.log(terminalLines(`   ${file.file}: ${file.reason}`));
+    for (const file of failed)
+      console.log(`   ${terminalText(file.file)}: ${terminalLines(file.reason ?? "")}`);
   }
   setCommandExitCode(failed.length === 0 ? 0 : 1);
 }
@@ -790,7 +795,7 @@ function printHumanReport(report: CheckReport): void {
     console.log(
       `Scope: ${report.scope.range ? report.scope.range.join("–") + "s" : "full timeline"}; ${report.scope.hiddenFindings} findings hidden by component filter. Counts/status include hidden findings.`,
     );
-    for (const note of report.scope.notes) console.log(note);
+    for (const note of report.scope.notes) console.log(terminalLines(note));
   }
   printSection("Lint", report.lint);
   if (report.browserSkipped) {
@@ -902,10 +907,13 @@ function printSnapshotSection(report: CheckReport): void {
 
 function printFinding(finding: CheckFinding): void {
   const where = `${terminalText(finding.sourceFile)} ${terminalText(finding.selector)} ${formatFindingTimes(finding)}`;
-  console.log(
-    `  ${findingIcon(finding)} ${terminalText(finding.code)}: ${terminalText(finding.message)}`,
-  );
+  const { summary, stepsWrittenByCli } =
+    finding.code === "check_runtime_failure"
+      ? splitStepsWrittenByCli(finding.message)
+      : { summary: finding.message, stepsWrittenByCli: undefined };
+  console.log(`  ${findingIcon(finding)} ${terminalText(finding.code)}: ${terminalText(summary)}`);
   console.log(`    ${c.dim(where)}`);
+  if (stepsWrittenByCli) console.log(`\n${stepsWrittenByCli}\n`);
   if (finding.fixHint) console.log(`    ${c.dim(`Fix: ${terminalText(finding.fixHint)}`)}`);
 }
 

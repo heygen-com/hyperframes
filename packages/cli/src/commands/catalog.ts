@@ -342,9 +342,7 @@ export default defineCommand({
               // Withheld when the query never parsed: the catalog has not been
               // shown to be missing anything, so inviting a gap report here
               // would file noise against a search that never ran.
-              ...(unsearchable
-                ? {}
-                : { report_gap: searchMissCommand(query, tierToken(searched)) }),
+              ...(unsearchable ? {} : { report_gap: searchMissReport(tierToken(searched)) }),
               results: [],
             },
             null,
@@ -379,7 +377,7 @@ export default defineCommand({
           if (query) {
             console.log("");
             console.log(c.dim("  Nothing in the catalog does this? Report the gap:"));
-            console.log(c.dim(`  ${searchMissHint(query, tierToken(searched))}`));
+            console.log(c.dim(`  ${searchMissReport(tierToken(searched))}`));
           }
         }
       }
@@ -417,7 +415,7 @@ export default defineCommand({
             // plausible items and none of them did the thing — a judgement
             // only the reader can make, so the command has to already be in
             // the envelope by the time they make it.
-            report_gap: searchMissCommand(query, tierToken(searched)),
+            report_gap: searchMissReport(tierToken(searched)),
             results: output,
           },
           null,
@@ -471,7 +469,7 @@ export default defineCommand({
         // in. Every catalog gap reported to date came from the word tier. The
         // tier rides along in the command so a vocabulary miss stays
         // distinguishable from a meaning miss when the reports are read.
-        console.log(c.dim(`  None of these do it? ${searchMissHint(query, tierToken(searched))}`));
+        console.log(c.dim(`  None of these do it? ${searchMissReport(tierToken(searched))}`));
       }
     }
 
@@ -699,34 +697,11 @@ function tierDetail(searched: { localMode: LocalMode } | null): string {
 }
 
 /**
- * The command that turns a fruitless search into a catalog gap report.
- *
- * A search that returns nothing usable is the only moment anyone knows what
- * the catalog is missing, and it was also the one moment we said nothing:
- * `feedback --search-miss` was documented in the skill and printed by
- * `feedback --help`, neither of which is open when a query comes back wrong.
- * Handing back the exact line, with the query already in it, is the whole
- * difference between a gap someone reports and a gap someone works around.
- *
- * Only the command is built here. Sending it stays a separate deliberate act,
- * so plain `catalog --query` keeps its promise that the query text never
- * leaves the machine.
+ * The line that reports a gap, ready to run. It names the move that was missing and the tier;
+ * the query is left out, so the searched words never leave the machine.
  */
-export function searchMissCommand(query: string, tier: "on-device" | "words"): string {
-  // Double quotes with the shell metacharacters escaped: the queries that
-  // matter are plain-language phrases, and half the real ones so far were
-  // CJK, which single-quoting renders no more safely and reads worse.
-  const quoted = query.replace(/(["\\$`])/g, "\\$1");
-  return (
-    `npx hyperframes feedback --search-miss "${quoted}" ` +
-    `--wanted "<the move you needed>" --tier ${tier}`
-  );
-}
-
-function searchMissHint(query: string, tier: "on-device" | "words"): string {
-  const command = searchMissCommand(query, tier);
-  if (terminalText(command) === command) return command;
-  return `Run hyperframes feedback with your query as --search-miss, the move you needed as --wanted, and --tier ${tier}.`;
+export function searchMissReport(tier: "on-device" | "words"): string {
+  return `npx hyperframes feedback --search-miss --wanted "<the move you needed>" --tier ${tier}`;
 }
 
 type LocalMode = "local-model" | "words";
