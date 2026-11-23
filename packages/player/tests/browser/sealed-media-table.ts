@@ -409,6 +409,7 @@ type Seen = {
   currentSrc: string;
   loads: number;
   ours: number;
+  corsLoads: number;
   selections: number;
   failedWithCors: string[];
 };
@@ -465,6 +466,8 @@ async function installDriver(frame: Frame) {
       if (data.table) data.corsAtLoad = cors;
       if (data.table && !driving) {
         data.ours = String(Number(data.ours ?? 0) + 1);
+        if (data.corsAtFetch !== undefined && data.corsAtFetch !== cors)
+          data.corsLoads = String(Number(data.corsLoads ?? 0) + 1);
         data.loadedAt = String(this.currentTime);
         if (this.hasAttribute("crossorigin"))
           data.upgrades = String(Number(data.upgrades ?? 0) + 1);
@@ -481,6 +484,15 @@ async function installDriver(frame: Frame) {
       }
       return load.call(this);
     };
+    window.addEventListener(
+      "loadstart",
+      (event) => {
+        const video = event.target as HTMLVideoElement;
+        if (video.dataset?.table)
+          video.dataset.corsAtFetch = String(video.getAttribute("crossorigin"));
+      },
+      true,
+    );
     window.addEventListener(
       "error",
       (event) => {
@@ -683,6 +695,7 @@ async function installDriver(frame: Frame) {
             currentSrc: video.currentSrc,
             loads: Number(video.dataset.loads ?? 0),
             ours: Number(video.dataset.ours ?? 0),
+            corsLoads: Number(video.dataset.corsLoads ?? 0),
             selections: Number(video.dataset.selections ?? 1),
             failedWithCors: [...failed],
           };
@@ -872,10 +885,10 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
       const movesPlain = plain.moves;
       const where = `${sequence.name} (${describe(sequence)}), element ${el} after round ${round + 1}`;
       const kinds = everListed.get(el)!;
-      // The runtime loads media without the helper too; the helper's share is what the sealed film adds.
-      const helper = Math.max(0, seen.ours - plain.ours);
+      // The helper changes crossorigin, then loads; the runtime's own loads vary per run.
+      const helper = seen.corsLoads;
       // Every load the runtime's CORS handling did not make starts a selection: the driver's and the runtime's own.
-      const selections = seen.selections + plain.ours;
+      const selections = seen.selections + seen.ours - seen.corsLoads;
       const most = 2 * kinds.size * selections;
       if (helper > most)
         problems.push(
