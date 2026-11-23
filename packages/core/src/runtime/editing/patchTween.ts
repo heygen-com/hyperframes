@@ -500,6 +500,8 @@ const positionAxes = (change: RuntimeTweenChange) =>
     : Object.keys(change.props)
   ).filter((channel): channel is "x" | "y" => channel === "x" || channel === "y");
 
+let undrawnTweenAxes: Array<[Element, ("x" | "y")[]]> = [];
+
 /** The frame patching its own timelines: every patch must land, and it renders once at the end. */
 export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
   patched: boolean;
@@ -526,13 +528,18 @@ export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
     }
     const defer = !(seek && index === renderAt);
     if (!patchTween(target, selector, change, undefined, defer, patchedTweens)) return true;
-    for (const written of patchedTweens.at(-1)?.targets?.() ?? [])
-      yieldDrawnPosition(written, positionAxes(change));
+    for (const written of patchedTweens.at(-1)?.targets?.() ?? []) {
+      if (defer) undrawnTweenAxes.push([written, positionAxes(change)]);
+      else yieldDrawnPosition(written, positionAxes(change));
+    }
     return false;
   });
   if (seek) drawWhatTheSeekLeft(patchedTweens);
   const shown = !seek || patchedTweens.every(renderedOnceReached);
   const patched = missed === undefined && shown;
+  if (patched && seek)
+    for (const [written, axes] of undrawnTweenAxes) yieldDrawnPosition(written, axes);
+  if (!patched || seek) undrawnTweenAxes = [];
   if (patched && endsDrafts) drawDrafts(endsDrafts);
   return { patched };
 }
