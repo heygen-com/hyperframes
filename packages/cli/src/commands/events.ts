@@ -1,5 +1,5 @@
 import { defineCommand } from "../utils/defineCommand.js";
-import { trackEvent, flushSync } from "../telemetry/client.js";
+import { trackEvent, flushSync, hasShownTelemetryNotice } from "../telemetry/client.js";
 import { SKILL_SLUG } from "../telemetry/skill.js";
 
 // Skill-usage telemetry endpoint. A skill reports its own invocation/outcome —
@@ -46,6 +46,8 @@ export default defineCommand({
     try {
       const skill = typeof args.skill === "string" ? args.skill.trim() : "";
       if (!SKILL_SLUG.test(skill)) return; // missing / non-slug → no-op
+
+      if (!hasShownTelemetryNotice()) return;
 
       const event = ALLOWED_EVENTS.includes(args.event) ? args.event : "skill_invoked";
       const props: Record<string, string> = { authoring_skill: skill };

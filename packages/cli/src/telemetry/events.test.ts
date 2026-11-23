@@ -9,6 +9,7 @@ vi.mock("./client.js", () => ({
   flush: () => flush(),
   flushSync: () => undefined,
   shouldTrack: () => shouldTrack(),
+  hasShownTelemetryNotice: () => true,
 }));
 
 // Power state shells out to `pmset`; spy so tests can assert it is NOT
