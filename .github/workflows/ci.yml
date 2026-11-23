@@ -578,18 +578,23 @@ jobs:
       - run: bun run typecheck:scripts
 
   test-studio:
-    name: Test (studio)
+    name: Test (studio ${{ matrix.shard }}/3)
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Unsharded, the suite took 8-14 min and ran out its 15 min limit as it finished (2026-11-23).
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
           fetch-depth: 0
       - uses: ./.github/actions/setup-test-workspace
-      - run: bun run --cwd packages/studio test
+      - run: bun run --cwd packages/studio test --shard=${{ matrix.shard }}/3
 
   test-runtime:
     name: Test (runtime)

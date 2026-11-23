@@ -6,6 +6,7 @@ import { useLinkedClipPreferences } from "../utils/linkedClipPreferences";
 import { previewFrameOpaque } from "../player/lib/previewChannel";
 import { previewStageSize } from "../player/lib/bridgePlayback";
 import { getIframeGsap, type IframeGsap } from "./gsapShared";
+import { drawPreviewDraft, endPreviewDraft } from "../components/editor/previewDrafts";
 import type { EditingGestureBase } from "@hyperframes/core/runtime/editing-port";
 
 export interface GestureSample {
@@ -83,7 +84,7 @@ function readBasePosition(element: HTMLElement, gsap: IframeGsap | null): BasePo
 function connectGsapRuntime(
   element: HTMLElement,
   iframeEl: HTMLIFrameElement,
-  elementEndTime: number | undefined,
+  recordingEnd: number,
 ): GsapRuntime | null {
   try {
     const win = iframeEl.contentWindow as Window & {
@@ -100,14 +101,12 @@ function connectGsapRuntime(
         )?.[1] ?? null)
       : null;
     if (win?.gsap?.set && tl?.seek && element.id) {
-      const tlDuration = tl.duration();
       return {
         timeline: tl,
         gsap: win.gsap,
         element,
         startTime: win.__player?.getTime() ?? 0,
-        maxSeekTime:
-          elementEndTime != null && elementEndTime < tlDuration ? elementEndTime : tlDuration,
+        maxSeekTime: recordingEnd,
         savedVisibility: element.style.visibility,
         savedTranslate: element.style.getPropertyValue("translate"),
         putMarkBack: null,
@@ -222,6 +221,8 @@ function resolveGestureProperties(
 // ---------------------------------------------------------------------------
 
 interface RecordingRefs {
+  /** A sealed frame's stand-in, whose draft shows the recording live. */
+  drawsOn: HTMLElement | null;
   pointer: { x: number; y: number };
   startPointer: { x: number; y: number };
   hasMoved: boolean;
@@ -260,10 +261,13 @@ function createRecordingRefs(): RecordingRefs {
     cleanup: null,
     playhead: null,
     lastTime: Infinity,
+    drawsOn: null,
   };
 }
 
 function releaseRuntimePreview(r: RecordingRefs): void {
+  if (r.drawsOn) endPreviewDraft(r.drawsOn, "restore");
+  r.drawsOn = null;
   const runtime = r.runtime;
   if (!runtime) return;
   const { element, savedVisibility, savedTranslate } = runtime;
@@ -348,11 +352,11 @@ export function useGestureRecording() {
       r.scale = scale;
 
       // --- Phase 3: Connect to the iframe GSAP runtime ---
-      r.runtime = connectGsapRuntime(element, iframeEl, elementEndTime);
       const { currentTime, duration } = usePlayerStore.getState();
-      r.playhead = sealed
-        ? { start: currentTime, end: Math.min(elementEndTime ?? Infinity, duration) }
-        : null;
+      const recordingEnd = Math.min(elementEndTime ?? Infinity, duration);
+      r.runtime = connectGsapRuntime(element, iframeEl, recordingEnd);
+      r.drawsOn = sealed ? element : null;
+      r.playhead = sealed ? { start: currentTime, end: recordingEnd } : null;
       const seekable = r.runtime
         ? { start: r.runtime.startTime, end: r.runtime.maxSeekTime }
         : r.playhead;
@@ -446,6 +450,12 @@ export function useGestureRecording() {
           }
         } else if (r.playhead) {
           usePlayerStore.getState().requestSeek(Math.min(r.playhead.start + time, r.playhead.end));
+        }
+        if (r.drawsOn && ("x" in properties || "y" in properties)) {
+          const { x = r.basePosition.x, y = r.basePosition.y } = properties;
+          drawPreviewDraft(r.drawsOn, {
+            translate: { x: x - r.basePosition.x, y: y - r.basePosition.y },
+          });
         }
 
         recordSample(r, time, properties);

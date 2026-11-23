@@ -15,6 +15,11 @@ vi.mock("../player/lib/previewChannel", async (load) => ({
   ...(await load<typeof import("../player/lib/previewChannel")>()),
   previewFrameOpaque: () => frame.sealed,
 }));
+const drafts = vi.hoisted(() => ({ draw: vi.fn(), end: vi.fn() }));
+vi.mock("../components/editor/previewDrafts", () => ({
+  drawPreviewDraft: drafts.draw,
+  endPreviewDraft: drafts.end,
+}));
 vi.mock("../player/lib/bridgePlayback", async (load) => ({
   ...(await load<typeof import("../player/lib/bridgePlayback")>()),
   previewStageSize: () => frame.stage,
@@ -35,6 +40,8 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
   vi.spyOn(performance, "now").mockImplementation(() => nowMs);
   frame.sealed = true;
+  drafts.draw.mockClear();
+  drafts.end.mockClear();
   usePlayerStore.setState({ currentTime: 0, duration: 10, requestedSeekTime: null });
 });
 
@@ -51,15 +58,21 @@ function startOn(
   base: EditingGestureBase | null,
   elementEnd?: number,
   liveGsap?: Record<string, number>,
+  emptyTimeline = false,
 ) {
   const iframe = document.createElement("iframe");
   document.body.append(iframe);
   if (liveGsap)
     Object.assign(iframe.contentWindow!, {
-      gsap: { getProperty: (_element: Element, prop: string) => liveGsap[prop] },
+      gsap: { getProperty: (_element: Element, prop: string) => liveGsap[prop], set: vi.fn() },
+      ...(emptyTimeline && {
+        __timelines: { main: { duration: () => 0, seek: vi.fn() } },
+        __player: { getTime: () => usePlayerStore.getState().currentTime },
+      }),
     });
   vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 960, 540));
   const standIn = document.createElement("div");
+  standIn.id = "card";
   let recording: ReturnType<typeof useGestureRecording> | null = null;
   function Harness() {
     recording = useGestureRecording();
@@ -106,6 +119,22 @@ describe("a gesture recording on a sealed preview", () => {
   it("starts from the layer's GSAP offset the frame reported", () => {
     frame.stage = { width: 1920, height: 1080 };
     expect(recordOnSealedFrame(100, { ...AT_REST, x: 240, y: 80 }).last).toEqual({ x: 440, y: 80 });
+  });
+
+  // fails without the fix: the frame's layer stood still while recording, since only an unsealed frame's GSAP moved it.
+  it("draws the layer moving live on the frame, and puts it back when the recording stops", () => {
+    frame.stage = { width: 1920, height: 1080 };
+    recordOnSealedFrame(100, { ...AT_REST, x: 240, y: 80 });
+    const [standIn, last] = drafts.draw.mock.lastCall!;
+    expect(last).toEqual({ translate: { x: 200, y: 0 } });
+    expect(drafts.end.mock.calls).toEqual([[standIn, "restore"]]);
+  });
+
+  it("draws nothing over the channel for an unsealed frame, whose GSAP moves the layer", () => {
+    frame.sealed = false;
+    frame.stage = { width: 1920, height: 1080 };
+    recordOnSealedFrame(100, null);
+    expect([drafts.draw.mock.calls, drafts.end.mock.calls]).toEqual([[], []]);
   });
 
   it("scales the pointer by the film's own width, not 1920", () => {
@@ -157,5 +186,37 @@ describe("a gesture recording on a sealed preview", () => {
       return stop().at(-1)?.properties.scale;
     };
     expect([scaledBy(false), scaledBy(true)]).toEqual([1.6, 1.6]);
+  });
+});
+
+describe("a recording on a film whose own timeline is empty", () => {
+  const AT_REST_GSAP = { x: 0, y: 0, opacity: 1, scaleX: 1 };
+  const recordMove = (sealed: boolean) => {
+    ticks = [];
+    nowMs = 0;
+    frame.sealed = sealed;
+    frame.stage = { width: 1920, height: 1080 };
+    usePlayerStore.setState({ currentTime: 2, duration: 10, requestedSeekTime: null });
+    const { tick, stop } = startOn(sealed ? AT_REST : null, 2.5, AT_REST_GSAP, !sealed);
+    const move = (clientX: number, ms: number) => {
+      document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX }));
+      tick(ms);
+    };
+    move(0, 0);
+    move(100, 300);
+    move(100, 900);
+    return stop().map(({ time, properties }) => ({ time, properties }));
+  };
+
+  // fails without the fix: unsealed capped the recording at its timeline's own length, 0 here, so every sample
+  // landed at 0 s, the playhead never moved and the recording saved nothing.
+  it("records over time unsealed, up to the layer's end within the film", () => {
+    const samples = recordMove(false);
+    expect(samples.at(-1)?.time).toBe(0.5);
+    expect(usePlayerStore.getState().currentTime).toBe(2.5);
+  });
+
+  it("records the same samples sealed and unsealed", () => {
+    expect(recordMove(false)).toEqual(recordMove(true));
   });
 });

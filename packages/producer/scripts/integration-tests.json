@@ -30,6 +30,7 @@
   "src/services/fileServer.host.test.ts",
   "src/services/fileServer.listenError.test.ts",
   "src/services/outsideProjectAssets.test.ts",
+  "src/services/compileInWorker.test.ts",
   "src/services/healthWorker.test.ts",
   "src/services/hyperframeLint.worker.test.ts",
   "src/server.lintWorker.test.ts",

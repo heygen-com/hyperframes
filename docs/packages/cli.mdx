@@ -61,6 +61,14 @@ of `play` and `present`, and the notices about telemetry settings, project
 history, the received-files record, the media scan before a preview, the desktop
 app project file, render priority, a file approval that could not be saved and
 `HF_TOOL_CONTEXT` events.
+So do these lines when they repeat a name, a path or a value read from a file:
+the result, refusal and diff lines of the `timeline` edit commands, the scope
+notes of `check`, the clips named on the person line of `diff`, the process id in
+`preview --list`, the count in `telemetry status`, the auto-update and
+out-of-date skills notices, the path in the FFmpeg install hint, the
+`data-fps` warning of a cloud render, the font summary of `capture`, the notice
+that a key comes from a folder's `.env`, and the plain progress lines of a run
+with no terminal attached.
 The same lines show the Unicode marks that switch text direction
 (U+202A to U+202E and U+2066 to U+2069) and the line and paragraph separators
 (U+2028 and U+2029) as visible text such as `\u202e`. Right-to-left letters, the
@@ -74,6 +82,9 @@ here: the `Unknown command:` line and the suggestion under it, the
 the `measure <file>` shortcut prints. Other lines a command prints are as they
 were.
 `--json` output is not changed by this.
+When a `--json` run fails, the `error.message` it answers with carries a repeated
+value as it was given, not in the visible-text form; `lambda`, `cloudrun` and
+`beats` do this too.
 
 **`--json` for agents and scripts.** Most commands accept it, before or after
 the command name: `hyperframes --json info` is the same run as

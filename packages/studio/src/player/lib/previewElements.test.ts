@@ -93,6 +93,7 @@ describe("readPreviewElement", () => {
       described(1, { label: 1 as never }),
       described(1, { source: { file: 1 } as never }),
       described(1, { locked: "yes" as never }),
+      described(1, { textMarkup: "yes" as never }),
       described(1, { attributes: [["a"]] as never }),
       described(1, { inlineStyles: { left: 4 } as never }),
       described(1, { children: [{ node: {} }] as never }),

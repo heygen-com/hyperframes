@@ -83,4 +83,44 @@ describe("diff command terminal output", () => {
     expect(text).not.toContain("\u001b[2J");
     expect(text).not.toContain("\u0007");
   });
+
+  // fails without the fix: the ids of the clips a person check fails in were printed as they arrived.
+  it("shows control characters in the clips a person check fails in as text", async () => {
+    const { diffVideos } = await import("../measure/diff.js");
+    vi.mocked(diffVideos).mockResolvedValueOnce({
+      pass: false,
+      ssim: { mean: 1, p05: 1, cell_p05: 1, frames: 2 },
+      window: [0, 1],
+      missing_content: { pass: true, share: 0, spans: [], texture: { share: 0, spans: [] } },
+      worst: [],
+      person: {
+        gates: { framing: false, text: false, sync: false },
+        failed: {
+          framing: ["shot\u0007-a", "shot-b"],
+          text: ["title\u0007"],
+          sync: ["lips\u0007"],
+        },
+        energy: 1,
+        shots_at_cuts: { at_cuts: 1, total: 1, cuts_without_shot: [] },
+      },
+      frames: "2",
+      warnings: [],
+    } as never);
+    const printed: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      printed.push(args.map(String).join(" "));
+    });
+    vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+    const { default: diff } = await import("./diff.js");
+
+    await runCommand(diff, { rawArgs: ["original.mp4", "yours.mp4"] }).catch((error: unknown) => {
+      if (!(error instanceof CliRuntimeError)) throw error;
+    });
+
+    const text = printed.join("\n");
+    expect(text).toContain(
+      "person: framing fails in shot\\x07-a, shot-b, text in the clip fails in title\\x07, lips fails in lips\\x07;",
+    );
+    expect(text).not.toContain("\u0007");
+  });
 });

@@ -22,8 +22,8 @@ export type Studio = typeof import("../src/utils/gsapSoftReload") & {
   previewLoadShows: typeof import("../src/utils/sealedPreviewLedger").previewLoadShows;
 };
 
-/** Studio's preview code, bundled for the page as `window.hfStudio`. */
-export async function buildStudioBundle(): Promise<string> {
+/** Studio's preview code, bundled for the page as `window.hfStudio`; `extra` adds export lines. */
+export async function buildStudioBundle(extra: string[] = []): Promise<string> {
   const out = await build({
     stdin: {
       contents: [
@@ -36,6 +36,7 @@ export async function buildStudioBundle(): Promise<string> {
         `export { usePlayerStore } from "./player/store/playerStore";`,
         `export { markStudioWriteToken, studioFileRevision } from "./utils/studioFileVersion";`,
         `export { previewLoadShows } from "./utils/sealedPreviewLedger";`,
+        ...extra,
       ].join(" "),
       resolveDir: fileURLToPath(new URL("../src", import.meta.url)),
     },

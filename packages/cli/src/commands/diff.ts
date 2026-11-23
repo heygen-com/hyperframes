@@ -117,7 +117,7 @@ function printHuman(r: DiffResult) {
   if (r.person) {
     const g = r.person.gates;
     const mark = (v: boolean | null, failed: string[]) =>
-      v === null ? "unmeasured" : v ? "ok" : `fails in ${failed.join(", ")}`;
+      v === null ? "unmeasured" : v ? "ok" : `fails in ${terminalText(failed.join(", "))}`;
     console.log(
       `   person: framing ${mark(g.framing, r.person.failed.framing)}, text in the clip ${mark(g.text, r.person.failed.text)}, lips ${mark(g.sync, r.person.failed.sync)}; reported: motion ×${r.person.energy ?? "?"}, ${r.person.shots_at_cuts.at_cuts} of ${r.person.shots_at_cuts.total} clips start at a cut${r.person.shots_at_cuts.cuts_without_shot.length ? `, no new clip at ${r.person.shots_at_cuts.cuts_without_shot.join(", ")} s` : ""}`,
     );

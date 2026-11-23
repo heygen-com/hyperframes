@@ -826,6 +826,7 @@ describe("an inline text edit", () => {
     overlayRoot = createRoot(document.body.appendChild(document.createElement("div")));
     act(() => overlayRoot.render(<Editor />));
     act(() => void controls!.start(byId(live, "title")));
+    byId(live, "title").textContent = "Saved title";
     const held = await reloadMidGesture();
     expect(api().iframeRef.current).toBe(live);
 

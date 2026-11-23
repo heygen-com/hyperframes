@@ -811,7 +811,7 @@ export async function handlePreviewList(
     }
     console.log(`\n  ${c.bold("Active preview servers:")}\n`);
     for (const server of servers) {
-      const pid = server.pid ? c.dim(` (PID ${server.pid})`) : "";
+      const pid = server.pid ? c.dim(` (PID ${terminalText(String(server.pid))})`) : "";
       console.log(
         `  ${c.accent(`Port ${server.port}`)}  ${terminalText(server.projectName)}  ${c.dim(terminalText(server.projectDir))}${pid}`,
       );
