@@ -179,30 +179,40 @@ ${host("a", 0, "a.html")}${host("b", 1, "b.html")}${host("c", 2)}
     expect(copies.some(runs)).toBe(true);
   });
 
-  it("inlines one file at most four times, whatever types its tags name", async () => {
-    const body = `window.a = 1; //${"x".repeat(64 * 1024)}`;
+  it("gives every data block naming one file its text", async () => {
+    const types = ["text/plain", "application/ld+json", "application/json"];
+    const dir = project({
+      "index.html": page(
+        types.map((type) => `<script type="${type}" src="a.json"></script>`).join("\n"),
+      ),
+      "a.json": '{"settings":1}',
+    });
+
+    const html = await bundleToSingleHtml(dir, PREVIEW);
+
+    const { document } = parseHTML(html);
+    for (const type of types) {
+      expect(document.querySelector(`script[type="${type}"]`)?.textContent).toBe('{"settings":1}');
+    }
+  });
+
+  it("refuses a page whose tags copy one file past the page's size limit", async () => {
     const typed = Array.from(
       { length: 100 },
       (_, i) => `<script type="x${i}" src="a.js"></script>`,
     );
     const dir = project({
-      "index.html": page(
-        `${typed.join("\n")}\n<script nomodule src="a.js"></script>\n<script src="a.js"></script>`,
-      ),
-      "a.js": body,
+      "index.html": page(typed.join("\n")),
+      "a.js": `//${"x".repeat(MIB)}`,
     });
 
-    const html = await bundleToSingleHtml(dir, PREVIEW);
+    const error = await bundleToSingleHtml(dir, PREVIEW).catch((caught: unknown) => caught);
 
-    expect(html.length).toBeLessThan(4 * body.length + 64 * 1024);
-    const { document } = parseHTML(html);
-    const copies = [...document.querySelectorAll("script")].filter((el) =>
-      el.textContent?.includes("window.a = 1;"),
-    );
-    expect(copies.filter((el) => el.getAttribute("type")?.startsWith("x"))).toHaveLength(2);
-    expect(copies.some((el) => el.hasAttribute("nomodule"))).toBe(true);
-    expect(copies.some((el) => el.getAttribute("type") === AFTER_FONTS_SCRIPT_TYPE)).toBe(true);
-    expect(document.querySelectorAll('script[type^="x"][src="a.js"]')).toHaveLength(98);
+    expect(error).toMatchObject({
+      code: "COMPOSITION_TOO_LARGE",
+      publicMetadata: { exceeded: "generated" },
+    });
+    expect(String(error)).toContain("Name each script file in one tag.");
   });
 
   it(
