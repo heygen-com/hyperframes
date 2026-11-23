@@ -51,6 +51,12 @@ describe("mediaUrlSourceOptions", () => {
     await expect(mediaUrlSourceOptions("probe").fetchFn(URL_WITH_PATH)).rejects.toBe(abort);
   });
 
+  it("never retries a read that was cancelled, so a cancel is not logged as a failed fetch", () => {
+    const { getRetryDelay } = mediaUrlSourceOptions("probe");
+
+    expect(getRetryDelay(1, new DOMException("Media reads cancelled", "AbortError"))).toBeNull();
+  });
+
   it("retries a network failure twice, then gives up and records the retries", () => {
     const { getRetryDelay } = mediaUrlSourceOptions("probe");
     const failure = new MediaFetchError("probe", null, "TypeError");
