@@ -20,6 +20,14 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
+import { drawPreviewDraft, previewDraftsSent } from "../components/editor/previewDrafts";
+import { applyStudioBoxSize, readStudioBoxSize } from "../components/editor/manualEdits";
+import { measurePreviewGestureStart } from "../components/editor/previewGestureStartRead";
+import {
+  findPreviewElementForSelection,
+  resolvePreviewSelection,
+} from "../components/editor/previewSelection";
+import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -430,4 +438,88 @@ it("lands on the drop point when undo paints the box back while its animations l
   expect(settled.x).toBeCloseTo(dropPoint.x, 0);
   expect(settled.y).toBeCloseTo(dropPoint.y, 0);
   expect(settled.w).toBeCloseTo(dropPoint.w, 0);
+});
+
+// fails without the fix: a sealed scale drop kept the dropped size on Studio's stand-in, so the next resize of the
+// layer started from that size on top of the saved scale and jumped, saving the jump.
+it("lands on the drop point in a sealed preview, measured by the frame, and leaves no box size behind", async () => {
+  const box = { w: 630, h: 252 };
+  const base = { x: 489, y: 195 };
+  const drop = { w: 900, h: 360, x: 300, y: 100 };
+  document.body.innerHTML = `<div id="clip"></div>`;
+  const el = document.getElementById("clip")!;
+  Object.defineProperties(el, { offsetWidth: { value: box.w }, offsetHeight: { value: box.h } });
+  const live: Pose = { box: { ...box }, pos: { ...base }, scale: { x: 1, y: 1 } };
+  // The frame's element: the draft's inline size and translate while drawn, GSAP's pose under them.
+  el.getBoundingClientRect = () => {
+    const [tx = 0, ty = 0] = (el.style.getPropertyValue("translate") || "0 0")
+      .split(" ")
+      .map((axis) => Number.parseFloat(axis) || 0);
+    const w = Number.parseFloat(el.style.width) || box.w;
+    const h = Number.parseFloat(el.style.height) || box.h;
+    const pos = { x: live.pos.x + tx, y: live.pos.y + ty };
+    const rect = renderRect({ ...live, pos, box: { w, h } }, 0);
+    return { ...rect, width: rect.w, height: rect.h } as unknown as DOMRect;
+  };
+  Object.assign(window, {
+    gsap: {
+      set: (_target: Element, vars: Record<string, number>) => {
+        if (vars.x != null) live.pos.x = vars.x;
+        if (vars.y != null) live.pos.y = vars.y;
+        if (vars.scaleX != null) live.scale.x = vars.scaleX;
+        if (vars.scaleY != null) live.scale.y = vars.scaleY;
+      },
+      getProperty: () => 0,
+    },
+  });
+  const { iframe } = sealedPreviewFrame();
+  const found = await findPreviewElementForSelection(
+    iframe,
+    { id: "clip", sourceFile: "index.html" },
+    "index.html",
+  );
+  const selection = (await resolvePreviewSelection(iframe, found!, {
+    activeCompositionPath: "index.html",
+    isMasterView: false,
+    skipSourceProbe: true,
+  }))!;
+  await measurePreviewGestureStart(iframe, document.createElement("div"), [selection.handle!]);
+  drawPreviewDraft(selection.element, {
+    size: { width: drop.w, height: drop.h },
+    translate: { x: drop.x - base.x, y: drop.y - base.y },
+  });
+  await previewDraftsSent(iframe);
+  const dropPoint = el.getBoundingClientRect();
+  applyStudioBoxSize(selection.element, { width: drop.w, height: drop.h });
+  const animations = [scaleTween(false), positionAnimation("static-set", base)!];
+  const commitMutation = vi.fn();
+
+  const outcome = await tryGsapResizeIntercept(
+    selection,
+    { width: drop.w, height: drop.h },
+    animations,
+    iframe,
+    commitMutation,
+    async () => animations,
+    { x: drop.x - base.x, y: drop.y - base.y },
+    undefined,
+    {
+      origX: 0,
+      origY: 0,
+      baseX: base.x,
+      baseY: base.y,
+      at: { time: 0, keyframePct: null },
+      frozen: true,
+    },
+  );
+
+  expect(outcome).toMatchObject({ status: "persisted", ownsDragOffset: true });
+  const written = persistedPositions(commitMutation.mock.calls).at(-1);
+  const scale = persistedScale(commitMutation.mock.calls)!;
+  const settled = renderRect({ box, pos: { x: written!.x!, y: written!.y! }, scale }, 0);
+  for (const shown of [settled, el.getBoundingClientRect()]) {
+    expect(shown.x).toBeCloseTo(dropPoint.x, 0);
+    expect(shown.y).toBeCloseTo(dropPoint.y, 0);
+  }
+  expect(readStudioBoxSize(selection.element)).toEqual({ width: 0, height: 0 });
 });

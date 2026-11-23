@@ -2,11 +2,11 @@
 
 import { gsap } from "gsap";
 import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeSelection } from "../../hooks/domSelectionTestHarness";
 import { freezeDragStamp } from "../../hooks/draggedGsapPosition";
 import { settleGsapSnapshot } from "../../hooks/gsapFrameSnapshot";
-import { tryGsapDragIntercept } from "../../hooks/gsapRuntimeBridge";
+import { tryGsapDragIntercept, tryGsapRotationIntercept } from "../../hooks/gsapRuntimeBridge";
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
 import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -15,9 +15,32 @@ import { startGesture } from "./domEditOverlayStartGesture";
 import {
   applyManualOffsetDragCommit,
   applyManualOffsetDragDraft,
+  createManualOffsetDragMember,
   endManualOffsetDragMembers,
+  type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
+import { armPreviewDraftEnd, drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
+import { patchSealedPreview } from "../../hooks/sealedTweenPatch";
+import { takePreviewTicket } from "../../utils/sealedPreviewLedger";
+import { previewAnswer, previewRequest } from "../../player/lib/previewChannel";
+
+vi.mock("../../player/lib/previewChannel", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../player/lib/previewChannel")>();
+  return {
+    ...actual,
+    previewAnswer: vi.fn(actual.previewAnswer),
+    previewRequest: vi.fn(actual.previewRequest),
+  };
+});
 import { measurePreviewGestureStart } from "./previewGestureStartRead";
+import { captureStudioRotation } from "./manualEditsSnapshot";
+import {
+  applyRotationDraft,
+  endRotationDraft,
+  endRotationGestureIfCurrent,
+  readCssRotationTarget,
+  restoreRotationDraft,
+} from "./rotationDraft";
 import { standInFor } from "./previewSelection";
 import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 
@@ -133,6 +156,8 @@ const press = () =>
 async function dragBoxOnSealedFrame(
   script: string,
   beforePress?: (iframe: HTMLIFrameElement) => void,
+  beforeEnd?: (standIn: Element, member: ManualOffsetDragMember) => void,
+  save?: (iframe: HTMLIFrameElement, standIn: Element) => Promise<unknown>,
 ) {
   const box = document.getElementById("box")!;
   const iframe = opaqueFrame();
@@ -165,9 +190,51 @@ async function dragBoxOnSealedFrame(
       stamp: freezeDragStamp(standIn),
     },
   );
+  beforeEnd?.(standIn, member);
+  await save?.(iframe, standIn);
   endManualOffsetDragMembers([member]);
-  return { started, start, anim: anim!, outcome, commit };
+  return { started, start, anim: anim!, outcome, commit, iframe, standIn, member };
 }
+
+// fails without the fix: the frame kept the drag's drawn translate on top of the x the save gave GSAP.
+it("ends a sealed drag on GSAP's route without its drawn translate, so the saved x alone places the layer", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(SCRIPT);
+
+  await vi.waitFor(() => expect(document.getElementById("box")!.style.translate).toBe(""));
+});
+
+// fails without the fix: a sealed drag on GSAP's route left its offset on Studio's stand-in, the next gesture counted
+// from it, and a second scale resize of the layer saved its position that far off.
+it("leaves no Studio offset on the stand-in once a sealed drag ends on GSAP's route", async () => {
+  mount(SCRIPT);
+  const { standIn } = await dragBoxOnSealedFrame(SCRIPT);
+
+  expect((standIn as HTMLElement).style.getPropertyValue("--hf-studio-offset-x")).toBe("");
+});
+
+// fails without the fix: ending the draft on GSAP's route took back the size a resize had drawn too.
+it("keeps the size a sealed resize drew when its anchor ends on GSAP's route", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(SCRIPT, undefined, (standIn) =>
+    drawPreviewDraft(standIn, { size: { width: 300, height: 200 } }),
+  );
+
+  const box = document.getElementById("box")!;
+  await vi.waitFor(() => expect([box.style.width, box.style.translate]).toEqual(["300px", ""]));
+});
+
+// fails without the fix: a resize saved as GSAP scale kept its drawn CSS size, and the scale grew it again.
+it("drops the size a sealed resize drew when its save writes the size as GSAP scale", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(SCRIPT, undefined, (standIn, member) => {
+    drawPreviewDraft(standIn, { size: { width: 300, height: 200 } });
+    member.sizeSavedAsScale = true;
+  });
+
+  const box = document.getElementById("box")!;
+  await vi.waitFor(() => expect([box.style.width, box.style.translate]).toEqual(["", ""]));
+});
 
 // fails without the fix: a sealed preview refused to drag a layer its animation moves.
 it("drags a layer its tween moves in a sealed preview: it moves live and saves a keyframe there", async () => {
@@ -243,5 +310,322 @@ it("still saves a layer GSAP only holds when the sealed preview's tweens can't b
     type: "update-properties",
     animationId: "#box-set-0-position",
     properties: { x: 120, y: 40 },
+  });
+});
+
+// fails without the fix: the resize read the stand-in's own (empty) timelines, called the layer plain CSS and
+// saved its rotated corner's anchor as a raw `translate` that a reload added on top of GSAP's x.
+it("a resize in a sealed preview keeps the anchor of a layer its tween moves on GSAP's route", async () => {
+  mount(SCRIPT);
+  const iframe = opaqueFrame();
+  const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
+  const standIn = standInFor(iframe, (await describePreviewElements(iframe, [handle]))![0]!);
+  const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]);
+  const { rect, start } = (await measurePreviewGestureStart(iframe, overlay, [handle]))!
+    .elements[0]!;
+  const result = createManualOffsetDragMember({
+    key: "box",
+    selection: { ...makeSelection("box", standIn), id: "box", handle },
+    element: standIn,
+    rect,
+    gesture: "resize",
+    start,
+  });
+
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true });
+  expect(result.ok && result.member.plainTranslate).toBe(false);
+});
+
+async function sealedBox() {
+  const iframe = opaqueFrame();
+  const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
+  const described = (await describePreviewElements(iframe, [handle]))![0]!;
+  return {
+    box: document.getElementById("box")!,
+    standIn: standInFor(iframe, described) as HTMLElement,
+  };
+}
+
+// fails without the fix: a sealed frame never turned the element a rotate gesture drew.
+it("turns a sealed frame's element by its rotate property as the gesture draws, and back on a cancel", async () => {
+  mount(SCRIPT);
+  const { box, standIn } = await sealedBox();
+  const start = captureStudioRotation(standIn);
+
+  applyRotationDraft(standIn, 30, readCssRotationTarget(standIn));
+  await vi.waitFor(() => expect(box.style.getPropertyValue("rotate")).toBe("30deg"));
+  restoreRotationDraft(standIn, 30, start, true);
+  await vi.waitFor(() => expect(box.style.getPropertyValue("rotate")).toBe(""));
+});
+
+// fails without the fix: a GSAP rotation drew only on Studio's stand-in.
+it("turns a sealed frame's element by its own GSAP, and keeps the turn when the gesture ends", async () => {
+  mount(SCRIPT);
+  const { box, standIn } = await sealedBox();
+
+  applyRotationDraft(standIn, 40, null);
+  endRotationDraft(standIn);
+  await vi.waitFor(() => expect(gsap.getProperty(box, "rotation")).toBe(40));
+  expect(box.style.getPropertyValue("rotate")).toBe("none");
+});
+
+const SPINS_BOX = timeline(`tl.to("#box", { rotation: 40, duration: 1, ease: "none" }, 0);`);
+
+/** The box on a sealed frame, and a press of its rotate handle as the overlay does it. */
+async function sealedRotate(script: string, extra = "") {
+  mount(script, extra);
+  const iframe = opaqueFrame();
+  const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
+  const standIn = standInFor(iframe, (await describePreviewElements(iframe, [handle]))![0]!);
+  const made = makeSelection("box", standIn);
+  const capabilities = { ...made.capabilities, canApplyManualRotation: true };
+  const selection = { ...made, capabilities, id: "box", handle };
+  const pressRotate = async () => {
+    const opts = gestureOpts(iframe);
+    const read = await measurePreviewGestureStart(iframe, opts.overlayRef.current!, [handle]);
+    const { rect, start } = read!.elements[0]!;
+    startGesture("rotate", press(), opts, { selection, rect, start, snap: read!.snap });
+    return { gesture: opts.gestureRef.current!, start };
+  };
+  return { selection, iframe, standIn, pressRotate };
+}
+
+async function pressRotateOnSealedFrame(script: string, extra = "") {
+  const sealed = await sealedRotate(script, extra);
+  return { ...sealed, ...(await sealed.pressRotate()) };
+}
+
+// fails without the fix: the rotate asked the stand-in, which has no GSAP, so a sealed spin saved a CSS rotate.
+it("turns a layer its tween spins on GSAP's route in a sealed preview, from the angle GSAP shows, and saves the tween", async () => {
+  const { gesture, selection, iframe, standIn } = await pressRotateOnSealedFrame(SPINS_BOX);
+  expect(gesture.plainRotation).toBeNull();
+  expect(gesture.actualRotation).toBe(20);
+
+  const commit = vi.fn(async () => undefined);
+  const [anim] = parseGsapScriptAcorn(SPINS_BOX).animations;
+  const outcome = await tryGsapRotationIntercept(
+    selection,
+    35,
+    [anim!],
+    iframe,
+    commit,
+    undefined,
+    freezeDragStamp(standIn),
+  );
+  expect(outcome).toEqual({ status: "persisted" });
+  expect(commit.mock.calls[0]![1]).toMatchObject({
+    keyframes: expect.arrayContaining([{ percentage: 50, properties: { rotation: 35 } }]),
+  });
+});
+
+it("turns a layer GSAP leaves alone by its own CSS rotate in a sealed preview", async () => {
+  const { gesture } = await pressRotateOnSealedFrame(timeline(""));
+  expect(gesture.plainRotation).toMatchObject({ property: "rotate" });
+});
+
+// fails without the fix: the stand-in has no stylesheet, so the turn began at 0 and drew 30deg short.
+it("turns a sealed layer its stylesheet rotates from the angle it shows", async () => {
+  const { gesture } = await pressRotateOnSealedFrame(
+    timeline(""),
+    "<style>#box { rotate: 30deg; }</style>",
+  );
+  expect(gesture.actualRotation).toBeCloseTo(30, 6);
+});
+
+// fails without the fix: the first rotate's save, landing after a regrab, ended the regrab's frame draft, so a
+// cancelled regrab left the frame at its mid-drag angle.
+it("cancels a rotate regrabbed while the first one saves back to where the regrab started, on the frame too", async () => {
+  const { standIn, pressRotate } = await sealedRotate(timeline(""));
+  const box = document.getElementById("box")!;
+  const turned = () => [box, standIn].map((el) => el.style.getPropertyValue("rotate"));
+  const first = (await pressRotate()).gesture;
+  applyRotationDraft(standIn, 30, first.plainRotation);
+  await vi.waitFor(() => expect(turned()).toEqual(["30deg", "30deg"]));
+
+  const regrab = (await pressRotate()).gesture;
+  applyRotationDraft(standIn, 50, regrab.plainRotation);
+  await vi.waitFor(() => expect(turned()).toEqual(["50deg", "50deg"]));
+  endRotationGestureIfCurrent(standIn, first.manualEditDragToken);
+  restoreRotationDraft(standIn, 50, regrab.initialRotation, true);
+
+  await vi.waitFor(() => expect(turned()).toEqual(["30deg", "30deg"]));
+});
+
+// fails without the fix: an out-of-range GSAP rotation made Studio refuse the whole start, so a drag lost GSAP's x/y.
+it("keeps a sealed element's move start when GSAP's rotation is out of range, and drops only the turn", async () => {
+  mount(SCRIPT);
+  gsap.set("#box", { rotation: 100_000 });
+  const iframe = opaqueFrame();
+  const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
+  const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]);
+  const { start } = (await measurePreviewGestureStart(iframe, overlay, [handle]))!.elements[0]!;
+
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true });
+  expect(start.gsapRotation).toBeUndefined();
+});
+
+const draftEnds = () =>
+  vi
+    .mocked(previewRequest)
+    .mock.calls.filter(([, kind]) => kind === "draft")
+    .flatMap(([, , params]) => (params as { drafts: object[] }).drafts)
+    .filter((op) => "end" in op || ("translate" in op && op.translate === null));
+const patchRequests = () =>
+  vi.mocked(previewAnswer).mock.calls.filter(([, kind]) => kind === "patch-tweens");
+const drawsSettled = () => new Promise((resolve) => setTimeout(resolve, 30));
+
+/** The save a sealed move on GSAP's route sends: the new x and y as a base set, as patch-tweens. */
+function savePosition(change: { kind: "global-set" | "set"; props: { x: number; y: number } }) {
+  return async (iframe: HTMLIFrameElement) => {
+    await drawsSettled();
+    vi.mocked(previewRequest).mockClear();
+    vi.mocked(previewAnswer).mockClear();
+    const ticket = takePreviewTicket(iframe, {
+      scriptText: SCRIPT,
+      snapshot: null,
+      attributes: false,
+      timing: false,
+    });
+    patchSealedPreview(ticket, [{ selector: "#box", change }], true, () => undefined);
+    await vi.waitFor(() => expect(patchRequests()).toHaveLength(1));
+    await vi.mocked(previewAnswer).mock.results.at(-1)!.value;
+  };
+}
+
+// fails without the fix: the save set GSAP's x/y and the draft end followed as its own message, so the frame
+// painted the drawn translate on top of the saved position (the layer moved twice) for a frame.
+it("a sealed move's save ends its draft in the same frame message, and the teardown sends no other end", async () => {
+  mount(SCRIPT);
+  const { iframe } = await dragBoxOnSealedFrame(SCRIPT, undefined, undefined, async (frame) => {
+    await savePosition({ kind: "global-set", props: { x: 110, y: 40 } })(frame);
+    const box = document.getElementById("box")!;
+    expect([box.style.translate, drawnAt(box)]).toEqual(["", { x: 110, y: 40 }]);
+  });
+  const [[, , params]] = patchRequests() as unknown as [
+    [unknown, unknown, { endsDrafts?: unknown[] }],
+  ];
+  expect(params.endsDrafts).toEqual([expect.objectContaining({ end: "keep-size" })]);
+  await drawsSettled();
+  expect(draftEnds()).toEqual([]);
+  expect(iframe).toBeDefined();
+});
+
+// fails without the fix: a gesture with no save ended its draft as {translate:null} then {end:keep}, two messages.
+it("a sealed move with no save ends its draft once, as one end", async () => {
+  mount(SCRIPT);
+  vi.mocked(previewRequest).mockClear();
+  await dragBoxOnSealedFrame(SCRIPT, undefined, undefined, drawsSettled);
+
+  await vi.waitFor(() => expect(document.getElementById("box")!.style.translate).toBe(""));
+  expect(draftEnds()).toEqual([
+    expect.objectContaining({ end: "keep-size", draft: expect.any(Number) }),
+  ]);
+});
+
+it("a save the frame cannot apply leaves the end to go alone, so the draft still ends", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(
+    SCRIPT,
+    undefined,
+    undefined,
+    savePosition({ kind: "set", props: { x: 110, y: 40 } }),
+  );
+
+  await vi.waitFor(() => expect(document.getElementById("box")!.style.translate).toBe(""));
+  expect(draftEnds()).toEqual([expect.objectContaining({ end: "keep-size" })]);
+});
+
+const savedEnds = () =>
+  (patchRequests() as unknown as Array<[unknown, unknown, { endsDrafts?: unknown[] }]>).at(-1)?.[2]
+    .endsDrafts;
+const regrab = (x: number) => (standIn: Element) =>
+  drawPreviewDraft(standIn, { translate: { x, y: 0 } });
+const box = () => document.getElementById("box")!;
+
+describe("a newer gesture that takes the element before the older save lands", () => {
+  // fails without the fix: the older save took the end of the draft the regrab now drew on, and its patch
+  // cleared the regrab's translate for a frame (the mid-drag flash of seqheldtwice-tlhold-px on the edit bench).
+  it("leaves the regrab's draft alone when the older save lands", async () => {
+    mount(SCRIPT);
+    await dragBoxOnSealedFrame(SCRIPT, undefined, regrab(7), async (iframe) => {
+      await savePosition({ kind: "global-set", props: { x: 110, y: 40 } })(iframe);
+      expect(savedEnds()).toBeUndefined();
+      expect(drawnTranslate(box())[0]).not.toBe(0);
+    });
+  });
+
+  it("puts a cancelled regrab back where the older save left it, not where the older drag began", async () => {
+    mount(SCRIPT);
+    await dragBoxOnSealedFrame(SCRIPT, undefined, regrab(7), async (iframe, standIn) => {
+      await savePosition({ kind: "global-set", props: { x: 110, y: 40 } })(iframe);
+      endPreviewDraft(standIn, "restore");
+      await vi.waitFor(() => expect(box().style.translate).toBe(""));
+      expect(drawnAt(box())).toEqual({ x: 110, y: 40 });
+    });
+  });
+
+  it("leaves the regrab's draft alone when the older save fails", async () => {
+    mount(SCRIPT);
+    await dragBoxOnSealedFrame(SCRIPT, undefined, regrab(7), async (iframe) => {
+      await drawsSettled();
+      vi.mocked(previewRequest).mockClear();
+      vi.mocked(previewAnswer).mockClear();
+      const ticket = takePreviewTicket(iframe, {
+        scriptText: SCRIPT,
+        snapshot: null,
+        attributes: false,
+        timing: false,
+      });
+      const patch = {
+        selector: "#gone",
+        change: { kind: "global-set" as const, props: { x: 1, y: 1 } },
+      };
+      patchSealedPreview(ticket, [patch], true, () => undefined);
+      await vi.waitFor(() => expect(patchRequests()).toHaveLength(1));
+      await vi.mocked(previewAnswer).mock.results.at(-1)!.value;
+      await drawsSettled();
+      expect(draftEnds()).toEqual([]);
+      expect(drawnTranslate(box())[0]).not.toBe(0);
+    });
+  });
+
+  it("ends only the newest gesture's draft when three saves land out of order", async () => {
+    mount(SCRIPT);
+    await dragBoxOnSealedFrame(SCRIPT, undefined, regrab(7), async (iframe, standIn) => {
+      armPreviewDraftEnd(standIn, "#box");
+      regrab(9)(standIn);
+      await savePosition({ kind: "global-set", props: { x: 105, y: 40 } })(iframe);
+      expect(savedEnds()).toBeUndefined();
+      await savePosition({ kind: "global-set", props: { x: 103, y: 40 } })(iframe);
+      expect(savedEnds()).toBeUndefined();
+      expect(drawnTranslate(box())[0]).not.toBe(0);
+      armPreviewDraftEnd(standIn, "#box");
+      await savePosition({ kind: "global-set", props: { x: 110, y: 40 } })(iframe);
+      expect(savedEnds()).toEqual([expect.objectContaining({ end: "keep-size" })]);
+      expect([box().style.translate, drawnAt(box())]).toEqual(["", { x: 110, y: 40 }]);
+    });
+  });
+});
+
+it("a failed save's restore still takes the draft back", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(SCRIPT, undefined, (standIn) => endPreviewDraft(standIn, "restore"));
+
+  await vi.waitFor(() =>
+    expect(drawnAt(document.getElementById("box")!)).toEqual({ x: 100, y: 40 }),
+  );
+});
+
+it("an older gesture's save leaves a regrab's draft alone", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(SCRIPT, undefined, undefined, async (iframe, standIn) => {
+    endPreviewDraft(standIn, "keep");
+    drawPreviewDraft(standIn, { translate: { x: 7, y: 0 } });
+    await savePosition({ kind: "global-set", props: { x: 110, y: 40 } })(iframe);
+    const [[, , params]] = patchRequests() as unknown as [
+      [unknown, unknown, { endsDrafts?: unknown }],
+    ];
+    expect(params.endsDrafts).toBeUndefined();
+    expect(drawnTranslate(document.getElementById("box")!)[0]).not.toBe(0);
   });
 });

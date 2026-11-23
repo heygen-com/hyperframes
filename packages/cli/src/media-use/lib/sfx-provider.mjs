@@ -1,5 +1,6 @@
 import { heygenSearch } from "./heygen-search.mjs";
 import { OpenverseUnavailableError, searchOpenverseSfx } from "./openverse.mjs";
+import { terminalText } from "./terminal-text.mjs";
 
 export const OPENVERSE_SFX_PROVIDER = "openverse.audio";
 
@@ -24,7 +25,9 @@ export const heygenSfxProvider = {
       minScore: SFX_MIN_SCORE,
       onEmpty: () =>
         console.error(
-          `media-use: HeyGen sound search matched nothing for "${intent}" at min score ${SFX_MIN_SCORE}; trying the next source`,
+          terminalText(
+            `media-use: HeyGen sound search matched nothing for "${intent}" at min score ${SFX_MIN_SCORE}; trying the next source`,
+          ),
         ),
     });
     if (!results) return null;
@@ -50,7 +53,7 @@ export const sfxProvider = {
       sound = await searchOpenverseSfx(intent);
     } catch (error) {
       if (!(error instanceof OpenverseUnavailableError)) throw error;
-      console.error(`media-use: ${error.message}; using the bundled sound effects`);
+      console.error(terminalText(`media-use: ${error.message}; using the bundled sound effects`));
       return null;
     }
     if (!sound) return null;

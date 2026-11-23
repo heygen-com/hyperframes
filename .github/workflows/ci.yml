@@ -9,6 +9,8 @@ permissions:
 # External users' CI continues to emit telemetry unless they set this themselves.
 env:
   HYPERFRAMES_NO_TELEMETRY: "1"
+  # The edit accuracy shard count; studio-edit-accuracy's matrix lists the same shards (its strategy cannot read env).
+  EDIT_ACCURACY_SHARDS: ${{ github.event_name == 'merge_group' && 30 || 15 }}
 
 on:
   merge_group:
@@ -322,7 +324,8 @@ jobs:
 
   build:
     name: Build
-    needs: changes
+    # Release checks is not a required check; a release whose checks fail must fail this one so it cannot merge.
+    needs: [changes, release-checks]
     # A skipped required check passes, so a broken change detection must fail it instead.
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || needs.changes.outputs.cli_bundle == 'true' || needs.changes.outputs.release_only == 'true') }}
     runs-on: ubuntu-latest
@@ -332,6 +335,11 @@ jobs:
         if: needs.changes.result != 'success'
         run: |
           echo "::error::Detect changes did not succeed (it also rejects large binaries outside LFS); see its log. This required check cannot pass."
+          exit 1
+      - name: Require the release checks
+        if: needs.changes.outputs.release_diff == 'true' && needs.release-checks.result != 'success'
+        run: |
+          echo "::error::Release checks did not succeed (${{ needs.release-checks.result }}); see that job. A release with stale notes or mixed versions cannot merge."
           exit 1
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -357,6 +365,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - run: bun run check:cli-lazy-deps
+      - run: bun run check:studio-server-sync-fs
 
   # The shards need only the built CLI; building it apart keeps them from waiting on Build's packing checks.
   edit-accuracy-cli:
@@ -569,18 +578,23 @@ jobs:
       - run: bun run typecheck:scripts
 
   test-studio:
-    name: Test (studio)
+    name: Test (studio ${{ matrix.shard }}/3)
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Unsharded, the suite took 8-14 min and ran out its 15 min limit as it finished (2026-11-23).
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
           fetch-depth: 0
       - uses: ./.github/actions/setup-test-workspace
-      - run: bun run --cwd packages/studio test
+      - run: bun run --cwd packages/studio test --shard=${{ matrix.shard }}/3
 
   test-runtime:
     name: Test (runtime)
@@ -1166,28 +1180,29 @@ jobs:
             echo "FAIL: studio dev server did not start on port 5316"
             exit 1
           fi
-          # All checks run even when an earlier one fails.
+          # All checks run even when an earlier one fails; each failure names its walk on the check.
           rc=0
+          failed() { echo "::error title=Studio walk failed::$1"; rc=1; }
           STUDIO_URL="http://localhost:5316/#project/fade-handles" \
-            node packages/studio/tests/e2e/fade-handles.mjs || rc=1
+            node packages/studio/tests/e2e/fade-handles.mjs || failed "fade handles"
           STUDIO_URL="http://localhost:5316/#project/fade-handles?tab=renders" \
-            node packages/studio/tests/e2e/render-selects.mjs || rc=1
+            node packages/studio/tests/e2e/render-selects.mjs || failed "render selects"
           STUDIO_URL="http://localhost:5316/" \
-            node packages/studio/tests/e2e/thumbnail-save.mjs || rc=1
+            node packages/studio/tests/e2e/thumbnail-save.mjs || failed "thumbnail connection release"
           STUDIO_URL="http://localhost:5316/#project/timeline-trim-snap" \
-            node packages/studio/tests/e2e/timeline-trim-snap.mjs || rc=1
+            node packages/studio/tests/e2e/timeline-trim-snap.mjs || failed "trim snapping"
           rm -rf packages/studio/data/projects/timeline-trim-snap
           cp -R packages/studio/tests/e2e/fixtures/timeline-trim-snap \
             packages/studio/data/projects/timeline-trim-snap
           STUDIO_URL="http://localhost:5316/#project/timeline-trim-snap" \
-            node packages/studio/tests/e2e/timeline-snap-release.mjs || rc=1
+            node packages/studio/tests/e2e/timeline-snap-release.mjs || failed "snap release"
           STUDIO_URL="http://localhost:5316/#project/aroll-backdrop" \
-            node packages/studio/tests/e2e/aroll-backdrop.mjs || rc=1
+            node packages/studio/tests/e2e/aroll-backdrop.mjs || failed "script-hidden backdrop"
           rm -rf packages/studio/data/projects/graded-video-transitions
           cp -R packages/studio/tests/e2e/fixtures/graded-video-transitions \
             packages/studio/data/projects/graded-video-transitions
           STUDIO_URL="http://localhost:5316/#project/graded-video-transitions" \
-            node packages/studio/tests/e2e/graded-video-transitions.mjs || rc=1
+            node packages/studio/tests/e2e/graded-video-transitions.mjs || failed "graded video transitions"
           exit "$rc"
       - name: Measure the caret of a text edited in place
         if: success() || failure()
@@ -1235,7 +1250,7 @@ jobs:
             STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/preview-video-regression" \
             OUT_DIR=/tmp/preview-video-regression \
             node packages/studio/tests/e2e/preview-video-regression.mjs
-      - name: Verify a sealed preview's proxy wait gets past its preflight
+      - name: Verify a sealed preview's proxy wait gets past its preflight, and that it never keeps the keyboard
         if: success() || failure()
         run: |
           set -euo pipefail
@@ -1244,6 +1259,7 @@ jobs:
           cp packages/cli/src/templates/blank/index.html "$project/index.html"
           ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc=size=320x180:rate=30 -t 1 \
             -c:v libx264 -pix_fmt yuv420p "$project/clip.mov"
+          cp -R packages/studio/tests/e2e/fixtures/sealed-keyboard packages/studio/data/projects/sealed-keyboard
           VITE_STUDIO_OPAQUE_PREVIEW_ENABLED=1 NODE_ENV=production \
             bun run --cwd packages/studio dev -- --port 5319 --strictPort &
           SERVER_PID=$!
@@ -1254,6 +1270,9 @@ jobs:
           done
           STUDIO_URL="http://localhost:5319/#project/sealed-proxy" \
             node packages/studio/tests/e2e/sealed-preview-proxy.mjs
+          STUDIO_URL="http://localhost:5319/#project/sealed-keyboard" \
+            STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/sealed-keyboard" \
+            node packages/studio/tests/e2e/sealed-preview-keyboard.mjs
       - name: Upload gate evidence
         # The gate's whole output is machine-readable evidence, and a red run is
         # exactly when someone needs to read it. Keep it on failure too.
@@ -1336,11 +1355,16 @@ jobs:
         with:
           pattern: edit-accuracy-shard-*
           path: /tmp/edit-accuracy-shards
+      # A shard whose evidence never uploaded (its upload failed, or the job died first) has nothing to mark, so it
+      # is re-run too.
       - name: List the shards marked for a re-run
         id: plan
         run: |
-          shards=$(find /tmp/edit-accuracy-shards -path '*/edit-accuracy-shard-*/retry' |
-            sed -E 's#.*/edit-accuracy-shard-([0-9]+)/retry$#\1#' | sort -n | paste -sd, -)
+          shards=$( {
+            find /tmp/edit-accuracy-shards -path '*/edit-accuracy-shard-*/retry' |
+              sed -E 's#.*/edit-accuracy-shard-([0-9]+)/retry$#\1#'
+            for n in $(seq 1 "$EDIT_ACCURACY_SHARDS"); do [ -d "/tmp/edit-accuracy-shards/edit-accuracy-shard-$n" ] || echo "$n"; done
+          } | sort -n | paste -sd, -)
           echo "shards=[${shards}]" >> "$GITHUB_OUTPUT"
 
   # Each marked shard runs once more on a fresh runner and replaces its evidence before the gate reads it.
@@ -1356,7 +1380,6 @@ jobs:
         shard: ${{ fromJSON(needs.studio-edit-accuracy-retry-plan.outputs.shards) }}
     env:
       EDIT_ACCURACY_GRID: ${{ github.event_name == 'merge_group' && 'full' || 'pr' }}
-      SHARDS: ${{ github.event_name == 'merge_group' && 30 || 15 }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -1376,7 +1399,7 @@ jobs:
           bash scripts/ci/base-file.sh packages/studio/tests/e2e/edit-accuracy/baseline.json /tmp/base-edit-accuracy.json
           [ -f /tmp/base-edit-accuracy.json ] || echo '{"cases":{}}' > /tmp/base-edit-accuracy.json
       - name: Run the shard again
-        run: bash scripts/ci/edit-accuracy-shard.sh "${{ matrix.shard }}/${SHARDS}"
+        run: bash scripts/ci/edit-accuracy-shard.sh "${{ matrix.shard }}/${EDIT_ACCURACY_SHARDS}"
       - name: Replace the shard's evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -1411,12 +1434,10 @@ jobs:
       - name: Compare every run with the base branch
         id: gate
         # Smoothness and newly passing cases are reported, not gated; a case fails only if it fails 2 of its 3 runs.
-        env:
-          SHARDS: ${{ github.event_name == 'merge_group' && 30 || 15 }}
         run: |
           set +e
           mapfile -t RESULTS < <(find /tmp/edit-accuracy-shards -name results.json | sort)
-          node packages/studio/tests/e2e/edit-accuracy/ratchet.mjs gate --shards "$SHARDS" /tmp/base-edit-accuracy.json \
+          node packages/studio/tests/e2e/edit-accuracy/ratchet.mjs gate --shards "$EDIT_ACCURACY_SHARDS" /tmp/base-edit-accuracy.json \
             packages/studio/tests/e2e/edit-accuracy/baseline.json /tmp/edit-accuracy-gate "${RESULTS[@]}"
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
           cat /tmp/edit-accuracy-gate/comment.md >> "$GITHUB_STEP_SUMMARY" || true

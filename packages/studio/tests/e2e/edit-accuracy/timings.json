@@ -730,6 +730,8 @@
   "seqrotatenudge-none-pct-r0-root-z100": 32.8,
   "seqrotatenudge-none-px-r0-nested-z100": 15.7,
   "seqrotatenudge-none-px-r0-root-z100": 22.2,
+  "seqscaletwice-scale-px-r0-nested-z100": 21,
+  "seqscaletwice-scale-px-r0-root-z100": 21,
   "seqseek-none-center-r0-nested-z100": 19.6,
   "seqseek-none-center-r0-root-z100": 30.2,
   "seqseek-none-pct-r0-nested-z100": 44.7,

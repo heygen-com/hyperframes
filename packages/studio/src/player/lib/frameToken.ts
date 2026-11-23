@@ -1,6 +1,6 @@
 import { studioApiFetch } from "../../utils/studioApiFetch";
 
-const PREVIEW_PATH = /^(\/api\/projects\/[^/?#]+)\/preview(?:\/~[\w-]{43})?(?=[/?#]|$)/;
+export const PREVIEW_PATH = /^(\/api\/projects\/[^/?#]+)\/preview(?:\/~[\w-]{43})?(?=[/?#]|$)/;
 
 export function fetchFrameToken(frameTokenPath: string): Promise<string | null> {
   return studioApiFetch(frameTokenPath)
@@ -9,6 +9,14 @@ export function fetchFrameToken(frameTokenPath: string): Promise<string | null> 
       typeof body?.token === "string" ? body.token : null,
     )
     .catch(() => null);
+}
+
+export function previewWithoutFrameToken(href: string): string {
+  if (!URL.canParse(href)) return href.replace(PREVIEW_PATH, "$1/preview");
+  const url = new URL(href);
+  if (url.origin !== window.location.origin) return href;
+  url.pathname = url.pathname.replace(PREVIEW_PATH, "$1/preview");
+  return url.href;
 }
 
 /** The preview path under its project's frame token, where an opaque frame's own loads are let through. */

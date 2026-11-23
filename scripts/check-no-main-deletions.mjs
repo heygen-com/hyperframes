@@ -2147,14 +2147,21 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/engine/src/services/frameCapture-pageNetwork.test.ts",
     "pinned the removed per-page filter; browserManager.test.ts pins when a render browser goes behind the proxy",
   ],
+  [
+    "packages/studio/src/utils/authoredOpacity.ts",
+    "its two authored-opacity helpers moved into core's colorGrading, which the frame's own tween patch now calls; Studio imports them from there",
+  ],
+  [
+    "packages/studio/src/utils/htmlAttrSafety.ts",
+    "Studio's hand-synced copy of core's html-attr-safety rules; Studio imports core's now, one source",
+  ],
   ...[
-    "packages/core/src/missingPath.ts",
-    "packages/producer/src/services/render/missingPath.ts",
-    "packages/producer/src/services/render/missingPath.test.ts",
-    "packages/producer/src/services/renderOrchestrator.missingPath.test.ts",
+    "packages/cli/src/registry/envProxy.fixture.ts",
+    "packages/cli/src/registry/envProxy.process.test.ts",
+    "packages/cli/src/utils/envProxyFetch.ts",
   ].map((path) => [
     path,
-    "the revert of #7955 removes the missing-path detail; it returns looking only inside folders the render owns",
+    "held for v0.10.0 with #8311, the change that added it; drop this entry when it re-lands",
   ]),
 ]);
 

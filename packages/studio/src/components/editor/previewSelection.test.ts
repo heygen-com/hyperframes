@@ -29,6 +29,8 @@ import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness"
 import { useDomSelection } from "../../hooks/useDomSelection";
 import type { TimelineElement } from "../../player";
 import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
+import { resolveTimelineIdForSelection } from "../../utils/studioHelpers";
+import { announceTimelineSelection } from "../../hooks/domSelectionTimelineMirror";
 
 installReactActEnvironment();
 
@@ -62,7 +64,7 @@ function shared(selection: DomEditSelection | null) {
   if (!selection) return null;
   const { element: _element, handle: _handle, textFields: _fields, ...rest } = selection;
   // Read off the description only when `element` is a stand-in; checked on their own below.
-  const { hasAudio: _audio, src: _src, ...compared } = rest;
+  const { hasAudio: _audio, src: _src, textMarkup: _markup, ...compared } = rest;
   return compared;
 }
 
@@ -231,6 +233,48 @@ describe("opaque frame selections match same-origin ones", () => {
     );
     expect(live && nameOf(live)).toBe(expected);
     expect(found && named(found)).toBe(expected);
+  });
+});
+
+describe("the timeline clip an opaque frame selection belongs to", () => {
+  // fails without the fix: a sealed pick's stand-in has no parents, so a clip's child found no clip and copy, cut and
+  // duplicate acted on the element instead of the clip a same-origin pick selects.
+  it("is the clip a same-origin pick of the same child belongs to", async () => {
+    document.body.innerHTML = `
+      <div data-composition-id="main" data-width="1920" data-height="1080">
+        <div class="clip" id="zone" data-start="0" data-duration="6"><div id="shape"></div></div>
+      </div>`;
+    const { live, remote } = await bothPaths(document.querySelector<HTMLElement>("#shape")!);
+    const clips = [
+      {
+        id: "zone",
+        domId: "zone",
+        key: "index.html#zone",
+        start: 0,
+        duration: 6,
+        track: 0,
+        tag: "div",
+      },
+    ] as TimelineElement[];
+    const announced = (selection: DomEditSelection) => {
+      const setSelectedTimelineElementId = vi.fn();
+      announceTimelineSelection(
+        {
+          timelineElements: clips,
+          activeCompPath: "index.html",
+          getTimelineSelectionSet: () => new Set(),
+          setSelectedTimelineElementId,
+          setTimelineSelectionSet: () => {},
+        },
+        [selection],
+        selection,
+      );
+      return setSelectedTimelineElementId.mock.calls.at(-1)?.[0] ?? null;
+    };
+
+    expect(announced(live!)).toBe("index.html#zone");
+    expect(announced(remote!)).toBe("index.html#zone");
+    expect(resolveTimelineIdForSelection(remote!, clips, "index.html")).toBe("index.html#zone");
   });
 });
 

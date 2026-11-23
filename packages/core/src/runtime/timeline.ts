@@ -1,9 +1,11 @@
+import { sourceLengthOf } from "./sourceLength";
 import type {
   RuntimeTimelineClip,
   RuntimeTimelineMessage,
   RuntimeTimelineScene,
   RuntimeTimelineLike,
 } from "./types";
+import { transitionLabelsForDocument } from "./transitionLabels";
 import { unproxiedSrc } from "./proxySrc";
 import { stableClipId } from "./clipTree";
 import { findRootCompositionElement, parseCompositionDimension } from "./compositionDimension";
@@ -28,6 +30,7 @@ import { isSceneLikeCompositionId } from "../slideshow/index.js";
 import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
 import { runtimeProtocolMetadata } from "./protocol.js";
 import { isElementNode, isMediaElement } from "./domRealm";
+import { readSentTextLayer } from "./editingElement";
 import { LOOP_INFLATED_TIMELINE_SECONDS } from "./compositionLength";
 import { cutToHostSlots } from "../mediaTiming";
 
@@ -268,6 +271,7 @@ export function collectRuntimeTimelinePayload(params: {
     __timelines?: Record<string, RuntimeTimelineLike | undefined>;
   };
   const timelineRegistry = runtimeWindow.__timelines ?? {};
+  const transitionLabels = transitionLabelsForDocument(document, timelineRegistry);
   const startResolver = createRuntimeStartTimeResolver({
     timelineRegistry,
     includeAuthoredTimingAttrs: true,
@@ -446,8 +450,8 @@ export function collectRuntimeTimelinePayload(params: {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
     if (duration == null && isMediaElement(node)) {
-      if (Number.isFinite(node.duration)) {
-        duration = resolveNaturalMediaTimelineDuration(node, node.duration);
+      if (Number.isFinite(sourceLengthOf(node))) {
+        duration = resolveNaturalMediaTimelineDuration(node, sourceLengthOf(node));
       }
     }
     if (duration == null) duration = resolveTimedImageDurationSeconds(node, start);
@@ -502,6 +506,8 @@ export function collectRuntimeTimelinePayload(params: {
       timelineLabel: node.getAttribute("data-timeline-label"),
       timelineGroup: node.getAttribute("data-timeline-group"),
       timelinePriority: parseNum(node.getAttribute("data-timeline-priority")),
+      text: readSentTextLayer(node),
+      transitionLabel: transitionLabels.get(node) ?? null,
     };
   };
   const addClip = (clip: RuntimeTimelineClip) => {
@@ -632,6 +638,8 @@ export function collectRuntimeTimelinePayload(params: {
             timelineLabel: el.getAttribute("data-timeline-label"),
             timelineGroup: el.getAttribute("data-timeline-group"),
             timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
+            text: readSentTextLayer(el),
+            transitionLabel: transitionLabels.get(el) ?? null,
           });
           gsapClipIds.add(el.id);
         }
@@ -689,6 +697,8 @@ export function collectRuntimeTimelinePayload(params: {
         timelineLabel: el.getAttribute("data-timeline-label"),
         timelineGroup: el.getAttribute("data-timeline-group"),
         timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
+        text: readSentTextLayer(el),
+        transitionLabel: transitionLabels.get(el) ?? null,
       });
       gsapClipIds.add(el.id);
     }

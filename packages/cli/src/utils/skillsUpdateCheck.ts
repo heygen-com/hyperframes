@@ -6,6 +6,7 @@
 // check on their own, but they DO run render/lint/validate — so we piggyback
 // the reminder on the commands they already run.
 
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { resolve } from "node:path";
 import { readConfig, readConfigFresh, writeConfig } from "../telemetry/config.js";
 import { isUnattended } from "./attendedTerminal.js";
@@ -133,7 +134,7 @@ function skillsNoticeText(meta: SkillsUpdateMeta): string | null {
   const total = meta.outdated + meta.missing;
   if (total < 1) return null;
   const noun = total === 1 ? "skill" : "skills";
-  return `\n  ${total} HyperFrames ${noun} out of date or missing.\n  For the user: npx hyperframes skills update refreshes them.\n\n`;
+  return `\n  ${terminalText(String(total))} HyperFrames ${noun} out of date or missing.\n  For the user: npx hyperframes skills update refreshes them.\n\n`;
 }
 
 /**

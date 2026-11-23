@@ -8,6 +8,7 @@ import {
   buildStableSelector,
   escapeCssString,
   getPreferredClassSelector,
+  isEditableTextLeaf,
   isElementVisibleThroughAncestors,
   readElementSource,
   type EditingElementSource,
@@ -34,13 +35,7 @@ export function isHtmlElement(value: unknown): value is HTMLElement {
 // module's public surface (6 studio callers import parsePx from it).
 export { parsePx } from "@hyperframes/core/editing";
 
-export function isTextBearingTag(tagName: string): boolean {
-  return ["div", "span", "p", "strong", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName);
-}
-
-export function isEditableTextLeaf(el: HTMLElement): boolean {
-  return isTextBearingTag(el.tagName.toLowerCase()) && el.children.length === 0;
-}
+export { isEditableTextLeaf };
 
 export { getLogicalOpacity };
 // One addressing rule for Studio and the runtime that describes elements to it.
@@ -105,6 +100,18 @@ export function setCompositionSourceMap(map: Map<string, string>): void {
 
 export function getCompositionSourceMapRevision(): number {
   return compositionSourceMapRevision;
+}
+
+export function knownCompositionFile(
+  claimed: string | undefined,
+  activeCompositionPath: string | null,
+): string | null {
+  const file = claimed || activeCompositionPath || "index.html";
+  const known =
+    file === "index.html" ||
+    file === activeCompositionPath ||
+    [...compositionSourceMap.values()].includes(file);
+  return known ? file : null;
 }
 
 /** The source file `source` names (see `EditingElementSource`), with this project's composition map. */

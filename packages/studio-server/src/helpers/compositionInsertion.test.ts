@@ -167,6 +167,50 @@ describe("insertCompositionIntoSource", () => {
     expect(result.html).toContain('data-duration="5.9"');
   });
 
+  // fails without the fix: inserting into an open scene wrote the path from that scene's folder ("b.html"), which the
+  // renderer and the preview read from the project root, so the export said the scene was missing.
+  it("names the source from the project root when inserting into a scene in a folder", () => {
+    const dir = project();
+    const scene = `<template><div data-composition-id="a" data-width="1920" data-height="1080" data-duration="2"></div></template>`;
+    mkdirSync(join(dir, "compositions"));
+    mkdirSync(join(dir, "scenes"));
+    writeFileSync(join(dir, "compositions/a.html"), scene);
+    writeFileSync(join(dir, "compositions/b.html"), child);
+    writeFileSync(join(dir, "scenes/c.html"), child.replace('"headline"', '"other"'));
+    const insert = (sourcePath: string) =>
+      insertCompositionIntoSource({
+        projectDir: dir,
+        targetPath: "compositions/a.html",
+        sourcePath,
+        parentSource: scene,
+        start: 0,
+        desiredTrack: 0,
+      }).html;
+
+    expect(insert("compositions/b.html")).toContain('data-composition-src="compositions/b.html"');
+    expect(insert("scenes/c.html")).toContain('data-composition-src="scenes/c.html"');
+  });
+
+  // fails without the fix: a source naming its own scene from the root was refused as missing.
+  it("follows a source's own scenes from the project root", () => {
+    const dir = project();
+    writeFixture(dir);
+    mkdirSync(join(dir, "compositions"));
+    const nested = `<template><div data-composition-id="wrap" data-width="1920" data-height="1080" data-duration="3"><div data-composition-src="compositions/inner.html"></div></div></template>`;
+    writeFileSync(join(dir, "compositions/wrap.html"), nested);
+    writeFileSync(join(dir, "compositions/inner.html"), child);
+
+    const result = insertCompositionIntoSource({
+      projectDir: dir,
+      targetPath: "index.html",
+      sourcePath: "compositions/wrap.html",
+      parentSource: parent,
+      start: 0,
+      desiredTrack: 0,
+    });
+    expect(result.html).toContain('data-composition-src="compositions/wrap.html"');
+  });
+
   it("rejects self-nesting, transitive cycles, missing files, and invalid durations", () => {
     const dir = project();
     writeFixture(dir);

@@ -8,7 +8,8 @@ const fixtureRoot = mkdtempSync(join(tmpdir(), "hf-segmented-test-"));
 const framesDir = join(fixtureRoot, "frames");
 afterAll(() => rmSync(fixtureRoot, { recursive: true, force: true }));
 import { createCapturePlan } from "../capturePlan.js";
-import { runCaptureSegmentedStage, segmentOutputPath } from "./captureSegmentedStage.js";
+import { segmentOutputPath } from "../segmentPlan.js";
+import { runCaptureSegmentedStage } from "./captureSegmentedStage.js";
 
 const writeFrame = mock((_buffer: Buffer) => true);
 const closeEncoder = mock(async () => ({ success: true, durationMs: 123, fileSize: 42 }));

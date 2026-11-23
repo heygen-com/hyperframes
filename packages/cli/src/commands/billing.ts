@@ -1,4 +1,5 @@
 import { createInterface } from "node:readline/promises";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { openBrowser } from "../auth/browser.js";
 import {
   addonBlocks,
@@ -17,6 +18,7 @@ import { c } from "../ui/colors.js";
 import { trackBillingCheckoutFailed, trackBillingWaitTimeout } from "../telemetry/events.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
+import { parsePositiveIntegerArg } from "../utils/integerArg.js";
 import { defineCommand } from "../utils/defineCommand.js";
 
 const describe = (p: Plan | null) =>
@@ -65,7 +67,7 @@ async function openCheckout(
   const { atEnter, needed, ...from } = source;
   if (isUnattended()) {
     const link = await createCheckout(kind, offer, missing, { ...from, stop: signal });
-    if (!signal.aborted) console.log(`Checkout link: ${c.accent(link)}`);
+    if (!signal.aborted) console.log(`Checkout link: ${c.accent(terminalText(link))}`);
     return;
   }
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -82,7 +84,7 @@ async function openCheckout(
     return;
   }
   const line = priceLine(kind, offer, fresh.missing, needed);
-  if (line && line !== priceLine(kind, offer, missing, needed)) console.log(line);
+  if (line && line !== priceLine(kind, offer, missing, needed)) console.log(terminalText(line));
   const link = await createCheckout(kind, offer, fresh.missing, { ...from, stop: signal });
   if (!signal.aborted) await openBrowser(link);
 }
@@ -100,7 +102,7 @@ async function offerCheckout(
   const shortBy = (p: Plan) => (needed ? needed - p.credits : undefined);
   const missing = shortBy(before);
   const line = priceLine(kind, offer, missing, needed);
-  if (line) console.log(line);
+  if (line) console.log(terminalText(line));
   const atEnter: AtEnter = async () => {
     const now = await readPlan(signal);
     if (done(now)) return { covered: true };
@@ -123,7 +125,7 @@ async function readPlanBefore(stop: AbortSignal): Promise<Plan | null> {
 }
 
 function reportCheckoutFailure(error: unknown): CheckoutError | null {
-  console.error(c.error(error instanceof Error ? error.message : String(error)));
+  console.error(c.error(terminalLines(error instanceof Error ? error.message : String(error))));
   if (!(error instanceof CheckoutError)) return null;
   trackBillingCheckoutFailed({ reason: error.reason });
   return error;
@@ -131,10 +133,10 @@ function reportCheckoutFailure(error: unknown): CheckoutError | null {
 
 async function showPlan(open: boolean): Promise<void> {
   const plan = await readPlan();
-  console.log(`HyperFrames: ${plan ? describe(plan) : "plan unavailable"}`);
+  console.log(`HyperFrames: ${plan ? terminalText(describe(plan)) : "plan unavailable"}`);
   if (plan?.plan === "none" && !open) return;
   const url = await pageUrl("manage");
-  console.log(`${MANAGE_LABEL} ${c.accent(url)}`);
+  console.log(`${MANAGE_LABEL} ${c.accent(terminalText(url))}`);
   if (open && !isUnattended()) await openBrowser(url);
 }
 
@@ -177,9 +179,11 @@ export default defineCommand({
       console.error(c.error("Use `billing subscribe` or `billing add-credits`."));
       failCommand();
     }
-    const needed = Number(args.needed) || undefined;
+    const needed = parsePositiveIntegerArg(args.needed, "--needed");
+    const timeoutSeconds =
+      parsePositiveIntegerArg(args.timeout, "--timeout", { unit: "seconds" }) ?? 600;
     const skill = checkoutSkill(args.skill);
-    const deadline = Date.now() + (Number(args.timeout) || 600) * 1000;
+    const deadline = Date.now() + timeoutSeconds * 1000;
     const stop = new AbortController();
     const atDeadline = setTimeout(() => stop.abort(), deadline - Date.now());
     atDeadline.unref?.();
@@ -189,7 +193,7 @@ export default defineCommand({
         ? !!p && p.plan !== "none"
         : !!p && p.plan !== "none" && p.credits >= (needed ?? (before?.credits ?? 0) + 1);
     if (done(before) && (action === "subscribe" || needed)) {
-      console.log(c.success(`✓ Already covered: ${describe(before)}.`));
+      console.log(c.success(`✓ Already covered: ${terminalText(describe(before))}.`));
       return;
     }
     const url = await pageUrl(action === "subscribe" ? "plans" : "credits", {
@@ -199,7 +203,9 @@ export default defineCommand({
       rs: args.session,
       skill,
     });
-    console.log(`${action === "subscribe" ? "Plans" : "Credits"} page: ${c.accent(url)}`);
+    console.log(
+      `${action === "subscribe" ? "Plans" : "Credits"} page: ${c.accent(terminalText(url))}`,
+    );
     await openBrowser(url);
     const giveUp = new AbortController();
     const waiting = (async () => {
@@ -230,7 +236,7 @@ export default defineCommand({
     console.log("Waiting for the person to finish ...");
     const now = await waiting;
     if (now) {
-      console.log(c.success(`✓ Done: ${describe(now)}. Carry on.`));
+      console.log(c.success(`✓ Done: ${terminalText(describe(now))}. Carry on.`));
       return;
     }
     console.error(

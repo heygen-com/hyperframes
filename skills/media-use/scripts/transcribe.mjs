@@ -2,21 +2,15 @@
 
 import "./lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  readFileSync,
-  writeFileSync,
-  copyFileSync,
-  renameSync,
-  mkdtempSync,
-  rmSync,
-} from "node:fs";
+import { existsSync, readFileSync, writeFileSync, renameSync, mkdtempSync, rmSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { homedir, tmpdir } from "node:os";
 import { basename, extname, join, resolve } from "node:path";
 import { parseArgs, stripVTControlCharacters } from "node:util";
 import { mergeTokensToWords } from "./lib/parakeet-words.mjs";
 import { track } from "./lib/telemetry.mjs";
 import { resolveNpxInvocation } from "./lib/npx-sync.mjs";
+import { terminalText } from "./lib/terminal-text.mjs";
 
 // The DEFAULT local transcription path. Prefers NVIDIA Parakeet-TDT via
 // parakeet-mlx, which beats whisper.cpp on the Open ASR Leaderboard (~6.05% vs
@@ -61,7 +55,7 @@ if (!args.input) {
 }
 const inputPath = resolve(args.input);
 if (!existsSync(inputPath)) {
-  console.error(`error: input not found: ${inputPath}`);
+  console.error(terminalText(`error: input not found: ${inputPath}`));
   process.exit(2);
 }
 const outPath = resolve(
@@ -94,17 +88,25 @@ function resolveParakeet() {
 
 // Write via a sibling temp + atomic rename so a SIGKILL mid-write can't leave a
 // truncated transcript at outPath (downstream reads it as valid JSON).
+// The temp name is random and created exclusively, so a link beside the target is never written through.
 function atomicWrite(target, data) {
-  const tmp = `${target}.tmp-${process.pid}`;
-  writeFileSync(tmp, data);
-  renameSync(tmp, target);
+  const tmp = `${target}.hf${randomBytes(3).toString("hex")}.tmp`;
+  writeFileSync(tmp, data, { flag: "wx" });
+  try {
+    renameSync(tmp, target);
+  } catch (error) {
+    rmSync(tmp, { force: true });
+    throw error;
+  }
 }
 
 function report(engine, wordCount) {
   if (args.json) console.log(JSON.stringify({ ok: true, out: outPath, engine, words: wordCount }));
   else
     console.log(
-      `transcribed ${basename(inputPath)} -> ${outPath}${wordCount != null ? ` (${wordCount} words,` : " ("}${engine})`,
+      terminalText(
+        `transcribed ${basename(inputPath)} -> ${outPath}${wordCount != null ? ` (${wordCount} words,` : " ("}${engine})`,
+      ),
     );
 }
 
@@ -172,9 +174,7 @@ function runCli(cliEngine) {
     const produced = join(workDir, "transcript.json");
     if (!existsSync(produced))
       throw new Error("hyperframes transcribe produced no transcript.json");
-    const tmp = `${outPath}.tmp-${process.pid}`;
-    copyFileSync(produced, tmp);
-    renameSync(tmp, outPath); // atomic publish
+    atomicWrite(outPath, readFileSync(produced));
     let words;
     try {
       const t = JSON.parse(readFileSync(outPath, "utf8"));
@@ -206,6 +206,9 @@ try {
   await track("media_use_transcribe", { engine });
 } catch (err) {
   if (args.json) console.log(JSON.stringify({ ok: false, error: err.message }));
-  else console.error(`error: transcription failed: ${err.message}`);
+  else
+    console.error(
+      `error: transcription failed: ${err.message}`.split("\n").map(terminalText).join("\n"),
+    );
   process.exit(1);
 }

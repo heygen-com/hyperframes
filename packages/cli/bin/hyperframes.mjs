@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import module from "node:module";
 import { runtimeVersionError, runtimeVersionJson } from "../dist/runtimeVersion.js";
 
 // The plugin launcher starts npx outside the project so npm cannot pick the CLI from it,
@@ -20,8 +19,8 @@ if (error) {
   if (json) console.log(json);
   process.exitCode = 1;
 } else {
-  // Reuses V8 bytecode across runs (os.tmpdir()/node-compile-cache); Node 22.0 has no such API.
-  module.enableCompileCache?.();
+  // Reuses V8 bytecode across runs, from HyperFrames' private cache folder only; Node 22.0 has no such API.
+  (await import("../dist/compileCache.js")).enablePrivateCompileCache();
   if (process.env.HYPERFRAMES_HANG_REPORT) (await import("../dist/hangReport.js")).watchForHang();
   const warm = process.argv[2] === "check" ? await import("../dist/warmCheckClient.js") : undefined;
   if (warm?.warmCheckEligible()) process.once("exit", () => warm.startNextWarmCheck());

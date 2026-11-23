@@ -11,7 +11,7 @@ import {
   reportDomEditPersistFailure,
 } from "./domEditPersistFailure";
 import { bumpDomEditCommitMapVersion, runDomEditCommit } from "./domEditCommitRunner";
-import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
+import { syncStoredAutomationFromFrame } from "../player/lib/automationStoreSync";
 import { HF_AUDIO_GROUP_ATTR, HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
 import { editSealedSelection } from "../components/editor/previewSelection";
@@ -215,7 +215,7 @@ export function useDomEditAttributeCommits({
           // the audio while the lane went on drawing what it had, until a reload.
           // One sink here rather than a sync in each writer, because three of them
           // shipped without one.
-          syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
+          syncStoredAutomationFromFrame(previewIframeRef.current);
         },
         onSettled: options.onSettled,
         onFinally: isLatestCommit.release,
@@ -318,7 +318,7 @@ export function useDomEditAttributeCommits({
         resync: () => {
           refreshDomEditSelectionFromPreview(selection);
           if (options.syncAutomation) {
-            syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
+            syncStoredAutomationFromFrame(previewIframeRef.current);
           }
         },
         onSettled: (ok) => {
@@ -411,12 +411,13 @@ export function useDomEditAttributeCommits({
    * edit computes from a pre-edit value and appears to do nothing.
    */
   const handleDomAttributeQuietCommit = useCallback(
-    async (attr: string, value: string | null) => {
+    async (attr: string, value: string | null, onSettled?: (ok: boolean) => void) => {
       await commitDataAttribute(attr, value, {
         label: `Edit ${attr.replace(/^(data-)?/, "").replace(/-/g, " ")}`,
         coalescePrefix: "attr-quiet",
         skipRefresh: true,
         refreshAfter: true,
+        onSettled,
       });
     },
     [commitDataAttribute],
@@ -482,7 +483,7 @@ export function useDomEditAttributeCommits({
           // the audio while the lane went on drawing what it had, until a reload.
           // One sink here rather than a sync in each writer, because three of them
           // shipped without one.
-          syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
+          syncStoredAutomationFromFrame(previewIframeRef.current);
         },
         onFinally: isLatestCommit.release,
       });

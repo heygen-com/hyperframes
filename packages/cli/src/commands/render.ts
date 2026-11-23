@@ -85,6 +85,7 @@ import {
 } from "../ui/format.js";
 import { warnIfWebmAlphaDropped } from "../utils/webmAlphaCheck.js";
 import { renderFailureDiagnostic } from "../ui/renderDiagnostic.js";
+import { sourceFailureHint } from "./render/sourceFailureHint.js";
 import { missingPathKind } from "../telemetry/missingPathKind.js";
 import { renderProgress, renderMachineProgress } from "../ui/progress.js";
 import {
@@ -165,6 +166,7 @@ import {
   checkOutputResolutionCompatibility,
   suggestMatchingPreset,
   fpsToNumber,
+  terminalLines,
   terminalText,
   type CanvasResolution,
   type OutputResolutionIssueKind,
@@ -461,14 +463,14 @@ export default defineCommand({
       description:
         "Segmented capture only (HF_SEGMENTED_CAPTURE=true): reuse segments a " +
         "previous run of the same composition and settings already finished, " +
-        "recorded in renders/.hf-segments/<hash>/segments.json. Each reused " +
+        "recorded in the local HyperFrames cache. Each reused " +
         "segment is re-validated before it is skipped.",
       default: false,
     },
     "keep-segments": {
       type: "boolean",
       description:
-        "Segmented capture only: keep renders/.hf-segments/<hash> after a " +
+        "Segmented capture only: keep locally cached segments after a " +
         "successful render instead of deleting it.",
       default: false,
     },
@@ -784,7 +786,7 @@ function ensureDockerImage(version: string, platform: string, quiet: boolean): s
     return tag;
   }
 
-  if (!quiet) console.log(c.dim(`  Building Docker image: ${tag} (${platform})...`));
+  if (!quiet) console.log(c.dim(`  Building Docker image: ${tag} (${terminalText(platform)})...`));
 
   const dockerfilePath = resolveDockerfilePath();
 
@@ -877,7 +879,9 @@ function resolveDockerHostPlatform(options: RenderOptions): string {
 
 async function registerRenderOutputOrWarn(projectDir: string, outputPath: string): Promise<void> {
   await registerRenderOutput(projectDir, outputPath).catch((error: unknown) =>
-    console.warn(`Render output was not registered: ${normalizeErrorMessage(error)}`),
+    console.warn(
+      `Render output was not registered: ${terminalLines(normalizeErrorMessage(error))}`,
+    ),
   );
 }
 
@@ -1120,8 +1124,8 @@ async function executeLocalRender(
   if (!options.quiet) {
     for (const outcome of preflight.outcomes) {
       if (outcome.level === "warn") {
-        console.warn(c.warn(`  ${outcome.name}: ${outcome.detail}`));
-        if (outcome.hint) console.warn(c.dim(`  ${outcome.hint}`));
+        console.warn(c.warn(`  ${outcome.name}: ${terminalLines(String(outcome.detail))}`));
+        if (outcome.hint) console.warn(c.dim(`  ${terminalLines(outcome.hint)}`));
       }
     }
   }
@@ -1160,13 +1164,15 @@ async function executeLocalRender(
               ? "."
               : ", or render WebM instead: hyperframes render --format webm --output output.webm"),
         );
-        failCommand();
+        failCommand(1, error);
       }
       // Capability probing is advisory. Let the real encode surface the
       // authoritative FFmpeg error instead of failing here with a bare stack.
       if (!options.quiet) {
         const detail = error instanceof Error ? error.message : String(error);
-        console.warn(c.warn(`  Unable to probe H.264 encoder capabilities: ${detail}`));
+        console.warn(
+          c.warn(`  Unable to probe H.264 encoder capabilities: ${terminalLines(detail)}`),
+        );
       }
     }
     if (encoderMode === "gpu" && isHls) {
@@ -1345,7 +1351,7 @@ async function executeLocalRender(
   const cpuUsage = cpu.stop();
   if (job.outcome === "completed_with_warnings") {
     for (const warning of job.warnings) {
-      console.warn(c.warn(`  [${warning.code}] ${warning.message}`));
+      console.warn(c.warn(`  [${warning.code}] ${terminalLines(warning.message)}`));
     }
   }
   const audioLowered = audioLoweredWarning(job.audioLoweredDb);
@@ -2010,6 +2016,7 @@ function handleRenderError(
     errorName: error instanceof Error ? error.name : "unknown",
     failedStageCode: normalizeStageCode(failedStage || "pipeline"),
     missingPathKind: missingPathKind(error),
+    missingPath: job?.errorDetails?.missingPath,
     ...renderJobObservabilityTelemetryPayload(job),
     ...getMemorySnapshot(),
     ...cpu.stop(),
@@ -2026,7 +2033,7 @@ function handleRenderError(
     errorBox(launch.title, shown, launch.remediation);
     failCommand();
   }
-  errorBox("Render failed", shown, hint);
+  errorBox("Render failed", shown, sourceFailureHint(error) ?? hint);
   failCommand();
 }
 

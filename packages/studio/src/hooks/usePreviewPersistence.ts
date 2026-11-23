@@ -7,8 +7,9 @@ import {
 import {
   afterStudioManualEditGestures,
   isStudioManualEditGestureLiveIn,
-} from "../components/editor/manualEditsDom";
+} from "../components/editor/manualEditGesture";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
+import { gestureDocumentOf } from "../components/editor/previewSelection";
 import { markScenesStale } from "../player/sceneSwap";
 import {
   createDomEditSaveQueue,
@@ -30,12 +31,16 @@ import {
 import { settleNestedReads } from "../utils/gsapSoftReload";
 import { readProjectFileContent } from "../utils/studioFileHistory";
 import { usePlayerStore } from "../player";
-import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
+import {
+  syncStoredAutomationFromFrame,
+  syncStoredAutomationFromPreview,
+} from "../player/lib/automationStoreSync";
 
 /** The restore payload the undo/redo preview-sync consumes (from the history store). */
 interface HistoryPreviewRestore {
   paths?: string[];
   files?: RestoreFiles;
+  revision?: number;
 }
 
 // ── Types ──
@@ -122,6 +127,11 @@ async function clearLegacyStudioMotionFile(
 }
 
 // ── Hook ──
+
+const projectFileReader = (projectId: string | null) => (path: string) =>
+  projectId
+    ? readProjectFileContent(projectId, path)
+    : Promise.reject(new Error("No project is open to read nested files from."));
 
 export function usePreviewPersistence({
   showToast,
@@ -213,7 +223,7 @@ export function usePreviewPersistence({
 
   // Undo never repaints under a live gesture; the preview reloads once the last one ends.
   const heldPreviewDoc = useCallback(() => {
-    const doc = previewIframeRef.current?.contentDocument;
+    const doc = gestureDocumentOf(previewIframeRef.current);
     return doc && isStudioManualEditGestureLiveIn(doc) ? doc : null;
   }, [previewIframeRef]);
 
@@ -226,16 +236,12 @@ export function usePreviewPersistence({
       // attributes onto the live DOM and re-runs the timeline at the SAME playhead,
       // falling back to reloadPreview for anything structural (split/delete undo),
       // multi-file, sub-comp, or a permanent soft-reload failure.
-      const projectId = usePlayerStore.getState().timelineProjectId;
       const nestedFiles = await settleNestedReads(
         readUndoNestedFiles(
           previewIframeRef.current,
           activeCompPathRef.current,
           restore.files,
-          (path) =>
-            projectId
-              ? readProjectFileContent(projectId, path)
-              : Promise.reject(new Error("No project is open to read nested files from.")),
+          projectFileReader(usePlayerStore.getState().timelineProjectId),
         ),
       );
       const held = heldPreviewDoc();
@@ -254,13 +260,14 @@ export function usePreviewPersistence({
         usePlayerStore.getState().currentTime,
         reloadPreview,
         nestedFiles,
+        restore.revision,
       );
       if (strategy === "full") return;
       // A soft restore patched the reverted attributes onto the live preview, but the
       // player store keeps its own copy and that copy is what the automation lanes
       // draw — so without this an undone envelope edit stayed invisible until a
       // reload. The full path above waits for the reloaded preview to report instead.
-      syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
+      syncStoredAutomationFromFrame(previewIframeRef.current);
     },
     [previewIframeRef, activeCompPathRef, reloadPreview, heldPreviewDoc],
   );

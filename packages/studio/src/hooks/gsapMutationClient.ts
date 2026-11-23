@@ -1,6 +1,6 @@
-import { studioWriteHeaders } from "../utils/studioFileVersion";
+import { studioFileRevision, studioWriteHeaders } from "../utils/studioFileVersion";
 import { studioApiFetch } from "../utils/studioApiFetch";
-import { heldFileWordsOf } from "../utils/studioSaveDiagnostics";
+import { heldFileWordsOf, withStatus } from "../utils/studioSaveDiagnostics";
 
 export class GsapPreviewConvergenceError extends Error {}
 export class GsapOwnershipProtocolError extends GsapPreviewConvergenceError {}
@@ -43,7 +43,8 @@ export async function rollbackOwnedMutation(
   );
   if (!response.ok) {
     throw new Error(
-      (await heldFileWordsOf(response, targetPath)) ?? `Failed to restore ${targetPath}`,
+      (await heldFileWordsOf(response, targetPath)) ??
+        withStatus(`Failed to restore ${targetPath}`, response),
     );
   }
   const result = (await response.json()) as { restored?: unknown; conflict?: unknown };
@@ -61,6 +62,7 @@ export type GsapMutationStatus = {
   /** Atomic whole-file ownership pair returned by the mutation endpoint. */
   before?: string;
   after?: string;
+  revision?: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -117,8 +119,11 @@ async function postOwnedGsapMutation(
   fallback: string,
 ): Promise<GsapMutationStatus> {
   let response: Response;
+  let revision: number;
   try {
-    response = await requestGsapMutation(projectId, route, filePath, body);
+    const pending = requestGsapMutation(projectId, route, filePath, body);
+    revision = studioFileRevision();
+    response = await pending;
   } catch (error) {
     throw new GsapPreviewConvergenceError(`${fallback}: mutation outcome unknown`, {
       cause: error,
@@ -127,9 +132,11 @@ async function postOwnedGsapMutation(
   const held = response.ok ? null : await heldFileWordsOf(response, filePath);
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new GsapPreviewConvergenceError(held ?? readMutationError(payload, fallback));
+    throw new GsapPreviewConvergenceError(
+      held ?? withStatus(readMutationError(payload, fallback), response),
+    );
   }
-  return readMutationStatus(payload);
+  return { ...readMutationStatus(payload), revision };
 }
 
 export function postGsapMutation(

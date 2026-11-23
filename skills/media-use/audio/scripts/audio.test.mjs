@@ -15,6 +15,17 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { recordInManifest } from "./lib/media-record.mjs";
 import { resolveSfx } from "./lib/sfx.mjs";
+import { afterEach, beforeEach } from "node:test";
+import { mediaTransport } from "../../scripts/lib/media-fetch.mjs";
+
+// These tests stub globalThis.fetch; media downloads reach the same stub.
+const transportFetch = mediaTransport.fetch;
+beforeEach(() => {
+  mediaTransport.fetch = (url, init) => globalThis.fetch(url, init);
+});
+afterEach(() => {
+  mediaTransport.fetch = transportFetch;
+});
 
 // Proves the relocated engine (skills/media-use/audio/) still resolves its
 // bundled SFX library from the moved location — the path most likely to break
@@ -230,5 +241,92 @@ test("an audio_meta.json in the project that links outside it is refused and lef
     assert.equal(readFileSync(join(base, "theirs.json"), "utf8"), "{}");
   } finally {
     rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("line ids and the voice from audio_request.json print with control characters as escapes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "audio-escape-"));
+  try {
+    const id = "v\x1b[2J\x07";
+    writeFileSync(
+      join(dir, "audio_request.json"),
+      JSON.stringify({ voice: `am_${id}`, lines: [{ id, text: "" }] }),
+    );
+    const run = spawnSync(
+      process.execPath,
+      [join(HERE, "audio.mjs"), "--hyperframes", dir, "--only", "tts"],
+      { encoding: "utf8", env: { ...process.env, HOME: dir } },
+    );
+    assert.equal(run.status, 0, run.stderr);
+    const shown = run.stdout + run.stderr;
+    assert.match(shown, /line v\\x1b\[2J\\x07: empty text/);
+    for (const raw of ["\x1b", "\x07"]) assert.ok(!shown.includes(raw), JSON.stringify(shown));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a broken audio_request.json prints its bytes with control characters as escapes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "audio-broken-request-"));
+  try {
+    writeFileSync(join(dir, "audio_request.json"), '{"lines": [ \x1b]0;x \x07 ]}');
+    const run = spawnSync(process.execPath, [join(HERE, "audio.mjs"), "--hyperframes", dir], {
+      encoding: "utf8",
+      env: { ...process.env, HOME: dir },
+    });
+    assert.equal(run.status, 1, run.stdout);
+    assert.match(run.stderr, /audio_request\.json parse: .*\\x1b/);
+    for (const raw of ["\x1b", "\x07"]) assert.ok(!run.stderr.includes(raw), run.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// With --only, bgm_provider and sfx carry over from audio_meta.json unchanged into the summary.
+for (const only of ["tts", "sfx"]) {
+  test(`--only ${only}: values kept from audio_meta.json print with control characters as escapes`, () => {
+    const dir = mkdtempSync(join(tmpdir(), "audio-kept-escape-"));
+    try {
+      writeFileSync(join(dir, "audio_request.json"), JSON.stringify({ lines: [] }));
+      const kept = {
+        bgm: { path: "assets/bgm/track.wav" },
+        bgm_provider: "p\x1b[2J\x07",
+        sfx: { length: "n\x1b]0;x\x07" },
+      };
+      writeFileSync(join(dir, "audio_meta.json"), JSON.stringify(kept));
+      const run = spawnSync(
+        process.execPath,
+        [join(HERE, "audio.mjs"), "--hyperframes", dir, "--only", only],
+        { encoding: "utf8", env: { ...process.env, HOME: dir } },
+      );
+      assert.equal(run.status, 0, run.stderr);
+      const shown = run.stdout + run.stderr;
+      assert.match(shown, /bgm: p\\x1b\[2J\\x07/);
+      if (only === "tts") assert.match(shown, /sfx: n\\x1b\]0;x\\x07/);
+      for (const raw of ["\x1b", "\x07"]) assert.ok(!shown.includes(raw), JSON.stringify(shown));
+      const meta = JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8"));
+      assert.equal(meta.bgm_provider, kept.bgm_provider);
+      if (only === "tts") assert.deepEqual(meta.sfx, kept.sfx);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test("a broken audio_meta.json prints its bytes with control characters as escapes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "audio-broken-meta-"));
+  try {
+    writeFileSync(join(dir, "audio_request.json"), JSON.stringify({ lines: [] }));
+    writeFileSync(join(dir, "audio_meta.json"), '{"sfx": [ \x1b]0;x \x07 ]}');
+    const run = spawnSync(
+      process.execPath,
+      [join(HERE, "audio.mjs"), "--hyperframes", dir, "--only", "sfx"],
+      { encoding: "utf8", env: { ...process.env, HOME: dir } },
+    );
+    assert.notEqual(run.status, 0, run.stdout);
+    assert.match(run.stderr, /audio_meta\.json at .*: .*\\x1b/);
+    for (const raw of ["\x1b", "\x07"]) assert.ok(!run.stderr.includes(raw), run.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

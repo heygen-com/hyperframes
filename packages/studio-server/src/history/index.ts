@@ -13,8 +13,8 @@ export {
   type HistoryResult,
   type HistoryWindow,
   HistoryClosedError,
-  HistoryRefusedError,
 } from "./projectHistory.js";
+export { HistoryRefusedError, REFUSAL_REASONS, type RefusalReason } from "./historyRefused.js";
 export { reclaimUncopiedBlobs, type ReclaimedHistory } from "./reclaimUncopied.js";
 export { isUncopiedMedia } from "./uncopied.js";
 export { HistoryBusyError } from "./ownerLock.js";

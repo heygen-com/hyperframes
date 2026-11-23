@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.66",
+  "version": "0.9.86",
   "description": "",
   "repository": {
     "type": "git",
@@ -121,6 +121,18 @@
       "node": "./dist/envProxy.js",
       "import": "./src/envProxy.ts",
       "types": "./src/envProxy.ts"
+    },
+    "./missing-path": {
+      "bun": "./src/missingPath.ts",
+      "node": "./dist/missingPath.js",
+      "import": "./src/missingPath.ts",
+      "types": "./src/missingPath.ts"
+    },
+    "./terminal-text": {
+      "bun": "./src/terminalText.ts",
+      "node": "./dist/terminalText.js",
+      "import": "./src/terminalText.ts",
+      "types": "./src/terminalText.ts"
     },
     "./rename-retry": {
       "bun": "./src/renameWithRetry.ts",
@@ -465,6 +477,36 @@
       "import": "./src/runtime/editingPort.ts",
       "types": "./src/runtime/editingPort.ts"
     },
+    "./runtime/css-rotation": {
+      "bun": "./src/runtime/editing/cssRotation.ts",
+      "node": "./dist/runtime/editing/cssRotation.js",
+      "import": "./src/runtime/editing/cssRotation.ts",
+      "types": "./src/runtime/editing/cssRotation.ts"
+    },
+    "./runtime/patch-tween": {
+      "bun": "./src/runtime/editing/patchTween.ts",
+      "node": "./dist/runtime/editing/patchTween.js",
+      "import": "./src/runtime/editing/patchTween.ts",
+      "types": "./src/runtime/editing/patchTween.ts"
+    },
+    "./runtime/soft-reload": {
+      "bun": "./src/runtime/editing/softReload.ts",
+      "node": "./dist/runtime/editing/softReload.js",
+      "import": "./src/runtime/editing/softReload.ts",
+      "types": "./src/runtime/editing/softReload.ts"
+    },
+    "./runtime/scenes": {
+      "bun": "./src/runtime/editing/scenes.ts",
+      "node": "./dist/runtime/editing/scenes.js",
+      "import": "./src/runtime/editing/scenes.ts",
+      "types": "./src/runtime/editing/scenes.ts"
+    },
+    "./runtime/live-retime": {
+      "bun": "./src/runtime/editing/liveRetime.ts",
+      "node": "./dist/runtime/editing/liveRetime.js",
+      "import": "./src/runtime/editing/liveRetime.ts",
+      "types": "./src/runtime/editing/liveRetime.ts"
+    },
     "./runtime/clip-window": {
       "bun": "./src/runtime/clipWindow.ts",
       "node": "./dist/runtime/clipWindow.js",
@@ -507,11 +549,23 @@
       "import": "./src/runtime/levelTap.ts",
       "types": "./src/runtime/levelTap.ts"
     },
+    "./compiler/composition-size-limit": {
+      "bun": "./src/compiler/compositionSizeLimit.ts",
+      "node": "./dist/compiler/compositionSizeLimit.js",
+      "import": "./src/compiler/compositionSizeLimit.ts",
+      "types": "./src/compiler/compositionSizeLimit.ts"
+    },
     "./compiler/html-document": {
       "bun": "./src/compiler/htmlDocument.ts",
       "node": "./dist/compiler/htmlDocument.js",
       "import": "./src/compiler/htmlDocument.ts",
       "types": "./src/compiler/htmlDocument.ts"
+    },
+    "./compiler/selector-id-tokens": {
+      "bun": "./src/compiler/selectorIdTokens.ts",
+      "node": "./dist/compiler/selectorIdTokens.js",
+      "import": "./src/compiler/selectorIdTokens.ts",
+      "types": "./src/compiler/selectorIdTokens.ts"
     },
     "./compiler/png-colour-tags": {
       "bun": "./src/compiler/pngColourTags.ts",
@@ -744,6 +798,14 @@
         "import": "./dist/envProxy.js",
         "types": "./dist/envProxy.d.ts"
       },
+      "./missing-path": {
+        "import": "./dist/missingPath.js",
+        "types": "./dist/missingPath.d.ts"
+      },
+      "./terminal-text": {
+        "import": "./dist/terminalText.js",
+        "types": "./dist/terminalText.d.ts"
+      },
       "./rename-retry": {
         "import": "./dist/renameWithRetry.js",
         "types": "./dist/renameWithRetry.d.ts"
@@ -973,6 +1035,26 @@
         "import": "./dist/runtime/editingPort.js",
         "types": "./dist/runtime/editingPort.d.ts"
       },
+      "./runtime/css-rotation": {
+        "import": "./dist/runtime/editing/cssRotation.js",
+        "types": "./dist/runtime/editing/cssRotation.d.ts"
+      },
+      "./runtime/patch-tween": {
+        "import": "./dist/runtime/editing/patchTween.js",
+        "types": "./dist/runtime/editing/patchTween.d.ts"
+      },
+      "./runtime/soft-reload": {
+        "import": "./dist/runtime/editing/softReload.js",
+        "types": "./dist/runtime/editing/softReload.d.ts"
+      },
+      "./runtime/scenes": {
+        "import": "./dist/runtime/editing/scenes.js",
+        "types": "./dist/runtime/editing/scenes.d.ts"
+      },
+      "./runtime/live-retime": {
+        "import": "./dist/runtime/editing/liveRetime.js",
+        "types": "./dist/runtime/editing/liveRetime.d.ts"
+      },
       "./runtime/clip-window": {
         "import": "./dist/runtime/clipWindow.js",
         "types": "./dist/runtime/clipWindow.d.ts"
@@ -1001,9 +1083,17 @@
         "import": "./dist/runtime/levelTap.js",
         "types": "./dist/runtime/levelTap.d.ts"
       },
+      "./compiler/composition-size-limit": {
+        "import": "./dist/compiler/compositionSizeLimit.js",
+        "types": "./dist/compiler/compositionSizeLimit.d.ts"
+      },
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",
         "types": "./dist/compiler/htmlDocument.d.ts"
+      },
+      "./compiler/selector-id-tokens": {
+        "import": "./dist/compiler/selectorIdTokens.js",
+        "types": "./dist/compiler/selectorIdTokens.d.ts"
       },
       "./compiler/png-colour-tags": {
         "import": "./dist/compiler/pngColourTags.js",

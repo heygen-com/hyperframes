@@ -1,3 +1,4 @@
+import { sourceLengthOf } from "./sourceLength";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { swallow } from "./diagnostics";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
@@ -149,7 +150,8 @@ export function refreshRuntimeMediaCache(params?: {
     const playbackRate = readElementPlaybackRate(el);
     const rate = readElementRateSpec(el);
     const loop = el.loop;
-    const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
+    const length = sourceLengthOf(el);
+    const sourceDuration = Number.isFinite(length) && length > 0 ? length : null;
     let duration =
       params?.resolveDurationSeconds?.(el) ?? Number.parseFloat(el.dataset.duration ?? "");
     if ((!Number.isFinite(duration) || duration < 0) && sourceDuration != null) {

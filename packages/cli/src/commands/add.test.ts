@@ -308,6 +308,15 @@ describe("add command pure helpers", () => {
       expect(compositionRootId(`<div>no root</div>`)).toBeUndefined();
     });
 
+    // fails without the fix: an SVG element named template came first and has no content.
+    it("reads the root inside the HTML template after an SVG element named template", () => {
+      expect(
+        compositionRootId(
+          `<svg><template></template></svg><template id="t"><div data-composition-id="templated"></div></template>`,
+        ),
+      ).toBe("templated");
+    });
+
     it("gives the block host the composition id that check requires", async () => {
       const snip = buildSnippet(BLOCK_ITEM, "compositions/my-block.html", null, "my-block-root");
       const html = `<!doctype html><html><body><div data-composition-id="root" data-width="1080" data-height="1350">${snip}</div></body></html>`;
@@ -622,6 +631,25 @@ describe("add command run() — several names", () => {
     const printed = warn.mock.calls.map((call) => call.join(" ")).join("\n");
     expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
     expect(printed).toContain("is deprecated: gone\\x1b]52;c;cA==\\x07");
+  });
+
+  // fails without the fix: a name the registry does not have is repeated as it was typed.
+  it("shows control characters in a skipped name as text", async () => {
+    const esc = String.fromCharCode(27);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await expect(
+      runWrapped(["my-block", `no-${esc}[2Jsuch\x07`, "--dir", dir, "--no-clipboard"]),
+    ).rejects.toMatchObject({ result: { exitCode: 1 } });
+
+    const printed = log.mock.calls
+      .map((call) => call.join(" "))
+      .join("\n")
+      .replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
+    expect(printed).toContain("✓ my-block");
+    expect(printed).toContain("✗ no-\\x1b[2Jsuch\\x07 (skipped: ");
+    expect(printed).not.toContain(esc);
+    expect(printed).not.toContain("\x07");
   });
 
   it("keeps the installs that worked when one name is unknown, and fails the call", async () => {

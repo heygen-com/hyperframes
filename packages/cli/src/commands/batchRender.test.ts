@@ -339,6 +339,38 @@ describe("runBatchRender", () => {
     },
   );
 
+  it("prints a row's render error with control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    const prepared = prepareBatchRender({
+      batchPath: writeJson("rows.json", '[{"name":"Alice"}]'),
+      outputTemplate: join(tmpDir, "renders/{name}.mp4"),
+      indexPath: writeIndex(),
+      strictVariables: false,
+      quiet: true,
+      json: false,
+    });
+    const message = `Composition is empty: ${esc}]0;x\x07scene.html\r\nsecond line`;
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const manifest = await runBatchRender({
+      prepared,
+      concurrency: 1,
+      failFast: false,
+      quiet: false,
+      json: false,
+      renderOne: async () => {
+        throw new Error(message);
+      },
+    });
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(human).toContain(
+      "Row 0 failed: Composition is empty: \\x1b]0;x\\x07scene.html\\x0d\nsecond line",
+    );
+    expect(manifest.rows[0]?.error).toBe(message);
+  });
+
   it("renders from manifest.json when the generated manifest has a separate directory", async () => {
     const original = '[{"name":"Alice"},{"name":"Bob"}]';
     const batchPath = writeJson("manifest.json", original);

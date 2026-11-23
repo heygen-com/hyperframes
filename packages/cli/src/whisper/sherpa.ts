@@ -1,6 +1,7 @@
 import { execFile, spawn, type ExecFileException } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { terminalText } from "@hyperframes/core";
 import { ensurePrivateCacheDir, hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
@@ -207,7 +208,7 @@ async function selectRuntime(
     const error = await runtimeLoadError(path, timeoutMs, signal);
     if (error === null) return { status: "ready", path };
     console.error(
-      `Parakeet runtime at ${path.replace(/\s+/g, " ")} did not load: ${error.replace(/\s+/g, " ")}`,
+      `Parakeet runtime at ${terminalText(path.replace(/\s+/g, " "))} did not load: ${terminalText(error.replace(/\s+/g, " "))}`,
     );
   }
   return cachedRuntime(dir, timeoutMs, signal);

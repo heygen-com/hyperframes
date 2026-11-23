@@ -3270,6 +3270,56 @@ describe("SVG draw-on rules", () => {
     expect(performance.now() - started).toBeLessThan(3000);
   });
 
+  // Linear work grows about 4x from n to 4n tags and quadratic work 16x; the faster of two runs absorbs a slow runner.
+  const growth = async (page: (n: number) => string, n: number): Promise<number> => {
+    const fastest = async (html: string) => {
+      let best = Infinity;
+      for (let run = 0; run < 2; run += 1) {
+        const started = performance.now();
+        await lintHyperframeHtml(html);
+        best = Math.min(best, performance.now() - started);
+      }
+      return best;
+    };
+    const small = await fastest(page(n));
+    return (await fastest(page(4 * n))) / small;
+  };
+
+  it("lints script tags naming one file in linear time", { timeout: 120_000 }, async () => {
+    const page = (n: number) => `<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  ${'<script src="lib.js"></script>\n'.repeat(n)}
+</body></html>`;
+    expect(await growth(page, 1250)).toBeLessThan(8);
+  });
+
+  it(
+    "lints timeline scripts beside named elements in linear time",
+    { timeout: 120_000 },
+    async () => {
+      const page = (n: number) => {
+        const elements = Array.from(
+          { length: n },
+          (_, i) => `<div id="e${i}" class="c${i}" style="position:absolute;inset:0"></div>`,
+        ).join("\n");
+        const scripts = Array.from(
+          { length: n },
+          (_, i) => `<script>
+    const el = document.getElementById("e${i}");
+    const tl = gsap.timeline({ paused: true });
+    tl.set(el, { strokeDasharray: 1 }, 0).to(el, { opacity: 1 }, 0);
+  </script>`,
+        ).join("\n");
+        return `<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">${elements}</div>
+  <style>#e0 { stroke-dasharray: 4 2 }</style>
+  ${scripts}
+</body></html>`;
+      };
+      expect(await growth(page, 250)).toBeLessThan(8);
+    },
+  );
+
   it("scans a closed style block of many unclosed rules in linear time", async () => {
     const html = `<html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080"></div>

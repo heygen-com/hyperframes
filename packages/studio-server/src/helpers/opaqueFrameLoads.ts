@@ -2,6 +2,8 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Context, Hono, Next } from "hono";
 import { getMimeType } from "./mime.js";
 import { fetchAgain } from "./fetchAgain.js";
+import { insertBeforeCloseTag } from "@hyperframes/core/compiler";
+import { createSealedPreviewSeekReapplyScript } from "./manualEditsRenderScript.js";
 import {
   isProxyWait,
   PREVIEW_EXPOSED_HEADERS,
@@ -80,12 +82,18 @@ const PROXY_PREFLIGHT_ANSWER = {
   Vary: "Origin",
 };
 
+function withSeekReapplyArmedForAnyEdit(html: string): string {
+  const tag = `<script>${createSealedPreviewSeekReapplyScript()}\n//# sourceURL=hyperframes://position-seek-reapply</script>`;
+  return insertBeforeCloseTag(html, "body", tag) ?? `${html}${tag}`;
+}
+
 async function underToken(res: Response, headers: Headers, projectId: string, token: string) {
   if (res.status !== 200 || !headers.get("content-type")?.startsWith("text/html"))
     return new Response(res.body, { status: res.status, headers });
   const base = previewBase(projectId);
   headers.delete("content-length");
-  const html = (await res.text()).replaceAll(base, `${base}~${token}/`);
+  const rebased = (await res.text()).replaceAll(base, `${base}~${token}/`);
+  const html = withSeekReapplyArmedForAnyEdit(rebased);
   return new Response(html, { status: res.status, headers });
 }
 

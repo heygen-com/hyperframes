@@ -15,7 +15,7 @@ import { xAtTime } from "./gsapPlaybackTestHarness";
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 const gestureRecording = vi.hoisted(() => ({
-  startRecording: vi.fn(),
+  startRecording: vi.fn(() => true),
   stopRecording: vi.fn(() => [
     { time: 0, properties: { x: 0, y: 0, opacity: 1 } },
     { time: 0.5, properties: { x: 50, y: 25, opacity: 0.5 } },
@@ -27,6 +27,22 @@ const gestureRecording = vi.hoisted(() => ({
   recordingDuration: 0,
   samplesRef: { current: [] },
   trailRef: { current: [] },
+}));
+
+const sealedFrame = vi.hoisted(() => ({
+  opaque: false,
+  answer: null as ((bases: unknown) => void) | null,
+}));
+vi.mock("../player/lib/previewChannel", async (load) => ({
+  ...(await load<typeof import("../player/lib/previewChannel")>()),
+  previewFrameOpaque: () => sealedFrame.opaque,
+}));
+vi.mock("../player/lib/previewElements", async (load) => ({
+  ...(await load<typeof import("../player/lib/previewElements")>()),
+  previewGestureBase: () =>
+    new Promise((resolve) => {
+      sealedFrame.answer = resolve;
+    }),
 }));
 
 vi.mock("./useGestureRecording", () => ({
@@ -55,6 +71,8 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let cleanup: (() => void) | null = null;
 
 afterEach(() => {
+  sealedFrame.opaque = false;
+  sealedFrame.answer = null;
   cleanup?.();
   cleanup = null;
   usePlayerStore.getState().reset();
@@ -414,5 +432,53 @@ it("writes one recording to its original selection after selecting another sourc
     feature: "gesture_recording",
     surface: "preview",
     method: "keyboard",
+  });
+});
+
+describe("a sealed recording waiting for the frame's base", () => {
+  const BASE = [{ x: 0, y: 0, opacity: 1, scale: 1 }];
+  const sealedSelection = (id: string) => {
+    const element = document.createElement("div");
+    element.id = id;
+    return { ...makeSelection(element), handle: `0123456789abcdef:${id}` };
+  };
+  const answer = async () => {
+    await act(async () => {
+      sealedFrame.answer?.(BASE);
+      await Promise.resolve();
+    });
+  };
+
+  // fails without the fix: the reply started recording on the selection captured before it, even after the
+  // person picked another layer or the hook unmounted.
+  it("starts on the layer it was asked for once the frame answers", async () => {
+    sealedFrame.opaque = true;
+    const hook = mountRecording(vi.fn(async () => {}));
+    hook.select(sealedSelection("card"), []);
+    act(() => hook().handleToggleRecording());
+    expect(gestureRecording.startRecording).not.toHaveBeenCalled();
+    await answer();
+    expect(gestureRecording.startRecording).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't start once another layer is selected before the frame answers", async () => {
+    sealedFrame.opaque = true;
+    const hook = mountRecording(vi.fn(async () => {}));
+    hook.select(sealedSelection("card"), []);
+    act(() => hook().handleToggleRecording());
+    hook.select(sealedSelection("other"), []);
+    await answer();
+    expect(gestureRecording.startRecording).not.toHaveBeenCalled();
+  });
+
+  it("doesn't start once Studio unmounts before the frame answers", async () => {
+    sealedFrame.opaque = true;
+    const hook = mountRecording(vi.fn(async () => {}));
+    hook.select(sealedSelection("card"), []);
+    act(() => hook().handleToggleRecording());
+    cleanup?.();
+    cleanup = null;
+    await answer();
+    expect(gestureRecording.startRecording).not.toHaveBeenCalled();
   });
 });

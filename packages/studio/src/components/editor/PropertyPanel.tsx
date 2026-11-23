@@ -1,3 +1,4 @@
+import { useGsapSnapshotVersion } from "../../hooks/gsapFrameSnapshot";
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import { memo, useMemo, useRef, useState } from "react";
 import { Move } from "../../icons/SystemIcons";
@@ -69,7 +70,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     onUngroup,
     onSetStyle,
     onSetAttribute,
-    onSetAttributeLive,
+    onSetAttributeQuiet,
     onApplyColorGradingScope,
     onSetManualOffset,
     onSetManualSize,
@@ -134,13 +135,14 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
       gsapAnimations?.[0]?.id ??
       null)
     : null;
+  const sealedReads = useGsapSnapshotVersion();
   const gsapRuntimeValues = useMemo(
     () =>
       element
         ? readGsapRuntimeValuesForPanel(gsapAnimIdForMemo, gsapAnimations, element, iframeRef)
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- iframeRef is stable; currentTime drives re-reads during playback
-    [gsapAnimIdForMemo, gsapAnimations, element, currentTime],
+    [gsapAnimIdForMemo, gsapAnimations, element, currentTime, sealedReads],
   );
   const gsapBorderRadius = useMemo(
     () =>
@@ -355,7 +357,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
             assets={assets}
             previewIframeRef={previewIframeRef}
             onImportAssets={onImportAssets}
-            onSetAttributeLive={onSetAttributeLive}
+            onSetAttributeQuiet={onSetAttributeQuiet}
             onApplyScope={onApplyColorGradingScope}
           />
         )}

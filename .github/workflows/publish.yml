@@ -924,29 +924,50 @@ jobs:
         run: |
           FAILED=0
 
+          # 0 when npm already has this version with these contents, 2 when it has it with others, 1 when it has none.
+          on_npm() {
+            local published
+            published="$(npm view "$1@${VERSION}" dist.integrity --registry https://registry.npmjs.org/ 2>/dev/null)" || return 1
+            [ -n "$published" ] || return 1
+            [ "$published" = "$2" ] || return 2
+          }
+
+          # A publish can fail on the way (a signing log that answers late, a dropped connection) with the package
+          # on npm or not. So each try asks npm first, and a failed try is tried again, three in all.
           publish_tarball() {
             local name="$1"
             local tarball="$2"
-            local integrity published
+            local integrity try state
             integrity="sha512-$(openssl dgst -sha512 -binary "$tarball" | base64 -w0)"
 
-            if published="$(npm view "${name}@${VERSION}" dist.integrity 2>/dev/null)" && [ -n "$published" ]; then
-              if [ "$published" = "$integrity" ]; then
-                echo "⏭️  ${name}@${VERSION} already published with these contents — skipping"
-              else
+            for try in 1 2 3 last; do
+              state=0
+              on_npm "$name" "$integrity" || state=$?
+              if [ "$state" -eq 0 ]; then
+                if [ "$try" = 1 ]; then
+                  echo "⏭️  ${name}@${VERSION} already published with these contents — skipping"
+                else
+                  echo "✅ ${name}@${VERSION} is on npm with these contents"
+                fi
+                return 0
+              fi
+              if [ "$state" -eq 2 ]; then
                 echo "::error::${name}@${VERSION} is already on npm, and this run did not publish it. Find out who did before releasing this version."
                 FAILED=1
+                return 0
               fi
-              return 0
-            fi
+              [ "$try" != last ] || break
 
-            echo "📦 Publishing ${name}@${VERSION}..."
-            if npm publish "$tarball" --access public --tag "$DIST_TAG" --registry https://registry.npmjs.org/ --ignore-scripts; then
-              echo "✅ ${name}@${VERSION} published"
-            else
-              echo "❌ ${name}@${VERSION} failed to publish"
-              FAILED=1
-            fi
+              echo "📦 Publishing ${name}@${VERSION} (try ${try} of 3)..."
+              if npm publish "$tarball" --access public --tag "$DIST_TAG" --registry https://registry.npmjs.org/ --ignore-scripts; then
+                echo "✅ ${name}@${VERSION} published"
+                return 0
+              fi
+              echo "::warning::${name}@${VERSION} did not publish on try ${try}"
+              sleep "${PUBLISH_RETRY_SECONDS:-20}"
+            done
+            echo "❌ ${name}@${VERSION} failed to publish"
+            FAILED=1
           }
 
           while IFS=$'\t' read -r name tarball; do

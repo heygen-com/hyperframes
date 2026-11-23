@@ -919,6 +919,77 @@ describe("initSandboxRuntimeModular", () => {
     expect(clip.style.height).toBe("0.5px");
   });
 
+  // fails without the fix: a root with no declared size posted no stage size at all, so a sealed Studio, which can't
+  // measure the frame itself, had no scale for its overlay.
+  describe("a root that declares no size", () => {
+    const capture = () => {
+      const outbound: Array<Record<string, unknown>> = [];
+      vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+        if (typeof message === "object" && message !== null)
+          outbound.push(message as Record<string, unknown>);
+      });
+      return () => outbound.filter((m) => m.type === "stage-size");
+    };
+    const mountUndeclared = (width: number, height: number) => {
+      document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="4"></div>`;
+      const root = document.querySelector<HTMLElement>("[data-composition-id]")!;
+      Object.defineProperty(root, "offsetWidth", { value: width, configurable: true });
+      Object.defineProperty(root, "offsetHeight", { value: height, configurable: true });
+      window.__timelines = { main: createMockTimeline(4) };
+      return root;
+    };
+
+    it("posts its measured layout box as measuredSize, with no width or height a host would size by", () => {
+      const sent = capture();
+      mountUndeclared(1280, 720);
+      initSandboxRuntimeModular();
+      expect(sent().length).toBeGreaterThan(0);
+      for (const message of sent()) {
+        expect(message.measuredSize).toEqual({ width: 1280, height: 720 });
+        expect(message).not.toHaveProperty("width");
+        expect(message).not.toHaveProperty("height");
+      }
+    });
+
+    it("posts the box again when the root resizes, and stops at teardown", () => {
+      let resized: (() => void) | null = null;
+      const disconnect = vi.fn();
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          constructor(callback: () => void) {
+            resized = callback;
+          }
+          observe() {}
+          disconnect() {
+            disconnect();
+          }
+        },
+      );
+      try {
+        const sent = capture();
+        const root = mountUndeclared(1280, 720);
+        initSandboxRuntimeModular();
+        Object.defineProperty(root, "offsetWidth", { value: 640, configurable: true });
+        resized!();
+        expect(sent().at(-1)?.measuredSize).toEqual({ width: 640, height: 720 });
+        window.__hfRuntimeTeardown?.();
+        expect(disconnect).toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("leaves measuredSize off a root that declares its size", () => {
+      const sent = capture();
+      document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="4" data-width="1920" data-height="1080"></div>`;
+      window.__timelines = { main: createMockTimeline(4) };
+      initSandboxRuntimeModular();
+      expect(sent().length).toBeGreaterThan(0);
+      for (const message of sent()) expect(message).not.toHaveProperty("measuredSize");
+    });
+  });
+
   it("reports the explicit root's size when another composition comes first", () => {
     const outbound: Array<Record<string, unknown>> = [];
     vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
@@ -2995,6 +3066,37 @@ describe("initSandboxRuntimeModular", () => {
     window.__player?.seek(2);
     expect(overlay.style.display).toBe("");
     expect(overlay.style.visibility).toBe("");
+  });
+
+  it("hides an element with no data-start once it is given data-hidden after the film loaded", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const image = document.createElement("img");
+    root.appendChild(image);
+
+    window.__timelines = {
+      main: createMockTimeline(10),
+    };
+
+    initSandboxRuntimeModular();
+
+    window.__player?.seek(1);
+    expect(image.style.display).toBe("");
+
+    image.setAttribute("data-hidden", "");
+    window.__player?.seek(2);
+    expect(image.style.display).toBe("none");
+
+    image.removeAttribute("data-hidden");
+    window.__player?.seek(3);
+    expect(image.style.display).toBe("");
   });
 
   describe("a clip the visibility pass hides gets the author's inline display back", () => {
@@ -5945,6 +6047,22 @@ describe("initSandboxRuntimeModular", () => {
       expect(logo.style.width).toBe("340px");
     });
 
+    it("leaves a video with no size of its own at its file's size while its file loads", () => {
+      const root = makeRoot();
+      const clip = document.createElement("video");
+      clip.setAttribute("data-start", "0");
+      clip.setAttribute("data-duration", "5");
+      root.appendChild(clip);
+      // A video waiting for its source measures 0px; once loaded it takes its file's size, as a render draws it.
+      modelBrowserLayout(clip, { width: "0px", height: "0px" });
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+
+      expect(clip.style.width).toBe("");
+      expect(clip.style.height).toBe("");
+    });
+
     it("puts back an author's display:none !important after measuring the clip", () => {
       const root = makeRoot();
       const card = document.createElement("div");
@@ -6135,10 +6253,16 @@ describe("initSandboxRuntimeModular", () => {
     const SAFARI =
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
 
-    const startRouted = async (userAgent?: string, duration = 10, src = "/assets/track.mp3") => {
+    const startRouted = async (
+      userAgent?: string,
+      duration = 10,
+      src = "/assets/track.mp3",
+      loop = false,
+    ) => {
       if (userAgent) vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
       const audio = mountAudio(src);
       Object.defineProperty(audio, "duration", { value: duration });
+      audio.loop = loop;
       const capture = vi
         .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
         .mockResolvedValue({ el: audio } as never);
@@ -6155,6 +6279,13 @@ describe("initSandboxRuntimeModular", () => {
 
     it("hands the sound to a decoded buffer on the context clock once it is decoded", async () => {
       const { audio, schedule, release } = await startRouted(SAFARI);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+      expect(schedule).toHaveBeenCalledTimes(1);
+    });
+
+    // fails without the fix: a looped clip stayed on its element, heard ~300 ms behind the picture on iOS.
+    it("hands a looped clip to a decoded buffer too", async () => {
+      const { audio, schedule, release } = await startRouted(SAFARI, 10, "/assets/track.mp3", true);
       await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
       expect(schedule).toHaveBeenCalledTimes(1);
     });

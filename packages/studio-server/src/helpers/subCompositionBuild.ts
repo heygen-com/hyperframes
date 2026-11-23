@@ -20,12 +20,34 @@ export interface FinishJob {
   signature: string;
   projectDir: string;
   compPath: string;
-  options: { capture: boolean; gsapBaseUrl: string; sandboxedCapture: boolean };
+  options: {
+    capture: boolean;
+    gsapBaseUrl: string;
+    gsapMirror?: string | null;
+    sandboxedCapture: boolean;
+  };
   variables?: Record<string, unknown>;
 }
 
-export type SubCompositionJob = BuildJob | FinishJob;
-type Result<J> = J extends BuildJob ? { html: string; references: string[] } | null : string;
+export interface BaseJob {
+  kind: "base";
+  html: string;
+  projectId: string;
+  runtimeUrl: string;
+}
+
+export interface PartsJob {
+  kind: "parts";
+  html: string;
+  ignore: string[];
+}
+
+export type SubCompositionJob = BuildJob | BaseJob | FinishJob | PartsJob;
+type Result<J> = J extends BuildJob
+  ? { html: string; references: string[] } | { refused: string } | null
+  : J extends BaseJob
+    ? { html: string; references: string[] }
+    : string;
 
 export class SubCompositionDeadlineError extends Error {
   constructor(compPath: string) {
@@ -35,6 +57,7 @@ export class SubCompositionDeadlineError extends Error {
 }
 
 export const SUB_COMPOSITION_DEADLINE_MS = 30_000;
+export const ROOT_PREVIEW_DEADLINE_MS = 120_000;
 
 interface Pending {
   job: SubCompositionJob;

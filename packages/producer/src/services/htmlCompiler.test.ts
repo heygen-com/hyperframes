@@ -1433,6 +1433,71 @@ describe("detectAncestorBackgroundImage", () => {
     expect(detectAncestorBackgroundImage(wrap("html, body { background: #0d1117; }"))).toBe(false);
   });
 
+  it("checks 5,000 background rules against a 50,000-element page in one pass", () => {
+    // Main matched each selector against the whole page: about 9 s for this one.
+    const css = Array.from(
+      { length: 5_000 },
+      (_, i) => `.c${i} div { background-image: url(x.png); }`,
+    ).join("\n");
+    const page = wrap(css, "", "<div></div>".repeat(50_000));
+    const started = performance.now();
+    expect(detectAncestorBackgroundImage(page)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("answers yes for a root nested deeper than any real page, without matching", () => {
+    const deep = `${"<div>".repeat(300)}<div data-composition-id="main"></div>${"</div>".repeat(300)}`;
+    const html = `<html><head><style>.x { background-image: url(x.png); }</style></head><body>${deep}</body></html>`;
+    expect(detectAncestorBackgroundImage(html)).toBe(true);
+  });
+
+  it("answers yes once background rules would take over 100,000 selector checks", () => {
+    // 3 ancestors (wrapper, body, html): 40,000 selectors is 120,000 checks.
+    const css = Array.from({ length: 40_000 }, (_, i) => `.c${i}`).join(",");
+    const html =
+      `<html><head><style>${css} { background-image: url(x.png); }</style></head>` +
+      '<body><div><div data-composition-id="main"></div></div></body></html>';
+    expect(detectAncestorBackgroundImage(html)).toBe(true);
+    const fewer = html.replace(css, Array.from({ length: 30_000 }, (_, i) => `.c${i}`).join(","));
+    expect(detectAncestorBackgroundImage(fewer)).toBe(false);
+  });
+
+  it("decides :has() rules without letting one match scan the page", () => {
+    // Main ran each :has() over the whole 50,000-element page per ancestor; stripped, it widens to a yes.
+    const css = Array.from(
+      { length: 1_000 },
+      (_, i) => `:has(.n${i}) { background-image: url(x.png); }`,
+    );
+    const page = wrap(css.join("\n"), "", "<i></i>".repeat(50_000));
+    const started = performance.now();
+    expect(detectAncestorBackgroundImage(page)).toBe(true);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("still reads combinators exactly and pseudo parts only widening", () => {
+    const page = (css: string) =>
+      `<html><head><style>${css} { background-image: url(x.png); }</style></head><body>` +
+      '<div class="page"><div class="mid"><div class="wrap">' +
+      '<div data-composition-id="main"><div class="tile card"></div></div></div></div></div></body></html>';
+    expect(detectAncestorBackgroundImage(page(".page .wrap"))).toBe(true);
+    expect(detectAncestorBackgroundImage(page(".mid > .wrap"))).toBe(true);
+    expect(detectAncestorBackgroundImage(page(".page > .wrap"))).toBe(false);
+    expect(detectAncestorBackgroundImage(page(".tile::before, .card:hover"))).toBe(false);
+    expect(detectAncestorBackgroundImage(page(":is(.a, .b) .tile"))).toBe(false);
+    expect(detectAncestorBackgroundImage(page(".other ~ .wrap"))).toBe(true);
+    expect(detectAncestorBackgroundImage(page('.page[data-x="a]b"] .wrap:not(.z)'))).toBe(false);
+    expect(detectAncestorBackgroundImage(page(".page:not(.z"))).toBe(true);
+  });
+
+  it("reads CSS escapes in a wrapper's selector, hex escapes with their closing space included", () => {
+    const page = (css: string, cls: string) =>
+      `<html><head><style>${css} { background-image: url(x.png); }</style></head><body>` +
+      `<div class="${cls}"><div data-composition-id="main"></div></div></body></html>`;
+    expect(detectAncestorBackgroundImage(page(".\\31 23", "123"))).toBe(true);
+    expect(detectAncestorBackgroundImage(page(".md\\:bg", "md:bg"))).toBe(true);
+    expect(detectAncestorBackgroundImage(page(".\\31 23 .x", "123"))).toBe(false);
+  });
+
   it("returns false without a composition root", () => {
     expect(
       detectAncestorBackgroundImage(
@@ -2649,6 +2714,51 @@ h1 { font-size: 2rem; }`;
       expect(remoteMediaAssets.size).toBe(1);
     } finally {
       _setDownloadFetchForTests();
+    }
+  });
+
+  // fails without the fix: the embed looked for _remote_media/ in the project, logged ENOENT and kept the file URL.
+  it("inlines a downloaded remote font as a data URI instead of warning it is missing", async () => {
+    const font = readFileSync(
+      join(
+        import.meta.dirname,
+        "../../../../docs/public/catalog/items/frost-sequence-camera-orbit/assets/fonts/Geist-Regular.ttf",
+      ),
+    );
+    stubDownloadFetch.fetch = async () => new Response(font, { status: 200 });
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-remote-font-embed-"));
+    const downloadDir = mkdtempSync(join(tmpdir(), "hf-remote-font-dl-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><head><style>
+  @font-face { font-family: "Remote"; src: url("https://fonts.example.com/remote.ttf"); }
+</style></head><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Text</div>
+</body></html>`,
+    );
+    const originalWarn = defaultLogger.warn;
+    const warnings: string[] = [];
+    defaultLogger.warn = (message) => {
+      warnings.push(message);
+    };
+    try {
+      const { html } = await compileForRender(
+        projectDir,
+        join(projectDir, "index.html"),
+        downloadDir,
+      );
+      const inlined = html.match(/data:font\/ttf;base64,([A-Za-z0-9+/=]+)/)?.[1] ?? "";
+      expect(Buffer.from(inlined, "base64").equals(font)).toBe(true);
+      expect(html).not.toContain('url("_remote_media/');
+      expect(warnings.filter((message) => message.includes("Could not embed local font"))).toEqual(
+        [],
+      );
+    } finally {
+      defaultLogger.warn = originalWarn;
+      _setDownloadFetchForTests();
+      rmSync(projectDir, { recursive: true, force: true });
+      rmSync(downloadDir, { recursive: true, force: true });
     }
   });
 

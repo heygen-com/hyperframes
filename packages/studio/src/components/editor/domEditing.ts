@@ -42,8 +42,8 @@ export {
   refreshDomEditSelection,
   resolveDomEditCapabilities,
   resolveDomEditSelection,
-  serializeDomEditTextFields,
 } from "./domEditingLayers";
+export { serializeDomEditTextFields } from "./domEditTextFieldMarkup";
 
 // Agent prompt
 export {

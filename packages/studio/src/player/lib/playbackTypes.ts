@@ -41,11 +41,13 @@ export interface TimelineLike {
 }
 
 export interface ClipManifestClip extends RuntimeTimelineClipIdentity {
+  text?: unknown;
   zIndex?: number;
   stackingContextId?: string | null;
   compositionAncestors?: string[];
   playbackStart?: number;
   playbackRate?: number;
+  transitionLabel?: string;
 }
 
 export interface ClipManifest {

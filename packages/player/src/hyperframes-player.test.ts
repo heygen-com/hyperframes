@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
+import { PLAYER_FRAME_NAME } from "@hyperframes/core/studio-preview-mark";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
 
 // Install a stubbed contentDocument getter on the given iframe element. The
@@ -1103,22 +1104,15 @@ describe("HyperframesPlayer seek() sync path", () => {
     stubIframeContentDocument(player.iframe, doc);
     stubContentWindow({ postMessage: post });
 
+    player.setAttribute("audio-src", "https://cdn.example.com/background.mp3");
+    const globalProxyPause = vi.spyOn(player._parentMedia[0]!.el, "pause");
     const slideProxyPause = vi.fn();
-    const globalProxyPause = vi.fn();
-    player._parentMedia.push(
-      {
-        el: { pause: slideProxyPause, src: "https://cdn.example.com/slide.mp4" },
-        start: 0,
-        duration: 5,
-        source: iframeVideo,
-      },
-      {
-        el: { pause: globalProxyPause, src: "https://cdn.example.com/background.mp3" },
-        start: 0,
-        duration: Infinity,
-        source: null,
-      },
-    );
+    player._parentMedia.push({
+      el: { pause: slideProxyPause, src: "https://cdn.example.com/slide.mp4" },
+      start: 0,
+      duration: 5,
+      source: iframeVideo,
+    });
 
     player.stopMedia();
 
@@ -3892,6 +3886,11 @@ describe("HyperframesPlayer retained runtime data", () => {
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
   });
 
+  it("names its frame, the one mark a composition in an opaque sandbox can still read", () => {
+    player.setAttribute("sandbox-origin", "opaque");
+    expect(player.iframeElement.name).toBe(PLAYER_FRAME_NAME);
+  });
+
   it("treats every non-null sandbox-origin value as restrictive", () => {
     player.setAttribute("sandbox-origin", "opaqu");
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(false);
@@ -4100,6 +4099,100 @@ describe("HyperframesPlayer asset-ready gate", () => {
 
     expect(readyAtHostLoad[1]).toBe(false);
     player.remove();
+  });
+
+  describe("a timeline between a navigation and the next document's load", () => {
+    const protocol = (capabilities: string[]) => ({
+      protocolVersion: 1,
+      fps: { numerator: 30, denominator: 1 },
+      capabilities,
+    });
+    async function navigatedUnreadable() {
+      const player = (await createConnectedPlayer()) as PlayerInternal & {
+        probe: { start(): void };
+        _abandonComposition(reason: string): void;
+        _getSameOriginIframeDocument(): Document | null;
+      };
+      const start = vi.spyOn(player.probe, "start");
+      const sent = vi.spyOn(player.iframe.contentWindow!, "postMessage");
+      vi.spyOn(player, "_getSameOriginIframeDocument").mockReturnValue(null);
+      player._abandonComposition("navigated");
+      return { player, start, sent };
+    }
+    const announced = (sent: { mock: { calls: unknown[][] } }) =>
+      sent.mock.calls.filter(
+        ([data]) => (data as { action?: string })?.action === "announce-timeline",
+      );
+
+    // fails without the fix: the old document's late timeline made the next sealed load skip its probe.
+    it("drops a late message the left document stamped, and takes the next document's before its load", async () => {
+      const { player, start } = await navigatedUnreadable();
+      const stamped = (documentId: string) => ({
+        type: "timeline",
+        durationInFrames: 60,
+        documentId,
+        ...protocol(["seconds-time", "announce-timeline"]),
+      });
+      post(player, stamped("old"));
+      player.iframe.dispatchEvent(new Event("load"));
+      post(player, stamped("old"));
+      expect(player._ready).toBe(true);
+      start.mockClear();
+
+      player._abandonComposition("navigated again");
+      post(player, stamped("old"));
+      expect(player._ready).toBe(false);
+      post(player, stamped("new"));
+      expect(player._ready).toBe(true);
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(start).not.toHaveBeenCalled();
+      player.remove();
+    });
+
+    it("asks a document that never stamped a message again, and only its answer makes it ready", async () => {
+      const { player, start, sent } = await navigatedUnreadable();
+      const capable = protocol(["seconds-time", "announce-timeline"]);
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+      expect(player._ready).toBe(false);
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(start).toHaveBeenCalledOnce();
+      expect(announced(sent)).toHaveLength(1);
+      expect(player._ready).toBe(false);
+
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+      expect(player._ready).toBe(true);
+      player.remove();
+    });
+
+    it("takes a runtime's timeline as today when the runtime cannot be asked again", async () => {
+      const { player, start, sent } = await navigatedUnreadable();
+      post(player, { type: "timeline", durationInFrames: 60, ...protocol(["seconds-time"]) });
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(player._ready).toBe(true);
+      expect(start).not.toHaveBeenCalled();
+      expect(announced(sent)).toHaveLength(0);
+      player.remove();
+    });
+
+    it("keeps a static-composition ready at load and still asks for the runtime's timeline", async () => {
+      const { player, sent } = await navigatedUnreadable();
+      const capable = protocol(["seconds-time", "announce-timeline"]);
+      post(player, { type: "static-composition", durationSeconds: 2, width: 640, height: 360 });
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(player._ready).toBe(true);
+      expect(announced(sent)).toHaveLength(1);
+
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+      expect((player as unknown as { _readyBeforeRuntime: boolean })._readyBeforeRuntime).toBe(
+        false,
+      );
+      player.remove();
+    });
   });
 
   it("paints a document before its load when nothing first-frame is pending", async () => {

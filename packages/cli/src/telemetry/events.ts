@@ -14,6 +14,7 @@ import {
   renderMotionBlurEventProperties,
 } from "./renderMotionBlur.js";
 import { CliRuntimeError } from "../utils/commandResult.js";
+import type { MissingPathFacts } from "@hyperframes/producer";
 
 // Power state is volatile (a laptop docks/undocks mid-session), so it is
 // sampled per render event rather than cached with SystemMeta. Attached to
@@ -127,6 +128,7 @@ export interface RenderObservabilityTelemetryPayload {
   observabilityExtractVfrPreflightCount?: number;
   observabilityExtractCacheHits?: number;
   observabilityExtractCacheMisses?: number;
+  observabilityExtractCachePublishFailures?: number;
   observabilityInitDurationMs?: number;
   observabilityInitTweenCount?: number;
   observabilityInitElementCount?: number;
@@ -207,6 +209,7 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
     observability_extract_vfr_preflight_count: props.observabilityExtractVfrPreflightCount,
     observability_extract_cache_hits: props.observabilityExtractCacheHits,
     observability_extract_cache_misses: props.observabilityExtractCacheMisses,
+    observability_extract_cache_publish_failures: props.observabilityExtractCachePublishFailures,
     observability_init_duration_ms: props.observabilityInitDurationMs,
     observability_init_tween_count: props.observabilityInitTweenCount,
     observability_init_element_count: props.observabilityInitElementCount,
@@ -702,6 +705,7 @@ export function trackRenderError(
     /** failedStage normalized to a stable snake_case code. */
     failedStageCode?: string;
     missingPathKind?: string;
+    missingPath?: MissingPathFacts;
     errorMessage?: string;
     elapsedMs?: number;
     peakMemoryMb?: number;
@@ -731,6 +735,9 @@ export function trackRenderError(
       error_name: props.errorName,
       failed_stage_code: props.failedStageCode,
       missing_path_kind: props.missingPathKind,
+      missing_path_scope: props.missingPath?.scope,
+      missing_path_synced: props.missingPath?.synced,
+      missing_path_root: props.missingPath?.root,
       error_message: props.errorMessage ? redactTelemetryMessage(props.errorMessage) : undefined,
       elapsed_ms: props.elapsedMs,
       ...renderOutputShapeEventProperties(props),
@@ -1145,22 +1152,13 @@ export function trackRenderFeedback(props: {
 }
 
 /**
- * A catalog search that found nothing worth installing.
- *
- * This is the only path that ever sends a query anywhere, and it is a separate
- * deliberate command rather than something `catalog --query` does on its own:
- * plain search stays entirely local, which is what the CLI promises. The query
- * is the point of the report — it names a move the catalog does not have yet,
- * so the gaps can be read directly rather than guessed from install counts.
+ * A catalog search that found nothing worth installing, sent only by a deliberate
+ * `feedback --search-miss`. It names the move the catalog lacks, in the agent's words;
+ * the searched words stay on the machine.
  */
-export function trackCatalogSearchMiss(props: {
-  query: string;
-  wanted?: string;
-  tier?: string;
-}): void {
+export function trackCatalogSearchMiss(props: { wanted: string; tier?: string }): void {
   trackEvent("cli_catalog_search_miss", {
-    query: props.query,
-    ...(props.wanted ? { wanted: props.wanted } : {}),
+    wanted: props.wanted,
     ...(props.tier ? { tier: props.tier } : {}),
   });
 }

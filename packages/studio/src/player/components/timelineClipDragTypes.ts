@@ -23,6 +23,7 @@ export interface DraggedClipState {
    * allowed) from a horizontal drag. Absent: the commit falls back to `previewTrack`.
    */
   desiredTrack?: number;
+  aimStart?: number;
   /**
    * When non-null, the drop inserts a NEW track at this visual row boundary
    * (0 = above the top lane, trackOrder.length = below the bottom) instead of

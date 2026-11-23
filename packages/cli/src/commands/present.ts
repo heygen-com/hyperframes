@@ -36,6 +36,7 @@ import {
 } from "../utils/compositionServer.js";
 import { isPrivateCompositionFile } from "../utils/privateProjectFile.js";
 import { escapeHtml } from "../utils/escapeHtml.js";
+import { refuseStrayRequestsInertly } from "../utils/strayRequestRefusal.js";
 
 export default defineCommand({
   meta: {
@@ -61,7 +62,7 @@ export default defineCommand({
     try {
       startPort = parsePort(args.port ?? "3004");
     } catch (error) {
-      clack.log.error(normalizeErrorMessage(error));
+      clack.log.error(terminalText(normalizeErrorMessage(error)));
       failUsage();
     }
     const project = resolveProject(args.dir);
@@ -85,7 +86,7 @@ export default defineCommand({
         args["remote-debugging-port"] as string | undefined,
       );
     } catch (err) {
-      clack.log.error((err as Error).message);
+      clack.log.error(terminalText((err as Error).message));
       failUsage();
     }
 
@@ -177,6 +178,7 @@ export async function buildPresentApp(
 ): Promise<Hono> {
   const { Hono } = await import("hono");
   const app = new Hono();
+  refuseStrayRequestsInertly(app);
   refuseUnknownHosts(app);
   refuseFramingByOtherSites(app);
 

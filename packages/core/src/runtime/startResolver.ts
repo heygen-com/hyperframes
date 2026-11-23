@@ -1,3 +1,4 @@
+import { sourceLengthOf } from "./sourceLength";
 import type { RuntimeTimelineLike } from "./types";
 import { readTimelineDurationSeconds } from "./timelineDuration";
 import { resolveAuthoredTimingWindow } from "./authoredTiming";
@@ -100,7 +101,7 @@ export function createRuntimeStartTimeResolver(params: {
       resolveAuthoredDuration(element) ??
       positive(
         isMediaElement(element)
-          ? resolveNaturalMediaTimelineDuration(element, element.duration)
+          ? resolveNaturalMediaTimelineDuration(element, sourceLengthOf(element))
           : null,
       ) ??
       positive(resolveTimedImageDurationSeconds(element)) ??

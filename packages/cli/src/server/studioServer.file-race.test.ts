@@ -246,9 +246,9 @@ describe("Studio bundle file reads", () => {
     expect(await response.text()).toContain("HyperFrames Studio unavailable");
   });
 
-  it("still injects runtime environment into the SPA fallback", async () => {
+  it("still injects runtime environment into the Studio shell", async () => {
     vi.stubEnv("VITE_STUDIO_STATIC_TEST", "runtime-value");
-    const response = await server.app.request("/editor");
+    const response = await server.app.request("/index.html");
     expect(response.status).toBe(200);
     const text = await response.text();
     expect(text).toContain("Studio");

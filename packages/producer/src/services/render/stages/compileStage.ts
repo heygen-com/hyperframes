@@ -43,9 +43,9 @@ import { privateCacheRoot, type ChromaSubsampling, type EngineConfig } from "@hy
 import { suggestMatchingPreset, type CanvasResolution } from "@hyperframes/core";
 import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
-import { assertCompositionFileSize } from "../../compositionSizeLimit.js";
+import { assertCompositionFileSize } from "@hyperframes/core/compiler";
 import type { CompiledComposition } from "../../htmlCompiler.js";
-import { compileForRender } from "../../htmlCompiler.js";
+import { compileForRenderInWorker } from "../../compileInWorker.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
   applyRenderModeHints,
@@ -253,19 +253,24 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
   const assetRoot = job.config.allowOutsideProjectAssets ? undefined : projectDir;
   const htmlPath = resolveEntryHtmlPath({ projectDir, workDir, entryFile, log, assetRoot });
   const compileStart = Date.now();
-  const compiled = await compileForRender(projectDir, htmlPath, join(workDir, "downloads"), {
-    log,
-    failClosedFontFetch: failClosedFontFetch === true,
-    allowSystemFontCapture,
-    abortSignal,
-    variables: input.variables,
-    urlByAbsentLocalPath: input.urlByAbsentLocalPath,
-    pageMotionBlur: input.pageMotionBlur,
-    animatedGifCacheDir: animatedGifCacheDir(cfg.extractCacheDir),
-    ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
-    allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
-    includeOutsideScripts: job.config.includeOutsideScripts,
-  });
+  const compiled = await compileForRenderInWorker(
+    projectDir,
+    htmlPath,
+    join(workDir, "downloads"),
+    {
+      log,
+      failClosedFontFetch: failClosedFontFetch === true,
+      allowSystemFontCapture,
+      abortSignal,
+      variables: input.variables,
+      urlByAbsentLocalPath: input.urlByAbsentLocalPath,
+      pageMotionBlur: input.pageMotionBlur,
+      animatedGifCacheDir: animatedGifCacheDir(cfg.extractCacheDir),
+      ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
+      allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+      includeOutsideScripts: job.config.includeOutsideScripts,
+    },
+  );
   assertNotAborted();
   const compileOnlyMs = Date.now() - compileStart;
   // Fold three signals into a single capture-mode decision: caller's

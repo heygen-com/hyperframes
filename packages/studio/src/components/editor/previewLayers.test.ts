@@ -145,7 +145,7 @@ describe("Layers rows on an opaque frame match same-origin ones", () => {
     expect(pair.element.hasAttribute("data-hf-group")).toBe(false);
     const host = remote.find((item) => item.id === "host")!;
     expect(layerDataAttribute(host, "data-composition-src")).toBe("compositions/a.html");
-    expect(isLayerDraggable(pair)).toBe(false);
+    expect(isLayerDraggable(pair)).toBe(true);
   });
 });
 
@@ -195,15 +195,17 @@ describe("a marquee on an opaque frame matches a same-origin one", () => {
     return { picked, pointer };
   }
 
+  // Past the cap the frame describes over 2,048 elements, 1 to 3 s in happy-dom: longer than waitFor's 1 s default.
+  const settled = { timeout: 15_000 };
   const ids = async (iframe: HTMLIFrameElement) => {
     const { picked, pointer } = band(iframe);
     pointer("pointerdown", 130, 70);
     pointer("pointermove", 500, 200);
     pointer("pointermove", 520, 220);
-    await vi.waitFor(() => expect(picked.candidates).toBeGreaterThan(0));
+    await vi.waitFor(() => expect(picked.candidates).toBeGreaterThan(0), settled);
     const candidates = picked.candidates;
     pointer("pointerup", 520, 220);
-    await vi.waitFor(() => expect(picked.selections).not.toBeNull());
+    await vi.waitFor(() => expect(picked.selections).not.toBeNull(), settled);
     return { candidates, ids: picked.selections!.map((s) => s.id ?? s.hfId), picked };
   };
 

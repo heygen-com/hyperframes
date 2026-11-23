@@ -110,6 +110,18 @@
       "types": "./dist/envProxy.d.ts",
       "environments": ["bun", "node"]
     },
+    "./missing-path": {
+      "source": "./src/missingPath.ts",
+      "runtime": "./dist/missingPath.js",
+      "types": "./dist/missingPath.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./terminal-text": {
+      "source": "./src/terminalText.ts",
+      "runtime": "./dist/terminalText.js",
+      "types": "./dist/terminalText.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./rename-retry": {
       "source": "./src/renameWithRetry.ts",
       "runtime": "./dist/renameWithRetry.js",
@@ -458,6 +470,36 @@
       "types": "./dist/runtime/editingPort.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/css-rotation": {
+      "source": "./src/runtime/editing/cssRotation.ts",
+      "runtime": "./dist/runtime/editing/cssRotation.js",
+      "types": "./dist/runtime/editing/cssRotation.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/patch-tween": {
+      "source": "./src/runtime/editing/patchTween.ts",
+      "runtime": "./dist/runtime/editing/patchTween.js",
+      "types": "./dist/runtime/editing/patchTween.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/soft-reload": {
+      "source": "./src/runtime/editing/softReload.ts",
+      "runtime": "./dist/runtime/editing/softReload.js",
+      "types": "./dist/runtime/editing/softReload.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/scenes": {
+      "source": "./src/runtime/editing/scenes.ts",
+      "runtime": "./dist/runtime/editing/scenes.js",
+      "types": "./dist/runtime/editing/scenes.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/live-retime": {
+      "source": "./src/runtime/editing/liveRetime.ts",
+      "runtime": "./dist/runtime/editing/liveRetime.js",
+      "types": "./dist/runtime/editing/liveRetime.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/clip-window": {
       "source": "./src/runtime/clipWindow.ts",
       "runtime": "./dist/runtime/clipWindow.js",
@@ -500,10 +542,22 @@
       "types": "./dist/runtime/levelTap.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./compiler/composition-size-limit": {
+      "source": "./src/compiler/compositionSizeLimit.ts",
+      "runtime": "./dist/compiler/compositionSizeLimit.js",
+      "types": "./dist/compiler/compositionSizeLimit.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./compiler/html-document": {
       "source": "./src/compiler/htmlDocument.ts",
       "runtime": "./dist/compiler/htmlDocument.js",
       "types": "./dist/compiler/htmlDocument.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./compiler/selector-id-tokens": {
+      "source": "./src/compiler/selectorIdTokens.ts",
+      "runtime": "./dist/compiler/selectorIdTokens.js",
+      "types": "./dist/compiler/selectorIdTokens.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./compiler/png-colour-tags": {

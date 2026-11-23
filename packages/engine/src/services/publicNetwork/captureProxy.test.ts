@@ -1,8 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer, request } from "node:http";
-import { connect } from "node:net";
+import {
+  connect,
+  createServer as createTcpServer,
+  type Server as TcpServer,
+  type Socket,
+} from "node:net";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { logRefusal, onRenderRefusal, startCaptureProxy } from "./captureProxy.js";
+import {
+  BROWSER_PROXY_MAX_CONNECTIONS,
+  logRefusal,
+  onRenderRefusal,
+  POD_PROXY_MAX_CONNECTIONS,
+  startCaptureProxy,
+  type CaptureFailure,
+} from "./captureProxy.js";
+import { ABSOLUTE_MAX_WORKERS } from "../../utils/workerLimits.js";
 import { NonPublicHostError } from "./publicNetwork.js";
 
 const { resolveAddress } = vi.hoisted(() => ({ resolveAddress: vi.fn() }));
@@ -99,6 +112,55 @@ describe("capture proxy", () => {
     expect(refused).toEqual([]);
   });
 
+  // fails without the fix: a name that would not resolve answered 403 and reported nothing, refused or failed.
+  it("reports a name that would not resolve as a failed request, plain and tunneled", async () => {
+    const failures: CaptureFailure[] = [];
+    const refused: string[] = [];
+    const proxy = await startCaptureProxy(null, (c) => refused.push(c), undefined, {
+      onFailed: (failure) => failures.push(failure),
+    });
+    proxies.push(proxy);
+    const plain = (path: string) =>
+      new Promise<number>((resolve, reject) => {
+        const req = request(proxy.url, { path }, (res) => {
+          res.resume();
+          res.on("end", () => resolve(res.statusCode!));
+        });
+        req.on("error", reject);
+        req.end();
+      });
+    const tunnel = (authority: string) =>
+      new Promise<string>((resolve) => {
+        const socket = connect(Number(new URL(proxy.url).port), "127.0.0.1");
+        socket.write(`CONNECT ${authority} HTTP/1.1\r\nHost: ${authority}\r\n\r\n`);
+        socket.once("data", (data) => {
+          resolve(String(data).split("\r\n")[0]!);
+          socket.destroy();
+        });
+      });
+    resolveAddress.mockRejectedValue(new Error("DNS timed out"));
+    expect(await plain("http://slow.example.com/")).toBe(403);
+    expect(await tunnel("slow.example.com:443")).toBe("HTTP/1.1 403 Forbidden");
+    expect(failures.map((failure) => failure.reason)).toEqual([
+      "upstream_failed",
+      "upstream_failed",
+    ]);
+    resolveAddress.mockRejectedValue(new NonPublicHostError("refused", "private"));
+    expect(await plain("http://inside.example.com/")).toBe(403);
+    expect(failures).toHaveLength(2);
+    expect(refused).toEqual(["private"]);
+  });
+
+  it("listens on the fixed loopback port it is given", async () => {
+    const free = createServer();
+    await new Promise<void>((resolve) => free.listen(0, "127.0.0.1", resolve));
+    const port = (free.address() as { port: number }).port;
+    await new Promise<void>((resolve) => free.close(() => resolve()));
+    const proxy = await startCaptureProxy(null, undefined, port);
+    proxies.push(proxy);
+    expect(proxy.url).toBe(`http://127.0.0.1:${port}`);
+  });
+
   it("refuses URL credentials and non-http requests", async () => {
     expect(await proxyGet("http://user:secret@example.com/")).toBe(403);
     expect(await proxyGet("file:///etc/passwd")).toBe(403);
@@ -143,6 +205,84 @@ describe("capture proxy", () => {
       target.closeAllConnections();
       await new Promise<void>((resolve) => target.close(() => resolve()));
     }
+  });
+
+  describe("connection cap", () => {
+    const sockets: Socket[] = [];
+    const targets: TcpServer[] = [];
+    afterEach(async () => {
+      for (const socket of sockets.splice(0)) socket.destroy();
+      await Promise.all(targets.splice(0).map((t) => new Promise((resolve) => t.close(resolve))));
+    });
+
+    async function tcpTarget(): Promise<number> {
+      const target = createTcpServer((socket) => socket.on("error", () => {}));
+      targets.push(target);
+      await new Promise<void>((resolve) => target.listen(0, "127.0.0.1", resolve));
+      return (target.address() as { port: number }).port;
+    }
+
+    /** The first status line the proxy answers a held-open CONNECT with, or "closed" when it drops the socket. */
+    function openTunnel(proxyUrl: string, port: number): Promise<string> {
+      return new Promise((resolve) => {
+        const socket = connect(Number(new URL(proxyUrl).port), "127.0.0.1", () =>
+          socket.write(
+            `CONNECT tunnel.example.com:${port} HTTP/1.1\r\nHost: tunnel.example.com\r\n\r\n`,
+          ),
+        );
+        sockets.push(socket);
+        socket.on("error", () => {});
+        socket.once("data", (data) => resolve(String(data).split("\r\n")[0]!));
+        socket.once("close", () => resolve("closed"));
+      });
+    }
+
+    it("holds more tunnels open at once than a browser's cap when given a pod's cap", async () => {
+      resolveAddress.mockResolvedValue("127.0.0.1");
+      const port = await tcpTarget();
+      const proxy = await startCaptureProxy(null, undefined, undefined, { maxConnections: 200 });
+      proxies.push(proxy);
+      const answers = await Promise.all(
+        Array.from({ length: 150 }, () => openTunnel(proxy.url, port)),
+      );
+      expect(answers.filter((a) => a === "HTTP/1.1 200 Connection Established")).toHaveLength(150);
+    });
+
+    it("reports a connection dropped at the cap, with the count of open connections", async () => {
+      resolveAddress.mockResolvedValue("127.0.0.1");
+      const port = await tcpTarget();
+      const failures: CaptureFailure[] = [];
+      const proxy = await startCaptureProxy(null, undefined, undefined, {
+        onFailed: (failure) => failures.push(failure),
+      });
+      proxies.push(proxy);
+      const answers = await Promise.all(
+        Array.from({ length: BROWSER_PROXY_MAX_CONNECTIONS + 1 }, () =>
+          openTunnel(proxy.url, port),
+        ),
+      );
+      expect(answers.filter((a) => a === "closed")).toHaveLength(1);
+      expect(failures).toEqual([{ reason: "connection_cap", open: BROWSER_PROXY_MAX_CONNECTIONS }]);
+    });
+
+    it("reports a tunnel whose upstream never connects", async () => {
+      resolveAddress.mockResolvedValue("127.0.0.1");
+      const closedPort = await tcpTarget();
+      await new Promise((resolve) => targets.pop()!.close(resolve));
+      const failures: CaptureFailure[] = [];
+      const proxy = await startCaptureProxy(null, undefined, undefined, {
+        onFailed: (failure) => failures.push(failure),
+      });
+      proxies.push(proxy);
+      expect(await openTunnel(proxy.url, closedPort)).toBe("closed");
+      expect(failures).toEqual([{ reason: "upstream_failed", open: 1 }]);
+    });
+
+    it("sizes a pod's cap for every browser the engine can run at once, plus the pod's own traffic", () => {
+      expect(POD_PROXY_MAX_CONNECTIONS).toBe(
+        (ABSOLUTE_MAX_WORKERS + 1) * BROWSER_PROXY_MAX_CONNECTIONS,
+      );
+    });
   });
 
   it("closes idle CONNECT clients during teardown", async () => {
