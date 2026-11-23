@@ -24,26 +24,33 @@ the source video while it encodes.
 ```
 capture_hdr_layered stage (renderOrchestrator)
   └─ flag on and HDR content: attemptHdrPassthrough            index.ts
-       ├─ overlay page: scripts recorded as V8 compiles them    scriptOrigins.ts
-       │    from before it navigates; call counts from load      pageCodeWatch.ts
+       ├─ overlay page, watched from the moment it opens:
+       │    scripts by exact text as V8 compiles them           scriptOrigins.ts
+       │    registrations while it loads (debugger pauses),     registrationWatch.ts
+       │    builtins captured before any page script            mainWorld.ts
+       │    images and stylesheets it loads                     ownClock.ts
+       │    call counts from load                               pageCodeWatch.ts
        ├─ checkPassthroughEligibility                           eligibility.ts
        │    render / video gates, ffmpeg blend self-test         ffmpegBlendCheck.ts
+       │    DevTools-only page gates, before any seek or         overlayPageGates.ts
+       │    in-page probe: registrations, untrusted compiles,
+       │    replaced builtins, what a seek runs that the page    seekReachable.ts
+       │    provided (listeners, GSAP callbacks and targets)
        │    in-page layout gates, animation gates,
        │    analyzeOverlayTiming → frames where the overlay can change,
        │    hf-seek listeners on window (DevTools listener lookup),
-       │    content the fingerprint cannot read or that paints on its
-       │    own clock (DevTools DOM snapshot, shadow-piercing walk),
-       │    page callbacks that run on seeks (virtual-time shim record,
-       │    GSAP's global timeline, read before the first seek too),
-       │    callbacks that run no page script                      nativeCallbacks.ts
+       │    content gates: DOM snapshot (unreadable content,     overlayPageGates.ts
+       │    other videos, element allowlist), CSS allowlist,      ownClock.ts
+       │    images by their bytes; the DevTools-only gates again
        ├─ planOverlayStates → candidate states                  planner.ts
        ├─ captureOverlayStates → one PNG per distinct overlay   overlayCapture.ts
-       │    probe each candidate (seek + overlayFingerprint.ts),
-       │    screenshot only unseen fingerprints, merge identical neighbours,
+       │    probe each candidate (seek + fingerprint in an       overlayFingerprint.ts
+       │    isolated world, hashed in Node), screenshot only     isolatedWorld.ts
+       │    unseen fingerprints, merge identical neighbours,
        │    re-probe every frame of each merged state,
        │    hold the video's own layer still on every probe,
-       │    then decline if any page function ran since load      pageCodeWatch.ts
-       │    and run the callback, snapshot and image gates again
+       │    then run the page and content gates again and
+       │    decline if any page function ran since load          pageCodeWatch.ts
        └─ compositeAndEncode → videoOnlyPath                    ffmpegComposite.ts
      completed → assemble muxes audio as usual
      fallback  → (extract deferred video frames) → runCaptureHdrStage
@@ -86,43 +93,54 @@ The passthrough runs only when it can reproduce the layered output:
   loop, playback-rate change or late start;
 - an ffmpeg whose `maskedmerge` rounds exactly like the layered blend (see
   "ffmpeg" below; `ffmpeg_unsupported` otherwise);
-- no page code that runs on seeks and keeps state across them: an
-  animation-frame callback, a film-time timer, a GSAP ticker listener of the
-  page's own, or anything playing on GSAP's global timeline outside the
-  registered timelines, such as a `gsap.delayedCall` (`seek_callback`; see
-  "History-dependent drivers" below);
-- no callback that runs no page script, where V8's call counts cannot see
-  it: a builtin, bound function, callable Proxy or WebAssembly export as an
-  event listener or `on*` handler anywhere, an observer callback, a tween
-  target's accessor or Proxy trap, a tween value, a setter on a runtime
-  global, and no custom element definition at all (`seek_callback`; see
-  "Callbacks that run no page script" below);
+- nothing the page registered while it loaded that runs on seeks or on a
+  clock of its own: no animation-frame callback, no timer whose callback is
+  a string or a builtin, no observer, no custom element definition, no
+  worker, offscreen canvas, worklet, view transition or `window.open`
+  (`seek_callback`; see "Registrations" below);
+- no script compiled in the page's main world with nothing on the stack and
+  no embedding document whose text the renderer did not send (a
+  `javascript:` URL, a string timer), and no script in another realm
+  (`seek_callback`; see "Page code on seeks");
+- no builtin the page replaced with anything but script: a builtin, bound
+  function, callable Proxy or WebAssembly export in place of a builtin, a
+  getter, or a prototype (`seek_callback`; see "Probes the page cannot
+  reach");
+- no page code that runs on seeks: GSAP's ticker has no listener but GSAP's
+  and the renderer's, nothing plays on GSAP's global timeline outside the
+  registered timelines and nothing paused there holds a callback (a
+  `gsap.delayedCall`), and any page function that runs after load declines
+  (`seek_callback`; see "History-dependent drivers" and "Page code on
+  seeks");
+- no callback that runs no page script where a seek reaches it: a builtin,
+  bound function, callable Proxy or WebAssembly export as an event listener
+  or `on*` handler anywhere, a tween target's accessor or Proxy trap, a
+  tween value or callback, a setter on a runtime global (`seek_callback`;
+  see "Callbacks that run no page script");
+- GSAP tweens that write only elements: a tween that writes anything to a
+  plain object, a text node, a stylesheet rule or any other non-element
+  declines (`seek_callback`); a tween whose vars hold only settings (the
+  runtime's filler tweens of `{}`) writes nothing and passes;
 - no overlay content the capture fingerprint cannot read: a closed shadow
   root, or an `<iframe>`, `<object>`, `<embed>` or frame anywhere, shadow
   trees included (`overlay_unreadable`; see "Capture dedup" below);
+- overlay content from the accepted set only (`ownClock.ts`; see "Content
+  allowlists" below): static HTML and SVG elements, the one source video,
+  `<audio>`, and the `::before`, `::after` and `::marker` pseudo-elements;
+  CSS whose pseudo-elements are static ones and that has no `paint()`; and
+  images whose bytes are a single-frame GIF, PNG, WebP, AVIF/HEIF, JPEG, BMP
+  or ICO, or an SVG with no animation, script or embedded content. Anything
+  else declines (`overlay_unsupported`, or `overlay_non_gsap_animation` for
+  an animated image), as do a `<video>` besides the source (`video_count`),
+  an `<audio controls>`, a `<marquee>` and an indeterminate `<progress>`,
+  all read from the DOM snapshot, which pierces every shadow tree;
 - overlays that change only at frames the planner can see: clip windows and
-  GSAP tweens or `set()` calls. Anything animating on its own clock declines
-  (CSS / Web Animations, canvas, iframes, frame sources, timeline callbacks,
-  Lottie and other adapters, three.js / WebGPU, SVG SMIL, animated GIF / WebP /
-  APNG / AVIF, `hf-seek` listeners on `window`; CSS animations and SMIL inside
-  open shadow roots too, which `document.getAnimations()` does not list), as does a run of per-frame
-  changes longer than a short transition, or more states than the analysis
-  limit. Animated images count wherever they paint: an `<img>`,
-  `<input type=image>`, SVG `<image>` / `<feImage>` / external `<use>`, or a
-  CSS background, `content`, list-style, border or mask image of an element
-  or of its `::before`, `::after`, `::marker` or other pseudo-elements, in the
-  document and in every open shadow root; a CSS Paint worklet (`paint()`)
-  runs page code of its own on every paint and declines too. So do content
-  that animates inside a user-agent shadow tree (`<marquee>`, a `<progress>`
-  with no value), an `<audio controls>` (the runtime sets every audio
-  element's `currentTime` on a seek, and the controls paint it), and any
-  `<video>` besides the source, in a shadow root or added by script
-  (`video_count`), all read from the DOM snapshot, which pierces every shadow
-  tree. A seek-driven writer none of these name (a setter on a runtime
-  global, a wrapped runtime function, an accessor GSAP writes through) is
-  page code that runs on capture's seeks, which declines the passthrough
-  after capture (`seek_callback`) if the verification probes have not
-  already declined it (`overlay_unverified`);
+  GSAP tweens or `set()` calls. Anything else animating on its own clock
+  declines (CSS / Web Animations, including inside open shadow roots, which
+  `document.getAnimations()` does not list; Lottie and other adapters;
+  three.js / WebGPU; `hf-seek` listeners on `window`; timeline callbacks),
+  as does a run of per-frame changes longer than a short transition, or
+  more states than the analysis limit;
 - a video that holds still on every frame: the gates above sample its layout
   at nine times, and capture checks its layer on every frame it probes
   (`video_animated`; see "Capture dedup" below).
@@ -195,117 +213,154 @@ capture starts; a film-time interval that appends a mark has already fired
 up to the furthest frame eligibility seeked, and a backward seek un-fires
 nothing.
 
-With the passthrough on, and only then, the virtual-time shim
-(`fileServer.ts`, `virtualTimeShimFor`) carries a callback record that
-notes, from page load, every distinct animation-frame callback, counts every
-film-time timer whose caller is page code, and counts every string timer.
-The renderer's callers are told apart by the script their stack frame names:
-`hyperframes://injected/<n>` (the file server's), the compiler's
-`hyperframes://position-seek-reapply` and DevTools `pptr:` evaluations. A
-page can name a script that way, so the page code watch declines any page
-script that takes one of these names (`RENDERER_SCRIPT_NAMES`), and the name
-in a stack is the renderer's. Eligibility declines with `seek_callback` when
-the page has registered any callback, set any string timer, or added a
-listener to GSAP's ticker. GSAP's own ticker
-also runs from an animation frame; it is told apart by sleeping and waking
-it (which cancels and re-requests its frame). It renders GSAP's global
-timeline on its own clock, the seeks it has seen so far, lag-smoothed: the
-registered timelines and the roots they hang from are seeked to film time by
-the runtime, but anything else that plays there (a `gsap.delayedCall`, a
-tween of a plain object, an unregistered timeline, element target or not)
-fires on that clock, which capture's out-of-order seeks do not share with
-the layered path. Eligibility declines (`seek_callback`) any playing child
-of the global timeline off a registered timeline's chain, and any paused one
-holding a callback. GSAP drops a fired `delayedCall` from the global
-timeline, so this is read before eligibility's first seek as well as after
-the analysis. The record and the global timeline are read again after
-capture, for a callback first registered on a frame only capture visited.
+Such drivers are found from outside the page ("Registrations" below), and
+any page function that runs after the overlay page loads declines ("Page
+code on seeks"). GSAP's own ticker also runs from an animation frame and
+renders GSAP's global timeline on its own clock, the seeks it has seen so
+far, lag-smoothed: the registered timelines and the roots they hang from
+are seeked to film time by the runtime, but anything else that plays there
+(a `gsap.delayedCall`, a tween of a plain object, an unregistered timeline,
+element target or not) fires on that clock, which capture's out-of-order
+seeks do not share with the layered path. So the passthrough declines
+(`seek_callback`) any playing child of the global timeline off a registered
+timeline's chain, any paused one holding a callback, and any ticker
+listener that is not GSAP's or the renderer's. GSAP drops a fired
+`delayedCall` from the global timeline, so this is read before
+eligibility's first seek as well as after the analysis and after capture.
 
-The record also counts observers (`MutationObserver`, `ResizeObserver`,
-`IntersectionObserver`, `PerformanceObserver`, `ReportingObserver`) whose
-callback runs no page script, and every custom element definition; see
-"Callbacks that run no page script" below.
+## Nothing in the page
 
-What the record cannot see, a setter on a runtime seek-time global or a
-wrapped runtime function that keeps state of its own, runs after load, which
-the page-code watch below declines.
+The passthrough installs nothing in any page it does not open itself. Every
+render, flag on or off, SDR or HDR, passthrough taken or not, serves the
+virtual-time shim exactly as it is without the feature (`VIRTUAL_TIME_SHIM`
+in `fileServer.ts`); the layered path, including after a fallback, renders a
+page the passthrough never touched. The passthrough's own overlay page,
+opened only once the render, video and ffmpeg gates have passed (so only
+for an HDR render that will attempt it), gets no script, wrapper or global
+either: everything below is read through DevTools, from a second session,
+and from an isolated world. What the page can observe is timing: the
+debugger pauses while the page loads ("Registrations"), and
+`Runtime.queryObjects` collects garbage, which a page that watches its own
+collection (`FinalizationRegistry`, `WeakRef`) can notice.
 
-The record must not change any render. With the flag off it is not in the
-page at all: those renders are served `VIRTUAL_TIME_SHIM`, the shim exactly
-as it is without the feature (`fileServer-callbackRecord.test.ts` compares
-it with `origin/main`'s text when the checkout has it). The record is
-spliced into that text at four anchors rather than written into it, and a
-shim whose anchors moved gets no record, so the passthrough declines.
+## Registrations
 
-With the flag on, a render that falls back must still match the flag-off
-render, so the record calls nothing the page can replace or observe. Every
-intrinsic it uses is captured when the shim runs, before any page script,
-and called through saved references (`Function.prototype.call.bind`); its
-property descriptors have no prototype (`defineProperty` reads `get` and
-`set` through one); it parses stacks with string searches, not regular
-expressions (which update `RegExp.$1`). It reads its caller from a stack
-taken from the realm's own `Error` with the page's `Error.prepareStackTrace`
-and `Error.stackTraceLimit` set aside as own data properties and put back as
-they were, so a hook the page installs never runs for it. A hook that cannot
-be set aside (non-configurable), or a stack it cannot read, makes the caller
-page code. A page that replaces every builtin a shim could reach for sees
-the same calls with the record as without it (the unit test counts them).
-The observer constructors and `CustomElementRegistry.prototype.define` are
-replaced by Proxies of themselves, which forward everything they do not
-record and keep `name`, `prototype`, `prototype.constructor` and the
-property attributes; what tells them apart is listed under "Limitations".
+What a page registers to run on seeks or on its own clock cannot be read
+back once registered: nothing reads an observer's callback, the registry's
+lifecycle callbacks or a timer's, and wrapping the constructors in the page
+changes what the page sees (`String(MutationObserver)`, an error's stack).
+`registrationWatch.ts` watches the registrations as they happen, from
+outside, with the debugger:
+
+- every script's first statement pauses until the page's own scripts start.
+  At the first one in a document, before any page script has run, the main
+  world's builtins are captured (`CAPTURE_SOURCE` in `mainWorld.ts`) and a
+  function-call breakpoint goes on each registration builtin, the captured
+  originals: the observer constructors, `CustomElementRegistry#define`,
+  `Worker`, `SharedWorker`, service worker registration,
+  `Worklet#addModule`, `transferControlToOffscreen`, `OffscreenCanvas`,
+  `startViewTransition` and `window.open`. Aliases, `Reflect.construct` and
+  bound copies all reach the same function;
+- at the first statement of the first script that is not the renderer's
+  (the shim has run by then), breakpoints go on the shim's
+  `requestAnimationFrame`, `setTimeout` and `setInterval` too. Every
+  breakpoint goes when the page reports ready: after that a registration
+  needs page code to run, which the page code watch counts, or a builtin to
+  run from a route the other gates already decline (a listener, a timer or
+  an observer registered while the page loaded);
+- each pause names its caller from the paused stack, whose script is the
+  renderer's only by its exact text (`scriptOrigins.ts`). A registration from
+  anything else declines, as does one with no script on the stack (a
+  builtin calling it). A page timer passes when its callback is page script
+  (it runs on the wall clock while the page loads, and the page code watch
+  counts it if it runs later); a string or builtin callback declines.
+
+The pause reads the stack from the debugger: no `Error` is made, so the
+page's `Error.prototype.name` and `message` getters and
+`Error.prepareStackTrace` never run. A page `debugger` statement pauses too
+and is resumed at once. A second document in the page (a navigation the page
+makes) declines.
 
 ## Page code on seeks
 
-The fingerprint reads what page script can read back, and paints only
-through the DOM, the CSSOM and the paint state it lists ("Capture dedup").
-Page code that runs on a seek can change what paints where it does not
-read, and can keep state across seeks, through a setter on
-`__hfTypegpuTime`, a replaced `__hf.seek`, an accessor on a GSAP tween
-target, a custom element reacting to an attribute GSAP writes or a
-MutationObserver. Every probe then fingerprints equal while the pixels
-differ, and no screenshot is taken.
+The fingerprint reads what paints through the DOM, the CSSOM and the paint
+state it lists ("Capture dedup"). Page code that runs on a seek can change
+what paints where it does not read, and can keep state across seeks,
+through a setter on `__hfTypegpuTime`, a replaced `__hf.seek`, an accessor
+on a GSAP tween target, a custom element reacting to an attribute GSAP
+writes. Every probe then fingerprints equal while the pixels differ, and no
+screenshot is taken.
 
 So fingerprints stand in for pixels only while no page code runs after the
 overlay page loads. `pageCodeWatch.ts` turns on V8's precise call counts
 (`Profiler.startPreciseCoverage` with `callCount`, which resets the counts)
 once the overlay page is ready, before eligibility's first probe, and reads
-them after capture. Eligibility's probes are inside the window too: a page
-function they reach (a builtin the page replaced, a getter) runs on the
-overlay page and not on the layered path's. Any function that ran in a
-script that is neither the renderer's nor GSAP's declines the passthrough
-with `seek_callback`, naming the first one.
+them after capture. Any function that ran in a script that is neither the
+renderer's nor GSAP's declines the passthrough with `seek_callback`, naming
+the first one.
 
-Whose a script is never comes from its URL, which the page chooses
-(`//# sourceURL=`) or leaves empty (eval, `new Function`, inserted inline
-scripts). `scriptOrigins.ts` records every script on the overlay page as V8
-compiles it (`Debugger.scriptParsed`, enabled before the page navigates) and
-counts a script as the renderer's only when how it was made says so:
+Whose a script is never comes from its URL or from how it was compiled:
+`//# sourceURL=` names a script anything, and a `javascript:` URL or a
+string timer compiles with nothing on the stack and no embedding document,
+exactly as a DevTools evaluation does. `scriptOrigins.ts` records every
+script on the overlay page as V8 compiles it (`Debugger.scriptParsed`,
+enabled as the page opens), and a script is the renderer's only by
+identity:
 
-- its text is, byte for byte, one the renderer put in the page: the file
-  server's injected scripts (`injectedScriptTexts`, read back from what the
-  injection helpers write) and the compiler's seek reapply
-  (`POSITION_SEEK_REAPPLY_SCRIPT`), by SHA-256;
-- it was compiled in an isolated world (the DevTools utility world);
-- it was compiled in the main frame with no script on the stack and no
-  embedding document, either before anything else in its document (the
-  renderer's `evaluateOnNewDocument` scripts) or under a `pptr:` URL
-  (DevTools evaluations; the planner's own listener lookup is named so).
+- its text is, byte for byte (SHA-256), one the renderer put in the page:
+  the file server's injected scripts (`injectedScriptTexts`), the compiler's
+  seek reapply (`POSITION_SEEK_REAPPLY_SCRIPT`), and every script the
+  renderer sends the page over DevTools (`addScriptToEvaluateOnNewDocument`,
+  `Runtime.evaluate`, `Runtime.callFunctionOn`, `evaluateOnCallFrame`),
+  recorded as each is sent on every session the page has, from before the
+  engine sets the page up (the capture session's `onPageOpened` hook);
+- or it was compiled in an isolated world, which page script cannot reach.
 
-eval, `new Function` and inserted scripts are compiled with the page's code
-on the stack; parser-inserted and external scripts have an embedding
-document; so a page script reaches the third rule only through a string
-timer, which the shim's record declines, or a `javascript:` URL (see
-"Limitations"). GSAP is a published build (`gsapBuilds.ts`: the core bundle,
-`CustomEase` and `EasePack`, 3.10.0 and later, minified or not), by SHA-256
-of the script as served or as the compiler inlines it; a file only named
-like one is the page's. A script never seen being compiled is the page's,
-and a page script that takes one of the renderer's names declines even if it
-never runs. The runtime and GSAP write only what the fingerprint reads: DOM
-attributes and styles, and the values of GSAP's tween targets, which the
-fingerprint reads back.
+A main-world script compiled with nothing on the stack and no embedding
+document whose text is not one of those declines at once, run again or
+not, as does any script compiled in another frame's main world (another
+realm, whose builtins none of the checks reach). GSAP is a published build
+(`gsapBuilds.ts`: the core bundle, `CustomEase` and `EasePack`, 3.10.0 and
+later, minified or not), by SHA-256 of the script as served or as the
+compiler inlines it; a file only named like one is the page's. A script
+never seen being compiled is the page's. The runtime and GSAP write only
+what the fingerprint reads: DOM attributes and styles, and the native
+properties of the elements GSAP's tweens target, which the fingerprint
+reads back.
 
 A record that cannot be started or read declines too.
+
+## Probes the page cannot reach
+
+The passthrough's own probes must not run anything the page can replace:
+a page that replaced `SubtleCrypto#digest`, `TextEncoder#encode` or
+`JSON.stringify` with a builtin returning a constant made an in-page
+fingerprint hash the same on every frame. So:
+
+- the fingerprint and the other DOM probes (the video's corner radius, the
+  stylesheet scan) run in a DevTools isolated world (`isolatedWorld.ts`),
+  which shares the DOM, CSSOM and paint state but has builtins of its own,
+  and return plain data; the fingerprint is hashed in Node;
+- what lives only in the main world (the timelines, their tweens' vars and
+  targets, the runtime's globals, GSAP's ticker) is read with
+  `Runtime.getProperties`, which never calls a getter or a Proxy trap
+  (`seekReachable.ts`), from references the capture took before any page
+  script ran. Object identity comes from the capture's `identify`, which
+  runs on the captured `Map`. The runtime's own `window.gsap` getter (the
+  early stub's) is renderer code and is called; any other accessor there
+  declines;
+- before any of the probes that still run in the main world (the engine's
+  layout probe and static-frame analysis, the planner's timeline walk, the
+  video animation gate), every builtin is compared with the capture
+  (`findChangedIntrinsics`): every own property of the global object and of
+  every global constructor and its prototype, `Math`, `JSON`, `Reflect`,
+  `Intl`, `CSS`, `console` and the iterator prototypes. A slot whose value,
+  getter or setter is now anything but script, or a prototype that changed,
+  declines; a page-script replacement passes (the page code watch counts it
+  if a probe calls it), as does a renderer one (the shim's timers) and one
+  of the same object's own builtins under another name (the runtime keeps
+  `Element.prototype.animate` as `__hfOriginalAnimate`). So those probes call
+  the browser's builtins or page script.
 
 ## Callbacks that run no page script
 
@@ -319,31 +374,26 @@ and capture has it, frames before 1.5 s included, with no page function
 counted and every fingerprint equal. The layered path opens it at frame 45.
 Each such callback declines with `seek_callback`, read where it lives:
 
-- event listeners and `on*` handlers, through the DevTools protocol
-  (`nativeCallbacks.ts`), which reads them without calling anything: every
-  node of the composed tree (`DOMDebugger.getEventListeners` on the
-  document, piercing shadow trees and frames) and every other event target
-  the page holds (`Runtime.queryObjects` on `EventTarget.prototype`: window,
-  workers, message ports, font sets, media query lists, animations). A
-  handler counts when it has no source location, prints as native code
-  (a WebAssembly export), is bound to one or is a Proxy with such a trap;
-- what the renderer and GSAP call on the page's objects on a seek: the
-  registered timelines and `window.__timelines`, the page's accessors on
-  `window.__hf*` globals (the runtime assigns `__hfTypegpuTime` and
-  `__hfThreeTime` on every seek), function values in tween vars (GSAP calls
-  a function-based value on the tween's first render), the tween targets
-  (a Proxy among them, or on their prototype chains, with a trap that is
-  not page script) and their accessors for the keys the tweens write. A
+- event listeners and `on*` handlers, through the DevTools protocol, which
+  reads them without calling anything: every node of the composed tree
+  (`DOMDebugger.getEventListeners` on the document, piercing shadow trees and
+  frames) and every other event target the page holds (`Runtime.queryObjects`
+  on the captured `EventTarget.prototype`: window, workers, message ports,
+  font sets, media query lists, animations). A handler counts when it has no
+  source location, prints as native code (a WebAssembly export), is bound to
+  one or is a Proxy with such a trap;
+- what the renderer and GSAP call on the page's objects on a seek
+  (`seekReachable.ts`): the registered timelines and `window.__timelines`,
+  the page's accessors on `window.__hf*` globals (the runtime assigns
+  `__hfTypegpuTime` and `__hfThreeTime` on every seek), every function value
+  and accessor in tween vars, through plain objects and arrays (GSAP calls a
+  function-based value on the tween's first render), the timelines' own
+  methods and their prototypes', and the tween targets' accessors for the
+  keys the tweens write, on the targets and along their prototype chains. A
   platform accessor (`scrollTop`) is native and passes: it prints as
-  `function set scrollTop() { [native code] }`;
-- observers, in the shim's callback record, which notes each construction
-  whose callback prints as native code: nothing reads an observer's
-  callback back once it is registered;
-- custom element definitions, in the same record: the registry keeps the
-  lifecycle callbacks it read at define time
-  (`attributeChangedCallback = HTMLElement.prototype.showPopover` opens the
-  element as a popover when GSAP writes an observed attribute), and nothing
-  reads those back, so any definition declines.
+  `function set scrollTop() { [native code] }`. A Proxy on a chain declines;
+- observers and custom element definitions, where they are made: any
+  declines ("Registrations"), whatever its callback is.
 
 These are read before eligibility's first seek (a native listener added
 with `once` is gone after it fires), after the timing analysis, and again
@@ -358,6 +408,50 @@ takes a screenshot: the pseudo-classes the browser keeps (`:popover-open`,
 the document selection, each text control's selection, custom highlights
 (`CSS.highlights`), `designMode` and the URL fragment.
 
+## Content allowlists
+
+Capture renders each distinct overlay once and reuses it across frames,
+which is right only for content whose pixels follow the seek. Content that
+paints from a clock of its own (an animated image, a canvas a worker draws,
+a caret, a media control's progress) differs between frames the
+fingerprint calls equal. Earlier versions declined each such thing by name,
+and each review found another place one could hide (a pseudo-element the
+list did not name, a canvas in a shadow root). `ownClock.ts` lists what is
+accepted instead, and everything else declines:
+
+- elements, from the DevTools DOM snapshot (which pierces every shadow
+  tree; user-agent shadow trees are the browser's parts of an accepted
+  element): static HTML (text, sections, lists, tables, images, `<picture>`,
+  `<slot>`, `<template>`, scripts and styles), static SVG (shapes, text,
+  gradients, patterns, masks, clip paths, filters, `<image>`, `<use>`,
+  `<foreignObject>`), `<audio>` and the source `<video>`; pseudo-element
+  nodes `::before`, `::after` and `::marker`. No canvas, form control,
+  `<select>` or `<option>`, `<details>`, `<dialog>`, custom element, SVG
+  animation element, MathML or any element this list does not name
+  (`overlay_unsupported`);
+- CSS, every stylesheet in the document, its open shadow roots (their own
+  and adopted sheets) and `@import`s, read in the isolated world, plus
+  inline styles and the loaded text of any sheet whose rules cannot be read
+  (cross-origin): pseudo-elements from a list of static ones (`::before`,
+  `::after`, `::marker`, `::first-line`, `::first-letter`, `::selection`,
+  `::placeholder`, `::backdrop`, `::highlight()`, `::part()`, `::slotted()`,
+  the `-webkit-scrollbar` family), and no `paint()` (`overlay_unsupported`);
+- images: every image the page loads, whoever references it and however
+  (an element, a pseudo-element, a border or mask, a `data:` or `blob:`
+  URL), is read from the network record (`Network.enable` on the
+  passthrough's own session from before the page navigates) and decoded far
+  enough to tell: a single-frame GIF, a PNG without `acTL` frames, a WebP
+  without animation, an AVIF/HEIF that is no sequence, a JPEG, BMP or ICO,
+  or an SVG with no animation, script, embedded content or external
+  reference. Anything else, or bytes that cannot be read, declines
+  (`overlay_non_gsap_animation`); after capture an image still loading
+  declines too.
+
+An `<audio>` element paints nothing without controls; one whose controls
+GSAP turns on mid-composition is in the fingerprint with its playback
+position (the runtime seeks it), so frames with controls never merge and
+the verification probes decline (`overlay_unverified`).
+
 ## Capture dedup
 
 The planner's states are candidates: a superset of the frames where the
@@ -367,13 +461,15 @@ fingerprint of everything the overlay's pixels depend on: DOM attributes and
 text (including open shadow roots and their own sheets), normalised inline styles, the CSSOM
 (`@import`ed sheets included), the focused element,
 scroll and form state, image and font load state, CSS / Web Animation times,
-non-CSS values written by GSAP tweens, the paint state no attribute holds
+the native properties GSAP tweens write on their target elements, the
+playback position of a media element with controls, the paint state no attribute holds
 (see "Callbacks that run no page script" above), and the stacking order. The video's own
 nodes and script text are left out. A new fingerprint is captured through the
 unchanged layered capture path; a repeated one reuses its PNG; a candidate
 whose fingerprint or captured pixels match the state before it is merged into
 it. A candidate whose overlay differs in any way starts its own state, so a
-one-frame change is never merged away.
+one-frame change is never merged away. The fingerprint is collected in the
+isolated world and hashed in Node ("Probes the page cannot reach").
 
 That holds only for what the fingerprint can read. Page script cannot enter
 a closed shadow root (`shadowRoot` is null) or, in general, the document of
@@ -437,11 +533,6 @@ from ffmpeg's frame count and reports 35–80%.
 - A closed shadow root with no content is not in the DOM snapshot; one that
   gains content and loses it again between eligibility and the end of
   capture is not seen.
-- Page code compiled from a `javascript:` URL under a `pptr:` name passes
-  for a DevTools evaluation: such a script has nothing on the stack and no
-  embedding document. It takes a page that names its code after the
-  renderer's internals; string timers, the other way to compile code like
-  that, decline.
 - GSAP is recognised by the exact text of a published build (core,
   `CustomEase`, `EasePack`, 3.10.0 and later). An older release, another
   plugin, GSAP bundled into a script of the page's own, and any other
@@ -450,8 +541,15 @@ from ffmpeg's frame count and reports 35–80%.
   value) when that render falls inside the watch.
 - Compiler scripts other than the seek reapply (the position-edits render
   script, whose text depends on the edits) count as page code when they run
-  after load. So does a page builtin replacement any of the renderer's probes
-  calls (`Array.prototype.filter`, say): both decline.
+  after load, and decline.
+- A page that replaces a builtin with a builtin declines, harmless or not
+  (`Array.prototype.filter = Array.prototype.map`); one that replaces it
+  with page script (a polyfill) passes, and declines only if a probe or a
+  seek then runs it.
+- A script the renderer sent before the overlay page's watch was armed is
+  the page's: the watch is armed as the page opens, before the engine
+  registers anything, so only a caller that skips the capture session's
+  `onPageOpened` hook is affected (and declines).
 - For a driver that counts seeks, a fallback render is not bit-identical to
   a flag-off render either: the layered path makes one seek fewer before
   frame 0 after a fallback (`raf-counter` shows `n=4` where flag off shows
@@ -459,35 +557,36 @@ from ffmpeg's frame count and reports 35–80%.
   The same holds for a page that counts the builtins the renderer's page
   code calls: one that counts `indexOf`, `split`, `test` and `exec` calls
   shows 15 more before frame 0 after a fallback, then the same count per
-  frame. The shim's callback record is not the cause: a flag-off render with
-  the record forced into its shim decodes identical to one without.
+  frame. Nothing the passthrough adds is the cause: the page renders with
+  exactly the shim it has with the flag off.
 - `hf-seek` listeners are read once, after the page loads; one added later
   is left to the verification probes.
-- Any custom element definition declines, page-script callbacks or not: the
-  ones the registry keeps cannot be read back.
+- Any observer, custom element definition, worker, offscreen canvas or
+  worklet the page makes declines, whatever its callback is: what it runs
+  cannot be read back. The runtime's own pass (they are made from its
+  scripts). A registration made before the document's first script runs
+  is not seen; there is none to make.
+- The registration watch pauses the page at the first statement of each
+  script until the page's own scripts start, and at each registration call
+  while it loads: the page loads a little slower, and sees nothing else.
 - What a builtin the page hands over runs is found where the renderer, GSAP
   or the browser calls page objects on a seek (listed in "Callbacks that
-  run no page script"). One reached some other way is not: a builtin the
-  page put in place of another builtin the renderer calls
-  (`Array.prototype.filter = Function.prototype.call.bind(...)`), a promise
+  run no page script"). One reached some other way is not: a promise
   reaction or `requestIdleCallback` callback (each runs once, on the wall
   clock), a listener on a node outside the document. A builtin can only
   change state; the paint state it can set is in the fingerprint, so a
   change that depends on the time alone is still captured.
-- The record is not invisible to a page that reads source text. The shim's
-  `requestAnimationFrame`, `setTimeout` and `setInterval` wrappers print
-  with the record's lines in them, and the observer constructors and
-  `CustomElementRegistry.prototype.define` are Proxies, which
-  `Function.prototype.toString` prints as `function () { [native code] }`,
-  without their name; an error thrown inside one (`new MutationObserver(1)`)
-  has the record's trap in its stack. A page that paints that text renders
-  differently with the flag on, fallback or not.
-- Reading the tween targets' accessors calls the traps of a Proxy among the
-  targets or on their prototype chains; such a Proxy declines unless its
-  traps are page script, which the call counts then see. Event targets are
-  found with `Runtime.queryObjects`, which collects garbage first: only a
-  page that watches its own collection (`FinalizationRegistry`, `WeakRef`)
-  can notice.
+- GSAP tweens of anything but elements decline when they write anything,
+  including a plain object only page code reads (a counter whose `onUpdate`
+  writes the DOM would decline on the callback anyway).
+- The allowlists decline content that would render the same: a `<button>`,
+  a form control nobody focuses, a `<canvas>` nobody draws on, an image
+  format the passthrough does not decode (JPEG XL), an SVG image with an
+  external reference, a cross-origin stylesheet whose text the network
+  record does not hold.
+- Event targets are found with `Runtime.queryObjects`, which collects
+  garbage first: only a page that watches its own collection
+  (`FinalizationRegistry`, `WeakRef`) can notice.
 - Content that paints on the wall clock (`<marquee>`, an indeterminate
   `<progress>`, an animated image, a second video) declines, and its
   layered render is not repeatable either: two flag-off renders of such a
@@ -592,3 +691,49 @@ their highlight lit once a seek reaches 1 s: a setter that toggles it by
 time is caught by the verification probes now that the fingerprint reads
 highlights (`overlay_unverified`), and the sticky one is left to the page
 code watch (`seek_callback`).
+
+With nothing installed in the page (no callback record), registrations
+watched from outside, the fingerprint and DOM probes in an isolated world,
+script trust by exact text, the builtin comparison and the content
+allowlists, on main merged at 2cc423b3c6 and ffmpeg 8.0.1, the 20 s
+fixtures still take the passthrough and decode identical to flag off
+(framemd5 600/600, stream and frame side data equal):
+
+| transfer | `captions` off / on    | `captions-gsap` off / on |
+| -------- | ---------------------- | ------------------------ |
+| HLG      | 381.6 s / 83.8 s, 4.6x | 333.8 s / 94.2 s, 3.5x   |
+| PQ       | 377.9 s / 85.5 s, 4.4x | 332.2 s / 96.4 s, 3.4x   |
+
+Up to ten renders ran at once (load average 70-80 on 32 cores), so the
+ratios are not comparable with the tables above.
+
+What the new checks cost, from the renders' own `page gates` log line: the
+DevTools-only gates take 0.3-0.9 s before the first seek, 0.3-1.3 s after
+the analysis and 1.1-3.6 s after capture (most of it the event-target and
+GSAP walks), the content gates 35-170 ms each, and the registration watch
+pauses the page 14-29 times while it loads, 0.14-0.45 s in all. On the 3 s
+`captions-gsap` fixture (HLG, ffmpeg 8.0.1, one render at a time on a host
+at load average 60-80), flag-on renders alternating between the commit
+before this change and this one took 21.3 / 22.3 / 24.1 s against 28.0 /
+29.4 / 31.9 s of job time, capture 6.7-7.5 s against 8.6-10.2 s: about 6-7 s
+a render, of which the gates are about 3 s; the rest is slower capture
+probes on the watched page, which a run of the fingerprint alone (1.3-1.6 ms
+a probe in either world) does not account for. The breakpoints are all
+removed once the page is ready, before the first probe.
+
+The round-6 adversarial fixtures, each rendered with the commit before this
+change and with it (3 s, HLG, ffmpeg 7.0.2):
+
+| fixture                                      | before                          | after                                       |
+| -------------------------------------------- | ------------------------------- | ------------------------------------------- |
+| `digest-const`, `encode-const`, `json-const` | passthrough, 24 / 20 / 24 of 90 | fallback `seek_callback`, 90/90 each        |
+| `jsurl-seen` (`location.href`)               | passthrough, 0/90               | fallback `seek_callback`, 90/90             |
+| `jsanchor-observer` (clicked anchor)         | passthrough, 0/90               | fallback `seek_callback`, 90/90             |
+| `errname-raf`                                | fallback, 0/90 against flag off | fallback `seek_callback`, 90/90             |
+| `shim-tostring`, `shim-tostring-width`       | passthrough, 0/90               | passthrough, 90/90                          |
+| `picker-icon-gif`, `scroll-button-gif`       | passthrough, 0/90               | fallback `overlay_unsupported` (wall clock) |
+| `shadow-canvas-worker`                       | passthrough, 0/90               | fallback `seek_callback` (wall clock)       |
+| `audio-controls-gsap`                        | passthrough, 30/90              | fallback `overlay_unverified`, 90/90        |
+
+The wall-clock fixtures' layered render is not repeatable either (two
+flag-off renders share no frame), so only their fallback is checked.

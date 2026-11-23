@@ -453,63 +453,6 @@ function gsapCaptions(els: Record<string, FakeElement>) {
 
 const CAPTION = [{ id: "cap", start: 0, duration: 10 }];
 
-function dataUrl(mime: string, bytes: number[] | string): string {
-  const buf = typeof bytes === "string" ? Buffer.from(bytes) : Buffer.from(bytes);
-  return `data:${mime};base64,${buf.toString("base64")}`;
-}
-
-const ascii = (text: string) => Array.from(text, (c) => c.charCodeAt(0));
-const u32be = (n: number) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
-const u32le = (n: number) => u32be(n).reverse();
-
-function gif(frames: number): number[] {
-  const header = [...ascii("GIF89a"), 1, 0, 1, 0, 0x80, 0, 0, 0, 0, 0, 255, 255, 255];
-  const frame = [
-    ...[0x21, 0xf9, 4, 0, 10, 0, 0, 0],
-    ...[0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0],
-    ...[2, 2, 0x4c, 0x01, 0],
-  ];
-  return [...header, ...Array.from({ length: frames }, () => frame).flat(), 0x3b];
-}
-
-function pngChunk(type: string, data: number[]): number[] {
-  return [...u32be(data.length), ...ascii(type), ...data, 0, 0, 0, 0];
-}
-
-function png(actlFrames?: number): number[] {
-  return [
-    ...[0x89, ...ascii("PNG"), 0x0d, 0x0a, 0x1a, 0x0a],
-    ...pngChunk("IHDR", [...u32be(1), ...u32be(1), 8, 6, 0, 0, 0]),
-    ...(actlFrames === undefined ? [] : pngChunk("acTL", [...u32be(actlFrames), ...u32be(0)])),
-    ...pngChunk("IDAT", []),
-    ...pngChunk("IEND", []),
-  ];
-}
-
-function webp(animated: boolean): number[] {
-  const chunk = animated
-    ? [...ascii("VP8X"), ...u32le(10), 0x12, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    : [...ascii("VP8 "), ...u32le(2), 0, 0];
-  return [...ascii("RIFF"), ...u32le(4 + chunk.length), ...ascii("WEBP"), ...chunk];
-}
-
-function ftyp(major: string, compatible: string[]): number[] {
-  const body = [...ascii(major), 0, 0, 0, 0, ...compatible.flatMap(ascii)];
-  return [...u32be(8 + body.length), ...ascii("ftyp"), ...body];
-}
-
-async function analyzeWithImage(src: string, as: "img" | "background" = "img") {
-  return analyze({
-    duration: 10,
-    clips: CAPTION,
-    build: (els, _v, root) => {
-      if (as === "img") root.append(new FakeElement("img", "sticker", { src }));
-      else (els.cap as FakeElement).style.backgroundImage = `url("${src}")`;
-      return gsapCaptions(els);
-    },
-  });
-}
-
 describe("analyzeOverlayTiming: seek-hook listeners", () => {
   it("declines an hf-seek listener on window, with or without GSAP", async () => {
     // The listener can rewrite the overlay on any seek; neither the tween walk nor the clip
@@ -552,14 +495,13 @@ describe("analyzeOverlayTiming: seek-hook listeners", () => {
 });
 
 describe("analyzeOverlayTiming: non-GSAP drivers", () => {
-  it("still accepts GSAP captions with empty adapter registries and static images", async () => {
+  it("still accepts GSAP captions with empty adapter registries and images", async () => {
     const result = await analyze({
       duration: 10,
       clips: CAPTION,
       build: (els, _v, root) => {
         root.append(
-          new FakeElement("img", "logo", { src: dataUrl("image/png", png()) }),
-          new FakeElement("img", "still", { src: dataUrl("image/gif", gif(1)) }),
+          new FakeElement("img", "logo", { src: "assets/logo.png" }),
           new FakeElement("svg", "icon").append(new FakeElement("circle", "dot")),
         );
         return {
@@ -634,59 +576,6 @@ describe("analyzeOverlayTiming: non-GSAP drivers", () => {
       expect(result.ok ? "" : result.detail).toContain("SVG SMIL");
     },
   );
-
-  it.each([
-    { name: "animated GIF", src: dataUrl("image/gif", gif(2)), kind: "animated GIF" },
-    { name: "APNG", src: dataUrl("image/png", png(2)), kind: "APNG" },
-    { name: "animated WebP", src: dataUrl("image/webp", webp(true)), kind: "animated WebP" },
-    {
-      name: "AVIF sequence",
-      src: dataUrl("image/avif", ftyp("avis", ["avif", "mif1", "msf1"])),
-      kind: "image sequence",
-    },
-    {
-      name: "SVG with SMIL",
-      src: dataUrl(
-        "image/svg+xml",
-        '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"><animate attributeName="r" to="8" dur="1s"/></circle></svg>',
-      ),
-      kind: "animated SVG",
-    },
-    {
-      name: "SVG with CSS animation",
-      src: dataUrl(
-        "image/svg+xml",
-        '<svg xmlns="http://www.w3.org/2000/svg"><style>@keyframes s{to{opacity:0}}</style></svg>',
-      ),
-      kind: "animated SVG",
-    },
-  ])("declines an $name image, by content", async ({ src, kind }) => {
-    for (const as of ["img", "background"] as const) {
-      const result = await analyzeWithImage(src, as);
-      expect(result).toMatchObject({ ok: false, reason: "overlay_non_gsap_animation" });
-      expect(result.ok ? "" : result.detail).toContain(kind);
-    }
-  });
-
-  it.each([
-    { name: "static PNG", src: dataUrl("image/png", png()) },
-    { name: "single-frame APNG", src: dataUrl("image/png", png(1)) },
-    { name: "single-frame GIF", src: dataUrl("image/gif", gif(1)) },
-    { name: "still WebP", src: dataUrl("image/webp", webp(false)) },
-    { name: "still AVIF", src: dataUrl("image/avif", ftyp("avif", ["mif1", "miaf"])) },
-    {
-      name: "plain SVG",
-      src: dataUrl("image/svg+xml", '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'),
-    },
-  ])("accepts a $name image", async ({ src }) => {
-    expectOk(await analyzeWithImage(src));
-  });
-
-  it("declines an image it cannot read", async () => {
-    const result = await analyzeWithImage("not a url");
-    expect(result).toMatchObject({ ok: false, reason: "overlay_non_gsap_animation" });
-    expect(result.ok ? "" : result.detail).toContain("unreadable image");
-  });
 });
 
 describe("deriveOverlayTiming", () => {

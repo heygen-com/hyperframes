@@ -43,9 +43,10 @@ const MAX_FRAME_COUNT_DRIFT = 1;
 const TOLERATED_CAUSES: ReadonlySet<StaticDedupIneligibleCause> = new Set([
   // Captions driven only by clip windows have no GSAP tweens at all. Static dedup
   // reads "no tweens" as "animated some other way". The engine itself rejects
-  // CSS/WAAPI, canvas, frame sources and iframes; `findUnseekedAnimationDrivers`,
-  // `findAnimatedImages` and `findSeekHookListeners` reject the drivers that can
-  // be named, whether or not GSAP is present. For any other script that writes
+  // CSS/WAAPI, canvas, frame sources and iframes; `findUnseekedAnimationDrivers`
+  // and `findSeekHookListeners` reject the drivers that can be named, and the
+  // content allowlists (`ownClock.ts`) everything not known to be static,
+  // whether or not GSAP is present. For any other script that writes
   // the DOM on its own schedule, overlay capture re-probes every frame of every
   // merged state and falls back on a mismatch (`writeOverlayStates`).
   "no_gsap_tweens",
@@ -330,188 +331,12 @@ export function findUnseekedAnimationDrivers(): string[] {
 }
 
 /**
- * Runs in the page; must stay self-contained. Read-only (fetches only).
- *
- * Images that animate on the browser's own clock, which no adapter seeks:
- * animated GIF, APNG, animated WebP, AVIF/HEIF sequences, and SVG documents
- * with SMIL or CSS animation. Reads every image an element or its
- * pseudo-elements paint, in the document and in every open shadow tree:
- * `<img>`, `<input type=image>`, SVG `<image>` / `<feImage>` / external
- * `<use>`, and the CSS image properties (background, `content`,
- * `list-style-image`, border and mask images) of each element and its
- * `::before`, `::after`, `::marker` and other pseudo-elements. It sniffs the
- * bytes, not the extension. A CSS Paint worklet image (`paint()`) runs page
- * code of its own on every paint and is reported as such. An image that
- * cannot be read is reported too: unknown is not static.
- */
-// fallow-ignore-next-line complexity
-export async function findAnimatedImages(): Promise<string[]> {
-  const urls = new Set<string>();
-  const found: string[] = [];
-  const add = (raw: string | null | undefined) => {
-    const url = (raw ?? "").trim();
-    if (url === "" || url.startsWith("#")) return;
-    try {
-      urls.add(new URL(url, document.baseURI).href);
-    } catch {
-      found.push(`unreadable image ${url.slice(0, 32)}`);
-    }
-  };
-  const IMAGE_PROPERTIES = [
-    "background-image",
-    "content",
-    "list-style-image",
-    "border-image-source",
-    "mask-image",
-    "-webkit-mask-image",
-    "-webkit-mask-box-image-source",
-    "mask-border-source",
-  ];
-  const PSEUDOS = [
-    null,
-    "::before",
-    "::after",
-    "::marker",
-    "::first-letter",
-    "::first-line",
-    "::backdrop",
-    "::placeholder",
-    "::file-selector-button",
-  ];
-  let paintWorklets = 0;
-  const addCss = (style: CSSStyleDeclaration) => {
-    for (const property of IMAGE_PROPERTIES) {
-      const value = style.getPropertyValue(property) ?? "";
-      if (value === "" || value === "none" || value === "normal") continue;
-      if (/(^|[\s,(])paint\(/.test(value)) paintWorklets++;
-      for (const m of value.matchAll(/url\(\s*(["']?)(.*?)\1\s*\)/g)) add(m[2]);
-    }
-  };
-  // The document and every open shadow tree; closed ones decline as overlay_unreadable.
-  const scopes: Array<Document | ShadowRoot> = [document];
-  for (let i = 0; i < scopes.length; i++) {
-    const scope = scopes[i] as Document | ShadowRoot;
-    for (const el of Array.from(scope.querySelectorAll("*"))) {
-      if (el.shadowRoot) scopes.push(el.shadowRoot);
-      const tag = el.localName;
-      if (tag === "img" || (tag === "input" && (el as HTMLInputElement).type === "image")) {
-        const img = el as Element & { currentSrc?: string; src?: string };
-        add(img.currentSrc || img.src || el.getAttribute("src"));
-      } else if (tag === "image" || tag === "feImage" || tag === "use") {
-        add(el.getAttribute("href") ?? el.getAttribute("xlink:href"));
-      }
-      for (const pseudo of PSEUDOS) addCss(window.getComputedStyle(el, pseudo));
-    }
-  }
-  if (paintWorklets > 0) found.push(`CSS paint worklet (${paintWorklets})`);
-
-  const ascii = (b: Uint8Array, at: number, n: number) =>
-    String.fromCharCode(...Array.from(b.subarray(at, at + n)));
-  const u32be = (b: Uint8Array, at: number) =>
-    (((b[at] ?? 0) << 24) |
-      ((b[at + 1] ?? 0) << 16) |
-      ((b[at + 2] ?? 0) << 8) |
-      (b[at + 3] ?? 0)) >>>
-    0;
-  const u32le = (b: Uint8Array, at: number) =>
-    ((b[at] ?? 0) |
-      ((b[at + 1] ?? 0) << 8) |
-      ((b[at + 2] ?? 0) << 16) |
-      ((b[at + 3] ?? 0) << 24)) >>>
-    0;
-  const gifFrames = (b: Uint8Array): number => {
-    const colorTable = (flags: number) => (flags & 0x80 ? 3 * (1 << ((flags & 7) + 1)) : 0);
-    let p = 13 + colorTable(b[10] ?? 0);
-    const skipSubBlocks = () => {
-      while (p < b.length) {
-        const n = b[p++] ?? 0;
-        if (n === 0) return;
-        p += n;
-      }
-    };
-    let frames = 0;
-    while (p < b.length && frames < 2) {
-      const tag = b[p++];
-      if (tag === 0x21) {
-        p++;
-        skipSubBlocks();
-      } else if (tag === 0x2c) {
-        frames++;
-        p += 9 + colorTable(b[p + 8] ?? 0) + 1;
-        skipSubBlocks();
-      } else break;
-    }
-    return frames;
-  };
-  const pngAnimated = (b: Uint8Array): boolean => {
-    for (let p = 8; p + 8 <= b.length; p += 12 + u32be(b, p)) {
-      const type = ascii(b, p + 4, 4);
-      if (type === "acTL") return u32be(b, p + 8) > 1;
-      if (type === "IDAT") return false;
-    }
-    return false;
-  };
-  const webpAnimated = (b: Uint8Array): boolean => {
-    for (let p = 12; p + 8 <= b.length; p += 8 + u32le(b, p + 4) + (u32le(b, p + 4) & 1)) {
-      const type = ascii(b, p, 4);
-      if (type === "ANIM" || type === "ANMF") return true;
-      if (type === "VP8X" && ((b[p + 8] ?? 0) & 0x02) !== 0) return true;
-    }
-    return false;
-  };
-  const isoSequence = (b: Uint8Array): boolean => {
-    const end = Math.min(b.length, u32be(b, 0));
-    for (let p = 8; p + 4 <= end; p += p === 8 ? 8 : 4) {
-      if (["avis", "msf1", "hevs", "avcs"].includes(ascii(b, p, 4))) return true;
-    }
-    return false;
-  };
-  const svgAnimated = (text: string): boolean =>
-    /<svg[\s>]/i.test(text) &&
-    /<(animate|animateColor|animateMotion|animateTransform|set)[\s/>]|@keyframes|animation\s*:/i.test(
-      text,
-    );
-  // [kind, recognises the format, is animated]; the first format that matches decides.
-  const formats: Array<[string, (b: Uint8Array) => boolean, (b: Uint8Array) => boolean]> = [
-    ["animated GIF", (b) => ascii(b, 0, 4) === "GIF8", (b) => gifFrames(b) > 1],
-    ["APNG", (b) => b[0] === 0x89 && ascii(b, 1, 3) === "PNG", pngAnimated],
-    ["animated WebP", (b) => ascii(b, 0, 4) === "RIFF" && ascii(b, 8, 4) === "WEBP", webpAnimated],
-    ["image sequence", (b) => ascii(b, 4, 4) === "ftyp", isoSequence],
-    [
-      "animated SVG",
-      () => true,
-      (b) => svgAnimated(new TextDecoder().decode(b.subarray(0, 1 << 20))),
-    ],
-  ];
-  const animatedKind = (b: Uint8Array): string | null => {
-    const format = formats.find(([, recognises]) => recognises(b));
-    return format && format[2](b) ? format[0] : null;
-  };
-
-  const short = (url: string) => (url.startsWith("data:") ? url.slice(0, 32) : url);
-  for (const url of urls) {
-    try {
-      const response = await window.fetch(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const kind = animatedKind(new Uint8Array(await response.arrayBuffer()));
-      if (kind) found.push(`${kind} ${short(url)}`);
-    } catch {
-      found.push(`unreadable image ${short(url)}`);
-    }
-  }
-  return found;
-}
-
-/**
- * `findUnseekedAnimationDrivers` and `findAnimatedImages` again, for the
- * passthrough to run after overlay capture: a driver can first appear on a
- * frame only capture visited. A description of the first few, or `null`.
+ * `findUnseekedAnimationDrivers` again, for the passthrough to run after
+ * overlay capture: a driver can first appear on a frame only capture
+ * visited. A description of the first few, or `null`.
  */
 export async function findOwnClockDrivers(page: Page): Promise<string | null> {
-  const found = [
-    ...(await page.evaluate(findUnseekedAnimationDrivers)),
-    ...(await page.evaluate(findAnimatedImages)),
-  ];
+  const found = await page.evaluate(findUnseekedAnimationDrivers);
   return found.length > 0 ? found.slice(0, 5).join(", ") : null;
 }
 
@@ -533,8 +358,8 @@ async function findSeekHookListeners(page: Page): Promise<string[]> {
     const client = await getCdpSession(page);
     try {
       const { result } = await client.send("Runtime.evaluate", {
-        // Named as a DevTools evaluation, which the page code watch trusts (scriptOrigins.ts).
-        expression: "window\n//# sourceURL=pptr:findSeekHookListeners",
+        // A DevTools evaluation, trusted by its exact text (scriptOrigins.ts).
+        expression: "window",
         objectGroup: LISTENER_OBJECT_GROUP,
       });
       if (!result.objectId) return ["seek listeners (window unreadable)"];
@@ -695,11 +520,10 @@ export async function analyzeOverlayTiming(
   const stats = await computeStaticFrameSet(page, fps, [args.videoId]);
   const facts = await page.evaluate(collectOverlayPageFacts, args.videoId);
   const drivers = await page.evaluate(findUnseekedAnimationDrivers);
-  const images = await page.evaluate(findAnimatedImages);
   const seekHooks = await findSeekHookListeners(page);
   return deriveOverlayTiming({
     stats,
-    page: { ...facts, unseekedDrivers: [...drivers, ...seekHooks, ...images] },
+    page: { ...facts, unseekedDrivers: [...drivers, ...seekHooks] },
     fps,
     totalFrames: args.totalFrames,
     maxStates: args.maxStates,

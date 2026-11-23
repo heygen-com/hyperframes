@@ -3,30 +3,34 @@
  *
  * The page code watch (`pageCodeWatch.ts`) declines the passthrough when any
  * of the page's functions run on seeks, so it must tell the renderer's
- * functions from the page's without taking the page's word for it. A script
- * URL is the page's word: `//# sourceURL=` names a script anything, and
- * eval, `new Function` and inserted inline scripts all report an empty URL.
+ * functions from the page's without taking the page's word for it. Nothing
+ * about how a script looks from outside is the renderer's word: a URL is
+ * whatever `//# sourceURL=` says, and a `javascript:` URL or a string timer
+ * compiles with no script on the stack and no embedding document, exactly as
+ * a DevTools evaluation does.
  *
- * So the overlay page's scripts are recorded as V8 parses them, from before
- * the page navigates (`Debugger.scriptParsed`), and a script is the
- * renderer's only when how it was made says so:
+ * So a script is the renderer's only by identity:
  *
- * - its exact text is one the renderer put in the page: the file server's
- *   injected scripts and the compiler's seek reapply (by SHA-256 of the text
- *   V8 compiled);
- * - it was compiled in an isolated world (DevTools utility worlds), which
- *   page script cannot reach;
- * - it was compiled in the main frame with no script on the stack and no
- *   embedding document, either before anything else in its document (the
- *   renderer's `evaluateOnNewDocument` scripts) or under a `pptr:` URL (a
- *   DevTools evaluation). Page code compiles this way only through a string
- *   timer, which the shim's callback record declines (`stringTimers`), or a
- *   `javascript:` URL.
+ * - its exact text (SHA-256 of what V8 compiled) is one the renderer put in
+ *   the page: the file server's injected scripts, the compiler's seek
+ *   reapply, and every script the renderer sends the page over DevTools
+ *   (`Page.addScriptToEvaluateOnNewDocument`, `Runtime.evaluate`,
+ *   `Runtime.callFunctionOn`, `Debugger.evaluateOnCallFrame`), recorded as
+ *   each is sent on every DevTools session the overlay page has
+ *   (`interceptRendererTexts`), from before the engine sets the page up;
+ * - or it was compiled in an isolated world (DevTools utility worlds), which
+ *   page script cannot reach.
  *
- * GSAP is told apart the same way: by the SHA-256 of a published build
- * (`gsapBuilds.ts`), served as is or inlined by the compiler, never by its
- * file name. Everything else, including any script never seen being parsed,
- * is the page's.
+ * GSAP is told apart the same way, by the SHA-256 of a published build
+ * (`gsapBuilds.ts`), served as is or inlined by the compiler. Everything
+ * else, including any script never seen being parsed, is the page's.
+ *
+ * Two kinds of compile decline the passthrough outright, whether or not the
+ * script runs again (`findUntrustedCompiles`): a script compiled in the main
+ * world with no script on the stack and no embedding document whose text the
+ * renderer did not send (a `javascript:` URL, a string timer), and any
+ * script compiled in another frame's main world (another realm, whose
+ * builtins and observers none of the passthrough's checks reach).
  */
 
 import { createHash } from "node:crypto";
@@ -34,17 +38,6 @@ import { type CaptureSession, getCdpSession } from "@hyperframes/engine";
 import { GSAP_BUILD_HASHES } from "./gsapBuilds.js";
 
 export type ScriptOrigin = "renderer" | "gsap" | "page";
-
-/**
- * Names only the renderer's scripts may take. The shim's callback record
- * trusts a registration from a script so named (`RENDERER_SCRIPTS` in
- * `fileServer.ts`); a page script taking one declines the passthrough.
- */
-const RENDERER_SCRIPT_NAMES: readonly string[] = [
-  "hyperframes://injected/",
-  "hyperframes://position-seek-reapply",
-  "pptr:",
-];
 
 /** The fields of a `Debugger.scriptParsed` event this module reads. */
 export interface ParsedScriptEvent {
@@ -56,39 +49,21 @@ export interface ParsedScriptEvent {
   stackTrace?: { callFrames?: unknown[] };
 }
 
-/** What a script's parse event alone says: the renderer's, or decided by its text. */
-export type ParseVerdict = "renderer" | "by_text";
-
-/** Compiled in a DevTools isolated world, which page script cannot reach. */
-const inIsolatedWorld = (event: ParsedScriptEvent) =>
-  event.executionContextAuxData?.type === "isolated";
-
-/** Compiled in the main frame's own world. */
-const inMainWorld = (event: ParsedScriptEvent, mainFrameId: string) =>
-  event.executionContextAuxData?.type === "default" &&
-  event.executionContextAuxData.frameId === mainFrameId;
-
-/** Compiled with no script on the stack and no embedding document. */
-const compiledFromOutside = (event: ParsedScriptEvent) =>
-  !event.embedderName && (event.stackTrace?.callFrames?.length ?? 0) === 0;
-
 /**
- * Classifies parse events in the order V8 emits them. `mainFrameId` is the
- * overlay page's top frame.
+ * Where a script was compiled, as far as trust goes: an isolated world
+ * (the renderer's), the main frame's main world from outside (no script on
+ * the stack, no embedding document: its text must be one the renderer
+ * sent), the main frame's main world from page activity, or another realm.
  */
-export function createParseClassifier(
-  mainFrameId: string,
-): (event: ParsedScriptEvent) => ParseVerdict {
-  // Execution contexts in which only scripts compiled from outside have been compiled so far.
-  const openingRun = new Map<number, boolean>();
-  return (event) => {
-    if (inIsolatedWorld(event)) return "renderer";
-    const outside = compiledFromOutside(event);
-    const opening = openingRun.get(event.executionContextId) ?? true;
-    openingRun.set(event.executionContextId, opening && outside);
-    if (!outside || !inMainWorld(event, mainFrameId)) return "by_text";
-    return opening || event.url.startsWith("pptr:") ? "renderer" : "by_text";
-  };
+export type CompileKind = "isolated" | "outside" | "page" | "other_realm";
+
+/** How the overlay page's main frame compiled a script. */
+export function compileKind(event: ParsedScriptEvent, mainFrameId: string): CompileKind {
+  const aux = event.executionContextAuxData;
+  if (aux?.type === "isolated") return "isolated";
+  if (aux?.type !== "default" || aux.frameId !== mainFrameId) return "other_realm";
+  const outside = !event.embedderName && (event.stackTrace?.callFrames?.length ?? 0) === 0;
+  return outside ? "outside" : "page";
 }
 
 export function sha256(text: string): string {
@@ -109,24 +84,110 @@ export function isGsapBuild(text: string): boolean {
   return inlined !== null && KNOWN_GSAP.has(sha256(inlined[1] ?? ""));
 }
 
-/** A script's origin from its parse verdict and, when that does not decide it, its text. */
+/** A script's origin from how it was compiled and, outside an isolated world, its text. */
 export function originFromText(
-  verdict: ParseVerdict,
+  kind: CompileKind,
   text: string | undefined,
   rendererHashes: ReadonlySet<string>,
 ): ScriptOrigin {
-  if (verdict === "renderer") return "renderer";
+  if (kind === "isolated") return "renderer";
   if (text === undefined) return "page";
   if (rendererHashes.has(sha256(text))) return "renderer";
   return isGsapBuild(text) ? "gsap" : "page";
+}
+
+/** The fields of the DevTools commands whose text V8 compiles into the page. */
+type SentParams = Record<string, unknown> | undefined;
+
+/**
+ * The script text V8 compiles for a DevTools command, or `undefined` for one
+ * that compiles none. `Runtime.callFunctionOn` compiles its declaration in
+ * parentheses.
+ */
+export function compiledTextOf(method: string, params: SentParams): string | undefined {
+  const field = (name: string) => {
+    const value = params?.[name];
+    return typeof value === "string" ? value : undefined;
+  };
+  switch (method) {
+    case "Page.addScriptToEvaluateOnNewDocument":
+      return field("source");
+    case "Runtime.evaluate":
+    case "Runtime.compileScript":
+    case "Debugger.evaluateOnCallFrame":
+      return field("expression");
+    case "Runtime.callFunctionOn": {
+      const declaration = field("functionDeclaration");
+      return declaration === undefined ? undefined : `(${declaration})`;
+    }
+    default:
+      return undefined;
+  }
+}
+
+type CdpClient = Awaited<ReturnType<typeof getCdpSession>>;
+type Send = CdpClient["send"];
+
+const intercepted = new WeakSet<object>();
+
+/** Records the text of every script `session` sends, before it is sent. */
+function interceptSession(session: object, note: (text: string) => void): void {
+  if (intercepted.has(session)) return;
+  const target = session as { send: Send };
+  const send = target.send;
+  if (typeof send !== "function") return;
+  intercepted.add(session);
+  const wrapped = function (
+    this: unknown,
+    method: string,
+    params?: SentParams,
+    ...rest: unknown[]
+  ) {
+    const text = compiledTextOf(method, params);
+    if (text !== undefined) note(text);
+    return (send as (...args: unknown[]) => unknown).call(this, method, params, ...rest);
+  };
+  target.send = wrapped as unknown as Send;
+}
+
+/**
+ * Records every script text the renderer sends `page` over DevTools: on the
+ * page's own session, the engine's cached session, and every session the
+ * page creates from now on. Call before the engine registers or evaluates
+ * anything on the page. Only this overlay page is touched.
+ */
+async function interceptRendererTexts(
+  page: CaptureSession["page"],
+  note: (text: string) => void,
+): Promise<void> {
+  const frame = page.mainFrame() as unknown as { client?: object };
+  if (frame.client) interceptSession(frame.client, note);
+  const internal = (page as unknown as { _client?: () => object })._client;
+  if (typeof internal === "function") interceptSession(internal.call(page), note);
+  const create = page.createCDPSession.bind(page);
+  (page as { createCDPSession: typeof create }).createCDPSession = async () => {
+    const session = await create();
+    interceptSession(session, note);
+    return session;
+  };
+  interceptSession(await getCdpSession(page), note);
 }
 
 /** A running record of the overlay page's scripts. */
 export interface ScriptOriginRecord {
   /** The origin of a script by its V8 id; a script never seen being parsed is the page's. */
   originOf(scriptId: string): Promise<ScriptOrigin>;
-  /** A page script that took one of `RENDERER_SCRIPT_NAMES`, as a log detail, or null. */
-  findImpersonation(): Promise<string | null>;
+  /** How a parsed script was compiled, or undefined for one never seen. */
+  kindOf(scriptId: string): CompileKind | undefined;
+  /** The execution context a parsed script was compiled in. */
+  contextOf(scriptId: string): number | undefined;
+  /**
+   * A compile that declines the passthrough by itself (see the module
+   * comment), as a log detail, or null.
+   */
+  findUntrustedCompiles(): Promise<string | null>;
+  /** The overlay page's top frame. */
+  readonly mainFrameId: string | undefined;
   /** Why the record cannot be trusted, if it cannot. */
   failure(): string | undefined;
   /** Stops recording; never throws. */
@@ -135,15 +196,15 @@ export interface ScriptOriginRecord {
 
 interface Parsed {
   url: string;
-  verdict: ParseVerdict;
+  kind: CompileKind;
+  context: number;
 }
 
-type CdpClient = Awaited<ReturnType<typeof getCdpSession>>;
-
 /**
- * Start recording the scripts of a page that has not navigated yet. Uses the
- * page's cached engine CDP session. A record that could not start says so
- * through `failure()`, and the watch falls back on it.
+ * Start recording the scripts of a page that has not navigated yet, and
+ * the renderer's own texts as it sends them (`interceptRendererTexts`).
+ * Uses the page's cached engine CDP session. A record that could not start
+ * says so through `failure()`, and the watch falls back on it.
  */
 export async function recordScriptOrigins(
   page: CaptureSession["page"],
@@ -152,25 +213,35 @@ export async function recordScriptOrigins(
   const rendererHashes = new Set(rendererScripts.map(sha256));
   const parsed = new Map<string, Parsed>();
   const texts = new Map<string, Promise<string | undefined>>();
+  // Decided origins: a renderer or GSAP script stays one. A page script is decided again, since
+  // the renderer can send its exact text later (the same expression evaluated twice).
+  const decided = new Map<string, ScriptOrigin>();
+  const hashes = new Map<string, string | undefined>();
   let failure: string | undefined;
-  let classify: ((event: ParsedScriptEvent) => ParseVerdict) | undefined;
+  let mainFrameId: string | undefined;
   let client: CdpClient | undefined;
+  let recording = true;
   const onParsed = (event: ParsedScriptEvent) => {
-    if (!classify) return;
+    if (!recording || mainFrameId === undefined) return;
     // A later script with the same id (a renderer process swap) replaces the dead one.
-    parsed.set(event.scriptId, { url: event.url, verdict: classify(event) });
+    decided.delete(event.scriptId);
+    hashes.delete(event.scriptId);
+    parsed.set(event.scriptId, {
+      url: event.url,
+      kind: compileKind(event, mainFrameId),
+      context: event.executionContextId,
+    });
     texts.delete(event.scriptId);
   };
   try {
+    await interceptRendererTexts(page, (text) => rendererHashes.add(sha256(text)));
     client = await getCdpSession(page);
     const { frameTree } = (await client.send("Page.getFrameTree")) as {
       frameTree: { frame: { id: string } };
     };
-    classify = createParseClassifier(frameTree.frame.id);
+    mainFrameId = frameTree.frame.id;
     client.on("Debugger.scriptParsed", onParsed);
     await client.send("Debugger.enable");
-    // A `debugger` statement must not stop the page on this session's account.
-    await client.send("Debugger.setSkipAllPauses", { skip: true });
   } catch (error) {
     failure = `script record unavailable (${error instanceof Error ? error.message : String(error)})`;
   }
@@ -188,28 +259,50 @@ export async function recordScriptOrigins(
     }
     return text;
   };
+  // fallow-ignore-next-line complexity
   const originOf = async (scriptId: string): Promise<ScriptOrigin> => {
     const entry = parsed.get(scriptId);
     if (!entry) return "page";
-    if (entry.verdict === "renderer") return "renderer";
-    return originFromText(entry.verdict, await textOf(scriptId), rendererHashes);
+    if (entry.kind === "isolated") return "renderer";
+    const known = decided.get(scriptId);
+    if (known) return known;
+    if (!hashes.has(scriptId)) {
+      const text = await textOf(scriptId);
+      hashes.set(scriptId, text === undefined ? undefined : sha256(text));
+      if (text !== undefined && isGsapBuild(text)) decided.set(scriptId, "gsap");
+    }
+    const gsap = decided.get(scriptId);
+    if (gsap) return gsap;
+    const hash = hashes.get(scriptId);
+    if (hash !== undefined && rendererHashes.has(hash)) {
+      decided.set(scriptId, "renderer");
+      return "renderer";
+    }
+    return "page";
   };
 
   return {
     originOf,
-    async findImpersonation() {
-      for (const [scriptId, { url }] of parsed) {
-        if (!RENDERER_SCRIPT_NAMES.some((name) => url.startsWith(name))) continue;
-        if ((await originOf(scriptId)) !== "renderer") return `a page script is named ${url}`;
+    kindOf: (scriptId) => parsed.get(scriptId)?.kind,
+    contextOf: (scriptId) => parsed.get(scriptId)?.context,
+    get mainFrameId() {
+      return mainFrameId;
+    },
+    async findUntrustedCompiles() {
+      for (const [scriptId, { url, kind }] of parsed) {
+        if (kind === "other_realm")
+          return `a script compiled in another realm (${url || "no url"})`;
+        if (kind !== "outside" || (await originOf(scriptId)) === "renderer") continue;
+        const where = url ? ` (${url})` : "";
+        return `a script compiled with no script on the stack that the renderer did not send${where}: a javascript: URL or a string timer`;
       }
       return null;
     },
     failure: () => failure,
     async dispose() {
-      if (!client) return;
+      if (!client || !recording) return;
+      recording = false;
       client.off("Debugger.scriptParsed", onParsed);
-      await client.send("Debugger.disable").catch(() => undefined);
-      classify = undefined;
     },
   };
 }

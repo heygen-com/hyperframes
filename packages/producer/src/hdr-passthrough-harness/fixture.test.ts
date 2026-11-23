@@ -309,7 +309,7 @@ describe("INELIGIBLE_CASES", () => {
     const find = (name: string) => INELIGIBLE_CASES.find((c) => c.name === name)!;
     for (const name of ["setter-highlight", "gsap-proxy-highlight"]) {
       const c = find(name);
-      expect(c.reason).toBe("seek_callback");
+      expect(c.reason.split("|")).toContain("seek_callback");
       expect(c.composition.headHtml).toContain("CSS.highlights.set");
       expect(c.composition.cues).toEqual([]);
       expect(c.composition.headHtml).not.toContain("requestAnimationFrame");
@@ -335,7 +335,8 @@ describe("INELIGIBLE_CASES", () => {
     };
     for (const [name, way] of Object.entries(ways)) {
       const c = find(name);
-      expect(c.reason).toBe("seek_callback");
+      // The page code watch declines each; a sticky setter's verification probes may first.
+      expect(c.reason.split("|")).toContain("seek_callback");
       expect(c.composition.headHtml).toContain(way);
       // Script text is raw: an HTML entity in it would be a syntax error, not a quote.
       expect(c.composition.headHtml).not.toContain("&quot;");
@@ -383,13 +384,35 @@ describe("INELIGIBLE_CASES", () => {
   it("marks only the cases that paint on the wall clock as not repeatable", () => {
     const wallClock = INELIGIBLE_CASES.filter((c) => c.wallClock).map((c) => c.name);
     expect(wallClock).toEqual([
+      "svg-smil",
+      "shadow-css-animation",
       "marquee",
       "indeterminate-progress",
       "pseudo-element-gif",
       "shadow-root-gif",
       "shadow-root-video",
       "paint-worklet",
+      "picker-icon-gif",
+      "scroll-button-gif",
+      "shadow-worker-canvas",
     ]);
+  });
+
+  it("expects the passthrough only where the page reads back what a record in it would change", () => {
+    const takes = INELIGIBLE_CASES.filter((c) => c.takesPassthrough);
+    expect(takes.map((c) => c.name)).toEqual(["tostring-painter"]);
+    for (const c of takes) expect(c.wallClock).toBeUndefined();
+  });
+
+  it("names javascript: URL cases like DevTools evaluations, encoded so the setter survives", () => {
+    for (const name of ["jsurl-location-setter", "jsurl-anchor-setter"]) {
+      const c = INELIGIBLE_CASES.find((entry) => entry.name === name);
+      const text = [c?.composition.headHtml, c?.composition.timelineScript].join(" ");
+      const url = /"(javascript:[^"]+)"/.exec(text)?.[1] ?? "";
+      expect(decodeURIComponent(url.slice("javascript:".length))).toMatch(
+        /__hfTypegpuTime[\s\S]*\/\/# sourceURL=pptr:evaluate$/,
+      );
+    }
   });
 
   it("ships the assets each case references", () => {

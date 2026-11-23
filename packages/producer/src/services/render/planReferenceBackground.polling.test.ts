@@ -15,7 +15,6 @@ vi.mock("../fileServer.js", () => ({
   createFileServer: async () => ({ url: "http://inspection.test" }),
   closeFileServerSafely: () => {},
   VIRTUAL_TIME_SHIM: "",
-  virtualTimeShimFor: () => "",
 }));
 import { readPlanReferenceBackground } from "./planReferenceBackground.js";
 

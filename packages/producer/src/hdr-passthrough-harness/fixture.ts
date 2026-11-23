@@ -476,11 +476,20 @@ const HIGHLIGHT_STYLE = "<style>::highlight(hf) { background-color: #f00; color:
 /** The fake GSAP file: page code under a GSAP distribution file name. */
 export const FAKE_GSAP_FILE = "gsap-core.js";
 
+/**
+ * The reasons a sticky seek-time setter declines with. It lights the
+ * highlight on the first seek past 1 s that runs it: when capture's probes
+ * see it go on, the verification probes decline (`overlay_unverified`);
+ * when it was already on for every probe, the page code watch does
+ * (`seek_callback`). Which one depends on the order the seeks took.
+ */
+const STICKY_SETTER_REASONS = "seek_callback|overlay_unverified";
+
 /** `HIGHLIGHT_SETTER` compiled by the page some other way than as its own inline script. */
 function highlightSetterCase(name: string, script: string): IneligibleCase {
   return {
     name,
-    reason: "seek_callback",
+    reason: STICKY_SETTER_REASONS,
     composition: {
       cues: [],
       headHtml: `${HIGHLIGHT_STYLE}${script}`,
@@ -541,9 +550,50 @@ export interface IneligibleCase {
    * fallback and its reason, not the pixels.
    */
   wallClock?: true;
+  /**
+   * The passthrough must take this composition and match the layered render:
+   * the page reads back what an in-page record would have changed (the
+   * observer constructors' source text), so it checks that nothing the
+   * passthrough does is visible to the page.
+   */
+  takesPassthrough?: true;
 }
 
 const BADGE_STYLE = "position:absolute;top:48px;right:48px;width:128px;height:128px";
+
+/** A badge GSAP fades in and recolours, as in `captions-gsap`. */
+const GSAP_BADGE: Pick<CompositionOptions, "overlayHtml" | "timelineScript"> = {
+  overlayHtml: `<div id="badge" style="position:absolute;top:48px;left:900px;width:128px;height:128px;background:#36f"></div>`,
+  timelineScript: [
+    'tl.from("#badge", { left: 200, opacity: 0, duration: 0.3, immediateRender: false }, 1);',
+    'tl.set("#badge", { backgroundColor: "#f63" }, 2);',
+  ].join("\n      "),
+};
+
+/**
+ * A `javascript:` URL running `code`, named like a DevTools evaluation: it
+ * compiles with nothing on the stack and no embedding document, as the
+ * renderer's own evaluations do, so only its text tells it apart.
+ */
+function javascriptUrl(code: string): string {
+  return `javascript:${encodeURIComponent(`${code} void 0;\n//# sourceURL=pptr:evaluate`)}`;
+}
+
+/**
+ * The builtins an in-page fingerprint collector calls, replaced with
+ * builtins that return a constant: every probe would hash the same.
+ */
+function fingerprintBuiltinCase(name: string, swap: string): IneligibleCase {
+  return {
+    name,
+    reason: "seek_callback",
+    composition: { headHtml: `<script>${swap}</script>`, ...GSAP_BADGE },
+    assets: ["gsap"],
+  };
+}
+
+/** Text the page paints, read from what the renderer could have changed in it. */
+const TEXT_STYLE = "position:absolute;top:48px;left:48px;color:#fff;font:700 28px sans-serif";
 
 function imageBadge(format: AnimatedImageFormat): string {
   return `<img src="assets/${ANIMATED_IMAGE_FILES[format]}" alt="" style="${BADGE_STYLE}" />`;
@@ -627,6 +677,8 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
   },
   {
     name: "svg-smil",
+    // SMIL runs on the document's own clock: two flag-off renders share no frame.
+    wallClock: true,
     reason: "overlay_non_gsap_animation",
     composition: {
       overlayHtml: `<svg viewBox="0 0 10 10" style="${BADGE_STYLE}"><circle cx="5" cy="5" r="4" fill="#fc0"><animate attributeName="r" values="1;4;1" dur="1s" repeatCount="indefinite" /></circle></svg>`,
@@ -636,6 +688,8 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     // A CSS animation inside an open shadow root: `document.getAnimations()` does not list it, so
     // the runtime never seeks it and it plays on the wall clock, flag on or off.
     name: "shadow-css-animation",
+    // The runtime never seeks an animation in a shadow root: it plays on the wall clock.
+    wallClock: true,
     reason: "overlay_non_gsap_animation",
     composition: {
       overlayHtml: `<div id="shadow-host" style="${BADGE_STYLE}"></div><script>document.getElementById("shadow-host").attachShadow({ mode: "open" }).innerHTML = "<style>@keyframes hf-pulse { from { opacity: 1 } to { opacity: 0.2 } } div { width: 128px; height: 128px; background: #e33; animation: hf-pulse 0.5s infinite alternate; }</style><div></div>";</script>`,
@@ -751,9 +805,10 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     assets: ["gsap"],
   },
   {
-    // A fade inside an <object>'s SVG document, which the fingerprint walk never enters.
+    // A fade inside an <object>'s SVG document, which the fingerprint walk never enters. The
+    // document is another realm, which declines before the DOM snapshot would.
     name: "embedded-document",
-    reason: "overlay_unreadable",
+    reason: "seek_callback",
     composition: {
       overlayHtml: `<object id="host" type="image/svg+xml" data="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Crect id='r' width='128' height='128' fill='%2336f' opacity='0'/%3E%3C/svg%3E" style="${BADGE_STYLE}"></object>`,
       timelineScript:
@@ -836,11 +891,15 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     "devtools-named-setter",
     `<script>eval(${JSON.stringify(`${HIGHLIGHT_SETTER}\n//# sourceURL=pptr:evaluate;x`)});</script>`,
   ),
-  // A string timer compiles page code with nothing on the stack, as DevTools evaluations are.
-  highlightSetterCase(
-    "string-timer-setter",
-    `<script>setTimeout(${JSON.stringify(`${HIGHLIGHT_SETTER}\n//# sourceURL=pptr:evaluate;x`)}, 0);</script>`,
-  ),
+  // A string timer compiles page code with nothing on the stack, as DevTools evaluations are: its
+  // text is not one the renderer sent, so it declines when it registers.
+  {
+    ...highlightSetterCase(
+      "string-timer-setter",
+      `<script>setTimeout(${JSON.stringify(`${HIGHLIGHT_SETTER}\n//# sourceURL=pptr:evaluate;x`)}, 0);</script>`,
+    ),
+    reason: "seek_callback",
+  },
   {
     // Page code in a file named like GSAP's core build.
     ...highlightSetterCase(
@@ -867,9 +926,9 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     // how many ran while its own requestAnimationFrame / setTimeout / setInterval calls were in
     // progress, i.e. inside the shim's wrappers: zero with the shim as it is without the feature.
     // It declines on its animation-frame loop; the flag-on render's layered fallback must still
-    // match the flag-off render frame for frame, so the callback record the passthrough adds to
-    // the shim must call none of them. (It counts only calls inside the wrappers: a fallback render
-    // seeks its page a different number of times before frame 0, see the README's limitations.)
+    // match the flag-off render frame for frame, so nothing the passthrough does may call them.
+    // (It counts only calls inside the wrappers: a fallback render seeks its page a different
+    // number of times before frame 0, see the README's limitations.)
     name: "builtins-counter",
     reason: "seek_callback",
     composition: {
@@ -979,12 +1038,102 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
   {
     name: "paint-worklet",
     wallClock: true,
-    reason: "overlay_non_gsap_animation",
+    // The worklet module is a registration; `paint()` in the CSS would decline it too.
+    reason: "seek_callback",
     composition: {
       headHtml: `<style>#painted { background-image: paint(hf-counter); }</style><script>CSS.paintWorklet.addModule("assets/${PAINT_WORKLET_FILE}");</script>`,
       overlayHtml: `<div id="painted" style="${BADGE_STYLE}"></div>`,
     },
     assets: ["paint-worklet"],
+  },
+  // The builtins the fingerprint collector would call if it ran in the page's own world, replaced
+  // by builtins that return constants: the fingerprint runs in an isolated world, and a page that
+  // replaced a builtin with anything but script declines.
+  fingerprintBuiltinCase(
+    "fingerprint-digest",
+    "SubtleCrypto.prototype.digest = Promise.resolve.bind(Promise, new ArrayBuffer(32));",
+  ),
+  fingerprintBuiltinCase(
+    "fingerprint-encode",
+    "TextEncoder.prototype.encode = Uint8Array.of.bind(Uint8Array);",
+  ),
+  fingerprintBuiltinCase("fingerprint-json", 'JSON.stringify = String.bind(null, "x");'),
+  // The seek-time setter, compiled from a `javascript:` URL named like a DevTools evaluation, from
+  // `location.href` and from a clicked anchor: trusted only by exact text, it declines.
+  {
+    ...highlightSetterCase(
+      "jsurl-location-setter",
+      `<script>location.href = ${JSON.stringify(javascriptUrl(HIGHLIGHT_SETTER))};</script>`,
+    ),
+    reason: "seek_callback",
+  },
+  {
+    ...highlightSetterCase("jsurl-anchor-setter", ""),
+    reason: "seek_callback",
+    composition: {
+      ...highlightSetterCase("jsurl-anchor-setter", "").composition,
+      timelineScript: `{ const a = document.createElement("a"); a.href = ${JSON.stringify(javascriptUrl(HIGHLIGHT_SETTER))}; document.body.appendChild(a); a.click(); a.remove(); }`,
+    },
+    assets: ["gsap"],
+  },
+  {
+    // Getters on `Error.prototype` that paint when anything formats an error, and an animation
+    // frame loop. The loop declines; the fallback must match the flag-off render, so nothing the
+    // passthrough adds to the render may format an error in the page.
+    name: "error-getters-raf",
+    reason: "seek_callback",
+    composition: {
+      cues: [],
+      headHtml: `<script>for (const key of ["name", "message"]) Object.defineProperty(Error.prototype, key, { configurable: true, get() { const t = document.getElementById("touched"); if (t) t.textContent = "TOUCHED " + key; return key === "name" ? "Error" : ""; } });</script>`,
+      overlayHtml: `<div id="touched" style="${TEXT_STYLE}">untouched</div>`,
+      timelineScript: "(function loop() { requestAnimationFrame(loop); })();",
+    },
+    assets: ["gsap"],
+  },
+  {
+    // The page paints the observer constructors' and the registry's source text. Nothing the
+    // passthrough does is in the page, so it takes the passthrough and matches the layered render.
+    name: "tostring-painter",
+    reason: "",
+    takesPassthrough: true,
+    composition: {
+      overlayHtml: `<div id="printed" style="${TEXT_STYLE}"></div>`,
+      timelineScript: `document.getElementById("printed").textContent = String(MutationObserver) + " " + String(IntersectionObserver).length + " " + String(customElements.define);`,
+    },
+    assets: ["gsap"],
+  },
+  // Animated images in pseudo-elements no list of pseudo-elements named: declined by the image's
+  // own bytes and by the CSS and element allowlists.
+  {
+    name: "picker-icon-gif",
+    wallClock: true,
+    reason: "overlay_unsupported",
+    composition: {
+      headHtml: `<style>select { appearance: base-select; position: absolute; top: 48px; right: 48px; width: 300px; height: 160px; font: 40px sans-serif; } select::picker-icon { content: url(assets/${ANIMATED_IMAGE_FILES.gif}); }</style>`,
+      overlayHtml: "<select><option>A</option></select>",
+    },
+    assets: ["gif"],
+  },
+  {
+    name: "scroll-button-gif",
+    wallClock: true,
+    reason: "overlay_unsupported",
+    composition: {
+      headHtml: `<style>#sc { position: absolute; top: 48px; right: 48px; width: 400px; height: 160px; overflow: auto; scrollbar-width: none; } #sc::scroll-button(right) { content: url(assets/${ANIMATED_IMAGE_FILES.gif}); }</style>`,
+      overlayHtml: '<div id="sc"><div style="width:2000px;height:100px"></div></div>',
+    },
+    assets: ["gif"],
+  },
+  {
+    // A worker draws a counter into a canvas inside an open shadow root, on its own clock.
+    name: "shadow-worker-canvas",
+    wallClock: true,
+    reason: "seek_callback",
+    composition: {
+      overlayHtml: `<div id="host" style="${BADGE_STYLE};width:400px;height:200px"></div>`,
+      timelineScript: `{ const root = document.getElementById("host").attachShadow({ mode: "open" }); root.innerHTML = '<canvas width="400" height="200"></canvas>'; const off = root.querySelector("canvas").transferControlToOffscreen(); const src = 'onmessage = (e) => { const g = e.data.getContext("2d"); let n = 0; setInterval(() => { n++; g.fillStyle = "#000"; g.fillRect(0, 0, 400, 200); g.fillStyle = "#fff"; g.font = "bold 80px sans-serif"; g.fillText(String(n), 20, 120); }, 16); };'; const worker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" }))); worker.postMessage(off, [off]); }`,
+    },
+    assets: ["gsap"],
   },
   {
     name: "canvas",
@@ -1413,8 +1562,9 @@ function generateFixtures(options: GenerateOptions): GeneratedFixtures {
       const name = `ineligible-${negative.name}`;
       projects.push({
         name,
-        expect: "fallback",
-        expectReason: negative.reason,
+        ...(negative.takesPassthrough
+          ? { expect: "passthrough" as const }
+          : { expect: "fallback" as const, expectReason: negative.reason }),
         ...(negative.wallClock ? { repeatable: false as const } : {}),
         dir: writeProject({
           ...project,

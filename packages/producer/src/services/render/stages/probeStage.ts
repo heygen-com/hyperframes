@@ -76,7 +76,7 @@ import {
   closeFileServerSafely,
   createFileServer,
   type FileServerHandle,
-  virtualTimeShimFor,
+  VIRTUAL_TIME_SHIM,
 } from "../../fileServer.js";
 import { hasClosedMediaTag } from "../../htmlTagScans.js";
 import { servedPath } from "../../servedPath.js";
@@ -627,8 +627,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         projectDir,
         compiledDir: join(workDir, "compiled"),
         port: 0,
-        // The render reuses this server for capture, so it serves the render's shim.
-        preHeadScripts: [virtualTimeShimFor(cfg)],
+        preHeadScripts: [VIRTUAL_TIME_SHIM],
         fps: job.config.fps,
         allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
         includeOutsideScripts: job.config.includeOutsideScripts,

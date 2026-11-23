@@ -179,7 +179,7 @@ export interface FakePageOptions {
   windowListeners?: readonly string[];
   /** Make the DevTools listener lookup fail. */
   listenersUnreadable?: boolean;
-  /** Event types of page listeners whose handler is a builtin (`findNativeCallbacks`). */
+  /** Event types of page listeners whose handler is a builtin (read through DevTools). */
   nativeListeners?: readonly string[];
   /** As `nativeListeners`, but gone after the first seek, like a `once` listener the seek fires. */
   onceNativeListeners?: readonly string[];
@@ -268,8 +268,30 @@ function fakeProperties(objectId: unknown): unknown {
   return { result: [], internalProperties };
 }
 
-function fakeCdpSession(options: FakePageOptions, seeked: () => boolean): FakeCdpSession {
+/**
+ * `Runtime.callFunctionOn` in the fake isolated world: the declaration is
+ * evaluated and called with the fake globals swapped in, as `evaluate` does.
+ */
+type InPage = <T>(run: () => T) => T;
+
+function fakeCallFunctionOn(params: Record<string, unknown> | undefined, inPage: InPage): unknown {
+  const declaration = String(params?.functionDeclaration ?? "");
+  const args = ((params?.arguments as Array<{ value?: unknown }> | undefined) ?? []).map(
+    (arg) => arg.value,
+  );
+  const fn = (0, eval)(`(${declaration})`) as (...a: unknown[]) => unknown;
+  return { result: { type: "object", value: inPage(() => fn(...args)) } };
+}
+
+function fakeCdpSession(
+  options: FakePageOptions,
+  seeked: () => boolean,
+  inPage: InPage,
+): FakeCdpSession {
   const answers: Record<string, (params?: Record<string, unknown>) => unknown> = {
+    "Page.getFrameTree": () => ({ frameTree: { frame: { id: "main" } } }),
+    "Page.createIsolatedWorld": () => ({ executionContextId: 9 }),
+    "Runtime.callFunctionOn": (params) => fakeCallFunctionOn(params, inPage),
     "DOMSnapshot.captureSnapshot": () => fakeDomSnapshot(options),
     "Runtime.evaluate": () => ({ result: { type: "object", objectId: "window-1" } }),
     "DOMDebugger.getEventListeners": () => fakeListeners(options, seeked()),
@@ -385,26 +407,24 @@ export function createFakePage(options: FakePageOptions): {
     gsap: options.globalTimeline ? { globalTimeline: options.globalTimeline } : undefined,
     getComputedStyle: computedStyle,
     fetch: dataUrlFetch,
-    // The virtual-time shim's record of seek callbacks: none.
-    __HF_VIRTUAL_TIME__: {
-      callbackActivity: () => ({
-        frameCallbacks: [],
-        frameCallbacksOverflow: false,
-        pendingFrames: [],
-        filmTimers: 0,
-        stringTimers: 0,
-        pendingTimers: 0,
-        nativeObservers: 0,
-        nativeObserverKinds: [],
-        customElementDefinitions: 0,
-      }),
-    },
     ...options.globals,
   };
   const g = globalThis as Record<string, unknown>;
+  const inPage: InPage = (run) => {
+    const prevWindow = g.window;
+    const prevDocument = g.document;
+    g.window = win;
+    g.document = doc;
+    try {
+      return run();
+    } finally {
+      g.window = prevWindow;
+      g.document = prevDocument;
+    }
+  };
   const page = {
     createCDPSession: async (): Promise<FakeCdpSession> =>
-      fakeCdpSession(options, () => seeks.length > 0),
+      fakeCdpSession(options, () => seeks.length > 0, inPage),
     evaluate: async (fn: unknown, ...args: unknown[]): Promise<unknown> => {
       const stub = options.stubs?.get(fn);
       if (stub) return stub(...args);

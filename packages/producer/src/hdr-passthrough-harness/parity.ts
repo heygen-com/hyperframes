@@ -311,7 +311,11 @@ export function checkSingleOutput(run: RenderRun, expected: ExpectedOutput): Che
   return results;
 }
 
-/** Whether the flag-on render took the route the fixture expects. */
+/**
+ * Whether the flag-on render took the route the fixture expects. An expected
+ * reason may list alternatives (`a|b`) for a case two gates can catch,
+ * depending on the order the seeks happened to take.
+ */
 export function checkExpectedPath(
   path: RenderPath,
   expect: Expectation,
@@ -321,7 +325,8 @@ export function checkExpectedPath(
   if (expect === "passthrough") {
     return { name: "on.path", ok: path.kind === "passthrough", detail: described };
   }
-  const reasonOk = !expectReason || (path.kind === "ineligible" && path.reason === expectReason);
+  const reasonOk =
+    !expectReason || (path.kind === "ineligible" && expectReason.split("|").includes(path.reason));
   return {
     name: "on.path",
     ok: isFallback(path) && reasonOk,

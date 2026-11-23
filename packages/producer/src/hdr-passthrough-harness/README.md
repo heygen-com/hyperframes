@@ -117,8 +117,27 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   often they ran; it declines on its `requestAnimationFrame` loop, and its
   flag-on (layered fallback) render must match flag off frame for frame,
   which holds only while nothing the passthrough adds to the page calls them.
+  Pages that attack the passthrough's own checks: `fingerprint-digest`,
+  `fingerprint-encode` and `fingerprint-json` replace the builtins an
+  in-page fingerprint would hash with (`SubtleCrypto#digest`,
+  `TextEncoder#encode`, `JSON.stringify`) by builtins that return a
+  constant; `jsurl-location-setter` and `jsurl-anchor-setter` compile the
+  seek-time setter from a `javascript:` URL named like a DevTools
+  evaluation, through `location.href` and a clicked anchor;
+  `error-getters-raf` paints whenever anything formats an error
+  (`Error.prototype.name` / `message` getters) and runs an animation-frame
+  loop; `shadow-worker-canvas` has a worker draw a counter into an offscreen
+  canvas in an open shadow root: all `seek_callback`. `picker-icon-gif` and
+  `scroll-button-gif` paint an animated GIF in `::picker-icon` and
+  `::scroll-button()` (`overlay_unsupported`). `tostring-painter` paints the
+  observer constructors' and `customElements.define`'s source text: it must
+  take the passthrough and match the layered render, which holds only while
+  nothing the passthrough does is visible to the page.
+  `error-getters-raf`'s flag-on (layered fallback) render must match flag
+  off frame for frame too.
   Run these with `--only on` when the check is only the route and reason
-  (both sides would take the layered path); run `builtins-counter` with both.
+  (both sides would take the layered path); run `builtins-counter`,
+  `error-getters-raf` and `tostring-painter` with both.
 
 - `edge-<case>/` (with `--edge`): the `captions` layout with one thing
   varied that the `captions` fixture holds fixed, each on its own source

@@ -218,7 +218,6 @@ mock.module("../../fileServer.js", () => ({
   }),
   closeFileServerSafely: (fileServer: { close: () => void }) => fileServer.close(),
   VIRTUAL_TIME_SHIM: "",
-  virtualTimeShimFor: () => "",
 }));
 
 mock.module("../../htmlCompiler.js", () => ({

@@ -10,6 +10,7 @@ import type { Fps, MotionBlurFingerprint } from "@hyperframes/core";
 import type { CompositionLengthSource } from "@hyperframes/core/runtime/composition-length";
 import type { ChromeMemoryStats } from "./services/chromeMemorySampler.js";
 import type { MotionBlurOptions } from "./services/motionBlur.js";
+import type { Page } from "puppeteer-core";
 
 export type PageMotionBlurOff = "off" | "hdr-render" | "layered-composite" | "distributed-render";
 
@@ -187,6 +188,12 @@ export interface CaptureOptions {
    * crash mid-render still reports the last known memory state.
    */
   onMemorySample?: (stats: ChromeMemoryStats) => void;
+  /**
+   * Called with the page as soon as it opens, before the engine registers any script on it or
+   * navigates it. A caller that must see everything the renderer sends the page (the HDR
+   * passthrough's script record) hooks it here. Absent means nothing runs.
+   */
+  onPageOpened?: (page: Page) => Promise<void>;
   /**
    * Frame rate as an exact rational. Integer fps is `{ num: 30, den: 1 }`;
    * NTSC is `{ num: 30000, den: 1001 }`. Captures are scheduled by the

@@ -4,7 +4,8 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { GSAP_BUILD_HASHES } from "./gsapBuilds.js";
 import {
-  createParseClassifier,
+  compiledTextOf,
+  compileKind,
   isGsapBuild,
   originFromText,
   type ParsedScriptEvent,
@@ -24,64 +25,42 @@ const event = (overrides: Partial<ParsedScriptEvent>): ParsedScriptEvent => ({
 });
 const fromPage = { callFrames: [{ scriptId: "7" }] };
 
-describe("createParseClassifier", () => {
-  it("trusts scripts compiled before anything else in the document (evaluateOnNewDocument)", () => {
-    const classify = createParseClassifier(MAIN);
-    expect(classify(event({ scriptId: "4" }))).toBe("renderer");
-    expect(classify(event({ scriptId: "5" }))).toBe("renderer");
-    expect(classify(event({ scriptId: "6", url: DOC, embedderName: DOC }))).toBe("by_text");
-    // After the document's first script, an unnamed stackless script is a string timer or a
-    // javascript: URL as much as a DevTools evaluation.
-    expect(classify(event({ scriptId: "8" }))).toBe("by_text");
-  });
-
-  it("trusts DevTools evaluations by their pptr: URL only when nothing on the page compiled them", () => {
-    const classify = createParseClassifier(MAIN);
-    classify(event({ url: DOC, embedderName: DOC }));
-    expect(classify(event({ url: "pptr:evaluate;x" }))).toBe("renderer");
-    // eval / new Function / an inserted inline script, named like one.
-    expect(classify(event({ url: "pptr:evaluate;x", stackTrace: fromPage }))).toBe("by_text");
-    // A parser-inserted or external script, named like one.
-    expect(classify(event({ url: "pptr:evaluate;x", embedderName: DOC }))).toBe("by_text");
-  });
-
-  it("decides every script the page compiled by its text", () => {
-    const classify = createParseClassifier(MAIN);
-    classify(event({ url: DOC, embedderName: DOC }));
-    for (const spoof of [
-      "",
-      "hyperframes://injected/0",
-      "http://127.0.0.1:4100/assets/gsap.min.js",
-    ]) {
-      expect(classify(event({ url: spoof, stackTrace: fromPage }))).toBe("by_text");
-      expect(classify(event({ url: spoof, embedderName: DOC }))).toBe("by_text");
+describe("compileKind", () => {
+  it("calls every main-world compile with nothing on the stack and no document from outside", () => {
+    // A DevTools evaluation, an evaluateOnNewDocument script, a javascript: URL and a string
+    // timer all look like this; only the text tells them apart.
+    for (const url of ["", "pptr:evaluate;x", "hyperframes://injected/0"]) {
+      expect(compileKind(event({ url }), MAIN)).toBe("outside");
     }
   });
 
-  it("trusts isolated worlds and nothing in other frames", () => {
-    const classify = createParseClassifier(MAIN);
-    const isolated = { isDefault: false, type: "isolated", frameId: MAIN };
-    expect(classify(event({ executionContextId: 4, executionContextAuxData: isolated }))).toBe(
-      "renderer",
-    );
-    const child = { isDefault: true, type: "default", frameId: "CHILD" };
-    expect(classify(event({ executionContextId: 5, executionContextAuxData: child }))).toBe(
-      "by_text",
-    );
-    expect(
-      classify(event({ executionContextId: 5, executionContextAuxData: child, url: "pptr:x" })),
-    ).toBe("by_text");
-    expect(classify(event({ executionContextId: 6, executionContextAuxData: undefined }))).toBe(
-      "by_text",
-    );
+  it("calls a compile from page activity the page's, whatever its name", () => {
+    for (const url of ["", "pptr:evaluate;x", "hyperframes://injected/0"]) {
+      expect(compileKind(event({ url, stackTrace: fromPage }), MAIN)).toBe("page");
+      expect(compileKind(event({ url, embedderName: DOC }), MAIN)).toBe("page");
+    }
   });
 
-  it("keeps each document's opening run apart", () => {
-    const classify = createParseClassifier(MAIN);
-    classify(event({ executionContextId: 3, url: DOC, embedderName: DOC }));
-    // The next document (a navigation) opens with the renderer's scripts again.
-    expect(classify(event({ executionContextId: 9 }))).toBe("renderer");
-    expect(classify(event({ executionContextId: 3 }))).toBe("by_text");
+  it("trusts isolated worlds and calls other frames' main worlds another realm", () => {
+    const isolated = { isDefault: false, type: "isolated", frameId: MAIN };
+    expect(compileKind(event({ executionContextAuxData: isolated }), MAIN)).toBe("isolated");
+    const child = { isDefault: true, type: "default", frameId: "CHILD" };
+    expect(compileKind(event({ executionContextAuxData: child }), MAIN)).toBe("other_realm");
+    expect(compileKind(event({ executionContextAuxData: undefined }), MAIN)).toBe("other_realm");
+  });
+});
+
+describe("compiledTextOf", () => {
+  it("is the text V8 compiles for each DevTools command that compiles one", () => {
+    expect(compiledTextOf("Runtime.evaluate", { expression: "this" })).toBe("this");
+    expect(compiledTextOf("Debugger.evaluateOnCallFrame", { expression: "callback" })).toBe(
+      "callback",
+    );
+    expect(compiledTextOf("Page.addScriptToEvaluateOnNewDocument", { source: "x()" })).toBe("x()");
+    expect(
+      compiledTextOf("Runtime.callFunctionOn", { functionDeclaration: "function () {}" }),
+    ).toBe("(function () {})");
+    expect(compiledTextOf("Runtime.getProperties", { objectId: "1" })).toBeUndefined();
   });
 });
 
@@ -125,17 +104,23 @@ describe("isGsapBuild", () => {
 describe("originFromText", () => {
   const renderer = new Set([sha256("window.__hfRuntime = 1;")]);
 
-  it("trusts a parse verdict of the renderer without reading text", () => {
-    expect(originFromText("renderer", undefined, renderer)).toBe("renderer");
+  it("trusts an isolated world without reading text", () => {
+    expect(originFromText("isolated", undefined, renderer)).toBe("renderer");
   });
 
-  it("trusts only the renderer's own texts and GSAP's", () => {
-    expect(originFromText("by_text", "window.__hfRuntime = 1;", renderer)).toBe("renderer");
-    expect(originFromText("by_text", GSAP, renderer)).toBe("gsap");
-    expect(originFromText("by_text", "window.__hfRuntime = 2;", renderer)).toBe("page");
+  it("trusts only the renderer's own texts and GSAP's, however they were compiled", () => {
+    for (const kind of ["outside", "page"] as const) {
+      expect(originFromText(kind, "window.__hfRuntime = 1;", renderer)).toBe("renderer");
+      expect(originFromText(kind, GSAP, renderer)).toBe("gsap");
+      expect(originFromText(kind, "window.__hfRuntime = 2;", renderer)).toBe("page");
+    }
+    // A javascript: URL named like a DevTools evaluation is still the page's.
+    expect(originFromText("outside", "void(window.x=1)//# sourceURL=pptr:evaluate", renderer)).toBe(
+      "page",
+    );
   });
 
   it("counts a script whose text cannot be read as the page's", () => {
-    expect(originFromText("by_text", undefined, renderer)).toBe("page");
+    expect(originFromText("outside", undefined, renderer)).toBe("page");
   });
 });

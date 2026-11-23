@@ -1688,6 +1688,7 @@ async function constructCaptureSession(
 
   const page = await openPage(browser);
   onPageCreated(page);
+  await options.onPageOpened?.(page);
   // Cap the existing session's inspection buffer; new sessions have separate buffers.
   const frame = page.mainFrame();
   // Frame.client is runtime-only, so keep capture working when it is absent.

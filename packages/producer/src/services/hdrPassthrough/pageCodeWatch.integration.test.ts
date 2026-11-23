@@ -10,6 +10,7 @@ import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { VIRTUAL_TIME_SHIM } from "../fileServer.js";
 import { armPageCodeWatch, type PageCodeWatch } from "./pageCodeWatch.js";
 
 const GSAP_PATH = resolve(
@@ -34,20 +35,25 @@ const COMPOSITION = `(() => {
   const proxy = {};
   let on = 0;
   Object.defineProperty(proxy, "on", { get: () => on, set(v) { on = v; } });
-  customElements.define("hf-badge", class extends HTMLElement {
-    static observedAttributes = ["data-on"];
-    attributeChangedCallback() {}
-  });
-  const badge = document.createElement("hf-badge");
-  document.body.appendChild(badge);
   const box = document.createElement("div");
   box.id = "box";
   document.body.appendChild(box);
   window.__timelines = {
     plain: gsap.timeline({ paused: true }).to("#box", { opacity: 0.5, duration: 1 }, 0),
     proxy: gsap.timeline({ paused: true }).set(proxy, { on: 1 }, 1),
-    element: gsap.timeline({ paused: true }).set(badge, { attr: { "data-on": "1" } }, 1),
   };
+})();
+//# sourceURL=hyperframes-composition://body`;
+
+/** A custom element reacting to an attribute a registered timeline sets. */
+const CUSTOM_ELEMENT = `(() => {
+  customElements.define("hf-badge", class extends HTMLElement {
+    static observedAttributes = ["data-on"];
+    attributeChangedCallback() {}
+  });
+  const badge = document.createElement("hf-badge");
+  document.body.appendChild(badge);
+  window.__timelines.element = gsap.timeline({ paused: true }).set(badge, { attr: { "data-on": "1" } }, 1);
 })();
 //# sourceURL=hyperframes-composition://body`;
 
@@ -60,6 +66,8 @@ interface PageSpec {
   gsap?: string;
   /** Extra files the server answers with. */
   files?: Record<string, string>;
+  /** Markup at the end of <body>, after the composition. */
+  body?: string;
 }
 
 describe("the page code watch in Chrome", () => {
@@ -74,13 +82,14 @@ describe("the page code watch in Chrome", () => {
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
+    // fallow-ignore-next-line complexity
     server = createServer((request, response) => {
       const path = request.url ?? "/";
       const file =
         path === "/"
-          ? `<!doctype html><html><head>${inline(RUNTIME)}${spec.head ?? ""}${
+          ? `<!doctype html><html><head>${inline(VIRTUAL_TIME_SHIM)}${inline(RUNTIME)}${spec.head ?? ""}${
               spec.gsap ?? '<script src="/gsap.min.js"></script>'
-            }</head><body>${inline(COMPOSITION)}</body></html>`
+            }</head><body>${inline(COMPOSITION)}${spec.body ?? ""}</body></html>`
           : path === "/gsap.min.js"
             ? GSAP
             : spec.files?.[path];
@@ -108,7 +117,10 @@ describe("the page code watch in Chrome", () => {
   });
 
   /** A loaded page whose watch counts from now. */
-  async function load(next: PageSpec, rendererScripts = [RUNTIME]): Promise<PageCodeWatch> {
+  async function load(
+    next: PageSpec,
+    rendererScripts = [VIRTUAL_TIME_SHIM, RUNTIME],
+  ): Promise<PageCodeWatch> {
     spec = next;
     const watch = await armPageCodeWatch(page as never, rendererScripts);
     await page.goto(`${origin}/`);
@@ -141,11 +153,28 @@ describe("the page code watch in Chrome", () => {
     expect(await seeks(await load({}), "plain", [0, 0.5, 1, 0.25])).toBeNull();
   });
 
-  it("trusts a function the renderer added before the page loaded", async () => {
+  it("trusts a function the renderer added before the page loaded, by its text", async () => {
+    spec = {};
+    // Armed first, as the overlay session arms it when the page opens: the script is known by
+    // the exact text the renderer sends.
+    const watch = await armPageCodeWatch(page as never, [VIRTUAL_TIME_SHIM, RUNTIME]);
     await page.evaluateOnNewDocument(() => {
       (window as unknown as { __hfBridgeHook: () => void }).__hfBridgeHook = () => undefined;
     });
-    expect(await seeks(await load({}), "plain", [0.5, 1.5])).toBeNull();
+    await page.goto(`${origin}/`);
+    await watch.start();
+    expect(await seeks(watch, "plain", [0.5, 1.5])).toBeNull();
+  });
+
+  it("does not trust a script registered before the watch was armed, which it never saw sent", async () => {
+    spec = {};
+    await page.evaluateOnNewDocument(() => {
+      (window as unknown as { __hfBridgeHook: () => void }).__hfBridgeHook = () => undefined;
+    });
+    const watch = await armPageCodeWatch(page as never, [VIRTUAL_TIME_SHIM, RUNTIME]);
+    await page.goto(`${origin}/`);
+    await watch.start();
+    expect(await seeks(watch, "plain", [0.5])).toMatch(/page function\(s\) ran after load/);
   });
 
   it("trusts GSAP as the compiler inlines it", async () => {
@@ -158,7 +187,7 @@ describe("the page code watch in Chrome", () => {
 
   it("does not count page code that ran before the watch started", async () => {
     spec = { head: inline(SETTER) };
-    const watch = await armPageCodeWatch(page as never, [RUNTIME]);
+    const watch = await armPageCodeWatch(page as never, [VIRTUAL_TIME_SHIM, RUNTIME]);
     await page.goto(`${origin}/`);
     await page.evaluate(() => {
       (window as unknown as { __hfTypegpuTime: number }).__hfTypegpuTime = 1.5;
@@ -168,7 +197,7 @@ describe("the page code watch in Chrome", () => {
   });
 
   it("refuses to report counts it never started", async () => {
-    const watch = await armPageCodeWatch(page as never, [RUNTIME]);
+    const watch = await armPageCodeWatch(page as never, [VIRTUAL_TIME_SHIM, RUNTIME]);
     expect(await watch.stop()).toBe("call counts never started");
   });
 
@@ -179,9 +208,9 @@ describe("the page code watch in Chrome", () => {
   });
 
   it("finds a custom element reacting to an attribute GSAP sets", async () => {
-    expect(await seeks(await load({}), "element", [0.5, 1.5])).toMatch(
-      /first attributeChangedCallback in hyperframes-composition:\/\/body/,
-    );
+    expect(
+      await seeks(await load({ body: inline(CUSTOM_ELEMENT) }), "element", [0.5, 1.5]),
+    ).toMatch(/first attributeChangedCallback in hyperframes-composition:\/\/body/);
   });
 
   it.each([
@@ -214,14 +243,30 @@ describe("the page code watch in Chrome", () => {
     expect(await seeks(watch, "plain", [0.5, 1.5])).toMatch(/page function\(s\) ran after load/);
   });
 
-  // Its name alone would have the shim's callback record trust what it registers.
+  // A name is never the renderer's word: a page script that takes one is the page's like any other,
+  // counted when it runs and ignored when it does not.
   it.each(["hyperframes://injected/7", "pptr:evaluate;x", "hyperframes://position-seek-reapply"])(
-    "finds a page script named %s even when it never runs",
+    "counts a page script named %s as the page's",
     async (name) => {
-      const watch = await load({ head: inline(`window.idle = () => 1;\n//# sourceURL=${name}`) });
-      expect(await seeks(watch, "plain", [0.5])).toBe(`a page script is named ${name}`);
+      const idle = await load({ head: inline(`window.idle = () => 1;\n//# sourceURL=${name}`) });
+      expect(await seeks(idle, "plain", [0.5])).toBeNull();
+      await page.close();
+      page = await browser.newPage();
+      const busy = await load({
+        head: inline(`window.__hfBridgeHook = () => 1;\n//# sourceURL=${name}`),
+      });
+      expect(await seeks(busy, "plain", [0.5])).toMatch(/page function\(s\) ran after load/);
     },
   );
+
+  it("finds a javascript: URL named like a DevTools evaluation, even when it never runs again", async () => {
+    const watch = await load({
+      head: inline(
+        'location.href = "javascript:void(window.ranOnce = 1)//# sourceURL=pptr:evaluate";',
+      ),
+    });
+    expect(await seeks(watch, "plain", [0.5])).toMatch(/the renderer did not send/);
+  });
 
   it("ends a disposed watch without reading it", async () => {
     const watch = await load({});

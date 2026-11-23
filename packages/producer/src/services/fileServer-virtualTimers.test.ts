@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { createContext, Script } from "node:vm";
-import { VIRTUAL_TIME_SHIM, virtualTimeShimFor } from "./fileServer.js";
+import { VIRTUAL_TIME_SHIM } from "./fileServer.js";
 
 type Page = { run: <T = unknown>(code: string) => T };
 
 // The shim in a fresh VM whose own timers only record that they were asked for.
-function page(shim: string = VIRTUAL_TIME_SHIM): Page {
+function page(): Page {
   const context = createContext({});
   new Script(`
     globalThis.window = globalThis;
@@ -17,11 +17,9 @@ function page(shim: string = VIRTUAL_TIME_SHIM): Page {
     globalThis.performance = { now: () => 0 };
     globalThis.__renderReady = true;
   `).runInContext(context);
-  new Script(shim).runInContext(context);
+  new Script(VIRTUAL_TIME_SHIM).runInContext(context);
   return { run: <T>(code: string) => new Script(code).runInContext(context) as T };
 }
-
-const RECORD_SHIM = virtualTimeShimFor({ experimentalHdrPassthrough: true });
 
 // Seeks frame by frame at 30 fps up to `untilMs`, as the renderer does before each capture.
 const seekFrames = (untilMs: number) =>
@@ -108,57 +106,5 @@ describe("virtual-time shim timers", () => {
       requestAnimationFrame(() => order.push("frame"));`);
     run("window.__HF_VIRTUAL_TIME__.seekToTime(1000 / 30);");
     expect(run("order")).toEqual(["timer", "frame"]);
-  });
-});
-
-// With the HDR passthrough on, the shim's callback record reads its callers' stacks to tell page code from the renderer's. The page must never see
-// that: its own stack hooks do not run, and are left exactly as it set them.
-describe("virtual-time shim caller stacks", () => {
-  const activity = "window.__HF_VIRTUAL_TIME__.callbackActivity()";
-
-  it("never runs a throwing Error.prepareStackTrace the page installs", () => {
-    const { run } = page(RECORD_SHIM);
-    run(`window.hookCalls = 0;
-      window.hook = function () { hookCalls++; throw new TypeError("stack formatting disabled"); };
-      Error.prepareStackTrace = hook;`);
-    run("requestAnimationFrame(() => {}); requestAnimationFrame(() => {});");
-    run("window.__HF_VIRTUAL_TIME__.seekToTime(0);");
-    run("setTimeout(() => {}, 10); setInterval(() => {}, 20);");
-    expect(run("hookCalls")).toBe(0);
-    expect(run("Error.prepareStackTrace === hook")).toBe(true);
-    // Still recorded as the page's own.
-    expect(run(`${activity}.frameCallbacks.length`)).toBe(2);
-    expect(run(`${activity}.filmTimers`)).toBe(2);
-  });
-
-  it("leaves a counting hook and the stack limit as the page set them", () => {
-    const { run } = page(RECORD_SHIM);
-    run(`window.hookCalls = 0;
-      Error.prepareStackTrace = function (error, frames) { hookCalls++; return "pst"; };
-      Error.stackTraceLimit = 2;`);
-    run("for (let i = 0; i < 5; i++) requestAnimationFrame(() => {});");
-    expect(run("hookCalls")).toBe(0);
-    expect(run("Error.stackTraceLimit")).toBe(2);
-    expect(run("new Error().stack")).toBe("pst");
-    expect(run("hookCalls")).toBe(1);
-  });
-
-  it("leaves no hook behind on a page that set none", () => {
-    const { run } = page(RECORD_SHIM);
-    run("requestAnimationFrame(() => {});");
-    expect(run("Object.getOwnPropertyDescriptor(Error, 'prepareStackTrace')")).toBeUndefined();
-  });
-
-  it("counts the caller as page code when the hook cannot be set aside", () => {
-    const { run } = page(RECORD_SHIM);
-    run(`window.hookCalls = 0;
-      Object.defineProperty(Error, "prepareStackTrace", {
-        value: function () { hookCalls++; throw new TypeError("no"); },
-        writable: false,
-        configurable: false,
-      });`);
-    run("requestAnimationFrame(() => {});\n//# sourceURL=hyperframes://injected/2");
-    expect(run("hookCalls")).toBe(0);
-    expect(run(`${activity}.frameCallbacks.length`)).toBe(1);
   });
 });

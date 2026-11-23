@@ -24,8 +24,10 @@
  *   - every CSS / Web Animation's play state and current time (a transition
  *     or animation started by a class change differs on every frame, so it
  *     never merges);
- *   - the current value of every non-CSS property a GSAP tween writes on its
- *     target (`scrollTop`, a custom element's property, a plain object);
+ *   - the current value of every native property a GSAP tween writes on its
+ *     target element (`scrollTop`, a form value; tweens of anything but
+ *     elements decline, `seekReachable.ts`), and the playback position of
+ *     a media element with controls;
  *   - the paint state no attribute holds, which a builtin can set with no
  *     page script running: pseudo-classes the browser keeps
  *     (`:popover-open`, `:modal`, `:target`, validity), the custom states
@@ -38,40 +40,51 @@
  * different (an extra capture), never two different ones look equal, as
  * long as it is in this list.
  *
+ * It is collected in a DevTools isolated world (`isolatedWorld.ts`): the page
+ * cannot replace anything the collector calls (a page that swapped
+ * `JSON.stringify` or `SubtleCrypto#digest` for a constant made an in-page
+ * collector hash the same on every frame), and the text is hashed in Node.
+ *
  * Page script can still change what paints and none of this reads, and can
  * keep state across seeks; the passthrough declines any page code that runs
  * on capture's seeks (`pageCodeWatch.ts`) and any callback that runs no
- * page script (`nativeCallbacks.ts`), so only the runtime and GSAP write
- * while it probes.
+ * page script (`seekReachable.ts`, `registrationWatch.ts`), so only the
+ * runtime and GSAP write while it probes.
  *
  * Page script cannot read a closed shadow root (`shadowRoot` is null) or the
  * document inside an `<object>` / `<embed>` / frame, so a tween there changes
  * pixels and no fingerprint. Equal fingerprints then merge frames that render
  * differently, and verification accepts them without a screenshot.
- * `findFingerprintBlindSpots` finds that content through the DevTools DOM
+ * `findBlindSpotsInSnapshot` finds that content in the DevTools DOM
  * snapshot, which reads both, and the passthrough declines it
- * (`overlay_unreadable`).
+ * (`overlay_unreadable`, `overlayPageGates.ts`).
  */
 
 import { createHash } from "node:crypto";
+import { MEDIA_RENDER_ID_ATTR } from "@hyperframes/core";
 import { type CaptureSession, type ElementStackingInfo, getCdpSession } from "@hyperframes/engine";
-
-/** What the in-page collector returns: a sha256 when the page can hash, else the text. */
-export type PageFingerprint = { kind: "digest"; value: string } | { kind: "text"; value: string };
+import { adoptElements, callIsolated, handleIsolated, type IsolatedArg } from "./isolatedWorld.js";
+import type { ElementTarget } from "./seekReachable.js";
 
 /**
- * Runs in the page; must stay self-contained (serialized by `page.evaluate`).
- * Read-only: never seeks, never writes the DOM.
+ * Runs in the DevTools isolated world (`isolatedWorld.ts`), where page script
+ * cannot replace anything it calls; must stay self-contained. Returns the
+ * text the caller hashes in Node. Read-only: never seeks, never writes the
+ * DOM. `targets` are the elements GSAP tweens write, each followed by the
+ * vars keys of its tweens (`seekReachable.ts`).
  */
 // fallow-ignore-next-line complexity
-export async function collectOverlayPageFingerprint(videoId: string): Promise<PageFingerprint> {
-  const w = window as unknown as {
-    __hfMediaEl?: (id: string) => Element | null;
-    __timelines?: Record<string, unknown>;
-  };
+export function collectOverlayPageFingerprint(
+  videoId: string,
+  mediaIdAttribute: string,
+  targets: ReadonlyArray<Element | string[]> = [],
+): string {
   const parts: string[] = [];
   const skipped = new Set<Node>();
-  const video = w.__hfMediaEl?.(videoId) ?? document.getElementById(videoId);
+  const escaped = videoId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const video =
+    document.querySelector(`[${mediaIdAttribute}="${escaped}"]`) ??
+    document.getElementById(videoId);
   if (video) skipped.add(video);
   // Focus paints (`:focus`, `:focus-within`, a caret), and the browser moves it without page code
   // when the focused element stops rendering.
@@ -139,6 +152,9 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
       parts.push(` @selected=${el.selectedIndex}`);
     } else if (el instanceof HTMLImageElement) {
       parts.push(` @img=${el.complete},${el.naturalWidth}x${el.naturalHeight},${el.currentSrc}`);
+    } else if (el instanceof HTMLMediaElement && el.controls) {
+      // Controls paint the playback position, which the runtime sets on every seek.
+      parts.push(` @media=${el.currentTime},${el.paused},${el.muted},${el.volume},${el.duration}`);
     }
     if (focused.has(el)) parts.push(" @focus");
     parts.push(">");
@@ -276,43 +292,21 @@ export async function collectOverlayPageFingerprint(videoId: string): Promise<Pa
   pushPaintState();
   pushAnimations(document);
 
-  // Non-CSS values GSAP tweens write on their targets: CSS ones land in the style attribute.
-  type Tweenish = {
-    targets?: () => unknown[];
-    vars?: Record<string, unknown>;
-    getChildren?: (nested: boolean, tweens: boolean, timelines: boolean) => Tweenish[];
-    __hfReal?: Tweenish;
-  };
-  const seen = new Set<unknown>();
-  for (const entry of Object.values(w.__timelines ?? {})) {
-    const tl = ((entry as Tweenish | undefined)?.__hfReal ?? entry) as Tweenish | undefined;
-    if (!tl || typeof tl.getChildren !== "function" || seen.has(tl)) continue;
-    seen.add(tl);
-    for (const tween of tl.getChildren(true, true, false)) {
-      const targets = typeof tween.targets === "function" ? tween.targets() : [];
-      const keys = Object.keys(tween.vars ?? {});
-      for (const target of targets) {
-        if (!target || typeof target !== "object") continue;
-        for (const key of keys) {
-          if (!(key in target)) continue;
-          const value = (target as Record<string, unknown>)[key];
-          const type = typeof value;
-          if (type === "number" || type === "string" || type === "boolean") {
-            parts.push(`@tween ${key}=${String(value)}`);
-          }
-        }
+  // Non-CSS values GSAP tweens write on their targets (`scrollTop`, a form value): CSS ones land in
+  // the style attribute. The browser's own properties only: an expando the page added is invisible
+  // here, and paints only through page code, which the page code watch counts.
+  for (let i = 0; i + 1 < targets.length; i += 2) {
+    const target = targets[i] as Element;
+    for (const key of targets[i + 1] as string[]) {
+      if (!(key in target)) continue;
+      const value = (target as unknown as Record<string, unknown>)[key];
+      const type = typeof value;
+      if (type === "number" || type === "string" || type === "boolean") {
+        parts.push(`@tween ${key}=${String(value)}`);
       }
     }
   }
-
-  const text = parts.join("\n");
-  const subtle = window.isSecureContext ? window.crypto?.subtle : undefined;
-  if (subtle) {
-    const digest = await subtle.digest("SHA-256", new TextEncoder().encode(text));
-    const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0"));
-    return { kind: "digest", value: hex.join("") };
-  }
-  return { kind: "text", value: text };
+  return parts.join("\n");
 }
 
 /**
@@ -326,30 +320,64 @@ export function stackingFingerprint(stacking: ElementStackingInfo[], videoId: st
 
 /**
  * Combine the page and stacking fingerprints into one key: equal keys mean
- * the overlay renders the same pixels. The page part's kind is part of the
- * key, so a digest never compares equal to a text.
+ * the overlay renders the same pixels.
  */
-export function overlayFingerprintKey(page: PageFingerprint, stacking: string): string {
-  return createHash("sha256")
-    .update(page.kind)
-    .update("\0")
-    .update(page.value)
-    .update("\0")
-    .update(stacking)
-    .digest("hex");
+export function overlayFingerprintKey(page: string, stacking: string): string {
+  return createHash("sha256").update(page).update("\0").update(stacking).digest("hex");
+}
+
+type Page = CaptureSession["page"];
+
+/** Per overlay page: the isolated world's handle on the GSAP targets the fingerprint reads. */
+const targetHandles = new WeakMap<Page, Promise<string | undefined>>();
+
+/**
+ * The elements GSAP tweens write, with their tweens' keys, as the
+ * fingerprint reads them (`seekReachable.ts` finds them). Call again
+ * whenever the targets are read anew; `readOverlayFingerprint` uses the
+ * latest.
+ */
+export function setFingerprintTargets(page: Page, targets: readonly ElementTarget[]): void {
+  const handle = (async () => {
+    if (targets.length === 0) return undefined;
+    const adopted = await adoptElements(
+      page,
+      targets.map((target) => target.objectId),
+    );
+    const args: IsolatedArg[] = [];
+    targets.forEach((target, i) => {
+      const objectId = adopted[i];
+      if (!objectId) throw new Error("hdrPassthrough: a GSAP target is not in the document");
+      args.push({ objectId }, { value: target.keys });
+    });
+    return handleIsolated(page, (...pairs: unknown[]) => pairs, args as never);
+  })();
+  handle.catch(() => undefined);
+  targetHandles.set(page, handle);
 }
 
 /**
  * Fingerprint of the overlay at the page's current time. Call after the
  * seek, frame injection and stacking query of the frame, before any mask.
+ * Runs in the isolated world; the text is hashed here.
  */
 export async function readOverlayFingerprint(
   session: CaptureSession,
   videoId: string,
   stacking: ElementStackingInfo[],
 ): Promise<string> {
-  const page = await session.page.evaluate(collectOverlayPageFingerprint, videoId);
-  return overlayFingerprintKey(page, stackingFingerprint(stacking, videoId));
+  const targets = await targetHandles.get(session.page);
+  const text = await callIsolated<string>(
+    session.page,
+    collectOverlayPageFingerprint as (...args: never[]) => string,
+    [
+      { value: videoId },
+      { value: MEDIA_RENDER_ID_ATTR },
+      targets ? { objectId: targets } : { value: [] },
+    ],
+  );
+  if (typeof text !== "string") throw new Error("hdrPassthrough: the fingerprint returned no text");
+  return overlayFingerprintKey(text, stackingFingerprint(stacking, videoId));
 }
 
 /** The part of a `DOMSnapshot.captureSnapshot` result `findBlindSpotsInSnapshot` reads. */
@@ -498,52 +526,7 @@ function ownClockElement(tag: string, attrs: ReadonlyMap<string, string>): strin
   return attrs.has("value") ? null : "indeterminate <progress>";
 }
 
-async function captureDomSnapshot(page: CaptureSession["page"]): Promise<DomSnapshotLike> {
+export async function captureDomSnapshot(page: CaptureSession["page"]): Promise<DomSnapshotLike> {
   const client = await getCdpSession(page);
   return client.send("DOMSnapshot.captureSnapshot", { computedStyles: [] });
-}
-
-/**
- * The DOM snapshot gates: content the fingerprint cannot read
- * (`overlay_unreadable`, `findBlindSpotsInSnapshot`), then content that
- * paints on a clock or from state it does not read
- * (`findOwnClockElementsInSnapshot`), from one snapshot. A snapshot that
- * fails is `overlay_unreadable`: unread is not empty. Uses the page's cached
- * engine CDP session and never detaches it (see `findSeekHookListeners`).
- */
-export async function inspectDomSnapshot(
-  page: CaptureSession["page"],
-  videoId: string,
-): Promise<{
-  reason: "overlay_unreadable" | "video_count" | "overlay_non_gsap_animation";
-  detail: string;
-} | null> {
-  let snapshot: DomSnapshotLike;
-  try {
-    snapshot = await captureDomSnapshot(page);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    return { reason: "overlay_unreadable", detail: `DOM snapshot failed (${detail})` };
-  }
-  const blindSpot = findBlindSpotsInSnapshot(snapshot);
-  if (blindSpot) return { reason: "overlay_unreadable", detail: blindSpot };
-  return findOwnClockElementsInSnapshot(snapshot, videoId);
-}
-
-/**
- * `findBlindSpotsInSnapshot` on a DevTools DOM snapshot of the page, which
- * pierces closed shadow roots and frames. A snapshot that fails is reported
- * too: unread is not empty. Uses the page's cached engine CDP session and
- * never detaches it (see `findSeekHookListeners`); a DOM snapshot enables no
- * domain and sends no events afterwards.
- */
-export async function findFingerprintBlindSpots(
-  page: CaptureSession["page"],
-): Promise<string | null> {
-  try {
-    return findBlindSpotsInSnapshot(await captureDomSnapshot(page));
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    return `DOM snapshot failed (${detail})`;
-  }
 }

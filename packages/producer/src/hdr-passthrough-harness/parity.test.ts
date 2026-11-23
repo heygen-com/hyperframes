@@ -92,6 +92,14 @@ describe("checkExpectedPath", () => {
     expect(checkExpectedPath(transform, "fallback", "opacity").ok).toBe(false);
     expect(checkExpectedPath({ kind: "passthrough" }, "fallback").ok).toBe(false);
   });
+
+  it("accepts any of the alternatives an expected reason lists", () => {
+    const unverified = { kind: "ineligible", reason: "overlay_unverified" } as const;
+    expect(checkExpectedPath(unverified, "fallback", "seek_callback|overlay_unverified").ok).toBe(
+      true,
+    );
+    expect(checkExpectedPath(unverified, "fallback", "seek_callback|opacity").ok).toBe(false);
+  });
 });
 
 describe("checkSingleOutput", () => {

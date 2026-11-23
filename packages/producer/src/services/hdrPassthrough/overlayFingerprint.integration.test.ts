@@ -3,14 +3,19 @@
 // replacement frame, script text) must not. Needs Chrome: integration lane.
 
 import { resolve } from "node:path";
+import { MEDIA_RENDER_ID_ATTR } from "@hyperframes/core";
+import { getCdpSession } from "@hyperframes/engine";
 import puppeteer, { type Browser, type Page } from "puppeteer";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { adoptElements, callIsolated, evaluateIsolated, handleIsolated } from "./isolatedWorld.js";
 import {
+  captureDomSnapshot,
   collectOverlayPageFingerprint,
-  findFingerprintBlindSpots,
-  inspectDomSnapshot,
-  type PageFingerprint,
+  findBlindSpotsInSnapshot,
+  findOwnClockElementsInSnapshot,
 } from "./overlayFingerprint.js";
+
+type PageFingerprint = string;
 
 const GSAP_PATH = resolve(
   import.meta.dirname,
@@ -34,8 +39,15 @@ const PAGE = `<!doctype html>
 </body>
 </html>`;
 
+/** The fingerprint text, collected where the page cannot reach (the isolated world). */
 async function fingerprint(page: Page): Promise<PageFingerprint> {
-  return page.evaluate(collectOverlayPageFingerprint, "video");
+  return evaluateIsolated(
+    page as never,
+    collectOverlayPageFingerprint,
+    "video",
+    MEDIA_RENDER_ID_ATTR,
+    [],
+  );
 }
 
 describe("collectOverlayPageFingerprint in Chrome", () => {
@@ -276,17 +288,55 @@ describe("collectOverlayPageFingerprint in Chrome", () => {
           timeline(vars: object): { to(t: object, v: object): unknown; seek(t: number): void };
         };
         __timelines: Record<string, unknown>;
-        __meter: { level: number };
       };
-      w.__meter = { level: 0 };
       const tl = w.gsap.timeline({ paused: true });
-      tl.to(w.__meter, { level: 10, duration: 1, ease: "none" });
+      tl.to("#list", { scrollTop: 10, duration: 1, ease: "none" });
       w.__timelines = { main: tl };
     });
-    const [before, after] = await around(() => {
+    // The target and its tween's keys, handed over as `seekReachable.ts` finds them.
+    // A main-world handle from the passthrough's own session, as `seekReachable.ts` reads them.
+    const client = await getCdpSession(page as never);
+    const { result: list } = await client.send("Runtime.evaluate", {
+      expression: 'document.getElementById("list")',
+    });
+    const [adopted] = await adoptElements(page as never, [list.objectId as string]);
+    const targets = await handleIsolated(page as never, (...pairs: unknown[]) => pairs, [
+      { objectId: adopted as string },
+      { value: ["scrollTop"] },
+    ] as never);
+    const read = () =>
+      callIsolated<string>(page as never, collectOverlayPageFingerprint as never, [
+        { value: "video" },
+        { value: MEDIA_RENDER_ID_ATTR },
+        { objectId: targets },
+      ]);
+    const before = await read();
+    await page.evaluate(() => {
       (
         window as unknown as { __timelines: { main: { seek(t: number): void } } }
       ).__timelines.main.seek(0.5);
+    });
+    const after = await read();
+    expect(after).not.toEqual(before);
+    expect(after).toContain("@tween scrollTop=");
+  });
+
+  // The page replaces the builtins an in-page collector would call with constant natives; the
+  // isolated world's own are untouched, so the fingerprint still follows the DOM.
+  it("changes with the DOM when the page replaced the builtins a collector would call", async () => {
+    await page.evaluate(() => {
+      const constant = String.bind(null, "x");
+      JSON.stringify = constant as typeof JSON.stringify;
+      Array.from = Array.of.bind(Array) as typeof Array.from;
+      TextEncoder.prototype.encode = Uint8Array.of.bind(Uint8Array) as never;
+      if (typeof SubtleCrypto !== "undefined") {
+        SubtleCrypto.prototype.digest = Promise.resolve.bind(Promise, new ArrayBuffer(32)) as never;
+      }
+      Element.prototype.matches = Boolean.bind(null, false) as never;
+      Object.getOwnPropertyNames = Array.of.bind(Array) as never;
+    });
+    const [before, after] = await around(() => {
+      document.getElementById("word")!.textContent = "changed";
     });
     expect(after).not.toEqual(before);
   });
@@ -358,7 +408,7 @@ describe("findFingerprintBlindSpots in Chrome", () => {
     await page.setContent(PAGE);
   });
 
-  const blindSpots = () => findFingerprintBlindSpots(page as never);
+  const blindSpots = async () => findBlindSpotsInSnapshot(await captureDomSnapshot(page as never));
 
   it("finds nothing on a page script can read, open shadow roots and UA controls included", async () => {
     await page.evaluate(() => {
@@ -455,7 +505,13 @@ describe("inspectDomSnapshot in Chrome", () => {
       html,
       shadow,
     );
-  const inspect = () => inspectDomSnapshot(page as never, "video");
+  const inspect = async () => {
+    const snapshot = await captureDomSnapshot(page as never);
+    const blind = findBlindSpotsInSnapshot(snapshot);
+    return blind
+      ? { reason: "overlay_unreadable", detail: blind }
+      : findOwnClockElementsInSnapshot(snapshot, "video");
+  };
 
   it("finds nothing besides the source, silent audio and a determinate progress bar", async () => {
     await add(

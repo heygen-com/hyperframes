@@ -24,8 +24,8 @@ import {
 } from "@hyperframes/engine";
 import { probeVideoLayout } from "../render/videoLayerPassthroughPlan.js";
 import { type BlendCheckResult, checkFfmpegBlend } from "./ffmpegBlendCheck.js";
-import { findNativeCallbacks } from "./nativeCallbacks.js";
-import { inspectDomSnapshot } from "./overlayFingerprint.js";
+import { evaluateIsolated } from "./isolatedWorld.js";
+import { inspectPageContent, inspectPageState, type PageFinding } from "./overlayPageGates.js";
 import { analyzeOverlayTiming } from "./planner.js";
 import type {
   CheckPassthroughEligibilityArgs,
@@ -254,7 +254,8 @@ function inspectVideoAnimation(videoId: string, duration: number): VideoAnimatio
 }
 
 /**
- * Runs in the page; must stay self-contained. Read-only.
+ * Runs in the isolated world (`isolatedWorld.ts`); must stay self-contained.
+ * Read-only.
  *
  * The layered compositor clips the video to a rounded rectangle when it has a
  * border radius of its own or sits inside an `overflow` clipping ancestor that
@@ -285,227 +286,28 @@ function findVideoCornerRadius(videoId: string): string | null {
   return null;
 }
 
-/**
- * Runs in the page; must stay self-contained. Leaves GSAP's ticker as it found it.
- *
- * Finds page code that runs on seeks and keeps state across them: an
- * animation-frame callback (the virtual-time shim runs every pending one on
- * every seek), a film-time timer (a seek fires every timer due by then, and a
- * backward seek un-fires none) or a listener on GSAP's ticker (which runs from
- * the ticker's animation frame). What such code shows on a frame can depend on
- * how many seeks came before it and in what order, not on the frame's time
- * alone. The layered path seeks every frame once, in order; overlay capture
- * seeks candidates and verification frames out of order, so its probes could
- * agree with each other and still not with the layered render. The shim
- * records every distinct callback since the page loaded, so a callback that
- * ran once and stopped still counts.
- *
- * GSAP's own ticker runs from an animation frame too. It is told apart by
- * sleeping it (which cancels its pending frame) and waking it again; it only
- * renders the root timeline, whose children the planner requires to be
- * registered (and paused) timelines. Any other ticker listener counts.
- *
- * The record also counts observers whose callback runs no page script (a
- * builtin, bound function, callable Proxy or WebAssembly export, which V8's
- * call counts never see run) and custom element definitions, whose
- * lifecycle callbacks nothing reads back: any of either counts.
- */
-export function inspectSeekCallbacks(): string | null {
-  type Activity = {
-    frameCallbacks: unknown[];
-    frameCallbacksOverflow: boolean;
-    pendingFrames: unknown[];
-    filmTimers: number;
-    stringTimers: number;
-    pendingTimers: number;
-    nativeObservers: number;
-    nativeObserverKinds: unknown[];
-    customElementDefinitions: number;
-  };
-  type Ticker = { sleep: () => void; wake: () => void; _listeners?: unknown };
-  const w = window as unknown as {
-    __HF_VIRTUAL_TIME__?: { callbackActivity?: () => Activity };
-    gsap?: { ticker?: Partial<Ticker>; core?: { Timeline?: { updateRoot?: unknown } } };
-  };
-  const shim = w.__HF_VIRTUAL_TIME__;
-  const read = shim?.callbackActivity;
-  if (typeof read !== "function") return "no virtual-time callback record";
-  const pending = () => read().pendingFrames;
-  const without = (list: unknown[], drop: unknown[]) => list.filter((fn) => !drop.includes(fn));
-
-  // GSAP's ticker frame callback: the one sleeping cancels, or (asleep already) the one waking
-  // requests. The ticker is left awake or asleep as it was found; null when there is no GSAP.
-  const findGsapTick = (ticker: Ticker): unknown => {
-    const before = pending();
-    ticker.sleep();
-    const asleep = pending();
-    const cancelled = without(before, asleep);
-    ticker.wake();
-    if (cancelled.length > 0) return cancelled.length === 1 ? cancelled[0] : null;
-    const requested = without(pending(), asleep);
-    ticker.sleep();
-    return requested.length === 1 ? requested[0] : null;
-  };
-  // A finding for GSAP's ticker listeners (anything but GSAP's root timeline update).
-  const tickerListeners = (ticker: Partial<Ticker>): string | null => {
-    const listeners = ticker._listeners;
-    if (!Array.isArray(listeners)) return "GSAP ticker listeners unreadable";
-    const updateRoot = w.gsap?.core?.Timeline?.updateRoot;
-    const extra = listeners.filter((listener) => listener !== updateRoot).length;
-    return extra > 0 ? `${extra} GSAP ticker listener(s)` : null;
-  };
-
-  // Callbacks the browser runs on seeks that V8's call counts cannot see (see the record).
-  const invisibleCallbacks = (activity: Activity): string | null => {
-    const { nativeObservers, customElementDefinitions } = activity;
-    if (typeof nativeObservers !== "number" || typeof customElementDefinitions !== "number") {
-      return "virtual-time callback record unreadable";
-    }
-    if (nativeObservers < 0) return "observer record unavailable";
-    if (nativeObservers > 0) {
-      const kinds = Array.isArray(activity.nativeObserverKinds) ? activity.nativeObserverKinds : [];
-      return `${nativeObservers} observer(s) with a callback that runs no page script (${[...new Set(kinds)].join(", ")})`;
-    }
-    return customElementDefinitions > 0
-      ? `${customElementDefinitions} custom element definition(s)`
-      : null;
-  };
-
-  const activity = read();
-  // A string timer runs code the page compiled with no page frame on the stack, which the page code
-  // watch could not tell from a DevTools evaluation if it took a renderer script's name.
-  if (typeof activity.stringTimers !== "number") return "virtual-time callback record unreadable";
-  if (activity.stringTimers > 0) return `${activity.stringTimers} string timer(s)`;
-  const unseen = invisibleCallbacks(activity);
-  if (unseen) return unseen;
-  if (activity.filmTimers > 0) {
-    return `${activity.filmTimers} film-time timer(s), ${activity.pendingTimers} pending`;
-  }
-  if (activity.frameCallbacksOverflow) return "many requestAnimationFrame callbacks";
-  const ticker = w.gsap?.ticker;
-  const usable =
-    !!ticker && typeof ticker.sleep === "function" && typeof ticker.wake === "function";
-  const listenerFinding = usable ? tickerListeners(ticker) : null;
-  if (listenerFinding) return listenerFinding;
-  const gsapTick = usable ? findGsapTick(ticker as Ticker) : null;
-  const others = without(activity.frameCallbacks, [gsapTick]).length;
-  return others > 0 ? `${others} requestAnimationFrame callback(s)` : null;
-}
-
-/**
- * Runs in the page; must stay self-contained. Read-only.
- *
- * GSAP's ticker renders its global timeline from the ticker's animation
- * frame, so on every seek, on the ticker's own clock: the seeks it has seen
- * so far, lag-smoothed, not the frame's time. The runtime seeks the
- * registered timelines and the roots they hang from to film time; anything
- * else on the global timeline that plays (a `gsap.delayedCall`, a tween of a
- * plain object, an unregistered timeline, element target or not) fires or
- * moves on that clock, which overlay capture's out-of-order seeks do not
- * share with the layered path's in-order ones. Every playing child that is
- * not on a registered timeline's chain counts, as does a paused one holding
- * a callback or a function target (`delayedCall`'s). Paused children without
- * either do nothing on their own: the runtime's filler roots, and the
- * element-targeting ones the planner already reports.
- *
- * GSAP drops a child from the global timeline once it completes, so a
- * `delayedCall` that has fired leaves no trace: eligibility reads this before
- * its first seek as well as after the analysis, and the passthrough again
- * after capture.
- */
-// fallow-ignore-next-line complexity
-export function inspectGsapGlobalTimeline(): string | null {
-  type Node = {
-    parent?: Node | null;
-    paused?: () => boolean;
-    getChildren?: (nested: boolean, tweens: boolean, timelines: boolean) => Node[];
-    targets?: () => unknown[];
-    vars?: Record<string, unknown>;
-    startTime?: () => number;
-  };
-  const w = window as unknown as {
-    __timelines?: Record<string, unknown>;
-    gsap?: { globalTimeline?: Node };
-  };
-  const globalTimeline = w.gsap?.globalTimeline;
-  if (!globalTimeline) return null;
-  if (typeof globalTimeline.getChildren !== "function") return "GSAP global timeline unreadable";
-  const CALLBACKS = [
-    "onStart",
-    "onUpdate",
-    "onComplete",
-    "onRepeat",
-    "onReverseComplete",
-    "onInterrupt",
-  ];
-  // Registered timelines and every ancestor up to the global timeline: seeked to film time.
-  const seeked = new Set<unknown>();
-  for (const entry of Object.values(w.__timelines ?? {})) {
-    const real = (entry as { __hfReal?: Node } | null | undefined)?.__hfReal;
-    for (let node = (real ?? entry) as Node | null | undefined; node; node = node.parent) {
-      if (node === globalTimeline) break;
-      seeked.add(node);
-    }
-  }
-  const targetsOf = (node: Node): unknown[] =>
-    typeof node.targets === "function" ? node.targets() : [];
-  const callsBack = (node: Node) =>
-    CALLBACKS.some((key) => typeof node.vars?.[key] === "function") ||
-    targetsOf(node).some((target) => typeof target === "function");
-  const kind = (node: Node): string => {
-    const at = typeof node.startTime === "function" ? ` at ${node.startTime().toFixed(3)}s` : "";
-    if (targetsOf(node).some((target) => typeof target === "function")) return `delayedCall${at}`;
-    return `${typeof node.getChildren === "function" ? "timeline" : "tween"}${at}`;
-  };
-  const found: Node[] = [];
-  for (const child of globalTimeline.getChildren(false, true, true)) {
-    if (seeked.has(child)) continue;
-    const paused = typeof child.paused === "function" && child.paused();
-    const nested =
-      typeof child.getChildren === "function" ? child.getChildren(true, true, true) : [];
-    if (!paused || [child, ...nested].some(callsBack)) found.push(child);
-  }
-  if (found.length === 0) return null;
-  const first = found[0] as Node;
-  return `${found.length} GSAP animation(s) on the global timeline outside the registered timelines (${kind(first)})`;
-}
-
-/**
- * `seek_callback` finding for the overlay page (see `inspectSeekCallbacks`,
- * `inspectGsapGlobalTimeline` and `findNativeCallbacks`), or `null`. Eligibility calls it after the
- * timing analysis has seeked the whole composition; the passthrough calls it
- * again after overlay capture, so a callback first registered on a frame only
- * capture visited still declines.
- */
-export async function findSeekCallbacks(page: CaptureSession["page"]): Promise<string | null> {
-  return (
-    (await page.evaluate(inspectSeekCallbacks)) ??
-    (await page.evaluate(inspectGsapGlobalTimeline)) ??
-    findNativeCallbacks(page)
-  );
-}
-
-/**
- * The `seek_callback` findings read before eligibility's first seek: a GSAP
- * `delayedCall` the seeks fire is gone from the global timeline afterwards,
- * as is a native listener added with `once`.
- */
-async function findUnseekedCallbacks(page: CaptureSession["page"]): Promise<string | null> {
-  return (await page.evaluate(inspectGsapGlobalTimeline)) ?? findNativeCallbacks(page);
-}
-
 /** Filesystem, probe and ffmpeg access, injectable for tests. */
 export interface EligibilityDeps {
   fileExists: (path: string) => boolean;
   probeMetadata: (path: string, signal: AbortSignal | undefined) => Promise<VideoMetadata>;
   /** Whether the composite's ffmpeg blends exactly like the layered path (`checkFfmpegBlend`). */
   checkBlend: (signal: AbortSignal | undefined) => Promise<BlendCheckResult>;
+  /** The DevTools-only page gates (`overlayPageGates.inspectPageState`). */
+  inspectState: (page: CaptureSession["page"]) => Promise<PageFinding | null>;
+  /** The content gates (`overlayPageGates.inspectPageContent`). */
+  inspectContent: (
+    page: CaptureSession["page"],
+    videoId: string,
+    final: boolean,
+  ) => Promise<PageFinding | null>;
 }
 
 const DEFAULT_DEPS: EligibilityDeps = {
   fileExists: existsSync,
   probeMetadata: (path, signal) => extractMediaMetadata(path, { signal }),
   checkBlend: checkFfmpegBlend,
+  inspectState: inspectPageState,
+  inspectContent: inspectPageContent,
 };
 
 /**
@@ -528,7 +330,7 @@ async function checkPageLayout(
   if ("reason" in layout) {
     return ineligible(asReason(layout.reason, LAYOUT_REASONS, "not_full_canvas"));
   }
-  const corner = await page.evaluate(findVideoCornerRadius, videoId);
+  const corner = await evaluateIsolated(page, findVideoCornerRadius, videoId);
   if (corner) return ineligible("clip_or_mask", corner);
   const animation = await page.evaluate(inspectVideoAnimation, videoId, duration);
   if (animation) return ineligible(animation.reason, animation.detail);
@@ -560,19 +362,23 @@ async function checkPageLayout(
  * (`checkFfmpegBlend`, cached per binary) finds the resolved ffmpeg's
  * `maskedmerge` exact against the layered blend.
  *
- * Page gates (`await session.get()`): `shader_transitions`; layout at sampled
- * times via `probeVideoLayout` (the SDR video-layer probe, same reasons);
- * `clip_or_mask` for a border radius on the video or a clipping ancestor;
- * `video_animated` / `not_shown` via `inspectVideoAnimation`; then overlay
- * timing via `planner.analyzeOverlayTiming` with
- * `maxStates = DEFAULT_MAX_OVERLAY_STATES`, whose failure reason is returned
- * as-is; then `overlay_unreadable` for overlay content the fingerprint
- * cannot read and `video_count` / `overlay_non_gsap_animation` for content
- * that paints on its own clock (`inspectDomSnapshot`); last,
- * `seek_callback` for page code that runs on seeks and keeps state across
- * them and for callbacks that run no page script (`findSeekCallbacks`, plus
- * `inspectGsapGlobalTimeline` and `findNativeCallbacks` read before the
- * first seek).
+ * Page gates (`await session.get()`), first through DevTools only and
+ * before any seek or in-page probe (`overlayPageGates.inspectPageState`):
+ * `seek_callback` for what the page registered while it loaded, a script
+ * compiled where only the renderer's should be, a builtin the page replaced
+ * with anything but script, and a callable a seek runs that is not page
+ * script, or GSAP state the passthrough does not accept. Then
+ * `shader_transitions`; layout at sampled times via `probeVideoLayout` (the
+ * SDR video-layer probe, same reasons); `clip_or_mask` for a border radius
+ * on the video or a clipping ancestor; `video_animated` / `not_shown` via
+ * `inspectVideoAnimation`; then overlay timing via
+ * `planner.analyzeOverlayTiming` with `maxStates = DEFAULT_MAX_OVERLAY_STATES`,
+ * whose failure reason is returned as-is; then the content gates
+ * (`overlayPageGates.inspectPageContent`): `overlay_unreadable` for content
+ * the fingerprint cannot read, `video_count` / `overlay_non_gsap_animation`
+ * for content that paints on its own clock, `overlay_unsupported` for
+ * anything outside the element and CSS allowlists; last, the DevTools-only
+ * gates again, after the analysis seeked the whole composition.
  *
  * Leaves the page seeked to time 0 and with no DOM mask applied.
  */
@@ -616,10 +422,11 @@ export async function checkPassthroughEligibility(
   input.assertNotAborted();
   const captureSession = await session.get();
   const { page } = captureSession;
-  // Before the first seek: a GSAP delayedCall the seeks below fire is gone from the global
-  // timeline afterwards, as is a native listener added with `once`. Reported in the seek_callback
-  // slot so earlier gates keep their order.
-  const unseeked = await findUnseekedCallbacks(page);
+  // Through DevTools only, before the first seek and before any probe runs in the page: until these
+  // pass, an in-page probe could call a builtin the page replaced (a GSAP delayedCall the seeks fire
+  // is gone from the global timeline afterwards, as is a native listener added with `once`).
+  const state = await deps.inspectState(page);
+  if (state) return ineligible(state.reason, state.detail);
   const layout = await checkPageLayout(page, element.id, { width, height }, composition.duration);
   if ("eligible" in layout) return layout;
 
@@ -632,10 +439,11 @@ export async function checkPassthroughEligibility(
     maxStates: DEFAULT_MAX_OVERLAY_STATES,
   });
   if (!timing.ok) return ineligible(timing.reason, timing.detail);
-  const snapshotFinding = await inspectDomSnapshot(page, element.id);
-  if (snapshotFinding) return ineligible(snapshotFinding.reason, snapshotFinding.detail);
-  const seekCallbacks = unseeked ?? (await findSeekCallbacks(page));
-  if (seekCallbacks) return ineligible("seek_callback", seekCallbacks);
+  const content = await deps.inspectContent(page, element.id, false);
+  if (content) return ineligible(content.reason, content.detail);
+  // Again after the analysis seeked the whole composition.
+  const seeked = await deps.inspectState(page);
+  if (seeked) return ineligible(seeked.reason, seeked.detail);
 
   return {
     eligible: true,

@@ -147,6 +147,9 @@ export type PassthroughIneligibleReason =
   // an <iframe> / <object> / <embed> anywhere, shadow trees included), so two
   // frames could fingerprint equal and render differently
   | "overlay_unreadable"
+  // overlay content outside what the passthrough accepts (ownClock.ts): an
+  // element, pseudo-element or CSS feature not on its allowlists
+  | "overlay_unsupported"
   // overlay capture (see overlayCapture.writeOverlayStates): a frame the
   // planner called static rendered a different overlay
   | "overlay_unverified";

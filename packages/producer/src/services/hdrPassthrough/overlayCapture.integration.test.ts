@@ -328,16 +328,24 @@ describe.skipIf(!HAS_X265)("HDR passthrough capture dedup through real renders",
     );
   });
 
-  it.each([
-    ["a seek-time setter", "setter"],
-    ["an accessor a GSAP set() writes through", "proxy"],
-  ])("falls back when %s changes state the fingerprint cannot read", (_name, project) => {
-    const on = results.get(`${project}-true`)!;
+  it("falls back when a seek-time setter changes state the fingerprint cannot read", () => {
+    const on = results.get("setter-true")!;
     expect(on.messages).toContainEqual(
       expect.stringMatching(
         new RegExp(
           `^\\[Render\\] HDR passthrough off: seek_callback \\(\\d+ page function\\(s\\) ran after load, first .+ in hyperframes-composition://body\\)$`,
         ),
+      ),
+    );
+  });
+
+  // GSAP writes the object's accessor on every seek past the set(); a tween target that is not an
+  // element declines before anything is seeked.
+  it("falls back when a GSAP set() writes through an accessor of a plain object", () => {
+    const on = results.get("proxy-true")!;
+    expect(on.messages).toContainEqual(
+      expect.stringMatching(
+        /^\[Render\] HDR passthrough off: seek_callback \(.*a GSAP tween writes on on Object, not an element/,
       ),
     );
   });

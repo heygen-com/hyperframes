@@ -47,17 +47,14 @@ describe("stackingFingerprint", () => {
 });
 
 describe("overlayFingerprintKey", () => {
-  it("is a sha256 that separates page states, stackings and kinds", () => {
-    const key = overlayFingerprintKey({ kind: "digest", value: "ab" }, "[]");
+  it("is a sha256 that separates page states and stackings", () => {
+    const key = overlayFingerprintKey("ab", "[]");
     expect(key).toMatch(/^[0-9a-f]{64}$/);
-    expect(overlayFingerprintKey({ kind: "digest", value: "ab" }, "[]")).toBe(key);
-    expect(overlayFingerprintKey({ kind: "text", value: "ab" }, "[]")).not.toBe(key);
-    expect(overlayFingerprintKey({ kind: "digest", value: "ac" }, "[]")).not.toBe(key);
-    expect(overlayFingerprintKey({ kind: "digest", value: "ab" }, "[1]")).not.toBe(key);
+    expect(overlayFingerprintKey("ab", "[]")).toBe(key);
+    expect(overlayFingerprintKey("ac", "[]")).not.toBe(key);
+    expect(overlayFingerprintKey("ab", "[1]")).not.toBe(key);
     // The separator keeps a shifted boundary between the two parts from colliding.
-    expect(overlayFingerprintKey({ kind: "digest", value: "a" }, "b[]")).not.toBe(
-      overlayFingerprintKey({ kind: "digest", value: "ab" }, "[]"),
-    );
+    expect(overlayFingerprintKey("a", "b[]")).not.toBe(key);
   });
 });
 

@@ -18,15 +18,21 @@ import {
   initializeSession,
 } from "@hyperframes/engine";
 import { noteStaticDedupActivity, reportFrameProgress } from "../render/shared.js";
-import { checkPassthroughEligibility, findSeekCallbacks } from "./eligibility.js";
+import { checkPassthroughEligibility } from "./eligibility.js";
 import { findOwnClockDrivers, planOverlayStates } from "./planner.js";
 import {
   OverlayStateMismatchError,
   VideoLayerChangedError,
   captureOverlayStates,
 } from "./overlayCapture.js";
-import { inspectDomSnapshot } from "./overlayFingerprint.js";
-import { armPageCodeWatch, attachPageCodeWatch, pageCodeWatchOf } from "./pageCodeWatch.js";
+import { releaseIsolated } from "./isolatedWorld.js";
+import { inspectPageContent, inspectPageState, pageGateTimings } from "./overlayPageGates.js";
+import {
+  armPageCodeWatch,
+  attachPageCodeWatch,
+  type PageCodeWatch,
+  pageCodeWatchOf,
+} from "./pageCodeWatch.js";
 import { POSITION_SEEK_REAPPLY_SCRIPT } from "../htmlCompiler.js";
 import { compositeAndEncode } from "./ffmpegComposite.js";
 import type {
@@ -61,23 +67,30 @@ export interface OverlaySessionDeps {
  * is closed before the error propagates.
  */
 async function openOverlaySession(input: HdrPassthroughInput): Promise<CaptureSession> {
-  if (!input.fileServer) {
+  const fileServer = input.fileServer;
+  if (!fileServer) {
     throw new Error("fileServer must be initialized before HDR passthrough");
   }
+  // Armed as the page opens, before the engine registers or evaluates anything on it, so every
+  // script the renderer sends is known by its text (`scriptOrigins.ts`).
+  let watch: PageCodeWatch | undefined;
+  const onPageOpened = async (page: CaptureSession["page"]) => {
+    watch = await armPageCodeWatch(page, [
+      ...fileServer.injectedScriptTexts(),
+      POSITION_SEEK_REAPPLY_SCRIPT,
+    ]);
+    attachPageCodeWatch(page, watch);
+  };
   // captureAlphaPng hangs under begin-frame control; same constraint as the layered stage.
   const session = await createCaptureSession(
-    input.fileServer.url,
+    fileServer.url,
     input.framesDir,
-    input.buildCaptureOptions(),
+    { ...input.buildCaptureOptions(), onPageOpened },
     input.createRenderVideoFrameInjector(),
     { ...input.cfg, forceScreenshot: true },
   );
   try {
-    const watch = await armPageCodeWatch(session.page, [
-      ...input.fileServer.injectedScriptTexts(),
-      POSITION_SEEK_REAPPLY_SCRIPT,
-    ]);
-    attachPageCodeWatch(session.page, watch);
+    if (!watch) throw new Error("hdrPassthrough: the page code watch was not armed");
     await initializeSession(session);
     input.assertNotAborted();
     await initTransparentBackground(session.page, { clearCompositionRoot: true });
@@ -90,6 +103,7 @@ async function openOverlaySession(input: HdrPassthroughInput): Promise<CaptureSe
 }
 
 async function closeOverlaySession(session: CaptureSession): Promise<void> {
+  await releaseIsolated(session.page);
   await pageCodeWatchOf(session.page)?.dispose();
   await closeCaptureSession(session);
 }
@@ -226,16 +240,20 @@ async function runHdrPassthrough(
     unique: overlays.uniqueCount,
     captureMs: overlays.captureMs,
   });
-  const pageCodeRan = await pageCode.stop();
-  if (pageCodeRan) throw new PassthroughDeclinedError("seek_callback", pageCodeRan);
-  // A callback first registered, or unreadable or self-animating content first attached, on a
-  // frame only capture visited.
-  const lateCallbacks = await findSeekCallbacks(page.page);
-  if (lateCallbacks) throw new PassthroughDeclinedError("seek_callback", lateCallbacks);
-  const lateSnapshot = await inspectDomSnapshot(page.page, eligible.video.id);
-  if (lateSnapshot) throw new PassthroughDeclinedError(lateSnapshot.reason, lateSnapshot.detail);
+  // A callback first registered, or content first attached, on a frame only capture visited; read
+  // before the watch stops, so a probe here that reached page code is counted too.
+  const lateState = await inspectPageState(page.page);
+  if (lateState) throw new PassthroughDeclinedError(lateState.reason, lateState.detail);
+  const lateContent = await inspectPageContent(page.page, eligible.video.id, true);
+  if (lateContent) throw new PassthroughDeclinedError(lateContent.reason, lateContent.detail);
   const lateDrivers = await findOwnClockDrivers(page.page);
   if (lateDrivers) throw new PassthroughDeclinedError("overlay_non_gsap_animation", lateDrivers);
+  log.info("[Render] HDR passthrough: page gates", {
+    ...pageGateTimings(page.page),
+    ...pageCode.registrations.stats(),
+  });
+  const pageCodeRan = await pageCode.stop();
+  if (pageCodeRan) throw new PassthroughDeclinedError("seek_callback", pageCodeRan);
   await session.close();
   input.assertNotAborted();
 

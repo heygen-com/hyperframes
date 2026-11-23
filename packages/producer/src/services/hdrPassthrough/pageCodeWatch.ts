@@ -20,14 +20,20 @@
  * is ready and read after capture, cover eligibility's probes and every
  * capture seek; any function that ran in a script that is neither the
  * renderer's nor GSAP's declines the passthrough (`seek_callback`). Which
- * script is whose comes from how V8 compiled it, never from its URL
- * (`scriptOrigins.ts`), and a page script that takes a renderer script's name
- * declines it too. The runtime and GSAP write only what the fingerprint
- * reads, which is how the passthrough gets its speed on the compositions it
- * is for.
+ * script is whose comes from its exact text, never from its URL or how it was
+ * compiled (`scriptOrigins.ts`). The runtime and GSAP write only what the
+ * fingerprint reads, which is how the passthrough gets its speed on the
+ * compositions it is for.
+ *
+ * The watch also holds what the passthrough records about the page from the
+ * moment it opens: the scripts, the registrations while it loads
+ * (`registrationWatch.ts`) and the images and stylesheets it loads
+ * (`ownClock.ts`).
  */
 
 import { type CaptureSession, getCdpSession } from "@hyperframes/engine";
+import { recordResources, type ResourceRecord } from "./ownClock.js";
+import { armRegistrationWatch, type RegistrationWatch } from "./registrationWatch.js";
 import {
   recordScriptOrigins,
   type ScriptOrigin,
@@ -62,6 +68,12 @@ export async function findPageCodeInCoverage(
 
 /** The overlay page's watch: armed before navigation, counting from `start()`. */
 export interface PageCodeWatch {
+  /** The page's scripts, by how V8 compiled them. */
+  readonly origins: ScriptOriginRecord;
+  /** What the page registered while it loaded (`registrationWatch.ts`). */
+  readonly registrations: RegistrationWatch;
+  /** Every image and stylesheet the page loaded (`ownClock.ts`). */
+  readonly resources: ResourceRecord;
   /** Starts counting calls; call once the page is ready. Never throws. */
   start(): Promise<void>;
   /** What page code ran since `start()`, or why that cannot be said; ends the watch. */
@@ -71,37 +83,49 @@ export interface PageCodeWatch {
 }
 
 /**
- * Arm the watch on a page that has not navigated yet: its scripts are
- * recorded as they are compiled (`recordScriptOrigins`), from the renderer's
- * own `rendererScripts` texts. Uses the page's cached engine CDP session and
- * never detaches it (see `findSeekHookListeners`). Starting precise coverage
- * resets V8's call counts, so only calls made after `start()` are reported.
- * Anything that cannot be read is reported too: unread is not empty.
+ * Arm the watch on a page that has not navigated yet, before the engine
+ * registers or evaluates anything on it: its scripts are recorded as they
+ * are compiled (`recordScriptOrigins`), with the renderer's own texts
+ * (`rendererScripts`, plus everything the renderer sends the page from
+ * now on); its registrations as it loads (`armRegistrationWatch`); and the
+ * images and stylesheets it loads (`recordResources`). Uses the page's
+ * cached engine CDP session and never detaches it (see
+ * `findSeekHookListeners`). Starting precise coverage resets V8's call
+ * counts, so only calls made after `start()` are reported. Anything that
+ * cannot be read is reported too: unread is not empty.
  */
 export async function armPageCodeWatch(
   page: CaptureSession["page"],
   rendererScripts: readonly string[],
 ): Promise<PageCodeWatch> {
   const origins: ScriptOriginRecord = await recordScriptOrigins(page, rendererScripts);
-  let client: Awaited<ReturnType<typeof getCdpSession>> | undefined;
+  const client = await getCdpSession(page);
+  const registrations = await armRegistrationWatch(client, origins);
+  const resources = await recordResources(client);
   let state: "armed" | "counting" | "stopped" = "armed";
   let startError: string | undefined;
   const end = async () => {
     if (state === "stopped") return;
     const wasCounting = state === "counting";
     state = "stopped";
-    if (client && wasCounting) {
+    if (wasCounting) {
       await client.send("Profiler.stopPreciseCoverage").catch(() => undefined);
       await client.send("Profiler.disable").catch(() => undefined);
     }
+    await registrations.dispose();
     await origins.dispose();
+    await resources.dispose();
+    await client.send("Debugger.disable").catch(() => undefined);
   };
   return {
+    origins,
+    registrations,
+    resources,
     async start() {
       if (state !== "armed") return;
       state = "counting";
       try {
-        client = await getCdpSession(page);
+        await registrations.ready();
         await client.send("Profiler.enable");
         await client.send("Profiler.startPreciseCoverage", { callCount: true, detailed: false });
         // Counts from before the start (page load, a record another caller left running) are dropped here.
@@ -115,14 +139,12 @@ export async function armPageCodeWatch(
         if (state === "armed") return "call counts never started";
         if (state === "stopped") return "call counts already read";
         if (startError !== undefined) return `call counts unavailable (${startError})`;
-        const originsFailure = origins.failure();
-        if (originsFailure !== undefined) return originsFailure;
-        const { result } = await (client as NonNullable<typeof client>).send(
-          "Profiler.takePreciseCoverage",
-        );
+        const unavailable = origins.failure() ?? registrations.failure();
+        if (unavailable !== undefined) return unavailable;
+        const { result } = await client.send("Profiler.takePreciseCoverage");
         return (
           (await findPageCodeInCoverage(result, origins.originOf)) ??
-          (await origins.findImpersonation())
+          (await origins.findUntrustedCompiles())
         );
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
