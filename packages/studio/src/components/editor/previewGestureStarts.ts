@@ -22,6 +22,7 @@ import { setStudioWaitingPressCancel } from "../../utils/studioPendingEdits";
 import { playheadMoment } from "../../hooks/editMoment";
 import type { EditMoment } from "./manualEditsTypes";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
+import { previewDraftsSent } from "./previewDrafts";
 import {
   askShownGestureStarts,
   UNANSWERED,
@@ -63,14 +64,17 @@ export function createPreviewGestureStarts(
       if (p.after === press) p.after = next;
   };
 
-  const endWaitingPress = (press: WaitingPressState | null = opts.waitingPressRef.current) => {
+  const endWaitingPress = (
+    press: WaitingPressState | null = opts.waitingPressRef.current,
+    keepMark = false,
+  ) => {
     for (let p = press; p && !p.ended; p = p.after) {
       p.ended = true;
       cancelAnimationFrame(p.frame);
     }
     if (press === opts.waitingPressRef.current) {
       opts.waitingPressRef.current = null;
-      clearWaitingMark();
+      if (!keepMark) clearWaitingMark();
     }
     // A press queued behind this one keeps waiting, on nothing that has ended.
     else if (press) unlink(press, null);
@@ -236,12 +240,17 @@ export function createPreviewGestureStarts(
         press.frame = requestAnimationFrame(poll);
         return;
       }
-      endWaitingPress(press);
+      endWaitingPress(press, !!channel);
+      const showLayerOnceFrameDrewReplay = () => {
+        if (channel && !opts.waitingPressRef.current) clearWaitingMark();
+      };
       const pointerDown = down as unknown as React.PointerEvent<HTMLElement>;
       const read = startsFrom(step);
-      if (read === false || !start(pointerDown, at, true, read)) return;
+      if (read === false || !start(pointerDown, at, true, read))
+        return showLayerOnceFrameDrewReplay();
       if (press.moved) moveActiveGesture(press.moved);
       if (press.released) releaseActiveGesture(press.released);
+      if (channel) void previewDraftsSent(channel).then(showLayerOnceFrameDrewReplay);
     };
     press.frame = requestAnimationFrame(poll);
     return true;
