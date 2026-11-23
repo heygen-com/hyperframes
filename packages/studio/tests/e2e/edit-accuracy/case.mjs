@@ -21,13 +21,7 @@ import {
   toPoints,
   visibleQuad,
 } from "./geometry.mjs";
-import {
-  frameSamplerScript,
-  scoreTeleport,
-  startFrames,
-  stopFrames,
-  studioReloadingOrSaving,
-} from "./teleport.mjs";
+import { frameSamplerScript, scoreTeleport, startFrames, stopFrames } from "./teleport.mjs";
 import { terminateWindowsProcessTree } from "../../../../cli/src/utils/processTree.ts";
 import { installWebMcpHost } from "../webmcp-host.mjs";
 
@@ -724,6 +718,9 @@ async function waitingQuad(page, map) {
   return quad;
 }
 
+const WAITING_BOX = "[data-dom-edit-press-waiting]";
+const WAITING_ON_SAVE = `${WAITING_BOX}:not([data-dom-edit-press-waiting="frame"])`;
+
 /** The box as the preview shows it: the waiting marker's quad while a press waits for its replay, else the element. */
 export async function measureShown(
   ctx,
@@ -733,8 +730,7 @@ export async function measureShown(
   pointerMoved = true,
 ) {
   for (;;) {
-    const standsIn = pointerMoved || (await ctx.page.evaluate(studioReloadingOrSaving));
-    const waiting = standsIn ? await ctx.page.$("[data-dom-edit-press-waiting]") : null;
+    const waiting = await ctx.page.$(pointerMoved ? WAITING_BOX : WAITING_ON_SAVE);
     try {
       const m = await read(ctx);
       if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);

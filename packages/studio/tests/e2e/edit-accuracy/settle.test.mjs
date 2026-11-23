@@ -280,7 +280,7 @@ describe("the box a press is measured against", () => {
   // fails without the fix: the press itself read the waiting outline, so a sealed press jumped 0.2 px.
   it("reads the element at the press, before the pointer moves", async () => {
     const shown = await measureShown(
-      { page: { ...page([marker([true])]), evaluate: async () => false } },
+      { page: { $: async (selector) => (selector.includes('="frame"') ? null : marker([true])) } },
       "move",
       read,
       async () => quad(260),
@@ -291,9 +291,9 @@ describe("the box a press is measured against", () => {
 
   // fails without the fix: a press made while Studio saved read the element, still where the last save
   // left it, 312 px from the box Studio draws at the pointer.
-  it("reads the waiting box at the press while Studio reloads or saves", async () => {
+  it("reads the waiting box at the press while it waits on a save", async () => {
     const shown = await measureShown(
-      { page: { ...page([marker([true])]), evaluate: async () => true } },
+      { page: { $: async () => marker([true]) } },
       "move",
       read,
       async () => quad(260),

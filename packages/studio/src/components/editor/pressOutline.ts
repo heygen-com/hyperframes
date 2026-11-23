@@ -10,6 +10,7 @@ type OutlineRefs = Pick<
   "boxRef" | "rafPausedRef" | "iframeRef" | "waitingPressRef"
 >;
 type ReplayDrawWait = { frame: HTMLIFrameElement };
+export type PressWait = "frame" | "save";
 
 function createPressOutline({ boxRef, rafPausedRef, iframeRef, waitingPressRef }: OutlineRefs) {
   let drawWait: ReplayDrawWait | null = null;
@@ -30,9 +31,9 @@ function createPressOutline({ boxRef, rafPausedRef, iframeRef, waitingPressRef }
     });
   return {
     idle,
-    waitOnSave() {
+    waitOnSave(reason: PressWait) {
       drawWait = null;
-      boxRef.current?.setAttribute(PRESS_WAITING_ATTR, "true");
+      boxRef.current?.setAttribute(PRESS_WAITING_ATTR, reason);
       rafPausedRef.current = true;
     },
     /** A replay ended: `drewIn` is the sealed frame its draws went to, null if none. */
