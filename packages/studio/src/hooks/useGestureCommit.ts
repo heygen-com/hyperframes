@@ -135,6 +135,7 @@ export function useGestureCommit({
   const recordingMethodRef = useRef<"button" | "keyboard">("button");
   const recordingStartTimeRef = useRef(0);
   const commitInFlightRef = useRef(false);
+  const pendingStartRef = useRef(0);
   // Capture selection at recording start so commit always targets the recorded element,
   // even if the user's selection changes mid-recording.
   const capturedSelectionRef = useRef<DomEditSelection | null>(null);
@@ -154,8 +155,17 @@ export function useGestureCommit({
   }, [gestureRecording, isGestureRecordingRef]);
 
   useEffect(() => {
-    if (readOnlyPreview && gestureStateRef.current === "recording") cancelRecording();
+    if (!readOnlyPreview) return;
+    pendingStartRef.current++;
+    if (gestureStateRef.current === "recording") cancelRecording();
   }, [cancelRecording, readOnlyPreview]);
+
+  useEffect(
+    () => () => {
+      pendingStartRef.current++;
+    },
+    [],
+  );
 
   // fallow-ignore-next-line complexity
   const stopAndCommitRecording = useCallback(async () => {
@@ -437,9 +447,17 @@ export function useGestureCommit({
         setGestureState("recording");
         armAutoStop(elementEnd);
       };
+      const pending = ++pendingStartRef.current;
+      const stillAimed = () =>
+        pending === pendingStartRef.current &&
+        previewIframeRef.current === iframe &&
+        domEditSessionRef.current.domEditSelection?.element === sel.element;
       if (!previewFrameOpaque(iframe)) begin();
       else if (!sel.handle) begin(null);
-      else void previewGestureBase(iframe, [sel.handle]).then((bases) => begin(bases?.[0] ?? null));
+      else
+        void previewGestureBase(iframe, [sel.handle]).then((bases) => {
+          if (stillAimed()) begin(bases?.[0] ?? null);
+        });
     },
     [
       gestureRecording,

@@ -116,9 +116,10 @@ describe("a gesture recording on a sealed preview", () => {
   it("moves the film's playhead with the recording, up to the layer's end, so auto-stop can fire", () => {
     frame.stage = { width: 1920, height: 1080 };
     usePlayerStore.setState({ currentTime: 2 });
-    const { seekAfterMove } = recordOnSealedFrame(100, AT_REST, 2.5);
+    const { seekAfterMove, samples } = recordOnSealedFrame(100, AT_REST, 2.5);
     expect(seekAfterMove).toBeCloseTo(2.3);
     expect(usePlayerStore.getState().requestedSeekTime).toBe(2.5);
+    expect(samples.at(-1)?.time).toBe(0.5);
   });
 
   it("refuses to record when the frame hasn't reported the layer's values", () => {

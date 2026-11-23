@@ -237,6 +237,8 @@ interface RecordingRefs {
   cleanup: (() => void) | null;
   /** Where a recording without the in-frame runtime moves the film's playhead. */
   playhead: { start: number; end: number } | null;
+  /** Recording time at the layer's end: a sample past it would outlast what the playhead shows. */
+  lastTime: number;
 }
 
 function createRecordingRefs(): RecordingRefs {
@@ -256,6 +258,7 @@ function createRecordingRefs(): RecordingRefs {
     trail: [],
     cleanup: null,
     playhead: null,
+    lastTime: Infinity,
   };
 }
 
@@ -349,6 +352,10 @@ export function useGestureRecording() {
       r.playhead = sealed
         ? { start: currentTime, end: Math.min(elementEndTime ?? Infinity, duration) }
         : null;
+      const seekable = r.runtime
+        ? { start: r.runtime.startTime, end: r.runtime.maxSeekTime }
+        : r.playhead;
+      r.lastTime = seekable ? Math.max(0, seekable.end - seekable.start) : Infinity;
       // Clear the optimistic path offset only while a live runtime owns the
       // preview. releaseRuntimePreview restores it on every exit path.
       if (r.runtime && (base.cssOffX || base.cssOffY)) {
@@ -402,7 +409,7 @@ export function useGestureRecording() {
       const tick = () => {
         if (!isRecordingRef.current) return;
         const now = performance.now();
-        const time = (now - startMs) / 1000;
+        const time = Math.min((now - startMs) / 1000, r.lastTime);
 
         const scale = r.scale || 1;
         const dx = (r.pointer.x - r.startPointer.x) / scale;
