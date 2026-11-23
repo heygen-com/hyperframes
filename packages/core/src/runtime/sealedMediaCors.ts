@@ -54,8 +54,8 @@ function selectable(media: HTMLMediaElement, home: string): string[] {
     const src = el.getAttribute("src");
     const type = el.getAttribute("type");
     const query = el.getAttribute("media");
-    if (!src || (type && !media.canPlayType(type)) || (query && !matchMedia(query).matches))
-      return [];
+    const playable = !type || (type !== PINNED_OUT && media.canPlayType(type));
+    if (!src || !playable || (query && !matchMedia(query).matches)) return [];
     return [resolved(src, home)];
   });
 }
@@ -170,12 +170,32 @@ function wasDown(media: HTMLMediaElement, url: string): void {
   if (setOf(refused, media).delete(url)) setOf(down, media).add(url);
 }
 
-function picksAgainWithCors(media: HTMLMediaElement, chosen: string, home: string): boolean {
-  const urls = selectable(media, home);
-  return allHome(urls, home) || (urls[0] === chosen && isHome(chosen, home));
+const PINNED_OUT = "video/x-hyperframes-pinned-out";
+const pinned = new WeakMap<HTMLMediaElement, Array<[HTMLSourceElement, string | null]>>();
+
+function pinTo(media: HTMLMediaElement, chosen: string): void {
+  const held: Array<[HTMLSourceElement, string | null]> = [];
+  for (const el of media.querySelectorAll("source")) {
+    if (el.src === chosen) break;
+    held.push([el, el.getAttribute("type")]);
+    el.setAttribute("type", PINNED_OUT);
+  }
+  if (held.length) pinned.set(media, held);
+}
+
+function unpin(media: HTMLMediaElement): void {
+  for (const [el, type] of pinned.get(media) ?? []) {
+    if (type === null) el.removeAttribute("type");
+    else el.setAttribute("type", type);
+  }
+  pinned.delete(media);
 }
 
 function failed(event: Event, home: string): void {
+  const target = event.target as Element | null;
+  const owner = target?.nodeType === 1 ? mediaOf(target) : null;
+  if (owner && pinned.get(owner)?.some(([el]) => el === target)) return;
+  if (owner) unpin(owner);
   const found = failure(event, home);
   if (!found) return;
   const { media, url } = found;
@@ -183,6 +203,7 @@ function failed(event: Event, home: string): void {
   if (has(down, media, url)) return;
   setOf(refused, media).add(url);
   write(media, null);
+  pinTo(media, url);
   reload(media);
 }
 
@@ -190,12 +211,14 @@ function failed(event: Event, home: string): void {
 function firstFrame(event: Event, home: string): void {
   const media = event.target as HTMLMediaElement;
   if (!isMedia(media) || authored.has(media)) return;
+  unpin(media);
   const chosen = media.currentSrc;
   down.get(media)?.delete(chosen);
   if (media.hasAttribute("crossorigin")) return;
   if (has(refused, media, chosen)) return warnOnce(media, chosen);
-  if (!picksAgainWithCors(media, chosen, home)) return;
+  if (!isHome(chosen, home) || !selectable(media, home).includes(chosen)) return;
   write(media, "anonymous");
+  pinTo(media, chosen);
   reload(media);
 }
 
