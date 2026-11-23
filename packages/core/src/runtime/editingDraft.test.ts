@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { gsapSet } from "./editing/gsapSet";
+import { patchTweens } from "./editing/patchTween";
 import { drawDrafts } from "./editingDraft";
 import { handleFor } from "./editingHandles";
 
@@ -209,6 +210,33 @@ describe("moves through GSAP", () => {
     move(30, 36);
     drawDrafts([{ handle, end: "keep-size" }]);
     expect([position, element.style.translate]).toEqual([{ x: 30, y: 36 }, "4px 2px"]);
+  });
+
+  // fails without the fix: restore compared GSAP's x/y with the drawn one, so a later set to that same value, or one
+  // within 0.001 px, read as the draft's own and was thrown back to where the drag began.
+  it.each([
+    ["the drawn value", 30],
+    ["a value within 0.001 px of it", 30.0005],
+  ])(
+    "leaves a position set over the port to %s after the draw when the draft is restored",
+    (_name, x) => {
+      const { handle, position, move } = gsapHeld();
+      move(30, 36);
+      gsapSet({ handle, props: { x, y: 36 } });
+      drawDrafts([{ handle, end: "restore" }]);
+      expect(position).toEqual({ x, y: 36 });
+    },
+  );
+
+  it("leaves the position a save's patch sets after the draw when the draft is restored", () => {
+    const { handle, position, move } = gsapHeld();
+    move(30, 36);
+    const change = { kind: "global-set" as const, props: { x: 30, y: 36 } };
+    expect(patchTweens({ patches: [{ selector: "#card", change }], seek: false }).patched).toBe(
+      true,
+    );
+    drawDrafts([{ handle, end: "restore" }]);
+    expect(position).toEqual({ x: 30, y: 36 });
   });
 
   it("leaves a position set over the port after the draw when the draft is restored", () => {

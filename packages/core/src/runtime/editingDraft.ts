@@ -27,7 +27,6 @@ interface Before {
   /** GSAP's rotation before the first GSAP turn drawn, to put back on "restore". */
   gsapRotation?: number;
   gsapPosition?: { x: number; y: number };
-  gsapDrawn?: { x: number; y: number };
   drewTransform?: boolean;
 }
 
@@ -127,20 +126,18 @@ function drawTranslate(element: Styled, offset: DraftTranslate): void {
   const read = (axis: string) => Number(gsap?.getProperty?.(element, axis)) || 0;
   saved.gsapPosition ??= { x: read("x"), y: read("y") };
   element.style.setProperty("translate", "none");
-  saved.gsapDrawn = { x: offset.x, y: offset.y };
-  gsap?.set?.(element, { ...saved.gsapDrawn });
+  gsap?.set?.(element, { x: offset.x, y: offset.y });
 }
 
-const SAME_PX = 0.001;
+/** A position written after the draw (a gsap-set, a save's patch) owns x/y from then on: a restore leaves it. */
+export function yieldDrawnPosition(element: Element): void {
+  const saved = before.get(element);
+  if (saved) delete saved.gsapPosition;
+}
 
-/** Only while GSAP still holds the drawn x/y: a save that set its own since keeps it. */
 function restoreGsapPosition(element: Styled): void {
-  const { gsapPosition, gsapDrawn } = before.get(element) ?? {};
-  const gsap = frameGsap();
-  const holds = (axis: "x" | "y") =>
-    Math.abs((Number(gsap?.getProperty?.(element, axis)) || 0) - gsapDrawn![axis]) < SAME_PX;
-  if (gsapPosition && gsapDrawn && holds("x") && holds("y"))
-    gsap?.set?.(element, { ...gsapPosition });
+  const { gsapPosition } = before.get(element) ?? {};
+  if (gsapPosition) frameGsap()?.set?.(element, { ...gsapPosition });
 }
 
 export function writeDrawnSize(

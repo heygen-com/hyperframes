@@ -3,7 +3,7 @@
 // a sealed frame on itself through the editing port.
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { recordLiveSet, swapWaiting } from "./softReload";
-import { drawDrafts } from "../editingDraft";
+import { drawDrafts, yieldDrawnPosition } from "../editingDraft";
 import { markRestingScenesForRedraw } from "../sceneRest";
 import { redrawGsapTimelineAt } from "../adapters/gsap";
 import type { RuntimeTimelineLike } from "../types";
@@ -495,6 +495,14 @@ export function parsePatchTweensRequest(params: unknown): PatchTweensParams | nu
 }
 
 /** The frame patching its own timelines: every patch must land, and it renders once at the end. */
+const writesPosition = (change: RuntimeTweenChange) =>
+  (change.kind === "keyframes"
+    ? change.keyframes.flatMap(Object.keys)
+    : Object.keys(change.props)
+  ).some((channel) => channel === "x" || channel === "y");
+const yieldAt = (selector: string) =>
+  document.querySelectorAll(selector).forEach(yieldDrawnPosition);
+
 export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
   patched: boolean;
 } {
@@ -521,6 +529,8 @@ export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
   if (seek) drawWhatTheSeekLeft(patchedTweens);
   const shown = !seek || patchedTweens.every(renderedOnceReached);
   const patched = missed === undefined && shown;
+  if (patched)
+    for (const { selector, change } of patches) if (writesPosition(change)) yieldAt(selector);
   if (patched && endsDrafts) drawDrafts(endsDrafts);
   return { patched };
 }
