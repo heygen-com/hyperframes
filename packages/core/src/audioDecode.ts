@@ -1,12 +1,18 @@
-/** A page decodes a whole audio file only up to ten minutes (~230 MB decoded): an hour is ~1.4 GB and kills it. */
+/** A whole decode in a page peaks at ~2x the file as stereo 48 kHz, whatever the context's rate (90 min: 4 GB). */
 
 import { wallClearTimeout, wallSetTimeout } from "./runtime/wallClock";
 
-export const DECODE_MAX_SECONDS = 10 * 60;
+const PEAK_BYTES_PER_SECOND = 48_000 * 2 * 4 * 2;
+export const DECODE_PEAK_BUDGET_BYTES = 1.5 * 1024 ** 3;
+export const decodePeakBytes = (seconds: number): number => seconds * PEAK_BYTES_PER_SECOND;
+
+/** Analysis PCM rate: 48 kHz up to 20 minutes, 24 kHz past it, so a long file holds half the samples. */
+export const pcmRateFor = (seconds: number): 48_000 | 24_000 =>
+  seconds <= 20 * 60 ? 48_000 : 24_000;
 
 export class AudioTooLong extends Error {
   constructor(readonly seconds: number | null) {
-    super("This clip is too long for this. Up to 10 minutes.");
+    super("This clip is too long to decode here.");
     this.name = "AudioTooLong";
   }
 }
@@ -35,23 +41,24 @@ export function headerSeconds(url: string): Promise<number | null> {
   });
 }
 
-/** Throws AudioTooLong unless `url` is known to last at most DECODE_MAX_SECONDS: `knownSeconds` when the caller's own
- * media element has read it, else the file's header. A length that cannot be read counts as too long. */
-export async function assertDecodableLength(url: string, knownSeconds?: number): Promise<void> {
+/** Throws AudioTooLong unless `url`'s decode is known to fit DECODE_PEAK_BUDGET_BYTES, from `knownSeconds` (the
+ * caller's own element) or the file's header. A length that cannot be read counts as too long. */
+export async function assertDecodeFits(url: string, knownSeconds?: number): Promise<void> {
   const seconds =
     knownSeconds !== undefined && Number.isFinite(knownSeconds) && knownSeconds > 0
       ? knownSeconds
       : await headerSeconds(url);
-  if (seconds === null || seconds > DECODE_MAX_SECONDS) throw new AudioTooLong(seconds);
+  if (seconds === null || decodePeakBytes(seconds) > DECODE_PEAK_BUDGET_BYTES)
+    throw new AudioTooLong(seconds);
 }
 
-/** `url` decoded whole into `context`, after assertDecodableLength: over the bound, nothing is fetched or decoded. */
+/** `url` decoded whole into `context`, after assertDecodeFits: past the budget, nothing is fetched or decoded. */
 export async function decodeAudioWithin(
   context: BaseAudioContext,
   url: string,
   options: { fetch?: (url: string) => Promise<Response>; knownSeconds?: number } = {},
 ): Promise<AudioBuffer> {
-  await assertDecodableLength(url, options.knownSeconds);
+  await assertDecodeFits(url, options.knownSeconds);
   const response = await (options.fetch ?? globalThis.fetch)(url);
   if (!response.ok) throw new Error(`Audio request failed (${response.status})`);
   return context.decodeAudioData(await response.arrayBuffer());

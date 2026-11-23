@@ -248,7 +248,7 @@ describe("AudioWaveform", () => {
     act(() => root.unmount());
   });
 
-  it("draws no bars for a file past ten minutes, and never fetches it", async () => {
+  it("draws no bars for an hour-long file with no server peaks, too long to decode in the page, and never fetches it", async () => {
     vi.stubGlobal("mediaHeaderSeconds", () => 3600);
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);

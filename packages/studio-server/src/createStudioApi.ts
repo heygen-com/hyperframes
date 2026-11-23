@@ -18,6 +18,7 @@ import { registerWaveformRoutes } from "./routes/waveform.js";
 import { registerFreezeFrameRoutes } from "./routes/freezeFrame.js";
 import { registerLoudnessRoutes } from "./routes/loudness.js";
 import { registerPeakRoutes } from "./routes/peaks.js";
+import { registerPcmRoutes } from "./routes/pcm.js";
 import { registerFontRoutes } from "./routes/fonts.js";
 import { registerRegistryRoutes } from "./routes/registry.js";
 import { registerSelectionRoutes } from "./routes/selection.js";
@@ -297,6 +298,7 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
   registerFreezeFrameRoutes(api, adapter);
   registerLoudnessRoutes(api, adapter);
   registerPeakRoutes(api, adapter);
+  registerPcmRoutes(api, adapter);
   registerFontRoutes(api);
   registerRegistryRoutes(api, adapter);
   registerGlobalAssetRoutes(api);

@@ -1856,7 +1856,7 @@ describe("WebAudioTransport", () => {
       expect(transport().fitsDecodeBudget(audio("a.mp4", Number.NaN))).toBe(false);
     });
 
-    it("never fetches a source whose file runs past ten minutes, on a path that skips the budget", async () => {
+    it("never fetches an hour-long source, too long to decode in the page, on a path that skips the budget", async () => {
       vi.stubGlobal("mediaHeaderSeconds", () => 3600);
       const fetch = vi.fn();
       vi.stubGlobal("fetch", fetch);

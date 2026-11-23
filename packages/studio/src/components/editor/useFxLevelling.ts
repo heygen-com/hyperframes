@@ -15,7 +15,6 @@ import {
 } from "@hyperframes/core/audio-fx";
 import { levellingResult, removeLevelling } from "@hyperframes/core/audio-leveller";
 import type { HfAutomation, HfAutomationPoint } from "@hyperframes/core/audio-automation";
-import { decodeAudioWithin } from "@hyperframes/core/audio-decode";
 import { timeAtSourceTime } from "@hyperframes/core/speed-ramp";
 import {
   automationAttrValue,
@@ -27,13 +26,7 @@ import { trackLeveller } from "./audioFxTelemetry.js";
 import type { DomEditSelection } from "./domEditingTypes";
 import { clipSourceWindow, readClipClock } from "./clipAudioClock.js";
 import { useAuditionTransport } from "./useAuditionTransport.js";
-import { studioApiFetch } from "../../utils/studioApiFetch";
-
-/**
- * Rate the track is decoded at. Analysis is self-consistent because it reads
- * the decoded buffer's own rate, so this only has to be a sane audio rate.
- */
-const DECODE_SAMPLE_RATE = 48000;
+import { analysisRateOf, readPcm } from "../../utils/projectPcm";
 
 export function useFxLevelling(
   element: DomEditSelection,
@@ -65,12 +58,10 @@ export function useFxLevelling(
       (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext })
         .webkitOfflineAudioContext;
     if (!Ctor) return null;
-    const buffer = await decodeAudioWithin(
-      new Ctor(1, 1, DECODE_SAMPLE_RATE),
-      new URL(src, doc.baseURI).href,
-      { fetch: (url) => studioApiFetch(url) },
-    );
-    const next = { src, samples: buffer.getChannelData(0), sampleRate: buffer.sampleRate };
+    const url = new URL(src, doc.baseURI).href;
+    const sampleRate = await analysisRateOf([url]);
+    const samples = await readPcm(url, sampleRate, (rate) => new Ctor(1, 1, rate));
+    const next = { src, samples, sampleRate };
     decoded.current = next;
     return next;
   };

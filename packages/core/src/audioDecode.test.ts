@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AudioTooLong, DECODE_MAX_SECONDS, decodeAudioWithin } from "./audioDecode";
+import { AudioTooLong, decodeAudioWithin, pcmRateFor } from "./audioDecode";
 
 const decoded = {} as AudioBuffer;
 const context = () => ({ decodeAudioData: vi.fn(async () => decoded) });
@@ -11,8 +11,8 @@ const decodeWith = (ctx: ReturnType<typeof context>, ...rest: [string, object?])
 afterEach(() => vi.unstubAllGlobals());
 
 describe("decodeAudioWithin", () => {
-  it("decodes a file whose header says ten minutes or less", async () => {
-    vi.stubGlobal("mediaHeaderSeconds", () => DECODE_MAX_SECONDS);
+  it("decodes a half-hour file, whose decode fits the page", async () => {
+    vi.stubGlobal("mediaHeaderSeconds", () => 30 * 60);
     const ctx = context();
     const fetch = served();
     await expect(decodeWith(ctx, "/a.mp3", { fetch })).resolves.toBe(decoded);
@@ -58,5 +58,13 @@ describe("decodeAudioWithin", () => {
     const fetch = vi.fn(async () => ({ ok: false, status: 404 }) as Response);
     await expect(decodeWith(ctx, "/gone.mp3", { fetch })).rejects.toThrow("404");
     expect(ctx.decodeAudioData).not.toHaveBeenCalled();
+  });
+});
+
+describe("pcmRateFor", () => {
+  it("keeps 48 kHz up to twenty minutes and halves it past that", () => {
+    expect(pcmRateFor(20 * 60)).toBe(48_000);
+    expect(pcmRateFor(20 * 60 + 1)).toBe(24_000);
+    expect(pcmRateFor(90 * 60)).toBe(24_000);
   });
 });

@@ -228,7 +228,7 @@ describe("analyzeMusicFromBuffer", () => {
 });
 
 describe("analyzeMusicFromUrl", () => {
-  it("never fetches a song whose file runs past ten minutes, and closes its context", async () => {
+  it("never fetches an hour-long song, too long to decode in the page, and closes its context", async () => {
     const close = vi.fn(async () => {});
     vi.stubGlobal(
       "AudioContext",

@@ -26,7 +26,7 @@ import { assetUrl } from "./assetUrl.js";
 import { mediaElementTime } from "./mediaClock.js";
 import { sourceLengthOf } from "./sourceLength.js";
 import { clampFadesToDuration, fadeGain, readElementFades } from "../audioFade.js";
-import { AudioTooLong, assertDecodableLength } from "../audioDecode.js";
+import { AudioTooLong, assertDecodeFits } from "../audioDecode.js";
 
 const MASTER_FX_ATTRS: FxAttributes = { automation: null };
 
@@ -407,11 +407,11 @@ export class WebAudioTransport {
     return bytes;
   }
 
-  /** Not a source that failed for good or runs too long. An unread length is asked again, as a failed fetch is. */
+  /** Not a source that failed for good or too long to decode. An unread length is asked again, as a failed fetch is. */
   private async mayDecode(src: string, el: HTMLMediaElement): Promise<boolean> {
     if (this._failedSrcs.has(src)) return false;
     try {
-      await assertDecodableLength(src, el.duration);
+      await assertDecodeFits(src, el.duration);
       return true;
     } catch (err) {
       if (err instanceof AudioTooLong && err.seconds !== null) this._failedSrcs.add(src);

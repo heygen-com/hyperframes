@@ -7,10 +7,12 @@ import { FileManagerProvider } from "../contexts/FileManagerContext";
 import { mountReactHarness } from "./domSelectionTestHarness";
 
 const analyze = vi.hoisted(() => vi.fn());
+const read = vi.hoisted(() => vi.fn(async (_url: string) => new Float32Array(1)));
 vi.mock("@hyperframes/core/beats", async (actual) => ({
   ...(await actual<typeof import("@hyperframes/core/beats")>()),
-  analyzeMusicFromUrl: analyze,
+  analyzeMusicFromSignal: analyze,
 }));
+vi.mock("../utils/projectPcm", () => ({ analysisRateOf: async () => 48_000, readPcm: read }));
 
 const { useMusicBeatAnalysis } = await import("./useMusicBeatAnalysis");
 const { serializeBeats } = await import("@hyperframes/core/beats");
@@ -55,12 +57,13 @@ async function opened(elements: TimelineElement[]) {
   });
   const beats = usePlayerStore.getState().beatAnalysis?.beatTimes ?? null;
   act(() => root.unmount());
-  return { decoded: analyze.mock.calls.map(([src]) => src), beats };
+  return { decoded: read.mock.calls.map(([src]) => src), beats };
 }
 
 beforeEach(() => {
   savedBeats = "";
   analyze.mockReset();
+  read.mockClear();
   analyze.mockResolvedValue({ beatTimes: [1, 2], beatStrengths: [1, 1], bpm: 120 });
 });
 afterEach(() =>
