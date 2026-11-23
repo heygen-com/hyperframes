@@ -103,6 +103,16 @@ describe("the timeline timeout", () => {
     expect(unheard(warn)).toBe(1);
   });
 
+  it("does not warn when an onerror handler hears the error and clears itself", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { player } = load("https://films.example/film.html", { sealed: true, listen: false });
+    const handled = vi.fn(() => (player.onerror = null));
+    player.onerror = handled;
+    vi.advanceTimersByTime(8000);
+    expect(handled).toHaveBeenCalledOnce();
+    expect(unheard(warn)).toBe(0);
+  });
+
   it.each([
     ["an error listener", (player: Player) => player.addEventListener("error", () => {})],
     ["onerror", (player: Player) => (player.onerror = () => {})],

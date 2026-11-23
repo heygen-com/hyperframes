@@ -1723,8 +1723,10 @@ class HyperframesPlayer extends HTMLElement {
   private _emitError(detail: { message: string; code?: number | null }): void {
     this._afterEvents(() => {
       this._errorHeard = false;
+      // The DOM calls the onerror handler set when the error dispatches, which may clear itself.
+      const handler = this.onerror;
       this.dispatchEvent(new CustomEvent("error", { detail }));
-      if (!this._errorHeard && !this.onerror) {
+      if (!this._errorHeard && !handler) {
         console.warn(`[hyperframes-player] error with no listener: ${detail.message}`);
       }
     });
