@@ -2,7 +2,6 @@ User-agent: *
 Content-Signal: ai-train=yes, search=yes, ai-input=yes
 Disallow: /cdn-cgi/
 Allow: /_next/image
-Allow: /_next/static/
 Disallow: /_next/
 Sitemap: https://hyperframes.heygen.com/sitemap.xml
 Sitemap: https://hyperframes.heygen.com/blog/sitemap.xml
