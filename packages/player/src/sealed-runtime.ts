@@ -4,7 +4,7 @@ import { runtimeBeside } from "./runtime-beside-bundle.js";
 let source: Promise<string> | undefined;
 
 export function sealedRuntimeSource(): Promise<string> {
-  // esm: the app's bundler resolves this, else the file beside the module; cjs and iife alias it to runtime-beside-bundle.
+  // esm: the bundler resolves this, else the file beside the module; cjs/iife alias it.
   source ??= import("@hyperframes/core/runtime-script")
     .then(
       (runtime) => runtime.getHyperframeRuntimeScript(),
