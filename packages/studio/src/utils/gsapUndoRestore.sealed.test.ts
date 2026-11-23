@@ -45,7 +45,7 @@ const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
 const sentToFrame = () =>
   channel.request.mock.calls
     .map(([, request, params]) => [request, params] as const)
-    .filter(([request]) => request !== "mark-scenes-stale");
+    .filter(([request]) => request !== "mark-scenes-stale" && request !== "gsap-snapshot");
 
 beforeEach(() => {
   channel.request.mockReset();
