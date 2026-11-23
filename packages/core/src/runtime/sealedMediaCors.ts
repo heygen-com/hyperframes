@@ -61,7 +61,7 @@ function selectable(media: HTMLMediaElement, home: string): string[] {
 }
 
 const isHome = (url: string, home: string) => originOf(url, home) === originOf(home, home);
-// As unsealed Studio reads pixels: only the preview's own host; a list naming another host stays as written.
+// As unsealed Studio reads pixels: only the preview's own host; a list naming another host loads as written first.
 const allHome = (urls: string[], home: string) =>
   urls.length > 0 && urls.every((url) => isHome(url, home));
 
@@ -167,7 +167,16 @@ function failure(event: Event, home: string): { media: HTMLMediaElement; url: st
 }
 
 function wasDown(media: HTMLMediaElement, url: string): void {
-  if (setOf(refused, media).delete(url)) setOf(down, media).add(url);
+  setOf(refused, media).delete(url);
+  setOf(down, media).add(url);
+}
+
+// With CORS the browser picks `chosen` again only if every source before it is ours or is down.
+function picksAgainWithCors(media: HTMLMediaElement, chosen: string, home: string): boolean {
+  if (!isHome(chosen, home)) return false;
+  const urls = selectable(media, home);
+  const at = urls.indexOf(chosen);
+  return at >= 0 && urls.slice(0, at).every((url) => isHome(url, home) || has(down, media, url));
 }
 
 function failed(event: Event, home: string): void {
@@ -189,7 +198,7 @@ function firstFrame(event: Event, home: string): void {
   down.get(media)?.delete(chosen);
   if (media.hasAttribute("crossorigin")) return;
   if (has(refused, media, chosen)) return warnOnce(media, chosen);
-  if (!allHome(selectable(media, home), home)) return;
+  if (!picksAgainWithCors(media, chosen, home)) return;
   write(media, "anonymous");
   reload(media);
 }
