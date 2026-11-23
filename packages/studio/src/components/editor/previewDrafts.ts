@@ -92,13 +92,9 @@ export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
   const target = standIns.get(element);
   if (!target) return;
   const queue = queueFor(target.iframe);
-  const entry: Entry = {
-    translate: null,
-    size: null,
-    gesture: {},
-    ...queue.drawn.get(target.handle),
-    ...part,
-  };
+  const prior = queue.drawn.get(target.handle);
+  const entry: Entry = { translate: null, size: null, gesture: {}, ...prior, ...part };
+  if (prior?.saving) delete entry.saving;
   queue.drawn.set(target.handle, entry);
   const { translate, size, rotate } = entry;
   const op = { handle: target.handle, translate, size, ...("rotate" in entry && { rotate }) };
