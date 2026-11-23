@@ -24,6 +24,7 @@ import type { EditMoment } from "./manualEditsTypes";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import {
   askShownGestureStarts,
+  PRESS_WAIT_MAX_MS,
   UNANSWERED,
   type OverChannel,
   type Shown,
@@ -37,7 +38,7 @@ type ShownStart = (
 ) => boolean;
 
 const MAX_SETTLED_WAIT_FRAMES = 60;
-export const PRESS_WAIT_MAX_MS = 10_000;
+export { PRESS_WAIT_MAX_MS };
 
 export function createPreviewGestureStarts(
   opts: UseDomEditOverlayGesturesOptions,

@@ -1,6 +1,7 @@
 /** A gesture on a frame Studio cannot script starts from one `gesture-start` read (core `editingGestureStart.ts`). */
 import type { EditingGestureStart } from "@hyperframes/core/runtime/editing-port";
 import { previewGestureStart } from "../../player/lib/previewElements";
+import { whenPreviewStageSized } from "../../player/lib/bridgePlayback";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
 import type { DomEditSelection } from "./domEditing";
 import type { CropFrameStart } from "./domEditOverlayCrop";
@@ -107,6 +108,7 @@ export async function readShownGestureStarts(
 }
 
 export const UNANSWERED = "unanswered";
+export const PRESS_WAIT_MAX_MS = 10_000;
 
 export async function askShownGestureStarts(
   iframe: HTMLIFrameElement,
@@ -120,6 +122,7 @@ export async function askShownGestureStarts(
   if (found.includes(undefined)) return UNANSWERED;
   const handles = found.map((element) => element?.handle);
   if (!overlay || !handles.length || !handles.every(Boolean)) return null;
+  await whenPreviewStageSized(iframe, PRESS_WAIT_MAX_MS);
   const read = await measurePreviewGestureStart(iframe, overlay, handles as string[]);
   if (!read) return UNANSWERED;
   const shown = selections.flatMap((selection, i) => {

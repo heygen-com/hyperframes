@@ -60,6 +60,18 @@ export function previewStageSize(
   return (frame && mirrors.get(frame)?.stageSize) ?? null;
 }
 
+/** Resolves once the frame's runtime has posted its size, or after `maxMs` without one. */
+export function whenPreviewStageSized(iframe: HTMLIFrameElement, maxMs: number): Promise<void> {
+  const until = performance.now() + maxMs;
+  return new Promise((resolve) => {
+    const check = () => {
+      if (previewStageSize(iframe) || performance.now() >= until) resolve();
+      else requestAnimationFrame(check);
+    };
+    check();
+  });
+}
+
 /** The origins a post from this frame can carry; a page its server sandboxed posts as `null` without the attribute. */
 export function frameOrigins(iframe: HTMLIFrameElement): string[] {
   const sandbox = iframe.getAttribute("sandbox")?.toLowerCase().split(/\s+/);
@@ -134,7 +146,8 @@ function mirrorPost(mirror: PlaybackMirror, message: Record<string, unknown>, fp
   } else if (message.type === "state" && finiteAtLeastZero(message.currentTime)) {
     mirrorState(mirror, message.currentTime, message.isPlaying === true, fps);
   } else if (message.type === "stage-size") {
-    const { width, height } = message;
+    const measured = message.measuredSize as Record<string, unknown> | undefined;
+    const { width, height } = measured ?? message;
     if (finitePositive(width) && finitePositive(height)) mirror.stageSize = { width, height };
   }
 }
