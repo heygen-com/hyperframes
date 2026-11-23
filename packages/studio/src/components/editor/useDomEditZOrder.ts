@@ -47,6 +47,7 @@ function selectedZIndexEntry(sel: DomEditSelection, zIndex: number): ZIndexReord
     sourceFile: sel.sourceFile,
     key: deriveTimelineStoreKey({
       domId: sel.id ?? undefined,
+      hfId: sel.hfId ?? readHfId(sel.element),
       selector: sel.selector,
       selectorIndex: sel.selectorIndex,
       sourceFile: sel.sourceFile,
@@ -75,7 +76,13 @@ function siblingZIndexEntry(
     selector,
     selectorIndex,
     sourceFile,
-    key: deriveTimelineStoreKey({ domId: id, selector, selectorIndex, sourceFile }),
+    key: deriveTimelineStoreKey({
+      domId: id,
+      hfId: readHfId(element),
+      selector,
+      selectorIndex,
+      sourceFile,
+    }),
   };
 }
 

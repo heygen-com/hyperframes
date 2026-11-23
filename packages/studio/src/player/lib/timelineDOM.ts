@@ -109,7 +109,7 @@ export function createTimelineElementFromManifestClip(params: {
     preferredId: clip.id,
     label,
     fallbackIndex,
-    domId: hostEl ? domId : (clip.id ?? undefined),
+    domId: clip.id || domId,
     selector,
     selectorIndex,
     sourceFile,

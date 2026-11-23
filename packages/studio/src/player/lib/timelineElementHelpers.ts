@@ -423,12 +423,14 @@ export function runtimeAudioId(element: { domId?: string | null }): string | nul
  */
 export function deriveTimelineStoreKey(params: {
   domId?: string;
+  hfId?: string;
   selector?: string;
   selectorIndex?: number;
   sourceFile?: string;
 }): string | undefined {
-  if (!params.domId && !params.selector) return undefined;
-  return buildTimelineElementKey({ id: "", fallbackIndex: 0, ...params });
+  const domId = params.domId || params.hfId;
+  if (!domId && !params.selector) return undefined;
+  return buildTimelineElementKey({ id: "", fallbackIndex: 0, ...params, domId });
 }
 
 /**
