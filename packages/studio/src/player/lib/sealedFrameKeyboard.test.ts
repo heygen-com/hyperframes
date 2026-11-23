@@ -93,4 +93,19 @@ describe("a sealed frame's keyboard", () => {
     await nextTask();
     expect(state.focused).toBe(false);
   });
+
+  it("goes back to the control that opened the edit once the edit releases it, not to the page", async () => {
+    const opener = document.createElement("button");
+    const iframe = document.createElement("iframe");
+    document.body.append(opener, iframe);
+    await nextTask();
+    keepKeyboardOutOfSealedFrame(iframe);
+    opener.focus();
+    const release = holdSealedFrameKeyboard(iframe);
+    iframe.focus();
+    expect(document.activeElement).toBe(iframe);
+    release();
+    await nextTask();
+    expect(document.activeElement).toBe(opener);
+  });
 });

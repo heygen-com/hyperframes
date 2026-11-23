@@ -24,10 +24,21 @@ export function keepKeyboardOutOfSealedFrame(iframe: HTMLIFrameElement): () => v
 
 export function holdSealedFrameKeyboard(iframe: HTMLIFrameElement): () => void {
   const session = Symbol("sealed text edit");
+  const root = () => iframe.getRootNode() as Document | ShadowRoot;
+  const opener = root().activeElement;
   holds.set(iframe, (holds.get(iframe) ?? new Set()).add(session));
   const release = () => {
     iframe.removeEventListener("load", release);
-    if (holds.get(iframe)?.delete(session)) reclaims.get(iframe)?.();
+    if (!holds.get(iframe)?.delete(session)) return;
+    const keysBackToOpener = !holds.get(iframe)?.size && root().activeElement === iframe;
+    if (
+      keysBackToOpener &&
+      opener instanceof HTMLElement &&
+      opener !== iframe.ownerDocument.body &&
+      opener.isConnected
+    )
+      opener.focus({ preventScroll: true });
+    reclaims.get(iframe)?.();
   };
   iframe.addEventListener("load", release, { once: true });
   return release;
