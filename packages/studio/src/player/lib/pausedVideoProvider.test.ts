@@ -26,7 +26,7 @@ function host() {
     port2.close();
   });
   const decode = (asks: unknown[]) => port2.postMessage({ type: "decode", id: ++lastId, asks });
-  return { replies, decode, port2 };
+  return { replies, decode, port2, closeStudio: studio.close };
 }
 const at = (path: string, params: Record<string, string> = {}): PausedFrameAsk => ({
   path,
@@ -155,4 +155,17 @@ it("refuses frames over the byte budget and releases them", async () => {
   expect(replies[0]).toMatchObject({ type: "failed", message: "Preview decode over budget" });
   expect(release).toHaveBeenCalledOnce();
   expect(createImageBitmap).not.toHaveBeenCalled();
+});
+
+// fails without the fix: the frame's seek waited out its five-second cap on an ask that was never answered.
+it("answers a decode still in flight when it closes", async () => {
+  decoder.decode.mockReturnValue(new Promise(() => {}));
+  const { replies, decode, closeStudio } = host();
+  decode([at(A)]);
+  const inFlight = lastId;
+  await vi.waitFor(() => expect(decoder.decode).toHaveBeenCalledOnce());
+  closeStudio();
+  await vi.waitFor(() => expect(replies).toHaveLength(1));
+  expect(replies[0]).toEqual({ type: "failed", id: inFlight, message: "Preview frames closed" });
+  expect(decoder.decode.mock.calls[0]![1].aborted).toBe(true);
 });

@@ -22,10 +22,31 @@ export function servePausedVideoFrames(iframe: HTMLIFrameElement): void {
   served.set(iframe, client);
   const { port1, port2 } = new MessageChannel();
   const host = pausedFrameHost(port1, project);
-  iframe.addEventListener("load", host.close, { once: true });
+  closeOnNextDocument(iframe, host.close);
   client
     .request("serve-paused-frames", { channel: port2 }, { transfer: [port2] })
     .then(({ served: on }) => on || host.close(), host.close);
+}
+
+function readableDocument(iframe: HTMLIFrameElement): Document | null {
+  try {
+    return iframe.contentDocument;
+  } catch {
+    return null;
+  }
+}
+
+/** Closes once the frame holds a document other than the one served. A frame served while its page still loads fires
+ * `load` for that same page; closing then would leave its runtime waiting on asks nobody answers. A frame Studio cannot
+ * read closes on its next load, as it always did. */
+function closeOnNextDocument(iframe: HTMLIFrameElement, close: () => void): void {
+  const served = readableDocument(iframe);
+  const onLoad = () => {
+    if (served && readableDocument(iframe) === served) return;
+    iframe.removeEventListener("load", onLoad);
+    close();
+  };
+  iframe.addEventListener("load", onLoad);
 }
 
 async function projectFiles(project: string): Promise<Set<string>> {
@@ -139,8 +160,12 @@ export function pausedFrameHost(
 
   const close = () => {
     if (closed) return;
+    // An ask still in flight is answered, so the runtime falls back to its own frames instead of waiting out its cap.
+    for (const [id, control] of inFlight) {
+      control.abort();
+      reply({ type: "failed", id, message: "Preview frames closed" });
+    }
     closed = true;
-    for (const control of inFlight.values()) control.abort();
     inFlight.clear();
     void decoder?.then((actual) => actual.dispose()).catch(() => {});
     port.close();
