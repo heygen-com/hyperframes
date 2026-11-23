@@ -11,12 +11,14 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 <Update
   label="HyperFrames v0.9.84"
   description="Released - 2026-11-23"
-  tags={["Release", "Studio", "Producer", "Studio Server"]}
+  tags={["Release", "Studio", "Core", "Producer"]}
 >
 A new blank project opens on an empty timeline again. Leftover render folders are cleaned up reliably on macOS and Windows, and capture finishes on a small host with no GPU.
 
 ## Fixes
 
+- **Core:** A sealed resize keeps a layer centred by a % translate under the pointer ([effc9586b](https://github.com/heygen-com/hyperframes/commit/effc9586b98cc0d8cb134d6f9251c347098f19af), [#8547](https://github.com/heygen-com/hyperframes/pull/8547)).
+- **Studio:** A sealed preview that can't swap scenes reloads without asking first ([35a0d81c2](https://github.com/heygen-com/hyperframes/commit/35a0d81c2b0e66308bf7049c1bf4f97dced62fac), [#8544](https://github.com/heygen-com/hyperframes/pull/8544)).
 - **Studio:** A new blank project opens on an empty timeline again ([e51b75208](https://github.com/heygen-com/hyperframes/commit/e51b75208ac5933f0174406b95243e181cc00163), [#8546](https://github.com/heygen-com/hyperframes/pull/8546)).
 - **Producer:** A dead render's folder is cleaned up reliably, never another machine's ([3ee763267](https://github.com/heygen-com/hyperframes/commit/3ee763267ccfba4da3baadfba790424660acb843), [#8538](https://github.com/heygen-com/hyperframes/pull/8538)).
 - **Studio:** A sealed scale resize lands where it was dropped ([513dcce82](https://github.com/heygen-com/hyperframes/commit/513dcce820c65d23b944d9c2b355a0da66efbe8e), [#8301](https://github.com/heygen-com/hyperframes/pull/8301)).
@@ -29,6 +31,8 @@ A new blank project opens on an empty timeline again. Leftover render folders ar
 
 ## Internal
 
+- **Studio:** Name the draft send by the microtask it waits for ([543fcebb9](https://github.com/heygen-com/hyperframes/commit/543fcebb9abc6d0081d2c121068bf244ac6e3026), [#8541](https://github.com/heygen-com/hyperframes/pull/8541)).
+- A release whose checks fail fails the required Build, so it cannot merge ([014e0b0fb](https://github.com/heygen-com/hyperframes/commit/014e0b0fb8f5776cd88b6ef4f867dec34cbca384), [#8543](https://github.com/heygen-com/hyperframes/pull/8543)).
 - **Studio:** The edit bench reads an undo once Studio says its reload is done ([07949fb80](https://github.com/heygen-com/hyperframes/commit/07949fb80d1e9a2cacb81d7992af9d52819754f4), [#8542](https://github.com/heygen-com/hyperframes/pull/8542)).
 - **Studio Server:** A slow runner no longer leaves index.html's first copy owed in step-ahead tests ([cda1b0082](https://github.com/heygen-com/hyperframes/commit/cda1b008203d841c7de671d9ec34769b87809419), [#8540](https://github.com/heygen-com/hyperframes/pull/8540)).
 
