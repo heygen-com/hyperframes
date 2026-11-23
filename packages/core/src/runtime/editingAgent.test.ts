@@ -679,6 +679,45 @@ describe("installEditingAgent", () => {
     expect(spun.style.transform).toBe(value);
   });
 
+  it("ends a drawn size and sets GSAP values in one request, the size ended first", async () => {
+    document.body.innerHTML = `<div id="box"></div>`;
+    const box = document.getElementById("box")!;
+    const handle = handleFor(box);
+    const widthAtSet: string[] = [];
+    Object.assign(window, { gsap: { set: () => widthAtSet.push(box.style.width) } });
+    const port = connectedPort();
+    const size = { width: 307, height: 204 };
+    const drawn = await ask(port, {
+      v: 1,
+      id: 1,
+      kind: "draft",
+      params: { drafts: [{ handle, translate: null, size }] },
+    });
+    expect(drawn).toMatchObject({ ok: true, result: { gsapSetTakesDrafts: true } });
+    expect(box.style.width).toBe("307px");
+
+    const ending = [{ handle, translate: null, size: null }];
+    const props = { scaleX: 1.9, scaleY: 1.9 };
+    const set = await ask(port, {
+      v: 1,
+      id: 2,
+      kind: "gsap-set",
+      params: { handle, props, drafts: ending },
+    });
+    const malformed = [{ handle, translate: null, size: "none" }];
+    const refused = await ask(port, {
+      v: 1,
+      id: 3,
+      kind: "gsap-set",
+      params: { handle, props, drafts: malformed },
+    });
+
+    expect(set).toMatchObject({ id: 2, ok: true, result: { applied: true } });
+    expect(widthAtSet).toEqual([""]);
+    expect(refused).toMatchObject({ id: 3, ok: false, error: { code: "invalid-params" } });
+    Reflect.deleteProperty(window, "gsap");
+  });
+
   it("answers computed styles for the element a selector names", async () => {
     document.body.innerHTML = `<p id="title" style="color: rgb(1, 2, 3); opacity: 0.5">Hi</p>
       <canvas data-hf-preview-video-canvas style="opacity: 0.25"></canvas>

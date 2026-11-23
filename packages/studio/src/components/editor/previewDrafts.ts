@@ -26,6 +26,7 @@ interface Queue {
   sending: boolean;
   sent: Array<() => void>;
   sendQueued: boolean;
+  gsapSetTakesDrafts?: boolean;
 }
 
 const standIns = new WeakMap<Element, { iframe: HTMLIFrameElement; handle: string }>();
@@ -66,6 +67,7 @@ function send(iframe: HTMLIFrameElement, queue: Queue): void {
   queue.sending = true;
   void previewRequest(iframe, "draft", { drafts })
     .then((reply) => {
+      if (reply?.gsapSetTakesDrafts) queue.gsapSetTakesDrafts = true;
       for (const op of drafts) {
         const entry = queue.drawn.get(op.handle);
         const draft = reply?.drafts?.[op.handle];
@@ -87,10 +89,9 @@ function sendOnMicrotask(iframe: HTMLIFrameElement, queue: Queue): void {
   });
 }
 
-/** Draws `part` of the stand-in's draft on its frame element; any other element is left alone. */
-export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
+function nextDraw(element: Element, part: Partial<Drawn>) {
   const target = standIns.get(element);
-  if (!target) return;
+  if (!target) return null;
   const queue = queueFor(target.iframe);
   const prior = queue.drawn.get(target.handle);
   const entry: Entry = { translate: null, size: null, gesture: {}, ...prior, ...part };
@@ -99,6 +100,26 @@ export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
   const { translate, size, rotate } = entry;
   const op = { handle: target.handle, translate, size, ...("rotate" in entry && { rotate }) };
   opGesture.set(op, entry.gesture);
+  return { target, queue, op };
+}
+
+export function previewDraftRidingGsapSet(
+  element: Element,
+  part: Partial<Drawn>,
+): EditingDraft | null {
+  const target = standIns.get(element);
+  if (!target || !queues.get(target.iframe)?.gsapSetTakesDrafts) return null;
+  const next = nextDraw(element, part);
+  if (!next) return null;
+  next.queue.ops = next.queue.ops.filter((op) => op.handle !== next.op.handle || "end" in op);
+  return next.op;
+}
+
+/** Draws `part` of the stand-in's draft on its frame element; any other element is left alone. */
+export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
+  const next = nextDraw(element, part);
+  if (!next) return;
+  const { target, queue, op } = next;
   const last = queue.ops.map((queued) => queued.handle).lastIndexOf(target.handle);
   const waiting = queue.ops[last];
   if (waiting && !("end" in waiting)) queue.ops[last] = op;
