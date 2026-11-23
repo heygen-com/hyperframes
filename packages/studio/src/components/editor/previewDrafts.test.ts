@@ -237,6 +237,27 @@ describe("gesture drafts on an opaque frame", () => {
     ]);
   });
 
+  // fails without the fix: a later sample replaced one still waiting, so a depth the recording saves never showed.
+  it("sends every recording sample that waited, in order, so none the recording saves goes unshown", async () => {
+    const element = await standIn(sealedPreviewFrame().iframe, "#card");
+    vi.mocked(previewRequest).mockClear();
+    drawPreviewDraft(element, { translate: null, props: { seconds: 1, values: { x: 1 } } });
+    await Promise.resolve();
+    drawPreviewDraft(element, { props: { seconds: 1.1, values: { z: 5 } } });
+    drawPreviewDraft(element, { props: { seconds: 1.2, values: { x: 3, y: 2 } } });
+    await vi.waitFor(() => expect(draftRequests()).toHaveLength(2));
+    const sent = draftRequests().map(([, , params]) =>
+      (params as { drafts: Array<{ props?: unknown }> }).drafts.map((draft) => draft.props),
+    );
+    expect(sent).toEqual([
+      [{ seconds: 1, values: { x: 1 } }],
+      [
+        { seconds: 1.1, values: { z: 5 } },
+        { seconds: 1.2, values: { x: 3, y: 2 } },
+      ],
+    ]);
+  });
+
   it("sends a draw still waiting for its microtask before a save that carries its end", async () => {
     const iframe = sealedPreviewFrame().iframe;
     const element = await standIn(iframe, "#card");

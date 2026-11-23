@@ -129,7 +129,8 @@ export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
   opGesture.set(op, entry.gesture);
   const last = queue.ops.map((queued) => queued.handle).lastIndexOf(target.handle);
   const waiting = queue.ops[last];
-  if (waiting && !("end" in waiting)) queue.ops[last] = op;
+  const replaceable = (queued: EditingDraft) => !("end" in queued) && !queued.props;
+  if (waiting && replaceable(waiting) && !op.props) queue.ops[last] = op;
   else queue.ops.push(op);
   sendOnMicrotask(target.iframe, queue);
 }
