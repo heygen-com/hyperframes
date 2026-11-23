@@ -36,6 +36,7 @@ export {
   createReferenceBackgroundRecorder,
   readReferenceBackground,
   type ReferenceBackground,
+  type ReferenceBackgroundRecorder,
   type ReferenceBackgroundResult,
 } from "./services/referenceBackground.js";
 

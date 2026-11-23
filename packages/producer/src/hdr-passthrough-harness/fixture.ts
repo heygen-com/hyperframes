@@ -418,6 +418,7 @@ type NegativeAsset =
   | "tone"
   | "sdr-video"
   | "paint-worklet"
+  | "still-png"
   | AnimatedImageFormat;
 
 /** ffmpeg arguments for a 3 s mono sine tone: the audio an `<audio controls>` fixture plays. */
@@ -435,6 +436,31 @@ function buildToneArgs(outputPath: string): string[] {
     "aac",
     outputPath,
   ];
+}
+
+/** A small static PNG: the image a lazy-loading `<img>` fetches once a seek shows it. */
+const STILL_PNG_FILE = "still.png";
+
+/** ffmpeg arguments for `STILL_PNG_FILE`: one 64x64 frame of solid colour. */
+function buildStillPngArgs(outputPath: string): string[] {
+  return [
+    "-hide_banner",
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=0x33aa66:s=64x64",
+    "-frames:v",
+    "1",
+    outputPath,
+  ];
+}
+
+/** An `<img>` of an SVG document given as text, as a `data:` URL. */
+function svgImage(svg: string): string {
+  return `<img src="data:image/svg+xml,${encodeURIComponent(svg)}" alt="" style="${BADGE_STYLE}" />`;
 }
 
 /** ffmpeg arguments for a small 3 s SDR H.264 clip: a second, self-playing video. */
@@ -478,10 +504,10 @@ export const FAKE_GSAP_FILE = "gsap-core.js";
 
 /**
  * The reasons a sticky seek-time setter declines with. It lights the
- * highlight on the first seek past 1 s that runs it: when capture's probes
- * see it go on, the verification probes decline (`overlay_unverified`);
- * when it was already on for every probe, the page code watch does
- * (`seek_callback`). Which one depends on the order the seeks took.
+ * highlight on the first seek past 1 s that runs it: eligibility's seeks
+ * run it on the analysis page, whose page code watch declines it
+ * (`seek_callback`) before capture; were capture to see it go on, its
+ * per-frame probes would decline (`overlay_unverified`).
  */
 const STICKY_SETTER_REASONS = "seek_callback|overlay_unverified";
 
@@ -554,7 +580,9 @@ export interface IneligibleCase {
    * The passthrough must take this composition and match the layered render:
    * the page reads back what an in-page record would have changed (the
    * observer constructors' source text), so it checks that nothing the
-   * passthrough does is visible to the page.
+   * passthrough does is visible to the page; or its paint depends on browser
+   * state a seek leaves behind, so it checks that capture reaches every frame
+   * as the layered loop does.
    */
   takesPassthrough?: true;
 }
@@ -707,10 +735,10 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
   },
   {
     // A seek-driven write with no listener at all: a setter on the seek-time
-    // global the WebGPU adapter assigns on every seek. Only the capture's
-    // verification probes can see it.
+    // global the WebGPU adapter assigns on every seek. No static check names it;
+    // the page code watch on the analysis page sees it run on eligibility's seeks.
     name: "seek-time-setter",
-    reason: "overlay_unverified",
+    reason: "seek_callback",
     composition: {
       headHtml: `<script>(() => { let time; Object.defineProperty(window, "__hfTypegpuTime", { configurable: true, get: () => time, set(t) { time = t; const el = document.getElementById("seek-counter"); if (el) el.textContent = "t=" + Math.floor(t * 4) / 4; } }); })();</script>`,
       overlayHtml: `<div id="seek-counter" style="${BADGE_STYLE};color:#fff;font:700 40px sans-serif">t=0</div>`,
@@ -733,7 +761,7 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
   },
   {
     name: "flash-setter",
-    reason: "overlay_unverified",
+    reason: "seek_callback",
     composition: {
       cues: [],
       headHtml: `<script>(() => { let time; Object.defineProperty(window, "__hfTypegpuTime", { configurable: true, get: () => time, set(t) { time = t; const el = document.getElementById("seek-counter"); if (el) el.textContent = (t >= 1.65 && t < 1.75) ? "FLASH" : ""; } }); })();</script>`,
@@ -782,7 +810,7 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     // \`left\` the first time the playhead reaches it, and a seek-time setter
     // (no GSAP, no listener) writes that \`left\` too.
     name: "gsap-from-lazy",
-    reason: "overlay_unverified",
+    reason: "seek_callback",
     composition: {
       headHtml: `<script>(() => { let time; Object.defineProperty(window, "__hfTypegpuTime", { configurable: true, get: () => time, set(t) { time = t; const el = document.getElementById("box"); if (el) el.style.left = t < 1 ? "200px" : "900px"; } }); })();</script>`,
       overlayHtml: `<div id="box" style="position:absolute;top:48px;left:200px;width:128px;height:128px;background:#36f"></div>`,
@@ -992,6 +1020,17 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     assets: ["tone"],
   },
   {
+    // GSAP turns an <audio>'s controls on for 0.6 s: no page code runs, the media control's
+    // playback position changes on every frame, and only the per-frame probes decline it.
+    name: "audio-controls-gsap",
+    reason: "overlay_unverified",
+    composition: {
+      overlayHtml: `<audio id="aud" class="clip" src="assets/tone.m4a" data-start="0" data-duration="3" data-track-index="3" data-volume="0" style="${BADGE_STYLE};width:640px;height:64px"></audio>`,
+      timelineScript: `tl.set("#aud", { controls: true }, 1.0); tl.set("#aud", { controls: false }, 1.6);`,
+    },
+    assets: ["gsap", "tone"],
+  },
+  {
     name: "marquee",
     wallClock: true,
     reason: "overlay_non_gsap_animation",
@@ -1101,6 +1140,58 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
       timelineScript: `document.getElementById("printed").textContent = String(MutationObserver) + " " + String(IntersectionObserver).length + " " + String(customElements.define);`,
     },
     assets: ["gsap"],
+  },
+  // Browser state a seek leaves behind and no later seek undoes, with no page code after load.
+  // Capture runs on a fresh page that walks the frames in order, as the layered loop does, so
+  // both take the passthrough and decode identical to flag off.
+  {
+    // The scroller's content shrinks at 1 s, which clamps the 1500 px scroll offset to 100;
+    // growing back at 2 s does not restore it. Frames before 1 s show the offset at 1500.
+    name: "scroll-clamp",
+    reason: "",
+    takesPassthrough: true,
+    composition: {
+      overlayHtml:
+        '<div id="sc" style="position:absolute;top:100px;left:100px;width:600px;height:400px;overflow:hidden"><div id="ct" style="height:3000px;background:linear-gradient(#f00,#0f0 50%,#00f)"></div></div>',
+      timelineScript: `document.getElementById("sc").scrollTop = 1500; tl.set("#ct", { height: 500 }, 1.0); tl.set("#ct", { height: 3000 }, 2.0);`,
+    },
+    assets: ["gsap"],
+  },
+  {
+    // A lazy image a set() shows at 1.5 s; its decode promise, taken at load, opens a popover
+    // through a bound builtin once a seek has shown the image.
+    name: "lazy-decode-popover",
+    reason: "",
+    takesPassthrough: true,
+    composition: {
+      headHtml: POPOVER_STYLE,
+      overlayHtml: `${POPOVER_HTML}<img id="lz" loading="lazy" src="assets/${STILL_PNG_FILE}" alt="" style="${BADGE_STYLE};display:none" />`,
+      timelineScript: `tl.set("#lz", { display: "block" }, 1.5); document.getElementById("lz").decode().then(HTMLElement.prototype.showPopover.bind(document.getElementById("pop")));`,
+    },
+    assets: ["gsap", "still-png"],
+  },
+  // SVG images that animate once parsed as XML: decided by parsing, not by a scan of the bytes.
+  {
+    // A SMIL animation under a prefix bound to the SVG namespace.
+    name: "svg-prefixed-smil",
+    wallClock: true,
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      overlayHtml: svgImage(
+        '<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="red"><s:animate attributeName="fill" values="red;blue;lime;red" dur="1s" repeatCount="indefinite"/></rect></svg>',
+      ),
+    },
+  },
+  {
+    // A CSS animation spelled with XML character references inside <style>.
+    name: "svg-reference-css",
+    wallClock: true,
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      overlayHtml: svgImage(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><style>rect{anim&#97;tion:spin 1s linear infinite} &#64;keyframes spin{0%{fill:red}50%{fill:blue}100%{fill:red}}</style><rect width="10" height="10" fill="red"/></svg>',
+      ),
+    },
   },
   // Animated images in pseudo-elements no list of pseudo-elements named: declined by the image's
   // own bytes and by the CSS and element allowlists.
@@ -1404,6 +1495,7 @@ function negativeAssetSources(
     tone: generated("tone.m4a", buildToneArgs),
     "sdr-video": generated("sdr.mp4", buildSdrVideoArgs),
     "paint-worklet": { source: worklet, name: PAINT_WORKLET_FILE },
+    "still-png": generated(STILL_PNG_FILE, buildStillPngArgs),
     ...images,
   };
 }

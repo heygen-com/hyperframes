@@ -39,6 +39,7 @@ import { join } from "node:path";
 import {
   type BeforeCaptureHook,
   type CaptureOptions,
+  type CaptureSession,
   type CaptureWarning,
   type EngineConfig,
   type HdrTransfer,
@@ -131,6 +132,35 @@ export interface CaptureHdrStageResult {
   encodeMs: number;
   encoderDrainWaitMs?: number;
   warnings: CaptureWarning[];
+}
+
+/**
+ * The layered stage's scene reads on its DOM session, before any seek: the
+ * runtime's shader transitions and each `.scene` element's id'd descendants.
+ * The HDR passthrough's capture page makes the same reads (`hdrPassthrough`).
+ */
+export async function readLayeredScenes(domSession: CaptureSession): Promise<{
+  transitionMeta: HdrTransitionMeta[];
+  sceneElements: Record<string, string[]>;
+}> {
+  const transitionMeta: HdrTransitionMeta[] = await domSession.page.evaluate(() => {
+    return window.__hf?.transitions ?? [];
+  });
+  const sceneElements: Record<string, string[]> = await domSession.page.evaluate(() => {
+    const scenes = document.querySelectorAll(".scene");
+    const map: Record<string, string[]> = {};
+    for (const scene of scenes) {
+      if (!scene.id) continue;
+      const ids = new Set<string>([scene.id]);
+      const els = scene.querySelectorAll("[id]");
+      for (const el of els) {
+        if (el.id) ids.add(el.id);
+      }
+      map[scene.id] = Array.from(ids);
+    }
+    return map;
+  });
+  return { transitionMeta, sceneElements };
 }
 
 // fallow-ignore-next-line complexity
@@ -231,23 +261,7 @@ export async function runCaptureHdrStage(
     await initTransparentBackground(domSession.page, { clearCompositionRoot: true });
 
     // ── Scene detection for shader transitions ──────────────────────────
-    const transitionMeta: HdrTransitionMeta[] = await domSession.page.evaluate(() => {
-      return window.__hf?.transitions ?? [];
-    });
-    const sceneElements: Record<string, string[]> = await domSession.page.evaluate(() => {
-      const scenes = document.querySelectorAll(".scene");
-      const map: Record<string, string[]> = {};
-      for (const scene of scenes) {
-        if (!scene.id) continue;
-        const ids = new Set<string>([scene.id]);
-        const els = scene.querySelectorAll("[id]");
-        for (const el of els) {
-          if (el.id) ids.add(el.id);
-        }
-        map[scene.id] = Array.from(ids);
-      }
-      return map;
-    });
+    const { transitionMeta, sceneElements } = await readLayeredScenes(domSession);
     const fpsDecimal = fpsToNumber(job.config.fps);
     const transitionRanges: TransitionRange[] = transitionMeta.map((t) => ({
       ...t,

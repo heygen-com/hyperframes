@@ -82,18 +82,18 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   element, three.js, a WebGPU element, SVG SMIL, animated WebP / APNG /
   AVIF images and an `hf-seek` listener that rewrites a counter
   (`overlay_non_gsap_animation`), the same counter driven by a setter on the
-  runtime's seek-time global, which no static check names
-  (`overlay_unverified`: capture's verification probes catch it), a
+  runtime's seek-time global, which no static check names (`seek_callback`:
+  the analysis page's page code watch sees it run on eligibility's seeks), a
   three-frame flash on frames 50-52 of a cue-free composition from a raw
-  `requestAnimationFrame` loop (`flash-raf`, declined before capture as
-  `seek_callback`) and from the same setter (`flash-setter`), which only a
-  probe of every frame sees (`overlay_unverified`), drivers whose output
+  `requestAnimationFrame` loop (`flash-raf`, declined where it registers as
+  `seek_callback`) and from the same setter (`flash-setter`, `seek_callback`
+  the same way), drivers whose output
   depends on the order or number of seeks rather than the time alone (a
   `requestAnimationFrame` counter, `raf-counter`; the same counter shown
   only for its first three callbacks, `raf-warmup`; a film-time
   `setInterval` that appends a mark every 0.5 s, `timer-append`: all
   `seek_callback`; a lazily initialised GSAP `.from()` whose end value a
-  seek-time setter also writes, `gsap-from-lazy`: `overlay_unverified`; a
+  seek-time setter also writes, `gsap-from-lazy`: `seek_callback`; a
   `gsap.delayedCall` that recolours a badge at 1.5 s on GSAP's global
   timeline, `gsap-delayed-call`: `seek_callback`), a fade the capture
   fingerprint cannot see, inside a closed shadow root (`closed-shadow-root`)
@@ -134,7 +134,20 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   take the passthrough and match the layered render, which holds only while
   nothing the passthrough does is visible to the page.
   `error-getters-raf`'s flag-on (layered fallback) render must match flag
-  off frame for frame too.
+  off frame for frame too, as must every repeatable fallback (`raf-counter`
+  included: its count of seeks before frame 0 must be flag off's).
+  `audio-controls-gsap` has GSAP turn an `<audio>`'s controls on for 0.6 s
+  with no page code at all: only capture's per-frame probes see the control's
+  playback position move (`overlay_unverified`).
+  Pages whose paint follows browser state a seek leaves behind, with no page
+  code after load, must take the passthrough and match the layered render:
+  `scroll-clamp` (a `set()` shrinks a scroller's content at 1 s, which
+  clamps its 1500 px offset for good) and `lazy-decode-popover` (a `set()`
+  shows a lazy image at 1.5 s, whose `decode()` reaction opens a popover
+  through a bound builtin). SVG images that animate once parsed as XML
+  decline as `overlay_non_gsap_animation` (wall clock): `svg-prefixed-smil`
+  (`<s:animate>`, `s` bound to the SVG namespace) and `svg-reference-css`
+  (`anim&#97;tion` and `&#64;keyframes` in `<style>`).
   Run these with `--only on` when the check is only the route and reason
   (both sides would take the layered path); run `builtins-counter`,
   `error-getters-raf` and `tostring-painter` with both.
@@ -392,7 +405,9 @@ layered frame too, so it matched there, but nothing but luck made it.
 `ineligible-raf-counter` falls back, but the fallback is not bit-identical
 to flag off: the counter counts seeks, and after a fallback the layered path
 makes one seek fewer before frame 0 (`n=4` against `n=5`, `n=271` against
-`n=272` on the last frame). Both sides are the layered path.
+`n=272` on the last frame). Both sides are the layered path. (Fixed since:
+the overlay page took the render's one reference-background read, and its
+seek, from the layered session; see the passthrough README's "Two pages".)
 
 The 4.2.7 row ran with an `HYPERFRAMES_FFMPEG_PATH` wrapper that sends the
 blend self-test to Ubuntu's 4.2.7 and every other ffmpeg call to 7.0.2,
@@ -437,3 +452,37 @@ One repeat of the earlier passthrough render of `ineligible-raf-warmup`
 same build and input, from frame 27 on, by encoder-level drift over the
 video (69.7 dB mean PSNR); a third run matched flag off 90/90. Flag off
 reproduced 90/90 across its two runs. The cause is not established.
+
+### With capture on a fresh page in frame order
+
+2026-11-23, same host, load average 60-160 on 32 cores (up to ten renders
+at once), `framemd5` and stream / frame side data values checked. Compare
+job times only within a row.
+
+| Fixture                                    | off: job | on: job | flag-on route                            | off vs on          |
+| ------------------------------------------ | -------- | ------- | ---------------------------------------- | ------------------ |
+| HLG `captions` 20 s, ffmpeg n8.0.1         | 580.6 s  | 124.6 s | passthrough, 21 states (84 / 11 / 516)   | identical, 600/600 |
+| HLG `captions-gsap` 20 s, ffmpeg n8.0.1    | 693.0 s  | 220.1 s | passthrough, 32 states (97 / 23 / 503)   | identical, 600/600 |
+| PQ `captions` 20 s, ffmpeg n8.0.1          | 593.1 s  | 127.8 s | passthrough, 21 states (84 / 11 / 516)   | 256/600 (encoder)  |
+| PQ `captions` 20 s, ffmpeg n8.0.1, again   | 366.9 s  | 62.0 s  | passthrough, 21 states (84 / 11 / 516)   | identical, 600/600 |
+| PQ `captions-gsap` 20 s, ffmpeg n8.0.1     | 680.0 s  | 216.1 s | passthrough, 32 states (97 / 23 / 503)   | identical, 600/600 |
+| `ineligible-scroll-clamp` 3 s (HLG)        | 33.7 s   | 10.2 s  | passthrough                              | identical, 90/90   |
+| `ineligible-lazy-decode-popover` 3 s (HLG) | 76.0 s   | 100.2 s | passthrough                              | identical, 90/90   |
+| `ineligible-svg-prefixed-smil` 3 s (HLG)   | 34.6 s   | 36.3 s  | fallback `overlay_non_gsap_animation`    | wall clock         |
+| `ineligible-svg-reference-css` 3 s (HLG)   | 34.1 s   | 36.4 s  | fallback `overlay_non_gsap_animation`    | wall clock         |
+| `ineligible-raf-counter` 3 s (HLG)         | 61.9 s   | 76.5 s  | fallback `seek_callback`                 | identical, 90/90   |
+| the review's `audio-controls-gsap` 3 s     | 85.1 s   | 106.6 s | fallback `overlay_unverified` (frame 32) | identical, 90/90   |
+
+Before this change the review's `scroll-clamp` and `lazy-decode-popover`
+took the passthrough with 0/90 frames identical (the scroll offset eligibility
+had clamped, the popover its seeks had opened, on frames 0-29 and 0-44), the
+two SVG fixtures took it with 0/90 (the image frozen on its first frame), and
+`raf-counter`'s fallback decoded 0/90 against flag off.
+
+The PQ `captions` row that differs does so from frame 255 at 52.8 dB and
+more, over whole frames, and a rerun matched. One parity run of the review's
+3 s `control` fixture and one of 16 more flag-on renders of it differed the
+same way (from frame 29); the second kept its overlay PNGs and concat list,
+byte-identical to those of nine renders that matched, and ten replays of its
+composite command gave identical graph output and one differing libx265
+encode. See the passthrough README's "Validation".

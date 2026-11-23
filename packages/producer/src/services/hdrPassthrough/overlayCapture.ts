@@ -222,26 +222,6 @@ export interface OverlayStateSource {
 }
 
 /**
- * Frames of one candidate state `[startFrame, endFrame)` the verification
- * pass probes: every frame except `captureFrame`, which the candidate probe
- * already read. Sorted ascending.
- *
- * Exhaustive on purpose. The verification is the safety net for overlay
- * drivers the planner cannot see (a requestAnimationFrame loop, a setter on
- * a seek-time global, a wrapped seek); any sampling grid misses a change
- * shorter than its gap, and a periodic driver can alias with it.
- */
-export function verificationFrames(
-  startFrame: number,
-  endFrame: number,
-  captureFrame: number,
-): number[] {
-  const frames: number[] = [];
-  for (let f = startFrame; f < endFrame; f++) if (f !== captureFrame) frames.push(f);
-  return frames;
-}
-
-/**
  * Capture the overlay DOM at `time` as 8-bit straight-alpha RGBA, the same
  * way `compositeHdrFrame` captures a DOM layer: seek + frame injector +
  * stacking query, then mask every element outside the overlay (the video
@@ -328,12 +308,8 @@ interface OpenState extends CapturedPixels {
   startFrame: number;
   endFrame: number;
   captureFrame: number;
-  /** Fingerprint of the last candidate folded in. */
-  key: string;
   /** Every fingerprint seen inside this state; all render its pixels. */
   keys: Set<string>;
-  /** The candidate states folded into this one, in order. */
-  candidates: OverlayState[];
 }
 
 /** Thrown when a frame inside a merged state renders a different overlay. */
@@ -349,30 +325,32 @@ export class OverlayStateMismatchError extends Error {
 }
 
 /**
- * Probe every candidate state in plan order, capture only fingerprints not
- * captured before, and fold each candidate into the state before it when it
- * renders the same overlay (same fingerprint, or a new fingerprint whose
- * pixels hash the same). Split from `captureOverlayStates` so the merge and
- * file layout are testable without a browser.
+ * Probe every frame once, in ascending order, capture only fingerprints not
+ * captured before, and fold each candidate state into the state before it
+ * when it renders the same overlay (same fingerprint, or a new fingerprint
+ * whose pixels hash the same). Split from `captureOverlayStates` so the
+ * merge and file layout are testable without a browser.
  *
- * Every candidate is probed: its fingerprint is read at its own capture
- * frame, so a change on any candidate frame (a one-frame state inside a clip
- * cut, a frame of a short tween) is seen and starts a new state.
+ * The page is walked as the layered loop walks it: every frame is reached
+ * from the frame before it, never from a later one, and no frame is visited
+ * twice except that a capture follows its own probe. Browser state a seek
+ * can leave behind (a scroll offset a shorter layout clamped, a lazy image
+ * loaded, a popover opened) is then the state the layered render has at the
+ * same frame.
  *
- * The other frames of a candidate are the planner's claim, which holds only
- * for drivers its static analysis sees. Once a merged state is closed, each
- * of its candidates is probed at every frame but its capture frame
- * (`verificationFrames`). A
- * fingerprint not seen in the state is screenshotted; pixels that differ
- * from the state's throw `OverlayStateMismatchError`, which the caller turns
- * into a fallback to the layered path instead of a render with stale
- * overlays.
+ * A candidate's first frame decides it: it folds into the open merged state
+ * or starts a new one. The other frames of a candidate are the planner's
+ * claim, which holds only for drivers its static analysis sees: each is
+ * probed, a fingerprint not seen in the state is screenshotted, and pixels
+ * that differ from the state's throw `OverlayStateMismatchError`, which the
+ * caller turns into a fallback to the layered path instead of a render with
+ * stale overlays.
  */
 export async function writeOverlayStates(
   args: CaptureOverlayStatesArgs,
   source: OverlayStateSource,
 ): Promise<CapturedOverlaySet> {
-  const { input, plan, outDir, onStateCaptured } = args;
+  const { plan, outDir, onStateCaptured } = args;
   const startedAt = Date.now();
   await mkdir(outDir, { recursive: true });
 
@@ -388,14 +366,11 @@ export async function writeOverlayStates(
   let framesCovered = 0;
   let candidatesDone = 0;
   for (const candidate of plan.states) {
-    input.assertNotAborted();
-    await foldCandidate(run, candidate);
+    await walkCandidate(run, candidate);
     framesCovered += candidate.endFrame - candidate.startFrame;
     candidatesDone += 1;
     onStateCaptured?.(framesCovered, candidatesDone, plan.states.length);
   }
-  const last = run.merged.at(-1);
-  if (last) await verifyMergedState(run, last);
 
   const overlays: CapturedOverlay[] = run.merged.map((s, index) => ({
     state: {
@@ -419,7 +394,7 @@ export async function writeOverlayStates(
   };
 }
 
-/** What `writeOverlayStates` carries from one candidate to the next. */
+/** What `writeOverlayStates` carries from one frame to the next. */
 interface StateRun {
   args: CaptureOverlayStatesArgs;
   source: OverlayStateSource;
@@ -437,75 +412,87 @@ function frameTime(plan: { fps: { num: number; den: number } }, frame: number): 
 }
 
 /**
- * Probe one candidate and fold it into the open merged state (same
- * fingerprint, or same pixels), or close that state, verify it and open a
- * new one.
+ * Probe each frame of one candidate in order: the first folds the
+ * candidate into the open merged state or opens a new one
+ * (`openOrFold`), the rest must render that state's pixels (`checkHeldFrame`).
  */
-async function foldCandidate(run: StateRun, candidate: OverlayState): Promise<void> {
+async function walkCandidate(run: StateRun, candidate: OverlayState): Promise<void> {
+  for (let frame = candidate.startFrame; frame < candidate.endFrame; frame++) {
+    run.args.input.assertNotAborted();
+    const time = frameTime(run.args.plan, frame);
+    const key = await run.source.probe(frame, time);
+    if (frame === candidate.startFrame) await openOrFold(run, candidate, time, key);
+    else await checkHeldFrame(run, frame, time, key);
+  }
+}
+
+/**
+ * Fold a candidate, from the fingerprint at its first frame, into the open
+ * merged state (a fingerprint the state has seen, or one whose pixels are
+ * the state's), or open a new state there.
+ */
+async function openOrFold(
+  run: StateRun,
+  candidate: OverlayState,
+  time: number,
+  key: string,
+): Promise<void> {
   const { source, merged, pixelsByKey } = run;
-  const time = frameTime(run.args.plan, candidate.captureFrame);
-  const key = await source.probe(candidate.captureFrame, time);
+  const frame = candidate.startFrame;
   const open = merged.at(-1);
-  if (open && open.key === key) {
+  if (open?.keys.has(key)) {
     open.endFrame = candidate.endFrame;
-    open.candidates.push(candidate);
     return;
   }
   let pixels = pixelsByKey.get(key);
   if (pixels === undefined) {
-    const rgba8 = await source.capture(candidate.captureFrame, time);
+    const rgba8 = await source.capture(frame, time);
     run.captureCount += 1;
     pixels = await storeOverlayPixels(rgba8, run.args, merged.length, run.pathByHash);
     pixelsByKey.set(key, pixels);
   }
   if (open && open.hash === pixels.hash) {
     open.endFrame = candidate.endFrame;
-    open.key = key;
     open.keys.add(key);
-    open.candidates.push(candidate);
     return;
   }
-  if (open) await verifyMergedState(run, open);
   merged.push({
     ...pixels,
-    startFrame: candidate.startFrame,
+    startFrame: frame,
     endFrame: candidate.endFrame,
-    captureFrame: candidate.captureFrame,
-    key,
+    captureFrame: frame,
     keys: new Set([key]),
-    candidates: [candidate],
   });
 }
 
 /**
- * Probe each candidate of a closed merged state at its `verificationFrames`.
- * A fingerprint the state has not seen is screenshotted (unless its pixels
- * are already known); pixels other than the state's throw
- * `OverlayStateMismatchError`.
+ * A frame after its candidate's first: a fingerprint the open state has not
+ * seen is screenshotted (unless its pixels are already known); pixels other
+ * than the state's throw `OverlayStateMismatchError`.
  */
-async function verifyMergedState(run: StateRun, state: OpenState): Promise<void> {
+async function checkHeldFrame(
+  run: StateRun,
+  frame: number,
+  time: number,
+  key: string,
+): Promise<void> {
   const { args, source, pixelsByKey } = run;
-  const frames = state.candidates.flatMap((c) =>
-    verificationFrames(c.startFrame, c.endFrame, c.captureFrame),
-  );
-  for (const frame of frames) {
-    args.input.assertNotAborted();
-    const time = frameTime(args.plan, frame);
-    const key = await source.probe(frame, time);
-    run.verifyProbeCount += 1;
-    args.onVerifyProbe?.();
-    if (state.keys.has(key)) continue;
-    let hash = pixelsByKey.get(key)?.hash;
-    if (hash === undefined) {
-      const rgba8 = await source.capture(frame, time);
-      run.captureCount += 1;
-      assertOverlaySize(rgba8, args.plan, run.merged.indexOf(state));
-      hash = hashOverlayPixels(rgba8);
-      if (hash === state.hash) pixelsByKey.set(key, { hash, pngPath: state.pngPath });
-    }
-    if (hash !== state.hash) throw new OverlayStateMismatchError(frame, state);
-    state.keys.add(key);
+  const index = run.merged.length - 1;
+  const state = run.merged[index];
+  if (!state) throw new Error("hdrPassthrough: a held frame before any overlay state");
+  run.verifyProbeCount += 1;
+  args.onVerifyProbe?.();
+  if (state.keys.has(key)) return;
+  let hash = pixelsByKey.get(key)?.hash;
+  if (hash === undefined) {
+    const rgba8 = await source.capture(frame, time);
+    run.captureCount += 1;
+    assertOverlaySize(rgba8, args.plan, index);
+    hash = hashOverlayPixels(rgba8);
+    if (hash === state.hash) pixelsByKey.set(key, { hash, pngPath: state.pngPath });
   }
+  if (hash !== state.hash) throw new OverlayStateMismatchError(frame, state);
+  state.keys.add(key);
 }
 
 function assertOverlaySize(
@@ -545,38 +532,40 @@ async function storeOverlayPixels(
 }
 
 /**
- * Walk `plan.states` (the planner's candidate states) in order:
- *   1. Seek the page to the candidate's `captureFrame / fps`, query the
- *      element stacking and read the overlay fingerprint
- *      (`overlayFingerprint.ts`). No frame injection: see `probeOverlay`.
- *   2. Same fingerprint as the candidate before it: fold it into that state,
- *      no capture.
+ * Walk every frame of `plan.states` (the planner's candidate states) once,
+ * in ascending order, on a page whose history before frame 0 is the layered
+ * DOM session's (`index.ts`):
+ *   1. Seek the page to `frame / fps`, query the element stacking and read
+ *      the overlay fingerprint (`overlayFingerprint.ts`). No frame
+ *      injection: see `probeOverlay`.
+ *   2. A fingerprint the open merged state has seen: the frame is that
+ *      state's, no capture.
  *   3. A fingerprint captured earlier (a caption-free gap again): reuse that
  *      capture's PNG, no capture.
- *   4. Otherwise capture exactly as the layered loop does: seek again with
- *      the session's `onBeforeCapture` hook (`seekInjectAndQueryStacking`),
- *      mask everything outside the DOM layers above the
- *      passthrough video (the video included) with `applyDomLayerMask`,
- *      `captureAlphaPng`, remove the mask, `decodePng`, and hash the 8-bit
- *      RGBA pixels (sha256). Pixels seen before reuse that PNG; new ones are
- *      mapped with `mapOverlayToSignalRgba16` (RGB →
+ *   4. Otherwise capture exactly as the layered loop does: seek again, to
+ *      the same time, with the session's `onBeforeCapture` hook
+ *      (`seekInjectAndQueryStacking`), mask everything outside the DOM
+ *      layers above the passthrough video (the video included) with
+ *      `applyDomLayerMask`, `captureAlphaPng`, remove the mask, `decodePng`,
+ *      and hash the 8-bit RGBA pixels (sha256). Pixels seen before reuse
+ *      that PNG; new ones are mapped with `mapOverlayToSignalRgba16` (RGB →
  *      `getSrgbToSignalLut(transfer)`, alpha → `a8 * 257`, straight alpha)
  *      and written as a 16-bit RGBA PNG (`<outDir>/overlay-<index>.png`).
- *   5. A candidate whose pixels equal the state before it folds into it too.
- *   6. Call `onStateCaptured(framesCovered, i + 1, states.length)` with the
- *      cumulative `endFrame - startFrame` of candidates done so far.
- *   7. When a merged state closes, re-probe each of its candidates at every
- *      frame but the capture frame; a frame whose overlay renders different pixels throws
+ *   5. On a candidate's first frame, pixels equal to the open state's fold
+ *      the candidate into it, and any others open a new state; on any other
+ *      frame, pixels other than the open state's throw
  *      `OverlayStateMismatchError`.
- *   8. On every probe and capture, hold the video's own stacking entry to
- *      the first one (`createVideoLayerGuard`); a frame where it differs throws
- *      `VideoLayerChangedError`.
+ *   6. Call `onStateCaptured(framesCovered, i + 1, states.length)` after
+ *      each candidate with the cumulative `endFrame - startFrame` so far.
+ *   7. On every probe and capture, hold the video's own stacking entry to
+ *      the first one (`createVideoLayerGuard`); a frame where it differs
+ *      throws `VideoLayerChangedError`.
  *
  * The result's `plan` holds the merged states (one per run of identical
  * overlay output, tiling `[0, totalFrames)` like the input) and `overlays`
  * one entry per merged state. Calls `input.assertNotAborted()` before each
- * candidate; the mask is removed after every capture, including a failed
- * one. Pixel parity: a straight-alpha `over` of a returned PNG onto a video
+ * frame; the mask is removed after every capture, including a failed one.
+ * Pixel parity: a straight-alpha `over` of a returned PNG onto a video
  * frame equals `blitRgba8OverRgb48le(domRgba, frame, w, h, transfer)` within
  * 1 LSB at 16 bit.
  */

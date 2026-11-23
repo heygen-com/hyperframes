@@ -24,13 +24,16 @@ the source video while it encodes.
 ```
 capture_hdr_layered stage (renderOrchestrator)
   └─ flag on and HDR content: attemptHdrPassthrough            index.ts
-       ├─ overlay page, watched from the moment it opens:
+       ├─ each overlay page (analysis, then capture), with      overlayPages.ts
+       │    the render's capture options but private memos and
+       │    no shared reference-background read, watched from
+       │    the moment it opens:
        │    scripts by exact text as V8 compiles them           scriptOrigins.ts
        │    registrations while it loads (debugger pauses),     registrationWatch.ts
        │    builtins captured before any page script            mainWorld.ts
        │    images and stylesheets it loads                     ownClock.ts
        │    call counts from load                               pageCodeWatch.ts
-       ├─ checkPassthroughEligibility                           eligibility.ts
+       ├─ checkPassthroughEligibility on the analysis page      eligibility.ts
        │    render / video gates, ffmpeg blend self-test         ffmpegBlendCheck.ts
        │    DevTools-only page gates, before any seek or         overlayPageGates.ts
        │    in-page probe: registrations, untrusted compiles,
@@ -41,17 +44,26 @@ capture_hdr_layered stage (renderOrchestrator)
        │    hf-seek listeners on window (DevTools listener lookup),
        │    content gates: DOM snapshot (unreadable content,     overlayPageGates.ts
        │    other videos, element allowlist), CSS allowlist,      ownClock.ts
-       │    images by their bytes; the DevTools-only gates again
+       │    images by their bytes (SVG parsed as XML,            svgImage.ts
+       │    allowlisted); the DevTools-only gates again;
+       │    then decline if any page function ran there since
+       │    load; close the analysis page
        ├─ planOverlayStates → candidate states                  planner.ts
+       ├─ a fresh capture page: the DevTools-only gates before
+       │    its first seek, then the layered DOM session's steps
+       │    before frame 0 (scene reads, the seek and stacking
+       │    query at the video's start)
        ├─ captureOverlayStates → one PNG per distinct overlay   overlayCapture.ts
-       │    probe each candidate (seek + fingerprint in an       overlayFingerprint.ts
-       │    isolated world, hashed in Node), screenshot only     isolatedWorld.ts
-       │    unseen fingerprints, merge identical neighbours,
-       │    re-probe every frame of each merged state,
+       │    walk every frame once, in order (seek + fingerprint  overlayFingerprint.ts
+       │    in an isolated world, hashed in Node), screenshot    isolatedWorld.ts
+       │    only unseen fingerprints, fold candidates that
+       │    render the same overlay, decline a frame that
+       │    differs from its candidate's first,
        │    hold the video's own layer still on every probe,
        │    then run the page and content gates again and
        │    decline if any page function ran since load          pageCodeWatch.ts
        └─ compositeAndEncode → videoOnlyPath                    ffmpegComposite.ts
+            completed → the render records the reference background the capture page read
      completed → assemble muxes audio as usual
      fallback  → (extract deferred video frames) → runCaptureHdrStage
 ```
@@ -77,7 +89,9 @@ overlay_unverified (...)` and takes the layered path. A page callback that
 to the layered HDR composite` and takes the layered path. The layered
   encoder overwrites any partial output.
 - An abort is rethrown, never turned into a fallback.
-- The overlay browser session is always closed before the layered path starts.
+- Both overlay pages are always closed before the layered path starts, and
+  neither changes what the layered DOM session does ("Two pages" below):
+  after a fallback the layered path renders exactly as with the flag off.
 
 ## Eligibility
 
@@ -129,7 +143,7 @@ The passthrough runs only when it can reproduce the layered output:
   `<audio>`, and the `::before`, `::after` and `::marker` pseudo-elements;
   CSS whose pseudo-elements are static ones and that has no `paint()`; and
   images whose bytes are a single-frame GIF, PNG, WebP, AVIF/HEIF, JPEG, BMP
-  or ICO, or an SVG with no animation, script or embedded content. Anything
+  or ICO, or an SVG that parses, as XML, to static elements and CSS. Anything
   else declines (`overlay_unsupported`, or `overlay_non_gsap_animation` for
   an animated image), as do a `<video>` besides the source (`video_count`),
   an `<audio controls>`, a `<marquee>` and an indeterminate `<progress>`,
@@ -200,21 +214,74 @@ the check declines too. The check takes about 0.15 s. On 4.2.7 it logs
 `HDR passthrough off: ffmpeg_unsupported (/usr/bin/ffmpeg: maskedmerge misses
 the layered blend on 7748 of 49152 samples (up to 1 LSB))`.
 
+## Two pages
+
+Eligibility seeks all over the composition: nine layout samples, the timing
+analysis, the probes the gates make. A seek leaves browser state behind
+that no later seek undoes, with no page code running at all: a scroller
+whose content a `set()` shrinks at 1 s clamps a 1500 px `scrollTop` to 100,
+and growing the content back does not restore it; a `loading=lazy` image a
+`set()` shows at 1.5 s loads once a seek shows it, and the `decode()`
+promise the page took at load then runs its reaction (a bound
+`showPopover`), which keeps the popover open. Capture on that page saw the
+clamped offset and the open popover on every frame, frames before the
+trigger included, and every probe agreed with every other probe, so
+nothing declined; the layered render, which seeks in order from load,
+shows neither before the trigger. Self-consistency between probes cannot
+detect history.
+
+So eligibility runs on an analysis page, and capture on a second page
+opened fresh once eligibility passes (the analysis page is closed first,
+after any page function that ran on it since load declines with
+`seek_callback`). The capture page:
+
+- loads with the same capture options as the layered DOM session
+  (`overlayPages.ts`, below), and is watched the same way as the analysis
+  page; the DevTools-only gates run before its first seek;
+- takes the layered DOM session's steps before frame 0
+  (`runCaptureHdrStage`): the transparent background, the scene reads
+  (`readLayeredScenes`), and the seek, frame injection and stacking query at
+  each native HDR start time (`probeHdrExtractionDims`);
+- visits every frame once, in ascending order, as the layered loop does: a
+  frame is reached from the frame before it, never from a later one, and a
+  screenshot only follows the probe of its own frame (`writeOverlayStates`).
+
+Browser state a seek leaves behind is then, at every frame, the state the
+layered render has there. A seek-driven reaction that runs on the wall clock
+(a decode, a font load) still lands where the fingerprint reads it (image
+and font load state, `:popover-open`): a change at a frame the planner
+called static declines (`overlay_unverified`).
+
+A render's capture sessions also share state through their options, and
+the first session to reach it changes what the later ones do. The page's
+reference background is read once per render
+(`recordReferenceBackground`), and the read seeks the page to 0; whichever
+session asks first runs it and every later session skips it. The overlay
+page used to ask first, which took that seek away from the layered DOM
+session after a fallback: a page that counts its seeks (`raf-counter`)
+showed `n=4` at frame 0 where flag off shows `n=5`. Now the analysis page
+never reads it, and the capture page reads it exactly when the layered
+session would have (no session has yet, `ReferenceBackgroundRecorder.started`),
+keeps the value, and hands it to the render's recorder only once the
+passthrough completes, when no layered session runs. The sub-timeline wait
+and static-dedup memos are copied for each overlay page: it sees what the
+layered session would, and what it adds stays its own.
+
 ## History-dependent drivers
 
-Capture reads each frame from a fresh seek, out of order, and many frames
-more than once; the layered path seeks every frame once, in order. A driver
-whose output depends on the time alone renders the same either way, which
-the verification probes check frame by frame. A driver that keeps state
-across seeks does not, and its probes can agree with each other while
-disagreeing with the layered render: a `requestAnimationFrame` counter that
-shows "WAIT" for its first three callbacks has stopped changing long before
-capture starts; a film-time interval that appends a mark has already fired
-up to the furthest frame eligibility seeked, and a backward seek un-fires
-nothing.
+The layered path seeks every frame once, in order, and so does capture's
+walk; but eligibility's probes, the capture page's extra probe and capture
+seeks and its two seeks of a captured frame are seeks the layered path
+does not make. A driver whose output depends on the time alone renders the
+same either way, which the verification probes check frame by frame. Page
+code that keeps state across seeks does not, and its probes can agree with
+each other while disagreeing with the layered render: a
+`requestAnimationFrame` counter that shows "WAIT" for its first three
+callbacks has stopped changing long before capture starts; a film-time
+interval that appends a mark fires once per seek that passes its time.
 
 Such drivers are found from outside the page ("Registrations" below), and
-any page function that runs after the overlay page loads declines ("Page
+any page function that runs after an overlay page loads declines ("Page
 code on seeks"). GSAP's own ticker also runs from an animation frame and
 renders GSAP's global timeline on its own clock, the seeks it has seen so
 far, lag-smoothed: the registered timelines and the roots they hang from
@@ -442,10 +509,28 @@ accepted instead, and everything else declines:
   passthrough's own session from before the page navigates) and decoded far
   enough to tell: a single-frame GIF, a PNG without `acTL` frames, a WebP
   without animation, an AVIF/HEIF that is no sequence, a JPEG, BMP or ICO,
-  or an SVG with no animation, script, embedded content or external
-  reference. Anything else, or bytes that cannot be read, declines
-  (`overlay_non_gsap_animation`); after capture an image still loading
-  declines too.
+  or an SVG that is static once parsed (below). Anything else, or bytes
+  that cannot be read, declines (`overlay_non_gsap_animation`); after
+  capture an image still loading declines too.
+
+An SVG shown as an image runs no script and loads nothing, but SMIL and CSS
+animations in it play on the browser's clock, and capture would freeze it.
+A scan of the raw bytes for animation names missed what reaches the browser
+only after XML parsing: a SMIL element under a prefix bound to the SVG
+namespace (`<s:animate>`), and CSS spelled with character references inside
+`<style>` (`anim&#97;tion`, `&#64;keyframes`). `svgImage.ts` parses the
+document as the browser's XML parser reads it, with namespaces resolved and
+references decoded, and declines anything it does not read exactly: a
+DOCTYPE (an internal subset can define entities), an entity other than the
+five predefined ones, a processing instruction but the XML declaration, an
+unbound prefix, malformed markup. Every SVG-namespace element must be on a
+list of static ones by exact local name (no animation element, `<discard>`,
+`<image>`, `<feImage>`, `<foreignObject>`, `<script>` or anything unlisted),
+an element of another namespace must sit inside `<metadata>`, and the
+decoded `<style>` text and `style` attributes must have no `animation`,
+`transition` or `keyframes`, no CSS escape, no `@import`, and no `data:` or
+`url()` but a fragment; no attribute may hold a `data:` URL, an external
+`href` or `url()`, or an event handler.
 
 An `<audio>` element paints nothing without controls; one whose controls
 GSAP turns on mid-composition is in the fingerprint with its playback
@@ -456,8 +541,9 @@ the verification probes decline (`overlay_unverified`).
 
 The planner's states are candidates: a superset of the frames where the
 overlay can change (a clip cut claims the frames around it, a `set()` the
-frames around its time). Capture seeks to each candidate and reads a
-fingerprint of everything the overlay's pixels depend on: DOM attributes and
+frames around its time). Capture walks every frame once, in order ("Two
+pages"), and reads at each a fingerprint of everything the overlay's pixels
+depend on: DOM attributes and
 text (including open shadow roots and their own sheets), normalised inline styles, the CSSOM
 (`@import`ed sheets included), the focused element,
 scroll and form state, image and font load state, CSS / Web Animation times,
@@ -465,10 +551,11 @@ the native properties GSAP tweens write on their target elements, the
 playback position of a media element with controls, the paint state no attribute holds
 (see "Callbacks that run no page script" above), and the stacking order. The video's own
 nodes and script text are left out. A new fingerprint is captured through the
-unchanged layered capture path; a repeated one reuses its PNG; a candidate
-whose fingerprint or captured pixels match the state before it is merged into
-it. A candidate whose overlay differs in any way starts its own state, so a
-one-frame change is never merged away. The fingerprint is collected in the
+unchanged layered capture path, at the frame just probed; a repeated one reuses
+its PNG. At a candidate's first frame, a fingerprint or captured pixels that
+match the state before it merge the candidate into it. A candidate whose overlay
+differs in any way starts its own state, so a one-frame change is never merged
+away. The fingerprint is collected in the
 isolated world and hashed in Node ("Probes the page cannot reach").
 
 That holds only for what the fingerprint can read. Page script cannot enter
@@ -480,16 +567,16 @@ DevTools DOM snapshot (`DOMSnapshot.captureSnapshot`, which pierces both)
 and declines such content with `overlay_unreadable`; the snapshot is read
 again after capture.
 
-The frames between capture frames are the planner's word, which holds only
-for drivers its static analysis sees. When a merged state closes, each of
-its candidates is probed again at every frame but its capture frame. A fingerprint the
-state has not seen is screenshotted; pixels that differ from the state's
-fall back (`overlay_unverified`) rather than ship a stale overlay. The probe
-is exhaustive because it is the safety net for drivers no static check
-names (a raw `requestAnimationFrame` loop, a setter on a runtime seek-time
-global, a wrapped seek, a film-time timer): any sampling grid misses a
-change shorter than its gap, and a periodic driver can alias with it. It
-costs one probe (seek + fingerprint, no screenshot) per frame.
+The other frames of a candidate are the planner's word, which holds only
+for drivers its static analysis sees. Each is probed in turn; a fingerprint
+the state has not seen is screenshotted, and pixels that differ from the
+state's fall back (`overlay_unverified`) rather than ship a stale overlay.
+The probe is exhaustive because it is the safety net for drivers no static
+check names (a raw `requestAnimationFrame` loop, a setter on a runtime
+seek-time global, a wrapped seek, a film-time timer): any sampling grid
+misses a change shorter than its gap, and a periodic driver can alias with
+it. It costs one probe (seek + fingerprint, no screenshot) per frame, which
+the in-order walk needs anyway.
 
 The video's own stacking entry is left out of the fingerprint, but not
 unchecked. The composite lays the full-opacity source in one place on every
@@ -550,15 +637,9 @@ from ffmpeg's frame count and reports 35–80%.
   the page's: the watch is armed as the page opens, before the engine
   registers anything, so only a caller that skips the capture session's
   `onPageOpened` hook is affected (and declines).
-- For a driver that counts seeks, a fallback render is not bit-identical to
-  a flag-off render either: the layered path makes one seek fewer before
-  frame 0 after a fallback (`raf-counter` shows `n=4` where flag off shows
-  `n=5`). Both are the layered path; the passthrough itself never shipped.
-  The same holds for a page that counts the builtins the renderer's page
-  code calls: one that counts `indexOf`, `split`, `test` and `exec` calls
-  shows 15 more before frame 0 after a fallback, then the same count per
-  frame. Nothing the passthrough adds is the cause: the page renders with
-  exactly the shim it has with the flag off.
+- The passthrough loads the page twice (analysis and capture), and the
+  capture page repeats the layered session's steps before frame 0: about a
+  page load and a seek more than one page would cost.
 - `hf-seek` listeners are read once, after the page loads; one added later
   is left to the verification probes.
 - Any observer, custom element definition, worker, offscreen canvas or
@@ -572,17 +653,21 @@ from ffmpeg's frame count and reports 35–80%.
 - What a builtin the page hands over runs is found where the renderer, GSAP
   or the browser calls page objects on a seek (listed in "Callbacks that
   run no page script"). One reached some other way is not: a promise
-  reaction or `requestIdleCallback` callback (each runs once, on the wall
-  clock), a listener on a node outside the document. A builtin can only
-  change state; the paint state it can set is in the fingerprint, so a
-  change that depends on the time alone is still captured.
+  reaction, a `requestIdleCallback` callback, a listener on a node outside
+  the document. A seek can trigger one (a lazy image's `decode()` settles
+  once a seek shows it); capture's page reaches that seek in order, as the
+  layered render does ("Two pages"), and the paint state a builtin can set
+  is in the fingerprint, so a change the reaction makes where the planner
+  sees none declines.
 - GSAP tweens of anything but elements decline when they write anything,
   including a plain object only page code reads (a counter whose `onUpdate`
   writes the DOM would decline on the callback anyway).
 - The allowlists decline content that would render the same: a `<button>`,
   a form control nobody focuses, a `<canvas>` nobody draws on, an image
   format the passthrough does not decode (JPEG XL), an SVG image with an
-  external reference, a cross-origin stylesheet whose text the network
+  external reference, a DOCTYPE, a CSS escape or editor elements outside
+  `<metadata>` (Inkscape's `sodipodi:namedview`), an SVG in another
+  encoding than UTF-8, a cross-origin stylesheet whose text the network
   record does not hold.
 - Event targets are found with `Runtime.queryObjects`, which collects
   garbage first: only a page that watches its own collection
@@ -746,7 +831,59 @@ every repeatable fallback (`error-getters-raf` and `builtins-counter`
 included) decodes identical to flag off. The SVG SMIL, shadow-root CSS
 animation and animated WebP / APNG / AVIF fixtures are now marked
 `wallClock`: two flag-off renders of each share no frame. `raf-counter`'s
-fallback still differs from flag off by the seek-count limitation above.
+fallback still differed from flag off then, by one seek before frame 0 (see
+"Two pages").
 Flag off renders identical to main (`origin/main` at 2cc423b3c6) on twelve
 producer fixtures, the HDR regression fixture, a PQ caption fixture and the
 `errname-raf` and `shim-tostring` pages.
+
+With capture on a fresh page in frame order, overlay pages that leave the
+render's shared session state alone, and SVG images parsed as XML (on
+83616beee9, ffmpeg 8.0.1, up to ten renders at once, load average 60-160 on
+32 cores), the 20 s fixtures still take the passthrough:
+
+| transfer | `captions` off / on                | `captions-gsap` off / on   |
+| -------- | ---------------------------------- | -------------------------- |
+| HLG      | 580.6 s / 124.6 s, 600/600         | 693.0 s / 220.1 s, 600/600 |
+| PQ       | 593.1 s / 127.8 s, 256/600 (below) | 680.0 s / 216.1 s, 600/600 |
+| PQ again | 366.9 s / 62.0 s, 600/600          |                            |
+
+Stream and frame side data were equal on every run. The review's fixtures
+(3 s, HLG):
+
+| fixture                      | before                                | after                                        |
+| ---------------------------- | ------------------------------------- | -------------------------------------------- |
+| `scroll-clamp`               | passthrough, 0/90                     | passthrough, 90/90 (ffmpeg 7.0.2 and 8.0.1)  |
+| `lazy-decode-popover`        | passthrough, 0/90                     | passthrough, 90/90 (both)                    |
+| `svg-ns-smil`, `svg-ent-css` | passthrough, 0/90                     | fallback `overlay_non_gsap_animation` (both) |
+| `raf-counter` (fallback)     | 0/90 against flag off (`n=4` / `n=5`) | 90/90 (both)                                 |
+
+The generated 3 s sets, both sides rendered (HLG on ffmpeg 7.0.2, all 73
+projects; PQ on ffmpeg 8.0.1, 31 of them), take the route they expect: the
+positive fixtures, `tostring-painter`, `scroll-clamp` and
+`lazy-decode-popover` take the passthrough and decode identical to flag off,
+and every repeatable fallback (51 HLG, 23 PQ, `raf-counter`,
+`builtins-counter` and `error-getters-raf` included) decodes identical to
+flag off. `seek-time-setter`, `flash-setter` and `gsap-from-lazy` now decline
+as `seek_callback` before capture: their setter runs on eligibility's seeks,
+on the analysis page. The earlier rounds' adversarial fixtures (82 of them, both
+sides rendered) take the routes they took before, but for the four above,
+and every fallback decodes identical to flag off where the layered render
+is repeatable (wall-clock content, a CSS `@starting-style` transition
+included, is not: two flag-off renders of it differ too); one passthrough
+render of `control` did not (below). Flag off renders identical to main on three
+HDR fixtures (`hdr-hlg-regression`, `hdr-hlg-audio-windows`,
+`hdr-regression`), eight SDR producer fixtures and the `pst-builtins` page.
+
+Three passthrough renders out of about 50 in this run did not decode
+identical to flag off: the PQ 20 s `captions` row above (from frame 255),
+and two 3 s `control` renders (from frame 29, 34/90 and 26/90), all at
+52-73 dB, spread over whole frames. The overlay PNGs and the concat list of
+the second `control` one were byte-identical to those of nine renders that
+matched. Replaying its composite command ten times at once on those inputs,
+the composite graph's frames (`-f framemd5` before the encoder) were
+identical every time, and one of the ten libx265 encodes differed (21/90).
+The encoder, fed as fast as the graph runs and encoding up to 16 frames at
+once (`frame-threads=16`), is not deterministic under load; the layered
+encoder gets one frame at a time from capture. This is open: the
+passthrough has no check for it.

@@ -252,6 +252,34 @@ describe("INELIGIBLE_CASES", () => {
     expect(lazy.assets).toContain("gsap");
   });
 
+  it("keeps the seek-history cases free of page code that runs after load", () => {
+    // Their paint follows browser state a seek leaves behind, not a page function: only the
+    // order capture reaches the frames in decides whether it matches the layered render.
+    const find = (name: string) => INELIGIBLE_CASES.find((c) => c.name === name)!;
+    for (const name of ["scroll-clamp", "lazy-decode-popover"]) {
+      const script = find(name).composition.timelineScript ?? "";
+      expect(script).not.toMatch(/=>|function\s*\(/);
+      expect(script).toMatch(/tl\.set\(/);
+    }
+    expect(find("scroll-clamp").composition.timelineScript).toContain("scrollTop = 1500");
+    expect(find("lazy-decode-popover").composition.overlayHtml).toContain('loading="lazy"');
+    expect(find("lazy-decode-popover").composition.timelineScript).toContain(
+      ".decode().then(HTMLElement.prototype.showPopover.bind(",
+    );
+  });
+
+  it("spells the SVG animations only as XML parsing reads them", () => {
+    const find = (name: string) => INELIGIBLE_CASES.find((c) => c.name === name)!;
+    const svg = (name: string) => {
+      const html = find(name).composition.overlayHtml ?? "";
+      return decodeURIComponent(/data:image\/svg\+xml,([^"]+)"/.exec(html)?.[1] ?? "");
+    };
+    expect(svg("svg-prefixed-smil")).toContain("<s:animate ");
+    expect(svg("svg-prefixed-smil")).not.toMatch(/<animate/);
+    expect(svg("svg-reference-css")).toContain("anim&#97;tion");
+    expect(svg("svg-reference-css")).not.toMatch(/animation|@keyframes/);
+  });
+
   it("drives the seek-hook cases from the runtime's seek, not from GSAP", () => {
     const listener = INELIGIBLE_CASES.find((c) => c.name === "hf-seek-listener")!;
     expect(listener.composition.headHtml).toContain('addEventListener("hf-seek"');
@@ -263,9 +291,10 @@ describe("INELIGIBLE_CASES", () => {
 
   it("puts each flash case in one cue-free state, away from a sampling grid", () => {
     for (const [name, reason] of [
-      // The raf loop is declined before capture; the setter is left to capture's per-frame probes.
+      // The raf loop is declined where it registers; the setter is page code that runs on
+      // eligibility's seeks, which the analysis page's page code watch declines.
       ["flash-raf", "seek_callback"],
-      ["flash-setter", "overlay_unverified"],
+      ["flash-setter", "seek_callback"],
     ] as const) {
       const c = INELIGIBLE_CASES.find((x) => x.name === name)!;
       expect(c.reason).toBe(reason);
@@ -392,6 +421,8 @@ describe("INELIGIBLE_CASES", () => {
       "shadow-root-gif",
       "shadow-root-video",
       "paint-worklet",
+      "svg-prefixed-smil",
+      "svg-reference-css",
       "picker-icon-gif",
       "scroll-button-gif",
       "shadow-worker-canvas",
@@ -401,9 +432,13 @@ describe("INELIGIBLE_CASES", () => {
     ]);
   });
 
-  it("expects the passthrough only where the page reads back what a record in it would change", () => {
+  it("expects the passthrough only where the page reads back a record or keeps seek history", () => {
     const takes = INELIGIBLE_CASES.filter((c) => c.takesPassthrough);
-    expect(takes.map((c) => c.name)).toEqual(["tostring-painter"]);
+    expect(takes.map((c) => c.name)).toEqual([
+      "tostring-painter",
+      "scroll-clamp",
+      "lazy-decode-popover",
+    ]);
     for (const c of takes) expect(c.wallClock).toBeUndefined();
   });
 

@@ -234,11 +234,11 @@ export interface OverlayState {
   startFrame: number;
   endFrame: number;
   /**
-   * The frame seeked to when capturing this state. In a planned (candidate)
-   * state: `Math.floor((startFrame + endFrame - 1) / 2)` (midpoint, away from
-   * the tween edges the static analysis under-claims). In a captured state
-   * (`CapturedOverlaySet.plan`), which merges candidates that render the same
-   * overlay: the capture frame of the candidate it was first probed at.
+   * In a planned (candidate) state: `Math.floor((startFrame + endFrame - 1) / 2)`,
+   * the midpoint. Overlay capture probes every frame of a candidate in order
+   * and decides it at its first frame, so it does not read this. In a captured
+   * state (`CapturedOverlaySet.plan`), which merges candidates that render the
+   * same overlay: its first frame, where its fingerprint was first read.
    */
   captureFrame: number;
 }
@@ -317,7 +317,7 @@ export interface CapturedOverlaySet {
    * any the verification pass needed for a fingerprint it had not seen.
    */
   captureCount: number;
-  /** Verification probes of frames inside merged states (`verificationFrames`). */
+  /** Probes of frames after a candidate's first, which must render its state's pixels. */
   verifyProbeCount: number;
   /** Directory holding the PNGs; owned by the render's workDir cleanup. */
   dir: string;

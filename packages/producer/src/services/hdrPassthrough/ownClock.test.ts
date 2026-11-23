@@ -58,17 +58,27 @@ describe("imageVerdict", () => {
     [
       "SVG with SMIL",
       '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"><animate attributeName="r" to="8" dur="1s"/></circle></svg>',
-      "an SVG that may animate or embed content",
+      "an SVG with a <animate> element",
     ],
     [
       "SVG with CSS animation",
       '<svg xmlns="http://www.w3.org/2000/svg"><style>@keyframes s{to{opacity:0}}</style></svg>',
-      "an SVG that may animate or embed content",
+      "an SVG whose CSS animates",
     ],
     [
       "SVG embedding a data: GIF",
       '<svg xmlns="http://www.w3.org/2000/svg"><image href="data:image/gif;base64,R0lG"/></svg>',
-      "an SVG that may animate or embed content",
+      "an SVG with a <image> element",
+    ],
+    [
+      "SVG with namespace-prefixed SMIL",
+      '<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg"><rect><s:animate attributeName="fill" values="red;blue" dur="1s"/></rect></svg>',
+      "an SVG with a <animate> element",
+    ],
+    [
+      "SVG whose CSS animation is spelled with character references",
+      '<svg xmlns="http://www.w3.org/2000/svg"><style>rect{anim&#97;tion:s 1s infinite} &#64;keyframes s{to{fill:blue}}</style><rect/></svg>',
+      "an SVG whose CSS animates",
     ],
     ["truncated GIF", gif(1).slice(0, 20), "a GIF the passthrough cannot read"],
     ["unknown format", ascii("JXL?"), "an image of a format the passthrough does not read"],

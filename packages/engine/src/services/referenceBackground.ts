@@ -35,17 +35,26 @@ export function referenceBackgroundResult(value: unknown): ReferenceBackgroundRe
   return { [REFERENCE_BACKGROUND_FIELD]: { kind: "unknown" } };
 }
 
+/** The once-per-render reader `createReferenceBackgroundRecorder` returns. */
+export interface ReferenceBackgroundRecorder {
+  (read: () => Promise<ReferenceBackground>): Promise<void>;
+  /** True once a session has taken the read, so later sessions' calls run nothing. */
+  readonly started: boolean;
+}
+
 /** Shared by a render's existing sessions; concurrent workers reserve the first read, not a chunk frame. */
 export function createReferenceBackgroundRecorder(
   record: (result: ReferenceBackgroundResult) => void,
-): (read: () => Promise<ReferenceBackground>) => Promise<void> {
+): ReferenceBackgroundRecorder {
   let pending: Promise<void> | undefined;
-  return (read) => {
+  const recorder = (read: () => Promise<ReferenceBackground>) => {
     pending ??= read()
       .catch((): ReferenceBackground => ({ kind: "unknown" }))
       .then((value) => record(referenceBackgroundResult(value)));
     return pending;
   };
+  Object.defineProperty(recorder, "started", { get: () => pending !== undefined });
+  return recorder as ReferenceBackgroundRecorder;
 }
 
 export interface BackgroundLayer {

@@ -26,8 +26,9 @@
  *   references it and however (an element, a pseudo-element, a mask, a
  *   `data:` or `blob:` URL), is read from the network record and decoded
  *   enough to tell: a single-frame GIF, PNG, WebP, AVIF/HEIF, JPEG, BMP or
- *   ICO, or an SVG with no animation, script or embedded image. Anything
- *   else, or an image whose bytes cannot be read, declines.
+ *   ICO, or an SVG that parses as XML to static elements and CSS only
+ *   (`svgImage.ts`). Anything else, or an image whose bytes cannot be
+ *   read, declines.
  *
  * Workers, offscreen canvases, worklets and view transitions are declined
  * where they are created (`registrationWatch.ts`).
@@ -36,6 +37,7 @@
 import type { getCdpSession } from "@hyperframes/engine";
 import type { DomSnapshotLike } from "./overlayFingerprint.js";
 import { evaluateIsolated } from "./isolatedWorld.js";
+import { svgImageVerdict } from "./svgImage.js";
 
 type Client = Awaited<ReturnType<typeof getCdpSession>>;
 type Page = Parameters<typeof evaluateIsolated>[0];
@@ -406,15 +408,11 @@ function isoSequence(b: Uint8Array): boolean {
   return false;
 }
 
-/** What makes an SVG document paint on its own, or embed what might. */
-const SVG_NOT_STATIC =
-  /<(animate|animateColor|animateMotion|animateTransform|set|script|image|feImage|foreignObject|iframe|video|audio|canvas)[\s/>]|@keyframes|animation(-name)?\s*:|transition\s*:|data:|url\(\s*["']?(?!#)/i;
-
 /**
  * Why an image's bytes are not a known static image, or null when they are:
  * a single-frame GIF, a PNG without `acTL`, a WebP without animation, an
- * AVIF/HEIF that is no sequence, a JPEG, BMP or ICO, or an SVG with no
- * animation, script, embedded content or external reference.
+ * AVIF/HEIF that is no sequence, a JPEG, BMP or ICO, or an SVG whose XML
+ * holds only static elements and CSS (`svgImageVerdict`).
  */
 export function imageVerdict(bytes: Uint8Array): string | null {
   const format = IMAGE_FORMATS.find(([recognises]) => recognises(bytes));
@@ -451,5 +449,5 @@ function pngVerdict(b: Uint8Array): string | null {
 function svgVerdict(b: Uint8Array): string | null {
   const text = Buffer.from(b.subarray(0, 4 << 20)).toString("utf8");
   if (!/<svg[\s>]/i.test(text)) return "an image of a format the passthrough does not read";
-  return SVG_NOT_STATIC.test(text) ? "an SVG that may animate or embed content" : null;
+  return svgImageVerdict(text);
 }

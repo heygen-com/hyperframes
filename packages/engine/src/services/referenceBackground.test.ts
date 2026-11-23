@@ -75,7 +75,9 @@ describe("reference background", () => {
       rgb: [10, 46, 138] as [number, number, number],
     }));
     const later = vi.fn(async () => ({ kind: "unsupported_non_solid" as const }));
+    expect(record.started).toBe(false);
     await Promise.all([record(first), record(later)]);
+    expect(record.started).toBe(true);
     await record(later);
     expect(first).toHaveBeenCalledTimes(1);
     expect(later).not.toHaveBeenCalled();
