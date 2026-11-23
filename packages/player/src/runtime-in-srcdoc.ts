@@ -65,14 +65,12 @@ const isGap = (c: string) => isSpace(c) || c === "/";
 const inName = (c: string) => !isGap(c) && c !== "=";
 const notSpace = (c: string) => !isSpace(c);
 
-/** The index of the first character from `from` that `more` rejects, or the text's length. */
 function skip(text: string, from: number, more: (c: string) => boolean): number {
   let i = from;
   while (i < text.length && more(text.charAt(i))) i++;
   return i;
 }
 
-/** An attribute value starting at `from`, quoted or bare, and the index just past it. */
 function attributeValue(text: string, from: number): { value: string; end: number } {
   const quote = text.charAt(from);
   if (quote !== '"' && quote !== "'") {
