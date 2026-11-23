@@ -37,6 +37,9 @@ type ShownStart = (
   overChannel?: OverChannel,
 ) => boolean;
 
+/** The outline's third state, after idle and a press waiting on a save: a replay waiting on `frame`'s draw. */
+type ReplayDrawWait = { frame: HTMLIFrameElement };
+
 const MAX_SETTLED_WAIT_FRAMES = 60;
 export const PRESS_WAIT_MAX_MS = 10_000;
 
@@ -53,10 +56,22 @@ export function createPreviewGestureStarts(
     setStudioWaitingPressCancel(press && (() => dropPress(press)));
   };
 
+  let drawWait: ReplayDrawWait | null = null;
   const clearWaitingMark = () => {
+    drawWait = null;
     opts.boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
     opts.rafPausedRef.current = false;
   };
+  const showOnceReplayDrawn = (wait: ReplayDrawWait) =>
+    void previewDraftsSent(wait.frame).then(() => {
+      if (drawWait !== wait) return;
+      const shown = opts.iframeRef.current;
+      if (shown && shown !== wait.frame) {
+        wait.frame = shown;
+        return showOnceReplayDrawn(wait);
+      }
+      clearWaitingMark();
+    });
 
   /** Points the press queued right behind `press` at `next` instead. */
   const unlink = (press: WaitingPressState, next: WaitingPressState | null) => {
@@ -178,6 +193,7 @@ export function createPreviewGestureStarts(
       ended: false,
     };
     opts.waitingPressRef.current = press;
+    drawWait = null;
     opts.boxRef.current?.setAttribute(PRESS_WAITING_ATTR, "true");
     opts.rafPausedRef.current = true;
     let shownFrames = 0;
@@ -241,19 +257,18 @@ export function createPreviewGestureStarts(
         return;
       }
       endWaitingPress(press, !!channel);
-      const showLayerOnceFrameDrewReplay = () => {
-        if (channel && !opts.waitingPressRef.current) clearWaitingMark();
+      const idleUnlessPressWaits = () => {
+        if (!opts.waitingPressRef.current) clearWaitingMark();
       };
       const pointerDown = down as unknown as React.PointerEvent<HTMLElement>;
       const read = startsFrom(step);
-      if (read === false || !start(pointerDown, at, true, read))
-        return showLayerOnceFrameDrewReplay();
+      if (read === false || !start(pointerDown, at, true, read)) return idleUnlessPressWaits();
       if (press.moved) moveActiveGesture(press.moved);
       if (press.released) releaseActiveGesture(press.released);
       const replayedIn = opts.iframeRef.current;
-      if (channel && replayedIn)
-        void previewDraftsSent(replayedIn).then(showLayerOnceFrameDrewReplay);
-      else if (channel) showLayerOnceFrameDrewReplay();
+      if (!channel || !replayedIn || opts.waitingPressRef.current) return idleUnlessPressWaits();
+      drawWait = { frame: replayedIn };
+      showOnceReplayDrawn(drawWait);
     };
     press.frame = requestAnimationFrame(poll);
     return true;
