@@ -62,6 +62,11 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   like a file without an edit list or a transport-stream remux). The layered
   path holds the first frame until the stream starts; flag on must take the
   passthrough and match it.
+- `captions-gsap/` (positive): `captions` plus a badge that a GSAP `.from()`
+  with lazy init (`immediateRender: false`, so it reads its end values the
+  first time the playhead reaches it) slides in at 1 s and a `set()`
+  recolours at 2 s. GSAP is the only writer, so flag on must take the
+  passthrough: GSAP's own ticker frame is not a history-dependent driver.
 - `transformed/` (negative): identical, except the video carries
   `transform: scale(0.9) rotate(1.5deg)`. Flag on must fall back with
   `HDR passthrough off: not_full_canvas` (the transformed box no longer
@@ -80,9 +85,16 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   runtime's seek-time global, which no static check names
   (`overlay_unverified`: capture's verification probes catch it), a
   three-frame flash on frames 50-52 of a cue-free composition from a raw
-  `requestAnimationFrame` loop (`flash-raf`) and from the same setter
-  (`flash-setter`), which only a probe of every frame sees
-  (`overlay_unverified`), an animated GIF (`video_count`:
+  `requestAnimationFrame` loop (`flash-raf`, declined before capture as
+  `seek_callback`) and from the same setter (`flash-setter`), which only a
+  probe of every frame sees (`overlay_unverified`), drivers whose output
+  depends on the order or number of seeks rather than the time alone (a
+  `requestAnimationFrame` counter, `raf-counter`; the same counter shown
+  only for its first three callbacks, `raf-warmup`; a film-time
+  `setInterval` that appends a mark every 0.5 s, `timer-append`: all
+  `seek_callback`; a lazily initialised GSAP `.from()` whose end value a
+  seek-time setter also writes, `gsap-from-lazy`: `overlay_unverified`), an
+  animated GIF (`video_count`:
   the compiler turns it into a second video), a canvas (`canvas`), and
   a GSAP tween that changes the overlay on every frame
   (`overlay_continuous_animation`). Run these with `--only on`: the check is
@@ -147,21 +159,21 @@ passthrough renders.
 
 Layered (flag off) is the reference.
 
-| Check                                                                        | Threshold                                                                                            |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| both renders exit 0                                                          | required                                                                                             |
-| flag-on route (`on.path`)                                                    | `captions`, `captions-offset`: passthrough completed. `transformed`: fallback with `not_full_canvas` |
-| HDR tags on each output                                                      | `bt2020` / `arib-std-b67` (`smpte2084` with `--transfer pq`) / `bt2020nc` / `yuv420p10le`            |
-| codec, profile, size, rate, tag, colour range, audio codec / rate / channels | identical                                                                                            |
-| video packet count                                                           | identical, and equal to duration x fps                                                               |
-| container duration                                                           | within 1 frame                                                                                       |
-| HDR side data on the first frame                                             | same set (the HDR encode path writes mastering display + CLL for HLG too)                            |
-| audio stream                                                                 | present on both                                                                                      |
-| decoded frames (`framemd5`)                                                  | all identical (default; `--no-require-identical` drops it)                                           |
-| PSNR, mean of per-frame `psnr_avg`                                           | >= 45 dB                                                                                             |
-| PSNR, worst frame                                                            | >= 40 dB                                                                                             |
-| SSIM, mean of per-frame `All`                                                | >= 0.990                                                                                             |
-| SSIM, worst frame                                                            | >= 0.980                                                                                             |
+| Check                                                                        | Threshold                                                                                                             |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| both renders exit 0                                                          | required                                                                                                              |
+| flag-on route (`on.path`)                                                    | `captions`, `captions-offset`, `captions-gsap`: passthrough completed. `transformed`: fallback with `not_full_canvas` |
+| HDR tags on each output                                                      | `bt2020` / `arib-std-b67` (`smpte2084` with `--transfer pq`) / `bt2020nc` / `yuv420p10le`                             |
+| codec, profile, size, rate, tag, colour range, audio codec / rate / channels | identical                                                                                                             |
+| video packet count                                                           | identical, and equal to duration x fps                                                                                |
+| container duration                                                           | within 1 frame                                                                                                        |
+| HDR side data on the first frame                                             | same set (the HDR encode path writes mastering display + CLL for HLG too)                                             |
+| audio stream                                                                 | present on both                                                                                                       |
+| decoded frames (`framemd5`)                                                  | all identical (default; `--no-require-identical` drops it)                                                            |
+| PSNR, mean of per-frame `psnr_avg`                                           | >= 45 dB                                                                                                              |
+| PSNR, worst frame                                                            | >= 40 dB                                                                                                              |
+| SSIM, mean of per-frame `All`                                                | >= 0.990                                                                                                              |
+| SSIM, worst frame                                                            | >= 0.980                                                                                                              |
 
 PSNR and SSIM run on `yuv420p10le` for both inputs (peak 1023), after
 `setpts=PTS-STARTPTS`, so they measure the 10-bit planes the HDR encoder
@@ -300,3 +312,59 @@ build `maskedmerge` in `gbrp16le` with `m = a8 * 257` matches the layered
 blend (`Math.round(dom * a + hdr * (1 - a))`, `a = a8 / 255`) on every one of
 307200 samples (all 256 alphas, 400 random pairs per alpha, three planes),
 as on 7.0.2; Ubuntu's 4.2.7 misses 51810 of them by 1 LSB.
+
+### With the ffmpeg self-test and the seek-callback gate
+
+2026-11-22, same host under heavier load (load average 50-90 on 32 cores,
+about twice round 2's: the 60 s flag-off job took 1163.7 s against 591.5 s
+before), ffmpeg 7.0.2 unless noted, `framemd5` checked, after eligibility
+gained the blend self-test and the `seek_callback` gate, on main merged at
+`effc9586b9`. Verification still probes every frame. Rows marked "r2 off"
+compare against the round-2 flag-off render of the same fixture (same
+source, same HTML; flag off does not run the passthrough code), so their
+speedup mixes two load levels.
+
+| Fixture                                   | off: job          | on: job | overlay states (candidates / screenshots / verify) | capture | speedup (job) | off vs on            |
+| ----------------------------------------- | ----------------- | ------- | -------------------------------------------------- | ------- | ------------- | -------------------- |
+| HLG `captions` 60 s, both sides now       | 1163.7 s          | 170.6 s | 61 (244 / 31 / 1556)                               | 46.0 s  | 6.8x          | identical, 1800/1800 |
+| HLG `captions` 60 s, on only              | 591.5 s (r2 off)  | 257.3 s | 61 (244 / 31 / 1556)                               | 39.6 s  | 2.3x (mixed)  | identical, 1800/1800 |
+| HLG `captions` 180 s, on only             | 1689.7 s (r2 off) | 428.3 s | 181 (724 / 91 / 4676)                              | 172.1 s | 3.9x (mixed)  | identical, 5400/5400 |
+| HLG `captions` 20 s, ffmpeg n8.0.1        | 315.9 s           | 31.5 s  | 21 (84 / 11 / 516)                                 | 11.1 s  | 10.0x         | identical, 600/600   |
+| HLG `captions-gsap` 3 s                   | 164.5 s           | 32.3 s  | passthrough                                        | -       | 5.1x          | identical, 90/90     |
+| `ineligible-raf-warmup` 3 s               | 153.4 s           | 75.8 s  | fallback `seek_callback`                           | -       | -             | identical, 90/90     |
+| `ineligible-timer-append` 3 s             | 146.4 s           | 74.0 s  | fallback `seek_callback`                           | -       | -             | identical, 90/90     |
+| `ineligible-gsap-from-lazy` 3 s           | 175.3 s           | 77.8 s  | fallback `overlay_unverified` at frame 30          | -       | -             | identical, 90/90     |
+| `ineligible-raf-counter` 3 s              | 59.0 s            | 75.4 s  | fallback `seek_callback`                           | -       | -             | 0/90 (see below)     |
+| `captions` 3 s, self-test on ffmpeg 4.2.7 | 41.7 s            | 40.4 s  | fallback `ffmpeg_unsupported`                      | -       | -             | identical, 90/90     |
+
+The two 60 s rows are the same build: the on-only run (257.3 s) and the
+both-sides run (170.6 s) were 20 minutes apart, which is how far the load
+moves a 1800-frame encode. Compare job times only within a row.
+
+Before the gate, `ineligible-timer-append` took the passthrough and shipped
+`#####` (the interval's state at the end of the composition, where
+eligibility had seeked) from frame 0, where the layered render shows
+nothing, then `#`, `###`: 0/90 frames identical. `ineligible-raf-warmup`
+also took the passthrough; its counter had passed three by the first
+layered frame too, so it matched there, but nothing but luck made it.
+`ineligible-flash-raf` now falls back as `seek_callback` before capture.
+
+`ineligible-raf-counter` falls back, but the fallback is not bit-identical
+to flag off: the counter counts seeks, and after a fallback the layered path
+makes one seek fewer before frame 0 (`n=4` against `n=5`, `n=271` against
+`n=272` on the last frame). Both sides are the layered path.
+
+The 4.2.7 row ran with an `HYPERFRAMES_FFMPEG_PATH` wrapper that sends the
+blend self-test to Ubuntu's 4.2.7 and every other ffmpeg call to 7.0.2,
+because 4.2.7 cannot run the layered HDR frame extraction at all
+(`Error splitting the argument list: Option not found`, on both sides). With
+4.2.7 for everything, the flag-on render logs `HDR passthrough off:
+ffmpeg_unsupported (/usr/bin/ffmpeg: maskedmerge misses the layered blend on
+7748 of 49152 samples (up to 1 LSB))` and then fails in that extraction
+exactly as flag off does.
+
+One repeat of the earlier passthrough render of `ineligible-raf-warmup`
+(before the gate) decoded 28/90 frames identical to the first run of the
+same build and input, from frame 27 on, by encoder-level drift over the
+video (69.7 dB mean PSNR); a third run matched flag off 90/90. Flag off
+reproduced 90/90 across its two runs. The cause is not established.

@@ -229,4 +229,8 @@ caption fixtures from 20 s to 3 min, HLG and PQ, the passthrough output
 decodes to the same frames as the layered render, 9-14x faster (a 16 min
 render takes about 13 min instead of an estimated 2.4 h); its "Measured"
 section has the numbers. Probing every frame in verification adds about
-15-18 ms per frame (5-9x on the 20 s fixtures on a loaded host).
+15-18 ms per frame (5-9x on the 20 s fixtures on a loaded host). The
+blend self-test and the `seek_callback` gate add about 0.15 s and one page
+evaluation; on a host twice as loaded, the 60 s fixture took 170.6 s against
+1163.7 s for flag off (6.8x) and the 20 s one on ffmpeg 8.0.1 31.5 s against
+315.9 s (10.0x), all identical.
