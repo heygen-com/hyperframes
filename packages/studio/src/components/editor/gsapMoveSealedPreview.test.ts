@@ -655,9 +655,11 @@ describe("a newer gesture that takes the element before the older save lands", (
     });
   });
 
+  // The box's tween starts after the playhead, so the older save's base set is what the frame shows there.
   it("puts a cancelled regrab back where the older save left it, not where the older drag began", async () => {
-    mount(SCRIPT);
-    await dragBoxOnSealedFrame(SCRIPT, undefined, regrab(7), async (iframe, standIn) => {
+    const later = timeline(`tl.to("#box", { x: 200, y: 80, duration: 1, ease: "none" }, 5);`);
+    mount(later);
+    await dragBoxOnSealedFrame(later, undefined, regrab(7), async (iframe, standIn) => {
       await savePosition({ kind: "global-set", props: { x: 110, y: 40 } })(iframe);
       endPreviewDraft(standIn, "restore");
       await vi.waitFor(() => expect(box().style.translate).toBe(""));

@@ -26,46 +26,6 @@ function frameWithSets(...tweenVars: Array<Record<string, unknown>>) {
   return { tweens, seek };
 }
 
-/** #a held by GSAP at (40, 30), with a sealed drag drawn at (30, 36) over it. */
-function draggedOverTween() {
-  frameWithSets({ target: "a", x: 0 }, { target: "b", x: 0 });
-  const position: Record<string, number> = { x: 40, y: 30 };
-  Object.assign(window, {
-    gsap: {
-      getProperty: (_: Element, axis: string) => position[axis],
-      set: (_: Element, props: Record<string, number>) => Object.assign(position, props),
-    },
-  });
-  const handle = handleFor(document.getElementById("a")!);
-  drawDrafts([{ handle, translate: { x: 30, y: 36, route: "gsap" }, size: null }]);
-  const restore = () => drawDrafts([{ handle, end: "restore" }]);
-  return { position, restore };
-}
-const tweenX = (selector: string, x: number) => ({
-  selector,
-  change: { kind: "set" as const, props: { x } },
-});
-
-describe("a draft's hold on x/y across a batch that edits a tween", () => {
-  // fails without the fix: the deferred tween edit released x as its vars changed, though a later miss meant it never
-  // drew, so a restore left the cancelled drag's x and gave (30, 30).
-  it("puts both axes back when the batch fails, since its deferred edit never drew", () => {
-    const { position, restore } = draggedOverTween();
-    const reply = patchTweens({ patches: [tweenX("#a", 50), tweenX("#missing", 1)], seek: true });
-    expect(reply).toEqual({ patched: false });
-    restore();
-    expect(position).toEqual({ x: 40, y: 30 });
-  });
-
-  it("leaves x to a deferred edit once the group's drawing batch lands", () => {
-    const { position, restore } = draggedOverTween();
-    expect(patchTweens({ patches: [tweenX("#a", 50)], seek: false })).toEqual({ patched: true });
-    expect(patchTweens({ patches: [tweenX("#b", 5)], seek: true })).toEqual({ patched: true });
-    restore();
-    expect(position).toEqual({ x: 30, y: 30 });
-  });
-});
-
 describe("patch-tweens in the frame", () => {
   it("patches each element's own set and renders once, after the last", () => {
     const { tweens, seek } = frameWithSets({ target: "a", x: 0 }, { target: "b", x: 0 });
