@@ -414,10 +414,11 @@ function showStill(
   originalSrc: string,
   variant: string,
   box: PreviewProxyBox | null,
+  light: boolean,
 ): void {
   const at = sourceTimeAtPlayhead(el);
   if (at === undefined || stills.has(el) || el.hasAttribute("poster")) return;
-  const url = new URL(appendProxyParam(originalSrc, variant, box), document.baseURI);
+  const url = new URL(appendProxyParam(originalSrc, variant, box, light), document.baseURI);
   url.searchParams.set(PREVIEW_PROXY_STILL_PARAM, at.toFixed(1));
   stills.add(el);
   el.setAttribute("poster", url.href);
@@ -593,7 +594,7 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     (fraction) => noteCopy(el, "making", fraction, light),
     () => isActiveAtPlayhead(el),
     false,
-    light && !held ? undefined : () => showStill(el, originalSrc, variant, box),
+    light && !held ? undefined : () => showStill(el, originalSrc, variant, box, light),
   );
   const wanted = live();
   if (!served || !wanted) sizedBeforeCopy.delete(el);

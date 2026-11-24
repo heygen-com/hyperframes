@@ -233,7 +233,7 @@ mock.module("../../htmlCompiler.js", () => ({
 
 const notedStaticDedupActivity: object[] = [];
 mock.module("../shared.js", () => ({
-  noteStaticDedupActivity: (job: object) => notedStaticDedupActivity.push(job),
+  noteCaptureActivity: (job: object) => notedStaticDedupActivity.push(job),
   BROWSER_MEDIA_EPSILON: 0.0001,
   projectBrowserEndToCompositionTimeline: (
     existingStart: number,

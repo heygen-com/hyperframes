@@ -150,17 +150,27 @@ describe("useTimelineFocusCoordinator", () => {
     expect(document.activeElement).not.toBe(externalTarget);
   });
 
-  it("persists a deterministic parent-row fallback when a focused clip disappears", async () => {
+  it("moves focus to the parent row when a focused clip disappears, writing the store only on unmount", async () => {
     usePlayerStore.getState().requestTimelineFocus(clipId);
     await act(async () => root.render(<Harness />));
+    const writes: string[] = [];
+    const off = usePlayerStore.subscribe((now, was) => {
+      if (now.timelineFocus !== was.timelineFocus) writes.push(now.timelineFocus?.id ?? "none");
+    });
 
     const collapsedRows: readonly TimelineLogicalRow[] = [{ ...rows[0]!, items: [] }];
     await act(async () => root.render(<Harness logicalRows={collapsedRows} mountedId={rowId} />));
-    expect(usePlayerStore.getState().timelineFocus?.id).toBe(rowId);
     expect(document.activeElement?.getAttribute("data-timeline-focus-id")).toBe(rowId);
+    // A write right after the delete's commit makes every player-store subscriber render once more for nothing.
+    expect(writes, "no store write while the timeline is mounted").toEqual([]);
+
+    act(() => root.unmount());
+    off();
+    expect(usePlayerStore.getState().timelineFocus?.id, "a remount keeps the row").toBe(rowId);
+    root = createRoot(host);
   });
 
-  it("persists the next surviving row when both a clip and its parent track disappear", async () => {
+  it("moves focus to the next surviving row when both a clip and its parent track disappear", async () => {
     const nextRowId = timelineTrackRowId(2);
     const nextRow: TimelineLogicalRow = {
       ...rows[0]!,
@@ -173,8 +183,10 @@ describe("useTimelineFocusCoordinator", () => {
 
     await act(async () => root.render(<Harness logicalRows={[nextRow]} mountedId={nextRowId} />));
 
-    expect(usePlayerStore.getState().timelineFocus?.id).toBe(nextRowId);
     expect(document.activeElement?.getAttribute("data-timeline-focus-id")).toBe(nextRowId);
+    act(() => root.unmount());
+    expect(usePlayerStore.getState().timelineFocus?.id).toBe(nextRowId);
+    root = createRoot(host);
   });
 
   it("keeps a request alive across a few renders where its target hasn't landed yet", async () => {
