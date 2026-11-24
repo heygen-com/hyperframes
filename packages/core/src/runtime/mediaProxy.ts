@@ -674,14 +674,18 @@ function lightenIfHeavy(el: HTMLMediaElement, entry: MediaCodecMapEntry | null):
 const captureStills = new WeakMap<HTMLMediaElement, string | null>();
 const stillAsks = new WeakMap<HTMLMediaElement, HTMLImageElement>();
 
-/** On a one-shot capture, a file with at least twice the pixels it is drawn at (#7723's rule) is never decoded. */
+/** At least twice the pixels it is drawn at (#7723's rule), and opaque: a JPEG still has no alpha. */
+function stillStandsIn(el: HTMLMediaElement): boolean {
+  const facts = isVideoElement(el) ? sourceFactsOf(el) : null;
+  if (!facts || facts.hasAlpha || codecEntryOf(el)?.hasAlpha) return false;
+  const box = shownBox(el, 1);
+  return box !== null && isOversizedForPreview(facts, box);
+}
+
+/** On a one-shot capture, such a file is never decoded. */
 function holdForCaptureStill(el: HTMLMediaElement): void {
-  const facts = captureStillsIn(document) && isVideoElement(el) ? sourceFactsOf(el) : null;
-  const box = facts ? shownBox(el, 1) : null;
   const poster = el.getAttribute("poster");
-  // A JPEG has no alpha: a see-through clip keeps its own decode.
-  const seeThrough = facts?.hasAlpha || codecEntryOf(el)?.hasAlpha;
-  if (facts && !seeThrough && box && isOversizedForPreview(facts, box) && holdForCopy(el, false))
+  if (captureStillsIn(document) && stillStandsIn(el) && holdForCopy(el, false))
     captureStills.set(el, poster);
 }
 
