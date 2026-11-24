@@ -741,7 +741,7 @@ describe("playlistLeavesItsFolder judges the name ffmpeg opens for each entry", 
   const uriKinds = kinds.filter(([kind]) => !["segment", "variant"].includes(kind));
   const outsideList = `#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n${join(tmpdir(), "outside.ts")}\n#EXT-X-ENDLIST\n`;
 
-  /** The list, a harmless file at the name the walk used to judge, and the list ffmpeg opens instead. */
+  /** The list, a harmless file at the suffix's name beside it, and the sibling list ffmpeg opens for the suffix. */
   function withDecoy(list: string, suffix: string): string {
     const top = writeTree({ "clip.m3u8": list, "v.m3u8": segments(), "seg.ts": "media" });
     writeFileSync(join(top, "..", suffix.replace(/^%3F/i, "?")), "media");
