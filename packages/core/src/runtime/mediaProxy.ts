@@ -704,14 +704,16 @@ export function standInCaptureStill(el: HTMLMediaElement, onScreen: boolean): vo
   el.removeAttribute(CAPTURE_STILL_ATTR);
   const drawn = new Image();
   stillAsks.set(el, drawn);
+  // The page may set its own poster meanwhile: an answer acts only on the poster its own ask put there.
+  const ours = () => stillAsks.get(el) === drawn && el.getAttribute("poster") === url.href;
   holdFrameCaptures(
     new Promise<void>((landed) => {
       drawn.onload = () => {
-        if (stillAsks.get(el) === drawn) el.setAttribute(CAPTURE_STILL_ATTR, "");
+        if (ours()) el.setAttribute(CAPTURE_STILL_ATTR, "");
         landed();
       };
       drawn.onerror = () => {
-        if (stillAsks.get(el) === drawn) decodeItsFile(el, file);
+        if (ours()) decodeItsFile(el, file);
         landed();
       };
     }),

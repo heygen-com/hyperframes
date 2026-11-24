@@ -1504,6 +1504,23 @@ describe("preview quality: lighter copies of heavy files", () => {
         ]);
       });
 
+      // fails without the fix: an answer checked only its own ask: once the page set its own poster, a late load marked
+      // that poster drawn, and a late error took it away and gave the clip its 4K file.
+      it("leaves a poster the page set meanwhile alone, whatever the still's answer", async () => {
+        const { el } = await capturedAt(1.25);
+        el.setAttribute("poster", "/own.jpg");
+
+        loads[0]!.onload!();
+        loads[0]!.onerror!();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect([
+          el.getAttribute("poster"),
+          el.hasAttribute("src"),
+          el.hasAttribute(CAPTURE_STILL_ATTR),
+        ]).toEqual(["/own.jpg", false, false]);
+      });
+
       // fails without the fix: a JPEG has no alpha, so a see-through clip's still covered whatever was behind it.
       it("keeps a see-through file on its own decode", async () => {
         const { el } = await capturedAt(1.25, { ...HEAVY, hasAlpha: true });
