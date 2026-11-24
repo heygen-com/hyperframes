@@ -1,6 +1,7 @@
 // fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, unlinkSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, readdirSync, renameSync, rmSync, unlinkSync } from "node:fs";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { join, dirname, basename } from "node:path";
 import {
@@ -224,13 +225,14 @@ export async function synthesize(
   // 4. Ensure output directory exists
   makeOutputFolder(dirname(outputPath));
 
-  // 5. Run synthesis
+  // 5. Run synthesis into a fresh name renamed over the output: the script writes through a link.
   options?.onProgress?.(`Generating speech with voice ${voice} (${lang})...`);
+  const staged = join(dirname(outputPath), `.tmp-${randomUUID()}-${basename(outputPath)}`);
   try {
     const espeakLang = ESPEAK_LANG_OVERRIDES[lang] ?? lang;
     const stdout = execFileSync(
       python,
-      [scriptPath, modelPath, voicesPath, text, voice, String(speed), outputPath, espeakLang],
+      [scriptPath, modelPath, voicesPath, text, voice, String(speed), staged, espeakLang],
       {
         encoding: "utf-8",
         timeout: 300_000,
@@ -239,9 +241,10 @@ export async function synthesize(
       },
     );
 
-    if (!existsSync(outputPath)) {
+    if (!existsSync(staged)) {
       throw new Error("Synthesis completed but no output file was created");
     }
+    renameSync(staged, outputPath);
 
     // Parse the last line of stdout as JSON (in case Python printed warnings before it)
     const lines = stdout.trim().split("\n");
@@ -254,7 +257,7 @@ export async function synthesize(
     } = JSON.parse(jsonLine);
 
     return {
-      outputPath: result.outputPath,
+      outputPath,
       sampleRate: result.sampleRate,
       durationSeconds: result.durationSeconds,
       langApplied: result.langApplied,
@@ -272,7 +275,11 @@ export async function synthesize(
     if (err && typeof err === "object" && "stderr" in err) {
       const stderr = String(err.stderr).trim();
       if (stderr) detail = `\n${stderr.slice(-500)}`;
+    } else if (err instanceof Error && "code" in err) {
+      detail = `\n${err.message}`;
     }
     throw new Error(`Speech synthesis failed${detail}`);
+  } finally {
+    rmSync(staged, { force: true });
   }
 }
