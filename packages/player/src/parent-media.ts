@@ -14,6 +14,7 @@ import { isRealmElement, isRealmHtmlMediaElement } from "./media-element-guards.
 import { isInClipWindow } from "@hyperframes/core/runtime/clip-window";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
 import { readLinkTiming } from "@hyperframes/core/media-link";
+import { wrapLoopedSourceTime } from "@hyperframes/core/media-timing";
 import {
   mediaFileOf,
   PARENT_COPY_ATTRIBUTES,
@@ -61,6 +62,7 @@ export interface ProxyEntry {
   listedKey?: string;
   /** Played from a decoded buffer by `ParentAudio`, so this element stays silent. */
   claimed?: boolean;
+  mastered?: boolean;
 }
 
 export class ParentMediaManager {
@@ -234,7 +236,10 @@ export class ParentMediaManager {
   }
 
   private _mediaTime(m: ProxyEntry, timelineSeconds: number): number {
-    return timelineSeconds - m.start + m.mediaStart;
+    const target = timelineSeconds - m.start + m.mediaStart;
+    return m.el.loop && Number.isFinite(m.el.duration)
+      ? wrapLoopedSourceTime(target, m.mediaStart, m.el.duration)
+      : target;
   }
 
   private _gateEntryPlayback(m: ProxyEntry, timeSeconds: number): boolean {
@@ -476,6 +481,7 @@ export class ParentMediaManager {
       duration: copy.duration,
       mediaStart: copy.mediaStart,
       source,
+      mastered: copy.mastered === true,
     };
     el.addEventListener("seeked", () => this._noteSeekLanded(entry));
     for (const change of ["playing", "waiting", "pause", "ended", "error"])
@@ -657,6 +663,7 @@ function readCopies(list: unknown): ParentCopy[] {
       Number.isFinite(c.mediaStart) &&
       (c.layer === undefined || (Number.isSafeInteger(c.layer) && (c.layer as number) >= 0)) &&
       (c.loop === undefined || typeof c.loop === "boolean") &&
+      (c.mastered === undefined || typeof c.mastered === "boolean") &&
       (c.attrs === undefined || isCopyAttrs(c.attrs))
     );
   });
