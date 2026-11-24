@@ -33,6 +33,7 @@ import {
   rmSync,
   createReadStream,
 } from "node:fs";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { basename, resolve, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { parseArgs } from "node:util";
@@ -1016,11 +1017,14 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     });
 
     try {
-      await executeRenderJob(
-        job,
-        input.projectDir,
-        absoluteOutputPath,
-        createBlockingProgressReporter(log, requestId),
+      await runInRenderScope(requestId, new AbortController(), (signal) =>
+        executeRenderJob(
+          job,
+          input.projectDir,
+          absoluteOutputPath,
+          createBlockingProgressReporter(log, requestId),
+          signal,
+        ),
       );
 
       const fileSize = outputFileSize(absoluteOutputPath);
@@ -1127,12 +1131,8 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       const release = await renderSemaphore.acquire();
 
       try {
-        await executeRenderJob(
-          job,
-          input.projectDir,
-          absoluteOutputPath,
-          reportProgress,
-          abortController.signal,
+        await runInRenderScope(requestId, abortController, (signal) =>
+          executeRenderJob(job, input.projectDir, absoluteOutputPath, reportProgress, signal),
         ).finally(release);
         clearInterval(keepalive);
 
@@ -1339,6 +1339,45 @@ export function createProducerApp(options: HandlerOptions = {}): Hono {
 }
 
 // ---------------------------------------------------------------------------
+// Rejections that escape a render
+// ---------------------------------------------------------------------------
+
+const renderScope = new AsyncLocalStorage<{ requestId: string; fail: (err: Error) => void }>();
+
+/**
+ * Runs one render so that a promise rejection nobody handles inside it can be
+ * traced back to it: the render is stopped and fails with that error, and
+ * other renders on the server carry on.
+ */
+export async function runInRenderScope<T>(
+  requestId: string,
+  abortController: AbortController,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  let escaped: Error | undefined;
+  const fail = (err: Error) => {
+    escaped ??= err;
+    abortController.abort(err);
+  };
+  try {
+    return await renderScope.run({ requestId, fail }, () => run(abortController.signal));
+  } catch (err) {
+    throw escaped ?? err;
+  }
+}
+
+/** The server's `unhandledRejection` handler: log it, and fail the render it came from. */
+export function onEscapedRejection(reason: unknown, log: ProducerLogger): void {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  const scope = renderScope.getStore();
+  log.error("Unhandled promise rejection", {
+    requestId: scope?.requestId ?? null,
+    error: err.message,
+  });
+  scope?.fail(err);
+}
+
+// ---------------------------------------------------------------------------
 // Standalone server
 // ---------------------------------------------------------------------------
 
@@ -1418,6 +1457,8 @@ export function startServer(options: ServerOptions = {}) {
   }
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
+  // A rejection that escapes a render fails that render, not the whole server.
+  process.on("unhandledRejection", (reason) => onEscapedRejection(reason, log));
   process.on("SIGINT", () => shutdown("SIGINT"));
 
   return server;

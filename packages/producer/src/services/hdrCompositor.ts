@@ -20,6 +20,7 @@ import {
   type HdrTransfer,
   type ElementStackingInfo,
   type HfTransitionMeta,
+  TRANSITIONS,
   captureAlphaPng,
   applyDomLayerMask,
   removeDomLayerMask,
@@ -91,6 +92,49 @@ function resolveBlitOpacity(opacity: number): number | undefined {
  * shares the contract with composition runtime code.
  */
 export type HdrTransitionMeta = HfTransitionMeta;
+
+const isTime = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
+
+/**
+ * The page's `window.__hf.transitions`, kept only where it is well formed:
+ * finite non-negative `time` and `duration` and string scene ids. A `shader`
+ * that is not a string or not a registered transition is dropped, which gives
+ * the crossfade the layered path already uses for a transition with no shader.
+ */
+export function sanitizeTransitionMeta(
+  raw: unknown,
+  warn: (message: string, meta: Record<string, unknown>) => void,
+): HdrTransitionMeta[] {
+  if (!Array.isArray(raw)) return [];
+  const kept: HdrTransitionMeta[] = [];
+  for (const [index, entry] of raw.entries()) {
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      !isTime(entry.time) ||
+      !isTime(entry.duration) ||
+      typeof entry.fromScene !== "string" ||
+      typeof entry.toScene !== "string"
+    ) {
+      warn("[Render] Ignoring malformed shader transition entry", { index });
+      continue;
+    }
+    const { shader } = entry;
+    const known = typeof shader === "string" && Object.hasOwn(TRANSITIONS, shader);
+    if (shader !== undefined && !known) {
+      warn("[Render] Unknown shader transition; using crossfade", { index });
+    }
+    kept.push({
+      time: entry.time,
+      duration: entry.duration,
+      ease: typeof entry.ease === "string" ? entry.ease : "",
+      fromScene: entry.fromScene,
+      toScene: entry.toScene,
+      ...(known ? { shader } : {}),
+    });
+  }
+  return kept;
+}
 
 /** Pre-computed frame range for an active transition. */
 export interface TransitionRange extends HdrTransitionMeta {

@@ -349,8 +349,12 @@ export type TransitionFn = (
   progress: number,
 ) => void;
 
-/** Registry of all available transitions by name. */
-export const TRANSITIONS: Record<string, TransitionFn> = {};
+/**
+ * Registry of all available transitions by name. It has no prototype, so a
+ * lookup by a name like `constructor` or `toString` finds nothing and the
+ * caller's `?? crossfade` fallback applies.
+ */
+export const TRANSITIONS: Record<string, TransitionFn> = Object.create(null);
 
 // ── crossfade ─────────────────────────────────────────────────────────────────
 
