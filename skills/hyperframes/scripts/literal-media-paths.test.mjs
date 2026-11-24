@@ -152,7 +152,7 @@ function clipElsewhere(dir) {
 }
 
 // A file named like media that is an ffconcat list naming an HLS playlist, whose one entry is that clip.
-// Read with no reader list, ffmpeg follows both and decodes the clip, so its frames reach the output.
+// Read with no reader list, ffmpeg follows both and decodes the clip.
 function listNamedAsMedia(dir, name) {
   const project = join(dir, "project");
   mkdirSync(project, { recursive: true });
@@ -254,7 +254,6 @@ ffmpegTest(
       ]),
     ];
     assert.deepEqual(requests, []);
-    assert.notEqual(runs[0].code, 0, runs[0].output);
-    assert.notEqual(runs[2].code, 0, runs[2].output);
+    for (const run of [runs[0], runs[2]]) assert.notEqual(run.code, 0, run.output);
   },
 );
