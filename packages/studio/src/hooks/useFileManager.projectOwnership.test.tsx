@@ -313,6 +313,16 @@ describe("useFileManager renames", () => {
     );
   });
 
+  it("names the first five and counts the rest", async () => {
+    const showToast = await rename({
+      unchangedReferences: ["a.js", "b.js", "c.js", "d.js", "e.js", "f.js", "g.js"],
+    });
+    expect(showToast).toHaveBeenCalledWith(
+      "Still pointing at clip.mp4: a.js, b.js, c.js, d.js, e.js and 2 more",
+      "info",
+    );
+  });
+
   it("says nothing when every reference was updated", async () => {
     expect(await rename({ unchangedReferences: [] })).not.toHaveBeenCalled();
   });

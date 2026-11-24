@@ -740,7 +740,6 @@ function directoryReal(entry: Dirent, full: string): string | null {
 /**
  * After a rename, update all references to the old path in project files.
  * Scans HTML, CSS, JS, and JSON files for the old path and replaces it where it names that path.
- * `unchanged` lists the files that name the old path and Studio does not write; private files are not read.
  */
 function updateReferences(
   projectDir: string,

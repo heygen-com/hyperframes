@@ -337,7 +337,11 @@ export function useFileManager({
         const data = await res.json().catch(() => null);
         const unchanged: unknown = data?.unchangedReferences;
         if (Array.isArray(unchanged) && unchanged.length > 0) {
-          showToast(`Still pointing at ${oldPath}: ${unchanged.join(", ")}`, "info");
+          const more = unchanged.length > 5 ? ` and ${unchanged.length - 5} more` : "";
+          showToast(
+            `Still pointing at ${oldPath}: ${unchanged.slice(0, 5).join(", ")}${more}`,
+            "info",
+          );
         }
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
