@@ -11,8 +11,8 @@ const DECODE_FETCH: RequestInit = { method: "GET", credentials: "same-origin", r
 /** Re-anchors the film to the audio clock often enough that the audio device's drift never shows. */
 const CLOCK_POST_MS = 250;
 const METADATA_WAIT_MS = 5000;
-/** Processing the list does not carry out of the sealed film yet; such clips keep their native copy. */
-const NATIVE_ONLY_ATTRS = ["data-fx-chain", "data-automation", "data-audio-group"] as const;
+/** A group's bus lives on a film element the parent cannot read, so its members keep their native copy. */
+const NATIVE_ONLY_ATTRS = ["data-audio-group"] as const;
 const UNLOCK_EVENTS = ["pointerdown", "touchend", "keydown"] as const;
 
 export interface ParentAudioHost {
