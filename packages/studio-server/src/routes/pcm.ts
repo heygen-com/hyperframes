@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { statSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Readable } from "node:stream";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
@@ -24,7 +24,7 @@ export function registerPcmRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const audioPath = resolve(project.dir, requestSubPath(c.req.url, "projects/:id/pcm"));
     if (
       !isWithinProjectRoot(project.dir, audioPath) ||
-      !statSync(audioPath, { throwIfNoEntry: false })
+      !(await stat(audioPath).catch(() => null))
     ) {
       return c.json({ error: "file not found" }, 404);
     }
@@ -37,7 +37,7 @@ export function registerPcmRoutes(api: Hono, adapter: StudioApiAdapter): void {
       { stdio: ["ignore", "pipe", "ignore"], windowsHide: true, signal: c.req.raw.signal },
     );
     proc.on("error", () => proc.stdout.destroy());
-    return new Response(Readable.toWeb(proc.stdout) as ReadableStream<Uint8Array>, {
+    return new Response(Readable.toWeb(proc.stdout) as unknown as ReadableStream, {
       headers: { "content-type": "application/octet-stream", "x-sample-rate": String(rate) },
     });
   });
