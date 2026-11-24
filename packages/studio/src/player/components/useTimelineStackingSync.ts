@@ -8,6 +8,7 @@ import {
   standInFor,
 } from "../../components/editor/previewSelection";
 import type { SelectionLookupTarget } from "../../components/editor/domEditSelectionRules";
+import type { PreviewElement } from "../lib/previewElements";
 import { previewComputedStyles, previewFrameOpaque } from "../lib/previewChannel";
 import { parseZIndex, readEffectiveZIndex } from "../../components/editor/canvasContextMenuZOrder";
 import { readLayerRevealPriorZ } from "../lib/timelineElementHelpers";
@@ -142,7 +143,13 @@ async function readSealedZIndex(
   activeCompPath: string | null,
 ): Promise<number> {
   const found = await findPreviewElementForSelection(iframe, lookup, activeCompPath);
-  if (!found) return Number.NaN;
+  return found ? readFoundZIndex(iframe, found) : Number.NaN;
+}
+
+export async function readFoundZIndex(
+  iframe: HTMLIFrameElement,
+  found: PreviewElement,
+): Promise<number> {
   const prior = readLayerRevealPriorZ(standInFor(iframe, found));
   if (prior != null) return prior;
   const styles = await previewComputedStyles(iframe, found, ["z-index"]);
