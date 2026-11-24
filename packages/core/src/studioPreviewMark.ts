@@ -65,6 +65,7 @@ export function captureStillsIn(doc: Document): boolean {
 export const STUDIO_PREVIEW_UPCOMING_ATTR = "data-hf-upcoming";
 export const STUDIO_PREVIEW_LAZY_ATTR = "data-hf-preview-lazy";
 export const STUDIO_PREVIEW_ERRORS = "__hfPreviewErrors";
+export const STUDIO_PREVIEW_ERROR_MESSAGE = "preview-error";
 export const STUDIO_PREVIEW_ERROR_KINDS = "__hfPreviewErrorKinds";
 export function previewConsoleErrorText(args: readonly unknown[]): string | null {
   const text = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ");
