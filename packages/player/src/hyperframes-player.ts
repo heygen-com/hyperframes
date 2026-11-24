@@ -193,6 +193,7 @@ class HyperframesPlayer extends HTMLElement {
   private _parentAudio: ParentAudio | null = null;
   private _parentAudioLoad: Promise<void> | null = null;
   private _parentAudioGen = 0;
+  private _tapContext: AudioContext | null = null;
   private _scenes: { id: string; start: number; duration: number }[] = [];
   private _runtimeFps = 30;
   private _runtimeBridgeReady = false;
@@ -309,6 +310,8 @@ class HyperframesPlayer extends HTMLElement {
     this._parentAudio = null;
     this._parentAudioLoad = null;
     this._parentAudioGen++;
+    void this._tapContext?.close();
+    this._tapContext = null;
     this.controlsApi?.destroy();
     this.controlsApi = null;
     this._paused = true;
@@ -503,7 +506,9 @@ class HyperframesPlayer extends HTMLElement {
     }
     if (this._media.audioOwner === "parent") this._media.playAll();
     else this._media.primeAll();
-    this._sealedAudio()?.play();
+    const sealedAudio = this._sealedAudio();
+    if (sealedAudio) sealedAudio.play();
+    else if (this._parentAudioLoad) this._openTapContext();
     this.controlsApi?.updatePlaying(true);
     if (!queuedForReady && announce) this._emit(new Event("play"));
     if (directTimelineStarted && this._directTimelineAdapter) {
@@ -742,13 +747,28 @@ class HyperframesPlayer extends HTMLElement {
     return this._parentAudio;
   }
 
+  /** A tap that lands before the audio code: Safari only lets a context sound when it is made in the tap. */
+  private _openTapContext(): void {
+    try {
+      this._tapContext ??= new AudioContext();
+    } catch {
+      return;
+    }
+    void this._tapContext.resume().catch(() => {});
+  }
+
   private async _loadParentAudio(): Promise<void> {
     const gen = this._parentAudioGen;
-    const { ParentAudio } = await import("./parent-audio.js").catch((error: unknown) => {
+    const loaded = await import("./parent-audio.js").catch((error: unknown) => {
       if (gen === this._parentAudioGen) this._parentAudioLoad = null;
-      throw error;
+      console.warn(
+        "[hyperframes-player] sealed audio code failed to load; the film plays its own",
+        error,
+      );
+      return null;
     });
-    if (gen !== this._parentAudioGen) return;
+    if (!loaded || gen !== this._parentAudioGen) return;
+    const { ParentAudio } = loaded;
     this._parentAudio = new ParentAudio({
       copies: () => this._media.listedAudio(),
       sendControl: (action, extra) => this._sendControl(action, extra),
@@ -757,6 +777,11 @@ class HyperframesPlayer extends HTMLElement {
       getVolume: () => this._volume,
       getMuted: () => this.muted,
       isPaused: () => this._paused,
+      takeTapContext: () => {
+        const context = this._tapContext;
+        this._tapContext = null;
+        return context;
+      },
     });
     this._parentAudio.postClaims();
     if (!this._paused) this._parentAudio.play();

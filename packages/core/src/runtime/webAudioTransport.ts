@@ -244,6 +244,7 @@ export class WebAudioTransport {
   /** Request options for every decode fetch, over `cache: "no-store"`. */
   private readonly _fetchInit: RequestInit;
   private readonly _busDocument: Document | null | undefined;
+  private _givenContext: AudioContext | null;
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
   private _decoding = new Map<string, Promise<AudioBuffer | null>>();
@@ -307,16 +308,21 @@ export class WebAudioTransport {
     return this.open();
   }
 
-  constructor(opts: { fetchInit?: RequestInit; busDocument?: Document | null } = {}) {
+  /** `context`: one the caller opened inside a tap, which Safari only lets sound when made there. */
+  constructor(
+    opts: { fetchInit?: RequestInit; busDocument?: Document | null; context?: AudioContext } = {},
+  ) {
     this._fetchInit = opts.fetchInit ?? {};
     this._busDocument = opts.busDocument;
+    this._givenContext = opts.context ?? null;
   }
 
   /** Builds the context on the calling thread: on Windows that opens the audio device and can block seconds. */
   open(): boolean {
     if (this._ctx) return true;
     try {
-      this._ctx = new AudioContext();
+      this._ctx = this._givenContext ?? new AudioContext();
+      this._givenContext = null;
       this._ctx.onstatechange = () => this.rest();
       this._masterGain = this._ctx.createGain();
       this._busOut = this._ctx.createGain();

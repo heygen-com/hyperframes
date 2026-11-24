@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } fr
 import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
 import { PLAYER_FRAME_NAME } from "@hyperframes/core/studio-preview-mark";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
-import { ParentAudio } from "./parent-audio.js";
+import { ParentAudio, type ParentAudioHost } from "./parent-audio.js";
 
 type SealedAudioReader = {
   _sealedAudio(): ParentAudio | null;
@@ -1187,6 +1187,60 @@ describe("HyperframesPlayer seek() sync path", () => {
 
     expect(sealed._sealedAudio()).toBeInstanceOf(ParentAudio);
     expect(play).toHaveBeenCalledOnce();
+  });
+
+  // fails without the fix: a tap before the code loaded made no context in the tap, so Safari kept the audio silent.
+  it("opens the audio context inside a tap that lands before the decoded-audio code", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    vi.spyOn(ParentAudio.prototype, "play").mockImplementation(() => {});
+    const resume = vi.fn(() => Promise.resolve());
+    const made: object[] = [];
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        resume = resume;
+        close = () => Promise.resolve();
+        constructor() {
+          made.push(this);
+        }
+      },
+    );
+    player.setAttribute("sandbox-origin", "");
+    const sealed = player as unknown as SealedAudioReader;
+    sealed._sealedAudio();
+
+    player.play();
+
+    expect(made).toHaveLength(1);
+    expect(resume).toHaveBeenCalledOnce();
+    await sealed._parentAudioLoad;
+    const host = (sealed._sealedAudio() as unknown as { _host: ParentAudioHost })._host;
+    expect(host.takeTapContext?.()).toBe(made[0]);
+    expect(host.takeTapContext?.()).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it("reports decoded-audio code that fails to load, and tries again on the next need", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.doMock("./parent-audio.js", () => {
+      throw new Error("chunk missing");
+    });
+    player.setAttribute("sandbox-origin", "");
+    const sealed = player as unknown as SealedAudioReader;
+    sealed._sealedAudio();
+    await sealed._parentAudioLoad;
+    vi.doUnmock("./parent-audio.js");
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("sealed audio code failed to load"),
+      expect.anything(),
+    );
+    expect(sealed._parentAudioLoad).toBeNull();
   });
 
   it("never loads the decoded-audio code for a player that isn't sealed", () => {

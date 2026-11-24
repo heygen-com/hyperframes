@@ -1622,6 +1622,20 @@ describe("WebAudioTransport", () => {
         expect(masterGain.connect).not.toHaveBeenCalledWith(busOut);
       });
 
+      // fails without the fix: the transport built its own context, which Safari keeps silent outside a tap.
+      it("plays on the context it is handed instead of making one", () => {
+        const made = vi.fn();
+        vi.stubGlobal("AudioContext", made);
+        const { ctx } = createMockAudioContext();
+        const transport = new WebAudioTransport({ context: ctx as unknown as AudioContext });
+
+        expect(transport.open()).toBe(true);
+
+        expect(transport.context).toBe(ctx);
+        expect(made).not.toHaveBeenCalled();
+        vi.unstubAllGlobals();
+      });
+
       it("reads no master chain from the page when it is given no bus document", async () => {
         document.body.innerHTML = `<div id="root" data-composition-id="main" data-fx-chain='${GAIN_CHAIN}'></div>`;
         const setup = setupGroupTransport(100, { busDocument: null });
