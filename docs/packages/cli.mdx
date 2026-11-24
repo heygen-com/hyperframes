@@ -1174,6 +1174,10 @@ Narrow the context with `--context-fields` (`server`, `selection`, `lint`,
 Your composition opens in HyperFrames Studio, and edits to `index.html` and its
 sub-compositions refresh live. Preview and render share the same runtime.
 
+A preview address or project file opened by itself in a browser tab, outside
+Studio, plays in a sandboxed page: it cannot call the Studio API and is not
+editable from that tab. Open the Studio project URL to edit.
+
 The server picks one of three modes by itself: **embedded** (the default for
 `npx` — Studio bundled in the CLI, no extra dependencies), **local studio**
 (Vite with full HMR, from a `@hyperframes/studio` source checkout), or
