@@ -90,20 +90,22 @@ function holdSeekBarrierUntilVideoLands(el: HTMLMediaElement): void {
  * Resolve a media element's timeline window without conflating a video's
  * authored display slot with the amount of source left to decode.
  *
- * An explicit video slot may outlive its source and holds the final frame.
- * Audio remains source-bounded because it has no visual hold state.
+ * An explicit video slot may outlive its source and hold the final frame; a loop fills its slot.
+ * Other audio remains source-bounded because it has no visual hold state.
  */
 export function resolveRuntimeMediaClipDuration(params: {
   isVideo: boolean;
+  loops: boolean;
   sourceDuration: number | null;
   hostRemaining: number | null;
   explicitDuration: number | null;
 }): number | null {
-  const mediaDuration = params.isVideo
+  const fillsSlot = params.isVideo || params.loops;
+  const mediaDuration = fillsSlot
     ? (params.explicitDuration ?? params.sourceDuration)
     : params.sourceDuration;
   const candidates = (
-    params.isVideo
+    fillsSlot
       ? [mediaDuration, params.hostRemaining]
       : [mediaDuration, params.hostRemaining, params.explicitDuration]
   ).filter((value): value is number => value != null && Number.isFinite(value) && value >= 0);
@@ -730,8 +732,16 @@ export function syncRuntimeMedia(params: {
       const STRICT_REQUIRED_SAMPLES = 2;
 
       const currentElTime = el.currentTime || 0;
-      const drift = Math.abs(currentElTime - relTime);
-      const offset = relTime - currentElTime;
+      const playingLoopLap =
+        clip.loop && clip.sourceDuration != null && params.playing && !el.paused
+          ? clip.sourceDuration - clip.mediaStart
+          : 0;
+      const offsetWithLaps = relTime - currentElTime;
+      const offset =
+        playingLoopLap > 0
+          ? offsetWithLaps - Math.round(offsetWithLaps / playingLoopLap) * playingLoopLap
+          : offsetWithLaps;
+      const drift = Math.abs(offset);
       const prevOffset = lastOffset.get(el);
       lastOffset.set(el, offset);
       const firstTickOfClip = prevOffset === undefined;

@@ -3744,6 +3744,7 @@ export function initSandboxRuntimeModular(): void {
         const explicitDuration = ownDuration != null && ownDuration > 0 ? ownDuration : null;
         return resolveRuntimeMediaClipDuration({
           isVideo: element.tagName === "VIDEO",
+          loops: element.loop,
           sourceDuration,
           hostRemaining,
           explicitDuration,
