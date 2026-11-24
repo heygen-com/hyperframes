@@ -574,6 +574,7 @@ describe("mediaInputFormatArgs", () => {
           "format=format_name",
           "-of",
           "default=nw=1:nk=1",
+          "--",
           file,
         ]),
         { encoding: "utf8" },
