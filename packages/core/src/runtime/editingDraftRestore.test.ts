@@ -30,7 +30,7 @@ function dragged(holdA = (a: gsap.core.Timeline) => a.set("#a", { x: 40 }, 0), b
   window.__timelines = {
     main: scene(),
     a: holdA(scene()),
-    b: scene().set("#b", { x: 10 }, 0),
+    b: scene().set("#b", { x: 10, rotation: 0 }, 0),
   } as unknown as Record<string, RuntimeTimelineLike>;
   initSandboxRuntimeModular();
   window.__player?.seek(1);
@@ -124,4 +124,28 @@ it("repaints nothing for a restore of a draft that has already ended", () => {
   drawDrafts([{ handle, translate: { x: 71, y: 36, route: "gsap" }, size: null }]);
   drawDrafts([{ handle, end: "restore", draft: first! }]);
   expect(gsap.getProperty("#a", "x")).toBe(71);
+});
+
+// fails without the fix: replaying B's live drag put back B's whole draft, its size too, so restoring A reset the
+// width B was given after its draw (120) to the width before it (70).
+it("leaves what another live draft does not draw as it is when one draft is restored", () => {
+  const { restored } = dragged();
+  const b = document.getElementById("b")!;
+  b.style.width = "70px";
+  const other = handleFor(b);
+  drawDrafts([{ handle: other, translate: { x: 81, y: 0, route: "gsap" }, size: null }]);
+  gsapSet({ handle: other, props: { width: 120 } });
+  restored();
+  expect([b.style.width, gsap.getProperty("#b", "x")]).toEqual(["120px", 81]);
+});
+
+// fails without the fix: the replay kept only B's last draft, a move with no rotation in it, so the redraw left B at
+// its scene's rotation 0 and lost the 30 an earlier draft turned it to.
+it("keeps the rotation an earlier draft drew on another live element when one draft is restored", () => {
+  const { restored } = dragged();
+  const other = handleFor(document.getElementById("b")!);
+  drawDrafts([{ handle: other, rotate: { route: "gsap", angle: 30 }, size: null }]);
+  drawDrafts([{ handle: other, translate: { x: 81, y: 0, route: "gsap" }, size: null }]);
+  restored();
+  expect([gsap.getProperty("#b", "rotation"), gsap.getProperty("#b", "x")]).toEqual([30, 81]);
 });

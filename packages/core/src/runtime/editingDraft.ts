@@ -210,10 +210,11 @@ function end(element: Styled, ending: EditingDraftEnd): boolean {
   return ending.end === "restore";
 }
 
-/** True when it restored a draft. */
 function apply(element: Styled, draft: EditingDraft): boolean {
   if ("end" in draft) return end(element, draft);
-  liveDrafts.set(element, draft);
+  const last = liveDrafts.get(element);
+  const keepsRotation = !("rotate" in draft) && last && "rotate" in last;
+  liveDrafts.set(element, keepsRotation ? { ...draft, rotate: last.rotate } : draft);
   if ("rotate" in draft) drawRotate(element, draft.rotate ?? null);
   if (draft.translate) drawTranslate(element, draft.translate);
   else restore(element, ["translate"]);
@@ -223,10 +224,16 @@ function apply(element: Styled, draft: EditingDraft): boolean {
 }
 
 /** Re-renders the timelines, then puts every live draft back over what they drew. */
+function redrawOwned(element: Styled, draft: Exclude<EditingDraft, { end: unknown }>): void {
+  if ("rotate" in draft && draft.rotate) drawRotate(element, draft.rotate);
+  if (draft.translate) drawTranslate(element, draft.translate);
+  if (draft.size) drawSize(element, draft.size);
+}
+
 function redrawKeepingLiveDrafts(): void {
   redrawTimelines();
   for (const [element, draft] of liveDrafts) {
-    if (element.isConnected) apply(element, draft);
+    if (element.isConnected && !("end" in draft)) redrawOwned(element, draft);
     else liveDrafts.delete(element);
   }
 }
