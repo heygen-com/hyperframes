@@ -11,6 +11,8 @@ does to hold them.
 
 - **Stdout is data, stderr is messages.** Results go to stdout. Progress,
   warnings, notices and errors go to stderr.
+- When printing excluded paths in `share`, keep `terminalText` at the print call.
+  `src/printedFailureText.wiring.test.ts` checks that call and cannot see through a local wrapper.
 - **Never prompt without a person.** `isUnattended()` in
   `src/utils/attendedTerminal.ts` is true without a TTY, under CI, inside a
   coding agent, or with `HYPERFRAMES_AGENT=1`. Import prompts and spinners from

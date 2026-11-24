@@ -291,7 +291,6 @@ function printExcludedPaths(paths: readonly string[]) {
   const shown = paths.slice(0, 10);
   const remaining = paths.length - shown.length;
   const suffix = remaining > 0 ? ` (${remaining} more)` : "";
-  // The CLI output check recognizes terminalText at the print call.
   console.error(
     `Left out of editable source: ${terminalText(escapeTabs(shown.join(", ")))}${suffix}`,
   );
