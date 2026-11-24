@@ -1236,7 +1236,8 @@ sign-in that returns to their port leaves nothing the project's own script can r
 
 ### `publish`
 
-For new video reviews, use [`share`](#share). Legacy source publishing stays
+**`hyperframes publish` is deprecated for new projects.** For a new video review,
+run [`hyperframes share`](#share) and choose who can open the link. Legacy source publishing stays
 available with a notice for 60 days from an announced notice release. That
 release date has not been scheduled. After the window, new `publish` runs guide
 you to `share`, where you choose a new audience; old flags are never silently
@@ -1454,6 +1455,12 @@ no progress for 2 minutes, or for its `--timeout` plus 10 seconds when that is l
 `--caption-zone` and `--frame-check` refuse a ranged check when none of their
 configured seek samples falls inside `--range`; a requested gate never silently
 passes without running.
+
+`check` reads the transparency of solid text fills, text strokes and backgrounds
+in `lab()`, `lch()`, `oklab()`, `oklch()` and `color()` (including `display-p3`).
+It can flag invisible text as `text_not_painted`, leave faint decorative text out
+of overlap checks, and distinguish transparent overlays from backgrounds that
+hide text.
 
 Text under a `<video>` is judged by the frame the video shows at that sample.
 An opaque video covers its whole box, as an opaque image does. A video with

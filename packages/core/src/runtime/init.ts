@@ -128,6 +128,7 @@ import {
   isRenderMode,
   maybeProxyProactively,
   standInCaptureStill,
+  decideFileTurn,
   describeVideoSources,
   levelsWithLighterCopies,
   retryPreviewCopies,
@@ -3365,6 +3366,7 @@ export function initSandboxRuntimeModular(): void {
       resolveAbsoluteMediaStartSeconds(el) + (resolveDurationForElement(el) ?? Number.NaN) <= time;
     const spent = passed && (decided !== true || (el.networkState === 2 && el.readyState < 4));
     const near = visible || armed || (upcoming && !unslotted && !spent);
+    decideFileTurn(el, visible);
     if (near) giveBackWhenDue(el);
     if ((visible || !near) && endPrefetch(el)) queueMicrotask(fillPrefetchSlots);
     const approaching = near && !visible && resolveAbsoluteMediaStartSeconds(el) > clock.now();
