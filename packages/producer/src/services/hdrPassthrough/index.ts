@@ -93,7 +93,8 @@ export interface OverlaySessionDeps {
  * `recordReferenceBackground` replaced: `overlayPages.ts`), with the page
  * code watch armed before it navigates and counting once it is ready
  * (`pageCodeWatch.ts`): the debugger watches the analysis page's
- * registrations as it loads, and never pauses the capture page. A session
+ * registrations as it loads, and is enabled on the capture page only once
+ * it is ready, so that page loads as the layered session's does. A session
  * that fails to initialise is closed before the error propagates.
  */
 async function openOverlaySession(

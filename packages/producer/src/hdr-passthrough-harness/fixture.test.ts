@@ -447,7 +447,7 @@ describe("INELIGIBLE_CASES", () => {
     ]);
   });
 
-  it("expects the passthrough only where the page reads back a record, keeps seek history or times a pause", () => {
+  it("expects the passthrough only where the page reads back a record, keeps seek history or times a pause or a compile", () => {
     const takes = INELIGIBLE_CASES.filter((c) => c.takesPassthrough);
     expect(takes.map((c) => c.name)).toEqual([
       "tostring-painter",
@@ -455,6 +455,7 @@ describe("INELIGIBLE_CASES", () => {
       "lazy-decode-popover",
       "pause-timer",
       "pause-mark",
+      "compile-timer",
     ]);
     for (const c of takes) expect(c.wallClock).toBeUndefined();
   });

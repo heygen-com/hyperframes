@@ -1271,9 +1271,10 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
       ),
     },
   },
-  // Pages that time their own pauses while they load, on clocks the virtual-time shim leaves
-  // alone, and paint a flag when they were paused. The capture page is never paused, as the
-  // layered session is not, so both take the passthrough and decode identical to flag off.
+  // Pages that time their own pauses or compiles while they load, on clocks the virtual-time shim
+  // leaves alone, and paint a flag when they were paused or watched. The capture page is never
+  // paused and loads with no debugger, as the layered session, so they take the passthrough and
+  // decode identical to flag off.
   {
     // Event#timeStamp around the shim's setTimeout.
     name: "pause-timer",
@@ -1293,6 +1294,19 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
     composition: {
       headHtml: `<script>window.__gap=1e9;window.__at=performance.mark("a").startTime;</script><script>window.__gap=Math.min(window.__gap,performance.mark("b").startTime-window.__at);window.__at=performance.mark("c").startTime;setTimeout(function(){},1e9);window.__gap=Math.min(window.__gap,performance.mark("d").startTime-window.__at);</script><script>if(window.__gap>1)document.documentElement.className="paused";</script><style>#flag{display:none;${TEXT_STYLE};background:#0a0}.paused #flag{display:block}</style>`,
       overlayHtml: '<div id="flag">PAUSED</div>',
+    },
+    assets: ["gsap"],
+  },
+  {
+    // Tiny evals against JSON.parse on Event#timeStamp: a debugger reports every compile, which
+    // made the evals 10-25x slower on a page DevTools watched while it loaded. The capture page
+    // loads with no debugger, as the layered session does.
+    name: "compile-timer",
+    reason: "",
+    takesPassthrough: true,
+    composition: {
+      headHtml: `<script>(function(){function ts(){return new Event("x").timeStamp;}function evals(n){var t=ts();for(var i=0;i<n;i++)(0,eval)("(function(){return "+i+"})");return ts()-t;}function plain(n){var t=ts(),a=0;for(var i=0;i<n;i++)a+=JSON.parse("["+i+"]")[0];window.__sum=a;return ts()-t;}var best=1e9;for(var k=0;k<3;k++)best=Math.min(best,evals(3000)/Math.max(0.01,plain(3000)));if(best>15)document.documentElement.className="watched";})();</script><style>#flag{display:none;${TEXT_STYLE};background:#0a0}.watched #flag{display:block}</style>`,
+      overlayHtml: '<div id="flag">WATCHED</div>',
     },
     assets: ["gsap"],
   },

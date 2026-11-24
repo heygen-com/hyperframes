@@ -6,14 +6,18 @@
  * at each registration call. A page can time those pauses on a clock the
  * virtual-time shim does not replace (`Event#timeStamp`, a
  * `performance.mark`) and paint differently when it was paused; the layered
- * session, which is never paused, then paints the other way. So the page
- * capture screenshots is never paused at all:
+ * session, which is never paused, then paints the other way. It can time
+ * its own compiles the same way: with the debugger enabled each one is
+ * reported to DevTools, which made a loop of tiny `eval`s ten times slower
+ * or more against `JSON.parse` than in the layered session. So the page
+ * capture screenshots loads with no debugger at all:
  *
- * - the debugger's breakpoints are deactivated from before the page
- *   navigates (`Debugger.setBreakpointsActive`, which a navigation keeps;
- *   `Debugger.setSkipAllPauses` does not survive one), so a page `debugger`
- *   statement runs on as in the layered session, where no debugger is
- *   attached; a pause that happens anyway is resumed and declines;
+ * - the debugger is enabled only once the page is ready, after V8's call
+ *   counts start (`pageCodeWatch.ts`), so any page code that could time it
+ *   is counted and declines; its breakpoints are deactivated as soon as it
+ *   is (`Debugger.setBreakpointsActive`), so a page `debugger` statement
+ *   runs on as in the layered session; a pause that happens anyway is
+ *   resumed and declines;
  * - the main world's builtins are captured before any page script runs by
  *   a script DevTools adds to the new document (`CAPTURE_SOURCE`, the
  *   analysis page's capture, under a random name in the global lexical
@@ -43,8 +47,10 @@ function captureScript(name: string): string {
 }
 
 /**
- * Arm the capture page's watch on a page that has not navigated yet, with
- * the debugger already enabled (`recordScriptOrigins`) on `client`.
+ * Arm the capture page's watch on a page that has not navigated yet. The
+ * debugger stays off while the page loads; `ready()` expects it enabled
+ * (`ScriptOriginRecord.observe`) on `client`, and deactivates its
+ * breakpoints first.
  */
 export async function armUnpausedWatch(client: Client): Promise<RegistrationWatch> {
   const name = `__hfPassthroughCapture${randomBytes(16).toString("hex")}`;
@@ -71,8 +77,6 @@ export async function armUnpausedWatch(client: Client): Promise<RegistrationWatc
   };
   try {
     client.on("Debugger.paused", onPaused);
-    await client.send("Debugger.setBreakpointsActive", { active: false });
-    await client.send("Debugger.setSkipAllPauses", { skip: true });
     await client.send("Page.enable");
     ({ identifier } = (await client.send("Page.addScriptToEvaluateOnNewDocument", {
       source: captureScript(name),
@@ -85,6 +89,13 @@ export async function armUnpausedWatch(client: Client): Promise<RegistrationWatc
 
   return {
     async ready() {
+      try {
+        await client.send("Debugger.setBreakpointsActive", { active: false });
+        await client.send("Debugger.setSkipAllPauses", { skip: true });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        fail(`capture page breakpoints still active (${detail})`);
+      }
       if (identifier === undefined) {
         if (capture === undefined) fail("the document's builtins were never captured");
         return;

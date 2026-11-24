@@ -31,6 +31,25 @@
  * renderer did not send (a `javascript:` URL, a string timer), and any
  * script compiled in another frame's main world (another realm, whose
  * builtins and observers none of the passthrough's checks reach).
+ *
+ * When the record starts (`ScriptRecordStart`): the analysis page's starts
+ * as the page opens, so every compile is seen as it happens. The capture
+ * page's starts only once the page is ready (`observe()`): with the
+ * debugger enabled, V8 reports every compile to DevTools, which makes
+ * compiling many times slower, and a page that times its own compiles while
+ * it loads would tell the capture page from the layered session (which has
+ * no debugger) and paint differently there. Enabling the debugger replays
+ * every live script, with its realm but without the stack it was compiled
+ * from (`unobserved`): whose it is still comes from its text alone, so it
+ * is the renderer's or GSAP's only by identity and the page's otherwise,
+ * and any of its functions that runs after the page is ready is counted
+ * and declines. That it was compiled with nothing on the stack (a string
+ * timer while the page loaded) cannot be told, and is not needed: such a
+ * compile ran while the capture page loaded as the layered session's
+ * page does, and a dynamically inserted `<script>` has no embedding
+ * document either, so declining every replayed script without one would
+ * decline pages that build their scripts at load. A script no longer alive
+ * by then cannot run again; one never seen at all is the page's.
  */
 
 import { createHash } from "node:crypto";
@@ -53,15 +72,26 @@ export interface ParsedScriptEvent {
  * Where a script was compiled, as far as trust goes: an isolated world
  * (the renderer's), the main frame's main world from outside (no script on
  * the stack, no embedding document: its text must be one the renderer
- * sent), the main frame's main world from page activity, or another realm.
+ * sent), the main frame's main world from page activity, the main frame's
+ * main world before the record started (replayed: how is unknown), or
+ * another realm.
  */
-export type CompileKind = "isolated" | "outside" | "page" | "other_realm";
+export type CompileKind = "isolated" | "outside" | "page" | "unobserved" | "other_realm";
 
-/** How the overlay page's main frame compiled a script. */
-export function compileKind(event: ParsedScriptEvent, mainFrameId: string): CompileKind {
+/**
+ * How the overlay page's main frame compiled a script. `observed` is false
+ * for a script the debugger replayed when it was enabled after the compile:
+ * the event's stack is then the replay's, not the compile's.
+ */
+export function compileKind(
+  event: ParsedScriptEvent,
+  mainFrameId: string,
+  observed = true,
+): CompileKind {
   const aux = event.executionContextAuxData;
   if (aux?.type === "isolated") return "isolated";
   if (aux?.type !== "default" || aux.frameId !== mainFrameId) return "other_realm";
+  if (!observed) return "unobserved";
   const outside = !event.embedderName && (event.stackTrace?.callFrames?.length ?? 0) === 0;
   return outside ? "outside" : "page";
 }
@@ -190,6 +220,13 @@ export interface ScriptOriginRecord {
   findUntrustedCompiles(): Promise<string | null>;
   /** The overlay page's top frame. */
   readonly mainFrameId: string | undefined;
+  /**
+   * Starts a record armed with `"ready"`: enables the debugger, which replays
+   * every live script (their compiles were not seen). Call once the page is
+   * ready, before anything reads the record; a no-op for a record started
+   * as the page opened. Never throws: a failure shows in `failure()`.
+   */
+  observe(): Promise<void>;
   /** Why the record cannot be trusted, if it cannot. */
   failure(): string | undefined;
   /** Stops recording; never throws. */
@@ -203,14 +240,24 @@ interface Parsed {
 }
 
 /**
+ * When a record sees compiles: `"open"`, from before the page navigates
+ * (the debugger is on while it loads); `"ready"`, from `observe()` on, the
+ * page loading with no debugger at all (see the module comment).
+ */
+export type ScriptRecordStart = "open" | "ready";
+
+/**
  * Start recording the scripts of a page that has not navigated yet, and
- * the renderer's own texts as it sends them (`interceptRendererTexts`).
- * Uses the page's cached engine CDP session. A record that could not start
- * says so through `failure()`, and the watch falls back on it.
+ * the renderer's own texts as it sends them (`interceptRendererTexts`),
+ * which are recorded from now on either way. Uses the page's cached engine
+ * CDP session. A record that could not start, or was armed with `"ready"`
+ * and never observed, says so through `failure()`, and the watch falls
+ * back on it.
  */
 export async function recordScriptOrigins(
   page: CaptureSession["page"],
   rendererScripts: readonly string[],
+  start: ScriptRecordStart = "open",
 ): Promise<ScriptOriginRecord> {
   const rendererHashes = new Set(rendererScripts.map(sha256));
   const parsed = new Map<string, Parsed>();
@@ -223,18 +270,25 @@ export async function recordScriptOrigins(
   let mainFrameId: string | undefined;
   let client: CdpClient | undefined;
   let recording = true;
+  // A record started once the page is ready ignores what anything else's debugger session saw
+  // while the page loaded (the engine enables it briefly to name a throw site).
+  let listening = start === "open";
+  // Scripts parsed while `Debugger.enable` runs are replays: their compile happened before.
+  let replaying = false;
   const onParsed = (event: ParsedScriptEvent) => {
-    if (!recording || mainFrameId === undefined) return;
+    if (!recording || !listening || mainFrameId === undefined) return;
     // A later script with the same id (a renderer process swap) replaces the dead one.
     decided.delete(event.scriptId);
     hashes.delete(event.scriptId);
     parsed.set(event.scriptId, {
       url: event.url,
-      kind: compileKind(event, mainFrameId),
+      kind: compileKind(event, mainFrameId, !replaying),
       context: event.executionContextId,
     });
     texts.delete(event.scriptId);
   };
+  const unavailable = (error: unknown) =>
+    `script record unavailable (${error instanceof Error ? error.message : String(error)})`;
   try {
     await interceptRendererTexts(page, (text) => rendererHashes.add(sha256(text)));
     client = await getCdpSession(page);
@@ -243,9 +297,10 @@ export async function recordScriptOrigins(
     };
     mainFrameId = frameTree.frame.id;
     client.on("Debugger.scriptParsed", onParsed);
-    await client.send("Debugger.enable");
+    // Before navigation the page's scripts are all still to come: every one is seen compiling.
+    if (start === "open") await client.send("Debugger.enable");
   } catch (error) {
-    failure = `script record unavailable (${error instanceof Error ? error.message : String(error)})`;
+    failure = unavailable(error);
   }
 
   const textOf = (scriptId: string): Promise<string | undefined> => {
@@ -306,7 +361,19 @@ export async function recordScriptOrigins(
       }
       return null;
     },
-    failure: () => failure,
+    async observe() {
+      if (listening || failure !== undefined || !client) return;
+      listening = true;
+      replaying = true;
+      try {
+        await client.send("Debugger.enable");
+      } catch (error) {
+        failure = unavailable(error);
+      } finally {
+        replaying = false;
+      }
+    },
+    failure: () => failure ?? (listening ? undefined : "script record never started"),
     async dispose() {
       if (!client || !recording) return;
       recording = false;

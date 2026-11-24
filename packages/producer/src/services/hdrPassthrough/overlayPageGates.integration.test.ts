@@ -18,6 +18,7 @@ import {
   attachPageCodeWatch,
   type OverlayPageRole,
   type PageCodeWatch,
+  pageCodeWatchOf,
 } from "./pageCodeWatch.js";
 
 const GSAP = readFileSync(
@@ -425,6 +426,91 @@ describe("the overlay page gates in Chrome", { timeout: 60_000 }, () => {
       const capture = await pauses("capture");
       expect(capture.paused).toBe(0);
       expect(capture.seen).toBeLessThan(1);
+    }, 60_000);
+
+    /** Times tiny evals against JSON.parse while it loads, as a page telling a debugger apart would. */
+    const COMPILE_TIMER = inline(`(function () {
+      function ts() { return new Event("x").timeStamp; }
+      function evals(n) { var t = ts(); for (var i = 0; i < n; i++) (0, eval)("(function(){return " + i + "})"); return ts() - t; }
+      function plain(n) { var t = ts(), a = 0; for (var i = 0; i < n; i++) a += JSON.parse("[" + i + "]")[0]; window.sum = a; return ts() - t; }
+      var best = 1e9;
+      for (var k = 0; k < 3; k++) best = Math.min(best, evals(3000) / Math.max(0.01, plain(3000)));
+      window.compileRatio = best;
+      window.keep = (0, eval)("(function kept() { return 1; })");
+      var inserted = document.createElement("script");
+      inserted.textContent = "window.insertedRan = true;";
+      document.head.appendChild(inserted);
+    })();`);
+
+    it("loads with no debugger, so its compiles cost what they cost without DevTools", async () => {
+      const ratio = async (mode: "bare" | "debugger" | "capture") => {
+        await page.close();
+        page = await browser.newPage();
+        const client = await getCdpSession(page as never);
+        let parsed = 0;
+        const count = () => parsed++;
+        client.on("Debugger.scriptParsed", count);
+        let watch: PageCodeWatch | undefined;
+        if (mode === "debugger") await client.send("Debugger.enable");
+        if (mode === "capture") {
+          watch = await armPageCodeWatch(page as never, [VIRTUAL_TIME_SHIM, RUNTIME], "capture");
+          attachPageCodeWatch(page as never, watch);
+        }
+        spec = { head: COMPILE_TIMER };
+        await page.goto(`${origin}/`);
+        await new Promise((done) => setTimeout(done, 150));
+        const whileLoading = parsed;
+        await watch?.start();
+        client.off("Debugger.scriptParsed", count);
+        const value = await page.evaluate(
+          () => (window as unknown as { compileRatio: number }).compileRatio,
+        );
+        return { value, whileLoading, afterStart: parsed };
+      };
+      const debugged = await ratio("debugger");
+      const bare = await ratio("bare");
+      const capture = await ratio("capture");
+      // Nothing reported a compile while the capture page loaded; its live scripts replay at start.
+      expect(capture.whileLoading).toBe(0);
+      expect(capture.afterStart).toBeGreaterThan(3000);
+      // The debugger makes compiling many times slower; the capture page compiles like a bare page.
+      expect(debugged.value).toBeGreaterThan(4 * capture.value);
+      expect(capture.value).toBeLessThan(Math.max(3 * bare.value, 5));
+    }, 60_000);
+
+    it("passes a page whose scripts it compiled while loading only replay at start", async () => {
+      // Its evals and inserted script have no embedding document, and the replay no compile stack.
+      const census = await analysisThenCapture({ head: COMPILE_TIMER });
+      const watch = pageCodeWatchOf(page as never);
+      const kept = await getCdpSession(page as never).then(async (client) => {
+        const { result } = (await client.send("Runtime.evaluate", {
+          expression: "window.keep",
+        })) as {
+          result: { objectId?: string };
+        };
+        const { internalProperties } = (await client.send("Runtime.getProperties", {
+          objectId: result.objectId ?? "",
+        })) as {
+          internalProperties?: Array<{ name: string; value?: { value?: { scriptId?: string } } }>;
+        };
+        return internalProperties?.find((p) => p.name === "[[FunctionLocation]]")?.value?.value
+          ?.scriptId;
+      });
+      expect(kept).toBeDefined();
+      expect(watch?.origins.kindOf(kept ?? "")).toBe("unobserved");
+      expect(await watch?.origins.originOf(kept ?? "")).toBe("page");
+      expect(await state(census)).toBeNull();
+      expect(await content()).toBeNull();
+    }, 60_000);
+
+    it("declines a page function that runs once the capture page is ready", async () => {
+      const census = await analysisThenCapture({ head: COMPILE_TIMER });
+      // Page code that runs after the start, such as a late timer reading the debugger's cost, is counted.
+      await page.evaluate(() => (window as unknown as { keep: () => number }).keep());
+      expect(await state(census)).toBeNull();
+      expect(await pageCodeWatchOf(page as never)?.stop()).toMatch(
+        /1 page function\(s\) ran after load, first kept/,
+      );
     }, 60_000);
 
     it("passes a page that loads as it did on the analysis page", async () => {

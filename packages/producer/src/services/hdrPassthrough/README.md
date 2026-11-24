@@ -31,7 +31,8 @@ capture_hdr_layered stage (renderOrchestrator)
        │    scripts by exact text as V8 compiles them           scriptOrigins.ts
        │    analysis page: registrations while it loads         registrationWatch.ts
        │      (debugger pauses)
-       │    capture page: never paused; breakpoints off,        unpausedWatch.ts
+       │    capture page: no debugger while it loads (scripts   unpausedWatch.ts
+       │      replayed once ready, after call counts start),
        │      builtins captured by a new-document script
        │    builtins captured before any page script            mainWorld.ts
        │    images and stylesheets it loads                     ownClock.ts
@@ -413,7 +414,9 @@ an isolated world. On the capture page one script DevTools adds to the new
 document takes the builtin capture before any page script runs and keeps
 it under a random 128-bit name in the global lexical scope, which no page
 script can list. What a page can observe is timing: on the analysis page
-the debugger pauses while it loads ("Registrations"); on both,
+the debugger pauses while it loads ("Registrations") and reports every
+compile, which makes compiling many times slower; the capture page loads
+with no debugger ("The capture page is never paused"); on both,
 `Runtime.queryObjects` and the census's heap snapshot collect garbage,
 which a page that watches its own collection can notice. A `WeakRef` needs
 page code to read it, which the page code watch counts. A
@@ -434,10 +437,24 @@ it was paused. When capture ran on a page watched the same way, it was
 paused too and painted that way, while the layered session, never paused,
 painted the other: `dbg-timer` decoded 0/90 identical to flag off. Now:
 
-- The capture page's breakpoints are deactivated before it navigates
-  (`Debugger.setBreakpointsActive`; `Debugger.setSkipAllPauses` does not
-  survive the navigation), so no breakpoint, instrumentation breakpoint or
-  page `debugger` statement pauses it. A pause that happens anyway declines.
+- The capture page loads with no debugger at all. With the debugger
+  enabled, V8 reports every compile to DevTools (`Debugger.scriptParsed`),
+  which makes compiling many times slower, and a page can time that while
+  it loads: `dbg-compile-detect` timed 3000 tiny `eval`s against 3000
+  `JSON.parse` calls on `Event#timeStamp`, a ratio of 3.5 in the layered
+  session and 40-84 on the capture page as it was, and painted "WATCHED"
+  above 15. The analysis page and the capture page both had the debugger,
+  so they agreed with each other, and the passthrough shipped the watched
+  paint (0/90 frames identical to flag off). Now the capture page's script
+  record starts only once the page is ready (`scriptOrigins.ts`,
+  `observe()`), after V8's call counts start: `Debugger.enable` replays
+  every live script then, and any page code that runs once the debugger is
+  on, and so could time it, is counted and declines. What the debugger
+  reports before then (the engine enables it for a moment to name the site
+  of a page error, in the layered session too) is ignored. The breakpoints are
+  deactivated as soon as the debugger is on (`Debugger.setBreakpointsActive`),
+  so no breakpoint, instrumentation breakpoint or page `debugger` statement
+  pauses the page. A pause that happens anyway declines.
 - Its builtins are captured by a new-document script instead of at a
   paused first statement (`unpausedWatch.ts`).
 - What it registered while it loaded is not watched there but read once
@@ -554,9 +571,11 @@ Whose a script is never comes from its URL or from how it was compiled:
 `//# sourceURL=` names a script anything, and a `javascript:` URL or a
 string timer compiles with nothing on the stack and no embedding document,
 exactly as a DevTools evaluation does. `scriptOrigins.ts` records every
-script on the overlay page as V8 compiles it (`Debugger.scriptParsed`,
-enabled as the page opens), and a script is the renderer's only by
-identity:
+script on the overlay page as V8 compiles it (`Debugger.scriptParsed`): on
+the analysis page from the moment it opens, on the capture page from when
+it is ready, when enabling the debugger replays every script still alive
+(see "The capture page is never paused"). A script is the renderer's only
+by identity:
 
 - its text is, byte for byte (SHA-256), one the renderer put in the page:
   the file server's injected scripts (`injectedScriptTexts`), the compiler's
@@ -574,7 +593,17 @@ realm, whose builtins none of the checks reach). GSAP is a published build
 (`gsapBuilds.ts`: the core bundle, `CustomEase` and `EasePack`, 3.10.0 and
 later, minified or not), by SHA-256 of the script as served or as the
 compiler inlines it; a file only named like one is the page's. A script
-never seen being compiled is the page's. The runtime and GSAP write only
+never seen being compiled is the page's. A script the capture page's
+replay reports was compiled before the record started, and the replay
+carries no compile stack: it is the renderer's or GSAP's by its text alone
+and the page's otherwise, and the "nothing on the stack" decline cannot
+apply to it. That is not needed: such a compile happened while the capture
+page loaded as the layered session's page does, and any of its functions
+that runs after the page is ready is counted. (A dynamically inserted
+`<script>` has no embedding document either, so declining every replayed
+script without one would decline pages that build their scripts as they
+load.) The analysis page still sees every compile and declines one made
+with nothing on the stack. The runtime and GSAP write only
 what the fingerprint reads: DOM attributes and styles, and the native
 properties of the elements GSAP's tweens target, which the fingerprint
 reads back.
@@ -838,12 +867,22 @@ reports 35–80%.
   is not seen; there is none to make.
 - The registration watch pauses the analysis page at the first statement of
   each script until the page's own scripts start, and at each registration
-  call while it loads. The capture page is never paused, but it has the
-  debugger enabled (to read the scripts V8 compiles) and V8 call counts on
-  once it is ready. Neither changes what page script can read; what remains
-  is timing that page code would have to measure around script compiles
-  while the page loads (the debugger records each one), or while running
-  after load, which declines.
+  call while it loads, and its debugger makes every compile slower. The
+  capture page is never paused and loads with no debugger; V8 call counts
+  and then the debugger start once it is ready, and page code that runs
+  from then on declines. While it loads, what still differs from the
+  layered session is one new-document script (the builtin capture, run
+  before any page script) and a second DevTools session receiving network
+  events with larger buffers (`ownClock.ts`): no compile, pause or callback
+  per page script, only a fixed cost before the first one and a per-request
+  event, which a page could only time against its own network loads.
+- A `FinalizationRegistry` that is itself garbage by the time the load
+  census reads the page is not seen: the census's own collection runs its
+  cleanup and collects it first. With a cleanup that runs no script (a bound
+  `Element#remove`), both overlay pages paint what the cleanup did from
+  frame 0, while the layered render paints it whenever V8 happens to
+  collect the target (`gc-selfdrop-remove`); that render is not repeatable
+  either, and the passthrough's output need not be one of its outcomes.
 - A registration the capture page makes while it loads is found by what it
   leaves behind once the page is ready ("The capture page is never
   paused"): one that is gone by then (an observer collected, a timer that
@@ -1305,3 +1344,70 @@ producer fixtures, `hdr-hlg-regression`, `hdr-regression`,
 render of `hdr-hlg-regression` at load average 325 differed from main from
 frame 123 (and in audio); two more renders of each side at lower load
 were identical to each other and to main's first.
+
+With the capture page loading with no debugger (its script record started
+once it is ready, after the call counts; main merged at bb87da4536):
+
+The review's `dbg-compile-detect` (3 s HLG: at load it times 3000 tiny
+`eval`s against 3000 `JSON.parse` calls on `Event#timeStamp` and paints
+"WATCHED" above a ratio of 15) took the passthrough with 0/90 frames
+identical to flag off on the commit before (ffmpeg 7.0.2; the harness's
+`compile-timer` fixture the same way, HLG). It now takes the passthrough and
+decodes identical to flag off (90/90, bitstream identical) on ffmpeg 7.0.2
+and 8.0.1, HLG and PQ, as `compile-timer` does. The ratio as each page
+painted it (`dbg-ratio`, two renders each): flag off 4.00 and 3.62; flag on,
+the commit before, 37.0 and 71.0; flag on now, 3.00 and 4.00. The
+integration tests load the page with the debugger enabled before it
+navigates, with no DevTools at all, and as the capture page: the capture
+page sees no compile reported while it loads (9009 on the commit before) and
+its ratio stays within three times the bare page's while the debugger's is
+over four times the capture page's; a function the page compiled with `eval`
+while it loaded is known by replay (`unobserved`, the page's) and passes,
+and declines once it runs after the start.
+
+The 20 s fixtures on ffmpeg 8.0.1, each row's three renders started together
+(flag off; the commit before, flag on; this change, flag on), two rows, the
+the first at load average 40-99, the second at 56-153:
+
+| transfer | fixture         | flag off      | before, flag on | after, flag on |
+| -------- | --------------- | ------------- | --------------- | -------------- |
+| HLG      | `captions`      | 250 s / 479 s | 132 s / 328 s   | 132 s / 323 s  |
+| HLG      | `captions-gsap` | 270 s / 525 s | 133 s / 326 s   | 133 s / 329 s  |
+| PQ       | `captions`      | 250 s / 480 s | 133 s / 325 s   | 132 s / 320 s  |
+| PQ       | `captions-gsap` | 252 s / 526 s | 133 s / 327 s   | 133 s / 328 s  |
+
+All 16 flag-on renders took the passthrough and decode identical to flag off
+(framemd5 600/600, bitstream, stream and frame side data equal). Capture
+took 45-52 s / 84-91 s before and 45-51 s / 83-96 s after: loading the
+capture page with no debugger and replaying its scripts once it is ready
+costs nothing measurable.
+
+Flag-on renders of 3 s fixtures, 24 per ffmpeg version at once with one
+flag-off render of each and the round-8 repro (load average up to 583 and
+243, the host's `earlyoom` stopping ffmpeg processes): all 48 decode
+identical to flag off with the same bitstream, as do the six `unp-mo-append`
+renders (each declines with `seek_callback`). 34 took the passthrough, 8 are
+`gc-fr-remove` declining for its registry, and 6 fell back after an encoder
+or composite was stopped. Flag off renders identical to main on ten
+fixtures (`hdr-hlg-regression`, `hdr-regression`, `hdr-hlg-audio-windows`,
+the 3 s PQ `captions`, `dbg-timer`, `errname-raf` and four SDR producer
+fixtures). Killing the encoder or the composite mid-encode, or interrupting
+the CLI, falls back or stops with no process left behind.
+
+The earlier rounds' fixtures and the generated 3 s sets (384 parity runs,
+both sides rendered, HLG and PQ, ffmpeg 7.0.2 and 8.0.1; rounds 5 to 8, the
+round-9 review's fixtures and both generated sets with `compile-timer`) take
+the route they took on the commit before, but for wall-clock fixtures whose
+route varies from run to run (`unp-waapi`). Every passthrough among them, 94
+renders, decodes identical to flag off but two: the round-9 review's
+`gc-selfdrop-remove` and `gc-selfdrop-wrap` (below). Every fallback whose
+layered render is repeatable decodes identical to flag off.
+
+`gc-selfdrop-remove` hands a `FinalizationRegistry` a bound `Element#remove`
+cleanup and drops both the target and the registry: the census's own
+garbage collection runs the cleanup and collects the registry before it is
+read, so both overlay pages show the box removed from frame 0 and the
+passthrough takes it (0/90 identical, on the commit before as well). Its
+layered render is not repeatable: two flag-off renders shared 19 and 22 of
+90 frames with main's (the box goes whenever V8 collects the target). It is
+listed under "Limitations".

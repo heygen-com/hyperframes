@@ -29,7 +29,10 @@
  * moment it opens: the scripts, the registrations while it loads
  * (`registrationWatch.ts` on the analysis page, which the debugger pauses;
  * `unpausedWatch.ts` on the capture page, which is never paused) and the
- * images and stylesheets it loads (`ownClock.ts`).
+ * images and stylesheets it loads (`ownClock.ts`). The capture page loads
+ * with no debugger: its script record starts once it is ready, after the
+ * call counts do, so page code that could notice the debugger arrive is
+ * counted (`scriptOrigins.ts`).
  */
 
 import { type CaptureSession, getCdpSession } from "@hyperframes/engine";
@@ -94,23 +97,29 @@ export interface PageCodeWatch {
 
 /**
  * Arm the watch on a page that has not navigated yet, before the engine
- * registers or evaluates anything on it: its scripts are recorded as they
- * are compiled (`recordScriptOrigins`), with the renderer's own texts
- * (`rendererScripts`, plus everything the renderer sends the page from
- * now on); its registrations as it loads (`armRegistrationWatch` on the
- * analysis page, `armUnpausedWatch` on the capture page); and the images and
- * stylesheets it loads (`recordResources`). Uses the page's
- * cached engine CDP session and never detaches it (see
- * `findSeekHookListeners`). Starting precise coverage resets V8's call
- * counts, so only calls made after `start()` are reported. Anything that
- * cannot be read is reported too: unread is not empty.
+ * registers or evaluates anything on it: its scripts are recorded
+ * (`recordScriptOrigins`: on the analysis page as they are compiled, on the
+ * capture page from `start()`, when the debugger replays the live ones),
+ * with the renderer's own texts (`rendererScripts`, plus everything the
+ * renderer sends the page from now on); its registrations as it loads
+ * (`armRegistrationWatch` on the analysis page, `armUnpausedWatch` on the
+ * capture page); and the images and stylesheets it loads
+ * (`recordResources`). Uses the page's cached engine CDP session and never
+ * detaches it (see `findSeekHookListeners`). Starting precise coverage
+ * resets V8's call counts, so only calls made after `start()` are
+ * reported. Anything that cannot be read is reported too: unread is not
+ * empty.
  */
 export async function armPageCodeWatch(
   page: CaptureSession["page"],
   rendererScripts: readonly string[],
   role: OverlayPageRole = "analysis",
 ): Promise<PageCodeWatch> {
-  const origins: ScriptOriginRecord = await recordScriptOrigins(page, rendererScripts);
+  const origins: ScriptOriginRecord = await recordScriptOrigins(
+    page,
+    rendererScripts,
+    role === "capture" ? "ready" : "open",
+  );
   const client = await getCdpSession(page);
   const registrations =
     role === "capture"
@@ -140,12 +149,22 @@ export async function armPageCodeWatch(
     async start() {
       if (state !== "armed") return;
       state = "counting";
-      try {
-        await registrations.ready();
+      const count = async () => {
         await client.send("Profiler.enable");
         await client.send("Profiler.startPreciseCoverage", { callCount: true, detailed: false });
         // Counts from before the start (page load, a record another caller left running) are dropped here.
         await client.send("Profiler.takePreciseCoverage");
+      };
+      try {
+        if (role === "capture") {
+          // Counting first: page code that runs once the debugger is on, and could time it, is counted.
+          await count();
+          await origins.observe();
+          await registrations.ready();
+        } else {
+          await registrations.ready();
+          await count();
+        }
       } catch (error) {
         startError = error instanceof Error ? error.message : String(error);
       }

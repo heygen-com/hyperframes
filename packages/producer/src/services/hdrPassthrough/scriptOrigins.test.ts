@@ -41,6 +41,17 @@ describe("compileKind", () => {
     }
   });
 
+  it("calls a main-world script replayed when the debugger was enabled late unobserved, never outside", () => {
+    // The capture page's record starts once it is ready: the replay has no compile stack to read.
+    for (const extra of [{}, { stackTrace: fromPage }, { embedderName: DOC }]) {
+      expect(compileKind(event(extra), MAIN, false)).toBe("unobserved");
+    }
+    const isolated = { isDefault: false, type: "isolated", frameId: MAIN };
+    expect(compileKind(event({ executionContextAuxData: isolated }), MAIN, false)).toBe("isolated");
+    const child = { isDefault: true, type: "default", frameId: "CHILD" };
+    expect(compileKind(event({ executionContextAuxData: child }), MAIN, false)).toBe("other_realm");
+  });
+
   it("trusts isolated worlds and calls other frames' main worlds another realm", () => {
     const isolated = { isDefault: false, type: "isolated", frameId: MAIN };
     expect(compileKind(event({ executionContextAuxData: isolated }), MAIN)).toBe("isolated");
@@ -109,7 +120,7 @@ describe("originFromText", () => {
   });
 
   it("trusts only the renderer's own texts and GSAP's, however they were compiled", () => {
-    for (const kind of ["outside", "page"] as const) {
+    for (const kind of ["outside", "page", "unobserved"] as const) {
       expect(originFromText(kind, "window.__hfRuntime = 1;", renderer)).toBe("renderer");
       expect(originFromText(kind, GSAP, renderer)).toBe("gsap");
       expect(originFromText(kind, "window.__hfRuntime = 2;", renderer)).toBe("page");

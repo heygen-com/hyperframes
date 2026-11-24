@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { findPageCodeInCoverage, type ScriptCoverageLike } from "./pageCodeWatch.js";
-import type { ScriptOrigin } from "./scriptOrigins.js";
+import {
+  armPageCodeWatch,
+  findPageCodeInCoverage,
+  type ScriptCoverageLike,
+} from "./pageCodeWatch.js";
+import type { ParsedScriptEvent, ScriptOrigin } from "./scriptOrigins.js";
 
 const script = (
   scriptId: string,
@@ -78,5 +82,122 @@ describe("findPageCodeInCoverage", () => {
       },
     );
     expect(asked).toEqual(["2"]);
+  });
+});
+
+/**
+ * A page whose one DevTools session records every command and, on
+ * `Debugger.enable`, replays the scripts the page holds by then, as Chrome
+ * does: with their realm and no stack.
+ */
+function fakeCapturePage(live: ParsedScriptEvent[]) {
+  const sent: string[] = [];
+  const listeners = new Map<string, Set<(event: unknown) => void>>();
+  const results: Record<string, unknown> = {
+    "Page.getFrameTree": { frameTree: { frame: { id: "MAIN" } } },
+    "Page.addScriptToEvaluateOnNewDocument": { identifier: "1" },
+    "Runtime.evaluate": { result: { objectId: "capture" } },
+    "Profiler.takePreciseCoverage": { result: [] },
+  };
+  const client = {
+    on(name: string, fn: (event: unknown) => void) {
+      listeners.set(name, (listeners.get(name) ?? new Set()).add(fn));
+    },
+    off(name: string, fn: (event: unknown) => void) {
+      listeners.get(name)?.delete(fn);
+    },
+    async send(method: string) {
+      sent.push(method);
+      if (method === "Debugger.enable") {
+        for (const event of live)
+          for (const fn of listeners.get("Debugger.scriptParsed") ?? []) fn(event);
+      }
+      return results[method] ?? {};
+    },
+  };
+  const page = {
+    mainFrame: () => ({}),
+    createCDPSession: async () => client,
+  };
+  /** An event another user of the session sees, such as the engine enabling the debugger to name a throw site. */
+  const emit = (name: string, event: unknown) => {
+    for (const fn of listeners.get(name) ?? []) fn(event);
+  };
+  return { page: page as never, sent, emit };
+}
+
+describe("armPageCodeWatch on the capture page", () => {
+  const main = { isDefault: true, type: "default", frameId: "MAIN" };
+  const replayed = (
+    scriptId: string,
+    extra: Partial<ParsedScriptEvent> = {},
+  ): ParsedScriptEvent => ({
+    scriptId,
+    url: "",
+    executionContextId: 3,
+    executionContextAuxData: main,
+    ...extra,
+  });
+
+  it("sends nothing to the debugger while the page loads", async () => {
+    const { page, sent } = fakeCapturePage([]);
+    const watch = await armPageCodeWatch(page, [], "capture");
+    expect(sent.filter((method) => method.startsWith("Debugger."))).toEqual([]);
+    // Unstarted, the record declines rather than read as empty.
+    expect(watch.origins.failure()).toBe("script record never started");
+    await watch.dispose();
+  });
+
+  it("counts calls before it enables the debugger, then deactivates its breakpoints", async () => {
+    const { page, sent } = fakeCapturePage([]);
+    const watch = await armPageCodeWatch(page, [], "capture");
+    sent.length = 0;
+    await watch.start();
+    const at = (method: string) => sent.indexOf(method);
+    expect(at("Profiler.startPreciseCoverage")).toBeGreaterThanOrEqual(0);
+    expect(at("Profiler.takePreciseCoverage")).toBeLessThan(at("Debugger.enable"));
+    expect(at("Debugger.enable")).toBeLessThan(at("Debugger.setBreakpointsActive"));
+    expect(watch.origins.failure()).toBeUndefined();
+    expect(watch.registrations.failure()).toBeUndefined();
+    await watch.dispose();
+  });
+
+  it("knows the scripts the page loaded by replay, by text alone", async () => {
+    const { page } = fakeCapturePage([
+      // An eval or an inserted script the page made while it loaded: no embedding document.
+      replayed("10"),
+      replayed("11", { embedderName: "http://127.0.0.1/index.html" }),
+      replayed("12", {
+        executionContextAuxData: { isDefault: false, type: "isolated", frameId: "MAIN" },
+      }),
+    ]);
+    const watch = await armPageCodeWatch(page, [], "capture");
+    await watch.start();
+    expect(watch.origins.kindOf("10")).toBe("unobserved");
+    expect(await watch.origins.originOf("10")).toBe("page");
+    expect(await watch.origins.originOf("11")).toBe("page");
+    expect(await watch.origins.originOf("12")).toBe("renderer");
+    expect(await watch.origins.findUntrustedCompiles()).toBeNull();
+    await watch.dispose();
+  });
+
+  it("ignores compiles another debugger session reported while the page loaded", async () => {
+    const { page, emit } = fakeCapturePage([]);
+    const watch = await armPageCodeWatch(page, [], "capture");
+    // A string timer the page ran while it loaded, seen while the engine had the debugger on.
+    emit("Debugger.scriptParsed", replayed("30"));
+    await watch.start();
+    expect(watch.origins.kindOf("30")).toBeUndefined();
+    expect(await watch.origins.findUntrustedCompiles()).toBeNull();
+    await watch.dispose();
+  });
+
+  it("still declines a script another realm held when the page was ready", async () => {
+    const child = { isDefault: true, type: "default", frameId: "CHILD" };
+    const { page } = fakeCapturePage([replayed("20", { executionContextAuxData: child })]);
+    const watch = await armPageCodeWatch(page, [], "capture");
+    await watch.start();
+    expect(await watch.origins.findUntrustedCompiles()).toMatch(/another realm/);
+    await watch.dispose();
   });
 });
