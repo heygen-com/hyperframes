@@ -302,7 +302,7 @@ function scriptRule(type: RegistryItem["type"], baseUrl: string): ScriptRule {
     ? (_: string, spelled: string) => nodeOnlyScript(spelled)
     : (root: string, spelled: string) => nodeMayRun(root, spelled, "file");
   return (root, target) =>
-    refused(root, targetSegments(target).join("/"))
+    refused(root, target.split(/[\\/]/).join("/"))
       ? "it writes a script Node tooling may run"
       : null;
 }
