@@ -13,8 +13,9 @@ import { requestSubPath } from "../helpers/requestSubPath.js";
 
 const RATES = new Set([48_000, 24_000]);
 
-/** The file at `sub` inside the project, or null for one outside it or missing. */
-async function projectFile(dir: string, sub: string): Promise<string | null> {
+/** The file at `sub` inside the project, or null for no path, one outside it or one missing. */
+async function projectFile(dir: string, sub: string | null): Promise<string | null> {
+  if (sub === null) return null;
   const path = resolve(dir, sub);
   if (!isWithinProjectRoot(dir, path)) return null;
   return (await stat(path).catch(() => null)) ? path : null;
