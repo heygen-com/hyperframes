@@ -289,8 +289,8 @@ async function downloadVideoBody(
     if (!container) return null;
     const stem = videoStem(filename);
     let safe = `${stem}${container}`;
-    for (let n = 2; taken.has(safe); n++) safe = `${stem}-${n}${container}`;
-    taken.add(safe);
+    for (let n = 2; taken.has(safe.toLowerCase()); n++) safe = `${stem}-${n}${container}`;
+    taken.add(safe.toLowerCase());
     writeCaptureFileSync(join(videosDir, safe), body);
     return `assets/videos/${safe}`;
   } catch {
