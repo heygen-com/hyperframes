@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 // The Python script is replaced by one that writes these bytes at the name it is handed, as the
-// real one does, or fails when the text is "fail".
+// real one does, fails when the text is "fail", or writes nothing when it is "no-file".
 const AUDIO = "RIFF-audio-bytes";
 const scriptRuns: string[] = [];
 
@@ -24,7 +24,7 @@ vi.mock("node:child_process", async (importOriginal) => {
     if (args[0] === "-c") return "";
     if (cmd === "which" || cmd === "where") return "/usr/bin/python3\n";
     scriptRuns.push(args[6]!);
-    fs.writeFileSync(args[6]!, AUDIO);
+    if (args[3] !== "no-file") fs.writeFileSync(args[6]!, AUDIO);
     if (args[3] === "fail") throw Object.assign(new Error("Command failed"), { stderr: "boom" });
     return JSON.stringify({
       outputPath: args[6],
@@ -77,7 +77,22 @@ describe("synthesize: the output file", () => {
     expect(scriptRuns).toHaveLength(1);
     expect(scriptRuns[0]).not.toBe(output);
     expect(dirname(scriptRuns[0]!)).toBe(dir);
-    expect(basename(scriptRuns[0]!)).toMatch(/^\.tmp-[0-9a-f-]{36}-speech\.wav$/);
+    expect(basename(scriptRuns[0]!)).toMatch(/^\.tmp-[0-9a-f-]{36}\.wav$/);
+  });
+
+  it("stages under a short name however long the output name is", async () => {
+    const long = join(dir, `${"n".repeat(240)}.wav`);
+
+    await synthesize("hello", long);
+
+    expect(basename(scriptRuns[0]!)).toHaveLength(45);
+    expect(readFileSync(long, "utf8")).toBe(AUDIO);
+  });
+
+  it("says why when the script reports success and leaves no file", async () => {
+    await expect(synthesize("no-file", output)).rejects.toThrow(
+      "Speech synthesis failed\nSynthesis completed but no output file was created",
+    );
   });
 
   it("replaces a link at the output name and leaves the file it points to alone", async () => {

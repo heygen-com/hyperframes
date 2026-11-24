@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, renameSync, rmSync, unlinkSync } from "node:fs";
 import { makeOutputFolder } from "../utils/outputFolder.js";
-import { join, dirname, basename } from "node:path";
+import { join, dirname, basename, extname } from "node:path";
 import {
   ensureModel,
   ensureVoices,
@@ -227,7 +227,7 @@ export async function synthesize(
 
   // 5. Run synthesis into a fresh name renamed over the output: the script writes through a link.
   options?.onProgress?.(`Generating speech with voice ${voice} (${lang})...`);
-  const staged = join(dirname(outputPath), `.tmp-${randomUUID()}-${basename(outputPath)}`);
+  const staged = join(dirname(outputPath), `.tmp-${randomUUID()}${extname(outputPath)}`);
   try {
     const espeakLang = ESPEAK_LANG_OVERRIDES[lang] ?? lang;
     const stdout = execFileSync(
@@ -275,7 +275,7 @@ export async function synthesize(
     if (err && typeof err === "object" && "stderr" in err) {
       const stderr = String(err.stderr).trim();
       if (stderr) detail = `\n${stderr.slice(-500)}`;
-    } else if (err instanceof Error && "code" in err) {
+    } else if (err instanceof Error) {
       detail = `\n${err.message}`;
     }
     throw new Error(`Speech synthesis failed${detail}`);
