@@ -30,6 +30,7 @@ beforeAll(async () => {
   const address = server.httpServer?.address();
   if (!address || typeof address === "string") throw new Error("dev server has no port");
   origin = `http://127.0.0.1:${address.port}`;
+  await server.warmupRequest("/src/main.tsx");
 }, 60_000);
 
 afterAll(async () => {
