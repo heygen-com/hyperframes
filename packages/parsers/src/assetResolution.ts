@@ -255,7 +255,14 @@ export function resolveProjectRelativeSrc(
     if (compiledDir) candidates.add(join(compiledDir, variant));
     candidates.add(join(baseDir, variant));
   }
-  return [...candidates].find(existsSync) ?? gitBashFile(cleanSrc) ?? join(baseDir, cleanSrc);
+  const inside = (path: string) =>
+    isWithinProjectRoot(baseDir, path) ||
+    (compiledDir !== undefined && isWithinProjectRoot(compiledDir, path));
+  return (
+    [...candidates].filter(inside).find(existsSync) ??
+    gitBashFile(cleanSrc) ??
+    join(baseDir, cleanSrc)
+  );
 }
 
 function maskRange(src: string, pattern: RegExp): string {
