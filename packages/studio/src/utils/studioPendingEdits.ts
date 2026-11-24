@@ -261,6 +261,8 @@ export function revertNewestStudioPendingEdit(): (() => void) | null {
 }
 
 const openEdits = new Set<() => unknown>();
+/** How many times a drain looks again for edits opened while it waited, before it stops reporting clean. */
+const OPEN_EDIT_ROUNDS = 5;
 
 export function settleOnDrain(settle: () => unknown): () => void {
   openEdits.add(settle);
@@ -277,7 +279,17 @@ export async function flushStudioPendingEdits({
     await Promise.resolve();
     await waitForPostBlurEffects();
   }
-  for (const settle of [...openEdits]) trackStudioPendingEdit(settle());
+  // An edit opened while the drain waits is settled too, each once: a "clean" covers every edit open when it lands.
+  const settled = new Set<() => unknown>();
+  const settleOpened = () => {
+    const opened = [...openEdits].filter((settle) => !settled.has(settle));
+    for (const settle of opened) {
+      settled.add(settle);
+      trackStudioPendingEdit(settle());
+    }
+    return opened.length > 0;
+  };
+  settleOpened();
   const detail: StudioFlushPendingEditsDetail = { promises: [] };
   window.dispatchEvent(
     new CustomEvent<StudioFlushPendingEditsDetail>(STUDIO_FLUSH_PENDING_EDITS_EVENT, { detail }),
@@ -286,12 +298,23 @@ export async function flushStudioPendingEdits({
   const waiting = () => [...pendingEdits.keys()].filter((edit) => !current || current.has(edit));
   let conflict: StudioFileConflictError | undefined;
   let firstFailure: PromiseRejectedResult | undefined;
-  while (detail.promises.length > 0 || waiting().length > 0) {
-    const promises = [...detail.promises, ...waiting()];
-    detail.promises = [];
-    const batchFailures = inspectDrainFailures(await Promise.allSettled(promises));
-    conflict ??= batchFailures.conflict;
-    firstFailure ??= batchFailures.firstFailure;
+  for (let round = 0; ; round += 1) {
+    while (detail.promises.length > 0 || waiting().length > 0) {
+      const promises = [...detail.promises, ...waiting()];
+      detail.promises = [];
+      const batchFailures = inspectDrainFailures(await Promise.allSettled(promises));
+      conflict ??= batchFailures.conflict;
+      firstFailure ??= batchFailures.firstFailure;
+    }
+    // A drain of only the current edits never takes on newer ones.
+    if (onlyCurrent || !settleOpened()) break;
+    if (round + 1 >= OPEN_EDIT_ROUNDS) {
+      firstFailure ??= {
+        status: "rejected",
+        reason: new Error("Edits kept opening while the pending edits were saved."),
+      };
+      break;
+    }
   }
   if (conflict) return { status: "conflict", error: conflict };
   return firstFailure ? { status: "failed", error: firstFailure.reason } : { status: "clean" };

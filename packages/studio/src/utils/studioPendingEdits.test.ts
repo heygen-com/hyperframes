@@ -12,6 +12,7 @@ import {
   isStudioEditSaving,
   paintBackNewestStudioPendingEdit,
   setStudioWaitingPressCancel,
+  settleOnDrain,
   trackStudioPendingEdit,
   trackedStudioEdit,
 } from "./studioPendingEdits";
@@ -559,6 +560,69 @@ describe("every pending edit settled", () => {
       await vi.waitFor(() => expect(told).toHaveBeenCalledOnce());
     } finally {
       setStudioPendingEditsSettled(null);
+    }
+  });
+});
+
+describe("an edit opened while a drain waits on a write", () => {
+  it("is settled before the drain reports clean", async () => {
+    let release = () => {};
+    const write = new Promise<void>((resolve) => (release = resolve));
+    const stopFirst = settleOnDrain(() => write);
+    let secondSaved = () => {};
+    const second = vi.fn(() => new Promise<void>((resolve) => (secondSaved = resolve)));
+    try {
+      const drained = flushStudioPendingEdits();
+      let done = false;
+      void drained.then(() => (done = true));
+      await Promise.resolve();
+      const stopSecond = settleOnDrain(second); // opened while the first write is held
+      release();
+      await vi.waitFor(() => expect(second).toHaveBeenCalledOnce());
+      expect(done).toBe(false); // the drain waits for the edit it settled late
+      secondSaved();
+      await expect(drained).resolves.toEqual({ status: "clean" });
+      expect(second).toHaveBeenCalledOnce();
+      stopSecond();
+    } finally {
+      stopFirst();
+    }
+  });
+
+  it("reports a failure, never clean, when edits keep opening", async () => {
+    const stops: (() => void)[] = [];
+    // Each settle opens another edit, as a field that reopens itself on every save would.
+    const open = () => {
+      stops.push(
+        settleOnDrain(() => {
+          open();
+          return Promise.resolve();
+        }),
+      );
+    };
+    open();
+    try {
+      const result = await flushStudioPendingEdits();
+      expect(result.status).toBe("failed");
+    } finally {
+      for (const stop of stops) stop();
+    }
+  });
+
+  it("leaves a drain of only the current edits to them", async () => {
+    let release = () => {};
+    const stopFirst = settleOnDrain(() => new Promise<void>((resolve) => (release = resolve)));
+    const later = vi.fn(() => Promise.resolve());
+    try {
+      const drained = flushStudioPendingEdits({ onlyCurrent: true });
+      await Promise.resolve();
+      const stopLater = settleOnDrain(later);
+      release();
+      await expect(drained).resolves.toEqual({ status: "clean" });
+      expect(later).not.toHaveBeenCalled();
+      stopLater();
+    } finally {
+      stopFirst();
     }
   });
 });
