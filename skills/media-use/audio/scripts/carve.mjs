@@ -29,7 +29,12 @@ import { readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import * as carveApi from "./lib/audio-carve.mjs";
 import { isMainModule } from "./lib/main-module.mjs";
-import { isIndirectFormat, pinnedInput, probeFormat } from "./lib/media-input.mjs";
+import {
+  ACCEPTED_CONTAINERS,
+  isIndirectFormat,
+  pinnedInput,
+  probeFormat,
+} from "./lib/media-input.mjs";
 import { projectPath } from "./lib/project-path.mjs";
 import { assertLiteralMediaPath } from "../../scripts/lib/literal-media-input.mjs";
 
@@ -202,7 +207,10 @@ export function mediaSource(compDir, src) {
 /** Mono float PCM for one media file, via ffmpeg reading that file alone. */
 function decode(path) {
   const format = probeFormat(path);
-  if (!format) fail(`could not decode ${path}: ffmpeg cannot read it as media`);
+  if (!format)
+    fail(
+      `could not decode ${path}: it is not media in an accepted container (${ACCEPTED_CONTAINERS})`,
+    );
   if (isIndirectFormat(format)) {
     fail(`${path} is a ${format} list that points at other files; give the media file itself`);
   }

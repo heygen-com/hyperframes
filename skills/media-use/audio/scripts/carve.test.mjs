@@ -416,7 +416,7 @@ test("a playlist saved under a media name inside the project is refused and open
     const before = readFileSync(join(project, "index.html"), "utf8");
     const run = runCarve(project);
     assert.equal(run.status, 1, run.stderr);
-    assert.match(run.stderr, /list that points at other files|cannot read it as media/);
+    assert.match(run.stderr, /list that points at other files|not media in an accepted container/);
     assert.equal(readFileSync(join(project, "index.html"), "utf8"), before);
   }));
 
