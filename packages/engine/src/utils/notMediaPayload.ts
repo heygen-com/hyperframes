@@ -320,14 +320,12 @@ const HTTP_URL = /^https?:\/\//i;
 const COLON_IN_FIRST_SEGMENT = /^[^/\\?#]*:/;
 const FOLDER_CUT_AT_QUERY_OR_FRAGMENT = /[?#]/;
 
-// ffmpeg reads a playlist line into a 4096-byte buffer and drops the rest of it, so it would read a longer line
-// as a different name. No real list has one, and a longer line is refused before it is parsed.
+// ffmpeg reads a list line into a 4096-byte buffer, so a longer line would name something else: it is refused unread.
 const MAX_LIST_LINE_BYTES = 4095;
 const ATTRIBUTE_GAP = /[\t\n\v\f\r ,]/;
 const SPACE = /\s/;
 const TRAILING_HLS_BLANK = /[\t\v\f ]/;
 
-/** `line` up to its last character that `isBlank` does not match. A scan from the end, so linear in the blanks. */
 function withoutTrailing(line: string, isBlank: RegExp): string {
   let end = line.length;
   while (end > 0 && isBlank.test(line[end - 1]!)) end--;
