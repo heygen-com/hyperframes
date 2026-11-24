@@ -31,13 +31,13 @@ jobs:
         working-directory: packages/cli
         run: |
           $test = "src/utils/privateProjectFile.test.ts"
-          $name = "waits for another writer's lock"
+          $name = "waits for another writer"
           function Loop($label, $n) {
             $fails = 0
             for ($i = 1; $i -le $n; $i++) {
               $out = npx vitest run $test -t $name 2>&1 | Out-String
               $line = ($out -split "`n" | Where-Object { $_ -match "PROBE" }) -join " "
-              if ($LASTEXITCODE -ne 0) { $fails++ }
+              if ($LASTEXITCODE -ne 0) { $fails++; if ($fails -le 2) { Write-Host (($out -split "`n" | Select-Object -Last 40) -join "`n") } }
               Write-Host "$label $i exit=$LASTEXITCODE $line"
             }
             Write-Host "== $label fails=$fails of $n"
