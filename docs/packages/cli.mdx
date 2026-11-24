@@ -1084,8 +1084,10 @@ on the API at
 `HEYGEN_API_URL` when set. API keys are sent as `x-api-key`; OAuth credentials
 are sent as bearer tokens. If the service refuses a request, analysis falls
 back with a warning. Without a credential, stems are skipped and `api` is
-passed over. At `local`, the default, no credential is looked up and nothing
-leaves the machine.
+passed over. At `local`, the default, and at `fast`, no credential is looked up
+and nothing leaves the machine. Stems saved by an earlier `--quality best` read are
+reused at any quality, but only when this install wrote them; stems that arrive
+with a project are ignored. Stems are described through HeyGen only at `best`.
 
 To use another service, set `HYPERFRAMES_AUDIO_STEMS_URL` or
 `HYPERFRAMES_AUDIO_API_URL` to its full URL together with
