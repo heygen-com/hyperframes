@@ -410,6 +410,7 @@ export {
   PROBE_FACTS_VERSION,
   buildProbeFactsText,
   probeMediaProfile,
+  isStructurallyIncompletePngError,
   runFfprobe,
   analyzeKeyframeIntervals,
   type VideoMetadata,
