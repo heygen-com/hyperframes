@@ -209,9 +209,8 @@ function drawRotate(element: Styled, rotate: EditingDraftRotate | null): void {
   gsap?.set?.(element, { rotation: rotate.angle });
 }
 
-function drawProps(element: Styled, { seconds, values }: EditingDraftProps): void {
+function drawProps(element: Styled, values: EditingDraftProps["values"]): void {
   const saved = beforeOf(element);
-  rootTimeline()?.seek(seconds);
   element.style.setProperty("translate", "none");
   frameGsap()?.set?.(element, { ...values });
   saved.putMarkBack ??= revealClip(element);
@@ -262,7 +261,10 @@ function apply(element: Styled, draft: EditingDraft): boolean {
   else restore(element, ["translate"]);
   if (draft.size) drawSize(element, draft.size);
   else restore(element, SIZE_PROPERTIES);
-  if (draft.props) drawProps(element, draft.props);
+  if (draft.props) {
+    rootTimeline()?.seek(draft.props.seconds);
+    drawProps(element, draft.props.values);
+  }
   return false;
 }
 
@@ -271,7 +273,7 @@ function redrawOwned(element: Styled, draft: Exclude<EditingDraft, { end: unknow
   if ("rotate" in draft && draft.rotate) drawRotate(element, draft.rotate);
   if (draft.translate) drawTranslate(element, draft.translate);
   if (draft.size) drawSize(element, draft.size);
-  if (draft.props) drawProps(element, draft.props);
+  if (draft.props) drawProps(element, draft.props.values);
 }
 
 function putLiveDraftsBack(): void {

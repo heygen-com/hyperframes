@@ -194,3 +194,12 @@ it("replays every value another layer's live recording has set when a drag is re
     81, 0.4,
   ]);
 });
+
+// fails without the fix: replaying B's recording sought the film back to B's last sample, 1 s, from where it was.
+it("leaves the playhead where it is when a restore replays another layer's live recording", () => {
+  const { restored } = dragged();
+  recordOnB(81);
+  window.__player?.seek(2);
+  restored();
+  expect([window.__timelines!.main!.time(), Number(gsap.getProperty("#b", "x"))]).toEqual([2, 81]);
+});
