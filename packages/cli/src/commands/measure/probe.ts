@@ -14,6 +14,7 @@ import { toneMapReferenceNits } from "@hyperframes/core";
 import { execFileSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { makeOutputFolder } from "../../utils/outputFolder.js";
+import { assertLiteralMediaOutput } from "@hyperframes/parsers/literal-media-input";
 
 export const examples: Example[] = [
   [
@@ -47,6 +48,7 @@ const hasFilter = (name: string) =>
 
 /** A constant-rate SDR H.264 copy: what the measuring tools, diff and the render all read the same way. */
 function normalize(info: VideoInfo, out: string): { path: string; fps: string } {
+  assertLiteralMediaOutput(out);
   const fps = info.vfr ? standardRate(info) : info.fpsText;
   const filters = [`fps=${fps}`];
   if (info.hdr) {

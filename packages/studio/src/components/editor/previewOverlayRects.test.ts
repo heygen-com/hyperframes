@@ -756,6 +756,20 @@ describe("a press on a settled preview", () => {
     expect(press.start.mock.calls[0]![3]).toEqual({ at: expect.any(Object) });
   });
 
+  // fails without the fix: the press asked the frame only on the next animation frame, and started on the one after.
+  it("on an opaque frame asks at the press and starts once the frame answers, with no animation frame", async () => {
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 0);
+    try {
+      const iframe = opaqueFrame();
+      const handle = (await queryPreviewElements(iframe, "#turned"))!.matches[0]!.handle;
+      const turned = document.getElementById("turned")!;
+      pressOn(iframe, { ...makeSelection("turned", turned), handle });
+      await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce());
+    } finally {
+      raf.mockRestore();
+    }
+  });
+
   it("on an opaque frame waits for what the gesture starts from, read in one request", async () => {
     const { port1 } = new MessageChannel();
     const send = vi.spyOn(Object.getPrototypeOf(port1) as MessagePort, "postMessage");

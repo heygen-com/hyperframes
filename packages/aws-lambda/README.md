@@ -149,7 +149,8 @@ bun run --cwd packages/aws-lambda verify:zip-size    # CI gate
 
 The build script bundles `src/handler.ts` via esbuild, stages
 `@sparticuz/chromium` and `puppeteer-core` under `node_modules/`, copies
-ffmpeg-static into `bin/`, and zips the result. The unzipped layout is
+ffmpeg-static into `bin/` once its sha256 matches the one pinned for that
+ffmpeg-static version in `scripts/_ffmpeg.ts`, and zips the result. The unzipped layout is
 designed to extract cleanly into Lambda's `/var/task/`.
 
 `verify:zip-size` enforces:

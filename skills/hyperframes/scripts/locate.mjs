@@ -24,6 +24,7 @@ import "./lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { replaceFileWith } from "./lib/link-safe-write.mjs";
+import { assertLiteralMediaPath } from "./lib/literal-media-input.mjs";
 
 const N1 = 9,
   PAD1 = 0.4; // stage 1: strips per axis, padding in STRIP units
@@ -110,6 +111,7 @@ const opt = {};
 for (let i = 0; i < rest.length; i++)
   if (rest[i].startsWith("--")) opt[rest[i].slice(2)] = rest[i + 1];
 const img = pos[0];
+for (const path of [img, opt.out]) if (path) assertLiteralMediaPath(path);
 
 if (cmd === "overlay") {
   const dir = opt.out || ".";

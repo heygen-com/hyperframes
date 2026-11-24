@@ -262,7 +262,13 @@ describe("gestureBase", () => {
   it("reads GSAP's x, y, opacity and scale for a layer no tween touches", () => {
     const card = turnedCard("");
     gsapWith([], { x: 12, y: -4, opacity: 0.5, scaleX: 1.5 });
-    expect(gestureBase(handleFor(card))).toEqual({ x: 12, y: -4, opacity: 0.5, scale: 1.5 });
+    expect(gestureBase(handleFor(card))).toEqual({
+      x: 12,
+      y: -4,
+      opacity: 0.5,
+      scale: 1.5,
+      drawsProps: true,
+    });
   });
 
   // fails without the fix: a page without GSAP answered null, so a sealed recording refused to start where the

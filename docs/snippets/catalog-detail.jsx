@@ -1802,6 +1802,16 @@ export const CatalogDetail = ({
       Object.entries(changed).filter(([id, value]) => edited.includes(id) || keepFromLink(id, value)),
     );
   }
+
+  /**
+   * JSON for a single-quoted HTML attribute. JSON leaves `'` and `&` as they
+   * are, and in an attribute the first ends the value and the second starts a
+   * character reference, so both are written as references. The attribute then
+   * reads back as the same JSON whatever a string holds.
+   */
+  function attributeJson(value) {
+    return JSON.stringify(value, null, 2).replace(/&/g, "&amp;").replace(/'/g, "&#39;");
+  }
   // <<< copied values
 
   const readFromUrl = () => {
@@ -2010,6 +2020,28 @@ export const CatalogDetail = ({
     return () => clearTimeout(timer);
   }, [values, typing]);
 
+  const changedValues = () => {
+    const changed = {};
+    for (const v of variables) {
+      if (JSON.stringify(values[v.id]) !== JSON.stringify(defaults[v.id])) changed[v.id] = values[v.id];
+    }
+    return changed;
+  };
+  // What a link may put into text the reader pastes as their own: numbers,
+  // switches and the author's own options, never its strings.
+  const notLinkText = (id, value) =>
+    typeof value !== "string" || variables.some((v) => v.id === id && v.type === "enum");
+  // The wiring and the JSON also keep a link's colours and image addresses,
+  // which were checked against their control's format when the link was read.
+  // Only free text waits for the reader.
+  const notLinkProse = (id, value) =>
+    notLinkText(id, value) || variables.some((v) => v.id === id && (v.type === "color" || v.type === "image"));
+  const pastedValues = copiedValues(changedValues(), edited, notLinkProse);
+  // Every variable, with text the link set shown at its default until the reader sets it.
+  const mountValues = Object.fromEntries(
+    Object.keys(values).map((id) => [id, Object.hasOwn(pastedValues, id) ? pastedValues[id] : defaults[id]]),
+  );
+
   // The mount element, as coloured tokens.
   //
   // The values are indented rather than printed on one line: a reader looking
@@ -2017,7 +2049,7 @@ export const CatalogDetail = ({
   // than as something they are meant to edit. Two extra spaces per line keep
   // the object under its own attribute. Newlines inside a quoted HTML attribute
   // are legal and JSON.parse ignores them, so this still pastes and runs.
-  const printed = JSON.stringify(values, null, 2).split("\n").join("\n  ");
+  const printed = attributeJson(mountValues).split("\n").join("\n  ");
   const attributes = [
     ["data-composition-id", `"${compositionId}"`],
     ["data-composition-src", `"${compositionSrc}"`],
@@ -2057,13 +2089,6 @@ export const CatalogDetail = ({
     ["docs", "Docs"],
   ];
 
-  const changedValues = () => {
-    const changed = {};
-    for (const v of variables) {
-      if (JSON.stringify(values[v.id]) !== JSON.stringify(defaults[v.id])) changed[v.id] = values[v.id];
-    }
-    return changed;
-  };
   const renderCommand = (() => {
     const changed = copiedValues(changedValues(), edited, (id, value) => plainLinkValue(value));
     const vars = Object.keys(changed).length ? ` --variables '${JSON.stringify(changed).replace(/'/g, "'\\''")}'` : "";
@@ -2072,9 +2097,7 @@ export const CatalogDetail = ({
   const agentRequest = (() => {
     // The reader pastes this to an agent as their own words, so a link's text
     // never goes in: only numbers, switches and the author's own options do.
-    const changed = copiedValues(changedValues(), edited, (id, value) =>
-      typeof value !== "string" || variables.some((v) => v.id === id && v.type === "enum"),
-    );
+    const changed = copiedValues(changedValues(), edited, notLinkText);
     const base = `Install the HyperFrames catalog item "${compositionId}" (${title || compositionId}) into my project with \`npx hyperframes add ${compositionId}\`, mount it at the point of my composition where it should play, and verify with \`npx hyperframes check\`.`;
     const set = Object.entries(changed).map(([id, value]) => `${id} = ${JSON.stringify(value)}`);
     return set.length ? `${base} Set ${set.join(", ")}; keep the other variables at their defaults.` : `${base} Keep the default variables unless I say otherwise.`;
@@ -2224,7 +2247,7 @@ export const CatalogDetail = ({
           <div className="hf-ve-link-notice" role="status">
             <span>
               This page opened with settings from its link: {heldFromLink.join(", ")}. Text from a link
-              stays out of copied commands and the agent request until you set it here.
+              stays out of the copied wiring, snippet, JSON and agent request until you set it here.
             </span>
             <button type="button" className="hf-ve-action" onClick={resetValues}>
               Reset to defaults
@@ -2309,7 +2332,7 @@ export const CatalogDetail = ({
                   <CopyAction
                     id="json"
                     label="Copy JSON"
-                    text={() => JSON.stringify(dirty ? changedValues() : defaults, null, 2)}
+                    text={() => JSON.stringify(Object.keys(pastedValues).length ? pastedValues : defaults, null, 2)}
                   />
                   <CopyAction id="render" label="Copy render cmd" text={renderCommand} />
                 </div>

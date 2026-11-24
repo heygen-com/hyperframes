@@ -35,6 +35,14 @@ export const skillModuleCopies = [
     ],
   ],
   [
+    "skills/hyperframes/scripts/lib/literal-media-input.mjs",
+    [
+      "skills/media-use/scripts/lib/literal-media-input.mjs",
+      "skills/figma/scripts/lib/literal-media-input.mjs",
+      "packages/cli/src/media-use/lib/literal-media-input.mjs",
+    ],
+  ],
+  [
     "skills/hyperframes/scripts/lib/windows-exe-search.mjs",
     [
       "skills/media-use/scripts/lib/windows-exe-search.mjs",

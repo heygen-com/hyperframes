@@ -1,8 +1,14 @@
 import { acceleratedCanvasTrackerSource } from "../pageMotionBlur.js";
 import { findSceneTemplate, templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { parseHTML } from "linkedom";
-
-export const RUNTIME_BOOTSTRAP_ATTR = "data-hyperframes-preview-runtime";
+import {
+  escapeInlineScriptSource,
+  indexOfLower,
+  lowerAscii,
+  RUNTIME_BOOTSTRAP_ATTR,
+  startsWithLower,
+} from "./htmlTokens.js";
+export { escapeInlineScriptSource, RUNTIME_BOOTSTRAP_ATTR };
 
 const RUNTIME_FILES = [
   "hyperframe.runtime.iife.js",
@@ -55,33 +61,6 @@ export function parseHTMLContent(html: string): Document {
     return parseHTML(html).document;
   }
   return parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`).document;
-}
-
-/** ASCII-only chunks bound match arrays; starting at uppercase preserves unchanged spans. */
-function lowerAscii(text: string): string {
-  return text.replace(/[A-Z][\s\S]{0,65535}/g, (chunk) =>
-    chunk.replace(/[A-Z]+/g, (letters) => letters.toLowerCase()),
-  );
-}
-
-function startsWithLower(text: string, token: string, at: number): boolean {
-  if (at < 0 || at + token.length > text.length) return false;
-  for (let i = 0; i < token.length; i += 1) {
-    const code = text.charCodeAt(at + i);
-    if ((code >= 65 && code <= 90 ? code + 32 : code) !== token.charCodeAt(i)) return false;
-  }
-  return true;
-}
-
-function indexOfLower(text: string, token: string, from: number): number {
-  for (
-    let at = text.indexOf(token.charAt(0), from);
-    at !== -1;
-    at = text.indexOf(token.charAt(0), at + 1)
-  ) {
-    if (startsWithLower(text, token, at)) return at;
-  }
-  return -1;
 }
 
 function lastIndexOfLower(text: string, token: string): number {
@@ -223,38 +202,6 @@ function isTagBoundary(char: string): boolean {
 
 function isHtmlWhitespace(char: string): boolean {
   return char === " " || char === "\n" || char === "\t" || char === "\r" || char === "\f";
-}
-
-export function escapeInlineScriptSource(source: string): string {
-  return escapeCaseInsensitiveToken(
-    escapeCaseInsensitiveToken(source, "</script", (match) => `<\\/${match.slice(2)}`),
-    "<!--",
-    () => "\\x3C!--",
-  );
-}
-
-function escapeCaseInsensitiveToken(
-  source: string,
-  token: string,
-  replacement: (match: string) => string,
-): string {
-  const loweredToken = lowerAscii(token);
-  let output = "";
-  let cursor = 0;
-
-  while (cursor < source.length) {
-    const tokenStart = indexOfLower(source, loweredToken, cursor);
-    if (tokenStart === -1) {
-      output += source.slice(cursor);
-      break;
-    }
-    output +=
-      source.slice(cursor, tokenStart) +
-      replacement(source.slice(tokenStart, tokenStart + token.length));
-    cursor = tokenStart + token.length;
-  }
-
-  return output;
 }
 
 function inlineScriptTags(scripts: readonly string[]): string {
@@ -482,6 +429,44 @@ export function injectTagsAtHeadStart(html: string, tags: string): string {
     return `${html.slice(0, headOpenEnd + 1)}\n${tags}${html.slice(headOpenEnd + 1)}`;
   }
   return insertBeforeDocumentTag(html, "<body", `${tags}\n`) ?? `${tags}\n${html}`;
+}
+
+const BYTE_ORDER_MARK = 0xfeff;
+
+export function headContentStart(html: string): number {
+  let cursor = html.charCodeAt(0) === BYTE_ORDER_MARK ? 1 : 0;
+  let at = cursor;
+  for (;;) {
+    const prolog = skipProlog(html, cursor);
+    at = Math.max(at, prolog.doctypeEnd);
+    cursor = prolog.next;
+    const isHead = isTagAt(html, cursor, "<head");
+    if (!isHead && !isTagAt(html, cursor, "<html")) return at;
+    const end = findTagEnd(html, cursor + 1);
+    if (end === -1) return at;
+    if (isHead) return end + 1;
+    at = cursor = end + 1;
+  }
+}
+
+function skipProlog(html: string, from: number): { next: number; doctypeEnd: number } {
+  let doctypeEnd = 0;
+  let next = from;
+  while (next < html.length) {
+    const end = prologItemEnd(html, next);
+    if (end <= next) break;
+    if (startsWithLower(html, "<!doctype", next)) doctypeEnd = end;
+    next = end;
+  }
+  return { next, doctypeEnd };
+}
+
+function prologItemEnd(html: string, at: number): number {
+  if (isHtmlWhitespace(html.charAt(at))) return at + 1;
+  if (html.startsWith("<!--", at)) return skipComment(html, at);
+  if (!html.startsWith("<!", at) && !html.startsWith("<?", at)) return at;
+  const close = html.indexOf(">", at);
+  return close === -1 ? -1 : close + 1;
 }
 
 export function injectScriptsAtHeadStart(html: string, scripts: readonly string[]): string {

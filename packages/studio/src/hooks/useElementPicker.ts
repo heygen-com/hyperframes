@@ -11,11 +11,11 @@ import {
   acceptStudioRuntimeMessage,
   postRuntimeControlMessage,
 } from "../player/lib/runtimeProtocol";
-import { compositionPathOfPreviewUrl } from "../player/components/CompositionThumbnail";
 import { frameOrigins } from "../player/lib/bridgePlayback";
 import { previewComputedStyles, previewFrameOpaque } from "../player/lib/previewChannel";
+import { escapeHtmlText } from "../components/editor/domEditingLayers";
+import { writePicked, type PickedSource, type PickedWrite } from "./elementPickerWrites";
 import { PICKED_STYLE_PROPERTIES, readComputedStyles } from "./elementPickerStyles";
-import { getSourceFileForElement } from "../components/editor/domEditingDom";
 import {
   createElementPickerHoverLabel,
   type ElementPickerHoverInfo,
@@ -298,17 +298,16 @@ export function useElementPicker(
   settlePendingWrites(pendingWritesRef.current, options?.workspaceFiles);
 
   const syncToSource = useCallback(
-    (picked: PickedElement, live: HTMLElement, iframe: HTMLIFrameElement, op: PatchOperation) => {
+    (picked: PickedElement, source: PickedSource, op: PatchOperation) => {
       const opts = optionsRef.current;
       if (!opts?.workspaceFiles || !opts.onSyncFiles) return;
       // No id: the preview's hf-id names the element, in the file it was served from.
-      const hfId = live.getAttribute("data-hf-id");
       const pending = pendingWritesRef.current;
       const files = withPendingWrites(opts.workspaceFiles, pending);
       const patch = picked.id
         ? patchById(files, picked.id, picked.selector, op)
-        : hfId
-          ? patchByHfId(files, hfId, ownSourceFile(live, iframe), op)
+        : source.hfId
+          ? patchByHfId(files, source.hfId, source.ownFile, op)
           : null;
       if (!patch || patch.after === patch.before) return;
       recordPendingWrite(pending, patch.path, opts.workspaceFiles[patch.path], patch.after);
@@ -317,87 +316,59 @@ export function useElementPicker(
     [],
   );
 
-  const setStyle = useCallback(
-    (prop: string, value: string) => {
+  const writePickedElement = useCallback(
+    (write: PickedWrite, shown: (prev: PickedElement) => PickedElement, op: PatchOperation) => {
       const activeIframe = getActiveIframe();
-      if (!pickedElement?.selector || !activeIframe) return;
-      try {
-        const doc = activeIframe.contentDocument;
-        const el = doc?.querySelector(pickedElement.selector) as HTMLElement | null;
-        if (el) {
-          el.style.setProperty(prop, value);
-          setPickedElement((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  computedStyles: { ...prev.computedStyles, [prop]: value },
-                }
-              : null,
-          );
-          syncToSource(pickedElement, el, activeIframe, {
-            type: "inline-style",
-            property: prop,
-            value,
-          });
-        }
-      } catch {
-        /* cross-origin */
-      }
+      const picked = pickedElement;
+      if (!picked?.selector || !activeIframe) return;
+      const saved = (source: PickedSource | null) => {
+        if (!source) return;
+        setPickedElement((prev) => (prev && samePick(prev, picked) ? shown(prev) : prev));
+        syncToSource(picked, source, op);
+      };
+      const source = writePicked(activeIframe, picked.selector, write);
+      if (source instanceof Promise) void source.then(saved);
+      else saved(source);
     },
     [pickedElement, getActiveIframe, setPickedElement, syncToSource],
+  );
+
+  const setStyle = useCallback(
+    (prop: string, value: string) =>
+      writePickedElement(
+        { live: (el) => el.style.setProperty(prop, value), sealed: { styles: [[prop, value]] } },
+        (prev) => ({ ...prev, computedStyles: { ...prev.computedStyles, [prop]: value } }),
+        { type: "inline-style", property: prop, value },
+      ),
+    [writePickedElement],
   );
 
   const setDataAttr = useCallback(
-    (attr: string, value: string) => {
-      const activeIframe = getActiveIframe();
-      if (!pickedElement?.selector || !activeIframe) return;
-      try {
-        const doc = activeIframe.contentDocument;
-        const el = doc?.querySelector(pickedElement.selector);
-        if (el) {
-          el.setAttribute(`data-${attr}`, value);
-          setPickedElement((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  dataAttributes: { ...prev.dataAttributes, [attr]: value },
-                }
-              : null,
-          );
-          syncToSource(pickedElement, el as HTMLElement, activeIframe, {
-            type: "attribute",
-            property: attr,
-            value,
-          });
-        }
-      } catch {
-        /* cross-origin */
-      }
-    },
-    [pickedElement, getActiveIframe, setPickedElement, syncToSource],
+    (attr: string, value: string) =>
+      writePickedElement(
+        {
+          live: (el) => el.setAttribute(`data-${attr}`, value),
+          sealed: { attributes: [[`data-${attr}`, value]] },
+        },
+        (prev) => ({ ...prev, dataAttributes: { ...prev.dataAttributes, [attr]: value } }),
+        { type: "attribute", property: attr, value },
+      ),
+    [writePickedElement],
   );
 
   const setTextContent = useCallback(
-    (text: string) => {
-      const activeIframe = getActiveIframe();
-      if (!pickedElement?.selector || !activeIframe) return;
-      try {
-        const doc = activeIframe.contentDocument;
-        const el = doc?.querySelector(pickedElement.selector);
-        if (el) {
-          el.textContent = text;
-          setPickedElement((prev) => (prev ? { ...prev, textContent: text } : null));
-          syncToSource(pickedElement, el as HTMLElement, activeIframe, {
-            type: "text-content",
-            property: "textContent",
-            value: text,
-          });
-        }
-      } catch {
-        /* cross-origin */
-      }
-    },
-    [pickedElement, getActiveIframe, setPickedElement, syncToSource],
+    (text: string) =>
+      writePickedElement(
+        {
+          live: (el) => {
+            el.textContent = text;
+          },
+          sealed: { html: escapeHtmlText(text) },
+        },
+        (prev) => ({ ...prev, textContent: text }),
+        { type: "text-content", property: "textContent", value: text },
+      ),
+    [writePickedElement],
   );
 
   return {
@@ -414,6 +385,8 @@ export function useElementPicker(
     activeIframeRef,
   };
 }
+
+const samePick = (a: PickedElement, b: PickedElement) => a.selector === b.selector && a.id === b.id;
 
 function elementOwnsEscape(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
@@ -541,11 +514,6 @@ function patchById(
   const path = resolveSourceFile(id, selector, files);
   const before = path ? files[path] : undefined;
   return path && before ? { path, before, after: applyPatch(before, id, op) } : null;
-}
-
-function ownSourceFile(live: HTMLElement, iframe: HTMLIFrameElement): string {
-  const previewed = compositionPathOfPreviewUrl(iframe.getAttribute("src") ?? "");
-  return getSourceFileForElement(live, previewed).sourceFile;
 }
 
 function patchByHfId(

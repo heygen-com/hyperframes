@@ -326,7 +326,16 @@ export async function synthesizeOne({
   }
   // kokoro — via the published CLI, run in the project dir.
   return withStagedWav(text, wavAbs, "kokoro (npx hyperframes tts)", (textPath, staged) => {
-    const args = ["hyperframes", "tts", textPath, "--voice", voiceId, "--output", staged];
+    const args = [
+      "hyperframes",
+      "tts",
+      "--text-file",
+      textPath,
+      "--voice",
+      voiceId,
+      "--output",
+      staged,
+    ];
     if (lang !== "en") args.push("--lang", lang);
     if (speed !== 1) args.push("--speed", String(speed));
     return spawnP("npx", args, { cwd: hyperframesDir });

@@ -14,6 +14,7 @@ on:
       # A dependency bump or a ZIP layout change must re-stage the image.
       - "packages/aws-lambda/package.json"
       - "packages/aws-lambda/scripts/build-zip.ts"
+      - "packages/aws-lambda/scripts/_ffmpeg.ts"
       - "packages/aws-lambda/scripts/runtimeLock.ts"
       - "packages/aws-lambda/scripts/runtime-lock/**"
       - ".github/workflows/lambda-arm64-image.yml"

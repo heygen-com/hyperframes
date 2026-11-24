@@ -389,6 +389,72 @@ describe("playlistLeavesItsFolder", () => {
   });
 });
 
+describe("playlistLeavesItsFolder takes time linear in the list, and bounds the walk", () => {
+  // Just under the size the walk reads whole, so the list is parsed rather than refused for its size.
+  const FILL = 8 * 1024 * 1024 - 64;
+  const segments = (...names: string[]) =>
+    `#EXTM3U\n${names.map((n) => `#EXTINF:1,\n${n}\n`).join("")}`;
+
+  it.each([
+    ["an HLS line of blanks ending in one other character", `#EXTM3U\n${" ".repeat(FILL)}x\n`],
+    [
+      "an ffconcat file line of blanks with a lone carriage return inside",
+      `ffconcat version 1.0\nfile${" ".repeat(FILL)}x\ry\n`,
+    ],
+  ])("refuses %s in milliseconds", async (_name, contents) => {
+    const file = writeFixture("photo.png", contents);
+    const started = performance.now();
+    expect(await playlistLeavesItsFolder(file)).toBe(true);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("reads a line as long as ffmpeg reads, and refuses one byte longer", async () => {
+    // 4095 bytes is ffmpeg's line limit; neither name exists, so only the length decides.
+    const atLimit = writeFixture("clip.m3u8", segments(`${"a".repeat(4092)}.ts`));
+    expect(await playlistLeavesItsFolder(atLimit)).toBe(false);
+    const over = writeFixture("clip.m3u8", segments(`${"a".repeat(4093)}.ts`));
+    expect(await playlistLeavesItsFolder(over)).toBe(true);
+    const concatOver = writeFixture(
+      "clip.ffconcat",
+      `ffconcat version 1.0\nfile ${"a".repeat(4091)}\n`,
+    );
+    expect(await playlistLeavesItsFolder(concatOver)).toBe(true);
+  });
+
+  it("reads an ffconcat file line as before: blanks and carriage returns between file and the name", async () => {
+    const list = (line: string) => writeFixture("clip.ffconcat", `ffconcat version 1.0\n${line}\n`);
+    expect(await playlistLeavesItsFolder(list("  file \r\t../other/out.mp4"))).toBe(true);
+    expect(await playlistLeavesItsFolder(list("file\t'../other/out.mp4'  "))).toBe(true);
+    expect(await playlistLeavesItsFolder(list("file'../other/out.mp4'"))).toBe(false);
+    expect(await playlistLeavesItsFolder(list("files ../other/out.mp4"))).toBe(false);
+    expect(await playlistLeavesItsFolder(list("file part.mp4"))).toBe(false);
+  });
+
+  it("refuses a walk past its entry budget, before it opens any entry", async () => {
+    const names = Array.from({ length: 50_001 }, (_, i) => `s${i}.ts`);
+    expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", segments(...names)))).toBe(true);
+    expect(
+      await playlistLeavesItsFolder(writeFixture("clip.m3u8", segments(...names.slice(0, 1000)))),
+    ).toBe(false);
+  });
+
+  it("refuses a walk past its byte budget across nested lists", async () => {
+    // Three nested lists of 6 MiB each: every one is readable alone, together they pass 16 MiB.
+    const padding = `#${"x".repeat(4000)}\n`.repeat(Math.ceil((6 * 1024 * 1024) / 4002));
+    const files: Record<string, string> = {
+      "master.m3u8":
+        "#EXTM3U\n" +
+        ["a", "b", "c"].map((n) => `#EXT-X-STREAM-INF:BANDWIDTH=1\n${n}.m3u8\n`).join(""),
+    };
+    for (const n of ["a", "b", "c"]) files[`${n}.m3u8`] = `#EXTM3U\n${padding}#EXTINF:1,\nseg.ts\n`;
+    expect(await playlistLeavesItsFolder(writeTree(files))).toBe(true);
+    delete files["c.m3u8"];
+    files["master.m3u8"] =
+      "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\na.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=1\nb.m3u8\n";
+    expect(await playlistLeavesItsFolder(writeTree(files))).toBe(false);
+  });
+});
+
 describe("playlistLeavesItsFolder reads entries and folders as ffmpeg resolves them", () => {
   const hls = (...lines: string[]) => ["#EXTM3U", ...lines, "#EXT-X-ENDLIST"].join("\n");
   const listIn = (folder: string, contents: string | Buffer, name = "list.m3u8"): string => {
@@ -528,8 +594,6 @@ describe("playlistLeavesItsFolder reads a list as ffprobe does", () => {
     expect(await playlistLeavesItsFolder(unreadable)).toBe(true);
     const missing = writeTree({ "clip.m3u8": list("gone.ts") });
     expect(await playlistLeavesItsFolder(missing)).toBe(false);
-    const tooLong = writeTree({ "clip.m3u8": list("a".repeat(5000)) });
-    expect(await playlistLeavesItsFolder(tooLong)).toBe(false);
   });
 
   it.skipIf(process.platform !== "linux")(
