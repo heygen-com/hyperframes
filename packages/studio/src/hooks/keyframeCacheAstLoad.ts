@@ -106,9 +106,9 @@ async function requestParsedAnimations(
 export async function populateKeyframeCacheFromAst(
   projectId: string,
   sf: string,
-  doc: Document | null | undefined,
+  doc: Document | null | undefined | Promise<Document | null>,
 ): Promise<boolean> {
-  const parsed = await fetchParsedAnimations(projectId, sf);
+  const [parsed, targets] = await Promise.all([fetchParsedAnimations(projectId, sf), doc]);
   if (!parsed) return false;
   const { elements, domClipChildren } = usePlayerStore.getState();
   const mergedByElement = new Map<string, GsapKeyframesData<MergeableKeyframe>>();
@@ -120,7 +120,7 @@ export async function populateKeyframeCacheFromAst(
     if (!kfData) continue;
     // Attribute the tween to every element it animates (handles class /
     // group / descendant selectors, not just `#id`).
-    for (const id of resolveSelectorElementIds(anim.targetSelector, doc)) {
+    for (const id of resolveSelectorElementIds(anim.targetSelector, targets)) {
       // kfData is already resolved (real keyframes OR a synthesized flat
       // tween), so a flat tween joins the store like a keyframed one. No
       // property-group filter: this map must cover every tween the cache

@@ -1,5 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/config-schema.json",
+  // Resolve workspace exports as bun does, to their source: without it fallow took Studio's vite alias for
+  // @hyperframes/core/runtime-script in player source and reported a player -> studio package cycle.
+  "resolve": { "conditions": ["bun"] },
   "entry": [
     // IconButton, Tabs and cn are exported before their first consumer exists.
     "packages/studio/src/components/ui/index.ts",
@@ -47,6 +50,8 @@
     "packages/core/stubs/audio-fx-runtime-entry.ts",
     // And for the SVG selector alias installer compiled scene scripts carry.
     "packages/core/stubs/svg-selector-aliases-entry.ts",
+    // The player's cjs and iife builds alias @hyperframes/core/runtime-script to it in tsup.config.ts.
+    "packages/player/src/runtime-beside-bundle.ts",
     // In-page audit scripts read as raw strings and injected via
     // page.addScriptTag (see layout.ts / validate.ts) — referenced by file
     // path, never imported, so they have no import-graph referrer.

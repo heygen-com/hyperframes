@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { ensureRuntimeBeforeBodyScripts } from "./runtime-in-srcdoc.js";
+import {
+  carriesRuntime,
+  ensureRuntimeBeforeBodyScripts,
+  inlineRuntimeBeforeBodyScripts,
+  withBaseHref,
+} from "./runtime-in-srcdoc.js";
 
 const URL = "https://cdn.example/hyperframe.runtime.iife.js";
 
@@ -77,5 +82,51 @@ describe("ensureRuntimeBeforeBodyScripts", () => {
 
     expect(out.indexOf(URL)).toBeLessThan(out.indexOf("<body>"));
     expect(out.indexOf(URL)).toBeGreaterThan(out.indexOf("</header>"));
+  });
+});
+
+describe("carriesRuntime", () => {
+  it("reads a script's own src, not text inside another attribute's quoted value", () => {
+    expect(
+      carriesRuntime(`<script data-note="see src=/hyperframe.runtime.iife.js"></script>`),
+    ).toBe(false);
+    expect(
+      carriesRuntime(`<script data-note='a' src=/v1/hyperframe.runtime.iife.js></script>`),
+    ).toBe(true);
+  });
+});
+
+describe("inlineRuntimeBeforeBodyScripts", () => {
+  it("puts the runtime's text ahead of the script that reads variables", () => {
+    const out = inlineRuntimeBeforeBodyScripts(COMPONENT_PAGE, "window.__hyperframes = {};");
+
+    expect(out).toContain("<head><script>window.__hyperframes = {};</script>");
+    expect(out.indexOf("__hyperframes = {}")).toBeLessThan(out.indexOf("getVariables"));
+  });
+
+  it("adds no second copy to a page that links or inlines it", () => {
+    const linked = `<html><head><script src="${URL}"></script></head><body></body></html>`;
+    const inlined = inlineRuntimeBeforeBodyScripts(COMPONENT_PAGE, "window.__hyperframes = {};");
+
+    expect(inlineRuntimeBeforeBodyScripts(linked, "window.__hyperframes = {};")).toBe(linked);
+    expect(inlineRuntimeBeforeBodyScripts(inlined, "window.__hyperframes = {};")).toBe(inlined);
+  });
+});
+
+describe("withBaseHref", () => {
+  it("resolves the page's relative paths at the URL it came from, quoted safely", () => {
+    const out = withBaseHref("<html><head></head></html>", 'https://site.example/a b/"x".html');
+
+    expect(out).toBe(
+      '<html><head><base href="https://site.example/a b/&quot;x&quot;.html"></head></html>',
+    );
+  });
+
+  it("resolves a base the page names itself and puts it first", () => {
+    const page = '<html><head><base href="media/"></head></html>';
+
+    expect(withBaseHref(page, "https://site.example/film/")).toBe(
+      '<html><head><base href="https://site.example/film/media/"><base href="media/"></head></html>',
+    );
   });
 });

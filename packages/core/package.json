@@ -555,6 +555,12 @@
       "import": "./src/compiler/compositionSizeLimit.ts",
       "types": "./src/compiler/compositionSizeLimit.ts"
     },
+    "./compiler/html-tokens": {
+      "bun": "./src/compiler/htmlTokens.ts",
+      "node": "./dist/compiler/htmlTokens.js",
+      "import": "./src/compiler/htmlTokens.ts",
+      "types": "./src/compiler/htmlTokens.ts"
+    },
     "./compiler/html-document": {
       "bun": "./src/compiler/htmlDocument.ts",
       "node": "./dist/compiler/htmlDocument.js",
@@ -1086,6 +1092,10 @@
       "./compiler/composition-size-limit": {
         "import": "./dist/compiler/compositionSizeLimit.js",
         "types": "./dist/compiler/compositionSizeLimit.d.ts"
+      },
+      "./compiler/html-tokens": {
+        "import": "./dist/compiler/htmlTokens.js",
+        "types": "./dist/compiler/htmlTokens.d.ts"
       },
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",
