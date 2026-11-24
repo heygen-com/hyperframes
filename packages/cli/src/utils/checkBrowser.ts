@@ -223,7 +223,8 @@ async function copyWindows(
     [...pathnames].map(async (pathname) => {
       const seconds = used.get(pathname);
       if (seconds === undefined) return;
-      const sourcePath = resolve(projectDir, pathname.replace(/^\/+/, ""));
+      const sourcePath = projectLocalFile(projectDir, pathname);
+      if (!sourcePath) return;
       const window = await proxyWindowSeconds(sourcePath, seconds);
       if (window !== undefined) windows.set(sourcePath, window);
     }),

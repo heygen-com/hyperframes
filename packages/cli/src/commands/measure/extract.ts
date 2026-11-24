@@ -3,6 +3,7 @@
 // this way instead of drawing or generating them.
 import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { assertLiteralMediaOutput } from "@hyperframes/parsers/literal-media-input";
 import { makeOutputFolder } from "../../utils/outputFolder.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -10,6 +11,7 @@ import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
 import { jsonArg, num, roiArg, runMeasure, videoAndRoi, videoArg } from "../../measure/command.js";
 import {
+  ffmpegInput,
   Fix,
   frameAt,
   projectOf,
@@ -20,6 +22,7 @@ import {
 } from "../../measure/media.js";
 
 function encodeOnto(out: string, encode: (staged: string) => void): void {
+  assertLiteralMediaOutput(out);
   const staging = createStagingDir(dirname(out), ".hf-extract-");
   try {
     const staged = join(staging, basename(out));
@@ -116,7 +119,7 @@ export function cutClip(
   // seek time, which at some rates is the one before k0.
   encodeOnto(out, (staged) =>
     runFfmpeg([
-      ...["-y", "-i", info.path],
+      ...["-y", ...ffmpegInput(info.path)],
       ...[
         "-vf",
         `trim=start_frame=${k0}:end_frame=${k1},setpts=PTS-STARTPTS,${crop(roi)},format=yuv420p`,
@@ -168,8 +171,7 @@ export function cutSound(info: VideoInfo, from: number, to: number, out: string)
       "-y",
       "-ss",
       String(a),
-      "-i",
-      info.path,
+      ...ffmpegInput(info.path),
       "-t",
       String(b - a),
       "-vn",

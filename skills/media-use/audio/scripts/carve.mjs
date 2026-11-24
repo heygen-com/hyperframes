@@ -31,6 +31,7 @@ import * as carveApi from "./lib/audio-carve.mjs";
 import { isMainModule } from "./lib/main-module.mjs";
 import { isIndirectFormat, pinnedInput, probeFormat } from "./lib/media-input.mjs";
 import { projectPath } from "./lib/project-path.mjs";
+import { assertLiteralMediaPath } from "../../scripts/lib/literal-media-input.mjs";
 
 /** Sample rate the analysis runs at. Matches Studio's own decode rate, so the
  *  bands and envelopes come out the same either way. */
@@ -194,7 +195,7 @@ export function mediaSource(compDir, src) {
   if (!statSync(path, { throwIfNoEntry: false })?.isFile()) {
     throw new Error(`media ${shown} is not a file in the project`);
   }
-  carveApi.assertLiteralMediaInput(path);
+  assertLiteralMediaPath(path);
   return path;
 }
 

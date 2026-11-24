@@ -1,6 +1,7 @@
 // recording.mjs — the person's own voice recording as a voice line: converted to the engine's wav,
 // time-stretched by `speed` with the pitch kept, with word timings scaled to match.
 import "../../../scripts/lib/windows-exe-search.mjs";
+import { assertLiteralMediaPath } from "../../../scripts/lib/literal-media-input.mjs";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
@@ -34,6 +35,11 @@ export function recordingSource(hyperframesDir, audio) {
 
 /** src -> 44.1k mono wav at wavAbs, played `speed` times faster. Returns { ok, error? }. */
 export function stretchToWav(src, wavAbs, speed = 1) {
+  try {
+    assertLiteralMediaPath(src);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
   const stat = statSync(src, { throwIfNoEntry: false });
   if (!stat) return { ok: false, error: `recording not found: ${src}` };
   if (!stat.isFile()) return { ok: false, error: `recording is not a file: ${src}` };
