@@ -1,5 +1,5 @@
-// Studio's inline text editing, its formatting toolbar and text saves, mounted in the test page as the canvas wires them, over a file whose
-// writes the test decides: each lands, fails or waits, in the order they reach it.
+// Studio's inline text editing, its formatting toolbar and text saves, mounted in the test page as the canvas wires
+// them, over a file whose writes the test decides: each lands, fails or waits, in the order they reach it.
 import { createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
