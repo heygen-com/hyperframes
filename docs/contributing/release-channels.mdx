@@ -32,7 +32,19 @@ On the first run, `release:prepare` drafts missing changelog artifacts and exits
 
 See [Changelog process](/contributing/changelog-process) for the full workflow. For stable releases, `bun run set-version <version>` still enforces this checkpoint when maintainers run the lower-level release command directly.
 
-Push the release branch without its local tag, open a PR to `main`, and merge it after approval and CI. The publish workflow checks out the exact PR merge SHA, verifies it before publishing, creates the stable tag at that commit, publishes npm packages, and creates the GitHub release. Nothing waits for an approval after the merge: the reviewed release PR is the review.
+Push the release branch without its local tag, open a PR to `main`, and merge it after approval and CI.
+
+Queue it at the front, at the head that was approved:
+
+```bash
+gh api graphql \
+  -f query='mutation($id: ID!, $head: GitObjectID!) { enqueuePullRequest(input: { pullRequestId: $id, jump: true, expectedHeadOid: $head }) { mergeQueueEntry { position } } }' \
+  -f id="$(gh pr view <number> --json id -q .id)" -f head="$(gh pr view <number> --json headRefOid -q .headRefOid)"
+```
+
+A release queued behind other PRs fails its notes check when they land first: its notes no longer list every commit on `main`. Queued at the front, it is tested on the same `main` its notes were drafted from.
+
+The publish workflow checks out the exact PR merge SHA, verifies it before publishing, creates the stable tag at that commit, publishes npm packages, and creates the GitHub release. Nothing waits for an approval after the merge: the reviewed release PR is the review.
 
 If that workflow needs recovery, rerun its original merged-PR event. Stable tag pushes and manual dispatches do not publish, so recovery cannot select a different commit.
 
