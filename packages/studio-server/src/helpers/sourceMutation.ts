@@ -305,7 +305,6 @@ function stampNewChildIds(parent: Element): void {
   }
 }
 
-/** Code and page plumbing (script, style, template, meta, link): never the layer a person edits. */
 function isNonContentElement(el: Element): boolean {
   return EXCLUDED_TAGS.has(el.tagName.toLowerCase());
 }
@@ -320,8 +319,6 @@ export function patchElementInHtml(
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
   if (!el || !isHTMLElement(el)) return { html: source, matched: false };
-  // A patch edits a layer. Whatever named the target, one that resolves to code or page plumbing is
-  // not a layer, so the whole request is declined and the file stays as it is.
   if (isNonContentElement(el)) return { html: source, matched: false };
   const htmlEl = el;
   const originalHtml = wrappedFragment ? document.body.innerHTML || "" : document.toString();
