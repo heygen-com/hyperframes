@@ -203,6 +203,13 @@ describe.each(PARSERS)("sanitizeRichTextChildren (%s)", (_name, parse) => {
     expect(kept).not.toMatch(/position|\\|url\(|image-set\(/i);
   });
 
+  // fails without the fix: the resource-function check read inside quoted strings and dropped the family.
+  it("keeps a quoted font family whose name reads like a function", () => {
+    const out = clean(`<span style='font-family: "Image(Display)"; color: red'>x</span>`, parse);
+    expect(out).toContain("Image(Display)");
+    expect(out).toContain("color: red");
+  });
+
   it("removes a comment, which is neither text nor formatting", () => {
     expect(clean("a<!-- note -->b", parse)).toBe("ab");
   });

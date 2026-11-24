@@ -85,8 +85,8 @@ const OPAQUE_TAGS = new Set([
 ]);
 
 /** Anything that reaches out of the stylesheet, in a property that should not. */
-const UNSAFE_VALUE =
-  /(?:url|src|image|image-set|cross-fade|element|expression)\(|javascript:|vbscript:|@import|<\//i;
+const UNSAFE_VALUE = /javascript:|vbscript:|@import|<\//i;
+const RESOURCE_FUNCTION = /(?:url|src|image|image-set|cross-fade|element|expression)\(/i;
 
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
@@ -109,7 +109,8 @@ export function isRichTextFormattingStyle(property: string, value: string): bool
   return (
     FORMATTING_STYLE_PROPS.has(property.toLowerCase()) &&
     value.length > 0 &&
-    !UNSAFE_VALUE.test(value)
+    !UNSAFE_VALUE.test(value) &&
+    !RESOURCE_FUNCTION.test(withoutPlainStrings(value))
   );
 }
 
@@ -205,12 +206,14 @@ function filterStyle(style: string): string {
 }
 
 const PLAIN_STRING = /"[^"\\\n\r\f]*"|'[^'\\\n\r\f]*'/g;
+const withoutPlainStrings = (text: string) =>
+  text.replace(PLAIN_STRING, (string) => "_".repeat(string.length));
 // Outside plain strings: an escape, a stray or broken quote, a comment, a bracket no formatting value needs.
 const READ_UNLIKE_CSS = /[\\"'{}[\]]|\/\*/;
 
 /** Declarations split where a browser splits them, or null for text this split could read differently from CSS. */
 function splitDeclarations(style: string): string[] | null {
-  const bare = style.replace(PLAIN_STRING, (string) => "_".repeat(string.length));
+  const bare = withoutPlainStrings(style);
   if (READ_UNLIKE_CSS.test(bare) || !bracketsCloseWithoutSemicolon(bare)) return null;
   const declarations: string[] = [];
   let start = 0;
