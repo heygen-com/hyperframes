@@ -66,6 +66,10 @@ export function runFfmpeg(args: string[], input?: Buffer, cwd?: string, timeout?
   });
 }
 
+export function ffmpegInput(path: string): string[] {
+  return [...mediaInputFormatArgs(ffmpegBin(), path), "-i", path];
+}
+
 export function ffmpegToFile(args: string[], out: string, input?: Buffer): string {
   const work = createStagingDir(dirname(out), ".ffmpeg-");
   try {
@@ -99,7 +103,7 @@ export interface VideoInfo {
   hdr: boolean;
   transfer?: string;
   codec: string;
-  /** A file a composition names: each run reads it with render's demuxer list and stops after {@link GUARDED_RUN_MS}. */
+  /** A file a composition names: each run stops after {@link GUARDED_RUN_MS}. */
   guarded?: boolean;
 }
 
@@ -128,9 +132,20 @@ const rate = (text: string | undefined): number => {
 /** A sound's length in seconds. */
 export function probeSeconds(path: string): number {
   if (!existsSync(path)) throw new Fix(`no file at ${path}`, "pass a sound from the project");
+  const bin = ffprobeBin();
   const text = execFileSync(
-    ffprobeBin(),
-    ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", path],
+    bin,
+    [
+      "-v",
+      "error",
+      ...mediaInputFormatArgs(bin, path),
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "csv=p=0",
+      "--",
+      path,
+    ],
     { maxBuffer: MAX_BUFFER, windowsHide: true },
   ).toString();
   return Number(text) || 0;
@@ -201,23 +216,14 @@ function startsWithMp4Header(path: string): boolean {
 // fallow-ignore-next-line complexity
 export function probeVideo(path: string, { guarded = false } = {}): VideoInfo {
   if (!existsSync(path)) throw new Fix(`no file at ${path}`, missingFileFix(path));
+  const bin = ffprobeBin();
+  const formats = mediaInputFormatArgs(bin, path);
   let json: { streams?: ProbeStream[]; format?: { duration?: string } };
   try {
-    const bin = ffprobeBin();
     json = JSON.parse(
       execFileSync(
         bin,
-        [
-          "-v",
-          "error",
-          ...(guarded ? mediaInputFormatArgs(bin, path) : []),
-          "-show_streams",
-          "-show_format",
-          "-of",
-          "json",
-          "--",
-          path,
-        ],
+        ["-v", "error", ...formats, "-show_streams", "-show_format", "-of", "json", "--", path],
         {
           maxBuffer: MAX_BUFFER,
           windowsHide: true,
@@ -312,8 +318,7 @@ export function videoClip(
   return {
     input: [
       ...(start > 0 ? ["-ss", String(start)] : []),
-      "-i",
-      path,
+      ...ffmpegInput(path),
       ...(seconds !== undefined ? ["-t", String(seconds)] : []),
     ],
     filters: [],

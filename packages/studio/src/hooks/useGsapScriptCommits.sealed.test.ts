@@ -116,6 +116,43 @@ it("leaves the render to the group's last write", () => {
   expect(previewRequest.mock.calls[0]?.[2]).toMatchObject({ seek: false });
 });
 
+// A failed batch leaves a person the saved script re-run, as an open preview's one-miss batch does (the test of
+// applyPreviewSync's unsealed path, "one patch that misses falls the whole batch back to the reload").
+it("re-runs the saved script after a batch whose second patch misses", async () => {
+  const saved = {
+    ok: true,
+    scriptText: `window.__timelines["main"] = gsap.timeline().set("#a", { x: 50 });`,
+    before: "<html><body><div id='a'></div><div id='b'></div></body></html>",
+    after: "<html><body><div id='a'></div><div id='b'></div></body></html>",
+  };
+  previewRequest.mockImplementation(async (_iframe, kind) =>
+    kind === "patch-tweens" ? { patched: false } : { result: "applied" },
+  );
+  const reloadPreview = vi.fn();
+  applyPreviewSync(
+    iframe,
+    saved,
+    {
+      label: "Move animated layer (group)",
+      softReload: true,
+      instantPatches: [
+        { selector: "#a", change: { kind: "set" as const, props: { x: 50 } } },
+        { selector: "#b", change: { kind: "set" as const, props: { x: 2 } } },
+      ],
+    },
+    reloadPreview,
+  );
+
+  await vi.waitFor(() =>
+    expect(
+      previewRequest.mock.calls.map(([, kind]) => kind).filter((kind) => kind !== "gsap-snapshot"),
+    ).toEqual(["patch-tweens", "soft-reload"]),
+  );
+  const rerun = previewRequest.mock.calls.find(([, kind]) => kind === "soft-reload")?.[2];
+  expect(JSON.stringify(rerun)).toContain("x: 50");
+  expect(reloadPreview).not.toHaveBeenCalled();
+});
+
 // fails without the fix: a refused sealed patch remounted the whole preview instead of re-running the script.
 it("re-runs the saved script in place when the frame refuses a patch of a soft-reloadable edit", async () => {
   const saved = {

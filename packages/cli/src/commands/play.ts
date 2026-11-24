@@ -239,6 +239,7 @@ export async function registerCompositionRoute(
   // fallow-ignore-next-line complexity
   app.get("/composition/*", async (ctx) => {
     const reqPath = requestSubPath(ctx.req.url, "composition");
+    if (reqPath === null) return ctx.text("Not found", 404);
     const filePath = resolve(project.dir, reqPath);
 
     // Security: don't allow path traversal outside project dir. isSafePath

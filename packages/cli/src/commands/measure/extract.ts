@@ -10,6 +10,7 @@ import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
 import { jsonArg, num, roiArg, runMeasure, videoAndRoi, videoArg } from "../../measure/command.js";
 import {
+  ffmpegInput,
   Fix,
   frameAt,
   projectOf,
@@ -116,7 +117,7 @@ export function cutClip(
   // seek time, which at some rates is the one before k0.
   encodeOnto(out, (staged) =>
     runFfmpeg([
-      ...["-y", "-i", info.path],
+      ...["-y", ...ffmpegInput(info.path)],
       ...[
         "-vf",
         `trim=start_frame=${k0}:end_frame=${k1},setpts=PTS-STARTPTS,${crop(roi)},format=yuv420p`,
@@ -168,8 +169,7 @@ export function cutSound(info: VideoInfo, from: number, to: number, out: string)
       "-y",
       "-ss",
       String(a),
-      "-i",
-      info.path,
+      ...ffmpegInput(info.path),
       "-t",
       String(b - a),
       "-vn",

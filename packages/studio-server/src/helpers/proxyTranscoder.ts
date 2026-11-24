@@ -42,6 +42,7 @@ import { isProjectCacheFile, mkdirWithinProject, realpath, realProjectRoot } fro
  */
 
 export const PROXY_PARAMS_VERSION = "v7";
+const STILL_ENCODING = "jpeg-matrix";
 
 export const CACHE_DIR_NAME = ".transcode-cache";
 
@@ -1356,8 +1357,13 @@ export function resolveStill(
 ): Promise<string> {
   if (signal?.aborted) return Promise.reject(signal.reason);
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  const at = Math.max(0, Math.round(atSeconds * 10) / 10);
-  const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, `still@${at}`, box);
+  const at = Math.max(0, Math.floor(atSeconds * 10 + 1e-6) / 10);
+  const key = fastCopyKey(
+    source.sourcePath,
+    PROXY_PARAMS_VERSION,
+    `still-${STILL_ENCODING}@${at}`,
+    box,
+  );
   const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
   if (isProjectCacheFile(source.projectDir, cachePath)) {
     markCacheEntryUsed(cachePath);
@@ -1398,6 +1404,10 @@ function waitForStill(job: StillJob, cachePath: string, signal?: AbortSignal): P
   });
 }
 
+const SD_MATRICES = new Set(["bt470bg", "smpte170m"]);
+const browserMatrixOf = (colorSpace: string | undefined) =>
+  SD_MATRICES.has(colorSpace ?? "") ? "bt470bg" : "bt709";
+
 async function makeStill(
   source: CanonicalProxySource,
   at: number,
@@ -1412,7 +1422,8 @@ async function makeStill(
   if (metadata.durationSeconds !== undefined && at > metadata.durationSeconds) {
     throw new StillPastEndError();
   }
-  const filter = await buildVideoFilter(ffmpegPath, source.sourcePath, metadata, false, box);
+  const toJpegMatrix = `colorspace=all=bt709:iall=bt709:ispace=${browserMatrixOf(metadata.color.colorSpace)}:space=bt470bg`;
+  const filter = `${await buildVideoFilter(ffmpegPath, source.sourcePath, metadata, false, box)},${toJpegMatrix}`;
   mkdirWithinProject(source.projectDir, dirname(cachePath));
   const tempPath = join(dirname(cachePath), `.tmp-${randomUUID()}-${basename(cachePath)}`);
   try {
