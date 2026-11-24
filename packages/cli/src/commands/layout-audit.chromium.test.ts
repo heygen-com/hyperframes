@@ -309,6 +309,31 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     expect(await auditCodes(stage(sharedMask))).toContain("text_occluded");
   });
 
+  // fails without the fix: black and other opaque colours ending in ", 0)" read as transparent covers.
+  it.each([
+    { cover: "background:#000", occluded: true },
+    { cover: "background:rgb(200 30 0)", occluded: true },
+    { cover: "background:oklch(0 0 0 / 0)", occluded: false },
+    {
+      cover:
+        "background:repeating-linear-gradient(0deg, oklch(1 0 0 / .04) 0 1px, transparent 1px 4px)",
+      occluded: false,
+    },
+    {
+      cover: "background:radial-gradient(lab(100 0 0 / .9) 1px, transparent 1px) 0 0 / 38px 38px",
+      occluded: false,
+    },
+    {
+      cover: "background:#123;mask-image:linear-gradient(oklch(0 0 0 / 0), oklch(0 0 0 / 0))",
+      occluded: false,
+    },
+  ])("judges a cover with $cover by its paint", async ({ cover, occluded }) => {
+    const covering = `<div style="position:absolute;inset:0;${cover}"></div>`;
+    expect(
+      (await auditCodes(stage(heading(300, "Caption") + covering))).includes("text_occluded"),
+    ).toBe(occluded);
+  });
+
   it("reports text positioned outside the ancestor background", async () => {
     const codes = await auditCodes(
       gradientHeading('<span style="position:relative;top:150px">Gradient text</span>'),
