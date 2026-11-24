@@ -294,7 +294,7 @@ export function concatListInputArgs(concatListPath: string): string[] {
 
 /** What a render service lets a media input open: containers that name no other file. */
 export const SELF_CONTAINED_FORMATS =
-  "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
+  "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,caf,w64,wv,au,ac3,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
 
 // Demuxers that open other files or URLs on their own. hls and concat stay allowed: ffmpeg copies the
 // format whitelist into every nested open, so a list cannot reach these, and the folder walk confines its paths.
