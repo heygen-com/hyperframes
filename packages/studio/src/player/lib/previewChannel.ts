@@ -172,6 +172,30 @@ export async function previewComputedStyles(
   return read;
 }
 
+export async function previewComputedStylesOfEvery(
+  iframe: HTMLIFrameElement,
+  selector: string,
+  properties: string[],
+): Promise<{ matches: Array<Record<string, string> | null>; truncated: boolean } | null> {
+  const reply = await previewRequest(iframe, "computed-styles", {
+    selector,
+    every: true,
+    properties,
+  });
+  const matches: unknown = reply?.matches;
+  if (!Array.isArray(matches) || typeof reply?.truncated !== "boolean") return null;
+  const read = (entry: unknown) => {
+    if (typeof entry !== "object" || entry === null) return null;
+    const styles: Record<string, string> = {};
+    for (const name of properties) {
+      const value: unknown = Object.getOwnPropertyDescriptor(entry, name)?.value;
+      if (typeof value === "string" && value) styles[name] = value;
+    }
+    return styles;
+  };
+  return { matches: matches.map(read), truncated: reply.truncated };
+}
+
 export async function previewAssetsUnloaded(iframe: HTMLIFrameElement): Promise<boolean | null> {
   const reply = await previewRequest(iframe, "assets-unloaded", {});
   return typeof reply?.unloaded === "boolean" ? reply.unloaded : null;

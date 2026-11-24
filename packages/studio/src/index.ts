@@ -46,6 +46,7 @@ export {
 } from "./player";
 export { usePreviewIframeStore } from "./player/store/previewIframeStore";
 export {
+  previewComputedStylesOfEvery,
   previewDocumentCopy,
   previewEditingClient,
   previewFrameOpaque,
