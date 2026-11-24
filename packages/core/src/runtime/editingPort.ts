@@ -261,13 +261,25 @@ export type EditingDraftRotate =
   | { angle: number; route: "css" | "gsap" }
   | { angle: number; route: "transform"; value: string };
 export type { EditingDraftEnd };
+export const DRAFT_GSAP_PROPS = [
+  "x",
+  "y",
+  "opacity",
+  "scale",
+  "rotation",
+  "rotationX",
+  "rotationY",
+  "z",
+];
+export type EditingDraftProps = { seconds: number; values: Record<string, number> };
 /** A gesture's draft on one element: null puts that part back; an end keeps what is drawn or restores. */
 export type EditingDraft =
   | {
       handle: EditingElementHandle;
-      translate: { x: number; y: number } | null;
+      translate: { x: number; y: number; route?: "gsap" } | null;
       size: { width: number; height: number } | null;
       rotate?: EditingDraftRotate | null;
+      props?: EditingDraftProps | null;
     }
   | EditingDraftEnd;
 
@@ -509,6 +521,13 @@ const isRotateRoute = (value: unknown): value is Record<string, unknown> =>
     value.route === "transform" &&
     isTransformList(value.value));
 
+function draftTranslate(value: unknown): boolean {
+  if (!hasKeys(value, "route,x,y")) return draftPart(value, "x,y", -MAX_DRAFT_PX);
+  return (
+    value.route === "gsap" && isDraftPx(value.x, -MAX_DRAFT_PX) && isDraftPx(value.y, -MAX_DRAFT_PX)
+  );
+}
+
 function draftRotate(value: unknown): boolean {
   if (value === undefined || value === null) return true;
   if (!isRotateRoute(value)) return false;
@@ -522,14 +541,36 @@ function draftEntry(value: unknown): EditingDraft | null {
 }
 
 function drawnParts(value: Record<string, unknown>): boolean {
-  const { translate, size, rotate } = value;
-  if (!hasKeys(value, "handle,size,translate") && !hasKeys(value, "handle,rotate,size,translate"))
+  const { handle: _handle, translate, size, rotate, props, ...rest } = value;
+  if (Object.keys(rest).length || !("translate" in value) || !("size" in value)) return false;
+  const parts = [
+    draftTranslate(translate),
+    draftPart(size, "height,width", 0),
+    draftRotate(rotate),
+  ];
+  return !parts.includes(false) && draftPropsWithOneXYWriter(props, translate);
+}
+
+const isPropsShape = (
+  value: unknown,
+): value is { seconds: number; values: Record<string, unknown> } =>
+  hasKeys(value, "seconds,values") &&
+  isPlainRecord(value.values) &&
+  Number.isFinite(value.seconds) &&
+  (value.seconds as number) >= 0;
+
+const isDraftValue = ([key, value]: [string, unknown]) =>
+  DRAFT_GSAP_PROPS.includes(key) && isDraftPx(value, -MAX_DRAFT_PX);
+
+const setsPosition = (keys: string[]) => keys.includes("x") || keys.includes("y");
+
+function draftPropsWithOneXYWriter(value: unknown, translate: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (!isPropsShape(value)) return false;
+  const entries = Object.entries(value.values);
+  if (!entries.length || (translate !== null && setsPosition(entries.map(([key]) => key))))
     return false;
-  return (
-    draftPart(translate, "x,y", -MAX_DRAFT_PX) &&
-    draftPart(size, "height,width", 0) &&
-    draftRotate(rotate)
-  );
+  return entries.every(isDraftValue);
 }
 
 function draftList(params: unknown): EditingParams<"draft"> | null {

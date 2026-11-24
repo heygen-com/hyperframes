@@ -872,10 +872,8 @@ export function registerPreviewRoutes(
     const vars = previewVariablesFromRequest(c.req.query("variables"));
     if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
     const previewVariables = vars.values;
-    const compFile = resolveWithinProject(
-      project.dir,
-      requestSubPath(c.req.url, "projects/:id/preview/comp"),
-    );
+    const requested = requestSubPath(c.req.url, "projects/:id/preview/comp");
+    const compFile = requested === null ? null : resolveWithinProject(project.dir, requested);
     // The sub-composition document takes its head from the root.
     await recordPreviewReadsOff(project.dir, compFile ? [compFile, "index.html"] : ["index.html"]);
     if (!compFile || !existsSync(compFile) || !statSync(compFile).isFile()) {
@@ -953,6 +951,7 @@ export function registerPreviewRoutes(
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
     const subPath = requestSubPath(c.req.url, "projects/:id/preview");
+    if (subPath === null) return c.text("not found", 404);
     // Assets are read-only and should mirror the renderer: permit a path that
     // is lexically inside the project even if an explicit project symlink
     // targets a shared directory outside it. Composition source files still

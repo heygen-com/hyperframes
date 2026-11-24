@@ -17,6 +17,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { renameSync, rmSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
+import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 import { readFrames } from "./frameReader.js";
@@ -131,6 +132,7 @@ async function decoderTransposesDimensions(inputPath: string): Promise<boolean> 
       "-show_streams",
       "-print_format",
       "json",
+      ...mediaInputFormatArgs(ffprobePath, inputPath),
       "--",
       inputPath,
     ],
@@ -435,7 +437,10 @@ async function runPipeline(
 
   const decoder = spawnFfmpeg(
     ffmpegPath,
-    ["-loglevel", "error", "-i", inputPath, "-f", "rawvideo", "-pix_fmt", "rgb24", "-an", "-"],
+    [
+      ...["-loglevel", "error", ...mediaInputFormatArgs(ffmpegPath, inputPath), "-i", inputPath],
+      ...["-f", "rawvideo", "-pix_fmt", "rgb24", "-an", "-"],
+    ],
     "ffmpeg decoder",
     ["ignore", "pipe", "pipe"],
   );

@@ -2255,7 +2255,8 @@ async function inlineExternalFontStylesheets(
     const css = await fetchExternalStylesheetCss(href, fetchSignal);
     const fontFaceBlocks = css ? extractFontFaceBlocks(css) : [];
     if (fontFaceBlocks.length === 0) return;
-    const inlineStyle = `<style>/* Inlined external font stylesheet */\n${fontFaceBlocks.join("\n")}\n</style>`;
+    const fontCssWithLtAsCssEscape = fontFaceBlocks.join("\n").replace(/</g, "\\3c ");
+    const inlineStyle = `<style>/* Inlined external font stylesheet */\n${fontCssWithLtAsCssEscape}\n</style>`;
     try {
       budget.chargeGenerated(REMOTE_STYLESHEETS, inlineStyle.length);
     } catch (error) {

@@ -2,6 +2,7 @@
 // packages/core/src/mediaGradeAnalyzer.vendoredParity.test.ts guards behavior drift.
 import { execFileSync } from "node:child_process";
 import { basename, extname } from "node:path";
+import { assertLiteralMediaPath } from "./literal-media-input.mjs";
 
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff"]);
 const SAMPLE_FRAMES = 5;
@@ -258,6 +259,7 @@ export function analyzeMediaGrade(
   { ffmpegPath = "ffmpeg", ffprobePath = "ffprobe" } = {},
 ) {
   try {
+    assertLiteralMediaPath(mediaPath);
     const probe = probeMedia(mediaPath, ffprobePath);
     const isImage = IMAGE_EXT.has(extname(mediaPath).toLowerCase());
     const raw =

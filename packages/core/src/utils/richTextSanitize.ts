@@ -85,7 +85,8 @@ const OPAQUE_TAGS = new Set([
 ]);
 
 /** Anything that reaches out of the stylesheet, in a property that should not. */
-const UNSAFE_VALUE = /url\(|expression\(|javascript:|vbscript:|@import|<\//i;
+const UNSAFE_VALUE = /javascript:|vbscript:|@import|<\//i;
+const RESOURCE_FUNCTION = /(?:url|src|image|image-set|cross-fade|element|expression)\(/i;
 
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
@@ -108,7 +109,8 @@ export function isRichTextFormattingStyle(property: string, value: string): bool
   return (
     FORMATTING_STYLE_PROPS.has(property.toLowerCase()) &&
     value.length > 0 &&
-    !UNSAFE_VALUE.test(value)
+    !UNSAFE_VALUE.test(value) &&
+    !RESOURCE_FUNCTION.test(withoutPlainStrings(value))
   );
 }
 
@@ -190,7 +192,7 @@ function stripAttributes(element: Element): void {
 
 /** Keep only the allowlisted declarations, and only if their values are inert. */
 function filterStyle(style: string): string {
-  return splitDeclarations(style)
+  return (splitDeclarations(style) ?? [])
     .map((declaration) => {
       const colon = declaration.indexOf(":");
       if (colon === -1) return null;
@@ -203,42 +205,32 @@ function filterStyle(style: string): string {
     .join("; ");
 }
 
-function isQuoteDelimiter(char: string): char is "'" | '"' {
-  return char === "'" || char === '"';
-}
+const PLAIN_STRING = /"[^"\\\n\r\f]*"|'[^'\\\n\r\f]*'/g;
+const withoutPlainStrings = (text: string) =>
+  text.replace(PLAIN_STRING, (string) => "_".repeat(string.length));
+// Outside plain strings: an escape, a stray or broken quote, a comment, a bracket no formatting value needs.
+const READ_UNLIKE_CSS = /[\\"'{}[\]]|\/\*/;
 
-function nextParenthesisDepth(depth: number, char: string): number {
-  if (char === "(") return depth + 1;
-  if (char === ")") return Math.max(0, depth - 1);
-  return depth;
-}
-
-function isDeclarationSeparator(char: string, depth: number, quote: "'" | '"' | null): boolean {
-  return char === ";" && depth === 0 && quote === null;
-}
-
-/**
- * Split on the semicolons that separate declarations, not the ones inside a
- * value. `color: rgb(1, 2, 3)` is one declaration however many separators its
- * value contains.
- */
-function splitDeclarations(style: string): string[] {
+/** Declarations split where a browser splits them, or null for text this split could read differently from CSS. */
+function splitDeclarations(style: string): string[] | null {
+  const bare = withoutPlainStrings(style);
+  if (READ_UNLIKE_CSS.test(bare) || !bracketsCloseWithoutSemicolon(bare)) return null;
   const declarations: string[] = [];
-  let current = "";
-  let depth = 0;
-  let quote: "'" | '"' | null = null;
-  for (const char of style) {
-    if (char === quote) quote = null;
-    else if (quote === null && isQuoteDelimiter(char)) quote = char;
-    else if (isDeclarationSeparator(char, depth, quote)) {
-      declarations.push(current);
-      current = "";
-      continue;
-    } else if (quote === null) {
-      depth = nextParenthesisDepth(depth, char);
-    }
-    current += char;
+  let start = 0;
+  for (let end = bare.indexOf(";"); end !== -1; end = bare.indexOf(";", start)) {
+    declarations.push(style.slice(start, end));
+    start = end + 1;
   }
-  if (current.trim()) declarations.push(current);
-  return declarations;
+  declarations.push(style.slice(start));
+  return declarations.filter((declaration) => declaration.trim());
+}
+
+function bracketsCloseWithoutSemicolon(bare: string): boolean {
+  let depth = 0;
+  for (const char of bare) {
+    if (char === "(") depth++;
+    else if (char === ")") depth--;
+    if (depth < 0 || (depth > 0 && char === ";")) return false;
+  }
+  return depth === 0;
 }

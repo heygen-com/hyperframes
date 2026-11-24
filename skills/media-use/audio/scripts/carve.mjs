@@ -25,10 +25,13 @@
 
 import "../../scripts/lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { dirname, relative, resolve, sep } from "node:path";
 import * as carveApi from "./lib/audio-carve.mjs";
 import { isMainModule } from "./lib/main-module.mjs";
+import { isIndirectFormat, pinnedInput, probeFormat } from "./lib/media-input.mjs";
+import { projectPath } from "./lib/project-path.mjs";
+import { assertLiteralMediaPath } from "../../scripts/lib/literal-media-input.mjs";
 
 /** Sample rate the analysis runs at. Matches Studio's own decode rate, so the
  *  bands and envelopes come out the same either way. */
@@ -169,8 +172,40 @@ export function groupSourceRefusal(voices, bed, members) {
   return strays.length > 0 ? { group, reason: "mixed", ids: strays } : null;
 }
 
-/** Mono float PCM for one media file, via ffmpeg. */
+// A URL scheme, or a Windows drive name such as `C:` that a relative-looking name can start with.
+const SCHEME_OR_DRIVE = /^[a-z][a-z0-9+.-]*:/i;
+
+/**
+ * The file a composition's media `src` names. Only a relative name that lands on a regular file inside the
+ * composition's folder, with links resolved, is accepted. Absolute, UNC, drive, URL and climbing names, and
+ * files the project keeps private, throw before anything opens them.
+ */
+export function mediaSource(compDir, src) {
+  const shown = JSON.stringify(src);
+  const path = SCHEME_OR_DRIVE.test(src) ? null : projectPath(compDir, src);
+  if (!path) {
+    throw new Error(
+      `media ${shown} is outside the composition's folder; copy it into the project and name it from there`,
+    );
+  }
+  const rel = relative(realpathSync(compDir), path).split(sep).join("/");
+  if (carveApi.isStudioPrivatePath(src) || carveApi.isStudioPrivatePath(rel)) {
+    throw new Error(`media ${shown} is a private project file, so carve does not read it`);
+  }
+  if (!statSync(path, { throwIfNoEntry: false })?.isFile()) {
+    throw new Error(`media ${shown} is not a file in the project`);
+  }
+  assertLiteralMediaPath(path);
+  return path;
+}
+
+/** Mono float PCM for one media file, via ffmpeg reading that file alone. */
 function decode(path) {
+  const format = probeFormat(path);
+  if (!format) fail(`could not decode ${path}: ffmpeg cannot read it as media`);
+  if (isIndirectFormat(format)) {
+    fail(`${path} is a ${format} list that points at other files; give the media file itself`);
+  }
   let raw;
   try {
     raw = execFileSync(
@@ -178,8 +213,7 @@ function decode(path) {
       [
         "-v",
         "error",
-        "-i",
-        path,
+        ...pinnedInput(format, path),
         "-vn",
         "-ac",
         "1",
@@ -338,12 +372,21 @@ async function main() {
   );
 
   const profile = carveApi.carveProfile(args.strength);
+  // Every source is checked before any is decoded, so a refused name stops the carve with no ffmpeg run.
+  let voicePaths;
+  let bedPath = null;
+  try {
+    voicePaths = voices.map((v) => mediaSource(compDir, unescapeAttr(attrOf(v.tag, "src"))));
+    if (profile.duckDb > 0) bedPath = mediaSource(compDir, unescapeAttr(bedSrc));
+  } catch (error) {
+    fail(error.message);
+  }
   // Every voice summed onto the BED's clock before anything is measured. One
   // question — where and when is speech masking this bed — with one answer, even
   // when the answer comes from several people at different times.
   const voice = carveApi.mixCarveSources(
-    voices.map((v) => ({
-      samples: decode(resolve(compDir, unescapeAttr(attrOf(v.tag, "src")))),
+    voices.map((v, i) => ({
+      samples: decode(voicePaths[i]),
       offsetSeconds: startOf(v.tag) - startOf(bedTag),
     })),
     SAMPLE_RATE,
@@ -354,7 +397,7 @@ async function main() {
   // The level half of the carve needs both sides: "how far over the speech is this
   // bed" cannot be answered by listening to one of them. No offset — the mix is
   // already on the bed's clock.
-  const bed = profile.duckDb > 0 ? decode(resolve(compDir, unescapeAttr(bedSrc))) : null;
+  const bed = bedPath ? decode(bedPath) : null;
   const duck = bed ? carveApi.analyseCarveDuck(voice, bed, SAMPLE_RATE, profile, 0) : [];
 
   // Anything the author built by hand survives a carve; only the previous
