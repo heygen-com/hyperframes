@@ -41,6 +41,15 @@ type ShownStart = (
 const MAX_SETTLED_WAIT_FRAMES = 60;
 export { PRESS_WAIT_MAX_MS };
 
+const pollFirst = (
+  channel: HTMLIFrameElement | null,
+  press: WaitingPressState,
+  poll: () => void,
+) => {
+  if (channel) poll();
+  else press.frame = requestAnimationFrame(poll);
+};
+
 export function createPreviewGestureStarts(
   opts: UseDomEditOverlayGesturesOptions,
   moveActiveGesture: (e: React.PointerEvent<HTMLDivElement>) => void,
@@ -264,8 +273,7 @@ export function createPreviewGestureStarts(
       if (step === "drawn" && channel && pressed)
         opts.onBlockedMoveRef.current(pressed, unansweredMoveReason(channel));
     };
-    if (channel) poll();
-    else press.frame = requestAnimationFrame(poll);
+    pollFirst(channel, press, poll);
     return true;
   };
 
