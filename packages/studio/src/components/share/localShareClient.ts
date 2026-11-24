@@ -27,14 +27,16 @@ function isReviewNamed(value: Record<string, unknown>) {
     nullableText(value.reviewTitle)
   );
 }
+function optionalPaths(value: unknown): value is string[] | undefined {
+  return value === undefined || (Array.isArray(value) && value.every(text));
+}
 function isState(value: unknown): value is LocalShareState {
   return (
     record(value) &&
     ["not_shared", "link_off", "ready", "processing", "failed", "unavailable"].includes(
       String(value.state),
     ) &&
-    (value.excludedPrivatePaths === undefined ||
-      (Array.isArray(value.excludedPrivatePaths) && value.excludedPrivatePaths.every(text))) &&
+    optionalPaths(value.excludedPrivatePaths) &&
     optionalFailure(value.failure) &&
     isReviewNamed(value) &&
     nullableBoolean(value.changed) &&
