@@ -821,6 +821,20 @@ export interface RenderHandlers {
   queue: (c: Context) => Response;
 }
 
+const DEFAULT_MAX_CONCURRENT_RENDERS = 2;
+
+/** The semaphore ceiling: `NaN` or `0` would leave every render queued forever. */
+function resolveMaxConcurrentRenders(options: HandlerOptions, log: ProducerLogger): number {
+  const configured =
+    options.maxConcurrentRenders ??
+    Number(process.env.PRODUCER_MAX_CONCURRENT_RENDERS || DEFAULT_MAX_CONCURRENT_RENDERS);
+  if (Number.isInteger(configured) && configured >= 1) return configured;
+  log.warn(
+    `[server] maxConcurrentRenders ${String(configured)} is not a positive integer; using ${DEFAULT_MAX_CONCURRENT_RENDERS}`,
+  );
+  return DEFAULT_MAX_CONCURRENT_RENDERS;
+}
+
 /**
  * Create route handler functions for the producer server.
  *
@@ -836,8 +850,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
   const artifactTtlMs =
     options.artifactTtlMs ?? Number(process.env.PRODUCER_OUTPUT_ARTIFACT_TTL_MS || 15 * 60 * 1000);
   const store = createArtifactStore(artifactTtlMs);
-  const maxConcurrentRenders =
-    options.maxConcurrentRenders ?? Number(process.env.PRODUCER_MAX_CONCURRENT_RENDERS || 2);
+  const maxConcurrentRenders = resolveMaxConcurrentRenders(options, log);
   const renderSemaphore = new Semaphore(maxConcurrentRenders);
   const startTime = Date.now();
 
