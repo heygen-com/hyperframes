@@ -82,3 +82,96 @@ it.each(MODES)(
     });
   },
 );
+
+// Each word's colour as it paints, and the swatch and picker that must show it in both modes.
+const COLOURS = {
+  variable: { style: "--x: #00ff00; color: var(--x)", swatch: "rgb(0, 255, 0)", picker: "#00ff00" },
+  current: { style: "color: currentColor", swatch: "rgb(0, 0, 255)", picker: "#0000ff" },
+  named: { style: "color: red", swatch: "rgb(255, 0, 0)", picker: "#ff0000" },
+  alpha: {
+    style: "color: rgba(255, 0, 0, 0.5)",
+    swatch: "rgba(255, 0, 0, 0.5)",
+    picker: "#ff0000",
+  },
+  wide: { style: "color: oklch(0.7 0.4 150)", swatch: "oklch(0.7 0.4 150)", picker: "#00d600" },
+};
+const COLOURED = Object.entries(COLOURS)
+  .map(([id, { style }]) => `<span id="${id}" style="${style}">${id}</span>`)
+  .join(" ")
+  .replace(/(<span id="current"[^>]*>current<\/span>)/, '<span style="color: blue">$1</span>');
+
+async function colourReadings(mode: string, lie?: string) {
+  const { page: studio, frame } = await openStudio(browser, bundle, page(COLOURED), 2, mode);
+  try {
+    await studio.addStyleTag({ content: ".fixed { position: fixed; }" });
+    await studio.evaluate(
+      async (sealed, saved) => {
+        const w = window as unknown as Editing;
+        w.__hold = false;
+        const iframe = document.querySelector("iframe");
+        w.__text = w.hfStudio.mountTextEditing(iframe, sealed, saved, "t", () => {});
+        w.__text.controls().start((await w.__text.select()).element);
+      },
+      mode === "sealed",
+      file(COLOURED),
+    );
+    await frame.waitForFunction(() => document.getElementById("t")!.isContentEditable);
+    // A composition owns its frame, so it can make the colour the runtime reads as painted say anything.
+    if (lie)
+      await frame.evaluate((lie) => {
+        const computed = window.getComputedStyle.bind(window);
+        window.getComputedStyle = (element, pseudo) => {
+          const style = computed(element, pseudo);
+          const read = style.getPropertyValue.bind(style);
+          return Object.assign(Object.create(style), {
+            getPropertyValue: (name: string) => (name === "color" ? lie : read(name)),
+          });
+        };
+      }, lie);
+    const readings: Record<string, unknown> = {};
+    for (const id of Object.keys(COLOURS)) {
+      await frame.evaluate(() => getSelection()!.removeAllRanges());
+      await studio.waitForFunction(() => !document.querySelector("[data-inline-text-toolbar]"));
+      await frame.evaluate((id) => {
+        const range = document.createRange();
+        range.selectNodeContents(document.getElementById(id)!);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(range);
+      }, id);
+      await studio.waitForSelector("[data-inline-text-toolbar]");
+      readings[id] = await studio.evaluate(() => {
+        const bar = document.querySelector("[data-inline-text-toolbar]")!;
+        const swatch = bar.querySelector<HTMLElement>("span[aria-hidden]")!;
+        return {
+          swatch: getComputedStyle(swatch).backgroundColor,
+          picker: bar.querySelector<HTMLInputElement>('input[type="color"]')!.value,
+          drawn: swatch.getAttribute("style"),
+        };
+      });
+    }
+    return readings;
+  } finally {
+    await studio.close();
+  }
+}
+
+it.each(MODES)(
+  "a %s text edit's swatch and picker show each word's colour as it paints",
+  async (mode) => {
+    const expected = Object.fromEntries(
+      Object.entries(COLOURS).map(([id, { swatch, picker }]) => [
+        id,
+        { swatch, picker, drawn: expect.any(String) },
+      ]),
+    );
+    expect(await colourReadings(mode)).toEqual(expected);
+  },
+);
+
+it.each(["url(x)", "red; background: url(x)"])(
+  "a sealed frame that calls %s a colour gets none of it into Studio's swatch",
+  async (lie) => {
+    const readings = Object.values(await colourReadings("sealed", lie));
+    expect(readings.map((reading) => JSON.stringify(reading)).join()).not.toContain("url(");
+  },
+);

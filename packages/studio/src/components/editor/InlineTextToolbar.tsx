@@ -8,7 +8,7 @@ import {
   readInlineStyleSpread,
 } from "@hyperframes/core/inline-text-style";
 import type { TextEditSelection } from "@hyperframes/core/runtime/editing-port";
-import { formatCssColor, parseCssColor, resolvePickerColor } from "./colorValue";
+import { resolvePickerColor } from "./colorValue";
 import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 import { previewEditingClient } from "../../player/lib/previewChannel";
 import { previewTextEdit } from "../../player/lib/previewElements";
@@ -270,18 +270,16 @@ function placeOverSelection(
   );
 }
 
-/** A sealed frame's colours reach Studio's styles only as colours Studio parsed and wrote itself. */
+/** A sealed frame's colours reach Studio's styles only when they are colours, so nothing else, like a `url()`, can. */
 function frameColoursOnly(selection: TextEditSelection): TextEditSelection {
-  const colour = (value: string | null | undefined) => {
-    const parsed = value ? parseCssColor(value) : null;
-    return parsed ? formatCssColor(parsed) : null;
-  };
+  const colour = (value: string | null | undefined) =>
+    value && CSS.supports("color", value) ? value : null;
   const { color, ...styles } = selection.styles;
   const agreed = colour(color);
   return {
     ...selection,
     styles: agreed ? { ...styles, color: agreed } : styles,
-    colours: selection.colours.map(colour).filter((value) => value !== null),
+    colours: selection.colours.filter((value) => colour(value) !== null),
     painted: colour(selection.painted),
   };
 }

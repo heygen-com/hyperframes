@@ -147,7 +147,11 @@ try {
     }
     assert.ok(Math.abs(actual.alpha - channels[3]) < 0.000001, `color ${index} alpha`);
   }
-  assert.equal(results.darkParse, null, "light-dark() needs the element's colour scheme");
+  assert.deepEqual(
+    results.darkParse,
+    { red: 255, green: 0, blue: 0, alpha: 1 },
+    "the swatch reads light-dark() as it paints in the element's colour scheme",
+  );
   assert.equal(results.darkPicker, "#ff0000", "dark-scheme light-dark() picks what it paints");
   assert.equal(results.mixedPicker, "#ff0000", "the picker reads the element its colour came from");
   assert.equal(results.picker, "#00b9c3");

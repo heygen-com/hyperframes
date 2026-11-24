@@ -83,12 +83,3 @@ it("shows over a sealed frame's selection, and sends a press to the frame to sty
   act(() => frame.listeners.forEach((listener) => listener({ handle: HANDLE, selection: null })));
   expect(toolbar()).toBeNull();
 });
-
-it("draws only colours from a sealed frame, never what else it calls one", () => {
-  sealedToolbar();
-  const outside = "url(https://example.com/beacon.png)";
-  selected({ color: outside }, [outside], outside);
-  const swatch = toolbar()!.querySelector<HTMLElement>("span[aria-hidden]")!;
-  expect(swatch.getAttribute("style")).not.toContain("url(");
-  expect(toolbar()!.innerHTML).not.toContain("example.com");
-});
