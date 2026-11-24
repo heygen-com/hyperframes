@@ -253,6 +253,7 @@ async function downloadVideoBody(
   filename: string,
   videosDir: string,
   timeoutMs: number,
+  taken: Set<string>,
 ): Promise<string | null> {
   if (isPrivateUrl(srcUrl)) return null; // cheap pre-check; safeFetch re-checks every hop
   let ext = "";
@@ -286,7 +287,10 @@ async function downloadVideoBody(
     const body = Buffer.concat(chunks);
     const container = videoExtensionOf(body);
     if (!container) return null;
-    const safe = `${videoStem(filename)}${container}`;
+    const stem = videoStem(filename);
+    let safe = `${stem}${container}`;
+    for (let n = 2; taken.has(safe); n++) safe = `${stem}-${n}${container}`;
+    taken.add(safe);
     writeCaptureFileSync(join(videosDir, safe), body);
     return `assets/videos/${safe}`;
   } catch {
@@ -496,6 +500,7 @@ export async function captureVideoManifest(
   }> = [];
 
   const dlStart = Date.now();
+  const savedNames = new Set<string>();
   for (let vi = 0; vi < merged.length && vi < 20; vi++) {
     const iterationRemainingMs = liveRemainingMs(
       opts ?? {},
@@ -554,7 +559,13 @@ export async function captureVideoManifest(
     );
     const savedPath =
       downloadTimeoutMs > 0
-        ? await downloadVideoBody(v.src, v.filename, videoManifestDir, downloadTimeoutMs)
+        ? await downloadVideoBody(
+            v.src,
+            v.filename,
+            videoManifestDir,
+            downloadTimeoutMs,
+            savedNames,
+          )
         : null;
 
     // A network-only video with neither a preview nor a downloaded body carries
