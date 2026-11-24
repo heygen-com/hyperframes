@@ -185,7 +185,10 @@ export function useMotionPathData(
       // Position-only: never let a co-located size/scale tween shadow the path.
       const read = readRuntimeKeyframes(iframeRef.current, selector, undefined, ["x", "y"]);
       const base = read ? readGsapPositionFromIframe(iframeRef.current, selector) : null;
-      if (read && !base && sealedReadPending(iframeRef.current)) return;
+      if (read && !base && sealedReadPending(iframeRef.current)) {
+        if (resolvedForRef.current !== selector) setGeometry(null);
+        return;
+      }
       const next = buildMotionPathGeometry(read, base ?? undefined);
       setGeometry((prev) =>
         prev?.kind === next?.kind &&
