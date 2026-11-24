@@ -185,6 +185,23 @@ describe("a film past its load limit", () => {
     expect(readies.map((ready) => ready.readyMs)).toEqual([700]);
   });
 
+  // fails without the fix: a timeline posted before load left the navigation marked, so the next document the frame
+  // opened itself was timed from that old navigation.
+  it("reports no load time for a document the frame opens after a film that was ready before load", () => {
+    const { iframe, readies, postTimeline } = navigatedPlayer();
+    vi.advanceTimersByTime(1_200);
+    postTimeline();
+    iframe.dispatchEvent(new Event("load"));
+    vi.spyOn(iframe, "contentDocument", "get").mockReturnValue(
+      document.implementation.createHTMLDocument(),
+    );
+    vi.advanceTimersByTime(4_000);
+    iframe.dispatchEvent(new Event("load"));
+    vi.advanceTimersByTime(300);
+    postTimeline();
+    expect(readies.map((ready) => ready.readyMs)).toEqual([1_200, null]);
+  });
+
   it("reports no load time for a document the frame opened itself", () => {
     const { readies, postTimeline } = mountPlayer();
     vi.advanceTimersByTime(1_200);
