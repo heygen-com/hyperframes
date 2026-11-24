@@ -282,11 +282,19 @@ async function presentResult(result: ShareState, input: ShareAction, json: boole
 
 function presentSourceNotice(result: ShareState) {
   if (result.source.at === "ready" && result.source.excludedPrivatePaths?.length)
-    console.error(
-      `Left out of editable source: ${terminalText(escapeTabs(result.source.excludedPrivatePaths.join(", ")))}`,
-    );
+    printExcludedPaths(result.source.excludedPrivatePaths);
   if (!result.upToDate && result.source.at === "video_only")
     console.error(sourceNotice(result.source.reason));
+}
+
+function printExcludedPaths(paths: readonly string[]) {
+  const shown = paths.slice(0, 10);
+  const remaining = paths.length - shown.length;
+  const suffix = remaining > 0 ? ` (${remaining} more)` : "";
+  // The CLI output check recognizes terminalText at the print call.
+  console.error(
+    `Left out of editable source: ${terminalText(escapeTabs(shown.join(", ")))}${suffix}`,
+  );
 }
 
 async function presentSuccessfulResult(result: ShareState, input: ShareAction, json: boolean) {

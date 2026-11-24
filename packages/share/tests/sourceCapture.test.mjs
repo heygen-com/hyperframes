@@ -35,6 +35,19 @@ function captured(capture) {
   return /** @type {Extract<typeof capture, { at: "captured" }>} */ (capture);
 }
 
+test("a private directory and a symlink with the same name are reported by entry name", async (t) => {
+  const root = await project({ "index.html": "project", "actual/.ssh/config": "fixture" });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "linked"));
+  await symlink(join(root, "actual/.ssh"), join(root, "linked/.ssh"), "dir");
+  const result = captured(await captureProject(root));
+  assert.deepEqual(result.excludedPrivatePaths, ["actual/.ssh", "linked/.ssh"]);
+  assert.deepEqual(
+    result.manifest.document.files.map((file) => file.path),
+    ["index.html"],
+  );
+});
+
 test("a capture lists portable files with their hashes and leaves out what the policy excludes", async () => {
   const root = await project({
     "index.html": "<html></html>",

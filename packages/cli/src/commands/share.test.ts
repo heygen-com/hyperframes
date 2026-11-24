@@ -229,7 +229,11 @@ it.each([[[]], [["--json"]], [["--yes"]], [["--video-only"]]])(
   },
 );
 it("reports private source exclusions on stderr and preserves their names in JSON", async () => {
-  const excludedPrivatePaths = ["nested/.ssh/", "folder\tname/.env"];
+  const excludedPrivatePaths = [
+    "nested/.ssh",
+    "folder\tname/.env",
+    ...Array.from({ length: 10 }, (_, i) => `project-${i}/.env`),
+  ];
   mocks.run.mockResolvedValue({
     state: "ready",
     ready: true,
@@ -241,7 +245,7 @@ it("reports private source exclusions on stderr and preserves their names in JSO
   const args = ["--public", "--include-source"];
   await runCommand(command, { rawArgs: args });
   expect(err).toHaveBeenCalledWith(
-    "Left out of editable source: nested/.ssh/, folder\\x09name/.env",
+    `Left out of editable source: nested/.ssh, folder\\x09name/.env, ${excludedPrivatePaths.slice(2, 10).join(", ")} (2 more)`,
   );
   err.mockClear();
   await runCommand(command, { rawArgs: [...args, "--json"] });

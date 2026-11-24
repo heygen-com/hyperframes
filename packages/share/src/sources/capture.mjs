@@ -31,16 +31,14 @@ const HASHING_AT_ONCE = 4;
 
 /** Test a child of a directory so a file-only rule does not prune a folder of the same name.
  * @param {string} rel @param {boolean} directory */
-function excludedPrivateEntry(rel, directory) {
-  if (directory) return isPrivateSourcePath(`${rel}/x`) ? `${rel}/` : null;
-  return isPrivateSourcePath(rel) ? rel : null;
+function isPrivateEntry(rel, directory) {
+  return isPrivateSourcePath(directory ? `${rel}/x` : rel);
 }
 
 /** @param {string} root @param {string} rel @param {import("node:fs").Dirent} entry @param {Walk} walk
  * @param {string[]} dirs */
 async function visit(root, rel, entry, walk, dirs) {
-  const privatePath = excludedPrivateEntry(rel, entry.isDirectory());
-  if (privatePath) return void walk.excludedPrivatePaths.push(privatePath);
+  if (isPrivateEntry(rel, entry.isDirectory())) return void walk.excludedPrivatePaths.push(rel);
   if (entry.isDirectory()) {
     if (!excludedFolder(rel)) dirs.push(rel);
     return;

@@ -244,7 +244,7 @@ test("source preparation omits and reports private files and whole private folde
   for (const path of paths)
     assert.ok(
       result.excludedPrivatePaths.some(
-        (excluded) => path === excluded || (excluded.endsWith("/") && path.startsWith(excluded)),
+        (excluded) => path === excluded || path.startsWith(`${excluded}/`),
       ),
       path,
     );
