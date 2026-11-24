@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadLimitMs, timelineNotFound } from "./composition-probe.js";
+
+const LIMIT = loadLimitMs();
 
 // The player's own runtime, standing in for core's 750 KB build. Its "</script>" must not end the inlined script.
 const RUNTIME = 'window.__hyperframes = { built: "</script>" };';
@@ -167,6 +170,50 @@ describe("a sealed player brings its own runtime", () => {
 
     await vi.waitFor(() => expect(el.iframeElement.src).toBe(sameSite()));
     expect(el.iframeElement.hasAttribute("srcdoc")).toBe(false);
+  });
+
+  // fails without the fix: the page was shown as srcdoc, under the embedding page's policy instead of its own.
+  it("loads a page whose response sets its own security policy by src, under that policy", async () => {
+    for (const headers of [
+      { "content-security-policy": "script-src 'self'" },
+      { "x-frame-options": "SAMEORIGIN" },
+    ]) {
+      fetchMock.mockResolvedValueOnce(new Response(page(), { headers }));
+      const el = player({ "sandbox-origin": "", src: sameSite() });
+
+      await vi.waitFor(() => expect(el.iframeElement.src).toBe(sameSite()));
+      expect(el.iframeElement.hasAttribute("srcdoc")).toBe(false);
+      document.body.replaceChildren();
+    }
+  });
+
+  // fails without the fix: the load clock started only once the frame was written, so a fetch that never answered
+  // left a blank player with no error at all.
+  it("reports the load limit once while its own site's fetch is still pending", async () => {
+    vi.useFakeTimers();
+    try {
+      let answer: (response: Response) => void = () => {};
+      fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+      const el = player({ "sandbox-origin": "", src: sameSite() });
+      const errors: string[] = [];
+      el.addEventListener("error", (event) =>
+        errors.push((event as CustomEvent<{ message: string }>).detail.message),
+      );
+
+      await vi.advanceTimersByTimeAsync(LIMIT - 1);
+      expect(errors).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(errors).toEqual([timelineNotFound(LIMIT, true)]);
+
+      answer(new Response(page()));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(el.iframeElement.getAttribute("srcdoc")).toContain("built:");
+      (el as Player & { _onIframeLoad(): void })._onIframeLoad();
+      await vi.advanceTimersByTimeAsync(LIMIT);
+      expect(errors).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows nothing from a fetch that answers after the player moved to another composition", async () => {
