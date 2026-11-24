@@ -30,6 +30,19 @@
  *   timers whose callback is the page's script or no script (a builtin, a
  *   bound function), read from its closure over DevTools; other targets the
  *   page opened (`window.open`).
+ *
+ * The census's reads collect garbage, and a `FinalizationRegistry` whose
+ * target that frees runs its cleanup: a builtin bound to an element (its
+ * `remove`) changes the page with no page script on the stack, and once
+ * the cleanup has dropped the element that held it the registry itself is
+ * garbage, gone before a later read could see it. So the heap snapshot is
+ * the census's first read: every registry that can still run a cleanup is
+ * live in it (its cleanup runs as a task, after the snapshot), and is
+ * matched by its cleanup like any other. And the page itself (its DOM and
+ * open shadow roots, attributes and text, form values, scroll offsets and
+ * style sheet rules) is digested before the census and again after it,
+ * once the tasks it queued have run: any change declines
+ * (`LoadCensus.changed`).
  */
 
 import { type CaptureSession, getCdpSession } from "@hyperframes/engine";
@@ -39,6 +52,7 @@ import type { RemoteObjectLike } from "./nativeCallbacks.js";
 import {
   FINALIZATION_REGISTRY,
   findObserverCallbacks,
+  type HeapSnapshot,
   OBSERVER_TYPES,
   type ObserverCallbacks,
   takeHeapSnapshot,
@@ -61,6 +75,8 @@ export interface LoadCensus {
   counts: ReadonlyMap<string, number>;
   /** Every live observer by its callback. */
   observers: readonly ObserverCallback[];
+  /** How the page changed while its census was read (garbage collection ran page-visible work), or null. */
+  changed: string | null;
 }
 
 /** The capture's `refs` whose live instances are counted exactly. */
@@ -90,6 +106,66 @@ async function countInDocument(): Promise<{ customElements: number; serviceWorke
   const serviceWorkers = container ? (await container.getRegistrations()).length : -1;
   return { customElements, serviceWorkers };
 }
+
+/**
+ * A digest of what the page shows and holds that a builtin could change
+ * with no page script (see the module comment); runs in the page's
+ * isolated world, after `yields` task turns.
+ */
+// fallow-ignore-next-line complexity
+export async function digestPage(yields: number): Promise<string> {
+  for (let i = 0; i < yields; i++) {
+    await new Promise<void>((done) => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = () => done();
+      channel.port2.postMessage(0);
+    });
+  }
+  let hash = 0x811c9dc5;
+  let parts = 0;
+  const add = (text: string) => {
+    for (let i = 0; i < text.length; i++) {
+      hash = Math.imul(hash ^ text.charCodeAt(i), 16777619) >>> 0;
+    }
+    hash = Math.imul(hash ^ 0x1f, 16777619) >>> 0;
+    parts++;
+  };
+  const sheets = (root: Document | ShadowRoot) => {
+    for (const sheet of [...Array.from(root.styleSheets), ...root.adoptedStyleSheets]) {
+      try {
+        for (const rule of Array.from(sheet.cssRules)) add(rule.cssText);
+      } catch {
+        add("unreadable sheet");
+      }
+      add(`sheet ${sheet.disabled}`);
+    }
+  };
+  const roots: Array<Document | ShadowRoot> = [document];
+  for (let r = 0; r < roots.length; r++) {
+    const root = roots[r] as Document | ShadowRoot;
+    add(`root ${r}`);
+    sheets(root);
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ALL);
+    for (let node: Node | null = walker.currentNode; node; node = walker.nextNode()) {
+      add(node.nodeName);
+      if (node instanceof CharacterData) add(node.data);
+      if (!(node instanceof Element)) continue;
+      for (const attribute of Array.from(node.attributes))
+        add(`${attribute.name}=${attribute.value}`);
+      if (node.scrollTop || node.scrollLeft) add(`scroll ${node.scrollTop} ${node.scrollLeft}`);
+      if (node instanceof HTMLInputElement) add(`value ${node.value} ${node.checked}`);
+      if (node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) {
+        add(`value ${node.value}`);
+      }
+      if (node.shadowRoot) roots.push(node.shadowRoot);
+    }
+  }
+  add(`window scroll ${scrollX} ${scrollY}`);
+  return `${parts}:${hash.toString(16)}`;
+}
+
+/** Task turns the page gets after the census, so cleanups its garbage collection queued have run. */
+const SETTLE_TURNS = 4;
 
 /** Live instances of the constructor the capture holds as `ref`; -1 when the browser has none. */
 async function instancesOf(world: MainWorld, ref: string): Promise<number> {
@@ -210,11 +286,11 @@ async function openedTargets(page: Page): Promise<number> {
  * observers run no script and are left out.
  */
 async function readObservers(
-  page: Page,
+  snapshot: HeapSnapshot,
   world: MainWorld,
   origins: ScriptOriginRecord,
 ): Promise<ObserverCallback[]> {
-  const { scripted } = findObserverCallbacks(await takeHeapSnapshot(await getCdpSession(page)));
+  const { scripted } = findObserverCallbacks(snapshot);
   for (const type of [...OBSERVER_TYPES, FINALIZATION_REGISTRY]) {
     const wrappers = await instancesOf(world, type);
     const found = scripted.filter((observer) => observer.type === type).length;
@@ -248,6 +324,9 @@ export async function readLoadCensus(
   world: MainWorld,
   origins: ScriptOriginRecord,
 ): Promise<LoadCensus> {
+  const before = await evaluateIsolated(page, digestPage, 0);
+  // First: the census's first garbage collection, so every live registry is in it (module comment).
+  const snapshot = await takeHeapSnapshot(await getCdpSession(page));
   const counts = new Map<string, number>();
   for (const ref of COUNTED_INSTANCES)
     counts.set(`${ref} instances`, await instancesOf(world, ref));
@@ -258,7 +337,13 @@ export async function readLoadCensus(
   await countQueue(world, origins, rafQueue, "animation-frame callbacks", counts);
   await countQueue(world, origins, timerQueue, "film-time timers", counts);
   counts.set("targets the page opened", await openedTargets(page));
-  return { counts, observers: await readObservers(page, world, origins) };
+  const observers = await readObservers(snapshot, world, origins);
+  const after = await evaluateIsolated(page, digestPage, SETTLE_TURNS);
+  const changed =
+    after === before
+      ? null
+      : "the page changed while its load census was read (garbage collection ran a cleanup that changed it)";
+  return { counts, observers, changed };
 }
 
 /** `a MutationObserver`, `an IntersectionObserver`. */

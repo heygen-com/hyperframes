@@ -112,6 +112,7 @@ async function readPageState(
     }
     const foreign = findForeignObserver(census);
     if (foreign) return seekCallback(foreign);
+    if (census.changed) return seekCallback(census.changed);
     if (watch.role === "capture" && analysisCensus) {
       const differs = compareLoadCensus(analysisCensus, census);
       if (differs) return seekCallback(differs);

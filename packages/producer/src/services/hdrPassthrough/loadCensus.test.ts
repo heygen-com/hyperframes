@@ -11,6 +11,7 @@ const observer = (
 const census = (counts: Record<string, number>, observers: ObserverCallback[] = []) => ({
   counts: new Map(Object.entries(counts)),
   observers,
+  changed: null,
 });
 
 describe("compareLoadCensus", () => {

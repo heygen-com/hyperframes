@@ -11,7 +11,8 @@ import puppeteer, { type Browser, type Page } from "puppeteer";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { VIRTUAL_TIME_SHIM } from "../fileServer.js";
 import { getCdpSession } from "@hyperframes/engine";
-import type { LoadCensus } from "./loadCensus.js";
+import { evaluateIsolated } from "./isolatedWorld.js";
+import { digestPage, type LoadCensus } from "./loadCensus.js";
 import { inspectPageContent, inspectPageState, loadCensusOf } from "./overlayPageGates.js";
 import {
   armPageCodeWatch,
@@ -377,6 +378,67 @@ describe("the overlay page gates in Chrome", { timeout: 60_000 }, () => {
       reason: "seek_callback",
       detail: expect.stringContaining(detail),
     });
+  });
+
+  // Its target is freed and its cleanup removes the element that holds it (or holds a child that
+  // does), which nothing else references: run by the census's first garbage collection, the
+  // registry is garbage before a later read could see it. On a page loaded with no debugger, as
+  // the capture page is.
+  it.each([
+    [
+      "held by the element it removes",
+      "(function () { var box = document.createElement('div'); box.id = 'box'; box.textContent = 'STILL HERE'; document.body.appendChild(box); var fr = new FinalizationRegistry(Element.prototype.remove.bind(box)); box.fr = fr; var t = {}; window.t = t; fr.register(t, undefined); })(); window.t = null;",
+    ],
+    [
+      "held by a child of the element it removes",
+      "(function () { var box = document.createElement('div'); box.id = 'box'; box.textContent = 'STILL HERE'; document.body.appendChild(box); var wrap = document.createElement('span'); box.appendChild(wrap); var fr = new FinalizationRegistry(Element.prototype.remove.bind(box)); wrap.fr = fr; var t = {}; window.t = t; fr.register(t, undefined); })(); window.t = null;",
+    ],
+  ])(
+    "sees a FinalizationRegistry that drops itself, %s, and the change it made",
+    async (_name, code) => {
+      await load({ body: inline(code) }, 150, "capture");
+      const none: LoadCensus = { counts: new Map(), observers: [], changed: null };
+      expect(await state(none)).toMatchObject({
+        reason: "seek_callback",
+        detail: expect.stringContaining("a FinalizationRegistry whose callback runs no script"),
+      });
+      const census = loadCensusOf(page as never);
+      expect(census?.observers).toContainEqual({
+        type: "FinalizationRegistry",
+        origin: "no script",
+        function: "",
+      });
+      // The census's garbage collection did run the cleanup, and the census saw the page change.
+      expect(await page.evaluate(() => document.getElementById("box"))).toBeNull();
+      expect(census?.changed).toContain("the page changed while its load census was read");
+    },
+  );
+
+  it("digests every change a builtin could make with no page script", async () => {
+    await load({
+      style: "#cue { color: red; } #scroller { overflow: scroll; height: 20px; }",
+      body: '<input id="field" value="a"><div id="scroller"><div style="height: 200px">x</div></div>',
+    });
+    const digest = () => evaluateIsolated(page as never, digestPage, 1);
+    const unchanged = await digest();
+    expect(await digest()).toBe(unchanged);
+    const changes = [
+      "document.getElementById('cue').setAttribute('data-x', '1')",
+      "document.getElementById('cue').firstChild.data = 'Bye'",
+      "document.getElementById('field').value = 'b'",
+      "document.getElementById('scroller').scrollTop = 30",
+      "document.styleSheets[0].deleteRule(0)",
+      "document.getElementById('cue').remove()",
+      "document.body.attachShadow({ mode: 'open' }).innerHTML = '<b>s</b>'",
+      "document.body.shadowRoot.firstChild.textContent = 't'",
+    ];
+    let previous = unchanged;
+    for (const change of changes) {
+      await page.evaluate(change);
+      const next = await digest();
+      expect(next, change).not.toBe(previous);
+      previous = next;
+    }
   });
 
   describe("on the capture page", () => {
