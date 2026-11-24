@@ -467,8 +467,8 @@ describe("playlistLeavesItsFolder reads an ffconcat list only as ffmpeg reads it
     withBeside(writeFixture("clip.ffconcat", `ffconcat version 1.0\n${body}`), ...beside);
 
   it.each([
-    ["a file line after a lone carriage return", "file part.mp4\rfile ../other/out.mp4\n"],
-    ["a file line after a NUL", "file part.mp4\0file ../other/out.mp4\n"],
+    ["a file line after a comment and a lone carriage return", "#\rfile ../other/out.mp4\n"],
+    ["a file line after a comment and a NUL", "#\0file ../other/out.mp4\n"],
     ["a carriage return between file and the name", "  file \r\t../other/out.mp4\n"],
     ["a quote inside a bare name", "file part'.mp4' x\n"],
     ["a quoted run followed by more name", "file 'part'.mp4\n"],
@@ -499,6 +499,13 @@ describe("playlistLeavesItsFolder reads an ffconcat list only as ffmpeg reads it
   ])("keeps %s", async (_name, body) => {
     expect(await playlistLeavesItsFolder(list(body, "part.mp4", "part 1.mp4"))).toBe(false);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "refuses a backslash in a bare name even when that name is there",
+    async () => {
+      expect(await playlistLeavesItsFolder(list("file a\\b.mp4\n", "a\\b.mp4"))).toBe(true);
+    },
+  );
 
   it.skipIf(process.platform === "win32")(
     "keeps a backslash inside quotes as written, as ffmpeg does",
