@@ -23,23 +23,44 @@ const scriptRuns: string[] = [];
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
   const fs = await import("node:fs");
-  const execFileSync = (cmd: string, args: string[]) => {
-    if (args[0] === "--version") return "Python 3.11.0";
-    if (args[0] === "-c") return "";
-    if (cmd === "which" || cmd === "where") return "/usr/bin/python3\n";
-    if (args[3] === "quiet-exit")
-      throw Object.assign(new Error(`Command failed: python ${args.join(" ")}`), {
+  const failed = (message: string, more: object) => Object.assign(new Error(message), more);
+  // What the script does for each text; any other text writes the audio and reports it.
+  const scripted: Record<string, (staged: string, args: string[]) => void> = {
+    "quiet-exit": (_staged, args) => {
+      throw failed(`Command failed: python ${args.join(" ")}`, {
         stderr: "",
         status: null,
         signal: "SIGKILL",
       });
-    if (args[3] === "no-start")
-      throw Object.assign(new Error("spawn E2BIG"), { stderr: undefined });
-    scriptRuns.push(args[6]!);
-    if (args[3] !== "no-file") fs.writeFileSync(args[6]!, AUDIO);
-    if (args[3] === "fail") throw Object.assign(new Error("Command failed"), { stderr: "boom" });
+    },
+    // A folder at the staged name: removing it as a file is refused.
+    "fail-unremovable": (staged) => {
+      fs.mkdirSync(staged);
+      throw failed("Command failed", { stderr: "boom" });
+    },
+    "no-start": () => {
+      throw failed("spawn E2BIG", { stderr: undefined });
+    },
+    "no-file": (staged) => void scriptRuns.push(staged),
+    fail: (staged) => {
+      scriptRuns.push(staged);
+      fs.writeFileSync(staged, AUDIO);
+      throw failed("Command failed", { stderr: "boom" });
+    },
+  };
+  const probes: Record<string, string> = { "--version": "Python 3.11.0", "-c": "" };
+  const execFileSync = (cmd: string, args: string[]) => {
+    if (cmd === "which" || cmd === "where") return "/usr/bin/python3\n";
+    if (args[0]! in probes) return probes[args[0]!];
+    const staged = args[6]!;
+    const run = scripted[args[3]!];
+    if (run) run(staged, args);
+    else {
+      scriptRuns.push(staged);
+      fs.writeFileSync(staged, AUDIO);
+    }
     return JSON.stringify({
-      outputPath: args[6],
+      outputPath: staged,
       sampleRate: 24000,
       durationSeconds: 1,
       langApplied: true,
@@ -150,6 +171,12 @@ describe("synthesize: the output file", () => {
       expect(readFileSync(other, "utf8")).toBe("kept");
     },
   );
+
+  it("reports the script's failure when its staged file cannot be removed", async () => {
+    await expect(synthesize("fail-unremovable", output)).rejects.toThrow(
+      "Speech synthesis failed\nboom",
+    );
+  });
 
   it("says why when the script could not be started", async () => {
     await expect(synthesize("no-start", output)).rejects.toThrow(

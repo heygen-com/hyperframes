@@ -166,6 +166,14 @@ function quietFailure(err: unknown): string {
     : `The script was stopped by ${String(signal)}`;
 }
 
+function removeStaged(path: string): void {
+  try {
+    rmSync(path, { force: true, maxRetries: 3 });
+  } catch {
+    // a staged file that will not go must not replace the run's own result or error
+  }
+}
+
 function regularFileMode(path: string): number | undefined {
   try {
     const stats = lstatSync(path);
@@ -301,6 +309,6 @@ export async function synthesize(
     const detail = reason ? `\n${reason}` : "";
     throw new Error(`Speech synthesis failed${detail}`);
   } finally {
-    rmSync(staged, { force: true, maxRetries: 3 });
+    removeStaged(staged);
   }
 }
