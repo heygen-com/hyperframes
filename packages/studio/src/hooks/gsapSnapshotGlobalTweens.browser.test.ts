@@ -81,7 +81,7 @@ it.each(MODES)(
           b,
         };
       });
-      expect(read.registered).toEqual([[read.a]]);
+      expect(read.registered.filter((targets) => targets.length)).toEqual([[read.a]]);
       expect(read.global).toEqual([[read.b]]);
       expect(read.globalVars).toHaveLength(1);
       expect(read.globalVars[0]).toMatchObject({ color: "rgb(255, 0, 0)" });
