@@ -433,7 +433,7 @@ export function injectTagsAtHeadStart(html: string, tags: string): string {
 
 /**
  * Where a tag that must run before everything else goes: just past the
- * document's own `<head…>`, else past `<html…>`, else past the doctype, else 0.
+ * document's own `<head…>`, else past `<html…>`, else past the doctype, else the start.
  * Never before the doctype, because content there puts the page in quirks mode.
  *
  * The prefix is read the way a browser tokenizes it, so "<head" inside an
@@ -442,8 +442,9 @@ export function injectTagsAtHeadStart(html: string, tags: string): string {
  * first thing that is not whitespace, a comment, a declaration or `<html…>`.
  */
 export function headContentStart(html: string): number {
-  let at = 0;
+  // A byte-order mark only counts as one while it is the first thing in the file.
   let cursor = html.charCodeAt(0) === 0xfeff ? 1 : 0;
+  let at = cursor;
   for (;;) {
     const prolog = skipProlog(html, cursor);
     at = Math.max(at, prolog.doctypeEnd);

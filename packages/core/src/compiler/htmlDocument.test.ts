@@ -473,6 +473,8 @@ describe("headContentStart", () => {
     ["<!doctype html><title><head></title>", "<!doctype html>"],
     ["<html a='<head>x", ""],
     ["<headless><head>x", ""],
+    ["\uFEFF<div>x", "\uFEFF"],
+    ["\uFEFF<!doctype html><html><head>x", "\uFEFF<!doctype html><html><head>"],
   ])("reads %j up to the end of its own head start tag", (html, before) => {
     expect(headContentStart(html)).toBe(before.length);
   });
