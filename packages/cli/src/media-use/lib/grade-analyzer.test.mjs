@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
@@ -293,4 +293,16 @@ test("grade analysis refuses a file whose name reads as an ffmpeg pattern", () =
       }),
     /pattern of other files/,
   );
+});
+
+test("grade analysis reads no file a media-named list points at", { skip: FFMPEG_SKIP }, () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-grade-list-"));
+  try {
+    makeFrame(dir, "frame.png", "0x808080");
+    const list = join(dir, "clip.mp4");
+    writeFileSync(list, "ffconcat version 1.0\nfile 'frame.png'\n");
+    assert.throws(() => analyzeMediaGrade(list), /grade analysis failed/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
