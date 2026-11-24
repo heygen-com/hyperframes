@@ -23,16 +23,54 @@ export function recordPathInProject(projectDir, recordPath, path = nodePath) {
     : null;
 }
 
-/** The path of `path` inside the project once links are followed, or null when it is the project itself or leaves it. */
-export function insideProject(projectDir, path, { fs = nodeFs, pathApi = nodePath } = {}) {
-  const real = (at) => (fs.existsSync(at) ? fs.realpathSync(at) : at);
-  const inside = pathApi.relative(real(projectDir), real(path));
+const MAX_LINKS = 40;
+
+function relativeInside(root, full, pathApi) {
+  const inside = pathApi.relative(root, full);
   return inside &&
     inside !== ".." &&
     !inside.startsWith(`..${pathApi.sep}`) &&
     !pathApi.isAbsolute(inside)
     ? inside
     : null;
+}
+
+/** What `rest` (relative to `root`) names once its first link is read; undefined when no part of it is a link. */
+function afterFirstLink(root, rest, fs, pathApi) {
+  const parts = rest.split(pathApi.sep);
+  let at = root;
+  for (const [index, part] of parts.entries()) {
+    at = pathApi.join(at, part);
+    let stat;
+    try {
+      stat = fs.lstatSync(at);
+    } catch {
+      return undefined;
+    }
+    if (stat.isSymbolicLink())
+      return pathApi.resolve(pathApi.dirname(at), fs.readlinkSync(at), ...parts.slice(index + 1));
+  }
+  return undefined;
+}
+
+/**
+ * The path of `path` inside the project once links are followed, or null when it is the project itself or leaves it.
+ * Links are read, never followed, so nothing outside the project is touched (on Windows a link to a share signs in).
+ */
+export function insideProject(projectDir, path, { fs = nodeFs, pathApi = nodePath } = {}) {
+  const root = fs.existsSync(projectDir)
+    ? fs.realpathSync(projectDir)
+    : pathApi.resolve(projectDir);
+  const full = pathApi.resolve(path);
+  let rest =
+    relativeInside(pathApi.resolve(projectDir), full, pathApi) ??
+    relativeInside(root, full, pathApi);
+  for (let links = 0; rest !== null && links <= MAX_LINKS; links++) {
+    const target = afterFirstLink(root, rest, fs, pathApi);
+    if (target === undefined) return rest;
+    rest = relativeInside(root, target, pathApi);
+  }
+  return null;
 }
 
 /** Whether a manifest record can be handed back as is: its file is in the project, or it is an inline grade. */

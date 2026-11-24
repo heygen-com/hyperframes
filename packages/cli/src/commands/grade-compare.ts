@@ -437,10 +437,9 @@ function lutSourcePath(projectDir: string, lutSrc: string, label: string, typed 
   const path = typed
     ? resolveFromBase(projectDir, lutSrc)
     : recordPathInProject(projectDir, lutSrc);
-  if (path === null) throw outside();
+  if (path === null || (!typed && insideProject(projectDir, path) === null)) throw outside();
   if (!existsSync(path)) throw new Error(`LUT file not found for "${label}": ${path}`);
-  if (!typed && (insideProject(projectDir, path) === null || !statSync(path).isFile()))
-    throw outside();
+  if (!typed && !statSync(path).isFile()) throw outside();
   return path;
 }
 

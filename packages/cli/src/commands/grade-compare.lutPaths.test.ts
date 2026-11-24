@@ -84,9 +84,11 @@ describe("LUT paths from a grades file", () => {
     await expect(prepare(outside)).rejects.toThrow(/must be a file inside the project/);
   });
 
-  it("refuses a link in the project that leads out of it", async () => {
+  // fails without the fix: the link was checked with calls that follow it to its target first.
+  it("refuses a link in the project that leads out of it, reading only the link", async () => {
     fs.symlinkSync(outside, join(project, "linked.cube"));
     await expect(prepare("linked.cube")).rejects.toThrow(/must be a file inside the project/);
+    expect(calls.paths).not.toContain(join(project, "linked.cube"));
   });
 
   it.skipIf(process.platform === "win32")(
