@@ -3,7 +3,7 @@ import { statSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { findFfBinary, mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { setTimeout as sleep } from "node:timers/promises";
 import { downloadToFile } from "../../cloud/download.js";
@@ -112,7 +112,8 @@ async function encoded(path: string, dir: string, signal: AbortSignal): Promise<
   await runFile(
     ffmpeg,
     [
-      ...["-v", "error", "-y", "-i", path, "-map", `0:a:${audio.audioStream}`],
+      ...["-v", "error", "-y", ...mediaInputFormatArgs(ffmpeg, path), "-i", path],
+      ...["-map", `0:a:${audio.audioStream}`],
       ...["-vn", "-ac", "2", "-ar", "44100", "-b:a", "192k", out],
     ],
     { windowsHide: true, maxBuffer: 8 * 1024 * 1024, signal },

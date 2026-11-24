@@ -3,6 +3,7 @@ import type { Example } from "../_examples.js";
 import { jsonArg, runMeasure, videoArg } from "../../measure/command.js";
 import {
   ffmpegBin,
+  ffmpegInput,
   Fix,
   probeVideo,
   round,
@@ -60,7 +61,7 @@ function normalize(info: VideoInfo, out: string): { path: string; fps: string } 
   }
   makeOutputFolder(dirname(out));
   runFfmpeg([
-    ...["-y", "-i", info.path, "-vf", [...filters, "format=yuv420p"].join(",")],
+    ...["-y", ...ffmpegInput(info.path), "-vf", [...filters, "format=yuv420p"].join(",")],
     ...["-c:v", "libx264", "-crf", "12", "-preset", "medium", "-c:a", "aac", "-b:a", "192k", out],
   ]);
   return { path: out, fps };
