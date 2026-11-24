@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, rmSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import {
@@ -44,6 +44,13 @@ function compileTimeoutMs(): number {
 }
 
 let warnedMissingEntry = false;
+
+/** The temp file an ffmpeg run writes, when its last argument is one: what to remove if the run is cut off. */
+export function scratchOutputOf(spawnfile: string, args: readonly string[]): string | undefined {
+  const last = args.at(-1);
+  if (!/^ffmpeg(\.exe)?$/i.test(basename(spawnfile)) || !last) return undefined;
+  return /\.tmp-\d+-[\w-]+$/.test(basename(last)) ? last : undefined;
+}
 
 /**
  * The published build emits the compile worker beside this module. Bundles that inline the producer
@@ -102,6 +109,33 @@ export async function compileForRenderInWorker(
     const thread = new Worker(entry, {
       workerData: { projectDir, htmlPath, downloadDir, options: cloneable },
     });
+    // Children the worker started and that are still running, with the temp file an ffmpeg run writes, when it
+    // is inside this compile's own directories.
+    const children = new Map<number, string | undefined>();
+    const scratchRoots = [downloadDir, options.animatedGifCacheDir].flatMap((dir) =>
+      dir ? [resolvePath(dir)] : [],
+    );
+    const isScratch = (path: string) =>
+      scratchRoots.some((root) => {
+        const rel = relative(root, resolvePath(path));
+        return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+      });
+    // A child that exited without the thread reporting it was never waited on, so it stays a zombie of this process
+    // and its pid cannot be reused: killing a recorded pid never reaches another process.
+    const reapChildren = () => {
+      for (const [pid, output] of children) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // Already gone.
+        }
+        if (output) rmSync(output, { force: true });
+      }
+      children.clear();
+      process.off("exit", reapChildren);
+    };
+    // The threads end with the process, but their children would not.
+    process.once("exit", reapChildren);
     let settled = false;
     const settle = (finish: () => void) => {
       if (settled) return;
@@ -154,11 +188,20 @@ export async function compileForRenderInWorker(
         }
       },
     );
+    thread.on(
+      "message",
+      ({ type, pid, output }: { type: string; pid?: number; output?: string }) => {
+        if (pid === undefined) return;
+        if (type === "child") children.set(pid, output && isScratch(output) ? output : undefined);
+        else if (type === "childExit") children.delete(pid);
+      },
+    );
     thread.on("error", (error) => settle(() => reject(error)));
-    thread.on("exit", (code) =>
+    thread.on("exit", (code) => {
+      reapChildren();
       settle(() =>
         reject(new Error(`The compile worker exited with code ${code} before answering`)),
-      ),
-    );
+      );
+    });
   });
 }

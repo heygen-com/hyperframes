@@ -1,6 +1,6 @@
 // fallow-ignore-file complexity
 // fallow-ignore-file unused-class-member
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
   copyFileSync,
@@ -63,6 +63,15 @@ export class HeifToolUnavailableError extends Error {
   }
 }
 
+function abortError(): Error {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+const MAX_CONVERSION_CPU_SECONDS = 300;
+const MAX_CONVERSION_OUTPUT_BYTES = 256 * 1024 * 1024;
+
 const TOOL_FAILURE_RE =
   /(?:ffmpeg|ffprobe) not found|ENOENT|Option not found|Unrecognized option|Unknown decoder|Decoder \S+ not found/i;
 
@@ -70,6 +79,7 @@ export interface HeifTranscodeRequest {
   inputPath: string;
   outputPath: string;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface PrepareHeifImageInputsOptions {
@@ -80,6 +90,7 @@ export interface PrepareHeifImageInputsOptions {
   cacheDir?: string;
   sourceAssets?: Map<string, string>;
   timeoutMs?: number;
+  signal?: AbortSignal;
   transcode?: (input: HeifTranscodeRequest) => Promise<void>;
   allowOutsideFiles?: boolean;
   /** Leaves an image whose conversion failed as authored and reports it, instead of throwing. */
@@ -196,6 +207,9 @@ export async function convertHeifToJpeg(request: HeifTranscodeRequest): Promise<
       "-hide_banner",
       "-loglevel",
       "error",
+      // Self-enforced, so a conversion still ends if whatever supervises it is gone (see animatedGifPrep.ts).
+      "-timelimit",
+      String(MAX_CONVERSION_CPU_SECONDS),
       ...urlInputArgs(request.inputPath),
       "-i",
       request.inputPath,
@@ -204,14 +218,17 @@ export async function convertHeifToJpeg(request: HeifTranscodeRequest): Promise<
       "1",
       "-q:v",
       "2",
+      "-fs",
+      String(MAX_CONVERSION_OUTPUT_BYTES),
       "-f",
       "mjpeg",
       "-y",
       request.outputPath,
     ],
-    { timeout: request.timeoutMs ?? DEFAULT_TIMEOUT_MS },
+    { timeout: request.timeoutMs ?? DEFAULT_TIMEOUT_MS, signal: request.signal },
   );
   if (!result.success) {
+    if (request.signal?.aborted) throw abortError();
     throw (
       result.error ?? new Error(`ffmpeg exited ${result.exitCode}: ${result.stderr.slice(-300)}`)
     );
@@ -269,7 +286,8 @@ async function ensurePreparedJpeg(
   mkdirSync(dirname(outputPath), { recursive: true });
 
   if (!isUsableFile(cachePath)) {
-    const tmpPath = `${cachePath}.tmp-${process.pid}-${Date.now()}`;
+    // Worker threads share process.pid, so the uuid keeps two renders that miss the same cache entry apart.
+    const tmpPath = `${cachePath}.tmp-${process.pid}-${randomUUID()}`;
     const inlinePath = `${tmpPath}.heic`;
     const inputPath = source.path ?? inlinePath;
     try {
@@ -278,8 +296,13 @@ async function ensurePreparedJpeg(
         inputPath,
         outputPath: tmpPath,
         timeoutMs: options.timeoutMs,
+        signal: options.signal,
       });
       if (!isUsableFile(tmpPath)) throw new Error("conversion produced an empty file");
+      // ffmpeg ends at -fs as if it had finished; a capped file is cut short and must not be cached.
+      if (statSync(tmpPath).size >= MAX_CONVERSION_OUTPUT_BYTES) {
+        throw new Error("conversion reached its output size limit");
+      }
       renameWithRetry(tmpPath, cachePath);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);

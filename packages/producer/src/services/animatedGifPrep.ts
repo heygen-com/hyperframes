@@ -1,5 +1,5 @@
 // fallow-ignore-file complexity
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { parseHTML } from "linkedom";
@@ -38,6 +38,7 @@ export interface PrepareAnimatedGifInputsOptions {
   cacheDir?: string;
   sourceAssets?: Map<string, string>;
   timeoutMs?: number;
+  signal?: AbortSignal;
   transcode?: (input: AnimatedGifTranscodeRequest) => Promise<void>;
   allowOutsideFiles?: boolean;
 }
@@ -47,6 +48,7 @@ export interface AnimatedGifTranscodeRequest {
   outputPath: string;
   args: string[];
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface PrepareAnimatedGifInputsResult {
@@ -159,6 +161,14 @@ function resolveLoop(metadata: AnimatedGifMetadata, override: boolean | null): b
  */
 const MAX_LOOP_ITERATIONS = 1_000;
 const MAX_PAD_SECONDS = 3_600;
+/**
+ * Limits ffmpeg enforces on itself, so a transcode still ends if whatever supervises it is gone: `-timelimit` is
+ * CPU seconds through setrlimit (the kernel ends the process), `-fs` the most bytes it writes. A 1080p GIF looped
+ * to 60 s took 229 CPU s (all threads) on a 14-core Mac, so 3,600 covers about 15 minutes of 1080p output there,
+ * and an unsupervised run still ends within minutes.
+ */
+const MAX_TRANSCODE_CPU_SECONDS = 3_600;
+const MAX_TRANSCODE_OUTPUT_BYTES = 1024 * 1024 * 1024;
 
 function resolveCompositionDurationSeconds(document: Document): number | null {
   let max: number | null = null;
@@ -220,7 +230,13 @@ export function buildAnimatedGifTranscodeArgs(input: {
   loopIterations: number;
   padSeconds?: number;
 }): string[] {
-  const args = ["-hide_banner", "-loglevel", "error"];
+  const args = [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-timelimit",
+    String(MAX_TRANSCODE_CPU_SECONDS),
+  ];
   if (input.loopIterations > 1) {
     args.push("-stream_loop", String(input.loopIterations - 1));
   }
@@ -250,6 +266,8 @@ export function buildAnimatedGifTranscodeArgs(input: {
       : []),
     // Explicit muxer: the transcode writes to a `.tmp-<pid>-<ts>` path whose
     // extension ffmpeg cannot infer the container from.
+    "-fs",
+    String(MAX_TRANSCODE_OUTPUT_BYTES),
     "-f",
     "webm",
     "-y",
@@ -258,10 +276,17 @@ export function buildAnimatedGifTranscodeArgs(input: {
   return args;
 }
 
+function abortError(): Error {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
+}
+
 async function runAnimatedGifTranscode(request: AnimatedGifTranscodeRequest): Promise<void> {
   const timeout = request.timeoutMs ?? 300_000;
-  const result = await runFfmpeg(request.args, { timeout });
+  const result = await runFfmpeg(request.args, { timeout, signal: request.signal });
   if (result.success) return;
+  if (request.signal?.aborted) throw abortError();
   if (result.failureReason === "external_interruption") {
     throw encoderFailureError("Animated GIF transcode failed", {
       error: `exit ${result.exitCode}: ${result.stderr.slice(-500)}`,
@@ -284,6 +309,7 @@ async function ensurePreparedWebm(input: {
   loopIterations: number;
   padSeconds: number;
   timeoutMs?: number;
+  signal?: AbortSignal;
   transcode?: (request: AnimatedGifTranscodeRequest) => Promise<void>;
 }): Promise<void> {
   if (!existsSync(dirname(input.cachePath))) {
@@ -294,7 +320,8 @@ async function ensurePreparedWebm(input: {
   }
 
   if (!isUsableFile(input.cachePath)) {
-    const tmpPath = `${input.cachePath}.tmp-${process.pid}-${Date.now()}`;
+    // Worker threads share process.pid, so the uuid keeps two renders that miss the same cache entry apart.
+    const tmpPath = `${input.cachePath}.tmp-${process.pid}-${randomUUID()}`;
     const args = buildAnimatedGifTranscodeArgs({
       inputPath: input.sourcePath,
       outputPath: tmpPath,
@@ -308,9 +335,14 @@ async function ensurePreparedWebm(input: {
         outputPath: tmpPath,
         args,
         timeoutMs: input.timeoutMs,
+        signal: input.signal,
       });
       if (!isUsableFile(tmpPath)) {
         throw new Error("Animated GIF transcode produced an empty output");
+      }
+      // ffmpeg ends at -fs as if it had finished; a capped file is cut short and must not be cached.
+      if (statSync(tmpPath).size >= MAX_TRANSCODE_OUTPUT_BYTES) {
+        throw new Error("Animated GIF transcode reached its output size limit");
       }
       if (!isUsableFile(input.cachePath)) {
         renameWithRetry(tmpPath, input.cachePath);
@@ -428,6 +460,7 @@ export async function prepareAnimatedGifInputs(
       loopIterations,
       padSeconds,
       timeoutMs: options.timeoutMs,
+      signal: options.signal,
       transcode: options.transcode,
     });
 
