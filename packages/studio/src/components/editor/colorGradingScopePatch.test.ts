@@ -240,8 +240,14 @@ describe("keepKnownColorGradingValues", () => {
     expect(kept({ lut: "luts/film.cube" })).toEqual({});
   });
 
-  it("reads nothing but a serialized grading object", () => {
-    for (const value of ["clean-studio", "[]", "null", "{"]) {
+  it("keeps a bare preset id only when it is known or a variable reference", () => {
+    expect(keepKnownColorGradingValues(" clean-studio ")).toBe("clean-studio");
+    expect(keepKnownColorGradingValues("$look")).toBe("$look");
+    expect(keepKnownColorGradingValues("made-up-look")).toBeNull();
+  });
+
+  it("reads nothing but a preset id or a serialized grading object", () => {
+    for (const value of ["[]", "null", "{"]) {
       expect(keepKnownColorGradingValues(value)).toBeNull();
     }
   });

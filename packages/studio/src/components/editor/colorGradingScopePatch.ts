@@ -105,6 +105,8 @@ function isLoadableLut(value: unknown): boolean {
 }
 
 export function keepKnownColorGradingValues(value: string): string | null {
+  const presetOnly = value.trim();
+  if (!presetOnly.startsWith("{")) return isKnownPreset(presetOnly) ? presetOnly : null;
   let grading: unknown;
   try {
     grading = JSON.parse(value);
