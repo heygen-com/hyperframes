@@ -35,8 +35,18 @@ import {
   bundleToSingleHtml,
   type BundleScriptProvenance,
 } from "../../core/src/compiler/htmlBundler";
-import { closeServer, isLoopbackHost, servableProjectFile } from "./pageServer";
-import { serviceWorkerScriptFetch } from "../../core/src/studioPreviewMark";
+import {
+  closeServer,
+  fromAnotherSite,
+  isOwnPageHost,
+  NO_FRAMING_HEADERS,
+  servableProjectFile,
+} from "./pageServer";
+import {
+  PREVIEW_FOR_ANOTHER_SITE_META,
+  serviceWorkerScriptFetch,
+} from "../../core/src/studioPreviewMark";
+import { injectTagsAtHeadStart } from "../../core/src/compiler/htmlDocument";
 import { Sources, fingerprint } from "./sources";
 import type { InspectRequest, Snippet } from "./types";
 import { foreignWritablePath, trustedCacheRoot } from "../../core/src/cacheDir";
@@ -231,21 +241,26 @@ export class Inspector {
     });
     if (fingerprint(this.project) !== digest)
       throw new Error("source_changed_during_load: retry against a stable project");
+    const servedHtml = injectTagsAtHeadStart(
+      html.replace(
+        'data-hyperframes-preview-runtime="1" src=""',
+        'data-hyperframes-preview-runtime="1" src="/__hf-runtime.js"',
+      ),
+      `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`,
+    );
     const serve: PageHandler = (req, res) => {
-      if (!isLoopbackHost(req.headers.host)) return void res.writeHead(403).end();
+      if (!this.host || !isOwnPageHost(req.headers.host, this.host.port))
+        return void res.writeHead(403).end();
       const { "service-worker": serviceWorker, "sec-fetch-dest": fetchDest } = req.headers;
       if (serviceWorkerScriptFetch({ serviceWorker, fetchDest }))
         return void res.writeHead(403).end();
+      if (fromAnotherSite(req.headers["sec-fetch-site"])) return void res.writeHead(403).end();
+      for (const [name, value] of Object.entries(NO_FRAMING_HEADERS)) res.setHeader(name, value);
       try {
         const path = decodeURIComponent(new URL(req.url ?? "/", "http://localhost").pathname);
         if (path === "/" || path === "/index.html") {
           res.setHeader("Content-Type", "text/html");
-          res.end(
-            html.replace(
-              'data-hyperframes-preview-runtime="1" src=""',
-              'data-hyperframes-preview-runtime="1" src="/__hf-runtime.js"',
-            ),
-          );
+          res.end(servedHtml);
           return;
         }
         if (path === "/__hf-runtime.js") {

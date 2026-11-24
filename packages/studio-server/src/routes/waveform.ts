@@ -20,6 +20,7 @@ export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): vo
     if (!project) return c.json({ error: "not found" }, 404);
 
     const assetPath = requestSubPath(c.req.url, "projects/:id/waveform");
+    if (assetPath === null) return c.json({ error: "file not found" }, 404);
     const audioPath = resolve(project.dir, assetPath);
     if (!isWithinProjectRoot(project.dir, audioPath)) {
       return c.json({ error: "file not found" }, 404);
