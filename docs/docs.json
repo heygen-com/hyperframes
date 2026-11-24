@@ -1078,6 +1078,10 @@
       }
     ]
   },
+  "banner": {
+    "content": "**New** HyperFrames Studio is here: the free AI video editor, right in your browser. [Try it free →](https://hyperframes.studio/agent?src=docs-banner)",
+    "dismissible": true
+  },
   "navbar": {
     "links": [
       {
@@ -1091,8 +1095,8 @@
     ],
     "primary": {
       "type": "button",
-      "label": "Download",
-      "href": "https://hyperframes.studio/studio/download?src=docs-navbar"
+      "label": "Open Studio",
+      "href": "https://hyperframes.studio/agent?src=docs-navbar"
     }
   },
   "redirects": [
