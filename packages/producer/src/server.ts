@@ -92,10 +92,7 @@ export interface HandlerOptions {
   projectsDir?: string;
   /** With `confineRequests`: let requests set `debug: true`, which keeps work dirs on disk. Defaults to PRODUCER_ALLOW_DEBUG=1. */
   allowDebug?: boolean;
-  /**
-   * Bearer token `createProducerApp` requires on every route but /health. Defaults to PRODUCER_AUTH_TOKEN. Without one
-   * the app checks no caller, so serve it only behind your own check; `startServer` makes one instead.
-   */
+  /** Bearer token required on every route but /health. Defaults to PRODUCER_AUTH_TOKEN; without one no caller is checked. */
   authToken?: string;
 }
 
@@ -829,8 +826,7 @@ export interface RenderHandlers {
 /**
  * Create route handler functions for the producer server.
  *
- * These can be mounted on any Hono app at any path prefix. They check no caller: mount them behind your own
- * authentication, since anything that reaches them renders and lints with this process's rights.
+ * Mount them on any Hono app at any path prefix, behind your own authentication: they check no caller.
  */
 export function createRenderHandlers(options: HandlerOptions = {}): RenderHandlers {
   const log = options.logger ?? defaultLogger;
@@ -1255,14 +1251,10 @@ export function createProducerApp(options: HandlerOptions = {}): Hono {
 
 interface ServerAuth {
   token: string;
-  /** Set when the token was made for this run: where it was written. */
-  file?: string;
+  generatedFile?: string;
 }
 
-/**
- * The configured token, or a new one written where only this account can read it. Every local account, container
- * and sandboxed program can reach a loopback port, so the server never listens without one.
- */
+/** The configured token, or a new one only this account can read: any local program can reach a loopback port. */
 function serverAuth(options: ServerOptions, hostname: string, port: number): ServerAuth {
   const configured = resolveAuthToken(options);
   if (configured) return { token: configured };
@@ -1281,7 +1273,7 @@ function serverAuth(options: ServerOptions, hostname: string, port: number): Ser
   // Removed first so the new file is created with its own mode, never through a link or an older file's mode.
   rmSync(file, { force: true });
   writeFileSync(file, `${token}\n`, { flag: "wx", mode: 0o600 });
-  return { token, file };
+  return { token, generatedFile: file };
 }
 
 /**
@@ -1297,9 +1289,9 @@ export function startServer(options: ServerOptions = {}) {
   const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
     const address = info.family === "IPv6" ? `[${info.address}]` : info.address;
     log.info(`Listening on http://${address}:${info.port}`);
-    if (auth.file) {
+    if (auth.generatedFile) {
       log.info(
-        `No auth token was set, so this run made one: send "Authorization: Bearer <token>" with the token in ${auth.file}`,
+        `No auth token was set, so this run made one: send "Authorization: Bearer <token>" with the token in ${auth.generatedFile}`,
       );
     }
   });
@@ -1337,7 +1329,7 @@ export function startServer(options: ServerOptions = {}) {
 
   async function shutdown(signal: string) {
     log.info(`Received ${signal}, shutting down`);
-    if (auth.file) rmSync(auth.file, { force: true });
+    if (auth.generatedFile) rmSync(auth.generatedFile, { force: true });
     const { drainBrowserPool } = await import("@hyperframes/engine");
     await drainBrowserPool().catch(() => {});
     // Bounded await: if the worker hasn't come online within 1.5s of
