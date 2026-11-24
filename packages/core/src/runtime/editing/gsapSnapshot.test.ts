@@ -172,4 +172,26 @@ describe("gsapSnapshot", () => {
     expect(gestureStart([handleFor(title)]).elements[0]!.gsap).toBeNull();
     expect(drawn()).toEqual(before);
   });
+
+  // fails without the fix: x and y were read only for a layer GSAP moves, so a resize that hands a CSS-translated
+  // layer to GSAP read it at 0, 0 sealed, where GSAP reads its translate.
+  it("reads a CSS-translated layer's x and y as GSAP does when its tween writes its size", async () => {
+    document.body.innerHTML = `<div id="box" style="translate: 40px 30px"></div>`;
+    const box = document.getElementById("box")!;
+    const tl = realGsap.timeline({ paused: true });
+    tl.to("#box", { width: 300, height: 200, duration: 2 }, 0);
+    tl.seek(1);
+    // jsdom computes no translate; this frame's GSAP reads it as Chrome's does.
+    const getProperty = (el: Element, prop: string) =>
+      prop === "x" ? 40 : prop === "y" ? 30 : realGsap.getProperty(el, prop);
+    const gsap = Object.assign(Object.create(realGsap), { getProperty });
+    Object.assign(window, { gsap, __timelines: { main: tl } });
+    const drawn = () => ["translate", "transform"].map((name) => box.style.getPropertyValue(name));
+    const before = drawn();
+
+    const snapshot = await gsapSnapshot();
+
+    expect(snapshot.targets[0]!.values).toMatchObject({ x: 40, y: 30 });
+    expect(drawn()).toEqual(before);
+  });
 });

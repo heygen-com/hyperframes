@@ -4,6 +4,7 @@ import { gsap } from "gsap";
 import { afterEach, expect, it } from "vitest";
 import { makeSelection } from "../../hooks/domSelectionTestHarness";
 import { settleGsapSnapshot } from "../../hooks/gsapFrameSnapshot";
+import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
 import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
 import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
@@ -24,19 +25,23 @@ const sized = <T extends Element>(element: T, [x, y, width, height]: number[]): 
 };
 
 function mount() {
-  document.body.innerHTML = `<div data-composition-id="main" data-width="1920" data-height="1080"><div id="box"></div></div>`;
+  document.body.innerHTML = `<div data-composition-id="main" data-width="1920" data-height="1080"><div id="box" style="translate: 40px 30px"></div></div>`;
   sized(document.getElementById("box")!, [300, 200, 100, 50]);
-  Object.assign(window, { gsap, __timelines: {} });
-  new Function("gsap", "window", SIZES_BOX)(gsap, window);
+  // happy-dom computes no translate; this GSAP reads it as Chrome's does, for both previews.
+  const getProperty = (el: Element, prop: string) =>
+    prop === "x" ? 40 : prop === "y" ? 30 : gsap.getProperty(el, prop);
+  const frameGsap = Object.assign(Object.create(gsap), { getProperty });
+  Object.assign(window, { gsap: frameGsap, __timelines: {}, __player: { getTime: () => 1 } });
+  new Function("gsap", "window", SIZES_BOX)(frameGsap, window);
   usePlayerStore.setState({ currentTime: 1, isPlaying: false });
 }
 afterEach(() => {
   document.body.innerHTML = "";
-  for (const name of ["gsap", "__timelines"]) Reflect.deleteProperty(window, name);
+  for (const name of ["gsap", "__timelines", "__player"]) Reflect.deleteProperty(window, name);
   usePlayerStore.setState({ currentTime: 0, isPlaying: false });
 });
 
-async function sealedResizeMember() {
+async function sealedFrame() {
   const { iframe: sealed, frame } = sealedPreviewFrame();
   const iframe = sized(sealed, [100, 50, 960, 540]) as HTMLIFrameElement;
   watchPreviewFrame(iframe);
@@ -47,9 +52,19 @@ async function sealedResizeMember() {
       data: { source: "hf-preview", type: "stage-size", width: 1920, height: 1080 },
     }),
   );
+  await settleGsapSnapshot(iframe);
+  return iframe;
+}
+
+async function sealedBox() {
+  const iframe = await sealedFrame();
   const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
   const standIn = standInFor(iframe, (await describePreviewElements(iframe, [handle]))![0]!);
-  await settleGsapSnapshot(iframe);
+  return { iframe, handle, standIn };
+}
+
+async function sealedResizeMember() {
+  const { iframe, handle, standIn } = await sealedBox();
   const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]);
   const { rect, start } = (await measurePreviewGestureStart(iframe, overlay, [handle]))!
     .elements[0]!;
@@ -85,5 +100,21 @@ it.each(["unsealed", "sealed"])(
     const result = mode === "sealed" ? await sealedResizeMember() : openResizeMember();
 
     expect(result.ok && result.member.plainTranslate).toBe(false);
+  },
+);
+
+// fails without the fix: sealed, the frame's GSAP values held x and y only for a layer GSAP moves, so a resize
+// handed to GSAP read a CSS-translated layer at 0, 0 and saved it 50 px off (translate 40px 30px).
+it.each(["unsealed", "sealed"])(
+  "reads a CSS-translated layer whose tween writes its size where GSAP does, %s",
+  async (mode) => {
+    mount();
+    const open = {
+      contentWindow: window,
+      contentDocument: document,
+    } as unknown as HTMLIFrameElement;
+    const iframe = mode === "sealed" ? (await sealedBox()).iframe : open;
+
+    expect(readGsapPositionFromIframe(iframe, "#box")).toEqual({ x: 40, y: 30 });
   },
 );
