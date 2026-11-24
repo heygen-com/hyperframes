@@ -413,7 +413,7 @@ export async function tryGsapResizeIntercept(
     if (!scaleDraftEl && !frame) return false;
     const draftEl = scaleDraftEl;
     if (!scaleDraftDropPoint || !selector) {
-      if (draftEl) draw(() => clearStudioBoxSize(draftEl));
+      draw(() => clearStudioBoxSize(draftEl ?? selection.element));
       return false;
     }
     const dropPoint = scaleDraftDropPoint;
