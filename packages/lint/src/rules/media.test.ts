@@ -957,6 +957,7 @@ describe("audio_volume_tween_overrides_gain", () => {
     expect(finding?.severity).toBe("warning");
     expect(finding?.elementId).toBe("bgm");
     expect(finding?.message).toMatch(/5\.8 dB/);
+    expect(finding?.fixHint).toContain("`volume: 1.949845`");
   });
 
   it("warns about an attenuation the tween overrides, not just a boost", async () => {

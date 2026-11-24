@@ -926,8 +926,7 @@ function findVolumeTweenOverridesGainFindings(ctx: LintContext): HyperframeLintF
       severity: "warning",
       message: `#${id} has data-volume="${volume}" (${db}) and a GSAP tween on \`volume\`. Tween values are absolute: they REPLACE this gain rather than scale it, so wherever the tween names a value the clip plays at that value, not at ${db}.`,
       elementId: id,
-      fixHint:
-        "Write the tween's targets in the same absolute gain (e.g. `volume: 1.95`, not `volume: 1`), or reset data-volume to 1 and let the tween carry the level on its own.",
+      fixHint: `Keep the level you set: write the tween's targets in the same absolute gain (\`volume: ${volume}\` holds this clip where data-volume puts it). If the level is in doubt, measure the render with \`hyperframes audio\` before changing it.`,
       snippet: truncateSnippet(tag.raw),
     });
   }
