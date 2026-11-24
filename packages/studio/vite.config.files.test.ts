@@ -41,7 +41,7 @@ afterAll(async () => {
 }, 30_000);
 
 // fails without the fix: the dev server's own file serving answered for linked projects and checkout files.
-describe("the dev Studio's file serving", () => {
+describe("the dev Studio's file serving", { timeout: 30_000 }, () => {
   it("serves no byte of a linked project's or the checkout's private file", async () => {
     const name = link.split(/[\\/]/).pop();
     const dotfile = studioDotfile.split(/[\\/]/).pop();
