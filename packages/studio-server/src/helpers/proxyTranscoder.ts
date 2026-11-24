@@ -1398,6 +1398,10 @@ function waitForStill(job: StillJob, cachePath: string, signal?: AbortSignal): P
   });
 }
 
+const SD_MATRICES = new Set(["bt470bg", "smpte170m"]);
+const browserMatrixOf = (colorSpace: string | undefined) =>
+  SD_MATRICES.has(colorSpace ?? "") ? "bt601" : "bt709";
+
 async function makeStill(
   source: CanonicalProxySource,
   at: number,
@@ -1412,7 +1416,8 @@ async function makeStill(
   if (metadata.durationSeconds !== undefined && at > metadata.durationSeconds) {
     throw new StillPastEndError();
   }
-  const filter = await buildVideoFilter(ffmpegPath, source.sourcePath, metadata, false, box);
+  const toRgbAsBrowsersDecode = `scale=in_color_matrix=${browserMatrixOf(metadata.color.colorSpace)},format=rgb24`;
+  const filter = `${await buildVideoFilter(ffmpegPath, source.sourcePath, metadata, false, box)},${toRgbAsBrowsersDecode}`;
   mkdirWithinProject(source.projectDir, dirname(cachePath));
   const tempPath = join(dirname(cachePath), `.tmp-${randomUUID()}-${basename(cachePath)}`);
   try {

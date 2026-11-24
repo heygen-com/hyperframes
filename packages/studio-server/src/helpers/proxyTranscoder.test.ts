@@ -2488,6 +2488,44 @@ describe("resolveStill", () => {
     60_000,
   );
 
+  // fails without the fix: the JPEG kept the file's BT.709 values and was read as BT.601, so a still's colours were off
+  // the decoded video's (green 140 showed as 179) wherever it stood in for it.
+  it.skipIf(!canStill)(
+    "shows the colours a browser decodes the file with",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveStill } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const clip = join(projectDir, "clip.mp4");
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i", "color=c=0x008c00:s=320x180:r=25:d=2"],
+        ...["-vf", "scale=out_color_matrix=bt709,format=yuv420p", "-c:v", "libx264", clip],
+      ]);
+
+      const still = await resolveStill(projectDir, clip, 1);
+      const rgb = execFileSync(realFfmpeg!, [
+        ...[
+          "-v",
+          "error",
+          "-i",
+          still,
+          "-vf",
+          "crop=2:2",
+          "-f",
+          "rawvideo",
+          "-pix_fmt",
+          "rgb24",
+          "-",
+        ],
+      ]);
+
+      const off = [0, 140, 0].map((want, channel) => Math.abs(rgb[channel]! - want));
+      expect(Math.max(...off), `rgb ${[...rgb.subarray(0, 3)]}`).toBeLessThanOrEqual(8);
+    },
+    60_000,
+  );
+
   it.skipIf(!canStill)(
     "sweeps the cache when it makes a still, so stills alone cannot grow it without bound",
     async () => {
