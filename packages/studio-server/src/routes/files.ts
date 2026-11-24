@@ -224,6 +224,7 @@ async function resolveProjectPath(
   }
 
   const filePath = requestSubPath(c.req.url, `projects/:id/${route}`);
+  if (filePath === null) return { error: c.json({ error: "not found" }, 404) } as const;
   if (filePath.includes("\0")) {
     return { error: c.json({ error: "forbidden", why: "nul" }, 403) } as const;
   }

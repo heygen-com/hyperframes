@@ -18,6 +18,7 @@ export function registerPeakRoutes(
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
     const assetPath = requestSubPath(c.req.url, "projects/:id/peaks");
+    if (assetPath === null) return c.json({ error: "file not found" }, 404);
     const mediaPath = resolve(project.dir, assetPath);
     if (!isWithinProjectRoot(project.dir, mediaPath))
       return c.json({ error: "file not found" }, 404);

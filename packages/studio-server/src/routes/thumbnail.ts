@@ -141,6 +141,7 @@ export function registerThumbnailRoutes(
     const { project, signature: projectSignature } = resolved;
 
     let compPath = requestSubPath(c.req.url, "projects/:id/thumbnail");
+    if (compPath === null) return c.json({ error: "not found" }, 404);
     if (compPath && !compPath.includes(".")) compPath += ".html";
     const htmlFile = resolveWithinProject(project.dir, compPath);
     const source = htmlFile ? readFileOnce(htmlFile) : "not-a-file";
