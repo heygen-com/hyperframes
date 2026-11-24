@@ -76,14 +76,12 @@ try {
     );
   };
   const dark = ({ r, g, b }) => Math.max(r, g, b) < 40;
-  const leads = ({ r, g, b }) =>
-    Math.max(r, g, b) - Math.min(r, g, b) < 40
-      ? "no colour"
-      : g > r && g > b
-        ? "green"
-        : b > r
-          ? "blue"
-          : "red";
+  const CHANNEL_COLOUR = { r: "red", g: "green", b: "blue" };
+  const leads = (pixel) => {
+    const values = Object.values(pixel);
+    if (Math.max(...values) - Math.min(...values) < 40) return "no colour";
+    return CHANNEL_COLOUR[Object.keys(pixel).reduce((top, c) => (pixel[c] > pixel[top] ? c : top))];
+  };
 
   for (const { time, red } of DISSOLVE) {
     const [centre] = await sample(`dissolve-${time}`, time, [[0.5, 0.5]]);
