@@ -39,9 +39,10 @@ for (const [kind, plant] of [
       plant(victim, path);
       write(path);
       assert.equal(readFileSync(victim, "utf8"), "victim");
-      assert.equal(lstatSync(path).isFile(), true);
-      assert.equal(lstatSync(path).nlink, 1);
       assert.equal(readFileSync(path, "utf8"), "new");
+      const entry = lstatSync(path);
+      assert.equal(entry.isFile(), true);
+      assert.equal(entry.nlink, 1);
     }
     assert.deepEqual(readdirSync(project).sort(), ["a.json", "b.png"]);
   });

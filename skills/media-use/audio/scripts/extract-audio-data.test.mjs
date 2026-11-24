@@ -46,13 +46,14 @@ for (const [kind, plant] of [
       const result = spawnSync(python, ["-c", RUN, scripts, out], { encoding: "utf8" });
       assert.equal(result.status, 0, result.stderr);
       assert.equal(readFileSync(victim, "utf8"), "victim");
-      assert.equal(lstatSync(out).isFile(), true);
-      assert.equal(lstatSync(out).nlink, 1);
       assert.deepEqual(JSON.parse(readFileSync(out, "utf8")), {
         totalFrames: 0,
         bands: 16,
         frames: [],
       });
+      const entry = lstatSync(out);
+      assert.equal(entry.isFile(), true);
+      assert.equal(entry.nlink, 1);
       assert.deepEqual(readdirSync(dir).sort(), ["audio-data.json", "victim.txt"]);
     },
   );
