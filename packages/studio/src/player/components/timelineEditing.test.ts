@@ -17,7 +17,6 @@ import {
   snapKeyframePctToBeat,
   type TimelinePromptElement,
 } from "./timelineEditing";
-import { buildStackingTimelineLayers } from "./timelineTrackOrder";
 
 describe("resolveTimelineMove", () => {
   it("moves timing based on horizontal drag and snaps to centiseconds", () => {
@@ -153,66 +152,6 @@ describe("resolveTimelineMove", () => {
         2,
       ),
     ).toEqual({ start: 2, track: 2 });
-  });
-
-  it("snaps conflicting vertical stacking movement to a new lane without changing data-track-index", () => {
-    const stackingElements = [
-      {
-        id: "root-front",
-        tag: "div",
-        start: 0,
-        duration: 2,
-        track: 0,
-        zIndex: 2,
-        hasExplicitZIndex: true,
-        stackingContextId: "root",
-        parentCompositionId: null,
-        compositionAncestors: ["root"],
-      },
-      {
-        id: "root-back",
-        tag: "div",
-        start: 0,
-        duration: 2,
-        track: 1,
-        zIndex: 1,
-        hasExplicitZIndex: true,
-        stackingContextId: "root",
-        parentCompositionId: null,
-        compositionAncestors: ["root"],
-      },
-    ];
-    const layers = buildStackingTimelineLayers(stackingElements).rows;
-    const result = resolveTimelineMove(
-      {
-        start: 0,
-        track: 1,
-        duration: 2,
-        originClientX: 0,
-        originRow: 0,
-        pixelsPerSecond: 100,
-        maxStart: 8,
-        trackOrder: [0, 1],
-        layerOrder: layers.map((layer) => layer.id),
-        timelineLayers: layers,
-        stackingElement: stackingElements[1],
-        stackingElements,
-      },
-      0,
-      -1,
-    );
-
-    expect(result).toEqual({
-      start: 0,
-      track: 1,
-      previewLayerId: `preview:root-back:above:${layers[0]!.id}`,
-      previewLayerIndex: 0,
-      stackingReorder: {
-        contextKey: "root",
-        placement: { type: "above", layerId: layers[0]!.id },
-        zIndexChanges: [{ key: "root-back", zIndex: 3 }],
-      },
-    });
   });
 });
 

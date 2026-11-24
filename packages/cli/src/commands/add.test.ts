@@ -11,6 +11,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer, isIP, type AddressInfo } from "node:net";
+import { publicRequest } from "@hyperframes/engine/public-network";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
 import { lintHyperframeHtml } from "@hyperframes/lint";
 import type { RunAddResult } from "./add.js";
@@ -45,6 +47,19 @@ vi.mock("../registry/publication.js", async (importOriginal) => {
         throw new Error(`could not write ${args[1]}`);
       return actual.publishRegistryFile(...args);
     },
+  };
+});
+
+// The stubbed fetch stands in for public hosts; a numeric host meets the real public-address check.
+vi.mock("@hyperframes/engine/public-network", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@hyperframes/engine/public-network")>();
+  return {
+    ...actual,
+    publicRequest: vi.fn((url: string | URL, init?: RequestInit) =>
+      isIP(new URL(url).hostname)
+        ? actual.publicRequest(url, init)
+        : fetch(url, { ...init, redirect: "manual" }),
+    ),
   };
 });
 
@@ -888,6 +903,51 @@ describe("installs from the registry a received hyperframes.json names", () => {
     const staged = stagePublishFiles(project, Infinity, () => {});
     expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([]);
   });
+
+  // fails without the fix: a received registry's file was fetched from whatever host its manifest named
+  it.each(["directly", "through a redirect"])(
+    "reaches no private address %s for a received registry, and writes nothing",
+    async (how) => {
+      let connections = 0;
+      const server = createServer((socket) => {
+        connections += 1;
+        socket.destroy();
+      });
+      await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+      const internal = `https://127.0.0.1:${(server.address() as AddressInfo).port}/secret`;
+      const base = uniqueBase();
+      writeConfig(base);
+      receive(["hyperframes.json"]);
+      const fileUrl = how === "directly" ? internal : `${base}/redirect`;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string | URL) => {
+          const url = new URL(input);
+          if (url.pathname.endsWith("/registry.json")) return Response.json(MANIFEST);
+          if (url.pathname.endsWith("/blocks/my-block/registry-item.json"))
+            return Response.json({
+              ...BLOCK_ITEM,
+              files: [{ ...BLOCK_ITEM.files[0]!, url: fileUrl }],
+            });
+          if (url.pathname.endsWith("/redirect"))
+            return new Response(null, { status: 302, headers: { location: internal } });
+          return new Response("internal answer");
+        }),
+      );
+      try {
+        await expect(
+          runAdd({ name: "my-block", projectDir: dir, skipClipboard: true }),
+        ).rejects.toThrow("not a public address");
+        expect(connections).toBe(0);
+        expect(existsSync(join(dir, "compositions"))).toBe(false);
+        expect(vi.mocked(publicRequest).mock.calls.map(([url]) => String(url))).toContain(
+          `${base}/registry.json`,
+        );
+      } finally {
+        server.close();
+      }
+    },
+  );
 
   it("lists what an install by tag writes", async () => {
     writeConfig(uniqueBase());

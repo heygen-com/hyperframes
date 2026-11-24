@@ -42,7 +42,8 @@ export function isPublicRegistry(registry: string): boolean {
   } catch {
     return false;
   }
-  if (url.username || url.password || url.search || url.hash) return false;
+  const leavesFolderOnHost = url.pathname.includes("%");
+  if (url.username || url.password || url.search || url.hash || leavesFolderOnHost) return false;
   const href = url.href.replace(/\/+$/, "");
   return href === DEFAULT_REGISTRY_URL || href.startsWith(`${DEFAULT_REGISTRY_URL}/`);
 }
@@ -122,8 +123,12 @@ function writeCache<T>(path: string, source: string, data: T): void {
 
 // ── Fetchers ────────────────────────────────────────────────────────────────
 
-async function fetchJson<T>(url: string, validate: (value: unknown) => value is T): Promise<T> {
-  const res = await fetchRegistryHttps(url, AbortSignal.timeout(FETCH_TIMEOUT_MS));
+async function fetchJson<T>(
+  url: string,
+  validate: (value: unknown) => value is T,
+  publicOnly = false,
+): Promise<T> {
+  const res = await fetchRegistryHttps(url, AbortSignal.timeout(FETCH_TIMEOUT_MS), publicOnly);
   if (!res.ok) {
     throw new Error(`Registry fetch failed: ${url} — HTTP ${res.status}`);
   }
@@ -146,14 +151,14 @@ async function fetchJson<T>(url: string, validate: (value: unknown) => value is 
  */
 export const fetchRegistryManifest = (
   baseUrl: string = DEFAULT_REGISTRY_URL,
-  options?: { skipCache?: boolean },
+  options?: { skipCache?: boolean; publicOnly?: boolean },
 ): Promise<RegistryManifest | undefined> =>
   readRegistryManifest(baseUrl, options).catch(() => undefined);
 
 /** The manifest as fetchRegistryManifest gives it, but unreachable and never cached throws why, never undefined. */
 export async function readRegistryManifest(
   baseUrl: string = DEFAULT_REGISTRY_URL,
-  options?: { skipCache?: boolean },
+  options?: { skipCache?: boolean; publicOnly?: boolean },
 ): Promise<RegistryManifest> {
   const url = registryPathUrl(baseUrl, "registry.json");
   const cacheFile = cachePath(baseUrl, "registry");
@@ -161,7 +166,7 @@ export async function readRegistryManifest(
   if (!options?.skipCache && cached && isFresh(cached)) return cached.data;
 
   try {
-    const manifest = await fetchJson(url, validRegistryManifest);
+    const manifest = await fetchJson(url, validRegistryManifest, options?.publicOnly);
     writeCache(cacheFile, baseUrl, manifest);
     return manifest;
   } catch (err) {
@@ -180,7 +185,7 @@ export async function fetchItemManifest(
   name: string,
   type: ItemType,
   baseUrl: string = DEFAULT_REGISTRY_URL,
-  options?: { skipCache?: boolean; cacheOnly?: boolean },
+  options?: { skipCache?: boolean; cacheOnly?: boolean; publicOnly?: boolean },
 ): Promise<RegistryItem> {
   if (!validRegistryName(name) || !Object.hasOwn(ITEM_TYPE_DIRS, type))
     throw new Error("Invalid registry item name or type");
@@ -194,7 +199,7 @@ export async function fetchItemManifest(
   if (options?.cacheOnly) throw new Error("not fetched after an earlier registry timeout");
 
   try {
-    const item = await fetchJson(url, validate);
+    const item = await fetchJson(url, validate, options?.publicOnly);
     writeCache(cacheFile, baseUrl, item);
     return item;
   } catch (err) {
@@ -227,12 +232,12 @@ function isRetryableTransport(err: unknown): boolean {
  * the whole command, which is a bad trade for two extra attempts costing under
  * a second when the network is healthy.
  */
-async function fetchWithRetry(url: string, attempts = 3): Promise<Response> {
+async function fetchWithRetry(url: string, publicOnly: boolean, attempts = 3): Promise<Response> {
   let lastErr: unknown;
   const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      return await fetchRegistryHttps(url, signal);
+      return await fetchRegistryHttps(url, signal, publicOnly);
     } catch (err) {
       lastErr = err;
       if (attempt === attempts || !isRetryableTransport(err)) break;
@@ -281,6 +286,7 @@ export async function fetchItemFile(
   file: FileTarget,
   baseUrl: string = DEFAULT_REGISTRY_URL,
   budget: DownloadByteBudget = { remainingBytes: 512 * 1024 * 1024 },
+  publicOnly = false,
 ): Promise<Buffer> {
   // Reject path-traversal in file.path (mirrors assertSafeTarget for file.target).
   if (/(^|[/\\])\.\.([/\\]|$)/.test(file.path)) {
@@ -289,7 +295,7 @@ export async function fetchItemFile(
   const url = assetSourceUrl(item, file, baseUrl);
   let res: Response;
   try {
-    res = await fetchWithRetry(url);
+    res = await fetchWithRetry(url, publicOnly);
   } catch (err) {
     // undici throws a bare "fetch failed" and buries the real reason in
     // `cause`, sometimes a level deeper again. That is where the diagnosis
