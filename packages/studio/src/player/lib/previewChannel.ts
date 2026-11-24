@@ -162,7 +162,19 @@ export async function previewComputedStyles(
 ): Promise<Record<string, string> | null> {
   const element = typeof target === "string" ? { selector: target } : { handle: target.handle };
   const reply = await previewRequest(iframe, "computed-styles", { ...element, properties });
-  const styles: unknown = reply?.styles;
+  return readStyles(reply?.styles, properties);
+}
+
+export async function previewAuthoredStyles(
+  iframe: HTMLIFrameElement,
+  handle: string,
+  properties: string[],
+): Promise<Record<string, string> | null> {
+  const reply = await previewRequest(iframe, "authored-styles", { handle, properties });
+  return readStyles(reply?.styles, properties);
+}
+
+function readStyles(styles: unknown, properties: string[]): Record<string, string> | null {
   if (typeof styles !== "object" || styles === null) return null;
   const read: Record<string, string> = {};
   for (const name of properties) {
@@ -170,6 +182,22 @@ export async function previewComputedStyles(
     if (typeof value === "string" && value) read[name] = value;
   }
   return read;
+}
+
+type FontFaces = { families: string[]; ownFaces: Array<{ family: string; src: string }> };
+
+export async function previewFontFaces(iframe: HTMLIFrameElement): Promise<FontFaces | null> {
+  const reply = await previewRequest(iframe, "font-faces", {});
+  const { families, ownFaces } = reply ?? {};
+  const isText = (value: unknown): value is string => typeof value === "string";
+  const isFace = (face: unknown): face is FontFaces["ownFaces"][number] =>
+    typeof face === "object" &&
+    face !== null &&
+    isText((face as { family?: unknown }).family) &&
+    isText((face as { src?: unknown }).src);
+  if (!Array.isArray(families) || !families.every(isText)) return null;
+  if (!Array.isArray(ownFaces) || !ownFaces.every(isFace)) return null;
+  return { families, ownFaces: ownFaces.map(({ family, src }) => ({ family, src })) };
 }
 
 export async function previewAssetsUnloaded(iframe: HTMLIFrameElement): Promise<boolean | null> {

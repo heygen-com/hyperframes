@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import * as studio from "@hyperframes/studio";
 import * as elements from "./player/lib/previewElements";
 import * as selection from "./components/editor/previewSelection";
+import * as channel from "./player/lib/previewChannel";
 
 it("exports a sealed preview's checked element reads and stand-ins as the ones Studio uses", () => {
   expect(studio.describePreviewElements).toBe(elements.describePreviewElements);
@@ -18,4 +19,6 @@ it("exports a sealed preview's checked element reads and stand-ins as the ones S
   expect(studio.readable).toBe(selection.readable);
   expect(studio.standInFor).toBe(selection.standInFor);
   expect(studio.standInHandle).toBe(selection.standInHandle);
+  expect(studio.previewAuthoredStyles).toBe(channel.previewAuthoredStyles);
+  expect(studio.previewFontFaces).toBe(channel.previewFontFaces);
 });

@@ -198,10 +198,12 @@ export function withoutGsapTakeover<T>(element: Element, read: () => T): T {
   const cache = host._gsap;
   const restoreCache = cache ? keptFields(cache) : () => Reflect.deleteProperty(host, "_gsap");
   const restoreAttributes = keptAttributes(element);
-  const value = read();
-  restoreAttributes();
-  restoreCache();
-  return value;
+  try {
+    return read();
+  } finally {
+    restoreAttributes();
+    restoreCache();
+  }
 }
 
 export type EditingGestureBase = {
