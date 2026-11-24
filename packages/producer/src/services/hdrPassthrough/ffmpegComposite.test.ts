@@ -639,6 +639,51 @@ describe("compositeAndEncode when a process dies", () => {
     );
   });
 
+  it("throws what failed first, not the feed's failure once it is stopped", async () => {
+    const base = request();
+    const log: string[] = [];
+    const FRAME = 4 * 2 * 6;
+    const encoder = fakeEncoder(log);
+    const close = encoder.close;
+    // Stopping a real encoder takes a while, long enough for the dropped feed to fail first.
+    encoder.close = async (onEncoded) => {
+      await new Promise((done) => setTimeout(done, 20));
+      return close(onEncoded);
+    };
+    const deps: CompositeDeps = {
+      spawnEncoder: async () => encoder,
+      spawnComposite: (_args, signal) => {
+        // Never read: the feed waits on back-pressure until the composite is dropped.
+        const overlays = new PassThrough({ highWaterMark: 1 });
+        return {
+          overlays,
+          frames: (async function* () {
+            yield Buffer.alloc(FRAME);
+            await new Promise((done) => signal.addEventListener("abort", done));
+          })(),
+          wait: async () =>
+            signal.aborted
+              ? { ok: false, error: "FFmpeg exited with code 255" }
+              : new Promise(() => {}),
+          drop: () => {
+            overlays.destroy();
+          },
+        };
+      },
+      watchEncoder: async () => ({
+        check: () => undefined,
+        waitUntilIdle: async () => {
+          throw new Error("hdrPassthrough: the encoder did not go idle within 120000 ms");
+        },
+      }),
+    };
+    const error = await compositeAndEncode(
+      { ...base, plan: plan(base), overlayFrames: framesOf(threePngs()), outputPath: outputPath() },
+      deps,
+    ).catch((e) => e);
+    expect(error.message).toBe("hdrPassthrough: the encoder did not go idle within 120000 ms");
+  });
+
   it("leaves a decline's own error as it is", async () => {
     const base = request();
     const log: string[] = [];

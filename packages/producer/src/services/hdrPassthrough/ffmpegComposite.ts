@@ -521,6 +521,9 @@ export async function compositeAndEncode(
       );
     }
   } catch (error) {
+    // What failed first: the feed's failure once it has one, else this loop's. Read now, as the
+    // stop below fails the feed too ("stopped reading overlays"), which says nothing of why.
+    const cause = feedError ?? error;
     // A composite or encoder that died (out of memory, a signal) ends the encode early: name why,
     // read before either is stopped from here.
     const died = await exitedWithin(composite, COMPOSITE_EXIT_GRACE_MS);
@@ -531,7 +534,7 @@ export async function compositeAndEncode(
     await composite.wait().catch(() => undefined);
     // Not awaited: the feed may still be waiting on capture's next frame, and fails at its next write.
     if (abortSignal?.aborted) throw abortSignal.reason;
-    throw withExits(feedError ?? error, exits);
+    throw withExits(cause, exits);
   }
 
   let framesEncoded = 0;
