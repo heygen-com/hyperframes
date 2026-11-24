@@ -1,17 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CompositionProbe, loadLimitMs } from "./composition-probe.js";
+import { CompositionProbe, loadLimitMs, timelineNotFound } from "./composition-probe.js";
+import type { ProbeCallbacks } from "./composition-probe.js";
 
 const LIMIT = loadLimitMs();
-const TIMED_OUT = `Composition timeline not found after ${LIMIT / 1000}s`;
+const TIMED_OUT = timelineNotFound(LIMIT, false);
 
-function mount(markup: string, globals: Record<string, unknown> = {}) {
+function mount(
+  markup: string,
+  globals: Record<string, unknown> = {},
+  callbacks: Partial<ProbeCallbacks> = {},
+) {
   const iframe = document.createElement("iframe");
   document.body.appendChild(iframe);
   iframe.contentDocument!.body.innerHTML = markup;
   Object.assign(iframe.contentWindow!, globals);
   const onReady = vi.fn();
   const onError = vi.fn();
-  const probe = new CompositionProbe(iframe, { onReady, onError });
+  const probe = new CompositionProbe(iframe, { onReady, onError, ...callbacks });
   probe.start();
   return { iframe, probe, onReady, onError };
 }
@@ -125,6 +130,31 @@ describe("composition probe readiness", () => {
     expect(onReady).not.toHaveBeenCalled();
     vi.advanceTimersByTime(LIMIT);
     expect(onError).toHaveBeenCalledOnce();
+  });
+  const unreadable = (sealed: boolean) => {
+    const { iframe, onError } = mount(
+      '<div data-composition-id="main"></div>',
+      {},
+      { unreadSealedLoad: () => sealed },
+    );
+    Object.defineProperty(iframe, "contentWindow", {
+      get: () => {
+        throw new DOMException("Blocked a frame with origin", "SecurityError");
+      },
+    });
+    vi.advanceTimersByTime(LIMIT);
+    return onError;
+  };
+
+  it("names the runtime script and sandbox-origin when a sealed frame never shows a timeline", () => {
+    const sealedTimeout = timelineNotFound(LIMIT, true);
+    expect(unreadable(true)).toHaveBeenCalledExactlyOnceWith(sealedTimeout);
+    expect(sealedTimeout).toContain("without sandbox-origin");
+    expect(sealedTimeout).toContain("runtime script");
+  });
+
+  it("gives an unsealed player whose composition is on another origin the plain timeout", () => {
+    expect(unreadable(false)).toHaveBeenCalledExactlyOnceWith(TIMED_OUT);
   });
   it("does not invent duration for an unresolved document", () => {
     const { onReady, onError } = mount('<div data-composition-id="main"></div>');

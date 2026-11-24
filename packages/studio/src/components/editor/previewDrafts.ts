@@ -7,14 +7,18 @@ import {
   MAX_DESCRIBE_HANDLES,
   type EditingDraft,
   type EditingDraftEnd,
+  type EditingDraftProps,
   type EditingDraftRotate,
 } from "@hyperframes/core/runtime/editing-port";
+import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
+import { roundTo3 } from "../../utils/rounding";
 import { previewRequest } from "../../player/lib/previewChannel";
 
 type Drawn = {
-  translate: { x: number; y: number } | null;
+  translate: { x: number; y: number; route?: "gsap" } | null;
   size: { width: number; height: number } | null;
   rotate?: EditingDraftRotate | null;
+  props?: EditingDraftProps | null;
 };
 
 /** One gesture's draft: `draft` is the frame's number for it, `saving` the selector its save will patch. */
@@ -26,6 +30,7 @@ interface Queue {
   sending: boolean;
   sent: Array<() => void>;
   sendQueued: boolean;
+  gsapSetTakesDrafts?: boolean;
 }
 
 const standIns = new WeakMap<Element, { iframe: HTMLIFrameElement; handle: string }>();
@@ -66,6 +71,7 @@ function send(iframe: HTMLIFrameElement, queue: Queue): void {
   queue.sending = true;
   void previewRequest(iframe, "draft", { drafts })
     .then((reply) => {
+      if (reply?.gsapSetTakesDrafts) queue.gsapSetTakesDrafts = true;
       for (const op of drafts) {
         const entry = queue.drawn.get(op.handle);
         const draft = reply?.drafts?.[op.handle];
@@ -87,21 +93,65 @@ function sendOnMicrotask(iframe: HTMLIFrameElement, queue: Queue): void {
   });
 }
 
-/** Draws `part` of the stand-in's draft on its frame element; any other element is left alone. */
-export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
+type Point = { x: number; y: number };
+type DraftedMember = {
+  element: HTMLElement;
+  initialOffset: Point;
+  baseGsap: Point;
+  frameDraftRoute?: "gsap";
+};
+
+export function frameDraftTranslate(member: DraftedMember, offset: Point) {
+  if (member.frameDraftRoute !== "gsap")
+    return {
+      x: roundTo3(offset.x) - member.initialOffset.x,
+      y: roundTo3(offset.y) - member.initialOffset.y,
+    };
+  const { newX, newY } = computeDraggedGsapPosition(member.element, offset, member.baseGsap);
+  return { x: newX, y: newY, route: "gsap" as const };
+}
+
+function nextDraw(element: Element, part: Partial<Drawn>) {
   const target = standIns.get(element);
-  if (!target) return;
+  if (!target) return null;
   const queue = queueFor(target.iframe);
   const prior = queue.drawn.get(target.handle);
   const entry: Entry = { translate: null, size: null, gesture: {}, ...prior, ...part };
   if (prior?.saving) delete entry.saving;
   queue.drawn.set(target.handle, entry);
   const { translate, size, rotate } = entry;
-  const op = { handle: target.handle, translate, size, ...("rotate" in entry && { rotate }) };
+  const op = {
+    handle: target.handle,
+    translate,
+    size,
+    ...("rotate" in entry && { rotate }),
+    ...(entry.props && { props: entry.props }),
+  };
   opGesture.set(op, entry.gesture);
+  return { target, queue, op };
+}
+
+export function previewDraftRidingGsapSet(
+  element: Element,
+  part: Partial<Drawn>,
+): EditingDraft | null {
+  const target = standIns.get(element);
+  if (!target || !queues.get(target.iframe)?.gsapSetTakesDrafts) return null;
+  const next = nextDraw(element, part);
+  if (!next) return null;
+  next.queue.ops = next.queue.ops.filter((op) => op.handle !== next.op.handle || "end" in op);
+  return next.op;
+}
+
+/** Draws `part` of the stand-in's draft on its frame element; any other element is left alone. */
+export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
+  const next = nextDraw(element, part);
+  if (!next) return;
+  const { target, queue, op } = next;
   const last = queue.ops.map((queued) => queued.handle).lastIndexOf(target.handle);
   const waiting = queue.ops[last];
-  if (waiting && !("end" in waiting)) queue.ops[last] = op;
+  const replaceable = (queued: EditingDraft) => !("end" in queued) && !queued.props;
+  if (waiting && replaceable(waiting) && !op.props) queue.ops[last] = op;
   else queue.ops.push(op);
   sendOnMicrotask(target.iframe, queue);
 }
@@ -147,7 +197,7 @@ export function endPreviewDraftKeepingSizeOnly(element: Element): void {
 }
 
 /** Ends the stand-in's draft on its frame: "keep" once saved or regrabbed mid-save, else "restore". */
-export function endPreviewDraft(element: Element, end: "keep" | "restore"): void {
+export function endPreviewDraft(element: Element, end: "keep" | "restore" | "clear"): void {
   endDraft(element, end);
 }
 
@@ -162,7 +212,7 @@ function endDraft(element: Element, end: EditingDraftEnd["end"]): void {
   queue.ops.push(
     entry.draft
       ? { handle, draft: entry.draft, end }
-      : { handle, end: end === "restore" ? "restore" : "keep" },
+      : { handle, end: end === "keep-size" ? "keep" : end },
   );
   send(target.iframe, queue);
 }

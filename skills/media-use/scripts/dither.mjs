@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs"
 import { dirname, extname, join, resolve } from "node:path";
 import { text } from "node:stream/consumers";
 import { parseArgs } from "node:util";
+import { assertLiteralMediaPath } from "./lib/literal-media-input.mjs";
 import {
   ERROR_DIFFUSION_ALGORITHMS,
   applyErrorDiffusionRgba,
@@ -74,6 +75,7 @@ async function run() {
   if (!args.input || !args.out) throw new Error("--input and --out are required");
   const inputPath = resolve(args.input);
   const outPath = resolve(args.out);
+  for (const path of [inputPath, outPath]) assertLiteralMediaPath(path);
   if (!existsSync(inputPath)) throw new Error(`input file not found: ${inputPath}`);
   if (inputPath === outPath) throw new Error("--out must differ from --input");
 

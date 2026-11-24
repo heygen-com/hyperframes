@@ -548,6 +548,12 @@
       "types": "./dist/compiler/compositionSizeLimit.d.ts",
       "environments": ["bun", "node"]
     },
+    "./compiler/html-tokens": {
+      "source": "./src/compiler/htmlTokens.ts",
+      "runtime": "./dist/compiler/htmlTokens.js",
+      "types": "./dist/compiler/htmlTokens.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./compiler/html-document": {
       "source": "./src/compiler/htmlDocument.ts",
       "runtime": "./dist/compiler/htmlDocument.js",

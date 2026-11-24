@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { findFfBinary, mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { assertLiteralMediaInput } from "@hyperframes/parsers/literal-media-input";
 import {
   decodableAudioStream,
   misstatesPcmByteRate,
@@ -24,13 +25,20 @@ function requiredBinary(name: "ffmpeg" | "ffprobe"): string {
   return path;
 }
 
+function literalInputArgs(binary: string, file: string, inputArgs: readonly string[]) {
+  if (inputArgs.length === 0) return mediaInputFormatArgs(binary, file);
+  assertLiteralMediaInput(file);
+  return inputArgs;
+}
+
 /** The format of the audio track ffmpeg can decode, or `null` when the file has none. */
 export async function probeAudio(
   file: string,
   inputArgs: readonly string[] = [],
 ): Promise<AudioStreamInfo | null> {
+  const ffprobe = requiredBinary("ffprobe");
   const { stdout } = await run(
-    requiredBinary("ffprobe"),
+    ffprobe,
     [
       "-v",
       "error",
@@ -40,7 +48,7 @@ export async function probeAudio(
       "-show_format",
       "-of",
       "json",
-      ...inputArgs,
+      ...literalInputArgs(ffprobe, file, inputArgs),
       "--",
       file,
     ],
@@ -72,6 +80,7 @@ export interface DecodeWindow {
 export interface DecodeFormat {
   sampleRate?: number;
   mono?: boolean;
+  inputArgs?: readonly string[];
 }
 
 export interface Decoded {
@@ -86,7 +95,8 @@ export async function decodeAudio(
   probed?: AudioStreamInfo,
   format: DecodeFormat = {},
 ): Promise<Decoded | null> {
-  const probedInfo = probed ?? (await probeAudio(file));
+  const inputArgs = format.inputArgs ?? [];
+  const probedInfo = probed ?? (await probeAudio(file, inputArgs));
   if (!probedInfo) return null;
   const info = {
     ...probedInfo,
@@ -96,12 +106,14 @@ export async function decodeAudio(
   const seek = window.from ? ["-ss", String(window.from)] : [];
   const [inputSeek, decodedSeek] = probedInfo.misstatedByteRate ? [[], seek] : [seek, []];
   const length = window.seconds === undefined ? [] : ["-t", String(window.seconds)];
+  const ffmpeg = requiredBinary("ffmpeg");
   const { stdout } = await run(
-    requiredBinary("ffmpeg"),
+    ffmpeg,
     [
       "-v",
       "error",
       ...inputSeek,
+      ...literalInputArgs(ffmpeg, file, inputArgs),
       "-i",
       file,
       ...decodedSeek,

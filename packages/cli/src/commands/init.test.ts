@@ -994,7 +994,8 @@ describe("transcodeToMp4", () => {
       const ffmpeg = join(dir, "ffmpeg");
       const output = join(dir, "out.mp4");
       // Blocking writes, like ffmpeg's own log: 1 MB stalls on a pipe nobody reads.
-      const script = `const fs = require("node:fs");
+      const script = `if (process.argv.includes("-demuxers")) process.exit(0);
+const fs = require("node:fs");
 const line = Buffer.alloc(1024, "x");
 for (let i = 0; i < 1024; i++) fs.writeSync(2, line);
 fs.writeFileSync(process.argv.at(-1), "");`;

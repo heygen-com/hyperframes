@@ -214,6 +214,23 @@ describe("a paste is checked as the preview server serves the file", () => {
     expect(runningCode(file)).toEqual([]);
   });
 
+  // fails without the fix: a copy's comments, svg <title> ones included, were written into the file.
+  it.each([
+    svgClip,
+    '<div id="note" class="clip" data-start="0" data-duration="1" data-track-index="1">Note<!-- draft --></div>',
+    '<div id="tpl" class="clip" data-start="0" data-duration="1" data-track-index="1"><template><!-- x --></template></div>',
+  ])("writes no comment from the copy %s", (html) => {
+    for (const readFrom of [null, "compositions/recv.html"]) {
+      const pasted = pasteElementHtml(FILE, { html, readFrom }, false, "index.html");
+      const clip = { html, readFrom, start: 0, duration: 1, track: 1 };
+      const placed = pasteTimelineClips(FILE, [clip], 0, [], false, "index.html").content;
+      for (const file of [pasted, placed]) {
+        expect(file).not.toContain("<!--");
+        expect(file).toMatch(/id="(icon|note|tpl)"/);
+      }
+    }
+  });
+
   it("still pastes an svg whose title is plain text", () => {
     const icon =
       '<svg viewBox="0 0 4 4"><title>Icon &lt;/title&gt;</title><circle r="2"></circle></svg>';
@@ -235,4 +252,29 @@ it("compares each pasted copy with only the elements that could be it", () => {
   pasteTimelineClips(FILE, clips, 0, [], false, "index.html");
   expect(compared.mock.calls.length).toBeLessThanOrEqual(clips.length * 2);
   compared.mockRestore();
+});
+
+// fails without the fix: a copy kept data-composition-file, and Studio then wrote this element's edits to that file.
+describe("a copy from another file cannot choose which file its edits go to", () => {
+  const marked = (mark: string) =>
+    `<div id="moved" class="clip" data-start="0" data-duration="1" data-track-index="1"><p ${mark}="compositions/b.html">x</p></div>`;
+  const MARKS = ["data-composition-file", "data-composition-id", "data-hf-original-composition-id"];
+
+  it.each(MARKS)("refuses a copy carrying %s, as an element or a clip", (mark) => {
+    const html = marked(mark);
+    const readFrom = "compositions/recv.html";
+    expect(() => pasteElementHtml(FILE, { html, readFrom }, false, "index.html")).toThrow(
+      /Couldn't paste/,
+    );
+    const clip = { html, readFrom, start: 0, duration: 1, track: 1 };
+    expect(() => pasteTimelineClips(FILE, [clip], 0, [], false, "index.html")).toThrow(
+      /Couldn't paste/,
+    );
+  });
+
+  it.each(MARKS)("keeps %s on a copy pasted into the file it was read from", (mark) => {
+    const html = marked(mark);
+    const pasted = pasteElementHtml(FILE, { html, readFrom: "index.html" }, true, "index.html");
+    expect(pasted).toContain(`${mark}="compositions/b.html"`);
+  });
 });

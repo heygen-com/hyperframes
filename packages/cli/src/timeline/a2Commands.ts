@@ -4,9 +4,13 @@ import {
   fileContentVersion,
   type AppliedFileMutation,
 } from "@hyperframes/studio-server";
+import {
+  pinWritableWithinProject,
+  readProjectCacheFile,
+} from "@hyperframes/studio-server/safe-path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readJsonFileText, readJsonStdinText } from "../utils/jsonFlag.js";
-import { readFileSync } from "node:fs";
+import { lstatSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describeProject, type ProjectTimeline, type TimelineRow } from "./describeProject.js";
 import { resolveRef } from "./resolveRef.js";
@@ -331,7 +335,48 @@ function readUndoInput(input: string): UndoInput {
   return { ok: true, receipts: values, batch: Array.isArray(value) };
 }
 
+class UndoPathRefused extends Error {}
+
+function undoTarget(projectDir: string, file: string): string {
+  const target = pinWritableWithinProject(projectDir, file);
+  if (!target)
+    throw new UndoPathRefused(
+      `undo receipt names a file timeline commands do not edit: ${terminalText(file)}`,
+    );
+  return target;
+}
+
+function undoBackup(projectDir: string, backupPath: string): string {
+  const [folder, journal, name, ...rest] = backupPath.split(/[\\/]/);
+  const inJournal =
+    folder === ".hyperframes" &&
+    journal === "backup" &&
+    !!name &&
+    name !== ".." &&
+    rest.length === 0;
+  if (!inJournal)
+    throw new UndoPathRefused(
+      `undo backup is not in .hyperframes/backup: ${terminalText(backupPath)}`,
+    );
+  return join(projectDir, folder, journal, name);
+}
+
+function readUndoBackup(projectDir: string, backup: string): string {
+  const bytes = readProjectCacheFile(projectDir, backup, Number.POSITIVE_INFINITY);
+  if (bytes) return bytes.toString("utf-8");
+  lstatSync(backup);
+  throw new UndoPathRefused(
+    `undo backup is not a plain file: ${terminalText(relative(projectDir, backup).split("\\").join("/"))}`,
+  );
+}
+
 function refuseUndoError(error: unknown, projectDir: string, json: boolean): void {
+  if (error instanceof UndoPathRefused)
+    return refuse(
+      "timeline undo",
+      { reason: error.message, fix: "pass a receipt a timeline command printed for this project" },
+      json,
+    );
   if (isRecord(error) && error.code === "ENOENT" && typeof error.path === "string")
     return refuse(
       "timeline undo",
@@ -362,16 +407,18 @@ export async function runUndo(args: Record<string, unknown>): Promise<void> {
   if (!undo.ok) return refuse("timeline undo", undo, json);
   let receipts: AppliedFileMutation[];
   try {
-    const inputs = undo.receipts.map((receipt) => {
-      const target = join(project.dir, receipt.file);
-      return {
-        sourceFile: receipt.file,
-        absPath: target,
-        before: readFileSync(target, "utf-8"),
-        after: readFileSync(join(project.dir, receipt.backupPath), "utf-8"),
-        expectedVersion: receipt.version,
-      };
-    });
+    const paths = undo.receipts.map((receipt) => ({
+      receipt,
+      target: undoTarget(project.dir, receipt.file),
+      backup: undoBackup(project.dir, receipt.backupPath),
+    }));
+    const inputs = paths.map(({ receipt, target, backup }) => ({
+      sourceFile: receipt.file,
+      absPath: target,
+      before: readFileSync(target, "utf-8"),
+      after: readUndoBackup(project.dir, backup),
+      expectedVersion: receipt.version,
+    }));
     receipts = applyFileMutations(project.dir, inputs);
   } catch (error) {
     return refuseUndoError(error, project.dir, json);

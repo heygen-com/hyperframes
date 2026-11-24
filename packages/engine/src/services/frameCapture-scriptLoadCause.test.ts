@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CaptureSession } from "./frameCapture.js";
-import { classifyScriptLoadCause, recordSubTimelineWarning } from "./frameCapture.js";
+import {
+  classifyScriptLoadCause,
+  recordFailedRequest,
+  recordSubTimelineWarning,
+} from "./frameCapture.js";
 
 const SERVER = "http://localhost:4100";
 
@@ -38,6 +42,42 @@ describe("classifyScriptLoadCause", () => {
     ["https://cdn.jsdelivr.net/npm/gsap@3.14.2/../../evil@1.0.0/x.js", undefined],
   ] as const)("names the library of %s as %s", (url, lib) => {
     expect(classifyScriptLoadCause(url, SERVER, "net::ERR_INTERNET_DISCONNECTED").lib).toBe(lib);
+  });
+});
+
+// fails without the fix: Node's URL parser threw on a host the browser had accepted, from inside a page listener
+describe("a script URL Node cannot parse", () => {
+  const unparseable = ["http://xn--a.com/lib.js", "https://xn--ab-m1t.com/lib.js"];
+
+  it.each(unparseable)("classifies %s as remote instead of throwing", (url) => {
+    expect(() => new URL(url)).toThrow();
+    expect(classifyScriptLoadCause(url, SERVER, "net::ERR_NAME_NOT_RESOLVED")).toEqual({
+      origin: "remote",
+      code: "net::ERR_NAME_NOT_RESOLVED",
+    });
+    expect(classifyScriptLoadCause(url, SERVER, 404)).toEqual({
+      origin: "remote",
+      code: "http-404",
+    });
+  });
+
+  it.each(unparseable)("records the failed request %s and keeps going", (url) => {
+    const session = {
+      serverUrl: SERVER,
+      scriptLoadFailures: [],
+      pageErrors: [],
+      browserConsoleBuffer: [],
+    } as unknown as CaptureSession;
+    recordFailedRequest(session, {
+      resourceType: () => "script",
+      url: () => url,
+      method: () => "GET",
+      failure: () => ({ errorText: "net::ERR_NAME_NOT_RESOLVED" }),
+    });
+    expect(session.scriptLoadFailures).toEqual([url]);
+    expect(session.scriptLoadCauses).toEqual([
+      { origin: "remote", code: "net::ERR_NAME_NOT_RESOLVED" },
+    ]);
   });
 });
 

@@ -946,8 +946,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     async listRegistryCatalog() {
       const { listRegistryItems, loadAllItems } = await import("../registry/resolver.js");
       const { loadProjectConfig } = await import("../utils/projectConfig.js");
+      const { fromReceivedRegistry } = await import("../commands/add.js");
       // The same registry `add` installs from, so the panel lists what can be installed.
-      const registry = { baseUrl: loadProjectConfig(projectDir).registry };
+      const baseUrl = loadProjectConfig(projectDir).registry;
+      const registry = { baseUrl, publicOnly: fromReceivedRegistry(projectDir, baseUrl) };
       const entries = await listRegistryItems(undefined, registry);
       const blockAndComponentEntries = entries.filter(
         (e) => e.type === "hyperframes:block" || e.type === "hyperframes:component",
@@ -1209,10 +1211,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Mount the shared studio API at /api.
   // Use fetch() forwarding (not .route()) so the sub-app sees paths without
   // the /api prefix — the shared module's path extraction uses c.req.path.
-  const api = createStudioApi(adapter, { allowedHosts, sandboxThumbnailCaptures: true });
+  const api = createStudioApi(adapter, {
+    allowedHosts,
+    sandboxThumbnailCaptures: true,
+    sandboxDirectOpens: true,
+  });
   app.all("/api/*", async (c) => {
     const url = new URL(c.req.url);
-    url.pathname = url.pathname.slice(4); // Strip "/api" prefix
+    url.pathname = url.pathname.replace(/^\/[^/]*/, ""); // Strip the "/api" segment however it is spelled
     const forwardReq = new Request(url.toString(), {
       method: c.req.method,
       headers: c.req.raw.headers,

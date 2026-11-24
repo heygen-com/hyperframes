@@ -216,7 +216,7 @@ describe("a gesture's start on an opaque frame", () => {
     expect(start).toEqual({
       layout: { width: 200, height: 100 },
       screenToOffset: { a: -2, b: 0, c: 0, d: 2 },
-      gsap: { x: 200, y: 5, moving: false },
+      gsap: { x: 200, y: 5, moving: false, drawsTranslate: true },
       gsapRotation: 0,
       grow: { a: -0.25, b: 0, c: 0, d: 0.25 },
       cssRotation: null,

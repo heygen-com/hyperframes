@@ -1886,7 +1886,7 @@ describe("initSandboxRuntimeModular", () => {
 
     const child = document.createElement("div");
     child.setAttribute("data-composition-id", "sub");
-    child.setAttribute("data-composition-src", "https://example.com/compositions/sub.html");
+    child.setAttribute("data-composition-src", "compositions/sub.html");
     child.setAttribute("data-start", "0");
     child.setAttribute("data-duration", "3");
     root.appendChild(child);
@@ -1903,7 +1903,7 @@ describe("initSandboxRuntimeModular", () => {
     await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
     const injectedLink = document.head.querySelector<HTMLLinkElement>(
-      'link[href="https://example.com/compositions/sub.css"]',
+      `link[href="${new URL("compositions/sub.css", document.baseURI).href}"]`,
     );
     expect(injectedLink).not.toBeNull();
 

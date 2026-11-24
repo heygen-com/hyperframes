@@ -67,6 +67,36 @@ describe("tts command", () => {
     );
   });
 
+  it("refuses a .txt path that starts with two separators, and reads it with --text-file", async () => {
+    writeFileSync(join(dir, "script.txt"), "From the file\n");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const file = join(dir, "script.txt");
+
+    for (const input of ["//host/share/script.txt", "\\\\host\\share\\script.txt"]) {
+      await expect(runCommand(ttsCommand, { rawArgs: [input, "--json"] })).rejects.toThrow(
+        CliUsageError,
+      );
+    }
+    expect(synthesizeMock).not.toHaveBeenCalled();
+    expect(errors.mock.calls.flat().join(" ")).toContain("--text-file");
+
+    await runCommand(ttsCommand, { rawArgs: ["--text-file", file, "--json"] });
+    expect(synthesizeMock).toHaveBeenCalledWith(
+      "From the file",
+      expect.any(String),
+      expect.anything(),
+    );
+  });
+
+  it("speaks a word that starts with two separators and is not a .txt path", async () => {
+    await runCommand(ttsCommand, { rawArgs: ["// and then it happened", "--json"] });
+    expect(synthesizeMock).toHaveBeenCalledWith(
+      "// and then it happened",
+      expect.any(String),
+      expect.anything(),
+    );
+  });
+
   it.each(["0.05", "1x", "1.5junk", "1 2", "", " ", "NaN", "Infinity", "0", "-1", "3.01"])(
     "rejects invalid speed %j before synthesis",
     async (speed) => {

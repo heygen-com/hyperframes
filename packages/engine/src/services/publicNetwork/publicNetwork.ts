@@ -234,7 +234,11 @@ async function upstreamRoute(
 }
 
 /** Pinned asset transport, or the opt-in upstream proxy; redirects are returned for caller validation. */
-export async function publicRequest(url: string | URL, init: RequestInit = {}): Promise<Response> {
+export async function publicRequest(
+  url: string | URL,
+  init: RequestInit = {},
+  upstream: UpstreamProxy | null = captureUpstreamProxy() ?? null,
+): Promise<Response> {
   const target = new URL(url);
   if (!["http:", "https:"].includes(target.protocol) || target.username || target.password) {
     throw new Error("Capture requires an HTTP(S) URL without credentials");
@@ -258,9 +262,8 @@ export async function publicRequest(url: string | URL, init: RequestInit = {}): 
     headers.delete(name);
   headers.set("host", target.host);
   headers.set("accept-encoding", "identity");
-  const proxy = captureUpstreamProxy();
-  const { options, tunnel } = proxy
-    ? await upstreamRoute(target, proxy, headers, signal)
+  const { options, tunnel } = upstream
+    ? await upstreamRoute(target, upstream, headers, signal)
     : await pinnedRoute(target, signal);
   return new Promise<Response>((resolve, reject) => {
     const request = target.protocol === "https:" ? httpsRequest : httpRequest;

@@ -364,67 +364,267 @@ describe("files other programs run or trust", () => {
     expect(existsSync(join(project, "compositions"))).toBe(false);
   });
 
-  describe("a folder move or delete and the scripts package.json runs", () => {
+  describe("scripts Node tooling may run", () => {
     const move = (app: Hono, from: string, newPath: string) =>
       app.request(fileUrl(from), {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ newPath }),
       });
-    const runsScripts = (project: string) =>
-      writeFileSync(
-        join(project, "package.json"),
-        JSON.stringify({
-          main: "lib/index.js",
-          bin: { tool: "tools/cli.js" },
-          scripts: { gen: "tsx scripts/gen.ts --out dist" },
-        }),
-      );
     const plant = (project: string, file: string, content = "mine") => {
       mkdirSync(join(project, file, ".."), { recursive: true });
       writeFileSync(join(project, file), content);
     };
+    const manifest = (project: string, folder: string, pkg: object) =>
+      plant(project, join(folder, "package.json"), JSON.stringify(pkg));
+    const SCAFFOLD = {
+      name: "demo",
+      private: true,
+      type: "module",
+      scripts: {
+        dev: "npx --yes hyperframes@0.9.0 preview",
+        check: "npx --yes hyperframes lint && npx --yes hyperframes validate",
+        render: "npx --yes hyperframes@0.9.0 render",
+        publish: "npx --yes hyperframes@0.9.0 publish",
+      },
+    };
+    const expectRefused = async (response: Response, what: string) => {
+      expect(response.status, what).toBe(403);
+      expect(await response.json(), what).toMatchObject({ why: "protected_path" });
+    };
 
-    it("refuses to delete or move a folder holding a script package.json names", async () => {
+    // Each project runs `target` without package.json spelling it root-relative with its extension.
+    const PROJECTS = [
+      {
+        name: "a script run after a directory change",
+        target: "tools/build.js",
+        setup: (project: string) =>
+          manifest(project, "", { scripts: { build: "cd tools && node build.js" } }),
+      },
+      {
+        name: "an entry named without its extension",
+        target: "server/start.js",
+        setup: (project: string) =>
+          manifest(project, "", { main: "server/start", scripts: { start: "node ." } }),
+      },
+      {
+        name: "a nested package.json script",
+        target: "tools/gen.mjs",
+        setup: (project: string) => {
+          manifest(project, "", SCAFFOLD);
+          manifest(project, "tools", { scripts: { gen: "node gen.mjs" } });
+        },
+      },
+      {
+        name: "a module a named script imports",
+        target: "scripts/helpers.js",
+        setup: (project: string) => {
+          manifest(project, "", { scripts: { build: "node scripts/build.mjs" } });
+          plant(project, "scripts/build.mjs", 'import "./helpers.js";');
+        },
+      },
+    ];
+
+    it.each(PROJECTS)(
+      "refuses to overwrite, delete, rename onto or move a folder over $name",
+      async ({ target, setup }) => {
+        const { app, project } = fixture();
+        setup(project);
+        plant(project, target);
+        const folder = target.split("/")[0]!;
+        const name = target.split("/").at(-1)!;
+
+        const overwrite = await app.request(fileUrl(target), {
+          method: "PUT",
+          headers: { "If-Match": fileContentVersion("mine") },
+          body: "planted",
+        });
+        await expectRefused(overwrite, "overwrite");
+        await expectRefused(await app.request(fileUrl(target), { method: "DELETE" }), "delete");
+        await expectRefused(await move(app, "inside.txt", target), "rename onto");
+        await expectRefused(
+          await app.request(fileUrl(folder), { method: "DELETE" }),
+          "folder delete",
+        );
+        await expectRefused(await move(app, folder, `${folder}-aside`), "folder move away");
+        plant(project, `incoming/${name}`, "planted");
+        await expectRefused(await move(app, "incoming", `${folder}/incoming`), "folder move in");
+        const duplicate = await app.request("http://localhost/projects/demo/duplicate-file", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: target }),
+        });
+        expect(duplicate.status, "duplicate").toBe(403);
+        rmSync(join(project, target));
+        const uploaded = await upload(app, target.slice(0, -name.length - 1), name);
+        expect((await uploaded.json()).skipped, "upload").toContain(name);
+        expect(existsSync(join(project, target)), "upload").toBe(false);
+        plant(project, target);
+
+        expect(readFileSync(join(project, target), "utf8")).toBe("mine");
+        expect(readFileSync(join(project, "inside.txt"), "utf8")).toBe("inside");
+        expect(existsSync(join(project, folder, "incoming"))).toBe(false);
+      },
+    );
+
+    it.each([
+      "scenes/motion.ts",
+      "lib/util.cts",
+      "lib/util.mts",
+      "ui/card.tsx",
+      "ui/card.jsx",
+      "lib/old.cjs",
+    ])("never writes %s, even in a default project", async (path) => {
       const { app, project } = fixture();
-      runsScripts(project);
-      for (const script of ["scripts/gen.ts", "lib/index.js", "tools/cli.js"])
-        plant(project, script);
-      for (const folder of ["scripts", "lib", "tools"]) {
-        const deleted = await app.request(fileUrl(folder), { method: "DELETE" });
-        expect(deleted.status).toBe(403);
-        expect(await deleted.json()).toMatchObject({ why: "protected_path" });
-        const moved = await move(app, folder, `${folder}-aside`);
-        expect(moved.status).toBe(403);
-        expect(await moved.json()).toMatchObject({ why: "protected_path" });
-      }
-      expect((await move(app, "scripts", "kept/scripts")).status).toBe(403);
-      for (const script of ["scripts/gen.ts", "lib/index.js", "tools/cli.js"]) {
-        expect(readFileSync(join(project, script), "utf8")).toBe("mine");
-      }
+      manifest(project, "", SCAFFOLD);
+      await expectRefused(
+        await app.request(fileUrl(path), { method: "POST", body: "export {}" }),
+        "create",
+      );
+      expect(existsSync(join(project, path))).toBe(false);
     });
 
-    it("refuses a folder move that would put a file where package.json runs a script", async () => {
+    it("still edits composition HTML, CSS and scripts in a default hyperframes init project", async () => {
       const { app, project } = fixture();
-      runsScripts(project);
-      plant(project, "tmp/gen.ts", "planted");
-      plant(project, "tmp/sub/index.js", "planted");
-      plant(project, "tmp2/GEN.TS", "planted");
-      for (const [from, to] of [
-        ["tmp", "scripts"],
-        ["tmp", "Scripts"],
-        ["tmp", "scripts."],
-        ["tmp", "scripts "],
-        ["tmp", "ｓcripts"],
-        ["tmp2", "scripts"],
-        ["tmp/sub", "lib"],
-      ] as const) {
-        const response = await move(app, from, to);
-        expect(response.status, `${from} -> ${to}`).toBe(403);
-        expect(await response.json()).toMatchObject({ why: "protected_path" });
+      manifest(project, "", SCAFFOLD);
+      for (const file of [
+        "index.html",
+        "style.css",
+        "shadows.js",
+        "assets/scene.mjs",
+        "lib/fx.iife.js",
+      ])
+        plant(project, file);
+      for (const file of [
+        "index.html",
+        "style.css",
+        "shadows.js",
+        "assets/scene.mjs",
+        "lib/fx.iife.js",
+      ]) {
+        const saved = await app.request(fileUrl(file), {
+          method: "PUT",
+          headers: { "If-Match": fileContentVersion("mine") },
+          body: "edited",
+        });
+        expect(saved.status, file).toBe(200);
+        expect(readFileSync(join(project, file), "utf8")).toBe("edited");
       }
-      expect(readdirSync(project).sort()).toEqual(["inside.txt", "package.json", "tmp", "tmp2"]);
-      expect(readFileSync(join(project, "tmp", "gen.ts"), "utf8")).toBe("planted");
+      expect((await app.request(fileUrl("surface.js"), { method: "POST", body: "x" })).status).toBe(
+        201,
+      );
+      expect((await move(app, "assets", "media/assets")).status).toBe(200);
+      expect((await app.request(fileUrl("lib"), { method: "DELETE" })).status).toBe(200);
+    });
+
+    it("still edits composition scripts in a project with no package.json", async () => {
+      const { app, project } = fixture();
+      plant(project, "shadows.js");
+      const saved = await app.request(fileUrl("shadows.js"), {
+        method: "PUT",
+        headers: { "If-Match": fileContentVersion("mine") },
+        body: "edited",
+      });
+      expect(saved.status).toBe(200);
+    });
+
+    const create = (app: Hono, path: string) =>
+      app.request(fileUrl(path), { method: "POST", body: "planted" });
+
+    // Node loads an exact extensionless name before its `.js`, `.ts` or `.json` sibling.
+    const SHADOWS = [
+      {
+        name: "server/start beside server/start.js, the manifest's main",
+        pkg: { main: "server/start", scripts: { start: "node ." } },
+        sibling: "server/start.js",
+        target: "server/start",
+      },
+      {
+        name: "lib/util beside lib/util.js",
+        pkg: { scripts: { build: "node lib/build.js" } },
+        sibling: "lib/util.js",
+        target: "lib/util",
+      },
+      {
+        name: "lib/util beside lib/util.ts",
+        pkg: { devDependencies: { tsx: "^4.0.0" } },
+        sibling: "lib/util.ts",
+        target: "lib/util",
+      },
+      {
+        name: "config beside config.json",
+        pkg: { scripts: { start: "node server.mjs" } },
+        sibling: "config.json",
+        target: "config",
+      },
+    ];
+
+    it.each(SHADOWS)("never plants $name", async ({ pkg, sibling, target }) => {
+      const { app, project } = fixture();
+      manifest(project, "", pkg);
+      plant(project, sibling);
+      await expectRefused(await create(app, target), "create");
+      await expectRefused(await move(app, "inside.txt", target), "rename onto");
+      plant(project, "incoming/payload", "planted");
+      const parent = target.includes("/") ? target.slice(0, target.lastIndexOf("/")) : "";
+      await expectRefused(
+        await move(app, "incoming", parent ? `${parent}/incoming` : "incoming-moved"),
+        "folder move in",
+      );
+      const uploaded = await upload(app, parent, target.split("/").at(-1)!);
+      expect((await uploaded.json()).skipped, "upload").toContain(target.split("/").at(-1));
+      expect(existsSync(join(project, target))).toBe(false);
+      expect(readFileSync(join(project, "inside.txt"), "utf8")).toBe("inside");
+    });
+
+    it.each([
+      "server/Start",
+      "server/START",
+      "server/start.",
+      "server/start ",
+      "server/\uff53tart",
+    ])("refuses %s, a spelling of server/start", async (path) => {
+      const { app, project } = fixture();
+      manifest(project, "", { main: "server/start" });
+      plant(project, "server/start.js");
+      await expectRefused(await create(app, path), path);
+      expect(readdirSync(join(project, "server"))).toEqual(["start.js"]);
+    });
+
+    it("never overwrites, deletes or moves bin/www, an extensionless script package.json runs", async () => {
+      const { app, project } = fixture();
+      manifest(project, "", { scripts: { start: "node ./bin/www" } });
+      plant(project, "bin/www");
+      const overwrite = await app.request(fileUrl("bin/www"), {
+        method: "PUT",
+        headers: { "If-Match": fileContentVersion("mine") },
+        body: "planted",
+      });
+      await expectRefused(overwrite, "overwrite");
+      await expectRefused(await app.request(fileUrl("bin/www"), { method: "DELETE" }), "delete");
+      await expectRefused(await app.request(fileUrl("bin"), { method: "DELETE" }), "folder delete");
+      await expectRefused(await move(app, "bin", "bin-aside"), "folder move away");
+      expect(readFileSync(join(project, "bin", "www"), "utf8")).toBe("mine");
+    });
+
+    it("still renames, moves and uploads into folders in a project with Node tooling", async () => {
+      const { app, project } = fixture();
+      manifest(project, "", { main: "server/start", scripts: { start: "node ." } });
+      plant(project, "scenes/intro.html", "<div></div>");
+      plant(project, "media/logo.png", "png");
+      expect((await move(app, "scenes", "compositions")).status).toBe(200);
+      expect((await move(app, "media", "assets/media")).status).toBe(200);
+      expect((await upload(app, "assets/notes", "credits.txt")).status).toBe(201);
+      expect(existsSync(join(project, "assets", "notes", "credits.txt"))).toBe(true);
+      expect((await create(app, "compositions/outro.html")).status).toBe(201);
+    });
+
+    it("still writes extensionless files in a default hyperframes init project", async () => {
+      const { app, project } = fixture();
+      manifest(project, "", SCAFFOLD);
+      plant(project, "server/start.js");
+      expect((await create(app, "server/start")).status).toBe(201);
+      expect((await create(app, "notes")).status).toBe(201);
     });
 
     it("refuses a folder move that would put config.toml under mise", async () => {
@@ -443,19 +643,6 @@ describe("files other programs run or trust", () => {
       expect(readFileSync(join(project, "cfg", "config.toml"), "utf8")).toBe("[tasks]");
       expect((await move(app, "cfg", "settings")).status).toBe(200);
       expect(readFileSync(join(project, "settings", "config.toml"), "utf8")).toBe("[tasks]");
-    });
-
-    it("still moves and deletes ordinary folders, script assets included", async () => {
-      const { app, project } = fixture();
-      runsScripts(project);
-      plant(project, "scenes/a.html", "<div></div>");
-      plant(project, "scenes/gen.ts", "export {}");
-      plant(project, "assets/scene.js", "export {}");
-      expect((await move(app, "scenes", "compositions")).status).toBe(200);
-      expect(readFileSync(join(project, "compositions", "gen.ts"), "utf8")).toBe("export {}");
-      expect((await move(app, "assets", "media/assets")).status).toBe(200);
-      expect((await app.request(fileUrl("compositions"), { method: "DELETE" })).status).toBe(200);
-      expect(existsSync(join(project, "compositions"))).toBe(false);
     });
   });
 

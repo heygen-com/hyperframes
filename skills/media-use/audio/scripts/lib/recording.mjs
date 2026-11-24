@@ -1,9 +1,11 @@
 // recording.mjs — the person's own voice recording as a voice line: converted to the engine's wav,
 // time-stretched by `speed` with the pitch kept, with word timings scaled to match.
 import "../../../scripts/lib/windows-exe-search.mjs";
+import { assertLiteralMediaPath } from "../../../scripts/lib/literal-media-input.mjs";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
+import { isIndirectFormat, pinnedInput, probeFormat } from "./media-input.mjs";
 import { projectPath } from "./project-path.mjs";
 
 // ffmpeg's atempo takes 0.5..2 per stage; chain stages for the rest of the 0.1..3 speed range.
@@ -31,55 +33,19 @@ export function recordingSource(hyperframesDir, audio) {
   );
 }
 
-// Formats whose file is a list, playlist or script naming other media or programs, which ffmpeg would then
-// open. A recording must be the audio itself, so these are refused.
-const INDIRECT_FORMATS = new Set([
-  "hls",
-  "applehttp",
-  "concat",
-  "dash",
-  "webm_dash_manifest",
-  "imf",
-  "sdp",
-  "rtp",
-  "rtsp",
-  "ffmetadata",
-  "image2",
-  "avisynth",
-  "vapoursynth",
-]);
-
-// The demuxer name for src, such as "mp3" or "mov,mp4,m4a,3gp,3g2,mj2"; null when it cannot tell. Some
-// Windows installs ship ffmpeg without ffprobe, so ffmpeg's input banner is the fallback.
-function probeFormat(src) {
-  const r = spawnSync(
-    "ffprobe",
-    ["-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=format_name"].concat([
-      "-of",
-      "default=nw=1:nk=1",
-      "--",
-      src,
-    ]),
-    { encoding: "utf8" },
-  );
-  if (r.error?.code === "ENOENT") {
-    const banner = spawnSync("ffmpeg", ["-hide_banner", "-protocol_whitelist", "file", "-i", src], {
-      encoding: "utf8",
-    });
-    return /^Input #0, (.+?), from /m.exec(banner.stderr ?? "")?.[1] ?? null;
-  }
-  const name = r.status === 0 ? String(r.stdout).trim() : "";
-  return name || null;
-}
-
 /** src -> 44.1k mono wav at wavAbs, played `speed` times faster. Returns { ok, error? }. */
 export function stretchToWav(src, wavAbs, speed = 1) {
+  try {
+    assertLiteralMediaPath(src);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
   const stat = statSync(src, { throwIfNoEntry: false });
   if (!stat) return { ok: false, error: `recording not found: ${src}` };
   if (!stat.isFile()) return { ok: false, error: `recording is not a file: ${src}` };
   const format = probeFormat(src);
   if (!format) return { ok: false, error: `ffmpeg cannot read ${src} as audio` };
-  if (format.split(",").some((name) => INDIRECT_FORMATS.has(name))) {
+  if (isIndirectFormat(format)) {
     return {
       ok: false,
       error: `${src} is a ${format} list that points at other files; give the audio file itself`,
@@ -88,7 +54,7 @@ export function stretchToWav(src, wavAbs, speed = 1) {
   mkdirSync(dirname(wavAbs), { recursive: true });
   const filter = speed === 1 ? [] : ["-af", atempoChain(speed)];
   // The probed format pins the input: ffmpeg opens only that one local file, with no nested inputs.
-  const input = ["-format_whitelist", format, "-protocol_whitelist", "file", "-i", src];
+  const input = pinnedInput(format, src);
   const r = spawnSync(
     "ffmpeg",
     ["-y", "-loglevel", "error", ...input, ...filter, "-ar", "44100", "-ac", "1", wavAbs],
