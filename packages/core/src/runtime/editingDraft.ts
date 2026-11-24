@@ -242,15 +242,20 @@ function end(element: Styled, ending: EditingDraftEnd): boolean {
   return ending.end === "restore";
 }
 
+type LiveDraft = Exclude<EditingDraft, { end: unknown }>;
+
+function carriedRotate(last: LiveDraft, draft: LiveDraft) {
+  return !("rotate" in draft) && "rotate" in last ? { rotate: last.rotate } : {};
+}
+
+function mergedProps(last: LiveDraft, draft: LiveDraft) {
+  if (!last.props || !draft.props) return {};
+  return { props: { ...draft.props, values: { ...last.props.values, ...draft.props.values } } };
+}
+
 function liveDraftOf(last: EditingDraft | undefined, draft: EditingDraft): EditingDraft {
   if (!last || "end" in last || "end" in draft) return draft;
-  const rotate = !("rotate" in draft) && "rotate" in last ? { rotate: last.rotate } : {};
-  const values = last.props && draft.props ? { ...last.props.values, ...draft.props.values } : null;
-  return {
-    ...draft,
-    ...rotate,
-    ...(values && draft.props ? { props: { ...draft.props, values } } : {}),
-  };
+  return { ...draft, ...carriedRotate(last, draft), ...mergedProps(last, draft) };
 }
 
 function apply(element: Styled, draft: EditingDraft): boolean {
@@ -269,7 +274,7 @@ function apply(element: Styled, draft: EditingDraft): boolean {
 }
 
 /** Draws only the parts a live draft carries, so a replay never resets what it leaves out. */
-function redrawOwned(element: Styled, draft: Exclude<EditingDraft, { end: unknown }>): void {
+function redrawOwned(element: Styled, draft: LiveDraft): void {
   if ("rotate" in draft && draft.rotate) drawRotate(element, draft.rotate);
   if (draft.translate) drawTranslate(element, draft.translate);
   if (draft.size) drawSize(element, draft.size);
