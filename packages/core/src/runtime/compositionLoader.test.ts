@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from "vitest";
 import { loadCompositions } from "./compositionLoader";
 
 type LoaderParams = Parameters<typeof loadCompositions>[0];
@@ -44,6 +44,18 @@ beforeAll(() => {
     CSS.escape = (value: string) => value.replace(/([^\w-])/g, "\\$1");
   }
 });
+
+// Studio pins a preview page's project root with <base>; these fixtures live under it.
+function useProjectBase(href = "https://example.com/") {
+  beforeEach(() => {
+    const base = document.createElement("base");
+    base.href = href;
+    document.head.prepend(base);
+  });
+  afterEach(() => document.head.querySelectorAll("base").forEach((base) => base.remove()));
+}
+
+useProjectBase();
 
 describe("loadCompositions external hosts", () => {
   afterEach(() => {
@@ -455,6 +467,61 @@ describe("loadCompositions external hosts", () => {
       );
     },
   );
+
+  describe("a project under /api/projects/p1/preview/", () => {
+    beforeEach(() => {
+      document.querySelector("base")!.href = "https://example.com/api/projects/p1/preview/";
+    });
+
+    it.each([
+      "https://elsewhere.example/x.html",
+      "//elsewhere.example/x.html",
+      "/api/projects/p2/preview/x.html",
+      "../p2/preview/x.html",
+    ])("never fetches or mounts a data-composition-src outside it: %s", async (src) => {
+      const host = appendExternalHost(src, "x");
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(
+          new Response(
+            `<div data-composition-id="x"><p>off</p><script>window.__off = 1;</script></div>`,
+          ),
+        );
+      const onDiagnostic = vi.fn();
+      const { injectedScripts } = await loadFixture({ onDiagnostic });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(host.innerHTML).toBe("");
+      expect(injectedScripts).toHaveLength(0);
+      expect(onDiagnostic).toHaveBeenCalledWith({
+        code: "external_composition_load_failed",
+        details: expect.objectContaining({
+          hostCompositionSrc: src,
+          errorMessage: "data-composition-src must name a file inside the project",
+        }),
+      });
+    });
+
+    it("mounts a project-relative sub-composition and its script", async () => {
+      const host = appendExternalHost("compositions/sub.html", "sub");
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(
+          new Response(
+            `<div data-composition-id="sub"><p>in</p><script>window.__in = 1;</script></div>`,
+          ),
+        );
+      const onDiagnostic = vi.fn();
+      const { injectedScripts } = await loadFixture({ onDiagnostic });
+      expect(new URL(String(fetchSpy.mock.calls[0]?.[0]), document.baseURI).href).toBe(
+        "https://example.com/api/projects/p1/preview/compositions/sub.html",
+      );
+      expect(host.textContent).toContain("in");
+      expect(injectedScripts.map((script) => script.textContent).join("")).toContain(
+        "window.__in = 1;",
+      );
+      expect(onDiagnostic).not.toHaveBeenCalled();
+    });
+  });
 
   it("calls onDiagnostic when HTTP response is not ok", async () => {
     const host = document.createElement("div");
@@ -897,6 +964,9 @@ describe("loadCompositions external hosts", () => {
      */
     const FRAME_URL =
       "http://localhost:5190/api/projects/demo/preview/compositions/frames/scene.html";
+    beforeEach(() => {
+      document.querySelector("base")!.href = "http://localhost:5190/api/projects/demo/preview/";
+    });
 
     it("rewrites `../`-traversing src on elements inside <template>", async () => {
       const host = appendExternalHost(FRAME_URL, "scene");
@@ -1910,13 +1980,13 @@ describe("namespaceMountedSvgIds", () => {
   const clipTarget = (el: Element | null) =>
     document.getElementById(/#([^)"']+)/.exec(el!.getAttribute("clip-path")!)![1]!);
   const external = (id: string) =>
-    `<div data-composition-id="${id}" data-composition-src="https://x.test/${id}.html"></div>`;
+    `<div data-composition-id="${id}" data-composition-src="https://example.com/${id}.html"></div>`;
 
   it("resolves each loaded composition's clip-path to its own clipPath when ids collide", async () => {
     await mountAll(
       {
-        "https://x.test/intro.html": `<div data-composition-id="intro">${CLIPPED("clip0_1_2")}</div>`,
-        "https://x.test/grid.html": `<div data-composition-id="grid">${CLIPPED("clip0_1_2")}</div>`,
+        "https://example.com/intro.html": `<div data-composition-id="intro">${CLIPPED("clip0_1_2")}</div>`,
+        "https://example.com/grid.html": `<div data-composition-id="grid">${CLIPPED("clip0_1_2")}</div>`,
       },
       external("intro") + external("grid"),
     );
@@ -1932,7 +2002,7 @@ describe("namespaceMountedSvgIds", () => {
       `<div data-composition-id="${id}"><style>.box { filter: url(#fx); }</style>` +
       `<svg><filter id="fx"><feGaussianBlur stdDeviation="2"/></filter></svg><div class="box"></div></div>`;
     const styles = await mountAll(
-      { "https://x.test/a.html": filtered("a"), "https://x.test/b.html": filtered("b") },
+      { "https://example.com/a.html": filtered("a"), "https://example.com/b.html": filtered("b") },
       external("a") + external("b"),
     );
 
@@ -1947,8 +2017,8 @@ describe("namespaceMountedSvgIds", () => {
   it("leaves an id that does not collide untouched", async () => {
     await mountAll(
       {
-        "https://x.test/a.html": `<div data-composition-id="a">${CLIPPED("c")}</div>`,
-        "https://x.test/b.html": `<div data-composition-id="b">${CLIPPED("c")}${CLIPPED("only-b")}</div>`,
+        "https://example.com/a.html": `<div data-composition-id="a">${CLIPPED("c")}</div>`,
+        "https://example.com/b.html": `<div data-composition-id="b">${CLIPPED("c")}${CLIPPED("only-b")}</div>`,
       },
       external("a") + external("b"),
     );
@@ -1963,7 +2033,7 @@ describe("namespaceMountedSvgIds", () => {
   it("keeps a nested composition's references out of its parent's renames", async () => {
     await mountAll(
       {
-        "https://x.test/outer.html":
+        "https://example.com/outer.html":
           `<div data-composition-id="outer"><div id="inner-host" data-composition-id="inner"></div>` +
           `${CLIPPED("c")}</div>`,
       },
