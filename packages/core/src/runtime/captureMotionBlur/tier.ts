@@ -18,6 +18,7 @@ export interface CaptureMotionBlurHost {
 }
 
 export interface Config {
+  rootEnabled?: boolean;
   shutterDeg: number;
   phaseDeg: number | null;
   samples: number | null;

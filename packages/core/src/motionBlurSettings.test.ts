@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   MOTION_BLUR_ATTR,
   type MotionBlurSettings,
+  elementMotionBlurAttributeEdits,
   motionBlurAttributeEdits,
+  readElementMotionBlurSettings,
   readMotionBlurSettings,
+  resolveMoverSettings,
 } from "./motionBlurSettings";
 
 const read = (attrs: Record<string, string>) => readMotionBlurSettings((n) => attrs[n] ?? null);
@@ -132,5 +135,51 @@ describe("motionBlurAttributeEdits", () => {
       const back = readMotionBlurSettings((n) => written[n] ?? null);
       expect(back).toEqual(s);
     }
+  });
+});
+
+describe("per-element motion blur settings", () => {
+  it("reads mode, shutter, and samples overrides with root limits", () => {
+    const read = (attrs: Record<string, string>) =>
+      readElementMotionBlurSettings((n) => attrs[n] ?? null);
+    expect(read({})).toEqual({ mode: "inherit", shutterDeg: null, samples: null });
+    expect(read({ "data-motion-blur": "on", "data-motion-blur-shutter": "900" })).toEqual({
+      mode: "on",
+      shutterDeg: 720,
+      samples: null,
+    });
+    expect(read({ "data-motion-blur": "off", "data-motion-blur-samples": "1" })).toEqual({
+      mode: "off",
+      shutterDeg: null,
+      samples: 2,
+    });
+  });
+
+  it("resolves mover overrides against root settings", () => {
+    const root = { shutterDeg: 240, phaseDeg: -90, samples: 32 };
+    expect(resolveMoverSettings(() => null, root)).toEqual(root);
+    expect(
+      resolveMoverSettings(
+        (n) => (n === "data-motion-blur-shutter" ? "480" : n === "data-motion-blur-samples" ? "16" : null),
+        root,
+      ),
+    ).toEqual({ shutterDeg: 480, phaseDeg: -90, samples: 16 });
+  });
+
+  it("writes only non-inherited element attributes", () => {
+    expect(
+      elementMotionBlurAttributeEdits({ mode: "inherit", shutterDeg: null, samples: null }),
+    ).toEqual({
+      "data-motion-blur": null,
+      "data-motion-blur-shutter": null,
+      "data-motion-blur-samples": null,
+    });
+    expect(
+      elementMotionBlurAttributeEdits({ mode: "on", shutterDeg: 360, samples: 16 }),
+    ).toEqual({
+      "data-motion-blur": "on",
+      "data-motion-blur-shutter": "360",
+      "data-motion-blur-samples": "16",
+    });
   });
 });

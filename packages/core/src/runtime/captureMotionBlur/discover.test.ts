@@ -330,4 +330,49 @@ describe("discoverMovers", () => {
     fast.style.opacity = "0.5";
     expect(discoverMovers({ scene, durationSeconds: 1, fps: 30, seek }).movers).toEqual([fast]);
   });
+
+  it("keeps slow opted-in movers when rootEnabled is true, and only opted-in movers when rootEnabled is false", () => {
+    const { scene, fast, slow, still, seek } = setup();
+    slow.setAttribute("data-motion-blur", "on");
+    still.setAttribute("data-motion-blur", "on");
+
+    const withRootOn = discoverMovers({
+      scene,
+      durationSeconds: 1,
+      fps: 30,
+      rootEnabled: true,
+      seek,
+    }).movers;
+    expect(withRootOn).toEqual([fast, slow]);
+
+    const withRootOff = discoverMovers({
+      scene,
+      durationSeconds: 1,
+      fps: 30,
+      rootEnabled: false,
+      seek,
+    }).movers;
+    expect(withRootOff).toEqual([slow]);
+  });
+
+  it("skips an opted-in child inside an opted-out ancestor and preserves outermost-wins", () => {
+    const { scene, fast, fastChild, off, seek } = setup();
+    fastChild.setAttribute("data-motion-blur", "on");
+    const offChild = element(off, "off-child");
+    offChild.setAttribute("data-motion-blur", "on");
+    const seekWithOffChild = (t: number): void => {
+      seek(t);
+      offChild.style.transform = `translateX(${100 * t}px)`;
+    };
+    seekWithOffChild(0);
+
+    const { movers } = discoverMovers({
+      scene,
+      durationSeconds: 1,
+      fps: 30,
+      rootEnabled: false,
+      seek: seekWithOffChild,
+    });
+    expect(movers).toEqual([fastChild]);
+  });
 });

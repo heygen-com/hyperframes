@@ -837,6 +837,11 @@ describe("detectRenderModeHints", () => {
       expect(codes(html)).toEqual([]);
     });
 
+    it("routes when an element inside the root opted in even if the root is off", () => {
+      const html = `<div data-composition-id="root"><div id="hero" data-motion-blur="on"></div></div>`;
+      expect(codes(html)).toEqual(["captureMotionBlur"]);
+    });
+
     it("routes when the outermost root opted in, whatever its sub-compositions say", () => {
       const html = `<div data-composition-id="root" data-motion-blur="on"><div data-composition-id="sub"></div></div>`;
       expect(codes(html)).toEqual(["captureMotionBlur"]);

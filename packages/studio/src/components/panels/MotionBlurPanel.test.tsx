@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openComposition } from "@hyperframes/sdk";
+import { usePlayerStore } from "../../player/store/playerStore";
 import { MotionBlurPanel } from "./MotionBlurPanel";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -47,6 +48,7 @@ afterEach(() => {
   cleanup();
   shell.activeCompPath = null;
   shell.previewIframeRef.current = null;
+  usePlayerStore.setState({ selectedElementId: null, selectedElementIds: new Set() });
   vi.clearAllMocks();
 });
 
@@ -186,5 +188,82 @@ describe("MotionBlurPanel", () => {
     expect(host.textContent).toContain("read from the main composition");
     expect(radio(host, "Strong")?.hasAttribute("disabled")).toBe(true);
     expect(checked(host)).toEqual([]);
+  });
+
+  it("shows This element controls when a non-root element is selected and round-trips attributes", async () => {
+    files["index.html"] =
+      `<!DOCTYPE html><html><body><div data-composition-id="main" data-hf-root data-duration="5" data-width="1920" data-height="1080"><div id="hero" data-hf-id="hf-hero">Hero</div></div></body></html>`;
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    usePlayerStore.setState({ selectedElementId: "hf-hero" });
+    const session = await openComposition(files["index.html"], { history: false });
+    await act(async () => {
+      root?.render(
+        <MotionBlurPanel
+          sdkSession={session}
+          publishSdkSession={vi.fn()}
+          reloadPreview={vi.fn()}
+          recordEdit={recordEdit}
+        />,
+      );
+    });
+
+    expect(host.textContent).toContain("This element");
+    const onBtn = [...host.querySelectorAll('[aria-label="Element motion blur"] [role="radio"]')].find(
+      (el) => el.textContent === "On",
+    );
+    expect(onBtn).toBeDefined();
+    await click(onBtn ?? null);
+    expect(files["index.html"]).toContain('data-motion-blur="on"');
+
+    const shutterInput = host.querySelector(
+      'input[aria-label="Element shutter angle"]',
+    ) as HTMLInputElement | null;
+    expect(shutterInput).not.toBeNull();
+    await act(async () => {
+      if (shutterInput) {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+        setter?.call(shutterInput, "480");
+        shutterInput.dispatchEvent(new Event("input", { bubbles: true }));
+        shutterInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      }
+    });
+    await settle();
+    expect(files["index.html"]).toContain('data-motion-blur-shutter="480"');
+  });
+
+  it("follows live preview attributes for This element after undo or outside edits", async () => {
+    files["index.html"] =
+      `<!DOCTYPE html><html><body><div data-composition-id="main" data-hf-root data-duration="5" data-width="1920" data-height="1080"><div id="hero" data-hf-id="hf-hero">Hero</div></div></body></html>`;
+    const doc = document.implementation.createHTMLDocument("preview");
+    doc.body.innerHTML =
+      '<div data-composition-id="main"><div id="hero" data-hf-id="hf-hero" data-motion-blur="off" data-motion-blur-shutter="180">Hero</div></div>';
+    shell.previewIframeRef.current = { contentDocument: doc } as unknown as HTMLIFrameElement;
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    usePlayerStore.setState({ selectedElementId: "hf-hero" });
+    const session = await openComposition(files["index.html"], { history: false });
+    await act(async () => {
+      root?.render(
+        <MotionBlurPanel
+          sdkSession={session}
+          publishSdkSession={vi.fn()}
+          reloadPreview={vi.fn()}
+          recordEdit={recordEdit}
+        />,
+      );
+    });
+
+    const offBtn = [...host.querySelectorAll('[aria-label="Element motion blur"] [role="radio"]')].find(
+      (el) => el.textContent === "Off",
+    );
+    expect(offBtn?.getAttribute("aria-checked")).toBe("true");
+    const shutterInput = host.querySelector(
+      'input[aria-label="Element shutter angle"]',
+    ) as HTMLInputElement | null;
+    expect(shutterInput?.value).toBe("180");
   });
 });

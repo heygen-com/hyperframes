@@ -69,3 +69,48 @@ export function motionBlurAttributeEdits(
     [MOTION_BLUR_ATTR.tier]: settings.tier === "auto" ? null : settings.tier,
   };
 }
+
+export type MotionBlurMode = "on" | "off" | "inherit";
+
+export interface ElementMotionBlurSettings {
+  mode: MotionBlurMode;
+  shutterDeg: number | null;
+  samples: number | null;
+}
+
+export function readElementMotionBlurSettings(
+  attr: (name: string) => string | null,
+): ElementMotionBlurSettings {
+  const rawMode = attr(MOTION_BLUR_ATTR.enable);
+  const mode: MotionBlurMode = rawMode === "on" ? "on" : rawMode === "off" ? "off" : "inherit";
+  const shutter = number(attr(MOTION_BLUR_ATTR.shutter));
+  const samples = number(attr(MOTION_BLUR_ATTR.samples));
+  const { shutterDeg, samples: bounds } = MOTION_BLUR_LIMITS;
+  return {
+    mode,
+    shutterDeg: shutter === null ? null : clamp(shutter, shutterDeg.min, shutterDeg.max),
+    samples: samples === null ? null : Math.round(clamp(samples, bounds.min, bounds.max)),
+  };
+}
+
+export function resolveMoverSettings(
+  attr: (name: string) => string | null,
+  root: Pick<MotionBlurSettings, "shutterDeg" | "phaseDeg" | "samples">,
+): Pick<MotionBlurSettings, "shutterDeg" | "phaseDeg" | "samples"> {
+  const el = readElementMotionBlurSettings(attr);
+  return {
+    shutterDeg: el.shutterDeg ?? root.shutterDeg,
+    phaseDeg: root.phaseDeg,
+    samples: el.samples ?? root.samples,
+  };
+}
+
+export function elementMotionBlurAttributeEdits(
+  settings: ElementMotionBlurSettings,
+): Record<string, string | null> {
+  return {
+    [MOTION_BLUR_ATTR.enable]: settings.mode === "inherit" ? null : settings.mode,
+    [MOTION_BLUR_ATTR.shutter]: settings.shutterDeg === null ? null : String(settings.shutterDeg),
+    [MOTION_BLUR_ATTR.samples]: settings.samples === null ? null : String(settings.samples),
+  };
+}

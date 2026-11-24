@@ -40,7 +40,7 @@ import { readMotionBlurSettings } from "../../motionBlurSettings";
 import { scanMovers, whileCallbacksMuted } from "./discover";
 import { createFilterTier, FILTER_LIGHTER_LEVELS, setFilterPreviewQuality } from "./filterTier";
 import { compositionFingerprint, coverageSampler } from "./fingerprint";
-import { readMoverFrames, shutterTimes } from "./frames";
+import { readMoverFrames, resolveMoverOverrides, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
 import type { MotionBlurFingerprint } from "../../motionBlurFingerprint";
 import {
@@ -98,9 +98,10 @@ const LOG_EVERY = 25;
 
 function readConfig(root: HTMLElement): Config | null {
   const settings = readMotionBlurSettings((name) => root.getAttribute(name));
-  if (!settings.enabled) return null;
+  const rootEnabled = settings.enabled;
+  if (!rootEnabled && !root.querySelector('[data-motion-blur="on"]')) return null;
   const { shutterDeg, phaseDeg, samples, events, tier } = settings;
-  return { shutterDeg, phaseDeg, samples, events, tier };
+  return { rootEnabled, shutterDeg, phaseDeg, samples, events, tier };
 }
 
 /** Must run before composition scripts: see `installAcceleratedCanvasTracker`. */
@@ -267,6 +268,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
         scene: root,
         durationSeconds: duration,
         fps: host.fps,
+        rootEnabled: config.rootEnabled ?? true,
         seek: host.seek,
         events: config.events,
         onStep: (i, steps) => defects.sample(i, steps, (i / steps) * duration),
@@ -298,6 +300,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
         reads,
         ...shutterTimes(config.shutterDeg, config.phaseDeg, host.fps),
         taps: config.samples,
+        moverOverrides: resolveMoverOverrides(movers, config, host.fps),
         pads,
         frameW: width,
         scene: root,

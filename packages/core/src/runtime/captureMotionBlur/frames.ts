@@ -1,6 +1,7 @@
 /** Where each mover is across the shutter: its pose read at several times, then tapped. */
 
 import type { MoverFrame } from "./composite";
+import { resolveMoverSettings, type MotionBlurSettings } from "../../motionBlurSettings";
 import {
   type Affine,
   type createPoseReader,
@@ -129,6 +130,12 @@ function contentBox(el: HTMLElement, reader: PoseReader, scene: HTMLElement, fra
   }
 }
 
+export interface MoverOverride {
+  shutterSeconds: number;
+  phaseSeconds: number;
+  taps: number | null;
+}
+
 export interface FrameRequest {
   movers: HTMLElement[];
   reader: PoseReader;
@@ -141,11 +148,28 @@ export interface FrameRequest {
   phaseSeconds: number;
   /** A fixed tap count, or null to size the taps to each smear. */
   taps: number | null;
+  /** Optional per-mover shutter/phase/taps overrides, parallel to `movers`. */
+  moverOverrides?: ReadonlyArray<MoverOverride>;
   /** Px each mover's box grows by on every side (its glow); none for a mover not listed. */
   pads?: ReadonlyMap<HTMLElement, number>;
   scene?: HTMLElement;
   frameW: number;
   frameH: number;
+}
+
+export function resolveMoverOverrides(
+  movers: ReadonlyArray<HTMLElement>,
+  config: Pick<MotionBlurSettings, "shutterDeg" | "phaseDeg" | "samples">,
+  fps: number,
+  fixedTaps?: number | null,
+): MoverOverride[] {
+  return movers.map((el) => {
+    const resolved = resolveMoverSettings((name) => el.getAttribute(name), config);
+    return {
+      ...shutterTimes(resolved.shutterDeg, resolved.phaseDeg, fps),
+      taps: fixedTaps !== undefined ? fixedTaps : resolved.samples,
+    };
+  });
 }
 
 export function shutterTimes(
@@ -161,22 +185,58 @@ export function shutterTimes(
 }
 
 export function readMoverFrames(req: FrameRequest): { els: HTMLElement[]; frames: MoverFrame[] } {
-  const { reader: r, shutterSeconds: shutter, t, reads, seek } = req;
-  const visible = req.movers.filter(
-    (el) =>
-      typeof el.checkVisibility !== "function" || el.checkVisibility({ visibilityProperty: true }),
-  );
-  if (visible.length === 0 || shutter <= 0) return { els: [], frames: [] };
-  const start = t + req.phaseSeconds;
-  const poses = visible.map((): Affine[] => []);
-  for (let j = 0; j < reads; j++) {
-    seek(Math.max(0, start + (j / (reads - 1)) * shutter));
-    r.reset();
-    visible.forEach((el, i) => poses[i]?.push(r.pose(el)));
+  const { reader: r, t, reads, seek } = req;
+  const fallback: MoverOverride = {
+    shutterSeconds: req.shutterSeconds,
+    phaseSeconds: req.phaseSeconds,
+    taps: req.taps,
+  };
+  const active: Array<{ el: HTMLElement; override: MoverOverride }> = [];
+  req.movers.forEach((el, idx) => {
+    if (
+      typeof el.checkVisibility === "function" &&
+      !el.checkVisibility({ visibilityProperty: true })
+    ) {
+      return;
+    }
+    const override = req.moverOverrides?.[idx] ?? fallback;
+    if (override.shutterSeconds <= 0) return;
+    active.push({ el, override });
+  });
+  if (active.length === 0) return { els: [], frames: [] };
+  const visible = active.map((a) => a.el);
+  const poses = active.map((): Affine[] => []);
+  const groups = new Map<
+    string,
+    { shutterSeconds: number; phaseSeconds: number; indices: number[] }
+  >();
+  active.forEach(({ override }, i) => {
+    const key = `${override.shutterSeconds}:${override.phaseSeconds}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        shutterSeconds: override.shutterSeconds,
+        phaseSeconds: override.phaseSeconds,
+        indices: [],
+      };
+      groups.set(key, group);
+    }
+    group.indices.push(i);
+  });
+  for (const group of groups.values()) {
+    const start = t + group.phaseSeconds;
+    for (let j = 0; j < reads; j++) {
+      seek(Math.max(0, start + (j / (reads - 1)) * group.shutterSeconds));
+      r.reset();
+      for (const i of group.indices) {
+        const el = visible[i];
+        if (el) poses[i]?.push(r.pose(el));
+      }
+    }
   }
   (req.restore ?? seek)(t);
   r.reset();
-  const frames = visible.map((el, i) => {
+  const frames = active.map(({ el, override }, i) => {
     const pad = req.pads?.get(el) ?? 0;
     const [x0, y0, x1, y1] = req.scene
       ? contentBox(el, r, req.scene, req.frameW)
@@ -194,9 +254,9 @@ export function readMoverFrames(req: FrameRequest): { els: HTMLElement[]; frames
       origin: [ox, oy] as [number, number],
       now: grow(pose),
       taps:
-        req.taps === null
+        override.taps === null
           ? autoTaps(path, w, h, req.frameW, req.frameH)
-          : tapsFromReads(path, req.taps),
+          : tapsFromReads(path, override.taps),
     };
   });
   r.reset();

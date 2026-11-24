@@ -5,7 +5,7 @@ description: "Smear fast-moving elements along their path, in the browser editor
 
 Motion blur gives fast-moving elements a real shutter smear. For each frame, HyperFrames reads where every mover was across the shutter interval and blurs it along that path. A box sliding across the frame leaves a streak instead of a sharp copy at one position.
 
-It is **opt-in**. Nothing blurs until you add `data-motion-blur="on"` to the composition root.
+It is **opt-in**. Nothing blurs until you add `data-motion-blur="on"` to the composition root or to individual moving elements.
 
 ## Turn it on
 
@@ -26,16 +26,20 @@ That is all. The same attribute drives the browser editor preview and `hyperfram
 
 | Attribute | Default | Meaning |
 | --- | --- | --- |
-| `data-motion-blur` | none | `on` enables blur. `off` opts out, on the root or on any subtree. |
-| `data-motion-blur-shutter` | `240` | Shutter angle in degrees, 0–720. Larger is a longer smear. |
+| `data-motion-blur` | none | `on` enables blur on the root or opts an individual element in (even below the speed threshold, and even when the root is off). `off` opts out, on the root or on any subtree. |
+| `data-motion-blur-shutter` | `240` | Shutter angle in degrees, 0–720. Larger is a longer smear. Can also be set on an element to override the root for that mover. |
 | `data-motion-blur-phase` | centred | When the shutter opens, in degrees of a frame, -360 to 360. The window starts at `t + phase / 360 / fps` and lasts `shutter / 360 / fps`. `0` opens on the frame, so the smear trails ahead of it; unset centres it, the same as minus half the shutter. Matches After Effects' Shutter Phase. |
-| `data-motion-blur-samples` | at least 32 | A fixed number of samples per frame, 2–64. Left unset, each mover gets at least 32, and about one per 2 px of smear when that is more, so a fast move never shows steps. |
+| `data-motion-blur-samples` | at least 32 | A fixed number of samples per frame, 2–64. Left unset, each mover gets at least 32, and about one per 2 px of smear when that is more, so a fast move never shows steps. Can also be set on an element to override the root for that mover. |
 | `data-motion-blur-events` | off | `on` runs timeline callbacks (`onUpdate` and similar) while blur looks for movers, and at each sample when a callback changes an element's inline style or its box. Needed when the motion is set from a callback, such as a `render(t)` function, which blur cannot otherwise see. |
 | `data-motion-blur-tier` | `auto` | `auto` and `filter` draw with the filter tier; `capture` asks for the capture tier (below). |
 
 ## In the browser editor
 
-The **Blur** tab in the browser editor's right dock sets it with one control: **Off**, **Subtle** or **Strong**. Subtle is the default blur (240° shutter, samples sized to the smear). Strong opens the shutter to 720° and the samples to 64. The panel writes the attributes above to the composition root, so a render uses the same setting, and Undo works. Subtle and Strong also turn on `data-motion-blur-events`, so motion set from a `render(t)` callback is found. Off removes `data-motion-blur` and `data-motion-blur-events` and leaves the other attributes where they are.
+The **Blur** tab in the browser editor's right dock sets the composition root with one control: **Off**, **Subtle** or **Strong**. Subtle is the default blur (240° shutter, samples sized to the smear). Strong opens the shutter to 720° and the samples to 64. The panel writes the attributes above to the composition root, so a render uses the same setting, and Undo works. Subtle and Strong also turn on `data-motion-blur-events`, so motion set from a `render(t)` callback is found. Off removes `data-motion-blur` and `data-motion-blur-events` and leaves the other attributes where they are.
+
+When an element inside the composition is selected, a **This element** section lets you set it to **On**, **Off**, or **Inherit**, and override its shutter angle (`0–720°`).
+
+Per-element attributes apply to page blur (`data-motion-blur*`); engine sub-frame blur (`motionBlur` in capture) stays whole-frame.
 
 ## What it blurs
 

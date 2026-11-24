@@ -217,6 +217,77 @@ describe("opt-in and off switches", () => {
     expect(win.__hfMotionBlur).toBeUndefined();
   });
 
+  it("activates when root is off but a descendant has data-motion-blur='on'", () => {
+    installHtmlInCanvas();
+    const root = makeRoot({});
+    const mover = document.createElement("div");
+    mover.id = "hero";
+    mover.setAttribute("data-motion-blur", "on");
+    const other = document.createElement("div");
+    other.id = "other";
+    root.append(mover, other);
+    let tx = 0;
+    let ox = 0;
+    mover.getBoundingClientRect = () =>
+      ({ left: tx, top: 0, right: tx + 10, bottom: 10, width: 10, height: 10 }) as DOMRect;
+    other.getBoundingClientRect = () =>
+      ({ left: ox, top: 0, right: ox + 10, bottom: 10, width: 10, height: 10 }) as DOMRect;
+    const seek = vi.fn((t: number) => {
+      tx = 30 * t; // 1 px/frame: below MIN_SPEED, kept via opt-in
+      ox = 300 * t; // 10 px/frame: fast, ignored because root is off
+      mover.style.transform = `translateX(${tx}px)`;
+      other.style.transform = `translateX(${ox}px)`;
+    });
+    seek(0);
+    initCaptureMotionBlur(host(root, seek));
+    void paintCaptureMotionBlur(0.5, { playing: true });
+    expect(win.__hfMotionBlur?.report()).toMatchObject({
+      state: "on",
+      moverNames: ["div#hero"],
+    });
+  });
+
+  it("seeks separate shutter windows when movers have different data-motion-blur-shutter values", () => {
+    setFilterFallbackForTests(true);
+    installHtmlInCanvas();
+    const root = makeRoot({
+      "data-motion-blur": "on",
+      "data-motion-blur-shutter": "360",
+      "data-motion-blur-tier": "filter",
+    });
+    const a = document.createElement("div");
+    a.id = "a";
+    const b = document.createElement("div");
+    b.id = "b";
+    b.setAttribute("data-motion-blur-shutter", "720");
+    root.append(a, b);
+    let ax = 0;
+    let bx = 0;
+    a.getBoundingClientRect = () =>
+      ({ left: ax, top: 0, right: ax + 10, bottom: 10, width: 10, height: 10 }) as DOMRect;
+    b.getBoundingClientRect = () =>
+      ({ left: bx, top: 0, right: bx + 10, bottom: 10, width: 10, height: 10 }) as DOMRect;
+    const seekTimes: number[] = [];
+    const seek = vi.fn((t: number) => {
+      seekTimes.push(t);
+      ax = 300 * t;
+      bx = 300 * t;
+      a.style.transform = `translateX(${ax}px)`;
+      b.style.transform = `translateX(${bx}px)`;
+    });
+    seek(0);
+    initCaptureMotionBlur(host(root, seek));
+    void paintCaptureMotionBlur(0.25, { playing: true });
+    seekTimes.length = 0;
+    void paintCaptureMotionBlur(0.5, { playing: true });
+    // At 30 fps: 360° spans ±1/60 s around 0.5, 720° spans ±1/30 s around 0.5.
+    const minT = Math.min(...seekTimes);
+    const maxT = Math.max(...seekTimes);
+    expect(minT).toBeCloseTo(0.5 - 1 / 30, 4);
+    expect(maxT).toBeCloseTo(0.5 + 1 / 30, 4);
+    expect(seekTimes.some((t) => Math.abs(t - (0.5 - 1 / 60)) < 1e-4)).toBe(true);
+  });
+
   it("stays off without html-in-canvas and says why", () => {
     const root = makeRoot();
     initCaptureMotionBlur(host(root));

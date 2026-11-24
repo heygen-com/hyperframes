@@ -4,8 +4,12 @@ import type { ElementSnapshot } from "@hyperframes/sdk";
 import {
   MOTION_BLUR_ATTR,
   MOTION_BLUR_LIMITS,
+  type ElementMotionBlurSettings,
+  type MotionBlurMode,
   type MotionBlurSettings,
+  elementMotionBlurAttributeEdits,
   motionBlurAttributeEdits,
+  readElementMotionBlurSettings,
   readMotionBlurSettings,
 } from "@hyperframes/core/motion-blur-settings";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
@@ -26,6 +30,24 @@ export type RootAttributes = Readonly<Record<string, string>>;
 
 export const settingsOf = (attributes: RootAttributes): MotionBlurSettings =>
   readMotionBlurSettings((name) => attributes[name] ?? null);
+
+export const elementSettingsOf = (attributes: RootAttributes): ElementMotionBlurSettings =>
+  readElementMotionBlurSettings((name) => attributes[name] ?? null);
+
+export const ELEMENT_BLUR_MODES: ReadonlyArray<{ mode: MotionBlurMode; label: string }> = [
+  { mode: "on", label: "On" },
+  { mode: "off", label: "Off" },
+  { mode: "inherit", label: "Inherit" },
+];
+
+export function changedElementEdits(
+  attributes: RootAttributes,
+  next: ElementMotionBlurSettings,
+): Array<{ name: string; value: string | null }> {
+  return Object.entries(elementMotionBlurAttributeEdits(next))
+    .filter(([name, value]) => (attributes[name] ?? null) !== value)
+    .map(([name, value]) => ({ name, value }));
+}
 
 /** Only the attributes whose value would change, so a no-op edit writes nothing. */
 export function changedEdits(
@@ -75,6 +97,54 @@ function blurAttributes(read: (name: string) => string | null | undefined): Root
 
 const sealedRoots = new WeakMap<HTMLIFrameElement, RootAttributes>();
 const askingRoot = new WeakSet<HTMLIFrameElement>();
+const sealedElements = new WeakMap<HTMLIFrameElement, Map<string, RootAttributes>>();
+const askingElement = new WeakMap<HTMLIFrameElement, Set<string>>();
+
+/** The blur attributes on one element in the live preview: what actually runs, after an undo or an outside edit too. */
+export function readPreviewElementAttributes(
+  iframe: HTMLIFrameElement | null,
+  elementId: string | null,
+): RootAttributes | null {
+  if (!iframe || !elementId) return null;
+  if (previewFrameOpaque(iframe)) {
+    void askSealedElement(iframe, elementId);
+    return sealedElements.get(iframe)?.get(elementId) ?? null;
+  }
+  try {
+    const escaped = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(elementId) : elementId;
+    const el =
+      iframe.contentDocument?.querySelector(`[data-hf-id="${escaped}"]`) ??
+      iframe.contentDocument?.getElementById(elementId) ??
+      null;
+    return el ? blurAttributes((name) => el.getAttribute(name)) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function askSealedElement(iframe: HTMLIFrameElement, elementId: string): Promise<void> {
+  let inflight = askingElement.get(iframe);
+  if (!inflight) {
+    inflight = new Set<string>();
+    askingElement.set(iframe, inflight);
+  }
+  if (inflight.has(elementId)) return;
+  inflight.add(elementId);
+  try {
+    const escaped = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(elementId) : elementId;
+    const [match] = (await queryPreviewElements(iframe, `[data-hf-id="${escaped}"]`))?.matches ?? [];
+    const [found] = match ? ((await describePreviewElements(iframe, [match.handle])) ?? []) : [];
+    let map = sealedElements.get(iframe);
+    if (!map) {
+      map = new Map<string, RootAttributes>();
+      sealedElements.set(iframe, map);
+    }
+    if (!found) map.delete(elementId);
+    else map.set(elementId, blurAttributes((name) => new Map(found.attributes).get(name)));
+  } finally {
+    inflight.delete(elementId);
+  }
+}
 
 /** A sealed frame's root, asked one request at a time; the polled read returns the last answer. */
 async function askSealedRoot(iframe: HTMLIFrameElement): Promise<void> {
