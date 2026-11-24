@@ -283,7 +283,7 @@ async function presentResult(result: ShareState, input: ShareAction, json: boole
 function presentSourceNotice(result: ShareState) {
   if (result.source.at === "ready" && result.source.excludedPrivatePaths?.length)
     console.error(
-      `Left out of editable source: ${result.source.excludedPrivatePaths.map(shareLine).join(", ")}`,
+      `Left out of editable source: ${terminalText(escapeTabs(result.source.excludedPrivatePaths.join(", ")))}`,
     );
   if (!result.upToDate && result.source.at === "video_only")
     console.error(sourceNotice(result.source.reason));
