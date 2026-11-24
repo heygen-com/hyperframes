@@ -3,6 +3,7 @@
  * Extracted from useGsapScriptCommits to keep file sizes under the 600-line limit.
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { sameData } from "../utils/sameData";
@@ -78,6 +79,9 @@ export async function cacheCommittedKeyframes(
   mutation: Record<string, unknown>,
 ): Promise<void> {
   const doc = await tweenTargetDocument(iframe);
+  // A sealed frame that did not answer (replaced, or gone) would attribute nothing and clear the
+  // selection's markers; the cache reload after the write fills them from the new frame instead.
+  if (!doc && iframe && previewFrameOpaque(iframe)) return;
   updateKeyframeCacheFromParsed(animations, targetPath, selectionId, mutation, doc);
 }
 
