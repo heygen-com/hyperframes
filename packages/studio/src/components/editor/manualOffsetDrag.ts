@@ -340,7 +340,7 @@ export function createManualOffsetDragMember(input: {
 }): ManualOffsetDragMemberResult {
   const { start, gesture } = input;
   const plainTranslate = start
-    ? !start.gsap
+    ? !start.gsap && (gesture !== "resize" || editsPlainCss(input.element, "resize"))
     : !!gesture && editsPlainCss(input.element, gesture === "resize" ? "resize" : "move");
   // The APPLIED offset, never a dormant var, so a stale one can't fling the element off-screen.
   const initialOffset = plainTranslate
