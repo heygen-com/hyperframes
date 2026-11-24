@@ -26,7 +26,7 @@ import { mkdirSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { assertLiteralMediaPath } from "./lib/literal-media-input.mjs";
-import { importEntry, trustedPackageEntry } from "./lib/trusted-package.mjs";
+import { importEntry, searchedFolders, trustedPackageEntry } from "./lib/trusted-package.mjs";
 
 const NEEDS_PUPPETEER = `It loads puppeteer-core only from your own install, never from the project folder:
 install it from your home folder (cd ~ && npm install --global puppeteer-core), or set
@@ -54,7 +54,10 @@ const puppeteerEntry = trustedPackageEntry("puppeteer-core", {
   overrideName: "HYPERFRAMES_PUPPETEER_CORE",
 });
 if (!puppeteerEntry) {
-  console.error(`bake-basemap needs puppeteer-core. ${NEEDS_PUPPETEER}`);
+  const looked = searchedFolders().join(" and ");
+  console.error(
+    `bake-basemap needs puppeteer-core and found none in ${looked}. ${NEEDS_PUPPETEER}`,
+  );
   process.exit(1);
 }
 const puppeteer = await importEntry(puppeteerEntry);
