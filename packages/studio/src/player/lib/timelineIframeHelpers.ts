@@ -11,7 +11,7 @@
  */
 
 import type { TimelineElement } from "../store/playerStore";
-import type { IframeWindow } from "./playbackTypes";
+import type { ClipManifestClip, TimelineLike } from "./playbackTypes";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
 import { createRuntimeStartTimeResolver } from "@hyperframes/core/runtime/start-resolver";
 import {
@@ -249,7 +249,22 @@ export function stopScrubPreviewAudio(): void {
 // Enrich missing compositions from DOM
 // ---------------------------------------------------------------------------
 
-function timelineDuration(iframeWin: IframeWindow, compositionId: string): number {
+type TimelineRegistry = {
+  __timelines?: Record<string, Pick<TimelineLike, "duration" | "getLabels">>;
+};
+
+/** A sealed frame's timelines for the missing-host pass: the runtime fills each composition clip from them. */
+export function manifestTimelines(clips: readonly ClipManifestClip[]): TimelineRegistry {
+  const timelines: Record<string, Pick<TimelineLike, "duration" | "getLabels">> = {};
+  for (const clip of clips) {
+    if (!clip.compositionId) continue;
+    const labels = clip.transitionLabel ? { [clip.transitionLabel]: 0 } : {};
+    timelines[clip.compositionId] = { duration: () => clip.duration, getLabels: () => labels };
+  }
+  return { __timelines: timelines };
+}
+
+function timelineDuration(iframeWin: TimelineRegistry, compositionId: string): number {
   return (
     (
       iframeWin.__timelines?.[compositionId] as { duration?: () => number } | undefined
@@ -273,7 +288,7 @@ function createTimedElementLookup(doc: Document): Map<string, Element> {
 
 function createReferenceEndResolver(
   timedById: ReadonlyMap<string, Element>,
-  iframeWin: IframeWindow,
+  iframeWin: TimelineRegistry,
 ): (refId: string, visiting: ReadonlySet<string>) => number | null {
   const resolveEnd = (refId: string, visiting: ReadonlySet<string>): number | null => {
     if (visiting.has(refId)) return null;
@@ -327,7 +342,7 @@ function attachCompositionSource(
 
 function buildMissingCompositionEntry(params: {
   doc: Document;
-  iframeWin: IframeWindow;
+  iframeWin: TimelineRegistry;
   element: HTMLElement;
   compositionId: string;
   rootDuration: number;
@@ -402,7 +417,7 @@ function buildMissingCompositionEntry(params: {
  */
 export function buildMissingCompositionElements(
   doc: Document,
-  iframeWin: IframeWindow,
+  iframeWin: TimelineRegistry,
   currentEls: readonly TimelineElement[],
   rootDuration: number,
 ): { missing: TimelineElement[]; updatedEls: TimelineElement[]; patched: boolean } {
