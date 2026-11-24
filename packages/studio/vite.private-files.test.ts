@@ -4,6 +4,8 @@ import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { devServesUrl } from "./vite.private-files";
 
+const fsUrl = (path: string) => `/@fs/${path.replace(/\\/g, "/").replace(/^\/+/, "")}`;
+
 const base = realpathSync(mkdtempSync(join(tmpdir(), "hf-dev-files-")));
 const checkout = join(base, "checkout");
 const studio = join(checkout, "packages", "studio");
@@ -37,7 +39,8 @@ describe("the dev server serves no project or private file", () => {
   });
 
   it("refuses a linked project's files by their real path", () => {
-    for (const name of PRIVATE) expect(devServesUrl(`/@fs${elsewhere}/${name}`, roots)).toBe(false);
+    for (const name of PRIVATE)
+      expect(devServesUrl(fsUrl(`${elsewhere}/${name}`), roots)).toBe(false);
   });
 
   it.each([
@@ -47,7 +50,7 @@ describe("the dev server serves no project or private file", () => {
     "/data/projects/real/%2Enpmrc",
     "/src/../data/projects/real/.npmrc",
     "/src/%2e%2e/data/projects/real/.npmrc",
-    `/@fs${checkout}/.npmrc`,
+    fsUrl(`${checkout}/.npmrc`),
     `/@id/${checkout}/.npmrc?raw`,
     `${checkout}/.npmrc?raw`,
     "/%E0%A4%A",
@@ -63,8 +66,8 @@ describe("the dev server serves no project or private file", () => {
     "/@vite/client",
     "/@react-refresh",
     "/node_modules/.vite/deps/react.js?v=1",
-    `/@fs${checkout}/node_modules/.bun/react@19/node_modules/react/index.js`,
-    `/@fs${checkout}/packages/core/src/index.ts`,
+    fsUrl(`${checkout}/node_modules/.bun/react@19/node_modules/react/index.js`),
+    fsUrl(`${checkout}/packages/core/src/index.ts`),
   ])("still serves Studio's own %s", (url) => {
     expect(devServesUrl(url, roots)).toBe(true);
   });
@@ -74,7 +77,7 @@ describe("the dev server serves no project or private file", () => {
       studio: join(base, ".cache", "co", "packages", "studio"),
       checkout: join(base, ".cache", "co"),
     };
-    expect(devServesUrl(`/@fs${hidden.checkout}/packages/core/src/index.ts`, hidden)).toBe(true);
-    expect(devServesUrl(`/@fs${hidden.checkout}/.npmrc`, hidden)).toBe(false);
+    expect(devServesUrl(fsUrl(`${hidden.checkout}/packages/core/src/index.ts`), hidden)).toBe(true);
+    expect(devServesUrl(fsUrl(`${hidden.checkout}/.npmrc`), hidden)).toBe(false);
   });
 });

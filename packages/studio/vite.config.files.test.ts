@@ -5,6 +5,8 @@ import { dirname, join, resolve } from "node:path";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+const fsUrl = (path: string) => `/@fs/${path.replace(/\\/g, "/").replace(/^\/+/, "")}`;
+
 const SECRET = "registry-token-for-test";
 const project = realpathSync(mkdtempSync(join(tmpdir(), "hf-linked-project-")));
 const link = resolve(__dirname, "data", "projects", `linked-${process.pid}`);
@@ -48,10 +50,10 @@ describe("the dev Studio's file serving", () => {
       `/data/projects/${name}/.npmrc?import&raw`,
       `/data/projects/${name}/.npmrc?url`,
       `/data/projects/${name}/.npmrc?inline`,
-      `/@fs${project}/.npmrc?raw`,
+      fsUrl(`${project}/.npmrc?raw`),
       `/${dotfile}`,
       `/${dotfile}?raw`,
-      `/@fs${studioDotfile}?raw`,
+      fsUrl(`${studioDotfile}?raw`),
     ]) {
       const response = await fetch(`${origin}${path}`);
       expect(await response.text(), path).not.toContain(SECRET);
