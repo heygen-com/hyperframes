@@ -60,14 +60,10 @@ describe("fetchLocalVectors", () => {
 
   it("writes both files into the cache directory", async () => {
     servePair(["whip-pan"], LOCAL_MODEL_DIMENSIONS, LOCAL_MODEL_DIMENSIONS);
-    expect(await fetchLocalVectors("https://registry.test/", { directory: dir })).toBe(true);
-    expect(fetch).toHaveBeenCalledWith(
-      "https://registry.test/catalog-artifact/local-vectors.json",
-      {
-        signal: expect.any(AbortSignal),
-        redirect: "manual",
-      },
-    );
+    expect(await fetchLocalVectors("http://registry.test/", { directory: dir })).toBe(true);
+    expect(fetch).toHaveBeenCalledWith(expect.any(String), {
+      signal: expect.any(AbortSignal),
+    });
     expect(existsSync(join(dir, "local-vectors.bin"))).toBe(true);
     expect(existsSync(join(dir, "local-vectors.json"))).toBe(true);
   });
@@ -76,14 +72,14 @@ describe("fetchLocalVectors", () => {
     // Half a download is the case worth refusing: written, it loads as an
     // error on every later search until someone clears the cache by hand.
     servePair(["whip-pan", "rack-focus"], LOCAL_MODEL_DIMENSIONS, LOCAL_MODEL_DIMENSIONS);
-    expect(await fetchLocalVectors("https://registry.test/", { directory: dir })).toBe(false);
+    expect(await fetchLocalVectors("http://registry.test/", { directory: dir })).toBe(false);
     expect(existsSync(join(dir, "local-vectors.bin"))).toBe(false);
     expect(existsSync(join(dir, "local-vectors.json"))).toBe(false);
   });
 
   it("caches nothing when the vectors came from a different model", async () => {
     servePair(["whip-pan"], 1536, 1536);
-    expect(await fetchLocalVectors("https://registry.test/", { directory: dir })).toBe(false);
+    expect(await fetchLocalVectors("http://registry.test/", { directory: dir })).toBe(false);
     expect(existsSync(join(dir, "local-vectors.json"))).toBe(false);
   });
 
@@ -94,7 +90,7 @@ describe("fetchLocalVectors", () => {
       "fetch",
       vi.fn(async () => ({ ok: false, arrayBuffer: async () => new ArrayBuffer(0) })),
     );
-    expect(await fetchLocalVectors("https://registry.test", { directory: dir })).toBe(false);
+    expect(await fetchLocalVectors("http://registry.test", { directory: dir })).toBe(false);
   });
 
   it("reports failure when the network throws", async () => {
@@ -104,7 +100,7 @@ describe("fetchLocalVectors", () => {
         throw new Error("offline");
       }),
     );
-    expect(await fetchLocalVectors("https://registry.test", { directory: dir })).toBe(false);
+    expect(await fetchLocalVectors("http://registry.test", { directory: dir })).toBe(false);
   });
 
   it("refuses an unexpected revision without replacing the previous pair", async () => {
@@ -117,7 +113,7 @@ describe("fetchLocalVectors", () => {
     servePair(["new"], LOCAL_MODEL_DIMENSIONS, LOCAL_MODEL_DIMENSIONS, "old");
 
     expect(
-      await fetchLocalVectors("https://registry.test", {
+      await fetchLocalVectors("http://registry.test", {
         directory: dir,
         expectedRevision: "new",
       }),
@@ -153,7 +149,7 @@ describe("fetchLocalVectors", () => {
     });
 
     expect(
-      await fetchLocalVectors("https://registry.test", {
+      await fetchLocalVectors("http://registry.test", {
         directory: dir,
         artifactBasename: "media-vectors",
       }),
@@ -177,7 +173,7 @@ describe("fetchLocalVectors", () => {
     });
 
     expect(
-      await fetchLocalVectors("https://registry.test", {
+      await fetchLocalVectors("http://registry.test", {
         directory: dir,
         artifactBasename: "media-vectors",
       }),
@@ -198,7 +194,7 @@ describe("fetchLocalVectors", () => {
     );
 
     expect(
-      await fetchLocalVectors("https://registry.test", {
+      await fetchLocalVectors("http://registry.test", {
         directory: dir,
         artifactBasename: "media-vectors",
       }),

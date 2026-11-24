@@ -151,14 +151,12 @@ async function prepareOnDeviceTier(opts: {
   const revisionStale =
     opts.artifactRevision !== undefined && cachedLocalVectorRevision() !== opts.artifactRevision;
   if (
-    !hasLocalVectors() ||
-    revisionStale ||
-    countUnindexed(opts.registryNames, localVectorNames()) > 0
+    !opts.publicOnly &&
+    (!hasLocalVectors() ||
+      revisionStale ||
+      countUnindexed(opts.registryNames, localVectorNames()) > 0)
   ) {
-    await fetchLocalVectors(opts.registry, {
-      expectedRevision: opts.artifactRevision,
-      publicOnly: opts.publicOnly,
-    });
+    await fetchLocalVectors(opts.registry, { expectedRevision: opts.artifactRevision });
   }
   // Deliberately not the fetch's own answer. A refresh that fails still leaves
   // the previous vectors on disk, and those still rank: reporting the tier
@@ -774,7 +772,8 @@ async function offerLocalModel(
   // is an offline tier the user turned on that silently never ranks anything.
   const vectors =
     hasLocalVectors() ||
-    (await fetchLocalVectors(registryBaseUrl, { expectedRevision: artifactRevision, publicOnly }));
+    (!publicOnly &&
+      (await fetchLocalVectors(registryBaseUrl, { expectedRevision: artifactRevision })));
   console.log(
     c.dim(
       vectors
