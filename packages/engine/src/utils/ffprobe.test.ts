@@ -2185,6 +2185,8 @@ describe("final video frame timestamp probes", () => {
       metadata,
       firstController.signal,
     );
+    // Each probe walks its file before it spawns; wait so the first probe owns processes[0].
+    await vi.waitFor(() => expect(processes).toHaveLength(1));
     const second = extractFinalVideoFrameTimestamp(
       "/tmp/shared-source.mp4",
       metadata,

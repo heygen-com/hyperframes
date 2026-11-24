@@ -6,6 +6,7 @@ import { chunkCrc32 } from "./crc32.js";
 import { StringDecoder } from "node:string_decoder";
 import { tmpdir } from "os";
 import { basename, join } from "path";
+import { fileURLToPath } from "node:url";
 import { parseSampleAspectRatio, redactTelemetryString, streamRotation } from "@hyperframes/core";
 import {
   alphaDecoderFor,
@@ -70,6 +71,14 @@ function sanitizeFfprobeDiagnostic(stderr: string, filePath: string): string {
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
 const REFUSED_TEXT_ART = /^\[(?:tty|bin|xbin|idf|adf) @ [^\]]*\] Format not on whitelist/m;
 
+const localPathOf = (input: string): string => {
+  try {
+    return /^file:/i.test(input) ? fileURLToPath(input) : input;
+  } catch {
+    return input;
+  }
+};
+
 export async function runFfprobe(
   filePath: string,
   argsWithoutInput: string[],
@@ -87,7 +96,7 @@ export async function runFfprobe(
   }
 
   // urlInputArgs lets ffprobe read playlists; render preflight walks them, a CLI probe may not have.
-  if (!/^https?:\/\//i.test(filePath) && (await playlistLeavesItsFolder(filePath)))
+  if (!/^https?:\/\//i.test(filePath) && (await playlistLeavesItsFolder(localPathOf(filePath))))
     throw new PlaylistLeavesFolderError();
 
   const command = getFfprobeBinary();

@@ -5,7 +5,7 @@
 // fallow-ignore-file complexity
 import { failCommand, finishCommand, failUsage } from "../utils/commandResult.js";
 import { printFailureLine } from "../utils/jsonError.js";
-import { PLAYLIST_LEAVES_FOLDER, playlistLeavingItsFolder } from "../utils/playlistInput.js";
+import { playlistLeavingItsFolder } from "../utils/playlistInput.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 import { runCommand } from "citty";
 import { defineCommand } from "../utils/defineCommand.js";
@@ -497,7 +497,9 @@ async function patchTranscript(dir: string, transcriptPath: string): Promise<voi
 
 async function refuseInteractive(path: string): Promise<void> {
   if (!(await playlistLeavingItsFolder([path]))) return;
-  clack.log.error(`${terminalText(path)} ${PLAYLIST_LEAVES_FOLDER}`);
+  clack.log.error(
+    `${terminalText(path)} is a playlist naming files outside its folder: pass the media file itself`,
+  );
   clack.cancel("Setup cancelled.");
   failCommand();
 }
@@ -975,7 +977,11 @@ export default defineCommand({
       }
       const leaving = await playlistLeavingItsFolder([videoPath, audioPath]);
       if (leaving) {
-        printFailureLine((show) => c.error(`${show(leaving)} ${PLAYLIST_LEAVES_FOLDER}`));
+        printFailureLine((show) =>
+          c.error(
+            `${show(leaving)} is a playlist naming files outside its folder: pass the media file itself`,
+          ),
+        );
         failCommand();
       }
 

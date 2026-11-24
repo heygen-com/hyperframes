@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { runCommand } from "citty";
 import { consumeCommandResult } from "./commandResult.js";
 
@@ -73,6 +74,13 @@ it.each([
     run: async () => {
       const { readAudio } = await import("../audio/read/read.js");
       return readAudio(list, "clip.mp4", { cacheDir: join(dir, "made") });
+    },
+  },
+  {
+    command: "the engine probe of a file: URL",
+    run: async () => {
+      const { extractMediaMetadata } = await import("@hyperframes/engine");
+      return extractMediaMetadata(pathToFileURL(list).href);
     },
   },
   ...(ffmpeg
