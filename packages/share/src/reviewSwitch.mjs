@@ -233,14 +233,12 @@ async function turnOffOld(client, dir, change) {
   await dropSwitch(dir, change);
 }
 
-/** The switched change whose old link is still to turn off, or null. @param {string} dir */
+/** The switched change whose old link is still to turn off, or null. Only one marked opened: the kernel marks it before
+ * it moves the record, so an unopened change beside a record already on its new project is an older journal written
+ * back, and opening its link again would undo what the owner did since. @param {string} dir */
 async function cleanupOf(dir) {
   const change = await readSwitch(dir);
-  if (!change?.projectId) return null;
-  const at = (await reviewRecord(dir))?.projectId;
-  return change.opened || at === change.projectId
-    ? { ...change, projectId: change.projectId }
-    : null;
+  return change?.opened && change.projectId ? { ...change, projectId: change.projectId } : null;
 }
 
 /** Each read of the link turns off an old link a change left on, in turn with every other journal step.

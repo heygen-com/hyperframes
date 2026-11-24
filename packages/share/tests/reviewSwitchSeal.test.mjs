@@ -83,3 +83,13 @@ test("a host with no key reads a journal as it is", async () => {
   assert.deepEqual(await readReviewSwitch(dir), change);
   assert.deepEqual(sealedSwitch(dir, change), change);
 });
+
+test("an earlier journal of this install written back once the record is on the new project opens nothing", async () => {
+  bindShareHost({ journalKey: randomBytes(32) });
+  const dir = await project();
+  // Mid-switch, as the kernel left it before the new link opened; the record has since moved on to proj_new.
+  const { opened: _opened, ...midSwitch } = change;
+  await writeFile(reviewSwitchPath(dir), JSON.stringify(sealedSwitch(dir, midSwitch)));
+  assert.deepEqual(await readReviewSwitch(dir), midSwitch, "sealed by this install");
+  await retryOldLink({ projectPath: dir, client: noRequests });
+});
