@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { gsap as realGsap } from "gsap";
 import { handleFor } from "../editingHandles";
+import { gestureStart } from "../editingGestureStart";
 import { gsapSnapshot } from "./gsapSnapshot";
 import { MAX_SNAPSHOT_TEXT, MAX_SNAPSHOT_TWEENS } from "./gsapSnapshotLimits";
 
@@ -149,5 +150,26 @@ describe("gsapSnapshot", () => {
 
     expect(snapshot.timelines[0]!.tweens).toHaveLength(1);
     expect(snapshot.targets[0]!.values.x).toBeCloseTo(600);
+  });
+
+  it.each([
+    ["only its opacity is tweened", { opacity: 0.5, duration: 10 }, 0],
+    ["its only tween is a scale that starts later", { scale: 1.4, duration: 1 }, 3],
+    ["its only tween is a rotation that starts later", { rotation: 30, duration: 1 }, 3],
+  ])("leaves a CSS-moved element's position to CSS when %s", async (_, vars, at) => {
+    document.body.innerHTML = `<h1 id="title" style="translate: 0 -200px">Title</h1>`;
+    const title = document.getElementById("title")!;
+    const tl = realGsap.timeline({ paused: true });
+    tl.to("#title", vars, at);
+    tl.seek(0);
+    Object.assign(window, { gsap: realGsap, __timelines: { main: tl } });
+    const drawn = () =>
+      ["translate", "transform"].map((name) => title.style.getPropertyValue(name));
+    const before = drawn();
+
+    await gsapSnapshot();
+
+    expect(gestureStart([handleFor(title)]).elements[0]!.gsap).toBeNull();
+    expect(drawn()).toEqual(before);
   });
 });

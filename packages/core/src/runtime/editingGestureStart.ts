@@ -125,7 +125,7 @@ type GsapWindow = {
 
 // The channels Studio's move route and drag commit read as GSAP moving an element.
 const POSITION = ["x", "y", "xPercent", "yPercent", "left", "top", "translateX", "translateY"];
-const MOVES = [...POSITION, "motionPath"];
+export const MOVES = [...POSITION, "motionPath"];
 const TURNS = [
   "rotation",
   "rotationX",
@@ -162,8 +162,47 @@ function tweensOn(element: Element): GsapTween[] {
   );
 }
 
-const rendersTransform = (element: Element) =>
+export const rendersTransform = (element: Element) =>
   !!(element as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
+
+type Fields = Record<string, unknown>;
+const isPlainFields = (value: unknown): value is Fields =>
+  !!value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype;
+
+function keptFields(fields: Fields, depth = 1): () => void {
+  const values = { ...fields };
+  const nested = depth > 0 ? Object.values(fields).filter(isPlainFields) : [];
+  const inner = nested.map((value) => keptFields(value, depth - 1));
+  return () => {
+    for (const key of Object.keys(fields))
+      if (!(key in values)) Reflect.deleteProperty(fields, key);
+    Object.assign(fields, values);
+    for (const restore of inner) restore();
+  };
+}
+
+function keptAttributes(element: Element): () => void {
+  const names = element.getAttributeNames();
+  const attributes = new Map(names.map((name) => [name, element.getAttribute(name) ?? ""]));
+  return () => {
+    for (const name of element.getAttributeNames())
+      if (!attributes.has(name)) element.removeAttribute(name);
+    for (const [name, value] of attributes)
+      if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+  };
+}
+
+export function withoutGsapTakeover<T>(element: Element, read: () => T): T {
+  if (rendersTransform(element)) return read();
+  const host = element as { _gsap?: Fields };
+  const cache = host._gsap;
+  const restoreCache = cache ? keptFields(cache) : () => Reflect.deleteProperty(host, "_gsap");
+  const restoreAttributes = keptAttributes(element);
+  const value = read();
+  restoreAttributes();
+  restoreCache();
+  return value;
+}
 
 export type EditingGestureBase = {
   x: number;
@@ -197,7 +236,8 @@ function gsapPosition(element: Element): EditingGestureStart["gsap"] {
 
 function gsapRotation(element: Element): number | null {
   const turned = tweensOn(element).some((tween) => tween.vars && carries(tween.vars, TURNS));
-  return rendersTransform(element) || turned ? readGsap(element, "rotation") : null;
+  if (!rendersTransform(element) && !turned) return null;
+  return withoutGsapTakeover(element, () => readGsap(element, "rotation"));
 }
 
 function planarOf(element: StylableElement): EditingGestureStart["planar"] {

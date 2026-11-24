@@ -9,8 +9,8 @@
  * level meter it fed (see the group volume/meter removal).
  */
 
-import { usePlayerStore, type TimelineElement } from "../store/playerStore";
-import type { ClipManifestClip, IframeWindow, PlaybackAdapter } from "../lib/playbackTypes";
+import { usePlayerStore } from "../store/playerStore";
+import type { ClipManifestClip, IframeWindow } from "../lib/playbackTypes";
 import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFixture";
 import { acceptStudioRuntimeMessage, postRuntimeControlMessage } from "../lib/runtimeProtocol";
 import {
@@ -22,7 +22,6 @@ import {
   parsePreviewCopies,
   parsePreviewFacts,
 } from "../store/previewQualitySlice";
-import { parseTimelineFromDOM } from "../lib/timelineDOM";
 import { previewClipManifest, previewFrameOpaque } from "../lib/previewChannel";
 import { wellFormedClips } from "../lib/manifestClips";
 import { notePreviewSceneSwap } from "../sceneSwap";
@@ -57,8 +56,6 @@ export interface PreviewMessageRouterDeps {
   processTimelineMessageRef: { current: (data: ClipManifestMessage) => void };
   enrichMissingCompositionsRef: { current: () => void };
   lastTimelineMessageRef: { current: number };
-  getAdapter: () => PlaybackAdapter | null;
-  syncTimelineElements: (elements: TimelineElement[]) => void;
 }
 
 /** True only for a post by our preview iframe's window, from an origin that frame can have. */
@@ -158,11 +155,6 @@ function handleStateMessage(
   } catch {}
 }
 
-/**
- * The clip list. When it arrives empty-handed — the store still has nothing —
- * fall back to parsing the live DOM, which is the only source left before the
- * next tick.
- */
 function handleTimelineMessage(
   deps: PreviewMessageRouterDeps,
   iframe: HTMLIFrameElement | null,
@@ -173,14 +165,6 @@ function handleTimelineMessage(
   if (iframe) recovery.heard.add(iframe);
   deps.processTimelineMessageRef.current(data);
   deps.enrichMissingCompositionsRef.current();
-  if (usePlayerStore.getState().elements.length > 0) return;
-  try {
-    const doc = iframe?.contentDocument;
-    const adapter = deps.getAdapter();
-    if (!doc || !adapter) return;
-    const els = parseTimelineFromDOM(doc, adapter.getDuration());
-    if (els.length > 0) deps.syncTimelineElements(els);
-  } catch {}
 }
 
 function applyStoreReport(data: PreviewMessage): boolean {
