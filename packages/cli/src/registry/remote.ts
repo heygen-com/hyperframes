@@ -42,7 +42,8 @@ export function isPublicRegistry(registry: string): boolean {
   } catch {
     return false;
   }
-  if (url.username || url.password || url.search || url.hash) return false;
+  const leavesFolderOnHost = url.pathname.includes("%");
+  if (url.username || url.password || url.search || url.hash || leavesFolderOnHost) return false;
   const href = url.href.replace(/\/+$/, "");
   return href === DEFAULT_REGISTRY_URL || href.startsWith(`${DEFAULT_REGISTRY_URL}/`);
 }
