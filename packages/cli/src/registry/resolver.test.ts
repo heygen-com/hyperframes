@@ -235,6 +235,19 @@ describe("registry resolver", () => {
       await expect(resolveItem("alpha", { baseUrl })).rejects.toThrow(/unreachable/);
     });
 
+    // fails without the fix: the reason was dropped and the message said it contacted a host it never reached
+    it("says why a registry on a private address was not read", async () => {
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      const error = await resolveItemWithDependencies("alpha", {
+        baseUrl: "https://127.0.0.1:9/registry",
+        publicOnly: true,
+      }).catch((caught: unknown) => caught as Error);
+      expect(error.message).toContain("127.0.0.1:9 is not a public address");
+      expect(error.message).not.toMatch(/contacted/i);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
     it("refuses an item that declares registryDependencies", async () => {
       mockFetch({ dependencies: { beta: ["alpha"] } });
       const baseUrl = uniqueBaseUrl();
