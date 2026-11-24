@@ -220,6 +220,57 @@ describe("classifyPageError", () => {
     }
   });
 
+  // fails without the fix: the page's text was logged and kept at whatever length it sent, in unbounded lists
+  it("logs and keeps the page's console and error text only up to a fixed size", async () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { session, pageListeners, runtimeListeners } = await listenedSession();
+      const huge = (n: number) => `${n}:${"x".repeat(10_000_000)}`;
+      pageListeners.get("response")?.({
+        status: () => 200,
+        url: () => comp,
+        request: () => ({ resourceType: () => "script" }),
+      });
+      for (let n = 0; n < 1_000; n++) {
+        const big = n < 5 ? huge(n) : `${n}:${"y".repeat(5_000)}`;
+        pageListeners.get("console")?.({
+          type: () => "error",
+          text: () => `[HyperFrames] composition script error: ${big}`,
+          location: () => ({ url: big }),
+        });
+        pageListeners.get("pageerror")?.(new Error(big));
+        runtimeListeners.get("Runtime.exceptionThrown")?.({
+          exceptionDetails: thrown(`Error: ${big}`, comp, [comp]),
+        });
+        const url = `${server}/${big}.js`;
+        const request = { resourceType: () => "script", url: () => url, method: () => "GET" };
+        pageListeners.get("requestfailed")?.({
+          ...request,
+          failure: () => ({ errorText: "net::ERR_FAILED" }),
+        });
+        pageListeners.get("response")?.({
+          status: () => 404,
+          url: () => url,
+          statusText: () => big,
+          request: () => request,
+        });
+      }
+
+      const lengths = [
+        ...stderr.mock.calls.map((call) => call.join(" ")),
+        ...session.browserConsoleBuffer,
+        ...session.pageErrors,
+        ...session.scriptLoadFailures,
+      ].map((text) => text.length);
+      expect(Math.max(...lengths)).toBeLessThan(10_000);
+      expect(session.pageErrors.length).toBeLessThanOrEqual(100);
+      expect(session.scriptLoadFailures.length).toBeLessThanOrEqual(100);
+      expect(session.browserConsoleBuffer.length).toBeLessThanOrEqual(200);
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
   it("records the page's uncaught errors from scripts it loaded from the server", async () => {
     const { session, pageListeners, runtimeListeners } = await listenedSession();
     const loaded = (url: string, resourceType: string) => ({

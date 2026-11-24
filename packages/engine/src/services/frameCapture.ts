@@ -594,6 +594,14 @@ export async function decodeDynamicCssBackgroundImages(page: Page): Promise<stri
 const BROWSER_CONSOLE_BUFFER_SIZE = 200;
 const CAPTURE_SESSION_CLOSE_TIMEOUT_MS = 5_000;
 
+const PAGE_TEXT_MAX_CHARS = 2_000;
+const PAGE_LIST_MAX = 50;
+
+function boundedPageText(text: string): string {
+  if (text.length <= PAGE_TEXT_MAX_CHARS) return text;
+  return `${text.slice(0, PAGE_TEXT_MAX_CHARS)}… (${text.length - PAGE_TEXT_MAX_CHARS} more characters)`;
+}
+
 function appendBrowserDiagnostic(session: CaptureSession, text: string): void {
   session.browserConsoleBuffer.push(text);
   if (session.browserConsoleBuffer.length > BROWSER_CONSOLE_BUFFER_SIZE) {
@@ -2941,13 +2949,14 @@ function recordConsoleScriptError(session: CaptureSession, error: string | null)
 function loggedEarlierInRender(session: CaptureSession, text: string): boolean {
   if (!text.startsWith(SCENE_CALLBACK_ERROR_PREFIX)) return false;
   const logged = (session.subTimelineWaitMemo.loggedSceneCallbackErrors ??= []);
-  if (logged.includes(text)) return true;
+  if (logged.includes(text) || logged.length >= PAGE_LIST_MAX) return true;
   logged.push(text);
   return false;
 }
 
 function recordPageError(session: CaptureSession, error: string | null): void {
-  if (error && !session.pageErrors.includes(error)) session.pageErrors.push(error);
+  if (error && session.pageErrors.length < PAGE_LIST_MAX && !session.pageErrors.includes(error))
+    session.pageErrors.push(error);
 }
 
 // A 4xx `response` and a `requestfailed` can both fire for the same script
@@ -2959,7 +2968,10 @@ function recordScriptLoadFailure(
   url: string,
   cause: ScriptLoadCause,
 ): void {
-  if (!session.scriptLoadFailures.includes(url)) {
+  if (
+    session.scriptLoadFailures.length < PAGE_LIST_MAX &&
+    !session.scriptLoadFailures.includes(url)
+  ) {
     session.scriptLoadFailures.push(url);
     (session.scriptLoadCauses ??= []).push(cause);
   }
@@ -3029,8 +3041,8 @@ export function recordFailedRequest(
   request: Pick<HTTPRequest, "resourceType" | "url" | "method" | "failure">,
 ): void {
   const resourceType = request.resourceType();
-  const url = request.url();
-  const failureText = request.failure()?.errorText ?? "unknown";
+  const url = boundedPageText(request.url());
+  const failureText = boundedPageText(request.failure()?.errorText ?? "unknown");
   if (resourceType === "script" && failureText !== CANCELLED_BY_THE_PAGE_NOT_REFUSED) {
     recordScriptLoadFailure(
       session,
@@ -3075,7 +3087,9 @@ export function classifyPageError(
   projectScripts: ReadonlySet<string>,
 ): string | null {
   const exception = details.exception;
-  const message = String(exception?.description ?? exception?.value ?? details.text);
+  const message = boundedPageText(
+    String(exception?.description ?? exception?.value ?? details.text),
+  );
   const [firstLine = ""] = message.split("\n");
   if (isPlayPauseAbort(firstLine)) return null;
   const frames = (details.stackTrace?.callFrames ?? []).map((frame) => frame.url);
@@ -3122,7 +3136,7 @@ export async function describeThrowSite(
   } finally {
     await client.send("Debugger.disable").catch(() => undefined);
   }
-  return ` [thrown at: ${where}]`;
+  return boundedPageText(` [thrown at: ${where}]`);
 }
 
 /** When the session asks for strict variables, refuse a render whose variables the page does not declare. */
@@ -3139,8 +3153,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   // prefix so page-context observability is visible in producer stderr.
   page.on("console", (msg: ConsoleMessage) => {
     const type = msg.type();
-    const text = msg.text();
-    const locationUrl = msg.location()?.url ?? "";
+    const text = boundedPageText(msg.text());
+    const locationUrl = boundedPageText(msg.location()?.url ?? "");
     const diagnostic = formatConsoleDiagnostic(type, text, locationUrl);
     if (
       !diagnostic.suppressHostLog &&
@@ -3159,7 +3173,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   });
 
   page.on("pageerror", (err) => {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = boundedPageText(err instanceof Error ? err.message : String(err));
     const text = `[Browser:PAGEERROR] ${message}`;
 
     // Benign play/pause race during frame capture — suppress terminal noise, keep in buffer.
@@ -3181,11 +3195,12 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       return;
     }
 
+    const failedUrl = boundedPageText(responseUrl);
     if (isScript) {
       recordScriptLoadFailure(
         session,
-        responseUrl,
-        classifyScriptLoadCause(responseUrl, serverUrl, status),
+        failedUrl,
+        classifyScriptLoadCause(failedUrl, serverUrl, status),
       );
     }
     appendBrowserDiagnostic(
@@ -3193,9 +3208,9 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       formatHttpErrorDiagnostic({
         method: request.method(),
         resourceType: request.resourceType(),
-        url: response.url(),
+        url: failedUrl,
         status,
-        statusText: response.statusText(),
+        statusText: boundedPageText(response.statusText()),
       }),
     );
   });
