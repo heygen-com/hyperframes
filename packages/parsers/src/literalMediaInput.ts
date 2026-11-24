@@ -1,12 +1,12 @@
 const PATTERN_IMAGE2_EXPANDS = /%\d*[d%*?[\]{}]/;
-// With one of these anywhere in the path, ffmpeg reads any "%" in it as a pattern and can open a shorter name.
-const PATTERN_WILDCARD = /[*?[{]/;
+const WILDCARD_MAKES_ANY_PERCENT_A_PATTERN = /[*?[{]/;
 const URL_SCHEME = /^[a-z][a-z0-9+.-]+:/i;
 
 function refusePattern(path: string, use: "read" | "write"): void {
   const local = !URL_SCHEME.test(path) || /^file:/i.test(path);
   const pattern =
-    PATTERN_IMAGE2_EXPANDS.test(path) || (path.includes("%") && PATTERN_WILDCARD.test(path));
+    PATTERN_IMAGE2_EXPANDS.test(path) ||
+    (path.includes("%") && WILDCARD_MAKES_ANY_PERCENT_A_PATTERN.test(path));
   if (!local || !pattern) return;
   throw new Error(
     `[FFmpeg] refused media path "${path.split(/[\\/]/).pop()}": a "%" followed by "d", another "%" or a wildcard, ` +

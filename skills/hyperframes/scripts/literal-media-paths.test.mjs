@@ -35,7 +35,7 @@ test("the standalone check refuses exactly what the parsers check refuses", () =
     script("skills/hyperframes/scripts/lib/literal-media-input.mjs"),
     "utf8",
   );
-  for (const name of ["PATTERN_IMAGE2_EXPANDS", "PATTERN_WILDCARD"]) {
+  for (const name of ["PATTERN_IMAGE2_EXPANDS", "WILDCARD_MAKES_ANY_PERCENT_A_PATTERN"]) {
     const pattern = (text) => new RegExp(`const ${name} = (.+);`).exec(text)?.[1];
     assert.ok(pattern(source), name);
     assert.equal(pattern(ours), pattern(source), name);
