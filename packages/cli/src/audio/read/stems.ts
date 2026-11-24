@@ -92,10 +92,8 @@ function writeRecord(dir: string, kept: Record<string, unknown>, files: readonly
   }
 }
 
-/** Replaces the record of `dir` with `files`. */
 export const recordStems = (dir: string, files: readonly string[]) => writeRecord(dir, {}, files);
 
-/** Adds `files`, made later in the same folder, to its record. */
 export const addRecordedStems = (dir: string, files: readonly string[]) =>
   writeRecord(dir, readRecord(dir) ?? {}, files);
 
