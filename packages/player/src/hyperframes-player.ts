@@ -162,6 +162,8 @@ class HyperframesPlayer extends HTMLElement {
   /** The URL a sealed srcdoc was fetched from, so its media resolve as they would by `src`. */
   private _srcdocUrl: string | null = null;
   private _pageRead = false;
+  /** A sealed player's fetch answered a page it can't read (opaque, or carrying its own policy). */
+  private _pageUnreadable = false;
   private _readyBeforeRuntime = false;
   private _readyDocument: Document | null = null;
   private _awaitingLoad = false;
@@ -258,9 +260,10 @@ class HyperframesPlayer extends HTMLElement {
     this.probe = new CompositionProbe(this.iframe, {
       resolveRuntimeUrl: () => runtimeSrcFromElement(this),
       hostOwnsDeadline: () => this.hasAttribute("no-load-timeout"),
-      // A sealed player adds the runtime to any page it read, from any site, and to none it couldn't read.
+      // No player adds the runtime to a page it didn't read from another site, or to one its fetch couldn't read; a
+      // same-site page still being fetched or answering an error gets the plain timeout.
       runtimeOutOfReach: () =>
-        this.hasAttribute(SANDBOX_ORIGIN_ATTR) ? !this._pageRead : this._filmFromAnotherSite(),
+        !this._pageRead && (this._filmFromAnotherSite() || this._pageUnreadable),
       onReady: (result) => this._onProbeReady(result),
       onError: (message) => this._emitError({ message }),
     });
@@ -1151,6 +1154,7 @@ class HyperframesPlayer extends HTMLElement {
   private _writeFrame(to: FrameTarget): void {
     this.probe.frameWritten();
     this._pageRead = !("src" in to) || to.read === true;
+    this._pageUnreadable = false;
     if (!("srcdoc" in to)) this.iframe.src = to.src;
     else if (to.srcdoc === null) this.iframe.removeAttribute("srcdoc");
     else this.iframe.srcdoc = to.srcdoc;
@@ -1205,8 +1209,10 @@ class HyperframesPlayer extends HTMLElement {
       .then(
         (page) => {
           if (load !== this._documentLoad) return;
-          if (page.bySrc) this._writeSrcOverSrcdoc(src, page.read);
-          else this._showSealedDocument(page.html, page.url, load);
+          if (page.bySrc) {
+            this._writeSrcOverSrcdoc(src, page.read);
+            this._pageUnreadable = !page.read;
+          } else this._showSealedDocument(page.html, page.url, load);
         },
         () => {
           if (load === this._documentLoad) this._writeSrcOverSrcdoc(src);
