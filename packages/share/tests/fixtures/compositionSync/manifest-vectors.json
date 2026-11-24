@@ -1,6 +1,6 @@
 {
   "policy_version": "portable-source-v11",
-  "about": "Golden vectors for the composition sync manifest. Desktop Studio, Cutroom and the server each run all of them. valid: build the canonical bytes from `manifest`; UTF-8 encoding `canonical` gives those bytes and `manifest_sha256` is their SHA-256. invalid: validating `manifest` fails with `error.code` (and `error.rule` for path-policy rules). limits: with `limits`, the first exceeded limit in the order file_count, file_size, project_size, manifest_size is `limit` (null: admitted). stored: base64 `body` is stored manifest bytes; reading them requires they are already canonical.",
+  "about": "Golden vectors for the composition sync manifest. valid: build the canonical bytes from `manifest`; UTF-8 encoding `canonical` gives those bytes and `manifest_sha256` is their SHA-256. invalid: validating `manifest` fails with `error.code` (and `error.rule` for path-policy rules). limits: with `limits`, the first exceeded limit in the order file_count, file_size, project_size, manifest_size is `limit` (null: admitted). stored: base64 `body` is stored manifest bytes; reading them requires they are already canonical.",
   "valid": [
     {
       "name": "minimal",

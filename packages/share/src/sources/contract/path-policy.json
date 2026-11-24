@@ -226,7 +226,7 @@
       "regex": "\\.media/manifest\\.jsonl",
       "client_action": "exclude",
       "server_action": "reject",
-      "basis": "The media writer's ledger: preview and render never read it, and Cutroom rewrites it whole in another schema, so a pushed copy would be overwritten rather than kept"
+      "basis": "Generated media metadata that the project does not use for preview or rendering"
     },
     {
       "id": "unfinished-writes",
