@@ -539,4 +539,18 @@ describe("a captured video's file name", () => {
     );
     expect(savedIn(dir).sort()).toEqual(["hero-2.mp4", "hero.mp4"]);
   });
+
+  it("never lands two videos whose names differ only in case on the same file", async () => {
+    const dir = captureDir();
+    answer(MP4, "video/mp4");
+    await captureVideoManifest(
+      pageWith(
+        { src: "https://video.example/Hero.mp4", filename: "Hero.mp4" },
+        { src: "https://video.example/hero.mp4", filename: "hero.mp4" },
+      ),
+      dir,
+      () => {},
+    );
+    expect(savedIn(dir).sort()).toEqual(["Hero.mp4", "hero-2.mp4"]);
+  });
 });
