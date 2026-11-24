@@ -15,6 +15,8 @@ import { basename, dirname, join } from "node:path";
 
 // The Python script is replaced by one that writes these bytes at the name it is handed, as the
 // real one does, fails when the text is "fail", or writes nothing when it is "no-file".
+// Links need a privilege on Windows, and it has no permission bits or 240-character names to keep.
+const WINDOWS = process.platform === "win32";
 const AUDIO = "RIFF-audio-bytes";
 const scriptRuns: string[] = [];
 
@@ -90,7 +92,7 @@ describe("synthesize: the output file", () => {
     expect(basename(scriptRuns[0]!)).toMatch(/^\.tmp-[0-9a-f-]{36}\.wav$/);
   });
 
-  it("stages under a short name however long the output name is", async () => {
+  it.skipIf(WINDOWS)("stages under a short name however long the output name is", async () => {
     const long = join(dir, `${"n".repeat(240)}.wav`);
 
     await synthesize("hello", long);
@@ -99,7 +101,7 @@ describe("synthesize: the output file", () => {
     expect(readFileSync(long, "utf8")).toBe(AUDIO);
   });
 
-  it("keeps the permissions of the file it replaces", async () => {
+  it.skipIf(WINDOWS)("keeps the permissions of the file it replaces", async () => {
     writeFileSync(output, "old audio");
     chmodSync(output, 0o600);
 
@@ -108,7 +110,7 @@ describe("synthesize: the output file", () => {
     expect(lstatSync(output).mode & 0o777).toBe(0o600);
   });
 
-  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+  it.skipIf(WINDOWS || process.getuid?.() === 0)(
     "refuses a write-protected output before running the script",
     async () => {
       writeFileSync(output, "approved take");
@@ -136,15 +138,18 @@ describe("synthesize: the output file", () => {
     expect(failure).toBe("Speech synthesis failed\nThe script was stopped by SIGKILL");
   });
 
-  it("replaces a link to a write-protected file and leaves that file alone", async () => {
-    chmodSync(other, 0o444);
-    symlinkSync(other, output);
+  it.skipIf(WINDOWS)(
+    "replaces a link to a write-protected file and leaves that file alone",
+    async () => {
+      chmodSync(other, 0o444);
+      symlinkSync(other, output);
 
-    await synthesize("hello", output);
+      await synthesize("hello", output);
 
-    expect(lstatSync(output).isSymbolicLink()).toBe(false);
-    expect(readFileSync(other, "utf8")).toBe("kept");
-  });
+      expect(lstatSync(output).isSymbolicLink()).toBe(false);
+      expect(readFileSync(other, "utf8")).toBe("kept");
+    },
+  );
 
   it("says why when the script could not be started", async () => {
     await expect(synthesize("no-start", output)).rejects.toThrow(
@@ -158,15 +163,18 @@ describe("synthesize: the output file", () => {
     );
   });
 
-  it("replaces a link at the output name and leaves the file it points to alone", async () => {
-    symlinkSync(other, output);
+  it.skipIf(WINDOWS)(
+    "replaces a link at the output name and leaves the file it points to alone",
+    async () => {
+      symlinkSync(other, output);
 
-    await synthesize("hello", output);
+      await synthesize("hello", output);
 
-    expect(readFileSync(other, "utf8")).toBe("kept");
-    expect(lstatSync(output).isSymbolicLink()).toBe(false);
-    expect(readFileSync(output, "utf8")).toBe(AUDIO);
-  });
+      expect(readFileSync(other, "utf8")).toBe("kept");
+      expect(lstatSync(output).isSymbolicLink()).toBe(false);
+      expect(readFileSync(output, "utf8")).toBe(AUDIO);
+    },
+  );
 
   it("replaces an existing file at the output name", async () => {
     writeFileSync(output, "old audio");
@@ -176,13 +184,16 @@ describe("synthesize: the output file", () => {
     expect(readFileSync(output, "utf8")).toBe(AUDIO);
   });
 
-  it("leaves the output name and the folder as they were when the script fails", async () => {
-    symlinkSync(other, output);
+  it.skipIf(WINDOWS)(
+    "leaves the output name and the folder as they were when the script fails",
+    async () => {
+      symlinkSync(other, output);
 
-    await expect(synthesize("fail", output)).rejects.toThrow("Speech synthesis failed\nboom");
+      await expect(synthesize("fail", output)).rejects.toThrow("Speech synthesis failed\nboom");
 
-    expect(lstatSync(output).isSymbolicLink()).toBe(true);
-    expect(readFileSync(other, "utf8")).toBe("kept");
-    expect(readdirSync(dir).sort()).toEqual(["other.txt", "speech.wav"]);
-  });
+      expect(lstatSync(output).isSymbolicLink()).toBe(true);
+      expect(readFileSync(other, "utf8")).toBe("kept");
+      expect(readdirSync(dir).sort()).toEqual(["other.txt", "speech.wav"]);
+    },
+  );
 });
