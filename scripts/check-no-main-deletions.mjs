@@ -782,6 +782,11 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/cli/src/capture/fixtures/capture-fixture-certificate.pem",
     "paired with the removed plaintext key; capture integration tests generate an ephemeral certificate in memory",
   ],
+  // the HyperFrames vs Remotion comparison moved to hyperframes.studio
+  [
+    "docs/guides/hyperframes-vs-remotion.mdx",
+    "the comparison lives at hyperframes.studio/vs/remotion with the hub's other comparisons; the old URL 301s there (docs.json and the hub's edge)",
+  ],
   // Prompt Guide as six topic pages
   [
     "docs/prompting/anatomy.mdx",

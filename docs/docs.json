@@ -1100,6 +1100,10 @@
   },
   "redirects": [
     {
+      "source": "/guides/hyperframes-vs-remotion",
+      "destination": "https://hyperframes.studio/vs/remotion"
+    },
+    {
       "source": "/guides",
       "destination": "/introduction"
     },
