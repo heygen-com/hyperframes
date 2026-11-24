@@ -5,8 +5,8 @@ import { runCommand } from "citty";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { probeAudio, decodeAudio } = vi.hoisted(() => ({
-  probeAudio: vi.fn(async () => null),
-  decodeAudio: vi.fn(async () => null),
+  probeAudio: vi.fn(async (_path: string) => null),
+  decodeAudio: vi.fn(async (_path: string) => null),
 }));
 vi.mock("../audio/analysis/decode.js", async (original) => ({
   ...(await original<typeof import("../audio/analysis/decode.js")>()),

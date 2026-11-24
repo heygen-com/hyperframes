@@ -179,7 +179,7 @@ async function clipTargets(flags: AudioFlags, query: FilmQuery | null): Promise<
   const targets = filmTargets(project.dir, timeline, query ?? { by: "all" });
   return refuseUnadmittedFilmSources(project.dir, targets, () =>
     outsideAssetsAllowed(project.dir, relative(project.dir, project.indexPath), (line) =>
-      console.warn(line),
+      console.warn(terminalText(line)),
     ),
   );
 }
