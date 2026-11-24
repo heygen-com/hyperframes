@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { launchBrowser } from "../perf/runner.js";
 import { startServer } from "../perf/server.js";
 
+// Linux's 30 s load limit, as on CI, plus slack: every wait for an error that comes at the limit.
+const PAST_LOAD_LIMIT_MS = 36_000;
 const server = startServer();
 const browser = await launchBrowser();
 
@@ -69,8 +71,9 @@ try {
       },
       `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
     );
-    // Linux's 30 s load limit, as on CI, plus slack.
-    await page.waitForFunction(() => window.__playerError !== undefined, { timeout: 36_000 });
+    await page.waitForFunction(() => window.__playerError !== undefined, {
+      timeout: PAST_LOAD_LIMIT_MS,
+    });
     return page.evaluate(() => ({
       error: String(window.__playerError),
       events: (window as { __events?: string[] }).__events,
@@ -154,7 +157,7 @@ try {
       .waitForFunction(
         (wanted: string[]) =>
           wanted.every((name) => (window as { __heard?: string[] }).__heard?.includes(name)),
-        { timeout: 30_000 },
+        { timeout: PAST_LOAD_LIMIT_MS },
         names,
       )
       .catch(async (error: unknown) => {
