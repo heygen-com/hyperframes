@@ -1409,7 +1409,7 @@ describe("preview quality: lighter copies of heavy files", () => {
         void seeks.waitForSeekCompletion().then(() => (captured = true));
         staged.standInCaptureStill(el, true);
         await vi.advanceTimersByTimeAsync(100);
-        return { el, fetches, captured: () => captured };
+        return { el, fetches, captured: () => captured, standIn: staged.standInCaptureStill };
       }
 
       // fails without the fix: the page decoded each 4K original on screen to paint a frame taken at tile size; three
@@ -1431,6 +1431,24 @@ describe("preview quality: lighter copies of heavy files", () => {
         loads[0]!.onload!();
         await vi.advanceTimersByTimeAsync(0);
         expect(captured()).toBe(true);
+      });
+
+      it("asks for the frame again at each seek, so a page seeked to many times follows them", async () => {
+        const { el, standIn } = await capturedAt(1.25);
+        const media = await import("./media");
+        const clip = { el, start: 0, mediaStart: 4, duration: 10, end: 10, volume: null };
+        media.syncRuntimeMedia({
+          clips: [{ ...clip, playbackRate: 1, loop: false, sourceDuration: null }],
+          timeSeconds: 3,
+          playing: false,
+          playbackRate: 1,
+          getCompositionDuration: () => 0,
+        });
+        standIn(el, true);
+        standIn(el, true);
+
+        const at = (url: string) => new URL(url).searchParams.get("hf-proxy-still");
+        expect(loads.map((load) => at(load.url))).toEqual(["5.250", "7.000"]);
       });
 
       it("keeps a file under twice its box, and decodes it as before", async () => {
