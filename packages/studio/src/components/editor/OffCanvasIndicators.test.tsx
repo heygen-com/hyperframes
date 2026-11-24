@@ -21,6 +21,7 @@ it("rotates an off-canvas indicator with its element", () => {
         groupSelections={[]}
         activeCompositionPathRef={{ current: null }}
         onSelectionChangeRef={{ current: () => undefined }}
+        iframeRef={{ current: null }}
       />,
     );
   });

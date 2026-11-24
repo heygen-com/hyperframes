@@ -3,7 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isPrivateProjectFile, isWritableProjectFile, walkDir } from "./safePath";
+import {
+  isPrivateProjectFile,
+  isWritableInProject,
+  isWritableProjectFile,
+  walkDir,
+} from "./safePath";
 
 const hooks = vi.hoisted(() => ({ unreadable: new Map<string, string>() }));
 vi.mock("node:fs", async (importOriginal) => {
@@ -145,7 +150,8 @@ describe("isWritableProjectFile and Node tooling", () => {
     mkdirSync(join(projectDir, folder), { recursive: true });
     const text = typeof pkg === "string" ? pkg : JSON.stringify(pkg);
     writeFileSync(join(projectDir, folder, "package.json"), text);
-    return (path: string) => isWritableProjectFile(projectDir, join(projectDir, path));
+    const writable = (path: string) => isWritableProjectFile(projectDir, join(projectDir, path));
+    return Object.assign(writable, { projectDir });
   }
   const SCAFFOLD = {
     name: "demo",
@@ -227,6 +233,21 @@ describe("isWritableProjectFile and Node tooling", () => {
     expect(isWritableProjectFile(projectDir, join(projectDir, "run.js"))).toBe(true);
     writeFileSync(pkg, JSON.stringify({ ...SCAFFOLD, scripts: { start: "node run.js" } }));
     expect(isWritableProjectFile(projectDir, join(projectDir, "run.js"))).toBe(false);
+  });
+
+  it("refuses extensionless files below a package.json with tooling, but not folders of that name", () => {
+    const writable = projectWith({ main: "server/start" });
+    for (const path of ["server/start", "server/Start.", "bin/www", "config"])
+      expect(writable(path), path).toBe(false);
+    mkdirSync(join(writable.projectDir, "assets"));
+    expect(writable("assets")).toBe(true);
+    expect(isWritableInProject(writable.projectDir, "new-folder", "folder")).toBe(true);
+    expect(isWritableInProject(writable.projectDir, "new-folder", "file")).toBe(false);
+  });
+
+  it("writes extensionless files below a package.json that only runs hyperframes", () => {
+    const writable = projectWith(SCAFFOLD);
+    for (const path of ["server/start", "notes"]) expect(writable(path), path).toBe(true);
   });
 
   it("writes composition scripts when no package.json covers them", () => {

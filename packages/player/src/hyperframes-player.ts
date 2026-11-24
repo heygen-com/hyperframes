@@ -21,8 +21,10 @@ import {
   getShaderModeFromElement,
   prepareSrcForElement,
   prepareSrcdocForElement,
+  prepareSealedSrcdocForElement,
   runtimeSrcFromElement,
 } from "./shader-options.js";
+import { carriesRuntime, decodePage } from "./runtime-in-srcdoc.js";
 import { createShaderLoader } from "./shader-loader-element.js";
 import { ShaderLoaderState } from "./shader-loader-state.js";
 import { PLAYER_STYLES } from "./styles.js";
@@ -42,9 +44,27 @@ import {
 // timeline itself respects. Clamping here also shields the native
 // HTMLMediaElement.playbackRate setter, which throws for extreme values in
 // production browsers.
+function parseUrl(src: string): URL | null {
+  try {
+    return new URL(src, document.baseURI);
+  } catch {
+    return null;
+  }
+}
+
 const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
 const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
+const SEALED_RUNTIME_LOAD_FAILED = "The HyperFrames runtime this player ships with failed to load";
+
+type FrameTarget = { src: string } | { srcdoc: string | null };
+type SealedPage = { bySrc: true } | { bySrc: false; html: string; url: string };
+
+// A srcdoc copy runs under the embedding page's policy, so a page that sets its own, or whose headers this
+// player can't all read (a redirect to another site), loads by src.
+const OWN_POLICY_HEADERS = ["content-security-policy", "x-frame-options"];
+const mayCarryOwnPolicy = (response: Response) =>
+  response.type !== "basic" || OWN_POLICY_HEADERS.some((name) => response.headers.has(name));
 const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
 // Bounds how long the player waits on a same-origin composition's readiness
 // inputs (media, compute, paint-and-idle) before playing anyway — a stuck
@@ -134,6 +154,10 @@ class HyperframesPlayer extends HTMLElement {
   private probe: CompositionProbe;
 
   private _ready = false;
+  /** Bumped by every navigation, so a sealed load that resolves late shows nothing stale. */
+  private _documentLoad = 0;
+  /** The URL a sealed srcdoc was fetched from, so its media resolve as they would by `src`. */
+  private _srcdocUrl: string | null = null;
   private _readyBeforeRuntime = false;
   private _readyDocument: Document | null = null;
   private _awaitingLoad = false;
@@ -224,6 +248,7 @@ class HyperframesPlayer extends HTMLElement {
     this.probe = new CompositionProbe(this.iframe, {
       resolveRuntimeUrl: () => runtimeSrcFromElement(this),
       hostOwnsDeadline: () => this.hasAttribute("no-load-timeout"),
+      sealed: () => this.hasAttribute(SANDBOX_ORIGIN_ATTR),
       onReady: (result) => this._onProbeReady(result),
       onError: (message) => this._emit(new CustomEvent("error", { detail: { message } })),
     });
@@ -250,8 +275,7 @@ class HyperframesPlayer extends HTMLElement {
     if (this.hasAttribute("poster"))
       this.posterEl = setupPoster(this.shadow, this.getAttribute("poster"), this.posterEl);
     if (this.hasAttribute("audio-src")) this._media.setupFromUrl(this.getAttribute("audio-src")!);
-    if (this.hasAttribute("srcdoc"))
-      this._navigateFrame({ srcdoc: prepareSrcdocForElement(this, this.getAttribute("srcdoc")!) });
+    if (this.hasAttribute("srcdoc")) this._showDocument(this.getAttribute("srcdoc")!);
     if (this.hasAttribute("src")) this._loadSrc(this.getAttribute("src")!);
 
     // Host-environment audio lock: when the embedding host (e.g. Claude
@@ -269,6 +293,7 @@ class HyperframesPlayer extends HTMLElement {
     this._stopIframeMedia();
     this.resizeObserver.disconnect();
     window.removeEventListener("message", this._onMessage);
+    this.probe.endNavigation();
     this.probe.stop();
     this._directTimelineClock.stop();
     this._stopParentTickClock();
@@ -306,11 +331,13 @@ class HyperframesPlayer extends HTMLElement {
         if (val !== null) {
           this._pauseForVideoSwitch();
           this._teardownVideo();
-          this._navigateFrame({ srcdoc: prepareSrcdocForElement(this, val) });
+          this._showDocument(val);
         } else {
+          this._documentLoad++;
           this._navigateFrame({ srcdoc: null });
           const src = this.getAttribute("src");
-          if (src !== null && this._wantsVideo()) this._navigateSrc(src);
+          if (src !== null && (this._wantsVideo() || this.hasAttribute(SANDBOX_ORIGIN_ATTR)))
+            this._navigateSrc(src);
         }
         break;
       case SANDBOX_ORIGIN_ATTR:
@@ -399,7 +426,7 @@ class HyperframesPlayer extends HTMLElement {
     this._abandonComposition("Sandbox policy changed before runtime data was applied");
     const srcdoc = this.getAttribute("srcdoc");
     if (srcdoc !== null) {
-      this._navigateFrame({ srcdoc: prepareSrcdocForElement(this, srcdoc) });
+      this._showDocument(srcdoc);
       return;
     }
     const src = this.getAttribute("src");
@@ -1049,9 +1076,7 @@ class HyperframesPlayer extends HTMLElement {
     // explanatory rejection the caller gets from every other navigating path.
     this._abandonComposition("Shader options changed before runtime data was applied");
     if (this.hasAttribute("srcdoc")) {
-      this._navigateFrame({
-        srcdoc: prepareSrcdocForElement(this, this.getAttribute("srcdoc") || ""),
-      });
+      this._showDocument(this.getAttribute("srcdoc") || "");
       return;
     }
     if (this.hasAttribute("src")) this._loadSrc(this.getAttribute("src") || "");
@@ -1079,19 +1104,99 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _loadSrc(src: string): void {
+    this._documentLoad++;
     if (this._wantsVideo()) {
+      // A sealed composition shown as srcdoc would outlive the frame's about:blank.
+      this.iframe.removeAttribute("srcdoc");
       this._loadVideo(src);
       return;
     }
     this._teardownVideo();
-    this._navigateFrame({ src: prepareSrcForElement(this, src) });
+    if (this.hasAttribute("srcdoc")) {
+      this._navigateFrame({ src: prepareSrcForElement(this, src) });
+      return;
+    }
+    const url = parseUrl(src);
+    if (url && this.hasAttribute(SANDBOX_ORIGIN_ATTR) && url.origin === location.origin) {
+      this._showSealedSrc(src, url.href);
+      return;
+    }
+    this.probe.markNavigation();
+    this._writeSrcOverSrcdoc(src);
   }
 
-  private _navigateFrame(to: { src: string } | { srcdoc: string | null }): void {
+  /** Loads src in place of a sealed srcdoc this player may be showing. */
+  private _writeSrcOverSrcdoc(src: string): void {
+    this.iframe.removeAttribute("srcdoc");
+    this._writeFrame({ src: prepareSrcForElement(this, src) });
+  }
+
+  private _navigateFrame(to: FrameTarget): void {
     this.probe.markNavigation();
+    this._writeFrame(to);
+  }
+
+  private _writeFrame(to: FrameTarget): void {
+    this.probe.frameWritten();
     if (!("srcdoc" in to)) this.iframe.src = to.src;
     else if (to.srcdoc === null) this.iframe.removeAttribute("srcdoc");
     else this.iframe.srcdoc = to.srcdoc;
+  }
+
+  /** The frame shows `html`. A sealed frame gets the runtime as text, so it is shown once that loads. */
+  private _showDocument(html: string): void {
+    const load = ++this._documentLoad;
+    if (!this.hasAttribute(SANDBOX_ORIGIN_ATTR)) {
+      this._srcdocUrl = null;
+      this._navigateFrame({ srcdoc: prepareSrcdocForElement(this, html) });
+      return;
+    }
+    this.probe.markPreparation();
+    this._showSealedDocument(html, undefined, load);
+  }
+
+  private _showSealedDocument(html: string, base: string | undefined, load: number): void {
+    prepareSealedSrcdocForElement(this, html, base).then(
+      (doc) => {
+        if (load !== this._documentLoad) return;
+        this._srcdocUrl = base ?? null;
+        this._writeFrame({ srcdoc: doc });
+      },
+      () => {
+        if (load !== this._documentLoad) return;
+        this.probe.endNavigation();
+        this._emit(new CustomEvent("error", { detail: { message: SEALED_RUNTIME_LOAD_FAILED } }));
+      },
+    );
+  }
+
+  /**
+   * A sealed frame cannot be reached once it loads, so a same-site composition without the runtime is
+   * fetched and shown as srcdoc carrying it. One that brings its own, or that can't be read (no-cors: a
+   * redirect off the site answers opaque, without a CORS error), loads by `src` as before, under its own headers.
+   */
+  private _showSealedSrc(src: string, href: string): void {
+    const load = ++this._documentLoad;
+    this.probe.markPreparation();
+    fetch(href, { mode: "no-cors", credentials: "same-origin" })
+      .then(async (response): Promise<SealedPage> => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (mayCarryOwnPolicy(response)) return { bySrc: true };
+        const html = decodePage(await response.arrayBuffer(), response.headers.get("content-type"));
+        return carriesRuntime(html)
+          ? { bySrc: true }
+          : { bySrc: false, html, url: response.url || href };
+      })
+      .then(
+        (page) => {
+          if (load !== this._documentLoad) return;
+          if (page.bySrc) this._writeSrcOverSrcdoc(src);
+          else this._showSealedDocument(page.html, page.url, load);
+        },
+        () => {
+          if (load === this._documentLoad) this._writeSrcOverSrcdoc(src);
+        },
+      );
   }
 
   private _loadVideo(src: string): void {
@@ -1122,6 +1227,7 @@ class HyperframesPlayer extends HTMLElement {
       // Unloads a composition this player was showing before it switched to video.
       this.iframe.src = "about:blank";
     }
+    this.probe.endNavigation();
     this.probe.stop();
     const { video, adapter } = this._videoSource;
     this._directTimelineAdapter = adapter;
@@ -1302,7 +1408,7 @@ class HyperframesPlayer extends HTMLElement {
       sendControl: (action, extra) => this._sendControl(action, extra),
       getIframeDoc: () => this.iframe.contentDocument,
       getCompositionUrl: () =>
-        this.iframe.hasAttribute("srcdoc") ? null : this.iframe.src || null,
+        this.iframe.hasAttribute("srcdoc") ? this._srcdocUrl : this.iframe.src || null,
       onRuntimeReady: () => {
         this._runtimeBridgeReady = true;
         this._replayBridgeState();

@@ -91,6 +91,40 @@ describe("a preview document answered to another site", () => {
   });
 });
 
+describe.each(routes)("%s opened by direct navigation", (_name, path, type) => {
+  const guarded = createStudioApi(adapter, { sandboxDirectOpens: true });
+  const open = (app: typeof api, headers: Record<string, string> = {}) =>
+    app.request(`http://localhost${path}`, {
+      headers: { "sec-fetch-site": "none", "sec-fetch-dest": "document", ...headers },
+    });
+
+  it("is sandboxed, marked and never sniffed when the host asks for it", async () => {
+    const res = await open(guarded);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain(type);
+    expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect((await res.text()).includes("hyperframes-preview-for-another-site")).toBe(
+      type === "text/html",
+    );
+  });
+
+  it("is answered in full, not from the copy a Studio frame cached", async () => {
+    const etag = (await get(path, "same-origin")).headers.get("etag");
+    const res = await open(guarded, etag ? { "if-none-match": etag } : {});
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+  });
+
+  it("keeps its origin in a Studio frame, and for a host that does not ask", async () => {
+    const framed = await guarded.request(`http://localhost${path}`, {
+      headers: { "sec-fetch-site": "same-origin", "sec-fetch-dest": "iframe" },
+    });
+    expect(framed.headers.get("content-security-policy")).toBeNull();
+    expect((await open(api)).headers.get("content-security-policy")).toBeNull();
+  });
+});
+
 describe("a revalidated preview", () => {
   it("still names Sec-Fetch-Site in Vary on a 304 to the Studio's own pages", async () => {
     const etag = (await get("/projects/demo/preview", "same-origin")).headers.get("etag");

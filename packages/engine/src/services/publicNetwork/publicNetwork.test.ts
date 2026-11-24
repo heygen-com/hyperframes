@@ -231,6 +231,23 @@ describe("pinned request", () => {
     expect(response.status).toBe(302);
     expect(await response.text()).toBe("redirect");
   });
+  // fails without the fix: a set capture proxy took the request, so no address here was checked or pinned
+  it("checks and pins the address itself when told to use no proxy, even with one configured", async () => {
+    vi.stubEnv("HYPERFRAMES_CAPTURE_PROXY", "http://127.0.0.1:3128");
+    try {
+      mocks.resolve4.mockResolvedValueOnce(["10.0.0.1"]);
+      await expect(publicRequest("https://example.com/", {}, null)).rejects.toThrow(
+        NonPublicHostError,
+      );
+      expect(mocks.request).not.toHaveBeenCalled();
+      mocks.resolve4.mockResolvedValueOnce(["8.8.8.8"]);
+      fakeRequest();
+      await publicRequest("https://example.com/", {}, null);
+      expect(mocks.request.mock.calls[0]?.[0]).toMatchObject({ hostname: "8.8.8.8" });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it.each(["file:///tmp/a", "http://user:secret@example.com"])(
     "rejects unsafe URL %s",
     async (url) => {

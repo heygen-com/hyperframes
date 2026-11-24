@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 describe("readAllAnimatedProperties group filter", () => {
-  it("keeps other tweens' out-of-group properties out of a grouped resolve", () => {
+  it("keeps other tweens' out-of-group properties out of a grouped resolve", async () => {
     const el = document.createElement("div");
     el.id = "clip";
     document.body.appendChild(el);
@@ -58,7 +58,7 @@ describe("readAllAnimatedProperties group filter", () => {
       otherTweenVars: { opacity: 0, rotationX: 52, rotationY: -47 },
     });
 
-    const result = readAllAnimatedProperties(iframe, "#clip", rotationSetAnim(), "rotation");
+    const result = await readAllAnimatedProperties(iframe, "#clip", rotationSetAnim(), "rotation");
 
     expect(result).toEqual({ rotation: -28.1 });
   });
@@ -77,7 +77,7 @@ describe("color-grading opacity truth", () => {
 });
 
 describe("readAllAnimatedProperties with a sibling tween", () => {
-  it("leaves a sibling tween's rotation to that tween after an opacity keyframe edit", () => {
+  it("leaves a sibling tween's rotation to that tween after an opacity keyframe edit", async () => {
     const el = document.createElement("div");
     el.id = "clip";
     document.body.appendChild(el);
@@ -107,7 +107,7 @@ describe("readAllAnimatedProperties with a sibling tween", () => {
     } as unknown as GsapAnimation;
 
     // commitKeyframeProps: these values plus the edit at the playhead, and backfilled into the rest.
-    const read = readAllAnimatedProperties(iframe, "#clip", anim);
+    const read = await readAllAnimatedProperties(iframe, "#clip", anim);
     live.kill();
     gsap.set(el, { clearProps: "all" });
     const edited = build({

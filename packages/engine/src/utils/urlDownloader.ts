@@ -271,7 +271,7 @@ function getFilenameFromUrl(url: string, validationScope: string): string {
   const physicalIdentity = validationScope === "" ? url : `${url}\0${validationScope}`;
   const hash = createHash("md5").update(physicalIdentity).digest("hex").slice(0, 12);
   const urlObj = new URL(url);
-  const ext = extname(urlObj.pathname) || ".mp4";
+  const ext = /^\.[a-z0-9]{1,10}/i.exec(extname(urlObj.pathname))?.[0] ?? ".mp4";
   return `download_${hash}${ext}`;
 }
 

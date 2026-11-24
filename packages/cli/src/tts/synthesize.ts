@@ -1,8 +1,11 @@
 // fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, unlinkSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { chmodSync, existsSync, lstatSync, readdirSync, rmSync, unlinkSync } from "node:fs";
+import { refuseReadOnly } from "@hyperframes/core/atomic-file";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { makeOutputFolder } from "../utils/outputFolder.js";
-import { join, dirname, basename } from "node:path";
+import { join, dirname, basename, extname } from "node:path";
 import {
   ensureModel,
   ensureVoices,
@@ -153,6 +156,33 @@ function ensureSynthScript(): string {
   return assertPrivateCachePath(SCRIPT_PATH, CODE_ROOT);
 }
 
+/** Why a run that printed nothing failed. Never the error's own message for an exit: that repeats the whole command, text included. */
+function quietFailure(err: unknown): string {
+  if (!(err instanceof Error)) return "";
+  const { code, status, signal } = err as { code?: unknown; status?: unknown; signal?: unknown };
+  if (typeof code === "string" || (status == null && signal == null)) return err.message;
+  return typeof status === "number"
+    ? `The script exited with code ${status}`
+    : `The script was stopped by ${String(signal)}`;
+}
+
+function removeStaged(path: string): void {
+  try {
+    rmSync(path, { force: true, maxRetries: 3 });
+  } catch {
+    // a staged file that will not go must not replace the run's own result or error
+  }
+}
+
+function regularFileMode(path: string): number | undefined {
+  try {
+    const stats = lstatSync(path);
+    return stats.isFile() ? stats.mode & 0o777 : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -223,14 +253,16 @@ export async function synthesize(
 
   // 4. Ensure output directory exists
   makeOutputFolder(dirname(outputPath));
+  if (regularFileMode(outputPath) !== undefined) refuseReadOnly(outputPath);
 
-  // 5. Run synthesis
+  // 5. Run synthesis into a fresh name renamed over the output: the script writes through a link.
   options?.onProgress?.(`Generating speech with voice ${voice} (${lang})...`);
+  const staged = join(dirname(outputPath), `.tmp-${randomUUID()}${extname(outputPath)}`);
   try {
     const espeakLang = ESPEAK_LANG_OVERRIDES[lang] ?? lang;
     const stdout = execFileSync(
       python,
-      [scriptPath, modelPath, voicesPath, text, voice, String(speed), outputPath, espeakLang],
+      [scriptPath, modelPath, voicesPath, text, voice, String(speed), staged, espeakLang],
       {
         encoding: "utf-8",
         timeout: 300_000,
@@ -239,9 +271,12 @@ export async function synthesize(
       },
     );
 
-    if (!existsSync(outputPath)) {
+    if (!existsSync(staged)) {
       throw new Error("Synthesis completed but no output file was created");
     }
+    const mode = regularFileMode(outputPath);
+    if (mode !== undefined) chmodSync(staged, mode);
+    renameWithRetry(staged, outputPath);
 
     // Parse the last line of stdout as JSON (in case Python printed warnings before it)
     const lines = stdout.trim().split("\n");
@@ -254,7 +289,7 @@ export async function synthesize(
     } = JSON.parse(jsonLine);
 
     return {
-      outputPath: result.outputPath,
+      outputPath,
       sampleRate: result.sampleRate,
       durationSeconds: result.durationSeconds,
       langApplied: result.langApplied,
@@ -268,11 +303,12 @@ export async function synthesize(
       );
     }
 
-    let detail = "";
-    if (err && typeof err === "object" && "stderr" in err) {
-      const stderr = String(err.stderr).trim();
-      if (stderr) detail = `\n${stderr.slice(-500)}`;
-    }
+    const stderr = err && typeof err === "object" && "stderr" in err ? err.stderr : "";
+    const said = typeof stderr === "string" || Buffer.isBuffer(stderr) ? String(stderr).trim() : "";
+    const reason = said ? said.slice(-500) : quietFailure(err);
+    const detail = reason ? `\n${reason}` : "";
     throw new Error(`Speech synthesis failed${detail}`);
+  } finally {
+    removeStaged(staged);
   }
 }

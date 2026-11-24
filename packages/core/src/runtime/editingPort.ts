@@ -261,6 +261,17 @@ export type EditingDraftRotate =
   | { angle: number; route: "css" | "gsap" }
   | { angle: number; route: "transform"; value: string };
 export type { EditingDraftEnd };
+export const DRAFT_GSAP_PROPS = [
+  "x",
+  "y",
+  "opacity",
+  "scale",
+  "rotation",
+  "rotationX",
+  "rotationY",
+  "z",
+];
+export type EditingDraftProps = { seconds: number; values: Record<string, number> };
 /** A gesture's draft on one element: null puts that part back; an end keeps what is drawn or restores. */
 export type EditingDraft =
   | {
@@ -268,6 +279,7 @@ export type EditingDraft =
       translate: { x: number; y: number; route?: "gsap" } | null;
       size: { width: number; height: number } | null;
       rotate?: EditingDraftRotate | null;
+      props?: EditingDraftProps | null;
     }
   | EditingDraftEnd;
 
@@ -327,7 +339,10 @@ export interface EditingRequests {
     result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
   /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here. */
-  draft: { params: { drafts: EditingDraft[] }; result: EditingDraftReply };
+  draft: {
+    params: { drafts: EditingDraft[] };
+    result: EditingDraftReply & { gsapSetTakesDrafts?: true };
+  };
   "gesture-start": {
     params: { handles: EditingElementHandle[] };
     result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
@@ -529,10 +544,44 @@ function draftEntry(value: unknown): EditingDraft | null {
 }
 
 function drawnParts(value: Record<string, unknown>): boolean {
-  const { translate, size, rotate } = value;
-  if (!hasKeys(value, "handle,size,translate") && !hasKeys(value, "handle,rotate,size,translate"))
+  const { handle: _handle, translate, size, rotate, props, ...rest } = value;
+  if (Object.keys(rest).length || !("translate" in value) || !("size" in value)) return false;
+  const parts = [
+    draftTranslate(translate),
+    draftPart(size, "height,width", 0),
+    draftRotate(rotate),
+  ];
+  return !parts.includes(false) && draftPropsWithOneXYWriter(props, translate);
+}
+
+const isPropsShape = (
+  value: unknown,
+): value is { seconds: number; values: Record<string, unknown> } =>
+  hasKeys(value, "seconds,values") &&
+  isPlainRecord(value.values) &&
+  Number.isFinite(value.seconds) &&
+  (value.seconds as number) >= 0;
+
+const isDraftValue = ([key, value]: [string, unknown]) =>
+  DRAFT_GSAP_PROPS.includes(key) && isDraftPx(value, -MAX_DRAFT_PX);
+
+const setsPosition = (keys: string[]) => keys.includes("x") || keys.includes("y");
+
+function draftPropsWithOneXYWriter(value: unknown, translate: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (!isPropsShape(value)) return false;
+  const entries = Object.entries(value.values);
+  if (!entries.length || (translate !== null && setsPosition(entries.map(([key]) => key))))
     return false;
-  return draftTranslate(translate) && draftPart(size, "height,width", 0) && draftRotate(rotate);
+  return entries.every(isDraftValue);
+}
+
+function gsapSetWithDrafts(params: unknown): GsapSetParams | null {
+  if (!isPlainRecord(params) || !("drafts" in params)) return parseGsapSet(params);
+  const { drafts, ...set } = params;
+  const parsed = parseGsapSet(set);
+  const drawn = draftList({ drafts });
+  return parsed && drawn ? { ...parsed, drafts: drawn.drafts } : null;
 }
 
 function draftList(params: unknown): EditingParams<"draft"> | null {
@@ -635,7 +684,7 @@ const PARAM_PARSERS: {
   "edit-element": parseEditElement,
   "stacking-family": (params) =>
     hasKeys(params, "handle") && isHandle(params.handle) ? { handle: params.handle } : null,
-  "gsap-set": parseGsapSet,
+  "gsap-set": gsapSetWithDrafts,
   "patch-tweens": parsePatchTweensRequest,
   "soft-reload": parseSoftReload,
   "hold-scenes": parseHoldScenes,
