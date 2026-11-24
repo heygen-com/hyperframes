@@ -134,8 +134,15 @@ function elementAllowed(element: Element, tag: string): boolean {
   return ELEMENTS_PARSED_ALIKE_WITH_SCRIPTING_ON.has(tag) || /^hf-[a-z0-9-]+$/.test(tag);
 }
 
+const MARKS_STUDIO_EDITS_THE_FILE_OF = new Set([
+  "data-composition-file",
+  "data-composition-id",
+  "data-hf-original-composition-id",
+]);
+
 function attributeAllowed(element: Element, name: string, value: string): boolean {
   if (!isSafeAttributeValue(name, value) || name.toLowerCase().startsWith("on")) return false;
+  if (MARKS_STUDIO_EDITS_THE_FILE_OF.has(name.toLowerCase())) return false;
   if (isAllowedHtmlAttribute(name)) return true;
   if (!isSvg(element)) return false;
   const namespace = FIXED_NAMESPACES.get(name);
