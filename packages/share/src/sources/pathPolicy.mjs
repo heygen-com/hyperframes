@@ -2,7 +2,14 @@
 // Validate source manifests against the bundled sync contract.
 import { isCredentialOrToolStatePath, isVcsOrSecretPath } from "@hyperframes/parsers/private-path";
 import { readContract } from "./contract.mjs";
-import { UNICODE_VERSION, allAssigned, comparisonKey, nfc, withoutIgnorable } from "./unicode.mjs";
+import {
+  UNICODE_VERSION,
+  allAssigned,
+  comparisonKey,
+  v4ComparisonKey,
+  nfc,
+  withoutIgnorable,
+} from "./unicode.mjs";
 
 const PATH_POLICY_VERSION = "portable-source-v11";
 
@@ -64,6 +71,11 @@ function compile(document) {
   for (const id of Object.keys(legacy))
     if (!document.rules.some((rule) => rule.id === id))
       throw new Error(`path policy's stored_manifest names no rule ${id}`);
+  const currentRules = document.rules.map((rule) => ({ rule, pattern: whole(rule.regex) }));
+  const storedRules = document.rules.map((rule) => ({
+    rule,
+    pattern: whole(legacy[rule.id] ?? rule.regex),
+  }));
   return {
     limits,
     invalidCharacter: new RegExp(
@@ -72,16 +84,18 @@ function compile(document) {
     ),
     reservedSegment: whole(limits.reserved_segment_regex),
     shortNameShape: whole(limits.short_name_alias_shape),
-    shortNameStems: shortNameStems(limits.short_name_alias_names),
-    storedShortNameStems: shortNameStems(document.stored_manifest.legacy_short_name_alias_names),
+    paths: {
+      current: { rules: currentRules, stems: shortNameStems(limits.short_name_alias_names) },
+      stored: {
+        rules: storedRules,
+        stems: shortNameStems(document.stored_manifest.legacy_short_name_alias_names),
+      },
+      v4Base: { rules: storedRules, stems: new Set() },
+    },
     canonicalRoots: new Map(
       limits.canonical_spelling_roots.map((root) => [comparisonKey(root), root]),
     ),
-    rules: document.rules.map((rule) => ({ rule, pattern: whole(rule.regex) })),
-    storedRules: document.rules.map((rule) => ({
-      rule,
-      pattern: whole(legacy[rule.id] ?? rule.regex),
-    })),
+    rules: currentRules,
     prefilter: new Set(document.client_prefilter.names),
     symlinkPrefixes: document.client_symlinks.skip_prefixes,
   };
@@ -103,8 +117,8 @@ export function classifyPath(path) {
   return found.rule;
 }
 
-/** Checks 1 to 10 of the registry's `path.checks`: the ones about the string itself. @param {string} path */
-function checkSpelling(path) {
+/** Checks 1 to 10 of the registry's `path.checks`: the ones about the string itself. @param {string} path @param {boolean} v4Base */
+function checkSpelling(path, v4Base) {
   const { limits, invalidCharacter } = policy();
   if (!path) throw new PathViolation("path_empty", path);
   if (invalidCharacter.test(path)) throw new PathViolation("path_invalid_character", path);
@@ -114,13 +128,13 @@ function checkSpelling(path) {
   if (Buffer.byteLength(path, "utf8") > limits.max_path_bytes)
     throw new PathViolation("path_too_long", path);
   if (path.startsWith("/")) throw new PathViolation("path_not_relative", path);
-  return checkSegments(path, limits);
+  return checkSegments(path, limits, v4Base);
 }
 
-/** @param {string} path @param {PolicyDocument["path"]} limits */
-function checkSegments(path, limits) {
+/** @param {string} path @param {PolicyDocument["path"]} limits @param {boolean} v4Base */
+function checkSegments(path, limits, v4Base) {
   const segments = path.split("/");
-  const bare = segments.map(withoutIgnorable);
+  const bare = v4Base ? segments : segments.map(withoutIgnorable);
   if (bare.some((segment) => !segment)) throw new PathViolation("path_empty_segment", path);
   if (bare.some((segment) => segment === "." || segment === ".."))
     throw new PathViolation("path_dot_segment", path);
@@ -132,22 +146,22 @@ function checkSegments(path, limits) {
 }
 
 /** Whether a segment's comparison key is a Windows 8.3 short name (GIT~1) of a name the policy refuses.
- * @param {string} key @param {ReadonlySet<string>} [stems] */
-function isShortNameAlias(key, stems = policy().shortNameStems) {
+ * @param {string} key @param {ReadonlySet<string>} stems */
+function isShortNameAlias(key, stems) {
   const stem = policy().shortNameShape.exec(key)?.[1];
   return stem !== undefined && stems.has(stem);
 }
 
+/** @typedef {"current" | "stored" | "v4Base"} PathMode */
+
 /** `path` unchanged when every client can store it and the policy lets it travel; throws PathViolation otherwise,
  * naming the first failing check in the registry's order. @param {string} path
- * @param {boolean} [stored] */
-export function validatePath(path, stored = false) {
-  const segments = checkSpelling(path);
-  const keys = segments.map(comparisonKey);
+ * @param {PathMode} [mode] */
+export function validatePath(path, mode = "current") {
+  const segments = checkSpelling(path, mode === "v4Base");
+  const keys = segments.map(mode === "v4Base" ? v4ComparisonKey : comparisonKey);
   const { reservedSegment, canonicalRoots } = policy();
-  const { rules, stems } = stored
-    ? { rules: policy().storedRules, stems: policy().storedShortNameStems }
-    : { rules: policy().rules, stems: policy().shortNameStems };
+  const { rules, stems } = policy().paths[mode];
   if (keys.some((key) => reservedSegment.test(key))) throw new PathViolation("reserved_name", path);
   if (keys.some((key) => isShortNameAlias(key, stems)))
     throw new PathViolation("segment_short_name", path);
@@ -165,12 +179,12 @@ export function validatePath(path, stored = false) {
 }
 
 /** Refuses duplicates, and any two paths (or a path and a directory prefix) one filesystem would store as one name.
- * Each path must already pass validatePath. @param {readonly string[]} paths */
-export function checkInventoryPaths(paths) {
+ * Each path must already pass validatePath. @param {readonly string[]} paths @param {(value: string) => string} [keyOf] */
+export function checkInventoryPaths(paths, keyOf = comparisonKey) {
   const seen = { spellingByKey: new Map(), fileKeys: new Set(), directoryKeys: new Set() };
   for (const path of paths) {
     const segments = path.split("/");
-    const keys = segments.map(comparisonKey);
+    const keys = segments.map(keyOf);
     for (let depth = 1; depth <= segments.length; depth++)
       notePrefix(seen, path, {
         prefix: segments.slice(0, depth).join("/"),

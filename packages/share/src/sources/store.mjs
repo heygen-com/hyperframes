@@ -4,7 +4,7 @@ import { constants } from "node:fs";
 import { lstat, open } from "node:fs/promises";
 import { join } from "node:path";
 import { errorCode, mkdirInside, writeJsonAtomic } from "../storage.mjs";
-import { parseStoredManifest, readUploadManifest } from "./manifest.mjs";
+import { localBaseDigest, readUploadManifest } from "./manifest.mjs";
 
 /** @param {unknown} value @returns {value is Record<string, unknown>} */
 const object = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -32,7 +32,7 @@ function checkSnapshots(raw) {
     raw.base !== null &&
     (!object(raw.base) ||
       typeof raw.base.snapshotId !== "string" ||
-      parseStoredManifest(raw.base.manifest).sha256 !== raw.base.manifestSha256)
+      localBaseDigest(raw.base.manifest) !== raw.base.manifestSha256)
   )
     throw new Error("Invalid source base snapshot.");
   if (raw.inflight === null) return;

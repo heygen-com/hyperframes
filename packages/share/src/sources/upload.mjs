@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { NotWritable, uploadNeeded } from "./uploadFiles.mjs";
 import { canUploadStoredPath } from "./pathPolicy.mjs";
-import { readUploadManifest } from "./manifest.mjs";
+import { isUnconfirmedUpload, readUploadManifest } from "./manifest.mjs";
 import { SyncApiError } from "./errors.mjs";
 
 /** @typedef {import("./adapterTypes.js").SourceRun} SourceRun
@@ -133,7 +133,8 @@ export async function recoverSourceUpload(job) {
   const manifest = readUploadManifest(saved);
   if (
     !manifest ||
-    (!saved.uploadId && manifest.document.files.some(({ path }) => !canUploadStoredPath(path)))
+    (isUnconfirmedUpload(saved) &&
+      manifest.document.files.some(({ path }) => !canUploadStoredPath(path)))
   ) {
     await clearIntent(job);
     return null;

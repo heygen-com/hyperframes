@@ -386,6 +386,37 @@ test("retrying an interrupted v4 share after correcting a filename publishes the
   assert.equal(binding.base.manifestSha256, request.manifest.sha256);
 });
 
+test("a corrected v4 project publishes a new snapshot on its original base", async (t) => {
+  const f = await interruptedV4Share(t);
+  const { manifest, manifestSha256 } = f.binding.inflight;
+  const base = { snapshotId: "published-v4", manifest, manifestSha256 };
+  await rename(join(f.root, f.oldName), join(f.root, "alternate.svg"));
+
+  const rendered = await projectFingerprint(f.root);
+  const server = fakeServer();
+  const source = shareSources({ access: async () => signed, spaceId: "personal", ...server });
+  await f.store.write({
+    ...f.binding,
+    base: { ...base, manifestSha256: "0".repeat(64) },
+    inflight: null,
+  });
+  await assert.rejects(f.store.read(f.key), /Invalid source base snapshot/);
+  await f.store.write({ ...f.binding, base, inflight: null });
+  assert.deepEqual((await f.store.read(f.key)).base, base);
+  const result = await source.prepare(f.root, rendered);
+  assert.equal(result.at, "ready");
+  assert.equal(result.snapshot.composition_id, f.binding.compositionId);
+  assert.deepEqual(await source.filesForExport(f.root, rendered), result.snapshot);
+  assert.equal(server.calls.begin.length, 1);
+  const [request] = server.calls.begin;
+  assert.equal(request.baseSnapshotId, base.snapshotId);
+  assert.deepEqual(
+    request.manifest.document.files.map(({ path }) => path),
+    ["alternate.svg", "cover.svg", "index.html"],
+  );
+  assert.equal((await f.store.read(f.key)).base.manifestSha256, request.manifest.sha256);
+});
+
 test("an incompatible pending manifest still requires a matching checksum and unconfirmed IDs", async (t) => {
   const f = await interruptedV4Share(t);
   const saved = f.binding.inflight;

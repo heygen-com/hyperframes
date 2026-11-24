@@ -1,6 +1,7 @@
 // @ts-check
 // Serialize snapshots to canonical UTF-8 bytes so clients and the server compute the same digest.
 import { createHash } from "node:crypto";
+import { v4ComparisonKey } from "./unicode.mjs";
 import { PathViolation, checkInventoryPaths, validatePath } from "./pathPolicy.mjs";
 
 const FORMAT_VERSION = 1;
@@ -10,6 +11,9 @@ const SHA256 = /^[0-9a-f]{64}$/;
 
 /** @typedef {import("./types.js").ManifestFile} ManifestFile @typedef {import("./types.js").Violation} Violation
  * @typedef {import("./types.js").ManifestDocument} ManifestDocument @typedef {import("./types.js").Manifest} Manifest */
+
+/** @typedef {import("./pathPolicy.mjs").PathMode} PathMode
+ * @typedef {{mode: PathMode, pathErrors: Violation[]}} Validation */
 
 /** Why a manifest was refused; `code` is the first violation's, in the server's order. */
 export class ManifestInvalid extends Error {
@@ -37,7 +41,7 @@ function unknownFields(value, fields, out) {
     if (!fields.includes(key)) out.push({ code: "invalid_schema" });
 }
 
-/** @param {unknown} raw @param {Violation[]} out @param {{stored: boolean, pathErrors: Violation[]}} policy @returns {ManifestFile | null} */
+/** @param {unknown} raw @param {Violation[]} out @param {Validation} policy @returns {ManifestFile | null} */
 function fileOf(raw, out, policy) {
   if (!isObject(raw)) return (out.push({ code: "invalid_schema" }), null);
   const before = out.length;
@@ -45,7 +49,7 @@ function fileOf(raw, out, policy) {
   if (typeof path !== "string") out.push({ code: "invalid_schema" });
   else {
     try {
-      validatePath(path, policy.stored);
+      validatePath(path, policy.mode);
     } catch (error) {
       policy.pathErrors.push(violationOf(error));
     }
@@ -70,8 +74,8 @@ function checkBlob(sha256, size, out) {
 const byUtf8 = (a, b) => Buffer.compare(Buffer.from(a.path, "utf8"), Buffer.from(b.path, "utf8"));
 
 /** The files in canonical order, or the inventory's first violation. @param {ManifestFile[]} files
- * @param {Violation[]} out @param {Violation[]} pathErrors */
-function canonicalInventory(files, out, pathErrors) {
+ * @param {Violation[]} out @param {Validation} policy */
+function canonicalInventory(files, out, policy) {
   const ordered = [...files].sort(byUtf8);
   /** @type {Map<string, number>} */
   const sizeByDigest = new Map();
@@ -82,20 +86,23 @@ function canonicalInventory(files, out, pathErrors) {
       return (out.push({ code: "inconsistent_digest_size", path: file.path }), null);
   }
   try {
-    checkInventoryPaths(ordered.map((file) => file.path));
+    checkInventoryPaths(
+      ordered.map((file) => file.path),
+      policy.mode === "v4Base" ? v4ComparisonKey : undefined,
+    );
   } catch (error) {
-    pathErrors.push(violationOf(error));
+    policy.pathErrors.push(violationOf(error));
   }
   return ordered;
 }
 
-/** @param {unknown} raw @param {Violation[]} out @param {{stored: boolean, pathErrors: Violation[]}} policy */
+/** @param {unknown} raw @param {Violation[]} out @param {Validation} policy */
 function filesOf(raw, out, policy) {
   if (!Array.isArray(raw)) return (out.push({ code: "invalid_schema" }), null);
   const before = out.length;
   const files = raw.map((item) => fileOf(item, out, policy));
   if (out.length !== before) return null;
-  return canonicalInventory(/** @type {ManifestFile[]} */ (files), out, policy.pathErrors);
+  return canonicalInventory(/** @type {ManifestFile[]} */ (files), out, policy);
 }
 
 /** The canonical bytes of a valid document. @param {ManifestDocument} document */
@@ -113,7 +120,7 @@ export function canonicalBytes(document) {
 /** Validates a manifest document as the server does; throws ManifestInvalid. @param {unknown} raw
  * @param {boolean} [stored] @returns {Manifest} */
 export function parseManifest(raw, stored = false) {
-  return readManifest(raw, stored);
+  return readManifest(raw, stored ? "stored" : "current");
 }
 
 /** @param {Record<string, unknown>} raw @param {Violation[]} out */
@@ -126,13 +133,13 @@ function checkHeader(raw, out) {
   else if (entrypoint !== ENTRYPOINT) out.push({ code: "invalid_entrypoint" });
 }
 
-/** @param {unknown} raw @param {boolean} stored @param {Violation[]} [obsoletePaths] @returns {Manifest} */
-function readManifest(raw, stored, obsoletePaths) {
+/** @param {unknown} raw @param {PathMode} mode @param {Violation[]} [obsoletePaths] @returns {Manifest} */
+function readManifest(raw, mode, obsoletePaths) {
   if (!isObject(raw)) throw new ManifestInvalid([{ code: "invalid_schema" }]);
   /** @type {Violation[]} */
   const out = [];
   checkHeader(raw, out);
-  const files = filesOf(raw.files, out, { stored, pathErrors: obsoletePaths ?? out });
+  const files = filesOf(raw.files, out, { mode, pathErrors: obsoletePaths ?? out });
   unknownFields(raw, ["format_version", "entrypoint", "files"], out);
   if (out.length) throw new ManifestInvalid(out);
   const ordered = /** @type {ManifestFile[]} */ (files);
@@ -163,13 +170,23 @@ export function parseCanonicalManifest(body) {
  * @param {unknown} raw @returns {Manifest} */
 export const parseStoredManifest = (raw) => parseManifest(raw, true);
 
+/** Local ancestry can predate the current path policy. Only the verified digest and snapshot ID
+ * are used to parent the next capture. @param {unknown} raw */
+export const localBaseDigest = (raw) => readManifest(raw, "v4Base").sha256;
+
+/** @param {{uploadId?: unknown, snapshotId?: unknown}} saved */
+export const isUnconfirmedUpload = (saved) => saved.uploadId === null && saved.snapshotId === null;
+
 /** Only an unconfirmed Begin can be discarded when its paths no longer pass validation.
  * @param {{manifest?: unknown, manifestSha256?: unknown, uploadId?: unknown, snapshotId?: unknown}} saved */
 export function readUploadManifest(saved) {
   /** @type {Violation[]} */
   const obsoletePaths = [];
-  const unconfirmed = saved.uploadId === null && saved.snapshotId === null;
-  const manifest = readManifest(saved.manifest, true, unconfirmed ? obsoletePaths : undefined);
+  const manifest = readManifest(
+    saved.manifest,
+    "stored",
+    isUnconfirmedUpload(saved) ? obsoletePaths : undefined,
+  );
   if (manifest.sha256 !== saved.manifestSha256)
     throw new Error("Saved source upload manifest does not match its checksum.");
   return obsoletePaths.length ? null : manifest;

@@ -169,12 +169,15 @@ const KEYS_KEPT = 16384;
 /** @type {Map<string, string>} */
 const keys = new Map();
 
+/** The v4 inventory kept ignorable characters when comparing filenames. @param {string} value */
+export const v4ComparisonKey = (value) => nfc(fullCasefold(nfc(value)));
+
 /** The spelling two names share on a case-insensitive, normalizing or HFS+ filesystem:
  * NFC(casefold(NFC(value))) once the code points HFS+ ignores are removed. @param {string} value */
 export function comparisonKey(value) {
   const known = keys.get(value);
   if (known !== undefined) return known;
-  const key = nfc(fullCasefold(nfc(withoutIgnorable(value))));
+  const key = v4ComparisonKey(withoutIgnorable(value));
   if (keys.size >= KEYS_KEPT) keys.clear();
   keys.set(value, key);
   return key;
