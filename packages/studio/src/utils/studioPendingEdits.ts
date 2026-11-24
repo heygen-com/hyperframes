@@ -284,8 +284,8 @@ export async function flushStudioPendingEdits({
 } = {}): Promise<StudioPendingEditsDrainResult> {
   const blurred = blurFocusedField();
   if (blurred) await blurred;
-  // An edit opened while the drain waits is settled too, each once, and flush listeners are asked again after each
-  // wait: a "clean" covers every edit open or queued when it lands.
+  // An edit opened while the drain waits is settled too, each once, and flush listeners are asked again after a wait
+  // on another write. Not covered: an edit a listener queues while only listeners' own saves are being waited on.
   const settled = new Set<() => unknown>();
   const settleOpened = () => {
     const opened = [...openEdits].filter((settle) => !settled.has(settle));
