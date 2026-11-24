@@ -2018,9 +2018,9 @@ and hidden or private files keep their current content. Change those in your
 editor.
 
 Studio never writes TypeScript, JSX or CommonJS files (`.ts`, `.tsx`, `.mts`,
-`.cts`, `.jsx`, `.cjs`). It writes `.js` and `.mjs` files only when no
-`package.json` in their folder or any folder above it does more than run the
-`hyperframes` CLI. A project from `hyperframes init` keeps its composition
+`.cts`, `.jsx`, `.cjs`). It writes `.js` and `.mjs` files, and files with no
+extension, only when no `package.json` in their folder or any folder above it
+does more than run the `hyperframes` CLI. Folders are not affected. A project from `hyperframes init` keeps its composition
 scripts editable. Once a `package.json` adds its own scripts, an entry point or
 dependencies, edit that project's scripts in your editor.
 
