@@ -1636,6 +1636,34 @@ describe("preview ?variables= injection", () => {
     expect(injected?.[1]).not.toContain("</script>");
   });
 
+  it("serves every head script inside <head> when an attribute of <html> holds <head> text", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const label = '[{"label":"Page <head> and <header> text"}]';
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html lang="en" data-composition-variables='${label}'><head><title>t</title></head><body><div data-composition-id="main" data-width="320" data-height="180"></div></body></html>`,
+    );
+
+    const values = { title: '" b="1', other: "' c='1" };
+    const res = await app.request(
+      `http://localhost/projects/demo/preview?variables=${encodeURIComponent(JSON.stringify(values))}`,
+    );
+    const { document } = parseHTML(await res.text());
+    const root = document.documentElement;
+    expect(root.getAttributeNames().filter((name) => name !== "style")).toEqual([
+      "lang",
+      "data-composition-variables",
+    ]);
+    expect(root.getAttribute("data-composition-variables")).toBe(label);
+    for (const attr of ["data-hf-preview-variables", "data-hf-gsap-fallback"]) {
+      const scripts = document.querySelectorAll(`script[${attr}]`);
+      expect(scripts, attr).toHaveLength(1);
+      expect(scripts[0]?.parentElement, attr).toBe(document.head);
+    }
+  });
+
   it("returns 400 for invalid JSON and non-object payloads", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();

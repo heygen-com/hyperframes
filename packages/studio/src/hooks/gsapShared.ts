@@ -14,7 +14,7 @@ import {
   resolveTweenDuration,
 } from "../utils/globalTimeCompiler";
 import { toCompositionTime } from "../player/store/timelineElement";
-import { previewFrameOpaque } from "../player/lib/previewChannel";
+import { previewDocumentCopy, previewFrameOpaque } from "../player/lib/previewChannel";
 import { frameGsap, frameQuery } from "./gsapFrameSnapshot";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -134,6 +134,17 @@ const WHOLE_SELECTOR_ID = /^(#[\w-]+|\[id="(?:\\.|[^"\\])*"\])$/;
 function wholeSelectorElementId(selector: string): string | null {
   const trimmed = selector.trim();
   return WHOLE_SELECTOR_ID.test(trimmed) ? idFromSelector(trimmed) : null;
+}
+
+/**
+ * The document {@link resolveSelectorElementIds} matches tween selectors against: the frame's own, or a
+ * sealed frame's full markup, so a class or descendant tween attributes the same in both.
+ */
+export async function tweenTargetDocument(
+  iframe: HTMLIFrameElement | null | undefined,
+): Promise<Document | null> {
+  if (!iframe) return null;
+  return previewFrameOpaque(iframe) ? previewDocumentCopy(iframe) : iframe.contentDocument;
 }
 
 /**

@@ -10,8 +10,8 @@ import { fileURLToPath } from "node:url";
  * variables must set text with `textContent` or build nodes instead, and the files below may only lose writes.
  * Lower a count, or delete the entry, when a file is converted.
  *
- * chatgpt-exchange's remaining writes are its own icons and layout; its variable text already goes through
- * `textContent`.
+ * The remaining writes in chatgpt-exchange and claude-exchange are their own icons and layout; their variable
+ * text already goes through `textContent`.
  */
 export const MARKUP_WRITE_BASELINE = new Map([
   ["registry/blocks/ai-chat-reveal/ai-chat-reveal.html", 2],
@@ -20,7 +20,6 @@ export const MARKUP_WRITE_BASELINE = new Map([
   ["registry/blocks/exploded-stack/exploded-stack.html", 1],
   ["registry/blocks/message-thread-reveal/message-thread-reveal.html", 1],
   ["registry/blocks/share-sheet-carousel/share-sheet-carousel.html", 1],
-  ["registry/blocks/slack-notification-ad/slack-notification-ad.html", 1],
   ["registry/blocks/wireframe-portal-title/wireframe-portal-title.html", 1],
   ["registry/components/beat-timeline/beat-timeline.html", 1],
   ["registry/components/chat-message/chat-message.html", 2],

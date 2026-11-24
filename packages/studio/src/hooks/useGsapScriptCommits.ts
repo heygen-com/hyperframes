@@ -23,7 +23,7 @@ import {
   markStudioSaveErrorAlreadyToasted,
 } from "../utils/studioSaveDiagnostics";
 import type { CutoverDeps } from "../utils/sdkCutover";
-import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
+import { cacheCommittedKeyframes } from "./gsapKeyframeCacheHelpers";
 import { patchRuntimeTweenInPlace } from "./gsapRuntimePatch";
 import { lastTweenPatch } from "@hyperframes/core/runtime/patch-tween";
 import { previewFrameOpaque } from "../player/lib/previewChannel";
@@ -196,14 +196,12 @@ function syncCommittedGsapMutation({
   forceReloadSdkSession?.();
   if (options.skipReload) return;
   if (result.parsed?.animations) {
-    updateKeyframeCacheFromParsed(
+    void cacheCommittedKeyframes(
+      iframe,
       result.parsed.animations,
       targetPath,
       selection.id ?? undefined,
       mutation,
-      // The live preview document is what resolves a class / descendant tween to
-      // the elements it really animates; without it only whole-id selectors do.
-      iframe?.contentDocument,
     );
   }
   refreshMutationPreview(iframe, result, options, reloadPreview, onCacheInvalidate, nestedFiles);

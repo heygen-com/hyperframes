@@ -433,6 +433,23 @@ describe("installEditingAgent", () => {
       { drafts: [{ handle: H, translate: { x: 1, y: 0, route: "css" }, size: null }] },
       { drafts: [{ handle: H, translate: { x: 1e6, y: 0, route: "gsap" }, size: null }] },
       { drafts: [{ handle: H, translate: null, size: { width: -1, height: 2 } }] },
+      ...[
+        { seconds: 1, values: {} },
+        { seconds: -1, values: { opacity: 1 } },
+        { seconds: 1, values: { color: 1 } },
+        { seconds: 1, values: { opacity: "1" } },
+        { seconds: 1, values: { opacity: 1 }, extra: 1 },
+      ].map((props) => ({ drafts: [{ handle: H, translate: null, size: null, props }] })),
+      {
+        drafts: [
+          {
+            handle: H,
+            translate: { x: 1, y: 0, route: "gsap" },
+            size: null,
+            props: { seconds: 1, values: { x: 2 } },
+          },
+        ],
+      },
       { drafts: [{ handle: H, translate: null, size: { width: 1, height: 2, depth: 3 } }] },
       { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1 } }] },
       { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1, route: "x" } }] },
@@ -467,8 +484,8 @@ describe("installEditingAgent", () => {
         ],
       })),
     ].map((params, index) => [
-      { v: 1, id: 150 + index, kind: "draft", params },
-      150 + index,
+      { v: 1, id: 600 + index, kind: "draft", params },
+      600 + index,
       "invalid-params",
     ]),
     ...[{}, { handles: [] }, { handles: ["1"] }, { handles: Array(257).fill(H) }].map(

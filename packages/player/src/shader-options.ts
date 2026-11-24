@@ -4,7 +4,13 @@
  * URLs and srcdoc HTML.
  */
 
-import { ensureRuntimeBeforeBodyScripts } from "./runtime-in-srcdoc.js";
+import {
+  carriesRuntime,
+  ensureRuntimeBeforeBodyScripts,
+  inlineRuntimeBeforeBodyScripts,
+  withBaseHref,
+} from "./runtime-in-srcdoc.js";
+import { sealedRuntimeSource } from "./sealed-runtime.js";
 import { RUNTIME_CDN_URL } from "./runtime-url.js";
 
 export const SHADER_CAPTURE_SCALE_ATTR = "shader-capture-scale";
@@ -42,26 +48,19 @@ function normalizeShaderCaptureScale(value: string | null): string | null {
   return String(Math.min(1, Math.max(0.25, parsed)));
 }
 
+const SHADER_LOADING_WORDS = new Map<string, ShaderLoadingMode>([
+  ["none", "none"],
+  ["false", "none"],
+  ["0", "none"],
+  ["off", "none"],
+  ["player", "player"],
+  ["true", "player"],
+  ["1", "player"],
+  ["on", "player"],
+]);
+
 function normalizeShaderLoadingMode(value: string | null): ShaderLoadingMode {
-  if (value === null || value.trim() === "") return "composition";
-  const normalized = value.trim().toLowerCase();
-  if (
-    normalized === "none" ||
-    normalized === "false" ||
-    normalized === "0" ||
-    normalized === "off"
-  ) {
-    return "none";
-  }
-  if (
-    normalized === "player" ||
-    normalized === "true" ||
-    normalized === "1" ||
-    normalized === "on"
-  ) {
-    return "player";
-  }
-  return "composition";
+  return SHADER_LOADING_WORDS.get(value?.trim().toLowerCase() ?? "") ?? "composition";
 }
 
 /** Drop one of our own keys from raw `a=1&b=2` pairs, matched by name so that
@@ -156,6 +155,34 @@ export function prepareSrcdocForElement(el: Element, srcdoc: string): string {
     ),
     runtimeSrcFromElement(el),
   );
+}
+
+/**
+ * `prepareSrcdocForElement` for a sealed frame, which the player cannot reach into after it loads:
+ * the runtime goes in as text, unless the embedder named its own `runtime-src`.
+ */
+export async function prepareSealedSrcdocForElement(
+  el: Element,
+  html: string,
+  base?: string,
+): Promise<string> {
+  const doc =
+    runtimeSrcFromElement(el) !== RUNTIME_CDN_URL
+      ? prepareSrcdocForElement(el, html)
+      : await withSealedRuntime(
+          injectShaderOptionsIntoSrcdoc(
+            html,
+            normalizeShaderCaptureScale(el.getAttribute(SHADER_CAPTURE_SCALE_ATTR)),
+            getShaderModeFromElement(el),
+          ),
+        );
+  return base ? withBaseHref(doc, base) : doc;
+}
+
+async function withSealedRuntime(page: string): Promise<string> {
+  return carriesRuntime(page)
+    ? page
+    : inlineRuntimeBeforeBodyScripts(page, await sealedRuntimeSource());
 }
 
 export function runtimeSrcFromElement(el: Element): string {

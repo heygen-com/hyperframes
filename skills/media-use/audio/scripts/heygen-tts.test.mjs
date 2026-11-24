@@ -45,6 +45,42 @@ test("a refused speech prints HeyGen's own message, so a caller can act on it", 
   );
 });
 
+// Every speech request is refused with the text it asked for, so the test can read that text.
+const echoing = `data:text/javascript,globalThis.fetch = async (url, init) => new Response(
+  JSON.stringify({ error: { code: "refused", message: "asked: " + JSON.parse(init.body).text } }),
+  { status: 400, headers: { "content-type": "application/json" } });`;
+
+test("a .txt path that starts with two separators is refused, and the file it names is not read", () => {
+  const dir = mkdtempSync(join(tmpdir(), "heygen-tts-"));
+  writeFileSync(join(dir, "script.txt"), "text of the file");
+  const speak = (word) =>
+    spawnSync(
+      process.execPath,
+      ["--import", echoing, script, word, "--voice", "v", "-o", join(dir, "out.mp3")],
+      {
+        cwd: dir,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HEYGEN_API_KEY: "",
+          HYPERFRAMES_API_KEY: "",
+          HEYGEN_ACCESS_TOKEN: "t",
+        },
+      },
+    ).stderr;
+  try {
+    assert.match(speak(join(dir, "script.txt")), /asked: text of the file/);
+    for (const word of ["//host/share/script.txt", "\\\\host\\share\\script.txt"]) {
+      const said = speak(word);
+      assert.match(said, /not read\. Copy the file to a local folder/);
+      assert.doesNotMatch(said, /asked:/);
+    }
+    assert.match(speak("// and then"), /asked: \/\/ and then/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // Speech with one timed word; the audio itself is the file named by $TTS_AUDIO.
 const speaking = `data:text/javascript,import { readFileSync } from "node:fs";
 globalThis.fetch = async (url) => String(url).endsWith("/voices/speech")

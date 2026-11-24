@@ -1,4 +1,4 @@
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   closeSync,
   constants,
@@ -14,10 +14,12 @@ import {
 import {
   isStudioPrivatePath,
   mkdirWithinProject,
+  nodeMayRun,
   projectPathSegments,
-  realpath,
+  realFilePath,
   resolveWithinProject as resolveInProject,
   toolTrustedFileKind,
+  type EntryKind,
 } from "@hyperframes/core/safe-path";
 import { RENDER_TEMP_DIR } from "@hyperframes/core/project-folders";
 
@@ -29,8 +31,10 @@ export {
   isProjectRootMissing,
   isSafePath,
   mkdirWithinProject,
+  realFilePath,
   realpath,
   realProjectRoot,
+  type EntryKind,
 } from "@hyperframes/core/safe-path";
 
 /** Core's `resolveWithinProject`, closed to the desktop app's private files for every route a request path reaches. */
@@ -42,16 +46,6 @@ export function resolveWithinProject(base: string, relativePath: string): string
 /** A path inside the project spelled one way: relative to `base`, `/`-separated, no `.` or `..` segments. */
 export function projectRelativePath(base: string, file: string): string {
   return relative(resolve(base), resolve(file)).split(sep).join("/");
-}
-
-/** The real path; for a path not there (yet, or any more), the nearest existing folder's real path plus the rest. */
-export function realFilePath(filePath: string): string {
-  try {
-    return realpath(filePath);
-  } catch {
-    const dir = dirname(filePath);
-    return dir === filePath ? filePath : join(realFilePath(dir), basename(filePath));
-  }
 }
 
 /** For a project-relative path with `/` separators; the bundler applies the same rule to preview builds. */
@@ -80,84 +74,27 @@ export function isWritableProjectPath(relPath: string): boolean {
   );
 }
 
-export function isWritableProjectFile(projectDir: string, filePath: string): boolean {
+const entryKindAt = (path: string): EntryKind =>
+  statSync(path, { throwIfNoEntry: false })?.isDirectory() ? "folder" : "file";
+
+export function isWritableProjectFile(
+  projectDir: string,
+  filePath: string,
+  kind: EntryKind = entryKindAt(filePath),
+): boolean {
   return projectRelatives(projectDir, filePath).every((path) =>
-    isWritableInProject(projectDir, path),
+    isWritableInProject(projectDir, path, kind),
   );
 }
 
 /** `isWritableProjectPath`, and not a script the project's Node tooling may run. */
-export function isWritableInProject(projectDir: string, relPath: string): boolean {
-  return isWritableProjectPath(relPath) && !nodeMayRun(projectDir, relPath);
+export function isWritableInProject(
+  projectDir: string,
+  relPath: string,
+  kind: EntryKind = entryKindAt(resolve(projectDir, relPath)),
+): boolean {
+  return isWritableProjectPath(relPath) && !nodeMayRun(projectDir, relPath, kind);
 }
-
-const NODE_ONLY_SCRIPT = /\.(?:[cm]?ts|tsx|jsx|cjs)$/;
-const BROWSER_OR_NODE_SCRIPT = /\.m?js$/;
-
-/** A Node-only script, or `.js`/`.mjs` below (at any depth, past the project too) a package.json that is not the scaffold's. */
-function nodeMayRun(projectDir: string, relPath: string): boolean {
-  const name = foldedPath(relPath).split("/").at(-1) ?? "";
-  if (NODE_ONLY_SCRIPT.test(name)) return true;
-  if (!BROWSER_OR_NODE_SCRIPT.test(name)) return false;
-  const folder = dirname(resolve(projectDir, relPath));
-  return [folder, realFilePath(folder)].some((from) => foldersUp(from).some(manifestBringsNode));
-}
-
-function foldersUp(from: string): string[] {
-  const parent = dirname(from);
-  return parent === from ? [from] : [from, ...foldersUp(parent)];
-}
-
-const manifests = new Map<string, { stat: string; bringsNode: boolean }>();
-
-function manifestBringsNode(folder: string): boolean {
-  const path = join(folder, "package.json");
-  const stat = statSync(path, { throwIfNoEntry: false });
-  if (!stat?.isFile()) return false;
-  const key = `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
-  const cached = manifests.get(path);
-  if (cached?.stat === key) return cached.bringsNode;
-  const bringsNode = !isScaffoldManifest(readPackageJson(path));
-  manifests.set(path, { stat: key, bringsNode });
-  return bringsNode;
-}
-
-function readPackageJson(path: string): unknown {
-  try {
-    return JSON.parse(readFileSync(path, "utf-8"));
-  } catch {
-    return null;
-  }
-}
-
-const INERT_FIELDS = new Set(
-  "name version private type description license author contributors keywords homepage repository bugs engines".split(
-    " ",
-  ),
-);
-const HYPERFRAMES_COMMAND = /^(?:npx (?:--yes |-y )?)?hyperframes(?:@[\w.+-]+)?(?: [\w@=:./+-]+)*$/;
-
-/** A manifest with nothing but inert fields and scripts that only call the hyperframes CLI, as `hyperframes init` writes. */
-function isScaffoldManifest(pkg: unknown): boolean {
-  if (!pkg || typeof pkg !== "object" || Array.isArray(pkg)) return false;
-  return Object.entries(pkg).every(([field, value]) =>
-    field === "scripts" ? onlyHyperframesScripts(value) : INERT_FIELDS.has(field),
-  );
-}
-
-function onlyHyperframesScripts(scripts: unknown): boolean {
-  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) return false;
-  return Object.values(scripts).every(
-    (script) =>
-      typeof script === "string" &&
-      script.split(" && ").every((command) => HYPERFRAMES_COMMAND.test(command.trim())),
-  );
-}
-
-const foldedPath = (path: string): string =>
-  projectPathSegments(path)
-    .filter((segment) => segment !== "" && segment !== ".")
-    .join("/");
 
 /**
  * The first entry below `dir` a folder delete or move must not take along: one a direct delete or rename refuses, a
@@ -169,10 +106,10 @@ export function protectedEntryWithin(projectDir: string, dir: string, to?: strin
   const places = [dir, ...(to === undefined ? [] : [to])].flatMap((at) =>
     projectRelatives(projectDir, at),
   );
-  const refused = (sub: string) =>
+  const refused = (sub: string, kind: EntryKind) =>
     places.some((place) => {
       const at = place ? `${place}/${sub}` : sub;
-      return toolTrustedFileKind(at) !== null || nodeMayRun(projectDir, at);
+      return toolTrustedFileKind(at) !== null || nodeMayRun(projectDir, at, kind);
     });
   const found = refusedEntryBelow(dir, "", refused);
   return found === null ? null : [from, found].filter(Boolean).join("/") || ".";
@@ -180,16 +117,18 @@ export function protectedEntryWithin(projectDir: string, dir: string, to?: strin
 
 const PROTECTED_FOLDERS = new Set(["node_modules", ".git"]);
 
+const kindOf = (entry: Dirent): EntryKind => (entry.isDirectory() ? "folder" : "file");
+
 function refusedEntryBelow(
   dir: string,
   sub: string,
-  refused: (sub: string) => boolean,
+  refused: (sub: string, kind: EntryKind) => boolean,
 ): string | null {
   const entries = folderEntries(dir);
   if (!entries) return sub;
   for (const entry of entries) {
     const at = sub ? `${sub}/${entry.name}` : entry.name;
-    if (refused(at)) return at;
+    if (refused(at, kindOf(entry))) return at;
     if (!entry.isDirectory()) continue;
     if (PROTECTED_FOLDERS.has(projectPathSegments(entry.name)[0] ?? "")) return at;
     const inside = refusedEntryBelow(join(dir, entry.name), at, refused);
@@ -207,9 +146,13 @@ function folderEntries(dir: string): Dirent[] | null {
   }
 }
 
-export function resolveWritableWithinProject(base: string, relativePath: string): string | null {
+export function resolveWritableWithinProject(
+  base: string,
+  relativePath: string,
+  kind?: EntryKind,
+): string | null {
   const resolved = resolveWithinProject(base, relativePath);
-  return resolved && isWritableProjectFile(base, resolved) ? resolved : null;
+  return resolved && isWritableProjectFile(base, resolved, kind) ? resolved : null;
 }
 
 export function pinWritableWithinProject(base: string, relativePath: string): string | null {

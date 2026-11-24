@@ -1,3 +1,5 @@
+import { RUNTIME_BOOTSTRAP_ATTR } from "@hyperframes/core/compiler/html-tokens";
+
 /**
  * Put the runtime in the document's head, before anything in the body runs.
  *
@@ -25,24 +27,96 @@
  */
 
 /** Already carrying the runtime: a CLI-rendered page, or a second preparation. */
-function alreadyHasRuntime(html: string, runtimeUrl: string): boolean {
-  if (html.includes(runtimeUrl)) return true;
-  // The engine inlines the runtime rather than linking it, and it defines this
-  // global on the way in. Matching the source avoids a second, redundant copy.
-  return /hyperframe\.runtime\.iife\.js|__hyperframes\s*=/.test(html);
+function alreadyHasRuntime(html: string, runtimeUrl: string | null): boolean {
+  if (runtimeUrl && html.includes(runtimeUrl)) return true;
+  // The engine inlines the runtime rather than linking it, and it assigns this global on the way in.
+  return /__hyperframes\s*=(?!=)/.test(html) || linksRuntime(html);
+}
+
+/** A page that brings the runtime itself, which a sealed player then loads by `src` as before. */
+export const carriesRuntime = (html: string): boolean => alreadyHasRuntime(html, null);
+
+function linksRuntime(html: string): boolean {
+  for (
+    let tag = findOpeningTag(html, "script");
+    tag;
+    tag = findOpeningTag(html, "script", afterScript(html, tag.end))
+  ) {
+    const attributes = tagAttributes(html.slice(tag.index + "<script".length, tag.end - 1));
+    if (attributes.has(RUNTIME_BOOTSTRAP_ATTR)) return true;
+    if (attributes.get("src")?.includes("hyperframe.runtime.iife.js")) return true;
+  }
+  return false;
+}
+
+function afterScript(html: string, from: number): number {
+  const lower = html.toLowerCase();
+  for (
+    let close = lower.indexOf("</script", from);
+    close >= 0;
+    close = lower.indexOf("</script", close + 1)
+  )
+    if (CLOSING_TAG_BOUNDARIES.has(lower[close + "</script".length])) return close;
+  return html.length;
+}
+
+const isSpace = (c: string) => c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f";
+const isGap = (c: string) => isSpace(c) || c === "/";
+const inName = (c: string) => !isGap(c) && c !== "=";
+const notSpace = (c: string) => !isSpace(c);
+
+function skip(text: string, from: number, more: (c: string) => boolean): number {
+  let i = from;
+  while (i < text.length && more(text.charAt(i))) i++;
+  return i;
+}
+
+function attributeValue(text: string, from: number): { value: string; end: number } {
+  const quote = text.charAt(from);
+  if (quote !== '"' && quote !== "'") {
+    const end = skip(text, from, notSpace);
+    return { value: text.slice(from, end), end };
+  }
+  const close = text.indexOf(quote, from + 1);
+  const end = close < 0 ? text.length : close;
+  return { value: text.slice(from + 1, end), end: end + 1 };
+}
+
+function tagAttributes(text: string): Map<string, string> {
+  const attributes = new Map<string, string>();
+  for (let i = skip(text, 0, isGap); i < text.length; i = skip(text, i, isGap)) {
+    const start = i;
+    i = skip(text, i, inName);
+    if (i === start) break;
+    const name = text.slice(start, i).toLowerCase();
+    i = skip(text, i, isSpace);
+    let value = "";
+    if (text.charAt(i) === "=")
+      ({ value, end: i } = attributeValue(text, skip(text, i + 1, isSpace)));
+    attributes.set(name, value);
+  }
+  return attributes;
 }
 
 type OpeningTag = { index: number; end: number };
 const OPENING_TAG_BOUNDARIES = new Set<string | undefined>([">", " ", "\t", "\n", "\r", "\f"]);
+const CLOSING_TAG_BOUNDARIES = new Set<string | undefined>([...OPENING_TAG_BOUNDARIES, "/"]);
 
 /** Find an opening tag in one linear pass, without a backtracking regex over caller-owned HTML. */
-function findOpeningTag(html: string, tagName: string): OpeningTag | null {
+function findOpeningTag(html: string, tagName: string, start = 0): OpeningTag | null {
   const lower = html.toLowerCase();
   const prefix = `<${tagName}`;
-  let from = 0;
+  let from = start;
   while (from < lower.length) {
     const index = lower.indexOf(prefix, from);
     if (index < 0) return null;
+    const comment = lower.indexOf("<!--", from);
+    if (comment >= 0 && comment < index) {
+      const closed = lower.indexOf("-->", comment + 4);
+      if (closed < 0) return null;
+      from = closed + 3;
+      continue;
+    }
     const boundary = lower[index + prefix.length];
     if (OPENING_TAG_BOUNDARIES.has(boundary)) {
       const close = lower.indexOf(">", index + prefix.length);
@@ -56,8 +130,56 @@ function findOpeningTag(html: string, tagName: string): OpeningTag | null {
 
 export function ensureRuntimeBeforeBodyScripts(html: string, runtimeUrl: string): string {
   if (!html || alreadyHasRuntime(html, runtimeUrl)) return html;
+  return insertAtHeadStart(html, `<script src="${runtimeUrl}"></script>`);
+}
 
-  const tag = `<script src="${runtimeUrl}"></script>`;
+/** The same placement with the runtime's own text, for a sealed frame: it then loads nothing from another origin. */
+export function inlineRuntimeBeforeBodyScripts(html: string, escapedSource: string): string {
+  if (!html || alreadyHasRuntime(html, null)) return html;
+  return insertAtHeadStart(html, `<script>${escapedSource}</script>`);
+}
+
+/**
+ * A document fetched from `url` and shown as srcdoc still resolves its relative paths there. The first
+ * `<base href>` wins, so the page's own one is resolved against `url` and put first.
+ */
+export function withBaseHref(html: string, url: string): string {
+  return insertAtHeadStart(html, `<base href="${escapeAttr(baseOf(html, url))}">`);
+}
+
+function baseOf(html: string, url: string): string {
+  for (let tag = findOpeningTag(html, "base"); tag; tag = findOpeningTag(html, "base", tag.end)) {
+    const href = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(
+      html.slice(tag.index, tag.end),
+    );
+    if (!href) continue;
+    try {
+      return new URL(href[1] ?? href[2] ?? href[3] ?? "", url).href;
+    } catch {
+      return url;
+    }
+  }
+  return url;
+}
+
+/** The bytes of a fetched page as the browser would read them: the response's charset, else the page's own. */
+export function decodePage(bytes: ArrayBuffer, contentType: string | null): string {
+  const declared =
+    /charset=["']?([\w-]+)/i.exec(contentType ?? "")?.[1] ??
+    /<meta[^>]{0,200}charset=["']?([\w-]+)/i.exec(
+      new TextDecoder("latin1").decode(bytes.slice(0, 1024)),
+    )?.[1];
+  try {
+    return new TextDecoder(declared ?? "utf-8").decode(bytes);
+  } catch {
+    return new TextDecoder().decode(bytes);
+  }
+}
+
+const escapeAttr = (value: string): string =>
+  value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+function insertAtHeadStart(html: string, tag: string): string {
   const head = findOpeningTag(html, "head");
   if (head) {
     return html.slice(0, head.end) + tag + html.slice(head.end);
