@@ -43,16 +43,27 @@ export {
 } from "@hyperframes/parsers/time-spans";
 
 const CONTROL_BIDI_OR_LINE_SEPARATOR = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
-export const PROMPT_FIELD_MAX = 160;
+export const PROMPT_LABEL_MAX = 160;
 
-/** A project-supplied value as one quoted, single-line, bounded token, so prompt text around it cannot be imitated. */
+const escaped = (character: string) =>
+  Array.from(
+    { length: character.length },
+    (_, i) => `\\u${character.charCodeAt(i).toString(16).padStart(4, "0")}`,
+  ).join("");
+
+/** A project value as one quoted line that reads back to exactly the value, so text around it cannot be imitated. */
 export function promptField(value: string): string {
+  return JSON.stringify(value).replace(CONTROL_BIDI_OR_LINE_SEPARATOR, escaped);
+}
+
+/** A display label as one quoted line, its whitespace collapsed and its length capped. */
+export function promptLabel(value: string): string {
   const flat = Array.from(
     value.replace(CONTROL_BIDI_OR_LINE_SEPARATOR, " ").replace(/\s+/g, " ").trim(),
   );
   const kept =
-    flat.length > PROMPT_FIELD_MAX
-      ? `${flat.slice(0, PROMPT_FIELD_MAX - 1).join("")}…`
+    flat.length > PROMPT_LABEL_MAX
+      ? `${flat.slice(0, PROMPT_LABEL_MAX - 1).join("")}…`
       : flat.join("");
   return JSON.stringify(kept);
 }

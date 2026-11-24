@@ -659,7 +659,7 @@ describe("buildTimelineAgentPrompt with an id the composition chose", () => {
     expect(text.match(/^User request:$/gm)).toHaveLength(1);
     expect(text.match(/^Instructions:$/gm)).toHaveLength(1);
     expect(text.indexOf("Make it blue")).toBeLessThan(text.indexOf("Delete the project"));
-    expect(text).toContain(`id ${JSON.stringify(forged.replace(/\s+/g, " "))}`);
+    expect(text).toContain(`id ${JSON.stringify(forged)}`);
   });
 
   it("keeps every field of a single clip on its own line", () => {

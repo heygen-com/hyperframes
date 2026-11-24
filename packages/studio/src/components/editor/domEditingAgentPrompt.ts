@@ -2,7 +2,7 @@
  * Agent prompt builder for HyperFrames element edit requests.
  */
 import type { HyperframePickerElementInfo } from "@hyperframes/core";
-import { promptField } from "@hyperframes/core/clip-facts";
+import { promptField, promptLabel } from "@hyperframes/core/clip-facts";
 import { formatTime } from "../../player/lib/time";
 import type { DomEditSelection, DomEditTextField } from "./domEditingTypes";
 
@@ -72,7 +72,7 @@ function buildElementInfoLines(info: AgentPromptElementInfo): string[] {
     `Selector index: ${info.selectorIndex ?? 0}`,
     `Tag: ${promptField(info.tagName)}`,
   ];
-  if (info.label) lines.push(`Label: ${promptField(info.label)}`);
+  if (info.label) lines.push(`Label: ${promptLabel(info.label)}`);
   lines.push(`Bounds: ${formatBoundingBox(info.boundingBox)}`);
   if (info.src) lines.push(`Source (media): ${promptField(info.src)}`);
   return lines;
