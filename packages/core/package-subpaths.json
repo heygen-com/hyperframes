@@ -386,6 +386,12 @@
       "types": "./dist/audioFade.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./audio-decode": {
+      "source": "./src/audioDecode.ts",
+      "runtime": "./dist/audioDecode.js",
+      "types": "./dist/audioDecode.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./speed-ramp": {
       "source": "./src/speedRamp.ts",
       "runtime": "./dist/speedRamp.js",

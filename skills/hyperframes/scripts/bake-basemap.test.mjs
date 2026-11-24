@@ -104,7 +104,7 @@ function fakeNpm(base, answer, status = 0) {
   const ranIn = join(base, "npm-ran-in.txt");
   writeFileSync(
     join(bin, "npm"),
-    `#!/bin/sh\npwd > ${JSON.stringify(ranIn)}\necho ${JSON.stringify(answer)}\nexit ${status}\n`,
+    `#!/bin/sh\npwd >> ${JSON.stringify(ranIn)}\necho ${JSON.stringify(answer)}\nexit ${status}\n`,
     { mode: 0o755 },
   );
   return { PATH: `${bin}${delimiter}${process.env.PATH}`, ranIn };
@@ -120,7 +120,8 @@ test(
     const npm = fakeNpm(base, globalFolder);
     run({ PATH: npm.PATH });
     assert.deepEqual(loaded(), ["npm global"]);
-    assert.equal(realpathSync(readFileSync(npm.ranIn, "utf8").trim()), realpathSync(home));
+    const [ranIn] = readFileSync(npm.ranIn, "utf8").trim().split("\n");
+    assert.equal(realpathSync(ranIn), realpathSync(home));
   },
 );
 
@@ -138,5 +139,52 @@ test(
       npmGlobalFolder({ home: base }),
       join(dirname(dirname(process.execPath)), "lib", "node_modules"),
     );
+  },
+);
+
+const npmSkip = { skip: process.platform === "win32" && "the stand-in npm is a shell script" };
+
+test("an npm answer that is not an absolute path is not used", npmSkip, (t) => {
+  const base = mkdtempSync(join(tmpdir(), "basemap-npm-"));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const npm = fakeNpm(base, "node_modules");
+  const path = process.env.PATH;
+  process.env.PATH = npm.PATH;
+  t.after(() => (process.env.PATH = path));
+  assert.equal(
+    npmGlobalFolder({ home: base }),
+    join(dirname(dirname(process.execPath)), "lib", "node_modules"),
+  );
+});
+
+test("a bake with no puppeteer-core anywhere asks npm once", npmSkip, (t) => {
+  const { base, run } = setup(t, ".agents/skills");
+  const npm = fakeNpm(base, join(base, "empty-global"));
+  const result = run({ PATH: npm.PATH });
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(readFileSync(npm.ranIn, "utf8").trim().split("\n").length, 1);
+});
+
+test(
+  "puppeteer-core installed globally under Volta is read when VOLTA_HOME is set",
+  npmSkip,
+  (t) => {
+    const { base, marker, run, loaded } = setup(t, ".agents/skills");
+    const volta = join(base, "volta");
+    const packages = join(
+      volta,
+      "tools",
+      "image",
+      "packages",
+      "puppeteer-core",
+      "lib",
+      "node_modules",
+    );
+    const npm = fakeNpm(base, join(base, "empty-global"));
+    const missing = run({ PATH: npm.PATH, VOLTA_HOME: volta });
+    assert.ok(missing.stderr.includes(packages), missing.stderr);
+    stubPackage(packages, marker, "volta");
+    run({ PATH: npm.PATH, VOLTA_HOME: volta });
+    assert.deepEqual(loaded(), ["volta"]);
   },
 );

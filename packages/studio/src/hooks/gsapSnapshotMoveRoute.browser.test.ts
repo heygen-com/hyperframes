@@ -1,4 +1,4 @@
-// Real Chrome: a CSS-placed element whose only tween is its opacity still moves by CSS once Studio has read GSAP.
+// Real Chrome: a CSS-placed element GSAP does not draw yet still moves by CSS once Studio has read GSAP.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import type { Browser } from "puppeteer-core";
@@ -26,7 +26,7 @@ beforeAll(async () => {
 
 afterAll(() => closeTestChrome(browser));
 
-function previewHtml(): string {
+function previewHtml(tween: string): string {
   const gsap = readFileSync(require.resolve("gsap/dist/gsap.min.js"), "utf8");
   const runtime = readFileSync(require.resolve("@hyperframes/core/runtime"), "utf8");
   return `<!doctype html><html><head><meta charset="UTF-8" />
@@ -41,29 +41,40 @@ function previewHtml(): string {
     <script>
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });
-      tl.to("#title", { opacity: 0.5, duration: 4 }, 0);
+      ${tween}
       window.__timelines.main = tl;
     </script>
     <script>${runtime}</script></body></html>`;
 }
 
-// fails without the fix: the sealed read asked GSAP for x, GSAP took over the translate and the move saved as gsap.set.
-it.each(MODES)("a move after a GSAP read still saves as a CSS translate (%s)", async (mode) => {
-  const preview = await openPreview(browser, studioBundle, previewHtml(), mode);
-  await preview.seek(1);
-  const start = await preview.page.evaluate(async () => {
-    const studio = (window as unknown as { hfStudio: Reads }).hfStudio;
-    const iframe = document.querySelector("iframe")!;
-    studio.usePlayerStore.setState({ currentTime: 1, isPlaying: false });
-    await studio.settleGsapSnapshot(iframe);
-    const query = await studio.previewRequest(iframe, "query", { selector: "#title" });
-    const handle = (query as { matches: Array<{ handle: string }> } | null)?.matches[0]?.handle;
-    return (await studio.previewGestureStart(iframe, [handle!]))?.elements[0];
-  });
-  expect(start).toMatchObject({ gsap: null });
-  const drawn = await preview.frame.evaluate(
-    () => getComputedStyle(document.getElementById("title")!).translate,
-  );
-  expect(drawn).toBe("0px -200px");
-  await preview.page.close();
-});
+const TWEENS = [
+  ["only its opacity", 'tl.to("#title", { opacity: 0.5, duration: 4 }, 0);'],
+  ["a scale that starts later", 'tl.to("#title", { scale: 1.4, duration: 1 }, 3);'],
+  ["a rotation that starts later", 'tl.to("#title", { rotation: 30, duration: 1 }, 3);'],
+];
+const CASES = MODES.flatMap((mode) => TWEENS.map(([name, tween]) => [mode, name, tween]));
+
+// fails without the fix: a sealed read asked GSAP for a transform value, GSAP took over the translate and the move
+// saved as gsap.set (#8731 fixed the opacity case; a later scale or rotation still did it).
+it.each(CASES)(
+  "a move after a GSAP read still saves as a CSS translate (%s, %s)",
+  async (mode, _, tween) => {
+    const preview = await openPreview(browser, studioBundle, previewHtml(tween!), mode!);
+    await preview.seek(1);
+    const start = await preview.page.evaluate(async () => {
+      const studio = (window as unknown as { hfStudio: Reads }).hfStudio;
+      const iframe = document.querySelector("iframe")!;
+      studio.usePlayerStore.setState({ currentTime: 1, isPlaying: false });
+      await studio.settleGsapSnapshot(iframe);
+      const query = await studio.previewRequest(iframe, "query", { selector: "#title" });
+      const handle = (query as { matches: Array<{ handle: string }> } | null)?.matches[0]?.handle;
+      return (await studio.previewGestureStart(iframe, [handle!]))?.elements[0];
+    });
+    expect(start).toMatchObject({ gsap: null });
+    const drawn = await preview.frame.evaluate(
+      () => getComputedStyle(document.getElementById("title")!).translate,
+    );
+    expect(drawn).toBe("0px -200px");
+    await preview.page.close();
+  },
+);

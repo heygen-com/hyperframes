@@ -323,7 +323,6 @@ const FOLDER_CUT_AT_QUERY_OR_FRAGMENT = /[?#]/;
 // ffmpeg reads a list line into a 4096-byte buffer, so a longer line would name something else: it is refused unread.
 const MAX_LIST_LINE_BYTES = 4095;
 const ATTRIBUTE_GAP = /[\t\n\v\f\r ,]/;
-const SPACE = /\s/;
 const TRAILING_HLS_BLANK = /[\t\v\f ]/;
 
 function withoutTrailing(line: string, isBlank: RegExp): string {
@@ -332,32 +331,53 @@ function withoutTrailing(line: string, isBlank: RegExp): string {
   return line.slice(0, end);
 }
 
+/** The names one line can open: ffmpeg opens one, the walk checks all, and refuses the list when none is there. */
+type Entry = string[];
+
 /**
- * Every name an HLS list can open, read as ffmpeg's hls demuxer reads it; true when a line is too long to read
+ * Every entry an HLS list can open, read as ffmpeg's hls demuxer reads it; true when a line is too long to read
  * whole. The text is latin1, one character per byte, so a line's length is its length in bytes.
  */
-function hlsEntries(body: string): string[] | true {
-  const names = new Set<string>();
+function hlsEntries(body: string): Entry[] | true {
+  const entries = new Map<string, Entry>();
   for (const raw of body.replaceAll("\0", "\n").split(/[\r\n]/)) {
     if (raw.length > MAX_LIST_LINE_BYTES) return true;
     const line = withoutTrailing(raw, TRAILING_HLS_BLANK);
-    const found = line.startsWith("#") ? attributeUris(line) : [line, line.trim()];
-    for (const name of found) if (name) names.add(name);
+    const found = line.startsWith("#")
+      ? attributeUris(line).map((uri) => [uri])
+      : [[line, line.trim()]];
+    for (const names of found.map((entry) => [...new Set(entry.filter(Boolean))])) {
+      if (names.length > 0) entries.set(names.join("\n"), names);
+    }
   }
-  return [...names];
+  return [...entries.values()];
 }
 
-/** The name an ffconcat `file` line gives, as `/^\s*file\s+(.*)$/` would match it, in one pass; undefined for any other line. */
-function concatFileName(raw: string): string | undefined {
-  let at = 0;
-  while (at < raw.length && SPACE.test(raw[at]!)) at++;
-  if (!raw.startsWith("file", at)) return undefined;
-  let rest = at + 4;
-  while (rest < raw.length && SPACE.test(raw[rest]!)) rest++;
-  // `\s+` needs one blank, and `.` matches no carriage return, so one left past the blanks fails the match.
-  if (rest === at + 4 || raw.includes("\r", rest)) return undefined;
-  const value = raw.slice(rest).trim();
-  return value.startsWith("'") ? value.slice(1, -1).replace(/\\(.)/g, "$1") : value;
+// ffmpeg's concat demuxer ends a line at LF, CR or NUL; only LF and CR LF end one here, so any other CR or NUL refuses.
+const LONE_CR = /\r(?!\n)/;
+const CONCAT_KEYWORD = /^[\t ]*([^\t ]*)[\t ]*/;
+// The `file` values `av_get_token` reads as written: a bare run with no quote or backslash, or one single-quoted run.
+const CONCAT_FILE_VALUE = /^(?:'([^']+)'|([^\t '\\]+))[\t ]*$/;
+
+/** The name an ffconcat line opens; undefined for a line that opens none; true for one ffmpeg may read otherwise. */
+function concatFileName(line: string): string | true | undefined {
+  const keyword = CONCAT_KEYWORD.exec(line)!;
+  if (keyword[1] === "option") return true;
+  if (keyword[1] !== "file") return undefined;
+  const value = CONCAT_FILE_VALUE.exec(line.slice(keyword[0].length));
+  return value ? (value[1] ?? value[2]!) : true;
+}
+
+function concatEntries(body: string): Entry[] | true {
+  if (LONE_CR.test(body) || body.includes("\0")) return true;
+  const entries: Entry[] = [];
+  for (const line of body.split(/\r?\n/)) {
+    if (line.length > MAX_LIST_LINE_BYTES) return true;
+    const name = concatFileName(line);
+    if (name === true) return true;
+    if (name !== undefined) entries.push([name]);
+  }
+  return entries;
 }
 
 /** `URI=` values of a tag, split as ffmpeg's `ff_parse_key_value` splits them. */
@@ -396,19 +416,11 @@ function attributeValue(line: string, at: number): [string, number] {
 
 const UTF8_BOM = "\xEF\xBB\xBF";
 
-/** The names a list can open; true when a line is too long to read whole; undefined when the text is no list. */
-function playlistEntries(text: string): string[] | true | undefined {
+/** The entries a list can open; true when it must be refused unread; undefined when the text is no list. */
+function playlistEntries(text: string): Entry[] | true | undefined {
   const body = (text.startsWith(UTF8_BOM) ? text.slice(UTF8_BOM.length) : text).trimStart();
   if (body.startsWith("#EXTM3U")) return hlsEntries(body);
-  if (/^ffconcat\s+version/i.test(body)) {
-    const names: string[] = [];
-    for (const raw of body.split(/\r?\n/)) {
-      if (raw.length > MAX_LIST_LINE_BYTES) return true;
-      const name = concatFileName(raw);
-      if (name !== undefined) names.push(name);
-    }
-    return names;
-  }
+  if (/^ffconcat\s+version/i.test(body)) return concatEntries(body);
   return undefined;
 }
 
@@ -435,10 +447,14 @@ function percentDecoded(value: string): string {
 /** Paths are walked as latin1 strings, one character per byte, and opened by those bytes. */
 const asBytes = (path: string): string => Buffer.from(path).toString("latin1");
 
+/** A nested name that is not there: ffmpeg would open nothing by it, but the walk may have computed the wrong name. */
+const MISSING = Symbol("missing");
+type Verdict = boolean | typeof MISSING;
+
 interface Walk {
   folder: string;
   seen: Set<string>;
-  verdicts: Map<string, boolean>;
+  verdicts: Map<string, Verdict>;
   bytes: number;
   entries: number;
 }
@@ -460,7 +476,7 @@ export async function playlistLeavesItsFolder(
     entries: 0,
   };
   try {
-    return await listLeaves(asBytes(resolve(filePath)), placed, walk, 0);
+    return (await listLeaves(asBytes(resolve(filePath)), placed, walk, 0)) === true;
   } catch {
     return false;
   }
@@ -529,7 +545,7 @@ const isMissing = (error: unknown): boolean =>
   );
 
 /** A list's entries, counted against the walk's budget; true when the list or the walk must be refused. */
-function budgetedEntries(text: string, walk: Walk): string[] | true {
+function budgetedEntries(text: string, walk: Walk): Entry[] | true {
   walk.bytes += text.length;
   const entries = playlistEntries(text) ?? [];
   if (entries === true) return true;
@@ -537,17 +553,18 @@ function budgetedEntries(text: string, walk: Walk): string[] | true {
   return walk.bytes > MAX_WALK_BYTES || walk.entries > MAX_WALK_ENTRIES ? true : entries;
 }
 
-/** Every list a list names is read too, against the top list's folder. A nested file that exists but cannot be read is refused. */
+/** Every list a list names is read too, against the top list's folder. A nested file that cannot be read is refused. */
 async function listLeaves(
   readPath: string,
   path: string,
   walk: Walk,
   depth: number,
-): Promise<boolean> {
+): Promise<Verdict> {
   const text = await readList(readPath, depth > 0).catch((error: unknown) =>
-    depth > 0 && !isMissing(error) ? true : null,
+    depth === 0 ? null : isMissing(error) ? MISSING : true,
   );
   if (text === null) return false;
+  if (text === MISSING) return MISSING;
   if (text === true || depth >= MAX_PLAYLIST_DEPTH) return true;
   if (walk.seen.has(path)) return false;
   walk.seen.add(path);
@@ -560,22 +577,29 @@ async function listLeaves(
 }
 
 async function entryLeaves(
-  entry: string,
+  entry: Entry,
   base: string,
   walk: Walk,
   depth: number,
 ): Promise<boolean> {
-  if (entryLeavesFolder(entry, base, walk.folder)) return true;
-  if (HTTP_URL.test(entry)) return false;
-  for (const local of new Set([entry, percentDecoded(entry)])) {
-    const nested = resolve(base, local);
-    if (isPrivateFileUnder(walk.folder, nested, isStudioPrivatePath)) return true;
-    let verdict = walk.verdicts.get(nested);
-    if (verdict === undefined) {
-      verdict = await listLeaves(nested, nested, walk, depth + 1);
-      walk.verdicts.set(nested, verdict);
-    }
-    if (verdict) return true;
+  if (entry.some((name) => entryLeavesFolder(name, base, walk.folder))) return true;
+  const local = entry.filter((name) => !HTTP_URL.test(name));
+  let found = local.length === 0;
+  for (const nested of new Set(local.flatMap((name) => [name, percentDecoded(name)]))) {
+    const path = resolve(base, nested);
+    if (isPrivateFileUnder(walk.folder, path, isStudioPrivatePath)) return true;
+    const verdict = await nestedVerdict(path, walk, depth);
+    if (verdict === true) return true;
+    found ||= verdict === false;
   }
-  return false;
+  return !found;
+}
+
+async function nestedVerdict(path: string, walk: Walk, depth: number): Promise<Verdict> {
+  let verdict = walk.verdicts.get(path);
+  if (verdict === undefined) {
+    verdict = await listLeaves(path, path, walk, depth + 1);
+    walk.verdicts.set(path, verdict);
+  }
+  return verdict;
 }
