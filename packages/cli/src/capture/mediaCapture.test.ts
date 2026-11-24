@@ -481,10 +481,10 @@ describe("a captured video's file name", () => {
     Buffer.from("ftypisom"),
     Buffer.alloc(4096),
   ]);
-  const pageWith = (descriptor: { src: string; filename: string }) =>
+  const pageWith = (...descriptors: { src: string; filename: string }[]) =>
     ({
       evaluate: vi.fn(async (expression: unknown) =>
-        typeof expression === "function" ? null : [descriptor],
+        typeof expression === "function" ? null : descriptors,
       ),
       screenshot: vi.fn(async () => Buffer.from("\x89PNG preview")),
     }) as unknown as Page;
@@ -524,5 +524,19 @@ describe("a captured video's file name", () => {
       () => {},
     );
     expect(savedIn(dir)).toEqual([]);
+  });
+
+  it("never lands two videos of one capture on the same file", async () => {
+    const dir = captureDir();
+    answer(MP4, "video/mp4");
+    await captureVideoManifest(
+      pageWith(
+        { src: "https://video.example/hero.mp4", filename: "hero.mp4" },
+        { src: "https://video.example/hero.webm", filename: "hero.webm" },
+      ),
+      dir,
+      () => {},
+    );
+    expect(savedIn(dir).sort()).toEqual(["hero-2.mp4", "hero.mp4"]);
   });
 });
