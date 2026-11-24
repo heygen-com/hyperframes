@@ -35,13 +35,21 @@ test("the standalone check refuses exactly what the parsers check refuses", () =
     script("skills/hyperframes/scripts/lib/literal-media-input.mjs"),
     "utf8",
   );
-  const pattern = (text) => /const PATTERN_IMAGE2_EXPANDS = (.+);/.exec(text)?.[1];
-  assert.ok(pattern(source));
-  assert.equal(pattern(ours), pattern(source));
-  for (const path of ["/a/b%d.png", "/a/x%3*/c.png", "file:/a/b%%.png"]) {
+  for (const name of ["PATTERN_IMAGE2_EXPANDS", "WILDCARD_MAKES_ANY_PERCENT_A_PATTERN"]) {
+    const pattern = (text) => new RegExp(`const ${name} = (.+);`).exec(text)?.[1];
+    assert.ok(pattern(source), name);
+    assert.equal(pattern(ours), pattern(source), name);
+  }
+  for (const path of [
+    "/a/b%d.png",
+    "/a/x%3*/c.png",
+    "file:/a/b%%.png",
+    "/a/credentials.json%a{.xface",
+    "/a/x{/y%a.png",
+  ]) {
     assert.throws(() => assertLiteralMediaPath(path), PATTERN);
   }
-  for (const path of ["/a/100% done.mp4", "https://cdn.example/a%2d.png"]) {
+  for (const path of ["/a/100% done.mp4", "/a/x{y}.png", "https://cdn.example/a%2d.png"]) {
     assert.doesNotThrow(() => assertLiteralMediaPath(path));
   }
 });
