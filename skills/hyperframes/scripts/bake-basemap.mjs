@@ -22,9 +22,10 @@
 // for the HF composition. One bake at a time: several headless Chromes on a small machine stall.
 import "./lib/windows-exe-search.mjs";
 import { join } from "node:path";
-import { mkdirSync, writeFileSync, readdirSync, existsSync } from "node:fs";
+import { readdirSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
+import { ownFolder, replaceFile, replaceOutput } from "./lib/own-output.mjs";
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`usage: [NAME=..] [STYLE=satellite|dark|light|<{z}/{x}/{y} url>] [CENTER="lng,lat"]
@@ -131,8 +132,7 @@ const TILES =
   }[STYLE] || STYLE; // STYLE may also be a raw {z}/{x}/{y} template
 
 const OUT = process.env.OUT || process.cwd(); // artifacts → workspace (cwd), NOT the installed skill dir
-const framesDir = join(OUT, "frames-" + NAME);
-mkdirSync(framesDir, { recursive: true });
+const framesDir = ownFolder(join(OUT, "frames-" + NAME));
 
 // A seeded star field behind the globe, so every bake of the same move is identical.
 let seed = 7;
@@ -261,11 +261,11 @@ try {
       timeouts.push(i);
       console.warn(`[${NAME}] idle TIMEOUT at frame ${i} — tiles may be incomplete`);
     }
-    await page.screenshot({
-      path: join(framesDir, `f${String(i).padStart(4, "0")}.png`),
+    const frame = await page.screenshot({
       clip: { x: 0, y: 0, width: 1920, height: 1080 },
       optimizeForSpeed: true,
     });
+    replaceFile(join(framesDir, `f${String(i).padStart(4, "0")}.png`), frame);
     if (p >= HOLD && !coords && COUNTRIES.length)
       coords = await page.evaluate(() => window.__project()); // capture at first hold frame
     if (i % 20 === 0 || i === N - 1) {
@@ -278,35 +278,35 @@ try {
   // encode frames → all-intra MP4 (every frame seekable for HF); fall back to printing the command if ffmpeg is absent
   const mp4 = join(OUT, NAME + ".mp4"),
     pat = join(framesDir, "f%04d.png");
-  const ff = spawnSync(
-    "ffmpeg",
-    [
-      "-y",
-      "-framerate",
-      String(FPS),
-      "-i",
-      pat,
-      "-c:v",
-      "libx264",
-      "-pix_fmt",
-      "yuv420p",
-      "-g",
-      "1",
-      "-crf",
-      "16",
-      "-movflags",
-      "+faststart",
-      mp4,
-    ],
-    { stdio: "ignore" },
-  );
-  if (ff.status === 0) console.log(`[${NAME}] encoded → ${mp4}`);
-  else
+  let status = null;
+  try {
+    replaceOutput(mp4, (temp) => {
+      const encode = [
+        "-framerate",
+        String(FPS),
+        "-i",
+        pat,
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+      ];
+      const ff = spawnSync(
+        "ffmpeg",
+        ["-y", ...encode, "-g", "1", "-crf", "16", "-movflags", "+faststart", temp],
+        { stdio: "ignore" },
+      );
+      status = ff.status;
+      if (status !== 0) throw new Error(`ffmpeg unavailable (status ${status})`);
+    });
+    console.log(`[${NAME}] encoded → ${mp4}`);
+  } catch (error) {
     console.warn(
-      `[${NAME}] ffmpeg unavailable (status ${ff.status}) — encode manually:\n  ffmpeg -y -framerate ${FPS} -i ${pat} -c:v libx264 -pix_fmt yuv420p -g 1 -crf 16 -movflags +faststart ${mp4}`,
+      `[${NAME}] ${error.message} — encode manually:\n  ffmpeg -y -framerate ${FPS} -i ${pat} -c:v libx264 -pix_fmt yuv420p -g 1 -crf 16 -movflags +faststart ${mp4}`,
     );
+  }
   if (coords) {
-    writeFileSync(join(OUT, NAME + "-coords.json"), JSON.stringify(coords));
+    replaceFile(join(OUT, NAME + "-coords.json"), JSON.stringify(coords));
     console.log(
       `[${NAME}] coords written: ${coords.countries.map((c) => c.name + "(" + c.d.length + "ch)").join(", ")}`,
     );

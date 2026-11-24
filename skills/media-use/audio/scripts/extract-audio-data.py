@@ -17,8 +17,10 @@ Requirements:
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import tempfile
 
 import numpy as np
 
@@ -176,6 +178,35 @@ def extract(path: str, fps: int, n_bands: int) -> dict:
     }
 
 
+def write_output(path, text):
+    """Write `text` to `path` as a new regular file.
+
+    A project can arrive (by git clone or tar) with a link at the output name, and opening it would overwrite the file
+    it names. The text goes to a fresh name beside `path` and is renamed over it, so a link there is replaced. A link at
+    the output's folder, or at a folder above it inside the working folder, is refused.
+    """
+    folder = os.path.dirname(os.path.abspath(path))
+    root = os.getcwd()
+    at = folder
+    while True:
+        if os.path.islink(at):
+            raise SystemExit(f"refusing to write into {at}: it is a link")
+        if at == root or not at.startswith(root + os.sep):
+            break
+        at = os.path.dirname(at)
+    fd, temp = tempfile.mkstemp(dir=folder, prefix=".", suffix="-" + os.path.basename(path))
+    try:
+        mask = os.umask(0)
+        os.umask(mask)
+        os.chmod(temp, 0o666 & ~mask)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(temp, path)
+    finally:
+        if os.path.exists(temp):
+            os.unlink(temp)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Extract per-frame audio visualization data")
     parser.add_argument("input", help="Audio or video file")
@@ -191,8 +222,7 @@ def main():
 
     data = extract(args.input, args.fps, args.bands)
 
-    with open(args.output, "w", encoding="utf-8") as f:
-        json.dump(data, f)
+    write_output(args.output, json.dumps(data))
 
     print(f"Wrote {args.output} ({data['totalFrames']} frames, {data['bands']} bands)", file=sys.stderr)
 
