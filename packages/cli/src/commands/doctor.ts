@@ -382,12 +382,6 @@ function requiredChecksPass(outcomes: CheckOutcome[]): boolean {
   return outcomes.every((o) => o.ok || o.optional);
 }
 
-function rowStyle(o: CheckOutcome): { icon: string; paint: (s: string) => string } {
-  if (o.ok) return { icon: c.success("\u2713"), paint: c.dim };
-  if (o.optional) return { icon: c.warn("\u25CB"), paint: c.warn };
-  return { icon: c.error("\u2717"), paint: c.error };
-}
-
 /** The closing line of the human report; optional rows that are missing never turn it into a failure. */
 export function doctorSummary(outcomes: CheckOutcome[]): { ok: boolean; text: string } {
   if (!requiredChecksPass(outcomes)) {
@@ -448,9 +442,15 @@ export function printDoctorOutcomes(outcomes: CheckOutcome[]): void {
   console.log();
 
   for (const outcome of outcomes) {
-    const { icon, paint } = rowStyle(outcome);
+    const icon = outcome.ok
+      ? c.success("\u2713")
+      : outcome.optional
+        ? c.warn("\u25CB")
+        : c.error("\u2717");
     const name = terminalText(outcome.name).padEnd(16);
-    console.log(`  ${icon} ${c.bold(name)} ${paint(terminalLines(outcome.detail))}`);
+    console.log(
+      `  ${icon} ${c.bold(name)} ${outcome.ok ? c.dim(terminalLines(outcome.detail)) : outcome.optional ? c.warn(terminalLines(outcome.detail)) : c.error(terminalLines(outcome.detail))}`,
+    );
     if (!outcome.ok && outcome.hint) {
       console.log(`  ${" ".repeat(19)}${c.accent(terminalLines(outcome.hint))}`);
     }
@@ -458,8 +458,11 @@ export function printDoctorOutcomes(outcomes: CheckOutcome[]): void {
 
   console.log();
   const summary = doctorSummary(outcomes);
-  const tone = summary.ok ? c.success : c.warn;
-  console.log(`  ${tone("\u25C7")}  ${tone(summary.text)}`);
+  if (summary.ok) {
+    console.log(`  ${c.success("\u25C7")}  ${c.success(terminalText(summary.text))}`);
+  } else {
+    console.log(`  ${c.warn("\u25C7")}  ${c.warn(terminalText(summary.text))}`);
+  }
   console.log();
 }
 
