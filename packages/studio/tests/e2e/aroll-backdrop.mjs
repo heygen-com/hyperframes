@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The A-roll must show in Studio's preview while playing: the untimed #plate backdrop above it is
 // one the film's own script keeps hidden outside 6-8 s, and the preview must not force it visible.
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { launchStudioChrome, screenshotInPlace } from "./chrome-executable.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
@@ -13,6 +13,7 @@ if (!STUDIO_URL) {
   console.error("STUDIO_URL is required and must point at the aroll-backdrop fixture");
   process.exit(2);
 }
+if (OUT_DIR) mkdirSync(OUT_DIR, { recursive: true });
 const { browser } = await launchStudioChrome();
 const failures = [];
 const evidence = {};
