@@ -333,6 +333,15 @@ async function sharedRecord(projectPath) {
   return { ...record, projectId: record.projectId };
 }
 
+/** The saved change, or null once an unopened one whose new project the record is already on is dropped: that is an
+ * earlier journal written back (cleanupOf). @param {string} dir @param {string} from the record's project */
+async function savedChange(dir, from) {
+  const saved = await readSwitch(dir);
+  if (saved?.projectId !== from || saved.opened) return saved;
+  await dropSwitch(dir, saved);
+  return null;
+}
+
 /** Moves a shared project's link to `spaceId`: a new link there, the newest export on it, the old link off. Its own
  * space answers the link as it is. Refuses before any write when the export cannot go up.
  * @param {{ projectPath: string, title: string, client: ReviewClient, spaceId: string, upload: Upload,
@@ -342,12 +351,7 @@ export const changeSpace = ({ projectPath, title, client, spaceId, upload, canUp
   inTurn(projectPath, async () => {
     const record = await sharedRecord(projectPath);
     const from = record.projectId;
-    let saved = await readSwitch(projectPath);
-    // An unopened change whose new project the record is already on is an earlier journal written back (cleanupOf).
-    if (saved?.projectId === from && !saved.opened) {
-      await dropSwitch(projectPath, saved);
-      saved = null;
-    }
+    const saved = await savedChange(projectPath, from);
     if (saved?.projectId === from) await oldLinkFirst(client, projectPath, saved);
     // A change already registered there carries on; one never registered is made again, with the same key.
     if (saved?.from === from && saved.spaceId === spaceId) {
