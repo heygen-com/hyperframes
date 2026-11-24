@@ -36,7 +36,9 @@ type RuntimeBridgeControlActionBase =
   | "set-play-range"
   | "stop-media"
   | "flash-elements"
-  | "scrub-audio";
+  | "scrub-audio"
+  | "set-parent-audio"
+  | "audio-clock";
 
 type RuntimeBridgeControlMessageBase = {
   source: "hf-parent";
@@ -60,6 +62,9 @@ type RuntimeBridgeControlMessageBase = {
   grading?: RuntimeJson;
   compare?: RuntimeJson;
   seekMode?: "drag" | "commit";
+  clips?: string[];
+  rate?: number;
+  at?: number;
 };
 
 export type RuntimeStateMessage = {
@@ -195,6 +200,13 @@ export type RuntimeStageSizeMessage = {
 export type RuntimeMediaAutoplayBlockedMessage = {
   source: "hf-preview";
   type: "media-autoplay-blocked";
+  media: ParentCopy[];
+};
+
+/** The same list, asked for by a parent that plays the film's audio from decoded buffers (`set-parent-audio`). */
+export type RuntimeParentCopiesMessage = {
+  source: "hf-preview";
+  type: "parent-copies";
   media: ParentCopy[];
 };
 
@@ -352,6 +364,7 @@ export type RuntimeOutboundMessage =
   | RuntimeStageSizeMessage
   | RuntimeStaticCompositionMessage
   | RuntimeMediaAutoplayBlockedMessage
+  | RuntimeParentCopiesMessage
   | RuntimeReadyMessage
   | RuntimeAssetsReadyMessage
   | RuntimeDataErrorMessage

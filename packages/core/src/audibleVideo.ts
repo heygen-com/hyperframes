@@ -29,12 +29,30 @@ export function audibleVideoNeedsWebAudio(fields: {
   );
 }
 
+export const PARENT_COPY_ATTRIBUTES = [
+  "data-playback-rate",
+  "data-automation",
+  "data-fx-chain",
+  "data-audio-group",
+  "data-volume",
+  "data-fade-in",
+  "data-fade-out",
+] as const;
+
 export interface ParentCopy {
   kind: "audio" | "video";
   src: string;
   start: number;
   duration: number;
   mediaStart: number;
+  loop?: boolean;
+  attrs?: Partial<Record<(typeof PARENT_COPY_ATTRIBUTES)[number], string>>;
+}
+
+export function parentCopyKey(
+  copy: Pick<ParentCopy, "kind" | "src" | "start" | "mediaStart">,
+): string {
+  return JSON.stringify([copy.kind, copy.src, copy.start, copy.mediaStart]);
 }
 
 export function mediaFileOf(el: HTMLMediaElement): string | null {
@@ -54,11 +72,18 @@ export function parentCopyOf(el: HTMLMediaElement): ParentCopy | null {
   const src = mediaFileOf(el);
   if (!src) return null;
   const timing = readClipTiming(el);
+  const attrs: NonNullable<ParentCopy["attrs"]> = {};
+  for (const name of PARENT_COPY_ATTRIBUTES) {
+    const value = el.getAttribute(name);
+    if (value !== null) attrs[name] = value;
+  }
   return {
     kind: tag === "audio" ? "audio" : "video",
     src,
     start: timing.start ?? 0,
     duration: timing.duration ?? Number.POSITIVE_INFINITY,
     mediaStart: readLinkTiming(el).mediaStart,
+    loop: el.loop,
+    attrs,
   };
 }

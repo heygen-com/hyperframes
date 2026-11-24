@@ -525,6 +525,18 @@
       "import": "./src/runtime/mediaSteer.ts",
       "types": "./src/runtime/mediaSteer.ts"
     },
+    "./runtime/web-audio-transport": {
+      "bun": "./src/runtime/webAudioTransport.ts",
+      "node": "./dist/runtime/webAudioTransport.js",
+      "import": "./src/runtime/webAudioTransport.ts",
+      "types": "./src/runtime/webAudioTransport.ts"
+    },
+    "./runtime/decodes-first": {
+      "bun": "./src/runtime/decodesFirst.ts",
+      "node": "./dist/runtime/decodesFirst.js",
+      "import": "./src/runtime/decodesFirst.ts",
+      "types": "./src/runtime/decodesFirst.ts"
+    },
     "./runtime/clip-reveal": {
       "bun": "./src/runtime/clipReveal.ts",
       "node": "./dist/runtime/clipReveal.js",
@@ -1072,6 +1084,14 @@
       "./runtime/media-steer": {
         "import": "./dist/runtime/mediaSteer.js",
         "types": "./dist/runtime/mediaSteer.d.ts"
+      },
+      "./runtime/web-audio-transport": {
+        "import": "./dist/runtime/webAudioTransport.js",
+        "types": "./dist/runtime/webAudioTransport.d.ts"
+      },
+      "./runtime/decodes-first": {
+        "import": "./dist/runtime/decodesFirst.js",
+        "types": "./dist/runtime/decodesFirst.d.ts"
       },
       "./runtime/clip-reveal": {
         "import": "./dist/runtime/clipReveal.js",

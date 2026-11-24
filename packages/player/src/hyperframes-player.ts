@@ -4,6 +4,8 @@ import { isControlsClick, setupControls, setupPoster } from "./controls-setup.js
 import { adoptShadowStyles, createCompositionIframe, scaleIframeToFit } from "./iframe-dom.js";
 import { DirectTimelineClock } from "./direct-timeline-clock.js";
 import { ParentMediaManager } from "./parent-media.js";
+import { ParentAudio } from "./parent-audio.js";
+import { isWebKit } from "@hyperframes/core/runtime/media-clock";
 import { isRealmHtmlMediaElement } from "./media-element-guards.js";
 import { handleRuntimeMessage } from "./runtime-message-handler.js";
 import {
@@ -177,6 +179,7 @@ class HyperframesPlayer extends HTMLElement {
   private _directTimelineClock: DirectTimelineClock;
   private _parentTickRaf: number | null = null;
   private _media: ParentMediaManager;
+  private _parentAudio: ParentAudio | null = null;
   private _scenes: { id: string; start: number; duration: number }[] = [];
   private _runtimeFps = 30;
   private _runtimeBridgeReady = false;
@@ -288,6 +291,8 @@ class HyperframesPlayer extends HTMLElement {
     this._directTimelineAdapter = null;
     this.shaderLoader.destroy();
     this._media.destroy();
+    this._parentAudio?.destroy();
+    this._parentAudio = null;
     this.controlsApi?.destroy();
     this.controlsApi = null;
     this._paused = true;
@@ -354,6 +359,7 @@ class HyperframesPlayer extends HTMLElement {
       case "playback-rate": {
         const rate = clampPlaybackRate(parseFloat(val || "1"));
         this._media.updatePlaybackRate(rate);
+        this._parentAudio?.setRate(rate);
         this._sendControl("set-playback-rate", { playbackRate: rate });
         this._directTimelineAdapter?.timeScale?.(rate);
         this.controlsApi?.updateSpeed(rate);
@@ -371,6 +377,7 @@ class HyperframesPlayer extends HTMLElement {
         this._volume = v;
         this._syncVideoAudio();
         this._media.updateVolume(v);
+        this._parentAudio?.setVolume(v);
         this._sendControl("set-volume", { volume: v });
         this.controlsApi?.updateVolume(v);
         this._emit(new Event("volumechange"));
@@ -480,6 +487,7 @@ class HyperframesPlayer extends HTMLElement {
     }
     if (this._media.audioOwner === "parent") this._media.playAll();
     else this._media.primeAll();
+    this._sealedAudio()?.play();
     this.controlsApi?.updatePlaying(true);
     if (!queuedForReady && announce) this._emit(new Event("play"));
     if (directTimelineStarted && this._directTimelineAdapter) {
@@ -503,6 +511,7 @@ class HyperframesPlayer extends HTMLElement {
     this._directTimelineClock.stop();
     this._stopParentTickClock();
     if (this._media.audioOwner === "parent") this._media.pauseAll();
+    this._parentAudio?.pause();
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
     this._emit(new Event("pause"));
@@ -520,6 +529,7 @@ class HyperframesPlayer extends HTMLElement {
     // asset-buffering window is cancelled here too — same reason as pause()
     // above. keepPlaying plays on from the new time, as <video>'s currentTime does.
     this._pendingPlay = false;
+    this._parentAudio?.pause();
     if (!this._trySyncSeek(timeInSeconds) && !this._tryDirectTimelineSeek(timeInSeconds)) {
       this._sendControl("seek", {
         timeSeconds: timeInSeconds,
@@ -704,6 +714,21 @@ class HyperframesPlayer extends HTMLElement {
     return this.closest("hyperframes-slideshow") !== null;
   }
 
+  /** A sealed film's audio, played here from decoded buffers where WebKit would start its elements late. */
+  private _sealedAudio(): ParentAudio | null {
+    if (!this.hasAttribute(SANDBOX_ORIGIN_ATTR) || !isWebKit() || this._isSlideshowPlayer())
+      return null;
+    return (this._parentAudio ??= new ParentAudio({
+      copies: () => this._media.listedAudio(),
+      sendControl: (action, extra) => this._sendControl(action, extra),
+      getCurrentTime: () => this._currentTime,
+      getPlaybackRate: () => this.playbackRate,
+      getVolume: () => this._volume,
+      getMuted: () => this.muted,
+      isPaused: () => this._paused,
+    }));
+  }
+
   /** Apply a change to the `muted` attribute: re-assert under an audio lock,
    *  else mute/unmute the media, sync the controls, and fire `volumechange`. */
   private _handleMutedChange(val: string | null): void {
@@ -715,6 +740,7 @@ class HyperframesPlayer extends HTMLElement {
       return;
     }
     this._media.updateMuted(val !== null);
+    this._parentAudio?.setMuted(val !== null);
     this._syncVideoAudio();
     this._setIframeMediaMuted(val !== null);
     this._sendControl("set-muted", { muted: val !== null });
@@ -1047,6 +1073,7 @@ class HyperframesPlayer extends HTMLElement {
     this._sendControl("set-web-audio-media-disabled", {
       disabled: this._isSlideshowPlayer(),
     });
+    this._sealedAudio()?.postClaims();
     this._sendControl("set-idle-heartbeat", { slow: this.hasAttribute(LOW_POWER_IDLE_ATTR) });
     this._sendDisplayScale();
   }
@@ -1405,6 +1432,10 @@ class HyperframesPlayer extends HTMLElement {
         this._runtimeAnnounces = announces;
       },
       shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
+      onParentCopies: () => {
+        if (!this._paused) this._sealedAudio()?.play();
+      },
+      onRuntimeStopped: () => this._parentAudio?.pause(),
       setScenes: (scenes) => {
         this._scenes = scenes;
         this._emit(new CustomEvent("scenes", { detail: { scenes } }));
@@ -1615,6 +1646,7 @@ class HyperframesPlayer extends HTMLElement {
     this._setBuffering(false);
     this.shaderLoader.reset();
     this._media.resetForIframeLoad();
+    this._parentAudio?.reset();
   }
 
   /** Abandons any in-flight asset wait — every `_ready = false` site calls

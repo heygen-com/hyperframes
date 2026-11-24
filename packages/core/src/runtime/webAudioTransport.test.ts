@@ -1868,6 +1868,30 @@ describe("WebAudioTransport", () => {
       vi.unstubAllGlobals();
     });
 
+    // fails without the fix: a player decoding a sealed film's files could not keep its fetches on the host.
+    it("sends every decode fetch with the request options it was made with, over no-store", async () => {
+      const transport = new WebAudioTransport({
+        fetchInit: { method: "GET", credentials: "same-origin", redirect: "error" },
+      });
+      (transport as unknown as { _ctx: unknown })._ctx = {
+        state: "running",
+        decodeAudioData: vi.fn(async () => ({}) as AudioBuffer),
+      };
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+      await transport.decodeAudioElement(el("bed.m4a"));
+      expect(fetchMock).toHaveBeenCalledWith(key("bed.m4a"), {
+        cache: "no-store",
+        method: "GET",
+        credentials: "same-origin",
+        redirect: "error",
+      });
+      vi.unstubAllGlobals();
+    });
+
     it("decodes a file once for clips that open at different in-points of it", async () => {
       const transport = transportWithDecode(async () => ({}) as AudioBuffer);
       const fetchMock = vi.fn(async () => ({

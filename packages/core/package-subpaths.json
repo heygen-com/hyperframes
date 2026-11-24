@@ -518,6 +518,18 @@
       "types": "./dist/runtime/mediaSteer.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/web-audio-transport": {
+      "source": "./src/runtime/webAudioTransport.ts",
+      "runtime": "./dist/runtime/webAudioTransport.js",
+      "types": "./dist/runtime/webAudioTransport.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/decodes-first": {
+      "source": "./src/runtime/decodesFirst.ts",
+      "runtime": "./dist/runtime/decodesFirst.js",
+      "types": "./dist/runtime/decodesFirst.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/clip-reveal": {
       "source": "./src/runtime/clipReveal.ts",
       "runtime": "./dist/runtime/clipReveal.js",

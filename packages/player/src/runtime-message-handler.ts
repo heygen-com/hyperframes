@@ -66,6 +66,7 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
    *  Slideshow embeds keep iframe media under native element ownership because
    *  presenter/audience sync mirrors those media events directly. */
   shouldPromoteMediaAutoplayFallback?: () => boolean;
+  onParentCopies?: () => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -150,6 +151,12 @@ export function handleRuntimeMessage(
       ),
     );
     callbacks.setBuffering?.(data["buffering"] === true);
+    return;
+  }
+
+  if (data["type"] === "parent-copies") {
+    callbacks.media.setupFromList(data["media"], callbacks.getCompositionUrl());
+    callbacks.onParentCopies?.();
     return;
   }
 

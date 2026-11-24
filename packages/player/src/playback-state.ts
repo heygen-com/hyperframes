@@ -28,6 +28,7 @@ export interface PlaybackStateCallbacks {
   getLoop: () => boolean;
   getPlayRange?: () => PlayRange | null;
   media: ParentMediaManager;
+  onRuntimeStopped?: () => void;
 }
 
 type RuntimeStateData = {
@@ -134,6 +135,7 @@ export function applyRuntimeStateMessage(
   }
 
   const next = { ...current, currentTime, paused: nextPaused, enteringRange: bounds.entering };
+  if (wasPlaying && (nextPaused || completedPlayback)) callbacks.onRuntimeStopped?.();
 
   if (callbacks.media.audioOwner === "parent") {
     if (wasPlaying && nextPaused) {

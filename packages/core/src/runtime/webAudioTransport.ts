@@ -237,6 +237,8 @@ const ASSUMED_CHANNELS = 2;
 const BYTES_PER_SAMPLE = 4;
 
 export class WebAudioTransport {
+  /** Request options for every decode fetch, over `cache: "no-store"`. */
+  private readonly _fetchInit: RequestInit;
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
   private _decoding = new Map<string, Promise<AudioBuffer | null>>();
@@ -298,6 +300,10 @@ export class WebAudioTransport {
 
   async init(): Promise<boolean> {
     return this.open();
+  }
+
+  constructor(opts: { fetchInit?: RequestInit } = {}) {
+    this._fetchInit = opts.fetchInit ?? {};
   }
 
   /** Builds the context on the calling thread: on Windows that opens the audio device and can block seconds. */
@@ -417,7 +423,7 @@ export class WebAudioTransport {
       // `no-store`: a retry must actually re-request the asset — not replay a
       // cached 404/stale response from the failed attempt that we chose not to
       // blacklist.
-      const response = await fetch(src, { cache: "no-store" });
+      const response = await fetch(src, { cache: "no-store", ...this._fetchInit });
       if (!response.ok) {
         swallow("webAudioTransport.fetch", new Error(`${response.status} ${src}`));
         reportMediaLoadFailure(el, "fetch", response.status);
