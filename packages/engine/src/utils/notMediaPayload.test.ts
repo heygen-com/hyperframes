@@ -29,6 +29,15 @@ function writeTree(files: Record<string, string>): string {
   return join(dir, Object.keys(files)[0]!);
 }
 
+/** The list at `list`, with a media file at each name beside it. */
+function withBeside(list: string, ...names: string[]): string {
+  for (const name of names) {
+    mkdirSync(join(list, "..", name, ".."), { recursive: true });
+    writeFileSync(join(list, "..", name), "media");
+  }
+  return list;
+}
+
 describe("isNotMediaPayload", () => {
   it.each([
     ["doctype", "<!DOCTYPE html>\n<html><body></body></html>"],
@@ -324,12 +333,12 @@ describe("playlistLeavesItsFolder", () => {
     expect(await isNotMediaPayload(file)).toBe(true);
   });
 
-  it("refuses a list whose nested entry is a manifest, and keeps one that is not there", async () => {
+  it("refuses a list whose nested entry is a manifest or is not there", async () => {
     const list = "ffconcat version 1.0\nfile manifest.mpd\n";
     expect(
       await playlistLeavesItsFolder(writeTree({ "clip.mp4": list, "manifest.mpd": MPD })),
     ).toBe(true);
-    expect(await playlistLeavesItsFolder(writeTree({ "clip.mp4": list }))).toBe(false);
+    expect(await playlistLeavesItsFolder(writeTree({ "clip.mp4": list }))).toBe(true);
     const encrypted = hls('#EXT-X-KEY:METHOD=AES-128,URI="key.bin"', "#EXTINF:1,", "seg.ts");
     expect(
       await playlistLeavesItsFolder(
@@ -380,12 +389,17 @@ describe("playlistLeavesItsFolder", () => {
   });
 
   it.each([
-    ["segments beside it", hls("#EXTINF:1,", "seg0.ts", "#EXTINF:1,", "parts/seg1.ts")],
-    ["https segments", hls("#EXTINF:1,", "https://cdn.example.com/seg0.ts")],
-    ["a concat entry beside it", concat("'part 1.mp4'")],
-    ["a media file", Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70])],
-  ])("keeps %s", async (_name, contents) => {
-    expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", contents))).toBe(false);
+    [
+      "segments beside it",
+      hls("#EXTINF:1,", "seg0.ts", "#EXTINF:1,", "parts/seg1.ts"),
+      ["seg0.ts", "parts/seg1.ts"],
+    ],
+    ["https segments", hls("#EXTINF:1,", "https://cdn.example.com/seg0.ts"), []],
+    ["a concat entry beside it", concat("'part 1.mp4'"), ["part 1.mp4"]],
+    ["a media file", Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70]), []],
+  ])("keeps %s", async (_name, contents, beside) => {
+    const list = withBeside(writeFixture("clip.m3u8", contents), ...beside);
+    expect(await playlistLeavesItsFolder(list)).toBe(false);
   });
 });
 
@@ -409,8 +423,9 @@ describe("playlistLeavesItsFolder takes time linear in the list, and bounds the 
   });
 
   it("reads a line as long as ffmpeg reads, and refuses one byte longer", async () => {
-    // 4095 bytes is ffmpeg's line limit; neither name exists, so only the length decides.
-    const atLimit = writeFixture("clip.m3u8", segments(`${"a".repeat(4092)}.ts`));
+    // 4095 bytes is ffmpeg's line limit. A name is at most 255 bytes, so the line walks into folders that exist.
+    const name = `${"./".repeat(2044)}abcd.ts`;
+    const atLimit = withBeside(writeFixture("clip.m3u8", segments(name)), "abcd.ts");
     expect(await playlistLeavesItsFolder(atLimit)).toBe(false);
     const over = writeFixture("clip.m3u8", segments(`${"a".repeat(4093)}.ts`));
     expect(await playlistLeavesItsFolder(over)).toBe(true);
@@ -421,21 +436,12 @@ describe("playlistLeavesItsFolder takes time linear in the list, and bounds the 
     expect(await playlistLeavesItsFolder(concatOver)).toBe(true);
   });
 
-  it("reads an ffconcat file line as before: blanks and carriage returns between file and the name", async () => {
-    const list = (line: string) => writeFixture("clip.ffconcat", `ffconcat version 1.0\n${line}\n`);
-    expect(await playlistLeavesItsFolder(list("  file \r\t../other/out.mp4"))).toBe(true);
-    expect(await playlistLeavesItsFolder(list("file\t'../other/out.mp4'  "))).toBe(true);
-    expect(await playlistLeavesItsFolder(list("file'../other/out.mp4'"))).toBe(false);
-    expect(await playlistLeavesItsFolder(list("files ../other/out.mp4"))).toBe(false);
-    expect(await playlistLeavesItsFolder(list("file part.mp4"))).toBe(false);
-  });
-
   it("refuses a walk past its entry budget, before it opens any entry", async () => {
     const names = Array.from({ length: 50_001 }, (_, i) => `s${i}.ts`);
     expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", segments(...names)))).toBe(true);
-    expect(
-      await playlistLeavesItsFolder(writeFixture("clip.m3u8", segments(...names.slice(0, 1000)))),
-    ).toBe(false);
+    const under = names.slice(0, 1000);
+    const list = withBeside(writeFixture("clip.m3u8", segments(...under)), ...under);
+    expect(await playlistLeavesItsFolder(list)).toBe(false);
   });
 
   it("refuses a walk past its byte budget across nested lists", async () => {
@@ -447,12 +453,60 @@ describe("playlistLeavesItsFolder takes time linear in the list, and bounds the 
         ["a", "b", "c"].map((n) => `#EXT-X-STREAM-INF:BANDWIDTH=1\n${n}.m3u8\n`).join(""),
     };
     for (const n of ["a", "b", "c"]) files[`${n}.m3u8`] = `#EXTM3U\n${padding}#EXTINF:1,\nseg.ts\n`;
+    files["seg.ts"] = "segment";
     expect(await playlistLeavesItsFolder(writeTree(files))).toBe(true);
     delete files["c.m3u8"];
     files["master.m3u8"] =
       "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\na.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=1\nb.m3u8\n";
     expect(await playlistLeavesItsFolder(writeTree(files))).toBe(false);
   });
+});
+
+describe("playlistLeavesItsFolder reads an ffconcat list only as ffmpeg reads it", () => {
+  const list = (body: string, ...beside: string[]) =>
+    withBeside(writeFixture("clip.ffconcat", `ffconcat version 1.0\n${body}`), ...beside);
+
+  it.each([
+    ["a file line after a lone carriage return", "file part.mp4\rfile ../other/out.mp4\n"],
+    ["a file line after a NUL", "file part.mp4\0file ../other/out.mp4\n"],
+    ["a carriage return between file and the name", "  file \r\t../other/out.mp4\n"],
+    ["a quote inside a bare name", "file part'.mp4' x\n"],
+    ["a quoted run followed by more name", "file 'part'.mp4\n"],
+    ["a backslash escape", "file part\\.mp4\n"],
+    ["text after the name", "file part.mp4 ../other/out.mp4\n"],
+    ["an empty name", "file ''\n"],
+    ["an option line", "file part.mp4\noption safe 0\n"],
+    ["an option line before any file", "option protocol_whitelist file\nfile part.mp4\n"],
+    ["a name that is not there", "file gone.mp4\n"],
+  ])("refuses %s", async (_name, body) => {
+    const file = list(body, "part.mp4");
+    expect(await playlistLeavesItsFolder(file)).toBe(true);
+    expect(await isNotMediaPayload(file)).toBe(true);
+  });
+
+  it("refuses a name outside the folder written in each form", async () => {
+    expect(await playlistLeavesItsFolder(list("file\t'../other/out.mp4'  \n"))).toBe(true);
+    expect(await playlistLeavesItsFolder(list("file ../other/out.mp4\r\n"))).toBe(true);
+  });
+
+  it.each([
+    ["a bare name", "file part.mp4\n"],
+    ["a quoted name with a space", "file 'part 1.mp4'\n"],
+    ["tabs and blanks around the name", "  file\tpart.mp4 \t\n"],
+    ["CR LF line ends", "file part.mp4\r\nduration 1\r\nfile 'part 1.mp4'\r\n"],
+    ["comments and other directives", "# file ../other/out.mp4\nfile part.mp4\ninpoint 0.5\n"],
+    ["lines whose keyword is not file", "file'../other/out.mp4'\nfiles ../other/out.mp4\n"],
+  ])("keeps %s", async (_name, body) => {
+    expect(await playlistLeavesItsFolder(list(body, "part.mp4", "part 1.mp4"))).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "keeps a backslash inside quotes as written, as ffmpeg does",
+    async () => {
+      expect(await playlistLeavesItsFolder(list("file 'a\\b.mp4'\n", "a\\b.mp4"))).toBe(false);
+      expect(await playlistLeavesItsFolder(list("file 'a\\b.mp4'\n", "ab.mp4"))).toBe(true);
+    },
+  );
 });
 
 describe("playlistLeavesItsFolder reads entries and folders as ffmpeg resolves them", () => {
@@ -500,7 +554,8 @@ describe("playlistLeavesItsFolder reads entries and folders as ffmpeg resolves t
 
   it("keeps entries beside the list, https entries, and a media file in a folder with # in its name", async () => {
     const beside = hls("seg.ts", "sub/seg.ts", "seg#1.ts", "https://cdn.example.com/seg.ts");
-    expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", beside))).toBe(false);
+    const list = withBeside(writeFixture("clip.m3u8", beside), "seg.ts", "sub/seg.ts", "seg#1.ts");
+    expect(await playlistLeavesItsFolder(list)).toBe(false);
     const httpsOnly = listIn("sub#x", hls("https://cdn.example.com/a.ts"));
     expect(await playlistLeavesItsFolder(httpsOnly)).toBe(false);
     const mp4 = Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70, ...Array(24).fill(0)]);
@@ -510,7 +565,9 @@ describe("playlistLeavesItsFolder reads entries and folders as ffmpeg resolves t
   it.skipIf(process.platform === "win32")(
     "keeps a list in a folder with : in its name",
     async () => {
-      expect(await playlistLeavesItsFolder(listIn("c:d", hls("seg.ts")))).toBe(false);
+      expect(
+        await playlistLeavesItsFolder(withBeside(listIn("c:d", hls("seg.ts")), "seg.ts")),
+      ).toBe(false);
     },
   );
 });
@@ -588,12 +645,14 @@ describe("playlistLeavesItsFolder reads a list as ffprobe does", () => {
     expect(probe.stderr).toMatch(/outside\/secret\.mp4' for reading/);
   });
 
-  it("refuses a nested name it cannot read, and keeps one that does not exist", async () => {
+  it("refuses a nested name it cannot read, and one that is not there", async () => {
     const list = (entry: string) => `${head}#EXTINF:1,\n${entry}\n#EXT-X-ENDLIST\n`;
     const unreadable = writeTree({ "clip.m3u8": list("sub"), "sub/seg.ts": "segment" });
     expect(await playlistLeavesItsFolder(unreadable)).toBe(true);
     const missing = writeTree({ "clip.m3u8": list("gone.ts") });
-    expect(await playlistLeavesItsFolder(missing)).toBe(false);
+    expect(await playlistLeavesItsFolder(missing)).toBe(true);
+    const missingFolder = writeTree({ "clip.m3u8": list("gone/seg.ts") });
+    expect(await playlistLeavesItsFolder(missingFolder)).toBe(true);
   });
 
   it.skipIf(process.platform !== "linux")(
@@ -618,7 +677,8 @@ describe("playlistLeavesItsFolder reads a list as ffprobe does", () => {
 
   it("keeps a list with the same tags naming files beside it", async () => {
     const list = `${head}#EXT-X-MAP:URI=init.mp4\r#EXT-X-KEY:METHOD=AES-128,URI="k\\ey.bin"\r${tail}`;
-    expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", list))).toBe(false);
+    const file = withBeside(writeFixture("clip.m3u8", list), "init.mp4", "key.bin", "seg.ts");
+    expect(await playlistLeavesItsFolder(file)).toBe(false);
   });
 
   it("refuses a file behind more ID3 tags than it skips", async () => {
