@@ -2066,6 +2066,34 @@ describe("syncRuntimeMedia", () => {
     expect(seeks).toEqual([]);
   });
 
+  it("seeks a trimmed looped sound back to its trim-in when the element wraps to the file's start", () => {
+    const clip = createMockClip(
+      { start: 0, end: 20, mediaStart: 2, loop: true, sourceDuration: 4 },
+      "audio",
+    );
+    Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+    Object.defineProperty(clip.el, "paused", { value: false, writable: true, configurable: true });
+    let elementTime = 0;
+    const seeks: number[] = [];
+    Object.defineProperty(clip.el, "currentTime", {
+      configurable: true,
+      get: () => elementTime,
+      set: (value: number) => {
+        seeks.push(value);
+        elementTime = value;
+      },
+    });
+    for (let time = 1; time < 1.99; time += 0.016) {
+      elementTime = time + 2;
+      syncRuntimeMedia({ clips: [clip], timeSeconds: time, playing: true, playbackRate: 1 });
+    }
+    seeks.length = 0;
+    elementTime = 0.02; // a native loop restarts at 0, inside the trimmed head
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 2.02, playing: true, playbackRate: 1 });
+    expect(seeks).toHaveLength(1);
+    expect(seeks[0]).toBeCloseTo(2.02, 3);
+  });
+
   it("wraps loop with mediaStart offset", () => {
     // Source is 10s, mediaStart=5, so loop length is 5s (5-10)
     const clip = createMockClip({

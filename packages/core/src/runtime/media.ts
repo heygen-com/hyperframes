@@ -732,14 +732,18 @@ export function syncRuntimeMedia(params: {
       const STRICT_REQUIRED_SAMPLES = 2;
 
       const currentElTime = el.currentTime || 0;
-      const playingLoopLap =
-        clip.loop && clip.sourceDuration != null && params.playing && !el.paused
-          ? clip.sourceDuration - clip.mediaStart
+      const nativeLoopLap =
+        clip.loop &&
+        clip.mediaStart === 0 &&
+        clip.sourceDuration != null &&
+        params.playing &&
+        !el.paused
+          ? clip.sourceDuration
           : 0;
       const offsetWithLaps = relTime - currentElTime;
       const offset =
-        playingLoopLap > 0
-          ? offsetWithLaps - Math.round(offsetWithLaps / playingLoopLap) * playingLoopLap
+        nativeLoopLap > 0
+          ? offsetWithLaps - Math.round(offsetWithLaps / nativeLoopLap) * nativeLoopLap
           : offsetWithLaps;
       const drift = Math.abs(offset);
       const prevOffset = lastOffset.get(el);
