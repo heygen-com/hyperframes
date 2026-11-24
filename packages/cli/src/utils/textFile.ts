@@ -9,3 +9,7 @@ export function isTextFile(input: string): boolean {
     return false;
   return existsSync(resolve(input));
 }
+
+export function isShareTextFilePath(input: string): boolean {
+  return WINDOWS_SHARE_OR_DEVICE_PREFIX.test(input) && extname(input).toLowerCase() === ".txt";
+}

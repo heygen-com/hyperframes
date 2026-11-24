@@ -50,7 +50,7 @@ const echoing = `data:text/javascript,globalThis.fetch = async (url, init) => ne
   JSON.stringify({ error: { code: "refused", message: "asked: " + JSON.parse(init.body).text } }),
   { status: 400, headers: { "content-type": "application/json" } });`;
 
-test("a word that starts with two separators is spoken, and the file it names is not read", () => {
+test("a .txt path that starts with two separators is refused, and the file it names is not read", () => {
   const dir = mkdtempSync(join(tmpdir(), "heygen-tts-"));
   writeFileSync(join(dir, "script.txt"), "text of the file");
   const speak = (word) =>
@@ -70,9 +70,12 @@ test("a word that starts with two separators is spoken, and the file it names is
     ).stderr;
   try {
     assert.match(speak(join(dir, "script.txt")), /asked: text of the file/);
-    const doubled = `/${join(dir, "script.txt")}`;
-    assert.ok(speak(doubled).includes(`asked: ${doubled}`));
-    assert.match(speak("\\\\host\\share\\script.txt"), /asked: \\\\host\\share\\script\.txt/);
+    for (const word of [`/${join(dir, "script.txt")}`, "\\\\host\\share\\script.txt"]) {
+      const said = speak(word);
+      assert.match(said, /not read\. Copy the file to a local folder/);
+      assert.doesNotMatch(said, /asked:/);
+    }
+    assert.match(speak("// and then"), /asked: \/\/ and then/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

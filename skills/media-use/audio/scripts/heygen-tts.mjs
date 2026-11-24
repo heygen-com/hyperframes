@@ -86,13 +86,12 @@ if (listOnly) {
 
 // ---------- resolve text + voice ----------
 // Two leading separators name a network share or a device on Windows; looking one up reaches out
-// to that host, so such a word is text.
-const NETWORK_OR_DEVICE_PATH = /^[\\/]{2}/;
+// to that host, so a .txt path of that form is refused, not looked up and not spoken.
 if (!positional) die("no text given. Pass a string or a .txt path, or use --list.");
+if (/^[\\/]{2}/.test(positional) && /\.txt$/i.test(positional))
+  die("a .txt path on a network share is not read. Copy the file to a local folder.");
 const text =
-  positional.endsWith(".txt") &&
-  !NETWORK_OR_DEVICE_PATH.test(positional) &&
-  existsSync(resolve(positional))
+  positional.endsWith(".txt") && existsSync(resolve(positional))
     ? readFileSync(resolve(positional), "utf8").trim()
     : positional;
 if (!text) die("input text is empty");

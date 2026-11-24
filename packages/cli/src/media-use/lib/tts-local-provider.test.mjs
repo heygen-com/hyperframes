@@ -111,16 +111,19 @@ test("the line reaches tts in a file of its own, whatever it looks like", async 
   }
 });
 
-test("a line that cannot be written leaves no folder behind", async () => {
-  const before = new Set(
-    readdirSync(tmpdir()).filter((name) => name.startsWith("media-use-kokoro-")),
-  );
+test("a line that cannot be written leaves no folder behind", async (t) => {
+  const temp = mkdtempSync(join(tmpdir(), "hf-local-voice-test-"));
+  const saved = { TMPDIR: process.env.TMPDIR, TEMP: process.env.TEMP, TMP: process.env.TMP };
+  Object.assign(process.env, { TMPDIR: temp, TEMP: temp, TMP: temp });
+  t.after(() => {
+    for (const [name, value] of Object.entries(saved))
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    rmSync(temp, { recursive: true, force: true });
+  });
   const env = { ...envWithNpxCli, HYPERFRAMES_CLI_ENTRY: "/opt/hf/dist/cli.js" };
 
   await assert.rejects(localTtsGenerate(undefined, {}, "linux", () => {}, env, pathExists));
 
-  const left = readdirSync(tmpdir()).filter(
-    (name) => name.startsWith("media-use-kokoro-") && !before.has(name),
-  );
-  assert.deepEqual(left, []);
+  assert.deepEqual(readdirSync(temp), []);
 });

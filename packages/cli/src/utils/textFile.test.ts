@@ -10,7 +10,7 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...actual, existsSync: existsSyncMock };
 });
 
-import { isTextFile } from "./textFile.js";
+import { isShareTextFilePath, isTextFile } from "./textFile.js";
 
 describe("isTextFile", () => {
   let dir: string;
@@ -47,8 +47,26 @@ describe("isTextFile", () => {
     expect(existsSyncMock).not.toHaveBeenCalled();
   });
 
-  it("is false for an existing .txt file named with two leading separators", () => {
-    expect(isTextFile(`/${join(dir, "script.txt")}`)).toBe(false);
-    expect(existsSyncMock).not.toHaveBeenCalled();
-  });
+  it.skipIf(process.platform === "win32")(
+    "is false for an existing .txt file named with two leading separators",
+    () => {
+      expect(isTextFile(`/${join(dir, "script.txt")}`)).toBe(false);
+      expect(existsSyncMock).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("isShareTextFilePath", () => {
+  it.each(["\\\\host\\share\\a.txt", "//host/share/a.TXT", "\\\\?\\C:\\a.txt"])(
+    "is true for %s",
+    (input) => {
+      expect(isShareTextFilePath(input)).toBe(true);
+      expect(existsSyncMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["/host/share/a.txt", "a.txt", "//host/share/a.md", "// a note"])(
+    "is false for %s",
+    (input) => expect(isShareTextFilePath(input)).toBe(false),
+  );
 });

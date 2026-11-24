@@ -608,10 +608,10 @@ npx hyperframes tts script.txt
 npx hyperframes tts --list
 ```
 
-A single argument that names an existing `.txt` file is read; anything else is
-spoken. An argument that starts with two slashes or backslashes
-(`\\server\share\script.txt`) is always spoken: to read a file on a network
-share, pass it with `--text-file`.
+A single argument that names an existing local `.txt` file is read; anything
+else is spoken. A `.txt` path that starts with two slashes or backslashes
+(`\\server\share\script.txt`) is refused: to read a file on a network share,
+pass it with `--text-file`.
 
 | Flag           | Description                                                                                                                             |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
