@@ -661,6 +661,21 @@ describe("a press held across a preview change on an opaque frame", () => {
     );
   });
 
+  // fails without the fix: the refused press left Studio's box where the pointer had dragged it, off the layer.
+  it("puts Studio's box back on the layer when it refuses a press the frame never answers", async () => {
+    const turned = makeSelection("turned", document.getElementById("turned")!);
+    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
+    const { opts } = await pressDuringChange(turned, {
+      iframe: silentFrame(),
+      overlayRect: drawn,
+      whileWaiting: (o) => o.waitingPressRef.current!.draw!(30, 0),
+    });
+    await vi.waitFor(() => expect(opts.onBlockedMoveRef.current).toHaveBeenCalledOnce(), {
+      timeout: 3000,
+    });
+    expect(opts.overlayRectRef.current).toEqual(drawn);
+  });
+
   it("asks the frame shown again when a swap comes after its first ask", async () => {
     const turned = document.getElementById("turned")!;
     const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
