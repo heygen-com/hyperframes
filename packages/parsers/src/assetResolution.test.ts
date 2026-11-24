@@ -336,6 +336,13 @@ describe("isWithinProjectRoot", () => {
     expect(isWithinProjectRoot(root, candidate, win32)).toBe(false);
   });
 
+  it.each([
+    ["path.posix", posix, "/project"],
+    ["path.win32", win32, "C:\\project"],
+  ] as const)("allows a root file whose name starts with two dots under %s", (_, path, root) => {
+    expect(isWithinProjectRoot(root, path.join(root, "..intro.mp4"), path)).toBe(true);
+  });
+
   it("allows a nested asset under path.win32", () => {
     const root = "C:\\project";
     const candidate = win32.join(root, "assets\\a.png");
