@@ -276,9 +276,9 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
     return () => setStudioPendingEditsSettled(null);
   }, [projectId, refresh]);
 
-  const recordEdit = useCallback(
+  const recordEditEntry = useCallback(
     async ({ label, coalesceKey, coalesceMs, files, targets, created = [] }: RecordEditInput) => {
-      if (!projectId) return;
+      if (!projectId) return null;
       const paths = [...Object.keys(files), ...created];
       own.overtake();
       await claimsAfterTheClose.current;
@@ -299,8 +299,15 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
       }
       heldClaimRef.current = claimed && coalesceKey ? { paths, at: Date.now() } : null;
       await refresh();
+      return claimed;
     },
     [projectId, refresh, own, claimKey],
+  );
+  const recordEdit = useCallback(
+    async (input: RecordEditInput) => {
+      await recordEditEntry(input);
+    },
+    [recordEditEntry],
   );
 
   const step = useCallback(
@@ -386,6 +393,7 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
     redoPaths: view.forward?.paths ?? [],
     state,
     recordEdit,
+    recordEditEntry,
     claimKey,
     undo,
     redo,

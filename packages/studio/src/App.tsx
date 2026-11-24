@@ -172,6 +172,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     writeProjectFile: fileManager.writeProjectFile,
     observeProjectFileVersion: fileManager.observeProjectFileVersion,
     recordEdit: editHistory.recordEdit,
+    recordEditEntry: editHistory.recordEditEntry,
     reloadPreview,
     previewIframeRef,
     pendingTimelineEditPathRef,

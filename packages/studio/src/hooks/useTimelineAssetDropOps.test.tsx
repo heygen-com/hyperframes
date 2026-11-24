@@ -17,6 +17,7 @@ afterEach(() => {
 });
 
 type DropFn = ReturnType<typeof useTimelineAssetDropOps>["handleTimelineAssetDrop"];
+type PlaceFn = ReturnType<typeof useTimelineAssetDropOps>["placeTimelineAsset"];
 type FileDropFn = ReturnType<typeof useTimelineAssetDropOps>["handleTimelineFileDrop"];
 type CompositionDropFn = ReturnType<
   typeof useTimelineAssetDropOps
@@ -30,12 +31,14 @@ function renderDropHook(
   uploadProjectFiles: (files: Iterable<File>, dir?: string) => Promise<string[]> = vi
     .fn()
     .mockResolvedValue([]),
+  recordEditEntry?: () => Promise<string | null>,
 ) {
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue({ ok: true, json: async () => ({ content: sourceContent }) }),
   );
   let drop: DropFn | null = null;
+  let place: PlaceFn | null = null;
   let fileDrop: FileDropFn | null = null;
   let compositionDrop: CompositionDropFn | null = null;
   function Harness() {
@@ -46,11 +49,13 @@ function renderDropHook(
       showToast: vi.fn(),
       writeProjectFile,
       recordEdit: vi.fn().mockResolvedValue(undefined),
+      ...(recordEditEntry && { recordEditEntry }),
       reloadPreview: vi.fn(),
       uploadProjectFiles,
       checkEditable,
     });
     drop = handlers.handleTimelineAssetDrop;
+    place = handlers.placeTimelineAsset;
     fileDrop = handlers.handleTimelineFileDrop;
     compositionDrop = handlers.handleTimelineCompositionDrop;
     return null;
@@ -59,6 +64,7 @@ function renderDropHook(
   return Object.assign(() => drop!, {
     file: () => fileDrop!,
     composition: () => compositionDrop!,
+    place: () => place!,
   });
 }
 
@@ -326,6 +332,35 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
       ["17", "0"],
     ]);
   }, 30_000);
+
+  it("answers the history entry a placed asset was filed as, and none for a refused drop", async () => {
+    const source =
+      '<main data-composition-id="scene" data-duration="10" data-width="1920" data-height="1080"></main>';
+    const recordEditEntry = vi.fn().mockResolvedValue("entry-1");
+    const placed = renderDropHook(
+      source,
+      vi.fn().mockResolvedValue(undefined),
+      [],
+      undefined,
+      undefined,
+      recordEditEntry,
+    );
+    let entryId: string | null | undefined;
+    await act(async () => {
+      entryId = await placed.place()("clip.mp4", { start: 1, track: 0 }, 2);
+    });
+    expect(recordEditEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ label: "Add timeline asset" }),
+    );
+    expect(entryId).toBe("entry-1");
+
+    document.body.innerHTML = "";
+    const refused = renderDropHook(source, vi.fn(), [], () => false, undefined, recordEditEntry);
+    await act(async () => {
+      entryId = await refused.place()("clip.mp4", { start: 1, track: 0 }, 2);
+    });
+    expect(entryId).toBeNull();
+  });
 
   it("refuses an asset drop before reading or writing when editing is blocked", async () => {
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);
