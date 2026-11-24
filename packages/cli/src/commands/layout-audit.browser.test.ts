@@ -761,6 +761,35 @@ it("groups text into reading blocks, caption layers included, for the safe-zone 
   ]);
 });
 
+it("quotes a reading block's text in document order, with a space at a line break", () => {
+  document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1080" data-height="1920">
+        <p id="styled">Keep <b id="keyword">calm</b> and carry on</p>
+        <h1 id="two-lines">Where is<br />happiness?</h1>
+      </div>
+    `;
+  installGeometry(
+    {
+      root: rect({ left: 0, top: 0, width: 1080, height: 1920 }),
+      text: rect({ left: 100, top: 1500, width: 300, height: 80 }),
+    },
+    { keyword: { display: "inline" } },
+  );
+  installAuditScript();
+
+  const candidates = runGeometryCandidates({
+    text: false,
+    media: false,
+    blocks: true,
+    tolerance: 2,
+  });
+
+  expect(candidates.map(({ selector, text }) => ({ selector, text }))).toEqual([
+    { selector: "#styled", text: "Keep calm and carry on" },
+    { selector: "#two-lines", text: "Where is happiness?" },
+  ]);
+});
+
 it("scans body-level composition siblings and includes a media boundary root", () => {
   document.body.innerHTML = `
     <canvas id="boundary" data-composition-id="background" data-width="640" data-height="360"></canvas>

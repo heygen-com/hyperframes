@@ -2965,17 +2965,27 @@
   function addTextToBlock(blocks, block, element) {
     const rect = textRectFor(element, true);
     if (!rect) return;
-    const entry = blocks.get(block) ?? { rects: [], texts: [] };
+    const entry = blocks.get(block) ?? { rects: [], textNodes: [] };
     entry.rects.push(rect);
-    entry.texts.push(textContentFor(element, true));
+    entry.textNodes.push(...directTextNodes(element));
     blocks.set(block, entry);
+  }
+
+  function textInDocumentOrder(textNodes) {
+    return textNodes
+      .slice()
+      .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+      .map((node) => node.textContent || "")
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   function blockCandidates(blocks) {
     return Array.from(blocks, ([block, entry]) => ({
       kind: "block",
       tag: block.tagName.toLowerCase(),
-      text: entry.texts.join(" "),
+      text: textInDocumentOrder(entry.textNodes),
       rect: unionRects(entry.rects),
       elementRect: toRect(block.getBoundingClientRect()),
       ...candidateAnchor(block),
