@@ -30,7 +30,7 @@ function remoteHosts(text: string): string[] {
     .replace(/http:\/\/www\.w3\.org\/(?:1998|1999|2000)\/[\w/]+/g, "");
   const hosts: string[] = [];
   // A scheme, or a protocol-relative "//" that opens a quoted or url() value.
-  const pattern = /(?:https?:\\?\/\\?\/|(?<=["'(=]\s*)\/\/)(?:[^\s/"'()?#\\@]*@)?([a-z0-9.-]+)/gi;
+  const pattern = /(?:https?:\\?\/\\?\/|(?<=["'`(=]\s*)\/\/)(?:[^\s/"'()?#\\@]*@)?([a-z0-9.-]+)/gi;
   for (const match of withoutNamespaces.matchAll(pattern)) {
     hosts.push((match[1] ?? "").toLowerCase());
   }
@@ -51,6 +51,7 @@ describe("registry examples", () => {
     ]);
     expect(remoteHosts(`<img src='//Images.Example/a.png'>`)).toEqual(["images.example"]);
     expect(remoteHosts(`url(//img.example/a.png)`)).toEqual(["img.example"]);
+    expect(remoteHosts("const src = `//img.example/a.png`;")).toEqual(["img.example"]);
     expect(remoteHosts(`<img src="https://img.example?x=1">`)).toEqual(["img.example"]);
     expect(remoteHosts(`url(https://img.example#a)`)).toEqual(["img.example"]);
     expect(remoteHosts(`"https:\\/\\/img.example\\/a.png"`)).toEqual(["img.example"]);
