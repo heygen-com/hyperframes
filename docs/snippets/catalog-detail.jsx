@@ -1225,21 +1225,24 @@ export const CatalogDetail = ({
     polyline: ["points"],
     polygon: ["points"],
   };
+  // `a` and `switch` only group what they hold, so their shapes are drawn as a `g` would draw them.
   const SVG_GROUPING = ["a", "switch"];
+  // Placement and visibility a shape can carry in its own inline style; none of them can name a resource.
+  const SVG_PLACEMENT_STYLE = ["display", "transform", "transform-origin", "transform-box"];
 
   const geometryCopy = (source, doc) => {
     const NS = "http://www.w3.org/2000/svg";
     const tag = SVG_GROUPING.includes(source.localName) ? "g" : source.localName;
     if (source.namespaceURI !== NS || !Object.hasOwn(SVG_GEOMETRY, tag)) return null;
     const copy = doc.createElementNS(NS, tag);
-    for (const name of [...SVG_GEOMETRY[tag], "transform"]) {
+    for (const name of [...SVG_GEOMETRY[tag], "transform", "transform-origin", "display"]) {
       const value = source.getAttribute(name);
       if (value !== null) copy.setAttribute(name, value);
     }
-    const hidden =
-      source.getAttribute("display") === "none" ||
-      /(?:^|;)\s*display\s*:\s*none\s*(?:;|$)/i.test(source.getAttribute("style") ?? "");
-    if (hidden) copy.setAttribute("display", "none");
+    for (const property of SVG_PLACEMENT_STYLE) {
+      const value = source.style?.getPropertyValue(property);
+      if (value) copy.style.setProperty(property, value, source.style.getPropertyPriority(property));
+    }
     for (const child of source.children) {
       const childCopy = geometryCopy(child, doc);
       if (childCopy) copy.appendChild(childCopy);
@@ -1260,8 +1263,8 @@ export const CatalogDetail = ({
    *
    * Both of those need layout, which the detached tree `DOMParser` returns does
    * not have, so a copy is parked in the document. The copy is built from
-   * `SVG_GEOMETRY` alone: the file's other elements and attributes (scripts,
-   * handlers, images, styles, links) never reach the page, so nothing in the
+   * `SVG_GEOMETRY` and `SVG_PLACEMENT_STYLE` alone: the file's other elements and attributes (scripts,
+   * handlers, images, style sheets, links) never reach the page, so nothing in the
    * file runs or loads there. It is removed again in a `finally`.
    *
    * Every failure is a throw carrying the sentence the panel shows. Importing
@@ -1274,7 +1277,8 @@ export const CatalogDetail = ({
     if (
       parsed.getElementsByTagName("parsererror").length > 0 ||
       !parsed.documentElement ||
-      parsed.documentElement.localName !== "svg"
+      parsed.documentElement.localName !== "svg" ||
+      parsed.documentElement.namespaceURI !== NS
     ) {
       throw new Error("That file is not an SVG, or its markup is malformed.");
     }

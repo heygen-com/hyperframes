@@ -615,7 +615,7 @@ test("an import parks only the file's geometry in the page, so nothing in the fi
   assert.equal(doc.body.children.length, 0, "the parked copy is removed again");
 });
 
-test("the parked copy keeps what places a shape: nested viewports, transforms, and display none", () => {
+test("the parked copy keeps what places or hides a shape, in attributes or its own inline style", () => {
   const win = new Window();
   const file = new win.DOMParser().parseFromString(
     `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10" viewBox="0 0 40 20" preserveAspectRatio="none">
@@ -623,6 +623,7 @@ test("the parked copy keeps what places a shape: nested viewports, transforms, a
       <ellipse cx="1" cy="1" rx="1" ry="2" display="none"/>
       <line x1="0" y1="0" x2="1" y2="1" style="stroke: red; display : none"/>
       <polygon points="0,0 1,0 1,1" style="displayed: none"/>
+      <rect width="1" height="1" transform-origin="1 1" style="fill: red; transform: rotate(45deg); display: none !important"/>
     </svg>`,
     "image/svg+xml",
   );
@@ -638,8 +639,16 @@ test("the parked copy keeps what places a shape: nested viewports, transforms, a
     "svg[x,y,width,height,viewBox]",
     "circle[cx,cy,r]",
     "ellipse[cx,cy,rx,ry,display]",
-    "line[x1,y1,x2,y2,display]",
+    "line[x1,y1,x2,y2,style]",
     "polygon[points]",
+    "rect[width,height,transform-origin,style]",
+  ]);
+  const styles = [...copy.querySelectorAll("line, rect")].map((shape) =>
+    shape.getAttribute("style"),
+  );
+  assert.deepEqual(styles, [
+    "display: none;",
+    "display: none !important; transform: rotate(45deg);",
   ]);
 });
 
