@@ -17,6 +17,12 @@ A Studio capture shows a 4K clip from the server's frame, and deleting a clip no
 
 ## Fixes
 
+- **Media Use:** Carve decodes only media files inside the composition's folder ([aefca2baff](https://github.com/heygen-com/hyperframes/commit/aefca2baff396213711b59fcce5ec357896529c6), [#8649](https://github.com/heygen-com/hyperframes/pull/8649)).
+- **Player:** A sealed player plays media from hosts without CORS and names a missing runtime ([1c20a107a6](https://github.com/heygen-com/hyperframes/commit/1c20a107a6d671b69e13d0b31402f35f10c8e5ea), [#8142](https://github.com/heygen-com/hyperframes/pull/8142)).
+- **Producer:** Download links serve only the render's own file, removed once fetched ([91027eafb5](https://github.com/heygen-com/hyperframes/commit/91027eafb57a4a3e96cad6c30edf17da3b331b0d), [#8673](https://github.com/heygen-com/hyperframes/pull/8673)).
+- **Studio:** Class and descendant tween keyframe markers show in a sealed preview ([903051c40b](https://github.com/heygen-com/hyperframes/commit/903051c40b02ee0993a4584e7175f301a4d7b26a), [#8675](https://github.com/heygen-com/hyperframes/pull/8675)).
+- **Skills:** Remotion corpus runner uses only the CLI it is handed ([5006f78508](https://github.com/heygen-com/hyperframes/commit/5006f785084f530278f6eefcdefe3152d6e6e33d), [#8677](https://github.com/heygen-com/hyperframes/pull/8677)).
+- **Studio:** A sealed gesture recording shows every recorded value live ([7b2bffef74](https://github.com/heygen-com/hyperframes/commit/7b2bffef743f9fee9fcd58a4d0b6a50241bc4faf), [#8598](https://github.com/heygen-com/hyperframes/pull/8598)).
 - **Sdk Playground:** The dev server answers only local hosts and renders composition text as text ([02636023f9](https://github.com/heygen-com/hyperframes/commit/02636023f9eae12a742f23d41f0966d0d1358aa2), [#8659](https://github.com/heygen-com/hyperframes/pull/8659)).
 - **Core:** Sub-compositions load only from inside the project ([928f9eabb3](https://github.com/heygen-com/hyperframes/commit/928f9eabb3dbbe5196be9f3b18d897cd781f9c51), [#8670](https://github.com/heygen-com/hyperframes/pull/8670)).
 - **Producer:** A remote font stylesheet's text stays CSS when inlined ([8c9e952162](https://github.com/heygen-com/hyperframes/commit/8c9e9521624eb1e501595bae11976ee4e5a92d9e), [#8671](https://github.com/heygen-com/hyperframes/pull/8671)).
