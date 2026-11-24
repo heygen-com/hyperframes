@@ -61,21 +61,17 @@ export function assertLegacyPublishOwner(
     );
 }
 function publishNotice(phase: ReturnType<typeof publishPhase>, update: boolean): string {
-  const kept = update
-    ? " This run uses the legacy update workflow."
-    : " This run keeps legacy publishing behavior.";
-  if (phase === "unscheduled")
+  if (phase !== "share") {
+    const timing = phase === "compatibility" ? " The 60-day compatibility window is now open." : "";
     return (
-      "For new video reviews, use hyperframes share. The legacy publish transition date has not been scheduled." +
-      kept
+      "hyperframes publish is deprecated for new projects." +
+      timing +
+      " For a new video review, run hyperframes share and choose who can open the link." +
+      " Existing published links still work. To update one, sign in and run hyperframes publish --update <url-or-id>."
     );
-  if (phase === "compatibility")
-    return (
-      "Legacy publish is in its 60-day compatibility window. Use hyperframes share for new video reviews." +
-      kept
-    );
+  }
   return (
     "New projects use hyperframes share. Existing published URLs and explicit legacy updates remain supported." +
-    (update ? kept : "")
+    (update ? " This run uses the legacy update workflow." : "")
   );
 }
