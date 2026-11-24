@@ -262,6 +262,7 @@ export function revertNewestStudioPendingEdit(): (() => void) | null {
 
 const openEdits = new Set<() => unknown>();
 const MAX_ROUNDS_WHILE_EDITS_KEEP_OPENING = 5;
+const MAX_LISTENER_REASKS = 5;
 
 export function settleOnDrain(settle: () => unknown): () => void {
   openEdits.add(settle);
@@ -317,13 +318,25 @@ export async function flushStudioPendingEdits({
     }
     return waitedOnOtherWrites;
   };
-  for (let round = 0; ; round += 1) {
+  let roundsThatOpenedEdits = 0;
+  let listenerReasks = 0;
+  const editsKeptOpening = () => {
+    roundsThatOpenedEdits += 1;
+    return roundsThatOpenedEdits >= MAX_ROUNDS_WHILE_EDITS_KEEP_OPENING;
+  };
+  const reaskListenersAfter = (waitedOnOtherWrites: boolean) => {
+    if (!waitedOnOtherWrites || listenerReasks >= MAX_LISTENER_REASKS) return false;
+    const queued = askListeners();
+    if (queued) listenerReasks += 1;
+    return queued;
+  };
+  for (;;) {
     const waitedOnOtherWrites = await waitForWrites();
     if (onlyCurrent) break;
     const opened = settleOpened();
-    const queued = waitedOnOtherWrites && askListeners();
+    const queued = reaskListenersAfter(waitedOnOtherWrites);
     if (!opened && !queued) break;
-    if (round + 1 >= MAX_ROUNDS_WHILE_EDITS_KEEP_OPENING) {
+    if (opened && editsKeptOpening()) {
       firstFailure ??= {
         status: "rejected",
         reason: new Error("Edits kept opening while the pending edits were saved."),

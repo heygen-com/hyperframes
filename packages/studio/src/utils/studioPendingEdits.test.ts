@@ -571,20 +571,23 @@ describe("an edit opened while a drain waits on a write", () => {
     const stopFirst = settleOnDrain(() => write);
     let secondSaved = () => {};
     const second = vi.fn(() => new Promise<void>((resolve) => (secondSaved = resolve)));
+    let stopSecond = () => {};
     try {
       const drained = flushStudioPendingEdits();
       let done = false;
       void drained.then(() => (done = true));
       await Promise.resolve();
-      const stopSecond = settleOnDrain(second); // opened while the first write is held
+      stopSecond = settleOnDrain(second); // opened while the first write is held
       release();
       await vi.waitFor(() => expect(second).toHaveBeenCalledOnce());
       expect(done).toBe(false); // the drain waits for the edit it settled late
       secondSaved();
       await expect(drained).resolves.toEqual({ status: "clean" });
       expect(second).toHaveBeenCalledOnce();
-      stopSecond();
     } finally {
+      secondSaved();
+      release();
+      stopSecond();
       stopFirst();
     }
   });
@@ -631,6 +634,23 @@ describe("an edit opened while a drain waits on a write", () => {
     } finally {
       removeListener();
       stopFirst();
+    }
+  });
+
+  it("reports clean, not failed, while a listener is fed input on every ask", async () => {
+    // A held arrow key: each ask commits a nudge whose write is tracked apart from the listener's answer.
+    let asks = 0;
+    const removeListener = addStudioPendingEditFlushListener(() => {
+      asks += 1;
+      const innerWrite = trackStudioPendingEdit(Promise.resolve())!;
+      return innerWrite.then(() => undefined);
+    });
+    try {
+      await expect(flushStudioPendingEdits()).resolves.toEqual({ status: "clean" });
+      expect(asks).toBeGreaterThan(1);
+      expect(asks).toBeLessThan(10);
+    } finally {
+      removeListener();
     }
   });
 
