@@ -1263,9 +1263,10 @@ export const CatalogDetail = ({
    *
    * Both of those need layout, which the detached tree `DOMParser` returns does
    * not have, so a copy is parked in the document. The copy is built from
-   * `SVG_GEOMETRY` and `SVG_PLACEMENT_STYLE` alone: the file's other elements and attributes (scripts,
-   * handlers, images, style sheets, links) never reach the page, so nothing in the
-   * file runs or loads there. It is removed again in a `finally`.
+   * `SVG_GEOMETRY` and `SVG_PLACEMENT_STYLE` alone: the file's other elements
+   * and attributes (scripts, handlers, images, style sheets, links) never reach
+   * the page, so nothing in the file runs or loads there. It is removed again
+   * in a `finally`.
    *
    * Every failure is a throw carrying the sentence the panel shows. Importing
    * nothing quietly is the one outcome that is not allowed: it looks identical to
