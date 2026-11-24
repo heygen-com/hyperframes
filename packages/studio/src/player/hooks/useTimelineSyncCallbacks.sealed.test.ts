@@ -408,11 +408,11 @@ const NESTED = `<div data-composition-id="main" data-composition-file="index.htm
 const introClip = { ...boxClip, id: "intro", label: "intro", start: 2, duration: 10 };
 const nestedManifest = {
   clips: [
-    { ...introClip, kind: "composition" as const, compositionId: "intro" },
+    { ...introClip, kind: "composition" as const, compositionId: "intro", timelineDuration: 10 },
     {
       ...introClip,
       ...{ id: "logo", label: "logo", start: 5, duration: 5, kind: "composition" as const },
-      ...{ compositionId: "logo", parentCompositionId: "intro" },
+      ...{ compositionId: "logo", parentCompositionId: "intro", timelineDuration: 5 },
     },
   ],
   durationInFrames: 600,
@@ -447,5 +447,46 @@ it.each(["unsealed", "sealed"])(
     const rows = () =>
       usePlayerStore.getState().elements.map((r) => `${r.domId}@${r.start}+${r.duration}`);
     await vi.waitFor(() => expect(rows()).toEqual(["intro@2+10", "logo@5+5"]));
+  },
+);
+
+const NO_LENGTH = NESTED;
+const inheritedManifest = {
+  clips: nestedManifest.clips.map((clip) =>
+    clip.id === "logo" ? { ...clip, duration: 7, timelineDuration: null } : clip,
+  ),
+  durationInFrames: 600,
+};
+
+// fails without the fix: sealed took the length the runtime's clip list inherits for a nested composition with no
+// length and no timeline, so it showed a row the open preview leaves out.
+it.each(["unsealed", "sealed"])(
+  "leaves out a nested composition with no length and no timeline, %s",
+  async (mode) => {
+    usePlayerStore.getState().setElements([]);
+    usePlayerStore.getState().setDuration(20);
+    const sync = vi.fn((els: TimelineElement[]) => usePlayerStore.getState().setElements(els));
+    let iframe: HTMLIFrameElement;
+    if (mode === "sealed") {
+      document.body.innerHTML = NO_LENGTH;
+      iframe = sealedPreviewFrame().iframe;
+    } else {
+      iframe = document.createElement("iframe");
+      document.body.append(iframe);
+      iframe.contentDocument!.body.innerHTML = NO_LENGTH;
+      Object.assign(iframe.contentWindow!, { __timelines: { intro: { duration: () => 10 } } });
+    }
+    const { process, enrich } = processWith(iframe, null, undefined, sync);
+
+    process(inheritedManifest);
+    enrich();
+    await vi.waitFor(() => expect(usePlayerStore.getState().elements).not.toHaveLength(0));
+    // The channel answers in order: once this later request is back, the timeline read's pass has run.
+    if (mode === "sealed") await previewClipParents(iframe);
+
+    const rows = usePlayerStore
+      .getState()
+      .elements.map((r) => `${r.domId}@${r.start}+${r.duration}`);
+    expect(rows).toEqual(["intro@2+10"]);
   },
 );

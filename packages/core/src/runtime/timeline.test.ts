@@ -139,6 +139,36 @@ describe("collectRuntimeTimelinePayload", () => {
     ]);
   });
 
+  // fails without the fix: a sealed preview's timeline could not tell a nested composition's own timeline length
+  // from the one it inherits from its parent, so it showed a row an open preview leaves out.
+  it("sends a nested composition's own timeline length, and none for one with no timeline", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "20");
+    root.innerHTML = `
+      <div id="intro" data-composition-id="intro" data-start="2" data-duration="10">
+        <div id="logo" data-composition-id="logo" data-start="3"></div>
+      </div>
+      <div id="outro" data-composition-id="outro" data-start="12"></div>`;
+    document.body.appendChild(root);
+    (window as TimelineTestWindow).__timelines = {
+      main: { duration: () => 20 },
+      intro: { duration: () => 9 },
+      outro: { duration: () => 4 },
+    };
+
+    const lengths = collectRuntimeTimelinePayload(defaultParams).clips.map((clip) => [
+      clip.id,
+      clip.duration,
+      clip.timelineDuration,
+    ]);
+    expect(lengths).toEqual([
+      ["intro", 10, 9],
+      ["logo", 7, null],
+      ["outro", 4, 4],
+    ]);
+  });
+
   it("still lists every clip, with the labels it can read, when one timeline's labels throw", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

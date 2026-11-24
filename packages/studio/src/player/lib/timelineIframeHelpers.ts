@@ -253,13 +253,15 @@ type TimelineRegistry = {
   __timelines?: Record<string, Pick<TimelineLike, "duration" | "getLabels">>;
 };
 
-/** A sealed frame's timelines for the missing-host pass: the runtime fills each composition clip from them. */
+/** A sealed frame's timelines for the missing-host pass, from each composition clip's own timeline length;
+ *  0 where it has none, which every reader takes as no length, as it does a missing timeline. */
 export function manifestTimelines(clips: readonly ClipManifestClip[]): TimelineRegistry {
   const timelines: Record<string, Pick<TimelineLike, "duration" | "getLabels">> = {};
   for (const clip of clips) {
     if (!clip.compositionId) continue;
     const labels = clip.transitionLabel ? { [clip.transitionLabel]: 0 } : {};
-    timelines[clip.compositionId] = { duration: () => clip.duration, getLabels: () => labels };
+    const length = clip.timelineDuration ?? 0;
+    timelines[clip.compositionId] = { duration: () => length, getLabels: () => labels };
   }
   return { __timelines: timelines };
 }

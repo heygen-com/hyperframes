@@ -3,7 +3,7 @@ import type { ClipManifestClip } from "./playbackTypes";
 
 const MAX_TRANSITION_LABEL = 200;
 
-const OPTIONAL_NUMBERS = ["zIndex", "playbackStart", "playbackRate"] as const;
+const OPTIONAL_NUMBERS = ["zIndex", "playbackStart", "playbackRate", "timelineDuration"] as const;
 
 export const clipNumber = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
