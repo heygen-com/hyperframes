@@ -348,8 +348,8 @@ export function nodeOnlyScript(relPath: string): boolean {
 
 /**
  * A Node-only script, or below (at any depth, past the project too) a package.json that is not the scaffold's: a
- * `.js`/`.mjs` file, an extensionless file, or a file Node resolves before a module beside it (`db.utils` beside
- * `db.utils.js`).
+ * `.js`/`.mjs` file, an extensionless file, or a file Node resolves before the module of its name plus an extension
+ * beside it.
  */
 export function nodeMayRun(projectDir: string, relPath: string, kind: EntryKind): boolean {
   if (nodeOnlyScript(relPath)) return true;
