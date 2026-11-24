@@ -173,7 +173,6 @@ const OTHER_ADDRESS = "OtherAddress";
 const addressOf = (input: RequestInfo | URL): string =>
   typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 
-/** Fails a read of any address but the first one asked for, before it is sent. */
 function oneAddress(reader: MediaReader) {
   let address: string | undefined;
   return (input: RequestInfo | URL, asked: number): void => {
@@ -182,15 +181,11 @@ function oneAddress(reader: MediaReader) {
   };
 }
 
-/** A client error status, or a read of another address: asking again gets the same answer. */
 const neverRetried = (error: unknown): boolean =>
   error instanceof MediaFetchError &&
   (error.code === OTHER_ADDRESS || (error.status !== null && error.status < 500));
 
-/**
- * The input formats Studio reads project media with: every one mediabunny ships that holds its
- * media in the file itself. A playlist names other addresses to read, so it is left out.
- */
+/** A playlist names other addresses to read, so it is left out of the formats Studio reads. */
 export function selfContainedFormats<Format>(mediabunny: {
   ALL_FORMATS: Format[];
   HLS: Format;
@@ -201,7 +196,6 @@ export function selfContainedFormats<Format>(mediabunny: {
 /**
  * Options for one mediabunny `UrlSource`. Its default retries a same-origin network failure
  * forever and logs a bare `TypeError` each time; these retry twice and fail with a MediaFetchError.
- * They read one address, the first asked for: a read of any other is refused without being sent.
  */
 export function mediaUrlSourceOptions(reader: MediaReader) {
   const only = oneAddress(reader);
