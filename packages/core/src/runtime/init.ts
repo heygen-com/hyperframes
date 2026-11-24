@@ -273,7 +273,7 @@ import {
   audibleVideoNeedsWebAudio,
   isAudibleVideoElement,
   PARENT_COPY_ATTRIBUTES,
-  layeredParentCopies,
+  parentCopyLayers,
   parentCopyKey,
 } from "../audibleVideo";
 import { setRuntimePreload } from "./runtimeAttributes";
@@ -547,13 +547,13 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
 
 const listedCopyKeys = new WeakMap<HTMLMediaElement, string>();
-const parentCopies = () =>
-  layeredParentCopies(
-    Array.from(document.querySelectorAll(WEB_AUDIO_MEDIA)).filter(isMediaElement),
-  ).map(({ el, copy }) => {
-    listedCopyKeys.set(el, parentCopyKey(copy));
-    return copy;
-  });
+const parentCopies = (layered: ReturnType<typeof parentCopyLayers>) =>
+  layered(Array.from(document.querySelectorAll(WEB_AUDIO_MEDIA)).filter(isMediaElement)).map(
+    ({ el, copy }) => {
+      listedCopyKeys.set(el, parentCopyKey(copy));
+      return copy;
+    },
+  );
 
 const webAudioMediaIn = (root: ParentNode): HTMLMediaElement[] =>
   Array.from(root.querySelectorAll(WEB_AUDIO_MEDIA)).filter(joinsWebAudio);
@@ -3302,10 +3302,11 @@ export function initSandboxRuntimeModular(): void {
   let keepLateMedia = false;
   // A sealed player copies only the clips this list names. ponytail: once blocked, every watched
   // change re-reads all media; scope the observer to media records if that shows in a profile.
+  const listParentCopies = parentCopyLayers();
   const postParentCopiesWhileTheyChange = (type: "media-autoplay-blocked" | "parent-copies") => {
     let posted = "";
     const post = () => {
-      const media = parentCopies();
+      const media = parentCopies(listParentCopies);
       const next = JSON.stringify(media);
       if (next === posted || state.tornDown) return;
       posted = next;

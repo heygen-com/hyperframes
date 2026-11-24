@@ -56,18 +56,24 @@ export function parentCopyKey(
   return JSON.stringify([copy.kind, copy.src, copy.start, copy.mediaStart, copy.layer ?? 0]);
 }
 
-export function layeredParentCopies(
+export function parentCopyLayers(): (
   elements: readonly HTMLMediaElement[],
-): { el: HTMLMediaElement; copy: ParentCopy }[] {
-  const seen = new Map<string, number>();
-  return elements.flatMap((el) => {
-    const copy = parentCopyOf(el);
-    if (!copy) return [];
-    const shared = parentCopyKey(copy);
-    const layer = seen.get(shared) ?? 0;
-    seen.set(shared, layer + 1);
-    return [{ el, copy: layer === 0 ? copy : { ...copy, layer } }];
-  });
+) => { el: HTMLMediaElement; copy: ParentCopy }[] {
+  const layerOf = new WeakMap<HTMLMediaElement, { shared: string; layer: number }>();
+  const nextLayer = new Map<string, number>();
+  return (elements) =>
+    elements.flatMap((el) => {
+      const copy = parentCopyOf(el);
+      if (!copy) return [];
+      const shared = parentCopyKey(copy);
+      let slot = layerOf.get(el);
+      if (slot?.shared !== shared) {
+        slot = { shared, layer: nextLayer.get(shared) ?? 0 };
+        nextLayer.set(shared, slot.layer + 1);
+        layerOf.set(el, slot);
+      }
+      return [{ el, copy: slot.layer === 0 ? copy : { ...copy, layer: slot.layer } }];
+    });
 }
 
 export function mediaFileOf(el: HTMLMediaElement): string | null {

@@ -1139,6 +1139,26 @@ describe("HyperframesPlayer seek() sync path", () => {
     expect(pause).toHaveBeenCalledOnce();
   });
 
+  // fails without the fix: a list without a removed clip left its claim standing, so the film kept a layer silent.
+  it("re-posts the parent's claims on every list from a sealed film, even while paused", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = (player as unknown as { _sealedAudio(): ParentAudio | null })._sealedAudio();
+    if (!audio) throw new Error("expected a sealed WebKit player to play audio from the parent");
+    const postClaims = vi.spyOn(audio, "postClaims");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: player.iframe.contentWindow,
+        data: { source: "hf-preview", type: "parent-copies", media: [] },
+      }),
+    );
+
+    expect(postClaims).toHaveBeenCalledOnce();
+  });
+
   it("stopMedia pauses iframe-realm media elements", () => {
     const post = vi.fn();
     const { doc, video, audio } = createForeignFrameMediaDocument();

@@ -1467,6 +1467,7 @@ class HyperframesPlayer extends HTMLElement {
       },
       shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
       onParentCopies: () => {
+        this._sealedAudio()?.postClaims();
         if (!this._paused) this._sealedAudio()?.play();
       },
       onRuntimeStopped: () => this._parentAudio?.pause(),

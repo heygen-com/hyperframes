@@ -121,6 +121,30 @@ it("a claim silences only the layer the parent plays, not another layer of the s
   expect([voice.muted, processed.muted]).toEqual([true, false]);
 });
 
+// fails without the fix: removing the dry layer renumbered the processed one onto the dry layer's claim, silencing it.
+it("a layer keeps its own claim when another layer of the same recording is removed", async () => {
+  const { voice, playFor, control, posted } = sealedFilm(
+    '<audio id="voice-fx" data-start="0" data-duration="10" src="/voice.m4a" data-fx-chain="[]"></audio>',
+  );
+  const processed = document.getElementById("voice-fx") as HTMLAudioElement;
+  window.__player!.play();
+  playFor(0.2);
+  control("set-parent-audio", { clips: [] });
+  playFor(0.2);
+  const lists = () => posted.mock.calls.filter(([message]) => message?.type === "parent-copies");
+  const first = lists().at(-1)?.[0].media as Parameters<typeof parentCopyKey>[0][];
+  control("set-parent-audio", { clips: [parentCopyKey(first[0]!)] });
+  playFor(0.2);
+
+  voice.remove();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  playFor(0.2);
+
+  const after = lists().at(-1)?.[0].media as Parameters<typeof parentCopyKey>[0][];
+  expect(after.map(parentCopyKey)).toEqual([parentCopyKey(first[1]!)]);
+  expect(processed.muted).toBe(false);
+});
+
 // fails without the fix: a seek while the parent's clock held the film put the picture back on the old audio time.
 it("a seek lets go of the parent's clock, so the picture lands where it was sent", () => {
   const { playFor, control } = sealedFilm();
