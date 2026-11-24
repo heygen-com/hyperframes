@@ -101,6 +101,24 @@ async function allPreviewLayers(iframe: HTMLIFrameElement): Promise<EditingLayer
   return layers;
 }
 
+export async function collectAllPreviewLayerItems(
+  iframe: HTMLIFrameElement,
+  activeCompositionPath: string | null,
+): Promise<DomEditLayerItem[] | null> {
+  const layers = await allPreviewLayers(iframe);
+  const described =
+    layers &&
+    (await describeAll(
+      iframe,
+      layers.map((layer) => layer.handle),
+    ));
+  if (!layers || !described) return null;
+  return layers.flatMap((layer, index) => {
+    const element = described[index];
+    return element ? [layerItem(iframe, layer, element, activeCompositionPath)] : [];
+  });
+}
+
 /** `getFamily` for a stand-in, read from its frame; null when the frame cannot say. */
 export async function previewStackingFamily(
   iframe: HTMLIFrameElement,

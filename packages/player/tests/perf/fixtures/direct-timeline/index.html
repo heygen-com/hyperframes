@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Direct GSAP timeline, no runtime</title>
+    <script src="/vendor/gsap.min.js"></script>
+  </head>
+  <body>
+    <div id="box" style="width: 100px; height: 100px; background: #3b82f6"></div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#box", { x: 400, duration: 5 });
+      window.__timelines = { main: tl };
+    </script>
+  </body>
+</html>

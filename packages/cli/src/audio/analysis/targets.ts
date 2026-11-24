@@ -24,6 +24,7 @@ export interface AudioTarget {
   ref: string | null;
   kind: "audio" | "video" | "file";
   onAnotherNetworkRoot?: true;
+  refused?: true;
   placement: Placement | null;
   /** The part of the file to analyze, in file seconds; the whole file when absent. */
   window?: { from: number; seconds: number };
