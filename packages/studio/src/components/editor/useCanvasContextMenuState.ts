@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useState, type RefObject } from "react";
 import type { DomEditSelection } from "./domEditing";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 export interface CanvasContextMenuState {
   x: number;
@@ -43,6 +44,10 @@ export function useCanvasContextMenuState({
   // time so the menu can open even before the React selection state settles.
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const previewFailed = usePlayerStore((state) => state.previewFailed);
+  useEffect(() => {
+    if (previewFailed) setContextMenu(null);
+  }, [previewFailed]);
 
   // Close the context menu whenever the selection moves off the element the menu
   // targets (a click that reselects elsewhere, a deselect, or a preview reload
@@ -82,7 +87,7 @@ export function useCanvasContextMenuState({
         }
       }
 
-      if (!activeSel) return;
+      if (!activeSel || usePlayerStore.getState().previewFailed) return;
       setContextMenu({ x: event.clientX, y: event.clientY, sel: activeSel });
     },
     [selectionRef, hoverSelectionRef, onCanvasPointerMoveRef, onSelectionChangeRef],

@@ -1,5 +1,6 @@
 import {
   ALL_FORMATS,
+  HLS,
   Input,
   UrlSource,
   VideoSample,
@@ -9,7 +10,7 @@ import {
 import type { PausedVideoFrame } from "@hyperframes/core";
 import { PAUSED_FRAME_SOURCES } from "@hyperframes/core/runtime/editing-port";
 import { untaggedVideoMatrix } from "@hyperframes/parsers/media-streams";
-import { mediaUrlSourceOptions } from "./mediaFetch";
+import { mediaUrlSourceOptions, selfContainedFormats } from "./mediaFetch";
 import {
   previewDecodeTime,
   previewPresentationTime,
@@ -162,7 +163,10 @@ export function createPausedVideoDecoder(): PausedVideoDecoder {
   };
   const open = async (source: string): Promise<Reader> => {
     const options = mediaUrlSourceOptions("thumbnail");
-    const input = new Input({ source: new UrlSource(source, options), formats: ALL_FORMATS });
+    const input = new Input({
+      source: new UrlSource(source, options),
+      formats: selfContainedFormats({ ALL_FORMATS, HLS }),
+    });
     opening.set(input, options.cancelReads);
     try {
       const track = await input.getPrimaryVideoTrack();

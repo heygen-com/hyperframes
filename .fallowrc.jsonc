@@ -66,6 +66,8 @@
     "packages/producer/src/services/healthWorkerThread.ts",
     // Worker thread of runHyperframeLint, spawned by path from hyperframeLint.ts.
     "packages/producer/src/services/hyperframeLintWorker.ts",
+    // Render compile worker, spawned by path from compileInWorker.ts.
+    "packages/producer/src/services/compileWorker.ts",
     // Render-setup worker, spawned by path from cancellableProcess.ts.
     "packages/cli/src/renderSetupWorker.ts",
     // Sub-composition build worker, started by path from subCompositionBuild.ts (.dev.mjs from source under Node).
@@ -86,6 +88,9 @@
     "packages/producer/src/services/__fixtures__/crashOnMessageWorker.mjs",
     // Test fixture worker for runHyperframeLint, passed by path as its workerEntry option.
     "packages/producer/src/services/__fixtures__/lintWorkerStuck.mjs",
+    // Test fixture workers for compileForRenderInWorker, passed by path as its entry option.
+    "packages/producer/src/services/__fixtures__/compileWorkerFake.mjs",
+    "packages/producer/src/services/__fixtures__/compileWorkerTs.mjs",
     "scripts/**/*.{ts,mjs,js}",
     "scripts/*/run.mjs",
     // Keyframe UI components — wired dynamically via EaseCurveSection/MotionPanel.

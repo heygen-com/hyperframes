@@ -436,15 +436,15 @@ export function forgetWorkerPhases(job: object): void {
   workerPhasesByJob.delete(job);
 }
 
-const staticDedupActivityByJob = new WeakMap<object, number>();
+const captureActivityByJob = new WeakMap<object, number>();
 
-/** Counts a render's still-frame check screenshots; the capture stall watcher reads it as activity. */
-export function noteStaticDedupActivity(job: object): void {
-  staticDedupActivityByJob.set(job, (staticDedupActivityByJob.get(job) ?? 0) + 1);
+/** Counts capture work between frames (still checks, a chunk's video frames); the stall watcher reads it. */
+export function noteCaptureActivity(job: object): void {
+  captureActivityByJob.set(job, (captureActivityByJob.get(job) ?? 0) + 1);
 }
 
-export function staticDedupActivity(job: object): number {
-  return staticDedupActivityByJob.get(job) ?? 0;
+export function captureActivity(job: object): number {
+  return captureActivityByJob.get(job) ?? 0;
 }
 
 export function describeWorkerPhases(job: object): string | undefined {
