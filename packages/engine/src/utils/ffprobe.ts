@@ -626,6 +626,10 @@ async function probeMediaOutput(filePath: string, signal?: AbortSignal): Promise
 
 class StructurallyIncompletePngError extends Error {}
 
+export function isStructurallyIncompletePngError(error: unknown): boolean {
+  return error instanceof StructurallyIncompletePngError;
+}
+
 const TEXT_ART_CODECS = new Set(["ansi", "bintext", "xbin", "idf"]);
 
 function refuseTextArt(output: FFProbeOutput): FFProbeOutput {
