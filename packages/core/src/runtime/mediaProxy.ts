@@ -50,7 +50,12 @@ import {
   type PreviewSourceFacts,
   wantsLighterCopy,
 } from "../previewProxyBox";
-import { capturePageIn, PREVIEW_FILE_SIZE_ATTR } from "../studioPreviewMark";
+import {
+  CAPTURE_STILL_ATTR,
+  capturePageIn,
+  captureStillsIn,
+  PREVIEW_FILE_SIZE_ATTR,
+} from "../studioPreviewMark";
 
 /**
  * One entry per project-root-relative asset pathname, injected by the
@@ -479,12 +484,13 @@ function emitUnavailableDiagnostic(
 }
 
 /** Holds `el` with no src while its copy is made (readers still see its file); false with no src to hold. */
-function holdForCopy(el: HTMLMediaElement): boolean {
+function holdForCopy(el: HTMLMediaElement, holdsCaptures = true): boolean {
   const authored = unproxiedSrc(el);
   if (authored === null) return false;
   heldForCopy.set(el, inPointOf(el));
   recordOpenedAtInPoint(el, authored, null);
   stopMediaDownload(el);
+  if (!holdsCaptures) return true;
   holdFrameCaptures(
     new Promise((landed) => {
       el.addEventListener("loadeddata", landed, { once: true });
@@ -524,6 +530,7 @@ export function decideFileTurn(el: HTMLMediaElement, onScreen: boolean): void {
   if (playingItsFile && !playingItsFile.isConnected) playingItsFile = null;
   if (!onScreen || playingItsFile || !heldForCopy.has(el) || el.getAttribute("src") !== null)
     return;
+  if (captureStills.has(el)) return; // a capture page shows the server's still, never decodes the original
   const before = heldForCopy.get(el);
   const src = before ? before.written : authoredSrcOf(el);
   if (src === null || !decodesItsFile(el, src)) return;
@@ -699,9 +706,77 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
 }
 
 function lightenIfHeavy(el: HTMLMediaElement, entry: MediaCodecMapEntry | null): void {
-  if (capturePageIn(document) || swappedElements.has(el) || proxyRequested.has(el)) return;
+  if (swappedElements.has(el) || proxyRequested.has(el)) return;
+  if (capturePageIn(document)) return holdForCaptureStill(el);
   const facts = sourceFactsOf(el);
   if (facts) swapToProxy(el, entry, "light", facts);
+}
+
+// Each held clip's own poster, given back with its file; and the one still ask whose answer counts.
+const captureStills = new WeakMap<HTMLMediaElement, string | null>();
+const stillAsks = new WeakMap<HTMLMediaElement, HTMLImageElement>();
+
+/** At least twice the pixels it is drawn at (#7723's rule), and opaque: a JPEG still has no alpha. */
+function stillStandsIn(el: HTMLMediaElement): boolean {
+  const facts = isVideoElement(el) ? sourceFactsOf(el) : null;
+  if (!facts || facts.hasAlpha || codecEntryOf(el)?.hasAlpha) return false;
+  const box = shownBox(el, 1);
+  return box !== null && isOversizedForPreview(facts, box);
+}
+
+/** On a one-shot capture, such a file is never decoded. */
+function holdForCaptureStill(el: HTMLMediaElement): void {
+  const poster = el.getAttribute("poster");
+  if (captureStillsIn(document) && stillStandsIn(el) && holdForCopy(el, false))
+    captureStills.set(el, poster);
+}
+
+/** Each media pass: such a clip on screen shows the server's frame at the playhead; a capture waits for it. */
+export function standInCaptureStill(el: HTMLMediaElement, onScreen: boolean): void {
+  const file = onScreen && captureStills.has(el) ? unproxiedSrc(el) : null;
+  const at = file === null ? undefined : sourceTimeAtPlayhead(el);
+  if (file === null || at === undefined) return;
+  const url = new URL(
+    appendProxyParam(file, copyVariant(codecEntryOf(el)), shownBox(el, 1), true),
+    document.baseURI,
+  );
+  url.searchParams.set(PREVIEW_PROXY_STILL_PARAM, at.toFixed(3));
+  if (el.getAttribute("poster") === url.href) return;
+  el.setAttribute("poster", url.href);
+  el.removeAttribute(CAPTURE_STILL_ATTR);
+  const drawn = new Image();
+  stillAsks.set(el, drawn);
+  // The page may set its own poster meanwhile: an answer acts only on the poster its own ask put there.
+  const ours = () => stillAsks.get(el) === drawn && el.getAttribute("poster") === url.href;
+  holdFrameCaptures(
+    new Promise<void>((landed) => {
+      drawn.onload = () => {
+        if (ours()) el.setAttribute(CAPTURE_STILL_ATTR, "");
+        landed();
+      };
+      drawn.onerror = () => {
+        if (ours()) decodeItsFile(el, file);
+        landed();
+      };
+    }),
+  );
+  drawn.src = url.href;
+}
+
+/** A frame the server could not cut: the clip decodes its own file, as on any capture page, and the capture waits. */
+function decodeItsFile(el: HTMLMediaElement, file: string): void {
+  const poster = captureStills.get(el);
+  captureStills.delete(el);
+  el.removeAttribute(CAPTURE_STILL_ATTR);
+  if (poster) el.setAttribute("poster", poster);
+  else el.removeAttribute("poster");
+  holdFrameCaptures(
+    new Promise((landed) => {
+      el.addEventListener("loadeddata", landed, { once: true });
+      el.addEventListener("error", landed, { once: true });
+    }),
+  );
+  endCopyHold(el, file);
 }
 
 function applyPreviewQuality(el: HTMLMediaElement): void {

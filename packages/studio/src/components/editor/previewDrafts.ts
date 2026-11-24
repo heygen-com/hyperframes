@@ -9,10 +9,12 @@ import {
   type EditingDraftEnd,
   type EditingDraftRotate,
 } from "@hyperframes/core/runtime/editing-port";
+import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
+import { roundTo3 } from "../../utils/rounding";
 import { previewRequest } from "../../player/lib/previewChannel";
 
 type Drawn = {
-  translate: { x: number; y: number } | null;
+  translate: { x: number; y: number; route?: "gsap" } | null;
   size: { width: number; height: number } | null;
   rotate?: EditingDraftRotate | null;
 };
@@ -85,6 +87,24 @@ function sendOnMicrotask(iframe: HTMLIFrameElement, queue: Queue): void {
     queue.sendQueued = false;
     send(iframe, queue);
   });
+}
+
+type Point = { x: number; y: number };
+type DraftedMember = {
+  element: HTMLElement;
+  initialOffset: Point;
+  baseGsap: Point;
+  frameDraftRoute?: "gsap";
+};
+
+export function frameDraftTranslate(member: DraftedMember, offset: Point) {
+  if (member.frameDraftRoute !== "gsap")
+    return {
+      x: roundTo3(offset.x) - member.initialOffset.x,
+      y: roundTo3(offset.y) - member.initialOffset.y,
+    };
+  const { newX, newY } = computeDraggedGsapPosition(member.element, offset, member.baseGsap);
+  return { x: newX, y: newY, route: "gsap" as const };
 }
 
 /** Draws `part` of the stand-in's draft on its frame element; any other element is left alone. */

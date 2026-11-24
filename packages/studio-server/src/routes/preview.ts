@@ -16,6 +16,7 @@ import {
   type BundleOptions,
 } from "@hyperframes/core/compiler";
 import {
+  CAPTURE_STILLS,
   STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
   STUDIO_PREVIEW_ERROR_KINDS,
@@ -830,8 +831,11 @@ export function registerPreviewRoutes(
     if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
     const previewVariables = vars.values;
     const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
+    const stills = capture && c.req.query(CAPTURE_STILLS) !== undefined;
+    const marked = (html: string) =>
+      stills ? injectTagsAtHeadStart(html, `<meta name="${CAPTURE_STILLS}">`) : html;
 
-    const etag = `"preview:${signature}${gsapEtagSalt}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
+    const etag = `"preview:${signature}${gsapEtagSalt}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}${stills ? ":stills" : ""}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
       return new Response(null, {
@@ -843,7 +847,7 @@ export function registerPreviewRoutes(
     const cached = builtPreviews.get(builtKey) ?? adapter.previewDocuments?.read(builtKey);
     if (cached) {
       rememberPreview(builtKey, cached);
-      return c.html(cached, 200, previewCacheHeaders(etag));
+      return c.html(marked(cached), 200, previewCacheHeaders(etag));
     }
     let pending = previewBuilds.get(builtKey);
     if (!pending) {
@@ -854,7 +858,7 @@ export function registerPreviewRoutes(
     }
     const html = await pending;
     if (!html) return c.text("not found", 404);
-    return c.html(html, 200, previewCacheHeaders(etag));
+    return c.html(marked(html), 200, previewCacheHeaders(etag));
   });
 
   // Sub-composition preview
