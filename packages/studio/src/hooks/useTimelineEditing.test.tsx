@@ -1,13 +1,12 @@
 // fallow-ignore-file code-duplication
 // @vitest-environment happy-dom
 
-import React, { act, useRef, useState } from "react";
+import React, { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { openComposition } from "@hyperframes/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { jsonResponse, requestUrl } from "./fetchStubTestUtils";
-import { useElementLifecycleOps } from "./useElementLifecycleOps";
 import { useTimelineEditing } from "./useTimelineEditing";
 import {
   buildMissingCompositionElements,
@@ -38,15 +37,6 @@ vi.mock("../components/editor/manualEditingAvailability", async (importOriginal)
 });
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-type ZIndexEntry = {
-  element: HTMLElement;
-  zIndex: number;
-  id?: string;
-  selector?: string;
-  selectorIndex?: number;
-  sourceFile: string;
-};
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -123,7 +113,6 @@ function mountHarness(node: React.ReactElement): { unmount: () => void } {
 function renderTimelineEditingHook(input: {
   timelineElements: TimelineElement[];
   iframe: HTMLIFrameElement;
-  onZIndexCommit: (entries: ZIndexEntry[]) => Promise<void>;
   projectId?: string | null;
   writeProjectFile?: (path: string, content: string) => Promise<void>;
   recordEdit?: (input: {
@@ -167,8 +156,6 @@ function renderTimelineEditingHook(input: {
   let latest: ReturnType<typeof useTimelineEditing> | null = null;
 
   function Harness() {
-    const commitRef = useRef(input.onZIndexCommit);
-    commitRef.current = input.onZIndexCommit;
     const hook = useTimelineEditing({
       projectId: input.projectId ?? null,
       activeCompPath: input.activeCompPath ?? "index.html",
@@ -184,7 +171,6 @@ function renderTimelineEditingHook(input: {
       publishSdkSession: input.publishSdkSession,
       forceReloadSdkSession: input.forceReloadSdkSession,
       invalidateGsapCache: input.invalidateGsapCache,
-      handleDomZIndexReorderCommitRef: commitRef,
       canEdit: input.canEdit,
     });
     move = hook.handleTimelineElementMove;
@@ -229,55 +215,6 @@ type TimelineRecordEdit = NonNullable<
 type TimelinePublishSdkSession = NonNullable<
   Parameters<typeof renderTimelineEditingHook>[0]["publishSdkSession"]
 >;
-
-function renderTimelineEditingHookWithLifecycle(input: {
-  timelineElements: TimelineElement[];
-  iframe: HTMLIFrameElement;
-  commitDomEditPatchBatches: ReturnType<
-    typeof vi.fn<
-      (...args: unknown[]) => Promise<{ durable: boolean; allMatched: boolean; changed: boolean }>
-    >
-  >;
-}): {
-  move: ReturnType<typeof useTimelineEditing>["handleTimelineElementMove"];
-  unmount: () => void;
-} {
-  let move: ReturnType<typeof useTimelineEditing>["handleTimelineElementMove"] | null = null;
-
-  function Harness() {
-    const lifecycle = useElementLifecycleOps({
-      activeCompPath: "index.html",
-      showToast: vi.fn(),
-      writeProjectFile: vi.fn(),
-      editHistory: { recordEdit: vi.fn() },
-      projectIdRef: { current: "p1" },
-      reloadPreview: vi.fn(),
-      clearDomSelection: vi.fn(),
-      commitDomEditPatchBatches: input.commitDomEditPatchBatches,
-    });
-    const commitRef = useRef(lifecycle.handleDomZIndexReorderCommit);
-    commitRef.current = lifecycle.handleDomZIndexReorderCommit;
-    const hook = useTimelineEditing({
-      projectId: null,
-      activeCompPath: "index.html",
-      timelineElements: input.timelineElements,
-      showToast: vi.fn(),
-      writeProjectFile: vi.fn(),
-      recordEdit: vi.fn(),
-      reloadPreview: vi.fn(),
-      previewIframeRef: { current: input.iframe },
-      pendingTimelineEditPathRef: { current: new Set<string>() },
-      uploadProjectFiles: vi.fn(),
-      handleDomZIndexReorderCommitRef: commitRef,
-    });
-    move = hook.handleTimelineElementMove;
-    return null;
-  }
-
-  const { unmount } = mountHarness(<Harness />);
-  if (!move) throw new Error("Expected hook to expose move handler");
-  return { move, unmount };
-}
 
 async function flushAsyncWork(): Promise<void> {
   for (let i = 0; i < 8; i += 1) {
@@ -339,14 +276,10 @@ function stubProjectFetch(files: string | Record<string, string>, gsapBody?: unk
 function setupSingleClipHarness(options?: {
   source?: string;
   clipStyle?: string;
-  onZIndexCommit?: (entries: ZIndexEntry[]) => Promise<void>;
   canEdit?: NonNullable<Parameters<typeof useTimelineEditing>[0]["canEdit"]>;
 }) {
   const iframe = createPreviewIframe([{ id: "clip", track: 0, style: options?.clipStyle }]);
   const clip = timelineElement({ id: "clip", track: 0, zIndex: 0 });
-  const commit =
-    options?.onZIndexCommit ??
-    vi.fn<(entries: ZIndexEntry[]) => Promise<void>>().mockResolvedValue(undefined);
   const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
   const reloadPreview = vi.fn();
   const fetchMock = stubProjectFetch(
@@ -357,7 +290,6 @@ function setupSingleClipHarness(options?: {
   const hook = renderTimelineEditingHook({
     timelineElements: [clip],
     iframe,
-    onZIndexCommit: commit,
     projectId: "p1",
     writeProjectFile,
     recordEdit,
@@ -368,7 +300,6 @@ function setupSingleClipHarness(options?: {
   return {
     iframe,
     clip,
-    commit,
     writeProjectFile,
     recordEdit,
     showToast,
@@ -441,7 +372,6 @@ async function setupRootDurationFallback() {
   const hook = renderTimelineEditingHook({
     timelineElements: [clip],
     iframe,
-    onZIndexCommit: vi.fn().mockResolvedValue(undefined),
     projectId: "p1",
     writeProjectFile,
     recordEdit,
@@ -508,279 +438,6 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     ctx.hook.unmount();
   });
 
-  it("routes a vertical drag through the shared z-index commit without writing track-index", async () => {
-    const iframe = createPreviewIframe([
-      { id: "front", track: 0, style: "position: relative; z-index: 10" },
-      { id: "back", track: 2, style: "position: relative; z-index: 1" },
-    ]);
-    const front = timelineElement({ id: "front", track: 0, zIndex: 10 });
-    const back = timelineElement({ id: "back", track: 2, zIndex: 1 });
-    const commit = vi.fn<(entries: ZIndexEntry[]) => Promise<void>>().mockResolvedValue(undefined);
-    const { move, unmount } = renderTimelineEditingHook({
-      timelineElements: [front, back],
-      iframe,
-      onZIndexCommit: commit,
-    });
-
-    await act(async () => {
-      await move(back, {
-        start: back.start,
-        track: back.track,
-        stackingReorder: {
-          contextKey: "root",
-          placement: { type: "onto", layerId: "layer-front" },
-          zIndexChanges: [{ key: "back", zIndex: 10 }],
-        },
-      });
-    });
-
-    const doc = iframe.contentDocument;
-    if (!doc) throw new Error("Expected iframe document");
-
-    expect(commit).toHaveBeenCalledTimes(1);
-    expect(commit.mock.calls[0]![0].map((entry) => [entry.id, entry.zIndex])).toEqual([
-      ["back", 10],
-    ]);
-    expect(doc.getElementById("back")?.getAttribute("data-track-index")).toBe("2");
-
-    unmount();
-  });
-
-  it("never writes z-index when the dragged clip is audio (no visual layer)", async () => {
-    const iframe = createPreviewIframe([
-      { id: "front", track: 0 },
-      { id: "music", track: 1 },
-    ]);
-    const front = timelineElement({ id: "front", track: 0, zIndex: 0 });
-    const music = timelineElement({ id: "music", track: 1, zIndex: 0, tag: "audio" });
-    const commit = vi.fn<(entries: ZIndexEntry[]) => Promise<void>>().mockResolvedValue(undefined);
-    const { move, unmount } = renderTimelineEditingHook({
-      timelineElements: [front, music],
-      iframe,
-      onZIndexCommit: commit,
-    });
-
-    await act(async () => {
-      await move(music, {
-        start: music.start,
-        track: music.track,
-        stackingReorder: {
-          contextKey: "root",
-          placement: { type: "onto", layerId: "layer-front" },
-          zIndexChanges: [{ key: "music", zIndex: 2 }],
-        },
-      });
-    });
-
-    expect(commit).not.toHaveBeenCalled();
-
-    unmount();
-  });
-
-  it("commits only the minimum z-index changes resolved by the timeline drag", async () => {
-    const iframe = createPreviewIframe([
-      { id: "front", track: 0, style: "position: relative; z-index: 2" },
-      { id: "back", track: 1, style: "position: relative; z-index: 1" },
-      { id: "dragged", track: 2, style: "position: relative; z-index: 0" },
-    ]);
-    const front = timelineElement({ id: "front", track: 0, zIndex: 2 });
-    const back = timelineElement({ id: "back", track: 1, zIndex: 1 });
-    const dragged = timelineElement({ id: "dragged", track: 2, zIndex: 0 });
-    const commit = vi.fn<(entries: ZIndexEntry[]) => Promise<void>>().mockResolvedValue(undefined);
-    const { move, unmount } = renderTimelineEditingHook({
-      timelineElements: [front, back, dragged],
-      iframe,
-      onZIndexCommit: commit,
-    });
-
-    await act(async () => {
-      await move(dragged, {
-        start: dragged.start,
-        track: dragged.track,
-        stackingReorder: {
-          contextKey: "root",
-          placement: { type: "between", beforeLayerId: "front", afterLayerId: "back" },
-          zIndexChanges: [
-            { key: "dragged", zIndex: 2 },
-            { key: "front", zIndex: 3 },
-          ],
-        },
-      });
-    });
-
-    expect(commit.mock.calls[0]![0].map((entry) => [entry.id, entry.zIndex])).toEqual([
-      ["dragged", 2],
-      ["front", 3],
-    ]);
-
-    unmount();
-  });
-
-  it("uses the shared lifecycle commit so static clips receive position relative", async () => {
-    const iframe = createPreviewIframe([
-      { id: "front", track: 0, style: "position: static" },
-      { id: "back", track: 1, style: "position: static" },
-    ]);
-    const front = timelineElement({ id: "front", track: 0, zIndex: 0 });
-    const back = timelineElement({ id: "back", track: 1, zIndex: 0 });
-    const commitDomEditPatchBatches = vi.fn<
-      (...args: unknown[]) => Promise<{ durable: boolean; allMatched: boolean; changed: boolean }>
-    >(async () => ({ durable: true, allMatched: true, changed: true }));
-    const { move, unmount } = renderTimelineEditingHookWithLifecycle({
-      timelineElements: [front, back],
-      iframe,
-      commitDomEditPatchBatches,
-    });
-
-    await act(async () => {
-      await move(back, {
-        start: back.start,
-        track: back.track,
-        stackingReorder: {
-          contextKey: "root",
-          placement: { type: "above", layerId: "front" },
-          zIndexChanges: [{ key: "back", zIndex: 2 }],
-        },
-      });
-      await flushAsyncWork();
-    });
-
-    expect(commitDomEditPatchBatches).toHaveBeenCalled();
-    const batch = commitDomEditPatchBatches.mock.calls[0]![0] as Array<{
-      patches: Array<{ operations: unknown[] }>;
-    }>;
-    expect(batch[0]?.patches[0]?.operations).toEqual([
-      { type: "inline-style", property: "z-index", value: "2" },
-      { type: "inline-style", property: "position", value: "relative" },
-    ]);
-
-    unmount();
-  });
-
-  it("rejects and rolls back DOM and store z-index changes when a reorder save fails", async () => {
-    const iframe = createPreviewIframe([
-      { id: "front", track: 0, style: "position: relative; z-index: 7" },
-      { id: "back", track: 1, style: "position: static" },
-    ]);
-    const front = timelineElement({ id: "front", track: 0, zIndex: 7 });
-    const back = timelineElement({ id: "back", track: 1, zIndex: 0 });
-    usePlayerStore.getState().setElements([
-      { ...front, hasExplicitZIndex: true },
-      { ...back, hasExplicitZIndex: false },
-    ]);
-    const saveError = new Error("save failed");
-    const commitDomEditPatchBatches = vi
-      .fn<
-        (...args: unknown[]) => Promise<{ durable: boolean; allMatched: boolean; changed: boolean }>
-      >()
-      .mockRejectedValueOnce(saveError);
-    const { move, unmount } = renderTimelineEditingHookWithLifecycle({
-      timelineElements: [front, back],
-      iframe,
-      commitDomEditPatchBatches,
-    });
-    const doc = iframe.contentDocument;
-    if (!doc) throw new Error("Expected iframe document");
-    const frontElement = doc.getElementById("front") as HTMLElement | null;
-    const backElement = doc.getElementById("back") as HTMLElement | null;
-    if (!frontElement || !backElement) throw new Error("Expected reordered elements");
-
-    let rejection: unknown;
-    await act(async () => {
-      try {
-        await move(back, {
-          start: back.start,
-          track: back.track,
-          stackingReorder: {
-            contextKey: "root",
-            placement: { type: "above", layerId: "front" },
-            zIndexChanges: [
-              { key: "front", zIndex: 2 },
-              { key: "back", zIndex: 5 },
-            ],
-          },
-        });
-      } catch (error) {
-        rejection = error;
-      }
-      await flushAsyncWork();
-    });
-
-    expect(rejection).toBe(saveError);
-    expect(frontElement.style.zIndex).toBe("7");
-    expect(frontElement.style.position).toBe("relative");
-    expect(backElement.style.zIndex).toBe("");
-    expect(backElement.style.position).toBe("static");
-    const storeEntries = usePlayerStore.getState().elements;
-    expect(storeEntries.find((entry) => entry.id === "front")).toMatchObject({
-      zIndex: 7,
-      hasExplicitZIndex: true,
-    });
-    expect(storeEntries.find((entry) => entry.id === "back")).toMatchObject({
-      zIndex: 0,
-      hasExplicitZIndex: false,
-    });
-
-    unmount();
-  });
-
-  it("waits for the lifecycle z-index batch before resolving a reorder", async () => {
-    const iframe = createPreviewIframe([
-      { id: "front", track: 0, style: "position: relative; z-index: 1" },
-      { id: "back", track: 1, style: "position: relative; z-index: 0" },
-    ]);
-    const front = timelineElement({ id: "front", track: 0, zIndex: 1 });
-    const back = timelineElement({ id: "back", track: 1, zIndex: 0 });
-    let releaseBatch!: () => void;
-    const batchSave = new Promise<void>((resolve) => {
-      releaseBatch = resolve;
-    });
-    const commitDomEditPatchBatches = vi
-      .fn<
-        (...args: unknown[]) => Promise<{ durable: boolean; allMatched: boolean; changed: boolean }>
-      >()
-      .mockReturnValueOnce(
-        batchSave.then(() => ({ durable: true, allMatched: true, changed: true })),
-      );
-    const { move, unmount } = renderTimelineEditingHookWithLifecycle({
-      timelineElements: [front, back],
-      iframe,
-      commitDomEditPatchBatches,
-    });
-    let settled = false;
-
-    let movePromise!: Promise<void>;
-    await act(async () => {
-      movePromise = move(back, {
-        start: back.start,
-        track: back.track,
-        stackingReorder: {
-          contextKey: "root",
-          placement: { type: "above", layerId: "front" },
-          zIndexChanges: [
-            { key: "front", zIndex: 2 },
-            { key: "back", zIndex: 3 },
-          ],
-        },
-      }).then(() => {
-        settled = true;
-      });
-      await flushAsyncWork();
-    });
-
-    expect(commitDomEditPatchBatches).toHaveBeenCalledTimes(1);
-    expect(settled).toBe(false);
-
-    await act(async () => {
-      releaseBatch();
-      await movePromise;
-      await flushAsyncWork();
-    });
-    expect(settled).toBe(true);
-
-    unmount();
-  });
-
   it("keeps horizontal-only drag on the timing and GSAP shift path without z-index writes", async () => {
     const h = setupSingleClipHarness();
 
@@ -792,7 +449,6 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     if (!doc) throw new Error("Expected iframe document");
     expect(doc.getElementById("clip")?.getAttribute("data-start")).toBe("1.25");
     expect(doc.getElementById("clip")?.getAttribute("data-track-index")).toBe("0");
-    expect(h.commit).not.toHaveBeenCalled();
     expect(h.writeProjectFile.mock.calls[0]![1]).toContain('data-start="1.25"');
     expect(h.writeProjectFile.mock.calls[0]![1]).toContain('data-track-index="0"');
     expect(h.writeProjectFile.mock.calls[0]![1]).not.toContain("z-index");
@@ -822,51 +478,6 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     h.unmount();
   });
 
-  it("orders the timing write after the z-index commit so a diagonal drag can't clobber the restack", async () => {
-    // Gate the z-index commit so we can observe whether the timing write waits.
-    let releaseCommit!: () => void;
-    const commitGate = new Promise<void>((resolve) => {
-      releaseCommit = resolve;
-    });
-    const h = setupSingleClipHarness({
-      clipStyle: "position: relative; z-index: 0",
-      onZIndexCommit: vi
-        .fn<(entries: ZIndexEntry[]) => Promise<void>>()
-        .mockReturnValue(commitGate),
-    });
-    const { clip, commit, writeProjectFile, move, unmount } = h;
-
-    // Diagonal drag: both a time move (start change) and a restack (z-index change).
-    let movePromise!: Promise<unknown>;
-    await act(async () => {
-      movePromise = move(clip, {
-        start: 1.25,
-        track: clip.track,
-        stackingReorder: {
-          contextKey: "root",
-          placement: { type: "onto", layerId: "layer-clip" },
-          zIndexChanges: [{ key: "clip", zIndex: 5 }],
-        },
-      });
-      await flushAsyncWork();
-    });
-
-    // The z-index commit is in flight but gated; the full-file timing write must
-    // not have run yet, or it would overwrite the file without the z-index change.
-    expect(commit).toHaveBeenCalledTimes(1);
-    expect(writeProjectFile).not.toHaveBeenCalled();
-
-    // Release the z-index commit → the timing write now proceeds, on top of it.
-    await act(async () => {
-      releaseCommit();
-      await movePromise;
-      await flushAsyncWork();
-    });
-    expect(writeProjectFile).toHaveBeenCalled();
-
-    unmount();
-  });
-
   it("persists a same-file group move with one write containing every clip timing", async () => {
     const source = [
       '<div id="a" data-start="0" data-duration="1"></div>',
@@ -889,7 +500,6 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     const { groupMove, unmount } = renderTimelineEditingHook({
       timelineElements: clips,
       iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile,
       recordEdit,
@@ -926,7 +536,6 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     const { groupMove, unmount } = renderTimelineEditingHook({
       timelineElements: [a, b],
       iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile,
       recordEdit,
@@ -967,7 +576,6 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     const { groupMove, unmount } = renderTimelineEditingHook({
       timelineElements: [clip],
       iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile,
       recordEdit: vi.fn(async () => {}),
@@ -1055,7 +663,6 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     const { groupMove, unmount } = renderTimelineEditingHook({
       timelineElements: [cap],
       iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile,
       recordEdit: vi.fn(async () => {}),
@@ -1106,7 +713,6 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     const { groupMove, unmount } = renderTimelineEditingHook({
       timelineElements: [a, b],
       iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile,
       recordEdit: vi.fn(async () => {}),
@@ -1141,7 +747,6 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     const single = renderTimelineEditingHook({
       timelineElements: [clip],
       iframe: createPreviewIframe([{ id: "clip", track: 0 }]),
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile: singleWrite,
       recordEdit: vi.fn(async () => {}),
@@ -1155,7 +760,6 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     const group = renderTimelineEditingHook({
       timelineElements: [clip],
       iframe: createPreviewIframe([{ id: "clip", track: 0 }]),
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile: groupWrite,
       recordEdit: vi.fn(async () => {}),
@@ -1181,7 +785,6 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     const h = renderTimelineEditingHook({
       timelineElements: [clip],
       iframe: createPreviewIframe([{ id: "clip", track: 0 }]),
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile: vi.fn(async () => {}),
       recordEdit,
@@ -1241,7 +844,6 @@ describe("useTimelineEditing duration rollback on failed persist", () => {
     const hook = renderTimelineEditingHook({
       timelineElements: [clip],
       iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile,
       recordEdit: vi.fn(async () => {}),
@@ -1343,7 +945,6 @@ describe("useTimelineEditing duration rollback on failed persist", () => {
     const hook = renderTimelineEditingHook({
       timelineElements: [tail],
       iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile,
       recordEdit: vi.fn(async () => {}),
@@ -1380,7 +981,6 @@ describe("useTimelineEditing duration rollback on failed persist", () => {
     const succeeding = renderTimelineEditingHook({
       timelineElements: [clip],
       iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile,
       recordEdit: vi.fn(async () => {}),
@@ -1543,7 +1143,6 @@ describe("useTimelineEditing: canEdit gate", () => {
     const hook = renderTimelineEditingHook({
       timelineElements: [free, locked],
       iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile,
       recordEdit,
@@ -1717,7 +1316,6 @@ describe("useTimelineEditing: canEdit gate", () => {
     const hook = renderTimelineEditingHook({
       timelineElements: [voice1, voice2],
       iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile,
       recordEdit,
@@ -1759,7 +1357,6 @@ describe("useTimelineEditing: canEdit gate", () => {
     const hook = renderTimelineEditingHook({
       timelineElements: [member],
       iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile,
       recordEdit,
@@ -1982,7 +1579,6 @@ function setupNestedHarness() {
   const hook = renderTimelineEditingHook({
     timelineElements: parseTimelineFromDOM(doc, 20),
     iframe,
-    onZIndexCommit: vi.fn().mockResolvedValue(undefined),
     projectId: "p1",
     writeProjectFile,
     recordEdit: vi.fn(async () => {}),
@@ -2245,7 +1841,6 @@ describe("useTimelineEditing: nested rows write composition-local starts", () =>
     const hook = renderTimelineEditingHook({
       timelineElements: [clip],
       iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       writeProjectFile,
       recordEdit: vi.fn(async () => {}),
@@ -2375,7 +1970,6 @@ describe("clip timing edits sync GSAP exactly once", () => {
     const hook = renderTimelineEditingHook({
       timelineElements: [scene, side],
       iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
       projectId: "p1",
       activeCompPath: SCENE_PATH,
       writeProjectFile: project.writeProjectFile,

@@ -60,7 +60,8 @@ async function requestedChange(
   if (from === null) return null;
   if (c.req.method !== "PATCH") return { from };
   const newPath = textAt(await jsonBody(c), "newPath")[0];
-  const to = newPath ? resolveWritableWithinProject(projectDir, newPath) : null;
+  const kind = statSync(from, { throwIfNoEntry: false })?.isDirectory() ? "folder" : "file";
+  const to = newPath ? resolveWritableWithinProject(projectDir, newPath, kind) : null;
   return to === null ? null : { from, to: onDiskPath(to) };
 }
 

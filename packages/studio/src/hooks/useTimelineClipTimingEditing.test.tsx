@@ -43,7 +43,6 @@ function mountClipTiming() {
   function Harness() {
     hook = useTimelineClipTimingEditing({
       activeCompPath: "index.html",
-      timelineElements: [],
       showToast,
       writeProjectFile: vi.fn(),
       recordEdit: vi.fn(),
@@ -152,7 +151,6 @@ describe("a single-clip trim queued before a project switch", () => {
       queue = useTimelineEditQueue(projectId);
       hook = useTimelineClipTimingEditing({
         activeCompPath: "index.html",
-        timelineElements: [],
         showToast: vi.fn(),
         writeProjectFile: vi.fn(),
         recordEdit: vi.fn(),

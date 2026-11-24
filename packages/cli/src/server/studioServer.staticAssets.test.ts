@@ -120,3 +120,19 @@ describe("studio shell framing", () => {
     expect(response.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
   });
 });
+
+describe("a project page opened by direct navigation", () => {
+  it("is answered sandboxed by this server", async () => {
+    const project = path.join(root, "project");
+    fs.writeFileSync(path.join(project, "index.html"), '<div data-composition-id="main"></div>');
+    fs.writeFileSync(path.join(project, "page.html"), "<script>document.title = 1</script>");
+    const id = encodeURIComponent(path.basename(project));
+    for (const file of ["page.html", "comp/page.html"]) {
+      const response = await server.app.request(`/api/projects/${id}/preview/${file}`, {
+        headers: { "sec-fetch-site": "none", "sec-fetch-dest": "document" },
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Content-Security-Policy")).toBe("sandbox allow-scripts");
+    }
+  });
+});

@@ -203,6 +203,26 @@ describe.each(PARSERS)("sanitizeRichTextChildren (%s)", (_name, parse) => {
     expect(kept).not.toMatch(/position|\\|url\(|image-set\(/i);
   });
 
+  it.each([
+    [
+      "spacing a value was sent with",
+      "font-family:Inter,\n\tsans-serif;color:  red",
+      "font-family: Inter, sans-serif; color: red",
+    ],
+    ["a value holding markup", "color: red; font-family: Inter <b", "color: red"],
+    [
+      "a value holding an at-rule",
+      "font-style: italic; font-family: Inter @media",
+      "font-style: italic",
+    ],
+    ["a value holding a selector colon", "font-family: a:hover; color: red", "color: red"],
+  ])("writes a kept value from its own tokens, not %s", (_case, style, kept) => {
+    const host = parse("<span>x</span>");
+    host.firstElementChild?.setAttribute("style", style);
+    sanitizeRichTextChildren(host);
+    expect(host.firstElementChild?.getAttribute("style")).toBe(kept);
+  });
+
   // fails without the fix: the resource-function check read inside quoted strings and dropped the family.
   it("keeps a quoted font family whose name reads like a function", () => {
     const out = clean(`<span style='font-family: "Image(Display)"; color: red'>x</span>`, parse);
