@@ -251,7 +251,6 @@ test("a substituted asset is rejected on attachment retry instead of being trust
 test("artifact lookup is run-scoped and refuses expired or ambiguous receipts and bundles", (t) => {
   const f = fixture(t);
   for (const [name, job, artifactName] of [
-    ["Find previous release bundle", "pack", "release-bundle"],
     ["Find previous release receipt", "publish", "lambda-release-receipt"],
   ]) {
     for (const artifacts of [[], [{ id: 7, name: artifactName, expired: false }]]) {
@@ -287,9 +286,7 @@ test("receipt and bundle persistence precede side effects and do not overwrite p
   const pack = workflow.jobs.pack;
   const upload = pack.steps.find((s) => s.id === "bundle");
   assert.equal(upload.with.overwrite, false);
-  const resolve = pack.steps.findIndex((s) => s.name === "Resolve version");
-  for (const s of pack.steps.slice(resolve))
-    assert.equal(s.if, "steps.previous_bundle.outputs.artifact == ''");
+  assert.equal(upload.if, undefined);
   const publish = workflow.jobs.publish.steps;
   assert.ok(
     publish.findIndex((s) => s.name === "Save release receipt") <

@@ -640,7 +640,7 @@ test("the workflow publishes exactly the public workspace packages", () => {
 });
 
 test("release-commit code runs only in a job without secrets", () => {
-  assert.deepEqual(pack.permissions, { contents: "read", actions: "read" });
+  assert.deepEqual(pack.permissions, { contents: "read" });
   assert.equal(pack.environment, undefined);
   const packCheckout = pack.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
   assert.equal(packCheckout.with["persist-credentials"], false);
@@ -1090,7 +1090,6 @@ function runFindPrevious(step, artifacts) {
 }
 
 for (const [job, name, artifact] of [
-  ["pack", "Find previous release bundle", "release-bundle"],
   ["publish", "Find previous release receipt", "lambda-release-receipt"],
 ]) {
   test(`"${name}" hands the download step a bare artifact id, or nothing on a first attempt`, () => {
