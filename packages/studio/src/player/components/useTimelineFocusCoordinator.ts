@@ -126,9 +126,6 @@ const MAX_UNRESOLVED_FOCUS_RETRIES = 5;
 // bounds it by wall time instead, independent of re-renders.
 const UNRESOLVED_FOCUS_TIMEOUT_MS = 4000;
 
-/** Model-first focus actor; mounting is a consequence of its returned pins. */
-// Resolution, fallback, reveal, and focus form one ordered state machine.
-// fallow-ignore-next-line complexity
 function keepFallbackForRemount(resolvedRef: RefObject<{ nonce: number; id: string } | null>) {
   return () => {
     const resolved = resolvedRef.current;
@@ -138,6 +135,9 @@ function keepFallbackForRemount(resolvedRef: RefObject<{ nonce: number; id: stri
   };
 }
 
+/** Model-first focus actor; mounting is a consequence of its returned pins. */
+// Resolution, fallback, reveal, and focus form one ordered state machine.
+// fallow-ignore-next-line complexity
 export function useTimelineFocusCoordinator({
   scrollRef,
   logicalRows,
