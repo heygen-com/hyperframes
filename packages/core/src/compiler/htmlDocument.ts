@@ -431,6 +431,53 @@ export function injectTagsAtHeadStart(html: string, tags: string): string {
   return insertBeforeDocumentTag(html, "<body", `${tags}\n`) ?? `${tags}\n${html}`;
 }
 
+/**
+ * Where a tag that must run before everything else goes: just past the
+ * document's own `<head…>`, else past `<html…>`, else past the doctype, else 0.
+ * Never before the doctype, because content there puts the page in quirks mode.
+ *
+ * The prefix is read the way a browser tokenizes it, so "<head" inside an
+ * attribute value or a comment is not the head, and a `<head>` that follows
+ * other content (which a browser ignores) is not either. The scan ends at the
+ * first thing that is not whitespace, a comment, a declaration or `<html…>`.
+ */
+export function headContentStart(html: string): number {
+  let at = 0;
+  let cursor = html.charCodeAt(0) === 0xfeff ? 1 : 0;
+  for (;;) {
+    const prolog = skipProlog(html, cursor);
+    at = Math.max(at, prolog.doctypeEnd);
+    cursor = prolog.next;
+    const isHead = isTagAt(html, cursor, "<head");
+    if (!isHead && !isTagAt(html, cursor, "<html")) return at;
+    const end = findTagEnd(html, cursor + 1);
+    if (end === -1) return at;
+    if (isHead) return end + 1;
+    at = cursor = end + 1;
+  }
+}
+
+function skipProlog(html: string, from: number): { next: number; doctypeEnd: number } {
+  let doctypeEnd = 0;
+  let next = from;
+  while (next < html.length) {
+    const end = prologItemEnd(html, next);
+    if (end <= next) break;
+    if (startsWithLower(html, "<!doctype", next)) doctypeEnd = end;
+    next = end;
+  }
+  return { next, doctypeEnd };
+}
+
+/** End of the whitespace, comment or declaration at `at`; `at` when it is none of those, -1 when unclosed. */
+function prologItemEnd(html: string, at: number): number {
+  if (isHtmlWhitespace(html.charAt(at))) return at + 1;
+  if (html.startsWith("<!--", at)) return skipComment(html, at);
+  if (!html.startsWith("<!", at) && !html.startsWith("<?", at)) return at;
+  const close = html.indexOf(">", at);
+  return close === -1 ? -1 : close + 1;
+}
+
 export function injectScriptsAtHeadStart(html: string, scripts: readonly string[]): string {
   if (scripts.length === 0) return html;
   return injectTagsAtHeadStart(html, inlineScriptTags(scripts));
