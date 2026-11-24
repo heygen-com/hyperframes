@@ -1841,14 +1841,14 @@ describe("WebAudioTransport", () => {
 
     it("counts a source that is decoding against the next one", async () => {
       const t = transport();
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(() => new Promise(() => {})),
-      );
+      const fetch = vi.fn(() => new Promise(() => {}));
+      vi.stubGlobal("fetch", fetch);
       void t.decodeAudioElement(audio("a.mp4", 600));
       expect(t.fitsDecodeBudget(audio("a.mp4", 600))).toBe(true);
       expect(t.fitsDecodeBudget(audio("b.mp4", 100))).toBe(false);
       expect(t.fitsDecodeBudget(audio("c.mp4", 10))).toBe(true);
+      // The decode calls fetch a few awaits later; unstubbed before that, it reached the real network.
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
       vi.unstubAllGlobals();
     });
 
