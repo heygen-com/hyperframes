@@ -17,7 +17,7 @@ on:
       - "v*-*"
 
 env:
-  # Every package a release publishes, in publish order. The CLI is packed from
+  # Every package a release publishes; the publish job orders uploads by their dependencies. The CLI is packed from
   # @hyperframes/cli and published as the unscoped "hyperframes" package.
   NPM_PACKAGES: >-
     @hyperframes/share @hyperframes/parsers @hyperframes/lint @hyperframes/studio-server

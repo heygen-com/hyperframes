@@ -1052,7 +1052,7 @@ const deps = (...names) => Object.fromEntries(names.map((name) => [name, "1.2.3-
 
 // Runs "Publish packages" on one fixture tarball per package, in the order given, each manifest taking its
 // dependency fields from `packages`. The fake npm logs "start x" and "end x" around each upload of x.tgz, fails
-// every upload of the packages in FAIL, and holds an upload (up to 0.9 s) until OVERLAP uploads have started.
+// every upload of the packages it is told to fail, and holds an upload (up to 0.9 s) until enough others started.
 function runPublishWaves(packages, env = {}) {
   const temp = mkdtempSync(join(tmpdir(), "hyperframes-publish-waves-"));
   try {
