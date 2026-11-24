@@ -20,11 +20,44 @@ function film() {
   return { handle, present };
 }
 
+function kinds() {
+  document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-start="0" data-duration="8">
+        <img id="pic" src="a.png" />
+        <video id="vid" src="a.mp4"></video>
+        <audio id="aud" src="a.mp3"></audio>
+        <div id="lane" data-track-index="2"></div>
+        <div id="timed" data-start="1"></div>
+      </div>`;
+}
+
 describe("remove-elements", () => {
   it("removes every named clip, a composition host among them", () => {
     const { handle, present } = film();
     expect(removeElements({ handles: [handle("a"), handle("host")] })).toEqual({ removed: 2 });
     expect(present()).toEqual(["root", "b", "inner", "s"]);
+  });
+
+  it.each([
+    ["an image", "pic"],
+    ["a video without data-start", "vid"],
+    ["an audio without data-start", "aud"],
+    ["a clip placed only by data-track-index", "lane"],
+  ])("removes %s, which the runtime's timeline lists as a clip", (_, id) => {
+    kinds();
+    expect(removeElements({ handles: [handleFor(document.getElementById(id)!)] })).toEqual({
+      removed: 1,
+    });
+    expect(document.getElementById(id)).toBeNull();
+  });
+
+  it("removes every kind of clip the runtime's timeline lists, all of them in one mixed delete", () => {
+    kinds();
+    const ids = ["pic", "vid", "aud", "lane", "timed"];
+    const handles = ids.map((id) => handleFor(document.getElementById(id)!));
+    expect(removeElements({ handles })).toEqual({ removed: 5 });
+    expect(ids.filter((id) => document.getElementById(id))).toEqual([]);
+    expect(document.getElementById("root")).not.toBeNull();
   });
 
   it.each([
