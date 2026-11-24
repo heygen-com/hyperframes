@@ -26,6 +26,15 @@ import {
 
 import { RUNTIME_CDN_URL, runtimeCdnUrlForVersion } from "./runtime-url.js";
 
+const SEALED_RUNTIME_HINT =
+  ". A sealed player adds the HyperFrames runtime only to a composition from its own site: " +
+  "include the runtime script in a composition from another site, or play a composition you trust without sandbox-origin.";
+
+export function timelineNotFound(limitMs: number, sealed: boolean): string {
+  const message = `Composition timeline not found after ${limitMs / 1000}s`;
+  return sealed ? message + SEALED_RUNTIME_HINT : message;
+}
+
 export { runtimeCdnUrlForVersion };
 
 export interface ProbeResult {
@@ -42,6 +51,7 @@ export interface ProbeCallbacks {
   onRuntimeInjected?: () => void;
   resolveRuntimeUrl?: () => string;
   hostOwnsDeadline?: () => boolean;
+  sealed?: () => boolean;
 }
 
 /**
@@ -98,6 +108,9 @@ export class CompositionProbe {
   private _limitMs = loadLimitMs();
   private _navigationPending = false;
   private _timedFromNavigation = false;
+  private _preparationTimer: ReturnType<typeof setTimeout> | null = null;
+  private _limitReportedBeforeLoad = false;
+  private _preparedDocumentUnwritten = false;
 
   get failed(): boolean {
     if (this._failure === null || this._failure.deadline) return false;
@@ -115,10 +128,36 @@ export class CompositionProbe {
     this._limitMs = loadLimitMs();
     this._navigationPending = true;
     this._timedFromNavigation = true;
+    this._endPreparation();
+  }
+
+  markPreparation(): void {
+    this.markNavigation();
+    this._preparedDocumentUnwritten = true;
+    this._preparationTimer = setTimeout(() => this._reportLimitBeforeLoad(), this._limitMs);
+  }
+
+  frameWritten(): void {
+    this._preparedDocumentUnwritten = false;
   }
 
   endNavigation(): void {
     this._navigationPending = false;
+    this._endPreparation();
+  }
+
+  private _endPreparation(): void {
+    if (this._preparationTimer !== null) clearTimeout(this._preparationTimer);
+    this._preparationTimer = null;
+    this._limitReportedBeforeLoad = false;
+    this._preparedDocumentUnwritten = false;
+  }
+
+  private _reportLimitBeforeLoad(): void {
+    this._preparationTimer = null;
+    if (!this._navigationPending || this._callbacks.hostOwnsDeadline?.()) return;
+    this._limitReportedBeforeLoad = true;
+    this._callbacks.onError(timelineNotFound(this._limitMs, this._callbacks.sealed?.() === true));
   }
 
   get limitMs(): number {
@@ -140,6 +179,7 @@ export class CompositionProbe {
     this.stop();
     this._failure = null;
     this._runtimeInjected = false;
+    if (this._preparedDocumentUnwritten) return;
     if (!this._navigationPending) {
       this._startedAt = performance.now();
       this._limitMs = loadLimitMs();
@@ -147,7 +187,8 @@ export class CompositionProbe {
     }
     this._navigationPending = false;
     let attempts = 0;
-    let limitReached = false;
+    let limitReached = this._limitReportedBeforeLoad;
+    this._endPreparation();
 
     const tick = () => {
       attempts++;
@@ -183,7 +224,7 @@ export class CompositionProbe {
     if (this._interval) clearInterval(this._interval);
     this._interval = setInterval(tick, LATE_POLL_MS);
     this._failure = { document: this._iframe.contentDocument, deadline: true };
-    this._callbacks.onError(`Composition timeline not found after ${this._limitMs / 1000}s`);
+    this._callbacks.onError(timelineNotFound(this._limitMs, this._callbacks.sealed?.() === true));
   }
 
   private _poll(attempts: number): ProbeOutcome {

@@ -5,7 +5,13 @@ import {
   STUDIO_REAPPLIED_MARKS,
   STUDIO_SEEK_REAPPLY_STARTED,
 } from "../../studioReappliedMarks";
+import {
+  HF_COLOR_GRADING_ATTR,
+  normalizeHfColorGrading,
+  serializeHfColorGrading,
+} from "../../colorGrading";
 import type { SoftReloadRerun } from "./softReload";
+import { isRuntimeAttribute } from "../runtimeAttributes";
 
 /** `hf:<data-hf-id>` or `id:<id>`, the key the parent's restore diff uses. */
 export type RestoreElementKey = string;
@@ -143,6 +149,28 @@ function scopeRoots(file: string | null): ParentNode[] {
   );
 }
 
+function gradeRebuiltWithoutNewLut(value: string, current: string | null): string | null {
+  const next = normalizeHfColorGrading(value);
+  if (!next) return null;
+  if (next.lut && next.lut.src !== normalizeHfColorGrading(current)?.lut?.src) return null;
+  return serializeHfColorGrading(next);
+}
+
+function settable(el: Element, set: RestoreAttribute[]): RestoreAttribute[] | null {
+  const safe: RestoreAttribute[] = [];
+  for (const [name, value] of set) {
+    const next =
+      name === HF_COLOR_GRADING_ATTR
+        ? gradeRebuiltWithoutNewLut(value, el.getAttribute(HF_COLOR_GRADING_ATTR))
+        : safeToSet(name)
+          ? value
+          : null;
+    if (next === null) return null;
+    safe.push([name, next]);
+  }
+  return safe;
+}
+
 export type RestorePlan = [Element, drop: string[], set: RestoreAttribute[]][];
 
 /** Adds `root`'s live elements to `plan`; false when any is missing, not the file's own, or unsafe to change. */
@@ -158,10 +186,13 @@ function planRoot(
     // The preview rewrites a sub-composition's own root, so its attributes are not the file's.
     if (!el || el.hasAttribute("data-hf-inner-root")) return false;
     const keep = new Set(attributes.map(([name]) => name));
-    const drop = el.getAttributeNames().filter((name) => !keep.has(name));
+    const drop = el
+      .getAttributeNames()
+      .filter((name) => !keep.has(name) && !isRuntimeAttribute(el, name));
     const set = attributes.filter(([name, value]) => el.getAttribute(name) !== value);
-    if (!drop.every(safeToDrop) || !set.every(([name]) => safeToSet(name))) return false;
-    plan.push([el, drop, set]);
+    const safeSet = settable(el, set);
+    if (!drop.every(safeToDrop) || !safeSet) return false;
+    plan.push([el, drop, safeSet]);
   }
   return true;
 }

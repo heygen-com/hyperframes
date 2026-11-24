@@ -149,3 +149,57 @@ it("keeps the rotation an earlier draft drew on another live element when one dr
   restored();
   expect([gsap.getProperty("#b", "rotation"), gsap.getProperty("#b", "x")]).toEqual([30, 81]);
 });
+
+const recordOnB = (x: number) =>
+  drawDrafts([
+    { handle: handleFor(document.getElementById("b")!), props: { seconds: 1, values: { x } } },
+  ]);
+
+// fails without the fix: restoring #a's drag redrew every timeline and put #b's live recording back to its x 10.
+it("keeps another layer's live recording when a drag is restored", () => {
+  const { restored } = dragged();
+  recordOnB(81);
+  restored();
+  expect(Number(gsap.getProperty("#b", "x"))).toBe(81);
+});
+
+// fails without the fix: ending #a's recording redrew the timeline and put #b's live recording back to its x 10.
+it("keeps another layer's live recording when a recording ends", () => {
+  const { handle } = dragged();
+  // Ending a recording redraws the root timeline, where a tween moving #b would draw over its recording.
+  (window.__timelines!.main as unknown as gsap.core.Timeline).fromTo(
+    "#b",
+    { x: 10 },
+    { x: 20, duration: 5 },
+    0,
+  );
+  drawDrafts([{ handle, props: { seconds: 1, values: { x: 55 } } }]);
+  recordOnB(81);
+  drawDrafts([{ handle, end: "clear" }]);
+  expect(Number(gsap.getProperty("#b", "x"))).toBe(81);
+});
+
+// fails without the fix: the replay kept only B's last sample, opacity alone, and lost its recorded x 81.
+it("replays every value another layer's live recording has set when a drag is restored", () => {
+  const { restored } = dragged();
+  recordOnB(81);
+  drawDrafts([
+    {
+      handle: handleFor(document.getElementById("b")!),
+      props: { seconds: 1, values: { opacity: 0.4 } },
+    },
+  ]);
+  restored();
+  expect([Number(gsap.getProperty("#b", "x")), Number(gsap.getProperty("#b", "opacity"))]).toEqual([
+    81, 0.4,
+  ]);
+});
+
+// fails without the fix: replaying B's recording sought the film back to B's last sample, 1 s, from where it was.
+it("leaves the playhead where it is when a restore replays another layer's live recording", () => {
+  const { restored } = dragged();
+  recordOnB(81);
+  window.__player?.seek(2);
+  restored();
+  expect([window.__timelines!.main!.time(), Number(gsap.getProperty("#b", "x"))]).toEqual([2, 81]);
+});
