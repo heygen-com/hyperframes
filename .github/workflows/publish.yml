@@ -273,7 +273,6 @@ jobs:
             --provenance=false --sbom=false --build-context task=dist/arm64-image/task \
             --output type=oci,dest=dist/hyperframes-lambda-video-arm64.oci.tar packages/aws-lambda/image
           echo "sha256=$(sha256sum dist/hyperframes-lambda-video-arm64.oci.tar | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          rm -rf dist/lambda-handler-build dist/hf-media dist/arm64-image
 
       # pnpm pack writes workspace: ranges as versions only with the workspace installed.
       - run: bun install --frozen-lockfile
