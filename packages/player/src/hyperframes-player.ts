@@ -1172,13 +1172,13 @@ class HyperframesPlayer extends HTMLElement {
 
   /**
    * A sealed frame cannot be reached once it loads, so a same-site composition without the runtime is
-   * fetched and shown as srcdoc carrying it. One that brings its own, or that can't be fetched, loads by
-   * `src` as before, under its own headers.
+   * fetched and shown as srcdoc carrying it. One that brings its own, or that can't be read (no-cors: a
+   * redirect off the site answers opaque, without a CORS error), loads by `src` as before, under its own headers.
    */
   private _showSealedSrc(src: string, href: string): void {
     const load = ++this._documentLoad;
     this.probe.markPreparation();
-    fetch(href, { credentials: "same-origin" })
+    fetch(href, { mode: "no-cors", credentials: "same-origin" })
       .then(async (response): Promise<SealedPage> => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         if (mayCarryOwnPolicy(response)) return { bySrc: true };

@@ -50,7 +50,10 @@ describe("a sealed player brings its own runtime", () => {
     const el = player({ "sandbox-origin": "", src: sameSite() });
     const doc = await srcdocOf(el);
 
-    expect(fetchMock).toHaveBeenCalledWith(sameSite(), { credentials: "same-origin" });
+    expect(fetchMock).toHaveBeenCalledWith(sameSite(), {
+      mode: "no-cors",
+      credentials: "same-origin",
+    });
     expect(doc).not.toContain("cdn.jsdelivr.net");
     expect(doc).toContain('built: "<\\/script>"');
     // Base first, then the runtime, both ahead of the composition's own script.
@@ -197,11 +200,14 @@ describe("a sealed player brings its own runtime", () => {
   // fails without the fix: a redirect to another site that allows CORS hides that page's policy headers from
   // the fetch, so the page was shown as srcdoc although its own policy could not be read.
   it("loads by src when the page's headers can't all be read, as after a redirect to another site", async () => {
-    fetchMock.mockResolvedValueOnce(siteResponse(page(), {}, "cors"));
-    const el = player({ "sandbox-origin": "", src: sameSite() });
+    for (const type of ["cors", "opaque"] satisfies ResponseType[]) {
+      fetchMock.mockResolvedValueOnce(siteResponse(page(), {}, type));
+      const el = player({ "sandbox-origin": "", src: sameSite() });
 
-    await vi.waitFor(() => expect(el.iframeElement.src).toBe(sameSite()));
-    expect(el.iframeElement.hasAttribute("srcdoc")).toBe(false);
+      await vi.waitFor(() => expect(el.iframeElement.src).toBe(sameSite()));
+      expect(el.iframeElement.hasAttribute("srcdoc")).toBe(false);
+      el.remove();
+    }
   });
 
   // fails without the fix: the load clock started only once the frame was written, so a fetch that never answered
