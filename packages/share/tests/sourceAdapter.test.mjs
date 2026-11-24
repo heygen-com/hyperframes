@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm, readFile, symlink, mkdir, realpath } from "node:fs/promises";
+import {
+  mkdtemp,
+  writeFile,
+  rm,
+  readFile,
+  rename,
+  symlink,
+  mkdir,
+  realpath,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
@@ -333,6 +342,62 @@ test("a saved Begin with a newly excluded path is replaced by the current captur
       ({ path }) => path !== ".docker/config.json",
     ),
   );
+});
+
+async function interruptedV4Share(t) {
+  const oldName = "co\u200dver.svg";
+  const f = await fixture(t, { "cover.svg": "cover", [oldName]: "alternate" });
+  // Saved by v4 after Begin lost its response, before an upload ID was recorded.
+  const binding = JSON.parse(
+    await readFile(new URL("./fixtures/interrupted-v4-share.json", import.meta.url), "utf8"),
+  );
+  binding.projectPath = f.root;
+  await f.store.write(binding);
+  return { ...f, binding, oldName };
+}
+
+test("retrying an interrupted v4 share after correcting a filename publishes the new capture", async (t) => {
+  const f = await interruptedV4Share(t);
+  const server = fakeServer();
+  const options = { access: async () => signed, spaceId: "personal", ...server };
+  assert.equal(await shareSourceFingerprint(f.root), null);
+
+  await rename(join(f.root, f.oldName), join(f.root, "alternate.svg"));
+  const rendered = await projectFingerprint(f.root);
+  const source = shareSources(options);
+  const result = await source.prepare(f.root, rendered);
+  assert.equal(result.at, "ready");
+  assert.equal(result.snapshot.composition_id, f.binding.compositionId);
+  assert.deepEqual(await source.filesForExport(f.root, rendered), result.snapshot);
+  assert.equal(server.calls.begin.length, 1);
+  const [request] = server.calls.begin;
+  assert.notEqual(request.idempotencyKey, f.binding.inflight.idempotencyKey);
+  assert.deepEqual(
+    request.manifest.document.files.map(({ path }) => path),
+    ["alternate.svg", "cover.svg", "index.html"],
+  );
+  assert.deepEqual(server.calls.puts.map((bytes) => bytes.toString()).sort(), [
+    "<html>video</html>",
+    "alternate",
+    "cover",
+  ]);
+  const binding = await f.store.read(f.key);
+  assert.equal(binding.inflight, null);
+  assert.equal(binding.base.manifestSha256, request.manifest.sha256);
+});
+
+test("an incompatible pending manifest still requires a matching checksum and unconfirmed IDs", async (t) => {
+  const f = await interruptedV4Share(t);
+  const saved = f.binding.inflight;
+  for (const [change, error] of [
+    [{ manifestSha256: "0".repeat(64) }, /checksum/],
+    [{ uploadId: "known-upload" }, /path_collision/],
+    [{ snapshotId: "known-snapshot" }, /path_collision/],
+    [{ manifest: { ...saved.manifest, extra: true } }, /invalid_schema/],
+  ]) {
+    await f.store.write({ ...f.binding, inflight: { ...saved, ...change } });
+    await assert.rejects(f.store.read(f.key), error);
+  }
 });
 
 test("confirmed expired upload clears its intent so a retry starts with a new key", async (t) => {

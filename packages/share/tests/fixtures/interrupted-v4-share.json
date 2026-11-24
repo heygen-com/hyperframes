@@ -1,0 +1,49 @@
+{
+  "backend": "https://api.test",
+  "account": "owner",
+  "projectPath": "",
+  "version": 1,
+  "compositionId": "50ffc9de-1741-4880-be0c-a4eace9cb630",
+  "ownerSpaceId": "personal",
+  "boundAt": 1,
+  "composition": {
+    "id": "50ffc9de-1741-4880-be0c-a4eace9cb630"
+  },
+  "etag": null,
+  "base": null,
+  "inflight": {
+    "idempotencyKey": "68ab6e1d-5d10-4ea2-a518-39e06169e401",
+    "baseSnapshotId": null,
+    "resolvesConflictSnapshotIds": [],
+    "summary": null,
+    "manifest": {
+      "format_version": 1,
+      "entrypoint": "index.html",
+      "files": [
+        {
+          "path": "cover.svg",
+          "sha256": "3fa405a8301ace34d11cf44a816080b8f0e49a48fbd048b8aef1543a8c58bdb6",
+          "size": 5
+        },
+        {
+          "path": "co\u200dver.svg",
+          "sha256": "3f251db73f53a7fba1944fa7823e4fe9a2b83a001723311507ada0cef0ce16bc",
+          "size": 9
+        },
+        {
+          "path": "index.html",
+          "sha256": "258a9daaa23fe568d05a1ac53a0af0ec9d5e7deb6c3f05706c4c96156424a6e8",
+          "size": 18
+        }
+      ]
+    },
+    "manifestSha256": "ac7c71f1f9a4ec162a0baed4c71af3b2df18dac2d501bb84860c7e5ac4bc4e03",
+    "uploadId": null,
+    "snapshotId": null,
+    "uploadDeadline": null,
+    "verificationDeadline": null,
+    "begunAt": 2,
+    "sent": [],
+    "multipart": {}
+  }
+}

@@ -37,17 +37,17 @@ function unknownFields(value, fields, out) {
     if (!fields.includes(key)) out.push({ code: "invalid_schema" });
 }
 
-/** @param {unknown} raw @param {Violation[]} out @param {boolean} stored @returns {ManifestFile | null} */
-function fileOf(raw, out, stored) {
+/** @param {unknown} raw @param {Violation[]} out @param {{stored: boolean, pathErrors: Violation[]}} policy @returns {ManifestFile | null} */
+function fileOf(raw, out, policy) {
   if (!isObject(raw)) return (out.push({ code: "invalid_schema" }), null);
   const before = out.length;
   const { path, sha256, size } = raw;
   if (typeof path !== "string") out.push({ code: "invalid_schema" });
   else {
     try {
-      validatePath(path, stored);
+      validatePath(path, policy.stored);
     } catch (error) {
-      out.push(violationOf(error));
+      policy.pathErrors.push(violationOf(error));
     }
   }
   checkBlob(sha256, size, out);
@@ -70,8 +70,8 @@ function checkBlob(sha256, size, out) {
 const byUtf8 = (a, b) => Buffer.compare(Buffer.from(a.path, "utf8"), Buffer.from(b.path, "utf8"));
 
 /** The files in canonical order, or the inventory's first violation. @param {ManifestFile[]} files
- * @param {Violation[]} out */
-function canonicalInventory(files, out) {
+ * @param {Violation[]} out @param {Violation[]} pathErrors */
+function canonicalInventory(files, out, pathErrors) {
   const ordered = [...files].sort(byUtf8);
   /** @type {Map<string, number>} */
   const sizeByDigest = new Map();
@@ -84,18 +84,18 @@ function canonicalInventory(files, out) {
   try {
     checkInventoryPaths(ordered.map((file) => file.path));
   } catch (error) {
-    return (out.push(violationOf(error)), null);
+    pathErrors.push(violationOf(error));
   }
   return ordered;
 }
 
-/** @param {unknown} raw @param {Violation[]} out @param {boolean} stored */
-function filesOf(raw, out, stored) {
+/** @param {unknown} raw @param {Violation[]} out @param {{stored: boolean, pathErrors: Violation[]}} policy */
+function filesOf(raw, out, policy) {
   if (!Array.isArray(raw)) return (out.push({ code: "invalid_schema" }), null);
   const before = out.length;
-  const files = raw.map((item) => fileOf(item, out, stored));
+  const files = raw.map((item) => fileOf(item, out, policy));
   if (out.length !== before) return null;
-  return canonicalInventory(/** @type {ManifestFile[]} */ (files), out);
+  return canonicalInventory(/** @type {ManifestFile[]} */ (files), out, policy.pathErrors);
 }
 
 /** The canonical bytes of a valid document. @param {ManifestDocument} document */
@@ -113,16 +113,26 @@ export function canonicalBytes(document) {
 /** Validates a manifest document as the server does; throws ManifestInvalid. @param {unknown} raw
  * @param {boolean} [stored] @returns {Manifest} */
 export function parseManifest(raw, stored = false) {
-  if (!isObject(raw)) throw new ManifestInvalid([{ code: "invalid_schema" }]);
-  /** @type {Violation[]} */
-  const out = [];
+  return readManifest(raw, stored);
+}
+
+/** @param {Record<string, unknown>} raw @param {Violation[]} out */
+function checkHeader(raw, out) {
   const { format_version: version, entrypoint } = raw;
-  if (!("format_version" in raw) || typeof version !== "number" || !Number.isInteger(version))
+  if (typeof version !== "number" || !Number.isInteger(version))
     out.push({ code: "invalid_schema" });
   else if (version !== FORMAT_VERSION) out.push({ code: "unsupported_format_version" });
   if (typeof entrypoint !== "string") out.push({ code: "invalid_schema" });
   else if (entrypoint !== ENTRYPOINT) out.push({ code: "invalid_entrypoint" });
-  const files = filesOf(raw.files, out, stored);
+}
+
+/** @param {unknown} raw @param {boolean} stored @param {Violation[]} [obsoletePaths] @returns {Manifest} */
+function readManifest(raw, stored, obsoletePaths) {
+  if (!isObject(raw)) throw new ManifestInvalid([{ code: "invalid_schema" }]);
+  /** @type {Violation[]} */
+  const out = [];
+  checkHeader(raw, out);
+  const files = filesOf(raw.files, out, { stored, pathErrors: obsoletePaths ?? out });
   unknownFields(raw, ["format_version", "entrypoint", "files"], out);
   if (out.length) throw new ManifestInvalid(out);
   const ordered = /** @type {ManifestFile[]} */ (files);
@@ -152,3 +162,15 @@ export function parseCanonicalManifest(body) {
 /** A published snapshot or local base can retain v3 paths; its bytes and digest remain immutable.
  * @param {unknown} raw @returns {Manifest} */
 export const parseStoredManifest = (raw) => parseManifest(raw, true);
+
+/** Only an unconfirmed Begin can be discarded when its paths no longer pass validation.
+ * @param {{manifest?: unknown, manifestSha256?: unknown, uploadId?: unknown, snapshotId?: unknown}} saved */
+export function readUploadManifest(saved) {
+  /** @type {Violation[]} */
+  const obsoletePaths = [];
+  const unconfirmed = saved.uploadId === null && saved.snapshotId === null;
+  const manifest = readManifest(saved.manifest, true, unconfirmed ? obsoletePaths : undefined);
+  if (manifest.sha256 !== saved.manifestSha256)
+    throw new Error("Saved source upload manifest does not match its checksum.");
+  return obsoletePaths.length ? null : manifest;
+}
