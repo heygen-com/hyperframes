@@ -169,9 +169,7 @@ export async function fetchLocalVectors(
     for (const file of [`${artifactBasename}.json`, `${artifactBasename}.bin`] as const) {
       const url = `${base}/catalog-artifact/${file}`;
       const signal = AbortSignal.timeout(CATALOG_ARTIFACT_TIMEOUT_MS);
-      const response = options.publicOnly
-        ? await fetchRegistryHttps(url, signal, true)
-        : await fetch(url, { signal });
+      const response = await fetchRegistryHttps(url, signal, options.publicOnly);
       if (!response.ok) return false;
       fetched.push([file, Buffer.from(await response.arrayBuffer())]);
     }
