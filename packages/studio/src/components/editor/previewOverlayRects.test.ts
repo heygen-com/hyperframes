@@ -643,10 +643,14 @@ describe("a press held across a preview change on an opaque frame", () => {
     expect(standInHandle(started.selection.element)).toBe(started.selection.handle);
   });
 
-  // fails without the fix: a press the frame never answered, with no box drawn to start from, ended with nothing.
-  it("says the preview didn't answer when it never does and no box was drawn", async () => {
+  // fails without the fix: a press the frame never answered ended with nothing said; one with a box Studio drew
+  // started from that box anyway, with no snap targets and no GSAP start to commit from.
+  it.each([
+    ["no box was drawn", null],
+    ["Studio drew a box for it", { left: 1, top: 2, width: 3, height: 4 } as OverlayRect],
+  ])("refuses a press the frame never answers, saying why: %s", async (_name, overlayRect) => {
     const turned = makeSelection("turned", document.getElementById("turned")!);
-    const { opts } = await pressDuringChange(turned, { iframe: silentFrame() });
+    const { opts } = await pressDuringChange(turned, { iframe: silentFrame(), overlayRect });
     await vi.waitFor(() => expect(opts.onBlockedMoveRef.current).toHaveBeenCalledOnce(), {
       timeout: 3000,
     });
@@ -655,40 +659,6 @@ describe("a press held across a preview change on an opaque frame", () => {
       turned,
       "The preview didn't answer, so Studio can't move this layer. Try again.",
     );
-  });
-
-  it("starts from the box Studio drew when the frame shown never answers", async () => {
-    const turned = makeSelection("turned", document.getElementById("turned")!);
-    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
-    await pressDuringChange(turned, { iframe: silentFrame(), overlayRect: drawn });
-    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce(), { timeout: 3000 });
-    const [, , , started] = press.start.mock.calls[0] as [
-      unknown,
-      unknown,
-      unknown,
-      { selection: DomEditSelection; rect: OverlayRect },
-    ];
-    expect(started).toMatchObject({ selection: turned, rect: drawn });
-    expect(started.selection.element).toBe(turned.element);
-  });
-
-  // fails without the fix: the waiting box's redraws had already moved the box the drag started from.
-  it("starts from the box as it was at the press, though the pointer moved while it waited", async () => {
-    const turned = makeSelection("turned", document.getElementById("turned")!);
-    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
-    await pressDuringChange(turned, {
-      iframe: silentFrame(),
-      overlayRect: drawn,
-      whileWaiting: (opts) => opts.waitingPressRef.current!.draw!(30, 0),
-    });
-    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce(), { timeout: 3000 });
-    const [, , , started] = press.start.mock.calls[0] as [
-      unknown,
-      unknown,
-      unknown,
-      { rect: OverlayRect },
-    ];
-    expect(started.rect).toEqual(drawn);
   });
 
   it("asks the frame shown again when a swap comes after its first ask", async () => {
