@@ -104,3 +104,25 @@ it("runs none of the timeline's callbacks when it restores", () => {
   restored();
   expect(ran).not.toHaveBeenCalled();
 });
+
+const recordOnB = (x: number) =>
+  drawDrafts([
+    { handle: handleFor(document.getElementById("b")!), props: { seconds: 1, values: { x } } },
+  ]);
+
+// fails without the fix: restoring #a's drag redrew every timeline and put #b's live recording back to its x 10.
+it("keeps another layer's live recording when a drag is restored", () => {
+  const { restored } = dragged();
+  recordOnB(81);
+  restored();
+  expect(Number(gsap.getProperty("#b", "x"))).toBe(81);
+});
+
+// fails without the fix: ending #a's recording redrew the timeline and put #b's live recording back to its x 10.
+it("keeps another layer's live recording when a recording ends", () => {
+  const { handle } = dragged();
+  drawDrafts([{ handle, props: { seconds: 1, values: { x: 55 } } }]);
+  recordOnB(81);
+  drawDrafts([{ handle, end: "clear" }]);
+  expect(Number(gsap.getProperty("#b", "x"))).toBe(81);
+});
