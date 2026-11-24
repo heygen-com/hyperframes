@@ -2,8 +2,6 @@ import { useCallback } from "react";
 import type { TimelineElement } from "../player";
 import { toAuthoredStart, toCompositionTime } from "../player/store/timelineElement";
 import {
-  applyTimelineStackingReorder,
-  patchIframeDomTiming,
   persistTimelineEdit,
   formatTimelineAttributeNumber,
   formatTimelineMediaOffset,
@@ -15,13 +13,15 @@ import {
 import { playbackStartAttributeForElement } from "../player/lib/timelineElementHelpers";
 import {
   captureDurationRollback,
+  patchIframeDomTiming,
+  syncPreviewContentDuration,
+} from "./previewTimingPatch";
+import {
   finishClipTimingFallback,
   sdkTimingGsapSync,
   readFileContent,
-  syncPreviewContentDuration,
   timingGestureStep,
 } from "./timelineTimingSync";
-import { serializeZLaneGesture } from "../components/nle/zLaneGesture";
 import { cutoverCommittedOrThrow, sdkTimingPersist, type CutoverResult } from "../utils/sdkCutover";
 
 type SdkCommit = Extract<CutoverResult, { status: "committed" }>;
@@ -40,7 +40,6 @@ import {
 type UseTimelineClipTimingEditingOptions = Pick<
   UseTimelineEditingOptions,
   | "activeCompPath"
-  | "timelineElements"
   | "showToast"
   | "writeProjectFile"
   | "recordEdit"
@@ -52,7 +51,6 @@ type UseTimelineClipTimingEditingOptions = Pick<
   | "publishSdkSession"
   | "forceReloadSdkSession"
   | "invalidateGsapCache"
-  | "handleDomZIndexReorderCommitRef"
 > & {
   editQueueRef: TimelineEditQueue;
 };
@@ -60,7 +58,6 @@ type UseTimelineClipTimingEditingOptions = Pick<
 /** One clip's move and resize: the timing write, then its tween rewrite, as one undo step. */
 export function useTimelineClipTimingEditing({
   activeCompPath,
-  timelineElements,
   showToast,
   writeProjectFile,
   recordEdit,
@@ -72,7 +69,6 @@ export function useTimelineClipTimingEditing({
   publishSdkSession,
   forceReloadSdkSession,
   invalidateGsapCache,
-  handleDomZIndexReorderCommitRef,
   editQueueRef,
 }: UseTimelineClipTimingEditingOptions) {
   const enqueueEdit = useCallback(
@@ -150,16 +146,7 @@ export function useTimelineClipTimingEditing({
           patchIframeDomTiming(previewIframeRef.current, element, liveAttrs, activeCompPath);
         }
 
-        const reorderDone = applyTimelineStackingReorder({
-          element,
-          stackingReorder: updates.stackingReorder,
-          timelineElements,
-          iframe: previewIframeRef.current,
-          activeCompPath,
-          commit: handleDomZIndexReorderCommitRef?.current,
-        });
-
-        if (!startChanged && !trackChanged) return reorderDone;
+        if (!startChanged && !trackChanged) return Promise.resolve();
 
         // Snapshot the duration BEFORE the optimistic updates below so a failed
         // persist can roll the readout + live root back (see captureDurationRollback).
@@ -224,7 +211,7 @@ export function useTimelineClipTimingEditing({
                   { label: "Move timeline clip", ...step, skipRefresh: true },
                 )
             : undefined;
-        return reorderDone
+        return Promise.resolve()
           .then(() =>
             enqueueEdit(element, "Move timeline clip", buildMovePatches, step, {
               ifEarlierRefused: keepUnlessItOverlaps([{ element, start: updates.start }]),
@@ -239,7 +226,7 @@ export function useTimelineClipTimingEditing({
             throw error;
           });
       };
-      return updates.stackingReorder ? serializeZLaneGesture(commitMove) : commitMove();
+      return commitMove();
     },
     [
       previewIframeRef,
@@ -250,8 +237,6 @@ export function useTimelineClipTimingEditing({
       recordEdit,
       writeProjectFile,
       reloadPreview,
-      timelineElements,
-      handleDomZIndexReorderCommitRef,
       showToast,
       invalidateGsapCache,
       editQueueRef,

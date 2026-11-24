@@ -1,6 +1,12 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { registryPathUrl, registryHttpsUrl, fetchRegistryHttps } from "./transport.js";
 
+const network = vi.hoisted(() => ({ publicRequest: vi.fn() }));
+vi.mock("@hyperframes/engine/public-network", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hyperframes/engine/public-network")>()),
+  publicRequest: network.publicRequest,
+}));
+
 afterEach(() => vi.unstubAllGlobals());
 it("preserves private registries and signed CDN URLs while encoding path segments", () => {
   expect(
@@ -39,4 +45,15 @@ it("follows a relative HTTPS redirect", async () => {
     ).text(),
   ).toBe("ok");
   expect(fetchMock.mock.calls[1]?.[0]).toBe("https://private.example/asset");
+});
+// fails without the fix: a public-only hop let a configured capture proxy pick the address
+it("sends a public-only hop down the pinned route, never a configured proxy", async () => {
+  network.publicRequest.mockResolvedValueOnce(new Response("ok"));
+  const response = await fetchRegistryHttps(
+    "https://registry.example.com/x",
+    AbortSignal.timeout(1000),
+    true,
+  );
+  expect(await response.text()).toBe("ok");
+  expect(network.publicRequest).toHaveBeenCalledWith(expect.any(URL), expect.anything(), null);
 });

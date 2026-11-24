@@ -334,6 +334,15 @@ export function useFileManager({
         }
         await refreshFileTree();
         setRefreshKey((k) => k + 1);
+        const data = await res.json().catch(() => null);
+        const unchanged: unknown = data?.unchangedReferences;
+        if (Array.isArray(unchanged) && unchanged.length > 0) {
+          const more = unchanged.length > 5 ? ` and ${unchanged.length - 5} more` : "";
+          showToast(
+            `Renamed. These files still use the old name, so update them by hand: ${unchanged.slice(0, 5).join(", ")}${more}`,
+            "info",
+          );
+        }
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Rename failed: ${err.error}`);

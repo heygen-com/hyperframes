@@ -49,12 +49,12 @@ export function describeLateImage(
   pageOrigin: string,
   raw: RawResourceTiming | undefined,
 ): LateImageRecord {
-  const url = new URL(src);
-  const segments = url.pathname.split("/").filter(Boolean);
+  const url = URL.canParse(src) ? new URL(src) : undefined;
+  const segments = url?.pathname.split("/").filter(Boolean) ?? [];
   const name = segments.at(-1) ?? "";
   const dot = name.lastIndexOf(".");
   return {
-    from: url.origin === pageOrigin ? "page-server" : "other-origin",
+    from: url?.origin === pageOrigin ? "page-server" : "other-origin",
     pathDepth: segments.length,
     extension: dot > 0 ? name.slice(dot + 1).toLowerCase() : "",
     timing: raw ? splitTiming(raw) : "no-entry",

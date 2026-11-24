@@ -40,7 +40,7 @@ export const ffprobeBinary = () => configuredOr("ffprobe", "HYPERFRAMES_FFPROBE_
 // Containers that hold their own media and name no other file. A project's file is opened only with these, so no
 // list, manifest, script, device or text-art reader runs on it, and nothing it names is opened.
 export const SELF_CONTAINED_FORMATS =
-  "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,gif,ico,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
+  "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,caf,w64,wv,au,ac3,gif,ico,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
 
 /** ffmpeg or ffprobe options, placed before the file, that read it as one local self-contained container. */
 export function selfContainedInput(file) {

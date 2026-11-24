@@ -736,3 +736,12 @@ describe("convertTransfer", () => {
     expect(buf.readUInt16LE(0)).not.toBe(before);
   });
 });
+
+describe("TRANSITIONS lookup", () => {
+  it.each(["constructor", "toString", "__proto__", "hasOwnProperty"])(
+    "finds no transition for the inherited name %s",
+    (name) => {
+      expect(TRANSITIONS[name] ?? crossfade).toBe(crossfade);
+    },
+  );
+});

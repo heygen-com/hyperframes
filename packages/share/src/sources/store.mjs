@@ -4,7 +4,7 @@ import { constants } from "node:fs";
 import { lstat, open } from "node:fs/promises";
 import { join } from "node:path";
 import { errorCode, mkdirInside, writeJsonAtomic } from "../storage.mjs";
-import { parseStoredManifest } from "./manifest.mjs";
+import { localBaseDigest, readUploadIntent } from "./manifest.mjs";
 
 /** @param {unknown} value @returns {value is Record<string, unknown>} */
 const object = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -32,16 +32,13 @@ function checkSnapshots(raw) {
     raw.base !== null &&
     (!object(raw.base) ||
       typeof raw.base.snapshotId !== "string" ||
-      parseStoredManifest(raw.base.manifest).sha256 !== raw.base.manifestSha256)
+      localBaseDigest(raw.base.manifest) !== raw.base.manifestSha256)
   )
     throw new Error("Invalid source base snapshot.");
-  if (
-    raw.inflight !== null &&
-    (!object(raw.inflight) ||
-      typeof raw.inflight.idempotencyKey !== "string" ||
-      parseStoredManifest(raw.inflight.manifest).sha256 !== raw.inflight.manifestSha256)
-  )
+  if (raw.inflight === null) return;
+  if (!object(raw.inflight) || typeof raw.inflight.idempotencyKey !== "string")
     throw new Error("Invalid pending source upload.");
+  readUploadIntent(raw.inflight);
 }
 
 /** Project-local state is excluded by the portable source policy. Account/root mismatches fail closed, including copied folders.

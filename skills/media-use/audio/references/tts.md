@@ -82,7 +82,12 @@ node <SKILL_DIR>/audio/scripts/heygen-tts.mjs \
 
 node <SKILL_DIR>/audio/scripts/heygen-tts.mjs ./script.txt -o narration.wav
 node <SKILL_DIR>/audio/scripts/heygen-tts.mjs --list   # public starfish voices
+
+# Text that starts with dashes: put it last, after a lone --
+node <SKILL_DIR>/audio/scripts/heygen-tts.mjs -o aside.wav -- "--and then it stopped."
 ```
+
+- **Text:** the first word that is not a flag or a flag's value. A word starting with `--` is read as a flag, so when the text comes from somewhere else (a script line, a variable), pass the flags first, then a lone `--`, then the text: the word after `--` is always the text. It is the last word; a flag written after it stops the script with a message.
 
 - **Voice:** `--voice <id>` must be a **starfish** voice_id (`--list`, or `GET /v3/voices?engine=starfish`) or one of your cloned voice ids (below). v2-catalog ids are rejected with HTTP 400. Omit `--voice` (English) and it defaults to **Marcia** (`05f19352e8f74b0392a8f411eba40de1`, a fixed default so the choice is deterministic). Non-English with no `--voice` falls back to the first matching catalog voice.
 - **Output:** `.wav` → transcoded to 44.1k mono via ffmpeg; `.mp3` → raw bytes (no ffmpeg needed).

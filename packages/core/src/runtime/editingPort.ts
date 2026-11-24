@@ -181,6 +181,8 @@ export const EDITING_REQUEST_KINDS = [
   "wait-for-seek",
   "set-loop-start",
   "computed-styles",
+  "authored-styles",
+  "font-faces",
   "elements-at-point",
   "pointer-targets",
   "describe",
@@ -299,6 +301,14 @@ export interface EditingRequests {
     params: ({ selector: string } | { handle: EditingElementHandle }) & { properties: string[] };
     result: { styles: Record<string, string> | null };
   };
+  "authored-styles": {
+    params: { handle: EditingElementHandle; properties: string[] };
+    result: { styles: Record<string, string> | null };
+  };
+  "font-faces": {
+    params: NoParams;
+    result: { families: string[]; ownFaces: Array<{ family: string; src: string }> };
+  };
   /** The stack under a viewport point, topmost first, up to MAX_POINT_STACK. Describe one to keep. */
   "elements-at-point": {
     params: { x: number; y: number };
@@ -339,7 +349,10 @@ export interface EditingRequests {
     result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
   /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here. */
-  draft: { params: { drafts: EditingDraft[] }; result: EditingDraftReply };
+  draft: {
+    params: { drafts: EditingDraft[] };
+    result: EditingDraftReply & { gsapSetTakesDrafts?: true };
+  };
   "gesture-start": {
     params: { handles: EditingElementHandle[] };
     result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
@@ -573,6 +586,14 @@ function draftPropsWithOneXYWriter(value: unknown, translate: unknown): boolean 
   return entries.every(isDraftValue);
 }
 
+function gsapSetWithDrafts(params: unknown): GsapSetParams | null {
+  if (!isPlainRecord(params) || !("drafts" in params)) return parseGsapSet(params);
+  const { drafts, ...set } = params;
+  const parsed = parseGsapSet(set);
+  const drawn = draftList({ drafts });
+  return parsed && drawn ? { ...parsed, drafts: drawn.drafts } : null;
+}
+
 function draftList(params: unknown): EditingParams<"draft"> | null {
   if (!hasKeys(params, "drafts") || !Array.isArray(params.drafts)) return null;
   const { drafts } = params;
@@ -627,6 +648,12 @@ const PARAM_PARSERS: {
     const properties = styleProperties(params.properties);
     return target && properties ? { ...target, properties } : null;
   },
+  "authored-styles": (params) => {
+    if (!hasKeys(params, "handle,properties") || !isHandle(params.handle)) return null;
+    const properties = styleProperties(params.properties);
+    return properties?.length ? { handle: params.handle, properties } : null;
+  },
+  "font-faces": noParams,
   "elements-at-point": point,
   "pointer-targets": point,
   describe: handleList,
@@ -673,7 +700,7 @@ const PARAM_PARSERS: {
   "edit-element": parseEditElement,
   "stacking-family": (params) =>
     hasKeys(params, "handle") && isHandle(params.handle) ? { handle: params.handle } : null,
-  "gsap-set": parseGsapSet,
+  "gsap-set": gsapSetWithDrafts,
   "patch-tweens": parsePatchTweensRequest,
   "soft-reload": parseSoftReload,
   "hold-scenes": parseHoldScenes,

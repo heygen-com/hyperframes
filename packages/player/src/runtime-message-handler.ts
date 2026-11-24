@@ -13,6 +13,7 @@ import {
 import type { ShaderLoaderState } from "./shader-loader-state.js";
 import type { ShaderTransitionState } from "./shader-options.js";
 import { inspectRuntimeProtocol } from "@hyperframes/core/runtime/protocol";
+import { STUDIO_PREVIEW_ERROR_MESSAGE } from "@hyperframes/core/studio-preview-mark";
 import {
   parseStaticComposition,
   STATIC_COMPOSITION,
@@ -56,6 +57,7 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
   onRuntimeTimelineReady: (duration: number, assetsReady: boolean | undefined) => void;
   /** The frame's own static read, posted before its runtime boots, for a player that can't read the frame. */
   onStaticComposition?: (read: StaticComposition) => void;
+  onFrameError?: (message: unknown) => void;
   setBuffering?: (buffering: boolean) => void;
   setRuntimeFps?: (fps: number) => void;
   setRuntimeOwnsPlayRange?: (owns: boolean) => void;
@@ -77,6 +79,10 @@ export function handleRuntimeMessage(
   if (event.source !== frameWindow) return;
   const data = event.data as Record<string, unknown> | undefined;
   if (!data || data["source"] !== "hf-preview") return;
+  if (data["type"] === STUDIO_PREVIEW_ERROR_MESSAGE) {
+    callbacks.onFrameError?.(data["message"]);
+    return;
+  }
   const protocol = inspectRuntimeProtocol(data);
   if (protocol.status === "unsupported") {
     callbacks.dispatchEvent(

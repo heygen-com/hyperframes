@@ -10,7 +10,12 @@ import {
   type RegistryItem,
   type RegistryManifestEntry,
 } from "@hyperframes/core";
-import { fetchItemManifest, fetchRegistryManifest, DEFAULT_REGISTRY_URL } from "./remote.js";
+import {
+  fetchItemManifest,
+  fetchRegistryManifest,
+  readRegistryManifest,
+  DEFAULT_REGISTRY_URL,
+} from "./remote.js";
 import { runWithConcurrencyLimit } from "../utils/concurrency.js";
 import { closestNames } from "../utils/didYouMean.js";
 
@@ -18,6 +23,8 @@ export interface ResolveOptions {
   baseUrl?: string;
   /** Bypass the 24h manifest cache and fetch fresh data from the registry. */
   skipCache?: boolean;
+  /** Reach the registry only on public addresses (`fetchRegistryHttps`). */
+  publicOnly?: boolean;
   /**
    * Called once with a summary when items fail to load inside `loadAllItems`.
    * Defaults to writing a diagnostic line to stderr. Pass a quieter
@@ -39,7 +46,10 @@ export async function listRegistryItems(
   options: ResolveOptions = {},
 ): Promise<RegistryManifestEntry[]> {
   const baseUrl = options.baseUrl ?? DEFAULT_REGISTRY_URL;
-  const manifest = await fetchRegistryManifest(baseUrl, { skipCache: options.skipCache });
+  const manifest = await fetchRegistryManifest(baseUrl, {
+    skipCache: options.skipCache,
+    publicOnly: options.publicOnly,
+  });
   if (!manifest) return [];
   if (!filter?.type) return manifest.items;
   return manifest.items.filter((item) => item.type === filter.type);
@@ -67,6 +77,7 @@ export async function loadAllItems(
       return await fetchItemManifest(e.name, e.type, baseUrl, {
         skipCache: options.skipCache,
         cacheOnly: timedOut,
+        publicOnly: options.publicOnly,
       });
     } catch (err) {
       if (err instanceof Error && err.name === "TimeoutError") timedOut = true;
@@ -123,7 +134,7 @@ export async function resolveItem(
 export function unreachableRegistryMessage(name: string, baseUrl?: string): string {
   const where =
     baseUrl && !baseUrl.startsWith(DEFAULT_REGISTRY_URL)
-      ? ` Contacted ${baseUrl}, set by this project's hyperframes.json, not the public registry.`
+      ? ` The registry is ${baseUrl}, set by this project's hyperframes.json, not the public one.`
       : "";
   return `Item "${name}" not found — registry unreachable or empty.${where}`;
 }
@@ -147,7 +158,16 @@ export async function resolveItemWithDependencies(
   name: string,
   options: ResolveOptions = {},
 ): Promise<RegistryItem[]> {
-  const entries = await listRegistryItems(undefined, options);
+  const manifest = await readRegistryManifest(options.baseUrl ?? DEFAULT_REGISTRY_URL, {
+    skipCache: options.skipCache,
+    publicOnly: options.publicOnly,
+  }).catch((error: unknown) => {
+    const why = error instanceof Error ? error.message : String(error);
+    throw new Error(`${unreachableRegistryMessage(name, options.baseUrl)} ${why}`, {
+      cause: error,
+    });
+  });
+  const entries = manifest.items;
   const entry = entries.find((e) => e.name === name);
   if (!entry) {
     const available = entries.map((e) => e.name).join(", ");
@@ -188,6 +208,7 @@ export async function resolveItemWithDependencies(
 
     const pending = fetchItemManifest(registryEntry.name, registryEntry.type, options.baseUrl, {
       skipCache: options.skipCache,
+      publicOnly: options.publicOnly,
     });
     itemCache.set(itemName, pending);
     return pending;

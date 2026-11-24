@@ -203,6 +203,14 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     const path = wav("episode.wav", 8, (t) => voiced(t) + boom(t) + bed(t));
     vi.stubEnv("HEYGEN_API_KEY", "test-key");
     const cacheDir = join(dir, "cache-stems");
+    // A voice-free mix that arrived with the project is cleared by the fetch, never reported as the mix.
+    const plantedDir = join(
+      cacheDir,
+      "stems",
+      createHash("sha256").update(readFileSync(path)).digest("hex").slice(0, 12),
+    );
+    mkdirSync(plantedDir, { recursive: true });
+    writeFileSync(join(plantedDir, "no-vocals.wav"), "planted");
     const { analysis, textPath } = await readAudio(path, "episode.wav", {
       cacheDir,
       quality: "best",
@@ -225,6 +233,7 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
         "stems not described: the description service answered 404",
       ],
     });
+    expect(readFileSync(join(plantedDir, "no-vocals.wav"), "utf8")).not.toBe("planted");
     expect(analysis.voice!.source).toBe("activity");
     expect(analysis.effects!.events.map((e) => [Math.round(e.t * 10) / 10, e.kind])).toEqual([
       [2.4, "effect"],

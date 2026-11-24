@@ -1999,7 +1999,9 @@ async function downloadAndRewriteUrls(
 
   let result = html;
   for (const [url, relPath] of urlToRelPath) {
-    result = result.replaceAll(`"${url}"`, `"${relPath}"`).replaceAll(`'${url}'`, `'${relPath}'`);
+    result = result
+      .replaceAll(`"${url}"`, () => `"${relPath}"`)
+      .replaceAll(`'${url}'`, () => `'${relPath}'`);
     if (extraRewrite) result = extraRewrite(result, url, relPath);
   }
 
@@ -2130,7 +2132,7 @@ export async function localizeRemoteBackgroundImages(
     assets,
     // Quoted url('..')/url("..") are rewritten by downloadAndRewriteUrls' default
     // replaceAll; this handles the unquoted url(https://..) form.
-    (h, url, rel) => h.replaceAll(`url(${url})`, `url(${rel})`),
+    (h, url, rel) => h.replaceAll(`url(${url})`, () => `url(${rel})`),
   );
 }
 
@@ -2376,7 +2378,7 @@ function localizeFontFaceUrls(
           style,
           css,
           "</style>".length,
-          css.replaceAll(`url(${url})`, `url("${relPath}")`),
+          css.replaceAll(`url(${url})`, () => `url("${relPath}")`),
         ),
       ),
   );

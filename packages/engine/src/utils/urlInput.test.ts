@@ -180,6 +180,66 @@ describe("urlInputArgs", () => {
     },
   );
 
+  // fails without the fix: off a render service a local input had no protocol limit and a scheme went to ffmpeg as
+  // is, so a relative src such as concat:a.wav|/elsewhere/b.wav made ffmpeg open files the project never held.
+  it("opens a local input with the file protocol only, in every mode", () => {
+    for (const restricted of ["", "true"]) {
+      vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", restricted);
+      try {
+        for (const input of [
+          "/plan/compiled/bg.mp4",
+          "clip.mp4",
+          "./a:b.wav",
+          "C:\\renders\\bg.mp4",
+        ])
+          expect(urlInputArgs(input).slice(0, 2)).toEqual(["-protocol_whitelist", "file"]);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    }
+  });
+
+  it.each(["ffmpeg", "ffprobe"] as const)(
+    "refuses, for %s, a scheme ffmpeg would open as something other than the file it names",
+    (tool) => {
+      for (const input of [
+        "concat:a.wav|/etc/passwd",
+        "subfile,,start,0,end,0,,:/etc/passwd",
+        "crypto:/etc/passwd",
+        "async:/etc/passwd",
+        "cache:/etc/passwd",
+        "data:,x",
+        "pipe:0",
+        "fd:3",
+      ])
+        expect(() => urlInputArgs(input, { tool })).toThrow(/input is not read/);
+      expect(urlInputArgs("http://127.0.0.1:8080/bg.mp4", { tool })).not.toContain(
+        "-protocol_whitelist",
+      );
+    },
+  );
+
+  it.skipIf(spawnSync(getFfprobeBinary(), ["-version"]).status !== 0)(
+    "keeps ffprobe from opening another protocol under a local input's options",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-url-input-"));
+      try {
+        const wav = join(dir, "outside.wav");
+        const tone = ["-f", "lavfi", "-i", "sine=frequency=440:duration=1"];
+        spawnSync(getFfmpegBinary(), ["-v", "error", "-y", ...tone, wav]);
+        const probe = (options: string[], input: string) =>
+          spawnSync(getFfprobeBinary(), ["-v", "error", ...options, "-show_format", "--", input])
+            .status;
+        const local = urlInputArgs(wav, { tool: "ffprobe" });
+        expect(probe(local, wav)).toBe(0);
+        expect(probe([], `concat:${wav}|${wav}`)).toBe(0);
+        expect(probe(local, `concat:${wav}|${wav}`)).not.toBe(0);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("refuses an https input when no CA bundle exists", () => {
     expect(() => urlInputArgs(signed, { caBundles: ["/nonexistent.crt"] })).toThrow(/no CA bundle/);
   });
