@@ -50,6 +50,12 @@
       "types": "./dist/hfIds.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./linkedom-html": {
+      "source": "./src/linkedomHtml.ts",
+      "runtime": "./dist/linkedomHtml.js",
+      "types": "./dist/linkedomHtml.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./gsap-parser-recast": {
       "source": "./src/gsapParser.ts",
       "runtime": "./dist/gsapParser.js",
