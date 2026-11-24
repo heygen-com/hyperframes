@@ -27,7 +27,12 @@ import {
   type StreamingEncoder,
   type StreamingEncoderOptions,
 } from "@hyperframes/engine";
-import { ENCODER_IDLE, type EncoderPacer, watchEncoder } from "./encoderPacing.js";
+import {
+  ENCODER_IDLE,
+  type EncoderPacer,
+  EncoderPacingError,
+  watchEncoder,
+} from "./encoderPacing.js";
 import type { CompositeRequest, CompositeResult } from "./types.js";
 
 /** Bytes per pixel of the raw frames the layered encoder reads. */
@@ -411,9 +416,18 @@ function processExits(
 /**
  * `error` with each of `exits` its message does not already say appended,
  * when it is a plain error (a failed write or read); an error of its own
- * kind (a decline) is left as it is, its detail unchanged.
+ * kind (a decline) is left as it is, its detail unchanged, but for a pacing
+ * decline the encoder's own exit explains (its threads went as it exited):
+ * that is a failure, the exit named.
  */
 function withExits(error: unknown, exits: readonly string[]): unknown {
+  if (error instanceof EncoderPacingError) {
+    const exited = exits.filter((exit) => exit.startsWith("encoder: "));
+    if (exited.length === 0) return error;
+    return new Error(
+      `hdrPassthrough: the encoder exited mid-encode (${error.message}); ${exited.join("; ")}`,
+    );
+  }
   if (!(error instanceof Error) || error.constructor !== Error) return error;
   const unsaid = exits.filter((exit) => !error.message.includes(exit.split("\n")[0] ?? exit));
   if (unsaid.length > 0) error.message = `${error.message}; ${unsaid.join("; ")}`;
@@ -422,6 +436,16 @@ function withExits(error: unknown, exits: readonly string[]): unknown {
 
 /** How long a failed encode loop waits to learn whether the composite itself exited. */
 const COMPOSITE_EXIT_GRACE_MS = 1_000;
+
+/** Resolves once `encoder` has exited, or after `ms`. */
+async function encoderExitWithin(
+  encoder: Pick<StreamingEncoder, "getExitStatus">,
+  ms: number,
+): Promise<void> {
+  for (let waited = 0; waited < ms && encoder.getExitStatus() === "running"; waited += 20) {
+    await new Promise((done) => setTimeout(done, 20));
+  }
+}
 
 /** The composite's exit if it comes within `ms`, else undefined. */
 async function exitedWithin(
@@ -527,6 +551,9 @@ export async function compositeAndEncode(
     // A composite or encoder that died (out of memory, a signal) ends the encode early: name why,
     // read before either is stopped from here.
     const died = await exitedWithin(composite, COMPOSITE_EXIT_GRACE_MS);
+    // A pacing decline can be the encoder exiting: its threads go before the process does.
+    if (cause instanceof EncoderPacingError)
+      await encoderExitWithin(encoder, COMPOSITE_EXIT_GRACE_MS);
     const exits = processExits(died, encoder);
     stop.abort(error);
     composite.drop();

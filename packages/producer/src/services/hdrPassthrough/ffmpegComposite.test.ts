@@ -684,6 +684,41 @@ describe("compositeAndEncode when a process dies", () => {
     expect(error.message).toBe("hdrPassthrough: the encoder did not go idle within 120000 ms");
   });
 
+  it("names the encoder's exit when a pacing decline was the encoder exiting", async () => {
+    const base = request();
+    const log: string[] = [];
+    let exited = false;
+    const encoder: StreamingEncoder = {
+      ...fakeEncoder(log),
+      getExitStatus: () => (exited ? "error" : "running"),
+      getExitError: () =>
+        "FFmpeg exited with code 1\nffmpeg stderr (tail):\nCannot allocate memory",
+    };
+    const deps = dying(log, { ok: true, error: "" }, encoder);
+    deps.watchEncoder = async () => ({
+      check: () => undefined,
+      waitUntilIdle: async () => {
+        // Its threads are gone, and the process exits a moment later.
+        setTimeout(() => (exited = true), 50);
+        throw new EncoderPacingError("the encoder's thread 12 (vf#0:0) is gone");
+      },
+    });
+    deps.spawnComposite = () => ({
+      overlays: new PassThrough().resume(),
+      frames: chunked(3 * 4 * 2 * 6, 7),
+      wait: async () => ({ ok: true, error: "" }),
+      drop: () => undefined,
+    });
+    const error = await compositeAndEncode(
+      { ...base, plan: plan(base), overlayFrames: framesOf(threePngs()), outputPath: outputPath() },
+      deps,
+    ).catch((e) => e);
+    expect(error).not.toBeInstanceOf(EncoderPacingError);
+    expect(error.message).toContain("the encoder exited mid-encode");
+    expect(error.message).toContain("thread 12 (vf#0:0) is gone");
+    expect(error.message).toContain("Cannot allocate memory");
+  });
+
   it("leaves a decline's own error as it is", async () => {
     const base = request();
     const log: string[] = [];
