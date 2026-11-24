@@ -2,7 +2,7 @@
 // The A-roll must show in Studio's preview while playing: the untimed #plate backdrop above it is
 // one the film's own script keeps hidden outside 6-8 s, and the preview must not force it visible.
 import { writeFileSync } from "node:fs";
-import { launchStudioChrome } from "./chrome-executable.mjs";
+import { launchStudioChrome, screenshotInPlace } from "./chrome-executable.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
 const OUT_DIR = process.env.OUT_DIR;
@@ -62,7 +62,7 @@ try {
     do {
       attempts++;
       before = await readPreview();
-      png = await iframe.screenshot({ encoding: "base64" });
+      png = await screenshotInPlace(iframe, { encoding: "base64" });
       after = await readPreview();
     } while (before.box !== after.box && attempts < 5);
     if (OUT_DIR) writeFileSync(`${OUT_DIR}/${name}.png`, Buffer.from(png, "base64"));
