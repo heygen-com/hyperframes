@@ -146,11 +146,14 @@ function drawTranslate(element: Styled, offset: DraftTranslate): void {
 }
 
 export function rebaseDrawnPosition(element: Element, props: Record<string, unknown>): void {
-  const position = before.get(element)?.gsapPosition;
-  for (const axis of ["x", "y"] as const) {
-    const value = props[axis];
-    if (position && typeof value === "number" && Number.isFinite(value)) position[axis] = value;
-  }
+  const saved = before.get(element);
+  const moved = (["x", "y"] as const).filter((axis) => Number.isFinite(props[axis]));
+  if (!moved.length || !isStylableElement(element)) return;
+  element.style.setProperty("translate", "none");
+  for (const entry of saved?.inline ?? [])
+    if (entry[0] === "translate") [entry[1], entry[2]] = ["none", ""];
+  for (const axis of moved)
+    if (saved?.gsapPosition) saved.gsapPosition[axis] = props[axis] as number;
 }
 
 function restoreGsapPosition(element: Styled): void {
