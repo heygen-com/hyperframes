@@ -221,6 +221,8 @@ export interface StreamingEncoder {
   getExitError: () => string | undefined;
   /** Machine-readable cause available after FFmpeg exits unexpectedly mid-write. */
   getExitFailureReason?: () => "external_interruption" | undefined;
+  /** The signal that ended FFmpeg, once it has exited by one; null otherwise. */
+  getExitSignal?: () => NodeJS.Signals | null;
   /** The FFmpeg process id, while it has one. */
   readonly pid?: number;
 }
@@ -757,6 +759,8 @@ export function spawnFfmpegStream(
     },
 
     getExitStatus: () => exitStatus,
+
+    getExitSignal: () => exitSignal,
 
     getExitError: () => {
       if (exitStatus !== "error") return undefined;

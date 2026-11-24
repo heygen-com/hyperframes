@@ -286,11 +286,16 @@ describe("compositeAndEncode", () => {
           log.push("drop composite");
         },
       }),
-      waitForEncoder: async (pid, options) => {
-        log.push(`idle ${pid} ${options.calmPolls}`);
-      },
-      checkEncoder: async (pid) => {
-        log.push(`check ${pid}`);
+      watchEncoder: async (pid) => {
+        log.push(`watch ${pid}`);
+        return {
+          check: () => {
+            log.push(`check ${pid}`);
+          },
+          waitUntilIdle: async (options) => {
+            log.push(`idle ${pid} ${options.calmPolls}`);
+          },
+        };
       },
     };
   }
@@ -302,7 +307,7 @@ describe("compositeAndEncode", () => {
     const result = await compositeAndEncode(req, deps(log, fakeEncoder(log), 3 * FRAME));
     expect(log).toEqual([
       "spawn rgb48le",
-      "check 4242",
+      "watch 4242",
       "check 4242",
       `write 0 ${FRAME}`,
       "idle 4242 3",
@@ -349,7 +354,12 @@ describe("compositeAndEncode pacing guards", () => {
     };
   };
   const FRAME = 4 * 2 * 6;
-  const guarded = (check: CompositeDeps["checkEncoder"], log: string[]): CompositeDeps => ({
+  /** Deps whose encoder is refused by `watch`, or by the pacer's `check` from some frame on. */
+  const guarded = (
+    watch: () => Promise<void>,
+    log: string[],
+    check: () => void = () => undefined,
+  ): CompositeDeps => ({
     spawnEncoder: async () => fakeEncoder(log),
     spawnComposite: () => ({
       overlays: new PassThrough().resume(),
@@ -359,8 +369,10 @@ describe("compositeAndEncode pacing guards", () => {
         log.push("drop composite");
       },
     }),
-    waitForEncoder: async () => undefined,
-    checkEncoder: check,
+    watchEncoder: async () => {
+      await watch();
+      return { check, waitUntilIdle: async () => undefined };
+    },
   });
 
   it("declines before the first frame when the encoder process cannot be paced", async () => {
@@ -385,12 +397,15 @@ describe("compositeAndEncode pacing guards", () => {
   it("declines when the encoder process starts a child mid-encode", async () => {
     const log: string[] = [];
     let checks = 0;
-    const forksLater = async () => {
-      if (++checks === 3) throw new EncoderPacingError("the encoder process started 1 process(es)");
+    const forksLater = () => {
+      if (++checks === 2) throw new EncoderPacingError("the encoder process started 1 process(es)");
     };
-    await expect(compositeAndEncode(req(), guarded(forksLater, log))).rejects.toThrow(
-      "started 1 process(es)",
-    );
+    await expect(
+      compositeAndEncode(
+        req(),
+        guarded(async () => undefined, log, forksLater),
+      ),
+    ).rejects.toThrow("started 1 process(es)");
     expect(log.filter((entry) => entry.startsWith("write"))).toEqual([`write 0 ${FRAME}`]);
     // The composite's pipes are dropped, so a process it left behind cannot hold the encode open.
     expect(log).toContain("drop composite");
@@ -520,8 +535,7 @@ describe("compositeAndEncode with capture still running", () => {
           },
         };
       },
-      waitForEncoder: async () => undefined,
-      checkEncoder: async () => undefined,
+      watchEncoder: async () => ({ check: () => undefined, waitUntilIdle: async () => undefined }),
     };
     const encoding = compositeAndEncode(
       {
@@ -536,5 +550,97 @@ describe("compositeAndEncode with capture still running", () => {
     await expect(encoding).rejects.toThrow("video_animated at frame 2");
     expect(compositeStopped).toBe(true);
     expect(log).toContain("close");
+  });
+});
+
+describe("compositeAndEncode when a process dies", () => {
+  const plan = (base: CompositeRequest) => ({ ...base.plan, width: 4, height: 2, totalFrames: 3 });
+  const outputPath = () => join(mkdtempSync(join(tmpdir(), "hdr-composite-died-")), "v.mp4");
+
+  /** Deps whose composite stops reading overlays (its stdin fails with EPIPE) and exits as `exit`. */
+  function dying(log: string[], exit: { ok: boolean; error: string }, encoder = fakeEncoder(log)) {
+    const deps: CompositeDeps = {
+      spawnEncoder: async () => encoder,
+      spawnComposite: (_args, signal) => {
+        const overlays = new PassThrough();
+        overlays.on("data", () => {
+          const epipe = Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+          overlays.destroy(epipe);
+        });
+        return {
+          overlays,
+          frames: (async function* () {
+            await new Promise((done) => signal.addEventListener("abort", done));
+            yield* [] as Buffer[];
+          })(),
+          wait: async () => exit,
+          drop: () => {
+            log.push("drop composite");
+          },
+        };
+      },
+      watchEncoder: async () => ({ check: () => undefined, waitUntilIdle: async () => undefined }),
+    };
+    return deps;
+  }
+
+  it("names the composite's exit code, signal and stderr tail behind a bare write EPIPE", async () => {
+    const base = request();
+    const log: string[] = [];
+    const exit = {
+      ok: false,
+      error:
+        "FFmpeg exited with code 137\nffmpeg stderr (tail):\nout of memory (killed by SIGKILL)",
+    };
+    const error = await compositeAndEncode(
+      { ...base, plan: plan(base), overlayFrames: framesOf(threePngs()), outputPath: outputPath() },
+      dying(log, exit),
+    ).catch((e) => e);
+    expect(error.message).toContain("write EPIPE");
+    expect(error.message).toContain("ffmpeg composite failed: FFmpeg exited with code 137");
+    expect(error.message).toContain("out of memory (killed by SIGKILL)");
+  });
+
+  it("names the encoder's exit and signal when it had exited", async () => {
+    const base = request();
+    const log: string[] = [];
+    const encoder: StreamingEncoder = {
+      ...fakeEncoder(log),
+      getExitStatus: () => "error",
+      getExitError: () =>
+        "FFmpeg exited with code 1\nffmpeg stderr (tail):\nCannot allocate memory",
+      getExitSignal: () => "SIGSEGV",
+    };
+    const error = await compositeAndEncode(
+      { ...base, plan: plan(base), overlayFrames: framesOf(threePngs()), outputPath: outputPath() },
+      dying(log, { ok: true, error: "" }, encoder),
+    ).catch((e) => e);
+    expect(error.message).toContain("write EPIPE");
+    expect(error.message).toContain("encoder: FFmpeg exited with code 1");
+    expect(error.message).toContain("Cannot allocate memory (killed by SIGSEGV)");
+  });
+
+  it("leaves a decline's own error as it is", async () => {
+    const base = request();
+    const log: string[] = [];
+    const deps = dying(log, { ok: false, error: "FFmpeg exited with code 1" });
+    deps.watchEncoder = async () => ({
+      check: () => {
+        throw new EncoderPacingError("the encoder process started 1 process(es) of its own");
+      },
+      waitUntilIdle: async () => undefined,
+    });
+    deps.spawnComposite = () => ({
+      overlays: new PassThrough().resume(),
+      frames: chunked(3 * 4 * 2 * 6, 7),
+      wait: async () => ({ ok: false, error: "FFmpeg exited with code 1" }),
+      drop: () => undefined,
+    });
+    const error = await compositeAndEncode(
+      { ...base, plan: plan(base), overlayFrames: framesOf(threePngs()), outputPath: outputPath() },
+      deps,
+    ).catch((e) => e);
+    expect(error).toBeInstanceOf(EncoderPacingError);
+    expect(error.message).toBe("the encoder process started 1 process(es) of its own");
   });
 });

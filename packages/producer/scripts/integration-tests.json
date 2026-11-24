@@ -74,6 +74,7 @@
   "src/services/render/stages/extractVideosStage.integration.test.ts",
   "src/services/render/stages/extractVideosStage.hdrDeferral.integration.test.ts",
   "src/services/render/videoShownBoxes.integration.test.ts",
+  "src/services/hdrPassthrough/encoderPacing.integration.test.ts",
   "src/services/hdrPassthrough/ffmpegBlendCheck.integration.test.ts",
   "src/services/hdrPassthrough/ffmpegComposite.integration.test.ts",
   "src/services/hdrPassthrough/overlayCapture.integration.test.ts",

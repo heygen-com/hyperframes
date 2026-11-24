@@ -27,14 +27,7 @@ import {
   type StreamingEncoder,
   type StreamingEncoderOptions,
 } from "@hyperframes/engine";
-import {
-  assertPaceableEncoder,
-  ENCODER_IDLE,
-  EncoderPacingError,
-  type IdleWaitOptions,
-  procThreadStates,
-  waitUntilIdle,
-} from "./encoderPacing.js";
+import { ENCODER_IDLE, type EncoderPacer, watchEncoder } from "./encoderPacing.js";
 import type { CompositeRequest, CompositeResult } from "./types.js";
 
 /** Bytes per pixel of the raw frames the layered encoder reads. */
@@ -191,10 +184,12 @@ export interface CompositeDeps {
     wait: () => Promise<{ ok: boolean; error: string }>;
     drop: () => void;
   };
-  /** Resolves once the encoder (`pid`) has gone idle (`encoderPacing.ts`). */
-  waitForEncoder: (pid: number | undefined, options: IdleWaitOptions) => Promise<void>;
-  /** Rejects with `EncoderPacingError` unless `pid` is an ffmpeg with no process of its own (`encoderPacing.ts`). */
-  checkEncoder: (pid: number | undefined) => Promise<void>;
+  /**
+   * Proves `pid` is the process running libx265 for this encode and returns
+   * its pacer; rejects with `EncoderPacingError` when it cannot
+   * (`encoderPacing.watchEncoder`).
+   */
+  watchEncoder: (pid: number | undefined) => Promise<EncoderPacer>;
 }
 
 function spawnComposite(args: string[], signal: AbortSignal) {
@@ -218,7 +213,9 @@ function spawnComposite(args: string[], signal: AbortSignal) {
     wait: async () => {
       const outcome = await managed.wait();
       const ok = outcome.reason === "exit" && outcome.exitCode === 0;
-      return { ok, error: ok ? "" : formatFfmpegError(outcome.exitCode, outcome.stderr) };
+      if (ok) return { ok, error: "" };
+      const killed = outcome.signal ? ` (killed by ${outcome.signal})` : "";
+      return { ok, error: `${formatFfmpegError(outcome.exitCode, outcome.stderr)}${killed}` };
     },
   };
 }
@@ -229,11 +226,7 @@ export const DEFAULT_COMPOSITE_DEPS: CompositeDeps = {
       ffmpegStreamingTimeout: LAYERED_ENCODER_TIMEOUT_MS,
     }),
   spawnComposite,
-  waitForEncoder: (pid, options) =>
-    pid === undefined
-      ? Promise.reject(new EncoderPacingError("the encoder has no process id"))
-      : waitUntilIdle(() => procThreadStates(pid), options),
-  checkEncoder: (pid) => assertPaceableEncoder(pid),
+  watchEncoder: (pid) => watchEncoder(pid),
 };
 
 /** Bytes of composited frames held ahead of the encoder, at least `MIN_READ_AHEAD` frames. */
@@ -395,6 +388,38 @@ async function* wholeFrames(chunks: AsyncIterable<Buffer>, frameBytes: number) {
   if (pendingBytes > 0) throw new Error("hdrPassthrough: the composite ended inside a frame");
 }
 
+/**
+ * What the composite's and the encoder's own exits said, when either had
+ * exited before the passthrough stopped them, or "": exit code, signal and
+ * stderr tail. A failure that surfaces only as a write to a closed pipe
+ * (`write EPIPE`) says nothing of why the other end went away.
+ */
+function processExits(
+  composite: { ok: boolean; error: string } | undefined,
+  encoder: Pick<StreamingEncoder, "getExitStatus" | "getExitError" | "getExitSignal">,
+): string {
+  const exits: string[] = [];
+  if (composite && !composite.ok) exits.push(`ffmpeg composite failed: ${composite.error}`);
+  if (encoder.getExitStatus() !== "running") {
+    const signal = encoder.getExitSignal?.();
+    const error = encoder.getExitError() ?? "exited";
+    exits.push(`encoder: ${error}${signal ? ` (killed by ${signal})` : ""}`);
+  }
+  return exits.join("; ");
+}
+
+/**
+ * `error` with `exits` appended to its message, when it is a plain error (a
+ * failed write or read); an error of its own kind (a decline) is left as it
+ * is, its detail unchanged.
+ */
+function withExits(error: unknown, exits: string): unknown {
+  if (exits && error instanceof Error && error.constructor === Error) {
+    error.message = `${error.message}; ${exits}`;
+  }
+  return error;
+}
+
 /** How long a failed encode loop waits to learn whether the composite itself exited. */
 const COMPOSITE_EXIT_GRACE_MS = 1_000;
 
@@ -420,7 +445,8 @@ async function exitedWithin(
  * encoder (`compositeEncoderOptions`) under `request.abortSignal`, handing
  * each composited frame to the encoder once it has gone idle after the
  * previous one (the composite runs a few frames ahead, `readAhead`, and the
- * encoder process is checked before each frame, `checkEncoder`), and
+ * encoder process, proven to be the libx265 encode first, is checked
+ * before each frame, `watchEncoder`), and
  * resolves with timing + size. `onFramesEncoded` hears each frame the
  * encoder has taken. Throws (caller falls back) when the overlay frames
  * fail (with their error), when either process fails, when the composite
@@ -443,9 +469,10 @@ export async function compositeAndEncode(
   const signal = abortSignal ? AbortSignal.any([abortSignal, stop.signal]) : stop.signal;
   const started = Date.now();
   const encoder = await deps.spawnEncoder(outputPath, compositeEncoderOptions(request), signal);
+  let pacer: EncoderPacer;
   try {
-    // Before anything else starts: an encoder that is not an ffmpeg declines here.
-    await deps.checkEncoder(encoder.pid);
+    // Before anything else starts: an encoder not proven to be the libx265 encode declines here.
+    pacer = await deps.watchEncoder(encoder.pid);
   } catch (error) {
     stop.abort(error);
     await encoder.close().catch(() => undefined);
@@ -471,7 +498,7 @@ export async function compositeAndEncode(
       if (framesWritten >= plan.totalFrames) {
         throw new Error("hdrPassthrough: the composite wrote more frames than the plan");
       }
-      await deps.checkEncoder(encoder.pid);
+      pacer.check();
       if (!(await encoder.writeFrame(frame))) {
         throw new Error(
           `hdrPassthrough: the encoder stopped: ${encoder.getExitError() ?? "exited early"}`,
@@ -479,7 +506,7 @@ export async function compositeAndEncode(
       }
       framesWritten++;
       const waitStart = Date.now();
-      await deps.waitForEncoder(encoder.pid, { ...ENCODER_IDLE, signal });
+      await pacer.waitUntilIdle({ ...ENCODER_IDLE, signal });
       idleWaitMs += Date.now() - waitStart;
       request.onFramesEncoded?.(framesWritten);
       asked = Date.now();
@@ -494,19 +521,17 @@ export async function compositeAndEncode(
       );
     }
   } catch (error) {
-    // A composite that died (out of memory, a signal) ends its output early: name why.
+    // A composite or encoder that died (out of memory, a signal) ends the encode early: name why,
+    // read before either is stopped from here.
     const died = await exitedWithin(composite, COMPOSITE_EXIT_GRACE_MS);
+    const exits = processExits(died, encoder);
     stop.abort(error);
     composite.drop();
     await encoder.close().catch(() => undefined);
     await composite.wait().catch(() => undefined);
     // Not awaited: the feed may still be waiting on capture's next frame, and fails at its next write.
     if (abortSignal?.aborted) throw abortSignal.reason;
-    if (feedError !== undefined) throw feedError;
-    if (died && !died.ok && error instanceof Error) {
-      throw new Error(`${error.message}; ffmpeg composite failed: ${died.error}`);
-    }
-    throw error;
+    throw withExits(feedError ?? error, exits);
   }
 
   let framesEncoded = 0;

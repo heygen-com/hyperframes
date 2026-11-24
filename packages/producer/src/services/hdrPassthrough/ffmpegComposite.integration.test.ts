@@ -600,11 +600,11 @@ describe.skipIf(!HAS_X265 || process.platform !== "linux")(
       return { ...request, overlayFrames: frames };
     }
 
-    it("declines an encoder process that is not ffmpeg before the composite starts", async () => {
+    it("declines an encoder process that runs ffmpeg as its child before the composite starts", async () => {
       const started = Date.now();
       const error = await compositeAndEncode(await wrappedRequest(framesOf([]))).catch((e) => e);
       expect(error).toBeInstanceOf(EncoderPacingError);
-      expect(String(error.message)).toMatch(/not ffmpeg/);
+      expect(String(error.message)).toMatch(/started 1 process\(es\) of its own/);
       expect(Date.now() - started).toBeLessThan(30_000);
     }, 60_000);
 
@@ -617,10 +617,13 @@ describe.skipIf(!HAS_X265 || process.platform !== "linux")(
       const error = await compositeAndEncode(await wrappedRequest(queue), {
         ...DEFAULT_COMPOSITE_DEPS,
         // Accepts the encoder at first, then finds it has forked: the encode stops mid-way.
-        checkEncoder: async () => {
-          if (++checks === 3)
-            throw new EncoderPacingError("the encoder process started 1 process(es)");
-        },
+        watchEncoder: async (pid) => ({
+          check: () => {
+            if (++checks === 2)
+              throw new EncoderPacingError("the encoder process started 1 process(es)");
+          },
+          waitUntilIdle: (options) => waitUntilIdle(() => procThreadStates(pid ?? -1), options),
+        }),
       }).catch((e) => e);
       expect(error).toBeInstanceOf(EncoderPacingError);
       expect(Date.now() - started).toBeLessThan(30_000);
