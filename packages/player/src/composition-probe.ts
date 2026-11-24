@@ -117,6 +117,10 @@ export class CompositionProbe {
     this._timedFromNavigation = true;
   }
 
+  endNavigation(): void {
+    this._navigationPending = false;
+  }
+
   get limitMs(): number {
     return this._limitMs;
   }
