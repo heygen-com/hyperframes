@@ -947,10 +947,10 @@
     return raw.endsWith("%") ? parsePx(raw) / 100 : parsePx(raw);
   }
 
-  // Alpha of a CSS colour; 1 when no alpha component is present. Handles both
-  // legacy `rgba(r, g, b, a)` and modern `rgb(r g b / a)` syntaxes.
+  // Chromium retains these colour spaces in computed styles instead of converting them to RGB.
+  // Their alpha follows a slash; legacy rgba still puts it in the fourth comma-separated slot.
   function colorAlpha(color) {
-    const match = (color || "").match(/rgba?\(([^)]+)\)/);
+    const match = (color || "").match(/(?:rgba?|lab|lch|oklab|oklch|color)\(([^)]+)\)/);
     if (!match) return 1;
     const body = match[1];
     return body.includes(",")

@@ -1,4 +1,3 @@
-import { clearStudioBoxSize } from "../components/editor/manualEdits";
 import { setElementGsapPosition, setElementGsapScale } from "../utils/elementGsap";
 import { roundTo3 } from "../utils/rounding";
 import { logResize } from "../utils/resizeDebug";
@@ -54,7 +53,6 @@ export function correctOnElement(
   dropPoint: Point,
   { base, gsapPos }: { base: Point; gsapPos: Point },
 ): ScaleDrop | "settled" | null {
-  clearStudioBoxSize(draftEl);
   // Draw the committed scale before measuring: on a first resize the timeline has not re-seeked yet,
   // so the box would read at its natural size and the correction would be skipped.
   if (committedScale) setElementGsapScale(draftEl, committedScale.x, committedScale.y);

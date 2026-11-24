@@ -539,6 +539,47 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
   );
 
   it.each([
+    { name: "transparent modern oklch fill", style: "color:oklch(1 0 0 / 0)", flagged: true },
+    { name: "faint modern oklab fill", style: "color:oklab(1 0 0 / .02)", flagged: true },
+    { name: "transparent modern lab fill", style: "color:lab(100 0 0 / 0)", flagged: true },
+    { name: "transparent modern lch fill", style: "color:lch(100 0 0 / 0)", flagged: true },
+    {
+      name: "transparent modern display-p3 fill",
+      style: "color:color(display-p3 1 1 1 / 0)",
+      flagged: true,
+    },
+    {
+      name: "modern fill at the paint threshold",
+      style: "color:oklch(1 0 0 / .05)",
+      flagged: true,
+    },
+    {
+      name: "modern fill above the paint threshold",
+      style: "color:oklch(1 0 0 / .051)",
+      flagged: false,
+    },
+    { name: "opaque modern fill", style: "color:oklch(1 0 0 / 1)", flagged: false },
+    { name: "modern fill with omitted alpha", style: "color:oklch(1 0 0)", flagged: false },
+    {
+      name: "transparent modern stroke",
+      style: "color:transparent;-webkit-text-stroke:4px color(display-p3 1 1 1 / 0)",
+      flagged: true,
+    },
+    {
+      name: "faint modern stroke",
+      style: "color:transparent;-webkit-text-stroke:4px oklch(1 0 0 / .02)",
+      flagged: true,
+    },
+    {
+      name: "opaque modern stroke",
+      style: "color:transparent;-webkit-text-stroke:4px color(display-p3 1 1 1 / 1)",
+      flagged: false,
+    },
+    {
+      name: "modern stroke with omitted alpha",
+      style: "color:transparent;-webkit-text-stroke:4px oklch(1 0 0)",
+      flagged: false,
+    },
     {
       name: "outline text (transparent fill, visible stroke)",
       style: "color:transparent;-webkit-text-stroke:4px #fff",
@@ -562,6 +603,30 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
       </div>`);
     expect(codes.includes("text_not_painted")).toBe(flagged);
   });
+
+  it.each([
+    { name: "transparent", color: "oklch(.5 0 0 / 0)", occluded: false },
+    { name: "faint", color: "color(display-p3 .5 .5 .5 / .02)", occluded: false },
+    { name: "at the occlusion threshold", color: "oklch(.5 0 0 / .6)", occluded: false },
+    { name: "above the occlusion threshold", color: "oklch(.5 0 0 / .61)", occluded: true },
+    { name: "opaque", color: "oklch(.5 0 0 / 1)", occluded: true },
+    { name: "with omitted alpha", color: "color(display-p3 .5 .5 .5)", occluded: true },
+  ])("judges a modern background $name by its alpha", async ({ color, occluded }) => {
+    const text = heading(300, "Caption");
+    const cover = `<div style="position:absolute;inset:0;background:${color}"></div>`;
+    expect((await auditCodes(stage(text + cover))).includes("text_occluded")).toBe(occluded);
+  });
+
+  it.each([
+    { name: "below", color: "oklch(1 0 0 / .34)", overlap: false },
+    { name: "at", color: "color(display-p3 1 1 1 / .35)", overlap: true },
+  ])(
+    "judges modern overlapping text $name the solid-text threshold",
+    async ({ color, overlap }) => {
+      const text = heading(100, "Upper", `color:${color}`) + heading(150, "Lower");
+      expect((await auditCodes(stage(text))).includes("content_overlap")).toBe(overlap);
+    },
+  );
 
   describe("craft sampling", () => {
     async function sample(body: string) {

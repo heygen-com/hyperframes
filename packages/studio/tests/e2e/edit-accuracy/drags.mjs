@@ -60,6 +60,12 @@ const GSAP_SEQUENCES = {
   resizedrag: [{ do: "drag", gesture: "resize" }, MOVE],
 };
 
+/** On a GSAP-scaled box: a second resize must start from the box the first one saved. */
+const SCALE_TWICE = [
+  { do: "drag", gesture: "resize" },
+  { do: "drag", gesture: "resize" },
+];
+
 /** A box a timeline set holds: a second resize and drag after the first pair must save too. */
 const HELD_TWICE = [
   { do: "drag", gesture: "resize" },
@@ -125,6 +131,10 @@ export function dragCases() {
       settle: true,
     })),
   );
+  const scaleTwice = ["root", "nested"].map((nesting) => ({
+    ...row("seqscaletwice", pxRoot({ nesting }), SCALE_TWICE, "scale"),
+    settle: true,
+  }));
   // Rotate on the common centring idiom, a transform rather than the translate property.
   const centred = [0, 30].flatMap((rotation) =>
     ["root", "nested"].map((nesting) => ({
@@ -138,6 +148,7 @@ export function dragCases() {
     ...sequences,
     ...plainToKeys,
     ...fastKeys,
+    ...scaleTwice,
     ...heldTwice,
     ...gsapSequences,
     ...texts,

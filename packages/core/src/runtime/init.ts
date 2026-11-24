@@ -546,7 +546,6 @@ function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolea
   return (
     isWebKit() &&
     isAudioElement(el) &&
-    !el.loop &&
     !isLongSource(el) &&
     webAudio.fitsDecodeBudget(el) &&
     typeof readElementRateSpec(el) === "number" &&
@@ -4138,18 +4137,29 @@ export function initSandboxRuntimeModular(): void {
       ),
     );
   };
+  let measuredRootObserver: ResizeObserver | null = null;
+  const postStageSize = () => {
+    const root = resolveRootCompositionElement();
+    if (!root) return;
+    const { width, height } = readCompositionSize(root);
+    if (width !== null && height !== null) {
+      postRuntimeMessage({ source: "hf-preview", type: "stage-size", width, height });
+      return;
+    }
+    if (!measuredRootObserver && typeof ResizeObserver !== "undefined") {
+      measuredRootObserver = new ResizeObserver(postStageSize);
+      measuredRootObserver.observe(root);
+    }
+    const measuredSize = { width: root.offsetWidth, height: root.offsetHeight };
+    if (measuredSize.width > 0 && measuredSize.height > 0)
+      postRuntimeMessage({ source: "hf-preview", type: "stage-size", measuredSize });
+  };
   const postTimeline = () => {
     sanitizeCompositionDurationAttributes();
     applyCompositionSizing();
     applyClipLayout();
     // Post resolved stage size so the parent can scale the iframe container
-    const stageSizeRootEl = resolveRootCompositionElement();
-    if (stageSizeRootEl) {
-      const { width, height } = readCompositionSize(stageSizeRootEl);
-      if (width !== null && height !== null) {
-        postRuntimeMessage({ source: "hf-preview", type: "stage-size", width, height });
-      }
-    }
+    postStageSize();
     bindRootTimelineIfAvailable();
     timelinePostHeld = clock.isPlaying();
     if (timelinePostHeld) {
@@ -6969,6 +6979,8 @@ export function initSandboxRuntimeModular(): void {
   const teardown = () => {
     if (state.tornDown) return;
     state.tornDown = true;
+    measuredRootObserver?.disconnect();
+    measuredRootObserver = null;
     previewSeek?.cancel();
     cancelTransportTick();
     document.removeEventListener("visibilitychange", onTransportVisibilityChange);

@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -36,13 +36,16 @@ const calleeName = (call: ts.CallExpression) =>
     ? call.expression.name.text
     : call.expression.getText();
 
+/** The process's own streams, also under the bare names a file takes them out of `process` by. */
+const PROCESS_STREAM = /^(process\.)?(stdout|stderr)$/;
+
 function printsToTerminal(call: ts.CallExpression): boolean {
   if (!ts.isPropertyAccessExpression(call.expression)) return false;
   const target = call.expression.expression.getText();
   const method = call.expression.name.text;
   if (target === "console") return CONSOLE_PRINTS.has(method);
   if (target === "clack.log") return true;
-  return method === "write" && (target === "process.stderr" || target === "process.stdout");
+  return method === "write" && PROCESS_STREAM.test(target);
 }
 
 const shownAsWritten = (node: ts.Node) =>
@@ -243,4 +246,310 @@ it("finds a value printed as it came in a file that runs before a command", () =
     ["group"],
   );
   expect(found).toEqual(["sample.ts:1", "sample.ts:5", "sample.ts:7"]);
+});
+
+// The CLI's print calls, counted per file: `console` prints, `clack.log` lines, `clack.intro`,
+// `outro`, `note` and `cancel`, the lines of a spinner (a name that says so: `s`, `spin`, `spinner`,
+// `…Spinner`), and writes to the process's own stdout and stderr (as `process.stdout` or a bare
+// `stdout`). A print made any other way is not seen here.
+//
+// A print call is "plain" when all it prints is text the CLI wrote, by shape: literals, counts,
+// numbers and their formatting, constants set from those, colour helpers around those, and anything
+// passed through a text helper. JSON text is plain as a print's whole argument, and counted when it
+// sits inside a line for people, since it leaves some marks as they are. A name the file declares
+// itself (a parameter, a loop variable) is never taken for the colour helper or a converter. Every
+// other print call is counted, and the counts are kept in
+// `printedValues.baseline.json` so a count only moves in a reviewed change.
+//
+// To write the baseline again after a deliberate change, from packages/cli:
+//   UPDATE_PRINTED_VALUES_BASELINE=1 npx vitest run src/printedFailureText.wiring.test.ts
+
+const BASELINE = join(SRC, "printedValues.baseline.json");
+
+/** Print calls whose output another program reads, so it stays byte for byte as it is. */
+const PRINTS_FOR_ANOTHER_PROGRAM: Record<string, { calls: number; why: string }> = {
+  "browser/installRun.ts": { calls: 3, why: "progress lines the parent process parses" },
+  "commands/browser.ts": { calls: 2, why: "`browser path` answers with the path alone" },
+  "commands/history.ts": { calls: 1, why: "`history peek` writes the stored file's own bytes" },
+  "commands/render.ts": { calls: 1, why: "passes on the container's stderr as it arrives" },
+  "fontLocalizeCli.ts": { calls: 2, why: "a pipe tool: what it was handed goes back out" },
+  "renderSetupWorker.ts": { calls: 2, why: "the result and failure lines its parent parses" },
+  "ui/progress.ts": { calls: 1, why: "the `@hf-progress` line a parent process parses" },
+  "ui/renderDiagnostic.ts": { calls: 1, why: "the `@hf-diagnostic` line a parent process parses" },
+  "ui/renderResult.ts": { calls: 1, why: "the `@hf-result` line a parent process parses" },
+  "utils/cancellableProcess.ts": { calls: 2, why: "passes on its own worker's stderr" },
+  "utils/jsonError.ts": { calls: 1, why: "the `--json` failure body, one JSON line" },
+  "whisper/sherpaWorker.ts": { calls: 3, why: "prefixed lines `whisper/sherpa.ts` parses" },
+};
+
+const KEEPS_TEXT_PLAIN = new Set([
+  "join",
+  "toLocaleString",
+  "padEnd",
+  "padStart",
+  "repeat",
+  "toLowerCase",
+  "toUpperCase",
+  "trim",
+  "trimEnd",
+]);
+const GIVES_A_NUMBER_AS_TEXT = new Set(["toFixed", "toPrecision"]);
+const GIVES_JSON_TEXT = new Set(["stringify", "formatJson"]);
+const PRINTS_A_CLACK_LINE = new Set(["intro", "outro", "note", "cancel"]);
+const PRINTS_A_SPINNER_LINE = new Set(["start", "stop", "message"]);
+const NAMES_A_SPINNER = /^(s|spin|spinner|\w+Spinner)$/;
+const CONVERTS = new Set(["Boolean", "Number", "String", "parseFloat", "parseInt"]);
+const GIVES_A_NUMBER_OR_A_TRUTH = new Set([
+  ts.SyntaxKind.MinusToken,
+  ts.SyntaxKind.AsteriskToken,
+  ts.SyntaxKind.SlashToken,
+  ts.SyntaxKind.PercentToken,
+  ts.SyntaxKind.EqualsEqualsEqualsToken,
+  ts.SyntaxKind.ExclamationEqualsEqualsToken,
+  ts.SyntaxKind.GreaterThanToken,
+  ts.SyntaxKind.LessThanToken,
+]);
+
+type Constants = Map<string, ts.Expression[] | null>;
+
+const constInitializer = (node: ts.VariableDeclaration) =>
+  (node.parent.flags & ts.NodeFlags.Const) !== 0 ? node.initializer : undefined;
+
+/** Each name's initializers when every declaration of it in the file is a `const`; else null. */
+function constantsOf(file: ts.SourceFile): Constants {
+  const found: Constants = new Map();
+  const declare = (name: ts.Node, initializer: ts.Expression | undefined) => {
+    if (!ts.isIdentifier(name)) return;
+    const before = found.get(name.text);
+    found.set(name.text, initializer && before !== null ? [...(before ?? []), initializer] : null);
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isParameter(node) || ts.isBindingElement(node)) declare(node.name, undefined);
+    if (ts.isVariableDeclaration(node)) declare(node.name, constInitializer(node));
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/** The colour helper or `Math`, and not a name the file declares itself (a loop variable `c`). */
+const namesAHelper = (target: ts.Expression, constants: Constants) =>
+  ts.isIdentifier(target) &&
+  (target.text === "c" || target.text === "Math") &&
+  !constants.has(target.text);
+
+function methodCallIsNotPlain(
+  target: ts.Expression,
+  name: string,
+  constants: Constants,
+  seen: Set<string>,
+): boolean {
+  if (GIVES_A_NUMBER_AS_TEXT.has(name)) return false;
+  return !KEEPS_TEXT_PLAIN.has(name) || isNotPlain(target, constants, seen);
+}
+
+function callIsNotPlain(call: ts.CallExpression, constants: Constants, seen: Set<string>): boolean {
+  const anyArgument = () => call.arguments.some((each) => isNotPlain(each, constants, seen));
+  const name = calleeName(call);
+  if (!ts.isPropertyAccessExpression(call.expression))
+    return !CONVERTS.has(name) || constants.has(name) || anyArgument();
+  const target = call.expression.expression;
+  if (namesAHelper(target, constants)) return anyArgument();
+  return methodCallIsNotPlain(target, name, constants, seen) || anyArgument();
+}
+
+const insideALineForPeople = (node: ts.Node) =>
+  ts.isTemplateSpan(node.parent) ||
+  (ts.isBinaryExpression(node.parent) &&
+    node.parent.operatorToken.kind === ts.SyntaxKind.PlusToken);
+
+const jsonInALineForPeople = (node: ts.Node) =>
+  ts.isCallExpression(node) && GIVES_JSON_TEXT.has(calleeName(node)) && insideALineForPeople(node);
+
+function printsForPeople(call: ts.CallExpression): boolean {
+  if (printsToTerminal(call)) return true;
+  if (!ts.isPropertyAccessExpression(call.expression)) return false;
+  const target = call.expression.expression.getText();
+  const method = call.expression.name.text;
+  if (target === "clack") return PRINTS_A_CLACK_LINE.has(method);
+  return PRINTS_A_SPINNER_LINE.has(method) && NAMES_A_SPINNER.test(target);
+}
+
+const plainByShape = (node: ts.Node) =>
+  (shownAsWritten(node) && !jsonInALineForPeople(node)) ||
+  handsOverAHelper(node) ||
+  countOf(node) ||
+  (ts.isBinaryExpression(node) && GIVES_A_NUMBER_OR_A_TRUTH.has(node.operatorToken.kind));
+
+function nameIsNotPlain(name: string, constants: Constants, seen: Set<string>): boolean {
+  if (name === "undefined") return false;
+  const initializers = constants.get(name);
+  if (!initializers || seen.has(name)) return true;
+  const within = new Set(seen).add(name);
+  return initializers.some((each) => isNotPlain(each, constants, within));
+}
+
+function isNotPlain(node: ts.Node, constants: Constants, seen = new Set<string>()): boolean {
+  if (plainByShape(node)) return false;
+  if (ts.isCallExpression(node)) return callIsNotPlain(node, constants, seen);
+  if (ts.isConditionalExpression(node))
+    return (
+      isNotPlain(node.whenTrue, constants, seen) || isNotPlain(node.whenFalse, constants, seen)
+    );
+  if (ts.isPropertyAccessExpression(node)) return true;
+  if (ts.isIdentifier(node)) return nameIsNotPlain(node.text, constants, seen);
+  return !!ts.forEachChild(node, (child) => isNotPlain(child, constants, seen) || undefined);
+}
+
+function countedPrints(name: string, text: string): number {
+  const file = ts.createSourceFile(name, text, ts.ScriptTarget.Latest, true);
+  const constants = constantsOf(file);
+  let count = 0;
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      printsForPeople(node) &&
+      node.arguments.some((argument) => isNotPlain(argument, constants))
+    )
+      count += 1;
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return count;
+}
+
+type Counts = Record<string, number>;
+
+/** What to tell the person whose change moved a count, one line per file. */
+function movedCounts(counted: Counts, baseline: Counts, forAnotherProgram: Counts): string[] {
+  const files = [
+    ...new Set([
+      ...Object.keys(counted),
+      ...Object.keys(baseline),
+      ...Object.keys(forAnotherProgram),
+    ]),
+  ].sort();
+  return files.flatMap((file) => {
+    const listed = forAnotherProgram[file] ?? 0;
+    const all = counted[file] ?? 0;
+    if (all < listed)
+      return [
+        `${file}: ${all} print call(s) counted, fewer than the ${listed} listed for it in ` +
+          `PRINTS_FOR_ANOTHER_PROGRAM. Lower \`calls\` there to ${all}, or drop the entry at 0, in the same change.`,
+      ];
+    const now = all - listed;
+    const kept = baseline[file] ?? 0;
+    if (now > kept)
+      return [
+        `${file}: ${now - kept} more print call(s) with a value that is not plainly the CLI's own text. ` +
+          "Pass the value through terminalText or terminalLines. If the CLI wrote the value itself, " +
+          `raise this file's number to ${now} in printedValues.baseline.json in the same change.`,
+      ];
+    if (now < kept)
+      return [
+        `${file}: ${kept - now} fewer such print call(s) than recorded. ` +
+          `Lower this file's number to ${now} in printedValues.baseline.json in the same change.`,
+      ];
+    return [];
+  });
+}
+
+function countsOfEveryFile(): Counts {
+  const counts: Counts = {};
+  for (const path of sources(SRC)) {
+    const name = relative(SRC, path).split(sep).join("/");
+    const count = countedPrints(name, readFileSync(path, "utf8"));
+    if (count > 0) counts[name] = count;
+  }
+  return counts;
+}
+
+const callsOf = (list: typeof PRINTS_FOR_ANOTHER_PROGRAM): Counts =>
+  Object.fromEntries(Object.entries(list).map(([file, { calls }]) => [file, calls]));
+
+it("keeps each file's count of print calls with a value that is not plainly the CLI's own", () => {
+  const counted = countsOfEveryFile();
+  const forAnotherProgram = callsOf(PRINTS_FOR_ANOTHER_PROGRAM);
+  if (process.env.UPDATE_PRINTED_VALUES_BASELINE) {
+    const kept = Object.entries(counted)
+      .map(([file, count]) => [file, count - (forAnotherProgram[file] ?? 0)] as const)
+      .filter(([, count]) => count > 0)
+      .sort(([a], [b]) => a.localeCompare(b));
+    writeFileSync(BASELINE, `${JSON.stringify(Object.fromEntries(kept), null, 2)}\n`);
+  }
+  const baseline = JSON.parse(readFileSync(BASELINE, "utf8")) as Counts;
+  expect(movedCounts(counted, baseline, forAnotherProgram)).toEqual([]);
+});
+
+it("counts a print call by what it prints", () => {
+  const count = (line: string) => countedPrints("sample.ts", `const total = 3;\n${line}`);
+  expect(
+    count("console.log(`${total} of ${files.length} done in ${(ms / 1000).toFixed(1)}s`);"),
+  ).toBe(0);
+  expect(count("console.log(c.dim(`Saved ${terminalText(path)}`));")).toBe(0);
+  expect(count("console.log(c.dim(`Saved ${path}`));")).toBe(1);
+  expect(count("console.log(row.name);")).toBe(1);
+  expect(count("console.log(describe(total));")).toBe(1);
+  expect(count("process.stdout.write(bytes);")).toBe(1);
+  expect(count("stderr.write(bytes);")).toBe(1);
+  expect(count("child.stdout.write(bytes);")).toBe(0);
+  expect(count("function show(total: string) { console.log(total); }")).toBe(1);
+});
+
+it("does not take a name the file declares for the colour helper or a converter", () => {
+  const count = (text: string) => countedPrints("sample.ts", text);
+  expect(count("console.log(c.dim(rows.length));")).toBe(0);
+  expect(count("for (const c of rows) console.log(c.trim());")).toBe(1);
+  expect(count("rows.forEach((c) => console.log(c.toString()));")).toBe(1);
+  expect(count("function show(Math: Texts) { console.log(Math.pick(1)); }")).toBe(1);
+  expect(count("console.log(String(rows.length));")).toBe(0);
+  expect(count("function show(String: Maker) { console.log(String(3)); }")).toBe(1);
+});
+
+it("counts a local form of a value that is not a number", () => {
+  const count = (line: string) => countedPrints("sample.ts", `const total = 3;\n${line}`);
+  expect(count('console.log(total.toLocaleString("en-US"));')).toBe(0);
+  expect(count("console.log((ms / 1000).toLocaleString());")).toBe(0);
+  expect(count("console.log(name.toLocaleString());")).toBe(1);
+  expect(count("console.log(rows.toLocaleString());")).toBe(1);
+});
+
+it("counts JSON text inside a line for people, and not as a print's whole argument", () => {
+  const count = (line: string) => countedPrints("sample.ts", line);
+  expect(count("console.log(JSON.stringify({ name }));")).toBe(0);
+  expect(count("console.log(`Name: ${JSON.stringify(name)}`);")).toBe(1);
+  expect(count('console.log("Name: " + JSON.stringify(name));')).toBe(1);
+});
+
+it("counts the lines of a spinner and of clack's framing calls", () => {
+  const count = (line: string) => countedPrints("sample.ts", line);
+  expect(count("spinner.stop(`Saved ${path}`);")).toBe(1);
+  expect(count("publishSpinner.message(`Sending ${name}`);")).toBe(1);
+  expect(count("s.start(`Reading ${terminalText(path)}`);")).toBe(0);
+  expect(count("clack.outro(`Done: ${url}`);")).toBe(1);
+  expect(count('clack.outro("Done");')).toBe(0);
+  expect(count("timer.stop(label);")).toBe(0);
+});
+
+it("says what to do when a file's count moves, and counts output meant for another program", () => {
+  const moved = (counted: Counts, forAnotherProgram: Counts = {}) =>
+    movedCounts(counted, { "a.ts": 2 }, forAnotherProgram);
+  expect(moved({ "a.ts": 2 })).toEqual([]);
+  expect(moved({ "a.ts": 3 })).toEqual([
+    expect.stringMatching(/^a\.ts: 1 more .*terminalText.*raise this file's number to 3 /),
+  ]);
+  expect(moved({ "a.ts": 1 })).toEqual([
+    expect.stringMatching(/^a\.ts: 1 fewer .*Lower this file's number to 1 /),
+  ]);
+  expect(moved({})).toEqual([expect.stringMatching(/^a\.ts: 2 fewer /)]);
+  expect(moved({ "a.ts": 2, "tool.ts": 1 })).toEqual([expect.stringMatching(/^tool\.ts: 1 more /)]);
+  expect(moved({ "a.ts": 2, "tool.ts": 1 }, { "tool.ts": 1 })).toEqual([]);
+  expect(moved({ "a.ts": 2, "tool.ts": 1 }, { "tool.ts": 2 })).toEqual([
+    expect.stringMatching(
+      /^tool\.ts: 1 print call\(s\) counted, fewer than the 2 listed .*Lower `calls` there to 1/,
+    ),
+  ]);
+  expect(moved({ "a.ts": 2 }, { "tool.ts": 2 })).toEqual([
+    expect.stringMatching(/^tool\.ts: 0 print call\(s\) counted, fewer than the 2 listed /),
+  ]);
 });

@@ -69,6 +69,9 @@ out-of-date skills notices, the path in the FFmpeg install hint, the
 `data-fps` warning of a cloud render, the font summary of `capture`, the notice
 that a key comes from a folder's `.env`, and the plain progress lines of a run
 with no terminal attached.
+Output a command writes for another program to read is left exactly as it is:
+`--json` output, the path `browser path` answers with, and the file contents
+`history peek` writes.
 The same lines show the Unicode marks that switch text direction
 (U+202A to U+202E and U+2066 to U+2069) and the line and paragraph separators
 (U+2028 and U+2029) as visible text such as `\u202e`. Right-to-left letters, the
@@ -1451,6 +1454,12 @@ no progress for 2 minutes, or for its `--timeout` plus 10 seconds when that is l
 `--caption-zone` and `--frame-check` refuse a ranged check when none of their
 configured seek samples falls inside `--range`; a requested gate never silently
 passes without running.
+
+`check` reads the transparency of solid text fills, text strokes and backgrounds
+in `lab()`, `lch()`, `oklab()`, `oklch()` and `color()` (including `display-p3`).
+It can flag invisible text as `text_not_painted`, leave faint decorative text out
+of overlap checks, and distinguish transparent overlays from backgrounds that
+hide text.
 
 Text under a `<video>` is judged by the frame the video shows at that sample.
 An opaque video covers its whole box, as an opaque image does. A video with
