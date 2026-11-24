@@ -1,3 +1,4 @@
+import { portablePrivatePattern } from "@hyperframes/parsers/private-path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -31,11 +32,11 @@ function refusal(run) {
   return null;
 }
 
-test("the vectors are portable-source-v11's, and there are vectors of every kind", () => {
-  assert.equal(vectors.policy_version, "portable-source-v11");
+test("the vectors are portable-source-v12's, and there are vectors of every kind", () => {
+  assert.equal(vectors.policy_version, "portable-source-v12");
   assert.deepEqual(
     [vectors.valid.length, vectors.invalid.length, vectors.limits.length, vectors.stored.length],
-    [13, 219, 5, 8],
+    [13, 238, 5, 8],
   );
 });
 
@@ -173,4 +174,14 @@ test("only links under assets/podcast/, in any spelling, are skipped", () => {
   assert.equal(skippedSymlink("Assets/Podcast/raw/cam-a.mov"), true);
   assert.equal(skippedSymlink("assets/cam-a.mov"), false);
   assert.equal(skippedSymlink("other/assets/podcast/cam-a.mov"), false);
+});
+
+test("the portable contract tracks the complete parser private-path expression", () => {
+  const policy = JSON.parse(
+    readFileSync(new URL("../src/sources/contract/path-policy.json", import.meta.url), "utf8"),
+  );
+  assert.equal(
+    policy.rules.find(({ id }) => id === "private-source").regex,
+    portablePrivatePattern,
+  );
 });

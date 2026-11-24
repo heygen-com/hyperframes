@@ -1,5 +1,5 @@
 {
-  "policy_version": "portable-source-v11",
+  "policy_version": "portable-source-v12",
   "manifest": {
     "format_version": 1,
     "entrypoint": "index.html",
@@ -57,7 +57,7 @@
     "max_segment_bytes": 240,
     "separator": "/",
     "forbidden_characters": "<>:\"|?*\\",
-    "reserved_segment_regex": "(?:con|prn|aux|nul|com[1-9\u00b9\u00b2\u00b3]|lpt[1-9\u00b9\u00b2\u00b3])(?:\\..*)?",
+    "reserved_segment_regex": "(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\\..*)?",
     "reserved_segment_match": "full match against each segment's comparison key, so CON, Con.txt and nul.tar.gz are all reserved",
     "canonical_spelling_roots": [
       ".media",
@@ -71,11 +71,13 @@
       ".amazonq",
       ".augment",
       ".aws",
+      ".azure",
       ".cache",
       ".claude",
       ".cline",
       ".clinerules",
       ".codex",
+      ".config",
       ".continue",
       ".continuerc.json",
       ".crush",
@@ -83,6 +85,7 @@
       ".cursor",
       ".devcontainer",
       ".devcontainer.json",
+      ".docker",
       ".ds_store",
       ".env",
       ".envrc",
@@ -92,9 +95,11 @@
       ".git",
       ".git-credentials",
       ".gitattributes",
+      ".gitconfig",
       ".github",
       ".gitmodules",
       ".gitpod.yml",
+      ".gnupg",
       ".grok",
       ".hg",
       ".hyperframes",
@@ -103,6 +108,7 @@
       ".junie",
       ".kilocode",
       ".kiro",
+      ".kube",
       ".lock",
       ".mcp.json",
       ".media",
@@ -293,10 +299,10 @@
     },
     {
       "id": "credential-files",
-      "regex": "(?:[^/]+/)*(?:\\.netrc|\\.pypirc|\\.git-credentials|[^/]*\\.(?:pem|p12|pfx)|id_rsa[^/]*|id_ed25519[^/]*|(?:\\.ssh|\\.aws)(?:/.*)?)",
+      "regex": "(?:[^/]+/)*(?:\\.netrc|_netrc|\\.pypirc|\\.git-credentials|\\.gitconfig|pip\\.ini|[^/]*\\.(?:pem|p12|pfx)|id_(?:rsa|dsa|ecdsa|ed25519)[^/]*|(?:\\.ssh|\\.aws|\\.gnupg|\\.docker|\\.kube|\\.azure|\\.config/(?:gcloud|gh))(?:/.*)?)",
       "client_action": "exclude",
       "server_action": "reject",
-      "basis": "Credential files by name at any depth. *.key is deliberately absent: Keynote decks are plausible project sources"
+      "basis": "Credential files and stores by name at any depth."
     },
     {
       "id": "os-metadata",
@@ -313,8 +319,15 @@
       "basis": "A .hyperframes folder below the project root, such as one inside a project copied into compositions/, holds that copy's client records; only the root folder's named portable files below travel"
     },
     {
+      "id": "private-source",
+      "regex": "(?:[^/]*/)*(?:(?:\\.git|\\.env[^/]*)(?:/.*)?|\\.npmrc|\\.yarnrc|\\.yarnrc\\.yml|\\.pypirc|pip\\.conf|pip\\.ini|\\.netrc|_netrc|\\.git-credentials|\\.gitconfig|\\.mcp\\.json|credentials\\.json|serviceaccountkey\\.json|service-account\\.json|service_account\\.json|id_(?:rsa|dsa|ecdsa|ed25519)[^/]*|[^/]*\\.(?:pem|key|p12|pfx|p8|ppk|jks|keystore|kdbx|tfstate(?:\\.backup)?|tfvars(?:\\.json)?)|(?:\\.ssh|\\.aws|\\.gnupg|\\.docker|\\.kube|\\.azure|\\.claude|\\.codex|\\.cursor|\\.agents|\\.gemini|\\.vscode|\\.idea|\\.config/(?:gcloud|gh))(?:/.*)?)",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "The private-path rule for credentials, tool state, Git and environment files. Also match the parser spelling after NFKC, upper then lower case, removal of default-ignorable code points and Windows segment cleanup."
+    },
+    {
       "id": "portable-transcripts",
-      "regex": "\\.hyperframes/transcripts/(?:[^/]+/)*[^/]+\\.json",
+      "regex": "\\.hyperframes/transcripts/(?:[^./][^/]*/)*[^./][^/]*\\.json",
       "client_action": "include",
       "server_action": "allow",
       "basis": "Completed transcripts, keyed by media hash; costly to regenerate"
@@ -349,7 +362,7 @@
     },
     {
       "id": "portable-podcast-media",
-      "regex": "\\.hyperframes/prepared-assets/podcast/(?:[^/]+/)*[^./][^/]*",
+      "regex": "\\.hyperframes/prepared-assets/podcast/(?:[^./][^/]*/)*[^./][^/]*",
       "client_action": "include",
       "server_action": "allow",
       "basis": "Desktop's podcast camera and recorder transcodes (media/, proxies/), which the page plays by this path and a receiving client cannot regenerate without the original files; a dotfile there stays out"
@@ -404,6 +417,20 @@
       "basis": "Third-party reference video, large and re-downloadable"
     },
     {
+      "id": "portable-hidden-sources",
+      "regex": "(?:[^./][^/]*/)*(?:\\.gitignore|\\.vsignore|\\.hyperframesignore)|\\.media/(?:[^./][^/]*/)*[^./][^/]*|\\.github/(?:agents\\.md|workflows/(?:[^./][^/]*/)*[^./][^/]*\\.ya?ml|instructions/(?:[^./][^/]*/)*[^./][^/]*\\.md)",
+      "client_action": "include",
+      "server_action": "allow",
+      "basis": "Portable project ignore files, root media assets and authored GitHub metadata."
+    },
+    {
+      "id": "unrecognized-hidden",
+      "regex": "(?:[^/]+/)*\\.[^/]*(?:/.*)?",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Hidden paths stay local unless a portable HyperFrames rule names them, or they are ordinary media-library files, ignore files or recognized GitHub project metadata. This file rule must not prune directories containing allowed descendants."
+    },
+    {
       "id": "default-authored-file",
       "regex": ".+",
       "client_action": "include",
@@ -440,7 +467,13 @@
       "agent-client-state": "(?:[^/]+/)*(?:\\.claude|\\.agents|\\.cursor|\\.vscode|\\.idea)(?:/.*)?",
       "work-tree-config": "(?!)",
       "git-directory-head": "(?!)",
-      "nested-hyperframes-state": "(?!)"
+      "nested-hyperframes-state": "(?!)",
+      "credential-files": "(?:[^/]+/)*(?:\\.netrc|\\.pypirc|\\.git-credentials|[^/]*\\.(?:pem|p12|pfx)|id_rsa[^/]*|id_ed25519[^/]*|(?:\\.ssh|\\.aws)(?:/.*)?)",
+      "private-source": "(?!)",
+      "unrecognized-hidden": "(?!)",
+      "portable-hidden-sources": "(?!)",
+      "portable-transcripts": "\\.hyperframes/transcripts/(?:[^/]+/)*[^/]+\\.json",
+      "portable-podcast-media": "\\.hyperframes/prepared-assets/podcast/(?:[^/]+/)*[^./][^/]*"
     },
     "legacy_short_name_alias_names": [
       ".agent",
@@ -483,6 +516,6 @@
       ".yarnrc",
       ".yarnrc.yml"
     ],
-    "rule": "Only stored snapshot reads use each listed rule's regex in place of its current one, and the v10 short_name_alias_names in place of the current ones, to retain immutable manifest digests: agent-client-state its v3 regex, and work-tree-config, added in v7, git-directory-head, added in v9, and nested-hyperframes-state, added in v10, none. New captures and uploads use the current rules and short names. Clients never install, and the server never signs a download URL for, a path a current rule excludes or a segment that is a current short name."
+    "rule": "Only stored snapshot reads use each listed rule's regex in place of its current one, and the v10 short_name_alias_names in place of the current ones, to retain immutable manifest digests: agent-client-state its v3 regex, and work-tree-config, added in v7, git-directory-head, added in v9, and nested-hyperframes-state, added in v10, none. The credential-files rule keeps its v11 regex. New captures and uploads use the current rules and short names. Clients never install, and the server never signs a download URL for, a path a current rule excludes or a segment that is a current short name. The private-source rule applies only to current validation and delivery."
   }
 }

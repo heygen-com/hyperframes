@@ -355,3 +355,42 @@ test("scratch files and wildcard exclusions do not change the snapshot", async (
   await writeFile(join(root, "data.json"), "{}");
   assert.notEqual(await projectFingerprint(root), before);
 });
+
+test("editable source omits credential stores and unrecognized hidden files while completed media travels", async (t) => {
+  const root = await project({
+    "index.html": "page",
+    ".config/gh/hosts.yml": "fixture",
+    ".config/gcloud/state.db": "fixture",
+    "assets/.DOCKER/config.json": "{}",
+    ".gnupg/keys/data": "fixture",
+    ".kube/config": "fixture",
+    ".azure/settings": "fixture",
+    ".config/themes/colors.json": "{}",
+    "assets/deck.key": "slides",
+    ".media/video/clip.mp4": "clip",
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  assert.deepEqual(
+    captured(await captureProject(root)).manifest.document.files.map(({ path }) => path),
+    [".media/video/clip.mp4", "index.html"],
+  );
+  await symlink(".config/gh/hosts.yml", join(root, "notes.txt"));
+  assert.deepEqual(await captureProject(root), {
+    at: "problems",
+    problems: [{ path: "notes.txt", problem: "symlink" }],
+  });
+});
+
+test("a host can use the package snapshot entry point for private names and strict ignore rules", async (t) => {
+  const { isPrivateSourcePath, privateSourceSpelling, readSourceIgnore } =
+    await import("@hyperframes/share/projectSnapshot.mjs");
+  const root = await project({ ".hyperframesignore": "scratch/\n" });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const spelled = "Assets/Ｓervice-Account.json";
+  assert.equal(privateSourceSpelling(spelled), "assets/service-account.json");
+  assert.equal(isPrivateSourcePath(spelled), true);
+  assert.equal(isPrivateSourcePath("assets/voice.wav"), false);
+  const ignored = await readSourceIgnore(root);
+  assert.equal(ignored("scratch/draft.txt"), true);
+  assert.equal(ignored("assets/voice.wav"), false);
+});
