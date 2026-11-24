@@ -434,7 +434,7 @@ export function printInstalledHeader(result: RunAddResult, verb: "Added" | "Inst
   }
   console.log("");
   console.log(
-    `${c.success("✓")} ${verb} ${c.accent(terminalText(result.name))} (${terminalText(result.type)})`,
+    `${c.success("✓")} ${terminalText(verb)} ${c.accent(terminalText(result.name))} (${terminalText(result.type)})`,
   );
 }
 
