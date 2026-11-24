@@ -5,7 +5,7 @@ import { studioApiFetch } from "./studioApiFetch";
 const PREVIEW_PATH = /^(\/api\/projects\/[^/]+)\/preview\/(.+)$/;
 
 /** The server's PCM URL for a project file, or null for a clip with no project path. */
-export function pcmUrlOf(url: string, rate: number, mix = false): string | null {
+function pcmUrlOf(url: string, rate: number, mix = false): string | null {
   const parsed = new URL(url, window.location.origin);
   const match = PREVIEW_PATH.exec(parsed.pathname);
   const query = `?rate=${rate}${mix ? "&mix=1" : ""}`;
