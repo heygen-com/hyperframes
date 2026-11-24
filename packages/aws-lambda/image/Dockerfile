@@ -43,8 +43,8 @@ COPY --from=check /check.txt /hf-media-check.txt
 # x86 function's: stage-arm64-image.ts unpacks @sparticuz/chromium's fonts and fonts.conf into /var/task/fonts.
 # Bump the version and the archive's sha256 together, with the rest of the repo's pins.
 FROM ${BASE} AS video
-ARG CHROME_HEADLESS_SHELL_VERSION=158.0.8127.36
-ARG CHROME_HEADLESS_SHELL_SHA256=176ee5c55486c22de43128871189061365ea28e881fc96016fd18e7cb59437c8
+ARG CHROME_HEADLESS_SHELL_VERSION=158.0.8127.88
+ARG CHROME_HEADLESS_SHELL_SHA256=9f89b7ef6574e4bbf6ddda9f17f1fab5626e93d6f7d852653232d0d3554df975
 COPY fetch.sh /fetch.sh
 RUN . /fetch.sh && retry microdnf install -y --nodocs --setopt=install_weak_deps=0 --releasever=2023.12.20260914 \
       alsa-lib at-spi2-atk at-spi2-core atk dbus-libs expat fontconfig libX11 libXcomposite libXdamage \

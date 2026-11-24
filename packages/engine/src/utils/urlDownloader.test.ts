@@ -925,8 +925,27 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     expect(temporaryDownloadEntries(dir)).toEqual([]);
   });
 
+  it.each([
+    ["names a segment not beside it", "#EXTM3U\n#EXTINF:1,\ngone.ts\n"],
+    ["carries an option line", "ffconcat version 1.0\nfile seg0.ts\noption safe 0\n"],
+    [
+      "hides a line behind a lone carriage return",
+      "ffconcat version 1.0\nfile seg0.ts\rfile /x.mp4\n",
+    ],
+  ])("never publishes a downloaded playlist that %s", async (_name, body) => {
+    const dir = makeTempDir();
+    writeFileSync(join(dir, "seg0.ts"), "segment");
+    stubFetch(vi.fn().mockResolvedValue(new Response(body)));
+
+    await expect(downloadToTemp("https://cdn.example/clip.m3u8", dir, 1_000)).rejects.toMatchObject(
+      { kind: "invalid_payload", retryable: false },
+    );
+    expect(readdirSync(dir)).toEqual(["seg0.ts"]);
+  });
+
   it("publishes a downloaded playlist whose segments sit beside it", async () => {
     const dir = makeTempDir();
+    writeFileSync(join(dir, "seg0.ts"), "segment");
     stubFetch(vi.fn().mockResolvedValue(new Response("#EXTM3U\n#EXTINF:1,\nseg0.ts\n")));
 
     const path = await downloadToTemp("https://cdn.example/clip.m3u8", dir, 1_000);

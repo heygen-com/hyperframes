@@ -214,6 +214,31 @@ describe("file route containment", () => {
     expect((await response.json()).updatedReferences).toBe(1);
   });
 
+  it("lists the files a rename leaves pointing at the old path", async () => {
+    const { app, project } = fixture();
+    writeFileSync(
+      join(project, "package.json"),
+      JSON.stringify({ scripts: { gen: "node gen.js" } }),
+    );
+    writeFileSync(join(project, "index.html"), '<img src="inside.txt">');
+    writeFileSync(join(project, "reference.js"), 'load("inside.txt");');
+    writeFileSync(join(project, "other.js"), 'load("else.txt");');
+
+    const response = await app.request(fileUrl("inside.txt"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newPath: "moved.txt" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(readFileSync(join(project, "index.html"), "utf8")).toBe('<img src="moved.txt">');
+    expect(readFileSync(join(project, "reference.js"), "utf8")).toBe('load("inside.txt");');
+    expect(await response.json()).toMatchObject({
+      updatedReferences: 1,
+      unchangedReferences: ["reference.js"],
+    });
+  });
+
   it("blocks upload directory traversal and skips unsafe filenames", async () => {
     const { app, project, outside } = fixture();
     expect((await upload(app, relative(project, outside))).status).toBe(403);

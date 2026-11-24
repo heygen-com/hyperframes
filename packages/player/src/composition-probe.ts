@@ -88,14 +88,15 @@ type ProbeOutcome =
   | { kind: "error"; message: string }
   | null;
 
+const AUTHOR_ERROR_MAX_LENGTH = 1000;
+
 function firstAuthorError(errors: unknown): string | null {
   if (!Array.isArray(errors)) return null;
-  return (
-    errors.find(
-      (value): value is string =>
-        typeof value === "string" && value.trim() !== "" && value !== "[object Event]",
-    ) ?? null
+  const found = errors.find(
+    (value): value is string =>
+      typeof value === "string" && value.trim() !== "" && value !== "[object Event]",
   );
+  return found === undefined ? null : found.slice(0, AUTHOR_ERROR_MAX_LENGTH);
 }
 
 export class CompositionProbe {
@@ -110,6 +111,7 @@ export class CompositionProbe {
   private _preparationTimer: ReturnType<typeof setTimeout> | null = null;
   private _limitReportedBeforeLoad = false;
   private _preparedDocumentUnwritten = false;
+  private _frameError: string | null = null;
 
   get failed(): boolean {
     if (this._failure === null || this._failure.deadline) return false;
@@ -127,7 +129,15 @@ export class CompositionProbe {
     this._limitMs = loadLimitMs();
     this._navigationPending = true;
     this._timedFromNavigation = true;
+    this._frameError = null;
     this._endPreparation();
+  }
+
+  reportFrameError(value: unknown): void {
+    if (this._frameError !== null || (!this._navigationPending && this._interval === null)) return;
+    this._frameError = firstAuthorError([value]);
+    if (this._frameError !== null && this._interval !== null)
+      this._settle({ kind: "error", message: this._frameError });
   }
 
   markPreparation(): void {
@@ -203,6 +213,7 @@ export class CompositionProbe {
   }
 
   private _readOutcomeAcrossOrigins(attempts: number): ProbeOutcome {
+    if (this._frameError !== null) return { kind: "error", message: this._frameError };
     try {
       return this._poll(attempts);
     } catch (error) {
@@ -213,6 +224,7 @@ export class CompositionProbe {
 
   private _settle(outcome: NonNullable<ProbeOutcome>): void {
     this.stop();
+    this._frameError = null;
     if (outcome.kind === "ready") {
       this._callbacks.onReady(outcome.result);
       return;

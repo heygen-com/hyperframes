@@ -5,12 +5,17 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { applyFileMutations, FileChangedError } from "./applyFileMutations.js";
+import {
+  applyFileMutations,
+  FileChangedError,
+  FileOutsideProjectError,
+} from "./applyFileMutations.js";
 import { fileContentVersion, identifyFileWrite, resetFileWriteReceipts } from "./fileVersion.js";
 
 function expectStaleMutation(after: string, pinVersion = true): void {
@@ -38,6 +43,36 @@ function expectStaleMutation(after: string, pinVersion = true): void {
 }
 
 describe("applyFileMutations", () => {
+  // fails without the fix: a path outside the project was written, with no backup and no error
+  it.each(["above the project", "through a link out of the project"])(
+    "refuses a file %s and changes nothing",
+    (where) => {
+      if (where.includes("link") && process.platform === "win32") return;
+      const root = mkdtempSync(join(tmpdir(), "hf-mutation-outside-"));
+      const projectDir = join(root, "project");
+      const inside = join(projectDir, "index.html");
+      const outside = join(root, "outside.html");
+      try {
+        mkdirSync(projectDir);
+        writeFileSync(inside, "inside", "utf8");
+        writeFileSync(outside, "outside", "utf8");
+        const absPath = where.includes("link") ? join(projectDir, "linked.html") : outside;
+        if (where.includes("link")) symlinkSync(outside, absPath);
+        expect(() =>
+          applyFileMutations(projectDir, [
+            { sourceFile: "index.html", absPath: inside, after: "inside-after" },
+            { sourceFile: "outside.html", absPath, after: "written" },
+          ]),
+        ).toThrow(FileOutsideProjectError);
+        expect(readFileSync(inside, "utf8")).toBe("inside");
+        expect(readFileSync(outside, "utf8")).toBe("outside");
+        expect(existsSync(join(projectDir, ".hyperframes"))).toBe(false);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("refuses a file whose version changed since the caller read it", () => {
     expectStaleMutation("after");
   });

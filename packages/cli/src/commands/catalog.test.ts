@@ -1,6 +1,9 @@
 // fallow-ignore-file code-duplication
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { runCommand, type CommandDef } from "citty";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type { RegistryItem } from "@hyperframes/core";
 import { catalogRow, countUnindexed, pickByName, searchMissReport } from "./catalog.js";
@@ -108,7 +111,8 @@ vi.mock("../registry/resolver.js", () => ({
     })),
 }));
 
-vi.mock("../registry/remote.js", () => ({
+vi.mock("../registry/remote.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../registry/remote.js")>()),
   readRegistryManifest: async () => {
     if (state.registryUnreadable) throw new Error(state.registryUnreadable);
     return { items: state.registry, catalogArtifact: { revision: state.artifactRevision } };
@@ -499,6 +503,29 @@ describe("catalog --json meaning search", () => {
     expect(state.vectorFetches).toBe(1);
     expect(state.cachedVectorRevision).toBe("revision-current");
     expect(state.consentRecorded).toEqual([]);
+  });
+
+  // fails without the fix: the catalog downloaded search vectors from the registry a received project names
+  it("downloads no search vectors from a received project's registry", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-catalog-received-"));
+    writeFileSync(
+      join(dir, "hyperframes.json"),
+      JSON.stringify({ registry: "https://registry.test/r" }),
+    );
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(
+      join(dir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["hyperframes.json"] }),
+    );
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(dir);
+    state.cachedVectorRevision = "revision-previous";
+    try {
+      await runEnvelope({ query: "count up" });
+      expect(state.vectorFetches).toBe(0);
+    } finally {
+      cwd.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("replaces a changed model revision under existing consent", async () => {

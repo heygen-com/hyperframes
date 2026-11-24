@@ -139,6 +139,8 @@ export interface WaitingPressState {
   released: React.PointerEvent<HTMLDivElement> | null;
   after: WaitingPressState | null;
   ended: boolean;
+  refused: boolean;
+  drawBack: () => void;
 }
 
 export type FocusableDomEditOverlay = {

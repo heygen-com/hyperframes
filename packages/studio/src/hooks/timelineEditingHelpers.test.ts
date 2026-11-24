@@ -2,18 +2,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyTimelineMoveAttributes,
-  applyTimelineStackingReorder,
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
   deleteSelectedKeyframes,
   extendRootDurationIfNeeded,
-  patchIframeDomTiming,
   persistElementAttribute,
   persistTimelineBatchEdit,
   persistTimelineEdit,
   readTargetAttribute,
   type PersistTimelineBatchChange,
 } from "./timelineEditingHelpers";
+import { patchIframeDomTiming } from "./previewTimingPatch";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { parseTimelineFromDOM } from "../player/lib/timelineDOM";
 import type { TimelineElement } from "../player/store/playerStore";
@@ -47,108 +46,6 @@ function el(input: Partial<TimelineElement> & { id: string; tag: string }): Time
     ...input,
   };
 }
-
-describe("applyTimelineStackingReorder", () => {
-  it("commits via the change's own locator even when the element is not in timelineElements", () => {
-    // Sub-comp children live in the preview iframe but NOT in the top-level
-    // timelineElements list — the intent must be self-contained.
-    const iframe = makeIframeWith(`
-      <div data-composition-id="scene" data-composition-file="scenes/scene.html">
-        <div id="chip" style="z-index: 1"></div>
-      </div>
-    `);
-    const commit = vi.fn<(entries: unknown[]) => void>();
-
-    applyTimelineStackingReorder({
-      element: el({ id: "chip", tag: "div" }),
-      stackingReorder: {
-        contextKey: "scene",
-        placement: { type: "above", layerId: "layer:scene:x" },
-        zIndexChanges: [
-          {
-            key: "scenes/scene.html#chip",
-            zIndex: 5,
-            domId: "chip",
-            sourceFile: "scenes/scene.html",
-          },
-        ],
-      },
-      timelineElements: [], // element intentionally absent from the top-level list
-      iframe,
-      activeCompPath: "index.html",
-      commit,
-    });
-
-    expect(commit).toHaveBeenCalledTimes(1);
-    const entries = commit.mock.calls[0]![0] as Array<{
-      zIndex: number;
-      id?: string;
-      sourceFile: string;
-    }>;
-    expect(entries).toHaveLength(1);
-    expect(entries[0]!.zIndex).toBe(5);
-    expect(entries[0]!.id).toBe("chip");
-    expect(entries[0]!.sourceFile).toBe("scenes/scene.html");
-  });
-
-  it("never commits when the dragged clip is audio", () => {
-    const iframe = makeIframeWith(`<audio id="track"></audio>`);
-    const commit = vi.fn<(entries: unknown[]) => void>();
-
-    applyTimelineStackingReorder({
-      element: el({ id: "track", tag: "audio" }),
-      stackingReorder: {
-        contextKey: "main",
-        placement: { type: "above", layerId: "layer:main:x" },
-        zIndexChanges: [{ key: "track", zIndex: 5, domId: "track" }],
-      },
-      timelineElements: [],
-      iframe,
-      activeCompPath: "index.html",
-      commit,
-    });
-
-    expect(commit).not.toHaveBeenCalled();
-  });
-
-  it("resolves selectorIndex within the change's source file", () => {
-    const iframe = makeIframeWith(`
-      <div data-composition-id="root">
-        <div class="chip">root</div>
-        <div data-composition-id="scene" data-composition-file="scenes/scene.html">
-          <div class="chip">scene zero</div>
-          <div class="chip" style="z-index: 1">scene one</div>
-        </div>
-      </div>
-    `);
-    const sceneOne = iframe.contentDocument?.querySelectorAll(".chip")[2];
-    const commit = vi.fn<(entries: unknown[]) => void>();
-
-    applyTimelineStackingReorder({
-      element: el({ id: "scene-one", tag: "div" }),
-      stackingReorder: {
-        contextKey: "scene",
-        placement: { type: "above", layerId: "layer:scene:x" },
-        zIndexChanges: [
-          {
-            key: "scenes/scene.html#.chip:1",
-            zIndex: 5,
-            selector: ".chip",
-            selectorIndex: 1,
-            sourceFile: "scenes/scene.html",
-          },
-        ],
-      },
-      timelineElements: [],
-      iframe,
-      activeCompPath: "index.html",
-      commit,
-    });
-
-    const entries = commit.mock.calls[0]![0] as Array<{ element: Element }>;
-    expect(entries[0]!.element).toBe(sceneOne);
-  });
-});
 
 describe("patchIframeDomTiming", () => {
   it("patches a top-level composition host in its parent source file", () => {

@@ -11,8 +11,10 @@ import {
 } from "../helpers/waveform.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
 import { decodeShared } from "../helpers/audioDecodes.js";
+import { registerPcmRoutes } from "./pcm.js";
 
 export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): void {
+  registerPcmRoutes(api, adapter);
   api.get("/projects/:id/waveform/*", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);

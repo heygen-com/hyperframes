@@ -169,3 +169,29 @@ test("formatCandidates prints control characters from the manifest as visible es
   for (const raw of ["\x07", "\x1b"])
     assert.ok(!text.includes(raw), "no raw control character is left");
 });
+
+// fails without the fix: a project record's path was listed as written, so a sender-chosen path reached grades.json.
+test("lists a project record's path only when it is inside the project", () => {
+  const { root, project } = sandbox();
+  try {
+    const grade = (id, path) => ({ id, type: "grade", path, description: `look ${id}` });
+    seedManifest(project, [
+      grade("in", ".media/luts/in.cube"),
+      grade("unc", "\\\\attacker\\share\\x.cube"),
+      grade("slashes", "//attacker/share/x.cube"),
+      grade("abs", "/etc/x.cube"),
+      grade("up", "../outside.cube"),
+    ]);
+    const { candidates } = listCandidates({ projectDir: project, type: "grade" });
+    const paths = Object.fromEntries(candidates.map((c) => [c.id, c.path]));
+    assert.deepEqual(paths, {
+      in: ".media/luts/in.cube",
+      unc: null,
+      slashes: null,
+      abs: null,
+      up: null,
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

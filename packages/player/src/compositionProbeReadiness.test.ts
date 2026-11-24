@@ -3,7 +3,7 @@ import { CompositionProbe, loadLimitMs, timelineNotFound } from "./composition-p
 import type { ProbeCallbacks } from "./composition-probe.js";
 
 const LIMIT = loadLimitMs();
-const TIMED_OUT = timelineNotFound(LIMIT);
+const TIMED_OUT = timelineNotFound(LIMIT, false);
 
 function mount(
   markup: string,
