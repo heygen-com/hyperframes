@@ -16,6 +16,7 @@ import {
   readShare,
   rebindRecord,
   reviewRecord,
+  sealedSwitch,
   reviewSentence,
   reviewSwitchPath,
   shown,
@@ -59,7 +60,7 @@ async function startSwitch(dir, change) {
     if (record?.removed) throw new ReviewFailed(410, "review_project_removed");
     if (record?.projectId !== change.from) throw new ReviewFailed(409, "switch_cancelled");
     await mkdirInside(dir, ".hyperframes");
-    await writeJsonAtomic(switchPath(dir), change);
+    await writeJsonAtomic(switchPath(dir), sealedSwitch(dir, change));
   });
 }
 
@@ -91,7 +92,7 @@ async function assertCurrent(dir, change) {
 
 /** @param {string} dir @param {Switch} change */
 async function writeSwitch(dir, change) {
-  if (await owns(dir, change)) await writeJsonAtomic(switchPath(dir), change);
+  if (await owns(dir, change)) await writeJsonAtomic(switchPath(dir), sealedSwitch(dir, change));
 }
 
 /** @param {string} dir @param {Switch} change */
