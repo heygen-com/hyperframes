@@ -251,7 +251,7 @@ jobs:
               - "packages/cli/src/ui/**"
               - "packages/cli/src/{background-removal,registry,telemetry}/**"
               - "packages/cli/src/capture/{captureCompositionFrame,captureTimeout,navigateForCapture,readBoundedResponse}.ts"
-              - "packages/cli/src/media-use/lib/config-lock.mjs"
+              - "packages/cli/src/media-use/lib/{config-lock,telemetry-opt-out}.mjs"
               - "packages/cli/src/auth/**"
               - "packages/cli/scripts/**"
               - "packages/core/stubs/**"
