@@ -676,6 +676,61 @@ describe("a press held across a preview change on an opaque frame", () => {
     expect(opts.overlayRectRef.current).toEqual(drawn);
   });
 
+  // fails without the fix: the second press measured its box from the first drag; refused, it went back 30 px off.
+  it("puts the box back on the layer when two presses in a row go unanswered", async () => {
+    const turned = makeSelection("turned", document.getElementById("turned")!);
+    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
+    const { opts, startGesture, down } = await pressDuringChange(turned, {
+      iframe: silentFrame(),
+      overlayRect: drawn,
+      whileWaiting: (o) => o.waitingPressRef.current!.draw!(30, 0),
+    });
+    startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    opts.waitingPressRef.current!.draw!(30, 0);
+    await vi.waitFor(() => expect(opts.onBlockedMoveRef.current).toHaveBeenCalledTimes(2), {
+      timeout: 8000,
+    });
+    expect(opts.overlayRectRef.current).toEqual(drawn);
+  }, 10_000);
+
+  // The first press started, so the layer goes where it dropped: the refused second press's own box, not the first's.
+  it("puts the box where a started press left it when the press after it goes unanswered", async () => {
+    const turned = makeSelection("turned", document.getElementById("turned")!);
+    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
+    const { opts, startGesture, down } = await pressDuringChange(turned, {
+      overlayRect: drawn,
+      whileWaiting: (o) => o.waitingPressRef.current!.draw!(30, 0),
+    });
+    press.start.mockImplementationOnce(() => {
+      opts.iframeRef.current = silentFrame();
+      return true;
+    });
+    startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    opts.waitingPressRef.current!.draw!(30, 0);
+    await vi.waitFor(() => expect(opts.onBlockedMoveRef.current).toHaveBeenCalledOnce(), {
+      timeout: 3000,
+    });
+    expect(press.start).toHaveBeenCalledOnce();
+    expect(opts.overlayRectRef.current).toEqual({ ...drawn, left: 31 });
+  });
+
+  // fails without the fix: with the selection cleared mid-wait, the refusal left the box where it was dragged.
+  it("puts the box back on the layer when the selection clears while an unanswered press waits", async () => {
+    const turned = makeSelection("turned", document.getElementById("turned")!);
+    const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
+    const { opts } = await pressDuringChange(turned, {
+      iframe: silentFrame(),
+      overlayRect: drawn,
+      whileWaiting: (o) => {
+        o.waitingPressRef.current!.draw!(30, 0);
+        o.selectionRef.current = null;
+      },
+    });
+    await vi.waitFor(() => expect(opts.waitingPressRef.current).toBeNull(), { timeout: 3000 });
+    expect(opts.overlayRectRef.current).toEqual(drawn);
+    expect(opts.onBlockedMoveRef.current).not.toHaveBeenCalled();
+  });
+
   it("asks the frame shown again when a swap comes after its first ask", async () => {
     const turned = document.getElementById("turned")!;
     const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
