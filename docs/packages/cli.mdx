@@ -324,6 +324,15 @@ first, resolving them transitively. Before installing any item files, it checks
 incompatible CLI. A `deprecated` message produces a warning without blocking
 installation.
 
+A block or component never installs a TypeScript, JSX or CommonJS file
+(`.ts`, `.tsx`, `.mts`, `.cts`, `.jsx`, `.cjs`). A `.js` or `.mjs` file, such
+as a vendored browser library, always installs from the public registry. From
+a registry you set in `hyperframes.json`, it installs unless the project folder
+or a folder above it has a `package.json` with more than the one `init` writes
+(for example, dependencies or a test script): there, the project's own Node
+tooling could pick the file up. A refused install fails with `Unsafe target`
+before anything is written. Studio saves follow the stricter rule.
+
 ### `catalog`
 
 Browse the registry.
@@ -428,7 +437,7 @@ way to tell them apart is to open the page yourself.
 | `size-floor`       | Fetched, then judged too small to be a real asset rather than a spacer or tracking pixel.               |
 | `budget-exhausted` | `--capture-budget` ran out before this one was reached. Raise it, or pass `--skip-vision` to buy time.  |
 | `cap-reached`      | A per-run or per-family limit was already met: 30 inline SVGs, 30 fonts, 6 faces per family.            |
-| `unavailable`      | The request or the write failed: network error, timeout, refused address, bad status, disk.             |
+| `unavailable`      | The request or the write failed: network error, timeout, refused address, bad status, disk. Also an inline SVG that is more than a plain image (it carries a script, an event handler, embedded HTML, a link, or a reference to another file): it stays in `extracted/page.html` but is not saved as a file under `assets/svgs/`. |
 
 Three of those are decisions the capture made and one is a failure it hit, so a
 run that is thin with an all-zero `dropped` is a thin page, and a run that is
@@ -608,9 +617,15 @@ npx hyperframes tts script.txt
 npx hyperframes tts --list
 ```
 
+A single argument that names an existing local `.txt` file is read; anything
+else is spoken. A `.txt` path that starts with two slashes or backslashes
+(`\\server\share\script.txt`) is refused: to read a file on a network share,
+pass it with `--text-file`.
+
 | Flag           | Description                                                                                                                             |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `--output, -o` | Output path (default `speech.wav` in the current directory)                                                                              |
+| `--text-file`  | Read the text from this file, whatever its path looks like                                                                               |
+| `--output, -o` | Output path (default `speech.wav` in the current directory). A file or link already at that name is replaced by the new file.           |
 | `--voice, -v`  | Voice ID. Run `--list` to see them all.                                                                                                 |
 | `--speed, -s`  | Speed multiplier (default 1.0)                                                                                                          |
 | `--lang, -l`   | Phonemizer locale: `en-us`, `en-gb`, `es`, `fr-fr`, `hi`, `it`, `pt-br`, `ja`, `zh`. Inferred from the voice ID when you leave it out.   |

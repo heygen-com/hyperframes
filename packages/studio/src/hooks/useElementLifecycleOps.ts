@@ -372,7 +372,7 @@ export function useElementLifecycleOps({
             usePlayerStore.getState().bumpZEditVersion();
           };
           // Resolves once every source-file batch is persisted so a same-file timing write
-          // can be ordered after it (see applyTimelineStackingReorder callers).
+          // can be ordered after it.
           //
           // skipReload: the live iframe DOM and the player store already hold the
           // final z state (applied synchronously above), and the persisted patch is

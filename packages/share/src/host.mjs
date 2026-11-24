@@ -38,6 +38,8 @@ export const reviewUploadOrigins = () =>
 export const projectFingerprint = (dir) => bound("projectFingerprint")(dir);
 /** @type {ShareHost["ffBinary"]} */
 export const ffBinary = (name) => bound("ffBinary")(name);
+/** The key the host seals change-of-space journals with, or null to read them as they are. */
+export const journalKey = () => host.journalKey ?? null;
 export const channelSite = () => bound("channelSite");
 export const signinSites = () => bound("signinSites");
 

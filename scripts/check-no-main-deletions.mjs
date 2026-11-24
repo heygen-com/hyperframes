@@ -986,6 +986,14 @@ export const ALLOWED_DELETIONS = new Map([
     "moved to scripts/rewrite-relative-import-extensions.mjs as plain ESM so packages without tsx can use it; now also rewrites .d.ts",
   ],
   [
+    "packages/studio/src/player/components/timelineLayerDrag.ts",
+    "its only importer was resolveTimelineMove's stacking mode, which no timeline drag reaches",
+  ],
+  [
+    "packages/studio/src/player/components/timelineLayerDrag.test.ts",
+    "tests for the removed timeline stacking-mode move",
+  ],
+  [
     "packages/studio/src/hooks/gsapTargetCache.ts",
     "its only caller was the deleted var-offset move writer; nothing imports isElementGsapTargeted",
   ],
