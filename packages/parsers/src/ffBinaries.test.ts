@@ -594,6 +594,24 @@ describe("mediaInputFormatArgs", () => {
     );
   });
 
+  it("reads playlists only for a caller that walked the file", async () => {
+    const { _setDemuxerListingForTests, mediaInputFormatArgs } = await importFresh();
+    _setDemuxerListingForTests(
+      [" D  concat  Virtual concatenation", " D  hls,applehttp  Apple HTTP Live Streaming"]
+        .concat([" D  mov,mp4,m4a     QuickTime / MOV"])
+        .join("\n"),
+    );
+    expect(formatsOf(mediaInputFormatArgs("/ffmpeg", "a.mp4"))).toEqual(["mov", "mp4", "m4a"]);
+    expect(formatsOf(mediaInputFormatArgs("/ffmpeg", "a.mp4", { playlists: true }))).toEqual([
+      "concat",
+      "hls",
+      "applehttp",
+      "mov",
+      "mp4",
+      "m4a",
+    ]);
+  });
+
   it.skipIf(process.platform === "win32")("asks a binary that failed once again", async () => {
     const { mediaInputFormatArgs, SELF_CONTAINED_FORMATS } = await importFresh();
     const dir = mkdtempSync(join(tmpdir(), "hf-demuxers-"));

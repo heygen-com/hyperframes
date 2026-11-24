@@ -18,7 +18,11 @@ import {
   urlInputArgs,
   withPublicOnlyProxy,
 } from "./urlInput.js";
-import { TextArtMediaError } from "./notMediaPayload.js";
+import {
+  PlaylistLeavesFolderError,
+  TextArtMediaError,
+  playlistLeavesItsFolder,
+} from "./notMediaPayload.js";
 import { decodableAudioStream, misstatesPcmByteRate } from "@hyperframes/parsers/media-streams";
 import { runFfmpeg } from "./runFfmpeg.js";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
@@ -81,6 +85,10 @@ export async function runFfprobe(
   if (filePath === "-") {
     throw new Error('[FFmpeg] Refusing to probe "-": stdin is not a supported input path.');
   }
+
+  // urlInputArgs lets ffprobe read playlists; render preflight walks them, a CLI probe may not have.
+  if (!/^https?:\/\//i.test(filePath) && (await playlistLeavesItsFolder(filePath)))
+    throw new PlaylistLeavesFolderError();
 
   const command = getFfprobeBinary();
   const args = [

@@ -40,6 +40,7 @@ import {
   type Voice,
 } from "./types.js";
 import { voiceFromActivity, voiceFromWords, type TimedWord } from "./voice.js";
+import { refusePlaylistLeavingItsFolder } from "../../utils/playlistInput.js";
 
 export interface ReadOptions {
   /** Where analyses and stems are kept, normally the project's `.hyperframes/read-audio`. */
@@ -483,6 +484,7 @@ export async function readAudio(
   file: string,
   options: ReadOptions,
 ): Promise<ReadResult> {
+  await refusePlaylistLeavingItsFolder([path]);
   const quality = options.quality ?? "local";
   const { layer } = options;
   const sha = await sha256(path);

@@ -18,7 +18,6 @@ import { randomUUID } from "node:crypto";
 import { renameSync, rmSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
-import { refusePlaylistLeavingItsFolder } from "../utils/playlistInput.js";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 import { readFrames } from "./frameReader.js";
@@ -176,8 +175,6 @@ async function decoderTransposesDimensions(inputPath: string): Promise<boolean> 
 }
 
 async function probeMedia(inputPath: string): Promise<MediaInfo> {
-  // The engine's probe reads playlists, so a named file is walked before it is read.
-  await refusePlaylistLeavingItsFolder([inputPath]);
   const isImage = inferInputKind(inputPath) === "image";
   const engine = (await import("@hyperframes/engine")) as {
     extractMediaMetadata: (path: string) => Promise<EngineMetadata>;

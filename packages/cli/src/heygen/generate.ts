@@ -731,7 +731,12 @@ export async function generate(
 ): Promise<Generated> {
   checkRequest(r);
   const route = ROUTES[r.type];
-  await refusePlaylistLeavingItsFolder([...assetsOf(r), ...picturesOf(route, r)]);
+  await refusePlaylistLeavingItsFolder([
+    ...assetsOf(r),
+    ...picturesOf(route, r),
+    r.motion,
+    r.audio,
+  ]);
   const out = resolve(r.out);
   makeOutputFolder(dirname(out));
   const project = projectOf(dirname(out));
