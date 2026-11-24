@@ -308,6 +308,21 @@ describe("withoutGsapTakeover", () => {
     expect(title._gsap!.origin).toBe(origin);
   });
 
+  it("puts back what a read changed when the read throws", () => {
+    document.body.innerHTML = `<h1 id="title" style="translate: 0 -200px">Title</h1>`;
+    const title = document.getElementById("title")! as HTMLElement & Cached;
+    title._gsap = { x: 0 };
+    expect(() =>
+      withoutGsapTakeover(title, () => {
+        title.style.translate = "none";
+        title._gsap!.renderTransform = () => {};
+        throw new Error("GSAP failed");
+      }),
+    ).toThrow("GSAP failed");
+    expect(title.getAttribute("style")).toBe("translate: 0 -200px");
+    expect(title._gsap).toEqual({ x: 0 });
+  });
+
   it("drops a GSAP cache the read created", () => {
     document.body.innerHTML = `<h1 id="title">Title</h1>`;
     const title = document.getElementById("title")! as HTMLElement & Cached;
