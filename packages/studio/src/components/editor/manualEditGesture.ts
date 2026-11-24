@@ -12,6 +12,7 @@ import { BOX_SIZE_STYLE_PROPS } from "./manualEditsDomPatches";
 
 let studioManualEditGestureId = 0;
 const detachedStandInGestures = new WeakMap<Document, Set<Element>>();
+const liveGestures = new WeakMap<Element, string[]>();
 
 export type StudioGestureDraws = "move" | "resize" | "rotate" | "edit";
 const MOVE_DRAWS = ["translate", STUDIO_OFFSET_X_PROP, STUDIO_OFFSET_Y_PROP];
@@ -29,6 +30,7 @@ export function beginStudioManualEditGesture(
 ): string {
   studioManualEditGestureId += 1;
   const token = `gesture-${studioManualEditGestureId}:${draws}`;
+  liveGestures.set(element, [...(liveGestures.get(element) ?? []), token]);
   element.setAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR, token);
   if (!element.isConnected) {
     const doc = element.ownerDocument;
@@ -42,7 +44,15 @@ export function beginStudioManualEditGesture(
 const GESTURE_ENDED = "hf-manual-edit-gesture-ended";
 
 export function endStudioManualEditGesture(element: HTMLElement, token?: string): void {
-  if (token && element.getAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR) !== token) return;
+  const live = liveGestures.get(element) ?? [];
+  if (token && !live.includes(token)) return;
+  const rest = token ? live.filter((t) => t !== token) : [];
+  if (rest.length) {
+    liveGestures.set(element, rest);
+    element.setAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR, rest[rest.length - 1]!);
+    return;
+  }
+  liveGestures.delete(element);
   if (!element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)) return;
   element.removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
   element.removeAttribute(STUDIO_EDIT_MOMENT_ATTR);
