@@ -22,7 +22,7 @@ import {
   type DownloadByteBudget,
 } from "./readBoundedResponse.js";
 import { captureFontExtension, captureFontFilename } from "./captureFontValidation.js";
-import { captureImageExtension } from "./captureImageValidation.js";
+import { captureImageExtension, passiveInlineSvg } from "./captureImageValidation.js";
 import { loadSharp } from "../utils/optionalPackages.js";
 
 interface DownloadBudgetOptions {
@@ -350,6 +350,10 @@ export async function downloadAssets(
     const svgFile = toStandaloneSvg(svg.outerHTML);
     if (Buffer.byteLength(svgFile, "utf-8") > MAX_INLINE_SVG_BYTES) {
       drops["size-ceiling"]++;
+      continue;
+    }
+    if (!passiveInlineSvg(svgFile)) {
+      drops.unavailable++;
       continue;
     }
     const slug = svgContentHashSlug(svgFile, !!svg.isLogo);

@@ -6,6 +6,7 @@ import {
   findStartTags,
   injectScriptsAtHeadStart,
   injectScriptsIntoHtml,
+  headContentStart,
   injectTagsAtHeadStart,
   insertBeforeCloseTag,
   insertRuntimeTag,
@@ -445,6 +446,45 @@ describe("injectTagsAtHeadStart on long adversarial input", () => {
     ["an unclosed tag name", (n) => `<${"a".repeat(n)}`],
   ])("does linear work on %s", (_, make) => {
     expect(workGrowth((n) => injectTagsAtHeadStart(make(n), "<meta>"))).toBeLessThan(2.5);
+  });
+});
+
+describe("headContentStart", () => {
+  it.each([
+    [
+      "<!doctype html><html lang='en'><head id='h'>x",
+      "<!doctype html><html lang='en'><head id='h'>",
+    ],
+    ["<!doctype html><html lang='en'><body>x", "<!doctype html><html lang='en'>"],
+    [" \n<!DOCTYPE html><div>x", " \n<!DOCTYPE html>"],
+    ["<div>x", ""],
+    ["text<head>x", ""],
+    [
+      "<html a=\"<head>\" b='<head>' c=<head><HEAD>x",
+      "<html a=\"<head>\" b='<head>' c=<head><HEAD>",
+    ],
+    [
+      "<!-- <head> --><!doctype html><!-- <html> --><head>x",
+      "<!-- <head> --><!doctype html><!-- <html> --><head>",
+    ],
+    ["<!--><html a='--><head>'><head>x", "<!--><html a='--><head>'><head>"],
+    ["<!-- <head> never closed", ""],
+    ["<!doctype html><html><body><head>x", "<!doctype html><html>"],
+    ["<!doctype html><title><head></title>", "<!doctype html>"],
+    ["<html a='<head>x", ""],
+    ["<headless><head>x", ""],
+    ["\uFEFF<div>x", "\uFEFF"],
+    ["\uFEFF<!doctype html><html><head>x", "\uFEFF<!doctype html><html><head>"],
+  ])("reads %j up to the end of its own head start tag", (html, before) => {
+    expect(headContentStart(html)).toBe(before.length);
+  });
+
+  it("is one pass over long runs of comments, attributes and unclosed tags", () => {
+    const prolog = "<!-- <head> -->".repeat(20_000) + "<html" + " a='<head>'".repeat(20_000) + ">";
+    expect(headContentStart(prolog + "<head>x")).toBe(prolog.length + 6);
+    expect(headContentStart("<!-- a --!>".repeat(20_000) + "<head>")).toBe(11 * 20_000 + 6);
+    expect(headContentStart("<html " + "a=".repeat(20_000))).toBe(0);
+    expect(headContentStart("<head".repeat(20_000) + ">")).toBe(0);
   });
 });
 

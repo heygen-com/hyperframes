@@ -58,6 +58,19 @@ describe("markupOutsideAllowlist", () => {
       expect(markupOutsideAllowlist(parse(html, false).documentElement), html).not.toEqual([]);
   });
 
+  // fails without the fix: a copy kept the marks Studio reads as its file, so later edits went to that other file.
+  it.each(["data-composition-file", "data-composition-id", "data-hf-original-composition-id"])(
+    "refuses %s at any depth and inside templates",
+    (mark) => {
+      for (const html of [
+        `<div class="clip" ${mark}="compositions/b.html"></div>`,
+        `<div class="clip"><p ${mark}="compositions/b.html">x</p></div>`,
+        `<div class="clip"><template><p ${mark}="compositions/b.html">x</p></template></div>`,
+      ])
+        expect(markupOutsideAllowlist(parse(html, false).documentElement), html).not.toEqual([]);
+    },
+  );
+
   it("shows why: a noscript the check reads as inert runs a handler once scripting is on", () => {
     const html = REFUSED[0]!;
     expect(runsCode(parse(html, false))).toBe(false);

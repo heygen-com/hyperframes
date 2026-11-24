@@ -65,3 +65,22 @@ it.each(MODES)("a rotation commit reads only the rotation tween's channels (%s)"
   expect(read).toEqual({ rotation: 10 });
   await preview.page.close();
 });
+
+// fails without the fix: a read right after a seek found no sealed values yet and the commit got none of GSAP's.
+it.each(MODES)(
+  "a commit's read waits for the frame's values at the playhead (%s)",
+  async (mode) => {
+    const preview = await openPreview(browser, studioBundle, previewHtml(), mode);
+    await preview.seek(1);
+    const read = await preview.page.evaluate(() => {
+      const studio = (window as unknown as { hfStudio: Reads }).hfStudio;
+      const iframe = document.querySelector("iframe")!;
+      studio.usePlayerStore.setState({ currentTime: 1, isPlaying: false });
+      return studio.readAllAnimatedProperties(iframe, "#box", {
+        properties: { rotation: 20 },
+      } as never);
+    });
+    expect(read).toEqual({ rotation: 10 });
+    await preview.page.close();
+  },
+);

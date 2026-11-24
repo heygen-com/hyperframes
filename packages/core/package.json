@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.88",
+  "version": "0.9.91",
   "description": "",
   "repository": {
     "type": "git",
@@ -397,6 +397,12 @@
       "node": "./dist/audioFade.js",
       "import": "./src/audioFade.ts",
       "types": "./src/audioFade.ts"
+    },
+    "./audio-decode": {
+      "bun": "./src/audioDecode.ts",
+      "node": "./dist/audioDecode.js",
+      "import": "./src/audioDecode.ts",
+      "types": "./src/audioDecode.ts"
     },
     "./speed-ramp": {
       "bun": "./src/speedRamp.ts",
@@ -987,6 +993,10 @@
       "./audio-fade": {
         "import": "./dist/audioFade.js",
         "types": "./dist/audioFade.d.ts"
+      },
+      "./audio-decode": {
+        "import": "./dist/audioDecode.js",
+        "types": "./dist/audioDecode.d.ts"
       },
       "./speed-ramp": {
         "import": "./dist/speedRamp.js",

@@ -510,7 +510,8 @@
           {
             title: content("payoffTitle", "HeyGen"),
             text: content("payoffText", "Heard you needed some videos?"),
-            icon: content("payoffIcon", "assets/img/heygen-mark.svg"),
+            icon: "assets/img/heygen-mark.svg",
+            iconVariable: "payoffIcon",
           },
         ],
       };
@@ -535,20 +536,29 @@
 
       /* ---------------- build cards ---------------- */
       var stackEl = document.getElementById("sna-stack");
+      function node(tag, cls, text) {
+        var n = document.createElement(tag);
+        n.className = cls;
+        if (text != null) n.textContent = text;
+        return n;
+      }
       CONFIG.notifs.forEach(function (n, i) {
         var card = document.createElement("div");
         card.className = "ncard";
         card.id = "sna-n" + i;
         card.setAttribute("data-layout-allow-overlap", ""); // iOS stack: front card occludes the cards tucked behind it
         card.setAttribute("data-layout-allow-occlusion", "");
-        card.innerHTML =
-          '<div class="nicon"><img src="' +
-          (n.icon || CONFIG.icon) +
-          '" alt=""></div>' +
-          '<div class="nbody"><div class="nrow"><span class="ntitle"></span><span class="ntime">now</span></div>' +
-          '<div class="ntext"></div></div>';
-        card.querySelector(".ntitle").textContent = n.title;
-        card.querySelector(".ntext").textContent = n.text;
+        var img = document.createElement("img");
+        img.alt = "";
+        img.setAttribute("src", n.icon || CONFIG.icon);
+        if (n.iconVariable) img.setAttribute("data-var-src", n.iconVariable);
+        var row = node("div", "nrow");
+        row.append(node("span", "ntitle", n.title), node("span", "ntime", "now"));
+        var body = node("div", "nbody");
+        body.append(row, node("div", "ntext", n.text));
+        var icon = node("div", "nicon");
+        icon.appendChild(img);
+        card.append(icon, body);
         stackEl.appendChild(card);
       });
       var cards = CONFIG.notifs.map(function (_, i) {

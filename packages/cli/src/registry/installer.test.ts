@@ -20,6 +20,7 @@ import type { RegistryItem } from "@hyperframes/core";
 const remote = vi.hoisted(() => ({ contents: "REGISTRY VERSION\n" }));
 vi.mock("./remote.js", () => ({
   DEFAULT_REGISTRY_URL: "https://example.test/r",
+  isPublicRegistry: (registry: string) => registry === "https://example.test/r",
   fetchItemFile: vi.fn(async () => Buffer.from(remote.contents)),
 }));
 
@@ -137,6 +138,136 @@ describe("installItem", () => {
       /Unsafe target/,
     );
     expect(readdirSync(dir)).toEqual([]);
+  });
+
+  const withTarget = (planted: string) => ({
+    ...item,
+    files: [{ ...item.files[0]!, target: planted }],
+  });
+  const scaffoldManifest = { name: "film", private: true, scripts: { dev: "hyperframes preview" } };
+  const nodeManifest = { name: "app", devDependencies: { vitest: "^3.0.0" } };
+  const otherRegistry = "https://registry.other.test/r";
+  const registries = [undefined, otherRegistry];
+
+  it.each([
+    "compositions/chart.test.ts",
+    "lib/widget.tsx",
+    "compositions/loader.mts",
+    "assets/setup.cts",
+    "lib/view.jsx",
+    "compositions/hook.cjs",
+    "lib/UPPER.TS",
+    "lib\\trailing.ts.",
+    "scenes/extra.spec.ts",
+  ])(
+    "refuses the Node-only script %s from any registry, in a scaffolded project and a bare folder",
+    async (planted) => {
+      for (const baseUrl of registries) {
+        for (const manifest of [null, scaffoldManifest]) {
+          const dir = project();
+          if (manifest) writeFileSync(join(dir, "package.json"), JSON.stringify(manifest));
+          const options = { destDir: dir, force: true, installDirs: ["scenes"], baseUrl };
+          await expect(installItem(withTarget(planted), options)).rejects.toThrow(
+            /Unsafe target.*script Node tooling may run/,
+          );
+          expect(readdirSync(dir)).toEqual(manifest ? ["package.json"] : []);
+        }
+      }
+    },
+  );
+
+  it.each(["lib/shaders.iife.js", "compositions/__tests__/chart.test.js", "assets/motion.mjs"])(
+    "installs the browser script %s from another registry unless the project brings its own Node tooling",
+    async (planted) => {
+      const from = { baseUrl: otherRegistry };
+      for (const manifest of [null, scaffoldManifest]) {
+        const dir = project();
+        if (manifest) writeFileSync(join(dir, "package.json"), JSON.stringify(manifest));
+        await installItem(withTarget(planted), { destDir: dir, ...from });
+        expect(existsSync(join(dir, planted))).toBe(true);
+      }
+      const dir = project();
+      writeFileSync(join(dir, "package.json"), JSON.stringify(nodeManifest));
+      await expect(
+        installItem(withTarget(planted), { destDir: dir, force: true, ...from }),
+      ).rejects.toThrow(/Unsafe target.*script Node tooling may run/);
+      expect(readdirSync(dir)).toEqual(["package.json"]);
+    },
+  );
+
+  it("installs a public registry browser script in a project with its own Node tooling", async () => {
+    const dir = project();
+    writeFileSync(join(dir, "package.json"), JSON.stringify(nodeManifest));
+    await installItem(withTarget("lib/shaders.iife.js"), { destDir: dir });
+    expect(existsSync(join(dir, "lib", "shaders.iife.js"))).toBe(true);
+  });
+
+  it("refuses, from another registry, a file Node would load before the project's module beside it", async () => {
+    const dir = project();
+    writeFileSync(join(dir, "package.json"), JSON.stringify(nodeManifest));
+    mkdirSync(join(dir, "lib"));
+    writeFileSync(join(dir, "lib", "db.utils.js"), "module.exports = {};\n");
+    await expect(
+      installItem(withTarget("lib/db.utils"), {
+        destDir: dir,
+        force: true,
+        baseUrl: otherRegistry,
+      }),
+    ).rejects.toThrow(/Unsafe target.*script Node tooling may run/);
+    expect(readdirSync(join(dir, "lib"))).toEqual(["db.utils.js"]);
+  });
+
+  it("refuses a browser script the project's own link leads below a Node package", async () => {
+    const dir = project();
+    mkdirSync(join(dir, "tools", "pkg"), { recursive: true });
+    writeFileSync(join(dir, "tools", "package.json"), JSON.stringify(nodeManifest));
+    symlinkSync(join(dir, "tools", "pkg"), join(dir, "lib"), "junction");
+    await expect(
+      installItem(withTarget("lib/shaders.iife.js"), {
+        destDir: dir,
+        force: true,
+        baseUrl: otherRegistry,
+      }),
+    ).rejects.toThrow(/Unsafe target.*script Node tooling may run/);
+    expect(readdirSync(join(dir, "tools", "pkg"))).toEqual([]);
+  });
+
+  it("refuses a browser script below a mixed-case folder that holds a Node package, directly or through a link", async () => {
+    const options = { force: true, baseUrl: otherRegistry };
+    const direct = project();
+    mkdirSync(join(direct, "compositions", "Widgets"), { recursive: true });
+    writeFileSync(
+      join(direct, "compositions", "Widgets", "package.json"),
+      JSON.stringify(nodeManifest),
+    );
+    await expect(
+      installItem(withTarget("compositions/Widgets/chart.test.js"), {
+        destDir: direct,
+        ...options,
+      }),
+    ).rejects.toThrow(/Unsafe target.*script Node tooling may run/);
+    expect(readdirSync(join(direct, "compositions", "Widgets"))).toEqual(["package.json"]);
+
+    const linked = project();
+    mkdirSync(join(linked, "tools", "Pkg", "src"), { recursive: true });
+    writeFileSync(join(linked, "tools", "Pkg", "package.json"), JSON.stringify(nodeManifest));
+    symlinkSync(join(linked, "tools", "Pkg", "src"), join(linked, "lib"), "junction");
+    await expect(
+      installItem(withTarget("lib/shaders.iife.js"), { destDir: linked, ...options }),
+    ).rejects.toThrow(/Unsafe target.*script Node tooling may run/);
+    expect(readdirSync(join(linked, "tools", "Pkg", "src"))).toEqual([]);
+  });
+
+  it("refuses a page whose own file link leads to a Node-only script", async () => {
+    const dir = project();
+    mkdirSync(join(dir, "tools"));
+    mkdirSync(join(dir, "compositions"));
+    writeFileSync(join(dir, "tools", "run.ts"), "export {};\n");
+    symlinkSync(join(dir, "tools", "run.ts"), join(dir, "compositions", "data-chart.html"));
+    await expect(installItem(item, { destDir: dir, force: true })).rejects.toThrow(
+      /Unsafe target.*script Node tooling may run/,
+    );
+    expect(readFileSync(join(dir, "tools", "run.ts"), "utf8")).toBe("export {};\n");
   });
 
   it("writes into the standard folders, the configured ones and root notes", async () => {

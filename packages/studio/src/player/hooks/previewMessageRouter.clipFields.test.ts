@@ -62,8 +62,6 @@ function handlerFor(frame: Record<string, unknown>, iframe: HTMLIFrameElement) {
     processTimelineMessageRef: { current: storeClips },
     enrichMissingCompositionsRef: { current: vi.fn() },
     lastTimelineMessageRef: { current: Date.now() },
-    getAdapter: () => null,
-    syncTimelineElements: vi.fn(),
   });
   return (data: unknown) =>
     handle(

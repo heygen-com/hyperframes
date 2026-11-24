@@ -100,6 +100,7 @@ const emptyItem = (target: AudioTarget): AudioItem => ({
 function unreadable(target: AudioTarget): string | null {
   if (/^[a-z][a-z\d+.-]*:\/\//i.test(target.file)) return "remote sources are not analyzed";
   if (target.onAnotherNetworkRoot) return "network share paths are not analyzed";
+  if (target.refused) return "file not found";
   if (!existsSync(target.path)) return "file not found";
   return null;
 }

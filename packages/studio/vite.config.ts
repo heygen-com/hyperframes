@@ -212,6 +212,7 @@ export function devProjectApi(): Plugin {
           _api = mod.createStudioApi(adapter, {
             allowedHosts: mod.previewAllowedHostsFromEnv(),
             sandboxThumbnailCaptures: true,
+            sandboxDirectOpens: true,
           });
         }
         return _api;
@@ -422,7 +423,7 @@ export default defineConfig({
   },
   test: {
     exclude: ["data/**", "node_modules/**"],
-    setupFiles: ["src/test-setup.ts"],
+    setupFiles: ["src/test-setup.ts", "../core/vitest.mediaHeader.ts"],
     environmentOptions: {
       happyDOM: { settings: { enableIframePageLoading: true } },
     },
