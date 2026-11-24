@@ -324,6 +324,15 @@ first, resolving them transitively. Before installing any item files, it checks
 incompatible CLI. A `deprecated` message produces a warning without blocking
 installation.
 
+A block or component never installs a TypeScript, JSX or CommonJS file
+(`.ts`, `.tsx`, `.mts`, `.cts`, `.jsx`, `.cjs`). A `.js` or `.mjs` file, such
+as a vendored browser library, always installs from the public registry. From
+a registry you set in `hyperframes.json`, it installs unless the project folder
+or a folder above it has a `package.json` with more than the one `init` writes
+(for example, dependencies or a test script): there, the project's own Node
+tooling could pick the file up. A refused install fails with `Unsafe target`
+before anything is written. Studio saves follow the stricter rule.
+
 ### `catalog`
 
 Browse the registry.
