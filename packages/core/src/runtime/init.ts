@@ -127,6 +127,7 @@ import {
   handleMetadataForProxy,
   isRenderMode,
   maybeProxyProactively,
+  standInCaptureStill,
   decideFileTurn,
   describeVideoSources,
   levelsWithLighterCopies,
@@ -3612,6 +3613,7 @@ export function initSandboxRuntimeModular(): void {
           currentTime,
           loadsAhead && dueAtLoopStart(rawNode, visibleAt),
         );
+      if (isMediaElement(rawNode)) standInCaptureStill(rawNode, isVisibleNow);
       if (!isMediaElement(rawNode) && !isImageElement(rawNode)) decidedTimedClip = true;
       if (isVideoElement(rawNode) || isImageElement(rawNode)) {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
