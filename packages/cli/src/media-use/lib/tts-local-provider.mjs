@@ -47,7 +47,12 @@ export async function localTtsGenerate(
   // names a .txt file and takes a word starting with dashes as an option. To reproduce, voice the
   // path of an existing .txt file: the path must be spoken, not the file's text.
   const textPath = join(dirname(outPath), "line.txt");
-  writeFileSync(textPath, intent, { flag: "wx" });
+  try {
+    writeFileSync(textPath, intent, { flag: "wx" });
+  } catch (err) {
+    discardPrivateOutput(outPath);
+    throw err;
+  }
   const argv = ["hyperframes", "tts", "--text-file", textPath, "--output", outPath];
   if (ctx?.voice) argv.push("--voice", ctx.voice);
   if (ctx?.lang && ctx.lang !== "en") argv.push("--lang", ctx.lang);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { localTtsGenerate } from "./tts-local-provider.mjs";
@@ -109,4 +109,18 @@ test("the line reaches tts in a file of its own, whatever it looks like", async 
     assert.equal(dirname(textPath), dirname(outPath));
     assert.ok(!existsSync(textPath), "the file goes with the run's folder");
   }
+});
+
+test("a line that cannot be written leaves no folder behind", async () => {
+  const before = new Set(
+    readdirSync(tmpdir()).filter((name) => name.startsWith("media-use-kokoro-")),
+  );
+  const env = { ...envWithNpxCli, HYPERFRAMES_CLI_ENTRY: "/opt/hf/dist/cli.js" };
+
+  await assert.rejects(localTtsGenerate(undefined, {}, "linux", () => {}, env, pathExists));
+
+  const left = readdirSync(tmpdir()).filter(
+    (name) => name.startsWith("media-use-kokoro-") && !before.has(name),
+  );
+  assert.deepEqual(left, []);
 });
