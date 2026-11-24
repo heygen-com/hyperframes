@@ -141,15 +141,30 @@ function replaceOpeningTags(
   return parts.join("");
 }
 
-function replaceIdTags(html: string, id: string, replace: (tag: string) => string): string {
+/** Applies each tag's durations, in the order given, in one scan of the page however many there are. */
+function applyDurationsById(
+  html: string,
+  resolutions: readonly ResolvedDuration[],
+  apply: (tag: string, duration: number) => string,
+): string {
+  const durationsById = new Map<string, number[]>();
+  for (const { id, duration } of resolutions) {
+    const durations = durationsById.get(id);
+    if (durations) durations.push(duration);
+    else durationsById.set(id, [duration]);
+  }
   const parts: string[] = [];
   let cursor = 0;
   for (const span of scanHtmlOpeningTags(html)) {
     if (!span.closed) continue;
-    const tag = html.slice(span.start, span.end);
     const attr = span.attributes.find((attr) => attr.name === "id");
-    if (attr?.kind !== "value" || decodeAuthoredAttribute(attr.value) !== id) continue;
-    parts.push(html.slice(cursor, span.start), replace(tag));
+    if (attr?.kind !== "value") continue;
+    const durations = durationsById.get(decodeAuthoredAttribute(attr.value));
+    if (!durations) continue;
+    parts.push(
+      html.slice(cursor, span.start),
+      durations.reduce(apply, html.slice(span.start, span.end)),
+    );
     cursor = span.end;
   }
   parts.push(html.slice(cursor));
@@ -278,29 +293,24 @@ export function compileTimingAttrs(html: string): CompilationResult {
  * GSAP timeline queries.
  */
 export function injectDurations(html: string, resolutions: ResolvedDuration[]): string {
-  for (const { id, duration } of resolutions) {
-    // Match the element's opening tag by id
-    html = replaceIdTags(html, id, (tag) => {
-      let result = tag;
+  return applyDurationsById(html, resolutions, (tag, duration) => {
+    let result = tag;
 
-      // Add data-duration if missing
-      if (parseStrictFiniteTimingNumber(getAttr(result, "data-duration")) == null) {
-        result = setAttr(result, "data-duration", String(duration));
+    // Add data-duration if missing
+    if (parseStrictFiniteTimingNumber(getAttr(result, "data-duration")) == null) {
+      result = setAttr(result, "data-duration", String(duration));
+    }
+
+    // Add data-end if missing. Skip relative id-refs.
+    if (!hasAttr(result, "data-end")) {
+      const start = parseNumeric(getAttr(result, "data-start"));
+      if (start != null) {
+        result = injectAttr(result, "data-end", String(start + duration));
       }
+    }
 
-      // Add data-end if missing. Skip relative id-refs.
-      if (!hasAttr(result, "data-end")) {
-        const start = parseNumeric(getAttr(result, "data-start"));
-        if (start != null) {
-          result = injectAttr(result, "data-end", String(start + duration));
-        }
-      }
-
-      return result;
-    });
-  }
-
-  return html;
+    return result;
+  });
 }
 
 /**
@@ -343,19 +353,15 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
  * and recomputes data-end accordingly.
  */
 export function clampDurations(html: string, clamps: ResolvedDuration[]): string {
-  for (const { id, duration } of clamps) {
-    html = replaceIdTags(html, id, (tag) => {
-      // Replace data-duration value
-      if (hasAttr(tag, "data-duration")) tag = setAttr(tag, "data-duration", String(duration));
+  return applyDurationsById(html, clamps, (tag, duration) => {
+    // Replace data-duration value
+    if (hasAttr(tag, "data-duration")) tag = setAttr(tag, "data-duration", String(duration));
 
-      const start = parseNumeric(getAttr(tag, "data-start"));
-      if (start != null && hasAttr(tag, "data-end")) {
-        tag = setAttr(tag, "data-end", String(start + duration));
-      }
+    const start = parseNumeric(getAttr(tag, "data-start"));
+    if (start != null && hasAttr(tag, "data-end")) {
+      tag = setAttr(tag, "data-end", String(start + duration));
+    }
 
-      return tag;
-    });
-  }
-
-  return html;
+    return tag;
+  });
 }

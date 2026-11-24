@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "@hyperframes/core";
@@ -63,7 +64,7 @@ export function defaultCloudFps(projectDir: string): DistributedFps {
   if (isDistributedFps(n)) return n;
   console.warn(
     c.warn(
-      `The composition declares data-fps="${raw}", which cloud renders do not support ` +
+      `The composition declares data-fps="${terminalText(raw)}", which cloud renders do not support ` +
         `(${DISTRIBUTED_FPS.join(", ")}). Rendering at ${DEFAULT_CLOUD_FPS} fps; pass --fps to choose.`,
     ),
   );

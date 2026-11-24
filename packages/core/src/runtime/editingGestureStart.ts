@@ -81,10 +81,15 @@ function measureGrowResponse(
   layout: { width: number; height: number },
 ): EditingGestureStart["grow"] {
   const { style } = element;
-  const kept = SIZE_PROPERTIES.map(
+  const kept = [...SIZE_PROPERTIES, "translate"].map(
     (name) => [name, style.getPropertyValue(name), style.getPropertyPriority(name)] as const,
   );
+  const translateAsTheResizeDraftDrawsIt = movedTranslate(computedTranslateAxes(element), {
+    x: 0,
+    y: 0,
+  });
   const centre = (width: number, height: number): Point | null => {
+    style.setProperty("translate", translateAsTheResizeDraftDrawsIt);
     writeDrawnSize(style, { width, height });
     const box = element.getBoundingClientRect();
     return box.width > 0 || box.height > 0
@@ -159,6 +164,19 @@ function tweensOn(element: Element): GsapTween[] {
 
 const rendersTransform = (element: Element) =>
   !!(element as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
+
+export type EditingGestureBase = { x: number; y: number; opacity: number; scale: number };
+
+export function gestureBase(handle: EditingElementHandle): EditingGestureBase | null {
+  const element = elementForHandle(handle);
+  const gsap = (window as GsapWindow).gsap;
+  if (!element) return null;
+  if (!gsap?.getProperty) return { x: 0, y: 0, opacity: 1, scale: 1 };
+  const read = (property: string) => Number(gsap.getProperty?.(element, property));
+  const base = { x: read("x"), y: read("y"), opacity: read("opacity"), scale: read("scaleX") };
+  return Object.values(base).every(Number.isFinite) ? base : null;
+}
+
 // Read only once GSAP owns it: asking GSAP for x makes it fold a CSS translate into its transform.
 const readGsap = (element: Element, property: string) =>
   Number((window as GsapWindow).gsap?.getProperty?.(element, property)) || 0;

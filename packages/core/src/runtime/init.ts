@@ -128,6 +128,8 @@ import {
   handleMetadataForProxy,
   isRenderMode,
   maybeProxyProactively,
+  standInCaptureStill,
+  decideFileTurn,
   describeVideoSources,
   levelsWithLighterCopies,
   retryPreviewCopies,
@@ -548,7 +550,6 @@ function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolea
   return (
     isWebKit() &&
     isAudioElement(el) &&
-    !el.loop &&
     !isLongSource(el) &&
     webAudio.fitsDecodeBudget(el) &&
     typeof readElementRateSpec(el) === "number" &&
@@ -3367,6 +3368,7 @@ export function initSandboxRuntimeModular(): void {
       resolveAbsoluteMediaStartSeconds(el) + (resolveDurationForElement(el) ?? Number.NaN) <= time;
     const spent = passed && (decided !== true || (el.networkState === 2 && el.readyState < 4));
     const near = visible || armed || (upcoming && !unslotted && !spent);
+    decideFileTurn(el, visible);
     if (near) giveBackWhenDue(el);
     if ((visible || !near) && endPrefetch(el)) queueMicrotask(fillPrefetchSlots);
     const approaching = near && !visible && resolveAbsoluteMediaStartSeconds(el) > clock.now();
@@ -3613,6 +3615,7 @@ export function initSandboxRuntimeModular(): void {
           currentTime,
           loadsAhead && dueAtLoopStart(rawNode, visibleAt),
         );
+      if (isMediaElement(rawNode)) standInCaptureStill(rawNode, isVisibleNow);
       if (!isMediaElement(rawNode) && !isImageElement(rawNode)) decidedTimedClip = true;
       if (isVideoElement(rawNode) || isImageElement(rawNode)) {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
@@ -4108,6 +4111,13 @@ export function initSandboxRuntimeModular(): void {
   let liveRootDurationOverrideSeconds = 0;
   let lastPostedManifest = "";
   let lastTimeline: ReturnType<typeof collectRuntimeTimelinePayload> | null = null;
+  // Only a preview served with a scene manifest can swap; elsewhere the caller reloads directly.
+  const scenesSwappable = readSceneParts(document) !== null;
+  const timelineMessage = (payload: ReturnType<typeof collectRuntimeTimelinePayload>) => ({
+    ...payload,
+    assetsReady: assetsSettled,
+    sceneSwap: scenesSwappable,
+  });
   const computeClipTreeSignature = (): string => {
     let sig = "";
     for (const el of document.querySelectorAll("[data-start]")) {
@@ -4133,18 +4143,29 @@ export function initSandboxRuntimeModular(): void {
       ),
     );
   };
+  let measuredRootObserver: ResizeObserver | null = null;
+  const postStageSize = () => {
+    const root = resolveRootCompositionElement();
+    if (!root) return;
+    const { width, height } = readCompositionSize(root);
+    if (width !== null && height !== null) {
+      postRuntimeMessage({ source: "hf-preview", type: "stage-size", width, height });
+      return;
+    }
+    if (!measuredRootObserver && typeof ResizeObserver !== "undefined") {
+      measuredRootObserver = new ResizeObserver(postStageSize);
+      measuredRootObserver.observe(root);
+    }
+    const measuredSize = { width: root.offsetWidth, height: root.offsetHeight };
+    if (measuredSize.width > 0 && measuredSize.height > 0)
+      postRuntimeMessage({ source: "hf-preview", type: "stage-size", measuredSize });
+  };
   const postTimeline = () => {
     sanitizeCompositionDurationAttributes();
     applyCompositionSizing();
     applyClipLayout();
     // Post resolved stage size so the parent can scale the iframe container
-    const stageSizeRootEl = resolveRootCompositionElement();
-    if (stageSizeRootEl) {
-      const { width, height } = readCompositionSize(stageSizeRootEl);
-      if (width !== null && height !== null) {
-        postRuntimeMessage({ source: "hf-preview", type: "stage-size", width, height });
-      }
-    }
+    postStageSize();
     bindRootTimelineIfAvailable();
     timelinePostHeld = clock.isPlaying();
     if (timelinePostHeld) {
@@ -4180,7 +4201,7 @@ export function initSandboxRuntimeModular(): void {
     }
 
     lastTimeline = payload;
-    postRuntimeMessage({ ...payload, assetsReady: assetsSettled });
+    postRuntimeMessage(timelineMessage(payload));
     if (!assetsReadyStarted) {
       assetsReadyStarted = true;
       settleFirstFrameCompositionReadiness(document, ({ timedOut }) => {
@@ -5042,8 +5063,7 @@ export function initSandboxRuntimeModular(): void {
       await (windowWork ?? Promise.resolve());
     }
   };
-  // Only a preview served with a scene manifest can swap; elsewhere the caller reloads directly.
-  if (readSceneParts(document)) {
+  if (scenesSwappable) {
     window.__hfSwapScenes = swapScenes;
     window.__hfHoldScenes = holdScenes;
     window.__hfParkedSceneMarkup = parkedSceneMarkup;
@@ -6889,7 +6909,7 @@ export function initSandboxRuntimeModular(): void {
     },
     onScrubAudio: scrubAudio.scrub,
     onAnnounceTimeline: () => {
-      if (lastTimeline) postRuntimeMessage({ ...lastTimeline, assetsReady: assetsSettled });
+      if (lastTimeline) postRuntimeMessage(timelineMessage(lastTimeline));
     },
     onRequestPreviewFacts: () =>
       postRuntimeMessage({
@@ -6965,6 +6985,8 @@ export function initSandboxRuntimeModular(): void {
   const teardown = () => {
     if (state.tornDown) return;
     state.tornDown = true;
+    measuredRootObserver?.disconnect();
+    measuredRootObserver = null;
     previewSeek?.cancel();
     cancelTransportTick();
     document.removeEventListener("visibilitychange", onTransportVisibilityChange);

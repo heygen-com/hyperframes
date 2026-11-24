@@ -17,6 +17,7 @@ import { authoredStyles, findAuthoredElement, savedTiming } from "./authoredSour
 import { fileDocs, standaloneSets } from "./softReloadTargets";
 import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
 import { PREVIEW_REJECTED, PREVIEW_STALE, previewFrameOpaque } from "../player/lib/previewChannel";
+import { rereadGsapSnapshot } from "../hooks/gsapFrameSnapshot";
 import {
   SAVED_STATE_DEADLINE_MS,
   sendPreviewWrite,
@@ -202,6 +203,10 @@ export function sealedRerun(
 }
 
 // Everything sent comes from the files Studio saved, never from the frame; the reply only says whether it applied.
+function rereadOnceRerun(iframe: HTMLIFrameElement, result: SoftReloadResult): void {
+  if (result !== "cannot-soft-reload" && result !== "superseded") rereadGsapSnapshot(iframe);
+}
+
 function softReloadSealed(
   iframe: HTMLIFrameElement,
   scriptText: string,
@@ -236,6 +241,7 @@ function softReloadSealed(
       answer === PREVIEW_REJECTED || answer === PREVIEW_STALE
         ? "cannot-soft-reload"
         : sealedSoftReloadResult(answer);
+    rereadOnceRerun(iframe, result);
     if (!ticketNeedsRecovery(ticket)) return;
     if (result === "cannot-soft-reload") onAsyncFailure?.();
     else if (result !== "superseded") onShownInPlace?.();

@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CompositionProbe } from "./composition-probe.js";
+import { CompositionProbe, loadLimitMs, timelineNotFound } from "./composition-probe.js";
 import type { ProbeCallbacks } from "./composition-probe.js";
+
+const LIMIT = loadLimitMs();
+const TIMED_OUT = timelineNotFound(LIMIT);
 
 function mount(
   markup: string,
@@ -116,16 +119,16 @@ describe("composition probe readiness", () => {
     vi.advanceTimersByTime(7800);
     expect(onError).toHaveBeenCalledExactlyOnceWith("Uncaught Error: child setup failed");
   });
-  it("times out pending runtime injection at eight seconds", () => {
+  it("times out pending runtime injection at the load limit", () => {
     const { onReady, onError } = mount(
       '<div data-composition-id="main"><div data-composition-src="child.html"></div></div>',
     );
-    vi.advanceTimersByTime(7999);
+    vi.advanceTimersByTime(LIMIT - 1);
     expect(onError).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(onError).toHaveBeenCalledExactlyOnceWith("Composition timeline not found after 8s");
+    expect(onError).toHaveBeenCalledExactlyOnceWith(TIMED_OUT);
     expect(onReady).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(LIMIT);
     expect(onError).toHaveBeenCalledOnce();
   });
   it("gives a frame it can't read the plain timeout, sealed or not", () => {
@@ -135,24 +138,24 @@ describe("composition probe readiness", () => {
         throw new DOMException("Blocked a frame with origin", "SecurityError");
       },
     });
-    vi.advanceTimersByTime(8000);
-    expect(onError).toHaveBeenCalledExactlyOnceWith("Composition timeline not found after 8s");
+    vi.advanceTimersByTime(LIMIT);
+    expect(onError).toHaveBeenCalledExactlyOnceWith(TIMED_OUT);
   });
   it("does not invent duration for an unresolved document", () => {
     const { onReady, onError } = mount('<div data-composition-id="main"></div>');
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(LIMIT);
     expect(onReady).not.toHaveBeenCalled();
-    expect(onError).toHaveBeenCalledExactlyOnceWith("Composition timeline not found after 8s");
+    expect(onError).toHaveBeenCalledExactlyOnceWith(TIMED_OUT);
   });
-  it("rejects initialization later than eight seconds", () => {
+  it("accepts initialization later than the load limit, after reporting it", () => {
     const { iframe, onReady, onError } = mount('<div data-composition-id="main"></div>');
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(LIMIT);
     Object.assign(iframe.contentWindow!, { __player: { getDuration: () => 6 } });
     vi.advanceTimersByTime(1000);
-    expect(onReady).not.toHaveBeenCalled();
-    expect(onError).toHaveBeenCalledOnce();
+    expect(onError).toHaveBeenCalledExactlyOnceWith(TIMED_OUT);
+    expect(onReady).toHaveBeenCalledOnce();
   });
-  it("accepts initialization inside the eight-second budget", () => {
+  it("accepts initialization inside the load limit", () => {
     const { iframe, onReady, onError } = mount('<div data-composition-id="main"></div>');
     vi.advanceTimersByTime(7400);
     Object.assign(iframe.contentWindow!, { __player: { getDuration: () => 6 } });

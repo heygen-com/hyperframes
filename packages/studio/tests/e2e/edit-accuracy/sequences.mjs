@@ -469,6 +469,12 @@ export async function restedFor(
   throw new Error("an edit was still waiting or saving");
 }
 
+/** The box once Studio says the preview is done, and the ms until it said so: an undo's reload shows only then. */
+export async function shownOnceRested(busy, frame, settle, options) {
+  const shownMs = await restedFor(busy, frame, options);
+  return { box: await settle(), shownMs };
+}
+
 // A sealed press waits for the previous save, then replays, and a sealed undo shows only once the preview applies it.
 const studioBusy = (page) =>
   page.evaluate(
@@ -610,7 +616,14 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
   );
   // The file the steps should have left: the last surviving save's, or the original when all were undone.
   const expected = spec.settle ? (stack.at(-1)?.after ?? versions[0]) : versions.at(-1);
-  const undone = await settled(ctx.A);
+  const rested = () =>
+    shownOnceRested(
+      () => studioBusy(page),
+      () => nextFrame(page),
+      () => settled(ctx.A),
+    );
+  const undoneAt = await rested();
+  const undone = undoneAt.box;
   await shoot("undone");
   const redo = undo.ok
     ? await walk(
@@ -624,7 +637,8 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
         history,
       )
     : { ok: false, landed: [] };
-  const redone = undo.ok ? await settled(ctx.A) : null;
+  const redoneAt = undo.ok ? await rested() : null;
+  const redone = redoneAt?.box ?? null;
   // A late write must not land under the reload.
   await waitForFiles(ctx.A, { timeout: 15_000 });
 
@@ -691,6 +705,8 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
       // The slowest write of each walk, judged by the single-case undo rule.
       ms: slowest(undo.writes),
       redoMs: slowest(redo.writes),
+      shownMs: undoneAt.shownMs,
+      redoShownMs: redoneAt?.shownMs ?? null,
     },
     undoTimeout: saveFault([
       ...undo.writes.map((w) => ["undo", w]),

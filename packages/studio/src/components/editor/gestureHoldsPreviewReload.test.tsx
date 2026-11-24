@@ -317,7 +317,7 @@ describe("a press while the preview reloads", () => {
     pointer(editor.box, "pointerdown", 150, 150);
     pointer(editor.overlay, "pointermove", 190, 170);
     expect(marked(editor.live.contentDocument!), "the page being replaced").toHaveLength(0);
-    expect(editor.box.hasAttribute(PRESS_WAITING_ATTR), "drawn at the pointer").toBe(true);
+    expect(editor.box.getAttribute(PRESS_WAITING_ATTR), "drawn at the pointer").toBe("save");
     pointer(editor.overlay, "pointerup", 190, 170);
     act(() => usePlayerStore.setState({ currentTime: 3 }));
     let pressedAt: number | undefined;
@@ -826,6 +826,7 @@ describe("an inline text edit", () => {
     overlayRoot = createRoot(document.body.appendChild(document.createElement("div")));
     act(() => overlayRoot.render(<Editor />));
     act(() => void controls!.start(byId(live, "title")));
+    byId(live, "title").textContent = "Saved title";
     const held = await reloadMidGesture();
     expect(api().iframeRef.current).toBe(live);
 

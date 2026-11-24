@@ -20,6 +20,7 @@ let displayScale = 1;
 
 vi.mock("mediabunny", () => ({
   ALL_FORMATS: [],
+  HLS: {},
   UrlSource: class {
     constructor(readonly url: string) {}
   },
@@ -55,7 +56,10 @@ vi.mock("mediabunny", () => ({
     }
   },
 }));
-vi.mock("./mediaFetch", () => ({ mediaUrlSourceOptions: () => ({ cancelReads }) }));
+vi.mock("./mediaFetch", () => ({
+  mediaUrlSourceOptions: () => ({ cancelReads }),
+  selfContainedFormats: () => [],
+}));
 vi.mock("../store/playerStore", () => ({
   usePlayerStore: {
     getState: () => ({ previewQuality, previewQualityChosenBy: qualityChosenBy }),

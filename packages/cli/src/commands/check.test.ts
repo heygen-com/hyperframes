@@ -521,6 +521,29 @@ describe("check --prepare-media", () => {
     consumeCommandResult();
   });
 
+  // fails without the fix: a scope note was printed as it arrived
+  it("shows control characters in a scope note as text", async () => {
+    const { report } = await runScenario(fakeDriver());
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => PROJECT,
+        runPipeline: async () => ({
+          ...report,
+          scope: { hiddenFindings: 0, notes: ["Scoped to #hero\u0007\nsecond line"] },
+        }),
+        prepareMedia: vi.fn(),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: [] },
+    );
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(human).toContain("Scoped to #hero\\x07\nsecond line");
+    expect(human).not.toContain("\u0007");
+    consumeCommandResult();
+  });
+
   // fails without the fix: the revision read from the project's history reached stdout raw
   it("prints the saved report's revision with control characters as visible escapes", async () => {
     // Built rather than written: a literal control character in the source is a lint error.

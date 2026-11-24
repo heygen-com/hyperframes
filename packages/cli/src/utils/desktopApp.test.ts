@@ -435,6 +435,51 @@ describe("agent hand-off", () => {
     expect(existsSync(handoff())).toBe(false);
   });
 
+  // fails without the fix: the path of the record that could not be written was printed as it is on disk
+  // Windows refuses control characters in folder names, and has no read-only folders to make.
+  it.skipIf(process.platform === "win32")(
+    "shows control characters in the hand-off record's path as text",
+    () => {
+      const home = mkdtempSync(join(tmpdir(), "hf-home\u0007-"));
+      vi.stubEnv("HOME", home);
+      vi.stubEnv("HYPERFRAMES_CACHE_DIR", "");
+      chmodSync(home, 0o555);
+      dir = mkdtempSync(join(tmpdir(), "hf-handoff-"));
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        openInDesktop(dir, { ...LIVE, open: () => true, env: { CODEX_THREAD_ID: "x-1" } });
+
+        const printed = warn.mock.calls.map((call) => call.join(" ")).join("\n");
+        expect(printed).toContain(`hand-off in ${home.replace("\u0007", "\\x07")}`);
+        expect(printed).not.toContain("\u0007");
+      } finally {
+        warn.mockRestore();
+        chmodSync(home, 0o755);
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // fails without the fix: the folder that could not be marked as a project was printed as it is on disk
+  it.skipIf(process.platform === "win32")(
+    "shows control characters in a folder it could not mark as a project as text",
+    () => {
+      dir = mkdtempSync(join(tmpdir(), "hf-bare\u0007-"));
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      chmodSync(dir, 0o555);
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        openInDesktop(dir, { ...LIVE, open: () => true });
+
+        const printed = warn.mock.calls.map((call) => call.join(" ")).join("\n");
+        expect(printed).toContain(`hyperframes.json to ${dir.replace("\u0007", "\\x07")}, so`);
+        expect(printed).not.toContain("\u0007");
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
+
   it.skipIf(process.platform === "win32")(
     "still opens a project it cannot write to, with nothing handed over",
     () => {

@@ -13,7 +13,7 @@ import {
   swapPending,
   unsettledBy,
 } from "./case.mjs";
-import { heldSize, keyedBy, restedFor } from "./sequences.mjs";
+import { heldSize, keyedBy, restedFor, shownOnceRested } from "./sequences.mjs";
 
 describe("settling on the shown preview", () => {
   const read = (pending, x = 0, frames = "a") => ({
@@ -277,6 +277,31 @@ describe("the box a press is measured against", () => {
     expect(shown.actual[0][0]).toBe(0);
   });
 
+  // fails without the fix: the press itself read the waiting outline, so a sealed press jumped 0.2 px.
+  it("reads the element at the press, before the pointer moves", async () => {
+    const shown = await measureShown(
+      { page: { $: async (selector) => (selector.includes('="frame"') ? null : marker([true])) } },
+      "move",
+      read,
+      async () => quad(260),
+      false,
+    );
+    expect(shown.m.visible[0][0]).toBe(0);
+  });
+
+  // fails without the fix: a press made while Studio saved read the element, still where the last save
+  // left it, 312 px from the box Studio draws at the pointer.
+  it("reads the waiting box at the press while it waits on a save", async () => {
+    const shown = await measureShown(
+      { page: { $: async () => marker([true]) } },
+      "move",
+      read,
+      async () => quad(260),
+      false,
+    );
+    expect(shown.m.visible[0][0]).toBe(260);
+  });
+
   it("reads the element when nothing waits", async () => {
     const shown = await measureShown({ page: page([]) }, "move", read, async () => quad(260));
     expect(shown.m.visible[0][0]).toBe(0);
@@ -313,6 +338,16 @@ describe("the end of a sequence", () => {
   it("says how long until the first of the clear reads, the undo's time to show", async () => {
     const { busy, frame, now } = reads([true, true, false, false]);
     expect(await restedFor(busy, frame, { now })).toBe(20);
+  });
+
+  // fails without the fix: the undo was read while its reload was on the way, 240-329 px from where it landed.
+  it("reads an undo's box once Studio says its reload is done, and how long that took", async () => {
+    const { busy, frame, now, read } = reads([true, true, true, false, false]);
+    const settle = async () => (read() > 3 ? "undone" : "before");
+    expect(await shownOnceRested(busy, frame, settle, { now })).toEqual({
+      box: "undone",
+      shownMs: 30,
+    });
   });
 
   it("gives up with a reason when an edit never stops saving", async () => {

@@ -9,7 +9,10 @@ import { queryPreviewElements } from "../../player/lib/previewElements";
 import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness";
 import type { DomEditSelection } from "./domEditing";
 import { orientedGroupAwareOverlayRect, type OverlayRect } from "./domEditOverlayGeometry";
-import type { UseDomEditOverlayGesturesOptions } from "./domEditOverlayGestures";
+import {
+  PRESS_WAITING_ATTR,
+  type UseDomEditOverlayGesturesOptions,
+} from "./domEditOverlayGestures";
 import { createPreviewGestureStarts } from "./previewGestureStarts";
 import { standInHandle } from "./previewSelection";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
@@ -24,6 +27,13 @@ vi.mock("./overlayFrameLoop", () => ({
 }));
 
 const press = vi.hoisted(() => ({ changing: true, start: vi.fn((..._args: unknown[]) => true) }));
+const replay = vi.hoisted(() => ({
+  sent: (_iframe: HTMLIFrameElement) => Promise.resolve(),
+}));
+vi.mock("./previewDrafts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./previewDrafts")>()),
+  previewDraftsSent: (iframe: HTMLIFrameElement) => replay.sent(iframe),
+}));
 vi.mock("./domEditOverlayStartGesture", () => ({
   startGesture: press.start,
   startGroupDrag: vi.fn(() => true),
@@ -366,24 +376,54 @@ function silentFrame() {
 }
 
 describe("a press held across a preview change on an opaque frame", () => {
+  afterEach(() => {
+    replay.sent = () => Promise.resolve();
+  });
+
+  /** Holds each frame's answer to the replay's draws until the test lets it go. */
+  function holdDraws() {
+    const held = new Map<HTMLIFrameElement, () => void>();
+    replay.sent = (iframe) => new Promise<void>((resolve) => held.set(iframe, resolve));
+    return held;
+  }
+
   async function pressDuringChange(
     selection: DomEditSelection,
     {
       iframe = opaqueFrame(),
       overlayRect = null,
       whileWaiting = () => {},
+      box = null,
     }: {
       iframe?: HTMLIFrameElement;
       overlayRect?: OverlayRect | null;
       whileWaiting?: (opts: UseDomEditOverlayGesturesOptions) => void;
+      box?: HTMLDivElement | null;
     } = {},
   ) {
     press.changing = true;
     press.start.mockClear();
+    const { opts, overlay, down, starts } = pressOn(selection, { iframe, overlayRect, box });
+    starts.startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(press.start).not.toHaveBeenCalled();
+    whileWaiting(opts);
+    press.changing = false;
+    return { opts, overlay, down, ...starts };
+  }
+
+  function pressOn(
+    selection: DomEditSelection,
+    {
+      iframe,
+      overlayRect,
+      box,
+    }: { iframe: HTMLIFrameElement; overlayRect: OverlayRect | null; box: HTMLDivElement | null },
+  ) {
     const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]) as HTMLDivElement;
     const opts = {
       waitingPressRef: { current: null },
-      boxRef: { current: null },
+      boxRef: { current: box },
       rafPausedRef: { current: false },
       iframeRef: { current: iframe },
       overlayRef: { current: overlay },
@@ -391,8 +431,9 @@ describe("a press held across a preview change on an opaque frame", () => {
       selectionRef: { current: selection },
       overlayRectRef: { current: overlayRect },
       setOverlayRect: vi.fn((rect: OverlayRect | null) => (opts.overlayRectRef.current = rect)),
+      onBlockedMoveRef: { current: vi.fn() },
     } as unknown as UseDomEditOverlayGesturesOptions;
-    const { startGesture } = createPreviewGestureStarts(opts, vi.fn(), vi.fn());
+    const starts = createPreviewGestureStarts(opts, vi.fn(), vi.fn());
     const down = {
       pointerId: 1,
       clientX: 5,
@@ -401,13 +442,163 @@ describe("a press held across a preview change on an opaque frame", () => {
       preventDefault: vi.fn(),
       stopPropagation: vi.fn(),
     };
+    return { opts, overlay, down, starts };
+  }
+
+  // fails without the fix: the box said only that a press waited, so the edit bench could not tell a press waiting on
+  // the frame's answer, its outline resting on the layer, from one waiting on a save, its layer still where it was.
+  it.each([
+    [false, "frame"],
+    [true, "save"],
+  ])(
+    "says why a press on an opaque frame waits, the preview changing: %s",
+    async (changing, reason) => {
+      const turned = document.getElementById("turned")!;
+      const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+      const box = document.createElement("div");
+      press.changing = changing;
+      const { starts, down } = pressOn(stale, { iframe: opaqueFrame(), overlayRect: null, box });
+      starts.startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+      expect(box.getAttribute(PRESS_WAITING_ATTR)).toBe(reason);
+    },
+  );
+
+  // fails without the fix: the outline went at once while the frame still showed the layer where the last save put
+  // it, so for one frame the layer showed at the drag's start (312 px on the edit bench's seqheldtwice case).
+  it("keeps the waiting outline until the frame has drawn the replayed drag", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const iframe = opaqueFrame();
+    const { opts } = await pressDuringChange(stale, { box, iframe });
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce());
+    expect([box.hasAttribute(PRESS_WAITING_ATTR), opts.rafPausedRef.current]).toEqual([true, true]);
+    held.get(iframe)!();
+    await vi.waitFor(() => expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false));
+    expect(opts.rafPausedRef.current).toBe(false);
+  });
+
+  // fails without the fix: the outline waited on the frame pressed, which a reload had replaced, so it went while
+  // the replacement frame's draw of the replay was still on its way.
+  it("keeps the waiting outline until the frame the change swapped in has drawn the replay", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const swappedIn = opaqueFrame();
+    await pressDuringChange(stale, {
+      box,
+      whileWaiting: (o) => (o.iframeRef.current = swappedIn),
+    });
+    await vi.waitFor(() => expect(held.has(swappedIn)).toBe(true));
+    expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(true);
+    held.get(swappedIn)!();
+    await vi.waitFor(() => expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false));
+  });
+
+  // fails without the fix: the older replay's frame answering cleared the outline the newer replay still held.
+  it("keeps a newer replay's outline when an older replay's frame answers first", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const [first, second] = [opaqueFrame(), opaqueFrame()];
+    const { opts, startGesture, down } = await pressDuringChange(stale, { box, iframe: first });
+    await vi.waitFor(() => expect(held.has(first)).toBe(true));
+    opts.iframeRef.current = second;
+    press.changing = true;
     startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(press.start).not.toHaveBeenCalled();
-    whileWaiting(opts);
     press.changing = false;
-    return { opts, overlay };
-  }
+    await vi.waitFor(() => expect(held.has(second)).toBe(true));
+    held.get(first)!();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(true);
+    held.get(second)!();
+    await vi.waitFor(() => expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false));
+  });
+
+  it("keeps a press's outline that comes while the replay before it waits on its frame", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const iframe = opaqueFrame();
+    const { opts, startGesture, down } = await pressDuringChange(stale, { box, iframe });
+    await vi.waitFor(() => expect(held.has(iframe)).toBe(true));
+    press.changing = true;
+    startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    held.get(iframe)!();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect([box.hasAttribute(PRESS_WAITING_ATTR), opts.waitingPressRef.current]).toEqual([
+      true,
+      expect.anything(),
+    ]);
+    press.changing = false;
+  });
+
+  // fails without the fix: the overlay re-renders its handlers, and the older replay's answer reached the new
+  // handlers' copy of the outline, so it cleared the outline of a press made through them.
+  it("keeps a press's outline made after a re-render when the replay before it answers", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const iframe = opaqueFrame();
+    const { opts, down } = await pressDuringChange(stale, { box, iframe });
+    await vi.waitFor(() => expect(held.has(iframe)).toBe(true));
+    const rerendered = createPreviewGestureStarts(opts, vi.fn(), vi.fn());
+    press.changing = true;
+    rerendered.startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    held.get(iframe)!();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(true);
+    press.changing = false;
+    rerendered.endWaitingPress();
+  });
+
+  // fails without the fix: the frame the replay drew in answered after a reload had swapped it out, and the outline
+  // went before the swapped-in frame showed the replay.
+  it("waits on the frame swapped in after the replay, not the one it drew in", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const [drewIn, swappedIn] = [opaqueFrame(), opaqueFrame()];
+    const { opts } = await pressDuringChange(stale, { box, iframe: drewIn });
+    await vi.waitFor(() => expect(held.has(drewIn)).toBe(true));
+    opts.iframeRef.current = swappedIn;
+    held.get(drewIn)!();
+    await vi.waitFor(() => expect(held.has(swappedIn)).toBe(true));
+    expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(true);
+    held.get(swappedIn)!();
+    await vi.waitFor(() => expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false));
+  });
+
+  it("drops the outline at once when the overlay leaves, and a late answer changes nothing", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const iframe = opaqueFrame();
+    const { opts, startGesture, down, endWaitingPress } = await pressDuringChange(stale, {
+      box,
+      iframe,
+    });
+    await vi.waitFor(() => expect(held.has(iframe)).toBe(true));
+    endWaitingPress();
+    expect([box.hasAttribute(PRESS_WAITING_ATTR), opts.rafPausedRef.current]).toEqual([
+      false,
+      false,
+    ]);
+    press.changing = true;
+    startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    held.get(iframe)!();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(true);
+    press.changing = false;
+  });
 
   it("re-finds the pressed element on the page shown and starts on its box, read over the channel", async () => {
     const turned = document.getElementById("turned")!;
@@ -450,6 +641,20 @@ describe("a press held across a preview change on an opaque frame", () => {
     // fails without the fix: the gesture drew through the stand-in of the frame it was pressed on, now removed.
     expect(started.selection.element).not.toBe(turned);
     expect(standInHandle(started.selection.element)).toBe(started.selection.handle);
+  });
+
+  // fails without the fix: a press the frame never answered, with no box drawn to start from, ended with nothing.
+  it("says the preview didn't answer when it never does and no box was drawn", async () => {
+    const turned = makeSelection("turned", document.getElementById("turned")!);
+    const { opts } = await pressDuringChange(turned, { iframe: silentFrame() });
+    await vi.waitFor(() => expect(opts.onBlockedMoveRef.current).toHaveBeenCalledOnce(), {
+      timeout: 3000,
+    });
+    expect(press.start).not.toHaveBeenCalled();
+    expect(opts.onBlockedMoveRef.current).toHaveBeenCalledWith(
+      turned,
+      "The preview didn't answer, so Studio can't move this layer. Try again.",
+    );
   });
 
   it("starts from the box Studio drew when the frame shown never answers", async () => {

@@ -1,7 +1,7 @@
 /**
  * A gesture on a preview frame Studio cannot script edits the selection's stand-in element. What the
  * gesture draws on the stand-in is drawn on the frame's own element too, over the frame's channel,
- * so the preview follows the pointer. One request is in flight per frame; later draws wait and merge.
+ * so the preview follows the pointer. One request is in flight per frame; draws until a microtask, or waiting, merge.
  */
 import {
   MAX_DESCRIBE_HANDLES,
@@ -24,6 +24,8 @@ interface Queue {
   ops: EditingDraft[];
   drawn: Map<string, Entry>;
   sending: boolean;
+  sent: Array<() => void>;
+  sendQueued: boolean;
 }
 
 const standIns = new WeakMap<Element, { iframe: HTMLIFrameElement; handle: string }>();
@@ -49,7 +51,7 @@ export function previewDraftLive(standIn: Element): boolean {
 function queueFor(iframe: HTMLIFrameElement): Queue {
   let queue = queues.get(iframe);
   if (!queue) {
-    queue = { ops: [], drawn: new Map(), sending: false };
+    queue = { ops: [], drawn: new Map(), sending: false, sent: [], sendQueued: false };
     queues.set(iframe, queue);
   }
   return queue;
@@ -58,7 +60,8 @@ function queueFor(iframe: HTMLIFrameElement): Queue {
 const opGesture = new WeakMap<EditingDraft, object>();
 
 function send(iframe: HTMLIFrameElement, queue: Queue): void {
-  if (queue.sending || !queue.ops.length) return;
+  if (queue.sending) return;
+  if (!queue.ops.length) return void queue.sent.splice(0).forEach((done) => done());
   const drafts = queue.ops.splice(0, MAX_DESCRIBE_HANDLES);
   queue.sending = true;
   void previewRequest(iframe, "draft", { drafts })
@@ -75,18 +78,23 @@ function send(iframe: HTMLIFrameElement, queue: Queue): void {
     });
 }
 
+function sendOnMicrotask(iframe: HTMLIFrameElement, queue: Queue): void {
+  if (queue.sendQueued) return;
+  queue.sendQueued = true;
+  queueMicrotask(() => {
+    queue.sendQueued = false;
+    send(iframe, queue);
+  });
+}
+
 /** Draws `part` of the stand-in's draft on its frame element; any other element is left alone. */
 export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
   const target = standIns.get(element);
   if (!target) return;
   const queue = queueFor(target.iframe);
-  const entry: Entry = {
-    translate: null,
-    size: null,
-    gesture: {},
-    ...queue.drawn.get(target.handle),
-    ...part,
-  };
+  const prior = queue.drawn.get(target.handle);
+  const entry: Entry = { translate: null, size: null, gesture: {}, ...prior, ...part };
+  if (prior?.saving) delete entry.saving;
   queue.drawn.set(target.handle, entry);
   const { translate, size, rotate } = entry;
   const op = { handle: target.handle, translate, size, ...("rotate" in entry && { rotate }) };
@@ -95,7 +103,7 @@ export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
   const waiting = queue.ops[last];
   if (waiting && !("end" in waiting)) queue.ops[last] = op;
   else queue.ops.push(op);
-  send(target.iframe, queue);
+  sendOnMicrotask(target.iframe, queue);
 }
 
 /** A gesture's commit started: the save that patches `selector` may carry this draft's end. */
@@ -111,6 +119,7 @@ export function takePreviewDraftEnds(
   selectors: readonly string[],
 ): EditingDraftEnd[] {
   const queue = queueFor(iframe);
+  send(iframe, queue);
   const ends: EditingDraftEnd[] = [];
   for (const [handle, entry] of queue.drawn) {
     const waiting = queue.ops.some((op) => op.handle === handle);
@@ -156,4 +165,10 @@ function endDraft(element: Element, end: EditingDraftEnd["end"]): void {
       : { handle, end: end === "restore" ? "restore" : "keep" },
   );
   send(target.iframe, queue);
+}
+
+export function previewDraftsSent(iframe: HTMLIFrameElement): Promise<void> {
+  const queue = queueFor(iframe);
+  if (!queue.sending && !queue.ops.length) return Promise.resolve();
+  return new Promise((done) => queue.sent.push(done));
 }

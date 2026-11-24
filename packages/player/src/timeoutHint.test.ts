@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadLimitMs, timelineNotFound } from "./composition-probe.js";
 
 type Player = HTMLElement & { iframeElement: HTMLIFrameElement; _onIframeLoad(): void };
 
-const PLAIN = "Composition timeline not found after 8s";
-const HINTED = `${PLAIN}. A player can't add the HyperFrames runtime to a composition from another site: include the runtime script in it.`;
+const LIMIT = loadLimitMs();
+const PLAIN = timelineNotFound(LIMIT);
+const HINTED = timelineNotFound(LIMIT, true);
 
 const unheard = (warn: { mock: { calls: unknown[][] } }) =>
   warn.mock.calls.filter(([text]) => String(text).includes("error with no listener")).length;
@@ -44,7 +46,7 @@ describe("the timeline timeout", () => {
     "names the fix for a film from another site, the same sealed or not (sealed: %s)",
     (sealed) => {
       const { errors } = load("https://films.example/film.html", { sealed });
-      vi.advanceTimersByTime(8000);
+      vi.advanceTimersByTime(LIMIT);
       expect(errors).toEqual([HINTED]);
     },
   );
@@ -53,7 +55,7 @@ describe("the timeline timeout", () => {
     "keeps the plain timeout for a film from the page's own site (sealed: %s)",
     (sealed) => {
       const { errors } = load(`${location.origin}/film.html`, { sealed });
-      vi.advanceTimersByTime(8000);
+      vi.advanceTimersByTime(LIMIT);
       expect(errors).toEqual([PLAIN]);
     },
   );
@@ -64,7 +66,7 @@ describe("the timeline timeout", () => {
     (sealed) => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       load("https://films.example/film.html", { sealed, listen: false });
-      vi.advanceTimersByTime(8000);
+      vi.advanceTimersByTime(LIMIT);
       // The composition URL can carry a signed query, so the warning names only the error.
       expect(warn).toHaveBeenCalledWith(`[hyperframes-player] error with no listener: ${HINTED}`);
     },
@@ -74,10 +76,10 @@ describe("the timeline timeout", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { player } = load("https://films.example/film.html", { sealed: true, listen: false });
     player.addEventListener("error", () => {}, { once: true });
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(LIMIT);
     expect(unheard(warn)).toBe(0);
     player._onIframeLoad();
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(LIMIT);
     expect(unheard(warn)).toBe(1);
   });
 
@@ -88,7 +90,7 @@ describe("the timeline timeout", () => {
     player.addEventListener("error", heard, true);
     player.addEventListener("error", heard);
     player.removeEventListener("error", heard);
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(LIMIT);
     expect(heard).toHaveBeenCalledOnce();
     expect(unheard(warn)).toBe(0);
   });
@@ -99,7 +101,7 @@ describe("the timeline timeout", () => {
     const added = new AbortController();
     player.addEventListener("error", () => {}, { signal: added.signal });
     added.abort();
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(LIMIT);
     expect(unheard(warn)).toBe(1);
   });
 
@@ -108,7 +110,7 @@ describe("the timeline timeout", () => {
     const { player } = load("https://films.example/film.html", { sealed: true, listen: false });
     const handled = vi.fn(() => (player.onerror = null));
     player.onerror = handled;
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(LIMIT);
     expect(handled).toHaveBeenCalledOnce();
     expect(unheard(warn)).toBe(0);
   });
@@ -120,7 +122,7 @@ describe("the timeline timeout", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { player } = load("https://films.example/film.html", { sealed: true, listen: false });
     handle(player);
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(LIMIT);
     expect(
       warn.mock.calls.filter(([text]) => String(text).includes("error with no listener")),
     ).toEqual([]);

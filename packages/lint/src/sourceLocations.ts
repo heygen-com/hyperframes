@@ -1,4 +1,5 @@
 import { Parser } from "htmlparser2";
+import { sourcePositions } from "./sourceCoordinates";
 import type { HyperframeLintFinding } from "./types";
 import { parseHtmlStructure, readDecodedAttr } from "./utils";
 
@@ -32,12 +33,10 @@ export function createSourceLocator(source: string): (finding: HyperframeLintFin
   parser.write(source);
   parser.end();
   const normalizedSource = normalized(searchable.join(""));
+  const position = sourcePositions(source);
   const at = (offset: number): Location => {
-    const before = source.slice(0, offset);
-    return {
-      line: before.split(/\r\n|\r|\n/).length,
-      column: offset - Math.max(before.lastIndexOf("\n"), before.lastIndexOf("\r")),
-    };
+    const { line, column } = position(offset);
+    return { line, column };
   };
   return (finding) => {
     if (finding.line !== undefined) return { line: finding.line, column: finding.column };

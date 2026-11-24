@@ -28,7 +28,7 @@ import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from "fs";
 import { join, dirname, resolve, basename, relative, sep } from "path";
 import { parseHTML } from "linkedom";
-import { bundledScript } from "./bundledScripts.js";
+import { bundledGsapStandIn, bundledScript } from "./bundledScripts.js";
 import {
   inlineScriptBlocks,
   remoteSrcUrls,
@@ -564,6 +564,106 @@ export function detectThreeDTransformUsage(html: string): boolean {
   return THREE_D_CONTEXT_PATTERN.test(html);
 }
 
+type AncestorStep = { compound: string; child: boolean };
+const CSS_ESCAPE = /\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^])?/y;
+
+/**
+ * Each selector of a list as plain compounds, pseudo-classes, pseudo-elements and sibling steps dropped:
+ * each drop only widens the match, and a plain compound matches in bounded time. null when unbalanced.
+ */
+function ancestorSelectorSteps(list: string): AncestorStep[][] | null {
+  const selectors: AncestorStep[][] = [];
+  let steps: AncestorStep[] = [];
+  let combinators: (string | null)[] = [];
+  let compound = "";
+  let open = false;
+  let combinator: string | null = null;
+  const skipGroup = (at: number, close: string): number => {
+    let depth = 0;
+    for (let i = at; i < list.length; i++) {
+      const ch = list[i]!;
+      if (ch === "\\") i++;
+      else if (ch === '"' || ch === "'") {
+        const end = list.indexOf(ch, i + 1);
+        if (end < 0) return -1;
+        i = end;
+      } else if (ch === list[at]) depth++;
+      else if (ch === close && --depth === 0) return i;
+    }
+    return -1;
+  };
+  const flush = () => {
+    if (!open) return;
+    if ((combinator === "+" || combinator === "~") && steps.length > 0) {
+      steps.pop();
+      combinator = combinators.pop() ?? null;
+    }
+    steps.push({ compound: compound || "*", child: combinator === ">" });
+    combinators.push(combinator);
+    compound = "";
+    open = false;
+    combinator = null;
+  };
+  for (let i = 0; i <= list.length; i++) {
+    const ch = list[i];
+    if (ch === undefined || ch === ",") {
+      flush();
+      if (steps.length) selectors.push(steps);
+      steps = [];
+      combinators = [];
+      combinator = null;
+    } else if (ch === "\\") {
+      CSS_ESCAPE.lastIndex = i;
+      const escape = CSS_ESCAPE.exec(list)![0];
+      compound += escape;
+      i += escape.length - 1;
+      open = true;
+    } else if (ch === "[") {
+      const end = skipGroup(i, "]");
+      if (end < 0) return null;
+      compound += list.slice(i, end + 1);
+      open = true;
+      i = end;
+    } else if (ch === ":") {
+      while (/[:\w-]/.test(list[i + 1] ?? "")) i++;
+      if (list[i + 1] === "(") i = skipGroup(i + 1, ")");
+      if (i < 0) return null;
+      open = true;
+    } else if (/\s/.test(ch)) {
+      flush();
+      if (steps.length) combinator ??= " ";
+    } else if (ch === ">" || ch === "+" || ch === "~") {
+      flush();
+      combinator = ch;
+    } else if (ch === "(" || ch === ")" || ch === "]") {
+      return null;
+    } else {
+      compound += ch;
+      open = true;
+    }
+  }
+  return selectors;
+}
+
+/** Whether the steps select one of `ancestors` (nearest first), at most steps x ancestors plain matches. */
+function matchesAnAncestor(steps: AncestorStep[], ancestors: Element[]): boolean {
+  let reach = ancestors.map((el) => el.matches(steps[0]!.compound));
+  for (const step of steps.slice(1)) {
+    let above = false;
+    const next = ancestors.map(() => false);
+    for (let j = ancestors.length - 1; j >= 0; j--) {
+      const placed = step.child ? reach[j + 1] === true : above;
+      next[j] = placed && ancestors[j]!.matches(step.compound);
+      above ||= reach[j]!;
+    }
+    reach = next;
+  }
+  return reach.includes(true);
+}
+
+const MAX_ROOT_ANCESTORS = 256;
+const MAX_ANCESTOR_SELECTOR_CHECKS = 100_000;
+
 /**
  * Background-image signals on ancestors of the composition root.
  * drawElementImage only paints the captured subtree; drawElementService's
@@ -587,28 +687,29 @@ export function detectAncestorBackgroundImage(html: string): boolean {
   if (document.documentElement && !ancestors.includes(document.documentElement)) {
     ancestors.push(document.documentElement);
   }
+  // Past these bounds the answer is "yes": the baseline capture route paints any background.
+  if (ancestors.length > MAX_ROOT_ANCESTORS) return true;
+  let selectorChecks = 0;
   // Inline styles on the ancestor chain.
   for (const el of ancestors) {
     const style = el.getAttribute("style");
     if (style && hasBackgroundImageDeclaration(`{${style}}`)) return true;
   }
-  // <style> rules: any rule carrying an image-painting background declaration
-  // whose selector resolves to an ancestor of the root. Selector matching goes
-  // through querySelectorAll so class/id/compound selectors on wrappers are
-  // covered, not just literal `body`/`html`.
+  // <style> rules whose image background selects an ancestor of the root, by
+  // Element.matches, so class/id/compound selectors on wrappers count too.
   for (const styleEl of document.querySelectorAll("style")) {
     const css = styleEl.textContent ?? "";
     for (const { parts: rule } of cssRuleMatches(css)) {
       const [, selectorList, declarations] = rule;
       if (!hasBackgroundImageDeclaration(`{${declarations}}`)) continue;
-      for (const selector of selectorList.split(",")) {
-        const sel = selector.trim();
-        if (!sel || sel.startsWith("@")) continue;
-        if (/^(?:html|:root)$/i.test(sel)) return true;
+      if (selectorList.trim().startsWith("@")) continue;
+      const selectors = ancestorSelectorSteps(selectorList);
+      if (!selectors) return true;
+      for (const steps of selectors) {
+        selectorChecks += steps.length * ancestors.length;
+        if (selectorChecks > MAX_ANCESTOR_SELECTOR_CHECKS) return true;
         try {
-          for (const matched of document.querySelectorAll(sel)) {
-            if (ancestors.includes(matched)) return true;
-          }
+          if (matchesAnAncestor(steps, ancestors)) return true;
         } catch {
           // Selector syntax linkedom can't parse (e.g. vendor pseudo) — skip.
         }
@@ -1659,6 +1760,9 @@ export async function inlineExternalScripts(
   });
   const remote = new Set(externalScripts.filter((_, i) => !local[i]).map(({ src }) => src));
   assertRemoteFetchCount("scripts", remote.size);
+  const pinned = new Set(
+    externalScripts.filter(({ el }) => el.getAttribute("integrity")).map(({ src }) => src),
+  );
 
   const mirror = operatorGsapMirror();
   const limit = createConcurrencyLimit(MAX_CONCURRENT_SCRIPT_FETCHES);
@@ -1683,7 +1787,17 @@ export async function inlineExternalScripts(
     if (!bytes) {
       bytes = limit(async () => {
         fetchSignal.throwIfAborted();
-        const downloaded = await downloadScript(src, mirror, fetchSignal);
+        const downloaded = await downloadScript(src, mirror, fetchSignal).catch(
+          (error: unknown) => {
+            // GSAP keeps its API within a major version, so a blocked CDN's 3.x file runs as the host's 3.x.
+            const standIn = pinned.has(src) || fetchSignal.aborted ? null : bundledGsapStandIn(src);
+            if (!standIn) throw error;
+            defaultLogger.warn(
+              `[Compiler] Could not download ${src} (${error}); using the host's own GSAP instead.`,
+            );
+            return standIn;
+          },
+        );
         charge(downloaded.byteLength);
         return downloaded;
       }, fetchSignal);
@@ -2794,6 +2908,7 @@ async function compileWithAssets(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: remoteImageAssets,
     timeoutMs: options.ffmpegProcessTimeout,
+    signal: options.abortSignal,
     allowOutsideFiles: assetRoot === undefined,
   });
   if (preparedHeifImages.length > 0) {
@@ -2811,6 +2926,7 @@ async function compileWithAssets(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: gifSourceAssets,
     timeoutMs: options.ffmpegProcessTimeout,
+    signal: options.abortSignal,
     allowOutsideFiles: assetRoot === undefined,
   });
   if (preparedGifs.length > 0) {

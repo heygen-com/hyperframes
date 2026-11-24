@@ -14,6 +14,7 @@ import { useTimelineTrimRipple } from "./useTimelineTrimRipple";
 import { persistTimelineMoveEditsAtomically } from "./timelineMoveAdapter";
 import { persistMoveEdits, type DragCommitDeps } from "../player/components/timelineClipDragCommit";
 import { LANE_OVERLAP_NOTICE } from "../player/components/timelineCollision";
+import { keyHint } from "../player/components/studioShortcuts";
 
 installReactActEnvironment();
 
@@ -117,6 +118,22 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
       finishRipple();
       await deleting;
     });
+  });
+
+  it("a delete that lands names the clip and the undo key, as the ripple toast does", async () => {
+    const showToast = vi.fn();
+    const { b, getHook } = mountDeleteHarness({
+      handleTimelineGroupMove: vi.fn().mockResolvedValue(undefined),
+      showToast,
+    });
+
+    await act(async () => {
+      await getHook().handleTimelineElementDelete(b);
+    });
+
+    const undo = keyHint("undo");
+    expect(showToast.mock.calls[0]).toEqual([`Deleted hf-b. Undo (${undo}) restores it.`, "info"]);
+    expect(showToast.mock.calls[1]?.[0]).toContain(`Undo (${undo}) restores it`);
   });
 
   // editHistory.ts's coalescing keeps the LAST recordEdit call's label, so the

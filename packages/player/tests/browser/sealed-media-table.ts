@@ -409,13 +409,13 @@ type Seen = {
   currentSrc: string;
   loads: number;
   ours: number;
+  corsLoads: number;
   selections: number;
-  failedWithCors: string[];
 };
 
 async function installDriver(frame: Frame) {
   await frame.evaluate(() => {
-    const state = new Map<string, { video: HTMLVideoElement; last: number; failed: Set<string> }>();
+    const state = new Map<string, { video: HTMLVideoElement; last: number }>();
     const touch = (video: HTMLVideoElement) => {
       const entry = state.get(video.dataset.table ?? "");
       if (entry) entry.last = performance.now();
@@ -438,6 +438,26 @@ async function installDriver(frame: Frame) {
       if (src.media) el.media = src.media;
       return el;
     };
+    // The clip's own events decide; the bound only ends a clip that never sends the one asked for.
+    const untilEvent = (
+      video: HTMLVideoElement,
+      events: string[],
+      decide: () => boolean | undefined,
+    ) =>
+      new Promise<boolean>((resolve) => {
+        const check = () => {
+          const verdict = decide();
+          if (verdict !== undefined) finish(verdict);
+        };
+        const finish = (verdict: boolean) => {
+          clearTimeout(bound);
+          for (const name of events) video.removeEventListener(name, check);
+          resolve(verdict);
+        };
+        const bound = setTimeout(() => finish(false), 10_000);
+        for (const name of events) video.addEventListener(name, check);
+        check();
+      });
     const pending = new Map<HTMLMediaElement, { action: string; src?: { src: string } }>();
     const interrupt = (video: HTMLMediaElement) => {
       const step = pending.get(video);
@@ -465,6 +485,8 @@ async function installDriver(frame: Frame) {
       if (data.table) data.corsAtLoad = cors;
       if (data.table && !driving) {
         data.ours = String(Number(data.ours ?? 0) + 1);
+        if (data.corsAtFetch !== undefined && data.corsAtFetch !== cors)
+          data.corsLoads = String(Number(data.corsLoads ?? 0) + 1);
         data.loadedAt = String(this.currentTime);
         if (this.hasAttribute("crossorigin"))
           data.upgrades = String(Number(data.upgrades ?? 0) + 1);
@@ -482,15 +504,21 @@ async function installDriver(frame: Frame) {
       return load.call(this);
     };
     window.addEventListener(
+      "loadstart",
+      (event) => {
+        const video = event.target as HTMLVideoElement;
+        if (video.dataset?.table)
+          video.dataset.corsAtFetch = String(video.getAttribute("crossorigin"));
+      },
+      true,
+    );
+    window.addEventListener(
       "error",
       (event) => {
         const target = event.target as Element | null;
         const video = target?.closest?.("video[data-table]") as HTMLVideoElement | null;
         if (!video) return;
         touch(video);
-        const src = target === video ? video.currentSrc : (target as HTMLSourceElement).src;
-        if (video.hasAttribute("crossorigin") && src)
-          state.get(video.dataset.table!)!.failed.add(src);
         const during = video.dataset.authorDuringRetry;
         if (during) {
           delete video.dataset.authorDuringRetry;
@@ -562,7 +590,7 @@ async function installDriver(frame: Frame) {
           );
           if (attr) video.src = sources[0]!.src;
           else video.append(...sources.map(sourceEl));
-          state.set(key, { video, last: performance.now(), failed: new Set() });
+          state.set(key, { video, last: performance.now() });
           document.body.append(video);
         },
         edit(
@@ -621,16 +649,13 @@ async function installDriver(frame: Frame) {
           for (const video of [...pending.keys()]) interrupt(video);
           return any;
         },
-        async advancing(key: string) {
+        advancing(key: string) {
           const { video } = state.get(key)!;
-          if (video.paused || video.readyState < 2) return false;
-          // Moving within a second: one short sample on a busy page catches a buffering pause.
+          if (video.paused || video.readyState < 2) return Promise.resolve(false);
           const at = video.currentTime;
-          for (let waited = 0; waited < 1000; waited += 100) {
-            await new Promise((resolve) => setTimeout(resolve, 100));
-            if (video.currentTime !== at) return true;
-          }
-          return false;
+          return untilEvent(video, ["timeupdate", "pause"], () =>
+            video.currentTime !== at ? true : video.paused ? false : undefined,
+          );
         },
         // Every film alike: a looping clip at its end has no frame until the loop's seek lands.
         async loopRestart(key: string, loops: number) {
@@ -649,7 +674,7 @@ async function installDriver(frame: Frame) {
               (video.readyState >= 2 || video.error !== null || video.networkState === 3),
           ),
         read(key: string) {
-          const { video, failed } = state.get(key)!;
+          const { video } = state.get(key)!;
           let pixels = "none";
           if (video.readyState >= 2) {
             const context = document.createElement("canvas").getContext("2d")!;
@@ -683,8 +708,8 @@ async function installDriver(frame: Frame) {
             currentSrc: video.currentSrc,
             loads: Number(video.dataset.loads ?? 0),
             ours: Number(video.dataset.ours ?? 0),
+            corsLoads: Number(video.dataset.corsLoads ?? 0),
             selections: Number(video.dataset.selections ?? 1),
-            failedWithCors: [...failed],
           };
         },
       },
@@ -872,10 +897,10 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
       const movesPlain = plain.moves;
       const where = `${sequence.name} (${describe(sequence)}), element ${el} after round ${round + 1}`;
       const kinds = everListed.get(el)!;
-      // The runtime loads media without the helper too; the helper's share is what the sealed film adds.
-      const helper = Math.max(0, seen.ours - plain.ours);
+      // The helper changes crossorigin, then loads; the runtime's own loads vary per run.
+      const helper = seen.corsLoads;
       // Every load the runtime's CORS handling did not make starts a selection: the driver's and the runtime's own.
-      const selections = seen.selections + plain.ours;
+      const selections = seen.selections + seen.ours - seen.corsLoads;
       const most = 2 * kinds.size * selections;
       if (helper > most)
         problems.push(
@@ -954,11 +979,7 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
         problems.push(`${where}: ${canPlay ? "does not play" : "plays"} ${JSON.stringify(seen)}`);
       if (!seen.playing) continue;
       const kind = kinds.get(idOf(seen.currentSrc))!;
-      const readable =
-        unsealed.pixels === "readable" &&
-        !foreign(kind) &&
-        SENDS_CORS.has(kind) &&
-        (sequence.keepsCors?.includes(el) || !seen.failedWithCors.includes(seen.currentSrc));
+      const readable = unsealed.pixels === "readable" && !foreign(kind) && SENDS_CORS.has(kind);
       if (!readable || seen.pixels === "readable") continue;
       const line = `${where}: plays ${idOf(seen.currentSrc)} unreadable ${JSON.stringify(seen)}`;
       if (mixed(list) && !foreign(kind)) {
@@ -974,7 +995,9 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
   sequences.forEach((sequence, index) => {
     for (const [el, kinds] of history(sequence).everListed) {
       const tryAndRangePerLoad = 2 * final.get(`${index}-${el}`)!.loads;
-      for (const id of kinds.keys()) budget.set(id, (budget.get(id) ?? 0) + tryAndRangePerLoad);
+      const corsQuestion = 1;
+      for (const id of kinds.keys())
+        budget.set(id, (budget.get(id) ?? 0) + tryAndRangePerLoad + corsQuestion);
     }
   });
   // A skip that grows past a tenth of the comparisons would weaken the oracle without saying so.

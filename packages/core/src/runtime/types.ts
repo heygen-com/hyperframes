@@ -126,6 +126,7 @@ export type RuntimeTimelineMessage = RuntimeProtocolV1 & {
    * the composition's assets have settled yet. Absent on older runtimes, whose
    * parents must not wait for a message that never comes. */
   assetsReady?: boolean;
+  sceneSwap?: boolean;
 };
 
 export type RuntimeDiagnosticMessage = {
@@ -177,12 +178,9 @@ export type RuntimeStaticCompositionMessage = {
   height: number | null;
 };
 
-export type RuntimeStageSizeMessage = {
-  source: "hf-preview";
-  type: "stage-size";
-  width: number;
-  height: number;
-};
+export type RuntimeStageSizeMessage =
+  | { source: "hf-preview"; type: "stage-size"; width: number; height: number }
+  | { source: "hf-preview"; type: "stage-size"; measuredSize: { width: number; height: number } };
 
 /**
  * Fired once per session when the runtime's attempt to play a timed media

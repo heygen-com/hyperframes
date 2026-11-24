@@ -158,8 +158,8 @@ import {
   createMemorySampler,
   describeWorkerPhases,
   forgetWorkerPhases,
-  noteStaticDedupActivity,
-  staticDedupActivity,
+  noteCaptureActivity,
+  captureActivity,
   type MemorySampler,
   reportExtractProgress,
   updateJobStatus,
@@ -254,7 +254,7 @@ import {
   type VideoFrameCoverageReport,
 } from "./render/videoFrameCoverage.js";
 import { runCompileStage } from "./render/stages/compileStage.js";
-import { runProbeStage } from "./render/stages/probeStage.js";
+import { probeHoldFitsCapture, runProbeStage } from "./render/stages/probeStage.js";
 import { validateRenderDuration } from "./render/planValidation.js";
 import {
   resolveVideoExtractionPolicy,
@@ -1280,7 +1280,7 @@ export function frameStallRule(
     tailMs: Math.max(TAIL_STALL_MS, noProgressMs),
     detail: () => describeWorkerPhases(job),
     attemptOpened: () => forgetWorkerPhases(job),
-    activity: () => staticDedupActivity(job),
+    activity: () => captureActivity(job),
   };
 }
 
@@ -3703,6 +3703,14 @@ async function executeRenderPipeline(input: {
       failureToEnforce,
     } = extractResult;
     perfStages.videoExtractMs = extractResult.videoExtractMs;
+    if (
+      probeSession &&
+      !probeHoldFitsCapture(probeSession.options.skipReadinessVideoIds, videoReadinessSkipIds)
+    ) {
+      const held = probeSession;
+      probeSession = null;
+      await closeCaptureSession(held);
+    }
 
     // ── Parity gate: per-clip captured-vs-expected-frame coverage ───────
     // Fail loudly BEFORE encode if any clip's delivered frames fall below
@@ -3928,7 +3936,7 @@ async function executeRenderPipeline(input: {
       subTimelineWaitMemo,
       staticDedupMemo,
       compositionHash,
-      onStaticDedupActivity: () => noteStaticDedupActivity(job),
+      onStaticDedupActivity: () => noteCaptureActivity(job),
       // Probe-resolved duration: drawElement self-verification derives its
       // sample frame indices from this so they land inside the drained range.
       compositionDurationSeconds: job.duration,

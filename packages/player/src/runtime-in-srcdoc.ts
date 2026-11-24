@@ -1,3 +1,5 @@
+import { RUNTIME_BOOTSTRAP_ATTR } from "@hyperframes/core/compiler/html-tokens";
+
 /**
  * Put the runtime in the document's head, before anything in the body runs.
  *
@@ -28,26 +30,77 @@
 function alreadyHasRuntime(html: string, runtimeUrl: string | null): boolean {
   if (runtimeUrl && html.includes(runtimeUrl)) return true;
   // The engine inlines the runtime rather than linking it, and it assigns this global on the way in.
-  return /__hyperframes\s*=(?!=)/.test(html) || linksRuntimeFile(html);
+  return /__hyperframes\s*=(?!=)/.test(html) || linksRuntime(html);
 }
 
 /** A page that brings the runtime itself, which a sealed player then loads by `src` as before. */
 export const carriesRuntime = (html: string): boolean => alreadyHasRuntime(html, null);
 
-function linksRuntimeFile(html: string): boolean {
+function linksRuntime(html: string): boolean {
   for (
     let tag = findOpeningTag(html, "script");
     tag;
-    tag = findOpeningTag(html, "script", tag.end)
+    tag = findOpeningTag(html, "script", afterScript(html, tag.end))
   ) {
-    const text = html.slice(tag.index, tag.end);
-    if (/\bsrc\s*=/i.test(text) && text.includes("hyperframe.runtime.iife.js")) return true;
+    const attributes = tagAttributes(html.slice(tag.index + "<script".length, tag.end - 1));
+    if (attributes.has(RUNTIME_BOOTSTRAP_ATTR)) return true;
+    if (attributes.get("src")?.includes("hyperframe.runtime.iife.js")) return true;
   }
   return false;
 }
 
+function afterScript(html: string, from: number): number {
+  const lower = html.toLowerCase();
+  for (
+    let close = lower.indexOf("</script", from);
+    close >= 0;
+    close = lower.indexOf("</script", close + 1)
+  )
+    if (CLOSING_TAG_BOUNDARIES.has(lower[close + "</script".length])) return close;
+  return html.length;
+}
+
+const isSpace = (c: string) => c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f";
+const isGap = (c: string) => isSpace(c) || c === "/";
+const inName = (c: string) => !isGap(c) && c !== "=";
+const notSpace = (c: string) => !isSpace(c);
+
+function skip(text: string, from: number, more: (c: string) => boolean): number {
+  let i = from;
+  while (i < text.length && more(text.charAt(i))) i++;
+  return i;
+}
+
+function attributeValue(text: string, from: number): { value: string; end: number } {
+  const quote = text.charAt(from);
+  if (quote !== '"' && quote !== "'") {
+    const end = skip(text, from, notSpace);
+    return { value: text.slice(from, end), end };
+  }
+  const close = text.indexOf(quote, from + 1);
+  const end = close < 0 ? text.length : close;
+  return { value: text.slice(from + 1, end), end: end + 1 };
+}
+
+function tagAttributes(text: string): Map<string, string> {
+  const attributes = new Map<string, string>();
+  for (let i = skip(text, 0, isGap); i < text.length; i = skip(text, i, isGap)) {
+    const start = i;
+    i = skip(text, i, inName);
+    if (i === start) break;
+    const name = text.slice(start, i).toLowerCase();
+    i = skip(text, i, isSpace);
+    let value = "";
+    if (text.charAt(i) === "=")
+      ({ value, end: i } = attributeValue(text, skip(text, i + 1, isSpace)));
+    attributes.set(name, value);
+  }
+  return attributes;
+}
+
 type OpeningTag = { index: number; end: number };
 const OPENING_TAG_BOUNDARIES = new Set<string | undefined>([">", " ", "\t", "\n", "\r", "\f"]);
+const CLOSING_TAG_BOUNDARIES = new Set<string | undefined>([...OPENING_TAG_BOUNDARIES, "/"]);
 
 /** Find an opening tag in one linear pass, without a backtracking regex over caller-owned HTML. */
 function findOpeningTag(html: string, tagName: string, start = 0): OpeningTag | null {

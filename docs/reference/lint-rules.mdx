@@ -291,6 +291,12 @@ For a state of your own, toggle a class or data attribute from your script and s
 
 **Fix:** Register each composition timeline on `window.__timelines[compositionId]`.
 
+### `linked_files_not_checked`
+
+**Warning.** The stylesheets and scripts a file links add up to more than one page may hold (64 MB), so lint stopped reading them. Each file is read once, under any of its names; the ones past the limit are not checked, and `missing_timeline_registry` is not reported when a skipped script could hold the registry.
+
+**Fix:** Link each file once, and keep large data out of linked stylesheets and scripts.
+
 ### `non_deterministic_code`
 
 **Error.** A script uses a non-deterministic value source (`Math.random`, `Date.now`, `gsap.utils.random`, `"random(...)"`), so renders can differ between frames or runs.

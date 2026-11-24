@@ -8,10 +8,14 @@ function postLater(init: MessageEventInit): void {
   setTimeout(() => window.dispatchEvent(new MessageEvent("message", init)));
 }
 
+const SCENE_OPENED_ON_ITS_OWN =
+  "http://localhost/api/projects/demo/preview/comp/compositions/scene5.html";
+
 export interface SealedPreviewFrame {
   iframe: HTMLIFrameElement;
   /** The frame's window as Studio sees it: only `postMessage` answers, and it reaches the runtime. */
   frame: Record<string, unknown>;
+  reload: () => void;
 }
 
 export function sealedPreviewFrame(
@@ -26,6 +30,7 @@ export function sealedPreviewFrame(
   });
   const iframe = detachedFakeIframe(frame);
   Object.defineProperty(iframe, "contentDocument", { value: null });
+  Object.defineProperty(iframe, "src", { value: SCENE_OPENED_ON_ITS_OWN, configurable: true });
   let onPageUntilPlayerRemovesIt = true;
   Object.defineProperty(iframe, "isConnected", {
     configurable: true,
@@ -37,10 +42,15 @@ export function sealedPreviewFrame(
     postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
       postLater({ source: frame as unknown as Window, data, ports: ports.map(wrap) }),
   } as unknown as Window;
-  const agent = installMarkedEditingAgent(parent);
+  let agent = installMarkedEditingAgent(parent);
   frame.postMessage = (data: unknown) => postLater({ source: parent, data });
   onTestFinished(() => agent.dispose());
-  return { iframe, frame };
+  const reload = () => {
+    agent.dispose();
+    agent = installMarkedEditingAgent(parent);
+    iframe.dispatchEvent(new Event("load"));
+  };
+  return { iframe, frame, reload };
 }
 
 export type PortRequest = { id?: unknown; kind?: unknown; params?: unknown };

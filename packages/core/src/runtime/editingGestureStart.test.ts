@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { gestureStart } from "./editingGestureStart";
+import { gestureBase, gestureStart } from "./editingGestureStart";
 import { handleFor } from "./editingHandles";
 
 type Tween = { vars: Record<string, unknown>; targets: () => unknown[]; duration: () => number };
@@ -86,7 +86,7 @@ const tween = (target: unknown, vars: Record<string, unknown>, duration = 0): Tw
 });
 
 /** A 200x100 box whose centre moves `share` of its drawn growth: 0.5 from its corner, 0 self-centred. */
-function growingCard(share: number): HTMLElement {
+function growingCard(share: number | (() => number)): HTMLElement {
   document.body.innerHTML = `<main data-composition-id="main"><div id="card" style="width: 200px"></div></main>`;
   const card = document.getElementById("card")!;
   Object.defineProperty(card, "offsetWidth", { value: 200 });
@@ -94,7 +94,8 @@ function growingCard(share: number): HTMLElement {
   card.getBoundingClientRect = () => {
     const width = parseFloat(card.style.width) || 200;
     const height = parseFloat(card.style.height) || 100;
-    const [cx, cy] = [200 + (width - 200) * share, 100 + (height - 100) * share];
+    const k = typeof share === "number" ? share : share();
+    const [cx, cy] = [200 + (width - 200) * k, 100 + (height - 100) * k];
     const [x, y] = [cx - width / 2, cy - height / 2];
     return {
       x,
@@ -127,6 +128,22 @@ describe("gesture start", () => {
       c: 0,
       d: 0,
     });
+  });
+  // fails without the fix: the probe grew a `translate: -50%` box with its % live and read 0, but the draft that pins
+  // a sealed resize turns that % into px, so the box grew from its corner and drifted half its growth from the pointer.
+  it("measures a %-translated box's growth as the draft draws it, its % turned into px", () => {
+    // Its centre stays put while the % is live, and moves half its growth once the % is px.
+    const card = growingCard(() =>
+      card.style.getPropertyValue("translate").includes("%") ? 0 : 0.5,
+    );
+    card.style.setProperty("translate", "-50% -50%");
+    expect(gestureStart([handleFor(card)]).elements[0]!.grow).toEqual({
+      a: 0.5,
+      b: 0,
+      c: 0,
+      d: 0.5,
+    });
+    expect(card.getAttribute("style")).toBe("width: 200px; translate: -50% -50%;");
   });
   it("reads a GSAP-held element's x/y, its layout size and how it moves, and puts its translate back", () => {
     const card = turnedCard("translate: 10px 20px");
@@ -231,5 +248,29 @@ describe("gesture start", () => {
 
   it("answers null for an element this load does not have", () => {
     expect(gestureStart(["0123456789abcdef:999"]).elements).toEqual([null]);
+  });
+});
+
+// fails without the fix: a sealed recording had no read for a layer no tween touches, so it started a static
+// opacity and scale at 1 where the unsealed recorder reads them from GSAP.
+describe("gestureBase", () => {
+  it("reads GSAP's x, y, opacity and scale for a layer no tween touches", () => {
+    const card = turnedCard("");
+    gsapWith([], { x: 12, y: -4, opacity: 0.5, scaleX: 1.5 });
+    expect(gestureBase(handleFor(card))).toEqual({ x: 12, y: -4, opacity: 0.5, scale: 1.5 });
+  });
+
+  // fails without the fix: a page without GSAP answered null, so a sealed recording refused to start where the
+  // unsealed recorder starts from x 0, y 0, opacity 1 and scale 1.
+  it("answers the values at rest on a page without GSAP, as the unsealed recorder starts", () => {
+    const card = turnedCard("");
+    expect(gestureBase(handleFor(card))).toEqual({ x: 0, y: 0, opacity: 1, scale: 1 });
+  });
+
+  it("answers null for an element this load does not have", () => {
+    gsapWith([]);
+    expect(gestureBase("0123456789abcdef:999")).toBeNull();
+    Reflect.deleteProperty(window, "gsap");
+    expect(gestureBase("0123456789abcdef:999")).toBeNull();
   });
 });

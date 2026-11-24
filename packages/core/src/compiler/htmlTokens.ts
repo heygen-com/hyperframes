@@ -1,5 +1,7 @@
 /** Case-insensitive HTML token scans, with no DOM: the player inlines scripts with these too. */
 
+export const RUNTIME_BOOTSTRAP_ATTR = "data-hyperframes-preview-runtime";
+
 /** ASCII-only chunks bound match arrays; starting at uppercase preserves unchanged spans. */
 export function lowerAscii(text: string): string {
   return text.replace(/[A-Z][\s\S]{0,65535}/g, (chunk) =>

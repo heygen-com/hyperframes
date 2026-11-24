@@ -74,6 +74,7 @@ export {
   isAlwaysAppliedStyle,
   deferScriptsUntilFonts,
   headStyleRuns,
+  INLINED_FILE_ATTR,
   inlineScriptRuns,
   styleElementsFor,
   type CompositionStyle,

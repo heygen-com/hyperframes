@@ -45,7 +45,11 @@ export {
   formatTime,
 } from "./player";
 export { usePreviewIframeStore } from "./player/store/previewIframeStore";
-export { previewEditingClient, previewFrameOpaque } from "./player/lib/previewChannel";
+export {
+  previewDocumentCopy,
+  previewEditingClient,
+  previewFrameOpaque,
+} from "./player/lib/previewChannel";
 export {
   describePreviewElements,
   previewAncestors,
@@ -55,14 +59,18 @@ export {
   previewPointerTargets,
   queryPreviewElements,
   type PreviewElement,
+  type PreviewElementEdit,
   type PreviewElementHit,
 } from "./player/lib/previewElements";
 export {
+  editSealedSelection,
   findPreviewElementForSelection,
   findPreviewElementForTimelineElement,
   readable,
+  resolveFoundSelection,
   standInFor,
   standInHandle,
+  type PreviewSelectionOptions,
 } from "./components/editor/previewSelection";
 export { PREVIEW_QUALITY_LEVELS, type PreviewQuality } from "@hyperframes/core/preview-quality";
 export type {

@@ -420,6 +420,8 @@ The same error refuses a render whose sub-composition mounts add up to more than
 
 Studio preview and the CLI commands that assemble a project, such as `validate` and `compare`, apply the same limits with the same error. Studio shows the error in place of the preview.
 
+The render server compiles each composition on its own thread and stops a compile that runs past 10 minutes, with the error code `COMPILE_TIMEOUT`. Retrying the same composition fails the same way. Real compositions compile in seconds, so this usually means a very large page or one with very many style rules or media tags. Operators can change the limit with `HYPERFRAMES_COMPILE_TIMEOUT_MS`.
+
 <Tip>
   Always watch the exported file itself. Preview proves that the project can play; the output file
   proves that the delivery is correct.
