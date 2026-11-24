@@ -330,6 +330,84 @@ describe("patchElementInHtml", () => {
     expect(result).not.toContain(">B<");
   });
 
+  // fails without the fix: each of these wrote the given text into the script, style or template.
+  describe("a target that is code or page plumbing, not a layer", () => {
+    const PAGE = `<!doctype html><html><head><style id="css">.a { color: red; }</style></head><body>
+<div id="root" data-composition-id="main">
+  <div id="hero">Hello</div>
+  <div id="wrap"><script id="inner">window.inner = 1;</script></div>
+  <template id="tpl"><p>kept</p></template>
+  <script id="code">window.ready = true;</script>
+</div>
+</body></html>`;
+    const TEXT = "window.changed = 1";
+
+    for (const type of ["text-content", "rich-text"] as const)
+      for (const target of [
+        { selector: "script#code" },
+        { id: "code" },
+        { selector: "#root > script" },
+        { selector: "style" },
+        { id: "css" },
+        { id: "tpl" },
+      ])
+        it(`declines ${type} aimed at ${JSON.stringify(target)}`, () => {
+          const result = patchElementInHtml(PAGE, target, [{ type, property: "", value: TEXT }]);
+          expect(result.matched).toBe(false);
+          expect(result.html).toBe(PAGE);
+        });
+
+    it("declines every other operation on such a target too", () => {
+      for (const op of [
+        { type: "inline-style", property: "color", value: "red" },
+        { type: "html-attribute", property: "src", value: "https://example.com/a.js" },
+        { type: "attribute", property: "data-start", value: "1" },
+        { type: "ensure-id", property: "", value: "x" },
+      ] as const) {
+        const result = patchElementInHtml(PAGE, { selector: "#root > script" }, [op]);
+        expect(result.matched, op.type).toBe(false);
+        expect(result.html, op.type).toBe(PAGE);
+      }
+    });
+
+    it("declines an operation whose child selector lands on a script", () => {
+      const result = patchElementInHtml(PAGE, { id: "wrap" }, [
+        { type: "text-content", property: "", value: TEXT, childSelector: "script" },
+      ]);
+      expect(result.matched).toBe(false);
+      expect(result.html).toBe(PAGE);
+    });
+
+    it("writes a layer's text as text when its only child is a script", () => {
+      const result = patchElementInHtml(PAGE, { id: "wrap" }, [
+        { type: "text-content", property: "", value: TEXT },
+      ]);
+      expect(result.matched).toBe(true);
+      const { document } = parseHTML(result.html);
+      expect(document.getElementById("inner")).toBeNull();
+      expect(document.getElementById("wrap")?.textContent).toBe(TEXT);
+      expect(document.querySelectorAll("script").length).toBe(1);
+    });
+
+    it("still saves a text edit of an ordinary layer on the same page", () => {
+      const result = patchElementInHtml(PAGE, { id: "hero" }, [
+        { type: "text-content", property: "", value: "New" },
+      ]);
+      expect(result.matched).toBe(true);
+      expect(result.html).toContain(">New</div>");
+      expect(result.html).toContain("window.ready = true;");
+    });
+
+    it("still patches a layer inside a template", () => {
+      const result = patchElementInHtml(PAGE, { selector: "template p" }, [
+        { type: "text-content", property: "", value: "edited" },
+      ]);
+      expect(result.matched).toBe(true);
+      expect(result.html).toContain("<p");
+      expect(result.html).toContain("edited");
+    });
+  });
+
   it("returns unchanged html and matched:false when target not found", () => {
     const { html: result, matched } = patchElementInHtml(FIXTURE, { id: "nonexistent" }, [
       { type: "inline-style", property: "color", value: "red" },

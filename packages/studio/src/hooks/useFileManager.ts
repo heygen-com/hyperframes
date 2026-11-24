@@ -339,7 +339,7 @@ export function useFileManager({
         if (Array.isArray(unchanged) && unchanged.length > 0) {
           const more = unchanged.length > 5 ? ` and ${unchanged.length - 5} more` : "";
           showToast(
-            `Still pointing at ${oldPath}: ${unchanged.slice(0, 5).join(", ")}${more}`,
+            `Renamed. These files still use the old name, so update them by hand: ${unchanged.slice(0, 5).join(", ")}${more}`,
             "info",
           );
         }

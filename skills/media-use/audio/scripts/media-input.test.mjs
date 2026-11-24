@@ -74,7 +74,17 @@ test(
   { skip: !hasFfmpeg },
   (t) => {
     const dir = sandbox(t);
-    for (const name of ["a.wav", "a.mp3", "a.m4a", "a.mp4"]) {
+    for (const name of [
+      "a.wav",
+      "a.mp3",
+      "a.m4a",
+      "a.mp4",
+      "a.caf",
+      "a.w64",
+      "a.wv",
+      "a.au",
+      "a.ac3",
+    ]) {
       const made = spawnSync("ffmpeg", [
         "-v",
         "error",
@@ -121,7 +131,7 @@ test("carve refuses a clip whose source is a script", { skip: !hasFfmpeg }, (t) 
     encoding: "utf8",
   });
   assert.equal(run.status, 1, run.stderr);
-  assert.match(run.stderr, /cannot read it as media/);
+  assert.match(run.stderr, /not media in an accepted container \(MP4, /);
 });
 
 test("the recording path refuses a recording that is a script", { skip: !hasFfmpeg }, (t) => {
@@ -140,5 +150,23 @@ test("the recording path refuses a recording that is a script", { skip: !hasFfmp
     },
   );
   assert.match(run.stdout, /line 01: recording failed — omitted/);
-  assert.match(run.stdout, /cannot read/);
+  assert.match(run.stdout, /not audio in an accepted container \(MP4, /);
+});
+
+test("carve decodes a CAF recording", { skip: !hasFfmpeg }, (t) => {
+  const dir = sandbox(t);
+  for (const name of ["bed.wav", "narration.caf"]) {
+    spawnSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=duration=2", join(dir, name)]);
+  }
+  writeFileSync(
+    join(dir, "index.html"),
+    '<audio id="music-bed" src="bed.wav" data-start="0"></audio>\n' +
+      '<audio id="narration" src="narration.caf" data-start="0"></audio>\n',
+  );
+  const run = spawnSync(process.execPath, [join(scripts, "carve.mjs"), "--comp", "index.html"], {
+    cwd: dir,
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.stdout, /voice  narration/);
 });

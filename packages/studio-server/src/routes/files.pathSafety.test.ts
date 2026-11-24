@@ -652,6 +652,98 @@ describe("files other programs run or trust", () => {
       expect((await create(app, "notes")).status).toBe(201);
     });
 
+    const slowBody = () => {
+      let release = () => {};
+      const arrived = new Promise<void>((done) => (release = done));
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          controller.enqueue(new TextEncoder().encode("planted"));
+          await arrived;
+          controller.close();
+        },
+      });
+      return { body, release };
+    };
+    const startCreate = (app: Hono, path: string, method: "POST" | "PUT") => {
+      const { body, release } = slowBody();
+      const headers: Record<string, string> = method === "PUT" ? { "If-None-Match": "*" } : {};
+      const init = { method, headers, body, duplex: "half" };
+      return { answer: app.request(fileUrl(path), init as RequestInit), release };
+    };
+    const tick = () => new Promise((done) => setTimeout(done, 50));
+
+    it.each(["POST", "PUT"] as const)(
+      "a %s create judges the path as a file, whatever folder stands there while its body arrives",
+      async (method) => {
+        const { app, project } = fixture();
+        manifest(project, "", { main: "server/start" });
+        plant(project, "server/start.js");
+        plant(project, "server/start/keep.txt");
+        const { answer, release } = startCreate(app, "server/start", method);
+        await tick();
+        expect((await app.request(fileUrl("server/start"), { method: "DELETE" })).status).toBe(200);
+        release();
+        await expectRefused(await answer, method);
+        expect(existsSync(join(project, "server", "start"))).toBe(false);
+      },
+    );
+
+    it.each(["POST", "PUT"] as const)(
+      "a %s create is checked again once its body has arrived",
+      async (method) => {
+        const { app, project } = fixture();
+        manifest(project, "", { scripts: { build: "node lib/build.js" } });
+        plant(project, "lib/build.js");
+        const { answer, release } = startCreate(app, "lib/db.utils", method);
+        await tick();
+        plant(project, "lib/db.utils.js");
+        release();
+        await expectRefused(await answer, method);
+        expect(readFileSync(join(project, "lib", "db.utils.js"), "utf8")).toBe("mine");
+        expect(existsSync(join(project, "lib", "db.utils"))).toBe(false);
+      },
+    );
+
+    it.each(["db.utils.js", "db.utils.ts", "db.utils.json", "DB.UTILS.JS"])(
+      "never plants lib/db.utils beside lib/%s",
+      async (sibling) => {
+        const { app, project } = fixture();
+        manifest(project, "", { scripts: { build: "node lib/build.js" } });
+        plant(project, `lib/${sibling}`);
+        for (const path of ["lib/db.utils", "lib/DB.Utils", "lib/db.utils.", "lib/db.util\uff53"])
+          await expectRefused(await create(app, path), path);
+        await expectRefused(await move(app, "inside.txt", "lib/db.utils"), "rename onto");
+        plant(project, "incoming/db.utils", "planted");
+        plant(project, `incoming/${sibling}`, "{}");
+        await expectRefused(await move(app, "incoming", "lib/incoming"), "folder move in");
+        const uploaded = await upload(app, "lib", "db.utils");
+        expect((await uploaded.json()).skipped, "upload").toContain("db.utils");
+        expect(readdirSync(join(project, "lib")).sort()).toEqual([sibling]);
+      },
+    );
+
+    it("still writes composition assets in a project with Node tooling", async () => {
+      const { app, project } = fixture();
+      manifest(project, "", { scripts: { build: "node lib/build.js" } });
+      plant(project, "lib/build.js");
+      for (const path of [
+        "index.html",
+        "styles/site.css",
+        "assets/logo.png",
+        "data/points.json",
+        "notes.txt",
+        "fonts/brand.woff2",
+      ])
+        expect((await create(app, path)).status, path).toBe(201);
+    });
+
+    it("still writes a dotted name beside a module in a default hyperframes init project", async () => {
+      const { app, project } = fixture();
+      manifest(project, "", SCAFFOLD);
+      plant(project, "lib/db.utils.js");
+      expect((await create(app, "lib/db.utils")).status).toBe(201);
+    });
+
     it("refuses a folder move that would put config.toml under mise", async () => {
       const { app, project } = fixture();
       plant(project, "cfg/config.toml", "[tasks]");

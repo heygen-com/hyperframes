@@ -308,7 +308,7 @@ describe("useFileManager renames", () => {
   it("names the files a rename left pointing at the old path", async () => {
     const showToast = await rename({ unchangedReferences: ["reference.js", "lib/load.mjs"] });
     expect(showToast).toHaveBeenCalledWith(
-      "Still pointing at clip.mp4: reference.js, lib/load.mjs",
+      "Renamed. These files still use the old name, so update them by hand: reference.js, lib/load.mjs",
       "info",
     );
   });
@@ -318,7 +318,7 @@ describe("useFileManager renames", () => {
       unchangedReferences: ["a.js", "b.js", "c.js", "d.js", "e.js", "f.js", "g.js"],
     });
     expect(showToast).toHaveBeenCalledWith(
-      "Still pointing at clip.mp4: a.js, b.js, c.js, d.js, e.js and 2 more",
+      "Renamed. These files still use the old name, so update them by hand: a.js, b.js, c.js, d.js, e.js and 2 more",
       "info",
     );
   });
