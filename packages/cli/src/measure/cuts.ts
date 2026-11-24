@@ -22,6 +22,10 @@ const RETURNED = 0.4;
 const SAME_TONES = 0.8;
 /** A neighbour that changes this share of the peak: the picture was already moving. */
 const IN_MOTION = 0.3;
+const EXIT_LOOKBACK = 5;
+const EXIT_PIXEL_CHANGE = 16;
+const EXIT_EDGE_MARGIN = 1;
+const EXIT_SIDE_TOLERANCE = 2;
 
 export interface Cut {
   frame: number;
@@ -131,27 +135,101 @@ function isMove(frames: Uint8Array[], diffs: number[], c: Cut, end: number): boo
   return inMotion && movedChange(frames[c.frame - 1]!, frames[end - 1]!) < RETURNED * c.change;
 }
 
+/** Margins (top, right, bottom, left) around the pixels that differ from the settled picture. */
+function changedMargins(frame: Uint8Array, settled: Uint8Array): number[] | undefined {
+  let left = SIG_W;
+  let right = -1;
+  let top = SIG_H;
+  let bottom = -1;
+  for (let y = 0; y < SIG_H; y++) {
+    for (let x = 0; x < SIG_W; x++) {
+      const pixel = y * SIG_W + x;
+      if (Math.abs(frame[pixel]! - settled[pixel]!) < EXIT_PIXEL_CHANGE) continue;
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  if (right < left) return undefined;
+  return [top, SIG_W - 1 - right, SIG_H - 1 - bottom, left];
+}
+
+function isEdgeExit(frames: Uint8Array[], diffs: number[], cut: Cut): boolean {
+  const end = cut.frame + cut.frames;
+  const settled = frames[end + 1];
+  if (cut.frame < EXIT_LOOKBACK || !settled || (diffs[end + 2] ?? Infinity) > HELD_CHANGE) {
+    return false;
+  }
+  const approach = changedMargins(frames[cut.frame - EXIT_LOOKBACK]!, settled);
+  const before = changedMargins(frames[cut.frame - 1]!, settled);
+  const first = changedMargins(frames[cut.frame]!, settled);
+  const next = changedMargins(frames[cut.frame + 1]!, settled);
+  if (!approach || !before || !first || !next) return false;
+
+  // As the object leaves, its changed region reaches the edge and shrinks along the same axis.
+  return before.some((margin, edge) => {
+    const opposite = (edge + 2) % 4;
+    const clipped =
+      approach[edge]! > EXIT_EDGE_MARGIN &&
+      margin <= EXIT_EDGE_MARGIN &&
+      first[edge]! <= EXIT_EDGE_MARGIN &&
+      next[edge]! <= EXIT_EDGE_MARGIN;
+    const receding =
+      approach[opposite]! < before[opposite]! &&
+      before[opposite]! < first[opposite]! &&
+      first[opposite]! < next[opposite]!;
+    const stableSides = [(edge + 1) % 4, (edge + 3) % 4].every(
+      (side) =>
+        before[side]! > EXIT_EDGE_MARGIN &&
+        [approach, first, next].every(
+          (region) => Math.abs(region[side]! - before[side]!) <= EXIT_SIDE_TOLERANCE,
+        ),
+    );
+    return clipped && receding && stableSides;
+  });
+}
+
+function cutKind(frames: Uint8Array[], diffs: number[], cut: Cut): Cut["kind"] {
+  const end = cut.frame + cut.frames;
+  if (cut.frames > MAX_CUT_FRAMES) {
+    const before = frames[cut.frame - 1]!;
+    const whipKeepsTones = frames
+      .slice(cut.frame, end + 1)
+      .every((frame) => sharedTones(before, frame) >= SAME_TONES);
+    return isHeld(neighbours(diffs, cut.frame, end)) || whipKeepsTones ? "fast" : undefined;
+  }
+  const back = (a: number, b: number) =>
+    frames[a] && frames[b] ? meanAbsDiff(frames[a]!, frames[b]!) < RETURNED * cut.change : false;
+  const returns = Array.from({ length: FLASH_FRAMES }, (_, k) => k + 1).some(
+    (k) => back(cut.frame - 1, end - 1 + k) || back(cut.frame - k, end),
+  );
+  if (returns) return "flash";
+  return isMove(frames, diffs, cut, end) ? "fast" : undefined;
+}
+
 /** Every change that reads as a cut, each marked a flash or a fast move when it is not a new shot. */
 export function classifiedCuts(frames: Uint8Array[]): Cut[] {
   const diffs = frameChanges(frames);
-  return cutsIn(diffs).map((c) => {
-    const end = c.frame + c.frames;
-    const back = (a: number, b: number) =>
-      frames[a] && frames[b] ? meanAbsDiff(frames[a]!, frames[b]!) < RETURNED * c.change : false;
-    if (c.frames > MAX_CUT_FRAMES) {
-      const before = frames[c.frame - 1]!;
-      const whipKeepsTones = frames
-        .slice(c.frame, end + 1)
-        .every((f) => sharedTones(before, f) >= SAME_TONES);
-      const sameShot = isHeld(neighbours(diffs, c.frame, end)) || whipKeepsTones;
-      return sameShot ? { ...c, kind: "fast" as const } : c;
+  const classified: Cut[] = [];
+  for (const cut of cutsIn(diffs)) {
+    const kind = cutKind(frames, diffs, cut);
+    if (kind) {
+      classified.push({ ...cut, kind });
+    } else if (isEdgeExit(frames, diffs, cut)) {
+      const previous = classified.at(-1);
+      if (previous?.kind === "fast" && previous.frame + previous.frames >= cut.frame - 1) {
+        previous.frames = cut.frame + cut.frames - previous.frame;
+        previous.change = Math.max(previous.change, cut.change);
+        if (!cut.soft) delete previous.soft;
+      } else {
+        classified.push({ ...cut, kind: "fast" });
+      }
+    } else {
+      classified.push(cut);
     }
-    const returns = Array.from({ length: FLASH_FRAMES }, (_, k) => k + 1).some(
-      (k) => back(c.frame - 1, end - 1 + k) || back(c.frame - k, end),
-    );
-    if (returns) return { ...c, kind: "flash" as const };
-    return isMove(frames, diffs, c, end) ? { ...c, kind: "fast" as const } : c;
-  });
+  }
+  return classified;
 }
 
 /** The frame indexes where a new shot starts, each with its change and length. */

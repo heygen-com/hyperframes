@@ -101,6 +101,8 @@ type PendingRuntimeDataDelivery = {
   timeoutId: number;
 };
 
+const roundOrNull = (ms: number | null) => (ms === null ? null : Math.round(ms));
+
 function clampPlaybackRate(rate: number): number {
   if (!Number.isFinite(rate) || rate <= 0) return 1;
   return Math.max(MIN_PLAYBACK_RATE, Math.min(MAX_PLAYBACK_RATE, rate));
@@ -321,7 +323,7 @@ class HyperframesPlayer extends HTMLElement {
           this._showDocument(val);
         } else {
           this._documentLoad++;
-          this.iframe.removeAttribute("srcdoc");
+          this._navigateFrame({ srcdoc: null });
           const src = this.getAttribute("src");
           if (src !== null && (this._wantsVideo() || this.hasAttribute(SANDBOX_ORIGIN_ATTR)))
             this._navigateSrc(src);
@@ -417,7 +419,7 @@ class HyperframesPlayer extends HTMLElement {
       return;
     }
     const src = this.getAttribute("src");
-    if (src === null) this.iframe.src = "about:blank";
+    if (src === null) this._navigateFrame({ src: "about:blank" });
     else this._loadSrc(src);
   }
 
@@ -1100,7 +1102,7 @@ class HyperframesPlayer extends HTMLElement {
     }
     this._teardownVideo();
     if (this.hasAttribute("srcdoc")) {
-      this.iframe.src = prepareSrcForElement(this, src);
+      this._navigateFrame({ src: prepareSrcForElement(this, src) });
       return;
     }
     const url = parseUrl(src);
@@ -1108,12 +1110,19 @@ class HyperframesPlayer extends HTMLElement {
       this._showSealedSrc(src, url.href);
       return;
     }
-    this._navigateFrame(src);
+    this._navigateFrameToSrc(src);
   }
 
-  private _navigateFrame(src: string): void {
+  private _navigateFrameToSrc(src: string): void {
     this.iframe.removeAttribute("srcdoc");
-    this.iframe.src = prepareSrcForElement(this, src);
+    this._navigateFrame({ src: prepareSrcForElement(this, src) });
+  }
+
+  private _navigateFrame(to: { src: string } | { srcdoc: string | null }): void {
+    this.probe.markNavigation();
+    if (!("srcdoc" in to)) this.iframe.src = to.src;
+    else if (to.srcdoc === null) this.iframe.removeAttribute("srcdoc");
+    else this.iframe.srcdoc = to.srcdoc;
   }
 
   /** The frame shows `html`. A sealed frame gets the runtime as text, so it is shown once that loads. */
@@ -1121,7 +1130,7 @@ class HyperframesPlayer extends HTMLElement {
     const load = ++this._documentLoad;
     if (!this.hasAttribute(SANDBOX_ORIGIN_ATTR)) {
       this._srcdocUrl = null;
-      this.iframe.srcdoc = prepareSrcdocForElement(this, html);
+      this._navigateFrame({ srcdoc: prepareSrcdocForElement(this, html) });
       return;
     }
     this._showSealedDocument(html, undefined, load);
@@ -1132,7 +1141,7 @@ class HyperframesPlayer extends HTMLElement {
       (doc) => {
         if (load !== this._documentLoad) return;
         this._srcdocUrl = base ?? null;
-        this.iframe.srcdoc = doc;
+        this._navigateFrame({ srcdoc: doc });
       },
       () => {
         if (load !== this._documentLoad) return;
@@ -1157,11 +1166,11 @@ class HyperframesPlayer extends HTMLElement {
       .then(
         ({ html, url }) => {
           if (load !== this._documentLoad) return;
-          if (carriesRuntime(html)) this._navigateFrame(src);
+          if (carriesRuntime(html)) this._navigateFrameToSrc(src);
           else this._showSealedDocument(html, url, load);
         },
         () => {
-          if (load === this._documentLoad) this._navigateFrame(src);
+          if (load === this._documentLoad) this._navigateFrameToSrc(src);
         },
       );
   }
@@ -1635,10 +1644,13 @@ class HyperframesPlayer extends HTMLElement {
 
   private _dispatchReady(): void {
     this._readyDocument = this._getSameOriginIframeDocument();
+    this.probe.endNavigation();
     const detail = {
       duration: this._duration,
       compositionWidth: this._compositionWidth,
       compositionHeight: this._compositionHeight,
+      readyMs: this._videoSource ? null : roundOrNull(this.probe.elapsedMs()),
+      loadLimitMs: this._videoSource ? null : this.probe.limitMs,
     };
     this._emit(new CustomEvent("ready", { detail }));
     // Once ready: covers a size message that never came, and lets a zero-size player warn.

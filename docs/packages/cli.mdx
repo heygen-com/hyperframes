@@ -61,6 +61,17 @@ of `play` and `present`, and the notices about telemetry settings, project
 history, the received-files record, the media scan before a preview, the desktop
 app project file, render priority, a file approval that could not be saved and
 `HF_TOOL_CONTEXT` events.
+So do these lines when they repeat a name, a path or a value read from a file:
+the result, refusal and diff lines of the `timeline` edit commands, the scope
+notes of `check`, the clips named on the person line of `diff`, the process id in
+`preview --list`, the count in `telemetry status`, the auto-update and
+out-of-date skills notices, the path in the FFmpeg install hint, the
+`data-fps` warning of a cloud render, the font summary of `capture`, the notice
+that a key comes from a folder's `.env`, and the plain progress lines of a run
+with no terminal attached.
+Output a command writes for another program to read is left exactly as it is:
+`--json` output, the path `browser path` answers with, and the file contents
+`history peek` writes.
 The same lines show the Unicode marks that switch text direction
 (U+202A to U+202E and U+2066 to U+2069) and the line and paragraph separators
 (U+2028 and U+2029) as visible text such as `\u202e`. Right-to-left letters, the
@@ -74,6 +85,9 @@ here: the `Unknown command:` line and the suggestion under it, the
 the `measure <file>` shortcut prints. Other lines a command prints are as they
 were.
 `--json` output is not changed by this.
+When a `--json` run fails, the `error.message` it answers with carries a repeated
+value as it was given, not in the visible-text form; `lambda`, `cloudrun` and
+`beats` do this too.
 
 **`--json` for agents and scripts.** Most commands accept it, before or after
 the command name: `hyperframes --json info` is the same run as
@@ -1222,7 +1236,8 @@ sign-in that returns to their port leaves nothing the project's own script can r
 
 ### `publish`
 
-For new video reviews, use [`share`](#share). Legacy source publishing stays
+**`hyperframes publish` is deprecated for new projects.** For a new video review,
+run [`hyperframes share`](#share) and choose who can open the link. Legacy source publishing stays
 available with a notice for 60 days from an announced notice release. That
 release date has not been scheduled. After the window, new `publish` runs guide
 you to `share`, where you choose a new audience; old flags are never silently
@@ -1440,6 +1455,12 @@ no progress for 2 minutes, or for its `--timeout` plus 10 seconds when that is l
 `--caption-zone` and `--frame-check` refuse a ranged check when none of their
 configured seek samples falls inside `--range`; a requested gate never silently
 passes without running.
+
+`check` reads the transparency of solid text fills, text strokes and backgrounds
+in `lab()`, `lch()`, `oklab()`, `oklch()` and `color()` (including `display-p3`).
+It can flag invisible text as `text_not_painted`, leave faint decorative text out
+of overlap checks, and distinguish transparent overlays from backgrounds that
+hide text.
 
 Text under a `<video>` is judged by the frame the video shows at that sample.
 An opaque video covers its whole box, as an opaque image does. A video with
@@ -2961,10 +2982,19 @@ same share as the project is copied like any other. To include such a
 file, move it into the project folder. Under `--json`, the result lists those
 as `left_out`, each with the `file` that points at it, the `reference` as
 written, its `path` from the project folder, the `reason` (`blocklisted`,
-`received`, `file_type`, `private`, `network_share` or `not_approved`) and `levels_up`, how many folders above the project
+`received`, `file_type`, `private`, `network_share`, `script`, `not_approved` or `unreadable`) and `levels_up`, how many folders above the project
 it is. A full run also prints each as a `{"event":"left_out",…}`
 line on stderr, so a wrapper can ask with `--dry-run --json` before uploading
 and still hear about each one during the run.
+
+A file or folder in the project that cannot be read is left out the same way
+instead of stopping the upload, with a warning saying why. Its entry has the
+reason `unreadable` and a `cause`: `locked` (another app has it open), `denied`
+(the computer does not allow reading it), `missing` (it was deleted, or is a
+link to a file that is gone) or `drive` (its drive could not read it). When a
+page the video plays uses that file, a second entry names that page as `file`,
+so a wrapper can ask before uploading a video that would miss it. The page the
+video starts from must be readable: if it is not, the command stops and names it.
 
 Which files came in with an imported project is kept in the project's
 `.hyperframes/received-files.json`. A project without that file is read as

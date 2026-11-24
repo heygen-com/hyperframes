@@ -5,6 +5,7 @@
  */
 
 import {
+  carriesRuntime,
   ensureRuntimeBeforeBodyScripts,
   inlineRuntimeBeforeBodyScripts,
   withBaseHref,
@@ -47,26 +48,19 @@ function normalizeShaderCaptureScale(value: string | null): string | null {
   return String(Math.min(1, Math.max(0.25, parsed)));
 }
 
+const SHADER_LOADING_WORDS = new Map<string, ShaderLoadingMode>([
+  ["none", "none"],
+  ["false", "none"],
+  ["0", "none"],
+  ["off", "none"],
+  ["player", "player"],
+  ["true", "player"],
+  ["1", "player"],
+  ["on", "player"],
+]);
+
 function normalizeShaderLoadingMode(value: string | null): ShaderLoadingMode {
-  if (value === null || value.trim() === "") return "composition";
-  const normalized = value.trim().toLowerCase();
-  if (
-    normalized === "none" ||
-    normalized === "false" ||
-    normalized === "0" ||
-    normalized === "off"
-  ) {
-    return "none";
-  }
-  if (
-    normalized === "player" ||
-    normalized === "true" ||
-    normalized === "1" ||
-    normalized === "on"
-  ) {
-    return "player";
-  }
-  return "composition";
+  return SHADER_LOADING_WORDS.get(value?.trim().toLowerCase() ?? "") ?? "composition";
 }
 
 /** Drop one of our own keys from raw `a=1&b=2` pairs, matched by name so that
@@ -175,15 +169,20 @@ export async function prepareSealedSrcdocForElement(
   const doc =
     runtimeSrcFromElement(el) !== RUNTIME_CDN_URL
       ? prepareSrcdocForElement(el, html)
-      : inlineRuntimeBeforeBodyScripts(
+      : await withSealedRuntime(
           injectShaderOptionsIntoSrcdoc(
             html,
             normalizeShaderCaptureScale(el.getAttribute(SHADER_CAPTURE_SCALE_ATTR)),
             getShaderModeFromElement(el),
           ),
-          await sealedRuntimeSource(),
         );
   return base ? withBaseHref(doc, base) : doc;
+}
+
+async function withSealedRuntime(page: string): Promise<string> {
+  return carriesRuntime(page)
+    ? page
+    : inlineRuntimeBeforeBodyScripts(page, await sealedRuntimeSource());
 }
 
 export function runtimeSrcFromElement(el: Element): string {

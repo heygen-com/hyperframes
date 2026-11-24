@@ -14,7 +14,8 @@
   // default, in a cookie when a site configures that, so both are read.
   var OPT_OUT = "__ph_opt_in_out_" + TOKEN;
   var STUDIO = "hyperframes.studio";
-  // The one address that reads `ph_id` (docs.json navbar and footer, quickstart.mdx link to it).
+  // The one address that reads `ph_id` (the docs.json footer, quickstart.mdx and studio-app/index.mdx link to it; the
+  // navbar button and the banner open the web app, which carries `src` but does not read `ph_id`).
   var DOWNLOAD = "/studio/download";
   var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   // The campaign tags and ad click ids the download site reads, in its order.

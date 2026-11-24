@@ -23,6 +23,7 @@
  *     postmortem; the user's terminal stays clean.
  */
 
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, openSync } from "node:fs";
 import { resolve } from "node:path";
@@ -366,12 +367,14 @@ export function reportCompletedUpdate(): void {
   if (!process.stderr.isTTY) return;
 
   if (done.ok) {
-    process.stderr.write(`  hyperframes auto-updated to v${done.version}\n\n`);
+    process.stderr.write(
+      `  hyperframes auto-updated to v${terminalText(String(done.version))}\n\n`,
+    );
   } else if (!done.reported) {
     // Failed installs are surfaced once too — the user should know why the
     // auto-update didn't take.
     process.stderr.write(
-      `  hyperframes auto-update to v${done.version} failed. Run \`hyperframes upgrade\` to retry.\n\n`,
+      `  hyperframes auto-update to v${terminalText(String(done.version))} failed. Run \`hyperframes upgrade\` to retry.\n\n`,
     );
   }
 }

@@ -140,7 +140,8 @@ try {
         new MessageEvent("message", { data: w.__lastTimeline, source: frame.contentWindow }),
       );
       const started = performance.now();
-      while (performance.now() - started < 14_000 && w.__playerError === undefined)
+      // Linux's 30 s load limit, as on CI, plus slack.
+      while (performance.now() - started < 36_000 && w.__playerError === undefined)
         await new Promise((resolve) => setTimeout(resolve, 100));
       return w.__playerError ?? null;
     },

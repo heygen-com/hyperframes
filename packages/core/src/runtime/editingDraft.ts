@@ -26,6 +26,7 @@ interface Before {
   translate: string[];
   /** GSAP's rotation before the first GSAP turn drawn, to put back on "restore". */
   gsapRotation?: number;
+  drewTransform?: boolean;
 }
 
 type Gsap = {
@@ -99,8 +100,9 @@ function beforeOf(element: Styled): Before {
 }
 
 function restore(element: Styled, names: readonly string[]): void {
-  for (const [name, value, priority] of before.get(element)?.inline ?? []) {
-    if (!names.includes(name)) continue;
+  const saved = before.get(element);
+  for (const [name, value, priority] of saved?.inline ?? []) {
+    if (!names.includes(name) || (name === "transform" && !saved?.drewTransform)) continue;
     if (value) element.style.setProperty(name, value, priority);
     else element.style.removeProperty(name);
   }
@@ -142,11 +144,14 @@ function drawRotate(element: Styled, rotate: EditingDraftRotate | null): void {
   const saved = beforeOf(element);
   if (!rotate) {
     restore(element, ["rotate", "transform"]);
+    saved.drewTransform = false;
     return restoreGsapRotation(element);
   }
   if (rotate.route === "css") return void element.style.setProperty("rotate", `${rotate.angle}deg`);
-  if (rotate.route === "transform")
+  if (rotate.route === "transform") {
+    saved.drewTransform = true;
     return void element.style.setProperty("transform", rotate.value);
+  }
   const gsap = frameGsap();
   saved.gsapRotation ??= Number(gsap?.getProperty?.(element, "rotation")) || 0;
   element.style.setProperty("rotate", "none");

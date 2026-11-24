@@ -95,8 +95,8 @@ export interface ProjectHistoryOptions {
   onError?: (error: unknown) => void;
   /** How long an open waits for another process to close the same history (default 5 s). */
   ownerWaitMs?: number;
-  /** How long the first copy waits on one file before leaving it owed (default 10 s). */
-  firstCopyFileMs?: number;
+  /** How long the first copy waits on one file before leaving it owed (default 10 s), or that wait per file. */
+  firstCopyFileMs?: number | ((path: string) => number);
   ownerUrl?: string;
   /** A CLI turn's window from an earlier open: writes since, within its idle limit, become the entry with its id. */
   closedWindow?: ClosedWindow;
@@ -554,6 +554,7 @@ class Engine {
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
   adopting = new Map<string, Adoption>();
+  claimsAsked = new Map<string, number>();
   wentAhead = new Set<string>();
   wentAheadBeforeReopen = new Set<string>();
   reading = new Map<string, Promise<unknown>>();
@@ -818,9 +819,8 @@ class Engine {
     const sweptAt = this.now();
     const files = await this.historyFiles();
     const copied = files.filter((file) => file.size <= COPY_LATER_ABOVE_BYTES);
-    const waitMs = this.options.firstCopyFileMs ?? FIRST_COPY_FILE_MS;
     const copies = copied.map((file) =>
-      firstCopyOrOwed(() => this.storeIfPresent(file.path, true), waitMs),
+      firstCopyOrOwed(() => this.storeIfPresent(file.path, true), this.firstCopyWaitMs(file.path)),
     );
     const hashes = await Promise.allSettled(copies.map((copy) => copy.result));
     const late = new Map<string, Promise<Copied>>();
@@ -907,7 +907,6 @@ class Engine {
     sweptAt: number,
     lateFirstCopies = new Map<string, Promise<Copied>>(),
   ): void {
-    const waitMs = this.options.firstCopyFileMs ?? FIRST_COPY_FILE_MS;
     let turn: Promise<unknown> = Promise.resolve();
     let stalledAhead = Promise.resolve(false);
     for (const file of files) {
@@ -916,11 +915,18 @@ class Engine {
       const landed = adoption.firstTry.then(() => false);
       const stepMayBegin = late
         ? Promise.resolve(true)
-        : stalledAhead.then((stalled) => stalled || orAfter(landed, waitMs, true));
+        : stalledAhead.then(
+            (stalled) => stalled || orAfter(landed, this.firstCopyWaitMs(file.path), true),
+          );
       if (!late) [turn, stalledAhead] = [adoption.firstTry, stepMayBegin];
       this.adopting.set(file.path, { ...adoption, stepMayBegin });
     }
     this.saveAdopting();
+  }
+
+  firstCopyWaitMs(path: string): number {
+    const wait = this.options.firstCopyFileMs;
+    return typeof wait === "function" ? wait(path) : (wait ?? FIRST_COPY_FILE_MS);
   }
 
   saveAdopting(): void {
@@ -1251,7 +1257,7 @@ class Engine {
     if (!taken.length) return this.claimNothing(coalesceKey);
     const held = this.heldFor(coalesceKey, taken);
     if (!held) await this.commitClaim();
-    await this.commitPending();
+    await this.commitPendingUnasked();
     const group = held ?? this.newGroup(who, label);
     for (const change of taken) addChange(group, change.path, change.before, change.after);
     this.markWentAhead(pending, group);
@@ -1286,11 +1292,36 @@ class Engine {
     return null;
   }
 
+  async commitPendingUnasked(): Promise<void> {
+    const asked = [...(this.outside?.changes.values() ?? [])].filter((change) =>
+      this.claimsAsked.has(change.path),
+    );
+    for (const change of asked) this.outside!.changes.delete(change.path);
+    try {
+      await this.commitPending((path) => this.claimsAsked.has(path));
+    } finally {
+      if (asked.length) {
+        const outside = this.outsideGroup();
+        for (const change of asked) outside.changes.set(change.path, change);
+      }
+    }
+  }
+
+  countAsked(paths: readonly string[], step: 1 | -1): void {
+    for (const path of paths) {
+      const left = (this.claimsAsked.get(path) ?? 0) + step;
+      if (left > 0) this.claimsAsked.set(path, left);
+      else this.claimsAsked.delete(path);
+    }
+  }
+
   /** Commits every other writer's pending changes, oldest first; open windows stay open. */
-  async commitPending(): Promise<void> {
+  async commitPending(keep: (path: string) => boolean = () => false): Promise<void> {
     await this.commitOutside();
-    for (const window of [...this.windows])
-      if (window.changes.size) await this.commitCut(window, [...window.changes.keys()]);
+    for (const window of [...this.windows]) {
+      const cut = [...window.changes.keys()].filter((path) => !keep(path));
+      if (cut.length) await this.commitCut(window, cut);
+    }
   }
 
   pendingElsewhere(): boolean {
@@ -1970,13 +2001,29 @@ class Engine {
       },
       unsavedBlobBytes: () => this.unsavedBlobBytes(),
       claim: async (who, label, paths, options = {}) => {
-        const waitMs = this.options.firstCopyFileMs ?? FIRST_COPY_FILE_MS;
         const owed = (path: string) => this.adopting.get(this.logPath(path));
-        await Promise.all(
-          paths.map((path) => orAfter(Promise.resolve(owed(path)?.retryNow()), waitMs, undefined)),
-        );
-        const pending = paths.filter(owed).map((path) => this.logPath(path));
-        return this.queue(() => this.claimNow(who, label, paths, options, pending));
+        const named = paths.map((path) => this.logPath(path));
+        this.countAsked(named, 1);
+        let queued = false;
+        try {
+          await Promise.all(
+            paths.map((path) =>
+              orAfter(
+                Promise.resolve(owed(path)?.retryNow()),
+                this.firstCopyWaitMs(this.logPath(path)),
+                undefined,
+              ),
+            ),
+          );
+          const pending = paths.filter(owed).map((path) => this.logPath(path));
+          queued = true;
+          return this.queue(() => {
+            this.countAsked(named, -1);
+            return this.claimNow(who, label, paths, options, pending);
+          });
+        } finally {
+          if (!queued) this.countAsked(named, -1);
+        }
       },
       noteChange: (path) => {
         if (!this.closed) this.noteChange(path);

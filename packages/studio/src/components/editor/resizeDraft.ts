@@ -33,9 +33,7 @@ function resolveResizeAnchor(
 ): { dx: number; dy: number } {
   const fixedStart = g.resizeFixedCenterStart;
   if (corners && fixedStart) {
-    const press = g.resizePressFromCorner ?? { x: 0, y: 0 };
-    const grab = { x: g.startX - press.x - g.centerX, y: g.startY - press.y - g.centerY };
-    const shift = resizeRemainderShift(corners, grab, sizes);
+    const shift = resizeRemainderShift(corners, grabOf(g), sizes);
     const target = { x: fixedStart.x + shift.x, y: fixedStart.y + shift.y };
     return computeNextResizeAnchor(g.lastResizeAnchor, target, overlayCornersCentroid(corners));
   }
@@ -83,34 +81,58 @@ function resolveAnchoredResizeDraft(
   );
 }
 
-/** A frame Studio cannot measure: the box grows about its centre by the size the draft wrote. */
+function grabOf(g: GestureState): { x: number; y: number } {
+  const press = g.resizePressFromCorner ?? { x: 0, y: 0 };
+  return { x: g.startX - press.x - g.centerX, y: g.startY - press.y - g.centerY };
+}
+
+/** The box's corners at the written size from the gesture's own geometry, for a frame Studio cannot measure. */
+function gestureCorners(
+  g: GestureState,
+  written: { width: number; height: number },
+): NonNullable<Corners> {
+  const rad = (g.actualRotation * Math.PI) / 180;
+  const [sx, sy] = [g.editScaleX * g.contentScaleX, g.editScaleY * g.contentScaleY];
+  const [w, h] = [(written.width * sx) / 2, (written.height * sy) / 2];
+  const at = (u: number, v: number) => ({
+    x: g.centerX + u * Math.cos(rad) - v * Math.sin(rad),
+    y: g.centerY + u * Math.sin(rad) + v * Math.cos(rad),
+  });
+  return { nw: at(-w, -h), ne: at(w, -h), sw: at(-w, h), se: at(w, h) };
+}
+
 /** The pin that keeps a sealed resize's centre still: back by what the frame measured the drawn size moving it. */
 export function sealedResizeAnchor(
   g: GestureState,
   written: { width: number; height: number },
+  wanted = written,
 ): { dx: number; dy: number } {
   const [w, h] = [g.actualWidth - written.width, g.actualHeight - written.height];
   const grow = g.resizeGrow;
-  if (!grow) return { dx: (w / 2) * g.editScaleX, dy: (h / 2) * g.editScaleY };
-  return { dx: grow.a * w + grow.c * h, dy: grow.b * w + grow.d * h };
+  const shift = resizeRemainderShift(gestureCorners(g, written), grabOf(g), { wanted, written });
+  if (!grow) return { dx: (w / 2) * g.editScaleX + shift.x, dy: (h / 2) * g.editScaleY + shift.y };
+  return { dx: grow.a * w + grow.c * h + shift.x, dy: grow.b * w + grow.d * h + shift.y };
 }
 
 function resolveUnmeasuredResizeDraft(
   g: GestureState,
   element: HTMLElement,
-  { written }: ResizeDraftSizes,
+  sizes: ResizeDraftSizes,
 ): OverlayRect {
+  const { written } = sizes;
   const width = (g.originWidth * written.width) / g.actualWidth;
   const height = (g.originHeight * written.height) / g.actualHeight;
+  let shift = { x: 0, y: 0 };
   if (g.pathOffsetMember) {
-    const anchor = sealedResizeAnchor(g, written);
+    const anchor = sealedResizeAnchor(g, written, sizes.wanted);
+    shift = resizeRemainderShift(gestureCorners(g, written), grabOf(g), sizes);
     g.lastResizeAnchor = anchor;
     applyManualOffsetDragDraft(g.pathOffsetMember, anchor.dx, anchor.dy);
   }
   drawPreviewDraft(element, { size: written });
   return {
-    left: g.originLeft + (g.originWidth - width) / 2,
-    top: g.originTop + (g.originHeight - height) / 2,
+    left: g.originLeft + (g.originWidth - width) / 2 + shift.x,
+    top: g.originTop + (g.originHeight - height) / 2 + shift.y,
     width,
     height,
     editScaleX: g.editScaleX,

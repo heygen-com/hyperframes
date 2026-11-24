@@ -1,12 +1,8 @@
 import { statSync } from "node:fs";
+import { MAX_COMPOSITION_HTML_BYTES, MAX_EXPANDED_COMPOSITION_BYTES } from "@hyperframes/lint";
 import { terminalText } from "../terminalText";
 
-/**
- * The largest entry or sub-composition HTML file a render compiles. Compiling and probing a page
- * runs on the render server's main thread, and their cost grows with the page's size, so one huge
- * page would hold up every other render in the same process.
- */
-export const MAX_COMPOSITION_HTML_BYTES = 16 * 1024 * 1024;
+export { MAX_COMPOSITION_HTML_BYTES, MAX_EXPANDED_COMPOSITION_BYTES };
 
 const COMPOSITION_TOO_LARGE = "COMPOSITION_TOO_LARGE" as const;
 
@@ -14,11 +10,6 @@ const megabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
 const quotedForTerminalAndLogs = (file: string) => `"${terminalText(file)}"`;
 
-/**
- * What one render may inline across every sub-composition mount. Each file is checked on its own
- * above, but a few small files that mount each other many times assemble a page far larger.
- */
-export const MAX_EXPANDED_COMPOSITION_BYTES = 4 * MAX_COMPOSITION_HTML_BYTES;
 const MAX_COMPOSITION_MOUNTS = 10_000;
 /** About 4x the largest composition in 7 days of production renders (24,800 elements). */
 export const MAX_EXPANDED_ELEMENTS = 100_000;
@@ -62,6 +53,8 @@ const limitText = `One render generates at most ${megabytes(MAX_EXPANDED_COMPOSI
 
 export const REMOTE_SCRIPTS = "remote scripts";
 export const REMOTE_STYLESHEETS = "remote stylesheets";
+export const LOCAL_SCRIPTS = "local scripts";
+export const LOCAL_STYLESHEETS = "local stylesheets";
 export const ENTRY_PAGE = "the entry page";
 
 function generatedTooLarge(file: string, bytes: number): string {
@@ -75,6 +68,18 @@ function generatedTooLarge(file: string, bytes: number): string {
     return (
       `Variable-bound media sources add up to ${megabytes(bytes)}. ${limitText}. ` +
       "Use shorter URLs or bind fewer elements."
+    );
+  }
+  if (file === LOCAL_SCRIPTS) {
+    return (
+      `Local scripts copied into their tags add up to ${megabytes(bytes)}. ${limitText}. ` +
+      "Name each script file in one tag."
+    );
+  }
+  if (file === LOCAL_STYLESHEETS) {
+    return (
+      `Local stylesheets copied into the page add up to ${megabytes(bytes)}. ${limitText}. ` +
+      "Link each stylesheet once and import each file once."
     );
   }
   if (file === REMOTE_SCRIPTS || file === REMOTE_STYLESHEETS) {

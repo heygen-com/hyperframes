@@ -367,7 +367,7 @@ export function synthResult(r, wavAbs, label) {
 export async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }, deps = {}) {
   const requestJSON = deps.heygenJSON ?? heygenJSON;
   const authHeaders = deps.heygenAuthHeaders ?? heygenAuthHeaders;
-  const fetchImpl = deps.fetch ?? fetch;
+  const fetchImpl = deps.fetch;
   const transcode = deps.transcodeToWav ?? transcodeToWav;
   try {
     refuseUnderLimit(deps.projectDir ?? process.cwd(), "a HeyGen voice", "voice");

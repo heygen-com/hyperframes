@@ -64,7 +64,7 @@ function shared(selection: DomEditSelection | null) {
   if (!selection) return null;
   const { element: _element, handle: _handle, textFields: _fields, ...rest } = selection;
   // Read off the description only when `element` is a stand-in; checked on their own below.
-  const { hasAudio: _audio, src: _src, ...compared } = rest;
+  const { hasAudio: _audio, src: _src, textMarkup: _markup, ...compared } = rest;
   return compared;
 }
 

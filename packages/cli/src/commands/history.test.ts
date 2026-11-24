@@ -826,6 +826,24 @@ describe.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
       expect(listed.err).toMatch(/could not write this project's history/i);
     });
 
+    // fails without the fix: the refused claim draft (EPERM in a macOS sandbox, EACCES here) is warned on stderr.
+    it("lists a history another app holds quietly when its folder cannot be written", async () => {
+      const { hf, turn } = project();
+      await hf();
+      const entry = await turn("claude", "Retitle", "index.html", "A2");
+      const [id] = readdirSync(historyDeps.historyRoot).filter((name) =>
+        existsSync(join(historyDeps.historyRoot, name, "log.jsonl")),
+      );
+      writeFileSync(join(historyDeps.historyRoot, id!, "owner.pid"), String(process.ppid));
+      lock(0o555);
+      const listed = await hf("--json");
+      expect(listed.code).toBe(0);
+      expect(JSON.parse(listed.out).entries.map((item: { id: string }) => item.id)).toContain(
+        entry.id,
+      );
+      expect(listed.err).not.toMatch(/could not write/i);
+    });
+
     it("lists the history when its log can be read but not appended to", async () => {
       const { hf, write, turn } = project();
       await hf();

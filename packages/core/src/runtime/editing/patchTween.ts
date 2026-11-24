@@ -5,6 +5,8 @@ import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../co
 import { recordLiveSet, swapWaiting } from "./softReload";
 import { drawDrafts } from "../editingDraft";
 import { markRestingScenesForRedraw } from "../sceneRest";
+import { redrawGsapTimelineAt } from "../adapters/gsap";
+import type { RuntimeTimelineLike } from "../types";
 import { parseDraftEnd, type EditingDraftEnd } from "../editingDraftEnd";
 
 export interface SetPatchProps {
@@ -343,6 +345,15 @@ const renderedOnceReached = (tween: PatchableTween): boolean => {
   return !reached || Boolean((tween as GsapInitFlag)._initted);
 };
 
+function drawWhatTheSeekLeft(tweens: readonly PatchableTween[]): void {
+  for (const tween of tweens) {
+    const parent = tween.parent as RuntimeTimelineLike | undefined;
+    const time = parent?.totalTime?.();
+    if (parent && typeof time === "number" && !renderedOnceReached(tween))
+      redrawGsapTimelineAt(parent, time);
+  }
+}
+
 function timelinesAbove(tween: PatchableTween): object[] {
   const chain: object[] = [];
   for (let parent = tween.parent; parent; parent = (parent as PatchableTween).parent)
@@ -507,6 +518,7 @@ export function patchTweens({ patches, seek, endsDrafts }: PatchTweensParams): {
     const defer = !(seek && index === renderAt);
     return !patchTween(target, selector, change, undefined, defer, patchedTweens);
   });
+  if (seek) drawWhatTheSeekLeft(patchedTweens);
   const shown = !seek || patchedTweens.every(renderedOnceReached);
   const patched = missed === undefined && shown;
   if (patched && endsDrafts) drawDrafts(endsDrafts);
