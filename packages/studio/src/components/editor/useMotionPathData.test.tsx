@@ -70,6 +70,43 @@ it("draws an axis the tween leaves alone where GSAP renders it, so the playhead 
   }
 });
 
+// fails without the fix: before a sealed frame's x/y read landed, the path drew its y axis at 0.
+it("waits for a sealed frame's x/y before drawing the axis the tween leaves alone", () => {
+  runtime.read = {
+    keyframes: [
+      { percentage: 66.667, properties: { x: 60 } },
+      { percentage: 100, properties: { x: 120 } },
+    ],
+  };
+  const iframe = document.createElement("iframe");
+  const blocked = new Proxy(
+    {},
+    {
+      get: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    },
+  );
+  Object.defineProperty(iframe, "contentWindow", { value: blocked });
+  let points: string | undefined;
+  function Probe() {
+    const ref = useRef(iframe);
+    points = useMotionPathData(ref, "#box").geometry?.points;
+    return null;
+  }
+  const root = createRoot(document.body.appendChild(document.createElement("div")));
+  try {
+    act(() => root.render(<Probe />));
+    expect(points).toBeUndefined();
+
+    runtime.gsapPosition = { x: 60, y: 30 };
+    act(() => vi.advanceTimersByTime(250));
+    expect(points).toBe("60,30 120,30");
+  } finally {
+    act(() => root.unmount());
+  }
+});
+
 it("reads no layout per frame until there is a path or a create ring to draw", () => {
   const iframe = document.createElement("iframe");
   document.body.append(iframe);
