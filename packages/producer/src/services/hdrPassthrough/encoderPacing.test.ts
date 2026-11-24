@@ -189,6 +189,7 @@ function watchDeps(over: Partial<EncoderWatchDeps> = {}): EncoderWatchDeps {
     mapsLibx265: () => false,
     self: () => ({ ...SELF, exeId: "9:9" }),
     sleep: async () => {},
+    now: Date.now,
     ...over,
   };
 }
@@ -311,11 +312,38 @@ describe("watchEncoder", () => {
 
   it("declines a process with no libx265 encoder thread once its first frame has gone idle", async () => {
     // An ffmpeg that names no thread for libx265 (another encoder, or one older than 7.0).
+    let clock = 0;
     const pacer = await watchEncoder(
       7,
-      watchDeps({ threads: () => threadsOf(["S", "S"], ["ffmpeg", "enc0:0:libx264"]) }),
+      watchDeps({
+        threads: () => threadsOf(["S", "S"], ["ffmpeg", "enc0:0:libx264"]),
+        now: () => (clock += 4_000),
+      }),
     );
-    await expect(pacer.waitUntilIdle(fast)).rejects.toThrow("no thread named for libx265");
+    const error = await pacer.waitUntilIdle(fast).catch((e) => e);
+    expect(error).toBeInstanceOf(EncoderPacingError);
+    expect(error.message).toContain("no thread named for libx265");
+    // Idle with no libx265 thread for over 10 s before it declines.
+    expect(clock).toBeGreaterThan(10_000);
+  });
+
+  it("does not count the first frame idle before ffmpeg starts its libx265 thread", async () => {
+    // On a loaded host ffmpeg can sit idle, its first threads up, before it starts the encoder's.
+    let polls = 0;
+    const pacer = await watchEncoder(
+      7,
+      watchDeps({
+        threads: () => {
+          polls++;
+          return polls <= 6
+            ? threadsOf(["S", "S"], ["ffmpeg", "dmx0:pipe"])
+            : threadsOf(["S", "S", "S", "S"], ["ffmpeg", "dmx0:pipe", "enc0:0:libx265", "x265"]);
+        },
+      }),
+    );
+    await pacer.waitUntilIdle(fast);
+    // Six idle polls without it, three with it, and the read of the threads to hold.
+    expect(polls).toBe(10);
   });
 
   it("declines once the libx265 thread, or any thread held at the first idle, is gone", async () => {

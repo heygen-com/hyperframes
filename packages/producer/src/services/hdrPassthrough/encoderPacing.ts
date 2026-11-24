@@ -40,7 +40,8 @@
  *   at any depth);
  * - after the first frame, and before that frame's idle wait can finish,
  *   the process holds ffmpeg's libx265 encoder thread (`enc0:0:libx265`;
- *   ffmpeg 7.0 and later name it), and from then on that thread and every
+ *   ffmpeg 7.0 and later name it; idle polls before it exists do not count,
+ *   and 10 s of them decline), and from then on that thread and every
  *   thread present when the first frame went idle (x265's pool) are still
  *   there on every poll.
  *
@@ -380,6 +381,7 @@ export interface EncoderWatchDeps {
   mapsLibx265: (pid: number) => boolean | null;
   self: () => { pid: number; pgrp: number; session: number; exeId: string | null };
   sleep: (ms: number) => Promise<void>;
+  now: () => number;
 }
 
 function readSelf() {
@@ -399,6 +401,7 @@ const DEFAULT_ENCODER_WATCH_DEPS: EncoderWatchDeps = {
   mapsLibx265,
   self: readSelf,
   sleep: defaultSleep,
+  now: Date.now,
 };
 
 /**
@@ -450,6 +453,18 @@ export async function watchEncoder(
   }
 }
 
+/**
+ * How long the first frame's idle wait goes on finding the process idle with
+ * no libx265 thread before it declines: on a loaded host ffmpeg can sit idle
+ * between its first threads and the encoder thread it starts once the first
+ * frame reaches the encoder, and an idle count there would hold the threads
+ * of a pipeline still starting up.
+ */
+const LIBX265_THREAD_WAIT_MS = 10_000;
+
+const NO_LIBX265_THREAD =
+  "the encoder process runs no thread named for libx265 (ffmpeg 7.0 or later names it)";
+
 /** Throws `EncoderPacingError` unless `threads` still hold the libx265 thread and every `held` one. */
 function assertHeld(
   threads: readonly ThreadState[],
@@ -468,8 +483,9 @@ function assertHeld(
 /**
  * The pacer of a proven encoder process: each frame re-checks the process;
  * the first frame's idle wait counts only once the process runs more than
- * one thread (ffmpeg starts its pipeline on its first frame) and finds
- * ffmpeg's libx265 thread among them, and that thread and every thread
+ * one thread (ffmpeg starts its pipeline on its first frame) and ffmpeg's
+ * libx265 thread among them (declining once it has been idle without one
+ * for `LIBX265_THREAD_WAIT_MS`), and that thread and every thread
  * present once the first frame went idle must be there on every later
  * poll.
  */
@@ -499,12 +515,18 @@ function pacerFor(
     },
     async waitUntilIdle(options) {
       if (held) return waitUntilIdle(holding, options);
-      await waitUntilIdle(holding, options, (threads) => threads.length > 1);
-      if (encoderThread === undefined) {
-        throw new EncoderPacingError(
-          "the encoder process runs no thread named for libx265 (ffmpeg 7.0 or later names it)",
-        );
-      }
+      let idleSince: number | undefined;
+      await waitUntilIdle(holding, options, (threads) => {
+        if (threads.length <= 1) return false;
+        if (encoderThread !== undefined) return true;
+        // Idle with no libx265 thread: ffmpeg has yet to start it, or encodes with something else.
+        idleSince ??= deps.now();
+        if (deps.now() - idleSince > LIBX265_THREAD_WAIT_MS) {
+          throw new EncoderPacingError(NO_LIBX265_THREAD);
+        }
+        return false;
+      });
+      if (encoderThread === undefined) throw new EncoderPacingError(NO_LIBX265_THREAD);
       const threads = deps.threads(pid);
       if (!threads?.some((thread) => thread.tid === encoderThread)) {
         throw new EncoderPacingError("the encoder's libx265 thread is gone");
