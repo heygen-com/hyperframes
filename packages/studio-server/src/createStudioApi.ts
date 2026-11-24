@@ -82,11 +82,6 @@ async function markPreviewForAnotherSite(c: Context) {
 }
 
 const FRAMED_DESTS = new Set(["document", "iframe", "frame", "embed", "object", "fencedframe"]);
-const framedByAnotherSite = (c: Context) => {
-  if (!documentForAnotherSite(c)) return false;
-  const dest = c.req.header("sec-fetch-dest");
-  return dest === undefined || FRAMED_DESTS.has(dest);
-};
 
 function withoutValidators(request: Request): Request {
   const headers = new Headers(request.headers);
@@ -95,14 +90,25 @@ function withoutValidators(request: Request): Request {
   return new Request(request, { headers });
 }
 
+interface PreviewSandboxing {
+  captures: boolean;
+  directOpens: boolean;
+}
+
 const sandboxPreviewForAnotherSiteOrCapture =
-  (sandboxCaptures: boolean) => async (c: Context, next: Next) => {
-    if (framedByAnotherSite(c)) c.req.raw = withoutValidators(c.req.raw);
+  ({ captures, directOpens }: PreviewSandboxing) =>
+  async (c: Context, next: Next) => {
+    const capture = captures && isThumbnailCapture(c);
+    // A link opened from the address bar, a chat or a mail client has no page of Studio's behind it.
+    const openedDirectly = directOpens && !capture && c.req.header("sec-fetch-site") === "none";
+    const anotherSite = documentForAnotherSite(c) || openedDirectly;
+    const dest = c.req.header("sec-fetch-dest");
+    if (anotherSite && (dest === undefined || FRAMED_DESTS.has(dest)))
+      c.req.raw = withoutValidators(c.req.raw);
     await next();
     c.header("Vary", "Sec-Fetch-Site, Referer", { append: true });
-    const anotherSite = documentForAnotherSite(c);
-    if (anotherSite || (sandboxCaptures && isThumbnailCapture(c)))
-      c.header("Content-Security-Policy", "sandbox allow-scripts");
+    if (anotherSite || capture) c.header("Content-Security-Policy", "sandbox allow-scripts");
+    if (openedDirectly) c.header("X-Content-Type-Options", "nosniff");
     if (anotherSite) await markPreviewForAnotherSite(c);
   };
 
@@ -171,6 +177,11 @@ const reportRefusals =
 export interface StudioApiOptions extends CaptureSandboxOption {
   allowedHosts?: readonly string[];
   subCompositionDeadlineMs?: number;
+  /**
+   * Answer a preview document or project file opened by direct navigation (`Sec-Fetch-Site: none`) the way one framed
+   * by another site is answered: sandboxed and marked. Off for a host whose own windows open previews top-level.
+   */
+  sandboxDirectOpens?: boolean;
 }
 
 export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
@@ -178,6 +189,7 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
   if (adapter.onRefusal) api.use(reportRefusals(adapter.onRefusal));
   api.use(refuseServiceWorkerScripts);
   const sandboxThumbnailCaptures = options.sandboxThumbnailCaptures ?? false;
+  const sandboxDirectOpens = options.sandboxDirectOpens ?? false;
   const frameTokens = createFrameTokens();
   const resolveProjectId = (id: string) =>
     Promise.resolve()
@@ -190,7 +202,10 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
   api.use("/projects/:id/preview/*", refuseProxyWorkForAnotherSite);
   api.use(
     "/projects/:id/preview/*",
-    sandboxPreviewForAnotherSiteOrCapture(sandboxThumbnailCaptures),
+    sandboxPreviewForAnotherSiteOrCapture({
+      captures: sandboxThumbnailCaptures,
+      directOpens: sandboxDirectOpens,
+    }),
   );
   api.get("/projects/:id/frame-token", async (c) => {
     if (fromAnotherSite(c))
