@@ -2,7 +2,7 @@
 // Studio does in a frame it can script. Only clips the frame named, never the root or the page itself.
 import type { EditingElementHandle } from "../editingElement";
 import { elementForHandle } from "../editingHandles";
-import { isCompositionHost } from "../editingLayers";
+import { CLIP_NODES } from "../clipNodes";
 
 const NEVER_CLIPS = new Set([
   "html",
@@ -13,6 +13,7 @@ const NEVER_CLIPS = new Set([
   "link",
   "meta",
   "template",
+  "noscript",
 ]);
 
 const isRootComposition = (element: Element) =>
@@ -21,11 +22,7 @@ const isRootComposition = (element: Element) =>
 
 function removableClip(element: Element | null): element is Element {
   if (!element || NEVER_CLIPS.has(element.localName) || isRootComposition(element)) return false;
-  return (
-    element.hasAttribute("data-start") ||
-    element.hasAttribute("data-composition-id") ||
-    isCompositionHost(element)
-  );
+  return element.matches(CLIP_NODES);
 }
 
 /** Removes every named clip, or none when any handle is stale or names something that is not a clip. */
