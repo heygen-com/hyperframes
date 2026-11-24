@@ -20,6 +20,7 @@ import {
 import { naturalVideoSize } from "../mediaDisplaySize";
 import { escapeCssString } from "./editingElement";
 import {
+  authoredSrcOf,
   heldForCopy,
   heldPosters,
   inPointOf,
@@ -490,6 +491,45 @@ function holdForCopy(el: HTMLMediaElement): boolean {
     }),
   );
   return true;
+}
+
+// A file deeper than 8 bits plays only where the browser names its codec at that depth; elsewhere it stays held.
+const DEEP_CODEC_MIME: Record<string, string> = {
+  h264: 'video/mp4; codecs="avc1.6E0028"',
+  hevc: 'video/mp4; codecs="hvc1.2.4.L120.B0"',
+  vp9: 'video/webm; codecs="vp09.02.10.10"',
+  av1: 'video/mp4; codecs="av01.0.08M.10"',
+};
+
+function decodesItsFile(el: HTMLMediaElement, file: string): boolean {
+  const facts = sourceFactsOfSrc(file);
+  if (!facts || facts.bitDepth <= 8) return true;
+  const mime = facts.codec === undefined ? undefined : DEEP_CODEC_MIME[facts.codec];
+  return mime !== undefined && el.canPlayType(mime) !== "";
+}
+
+let playingItsFile: HTMLMediaElement | null = null;
+
+const copyStillComing = (el: HTMLMediaElement) =>
+  el.isConnected && !swappedElements.has(el) && proxyRequested.has(el);
+
+/** Each media tick re-decides a clip whose copy is still being made: the one on screen plays its own file, and every
+ * other, one that played its file and left the screen included, is held, so at most one oversized file decodes. */
+export function decideFileTurn(el: HTMLMediaElement, onScreen: boolean): void {
+  if (el === playingItsFile && !(onScreen && copyStillComing(el))) {
+    playingItsFile = null;
+    if (copyStillComing(el)) holdForCopy(el);
+  }
+  if (playingItsFile && !playingItsFile.isConnected) playingItsFile = null;
+  if (!onScreen || playingItsFile || !heldForCopy.has(el) || el.getAttribute("src") !== null)
+    return;
+  const before = heldForCopy.get(el);
+  const src = before ? before.written : authoredSrcOf(el);
+  if (src === null || !decodesItsFile(el, src)) return;
+  playingItsFile = el;
+  heldForCopy.delete(el);
+  recordOpenedAtInPoint(el, before?.authored ?? src, src, before?.holdsWhenIdle);
+  el.setAttribute("src", src);
 }
 
 /** Without a copy (`giveBack` set), a clip held until due stays held; any other gets its src back as the runtime's. */
