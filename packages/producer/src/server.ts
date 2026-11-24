@@ -1339,17 +1339,9 @@ export function createProducerApp(options: HandlerOptions = {}): Hono {
   return app;
 }
 
-// ---------------------------------------------------------------------------
-// Rejections that escape a render
-// ---------------------------------------------------------------------------
-
 const renderScope = new AsyncLocalStorage<{ requestId: string; fail: (err: Error) => void }>();
 
-/**
- * Runs one render so that a promise rejection nobody handles inside it can be
- * traced back to it: the render is stopped and fails with that error, and
- * other renders on the server carry on.
- */
+/** Runs a render so a rejection nobody handled inside it fails that render only. */
 export function runInRenderScope<T>(
   requestId: string,
   abortController: AbortController,
@@ -1359,11 +1351,6 @@ export function runInRenderScope<T>(
   return renderScope.run({ requestId, fail }, () => run(abortController.signal));
 }
 
-/**
- * The server's `unhandledRejection` handler: log it, and fail the render whose
- * work created the promise. One outside any render is only logged; ending the
- * process for it would also end every render in flight.
- */
 export function onEscapedRejection(reason: unknown, log: ProducerLogger): void {
   const err = reason instanceof Error ? reason : new Error(String(reason));
   const scope = renderScope.getStore();
@@ -1454,7 +1441,6 @@ export function startServer(options: ServerOptions = {}) {
   }
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
-  // A rejection that escapes a render fails that render, not the whole server.
   process.on("unhandledRejection", (reason) => onEscapedRejection(reason, log));
   process.on("SIGINT", () => shutdown("SIGINT"));
 

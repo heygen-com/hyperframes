@@ -180,10 +180,8 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
     const workerRanges = distributeLayeredHybridFrameRanges(totalFrames, activeWorkerCount);
     let framesWritten = 0;
     const reorderBuffer = createFrameReorderBuffer(0, totalFrames);
-    // The first failure on any worker (a blend, an encoder write, a capture,
-    // a cancel) is recorded here and wakes every worker parked on the reorder
-    // buffer, so the whole loop stops on it instead of waiting for a frame
-    // that will never be written.
+    // The first failure on any worker stops the loop and wakes every worker
+    // parked on the reorder buffer for a frame that will never be written.
     let failure: Error | null = null;
     const fail = (err: unknown): void => {
       if (failure) return;
@@ -223,8 +221,7 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
       // promise is non-null; before reusing the slot for a new capture we
       // await it so the buffer triple is free + the encoder has seen the
       // earlier frame (writeEncoded gates ordering via the reorder buffer).
-      // Slot promises never reject: a failure is handed to `fail` and
-      // re-thrown from the worker, so no rejection is ever left unobserved.
+      // Slot promises never reject; their failure goes to `fail`.
       const ringInFlight: Array<Promise<void> | null> = ring ? ring.map(() => null) : [];
       let nextRingIdx = 0;
       try {
@@ -344,14 +341,11 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
       } catch (err) {
         fail(err);
       } finally {
-        // Settle every pipelined blend still in flight on this worker before
-        // returning, so none outlives the loop or the pool behind it.
         await Promise.all(ringInFlight);
       }
       throwIfFailed();
     };
-    // allSettled, not all: every worker (and its ring) must settle before the
-    // `finally` below closes sessions and terminates the pool under them.
+    // allSettled: every worker's ring settles before the pool is terminated.
     await Promise.allSettled(sessions.map((_, w) => workerTaskOf(w)));
     throwIfFailed();
     await reorderBuffer.waitForAllDone();

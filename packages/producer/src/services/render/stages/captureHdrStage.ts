@@ -236,7 +236,6 @@ export async function runCaptureHdrStage(
       await domSession.page.evaluate((): unknown => window.__hf?.transitions ?? []),
       (message, meta) => log.warn(message, meta),
     );
-    // No prototype: a scene id like `constructor` must not find an inherited member.
     const sceneElements: Record<string, string[]> = Object.assign(
       Object.create(null),
       await domSession.page.evaluate(() => {
