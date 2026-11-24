@@ -4,7 +4,7 @@ import { isControlsClick, setupControls, setupPoster } from "./controls-setup.js
 import { adoptShadowStyles, createCompositionIframe, scaleIframeToFit } from "./iframe-dom.js";
 import { DirectTimelineClock } from "./direct-timeline-clock.js";
 import { ParentMediaManager } from "./parent-media.js";
-import { ParentAudio } from "./parent-audio.js";
+import type { ParentAudio } from "./parent-audio.js";
 import { isWebKit } from "@hyperframes/core/runtime/media-clock";
 import { isRealmHtmlMediaElement } from "./media-element-guards.js";
 import { handleRuntimeMessage } from "./runtime-message-handler.js";
@@ -191,6 +191,8 @@ class HyperframesPlayer extends HTMLElement {
   private _parentTickRaf: number | null = null;
   private _media: ParentMediaManager;
   private _parentAudio: ParentAudio | null = null;
+  private _parentAudioLoad: Promise<void> | null = null;
+  private _parentAudioGen = 0;
   private _scenes: { id: string; start: number; duration: number }[] = [];
   private _runtimeFps = 30;
   private _runtimeBridgeReady = false;
@@ -305,6 +307,8 @@ class HyperframesPlayer extends HTMLElement {
     this._media.destroy();
     this._parentAudio?.destroy();
     this._parentAudio = null;
+    this._parentAudioLoad = null;
+    this._parentAudioGen++;
     this.controlsApi?.destroy();
     this.controlsApi = null;
     this._paused = true;
@@ -727,11 +731,25 @@ class HyperframesPlayer extends HTMLElement {
     return this.closest("hyperframes-slideshow") !== null;
   }
 
-  /** A sealed film's audio, played here from decoded buffers where WebKit would start its elements late. */
+  /**
+   * A sealed film's audio, played here from decoded buffers where WebKit would start its elements late.
+   * Its code loads on first need, so other players don't carry it; until then the film plays its own.
+   */
   private _sealedAudio(): ParentAudio | null {
     if (!this.hasAttribute(SANDBOX_ORIGIN_ATTR) || !isWebKit() || this._isSlideshowPlayer())
       return null;
-    return (this._parentAudio ??= new ParentAudio({
+    this._parentAudioLoad ??= this._loadParentAudio();
+    return this._parentAudio;
+  }
+
+  private async _loadParentAudio(): Promise<void> {
+    const gen = this._parentAudioGen;
+    const { ParentAudio } = await import("./parent-audio.js").catch((error: unknown) => {
+      if (gen === this._parentAudioGen) this._parentAudioLoad = null;
+      throw error;
+    });
+    if (gen !== this._parentAudioGen) return;
+    this._parentAudio = new ParentAudio({
       copies: () => this._media.listedAudio(),
       sendControl: (action, extra) => this._sendControl(action, extra),
       getCurrentTime: () => this._currentTime,
@@ -739,7 +757,9 @@ class HyperframesPlayer extends HTMLElement {
       getVolume: () => this._volume,
       getMuted: () => this.muted,
       isPaused: () => this._paused,
-    }));
+    });
+    this._parentAudio.postClaims();
+    if (!this._paused) this._parentAudio.play();
   }
 
   /** Apply a change to the `muted` attribute: re-assert under an audio lock,

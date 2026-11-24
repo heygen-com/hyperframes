@@ -2,7 +2,22 @@ import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } fr
 import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
 import { PLAYER_FRAME_NAME } from "@hyperframes/core/studio-preview-mark";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
-import type { ParentAudio } from "./parent-audio.js";
+import { ParentAudio } from "./parent-audio.js";
+
+type SealedAudioReader = {
+  _sealedAudio(): ParentAudio | null;
+  _parentAudioLoad: Promise<void> | null;
+  _paused: boolean;
+};
+
+async function loadedSealedAudio(player: HTMLElement): Promise<ParentAudio> {
+  const sealed = player as unknown as SealedAudioReader;
+  sealed._sealedAudio();
+  await sealed._parentAudioLoad;
+  const audio = sealed._sealedAudio();
+  if (!audio) throw new Error("expected a sealed WebKit player to play audio from the parent");
+  return audio;
+}
 
 // Install a stubbed contentDocument getter on the given iframe element. The
 // new stopMedia / muted tests repeat this `Object.defineProperty(... { get })`
@@ -1125,13 +1140,12 @@ describe("HyperframesPlayer seek() sync path", () => {
   });
 
   // fails without the fix: the parent's decoded copies and the clock it posts played on after stopMedia().
-  it("stopMedia stops a sealed film's decoded audio and the clock it posts", () => {
+  it("stopMedia stops a sealed film's decoded audio and the clock it posts", async () => {
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
     );
     player.setAttribute("sandbox-origin", "");
-    const audio = (player as unknown as { _sealedAudio(): ParentAudio | null })._sealedAudio();
-    if (!audio) throw new Error("expected a sealed WebKit player to play audio from the parent");
+    const audio = await loadedSealedAudio(player);
     const pause = vi.spyOn(audio, "pause");
 
     player.stopMedia();
@@ -1140,13 +1154,12 @@ describe("HyperframesPlayer seek() sync path", () => {
   });
 
   // fails without the fix: a list without a removed clip left its claim standing, so the film kept a layer silent.
-  it("re-posts the parent's claims on every list from a sealed film, even while paused", () => {
+  it("re-posts the parent's claims on every list from a sealed film, even while paused", async () => {
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
     );
     player.setAttribute("sandbox-origin", "");
-    const audio = (player as unknown as { _sealedAudio(): ParentAudio | null })._sealedAudio();
-    if (!audio) throw new Error("expected a sealed WebKit player to play audio from the parent");
+    const audio = await loadedSealedAudio(player);
     const postClaims = vi.spyOn(audio, "postClaims");
 
     window.dispatchEvent(
@@ -1157,6 +1170,33 @@ describe("HyperframesPlayer seek() sync path", () => {
     );
 
     expect(postClaims).toHaveBeenCalledOnce();
+  });
+
+  // fails without the fix: every player carried the decoded-audio code, so nothing was left to load.
+  it("loads a sealed WebKit player's decoded audio on first need, and plays it if the film is playing", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    const play = vi.spyOn(ParentAudio.prototype, "play").mockImplementation(() => {});
+    player.setAttribute("sandbox-origin", "");
+    const sealed = player as unknown as SealedAudioReader;
+    sealed._paused = false;
+
+    expect(sealed._sealedAudio()).toBeNull();
+    await sealed._parentAudioLoad;
+
+    expect(sealed._sealedAudio()).toBeInstanceOf(ParentAudio);
+    expect(play).toHaveBeenCalledOnce();
+  });
+
+  it("never loads the decoded-audio code for a player that isn't sealed", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    const sealed = player as unknown as SealedAudioReader;
+
+    expect(sealed._sealedAudio()).toBeNull();
+    expect(sealed._parentAudioLoad).toBeNull();
   });
 
   it("stopMedia pauses iframe-realm media elements", () => {
