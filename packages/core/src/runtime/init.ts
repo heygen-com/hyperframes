@@ -6343,24 +6343,46 @@ export function initSandboxRuntimeModular(): void {
     return false;
   };
 
+  // A seek lands once the file is read from the keyframe before it, minutes back in a recording keyframed rarely
+  // (Chromium reports one cache for all clips of a file): such a clip catches up while the film plays.
+  const FAR_SEEK_SECONDS = 10;
+  const seekingFarFromData = (el: HTMLMediaElement): boolean => {
+    if (!el.seeking) return false;
+    const target = el.currentTime;
+    for (let i = 0; i < el.buffered.length; i++) {
+      const reaches = el.buffered.end(i) >= target - FAR_SEEK_SECONDS;
+      if (reaches && el.buffered.start(i) <= target + READY_AHEAD_SECONDS) return false;
+    }
+    return true;
+  };
+  const bufferedAheadOf = (el: HTMLMediaElement): number => {
+    const at = el.currentTime;
+    for (let i = 0; i < el.buffered.length; i++)
+      if (el.buffered.start(i) <= at && el.buffered.end(i) >= at) return el.buffered.end(i) - at;
+    return 0;
+  };
+
   const STOP_HOLDING_FOR_A_CLIP_WITHOUT_NEW_DATA_MS = 8000;
-  type HoldWithoutData = { src: string; buffered: number; sinceMs: number; checkedTick: number };
+  type HoldWithoutData = {
+    src: string;
+    bufferedAhead: number;
+    sinceMs: number;
+    checkedTick: number;
+  };
   const holdsWithoutData = new WeakMap<HTMLMediaElement, HoldWithoutData>();
   const stoppedReceivingData = (el: HTMLMediaElement): boolean => {
     const now = performance.now();
-    let buffered = 0;
-    for (let i = 0; i < el.buffered.length; i++)
-      buffered += el.buffered.end(i) - el.buffered.start(i);
+    const bufferedAhead = bufferedAheadOf(el);
     const hold = holdsWithoutData.get(el);
     const heldLastTick =
       hold !== undefined &&
       hold.src === el.currentSrc &&
-      buffered <= hold.buffered &&
+      bufferedAhead <= hold.bufferedAhead &&
       hold.checkedTick >= transportTickCount - 1;
     if (!heldLastTick) {
       holdsWithoutData.set(el, {
         src: el.currentSrc,
-        buffered,
+        bufferedAhead,
         sinceMs: now,
         checkedTick: transportTickCount,
       });
@@ -6378,6 +6400,7 @@ export function initSandboxRuntimeModular(): void {
             ({ el, start, end }) =>
               isInClipWindow(t, start, end) &&
               !ready(el) &&
+              !seekingFarFromData(el) &&
               !stoppedReceivingData(el) &&
               isPlayableTrack(el) &&
               !stillStandsIn(el) &&

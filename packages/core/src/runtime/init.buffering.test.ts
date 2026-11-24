@@ -4,7 +4,9 @@ import { heldPosters } from "./proxySrc";
 import { STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 import { createMockTimeline, resetRuntimeFixtureDom } from "./runtimeSeekFixture.test-helpers";
 
-function audio(id: string, duration: number, readyState: { value: number; bufferedTo?: number }) {
+type Readiness = { value: number; bufferedFrom?: number; bufferedTo?: number; seeking?: boolean };
+
+function audio(id: string, duration: number, readyState: Readiness) {
   const el = document.getElementById(id) as HTMLAudioElement;
   let paused = true;
   let position = 0;
@@ -27,9 +29,14 @@ function audio(id: string, duration: number, readyState: { value: number; buffer
     },
     readyState: { get: () => readyState.value, configurable: true },
     buffered: {
-      get: () => ({ length: 1, start: () => 0, end: () => readyState.bufferedTo ?? 0 }),
+      get: () => ({
+        length: 1,
+        start: () => readyState.bufferedFrom ?? 0,
+        end: () => readyState.bufferedTo ?? 0,
+      }),
       configurable: true,
     },
+    seeking: { get: () => readyState.seeking ?? false, configurable: true },
     paused: { get: () => paused, configurable: true },
   });
   el.play = vi.fn(() => {
@@ -46,15 +53,21 @@ function audio(id: string, duration: number, readyState: { value: number; buffer
   return el;
 }
 
-function playPodcast(voiceStart = 0, voiceTag = "audio", extraHtml = "", voiceDuration = 4) {
+function playPodcast(
+  voiceStart = 0,
+  voiceTag = "audio",
+  extraHtml = "",
+  voiceDuration = 4,
+  voiceAttrs = "",
+) {
   resetRuntimeFixtureDom();
   document.body.innerHTML =
     '<div data-composition-id="main" data-root="true" data-duration="10">' +
     '<audio id="music" data-start="0" data-duration="10" src="/music.m4a"></audio>' +
-    `<${voiceTag} id="voice" data-track-index="0" data-start="${voiceStart}" data-duration="${voiceDuration}" src="/voice.m4a"></${voiceTag}>` +
+    `<${voiceTag} id="voice" data-track-index="0" data-start="${voiceStart}" data-duration="${voiceDuration}" ${voiceAttrs} src="/voice.m4a"></${voiceTag}>` +
     extraHtml +
     "</div>";
-  const voiceReady: { value: number; bufferedTo?: number } = { value: 1 };
+  const voiceReady: Readiness = { value: 1 };
   const musicReady = { value: 4 };
   const music = audio("music", 10, musicReady);
   const voice = audio("voice", voiceDuration, voiceReady);
@@ -127,6 +140,73 @@ it("a stuck clip stops holding the film when ticks come a second apart, as in a 
   for (let s = 0; s < 10; s++) step(1100);
   step(1000 / 60);
 
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
+// Cut 76 s into a recording keyframed only at its start: the browser reads the file up from 0 to land the seek.
+it("plays on while a clip seeks far past all of its data", () => {
+  const { music, voiceReady, states, playFor } = playPodcast(
+    0,
+    "video",
+    "",
+    600,
+    'data-media-start="76"',
+  );
+  voiceReady.seeking = true;
+
+  for (let s = 0; s < 4; s++) {
+    voiceReady.bufferedTo = (s + 1) * 5;
+    playFor(0.5);
+  }
+
+  expect(window.__player!.getTime()).toBeGreaterThan(1.5);
+  expect(music.paused).toBe(false);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
+it("waits for a seeking clip whose data has reached its target", () => {
+  const { voiceReady, states, playFor } = playPodcast(0, "video", "", 600, 'data-media-start="76"');
+  voiceReady.seeking = true;
+  voiceReady.bufferedFrom = 70;
+
+  for (let s = 0; s < 4; s++) {
+    voiceReady.bufferedTo = 72 + s;
+    playFor(0.5);
+  }
+  expect(window.__player!.getTime()).toBeLessThan(0.1);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+
+  voiceReady.seeking = false;
+  voiceReady.value = 4;
+  voiceReady.bufferedTo = 80;
+  playFor(1);
+  expect(window.__player!.getTime()).toBeGreaterThan(0.9);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
+// Chromium reports one cache for all clips of a file, so another clip reading the start of the file grows this one's ranges.
+it("a clip whose data grows only away from its position stops holding the film after 8 s", () => {
+  const { music, voiceReady, states, playFor } = playPodcast(
+    0,
+    "video",
+    "",
+    600,
+    'data-media-start="76"',
+  );
+
+  for (let s = 0; s < 7; s++) {
+    voiceReady.bufferedTo = (s + 1) * 2;
+    playFor(1);
+  }
+  expect(window.__player!.getTime()).toBeLessThan(0.1);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+
+  for (let s = 7; s < 10; s++) {
+    voiceReady.bufferedTo = (s + 1) * 2;
+    playFor(1);
+  }
+  expect(window.__player!.getTime()).toBeGreaterThan(0.5);
+  expect(music.paused).toBe(false);
   expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
 });
 
