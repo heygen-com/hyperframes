@@ -3,7 +3,7 @@
 // copies skip .hyperframes, so a duplicate gets its own link, as the backend wants of a fork.
 import { withProjectShareLock } from "./projectLock.mjs";
 import { firstReviewAudience } from "./reviewAudience.mjs";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { mkdirInside } from "./storage.mjs";
 import {
@@ -16,7 +16,7 @@ import {
   SharingStateError,
   writeJsonAtomic,
 } from "./storage.mjs";
-import { channelSite, normalize, signinSites } from "./host.mjs";
+import { channelSite, journalKey, normalize, signinSites } from "./host.mjs";
 import { ReviewFailed } from "./reviewClient.mjs";
 import { rename } from "./storage.mjs";
 
@@ -306,10 +306,36 @@ export const reviewRecord = (projectPath) => readRecord(projectPath);
 export const reviewSwitchPath = (projectPath) =>
   recordPath(projectPath).replace(/\.json$/, ".switch.json");
 
-/** @param {string} dir @returns {Promise<import("./reviewSwitch.mjs").Switch | null>} */
+/** The host's key over the project's folder and the journal's own text.
+ * @param {Uint8Array} key @param {string} dir @param {object} change */
+const sealOf = (key, dir, change) =>
+  createHmac("sha256", key)
+    .update(`${normalize(dir)}\0${JSON.stringify(change)}`)
+    .digest();
+
+/** A journal as the kernel writes it: sealed when the host gave a key, so another party's journal can't pass for it.
+ * @template {object} T @param {string} dir @param {T} change */
+export function sealedSwitch(dir, change) {
+  const key = journalKey();
+  return key ? { ...change, seal: sealOf(key, dir, change).toString("hex") } : change;
+}
+
+/** With a host key, the journal without its seal when the seal is that key's over this folder, else null.
+ * @param {string} dir @param {Record<string, unknown>} read */
+function unsealed(dir, read) {
+  const key = journalKey();
+  if (!key) return read;
+  const { seal, ...change } = read;
+  if (typeof seal !== "string" || !/^[0-9a-f]{64}$/.test(seal)) return null;
+  return timingSafeEqual(Buffer.from(seal, "hex"), sealOf(key, dir, change)) ? change : null;
+}
+
+/** The change of space waiting in the project; one the host's key did not seal is none.
+ * @param {string} dir @returns {Promise<import("./reviewSwitch.mjs").Switch | null>} */
 export async function readReviewSwitch(dir) {
   const file = reviewSwitchPath(dir);
-  const change = await readJsonRecord(file);
+  const read = await readJsonRecord(file);
+  const change = read && unsealed(dir, read);
   if (!change) return null;
   if (
     !isSavedId(change.from) ||

@@ -82,6 +82,7 @@ export function passiveInlineSvg(markup: string): boolean {
 function passiveSvgAttribute(name: string, value: string, embedded: Set<string>): boolean {
   if (name.startsWith("on") || name === "xml:base") return false;
   if (["href", "xlink:href", "src"].includes(name)) return localImageReference(value, embedded);
+  if (/:(?:href|src)$/.test(name)) return false;
   if (name === "style") return passiveCss(value, "declarationList", embedded);
   return !/url\s*\(|\\/i.test(value) || passiveCss(value, "value", embedded);
 }

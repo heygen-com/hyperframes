@@ -215,7 +215,7 @@ export async function initThreeDProjectionInPage(): Promise<ThreeDProjectionResu
           if (!src) continue;
           try {
             const data = await toDataUrl(new URL(src, document.baseURI).href);
-            text = text.replace(m[0], `url(${data})`);
+            text = text.replace(m[0], () => `url(${data})`);
           } catch {
             // unfetchable font src — leave as-is; SVG will skip it
           }
@@ -257,7 +257,8 @@ export async function initThreeDProjectionInPage(): Promise<ThreeDProjectionResu
           const src = m[2];
           if (!src) continue;
           try {
-            inlined = inlined.replace(m[0], `url(${await toDataUrl(src)})`);
+            const data = await toDataUrl(src);
+            inlined = inlined.replace(m[0], () => `url(${data})`);
           } catch {
             /* leave */
           }

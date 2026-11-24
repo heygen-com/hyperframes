@@ -45,6 +45,96 @@ test("a refused speech prints HeyGen's own message, so a caller can act on it", 
   );
 });
 
+// Every speech request is refused with the text it asked for, so the test can read that text.
+const echoing = `data:text/javascript,globalThis.fetch = async (url, init) => new Response(
+  JSON.stringify({ error: { code: "refused", message: "asked: " + JSON.parse(init.body).text } }),
+  { status: 400, headers: { "content-type": "application/json" } });`;
+
+test("a .txt path that starts with two separators is refused, and the file it names is not read", () => {
+  const dir = mkdtempSync(join(tmpdir(), "heygen-tts-"));
+  writeFileSync(join(dir, "script.txt"), "text of the file");
+  const speak = (word) =>
+    spawnSync(
+      process.execPath,
+      ["--import", echoing, script, word, "--voice", "v", "-o", join(dir, "out.mp3")],
+      {
+        cwd: dir,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HEYGEN_API_KEY: "",
+          HYPERFRAMES_API_KEY: "",
+          HEYGEN_ACCESS_TOKEN: "t",
+        },
+      },
+    ).stderr;
+  try {
+    assert.match(speak(join(dir, "script.txt")), /asked: text of the file/);
+    for (const word of ["//host/share/script.txt", "\\\\host\\share\\script.txt"]) {
+      const said = speak(word);
+      assert.match(said, /not read\. Copy the file to a local folder/);
+      assert.doesNotMatch(said, /asked:/);
+    }
+    assert.match(speak("// and then"), /asked: \/\/ and then/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("text after a lone -- is spoken as written, even when it starts with dashes or names a flag", () => {
+  const dir = mkdtempSync(join(tmpdir(), "heygen-tts-"));
+  const run = (...args) =>
+    spawnSync(process.execPath, ["--import", echoing, script, ...args], {
+      cwd: dir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HEYGEN_API_KEY: "",
+        HYPERFRAMES_API_KEY: "",
+        HEYGEN_ACCESS_TOKEN: "t",
+      },
+    });
+  const out = join(dir, "out.mp3");
+  try {
+    for (const line of ["--and then it stopped.", "--list", "--voice", "-o", "--"]) {
+      const said = run("--voice", "v", "-o", out, "--", line);
+      assert.equal(said.status, 1);
+      assert.ok(said.stderr.includes(`asked: ${line}\n`), `${line}: ${said.stderr}`);
+      assert.equal(said.stdout, "");
+    }
+    // Flags before the -- still apply, and a flag with no value before it does not take the text.
+    assert.match(run("-o", out, "--voice", "v", "--words", "--", "Hi").stderr, /asked: Hi\n/);
+    // Without the --, a first word that starts with dashes is still a flag, and the hint says so.
+    const bare = run("--and then it stopped.", "--voice", "v", "-o", out);
+    assert.equal(bare.status, 1);
+    assert.match(bare.stderr, /no text given\..* goes after a lone --\./);
+    assert.match(run("--voice", "v", "-o", out, "--").stderr, /no text given\./);
+    assert.match(run("Hi", "--voice", "v", "-o", out, "--").stderr, /asked: Hi\n/);
+    // Nothing given is dropped without a word: flags after the text, a second text, a flag
+    // whose value the -- cut off.
+    const refused = [
+      [["--voice", "v", "--", "--and then", "-o", out], /only the text goes after a lone --/],
+      [["Hello", "--voice", "v", "-o", out, "--", "--and then"], /two texts given/],
+      [["--voice", "v", "-o", "--", "Hi"], /-o needs a path after it/],
+      [["--voice", "v", "--output", "--", "Hi"], /--output needs a path after it/],
+    ];
+    for (const [args, message] of refused) {
+      const stopped = run(...args);
+      assert.equal(stopped.status, 1);
+      assert.match(stopped.stderr, message);
+      assert.doesNotMatch(stopped.stderr, /asked:/);
+    }
+    assert.equal(existsSync(join(dir, "narration.wav")), false);
+    writeFileSync(join(dir, "--notes.txt"), "text of the file");
+    assert.match(
+      run("--voice", "v", "-o", out, "--", "--notes.txt").stderr,
+      /asked: text of the file\n/,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // Speech with one timed word; the audio itself is the file named by $TTS_AUDIO.
 const speaking = `data:text/javascript,import { readFileSync } from "node:fs";
 globalThis.fetch = async (url) => String(url).endsWith("/voices/speech")
