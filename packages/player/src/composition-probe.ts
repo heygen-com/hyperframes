@@ -26,8 +26,12 @@ import {
 
 import { RUNTIME_CDN_URL, runtimeCdnUrlForVersion } from "./runtime-url.js";
 
-export function timelineNotFound(limitMs: number): string {
-  return `Composition timeline not found after ${limitMs / 1000}s`;
+const ANOTHER_SITE_FIX =
+  "A player can't add the HyperFrames runtime to a composition from another site: include the runtime script in it.";
+
+export function timelineNotFound(limitMs: number, fromAnotherSite = false): string {
+  const message = `Composition timeline not found after ${limitMs / 1000}s`;
+  return fromAnotherSite ? `${message}. ${ANOTHER_SITE_FIX}` : message;
 }
 
 export { runtimeCdnUrlForVersion };
@@ -46,6 +50,7 @@ export interface ProbeCallbacks {
   onRuntimeInjected?: () => void;
   resolveRuntimeUrl?: () => string;
   hostOwnsDeadline?: () => boolean;
+  fromAnotherSite?: () => boolean;
 }
 
 /**
@@ -151,7 +156,9 @@ export class CompositionProbe {
     this._preparationTimer = null;
     if (!this._navigationPending || this._callbacks.hostOwnsDeadline?.()) return;
     this._limitReportedBeforeLoad = true;
-    this._callbacks.onError(timelineNotFound(this._limitMs));
+    this._callbacks.onError(
+      timelineNotFound(this._limitMs, this._callbacks.fromAnotherSite?.() === true),
+    );
   }
 
   get limitMs(): number {
@@ -218,7 +225,9 @@ export class CompositionProbe {
     if (this._interval) clearInterval(this._interval);
     this._interval = setInterval(tick, LATE_POLL_MS);
     this._failure = { document: this._iframe.contentDocument, deadline: true };
-    this._callbacks.onError(timelineNotFound(this._limitMs));
+    this._callbacks.onError(
+      timelineNotFound(this._limitMs, this._callbacks.fromAnotherSite?.() === true),
+    );
   }
 
   private _poll(attempts: number): ProbeOutcome {

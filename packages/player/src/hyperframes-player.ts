@@ -44,6 +44,9 @@ import {
 // timeline itself respects. Clamping here also shields the native
 // HTMLMediaElement.playbackRate setter, which throws for extreme values in
 // production browsers.
+const capturing = (options?: boolean | EventListenerOptions): boolean =>
+  typeof options === "boolean" ? options : options?.capture === true;
+
 function parseUrl(src: string): URL | null {
   try {
     return new URL(src, document.baseURI);
@@ -184,6 +187,12 @@ class HyperframesPlayer extends HTMLElement {
   private _compositionWidth = 1920;
   private _compositionHeight = 1080;
   private _rescaleWarned = false;
+  private _errorHeard = false;
+  private readonly _errorStandIns = new WeakMap<
+    EventListenerOrEventListenerObject,
+    Map<boolean, EventListener>
+  >();
+  private readonly _errorStandInSet = new WeakSet<EventListenerOrEventListenerObject>();
   private _directTimelineAdapter: DirectTimelineAdapter | null = null;
   private _directTimelineClock: DirectTimelineClock;
   private _parentTickRaf: number | null = null;
@@ -248,8 +257,9 @@ class HyperframesPlayer extends HTMLElement {
     this.probe = new CompositionProbe(this.iframe, {
       resolveRuntimeUrl: () => runtimeSrcFromElement(this),
       hostOwnsDeadline: () => this.hasAttribute("no-load-timeout"),
+      fromAnotherSite: () => this._filmFromAnotherSite(),
       onReady: (result) => this._onProbeReady(result),
-      onError: (message) => this._emit(new CustomEvent("error", { detail: { message } })),
+      onError: (message) => this._emitError({ message }),
     });
 
     this.addEventListener("click", (event) => {
@@ -1164,7 +1174,7 @@ class HyperframesPlayer extends HTMLElement {
       () => {
         if (load !== this._documentLoad) return;
         this.probe.endNavigation();
-        this._emit(new CustomEvent("error", { detail: { message: SEALED_RUNTIME_LOAD_FAILED } }));
+        this._emitError({ message: SEALED_RUNTIME_LOAD_FAILED });
       },
     );
   }
@@ -1217,7 +1227,7 @@ class HyperframesPlayer extends HTMLElement {
         },
         onError: (message, code) => {
           if (!this._paused) this.pause();
-          this._emit(new CustomEvent("error", { detail: { message, code } }));
+          this._emitError({ message, code });
         },
         onPlayRejected: (error) => this._onVideoPlayRejected(error),
       });
@@ -1744,6 +1754,71 @@ class HyperframesPlayer extends HTMLElement {
   /** Every event the player raises goes through here, so an update's events keep their order. */
   private _emit(event: Event): void {
     this._afterEvents(() => this.dispatchEvent(event));
+  }
+
+  private _emitError(detail: { message: string; code?: number | null }): void {
+    this._afterEvents(() => {
+      this._errorHeard = false;
+      // The DOM calls the onerror handler set when the error dispatches, which may clear itself.
+      const handler = this.onerror;
+      this.dispatchEvent(new CustomEvent("error", { detail }));
+      if (!this._errorHeard && !handler) {
+        console.warn(`[hyperframes-player] error with no listener: ${detail.message}`);
+      }
+    });
+  }
+
+  override addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    super.addEventListener(
+      type,
+      type === "error" && listener ? this._heardBy(listener, capturing(options)) : listener,
+      options,
+    );
+  }
+
+  override removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void {
+    super.removeEventListener(
+      type,
+      type === "error" && listener ? this._heardBy(listener, capturing(options)) : listener,
+      options,
+    );
+  }
+
+  /** The one stand-in the DOM holds for an error listener: it marks the error heard, and leaves once, signal
+   *  and capture to the browser. */
+  private _heardBy(
+    listener: EventListenerOrEventListenerObject,
+    capture: boolean,
+  ): EventListenerOrEventListenerObject {
+    if (this._errorStandInSet.has(listener)) return listener;
+    const byCapture = this._errorStandIns.get(listener) ?? new Map<boolean, EventListener>();
+    this._errorStandIns.set(listener, byCapture);
+    let standIn = byCapture.get(capture);
+    if (!standIn) {
+      standIn = (event: Event) => {
+        this._errorHeard = true;
+        if (typeof listener === "function") listener.call(this, event);
+        else listener.handleEvent(event);
+      };
+      byCapture.set(capture, standIn);
+      this._errorStandInSet.add(standIn);
+    }
+    return standIn;
+  }
+
+  /** A composition from another origin than the page's: no player, sealed or not, can add the runtime to it. */
+  private _filmFromAnotherSite(): boolean {
+    if (this.hasAttribute("srcdoc")) return false;
+    const url = parseUrl(this.getAttribute("src") ?? "");
+    return url !== null && url.origin !== location.origin;
   }
 
   private _rescale() {

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { launchBrowser } from "../perf/runner.js";
 import { startServer } from "../perf/server.js";
 
+// Linux's 30 s load limit, as on CI, plus slack: every wait for an error that comes at the limit.
+const PAST_LOAD_LIMIT_MS = 36_000;
 const server = startServer();
 const browser = await launchBrowser();
 
@@ -69,8 +71,9 @@ try {
       },
       `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
     );
-    // Linux's 30 s load limit, as on CI, plus slack.
-    await page.waitForFunction(() => window.__playerError !== undefined, { timeout: 36_000 });
+    await page.waitForFunction(() => window.__playerError !== undefined, {
+      timeout: PAST_LOAD_LIMIT_MS,
+    });
     return page.evaluate(() => ({
       error: String(window.__playerError),
       events: (window as { __events?: string[] }).__events,
@@ -83,7 +86,108 @@ try {
     openCrossSite,
     "a cross-site film without the runtime fails sealed exactly as unsealed",
   );
-  assert.match(openCrossSite.error, /^Composition timeline not found after \d+s$/);
+  assert.match(
+    openCrossSite.error,
+    /^Composition timeline not found after \d+s\. A player can't add the HyperFrames runtime to a composition from another site: include the runtime script in it\.$/,
+  );
+
+  // fails without the fix: Chrome drops a once or aborted listener without calling removeEventListener, so the
+  // player kept counting it and the next unheard error reached no one.
+  const listenerPage = await browser.newPage();
+  const unheard: string[] = [];
+  listenerPage.on("console", (message) => {
+    if (message.text().includes("error with no listener")) unheard.push(message.text());
+  });
+  await listenerPage.goto(`${server.origin}/host.html?fixture=direct-timeline&sealed=1`, {
+    waitUntil: "domcontentloaded",
+  });
+  await listenerPage.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
+  await listenerPage.evaluate(
+    (url) => {
+      const heard: string[] = [];
+      Object.assign(window, { __heard: heard });
+      const once = document.createElement("hyperframes-player");
+      once.setAttribute("sandbox-origin", "");
+      once.addEventListener("error", () => heard.push("once"), { once: true });
+      once.setAttribute("src", url);
+      document.body.appendChild(once);
+      const aborted = document.createElement("hyperframes-player");
+      aborted.setAttribute("sandbox-origin", "");
+      const added = new AbortController();
+      aborted.addEventListener("error", () => heard.push("aborted"), { signal: added.signal });
+      added.abort();
+      aborted.setAttribute("src", url);
+      document.body.appendChild(aborted);
+      // A once-listener that installs the next one while the first error dispatches: the second error is heard.
+      const replaced = document.createElement("hyperframes-player");
+      replaced.setAttribute("sandbox-origin", "");
+      replaced.addEventListener(
+        "error",
+        () => {
+          heard.push("first");
+          replaced.addEventListener("error", () => heard.push("second"), { once: true });
+        },
+        { once: true },
+      );
+      replaced.setAttribute("src", url);
+      document.body.appendChild(replaced);
+      // A callback removed and added again, then the first registration's signal aborts. Engines differ on whether
+      // that drops the new registration; either way the error reaches it or warns.
+      const readded = document.createElement("hyperframes-player");
+      readded.setAttribute("sandbox-origin", "");
+      const first = new AbortController();
+      const listen = () => heard.push("readded");
+      readded.addEventListener("error", listen, { signal: first.signal });
+      readded.removeEventListener("error", listen);
+      readded.addEventListener("error", listen);
+      first.abort();
+      readded.setAttribute("src", url);
+      document.body.appendChild(readded);
+      Object.assign(window, {
+        __again: () => {
+          once.setAttribute("src", `${url}?again`);
+          replaced.setAttribute("src", `${url}?again`);
+        },
+      });
+    },
+    `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
+  );
+  const heardAll = (...names: string[]) =>
+    listenerPage
+      .waitForFunction(
+        (wanted: string[]) =>
+          wanted.every((name) => (window as { __heard?: string[] }).__heard?.includes(name)),
+        { timeout: PAST_LOAD_LIMIT_MS },
+        names,
+      )
+      .catch(async (error: unknown) => {
+        const heard = await listenerPage.evaluate(() => (window as { __heard?: string[] }).__heard);
+        throw new Error(
+          `waited for ${names.join(", ")}; heard ${JSON.stringify(heard)}, warned ${unheard.length}`,
+          {
+            cause: error,
+          },
+        );
+      });
+  await heardAll("once", "first");
+  await listenerPage.evaluate(() => (window as { __again?: () => void }).__again?.());
+  await heardAll("second");
+  for (let waited = 0; unheard.length < 2 && waited < 15_000; waited += 250)
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  const heard =
+    (await listenerPage.evaluate(() => (window as { __heard?: string[] }).__heard)) ?? [];
+  assert.equal(
+    unheard.length,
+    heard.includes("readded") ? 2 : 3,
+    "every error either reached a listener or warned, never both",
+  );
+  assert.deepEqual(heard.filter((name) => name !== "readded").sort(), ["first", "once", "second"]);
+  assert.ok(
+    unheard.every((text) => !text.includes("index.html")),
+    "the warning carries no composition URL",
+  );
+  await listenerPage.close();
 
   const trusted = await browser.newPage();
   await trusted.goto(`${server.origin}/host.html?fixture=direct-timeline`, {
