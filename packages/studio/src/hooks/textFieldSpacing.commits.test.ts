@@ -233,4 +233,39 @@ describe("a text layer added from the panel", () => {
     await title.remove(one);
     expect(title.shown()).toBe("<span>First</span> <span>New text</span>");
   });
+
+  // fails without the fix: the first layer kept owning a separator the second had moved, and the last removal left it.
+  it.each([
+    ["first then second", (one: string, two: string) => [one, two]],
+    ["second then first", (one: string, two: string) => [two, one]],
+  ])(
+    "leaves joined layers joined when two layers added between them are removed %s",
+    async (_, order) => {
+      let clock = Date.now();
+      vi.spyOn(Date, "now").mockImplementation(() => (clock += 1));
+      const title = heading("<span>First</span><span>Second</span>");
+      const one = await title.add("child:0:span");
+      const two = await title.add(one);
+      expect(title.shown()).toBe(
+        "<span>First</span> <span>New text</span> <span>New text</span> <span>Second</span>",
+      );
+      const [a, b] = order(one, two);
+      await title.remove(a!);
+      expect(title.shown()).toBe("<span>First</span> <span>New text</span> <span>Second</span>");
+      await title.remove(b!);
+      expect(title.shown()).toBe("<span>First</span><span>Second</span>");
+    },
+  );
+
+  // fails without the fix: a nonbreaking space typed over Studio's separator was saved back as a plain space.
+  it("keeps a nonbreaking space the person typed over its separator on the canvas", async () => {
+    const title = heading("<span>First</span><span>Second</span>");
+    const key = await title.add("child:0:span");
+    await title.onCanvas((html) =>
+      html.replace(/<\/span> (<span[^>]*child:new)/, "</span>\u00a0$1"),
+    );
+    expect(title.shown()).toBe("<span>First</span>&nbsp;<span>New text</span> <span>Second</span>");
+    await title.type(key, "again");
+    expect(title.shown()).toBe("<span>First</span>&nbsp;<span>again</span> <span>Second</span>");
+  });
 });

@@ -26,19 +26,42 @@ function addedSpaceEdges(field: DomEditTextField): Edge[] {
   return edgesOf(field.attributes.find((a) => a.name === ADDED_SPACE_ATTR)?.value ?? null);
 }
 
-/** Marks the edges of a just-added field that have no whitespace, so Studio owns their separators. */
+const owns = (field: DomEditTextField | undefined, edge: Edge) =>
+  Boolean(field && addedSpaceEdges(field).includes(edge));
+
+function withEdges(field: DomEditTextField, edges: Edge[]): DomEditTextField {
+  const value = edgesValue((["before", "after"] as const).filter((edge) => edges.includes(edge)));
+  const attributes = field.attributes.filter((a) => a.name !== ADDED_SPACE_ATTR);
+  return {
+    ...field,
+    attributes: value ? [...attributes, { name: ADDED_SPACE_ATTR, value }] : attributes,
+  };
+}
+
+const without = (field: DomEditTextField, edge: Edge) =>
+  withEdges(
+    field,
+    addedSpaceEdges(field).filter((owned) => owned !== edge),
+  );
+
+/**
+ * Marks the edges of a just-added field that have no whitespace, so Studio owns their separators. Splitting a gap
+ * whose separator Studio wrote moves that separator past the new field, so the new field owns it from then on.
+ */
 export function markAddedSpaceEdges(fields: DomEditTextField[], key: string): DomEditTextField[] {
   const at = fields.findIndex((field) => field.key === key);
   if (at < 0) return fields;
+  const [left, right] = [fields[at - 1], fields[at + 1]];
+  const inherits = owns(left, "after");
   const edges: Edge[] = [];
-  if (at > 0 && !fields[at]!.spaceBefore) edges.push("before");
-  if (at < fields.length - 1 && !fields[at + 1]!.spaceBefore) edges.push("after");
-  const value = edgesValue(edges);
-  if (!value) return fields;
+  if (left && !fields[at]!.spaceBefore) edges.push("before");
+  if (right && (!right.spaceBefore || inherits)) edges.push("after");
   return fields.map((field, index) =>
     index === at
-      ? { ...field, attributes: [...field.attributes, { name: ADDED_SPACE_ATTR, value }] }
-      : field,
+      ? withEdges(field, edges)
+      : index === at - 1 && inherits
+        ? without(field, "after")
+        : field,
   );
 }
 
@@ -59,14 +82,28 @@ export function withTextNodeEdgesAsSeparators(fields: DomEditTextField[]): DomEd
   });
 }
 
-/** Takes a removed added field's separators with it, so the text around it reads as before the add. */
+/**
+ * Removes a field and joins the gaps on its two sides into one, so the text reads as before the add. The joined gap
+ * is Studio's only when both gaps were; a separator the person wrote on either side stays.
+ */
 export function withoutAddedField(fields: DomEditTextField[], key: string): DomEditTextField[] {
   const at = fields.findIndex((field) => field.key === key);
   if (at < 0) return fields;
-  const ownsAfter = addedSpaceEdges(fields[at]!).includes("after");
+  const [left, gone, right] = [fields[at - 1], fields[at]!, fields[at + 1]];
+  const leftMade = owns(gone, "before") || owns(left, "after");
+  const rightMade = owns(gone, "after") || owns(right, "before");
+  let [nextLeft, nextRight] = [left && owns(left, "after") ? without(left, "after") : left, right];
+  if (right && rightMade) {
+    if (!leftMade) nextRight = without({ ...right, spaceBefore: gone.spaceBefore }, "before");
+    else if (owns(right, "before")) nextRight = right;
+    else if (left && addedSpaceEdges(left).length)
+      nextLeft = withEdges(left, [...addedSpaceEdges(left), "after"]);
+    else nextRight = without({ ...right, spaceBefore: undefined }, "before");
+  }
   return fields.flatMap((field, index) => {
     if (index === at) return [];
-    if (index === at + 1 && ownsAfter) return [{ ...field, spaceBefore: undefined }];
+    if (index === at - 1) return nextLeft ? [nextLeft] : [];
+    if (index === at + 1) return nextRight ? [nextRight] : [];
     return [field];
   });
 }
@@ -94,6 +131,12 @@ function neighbourText(span: Element, edge: Edge): string {
   const text = node?.textContent ?? "";
   if (!isText(node)) return text;
   return edge === "before" ? text.trimEnd() : text.trimStart();
+}
+
+/** The whitespace on an edge; Studio only ever writes one plain space there. */
+function whitespaceOf(nodes: Text[], edge: Edge): string {
+  const run = edge === "before" ? /\s*$/ : /^\s*/;
+  return nodes.map((node) => (node.data.trim() ? run.exec(node.data)![0] : node.data)).join("");
 }
 
 function clearSpace(nodes: Text[], edge: Edge): void {
@@ -133,6 +176,8 @@ export function respaceAddedFields(html: string, previousHtml?: string): string 
       const space = edgeSpace(span, edge);
       const key = span.getAttribute("data-hf-text-key");
       if (!space.length && hadSpace(previous, key, edge)) return false;
+      // Any other whitespace there (a nonbreaking space, a line break) was typed by the person and is theirs.
+      if (space.length && whitespaceOf(space, edge) !== " ") return false;
       const own = span.textContent ?? "";
       const wanted =
         edge === "before"
