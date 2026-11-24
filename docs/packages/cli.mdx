@@ -428,7 +428,7 @@ way to tell them apart is to open the page yourself.
 | `size-floor`       | Fetched, then judged too small to be a real asset rather than a spacer or tracking pixel.               |
 | `budget-exhausted` | `--capture-budget` ran out before this one was reached. Raise it, or pass `--skip-vision` to buy time.  |
 | `cap-reached`      | A per-run or per-family limit was already met: 30 inline SVGs, 30 fonts, 6 faces per family.            |
-| `unavailable`      | The request or the write failed: network error, timeout, refused address, bad status, disk.             |
+| `unavailable`      | The request or the write failed: network error, timeout, refused address, bad status, disk. Also an inline SVG that is more than a plain image (it carries a script, an event handler, embedded HTML, a link, or a reference to another file): it stays in `extracted/page.html` but is not saved as a file under `assets/svgs/`. |
 
 Three of those are decisions the capture made and one is a failure it hit, so a
 run that is thin with an all-zero `dropped` is a thin page, and a run that is
