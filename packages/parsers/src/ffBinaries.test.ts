@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import {
   type PathLike,
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -565,6 +566,9 @@ describe("assertLiteralMediaInput", () => {
       "/job/x%*/still.png",
       "/job/x%[ab]/still.png",
       "/job/x%{a,b}/still.png",
+      "/job/x%3*/still.png",
+      "/job/x%03?.png",
+      "/job/x%1{a,b}.png",
       "file:/job/decoy%d.png",
     ]) {
       expect(() => assertLiteralMediaInput(path), path).toThrow(/pattern of other files/);
@@ -623,6 +627,66 @@ describe("assertLiteralMediaInput", () => {
     expect(existsSync(frame)).toBe(true);
     expect(() => mediaInputFormatArgs(ffmpeg, pattern)).toThrow(/pattern of other files/);
   });
+});
+
+describe("assertLiteralMediaInput against the installed ffprobe", () => {
+  it("lets through only names ffprobe opens as the one file written", async () => {
+    vi.resetModules();
+    vi.doUnmock("node:fs");
+    vi.doUnmock("node:child_process");
+    const { assertLiteralMediaInput, findFfBinary } = await importFresh();
+    const [ffmpeg, ffprobe] = [findFfBinary("ffmpeg"), findFfBinary("ffprobe")];
+    if (!ffmpeg || !ffprobe) return;
+    const dir = mkdtempSync(join(tmpdir(), "hf-image2-forms-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const still = (size: number, at: string) =>
+      spawnSync(ffmpeg, [
+        ...["-v", "error", "-y", "-f", "lavfi", "-i", `color=red:s=${size}x${size}`],
+        ...["-frames:v", "1", "-c:v", "png", "-f", "image2", "-update", "1", at],
+      ]);
+    const [small, big] = [join(dir, "small.png"), join(dir, "big.png")];
+    still(16, small);
+    still(32, big);
+    if (!existsSync(small) || !existsSync(big)) return;
+    const width = (path: string) =>
+      spawnSync(
+        ffprobe,
+        [
+          "-v",
+          "error",
+          "-select_streams",
+          "v:0",
+          "-show_entries",
+          "stream=width",
+          "-of",
+          "csv=p=0",
+          path,
+        ],
+        { encoding: "utf8" },
+      ).stdout.trim();
+    const tails = "!#$&'()*+,-.:;<=>?@[]^_`{|}~ adisx%";
+    const forms = ["", "1", "03"].flatMap((digits) =>
+      [...tails].map((tail) => `%${digits}${tail}`),
+    );
+    const misread: string[] = [];
+    forms.forEach((form, index) => {
+      const at = join(dir, `case${index}`);
+      mkdirSync(at);
+      for (const decoy of ["x y.png", "x!y.png", "x0y.png", "x1y.png", "x001y.png"]) {
+        copyFileSync(big, join(at, decoy));
+      }
+      const literal = join(at, `x${form}y.png`);
+      copyFileSync(small, literal);
+      let refused = false;
+      try {
+        assertLiteralMediaInput(literal);
+      } catch {
+        refused = true;
+      }
+      if (!refused && width(literal) !== "16") misread.push(form);
+    });
+    expect(misread).toEqual([]);
+  }, 60_000);
 });
 
 describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)("concatListInputArgs", () => {
