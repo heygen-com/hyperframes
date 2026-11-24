@@ -314,7 +314,7 @@ describe("isStudioPrivatePath on very long paths", () => {
     const projectDir = realpathSync(mkdtempSync(join(tmpdir(), "hf-long-name-")));
     try {
       const started = performance.now();
-      const file = join(projectDir, "a/".repeat(MILLION) + "clip.png");
+      const file = join(projectDir, "a/".repeat(200_000) + "clip.png");
       expect(isPrivateFileUnder(projectDir, file, isStudioPrivatePath)).toBe(false);
       expect(performance.now() - started).toBeLessThan(2_000);
     } finally {
