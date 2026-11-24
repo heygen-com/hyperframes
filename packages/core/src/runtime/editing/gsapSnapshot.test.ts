@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { gsap as realGsap } from "gsap";
 import { handleFor } from "../editingHandles";
+import { gestureStart } from "../editingGestureStart";
 import { gsapSnapshot } from "./gsapSnapshot";
 import { MAX_SNAPSHOT_TEXT, MAX_SNAPSHOT_TWEENS } from "./gsapSnapshotLimits";
 
@@ -149,5 +150,18 @@ describe("gsapSnapshot", () => {
 
     expect(snapshot.timelines[0]!.tweens).toHaveLength(1);
     expect(snapshot.targets[0]!.values.x).toBeCloseTo(600);
+  });
+
+  it("leaves a CSS-moved element's position to CSS when only its opacity is tweened", async () => {
+    document.body.innerHTML = `<h1 id="title" style="translate: 0 -200px">Title</h1>`;
+    const title = document.getElementById("title")!;
+    const tl = realGsap.timeline({ paused: true });
+    tl.to("#title", { opacity: 0.5, duration: 10 }, 0);
+    tl.seek(0);
+    Object.assign(window, { gsap: realGsap, __timelines: { main: tl } });
+
+    await gsapSnapshot();
+
+    expect(gestureStart([handleFor(title)]).elements[0]!.gsap).toBeNull();
   });
 });
