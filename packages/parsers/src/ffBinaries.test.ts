@@ -554,6 +554,34 @@ describe("mediaInputFormatArgs", () => {
     ]);
     expect(mediaInputFormatArgs(binary, "a.wav")).toEqual(["-format_whitelist", "wav"]);
   });
+
+  it("falls back to a list the installed ffprobe reads CAF, W64, WavPack, AU and AC3 with", async () => {
+    vi.resetModules();
+    vi.doUnmock("node:fs");
+    vi.doUnmock("node:child_process");
+    const { findFfBinary, SELF_CONTAINED_FORMATS } = await importFresh();
+    const [ffmpeg, ffprobe] = [findFfBinary("ffmpeg"), findFfBinary("ffprobe")];
+    if (!ffmpeg || !ffprobe) return;
+    const dir = mkdtempSync(join(tmpdir(), "hf-audio-containers-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    for (const ext of ["caf", "w64", "wv", "au", "ac3"]) {
+      const file = join(dir, `a.${ext}`);
+      spawnSync(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "sine=duration=1", file]);
+      const probe = spawnSync(
+        ffprobe,
+        ["-v", "error", "-format_whitelist", SELF_CONTAINED_FORMATS].concat([
+          "-show_entries",
+          "format=format_name",
+          "-of",
+          "default=nw=1:nk=1",
+          "--",
+          file,
+        ]),
+        { encoding: "utf8" },
+      );
+      expect(probe.stdout.trim(), probe.stderr).toBe(ext);
+    }
+  });
 });
 
 describe("assertLiteralMediaInput", () => {

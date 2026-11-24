@@ -5,7 +5,7 @@ import { assertLiteralMediaPath } from "../../../scripts/lib/literal-media-input
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import { isIndirectFormat, pinnedInput, probeFormat } from "./media-input.mjs";
+import { ACCEPTED_CONTAINERS, isIndirectFormat, pinnedInput, probeFormat } from "./media-input.mjs";
 import { projectPath } from "./project-path.mjs";
 
 // ffmpeg's atempo takes 0.5..2 per stage; chain stages for the rest of the 0.1..3 speed range.
@@ -44,7 +44,11 @@ export function stretchToWav(src, wavAbs, speed = 1) {
   if (!stat) return { ok: false, error: `recording not found: ${src}` };
   if (!stat.isFile()) return { ok: false, error: `recording is not a file: ${src}` };
   const format = probeFormat(src);
-  if (!format) return { ok: false, error: `ffmpeg cannot read ${src} as audio` };
+  if (!format)
+    return {
+      ok: false,
+      error: `${src} is not audio in an accepted container (${ACCEPTED_CONTAINERS})`,
+    };
   if (isIndirectFormat(format)) {
     return {
       ok: false,
