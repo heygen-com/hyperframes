@@ -25,8 +25,6 @@ function route(isPlaying: boolean) {
     processTimelineMessageRef: { current: vi.fn() },
     enrichMissingCompositionsRef: { current: enrich },
     lastTimelineMessageRef: { current: 0 },
-    getAdapter: () => null,
-    syncTimelineElements: vi.fn(),
   });
   handle(post({ source: "hf-preview", type: "state", isPlaying }));
   return enrich;
@@ -51,8 +49,6 @@ describe("preview state messages while a scrub posts them", () => {
         processTimelineMessageRef: { current: vi.fn() },
         enrichMissingCompositionsRef: { current: enrich },
         lastTimelineMessageRef: { current: 0 },
-        getAdapter: () => null,
-        syncTimelineElements: vi.fn(),
       });
       const state = () => handle(post({ source: "hf-preview", type: "state", isPlaying: false }));
       state();
@@ -77,8 +73,6 @@ describe("preview quality messages", () => {
       processTimelineMessageRef: { current: vi.fn() },
       enrichMissingCompositionsRef: { current: vi.fn() },
       lastTimelineMessageRef: { current: 0 },
-      getAdapter: () => null,
-      syncTimelineElements: vi.fn(),
     })(post(data));
   }
 
@@ -213,8 +207,6 @@ describe("messages that do not come from the preview frame", () => {
       processTimelineMessageRef: { current: vi.fn() },
       enrichMissingCompositionsRef: { current: vi.fn() },
       lastTimelineMessageRef: { current: 0 },
-      getAdapter: () => null,
-      syncTimelineElements: vi.fn(),
     })(event);
     return usePlayerStore.getState().previewFacts;
   }
