@@ -623,6 +623,36 @@ function fingerprintBuiltinCase(name: string, swap: string): IneligibleCase {
 /** Text the page paints, read from what the renderer could have changed in it. */
 const TEXT_STYLE = "position:absolute;top:48px;left:48px;color:#fff;font:700 28px sans-serif";
 
+/**
+ * Observers registered with a builtin callback (`append`) on the page that was not paused, and
+ * whether their callback runs on the browser's rendering clock (intersection and performance
+ * entries are delivered with a later frame, so two layered renders differ too).
+ */
+const UNPAUSED_OBSERVERS: ReadonlyArray<[name: string, register: string, wallClock?: true]> = [
+  [
+    "unpaused-mutation-observer",
+    'new MutationObserver(append).observe(document.getElementById("cue-001"), { attributes: true });',
+  ],
+  [
+    "unpaused-subtree-observer",
+    "new MutationObserver(append).observe(document.documentElement, { attributes: true, subtree: true });",
+  ],
+  [
+    "unpaused-resize-observer",
+    'new ResizeObserver(append).observe(document.getElementById("cue-001"));',
+  ],
+  [
+    "unpaused-intersection-observer",
+    'new IntersectionObserver(append).observe(document.getElementById("cue-001"));',
+    true,
+  ],
+  [
+    "unpaused-performance-observer",
+    'new PerformanceObserver(append).observe({ entryTypes: ["layout-shift", "largest-contentful-paint"] });',
+    true,
+  ],
+];
+
 function imageBadge(format: AnimatedImageFormat): string {
   return `<img src="assets/${ANIMATED_IMAGE_FILES[format]}" alt="" style="${BADGE_STYLE}" />`;
 }
@@ -1265,6 +1295,33 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
       overlayHtml: '<div id="flag">PAUSED</div>',
     },
     assets: ["gsap"],
+  },
+  // Pages that time the analysis page's pauses and register an observer with a builtin callback
+  // only where they were not paused. The capture page holds an observer the analysis page never
+  // made, which no count can tell from the runtime's own (their number varies load to load): its
+  // callback runs no script, so the capture page's census declines it.
+  ...UNPAUSED_OBSERVERS.map(
+    ([name, register, wallClock]): IneligibleCase => ({
+      name,
+      reason: "seek_callback",
+      ...(wallClock ? { wallClock } : {}),
+      composition: {
+        headHtml: `<script>(function(){function ts(){return new Event("x").timeStamp;}var best=1e9;for(var i=0;i<5;i++){var a=ts();setTimeout(function(){},1e9);best=Math.min(best,ts()-a);}window.__paused=best>1;})();</script>`,
+        overlayHtml: `<div id="flag" style="${TEXT_STYLE};top:160px;background:#0a0">N</div>`,
+        timelineScript: `if (!window.__paused) { const append = Element.prototype.insertAdjacentText.bind(document.getElementById("flag"), "beforeend", "+"); ${register} }`,
+      },
+      assets: ["gsap"],
+    }),
+  ),
+  // A static SVG image over the size the passthrough parses: declined, not read in part.
+  {
+    name: "svg-over-size",
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      overlayHtml: svgImage(
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0${"l0-0".repeat(1_100_000)}" fill="red"/><rect width="10" height="10" fill="red"/></svg>`,
+      ),
+    },
   },
   // Animated images in pseudo-elements no list of pseudo-elements named: declined by the image's
   // own bytes and by the CSS and element allowlists.

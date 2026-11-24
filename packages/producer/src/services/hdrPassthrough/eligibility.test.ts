@@ -52,12 +52,14 @@ interface InputOverrides {
   width?: number;
   transfer?: "hlg" | "pq";
   hdrImages?: string[];
+  useGpu?: boolean;
+  codec?: string;
 }
 
 function makeInput(o: InputOverrides = {}): HdrPassthroughInput {
   const transfer = o.transfer ?? "hlg";
   return {
-    job: { config: { fps: FPS30, format: o.format, motionBlur: o.motionBlur } },
+    job: { config: { fps: FPS30, format: o.format, motionBlur: o.motionBlur, useGpu: o.useGpu } },
     composition: {
       duration: 10,
       videos: o.videos ?? [videoElement()],
@@ -71,7 +73,12 @@ function makeInput(o: InputOverrides = {}): HdrPassthroughInput {
     totalFrames: 300,
     hasHdrContent: true,
     effectiveHdr: { transfer },
-    preset: { codec: "h265", preset: "medium", pixelFormat: "yuv420p10le", hdr: { transfer } },
+    preset: {
+      codec: o.codec ?? "h265",
+      preset: "medium",
+      pixelFormat: "yuv420p10le",
+      hdr: { transfer },
+    },
     nativeHdrVideoIds: new Set((o.videos ?? [videoElement()]).map((v) => v.id)),
     nativeHdrImageIds: new Set(o.hdrImages ?? []),
     videoTransfers: new Map((o.videos ?? [videoElement()]).map((v) => [v.id, transfer])),
@@ -240,6 +247,34 @@ describe("checkPassthroughEligibility", () => {
     expect(result).toMatchObject({ eligible: false, reason: "ffmpeg_unsupported" });
     expect(opened()).toBe(false);
   });
+
+  it.each([
+    ["GPU encode", { useGpu: true }, "GPU encode selected"],
+    ["another codec", { codec: "h264" }, "not h264"],
+  ])(
+    "declines %s before opening the page: the encode is paced on libx265",
+    async (_n, o, detail) => {
+      const { session, opened } = makeSession();
+      let blendChecks = 0;
+      const result = await checkPassthroughEligibility(
+        { input: makeInput(o), session },
+        {
+          ...deps(),
+          checkBlend: async () => {
+            blendChecks++;
+            return { exact: true };
+          },
+        },
+      );
+      expect(result).toMatchObject({
+        eligible: false,
+        reason: "ffmpeg_unsupported",
+        detail: expect.stringContaining(detail),
+      });
+      expect(opened()).toBe(false);
+      expect(blendChecks).toBe(0);
+    },
+  );
 
   it("runs the DevTools-only page gates before any seek or in-page probe", async () => {
     const { session, seeks } = makeSession({ build: captions });

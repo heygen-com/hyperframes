@@ -49,7 +49,8 @@ import {
   pageCodeWatchOf,
 } from "./pageCodeWatch.js";
 import { POSITION_SEEK_REAPPLY_SCRIPT } from "../htmlCompiler.js";
-import { compositeAndEncode } from "./ffmpegComposite.js";
+import { EncoderPacingError } from "./encoderPacing.js";
+import { compositeAndEncode, createOverlayFrameQueue } from "./ffmpegComposite.js";
 import { mirrorReferenceBackground, overlayPageOptions } from "./overlayPages.js";
 import type {
   CheckPassthroughEligibilityArgs,
@@ -208,6 +209,24 @@ class PassthroughDeclinedError extends Error {
   }
 }
 
+/** A failure that is a decline, as its reason and detail; undefined for any other error. */
+function declineOf(
+  error: unknown,
+): { reason: PassthroughIneligibleReason; detail: string } | undefined {
+  if (error instanceof PassthroughDeclinedError)
+    return { reason: error.reason, detail: error.detail };
+  if (error instanceof EncoderPacingError) {
+    return { reason: "ffmpeg_unsupported", detail: error.message };
+  }
+  if (error instanceof VideoLayerChangedError) {
+    return { reason: "video_animated", detail: error.message };
+  }
+  if (error instanceof OverlayStateMismatchError) {
+    return { reason: "overlay_unverified", detail: error.message };
+  }
+  return undefined;
+}
+
 /**
  * The layered DOM session's steps between its load and frame 0
  * (`runCaptureHdrStage`), on the capture page: the scene reads, then the
@@ -234,6 +253,35 @@ async function replayLayeredPrelude(
     composition: input.composition,
     prep,
   });
+}
+
+/**
+ * The capture page's gates once capture has walked every frame: a callback
+ * first registered, or content first attached, on a frame only capture
+ * visited, read before the watch stops so a probe here that reached page
+ * code is counted too; then the page code watch. Throws
+ * `PassthroughDeclinedError` on the first finding.
+ */
+async function checkAfterCapture(
+  input: HdrPassthroughInput,
+  eligible: EligiblePassthrough,
+  page: CaptureSession,
+  pageCode: PageCodeWatch,
+): Promise<void> {
+  const lateState = await inspectPageState(page.page, eligible.loadCensus);
+  if (lateState) throw new PassthroughDeclinedError(lateState.reason, lateState.detail);
+  const lateContent = await inspectPageContent(page.page, eligible.video.id, true);
+  if (lateContent) throw new PassthroughDeclinedError(lateContent.reason, lateContent.detail);
+  const lateDrivers = await findOwnClockDrivers(page.page);
+  if (lateDrivers) throw new PassthroughDeclinedError("overlay_non_gsap_animation", lateDrivers);
+  input.log.info("[Render] HDR passthrough: page gates", {
+    ...pageGateTimings(page.page),
+    ...pageCode.registrations.stats(),
+    analysisCensus: censusForLog(eligible.loadCensus),
+    captureCensus: censusForLog(loadCensusOf(page.page)),
+  });
+  const pageCodeRan = await pageCode.stop();
+  if (pageCodeRan) throw new PassthroughDeclinedError("seek_callback", pageCodeRan);
 }
 
 /**
@@ -286,62 +334,17 @@ async function runHdrPassthrough(
   if (loaded) throw new PassthroughDeclinedError(loaded.reason, loaded.detail);
   await replayLayeredPrelude(input, page);
   input.assertNotAborted();
-  const overlays = await captureOverlayStates({
-    input,
-    session: page,
-    plan,
-    video: eligible.video,
-    analysisVideoLayer: eligible.videoLayer,
-    outDir: join(input.framesDir, OVERLAY_DIR_NAME),
-    onVerifyProbe: () => noteStaticDedupActivity(job),
-    onStateCaptured: (_framesCovered, statesDone, statesTotal) => {
-      noteStaticDedupActivity(job);
-      reportFrameProgress(
-        job,
-        `HDR passthrough overlay ${statesDone}/${statesTotal}`,
-        CAPTURE_PROGRESS_START +
-          (statesDone / Math.max(1, statesTotal)) *
-            (ENCODE_PROGRESS_START - CAPTURE_PROGRESS_START),
-        onProgress,
-        statesDone,
-        statesTotal,
-      );
-    },
-  }).catch(async (error: unknown) => {
-    await pageCode.dispose();
-    throw error;
-  });
-  log.info("[Render] HDR passthrough: overlay states captured", {
-    states: overlays.overlays.length,
-    candidates: overlays.candidateCount,
-    captures: overlays.captureCount,
-    verifyProbes: overlays.verifyProbeCount,
-    unique: overlays.uniqueCount,
-    captureMs: overlays.captureMs,
-  });
-  // A callback first registered, or content first attached, on a frame only capture visited; read
-  // before the watch stops, so a probe here that reached page code is counted too.
-  const lateState = await inspectPageState(page.page, eligible.loadCensus);
-  if (lateState) throw new PassthroughDeclinedError(lateState.reason, lateState.detail);
-  const lateContent = await inspectPageContent(page.page, eligible.video.id, true);
-  if (lateContent) throw new PassthroughDeclinedError(lateContent.reason, lateContent.detail);
-  const lateDrivers = await findOwnClockDrivers(page.page);
-  if (lateDrivers) throw new PassthroughDeclinedError("overlay_non_gsap_animation", lateDrivers);
-  log.info("[Render] HDR passthrough: page gates", {
-    ...pageGateTimings(page.page),
-    ...pageCode.registrations.stats(),
-    analysisCensus: censusForLog(eligible.loadCensus),
-    captureCensus: censusForLog(loadCensusOf(page.page)),
-  });
-  const pageCodeRan = await pageCode.stop();
-  if (pageCodeRan) throw new PassthroughDeclinedError("seek_callback", pageCodeRan);
-  await session.close();
-  input.assertNotAborted();
 
-  const composite = await compositeAndEncode({
+  // The composite and the encode run while capture walks the frames: each frame's overlay goes to
+  // the composite as soon as capture settles it. Anything that declines below stops them.
+  const overlayFrames = createOverlayFrameQueue();
+  const stopEncode = new AbortController();
+  let captureDone = false;
+  const encodeStart = Date.now();
+  const encoding = compositeAndEncode({
     video: eligible.video,
-    plan: overlays.plan,
-    overlays,
+    plan,
+    overlayFrames,
     encoder: {
       preset: input.preset,
       effectiveQuality: input.effectiveQuality,
@@ -351,11 +354,17 @@ async function runHdrPassthrough(
     },
     hdr: { transfer },
     outputPath: input.videoOnlyPath,
-    workDir: input.framesDir,
-    abortSignal: input.abortSignal,
+    abortSignal: input.abortSignal
+      ? AbortSignal.any([input.abortSignal, stopEncode.signal])
+      : stopEncode.signal,
     onFramesEncoded: (frames) => {
       const done = Math.min(frames, totalFrames);
       job.framesRendered = done;
+      // Capture reports its own band until it is done; the encode keeps the stall watch alive.
+      if (!captureDone) {
+        noteStaticDedupActivity(job);
+        return;
+      }
       reportFrameProgress(
         job,
         `HDR passthrough encode frame ${done}/${totalFrames}`,
@@ -367,11 +376,70 @@ async function runHdrPassthrough(
       );
     },
   });
+  // Settled below on every path; this only keeps an early failure from going unhandled meanwhile.
+  encoding.catch(() => undefined);
+  const stopEncoding = async (error: unknown) => {
+    overlayFrames.fail(error);
+    stopEncode.abort(error);
+    await encoding.catch(() => undefined);
+  };
+
+  let overlays: Awaited<ReturnType<typeof captureOverlayStates>>;
+  try {
+    const capturing = captureOverlayStates({
+      input,
+      session: page,
+      plan,
+      video: eligible.video,
+      analysisVideoLayer: eligible.videoLayer,
+      outDir: join(input.framesDir, OVERLAY_DIR_NAME),
+      onVerifyProbe: () => noteStaticDedupActivity(job),
+      onFrame: (_frame, pngPath) => overlayFrames.push(pngPath),
+      onStateCaptured: (_framesCovered, statesDone, statesTotal) => {
+        noteStaticDedupActivity(job);
+        reportFrameProgress(
+          job,
+          `HDR passthrough overlay ${statesDone}/${statesTotal}`,
+          CAPTURE_PROGRESS_START +
+            (statesDone / Math.max(1, statesTotal)) *
+              (ENCODE_PROGRESS_START - CAPTURE_PROGRESS_START),
+          onProgress,
+          statesDone,
+          statesTotal,
+        );
+      },
+    });
+    // Settled below; an encode that fails (an encoder that cannot be paced) stops waiting for it.
+    capturing.catch(() => undefined);
+    overlays = await Promise.race([capturing, encoding.then(() => capturing)]);
+    overlayFrames.end();
+    captureDone = true;
+    log.info("[Render] HDR passthrough: overlay states captured", {
+      states: overlays.overlays.length,
+      candidates: overlays.candidateCount,
+      captures: overlays.captureCount,
+      verifyProbes: overlays.verifyProbeCount,
+      unique: overlays.uniqueCount,
+      captureMs: overlays.captureMs,
+      framesEncodedMeanwhile: job.framesRendered,
+    });
+    await checkAfterCapture(input, eligible, page, pageCode);
+    await session.close();
+    input.assertNotAborted();
+  } catch (error) {
+    await pageCode.dispose();
+    await stopEncoding(error);
+    throw error;
+  }
+
+  const composite = await encoding;
   job.framesRendered = totalFrames;
   log.info("[Render] HDR passthrough: encoded", {
     frames: composite.framesEncoded,
     encodeMs: composite.encodeMs,
     idleWaitMs: composite.idleWaitMs,
+    frameWaitMs: composite.frameWaitMs,
+    afterCaptureMs: Date.now() - encodeStart - (overlays.captureMs ?? 0),
   });
 
   return {
@@ -460,17 +528,10 @@ export async function attemptHdrPassthrough(
     return { kind: "completed", result };
   } catch (error) {
     if (isAbort(input, error)) throw error;
-    if (error instanceof PassthroughDeclinedError) {
-      log.info(`[Render] HDR passthrough off: ${error.reason} (${error.detail})`);
-      return { kind: "fallback", reason: error.reason, detail: error.detail };
-    }
-    if (error instanceof VideoLayerChangedError) {
-      log.info(`[Render] HDR passthrough off: video_animated (${error.message})`);
-      return { kind: "fallback", reason: "video_animated", detail: error.message };
-    }
-    if (error instanceof OverlayStateMismatchError) {
-      log.info(`[Render] HDR passthrough off: overlay_unverified (${error.message})`);
-      return { kind: "fallback", reason: "overlay_unverified", detail: error.message };
+    const declined = declineOf(error);
+    if (declined) {
+      log.info(`[Render] HDR passthrough off: ${declined.reason} (${declined.detail})`);
+      return { kind: "fallback", ...declined };
     }
     const detail = error instanceof Error ? error.message : String(error);
     log.warn("[Render] HDR passthrough failed; falling back to the layered HDR composite", {

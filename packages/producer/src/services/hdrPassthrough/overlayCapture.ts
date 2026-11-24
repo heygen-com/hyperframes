@@ -420,6 +420,7 @@ function frameTime(plan: { fps: { num: number; den: number } }, frame: number): 
  * Probe each frame of one candidate in order: the first folds the
  * candidate into the open merged state or opens a new one
  * (`openOrFold`), the rest must render that state's pixels (`checkHeldFrame`).
+ * Each settled frame goes to `onFrame` with the open state's PNG.
  */
 async function walkCandidate(run: StateRun, candidate: OverlayState): Promise<void> {
   for (let frame = candidate.startFrame; frame < candidate.endFrame; frame++) {
@@ -428,6 +429,9 @@ async function walkCandidate(run: StateRun, candidate: OverlayState): Promise<vo
     const key = await run.source.probe(frame, time);
     if (frame === candidate.startFrame) await openOrFold(run, candidate, time, key);
     else await checkHeldFrame(run, frame, time, key);
+    const shown = run.merged.at(-1);
+    if (!shown) throw new Error("hdrPassthrough: a frame settled with no overlay state");
+    run.args.onFrame?.(frame, shown.pngPath);
   }
 }
 

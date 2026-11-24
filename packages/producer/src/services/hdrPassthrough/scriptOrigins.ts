@@ -177,6 +177,8 @@ async function interceptRendererTexts(
 export interface ScriptOriginRecord {
   /** The origin of a script by its V8 id; a script never seen being parsed is the page's. */
   originOf(scriptId: string): Promise<ScriptOrigin>;
+  /** The SHA-256 of a parsed script's text, which names it across pages; undefined when unreadable. */
+  hashOf(scriptId: string): Promise<string | undefined>;
   /** How a parsed script was compiled, or undefined for one never seen. */
   kindOf(scriptId: string): CompileKind | undefined;
   /** The execution context a parsed script was compiled in. */
@@ -259,6 +261,15 @@ export async function recordScriptOrigins(
     }
     return text;
   };
+  const hashOf = async (scriptId: string): Promise<string | undefined> => {
+    if (!parsed.has(scriptId)) return undefined;
+    if (!hashes.has(scriptId)) {
+      const text = await textOf(scriptId);
+      hashes.set(scriptId, text === undefined ? undefined : sha256(text));
+      if (text !== undefined && isGsapBuild(text)) decided.set(scriptId, "gsap");
+    }
+    return hashes.get(scriptId);
+  };
   // fallow-ignore-next-line complexity
   const originOf = async (scriptId: string): Promise<ScriptOrigin> => {
     const entry = parsed.get(scriptId);
@@ -266,11 +277,7 @@ export async function recordScriptOrigins(
     if (entry.kind === "isolated") return "renderer";
     const known = decided.get(scriptId);
     if (known) return known;
-    if (!hashes.has(scriptId)) {
-      const text = await textOf(scriptId);
-      hashes.set(scriptId, text === undefined ? undefined : sha256(text));
-      if (text !== undefined && isGsapBuild(text)) decided.set(scriptId, "gsap");
-    }
+    await hashOf(scriptId);
     const gsap = decided.get(scriptId);
     if (gsap) return gsap;
     const hash = hashes.get(scriptId);
@@ -283,6 +290,7 @@ export async function recordScriptOrigins(
 
   return {
     originOf,
+    hashOf,
     kindOf: (scriptId) => parsed.get(scriptId)?.kind,
     contextOf: (scriptId) => parsed.get(scriptId)?.context,
     get mainFrameId() {

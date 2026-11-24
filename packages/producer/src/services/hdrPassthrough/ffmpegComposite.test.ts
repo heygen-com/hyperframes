@@ -10,20 +10,20 @@ import {
   type HdrTransfer,
   type StreamingEncoder,
 } from "@hyperframes/engine";
+import { PassThrough } from "node:stream";
+import { writeFileSync } from "node:fs";
 import {
   buildCompositeDecodeArgs,
-  buildOverlayConcatList,
   type CompositeDeps,
   compositeAndEncode,
   compositeEncoderOptions,
+  createOverlayFrameQueue,
+  feedOverlays,
+  readAhead,
+  readAheadDepth,
 } from "./ffmpegComposite.js";
-import type {
-  CapturedOverlay,
-  CompositeRequest,
-  OverlayPlan,
-  OverlayState,
-  PassthroughVideo,
-} from "./types.js";
+import { EncoderPacingError } from "./encoderPacing.js";
+import type { CompositeRequest, OverlayPlan, OverlayState, PassthroughVideo } from "./types.js";
 
 const FPS_30: Fps = { num: 30, den: 1 };
 
@@ -36,8 +36,9 @@ function state(index: number, startFrame: number, endFrame: number): OverlayStat
   };
 }
 
-function overlay(s: OverlayState, pngPath: string): CapturedOverlay {
-  return { state: s, pngPath, hash: pngPath };
+/** The overlay PNG of each frame, as capture hands them over. */
+async function* framesOf(paths: string[]): AsyncIterable<string> {
+  yield* paths;
 }
 
 interface RequestOverrides {
@@ -91,16 +92,7 @@ function request(overrides: RequestOverrides = {}): CompositeRequest {
   return {
     video,
     plan,
-    overlays: {
-      overlays: [overlay(states[0]!, "/w/o0.png"), overlay(states[1]!, "/w/o1.png")],
-      plan,
-      uniqueCount: 2,
-      candidateCount: 2,
-      captureCount: 2,
-      verifyProbeCount: 0,
-      dir: "/w",
-      captureMs: 1,
-    },
+    overlayFrames: framesOf([]),
     encoder: {
       preset: getEncoderPreset("standard", "mp4", { transfer }),
       effectiveQuality: 18,
@@ -115,7 +107,6 @@ function request(overrides: RequestOverrides = {}): CompositeRequest {
     },
     hdr: { transfer },
     outputPath: "/out/video-only.mp4",
-    workDir: "/w",
     abortSignal: undefined,
   };
 }
@@ -130,27 +121,30 @@ const GRAPH_1080 = [
 
 describe("buildCompositeDecodeArgs", () => {
   it("composites the overlays onto the source and writes raw rgb48le frames", () => {
-    expect(buildCompositeDecodeArgs(request(), "/w/list.ffconcat")).toEqual([
+    expect(buildCompositeDecodeArgs(request())).toEqual([
       ...["-hide_banner", "-nostdin", "-v", "error"],
       ...["-ss", "0.000000", "-t", "3.033333", "-i", "/media/vlog.mp4"],
-      ...["-f", "concat", "-safe", "0", "-i", "/w/list.ffconcat"],
+      ...["-probesize", "32", "-analyzeduration", "0", "-threads", "1"],
+      ...["-f", "image2pipe", "-c:v", "png", "-framerate", "30", "-i", "pipe:0"],
       ...["-filter_complex", GRAPH_1080, "-map", "[vout]", "-frames:v", "90", "-an"],
       ...["-f", "rawvideo", "-pix_fmt", "rgb48le", "pipe:1"],
     ]);
   });
 
   it("leaves encoding, colour tags and the encoder's frame filter to the layered encoder", () => {
-    const args = buildCompositeDecodeArgs(request({ transfer: "pq" }), "/w/list.ffconcat");
+    const args = buildCompositeDecodeArgs(request({ transfer: "pq" }));
+    // `-c:v png` names the overlay input's decoder; no output option sets a codec.
+    const output = args.slice(args.lastIndexOf("-i") + 2);
     for (const flag of ["-c:v", "-x265-params", "-color_trc:v", "-vf", "-y", "-dolbyvision"]) {
-      expect(args).not.toContain(flag);
+      expect(output).not.toContain(flag);
     }
+    expect(args).not.toContain("-x265-params");
     expect(args[args.indexOf("-filter_complex") + 1]).not.toContain("setparams");
   });
 
   it("seeks to the normalized trim offset", () => {
     const args = buildCompositeDecodeArgs(
       request({ mediaStart: 12.5, mediaTimeOffsetSeconds: 0.5 }),
-      "/w/list.ffconcat",
     );
     expect(args.slice(4, 8)).toEqual(["-ss", "12.000000", "-t", "3.033333"]);
   });
@@ -160,21 +154,16 @@ describe("buildCompositeDecodeArgs", () => {
     // and keep the lead (the fps filter holds the first frame), not play the video early.
     const args = buildCompositeDecodeArgs(
       request({ mediaStart: 0, mediaTimeOffsetSeconds: 0.178 }),
-      "/w/list.ffconcat",
     );
     expect(args.slice(4, 8)).toEqual(["-ss", "-0.178000", "-t", "3.033333"]);
     const partial = buildCompositeDecodeArgs(
       request({ mediaStart: 0.1, mediaTimeOffsetSeconds: 0.178 }),
-      "/w/list.ffconcat",
     );
     expect(partial[5]).toBe("-0.078000");
   });
 
   it("scales and crops a same-aspect source like the HDR frame extraction", () => {
-    const args = buildCompositeDecodeArgs(
-      request({ sourceSize: { width: 3840, height: 2160 } }),
-      "/w/list.ffconcat",
-    );
+    const args = buildCompositeDecodeArgs(request({ sourceSize: { width: 3840, height: 2160 } }));
     expect(args[args.indexOf("-filter_complex") + 1]).toStartWith(
       "[0:v]fps=30:start_time=0,scale=1920:1080:force_original_aspect_ratio=increase:threads=4,crop=1920:1080,format=rgb48le,scale=threads=4,format=gbrp16le[v];",
     );
@@ -254,6 +243,15 @@ function fakeEncoder(log: string[], opts: { failAt?: number; frames?: number } =
   return encoder;
 }
 
+/** Three frames' overlay PNG paths (two distinct files), written to a fresh directory. */
+function threePngs(): string[] {
+  const dir = mkdtempSync(join(tmpdir(), "hdr-composite-png-"));
+  const [a, b] = [join(dir, "a.png"), join(dir, "b.png")];
+  writeFileSync(a, "png-a");
+  writeFileSync(b, "png-b");
+  return [a, a, b];
+}
+
 /** Composite stdout split into uneven chunks, so frames straddle chunk boundaries. */
 function chunked(total: number, chunk: number): AsyncIterable<Buffer> {
   return (async function* () {
@@ -268,7 +266,7 @@ describe("compositeAndEncode", () => {
     return {
       ...req,
       plan,
-      workDir: mkdtempSync(join(tmpdir(), "hdr-composite-unit-")),
+      overlayFrames: framesOf(threePngs()),
       outputPath: join(tmpdir(), "hdr-composite-unit-out", "video-only.mp4"),
     };
   };
@@ -281,11 +279,18 @@ describe("compositeAndEncode", () => {
         return encoder;
       },
       spawnComposite: () => ({
+        overlays: new PassThrough().resume(),
         frames: chunked(bytes, 7),
         wait: async () => ({ ok: true, error: "" }),
+        drop: () => {
+          log.push("drop composite");
+        },
       }),
       waitForEncoder: async (pid, options) => {
         log.push(`idle ${pid} ${options.calmPolls}`);
+      },
+      checkEncoder: async (pid) => {
+        log.push(`check ${pid}`);
       },
     };
   }
@@ -297,10 +302,14 @@ describe("compositeAndEncode", () => {
     const result = await compositeAndEncode(req, deps(log, fakeEncoder(log), 3 * FRAME));
     expect(log).toEqual([
       "spawn rgb48le",
+      "check 4242",
+      "check 4242",
       `write 0 ${FRAME}`,
       "idle 4242 3",
+      "check 4242",
       `write 1 ${FRAME}`,
       "idle 4242 3",
+      "check 4242",
       `write 2 ${FRAME}`,
       "idle 4242 3",
       "close",
@@ -329,75 +338,203 @@ describe("compositeAndEncode", () => {
   });
 });
 
-describe("buildOverlayConcatList", () => {
-  it("writes per-state durations and repeats the last file", () => {
-    const states = [state(0, 0, 45), state(1, 45, 46), state(2, 46, 90)];
-    const list = buildOverlayConcatList(
-      [
-        overlay(states[0]!, "/w/a.png"),
-        overlay(states[1]!, "/w/b.png"),
-        overlay(states[2]!, "/w/c.png"),
-      ],
-      FPS_30,
+describe("compositeAndEncode pacing guards", () => {
+  const req = (): CompositeRequest => {
+    const base = request();
+    return {
+      ...base,
+      plan: { ...base.plan, width: 4, height: 2, totalFrames: 3 },
+      overlayFrames: framesOf(threePngs()),
+      outputPath: join(tmpdir(), "hdr-composite-guard-out", "video-only.mp4"),
+    };
+  };
+  const FRAME = 4 * 2 * 6;
+  const guarded = (check: CompositeDeps["checkEncoder"], log: string[]): CompositeDeps => ({
+    spawnEncoder: async () => fakeEncoder(log),
+    spawnComposite: () => ({
+      overlays: new PassThrough().resume(),
+      frames: chunked(3 * FRAME, 7),
+      wait: async () => ({ ok: true, error: "" }),
+      drop: () => {
+        log.push("drop composite");
+      },
+    }),
+    waitForEncoder: async () => undefined,
+    checkEncoder: check,
+  });
+
+  it("declines before the first frame when the encoder process cannot be paced", async () => {
+    const log: string[] = [];
+    const refuse = async () => {
+      throw new EncoderPacingError("the encoder process is sh, not ffmpeg");
+    };
+    let compositeSpawned = false;
+    const deps = guarded(refuse, log);
+    const spawn = deps.spawnComposite;
+    deps.spawnComposite = (...args) => {
+      compositeSpawned = true;
+      return spawn(...args);
+    };
+    await expect(compositeAndEncode(req(), deps)).rejects.toBeInstanceOf(EncoderPacingError);
+    expect(log.filter((entry) => entry.startsWith("write"))).toEqual([]);
+    expect(log).toContain("close");
+    // Refused before the composite starts, so nothing is left reading overlays.
+    expect(compositeSpawned).toBe(false);
+  });
+
+  it("declines when the encoder process starts a child mid-encode", async () => {
+    const log: string[] = [];
+    let checks = 0;
+    const forksLater = async () => {
+      if (++checks === 3) throw new EncoderPacingError("the encoder process started 1 process(es)");
+    };
+    await expect(compositeAndEncode(req(), guarded(forksLater, log))).rejects.toThrow(
+      "started 1 process(es)",
     );
-    expect(list).toBe(
-      [
-        "ffconcat version 1.0",
-        "file '/w/a.png'",
-        "option framerate 30",
-        "duration 1500000us",
-        "file '/w/b.png'",
-        "option framerate 30",
-        "duration 33333us",
-        "file '/w/c.png'",
-        "option framerate 30",
-        "duration 1466667us",
-        "file '/w/c.png'",
-        "option framerate 30",
-        "",
-      ].join("\n"),
+    expect(log.filter((entry) => entry.startsWith("write"))).toEqual([`write 0 ${FRAME}`]);
+    // The composite's pipes are dropped, so a process it left behind cannot hold the encode open.
+    expect(log).toContain("drop composite");
+  });
+});
+
+describe("readAhead", () => {
+  it("yields every item in order and asks the source ahead of the consumer", async () => {
+    const asked: number[] = [];
+    async function* source() {
+      for (let i = 0; i < 5; i++) {
+        asked.push(i);
+        yield i;
+      }
+    }
+    const seen: Array<[number, number]> = [];
+    for await (const item of readAhead(source(), 3)) {
+      // Let the queued requests run before reading how far the source got.
+      await new Promise((done) => setTimeout(done, 1));
+      seen.push([item, asked.length]);
+    }
+    expect(seen.map(([item]) => item)).toEqual([0, 1, 2, 3, 4]);
+    // While the consumer holds item 0 the source has produced up to item 3.
+    expect(seen[0]?.[1]).toBe(4);
+  });
+
+  it("raises a source failure when its item is reached", async () => {
+    async function* source() {
+      yield 1;
+      throw new Error("composite failed");
+    }
+    const seen: number[] = [];
+    await expect(
+      (async () => {
+        for await (const item of readAhead(source(), 4)) seen.push(item);
+      })(),
+    ).rejects.toThrow("composite failed");
+    expect(seen).toEqual([1]);
+  });
+
+  it("holds a few frames whatever their size", () => {
+    expect(readAheadDepth(1920 * 1080 * 6)).toBe(4);
+    expect(readAheadDepth(3840 * 2160 * 6)).toBe(2);
+    expect(readAheadDepth(7680 * 4320 * 6)).toBe(2);
+  });
+});
+
+describe("feedOverlays", () => {
+  const sink = () => {
+    const out = new PassThrough();
+    const chunks: Buffer[] = [];
+    out.on("data", (chunk: Buffer) => chunks.push(chunk));
+    return { out, text: () => Buffer.concat(chunks).toString() };
+  };
+
+  it("writes each frame's PNG in order, then ends the composite's input", async () => {
+    const { out, text } = sink();
+    await feedOverlays(framesOf(threePngs()), out, 3);
+    expect(text()).toBe("png-apng-apng-b");
+    expect(out.writableEnded).toBe(true);
+  });
+
+  it("fails, and stops the composite's input, on a frame count other than the plan's", async () => {
+    const short = sink();
+    await expect(feedOverlays(framesOf(threePngs()), short.out, 4)).rejects.toThrow(
+      "3 overlay frames, expected 4",
+    );
+    expect(short.out.destroyed).toBe(true);
+    await expect(feedOverlays(framesOf(threePngs()), sink().out, 2)).rejects.toThrow(
+      "more overlay frames than the plan",
     );
   });
 
-  it("merges adjacent states that share a PNG", () => {
-    const states = [state(0, 0, 10), state(1, 10, 20), state(2, 20, 30)];
-    const list = buildOverlayConcatList(
-      [
-        overlay(states[0]!, "/w/a.png"),
-        overlay(states[1]!, "/w/a.png"),
-        overlay(states[2]!, "/w/b.png"),
-      ],
-      FPS_30,
+  it("raises capture's failure from the frame queue", async () => {
+    const queue = createOverlayFrameQueue();
+    const [first] = threePngs();
+    const { out, text } = sink();
+    const feeding = feedOverlays(queue, out, 3);
+    queue.push(first as string);
+    await new Promise((done) => setTimeout(done, 5));
+    queue.fail(new Error("overlay_unverified at frame 1"));
+    await expect(feeding).rejects.toThrow("overlay_unverified at frame 1");
+    expect(text()).toBe("png-a");
+    expect(out.destroyed).toBe(true);
+  });
+});
+
+describe("createOverlayFrameQueue", () => {
+  it("hands over frames pushed before and after the reader waits, then ends", async () => {
+    const queue = createOverlayFrameQueue();
+    queue.push("a");
+    const seen: string[] = [];
+    const reading = (async () => {
+      for await (const path of queue) seen.push(path);
+    })();
+    await new Promise((done) => setTimeout(done, 5));
+    queue.push("b");
+    queue.end();
+    await reading;
+    expect(seen).toEqual(["a", "b"]);
+    expect(() => queue.push("c")).toThrow("after the last");
+  });
+});
+
+describe("compositeAndEncode with capture still running", () => {
+  it("stops the composite and the encoder, and throws capture's error, when capture fails", async () => {
+    const base = request();
+    const queue = createOverlayFrameQueue();
+    const log: string[] = [];
+    let compositeStopped = false;
+    const deps: CompositeDeps = {
+      spawnEncoder: async () => fakeEncoder(log),
+      spawnComposite: (_args, signal) => {
+        signal.addEventListener("abort", () => {
+          compositeStopped = true;
+        });
+        return {
+          overlays: new PassThrough().resume(),
+          // A composite waiting on overlays: no frame until it is stopped.
+          frames: (async function* () {
+            await new Promise((done) => signal.addEventListener("abort", done));
+            yield* [] as Buffer[];
+          })(),
+          wait: async () => ({ ok: !compositeStopped, error: "killed" }),
+          drop: () => {
+            log.push("drop composite");
+          },
+        };
+      },
+      waitForEncoder: async () => undefined,
+      checkEncoder: async () => undefined,
+    };
+    const encoding = compositeAndEncode(
+      {
+        ...base,
+        plan: { ...base.plan, width: 4, height: 2, totalFrames: 3 },
+        overlayFrames: queue,
+        outputPath: join(mkdtempSync(join(tmpdir(), "hdr-composite-fail-")), "v.mp4"),
+      },
+      deps,
     );
-    expect(list.split("\n").slice(1, 7)).toEqual([
-      "file '/w/a.png'",
-      "option framerate 30",
-      "duration 666667us",
-      "file '/w/b.png'",
-      "option framerate 30",
-      "duration 333333us",
-    ]);
-  });
-
-  it("keeps state starts on the frame grid for fractional rates", () => {
-    const ntsc: Fps = { num: 30000, den: 1001 };
-    const states = Array.from({ length: 1000 }, (_, i) => state(i, i * 7, i * 7 + 7));
-    const list = buildOverlayConcatList(
-      states.map((s) => overlay(s, `/w/${s.index % 2}.png`)),
-      ntsc,
-    );
-    expect(list).toContain("option framerate 30000/1001");
-    const micros = [...list.matchAll(/duration (\d+)us/g)].map((m) => Number(m[1]));
-    const total = micros.reduce((a, b) => a + b, 0);
-    expect(total).toBe(Math.round((7000 * 1001 * 1_000_000) / 30000));
-  });
-
-  it("escapes single quotes in paths", () => {
-    const list = buildOverlayConcatList([overlay(state(0, 0, 3), "/w/it's.png")], FPS_30);
-    expect(list).toContain("file '/w/it'\\''s.png'");
-  });
-
-  it("rejects an empty overlay set", () => {
-    expect(() => buildOverlayConcatList([], FPS_30)).toThrow("no overlay states");
+    queue.fail(new Error("video_animated at frame 2"));
+    await expect(encoding).rejects.toThrow("video_animated at frame 2");
+    expect(compositeStopped).toBe(true);
+    expect(log).toContain("close");
   });
 });

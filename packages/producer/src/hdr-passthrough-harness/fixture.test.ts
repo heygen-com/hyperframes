@@ -436,6 +436,8 @@ describe("INELIGIBLE_CASES", () => {
       "svg-comment-keyframes",
       "svg-cdata-css",
       "svg-xhtml-style",
+      "unpaused-intersection-observer",
+      "unpaused-performance-observer",
       "picker-icon-gif",
       "scroll-button-gif",
       "shadow-worker-canvas",

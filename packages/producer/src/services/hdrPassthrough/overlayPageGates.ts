@@ -4,7 +4,7 @@
  *
  * `inspectPageState` reads, through DevTools only, what the page registered
  * while it loaded (on the capture page, which is never paused, as a census
- * equal to the analysis page's), scripts compiled where only the renderer's
+ * that matches the analysis page's), scripts compiled where only the renderer's
  * should be, builtins the page replaced, and what a seek runs that the page
  * provided (listeners, GSAP's callbacks and targets, the runtime's globals). It runs
  * before any of the passthrough's in-page probes: until it passes, a probe
@@ -17,7 +17,12 @@
  */
 
 import { type CaptureSession, getCdpSession } from "@hyperframes/engine";
-import { compareLoadCensus, type LoadCensus, readLoadCensus } from "./loadCensus.js";
+import {
+  compareLoadCensus,
+  findForeignObserver,
+  type LoadCensus,
+  readLoadCensus,
+} from "./loadCensus.js";
 import { CAPTURE_OBJECT_GROUP, findChangedIntrinsics, MainWorld } from "./mainWorld.js";
 import { findUnsupportedCss, findUnsupportedElements } from "./ownClock.js";
 import {
@@ -68,8 +73,9 @@ export function loadCensusOf(page: Page): LoadCensus | undefined {
  * The DevTools-only gates (see the module comment), or null. Also hands the
  * elements GSAP writes to the fingerprint (`setFingerprintTargets`). A read
  * that fails is a finding: unread is not empty. The first call on a page
- * reads its load census (`loadCensus.ts`); on the capture page it must
- * equal `analysisCensus`, the analysis page's.
+ * reads its load census (`loadCensus.ts`): every observer must run the
+ * renderer's script, and on the capture page the census must match
+ * `analysisCensus`, the analysis page's.
  */
 export function inspectPageState(
   page: Page,
@@ -104,6 +110,8 @@ async function readPageState(
       census = await readLoadCensus(page, world, watch.origins);
       censuses.set(page, census);
     }
+    const foreign = findForeignObserver(census);
+    if (foreign) return seekCallback(foreign);
     if (watch.role === "capture" && analysisCensus) {
       const differs = compareLoadCensus(analysisCensus, census);
       if (differs) return seekCallback(differs);

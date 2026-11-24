@@ -1,49 +1,70 @@
 /**
- * HDR passthrough: what an overlay page holds once it has loaded, counted
- * from outside the page, so the capture page can be compared with the
- * analysis page.
+ * HDR passthrough: what an overlay page holds once it has loaded, read from
+ * outside the page, so the capture page can be compared with the analysis
+ * page.
  *
  * The analysis page's registration watch pauses the page as it loads and
  * sees every observer, worker, custom element definition and timer the page
  * registers, with its caller (`registrationWatch.ts`). The capture page is
  * never paused (`unpausedWatch.ts`), so a page that behaves differently when
  * paused could register something there that the analysis page never did.
- * What such a registration leaves behind is counted on both pages at the
- * same point, once each is ready and before its first seek, and a count
- * the capture page holds above the analysis page's declines
+ * What such a registration leaves behind is read on both pages at the same
+ * point, once each is ready and before its first seek, and anything on the
+ * capture page the analysis page did not hold declines
  * (`compareLoadCensus`):
  *
- * - live objects of each registration type, by `Runtime.queryObjects` on the
- *   prototypes the capture took before any page script ran: observers,
- *   workers, offscreen canvases, view transitions (the runtime's own
- *   observers count on both pages alike);
- * - defined custom elements and customized built-ins in the document and its
- *   open shadow roots, and the service worker registrations, read in the
- *   isolated world;
- * - the virtual-time shim's pending animation-frame callbacks and film-time
+ * - every live observer, by the function its callback runs, from a heap
+ *   snapshot (`observerCallbacks.ts`): on either page each must run the
+ *   renderer's script, and on the capture page each must run a function
+ *   that one of the analysis page's observers of the same kind runs
+ *   (renderer observers made only once a wall-clock wait finishes vary in
+ *   number from load to load, so they are matched by function, not counted),
+ *   and every live `FinalizationRegistry` by its cleanup the same way (the
+ *   census's own reads collect garbage, which runs cleanups);
+ * - counts that must be equal on both pages: live workers, offscreen
+ *   canvases and view transitions (`Runtime.queryObjects` on the prototypes
+ *   the capture took before any page script ran); defined custom elements and
+ *   customized built-ins in the document and its open shadow roots, and the
+ *   service worker registrations, read in the isolated world; the
+ *   virtual-time shim's pending animation-frame callbacks and film-time
  *   timers whose callback is the page's script or no script (a builtin, a
- *   bound function), read from its closure over DevTools;
- * - other targets the page opened (`window.open`, workers DevTools lists).
+ *   bound function), read from its closure over DevTools; other targets the
+ *   page opened (`window.open`).
  */
 
 import { type CaptureSession, getCdpSession } from "@hyperframes/engine";
 import { evaluateIsolated } from "./isolatedWorld.js";
 import type { MainWorld } from "./mainWorld.js";
 import type { RemoteObjectLike } from "./nativeCallbacks.js";
-import type { ScriptOriginRecord } from "./scriptOrigins.js";
+import {
+  FINALIZATION_REGISTRY,
+  findObserverCallbacks,
+  OBSERVER_TYPES,
+  type ObserverCallbacks,
+  takeHeapSnapshot,
+} from "./observerCallbacks.js";
+import type { ScriptOrigin, ScriptOriginRecord } from "./scriptOrigins.js";
 
 type Page = CaptureSession["page"];
 
-/** Counts by what was counted; equal censuses mean the page loaded the same way. */
-export type LoadCensus = ReadonlyMap<string, number>;
+/** A live observer's callback: whose script it runs and, for script, which function (text hash, line, column). */
+export interface ObserverCallback {
+  type: string;
+  origin: ScriptOrigin | "no script";
+  /** `<script sha256>:<line>:<column>`, the same function on any page; empty for no script. */
+  function: string;
+}
 
-/** The capture's `refs` whose live instances are counted. */
+/** What an overlay page held once it had loaded (see the module comment). */
+export interface LoadCensus {
+  /** Counts that must be equal on both pages. */
+  counts: ReadonlyMap<string, number>;
+  /** Every live observer by its callback. */
+  observers: readonly ObserverCallback[];
+}
+
+/** The capture's `refs` whose live instances are counted exactly. */
 const COUNTED_INSTANCES: readonly string[] = [
-  "MutationObserver",
-  "ResizeObserver",
-  "IntersectionObserver",
-  "PerformanceObserver",
-  "ReportingObserver",
   "Worker",
   "SharedWorker",
   "OffscreenCanvas",
@@ -182,6 +203,45 @@ async function openedTargets(page: Page): Promise<number> {
   return targetInfos.filter((info) => info.openerId === targetInfo.targetId).length;
 }
 
+/**
+ * Each live observer made by script, by its callback, from a heap snapshot;
+ * throws when the snapshot holds fewer script-made observers of a kind
+ * than there are JS objects of it (a snapshot it cannot read). Blink's own
+ * observers run no script and are left out.
+ */
+async function readObservers(
+  page: Page,
+  world: MainWorld,
+  origins: ScriptOriginRecord,
+): Promise<ObserverCallback[]> {
+  const { scripted } = findObserverCallbacks(await takeHeapSnapshot(await getCdpSession(page)));
+  for (const type of [...OBSERVER_TYPES, FINALIZATION_REGISTRY]) {
+    const wrappers = await instancesOf(world, type);
+    const found = scripted.filter((observer) => observer.type === type).length;
+    if (wrappers > found) {
+      throw new Error(`${wrappers} ${type} object(s) but ${found} in the heap snapshot`);
+    }
+  }
+  const observers: ObserverCallback[] = [];
+  for (const observer of scripted) observers.push(await describeObserver(observer, origins));
+  return observers;
+}
+
+/** One observer's callback by origin and function; anything but exactly one callback is `no script`. */
+async function describeObserver(
+  { type, callbacks }: ObserverCallbacks,
+  origins: ScriptOriginRecord,
+): Promise<ObserverCallback> {
+  const [callback] = callbacks;
+  if (callbacks.length !== 1 || !callback) return { type, origin: "no script", function: "" };
+  const hash = await origins.hashOf(callback.scriptId);
+  return {
+    type,
+    origin: await origins.originOf(callback.scriptId),
+    function: `${hash ?? `unreadable script ${callback.scriptId}`}:${callback.line}:${callback.column}`,
+  };
+}
+
 /** The census of an overlay page that is ready and has not been seeked (see the module comment). */
 export async function readLoadCensus(
   page: Page,
@@ -198,29 +258,53 @@ export async function readLoadCensus(
   await countQueue(world, origins, rafQueue, "animation-frame callbacks", counts);
   await countQueue(world, origins, timerQueue, "film-time timers", counts);
   counts.set("targets the page opened", await openedTargets(page));
-  return counts;
+  return { counts, observers: await readObservers(page, world, origins) };
+}
+
+/** `a MutationObserver`, `an IntersectionObserver`. */
+const withArticle = (type: string) => `${/^[AEIOU]/.test(type) ? "an" : "a"} ${type}`;
+
+/** An observer on `census`'s page whose callback is not the renderer's script, as a log detail, or null. */
+export function findForeignObserver(census: LoadCensus): string | null {
+  const foreign = census.observers.find((observer) => observer.origin !== "renderer");
+  if (!foreign) return null;
+  const runs = foreign.origin === "no script" ? "runs no script" : `is ${foreign.origin} script`;
+  return `${withArticle(foreign.type)} whose callback ${runs}`;
 }
 
 /**
- * The first count on the capture page above the analysis page's, as a log
- * detail, or null when there is none. The capture page may hold fewer: the
- * runtime makes some of its observers only once a wall-clock wait it runs
- * finishes, and one an earlier wait left without a reference is collected
- * or not (5 or 7 MutationObservers on the same page, load to load). A
- * registration the analysis page did not see holds one more.
+ * Whatever the capture page holds that the analysis page did not, as a log
+ * detail, or null when there is nothing: any count that differs, either
+ * way, and any observer whose callback no analysis-page observer of the
+ * same kind runs. A registration the analysis page did not see is one of
+ * those, whatever else the page made the runtime register or drop.
  */
 export function compareLoadCensus(analysis: LoadCensus, capture: LoadCensus): string | null {
-  for (const key of [...capture.keys()].sort()) {
-    const before = analysis.get(key) ?? 0;
-    const after = capture.get(key) ?? 0;
-    if (after > before) {
+  const keys = new Set([...analysis.counts.keys(), ...capture.counts.keys()]);
+  for (const key of [...keys].sort()) {
+    const before = analysis.counts.get(key) ?? 0;
+    const after = capture.counts.get(key) ?? 0;
+    if (after !== before) {
       return `the capture page loaded differently from the analysis page (${key}: ${after} against ${before})`;
     }
+  }
+  const known = new Set(analysis.observers.map((o) => `${o.type} ${o.origin} ${o.function}`));
+  const unknown = capture.observers.find((o) => !known.has(`${o.type} ${o.origin} ${o.function}`));
+  if (unknown) {
+    const runs = unknown.origin === "no script" ? "no script" : `${unknown.origin} script`;
+    return `the capture page loaded differently from the analysis page (${withArticle(unknown.type)} whose callback, ${runs}, no analysis-page observer runs)`;
   }
   return null;
 }
 
 /** A census as a plain object, for the render log. */
 export function censusForLog(census: LoadCensus | undefined): Record<string, number> | undefined {
-  return census ? Object.fromEntries(census) : undefined;
+  if (!census) return undefined;
+  const log: Record<string, number> = Object.fromEntries(census.counts);
+  for (const { type, origin, function: fn } of census.observers) {
+    // A short name for the function: its script's hash prefix, line and column.
+    const key = `${type} by ${origin}${fn ? ` ${fn.slice(0, 8)}${fn.slice(fn.indexOf(":"))}` : ""}`;
+    log[key] = (log[key] ?? 0) + 1;
+  }
+  return log;
 }

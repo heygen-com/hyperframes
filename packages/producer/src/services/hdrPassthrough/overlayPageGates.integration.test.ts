@@ -25,9 +25,17 @@ const GSAP = readFileSync(
   "utf8",
 );
 
-/** A stand-in for the runtime: renderer code that observes the DOM and pads the timeline. */
+/**
+ * A stand-in for the runtime: renderer code that observes the DOM and pads the timeline, and
+ * makes one more observer only when asked (as the runtime's own observer count varies by load).
+ */
 const RUNTIME = `window.__hfRuntimeObserver = new MutationObserver(function () {});
+window.__hfRuntimeObserver.observe(document.documentElement, { attributes: true });
 window.__hfPad = function (tl) { tl.to({}, { duration: 3, data: "filler" }); };
+window.__hfObserveLater = function () {
+  window.__hfLateObserver = new MutationObserver(function () {});
+  window.__hfLateObserver.observe(document.documentElement, { childList: true });
+};
 //# sourceURL=hyperframes://injected/1`;
 
 const ascii = (text: string) => Array.from(text, (c) => c.charCodeAt(0));
@@ -345,6 +353,31 @@ describe("the overlay page gates in Chrome", { timeout: 60_000 }, () => {
     }
   });
 
+  it.each([
+    [
+      "a FinalizationRegistry whose cleanup is a builtin",
+      "window.fr = new FinalizationRegistry(Element.prototype.remove.bind(document.getElementById('cue'))); fr.register({}, 1);",
+      "a FinalizationRegistry whose callback runs no script",
+    ],
+    [
+      "a FinalizationRegistry whose cleanup is page script",
+      "window.fr = new FinalizationRegistry(function () {}); fr.register({}, 1);",
+      "a FinalizationRegistry whose callback is page script",
+    ],
+    [
+      // Named for the subclass in the heap snapshot: found by its prototype instead, and unread.
+      "a FinalizationRegistry subclass",
+      "class Keeper extends FinalizationRegistry {} window.fr = new Keeper(Math.max);",
+      "FinalizationRegistry object(s) but 0 in the heap snapshot",
+    ],
+  ])("declines %s: garbage collection runs it with no page script", async (_name, code, detail) => {
+    await load({ body: inline(code) });
+    expect(await state()).toMatchObject({
+      reason: "seek_callback",
+      detail: expect.stringContaining(detail),
+    });
+  });
+
   describe("on the capture page", () => {
     /** Times the page's own pauses on a clock the shim leaves alone, and flags any over 1 ms. */
     const PAUSE_TIMER = inline(`(function () {
@@ -400,6 +433,18 @@ describe("the overlay page gates in Chrome", { timeout: 60_000 }, () => {
       expect(await content()).toBeNull();
     }, 60_000);
 
+    it("passes a capture page with fewer of the runtime's own observers", async () => {
+      const key = `hf-census-${Math.random()}`;
+      // Only the analysis page's load has the runtime make its extra observer.
+      const once = inline(
+        `if (!localStorage.getItem(${JSON.stringify(key)})) { localStorage.setItem(${JSON.stringify(key)}, "1"); window.__hfObserveLater(); }`,
+      );
+      const census = await analysisThenCapture({ body: once });
+      expect(census.observers.length).toBe(2);
+      expect(await state(census)).toBeNull();
+      expect(loadCensusOf(page as never)?.observers.length).toBe(1);
+    }, 60_000);
+
     it("declines without the analysis page's census", async () => {
       await load({}, 150, "capture");
       expect(await state()).toMatchObject({
@@ -423,12 +468,44 @@ describe("the overlay page gates in Chrome", { timeout: 60_000 }, () => {
       [
         "a MutationObserver with a builtin callback",
         "new MutationObserver(HTMLElement.prototype.showPopover.bind(document.body)).observe(document.body, { attributes: true, subtree: true });",
-        "MutationObserver instances: 2 against 1",
+        "a MutationObserver whose callback runs no script",
+      ],
+      [
+        "a MutationObserver with a page callback",
+        "new MutationObserver(function () {}).observe(document.body, { attributes: true });",
+        "a MutationObserver whose callback is page script",
+      ],
+      [
+        "a MutationObserver that runs a renderer function no observer runs on the analysis page",
+        "new MutationObserver(window.__hfPad).observe(document.body, { attributes: true });",
+        "a MutationObserver whose callback, renderer script, no analysis-page observer runs",
+      ],
+      [
+        // The count stays the same: the page skips the runtime's extra observer and adds its own.
+        "a MutationObserver in place of one the runtime made on the analysis page",
+        "new MutationObserver(Element.prototype.remove.bind(document.getElementById('cue'))).observe(document.body, { childList: true });",
+        "a MutationObserver whose callback runs no script",
+        "window.__hfObserveLater();",
       ],
       [
         "a ResizeObserver",
         "window.keep = new ResizeObserver(Math.max);",
-        "ResizeObserver instances: 1 against 0",
+        "a ResizeObserver whose callback runs no script",
+      ],
+      [
+        "an IntersectionObserver",
+        "new IntersectionObserver(Element.prototype.remove.bind(document.getElementById('cue'))).observe(document.getElementById('cue'));",
+        "an IntersectionObserver whose callback runs no script",
+      ],
+      [
+        "a PerformanceObserver",
+        "new PerformanceObserver(Math.max).observe({ entryTypes: ['layout-shift', 'largest-contentful-paint'] });",
+        "a PerformanceObserver whose callback runs no script",
+      ],
+      [
+        "a ReportingObserver",
+        "new ReportingObserver(Math.max).observe();",
+        "a ReportingObserver whose callback runs no script",
       ],
       [
         "a custom element it uses",
@@ -452,11 +529,11 @@ describe("the overlay page gates in Chrome", { timeout: 60_000 }, () => {
       ],
     ])(
       "declines %s registered only when not paused",
-      async (_name, code, detail) => {
+      async (_name, code, detail, onAnalysis = "") => {
         const key = `hf-census-${Math.random()}`;
         // The analysis page's load leaves the key; the capture page's load finds it and registers.
         const once = inline(
-          `if (localStorage.getItem(${JSON.stringify(key)})) { ${code} } else { localStorage.setItem(${JSON.stringify(key)}, "1"); }`,
+          `if (localStorage.getItem(${JSON.stringify(key)})) { ${code} } else { localStorage.setItem(${JSON.stringify(key)}, "1"); ${onAnalysis} }`,
         );
         const census = await analysisThenCapture({ body: once });
         expect(await state(census)).toMatchObject({

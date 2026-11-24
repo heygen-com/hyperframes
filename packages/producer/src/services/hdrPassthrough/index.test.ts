@@ -10,6 +10,7 @@ import {
   type OverlaySessionDeps,
   type PassthroughDeps,
 } from "./index.js";
+import { EncoderPacingError } from "./encoderPacing.js";
 import type { HdrPassthroughInput, HdrPassthroughResult, PassthroughEligibility } from "./types.js";
 
 interface LogCall {
@@ -136,7 +137,7 @@ describe("attemptHdrPassthrough pages", () => {
     role?: string;
   };
 
-  function harness(options: { analysisRan?: string; runFails?: boolean } = {}) {
+  function harness(options: { analysisRan?: string; runFails?: boolean; runThrows?: Error } = {}) {
     const events: string[] = [];
     const opened: Opened[] = [];
     const backgrounds: unknown[] = [];
@@ -176,6 +177,7 @@ describe("attemptHdrPassthrough pages", () => {
         // The capture page loads: its options' reader runs where the layered session's would.
         await opened.at(-1)?.record?.(async () => ({ kind: "solid", rgb: [1, 2, 3] }));
         if (options.runFails) throw new Error("overlay capture failed");
+        if (options.runThrows) throw options.runThrows;
         return { warnings: [] } as unknown as HdrPassthroughResult;
       },
     };
@@ -233,5 +235,20 @@ describe("attemptHdrPassthrough pages", () => {
     const outcome = await attemptHdrPassthrough(h.input, h.deps);
     expect(outcome).toMatchObject({ kind: "fallback", reason: "seek_callback" });
     expect(h.events).toEqual(["open 1", "eligibility", "analysis page code", "close 1"]);
+  });
+
+  it("declines with ffmpeg_unsupported when the encoder cannot be paced", async () => {
+    const h = harness({
+      runThrows: new EncoderPacingError("the encoder process started 1 process(es) of its own"),
+    });
+    const outcome = await attemptHdrPassthrough(h.input, h.deps);
+    expect(outcome).toMatchObject({
+      kind: "fallback",
+      reason: "ffmpeg_unsupported",
+      detail: "the encoder process started 1 process(es) of its own",
+    });
+    expect(
+      h.calls.some((c) => c.message.startsWith("[Render] HDR passthrough off: ffmpeg_unsupported")),
+    ).toBe(true);
   });
 });

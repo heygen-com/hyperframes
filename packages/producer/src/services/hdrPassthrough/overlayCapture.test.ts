@@ -466,10 +466,18 @@ describe("writeOverlayStates", () => {
       states.map((s) => (shown(s) ? "cue" : "gap")),
       states.map((s) => (shown(s) ? caption : empty)),
     );
+    const settled: Array<[number, string]> = [];
 
-    const result = await writeOverlayStates(args, source);
+    const result = await writeOverlayStates(
+      { ...args, onFrame: (frame, png) => settled.push([frame, png]) },
+      source,
+    );
 
     expect(probedFrames).toEqual(Array.from({ length: 90 }, (_, f) => f));
+    // Every frame settles once, in order, with the PNG of the state it lands in.
+    const png = (frame: number) =>
+      result.overlays.find((o) => frame >= o.state.startFrame && frame < o.state.endFrame)?.pngPath;
+    expect(settled).toEqual(Array.from({ length: 90 }, (_, f) => [f, png(f)]));
     // One screenshot per distinct overlay: the gap after the cue reuses the first gap's capture.
     expect(captured).toEqual([0, 2]);
     expect(result.plan.states).toEqual([
@@ -578,11 +586,17 @@ describe("writeOverlayStates", () => {
       (frame) => (frame >= 50 ? { key: "counter", pixels: counter } : undefined),
     );
 
-    const failure = writeOverlayStates(args, source);
+    const settled: number[] = [];
+    const failure = writeOverlayStates(
+      { ...args, onFrame: (frame) => settled.push(frame) },
+      source,
+    );
 
     await expect(failure).rejects.toBeInstanceOf(OverlayStateMismatchError);
     await expect(failure).rejects.toThrow(/frame 50 differs from its state \[21, 60\)/);
     expect(capturedFrames).toEqual([0, 20, 50]);
+    // The frame that differs never settles: the composite never sees its overlay.
+    expect(settled).toEqual(Array.from({ length: 50 }, (_, f) => f));
   });
 
   it("probes every frame of a long candidate, so a one-frame blip falls back", async () => {

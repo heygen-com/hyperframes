@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
@@ -17,11 +17,18 @@ import {
   getFfprobeBinary,
   spawnStreamingEncoder,
 } from "@hyperframes/engine";
-import { ENCODER_IDLE, procThreadStates, waitUntilIdle } from "./encoderPacing.js";
+import {
+  ENCODER_IDLE,
+  EncoderPacingError,
+  procThreadStates,
+  waitUntilIdle,
+} from "./encoderPacing.js";
 import {
   buildCompositeDecodeArgs,
   compositeAndEncode,
   compositeEncoderOptions,
+  createOverlayFrameQueue,
+  DEFAULT_COMPOSITE_DEPS,
 } from "./ffmpegComposite.js";
 import type { CapturedOverlay, CompositeRequest, OverlayState } from "./types.js";
 
@@ -179,6 +186,53 @@ function hlgSource(path: string, extraX265Params = ""): void {
   ]);
 }
 
+/** Each frame's overlay PNG, from the states that tile the frames. */
+function pngPerFrame(overlays: CapturedOverlay[], totalFrames: number): string[] {
+  return Array.from({ length: totalFrames }, (_, frame) => {
+    const shown = overlays.find((o) => frame >= o.state.startFrame && frame < o.state.endFrame);
+    if (!shown) throw new Error(`no overlay state covers frame ${frame}`);
+    return shown.pngPath;
+  });
+}
+
+async function* framesOf(paths: string[]): AsyncIterable<string> {
+  yield* paths;
+}
+
+/**
+ * The composite's raw rgb48le frames with the overlays given another way: each state's PNG once,
+ * through the concat demuxer for its duration (the way an earlier version fed them). The
+ * streamed input must give the same frames byte for byte.
+ */
+function compositeThroughConcat(request: CompositeRequest, overlays: CapturedOverlay[]): Buffer {
+  const lines = ["ffconcat version 1.0"];
+  const micros = (frame: number) => Math.round((frame * 1_000_000) / 30);
+  for (const { state, pngPath } of overlays) {
+    lines.push(`file '${pngPath}'`, "option framerate 30");
+    lines.push(`duration ${micros(state.endFrame) - micros(state.startFrame)}us`);
+  }
+  lines.push(`file '${overlays.at(-1)?.pngPath}'`, "option framerate 30");
+  const list = join(dir, `concat-${Math.random()}.ffconcat`);
+  writeFileSync(list, `${lines.join("\n")}\n`);
+  const args = buildCompositeDecodeArgs(request);
+  const at = args.indexOf("-probesize");
+  args.splice(at, 14, "-f", "concat", "-safe", "0", "-i", list);
+  const raw = spawnSync(FFMPEG, args, { maxBuffer: 256 * 1024 * 1024 });
+  if (raw.status !== 0) throw new Error(`composite failed: ${raw.stderr.toString()}`);
+  return raw.stdout;
+}
+
+/** The composite's raw rgb48le frames from the streamed overlays, all at once. */
+function compositeAtOnce(request: CompositeRequest, paths: string[]): Buffer {
+  const input = Buffer.concat(paths.map((path) => readFileSync(path)));
+  const raw = spawnSync(FFMPEG, buildCompositeDecodeArgs(request), {
+    input,
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (raw.status !== 0) throw new Error(`composite failed: ${raw.stderr.toString()}`);
+  return raw.stdout;
+}
+
 async function compositeRequest(args: {
   srcPath: string;
   mediaStart: number;
@@ -212,16 +266,7 @@ async function compositeRequest(args: {
       metadata,
     },
     plan,
-    overlays: {
-      overlays: args.overlays,
-      plan,
-      uniqueCount: new Set(args.overlays.map((o) => o.pngPath)).size,
-      candidateCount: states.length,
-      captureCount: states.length,
-      verifyProbeCount: 0,
-      dir,
-      captureMs: 0,
-    },
+    overlayFrames: framesOf(pngPerFrame(args.overlays, args.totalFrames)),
     encoder: {
       preset: getEncoderPreset("high", "mp4", { transfer: "hlg" }),
       effectiveQuality: 10,
@@ -231,7 +276,6 @@ async function compositeRequest(args: {
     },
     hdr: { transfer: "hlg" },
     outputPath: args.outputPath,
-    workDir: join(dir, "work"),
     abortSignal: undefined,
     onFramesEncoded: args.onFramesEncoded,
   };
@@ -244,6 +288,8 @@ describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
   let framesReported: number[];
   let framesEncoded: number;
   let layeredPath: string;
+  let streamedRaw: Buffer;
+  let concatRaw: Buffer;
 
   beforeAll(async () => {
     dir = mkdtempSync(join(tmpdir(), "hdr-passthrough-composite-"));
@@ -278,15 +324,14 @@ describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
 
     // The layered stage's encoder, fed the composited frames the way capture feeds it: one at a
     // time, each once the encoder has long gone quiet.
-    const concat = join(request.workDir, "hdr-passthrough-overlays.ffconcat");
-    const raw = spawnSync(FFMPEG, buildCompositeDecodeArgs(request, concat), {
-      maxBuffer: 256 * 1024 * 1024,
-    });
-    if (raw.status !== 0) throw new Error(`composite failed: ${raw.stderr.toString()}`);
+    streamedRaw = compositeAtOnce(request, pngPerFrame(overlays, TOTAL_FRAMES));
+    concatRaw = compositeThroughConcat(request, overlays);
     layeredPath = join(dir, "out", "layered-video-only.mp4");
     const layered = await spawnStreamingEncoder(layeredPath, compositeEncoderOptions(request));
     for (let frame = 0; frame < TOTAL_FRAMES; frame++) {
-      await layered.writeFrame(raw.stdout.subarray(frame * FRAME_BYTES, (frame + 1) * FRAME_BYTES));
+      await layered.writeFrame(
+        streamedRaw.subarray(frame * FRAME_BYTES, (frame + 1) * FRAME_BYTES),
+      );
       await new Promise((done) => setTimeout(done, 250));
       const pid = layered.pid ?? 0;
       await waitUntilIdle(() => procThreadStates(pid), { ...ENCODER_IDLE, calmPolls: 10 });
@@ -318,6 +363,11 @@ describe.skipIf(!HAS_X265)("compositeAndEncode (real ffmpeg)", () => {
       codec_name: "hevc",
       r_frame_rate: "30/1",
     });
+  });
+
+  it("composites the streamed overlays exactly as each state's PNG held for its frames", () => {
+    expect(streamedRaw.length).toBe(TOTAL_FRAMES * FRAME_BYTES);
+    expect(streamedRaw.equals(concatRaw)).toBe(true);
   });
 
   it("writes the bitstream the layered encoder writes for the same frames", () => {
@@ -509,3 +559,72 @@ describe.skipIf(!HAS_X265)("compositeAndEncode with source HDR side data", () =>
     expect(outSideData).toEqual([]);
   });
 });
+
+// HYPERFRAMES_FFMPEG_PATH naming a script that runs ffmpeg as its child: the encoder's pid is the
+// shell, whose threads are idle while its child encodes, so the encode cannot be paced; and a
+// composite killed mid-way leaves its child holding the pipes. Both must decline, not hang.
+describe.skipIf(!HAS_X265 || process.platform !== "linux")(
+  "compositeAndEncode behind a wrapper",
+  () => {
+    const saved = process.env.HYPERFRAMES_FFMPEG_PATH;
+    let srcPath: string;
+    let clear: string;
+
+    beforeAll(() => {
+      dir = mkdtempSync(join(tmpdir(), "hdr-passthrough-composite-wrapper-"));
+      srcPath = join(dir, "wrapped.mp4");
+      hlgSource(srcPath);
+      clear = join(dir, "wrapped-clear.png");
+      writeBoxPng(clear, 0);
+      const wrapper = join(dir, "ffmpeg");
+      writeFileSync(wrapper, `#!/bin/sh\n"${FFMPEG}" "$@"\n`);
+      chmodSync(wrapper, 0o755);
+      process.env.HYPERFRAMES_FFMPEG_PATH = wrapper;
+    }, 120_000);
+
+    afterAll(() => {
+      if (saved === undefined) delete process.env.HYPERFRAMES_FFMPEG_PATH;
+      else process.env.HYPERFRAMES_FFMPEG_PATH = saved;
+      if (dir) rmSync(dir, { recursive: true, force: true });
+    });
+
+    async function wrappedRequest(frames: AsyncIterable<string>): Promise<CompositeRequest> {
+      const state: OverlayState = { index: 0, startFrame: 0, endFrame: 30, captureFrame: 15 };
+      const request = await compositeRequest({
+        srcPath,
+        mediaStart: 0,
+        overlays: [{ state, pngPath: clear, hash: "clear" }],
+        totalFrames: 30,
+        outputPath: join(dir, "out", `wrapped-${Math.random()}.mp4`),
+      });
+      return { ...request, overlayFrames: frames };
+    }
+
+    it("declines an encoder process that is not ffmpeg before the composite starts", async () => {
+      const started = Date.now();
+      const error = await compositeAndEncode(await wrappedRequest(framesOf([]))).catch((e) => e);
+      expect(error).toBeInstanceOf(EncoderPacingError);
+      expect(String(error.message)).toMatch(/not ffmpeg/);
+      expect(Date.now() - started).toBeLessThan(30_000);
+    }, 60_000);
+
+    it("stops a wrapped composite whose child holds its pipes, while capture is still feeding it", async () => {
+      const queue = createOverlayFrameQueue();
+      // Every frame but no end: the pipe demuxer reads these small PNGs in whole 4 KiB blocks.
+      for (let i = 0; i < 30; i++) queue.push(clear);
+      let checks = 0;
+      const started = Date.now();
+      const error = await compositeAndEncode(await wrappedRequest(queue), {
+        ...DEFAULT_COMPOSITE_DEPS,
+        // Accepts the encoder at first, then finds it has forked: the encode stops mid-way.
+        checkEncoder: async () => {
+          if (++checks === 3)
+            throw new EncoderPacingError("the encoder process started 1 process(es)");
+        },
+      }).catch((e) => e);
+      expect(error).toBeInstanceOf(EncoderPacingError);
+      expect(Date.now() - started).toBeLessThan(30_000);
+      queue.end();
+    }, 60_000);
+  },
+);

@@ -447,8 +447,14 @@ function pngVerdict(b: Uint8Array): string | null {
   return animated ? "an APNG" : "a PNG the passthrough cannot read";
 }
 
+/** The largest SVG image the passthrough parses; a larger one declines rather than being read in part. */
+export const MAX_SVG_IMAGE_BYTES = 4 << 20;
+
 function svgVerdict(b: Uint8Array): string | null {
-  const text = Buffer.from(b.subarray(0, 4 << 20)).toString("utf8");
+  if (b.length > MAX_SVG_IMAGE_BYTES) {
+    return `an image of ${b.length} bytes, over the ${MAX_SVG_IMAGE_BYTES}-byte SVG limit`;
+  }
+  const text = Buffer.from(b).toString("utf8");
   if (!/<svg[\s>]/i.test(text)) return "an image of a format the passthrough does not read";
   return svgImageVerdict(text);
 }

@@ -370,11 +370,25 @@ async function checkPageLayout(
   return { fit: layout.fit };
 }
 
-/** The ffmpeg gates: the blend self-test, then whether the encode can be paced. */
+/**
+ * The ffmpeg gates: a software x265 encoder (pacing reads its threads; a
+ * GPU encoder's work is not on them), the blend self-test, then whether the
+ * encode can be paced.
+ */
 async function checkFfmpegGates(
+  input: HdrPassthroughInput,
   deps: EligibilityDeps,
   signal: AbortSignal | undefined,
 ): Promise<Ineligible | null> {
+  if (input.job.config.useGpu) {
+    return ineligible("ffmpeg_unsupported", "GPU encode selected; the encode is paced on libx265");
+  }
+  if (input.preset.codec !== "h265") {
+    return ineligible(
+      "ffmpeg_unsupported",
+      `the encode is paced on libx265, not ${input.preset.codec}`,
+    );
+  }
   const blend = await deps.checkBlend(signal);
   if (!blend.exact) return ineligible("ffmpeg_unsupported", blend.detail);
   if (!deps.canPaceEncoder()) {
@@ -464,7 +478,7 @@ export async function checkPassthroughEligibility(
     canvas: { width, height },
   });
   if (sourceGate) return sourceGate;
-  const ffmpegGate = await checkFfmpegGates(deps, input.abortSignal);
+  const ffmpegGate = await checkFfmpegGates(input, deps, input.abortSignal);
   if (ffmpegGate) return ffmpegGate;
 
   input.assertNotAborted();

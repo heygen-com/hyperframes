@@ -53,8 +53,10 @@ capture_hdr_layered stage (renderOrchestrator)
        │    load; close the analysis page
        ├─ planOverlayStates → candidate states                  planner.ts
        ├─ a fresh capture page: the DevTools-only gates before
-       │    its first seek, its load census equal to the         loadCensus.ts
-       │    analysis page's, then the layered DOM session's
+       │    its first seek, its load census matched to the       loadCensus.ts
+       │    analysis page's (every observer by the function its  observerCallbacks.ts
+       │    callback runs, from a heap snapshot; every other
+       │    count equal), then the layered DOM session's
        │    steps before frame 0 (scene reads, the seek and
        │    stacking query at the video's start)
        ├─ captureOverlayStates → one PNG per distinct overlay   overlayCapture.ts
@@ -64,14 +66,16 @@ capture_hdr_layered stage (renderOrchestrator)
        │    render the same overlay, decline a frame that
        │    differs from its candidate's first,
        │    hold the video's own layer to the analysis page's
-       │    on every probe,
+       │    on every probe, hand each settled frame's PNG to
+       │    the composite,
        │    then run the page and content gates again and
        │    decline if any page function ran since load          pageCodeWatch.ts
-       └─ compositeAndEncode → videoOnlyPath                    ffmpegComposite.ts
-            ffmpeg composites to raw rgb48le; the layered
-            encoder (spawnStreamingEncoder, the layered
-            options) takes one frame at a time, each once its     encoderPacing.ts
-            threads are idle
+       └─ compositeAndEncode → videoOnlyPath, alongside capture  ffmpegComposite.ts
+            ffmpeg composites to raw rgb48le, a few frames
+            ahead; the layered encoder (spawnStreamingEncoder,
+            the layered options) takes one frame at a time,       encoderPacing.ts
+            each once its threads are idle, while its process
+            is an ffmpeg with no child of its own
             completed → the render records the reference background the capture page read
      completed → assemble muxes audio as usual
      fallback  → (extract deferred video frames) → runCaptureHdrStage
@@ -93,7 +97,10 @@ overlay_unverified (...)` and takes the layered path. A page callback that
   its own clock logs `overlay_non_gsap_animation` (or `video_count` for a
   video) the same way, and a frame where the
   video's own layer is not the one the composite lays logs
-  `HDR passthrough off: video_animated (...)`.
+  `HDR passthrough off: video_animated (...)`, and an encoder process the
+  encode cannot be paced by logs `HDR passthrough off: ffmpeg_unsupported
+  (...)`. A decline in capture or in the gates after it stops the composite
+  and the encode that run beside capture.
 - Any other error inside the passthrough logs `HDR passthrough failed; falling back
 to the layered HDR composite` and takes the layered path. The layered
   encoder overwrites any partial output.
@@ -115,7 +122,10 @@ The passthrough runs only when it can reproduce the layered output:
   under it, `object-fit` that maps it 1:1 (or a same-aspect cover scale), no
   loop, playback-rate change or late start;
 - an ffmpeg whose `maskedmerge` rounds exactly like the layered blend (see
-  "ffmpeg" below; `ffmpeg_unsupported` otherwise);
+  "ffmpeg" below; `ffmpeg_unsupported` otherwise), and a software libx265
+  encode by an ffmpeg process the encode can be paced by: no GPU encode, no
+  wrapper that runs ffmpeg as its child (see "Encoder pacing";
+  `ffmpeg_unsupported` otherwise);
 - nothing the page registered while it loaded that runs on seeks or on a
   clock of its own: no animation-frame callback, no timer whose callback is
   a string or a builtin, no observer, no custom element definition, no
@@ -187,6 +197,12 @@ the layered path:
   `gbrp16le` (`out = round(signal * a + video * (1 - a))`, the layered blend),
   and converts back to `rgb48le` before the encoder's own frame
   filter. ffmpeg's `overlay` filter blends RGB at 8 bits and is not used.
+- The overlays reach the composite on its stdin, one PNG per output frame
+  (`image2pipe` at the output rate), as capture settles each frame: the
+  frame's state PNG, decoded by the same PNG decoder as before, so the
+  composite's raw frames are byte for byte the ones a playlist of each
+  state's PNG held for its frames gives (`ffmpegComposite.integration.test.ts`
+  compares the two).
 - The composite writes those `rgb48le` frames as raw video to a pipe, and
   the encoder is the layered stage's own: `spawnStreamingEncoder` with the
   options the layered stage gives it (codec, preset, CRF or bitrate,
@@ -246,6 +262,43 @@ running or in uninterruptible wait, three polls in a row 2 ms apart
 (`/proc/<pid>/task/<tid>/stat`). Where the thread states cannot be read
 (not Linux) eligibility declines with `ffmpeg_unsupported`. A frame that
 does not go idle within 120 s fails the attempt, which falls back.
+
+The threads read must be the encoder's. `HYPERFRAMES_FFMPEG_PATH` can name
+a wrapper that runs ffmpeg as its child; the encoder's pid is then the
+wrapper, idle while its child encodes, and every frame would go in
+unpaced. And a GPU encoder's work does not show as thread states at all.
+So the passthrough declines (`ffmpeg_unsupported`, the layered path takes
+over):
+
+- at eligibility, when GPU encode is selected (`useGpu`, whatever encoder
+  the host has) or the codec is not h265;
+- before the composite starts and again before every frame
+  (`assertPaceableEncoder`), unless the encoder process runs an executable
+  named `ffmpeg` under that name (`/proc/<pid>/exe`, `/proc/<pid>/comm`; a
+  just-spawned process still running this one's executable is read again
+  for up to 2 s) and has started no process of its own
+  (`/proc/<pid>/task/*/children`);
+- when a poll finds no thread states to read: an unread encoder is not an
+  idle one (it used to count as gone, and so as idle).
+
+A wrapper also leaves its child holding the composite's pipes when the
+composite is stopped, which kept the encode from ever settling (the stage
+stalled and the render failed instead of falling back). The composite's
+pipes are now closed from this side when it stops, so its child ends too.
+
+The pacing itself is unchanged: one frame at a time, each once the encoder
+is idle. What changed is what runs beside it. The composite runs a few
+frames ahead of the encoder (`readAhead`: up to 4, at most 64 MiB of
+frames), so the next frame is ready when the encoder goes idle instead of
+being decoded and blended after it; and the composite and encode start as
+soon as the capture page has replayed the layered session's prelude, taking
+each frame as capture settles it, so capture runs alongside the encode
+instead of before it. Nothing reaches the encoder any faster or in any
+other pattern than before, so the bitstream is the same; what is left of
+the encode is the encoder's own per-frame latency, which grows with the
+host's load. Where that latency comes from inside x265 (which race in its
+lookahead, frame threads or rate control the pacing avoids) was not pinned
+down, so the encoder is never fed faster than one frame per idle.
 
 ## ffmpeg
 
@@ -361,8 +414,16 @@ document takes the builtin capture before any page script runs and keeps
 it under a random 128-bit name in the global lexical scope, which no page
 script can list. What a page can observe is timing: on the analysis page
 the debugger pauses while it loads ("Registrations"); on both,
-`Runtime.queryObjects` collects garbage, which a page that watches its own
-collection (`FinalizationRegistry`, `WeakRef`) can notice.
+`Runtime.queryObjects` and the census's heap snapshot collect garbage,
+which a page that watches its own collection can notice. A `WeakRef` needs
+page code to read it, which the page code watch counts. A
+`FinalizationRegistry` runs its cleanup with no page script on the stack
+once a target is collected: `gc-tenured-remove` handed one a bound
+`Element#remove` for a tenured target, so the overlay pages' collections
+removed a box the layered render, which never collects it that early,
+kept (0/90 frames identical). The census now reads every live registry's
+cleanup from the heap snapshot like an observer's callback, and one that
+is not the renderer's script declines (`seek_callback`).
 
 ## The capture page is never paused
 
@@ -379,20 +440,44 @@ painted the other: `dbg-timer` decoded 0/90 identical to flag off. Now:
   page `debugger` statement pauses it. A pause that happens anyway declines.
 - Its builtins are captured by a new-document script instead of at a
   paused first statement (`unpausedWatch.ts`).
-- What it registered while it loaded is not watched there but counted once
-  it is ready, before its first seek, and compared with the same count on
-  the analysis page (`loadCensus.ts`): live observers, workers, offscreen
-  canvases and view transitions (`Runtime.queryObjects` on prototypes the
-  capture took), defined custom elements and customized built-ins in the
-  document and its open shadow roots, service worker registrations, the
-  shim's pending animation-frame callbacks and film-time timers whose
-  callback is page script or no script (read from the shim's closure over
-  DevTools; the runtime's own vary load to load), and windows the page
-  opened. The analysis page's watch saw who registered
-  each of its own; a count on the capture page above the analysis page's
-  declines (`seek_callback`). Fewer is allowed: the runtime makes some of
-  its observers only once a wall-clock wait finishes, so the same page
-  holds 5 or 7 MutationObservers from one load to the next.
+- What it registered while it loaded is not watched there but read once
+  it is ready, before its first seek, and matched to the same read of the
+  analysis page (`loadCensus.ts`), whose watch saw who registered each of
+  its own:
+  - every live observer (mutation, resize, intersection, performance,
+    reporting), and every live `FinalizationRegistry` by its cleanup, by
+    the function its callback runs, from a V8 heap snapshot
+    (`observerCallbacks.ts`): Blink holds each script-made observer's
+    `V8...Callback`, directly or through its delegate, whether or not any
+    script still references the observer, and the callback closure's
+    script and position name the function. On either page an observer
+    whose callback is a builtin, a bound function or page script declines;
+    on the capture page so does one whose renderer function no
+    analysis-page observer of the same kind runs (a renderer function the
+    page handed to an observer itself). They are matched by function, not
+    counted: the runtime makes some of its observers only once a
+    wall-clock wait finishes, so the same page holds 5 or 7 of them from
+    one load to the next. Blink's own observers (media controls, lazy
+    loading) hold a C++ delegate, run no script and are left out; a
+    snapshot that holds fewer script-made observers of a kind than
+    `Runtime.queryObjects` finds JS objects of it declines;
+  - counts that must be equal on both pages, either way: live workers,
+    offscreen canvases and view transitions (`Runtime.queryObjects` on
+    prototypes the capture took), defined custom elements and customized
+    built-ins in the document and its open shadow roots, service worker
+    registrations, the shim's pending animation-frame callbacks and
+    film-time timers whose callback is page script or no script (read from
+    the shim's closure over DevTools; the runtime's own vary load to load
+    and are left out), and windows the page opened.
+
+  Anything else declines (`seek_callback`). Before this, the census
+  counted observers and allowed the capture page fewer than the analysis
+  page held, for the runtime's variance: a page that timed the analysis
+  page's pauses and made one `MutationObserver` with a bound builtin
+  callback only on the capture page fit inside that slack whenever the
+  runtime happened to make fewer of its own there, and took the
+  passthrough with 0/90 frames identical (`unp-mo-append`).
+
 - Its video layer must equal the analysis page's at frame 0, on every frame
   (`createVideoLayerGuard`), so a page that lays out its video differently
   when not paused declines (`video_animated`).
@@ -629,7 +714,10 @@ an element of another namespace must sit inside `<metadata>`, and the
 decoded `<style>` text and `style` attributes must have no `animation`,
 `transition` or `keyframes`, no CSS escape, no `@import`, and no `data:` or
 `url()` but a fragment; no attribute may hold a `data:` URL, an external
-`href` or `url()`, or an event handler.
+`href` or `url()`, or an event handler. The parser reads the whole image:
+one over 4 MiB declines. It used to read the first 4 MiB only, so whatever
+followed that prefix (a static SVG, then more past the limit) was never
+looked at.
 
 An `<audio>` element paints nothing without controls; one whose controls
 GSAP turns on mid-composition is in the fingerprint with its playback
@@ -705,7 +793,9 @@ calibration (sample frames only). A completed passthrough never decodes them.
 
 Overlay capture reports in the 25–35% band and keeps the stall watchdog alive
 per state and per verification probe. The encode drives `framesRendered`
-from ffmpeg's frame count and reports 35–80%.
+from ffmpeg's frame count from its first frame; while capture is still
+running it only keeps the watchdog alive, and once capture is done it
+reports 35–80%.
 
 ## Limitations
 
@@ -781,22 +871,36 @@ from ffmpeg's frame count and reports 35–80%.
   any namespace), `style` attribute, comment, CDATA section, DOCTYPE,
   filter, link, `<switch>`, element in another namespace (editor metadata
   included), external reference or attribute outside the static set
-  declines.
+  declines, as does an SVG image over 4 MiB (`MAX_SVG_IMAGE_BYTES`): it is
+  parsed whole or not at all.
 - The encoder takes one frame at a time, each once it has gone idle, as the
   layered path's does ("Encoder pacing"): the encode costs the encoder's
   per-frame latency times the frame count, which grows with the host's
-  load. On a host at load average 110-130 the 20 s fixtures' flag-on renders
-  took 462-611 s against 555-708 s flag off (the commit before: about 190 s
-  against 517 s), so a loaded host keeps little of the speedup. The
-  passthrough needs Linux to read the encoder's thread states.
-- The capture page's census allows fewer of anything than the analysis
-  page held (the runtime's own observers vary). A page that made the
-  runtime keep one more observer on the analysis page only could hide one
-  observer of its own on the capture page; it would have to tell the pages
-  apart first, by the analysis page's pauses.
-- Event targets are found with `Runtime.queryObjects`, which collects
-  garbage first: only a page that watches its own collection
-  (`FinalizationRegistry`, `WeakRef`) can notice.
+  load. Capture and the composite now run beside it, so a flag-on render
+  costs about that encode plus the page loads, but no less: on a host at
+  load average 50-130 the 20 s fixtures took 277-332 s flag on against
+  434-555 s flag off (1.6-1.7x; the commit before, in the same load window,
+  328-406 s, 1.3-1.4x). The passthrough needs Linux to read the encoder's
+  thread states, a software libx265 encode, and an `ffmpeg` that is not a
+  wrapper around one.
+- The census matches the capture page's observers to the analysis page's
+  by the function their callback runs. A page that held a reference to one
+  of the runtime's own observer callbacks could make an observer of its
+  own with it on the capture page; it runs the runtime's code on other
+  records. No such reference is reachable from the page's globals today.
+  A capture page that holds one of the runtime's observers the analysis
+  page had not made yet declines (falls back) rather than passes.
+- The census reads observers from a heap snapshot (one more garbage
+  collection, and 1-3 s on a loaded host for a 20 MB heap), and relies on
+  Blink naming its callback holders (`V8MutationCallback`, ...) in the
+  snapshot; a build that does not declines, as it holds fewer than
+  `Runtime.queryObjects` finds.
+- Event targets are found with `Runtime.queryObjects`, and observers and
+  finalization registries from a heap snapshot, which collect garbage
+  first: a page can notice that only through page code (a `WeakRef` it
+  reads, counted) or a registry's cleanup (read and declined); what the
+  garbage collector itself decides (a weak map entry dropped) runs no
+  callback.
 - Content that paints on the wall clock (`<marquee>`, an indeterminate
   `<progress>`, an animated image, a second video) declines, and its
   layered render is not repeatable either: two flag-off renders of such a
@@ -1094,3 +1198,110 @@ images and SVG, marquees, a CSS `@starting-style` transition), whose two
 flag-off renders share no frame either. On the commit before, `dbg-timer`,
 `svg-comment-split` and `svg-xhtml-style` still took the passthrough with
 0/90 frames identical in this run, and the capture page paused 28 times.
+
+With observers matched by callback, the pacing guards, SVG images parsed
+whole, and capture and the composite run beside the paced encode (main
+merged at bb87da4536):
+
+The 20 s fixtures on ffmpeg 8.0.1, each row's three renders started
+together (flag off; the commit before this change, flag on; this change,
+flag on), two rows in a row, the second in the opposite launch order, with
+eight to ten other renders on the host (load average 50-130):
+
+| transfer | fixture         | flag off      | before, flag on     | after, flag on      |
+| -------- | --------------- | ------------- | ------------------- | ------------------- |
+| HLG      | `captions`      | 510 s / 434 s | 395 s / 329 s, 1.3x | 325 s / 281 s, 1.6x |
+| HLG      | `captions-gsap` | 555 s / 477 s | 402 s / 331 s, 1.4x | 332 s / 280 s, 1.7x |
+| PQ       | `captions`      | 517 s / 436 s | 403 s / 328 s, 1.3x | 326 s / 277 s, 1.6x |
+| PQ       | `captions-gsap` | 548 s / 478 s | 406 s / 335 s, 1.4x | 332 s / 280 s, 1.7x |
+
+All 16 flag-on renders took the passthrough and decode identical to flag
+off (framemd5 600/600, stream and frame side data equal, bitstream
+identical). The encode, from the encoder's spawn to its exit: before,
+292-299 s / 243-248 s after a capture of 60-68 s / 48-54 s; after,
+282-289 s / 240-243 s, of which 157-200 s came after a capture of
+84-98 s / 74-84 s (slower beside the encode) that the encode overlapped.
+The time left is the encoder's own per-frame latency: 208-247 s of each
+encode waiting for it to go idle (182-232 s before), 0.35-0.41 s a frame.
+The rest of the encode, writing the frame and reading the next, fell from
+60-73 s to 26-37 s with the composite reading ahead.
+
+Flag-on renders of 3 s fixtures, 24 at a time with one flag-off render of
+each fixture and four repro renders beside them, the host's `earlyoom`
+stopping the largest ffmpeg processes when memory ran short; two batches
+per ffmpeg version, the second on this commit (the first lacked the
+registry check below and named an exited encoder differently):
+
+| ffmpeg | batch | load average up to | renders | decode identical | took the passthrough | fell back                                        |
+| ------ | ----- | ------------------ | ------- | ---------------- | -------------------- | ------------------------------------------------ |
+| 7.0.2  | 1     | 190                | 24      | 24               | 23                   | 1 composite stopped by `earlyoom`                |
+| 8.0.1  | 1     | 325                | 24      | 24               | 19                   | 5 encoders stopped by `earlyoom`                 |
+| 7.0.2  | 2     | 138                | 24      | 24               | 20                   | 4 `gc-fr-remove` (`seek_callback`, its registry) |
+| 8.0.1  | 2     | 155                | 24      | 24               | 18                   | 4 `gc-fr-remove`, 2 encoders stopped             |
+
+Each batch is 16 HLG renders (`control`, `gc-fr-remove`, `slot-then-direct`,
+`cis-hidden-toggle`) and 8 PQ (`captions`, `captions-gsap`). All 96 decode
+identical to flag off with the same bitstream, stream and frame side data.
+An encode `earlyoom` stopped falls back (in batch 1 its encoder read as
+unreadable thread states, `ffmpeg_unsupported`; it now reads as an encoder
+that exited). On this commit the 20 s `captions` and `captions-gsap`
+fixtures, HLG and PQ on ffmpeg 8.0.1, still take the passthrough and decode
+identical to flag off (600/600, bitstream and side data equal; 166-169 s
+each with four at a time).
+
+The round-8 slack repro (`unp-mo-append`: a `MutationObserver` with a
+bound `insertAdjacentText` callback, made only when the page was not
+paused), rendered beside those batches: with the commit before, four of
+eight renders took the passthrough (5 MutationObservers on the capture
+page, its own among them, against 7 on the analysis page), three of them
+with 0/90 frames identical to flag off (28.7 dB) and one whose frames
+happened to match; with this change every render declines
+with `seek_callback (a MutationObserver whose callback runs no script)`
+and decodes identical to flag off. The integration tests run the class on
+a real page against a stand-in runtime whose observer count the page
+controls: a builtin, bound or page-script callback on a mutation, resize,
+intersection, performance or reporting observer, a subtree observer, a
+renderer function no analysis-page observer runs, and an observer in place
+of one the runtime made only on the analysis page (same count; the commit
+before passed it) all decline, and a capture page holding fewer of the
+runtime's own observers passes.
+
+The pacing guards, 3 s `captions` HLG: with `HYPERFRAMES_FFMPEG_PATH` naming
+a shell script that runs ffmpeg 7.0.2 as its child, the commit before took
+the passthrough, pacing on the shell's idle thread, and the change declines
+(`ffmpeg_unsupported (the encoder process runs /usr/bin/dash, not ffmpeg)`)
+and decodes identical to flag off with the same wrapper; before the
+composite's pipes were closed from this side, that render stalled at
+capture's end and failed. With `--gpu` (no GPU encoder on the host, so both
+sides encode in software) it declines with `ffmpeg_unsupported (GPU encode
+selected ...)` and decodes identical to flag off. Killing the composite or
+the encoder mid-encode falls back and decodes identical to flag off, with
+no process left behind.
+
+The earlier rounds' fixtures (the 144 repros of rounds 5 to 7 and round
+8's review and verify sets, 336 parity runs with both sides rendered, HLG
+and PQ, ffmpeg 7.0.2 and 8.0.1, the generated 3 s sets included) take the
+route they took on the commit before, and every passthrough among them
+decodes identical to flag off but one: round 8's `gc-tenured-remove`, a
+`FinalizationRegistry` with a bound `Element#remove` cleanup on a tenured
+target, took the passthrough with 0/90 frames identical on both versions
+(as on the commit before; it was not among round 8's open items). It now
+declines with `seek_callback (a FinalizationRegistry whose callback runs no
+script)`; its layered render is not repeatable (two flag-off renders share
+29-32 of 90 frames: the box goes whenever V8 collects the target), so only
+its fallback is checked. The non-identical fallbacks are the wall-clock
+fixtures as before (animated images and SVG, marquees, a CSS transition,
+WAAPI and message-loop drivers). The new negative fixtures
+(`unpaused-*-observer`, `svg-over-size`; the round-8 `mo8` set and its
+variants with a subtree, intersection, performance and resize observer, a
+renderer function as the callback, and one that drops the runtime's
+media-deferral observer and adds its own) all decline with the reason
+they expect and decode identical to flag off on both versions.
+
+Flag off renders identical to main (bb87da4536) on ten fixtures: four SDR
+producer fixtures, `hdr-hlg-regression`, `hdr-regression`,
+`hdr-hlg-audio-windows`, the 3 s PQ `captions`, `errname-raf` and
+`dbg-timer` (video framemd5, audio and stream metadata). One flag-off
+render of `hdr-hlg-regression` at load average 325 differed from main from
+frame 123 (and in audio); two more renders of each side at lower load
+were identical to each other and to main's first.

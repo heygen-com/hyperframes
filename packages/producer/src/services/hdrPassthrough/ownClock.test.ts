@@ -4,6 +4,7 @@ import {
   findUnsupportedElements,
   gifFrames,
   imageVerdict,
+  MAX_SVG_IMAGE_BYTES,
 } from "./ownClock.js";
 import type { DomSnapshotLike } from "./overlayFingerprint.js";
 
@@ -96,6 +97,22 @@ describe("imageVerdict", () => {
     ["plain SVG", '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'],
   ])("accepts a %s", (_name, data) => {
     expect(imageVerdict(bytes(data))).toBeNull();
+  });
+
+  it("declines an SVG over the size limit instead of reading part of it", () => {
+    const open = '<svg xmlns="http://www.w3.org/2000/svg">';
+    const close = "</svg>";
+    const smil = '<rect><animate attributeName="x" to="9" dur="1s"/></rect>';
+    const filler = (bytes: number) => "<rect/>".repeat(Math.ceil(bytes / 7));
+    // Static up to the limit, a SMIL animation past it: no prefix of it may stand for the image.
+    const animated = open + filler(MAX_SVG_IMAGE_BYTES) + smil + close;
+    expect(imageVerdict(bytes(animated))).toMatch(/over the 4194304-byte SVG limit/);
+    // A whole static SVG within the limit, then more past it: only the limit decides.
+    const trailing = open + filler(MAX_SVG_IMAGE_BYTES - 4096) + close + " ".repeat(8192);
+    expect(imageVerdict(bytes(trailing))).toMatch(/over the 4194304-byte SVG limit/);
+    const fits = open + filler(MAX_SVG_IMAGE_BYTES - 1024) + close;
+    expect(fits.length).toBeLessThanOrEqual(MAX_SVG_IMAGE_BYTES);
+    expect(imageVerdict(bytes(fits))).toBeNull();
   });
 
   it("counts GIF frames to the trailer", () => {

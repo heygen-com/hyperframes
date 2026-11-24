@@ -354,6 +354,13 @@ export interface CaptureOverlayStatesArgs {
    * this keeps the stall watcher alive meanwhile.
    */
   onVerifyProbe?: () => void;
+  /**
+   * Called once per frame, in frame order, with the PNG that frame shows,
+   * once capture has settled it: a candidate's first frame once it folds or
+   * opens a state, any other once its probe matched the open state. A later
+   * failure still throws; nothing settled is ever revised.
+   */
+  onFrame?: (frame: number, pngPath: string) => void;
 }
 
 // ── ffmpeg composite ───────────────────────────────────────────────────────
@@ -369,15 +376,19 @@ export interface PassthroughEncoderSettings {
 
 export interface CompositeRequest {
   video: PassthroughVideo;
+  /** Frame grid and canvas size (`fps`, `width`, `height`, `totalFrames`). */
   plan: OverlayPlan;
-  overlays: CapturedOverlaySet;
+  /**
+   * The overlay PNG (`CapturedOverlay.pngPath`) of every frame, in frame
+   * order, as overlay capture settles each one; ends after the last frame
+   * and fails if capture does.
+   */
+  overlayFrames: AsyncIterable<string>;
   encoder: PassthroughEncoderSettings;
   /** HDR transfer the output is tagged with (`preset.hdr.transfer`). */
   hdr: { transfer: HdrTransfer };
   /** Final video-only file; the layered stage's `videoOnlyPath`. */
   outputPath: string;
-  /** Scratch dir for the concat list (inside the render's workDir). */
-  workDir: string;
   abortSignal: AbortSignal | undefined;
   /** ffmpeg's cumulative encoded-frame count, for progress + stall detection. */
   onFramesEncoded?: (frames: number) => void;
@@ -388,6 +399,8 @@ export interface CompositeResult {
   encodeMs: number;
   /** Of that, ms spent waiting for the encoder to go idle after each frame. */
   idleWaitMs: number;
+  /** Of that, ms the encode loop waited for the composite's next frame (capture still running, mostly). */
+  frameWaitMs: number;
   /** Frames ffmpeg reported encoding; equals `plan.totalFrames` on success. */
   framesEncoded: number;
   /** Bytes written to `outputPath`. */

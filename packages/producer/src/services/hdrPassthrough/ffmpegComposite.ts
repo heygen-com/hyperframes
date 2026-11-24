@@ -4,11 +4,18 @@
  * `rgb48le`, and the layered path's own encoder (`spawnStreamingEncoder`,
  * with the options the layered stage gives it) encodes them, one frame at a
  * time, each once the encoder has gone idle (`encoderPacing.ts`).
+ *
+ * The overlays reach the composite one PNG per frame on its stdin, as
+ * overlay capture settles each frame (`CompositeRequest.overlayFrames`), so
+ * the composite and the encode run while capture is still walking the
+ * frames.
  */
 
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { mkdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import type { Writable } from "node:stream";
 import { fpsToFfmpegArg, fpsToNumber } from "@hyperframes/core";
 import {
   ManagedChildProcess,
@@ -21,17 +28,14 @@ import {
   type StreamingEncoderOptions,
 } from "@hyperframes/engine";
 import {
+  assertPaceableEncoder,
   ENCODER_IDLE,
+  EncoderPacingError,
   type IdleWaitOptions,
   procThreadStates,
   waitUntilIdle,
 } from "./encoderPacing.js";
-import type { CapturedOverlay, CompositeRequest, CompositeResult } from "./types.js";
-
-/** File name of the concat list written into `CompositeRequest.workDir`. */
-const CONCAT_LIST_NAME = "hdr-passthrough-overlays.ffconcat";
-
-const MICROS_PER_SECOND = 1_000_000;
+import type { CompositeRequest, CompositeResult } from "./types.js";
 
 /** Bytes per pixel of the raw frames the layered encoder reads. */
 const RGB48_BYTES_PER_PIXEL = 6;
@@ -48,50 +52,6 @@ const LAYERED_ENCODER_TIMEOUT_MS = 3_600_000;
 const SWS_THREADS = 4;
 const THREADED_SCALE = `scale=threads=${SWS_THREADS}`;
 const convert = (pixFmt: string): string => `${THREADED_SCALE},format=${pixFmt}`;
-
-/**
- * Concat-demuxer playlist for the overlay states. Adjacent states that share
- * a PNG collapse into one entry. Each duration is the difference of the
- * microsecond-rounded state boundaries, so entry starts never drift from
- * `startFrame / fps` by more than half a microsecond however many states
- * there are. Every entry sets the image demuxer's `framerate` to the output
- * rate: its time base is otherwise 1/25 s, which rounds each start (0.5 s
- * lands on 0.52 s) and shifts state boundaries by up to a frame. With the
- * output rate as time base each start rounds to exactly `startFrame`. The
- * last file is listed again without a duration: the concat demuxer
- * otherwise drops the final entry's duration.
- */
-export function buildOverlayConcatList(
-  overlays: readonly CapturedOverlay[],
-  fps: CompositeRequest["plan"]["fps"],
-): string {
-  if (overlays.length === 0) throw new Error("hdrPassthrough: no overlay states to composite");
-  const runs: Array<{ pngPath: string; startFrame: number; endFrame: number }> = [];
-  for (const { pngPath, state } of overlays) {
-    const last = runs.at(-1);
-    if (last && last.pngPath === pngPath && last.endFrame === state.startFrame) {
-      last.endFrame = state.endFrame;
-    } else {
-      runs.push({ pngPath, startFrame: state.startFrame, endFrame: state.endFrame });
-    }
-  }
-  const frameMicros = (frame: number): number =>
-    Math.round((frame * fps.den * MICROS_PER_SECOND) / fps.num);
-  const framerate = `option framerate ${fpsToFfmpegArg(fps)}`;
-  const lines = ["ffconcat version 1.0"];
-  for (const run of runs) {
-    lines.push(`file ${quoteConcatPath(run.pngPath)}`, framerate);
-    lines.push(`duration ${frameMicros(run.endFrame) - frameMicros(run.startFrame)}us`);
-  }
-  const final = runs.at(-1);
-  if (final) lines.push(`file ${quoteConcatPath(final.pngPath)}`, framerate);
-  return `${lines.join("\n")}\n`;
-}
-
-/** Concat-demuxer quoting: single-quoted, with `'` written as `'\''`. */
-function quoteConcatPath(path: string): string {
-  return `'${path.replace(/'/g, "'\\''")}'`;
-}
 
 /**
  * Filter graph for the composite. Both inputs are resampled onto the output
@@ -124,8 +84,6 @@ function buildCompositeFilterGraph(request: CompositeRequest): string {
     videoChain.push(convert("rgb48le"));
   }
   videoChain.push(convert("gbrp16le"));
-  // Overlay frames are converted once per concat entry, before `fps` repeats
-  // them onto the output grid.
   return `${buildBlendFilters(videoChain.join(","), fpsFilter)}[vout]`;
 }
 
@@ -157,14 +115,12 @@ export function buildBlendFilters(videoChain: string, overlayFilter?: string): s
  *     extraction's seek normalization (`ffmpegSeekSeconds`, negative when the
  *     streams start after 0, as in the layered extraction), read for
  *     `video.duration` plus one output frame of slack.
- *   - Input 1: the overlay PNGs through the concat demuxer
- *     (`buildOverlayConcatList`).
+ *   - Input 1: one overlay PNG per output frame on stdin (`image2pipe`, PNG,
+ *     at the output rate, so frame `i` has pts `i`), probed from its first
+ *     PNG so the composite keeps up with capture.
  *   - Filter: `buildCompositeFilterGraph`; `-frames:v plan.totalFrames`.
  */
-export function buildCompositeDecodeArgs(
-  request: CompositeRequest,
-  concatListPath: string,
-): string[] {
+export function buildCompositeDecodeArgs(request: CompositeRequest): string[] {
   const { video, plan } = request;
   // Not clamped at 0: when every stream starts after 0 (an mp4 without an edit
   // list, a remuxed transport stream) and `mediaStart` sits inside that offset,
@@ -178,7 +134,10 @@ export function buildCompositeDecodeArgs(
   return [
     ...["-hide_banner", "-nostdin", "-v", "error"],
     ...["-ss", seek.toFixed(6), "-t", readSeconds.toFixed(6), "-i", video.srcPath],
-    ...["-f", "concat", "-safe", "0", "-i", concatListPath],
+    // Decode each PNG as it arrives: the default probe waits for megabytes of overlays first,
+    // and a frame-threaded PNG decoder holds a frame per thread.
+    ...["-probesize", "32", "-analyzeduration", "0", "-threads", "1"],
+    ...["-f", "image2pipe", "-c:v", "png", "-framerate", fpsToFfmpegArg(plan.fps), "-i", "pipe:0"],
     ...["-filter_complex", buildCompositeFilterGraph(request), "-map", "[vout]"],
     ...["-frames:v", String(plan.totalFrames), "-an"],
     ...["-f", "rawvideo", "-pix_fmt", "rgb48le", "pipe:1"],
@@ -217,26 +176,45 @@ export interface CompositeDeps {
     options: StreamingEncoderOptions,
     signal: AbortSignal,
   ) => Promise<StreamingEncoder>;
-  /** Spawns the composite, frames on stdout; `wait` settles when it exits. */
+  /**
+   * Spawns the composite, overlay PNGs to `overlays`, frames on stdout;
+   * `wait` settles when it exits and its pipes close, `drop` closes our ends
+   * of both pipes (so a process the binary left behind, a wrapper's child,
+   * stops too).
+   */
   spawnComposite: (
     args: string[],
     signal: AbortSignal,
-  ) => { frames: AsyncIterable<Buffer>; wait: () => Promise<{ ok: boolean; error: string }> };
+  ) => {
+    overlays: Writable;
+    frames: AsyncIterable<Buffer>;
+    wait: () => Promise<{ ok: boolean; error: string }>;
+    drop: () => void;
+  };
   /** Resolves once the encoder (`pid`) has gone idle (`encoderPacing.ts`). */
   waitForEncoder: (pid: number | undefined, options: IdleWaitOptions) => Promise<void>;
+  /** Rejects with `EncoderPacingError` unless `pid` is an ffmpeg with no process of its own (`encoderPacing.ts`). */
+  checkEncoder: (pid: number | undefined) => Promise<void>;
 }
 
 function spawnComposite(args: string[], signal: AbortSignal) {
   const child = spawn(getFfmpegBinary(), args, {
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
   });
   trackChildProcess(child);
   const managed = new ManagedChildProcess(child, { signal });
-  const stdout = child.stdout;
-  if (!stdout) throw new Error("hdrPassthrough: the composite has no stdout");
+  const { stdin, stdout } = child;
+  if (!stdin || !stdout) throw new Error("hdrPassthrough: the composite has no stdin or stdout");
+  // A composite that exits early closes its stdin; the feed sees that as a failed write.
+  stdin.on("error", () => undefined);
   return {
+    overlays: stdin,
     frames: stdout as AsyncIterable<Buffer>,
+    drop: () => {
+      stdin.destroy();
+      stdout.destroy();
+    },
     wait: async () => {
       const outcome = await managed.wait();
       const ok = outcome.reason === "exit" && outcome.exitCode === 0;
@@ -245,7 +223,7 @@ function spawnComposite(args: string[], signal: AbortSignal) {
   };
 }
 
-const DEFAULT_COMPOSITE_DEPS: CompositeDeps = {
+export const DEFAULT_COMPOSITE_DEPS: CompositeDeps = {
   spawnEncoder: (outputPath, options, signal) =>
     spawnStreamingEncoder(outputPath, options, signal, {
       ffmpegStreamingTimeout: LAYERED_ENCODER_TIMEOUT_MS,
@@ -253,9 +231,147 @@ const DEFAULT_COMPOSITE_DEPS: CompositeDeps = {
   spawnComposite,
   waitForEncoder: (pid, options) =>
     pid === undefined
-      ? Promise.reject(new Error("hdrPassthrough: the encoder has no process id"))
+      ? Promise.reject(new EncoderPacingError("the encoder has no process id"))
       : waitUntilIdle(() => procThreadStates(pid), options),
+  checkEncoder: (pid) => assertPaceableEncoder(pid),
 };
+
+/** Bytes of composited frames held ahead of the encoder, at least `MIN_READ_AHEAD` frames. */
+const READ_AHEAD_BYTES = 64 << 20;
+const MIN_READ_AHEAD = 2;
+const MAX_READ_AHEAD = 4;
+
+/** Frames the composite may run ahead of the encoder for `frameBytes`-sized frames. */
+export function readAheadDepth(frameBytes: number): number {
+  const fits = Math.floor(READ_AHEAD_BYTES / Math.max(1, frameBytes));
+  return Math.min(MAX_READ_AHEAD, Math.max(MIN_READ_AHEAD, fits));
+}
+
+/**
+ * `source`'s items in order, with up to `depth` requested ahead of the
+ * consumer, so the composite keeps producing frames while the encoder
+ * works on one instead of waiting on the pipe. A failure surfaces when its
+ * item is reached.
+ */
+export async function* readAhead<T>(source: AsyncIterable<T>, depth: number): AsyncGenerator<T> {
+  const iterator = source[Symbol.asyncIterator]();
+  const pending: Array<Promise<IteratorResult<T>>> = [];
+  const request = () => {
+    const next = iterator.next();
+    // Handled where it is awaited; this only keeps an early failure from going unhandled.
+    next.catch(() => undefined);
+    pending.push(next);
+  };
+  for (let i = 0; i < depth; i++) request();
+  for (;;) {
+    const next = pending.shift();
+    if (!next) return;
+    const { done, value } = await next;
+    if (done) return;
+    request();
+    yield value;
+  }
+}
+
+/** Overlay PNG paths handed from capture to the composite as frames settle. */
+export interface OverlayFrameQueue extends AsyncIterable<string> {
+  /** The next frame's PNG. */
+  push(pngPath: string): void;
+  /** No more frames. */
+  end(): void;
+  /** No more frames: capture failed with `error`, which the reader throws. */
+  fail(error: unknown): void;
+}
+
+/** A single-reader `OverlayFrameQueue`. */
+export function createOverlayFrameQueue(): OverlayFrameQueue {
+  const items: string[] = [];
+  let closed: { error?: unknown; failed: boolean } | undefined;
+  let wake: (() => void) | undefined;
+  const notify = () => {
+    wake?.();
+    wake = undefined;
+  };
+  return {
+    push(pngPath) {
+      if (closed) throw new Error("hdrPassthrough: overlay frame after the last");
+      items.push(pngPath);
+      notify();
+    },
+    end() {
+      closed ??= { failed: false };
+      notify();
+    },
+    fail(error) {
+      closed ??= { error, failed: true };
+      notify();
+    },
+    async *[Symbol.asyncIterator]() {
+      for (;;) {
+        const next = items.shift();
+        if (next !== undefined) {
+          yield next;
+          continue;
+        }
+        if (closed?.failed) throw closed.error;
+        if (closed) return;
+        await new Promise<void>((done) => {
+          wake = done;
+        });
+      }
+    },
+  };
+}
+
+/** Writes `bytes` to `sink`, waiting out back-pressure; rejects once the sink fails or closes. */
+async function writeAll(sink: Writable, bytes: Buffer): Promise<void> {
+  const stopped = () => new Error("hdrPassthrough: the composite stopped reading overlays");
+  if (sink.destroyed || sink.writableEnded) throw stopped();
+  if (sink.write(bytes)) return;
+  await new Promise<void>((done, fail) => {
+    const settle = (error?: unknown) => {
+      sink.off("drain", onDrain);
+      sink.off("close", onClose);
+      sink.off("error", settle);
+      if (error === undefined) done();
+      else fail(error);
+    };
+    const onDrain = () => settle();
+    const onClose = () => settle(stopped());
+    sink.on("drain", onDrain);
+    sink.on("close", onClose);
+    sink.on("error", settle);
+  });
+}
+
+/**
+ * Writes each frame's overlay PNG to the composite, in order, rereading a
+ * file only when the PNG changes, then ends its input. Throws when the
+ * frames fail (capture declined) or are not `totalFrames`.
+ */
+export async function feedOverlays(
+  frames: AsyncIterable<string>,
+  sink: Writable,
+  totalFrames: number,
+): Promise<void> {
+  let last: { path: string; bytes: Buffer } | undefined;
+  let fed = 0;
+  try {
+    for await (const path of frames) {
+      if (fed >= totalFrames) throw new Error("hdrPassthrough: more overlay frames than the plan");
+      if (last?.path !== path) last = { path, bytes: await readFile(path) };
+      await writeAll(sink, last.bytes);
+      fed++;
+    }
+    if (fed !== totalFrames) {
+      throw new Error(`hdrPassthrough: ${fed} overlay frames, expected ${totalFrames}`);
+    }
+  } catch (error) {
+    sink.destroy();
+    throw error;
+  }
+  sink.end();
+}
 
 /**
  * Whole frames of `frameBytes` from a byte stream, each a fresh buffer;
@@ -279,43 +395,83 @@ async function* wholeFrames(chunks: AsyncIterable<Buffer>, frameBytes: number) {
   if (pendingBytes > 0) throw new Error("hdrPassthrough: the composite ended inside a frame");
 }
 
+/** How long a failed encode loop waits to learn whether the composite itself exited. */
+const COMPOSITE_EXIT_GRACE_MS = 1_000;
+
+/** The composite's exit if it comes within `ms`, else undefined. */
+async function exitedWithin(
+  composite: { wait: () => Promise<{ ok: boolean; error: string }> },
+  ms: number,
+): Promise<{ ok: boolean; error: string } | undefined> {
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<undefined>((done) => {
+    timer = setTimeout(() => done(undefined), ms);
+  });
+  try {
+    return await Promise.race([composite.wait().catch(() => undefined), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
- * Writes the concat list into `request.workDir`, runs the composite
- * (`buildCompositeDecodeArgs`) and the layered encoder
- * (`compositeEncoderOptions`) under `request.abortSignal`, handing each
- * composited frame to the encoder once it has gone idle after the previous
- * one, and resolves with timing + size. `onFramesEncoded` hears each frame
- * the encoder has taken. Throws (caller falls back) when either process
- * fails, when the composite yields other than `plan.totalFrames` frames, or
- * when the encoder reports another count or an empty file; both processes
- * are stopped first. An abort rethrows the signal's reason.
+ * Runs the composite (`buildCompositeDecodeArgs`), fed each frame's overlay
+ * as `request.overlayFrames` yields it (`feedOverlays`), and the layered
+ * encoder (`compositeEncoderOptions`) under `request.abortSignal`, handing
+ * each composited frame to the encoder once it has gone idle after the
+ * previous one (the composite runs a few frames ahead, `readAhead`, and the
+ * encoder process is checked before each frame, `checkEncoder`), and
+ * resolves with timing + size. `onFramesEncoded` hears each frame the
+ * encoder has taken. Throws (caller falls back) when the overlay frames
+ * fail (with their error), when either process fails, when the composite
+ * yields other than `plan.totalFrames` frames, or when the encoder reports
+ * another count or an empty file, and with `EncoderPacingError` when the
+ * encoder cannot be paced; both processes are stopped first. An abort
+ * rethrows the signal's reason.
  */
 // fallow-ignore-next-line complexity
 export async function compositeAndEncode(
   request: CompositeRequest,
   deps: CompositeDeps = DEFAULT_COMPOSITE_DEPS,
 ): Promise<CompositeResult> {
-  const { plan, overlays, abortSignal, outputPath } = request;
+  const { plan, abortSignal, outputPath } = request;
   abortSignal?.throwIfAborted();
 
-  mkdirSync(request.workDir, { recursive: true });
   mkdirSync(dirname(outputPath), { recursive: true });
-  const concatListPath = join(request.workDir, CONCAT_LIST_NAME);
-  writeFileSync(concatListPath, buildOverlayConcatList(overlays.overlays, plan.fps));
 
   const stop = new AbortController();
   const signal = abortSignal ? AbortSignal.any([abortSignal, stop.signal]) : stop.signal;
   const started = Date.now();
   const encoder = await deps.spawnEncoder(outputPath, compositeEncoderOptions(request), signal);
-  const composite = deps.spawnComposite(buildCompositeDecodeArgs(request, concatListPath), signal);
+  try {
+    // Before anything else starts: an encoder that is not an ffmpeg declines here.
+    await deps.checkEncoder(encoder.pid);
+  } catch (error) {
+    stop.abort(error);
+    await encoder.close().catch(() => undefined);
+    throw error;
+  }
+  const composite = deps.spawnComposite(buildCompositeDecodeArgs(request), signal);
+  let feedError: unknown;
+  const feeding = feedOverlays(request.overlayFrames, composite.overlays, plan.totalFrames).catch(
+    (error: unknown) => {
+      feedError = error;
+      stop.abort(error);
+    },
+  );
   const frameBytes = plan.width * plan.height * RGB48_BYTES_PER_PIXEL;
   let framesWritten = 0;
   let idleWaitMs = 0;
+  let frameWaitMs = 0;
+  const ahead = readAheadDepth(frameBytes);
   try {
-    for await (const frame of wholeFrames(composite.frames, frameBytes)) {
+    let asked = Date.now();
+    for await (const frame of readAhead(wholeFrames(composite.frames, frameBytes), ahead)) {
+      frameWaitMs += Date.now() - asked;
       if (framesWritten >= plan.totalFrames) {
         throw new Error("hdrPassthrough: the composite wrote more frames than the plan");
       }
+      await deps.checkEncoder(encoder.pid);
       if (!(await encoder.writeFrame(frame))) {
         throw new Error(
           `hdrPassthrough: the encoder stopped: ${encoder.getExitError() ?? "exited early"}`,
@@ -326,7 +482,10 @@ export async function compositeAndEncode(
       await deps.waitForEncoder(encoder.pid, { ...ENCODER_IDLE, signal });
       idleWaitMs += Date.now() - waitStart;
       request.onFramesEncoded?.(framesWritten);
+      asked = Date.now();
     }
+    await feeding;
+    if (feedError !== undefined) throw feedError;
     const decoded = await composite.wait();
     if (!decoded.ok) throw new Error(`hdrPassthrough: ffmpeg composite failed: ${decoded.error}`);
     if (framesWritten !== plan.totalFrames) {
@@ -335,10 +494,18 @@ export async function compositeAndEncode(
       );
     }
   } catch (error) {
+    // A composite that died (out of memory, a signal) ends its output early: name why.
+    const died = await exitedWithin(composite, COMPOSITE_EXIT_GRACE_MS);
     stop.abort(error);
+    composite.drop();
     await encoder.close().catch(() => undefined);
     await composite.wait().catch(() => undefined);
+    // Not awaited: the feed may still be waiting on capture's next frame, and fails at its next write.
     if (abortSignal?.aborted) throw abortSignal.reason;
+    if (feedError !== undefined) throw feedError;
+    if (died && !died.ok && error instanceof Error) {
+      throw new Error(`${error.message}; ffmpeg composite failed: ${died.error}`);
+    }
     throw error;
   }
 
@@ -361,6 +528,7 @@ export async function compositeAndEncode(
   return {
     encodeMs: Date.now() - started,
     idleWaitMs,
+    frameWaitMs,
     framesEncoded,
     fileSize: result.fileSize,
   };

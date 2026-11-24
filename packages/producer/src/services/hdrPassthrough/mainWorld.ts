@@ -136,6 +136,7 @@ export const CAPTURE_SOURCE = String.raw`(function () {
     IntersectionObserver: ref(["IntersectionObserver"]),
     PerformanceObserver: ref(["PerformanceObserver"]),
     ReportingObserver: ref(["ReportingObserver"]),
+    FinalizationRegistry: ref(["FinalizationRegistry"]),
     define: ref(["CustomElementRegistry", "prototype", "define"]),
     Worker: ref(["Worker"]),
     SharedWorker: ref(["SharedWorker"]),
