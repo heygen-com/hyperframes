@@ -39,6 +39,7 @@ type Gsap = {
 const frameGsap = () => (window as unknown as { gsap?: Gsap }).gsap;
 
 const before = new WeakMap<Element, Before>();
+const liveDrafts = new Map<Styled, EditingDraft>();
 let lastDraft = 0;
 
 /** "calc(50% + 2px) 4px" as its top-level parts. */
@@ -195,9 +196,9 @@ function drawRotate(element: Styled, rotate: EditingDraftRotate | null): void {
   gsap?.set?.(element, { rotation: rotate.angle });
 }
 
-function end(element: Styled, ending: EditingDraftEnd): void {
+function end(element: Styled, ending: EditingDraftEnd): boolean {
   const saved = before.get(element);
-  if (!saved || ("draft" in ending && ending.draft !== saved.draft)) return;
+  if (!saved || ("draft" in ending && ending.draft !== saved.draft)) return false;
   if (ending.end === "restore") {
     restore(element, DRAWN);
     restoreGsapPosition(element);
@@ -205,29 +206,44 @@ function end(element: Styled, ending: EditingDraftEnd): void {
   }
   if (ending.end === "keep-size") restore(element, ["translate"]);
   before.delete(element);
+  liveDrafts.delete(element);
+  return ending.end === "restore";
 }
 
-function apply(element: Styled, draft: EditingDraft): void {
+/** True when it restored a draft. */
+function apply(element: Styled, draft: EditingDraft): boolean {
   if ("end" in draft) return end(element, draft);
+  liveDrafts.set(element, draft);
   if ("rotate" in draft) drawRotate(element, draft.rotate ?? null);
   if (draft.translate) drawTranslate(element, draft.translate);
   else restore(element, ["translate"]);
   if (draft.size) drawSize(element, draft.size);
   else restore(element, SIZE_PROPERTIES);
+  return false;
+}
+
+/** Re-renders the timelines, then puts every live draft back over what they drew. */
+function redrawKeepingLiveDrafts(): void {
+  redrawTimelines();
+  for (const [element, draft] of liveDrafts) {
+    if (element.isConnected) apply(element, draft);
+    else liveDrafts.delete(element);
+  }
 }
 
 /** Applies each draft in order; one for an element this load no longer has is skipped. */
 export function drawDrafts(drafts: readonly EditingDraft[]): EditingDraftReply {
   let drawn = 0;
+  let restored = false;
   const numbers: Record<string, number> = {};
   for (const draft of drafts) {
     const element = elementForHandle(draft.handle);
     if (!isStylableElement(element)) continue;
-    apply(element, draft);
+    restored = apply(element, draft) || restored;
     drawn++;
     const saved = before.get(element);
     if (saved) numbers[draft.handle] = saved.draft;
   }
-  if (drafts.some((draft) => "end" in draft && draft.end === "restore")) redrawTimelines();
+  if (restored) redrawKeepingLiveDrafts();
   return { drawn, drafts: numbers };
 }
