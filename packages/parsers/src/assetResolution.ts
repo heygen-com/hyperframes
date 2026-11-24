@@ -93,6 +93,8 @@ export function cleanAssetUrl(url: string): string {
  * Tests inject `path.win32` / `path.posix` to exercise both platforms' rules
  * from a single OS (same pattern as producer/fileServer.ts's `isPathInside`).
  */
+const LEADING_PARENT_SEGMENT = /^\.\.(?:[\\/]|$)/;
+
 export function isWithinProjectRoot(
   projectDir: string,
   candidate: string,
@@ -100,9 +102,7 @@ export function isWithinProjectRoot(
 ): boolean {
   const projectRoot = pathModule.resolve(projectDir);
   const relativePath = pathModule.relative(projectRoot, candidate);
-  return (
-    relativePath === "" || (!relativePath.startsWith("..") && !pathModule.isAbsolute(relativePath))
-  );
+  return !LEADING_PARENT_SEGMENT.test(relativePath) && !pathModule.isAbsolute(relativePath);
 }
 
 function addCandidate(candidates: string[], candidate: string): void {
@@ -150,8 +150,6 @@ export function srcOnAnotherNetworkRoot(projectDir: string, src: string): boolea
   const path = fileUrlAsPath(cleanAssetUrl(src));
   return isAbsolute(path) && namesAnotherNetworkRoot(projectDir, path);
 }
-
-const LEADING_PARENT_SEGMENT = /^\.\.(?:[\\/]|$)/;
 
 function staysInsideProject(projectDir: string, path: string): boolean {
   const relativePath = relative(resolve(projectDir), path);

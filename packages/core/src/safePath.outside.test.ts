@@ -40,6 +40,7 @@ describe("isSafePath on a path spelled outside the base", () => {
       expect(isSafePath(projectDir, outside)).toBe(false);
       expect(touched.filter((path) => path.includes("outside.mov"))).toEqual([]);
       expect(isSafePath(projectDir, join(projectDir, "clip.mov"))).toBe(true);
+      expect(isSafePath(projectDir, join(projectDir, "..intro.mp4"))).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
