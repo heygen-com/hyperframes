@@ -523,8 +523,6 @@ export function useTimelinePlayer({
       processTimelineMessageRef,
       enrichMissingCompositionsRef,
       lastTimelineMessageRef,
-      getAdapter,
-      syncTimelineElements,
     });
 
     const handleVisibilityChange = () => {

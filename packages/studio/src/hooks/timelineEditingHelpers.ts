@@ -1,4 +1,3 @@
-import { applyAuthoredTiming } from "@hyperframes/core/studio-preview-mark";
 import { type TimelineElement, usePlayerStore } from "../player/store/playerStore";
 import { toAuthoredStart } from "../player/store/timelineElement";
 import {
@@ -116,21 +115,6 @@ export function findTimelineElementInDocument(
     return null;
   }
 }
-export function patchIframeDomTiming(
-  iframe: HTMLIFrameElement | null,
-  element: TimelineElement,
-  attrs: Array<[string, string]>,
-  activeCompositionPath: string | null = null,
-): void {
-  try {
-    const el = findTimelineElementInIframe(iframe, element, activeCompositionPath);
-    if (!el) return;
-    applyAuthoredTiming(el, attrs);
-  } catch {
-    // Cross-origin or mid-navigation — file save is enqueued; iframe patch is best-effort.
-  }
-}
-
 /** Takes deleted clips out of the live preview at once: until the reload lands, anything that re-reads the
  *  preview (composition enrichment) would otherwise put them back on the timeline. */
 export function removeIframeTimelineElements(

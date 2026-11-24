@@ -1,7 +1,7 @@
 // The frame's GSAP tweens as plain data, for a parent that cannot reach the frame's window.
 import type { EditingElementHandle } from "../editingElement";
 import { handleFor } from "../editingHandles";
-import { MOVES, rendersTransform } from "../editingGestureStart";
+import { MOVES, rendersTransform, withoutGsapTakeover } from "../editingGestureStart";
 import { isPlainRecord } from "../editingPort";
 import { isElementNode } from "../domRealm";
 import {
@@ -170,10 +170,12 @@ class SnapshotReader {
         const value = Number(gsap?.getProperty?.(element, channel));
         if (Number.isFinite(value)) values[channel] = value;
       };
-      for (const channel of channels) read(channel);
       const gsapOwnsPosition =
         rendersTransform(element) || MOVES.some((channel) => channels.has(channel));
-      if (gsapOwnsPosition) for (const axis of ["x", "y"]) if (!(axis in values)) read(axis);
+      withoutGsapTakeover(element, () => {
+        for (const channel of channels) read(channel);
+        if (gsapOwnsPosition) for (const axis of ["x", "y"]) if (!(axis in values)) read(axis);
+      });
       const className = element.getAttribute("class") ?? "";
       if (className.length > MAX_SNAPSHOT_TEXT) throw new SnapshotBound("class names");
       return { handle: handleFor(element), id: capped(element.id), className, values };

@@ -1855,6 +1855,17 @@ describe("WebAudioTransport", () => {
     it("leaves a clip that has not loaded to its source", () => {
       expect(transport().fitsDecodeBudget(audio("a.mp4", Number.NaN))).toBe(false);
     });
+
+    it("never fetches an hour-long source, too long to decode in the page, on a path that skips the budget", async () => {
+      vi.stubGlobal("mediaHeaderSeconds", () => 3600);
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      const t = transport();
+      await expect(t.decodeAudioElement(audio("long.mp4", Number.NaN))).resolves.toBeNull();
+      await expect(t.decodeAudioElement(audio("hour.mp4", 3600))).resolves.toBeNull();
+      expect(fetch).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
+    });
   });
 
   describe("decodeAudioElement retry policy (late-asset self-heal)", () => {

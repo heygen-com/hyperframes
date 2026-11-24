@@ -1266,7 +1266,7 @@ const RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT = `
           for (const name of list(join(root, version))) {
             const folder = join(root, version, name);
             if (!["chrome-headless-shell", "chrome-headless-shell.exe"].some((shell) => isShell(join(folder, shell)))) continue;
-            try { PINNED_SHELL_DIGESTS["158.0.8127.36"].push(headlessShellDigest(folder)); } catch {}
+            try { PINNED_SHELL_DIGESTS["158.0.8127.88"].push(headlessShellDigest(folder)); } catch {}
           }
     });
   trust.then(() => import(process.env.HF_TEST_MODULE_URL)).then(({ resolveHeadlessShellPath }) => {
@@ -1593,7 +1593,7 @@ describe("resolveHeadlessShellPath", () => {
           ".cache",
           ...cache,
           "chrome-headless-shell",
-          "linux-158.0.8127.36",
+          "linux-158.0.8127.88",
         );
         mkdirSync(join(folder, "chrome-headless-shell-linux64"), { recursive: true });
         writeFileSync(
@@ -1665,7 +1665,7 @@ describe("resolveHeadlessShellPath", () => {
         );
       mkdirSync(shell("153.0.7990.1"), { recursive: true });
       for (const [version, content] of [
-        ["158.0.8127.36", ""],
+        ["158.0.8127.88", ""],
         ["150.0.7871.124", "shell"],
       ]) {
         mkdirSync(join(shell(version), ".."), { recursive: true });

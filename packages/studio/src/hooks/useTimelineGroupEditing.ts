@@ -15,7 +15,6 @@ import {
   extendRootDurationIfNeeded,
   formatTimelineAttributeNumber,
   formatTimelineMediaOffset,
-  patchIframeDomTiming,
   persistTimelineBatchEdit,
   type PersistTimelineBatchChange,
   type RecordEditInput,
@@ -23,13 +22,16 @@ import {
 import { playbackStartAttributeForElement } from "../player/lib/timelineElementHelpers";
 import {
   captureDurationRollback,
+  patchIframeDomTiming,
+  syncPreviewContentDuration,
+} from "./previewTimingPatch";
+import {
   finishGroupTimingGsapFallback,
   timingGestureStep,
   sdkTimingGsapSync,
   readFileContent,
   scaleGsapMutation,
   shiftGsapMutation,
-  syncPreviewContentDuration,
 } from "./timelineTimingSync";
 import type { GsapMutationStatus } from "./gsapMutationClient";
 import { getStudioSaveErrorMessage, getStudioSaveErrorTone } from "../utils/studioSaveDiagnostics";

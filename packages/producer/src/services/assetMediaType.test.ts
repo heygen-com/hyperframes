@@ -275,6 +275,26 @@ describe("preflightCompositionAssetMediaTypes", () => {
       },
     );
 
+    it.each([
+      ["an option line", "ffconcat version 1.0\nfile clip.mp4\noption safe 0\n"],
+      ["an entry that is not there", "ffconcat version 1.0\nfile gone.mp4\n"],
+      [
+        "a line hidden behind a lone carriage return",
+        "ffconcat version 1.0\nfile a.mp4\rfile b.mp4\n",
+      ],
+    ])("refuses a project playlist with %s", async (_name, list) => {
+      writeFileSync(join(projectDir, "a.mp4"), "media");
+      writeFileSync(join(projectDir, "b.mp4"), "media");
+      writeFileSync(join(projectDir, "list.ffconcat"), list);
+      await expect(run({ videoSrc: "list.ffconcat" })).rejects.toBeInstanceOf(NotMediaPayloadError);
+    });
+
+    it("keeps a project playlist naming media beside it", async () => {
+      writeFileSync(join(projectDir, "a.mp4"), "media");
+      writeFileSync(join(projectDir, "list.ffconcat"), "ffconcat version 1.0\nfile a.mp4\n");
+      await expect(run({ videoSrc: "list.ffconcat" })).resolves.toBeUndefined();
+    });
+
     it.each(["data:x/../streamed-preview.html", "BLOB:a/../streamed-preview.html"])(
       "sniffs a project file named behind a URL scheme: %s",
       async (videoSrc) => {

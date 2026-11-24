@@ -2,7 +2,6 @@ import { useCallback } from "react";
 import type { TimelineElement } from "../player";
 import { toAuthoredStart, toCompositionTime } from "../player/store/timelineElement";
 import {
-  patchIframeDomTiming,
   persistTimelineEdit,
   formatTimelineAttributeNumber,
   formatTimelineMediaOffset,
@@ -14,10 +13,13 @@ import {
 import { playbackStartAttributeForElement } from "../player/lib/timelineElementHelpers";
 import {
   captureDurationRollback,
+  patchIframeDomTiming,
+  syncPreviewContentDuration,
+} from "./previewTimingPatch";
+import {
   finishClipTimingFallback,
   sdkTimingGsapSync,
   readFileContent,
-  syncPreviewContentDuration,
   timingGestureStep,
 } from "./timelineTimingSync";
 import { cutoverCommittedOrThrow, sdkTimingPersist, type CutoverResult } from "../utils/sdkCutover";
