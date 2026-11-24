@@ -163,13 +163,9 @@ const STEPS: Record<Step, (preview: Preview, sealed: boolean) => Promise<unknown
         const msg = { source: "hf-parent", type: "control", action: a };
         document.querySelector("iframe")!.contentWindow!.postMessage(msg, "*");
       }, action);
-    const before = await p.time();
     await control("play");
-    const afterPlay = await p.time();
     await expect.poll(p.time).toBeGreaterThan(1);
-    const polled = await p.time();
     await control("pause");
-    const afterPause = await p.time();
     await p.frame.waitForFunction(
       () => !(window as unknown as { __player: { isPlaying(): boolean } }).__player.isPlaying(),
     );
@@ -177,13 +173,7 @@ const STEPS: Record<Step, (preview: Preview, sealed: boolean) => Promise<unknown
     await p.frame.evaluate(
       () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
     );
-    pausedAt = Math.round((await p.time()) * 100) / 100;
-    const playing = await p.frame.evaluate(() =>
-      (window as unknown as { __player: { isPlaying(): boolean } }).__player.isPlaying(),
-    );
-    console.info(
-      `[probe-play] before=${before} afterPlay=${afterPlay} polled=${polled} afterPause=${afterPause} pausedAt=${pausedAt} playing=${playing}`,
-    );
+    pausedAt = await p.time();
   },
   // Studio's editing port gives a request 5 s (editingPort.ts); the plugin stays held past that.
   late: () => new Promise((done) => setTimeout(done, 5_500)),
@@ -242,17 +232,10 @@ let pausedAt: number | undefined;
 async function play(mode: string, steps: Step[]) {
   const sealed = mode === "sealed";
   pausedAt = undefined;
-  const tOpen = performance.now();
   const preview = await openPreview(mode);
   const { page, frame, pluginRequested, seek, time } = preview;
-  const openMs = Math.round(performance.now() - tOpen);
   await seek(4);
   if (!sealed) await restoreLeftOfC(preview, sealed, 1);
-  const t0 = performance.now();
-  let seenMs = -1;
-  page.on("request", (r) => {
-    if (seenMs < 0 && /MotionPathPlugin/.test(r.url())) seenMs = Math.round(performance.now() - t0);
-  });
   const older = rerun(
     page,
     timeline("main", "older", 60, true),
@@ -260,15 +243,7 @@ async function play(mode: string, steps: Step[]) {
     sealed ? restoreC(1) : [],
     true,
   );
-  let settledAs = "pending";
-  void older.then(
-    (v) => (settledAs = v),
-    (e) => (settledAs = `threw ${e}`),
-  );
   await pluginRequested;
-  console.info(
-    `[probe] ${mode} ${steps.join(",")} open=${openMs} seen=${seenMs} held=${Math.round(performance.now() - t0)} older=${settledAs}`,
-  );
   for (const step of steps) await STEPS[step](preview, sealed);
   const answer = await Promise.race([older, Promise.resolve("kept")]);
   const state = await frame.evaluate(() => {
@@ -280,12 +255,16 @@ async function play(mode: string, steps: Step[]) {
       x: Math.round(new DOMMatrix(getComputedStyle(target).transform).m41),
     };
   });
-  const at = Math.round((await time()) * 100) / 100;
+  const now = await time();
+  const at = Math.round(now * 100) / 100;
   const outcome = {
     answer,
     ...state,
     at,
-    ...(pausedAt === undefined ? {} : { moved: Math.abs(at - pausedAt) > 1 / 30, pausedAt }),
+    // The swap seeks to the frame at or below the paused time; only a whole frame or more is a move.
+    ...(pausedAt === undefined
+      ? {}
+      : { moved: Math.abs(now - pausedAt) >= 1 / 30, pausedAt: Math.round(pausedAt * 100) / 100 }),
   };
   await page.close();
   return outcome;

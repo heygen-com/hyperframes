@@ -56,27 +56,40 @@ jobs:
         run: |
           bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
           bun run --cwd packages/core build
-      - name: Loop the file, cold Chrome each run, half under CPU burners
+      - name: Fixed file, 3 runs in a row, both modes
+        shell: pwsh
+        run: |
+          for ($i = 1; $i -le 3; $i++) {
+            $out = bun run --cwd packages/studio test -- src/utils/gsapSoftReloadWait.browser.test.ts --maxWorkers=2 --reporter=verbose 2>&1 | Out-String
+            $code = $LASTEXITCODE
+            $out -split "`n" | Where-Object { $_ -match 'Tests  |FAIL|AssertionError|launch 1/2 ready' } | ForEach-Object { "full ${i}: $_" }
+            "full $i exit=$code"
+          }
+      - name: Fixed play row, 16 runs under CPU burners
         shell: pwsh
         env:
           HF_PARITY_MODE: unsealed
         run: |
-          $results = @()
           for ($i = 1; $i -le 16; $i++) {
             $jobs = 1..4 | ForEach-Object { Start-Job { while ($true) { $x = 1 } } }
             $out = bun run --cwd packages/studio test -- src/utils/gsapSoftReloadWait.browser.test.ts -t "play,ok" --maxWorkers=2 --reporter=verbose 2>&1 | Out-String
             $code = $LASTEXITCODE
             $jobs | Stop-Job -PassThru | Remove-Job
-            $out -split "`n" | Where-Object { $_ -match 'probe-play|soft-wait\] unsealed play|Tests  ' } | ForEach-Object { "play ${i}: $_" }
-            $results += "play $i exit=$code"
+            $out -split "`n" | Where-Object { $_ -match 'soft-wait\] unsealed play|Tests  ' } | ForEach-Object { "play ${i}: $_" }
+            "play $i exit=$code"
           }
-          for ($i = 1; $i -le 8; $i++) {
-            $jobs = @()
-            if ($i % 2 -eq 0) { $jobs = 1..4 | ForEach-Object { Start-Job { while ($true) { $x = 1 } } } }
-            $out = bun run --cwd packages/studio test -- src/utils/gsapSoftReloadWait.browser.test.ts --maxWorkers=2 --reporter=verbose 2>&1 | Out-String
-            $code = $LASTEXITCODE
-            $jobs | Stop-Job -PassThru | Remove-Job
-            $out -split "`n" | Where-Object { $_ -match '\[probe\] unsealed ok |launch 1/2 ready|Tests  |FAIL|AssertionError|soft-wait\] unsealed play' } | ForEach-Object { "run $i load=$($i % 2 -eq 0): $_" }
-            $results += "run $i exit=$code"
-          }
-          $results
+      - name: Red first, plugin request 1.2 s late, fixed then main's test file
+        shell: pwsh
+        env:
+          HF_PARITY_MODE: unsealed
+          HF_PROBE_DELAY_MS: "1200"
+        run: |
+          $out = bun run --cwd packages/studio test -- src/utils/gsapSoftReloadWait.browser.test.ts -t "unsealed ok$" --maxWorkers=2 --reporter=verbose 2>&1 | Out-String
+          "fixed exit=$LASTEXITCODE"
+          $out -split "`n" | Where-Object { $_ -match 'Tests  |FAIL|AssertionError| ok ' } | ForEach-Object { "fixed: $_" }
+          git fetch -q --depth 1 origin ca64f8b5de709c56694ec184e5f8b8c0b25c1041
+          git show FETCH_HEAD:packages/studio/src/utils/gsapSoftReloadWait.browser.test.ts | Set-Content -Encoding utf8 packages/studio/src/utils/gsapSoftReloadWait.browser.test.ts
+          $out = bun run --cwd packages/studio test -- src/utils/gsapSoftReloadWait.browser.test.ts -t "unsealed ok$" --maxWorkers=2 --reporter=verbose 2>&1 | Out-String
+          "main exit=$LASTEXITCODE"
+          $out -split "`n" | Where-Object { $_ -match 'Tests  |FAIL|AssertionError| ok ' } | ForEach-Object { "main: $_" }
+          exit 0

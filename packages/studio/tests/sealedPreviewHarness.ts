@@ -143,7 +143,7 @@ export async function openPreview(
   const held: HTTPRequest[] = [];
   let holding = true;
   let markRequested!: () => void;
-  // A fresh Chrome's first intercepted request can take most of a second, so a test awaits this, never a short poll.
+  // A fresh Chrome's first intercepted request took up to 0.7 s on a Windows runner: await this, never a short poll.
   const pluginRequested = new Promise<void>((resolve) => (markRequested = resolve));
   await page.setRequestInterception(true);
   page.on("request", (request) => {
@@ -151,11 +151,16 @@ export async function openPreview(
     if (script !== undefined)
       return void request.respond({ status: 200, contentType: "text/javascript", body: script });
     if (!/MotionPathPlugin/.test(request.url())) return void request.continue();
-    markRequested();
     const serve = () =>
       request.respond({ status: 200, contentType: "text/javascript", body: plugin });
-    if (holding) held.push(request);
-    else void serve();
+    const take = () => {
+      markRequested();
+      if (holding) held.push(request);
+      else void serve();
+    };
+    const delay = Number(process.env.HF_PROBE_DELAY_MS ?? 0);
+    if (delay > 0) setTimeout(take, delay);
+    else take();
   });
   const release = async (status: 200 | 404) => {
     holding = false;
@@ -205,7 +210,7 @@ export async function openPreview(
     }, to);
     await expect.poll(time).toBeCloseTo(to, 2);
   };
-  return { page, frame, pluginRequested, release, seek, time };
+  return { page, frame, held, pluginRequested, release, seek, time };
 }
 
 export type Preview = Awaited<ReturnType<typeof openPreview>>;
