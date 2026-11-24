@@ -170,8 +170,7 @@ export function parseCanonicalManifest(body) {
  * @param {unknown} raw @returns {Manifest} */
 export const parseStoredManifest = (raw) => parseManifest(raw, true);
 
-/** Local ancestry can predate the current path policy. Only the verified digest and snapshot ID
- * are used to parent the next capture. @param {unknown} raw */
+/** Verify the local parent snapshot under the filename rules its writer supported. @param {unknown} raw */
 export const localBaseDigest = (raw) => readManifest(raw, "v4Base").sha256;
 
 /** @param {{uploadId?: unknown, snapshotId?: unknown}} saved */
