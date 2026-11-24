@@ -915,6 +915,10 @@ that plays. `--json` returns times in file seconds with each clip's placement
 (`start`, `mediaStart`, `playbackRate`, and `dataStart`, the element's own
 `data-start`, local to its composition), so film time is
 `start + (t − mediaStart) / playbackRate`; the text output prints film time.
+It reads a clip's file only when that file is inside the project and not one of
+its private files, or outside it where a local render would read it too; any other
+clip is reported as `file not found`. Files you name on the command line are read
+wherever they are.
 
 For a file not in the film yet, `--place-at <s>` answers as if it started at that
 film second; `--skip-file-seconds <s>` cuts that much from the start of the file
