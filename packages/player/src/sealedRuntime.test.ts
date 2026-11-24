@@ -13,6 +13,13 @@ const page = (head = "", body = "<script>window.composition = 1;</script>") =>
   `<!doctype html><html><head>${head}</head><body>${body}</body></html>`;
 const sameSite = () => `${location.origin}/films/one/index.html?take=2`;
 
+/** A response from the player's own site, as fetch gives it: every header readable. */
+function siteResponse(body?: BodyInit | null, init?: ResponseInit, type: ResponseType = "basic") {
+  const response = new Response(body, init);
+  Object.defineProperty(response, "type", { value: type });
+  return response;
+}
+
 function player(attributes: Record<string, string>): Player {
   const el = document.createElement("hyperframes-player") as Player;
   for (const [name, value] of Object.entries(attributes)) el.setAttribute(name, value);
@@ -30,7 +37,7 @@ describe("a sealed player brings its own runtime", () => {
 
   beforeEach(async () => {
     await import("./hyperframes-player.js");
-    fetchMock = vi.fn(async () => new Response(page()));
+    fetchMock = vi.fn(async () => siteResponse(page()));
     vi.stubGlobal("fetch", fetchMock);
   });
 
@@ -54,7 +61,7 @@ describe("a sealed player brings its own runtime", () => {
 
   it("loads a composition that brings its own runtime by src, under its own headers", async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response(page('<script src="/vendor/hyperframe.runtime.iife.js"></script>')),
+      siteResponse(page('<script src="/vendor/hyperframe.runtime.iife.js"></script>')),
     );
     const el = player({ "sandbox-origin": "", src: sameSite() });
 
@@ -64,7 +71,7 @@ describe("a sealed player brings its own runtime", () => {
 
   it("loads a preview that links the runtime by its marker, as Studio's does, by src", async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response(
+      siteResponse(
         page('<script data-hyperframes-preview-runtime="1" src="/api/runtime.js"></script>'),
       ),
     );
@@ -81,7 +88,7 @@ describe("a sealed player brings its own runtime", () => {
       '<script>var end = "</scripted"; var tag = "<script data-hyperframes-preview-runtime src=x>";</script>',
       '<SCRIPT>var end = "</SCRIPTS"; var tag = "<script data-hyperframes-preview-runtime>";</SCRIPT>',
     ]) {
-      fetchMock.mockResolvedValueOnce(new Response(page(head)));
+      fetchMock.mockResolvedValueOnce(siteResponse(page(head)));
       expect(await srcdocOf(player({ "sandbox-origin": "", src: sameSite() }))).toContain("built:");
       document.body.replaceChildren();
     }
@@ -89,7 +96,7 @@ describe("a sealed player brings its own runtime", () => {
 
   it("still adds the runtime when a page only compares or names it", async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response(
+      siteResponse(
         page(
           "<!-- needs hyperframe.runtime.iife.js --><script>if (window.__hyperframes === undefined) {}</script>",
         ),
@@ -100,7 +107,7 @@ describe("a sealed player brings its own runtime", () => {
 
   it("resolves paths at the URL a redirect landed on", async () => {
     const landed = `${location.origin}/films/one/`;
-    const response = new Response(page());
+    const response = siteResponse(page());
     Object.defineProperty(response, "url", { value: landed });
     fetchMock.mockResolvedValueOnce(response);
     const doc = await srcdocOf(
@@ -112,7 +119,7 @@ describe("a sealed player brings its own runtime", () => {
 
   it("resolves the composition's own relative base against its URL, ahead of it", async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response(page('<base target="_blank"><base href="assets/">')),
+      siteResponse(page('<base target="_blank"><base href="assets/">')),
     );
     const doc = await srcdocOf(player({ "sandbox-origin": "", src: sameSite() }));
 
@@ -123,7 +130,7 @@ describe("a sealed player brings its own runtime", () => {
 
   it("puts the runtime in the real head, not one named in a comment", async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response("<!-- <head> --><html><head></head><body></body></html>"),
+      siteResponse("<!-- <head> --><html><head></head><body></body></html>"),
     );
     const doc = await srcdocOf(player({ "sandbox-origin": "", src: sameSite() }));
 
@@ -135,7 +142,7 @@ describe("a sealed player brings its own runtime", () => {
     const [before, after] = page("", "<p>caf\u00e9</p>").split("\u00e9");
     const bytes = new Uint8Array([...encode(before!), 0xe9, ...encode(after!)]);
     fetchMock.mockResolvedValueOnce(
-      new Response(bytes, { headers: { "content-type": "text/html; charset=windows-1252" } }),
+      siteResponse(bytes, { headers: { "content-type": "text/html; charset=windows-1252" } }),
     );
     expect(await srcdocOf(player({ "sandbox-origin": "", src: sameSite() }))).toContain("café");
   });
@@ -165,7 +172,7 @@ describe("a sealed player brings its own runtime", () => {
   });
 
   it("loads src as before when its own site refuses the fetch", async () => {
-    fetchMock.mockResolvedValueOnce(new Response("", { status: 404 }));
+    fetchMock.mockResolvedValueOnce(siteResponse("", { status: 404 }));
     const el = player({ "sandbox-origin": "", src: sameSite() });
 
     await vi.waitFor(() => expect(el.iframeElement.src).toBe(sameSite()));
@@ -178,13 +185,23 @@ describe("a sealed player brings its own runtime", () => {
       ["content-security-policy", "script-src 'self'"],
       ["x-frame-options", "SAMEORIGIN"],
     ] satisfies [string, string][]) {
-      fetchMock.mockResolvedValueOnce(new Response(page(), { headers: [header] }));
+      fetchMock.mockResolvedValueOnce(siteResponse(page(), { headers: [header] }));
       const el = player({ "sandbox-origin": "", src: sameSite() });
 
       await vi.waitFor(() => expect(el.iframeElement.src).toBe(sameSite()));
       expect(el.iframeElement.hasAttribute("srcdoc")).toBe(false);
       document.body.replaceChildren();
     }
+  });
+
+  // fails without the fix: a redirect to another site that allows CORS hides that page's policy headers from
+  // the fetch, so the page was shown as srcdoc although its own policy could not be read.
+  it("loads by src when the page's headers can't all be read, as after a redirect to another site", async () => {
+    fetchMock.mockResolvedValueOnce(siteResponse(page(), {}, "cors"));
+    const el = player({ "sandbox-origin": "", src: sameSite() });
+
+    await vi.waitFor(() => expect(el.iframeElement.src).toBe(sameSite()));
+    expect(el.iframeElement.hasAttribute("srcdoc")).toBe(false);
   });
 
   // fails without the fix: the load clock started only once the frame was written, so a fetch that never answered
@@ -205,7 +222,7 @@ describe("a sealed player brings its own runtime", () => {
       await vi.advanceTimersByTimeAsync(1);
       expect(errors).toEqual([timelineNotFound(LIMIT)]);
 
-      answer(new Response(page()));
+      answer(siteResponse(page()));
       await vi.advanceTimersByTimeAsync(0);
       expect(el.iframeElement.getAttribute("srcdoc")).toContain("built:");
       await vi.advanceTimersByTimeAsync(LIMIT);
@@ -220,7 +237,7 @@ describe("a sealed player brings its own runtime", () => {
     fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
     const el = player({ "sandbox-origin": "", src: sameSite() });
     el.setAttribute("src", "https://films.example/two.html");
-    answer(new Response(page()));
+    answer(siteResponse(page()));
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(el.iframeElement.src).toBe("https://films.example/two.html");

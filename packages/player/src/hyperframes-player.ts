@@ -60,9 +60,11 @@ const SEALED_RUNTIME_LOAD_FAILED = "The HyperFrames runtime this player ships wi
 type FrameTarget = { src: string } | { srcdoc: string | null };
 type SealedPage = { bySrc: true } | { bySrc: false; html: string; url: string };
 
-// A srcdoc copy runs under the embedding page's policy, so a page that sets its own loads by src.
+// A srcdoc copy runs under the embedding page's policy, so a page that sets its own, or whose headers this
+// player can't all read (a redirect to another site), loads by src.
 const OWN_POLICY_HEADERS = ["content-security-policy", "x-frame-options"];
-const setsOwnPolicy = (headers: Headers) => OWN_POLICY_HEADERS.some((name) => headers.has(name));
+const mayCarryOwnPolicy = (response: Response) =>
+  response.type !== "basic" || OWN_POLICY_HEADERS.some((name) => response.headers.has(name));
 const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
 // Bounds how long the player waits on a same-origin composition's readiness
 // inputs (media, compute, paint-and-idle) before playing anyway — a stuck
@@ -1178,7 +1180,7 @@ class HyperframesPlayer extends HTMLElement {
     fetch(href, { credentials: "same-origin" })
       .then(async (response): Promise<SealedPage> => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        if (setsOwnPolicy(response.headers)) return { bySrc: true };
+        if (mayCarryOwnPolicy(response)) return { bySrc: true };
         const html = decodePage(await response.arrayBuffer(), response.headers.get("content-type"));
         return carriesRuntime(html)
           ? { bySrc: true }
