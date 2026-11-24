@@ -3214,6 +3214,14 @@ describe("layout-audit.browser occlusion", () => {
     expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
   });
 
+  it("counts an opaque overlay whose last colour channel is 0 as text occlusion", () => {
+    const occluded = auditOcclusionScene({
+      overlayStyle: { backgroundColor: "rgb(200, 30, 0)" },
+      topmostId: "overlay",
+    }).find((issue) => issue.code === "text_occluded");
+    expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
+  });
+
   it.each(MODERN_COLORS)("does not count a transparent %s) overlay as text occlusion", (open) => {
     const issues = auditOcclusionScene({
       overlayStyle: { backgroundColor: `${open} / 0)` },
