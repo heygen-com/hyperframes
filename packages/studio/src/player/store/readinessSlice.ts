@@ -11,8 +11,10 @@ export interface PlaybackReadinessSlice {
   /** Latched when the project's first preview shows its first frame (or fails), kept through edit
    *  reloads, so work that must not compete with the boot waits for it once. */
   previewBooted: boolean;
+  previewFailed: boolean;
   setTimelineReady: (ready: boolean) => void;
   markPreviewBooted: () => void;
+  setPreviewFailed: (failed: boolean) => void;
   playLocked: boolean;
   setPlayLocked: (locked: boolean) => void;
   /** Sets timelineReady once doc's readiness inputs settle, or immediately
@@ -32,10 +34,10 @@ let awaitingLoadStep: { doc: Document; generation: number } | null = null;
  * wait in flight can never resolve into what replaced it. */
 export function resetPlaybackReadinessState(): Pick<
   PlaybackReadinessSlice,
-  "timelineReady" | "previewBooted"
+  "timelineReady" | "previewBooted" | "previewFailed"
 > {
   timelineReadyGeneration++;
-  return { timelineReady: false, previewBooted: false };
+  return { timelineReady: false, previewBooted: false, previewFailed: false };
 }
 
 export function createPlaybackReadinessSlice(
@@ -48,7 +50,9 @@ export function createPlaybackReadinessSlice(
   return {
     timelineReady: false,
     previewBooted: false,
+    previewFailed: false,
     markPreviewBooted: () => set({ previewBooted: true }),
+    setPreviewFailed: (failed) => set({ previewFailed: failed }),
     playLocked: false,
     setPlayLocked: (locked) => set({ playLocked: locked }),
     setTimelineReady: (ready) => {
