@@ -98,7 +98,7 @@ test(
 );
 
 test(
-  "overlay refuses an output folder that is a link, before writing anything",
+  "mark writes into a real folder where --out named a link to one outside the project",
   { skip: process.platform === "win32" && "symbolic links need extra rights on Windows" },
   () => {
     const base = mkdtempSync(join(tmpdir(), "locate-link-"));
@@ -107,17 +107,55 @@ test(
       const outside = join(base, "outside");
       mkdirSync(project);
       mkdirSync(outside);
-      writeFileSync(join(project, "in.png"), "not read");
+      grayImage(join(project, "in.png"));
       symlinkSync(outside, join(project, "grid"));
-      const run = spawnSync(process.execPath, [LOCATE, "overlay", "in.png", "--out", "grid"], {
-        cwd: project,
-        encoding: "utf8",
-      });
-      assert.notEqual(run.status, 0);
-      assert.match(run.stderr, /grid: it is a link/);
+      execFileSync(
+        process.execPath,
+        [LOCATE, "mark", "in.png", "--box", "0.1,0.1,0.5,0.5", "--out", "grid/check.png"],
+        { cwd: project, stdio: "pipe" },
+      );
       assert.deepEqual(readdirSync(outside), []);
+      assert.ok(lstatSync(join(project, "grid")).isDirectory());
+      assert.ok(lstatSync(join(project, "grid", "check.png")).isFile());
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
   },
 );
+
+test(
+  "overlay and region replace links at gv.png, gh.png and gc.png and leave their targets alone",
+  {
+    skip:
+      (process.platform === "win32" && "symbolic links need extra rights on Windows") ||
+      (!hasDrawtext() && "ffmpeg without the drawtext filter"),
+  },
+  () => {
+    const base = mkdtempSync(join(tmpdir(), "locate-link-"));
+    try {
+      const project = join(base, "project");
+      mkdirSync(project);
+      const victim = join(base, "victim.txt");
+      writeFileSync(victim, "KEEP");
+      grayImage(join(project, "in.png"));
+      for (const name of ["gv.png", "gh.png", "gc.png"]) symlinkSync(victim, join(project, name));
+      const run = (...args) =>
+        execFileSync(process.execPath, [LOCATE, ...args], { cwd: project, stdio: "pipe" });
+      run("overlay", "in.png", "--out", ".");
+      run("region", "in.png", "--vids", "4,5", "--hids", "4,5", "--out", ".");
+      assert.equal(readFileSync(victim, "utf8"), "KEEP");
+      for (const name of ["gv.png", "gh.png", "gc.png"]) {
+        assert.ok(lstatSync(join(project, name)).isFile(), name);
+      }
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  },
+);
+
+function grayImage(path) {
+  execFileSync(
+    "ffmpeg",
+    ["-v", "error", "-f", "lavfi", "-i", "color=c=gray:s=320x180"].concat(["-frames:v", "1", path]),
+  );
+}

@@ -54,15 +54,32 @@ test("replaceOutput leaves no temporary file and no output when the build fails"
   assert.deepEqual(readdirSync(project), []);
 });
 
-test("ownFolder refuses a linked folder, or one under a linked folder in the project", (t) => {
+test("ownFolder replaces a link at the folder with a real one, and refuses one under a linked folder", (t) => {
   const { project, outside } = inProject(t);
   symlinkSync(outside, join(project, "frames-map"));
-  assert.throws(() => ownFolder("frames-map"), /frames-map: it is a link/);
-  assert.throws(() => ownFolder(join("frames-map", "inner")), /frames-map: it is a link/);
-  assert.throws(() => replaceFile(join("frames-map", "f0000.png"), "x"), /it is a link/);
+  assert.equal(ownFolder("frames-map"), join(process.cwd(), "frames-map"));
+  assert.ok(lstatSync(join(project, "frames-map")).isDirectory());
+  symlinkSync(outside, join(project, "out"));
+  assert.throws(() => ownFolder(join("out", "inner")), /out: it is a link/);
   assert.deepEqual(readdirSync(outside), ["victim.txt"]);
-  assert.equal(ownFolder("frames-new"), join(process.cwd(), "frames-new"));
-  assert.ok(lstatSync(join(project, "frames-new")).isDirectory());
+});
+
+// Every name bake-basemap writes, each planted as a link to a file outside the project.
+test("bake-basemap's output names are replaced, never written through", (t) => {
+  const { project, outside } = inProject(t);
+  const victim = join(outside, "victim.txt");
+  symlinkSync(outside, join(project, "frames-map"));
+  for (const name of ["map.mp4", "map-coords.json"]) symlinkSync(victim, join(project, name));
+  const frames = ownFolder("frames-map");
+  symlinkSync(victim, join(frames, "f0000.png"));
+  replaceFile(join(frames, "f0000.png"), "png");
+  replaceOutput(join(project, "map.mp4"), (temp) => writeFileSync(temp, "mp4"));
+  replaceFile(join(project, "map-coords.json"), "{}");
+  assert.equal(readFileSync(victim, "utf8"), "KEEP");
+  assert.deepEqual(readdirSync(outside), ["victim.txt"]);
+  for (const name of ["frames-map/f0000.png", "map.mp4", "map-coords.json"]) {
+    assert.ok(lstatSync(join(project, name)).isFile(), name);
+  }
 });
 
 test("bake-basemap writes its frames, video and coords only through own-output", () => {
