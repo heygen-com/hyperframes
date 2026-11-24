@@ -5,7 +5,7 @@ import { closeSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } fro
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { join, dirname, isAbsolute, relative } from "path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom-html";
 import {
   extractAudioMetadata,
   ffmpegSeekSeconds,

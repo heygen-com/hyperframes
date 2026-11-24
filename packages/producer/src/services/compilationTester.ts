@@ -5,7 +5,7 @@
  * Compares compiled HTML against golden files using semantic attribute matching.
  */
 
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom-html";
 
 export interface CompiledElement {
   id: string;

@@ -1,4 +1,4 @@
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom-html";
 
 export interface HtmlParityComposition {
   id: string;

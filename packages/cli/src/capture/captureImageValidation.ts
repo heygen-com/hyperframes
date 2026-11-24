@@ -1,4 +1,4 @@
-import { DOMParser } from "linkedom";
+import { DOMParser } from "@hyperframes/parsers/linkedom-html";
 import { parse, walk } from "css-tree";
 import { loadSharp } from "../utils/optionalPackages.js";
 

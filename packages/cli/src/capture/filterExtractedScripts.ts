@@ -1,4 +1,4 @@
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom-html";
 
 const FRAMEWORK_SRC_PATTERNS = [
   /_next\/static\/chunks\/(main|framework|webpack|pages\/)/,

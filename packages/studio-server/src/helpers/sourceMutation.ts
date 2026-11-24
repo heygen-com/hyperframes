@@ -1,5 +1,5 @@
 import { replacementTimelineAssetId } from "@hyperframes/core/timeline-asset-id";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom-html";
 import { removeElementWithGsapCascade } from "@hyperframes/parsers";
 import { readMediaOffsetSeconds, readPlaybackRate } from "@hyperframes/parsers/media-duration";
 import postcss from "postcss";

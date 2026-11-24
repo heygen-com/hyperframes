@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom-html";
 import { firstHtmlTemplate } from "@hyperframes/parsers/sub-composition-validity";
 import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
 import {

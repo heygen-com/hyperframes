@@ -27,7 +27,7 @@ import {
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from "fs";
 import { join, dirname, resolve, basename, relative, sep } from "path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom-html";
 import { bundledGsapStandIn, bundledScript } from "./bundledScripts.js";
 import {
   inlineScriptBlocks,

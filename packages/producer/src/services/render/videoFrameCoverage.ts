@@ -44,7 +44,7 @@
  * that legitimately happens on a 29.97 fps timeline).
  */
 
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom-html";
 import {
   fpsToNumber,
   normalizeRateSpec,

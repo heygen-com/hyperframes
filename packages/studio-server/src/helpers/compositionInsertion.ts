@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readProjectFile } from "@hyperframes/parsers/asset-resolution";
 import { randomUUID } from "node:crypto";
 import { relative, sep } from "node:path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom-html";
 import { ProjectRootMissingError } from "@hyperframes/core";
 import { folderGone, isSafePath, realpath, resolveWithinProject } from "./safePath.js";
 

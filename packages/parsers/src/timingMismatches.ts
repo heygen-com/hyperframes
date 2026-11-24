@@ -1,4 +1,4 @@
-import { parseHTML } from "linkedom";
+import { parseHTML } from "./linkedomHtml.js";
 import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
 import type { GsapAnimation } from "./gsapSerialize.js";
 import { TIMING_TOLERANCE_SECONDS } from "./compositionDuration.js";

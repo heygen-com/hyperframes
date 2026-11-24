@@ -91,7 +91,7 @@ import {
   type RateSpec,
   terminalText,
 } from "@hyperframes/core";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom-html";
 import { resolveProject } from "../utils/project.js";
 import {
   definitiveEntryMismatchComposition,
