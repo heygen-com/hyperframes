@@ -23,7 +23,6 @@ export interface LocalShareState {
   failure?: string | null;
   audience: LocalShareAudience | null;
   spaceId: string | null;
-  excludedPrivatePaths?: string[];
   source: "not_checked" | "ready" | "video_only";
 }
 export interface LocalShareJob {

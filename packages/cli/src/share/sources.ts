@@ -7,11 +7,7 @@ export class ShareSourceError extends Error {}
 export type ShareSourceState =
   | { at: "not_checked" }
   | { at: "video_only"; reason: string }
-  | {
-      at: "ready";
-      excludedPrivatePaths?: string[];
-      snapshot: { space_id: string; composition_id: string; snapshot_id: string };
-    };
+  | { at: "ready"; snapshot: { space_id: string; composition_id: string; snapshot_id: string } };
 export interface PreparedShareSource {
   source: ShareSourceState;
   filesForExport?: VersionRequest["filesForExport"];

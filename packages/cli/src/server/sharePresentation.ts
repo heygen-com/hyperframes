@@ -22,10 +22,6 @@ export function presentShare(value: ShareState): LocalShareState {
     audience: value.share?.access ?? null,
     spaceId: value.share?.space?.id ?? null,
     source: value.source.at,
-    ...(value.source.at === "ready" &&
-      value.source.excludedPrivatePaths && {
-        excludedPrivatePaths: value.source.excludedPrivatePaths,
-      }),
   };
 }
 

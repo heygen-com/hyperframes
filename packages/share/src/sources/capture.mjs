@@ -38,7 +38,7 @@ function isPrivateEntry(rel, directory) {
 /** @param {string} root @param {string} rel @param {import("node:fs").Dirent} entry @param {Walk} walk
  * @param {string[]} dirs */
 async function visit(root, rel, entry, walk, dirs) {
-  if (isPrivateEntry(rel, entry.isDirectory())) return void walk.excludedPrivatePaths.push(rel);
+  if (isPrivateEntry(rel, entry.isDirectory())) return;
   if (entry.isDirectory()) {
     if (!excludedFolder(rel)) dirs.push(rel);
     return;
@@ -91,7 +91,7 @@ async function listFolder(root, dir) {
  * @param {(rel: string) => boolean} renderOutput @returns {Promise<Walk>} */
 async function walkProject(root, renderOutput) {
   /** @type {Walk} */
-  const walk = { files: [], problems: [], waiting: [], skippedLinks: [], excludedPrivatePaths: [] };
+  const walk = { files: [], problems: [], waiting: [], skippedLinks: [] };
   const ignored = await readSourceIgnore(root);
   const dirs = [""];
   for (let dir = dirs.pop(); dir !== undefined; dir = dirs.pop()) {
@@ -253,7 +253,6 @@ export async function captureProject(root, { memo = hashMemo(), limits = V1_LIMI
       settled,
       waiting: walk.waiting,
       skippedLinks: walk.skippedLinks,
-      excludedPrivatePaths: walk.excludedPrivatePaths.sort(),
     };
   } catch (error) {
     if (!(error instanceof ManifestInvalid)) throw error;

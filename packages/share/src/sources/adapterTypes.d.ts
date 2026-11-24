@@ -8,7 +8,7 @@ export interface SourceStore {
   write(binding: Binding): Promise<void>;
 }
 export type SourceResult =
-  | { at: "ready"; snapshot: SnapshotRef; excludedPrivatePaths?: string[] }
+  | { at: "ready"; snapshot: SnapshotRef }
   | { at: "unavailable"; reason: string };
 export interface SourceOptions {
   access: SignedInAccess;

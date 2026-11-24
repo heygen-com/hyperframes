@@ -110,7 +110,6 @@ export interface Walk {
   problems: CaptureProblem[];
   waiting: string[];
   skippedLinks: string[];
-  excludedPrivatePaths: string[];
 }
 
 export type Capture =
@@ -120,7 +119,6 @@ export type Capture =
       settled: { agentTurnOpen: boolean; projectLocked: boolean };
       waiting: string[];
       skippedLinks: string[];
-      excludedPrivatePaths: string[];
     }
   | { at: "problems"; problems: CaptureProblem[] }
   | { at: "too-big"; over: OverLimit };

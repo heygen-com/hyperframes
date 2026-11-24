@@ -186,9 +186,6 @@ export function ShareSourceStatus({ model, snapshot }: Props) {
         </span>
       </label>
       <p className="text-step-11 text-text-3">{message}</p>
-      {last?.source === "ready" && last.excludedPrivatePaths?.length ? (
-        <ExcludedSourcePaths paths={last.excludedPrivatePaths} />
-      ) : null}
       {recover ? (
         <Button
           variant="ghost"
@@ -202,24 +199,6 @@ export function ShareSourceStatus({ model, snapshot }: Props) {
         </Button>
       ) : null}
     </>
-  );
-}
-
-function ExcludedSourcePaths({ paths }: { paths: string[] }) {
-  const shown = paths.slice(0, 10);
-  const remaining = paths.length - shown.length;
-  return (
-    <details className="text-step-11 text-text-3">
-      <summary>Left out of editable source ({paths.length})</summary>
-      <ul>
-        {shown.map((path) => (
-          <li key={path}>
-            <bdi>{path}</bdi>
-          </li>
-        ))}
-      </ul>
-      {remaining > 0 && <p>{remaining} more</p>}
-    </details>
   );
 }
 

@@ -272,28 +272,13 @@ async function presentResult(result: ShareState, input: ShareAction, json: boole
     throw new CliUsageError("There is no share to manage yet. Create a share first.", {
       code: "not_shared",
     });
-  if (!json) presentSourceNotice(result);
+  if (!json && !result.upToDate && result.source.at === "video_only")
+    console.error(sourceNotice(result.source.reason));
   if (result.state === "failed" && input.action !== "manage") {
     presentFailure(result, json);
     return;
   }
   await presentSuccessfulResult(result, input, json);
-}
-
-function presentSourceNotice(result: ShareState) {
-  if (result.source.at === "ready" && result.source.excludedPrivatePaths?.length)
-    printExcludedPaths(result.source.excludedPrivatePaths);
-  if (!result.upToDate && result.source.at === "video_only")
-    console.error(sourceNotice(result.source.reason));
-}
-
-function printExcludedPaths(paths: readonly string[]) {
-  const shown = paths.slice(0, 10);
-  const remaining = paths.length - shown.length;
-  const suffix = remaining > 0 ? ` (${remaining} more)` : "";
-  console.error(
-    `Left out of editable source: ${terminalText(escapeTabs(shown.join(", ")))}${suffix}`,
-  );
 }
 
 async function presentSuccessfulResult(result: ShareState, input: ShareAction, json: boolean) {

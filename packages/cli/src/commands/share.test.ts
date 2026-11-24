@@ -228,33 +228,6 @@ it.each([[[]], [["--json"]], [["--yes"]], [["--video-only"]]])(
     expect(mocks.run).toHaveBeenCalledWith(expect.objectContaining({ includeSource: false }));
   },
 );
-it("reports private source exclusions on stderr and preserves their names in JSON", async () => {
-  const excludedPrivatePaths = [
-    "nested/.ssh",
-    "folder\tname/.env",
-    ...Array.from({ length: 10 }, (_, i) => `project-${i}/.env`),
-  ];
-  mocks.run.mockResolvedValue({
-    state: "ready",
-    ready: true,
-    url: "https://hyperframes.dev/r/demo",
-    source: { at: "ready", excludedPrivatePaths },
-  });
-  const out = vi.spyOn(console, "log").mockImplementation(() => {});
-  const err = vi.spyOn(console, "error").mockImplementation(() => {});
-  const args = ["--public", "--include-source"];
-  await runCommand(command, { rawArgs: args });
-  expect(err).toHaveBeenCalledWith(
-    `Left out of editable source: nested/.ssh, folder\\x09name/.env, ${excludedPrivatePaths.slice(2, 10).join(", ")} (2 more)`,
-  );
-  err.mockClear();
-  await runCommand(command, { rawArgs: [...args, "--json"] });
-  expect(JSON.parse(String(out.mock.calls.at(-1)?.[0])).source.excludedPrivatePaths).toEqual(
-    excludedPrivatePaths,
-  );
-  expect(err).not.toHaveBeenCalled();
-});
-
 it("accepts explicit source inclusion and rejects conflicting choices", async () => {
   vi.spyOn(console, "log").mockImplementation(() => {});
   await runCommand(command, { rawArgs: ["--public", "--include-source", "--json"] });

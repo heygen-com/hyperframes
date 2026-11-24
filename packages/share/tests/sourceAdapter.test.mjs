@@ -169,7 +169,7 @@ test("source upload verifies before attachment and a fresh adapter reuses the ex
   assert.equal(binding.base.snapshotId, "snapshot");
 });
 
-test("source preparation omits and reports private files and whole private folders at any depth", async (t) => {
+test("source preparation silently omits private files and folders at any depth", async (t) => {
   const names = [
     ".git/config",
     ".env-production",
@@ -241,13 +241,7 @@ test("source preparation omits and reports private files and whole private folde
     "art",
     "{}",
   ]);
-  for (const path of paths)
-    assert.ok(
-      result.excludedPrivatePaths.some(
-        (excluded) => path === excluded || path.startsWith(`${excluded}/`),
-      ),
-      path,
-    );
+  assert.deepEqual(Object.keys(result).sort(), ["at", "snapshot"]);
   assert.deepEqual(await source.filesForExport(f.root, f.rendered), result.snapshot);
 });
 
