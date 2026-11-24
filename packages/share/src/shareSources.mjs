@@ -70,7 +70,7 @@ export function shareSources(options) {
         const { own, existing, binding } = await selectBinding(key, options, store);
         const refused = bindingRefusal(binding, options.spaceId);
         if (refused) return unavailable(refused);
-        const result = await prepareBinding({
+        const { manifest, ...result } = await prepareBinding({
           binding,
           own: Boolean(own),
           external: Boolean(existing),
@@ -81,7 +81,6 @@ export function shareSources(options) {
           fingerprint,
           rendered,
         });
-        const manifest = result.manifest;
         await guardedAccess(undefined);
         if (result.at !== "ready" || !manifest) return result;
         if (!(await stillMatches(root, rendered, manifest.sha256, fingerprint)))
@@ -93,7 +92,7 @@ export function shareSources(options) {
           account: key.account,
           backend: key.backend,
         });
-        return { at: "ready", snapshot: result.snapshot };
+        return result;
       },
       { signal },
     );
@@ -137,7 +136,13 @@ async function prepareBinding(job) {
   if ((await fingerprint(binding.projectPath)) !== rendered)
     return unavailable("source_render_changed");
   const result = await snapshotFor(job, capture.manifest, limits);
-  return { ...result, manifest: capture.manifest };
+  return {
+    ...result,
+    manifest: capture.manifest,
+    ...(capture.excludedPrivatePaths.length && {
+      excludedPrivatePaths: capture.excludedPrivatePaths,
+    }),
+  };
 }
 /** @param {Preparation} job @param {import("./sources/types.js").Manifest} manifest
  * @param {Extract<import("./sources/types.js").SyncLimitsRead, {at: "read"}>} limits @returns {Promise<SourceResult>} */

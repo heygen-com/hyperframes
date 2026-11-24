@@ -109,6 +109,9 @@
     "test": "node --test tests/*.test.mjs",
     "prepare": "npm run build"
   },
+  "dependencies": {
+    "@hyperframes/parsers": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^25.0.10",
     "typescript": "^5.0.0"

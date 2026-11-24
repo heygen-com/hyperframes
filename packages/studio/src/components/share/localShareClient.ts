@@ -33,6 +33,8 @@ function isState(value: unknown): value is LocalShareState {
     ["not_shared", "link_off", "ready", "processing", "failed", "unavailable"].includes(
       String(value.state),
     ) &&
+    (value.excludedPrivatePaths === undefined ||
+      (Array.isArray(value.excludedPrivatePaths) && value.excludedPrivatePaths.every(text))) &&
     optionalFailure(value.failure) &&
     isReviewNamed(value) &&
     nullableBoolean(value.changed) &&

@@ -234,10 +234,16 @@ it("labels files as included only after a ready upload result", async () => {
   snapshot.job = {
     ...job,
     state: "done",
-    result: { ...snapshot.share, state: "ready", source: "ready" },
+    result: {
+      ...snapshot.share,
+      state: "ready",
+      source: "ready",
+      excludedPrivatePaths: ["project/.ssh/"],
+    },
   };
   await mount();
   expect(host.textContent).toContain("Last Studio upload: project files included.");
+  expect(host.querySelector("details")?.textContent).toContain("project/.ssh/");
 });
 it.each(["unauthenticated", "login_expired"])(
   "offers explicit browser login for %s and recovers signed-out polling",

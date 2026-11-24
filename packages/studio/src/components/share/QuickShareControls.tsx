@@ -186,6 +186,18 @@ export function ShareSourceStatus({ model, snapshot }: Props) {
         </span>
       </label>
       <p className="text-step-11 text-text-3">{message}</p>
+      {last?.source === "ready" && last.excludedPrivatePaths?.length ? (
+        <details className="text-step-11 text-text-3">
+          <summary>Left out of editable source ({last.excludedPrivatePaths.length})</summary>
+          <ul>
+            {last.excludedPrivatePaths.map((path) => (
+              <li key={path}>
+                <bdi>{path}</bdi>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
       {recover ? (
         <Button
           variant="ghost"
