@@ -547,13 +547,15 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
 
 const listedCopyKeys = new WeakMap<HTMLMediaElement, string>();
-const parentCopies = (layered: ReturnType<typeof parentCopyLayers>) =>
-  layered(Array.from(document.querySelectorAll(WEB_AUDIO_MEDIA)).filter(isMediaElement)).map(
+const parentCopies = (layered: ReturnType<typeof parentCopyLayers>) => {
+  const mastered = Boolean(readMasterFxChain(document));
+  return layered(Array.from(document.querySelectorAll(WEB_AUDIO_MEDIA)).filter(isMediaElement)).map(
     ({ el, copy }) => {
       listedCopyKeys.set(el, parentCopyKey(copy));
-      return copy;
+      return mastered ? { ...copy, mastered } : copy;
     },
   );
+};
 
 const webAudioMediaIn = (root: ParentNode): HTMLMediaElement[] =>
   Array.from(root.querySelectorAll(WEB_AUDIO_MEDIA)).filter(joinsWebAudio);

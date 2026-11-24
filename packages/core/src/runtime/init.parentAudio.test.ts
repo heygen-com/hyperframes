@@ -98,7 +98,7 @@ it("a clip the parent plays stays silent in the film, and is the film's again on
   expect(voice.muted).toBe(false);
 });
 
-// fails without the fix: two layers of one recording shared a claim, so the parent's dry copy silenced the processed one.
+// fails without the fix: two layers of one recording shared a claim; the dry copy silenced the processed one.
 it("a claim silences only the layer the parent plays, not another layer of the same recording", () => {
   const { voice, playFor, control, posted } = sealedFilm(
     '<audio id="voice-fx" data-start="0" data-duration="10" src="/voice.m4a" data-fx-chain="[]"></audio>',
@@ -143,6 +143,22 @@ it("a layer keeps its own claim when another layer of the same recording is remo
   const after = lists().at(-1)?.[0].media as Parameters<typeof parentCopyKey>[0][];
   expect(after.map(parentCopyKey)).toEqual([parentCopyKey(first[1]!)]);
   expect(processed.muted).toBe(false);
+});
+
+// fails without the fix: the parent played a mastered film's clips without its master chain.
+it("marks every listed copy when the film routes its audio through a master chain", async () => {
+  const { playFor, control, posted } = sealedFilm();
+  document
+    .querySelector("[data-composition-id]")!
+    .setAttribute("data-fx-chain", '{"version":1,"nodes":[]}');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  window.__player!.play();
+  playFor(0.2);
+  control("set-parent-audio", { clips: [] });
+  playFor(0.2);
+  const lists = posted.mock.calls.filter(([message]) => message?.type === "parent-copies");
+  const media = lists.at(-1)![0].media as { mastered?: boolean }[];
+  expect(media.map((c) => c.mastered)).toEqual([true]);
 });
 
 // fails without the fix: a seek while the parent's clock held the film put the picture back on the old audio time.

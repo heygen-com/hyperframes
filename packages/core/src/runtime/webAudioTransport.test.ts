@@ -941,8 +941,8 @@ describe("WebAudioTransport", () => {
       return { ctx, gainNodes, analysers, masterGain, monitorGain, mediaElementSource };
     }
 
-    function setupGroupTransport(currentTime = 100) {
-      const transport = new WebAudioTransport();
+    function setupGroupTransport(currentTime = 100, opts?: { busDocument?: Document | null }) {
+      const transport = new WebAudioTransport(opts);
       const mock = createGroupMockAudioContext(currentTime);
       (transport as unknown as { _ctx: unknown })._ctx = mock.ctx;
       (transport as unknown as { _masterGain: unknown })._masterGain = mock.masterGain;
@@ -1620,6 +1620,16 @@ describe("WebAudioTransport", () => {
         // Wired into the chain's input, not straight to the bus output.
         expect(masterGain.connect).toHaveBeenCalledTimes(1);
         expect(masterGain.connect).not.toHaveBeenCalledWith(busOut);
+      });
+
+      it("reads no master chain from the page when it is given no bus document", async () => {
+        document.body.innerHTML = `<div id="root" data-composition-id="main" data-fx-chain='${GAIN_CHAIN}'></div>`;
+        const setup = setupGroupTransport(100, { busDocument: null });
+        const busOut = withBusOut(setup);
+
+        await scheduleGrouped(setup.transport, setup.gen, "a");
+
+        expect(setup.mock.masterGain.disconnect).not.toHaveBeenCalledWith(busOut);
       });
 
       it("feeds grouped members through the same master bus", async () => {

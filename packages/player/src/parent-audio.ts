@@ -93,7 +93,7 @@ export class ParentAudio {
   }
 
   private _open(): WebAudioTransport | null {
-    this._transport ??= new WebAudioTransport({ fetchInit: DECODE_FETCH });
+    this._transport ??= new WebAudioTransport({ fetchInit: DECODE_FETCH, busDocument: null });
     if (!this._transport.open()) return null;
     this._transport.setVolume(this._host.getVolume());
     this._transport.setMuted(this._host.getMuted());
@@ -177,7 +177,8 @@ export class ParentAudio {
 /** Unsealed's verdict (`decodesFirst`), on a copy from the host's own origin carrying nothing native-only. */
 async function decodesHere(transport: WebAudioTransport, entry: ProxyEntry): Promise<boolean> {
   const { el } = entry;
-  if (!entry.listedKey || el.tagName !== "AUDIO" || !fromThisHost(el.src)) return false;
+  if (!entry.listedKey || entry.mastered || el.tagName !== "AUDIO" || !fromThisHost(el.src))
+    return false;
   if (NATIVE_ONLY_ATTRS.some((name) => el.hasAttribute(name))) return false;
   if (el.readyState < HTMLMediaElement.HAVE_METADATA) await metadataOf(el);
   await bytesOfSource(el.src);

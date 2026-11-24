@@ -243,6 +243,7 @@ const BYTES_PER_SAMPLE = 4;
 export class WebAudioTransport {
   /** Request options for every decode fetch, over `cache: "no-store"`. */
   private readonly _fetchInit: RequestInit;
+  private readonly _busDocument: Document | null | undefined;
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
   private _decoding = new Map<string, Promise<AudioBuffer | null>>();
@@ -306,8 +307,9 @@ export class WebAudioTransport {
     return this.open();
   }
 
-  constructor(opts: { fetchInit?: RequestInit } = {}) {
+  constructor(opts: { fetchInit?: RequestInit; busDocument?: Document | null } = {}) {
     this._fetchInit = opts.fetchInit ?? {};
+    this._busDocument = opts.busDocument;
   }
 
   /** Builds the context on the calling thread: on Windows that opens the audio device and can block seconds. */
@@ -913,10 +915,12 @@ export class WebAudioTransport {
   ): GainNode | null {
     if (!this._masterGain) return null;
     const groupTiming: AutomationTiming = { scheduledAt, elapsed: compositionTime, rate: safeRate };
-    this.ensureMasterBus(el.ownerDocument, groupTiming);
+    const doc = this._busDocument === undefined ? el.ownerDocument : this._busDocument;
+    if (!doc) return this._masterGain;
+    this.ensureMasterBus(doc, groupTiming);
     const groupId = audioGroupOf(el);
     if (!groupId) return this._masterGain;
-    return this.groupInput(groupId, el.ownerDocument, groupTiming) ?? this._masterGain;
+    return this.groupInput(groupId, doc, groupTiming) ?? this._masterGain;
   }
 
   /**

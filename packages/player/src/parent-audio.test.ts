@@ -8,6 +8,7 @@ const { transports, FakeTransport } = vi.hoisted(() => {
   const transports: InstanceType<typeof FakeTransport>[] = [];
   class FakeTransport {
     fetchInit: RequestInit | undefined;
+    opts: unknown;
     gen = 0;
     time = -1;
     stops = 0;
@@ -20,6 +21,7 @@ const { transports, FakeTransport } = vi.hoisted(() => {
       },
     );
     constructor(opts?: { fetchInit?: RequestInit }) {
+      this.opts = opts;
       this.fetchInit = opts?.fetchInit;
       transports.push(this);
     }
@@ -169,6 +171,19 @@ describe("ParentAudio", () => {
     expect(transports[0]!.schedulePlayback).not.toHaveBeenCalled();
     expect(copies.some((m) => m.claimed)).toBe(false);
     expect(sent("audio-clock")).toEqual([]);
+    audio.destroy();
+  });
+
+  // fails without the fix: the parent played a mastered film's clips dry and read buses from its own page.
+  it("leaves a mastered film's clip on its native copy and reads no bus from the host page", async () => {
+    const copies = [{ ...copy("voice.m4a"), mastered: true }];
+    const { audio } = player(copies);
+
+    audio.play();
+    await settle();
+
+    expect(transports[0]!.schedulePlayback).not.toHaveBeenCalled();
+    expect(transports[0]!.opts).toMatchObject({ busDocument: null });
     audio.destroy();
   });
 

@@ -47,6 +47,7 @@ export interface ParentCopy {
   mediaStart: number;
   layer?: number;
   loop?: boolean;
+  mastered?: boolean;
   attrs?: Partial<Record<(typeof PARENT_COPY_ATTRIBUTES)[number], string>>;
 }
 
