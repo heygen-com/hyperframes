@@ -17,9 +17,11 @@ import {
   applyManualOffsetDragDraft,
   createManualOffsetDragMember,
   endManualOffsetDragMembers,
+  restoreManualOffsetDragMembers,
   type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
 import { armPreviewDraftEnd, drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
+import { manualOffsetMoveRevert } from "./gestureUndoRevert";
 import { patchSealedPreview } from "../../hooks/sealedTweenPatch";
 import { takePreviewTicket } from "../../utils/sealedPreviewLedger";
 import { previewAnswer, previewRequest } from "../../player/lib/previewChannel";
@@ -152,14 +154,8 @@ const press = () =>
     currentTarget: { setPointerCapture() {} },
   }) as unknown as React.PointerEvent<HTMLElement>;
 
-/** Presses the box on a sealed frame, drags it 10 page px right and lets go, as the overlay does. */
-async function dragBoxOnSealedFrame(
-  script: string,
-  beforePress?: (iframe: HTMLIFrameElement) => void,
-  beforeEnd?: (standIn: Element, member: ManualOffsetDragMember) => void,
-  save?: (iframe: HTMLIFrameElement, standIn: Element) => Promise<unknown>,
-) {
-  const box = document.getElementById("box")!;
+/** Presses the box on a sealed frame, as the overlay does. */
+async function pressBoxOnSealedFrame(beforePress?: (iframe: HTMLIFrameElement) => void) {
   const iframe = opaqueFrame();
   beforePress?.(iframe);
   const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
@@ -171,10 +167,23 @@ async function dragBoxOnSealedFrame(
   const started = startGesture("drag", press(), opts, { selection, rect, start, snap: read!.snap });
   expect(opts.onBlockedMoveRef.current).not.toHaveBeenCalled();
   const member = opts.gestureRef.current!.pathOffsetMember!;
+  return { iframe, standIn, selection, start, started, member };
+}
+
+/** Presses the box on a sealed frame, drags it 10 page px right and lets go, as the overlay does. */
+async function dragBoxOnSealedFrame(
+  script: string,
+  beforePress?: (iframe: HTMLIFrameElement) => void,
+  beforeEnd?: (standIn: Element, member: ManualOffsetDragMember) => void,
+  save?: (iframe: HTMLIFrameElement, standIn: Element) => Promise<unknown>,
+) {
+  const box = document.getElementById("box")!;
+  const { iframe, standIn, selection, start, started, member } =
+    await pressBoxOnSealedFrame(beforePress);
 
   // A page px is two frame px: the frame shows 1920 px in 960.
   applyManualOffsetDragDraft(member, 10, 0);
-  await vi.waitFor(() => expect(drawnAt(box)).toEqual({ x: 120, y: 40 }));
+  await vi.waitFor(() => expect(drawnAt(box)).toEqual({ x: start.gsap!.x + 20, y: start.gsap!.y }));
 
   const offset = applyManualOffsetDragCommit(member, 10, 0);
   const commit = vi.fn(async () => undefined);
@@ -213,6 +222,73 @@ it("leaves no Studio offset on the stand-in once a sealed drag ends on GSAP's ro
   expect((standIn as HTMLElement).style.getPropertyValue("--hf-studio-offset-x")).toBe("");
 });
 
+const writes = (box: HTMLElement) => [box.style.transform, box.style.translate];
+
+// fails without the fix: the sealed draft drew a CSS translate on top of GSAP's, at another precision than the x/y an
+// open preview's drag gives GSAP, so a sealed drop point and the x it saved came out 0.001 px off.
+it("draws a sealed drag of a GSAP-held layer with the writes an open preview's drag makes", async () => {
+  mount(SCRIPT);
+  let sealed: string[] = [];
+  await dragBoxOnSealedFrame(SCRIPT, undefined, () => (sealed = writes(box())));
+  mount(SCRIPT);
+  const rect = { left: 300, top: 200, width: 100, height: 50, editScaleX: 1, editScaleY: 1 };
+  const element = box();
+  const open = createManualOffsetDragMember({
+    key: "box",
+    selection: makeSelection("box", element),
+    element,
+    rect,
+    gesture: "drag",
+  });
+  if (!open.ok) throw new Error("no open member");
+  applyManualOffsetDragDraft(open.member, 20, 0);
+  expect(writes(element)).toEqual(sealed);
+});
+
+/** The frame's writes for a drag of `frameDx` frame px, sealed then open: a page px is two frame px sealed. */
+async function sealedAndOpenWrites(script: string, frameDx: number) {
+  mount(script);
+  const { member } = await pressBoxOnSealedFrame();
+  const from = drawnAt(box()).x;
+  applyManualOffsetDragDraft(member, frameDx / 2, 0);
+  await vi.waitFor(() => expect(drawnAt(box()).x).toBeGreaterThan(from + frameDx - 1));
+  const sealed = [writes(box()), drawnAt(box())];
+  mount(script);
+  const element = box();
+  const rect = { left: 300, top: 200, width: 100, height: 50, editScaleX: 1, editScaleY: 1 };
+  const selection = makeSelection("box", element);
+  const open = createManualOffsetDragMember({
+    key: "box",
+    selection,
+    element,
+    rect,
+    gesture: "drag",
+  });
+  if (!open.ok) throw new Error("no open member");
+  applyManualOffsetDragDraft(open.member, frameDx, 0);
+  return { sealed, open: [writes(element), drawnAt(element)] };
+}
+
+// fails without the fix: a sealed drag gave the frame the unrounded offset, where an open preview's drag rounds the
+// position it writes to 3 decimals, so the drawn box and the drop point measured from it came out up to 0.0005 px off.
+it.each([
+  ["a GSAP-held layer, on GSAP's route", SCRIPT],
+  ["a layer GSAP leaves alone, on its own translate", timeline("")],
+])("draws a sealed drag of %s at the position an open drag rounds to", async (_name, script) => {
+  const { sealed, open } = await sealedAndOpenWrites(script, 20.00074);
+  expect(sealed[1]).toEqual(open[1]);
+});
+
+it("puts a cancelled sealed drag of a GSAP-held layer back where GSAP had it", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(SCRIPT, undefined, (_standIn, member) =>
+    restoreManualOffsetDragMembers([member]),
+  );
+  await vi.waitFor(() =>
+    expect([box().style.translate, drawnAt(box())]).toEqual(["", { x: 100, y: 40 }]),
+  );
+});
+
 // fails without the fix: ending the draft on GSAP's route took back the size a resize had drawn too.
 it("keeps the size a sealed resize drew when its anchor ends on GSAP's route", async () => {
   mount(SCRIPT);
@@ -241,7 +317,7 @@ it("drags a layer its tween moves in a sealed preview: it moves live and saves a
   mount(SCRIPT);
   const { started, start, anim, outcome, commit } = await dragBoxOnSealedFrame(SCRIPT);
 
-  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true });
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true, drawsTranslate: true });
   expect(started).toBe(true);
   expect(outcome).toEqual({ status: "persisted" });
   expect(commit).toHaveBeenCalledTimes(1);
@@ -287,7 +363,7 @@ it("saves nothing for a moving layer when the sealed preview's tweens can't be r
   mount(script, SPANS);
   const { start, outcome, commit } = await dragBoxOnSealedFrame(script);
 
-  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true });
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true, drawsTranslate: true });
   // Routed without the frame's tweens, the move would save a `set` that pins the layer.
   expect(outcome).toEqual({
     status: "blocked",
@@ -302,7 +378,7 @@ it("still saves a layer GSAP only holds when the sealed preview's tweens can't b
   mount(script, SPANS);
   const { start, outcome, commit } = await dragBoxOnSealedFrame(script);
 
-  expect(start.gsap).toEqual({ x: 100, y: 40, moving: false });
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: false, drawsTranslate: true });
   expect(outcome).toEqual({ status: "persisted" });
   expect(commit).toHaveBeenCalledTimes(1);
   // The hold's own `set` takes the new place, as when the frame's tweens are read.
@@ -332,7 +408,7 @@ it("a resize in a sealed preview keeps the anchor of a layer its tween moves on 
     start,
   });
 
-  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true });
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true, drawsTranslate: true });
   expect(result.ok && result.member.plainTranslate).toBe(false);
 });
 
@@ -460,7 +536,7 @@ it("keeps a sealed element's move start when GSAP's rotation is out of range, an
   const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]);
   const { start } = (await measurePreviewGestureStart(iframe, overlay, [handle]))!.elements[0]!;
 
-  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true });
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true, drawsTranslate: true });
   expect(start.gsapRotation).toBeUndefined();
 });
 
@@ -510,6 +586,31 @@ it("a sealed move's save ends its draft in the same frame message, and the teard
   expect(iframe).toBeDefined();
 });
 
+// fails without the fix: the undo's redraw on GSAP's route sent the press position (the stand-in keeps no path offset
+// there), and skipped a draft of (0, 0) as a relative move of nothing; the layer stayed where the undo had put it.
+it.each([
+  [
+    "(0, 0)",
+    timeline(`tl.to("#box", { x: -40, y: 0, duration: 1, ease: "none" }, 0);`),
+    { x: -20, y: 0 },
+  ],
+  ["(120, 40)", SCRIPT, { x: 100, y: 40 }],
+])(
+  "puts a sealed GSAP move that ended at %s back there when its undo does not go through",
+  async (_name, script, start) => {
+    mount(script);
+    const { member } = await dragBoxOnSealedFrame(script);
+    const box = document.getElementById("box")!;
+    const end = { x: start.x + 20, y: start.y };
+    await vi.waitFor(() => expect(drawnAt(box)).toEqual(end));
+    const putBack = manualOffsetMoveRevert([member])();
+    // The undo's write reaching the frame, which the redraw must paint over.
+    gsap.set(box, start);
+    putBack();
+    await vi.waitFor(() => expect(drawnAt(box)).toEqual(end));
+  },
+);
+
 // fails without the fix: a gesture with no save ended its draft as {translate:null} then {end:keep}, two messages.
 it("a sealed move with no save ends its draft once, as one end", async () => {
   mount(SCRIPT);
@@ -554,9 +655,11 @@ describe("a newer gesture that takes the element before the older save lands", (
     });
   });
 
+  // The box's tween starts after the playhead, so the older save's base set is what the frame shows there.
   it("puts a cancelled regrab back where the older save left it, not where the older drag began", async () => {
-    mount(SCRIPT);
-    await dragBoxOnSealedFrame(SCRIPT, undefined, regrab(7), async (iframe, standIn) => {
+    const later = timeline(`tl.to("#box", { x: 200, y: 80, duration: 1, ease: "none" }, 5);`);
+    mount(later);
+    await dragBoxOnSealedFrame(later, undefined, regrab(7), async (iframe, standIn) => {
       await savePosition({ kind: "global-set", props: { x: 110, y: 40 } })(iframe);
       endPreviewDraft(standIn, "restore");
       await vi.waitFor(() => expect(box().style.translate).toBe(""));

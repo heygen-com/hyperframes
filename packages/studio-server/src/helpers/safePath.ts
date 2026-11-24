@@ -86,36 +86,40 @@ export function isWritableProjectFile(projectDir: string, filePath: string): boo
   );
 }
 
-/** `isWritableProjectPath`, and not a script the project's package.json runs. */
+/** `isWritableProjectPath`, and not a script the project's Node tooling may run. */
 export function isWritableInProject(projectDir: string, relPath: string): boolean {
-  return isWritableProjectPath(relPath) && !scriptsPackageRuns(projectDir).has(foldedPath(relPath));
+  return isWritableProjectPath(relPath) && !nodeMayRun(projectDir, relPath);
 }
 
-// A word in package.json that names a JavaScript or TypeScript file: `node server.js`, `tsx ./scripts/build.ts`.
-const SCRIPT_FILE = /\.[cm]?[jt]sx?$/;
-const SHELL_WORD_BREAKS = /[\s;&|()<>"'`=,]+/;
-const NO_SCRIPTS: ReadonlySet<string> = new Set();
-const packageScripts = new Map<string, { stat: string; files: ReadonlySet<string> }>();
+const NODE_ONLY_SCRIPT = /\.(?:[cm]?ts|tsx|jsx|cjs)$/;
+const BROWSER_OR_NODE_SCRIPT = /\.m?js$/;
 
-const foldedPath = (path: string): string =>
-  projectPathSegments(path)
-    .filter((segment) => segment !== "" && segment !== ".")
-    .join("/");
+/** A Node-only script, or `.js`/`.mjs` below (at any depth, past the project too) a package.json that is not the scaffold's. */
+function nodeMayRun(projectDir: string, relPath: string): boolean {
+  const name = foldedPath(relPath).split("/").at(-1) ?? "";
+  if (NODE_ONLY_SCRIPT.test(name)) return true;
+  if (!BROWSER_OR_NODE_SCRIPT.test(name)) return false;
+  const folder = dirname(resolve(projectDir, relPath));
+  return [folder, realFilePath(folder)].some((from) => foldersUp(from).some(manifestBringsNode));
+}
 
-/**
- * The script files the project's package.json runs (its `main`, `bin` and every script file its scripts name), folded
- * as `projectPathSegments` folds. npm, node or a tool runs these with the developer's rights.
- */
-function scriptsPackageRuns(projectDir: string): ReadonlySet<string> {
-  const path = join(projectDir, "package.json");
+function foldersUp(from: string): string[] {
+  const parent = dirname(from);
+  return parent === from ? [from] : [from, ...foldersUp(parent)];
+}
+
+const manifests = new Map<string, { stat: string; bringsNode: boolean }>();
+
+function manifestBringsNode(folder: string): boolean {
+  const path = join(folder, "package.json");
   const stat = statSync(path, { throwIfNoEntry: false });
-  if (!stat?.isFile()) return NO_SCRIPTS;
+  if (!stat?.isFile()) return false;
   const key = `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
-  const cached = packageScripts.get(path);
-  if (cached?.stat === key) return cached.files;
-  const files = scriptFilesNamedBy(readPackageJson(path));
-  packageScripts.set(path, { stat: key, files });
-  return files;
+  const cached = manifests.get(path);
+  if (cached?.stat === key) return cached.bringsNode;
+  const bringsNode = !isScaffoldManifest(readPackageJson(path));
+  manifests.set(path, { stat: key, bringsNode });
+  return bringsNode;
 }
 
 function readPackageJson(path: string): unknown {
@@ -126,28 +130,38 @@ function readPackageJson(path: string): unknown {
   }
 }
 
-function scriptFilesNamedBy(pkg: unknown): ReadonlySet<string> {
-  if (!pkg || typeof pkg !== "object") return NO_SCRIPTS;
-  const { main, bin, scripts }: { main?: unknown; bin?: unknown; scripts?: unknown } = pkg;
-  const words = [main, ...valuesOf(bin), ...valuesOf(scripts)].flatMap((value) =>
-    typeof value === "string" ? value.split(SHELL_WORD_BREAKS) : [],
+const INERT_FIELDS = new Set(
+  "name version private type description license author contributors keywords homepage repository bugs engines".split(
+    " ",
+  ),
+);
+const HYPERFRAMES_COMMAND = /^(?:npx (?:--yes |-y )?)?hyperframes(?:@[\w.+-]+)?(?: [\w@=:./+-]+)*$/;
+
+/** A manifest with nothing but inert fields and scripts that only call the hyperframes CLI, as `hyperframes init` writes. */
+function isScaffoldManifest(pkg: unknown): boolean {
+  if (!pkg || typeof pkg !== "object" || Array.isArray(pkg)) return false;
+  return Object.entries(pkg).every(([field, value]) =>
+    field === "scripts" ? onlyHyperframesScripts(value) : INERT_FIELDS.has(field),
   );
-  const files = words.filter(
-    (word) => SCRIPT_FILE.test(word) && !word.split(/[\\/]/).includes(".."),
-  );
-  return new Set(files.map(foldedPath));
 }
 
-const valuesOf = (value: unknown): unknown[] =>
-  typeof value === "string"
-    ? [value]
-    : value && typeof value === "object"
-      ? Object.values(value)
-      : [];
+function onlyHyperframesScripts(scripts: unknown): boolean {
+  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) return false;
+  return Object.values(scripts).every(
+    (script) =>
+      typeof script === "string" &&
+      script.split(" && ").every((command) => HYPERFRAMES_COMMAND.test(command.trim())),
+  );
+}
+
+const foldedPath = (path: string): string =>
+  projectPathSegments(path)
+    .filter((segment) => segment !== "" && segment !== ".")
+    .join("/");
 
 /**
  * The first entry below `dir` a folder delete or move must not take along: one a direct delete or rename refuses, a
- * `toolTrustedFileKind` file or a script package.json runs, or `node_modules` or `.git`. Given `to`, a move's
+ * `toolTrustedFileKind` file or a script Node tooling may run, or `node_modules` or `.git`. Given `to`, a move's
  * destination, also one arriving where a direct write refuses. Links are not followed; an unreadable folder is refused.
  */
 export function protectedEntryWithin(projectDir: string, dir: string, to?: string): string | null {
@@ -155,11 +169,10 @@ export function protectedEntryWithin(projectDir: string, dir: string, to?: strin
   const places = [dir, ...(to === undefined ? [] : [to])].flatMap((at) =>
     projectRelatives(projectDir, at),
   );
-  const runs = scriptsPackageRuns(projectDir);
   const refused = (sub: string) =>
     places.some((place) => {
       const at = place ? `${place}/${sub}` : sub;
-      return toolTrustedFileKind(at) !== null || runs.has(foldedPath(at));
+      return toolTrustedFileKind(at) !== null || nodeMayRun(projectDir, at);
     });
   const found = refusedEntryBelow(dir, "", refused);
   return found === null ? null : [from, found].filter(Boolean).join("/") || ".";

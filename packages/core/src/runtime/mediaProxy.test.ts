@@ -29,7 +29,12 @@ vi.mock("./bridge", () => ({
 import { postRuntimeMessage } from "./bridge";
 import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
 import { resetCopyReporting } from "./previewCopies";
-import { STUDIO_PREVIEW_CAPTURE_MODE, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
+import {
+  CAPTURE_STILL_ATTR,
+  CAPTURE_STILLS,
+  STUDIO_PREVIEW_CAPTURE_MODE,
+  STUDIO_PREVIEW_MARK_META,
+} from "../studioPreviewMark";
 
 const postRuntimeMessageMock = vi.mocked(postRuntimeMessage);
 
@@ -1352,6 +1357,200 @@ describe("preview quality: lighter copies of heavy files", () => {
       } finally {
         mark.remove();
       }
+    });
+
+    describe("on a one-shot capture page that asked for stills", () => {
+      const marks: HTMLMetaElement[] = [];
+      beforeEach(() => {
+        for (const [name, content] of [
+          [STUDIO_PREVIEW_MARK_META, STUDIO_PREVIEW_CAPTURE_MODE],
+          [CAPTURE_STILLS, ""],
+        ]) {
+          const mark = document.head.appendChild(document.createElement("meta"));
+          mark.name = name!;
+          mark.content = content!;
+          marks.push(mark);
+        }
+      });
+      afterEach(() => marks.splice(0).forEach((mark) => mark.remove()));
+
+      const loads: Array<{
+        url: string;
+        onload: (() => void) | null;
+        onerror: (() => void) | null;
+      }> = [];
+      async function capturedAt(seconds: number, facts = HEAVY) {
+        loads.length = 0;
+        vi.stubGlobal(
+          "Image",
+          class {
+            onload: (() => void) | null = null;
+            onerror: (() => void) | null = null;
+            url = "";
+            set src(url: string) {
+              this.url = url;
+              loads.push(this);
+            }
+          },
+        );
+        vi.useFakeTimers();
+        const fetches = vi.fn(async () => new Response("x", { status: 206 }));
+        vi.stubGlobal("fetch", fetches);
+        const staged = await stage({ "/video.mp4": facts });
+        const el = staged.video();
+        staged.maybeProxyProactively(el);
+        const media = await import("./media");
+        const clip = { el, start: 0, mediaStart: 4, duration: 10, end: 10, volume: null };
+        media.syncRuntimeMedia({
+          clips: [{ ...clip, playbackRate: 1, loop: false, sourceDuration: null }],
+          timeSeconds: seconds,
+          playing: false,
+          playbackRate: 1,
+          getCompositionDuration: () => 0,
+        });
+        const seeks = await import("./adapters/seek-dispatch");
+        let captured = false;
+        void seeks.waitForSeekCompletion().then(() => (captured = true));
+        staged.standInCaptureStill(el, true);
+        await vi.advanceTimersByTimeAsync(100);
+        return { el, fetches, captured: () => captured, standIn: staged.standInCaptureStill };
+      }
+
+      // fails without the fix: the page decoded each 4K original on screen to paint a frame taken at tile size; three
+      // such clips at once took a Desktop poster page to 3.1 GB, and its memory guard closed it before the poster.
+      it("never loads a file twice its box, and shows the server's frame at the playhead, which the capture waits for", async () => {
+        const { el, fetches, captured } = await capturedAt(1.25);
+
+        expect([el.hasAttribute("src"), fetches.mock.calls.length]).toEqual([false, 0]);
+        const poster = new URL(el.getAttribute("poster")!, document.baseURI);
+        expect([...poster.searchParams]).toEqual([
+          ["hf-proxy", "auto"],
+          ["hf-proxy-box", "2048x1218"],
+          ["hf-proxy-light", "1"],
+          ["hf-proxy-still", "5.250"],
+        ]);
+        expect(loads.map((load) => load.url)).toEqual([poster.href]);
+        expect([captured(), el.hasAttribute(CAPTURE_STILL_ATTR)]).toEqual([false, false]);
+        loads[0]!.onload!();
+        await vi.advanceTimersByTimeAsync(0);
+        expect([captured(), el.hasAttribute(CAPTURE_STILL_ATTR)]).toEqual([true, true]);
+      });
+
+      // fails without the fix: the visibility pass gave a stilled clip on screen its file turn, decoding the original.
+      it("never gives a clip its still stands in for its file turn", async () => {
+        const { el } = await capturedAt(1.25);
+        const { decideFileTurn } = await import("./mediaProxy");
+
+        decideFileTurn(el, true);
+
+        expect(el.hasAttribute("src")).toBe(false);
+      });
+
+      // fails without the fix: a still the server failed to cut released the capture with the clip marked drawn and no
+      // source, so the frame showed nothing where the clip was.
+      it("decodes its own file when the server cannot cut the frame, and the capture waits for that frame", async () => {
+        const { el, captured } = await capturedAt(1.25);
+
+        loads[0]!.onerror!();
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect([
+          el.getAttribute("src"),
+          el.hasAttribute("poster"),
+          el.hasAttribute(CAPTURE_STILL_ATTR),
+        ]).toEqual(["/video.mp4", false, false]);
+        expect(captured()).toBe(false);
+        el.dispatchEvent(new Event("loadeddata"));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(captured()).toBe(true);
+      });
+
+      it("asks for the frame again at each seek, so a page seeked to many times follows them", async () => {
+        const { el, standIn } = await capturedAt(1.25);
+        const media = await import("./media");
+        const clip = { el, start: 0, mediaStart: 4, duration: 10, end: 10, volume: null };
+        media.syncRuntimeMedia({
+          clips: [{ ...clip, playbackRate: 1, loop: false, sourceDuration: null }],
+          timeSeconds: 3,
+          playing: false,
+          playbackRate: 1,
+          getCompositionDuration: () => 0,
+        });
+        standIn(el, true);
+        standIn(el, true);
+
+        const at = (url: string) => new URL(url).searchParams.get("hf-proxy-still");
+        expect(loads.map((load) => at(load.url))).toEqual(["5.250", "7.000"]);
+      });
+
+      // fails without the fix: the first A was told from the latest A by its address alone, so its late error
+      // undid the latest A's loaded frame and gave the clip its 4K file back.
+      it("takes only the latest ask's answer, after a seek away and back", async () => {
+        const { el, standIn } = await capturedAt(1.25);
+        const media = await import("./media");
+        const clip = { el, start: 0, mediaStart: 4, duration: 10, end: 10, volume: null };
+        const seek = (timeSeconds: number) => {
+          media.syncRuntimeMedia({
+            clips: [{ ...clip, playbackRate: 1, loop: false, sourceDuration: null }],
+            timeSeconds,
+            playing: false,
+            playbackRate: 1,
+            getCompositionDuration: () => 0,
+          });
+          standIn(el, true);
+        };
+        seek(3);
+        seek(1.25);
+        expect(loads.length).toBe(3);
+
+        loads[2]!.onload!();
+        loads[0]!.onerror!();
+        loads[1]!.onerror!();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect([el.hasAttribute("src"), el.hasAttribute(CAPTURE_STILL_ATTR)]).toEqual([
+          false,
+          true,
+        ]);
+      });
+
+      // fails without the fix: an answer checked only its own ask: once the page set its own poster, a late load marked
+      // that poster drawn, and a late error took it away and gave the clip its 4K file.
+      it("leaves a poster the page set meanwhile alone, whatever the still's answer", async () => {
+        const { el } = await capturedAt(1.25);
+        el.setAttribute("poster", "/own.jpg");
+
+        loads[0]!.onload!();
+        loads[0]!.onerror!();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect([
+          el.getAttribute("poster"),
+          el.hasAttribute("src"),
+          el.hasAttribute(CAPTURE_STILL_ATTR),
+        ]).toEqual(["/own.jpg", false, false]);
+      });
+
+      // fails without the fix: a JPEG has no alpha, so a see-through clip's still covered whatever was behind it.
+      it("keeps a see-through file on its own decode", async () => {
+        const { el } = await capturedAt(1.25, { ...HEAVY, hasAlpha: true });
+
+        expect([el.getAttribute("src"), el.hasAttribute("poster"), loads.length]).toEqual([
+          "/video.mp4",
+          false,
+          0,
+        ]);
+      });
+
+      it("keeps a file under twice its box, and decodes it as before", async () => {
+        const { el } = await capturedAt(1.25, LIGHT);
+
+        expect([el.getAttribute("src"), el.hasAttribute("poster"), loads.length]).toEqual([
+          "/video.mp4",
+          false,
+          0,
+        ]);
+      });
     });
 
     // fails without the fix: the still was asked without the lighter-copy mark, so Studio's server refused it for a

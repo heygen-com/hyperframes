@@ -21,7 +21,7 @@ import {
 } from "../../hooks/draggedGsapPosition";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
-import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
+import { drawPreviewDraft, endPreviewDraft, frameDraftTranslate } from "./previewDrafts";
 import {
   armDraftEndOnRelease,
   endDraftKeepingWhatTheSaveWrites,
@@ -96,6 +96,8 @@ export interface ManualOffsetDragMember {
   /** The move writes the element's own inline `translate`; offsets are then absolute translate px. */
   plainTranslate: boolean;
   gsapOwnsPosition: boolean;
+  frameDraftRoute?: "gsap";
+  committedOnFrame?: { x: number; y: number; route?: "gsap" };
   sizeSavedAsScale?: boolean;
   /**
    * The element's GSAP x/y at gesture start, captured in JS so a mid-drag
@@ -358,6 +360,7 @@ export function createManualOffsetDragMember(input: {
   const baseGsap = start?.gsap ? { x: start.gsap.x, y: start.gsap.y } : { x: gsapX, y: gsapY };
   const moving = start?.gsap?.moving === true;
   const gsapOwnsPosition = !plainTranslate && Boolean(start ?? getOffsetDragGsap(input.element));
+  const frameDraftRoute = gsapOwnsPosition && start?.gsap?.drawsTranslate ? "gsap" : undefined;
   if (!plainTranslate) stampGestureBase(input.element, initialOffset, baseGsap, moving);
 
   if (win?.__timelines) {
@@ -404,6 +407,7 @@ export function createManualOffsetDragMember(input: {
         initialOffset,
         plainTranslate,
         gsapOwnsPosition,
+        ...(frameDraftRoute && { frameDraftRoute }),
         baseGsap,
         ...(moving && { moving }),
         initialPathOffset,
@@ -423,6 +427,7 @@ export function createManualOffsetDragMember(input: {
       initialOffset,
       plainTranslate,
       gsapOwnsPosition,
+      ...(frameDraftRoute && { frameDraftRoute }),
       baseGsap,
       ...(moving && { moving }),
       initialPathOffset,
@@ -452,8 +457,9 @@ function drawMemberOffset(
   offset: { x: number; y: number },
   commit: boolean,
 ): void {
-  const { x, y } = member.initialOffset;
-  drawPreviewDraft(member.element, { translate: { x: offset.x - x, y: offset.y - y } });
+  const translate = frameDraftTranslate(member, offset);
+  drawPreviewDraft(member.element, { translate });
+  if (commit) member.committedOnFrame = translate;
   if (member.plainTranslate) writeTranslatePx(member.element, offset);
   else if (applyOffsetDragDraftViaGsap(member.element, offset, member.baseGsap)) return;
   else if (commit) applyStudioPathOffset(member.element, offset);
