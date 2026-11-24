@@ -68,7 +68,6 @@ function section(entry: unknown): DesignTokens["sections"][number] | undefined {
     height: number(entry.height),
     heading: text(entry.heading, 200),
     backgroundColor: optionalText(entry.backgroundColor, 200),
-
     callsToAction: Array.isArray(entry.callsToAction)
       ? list(entry.callsToAction, 20, textEntry(200))
       : undefined,

@@ -40,6 +40,7 @@ const captured: DesignTokens = {
       text: "Hello world",
       layout: "split",
       assetUrls: ["https://example.com/a.png"],
+      backgroundImage: "linear-gradient(red, blue)",
     },
   ],
   colorStats: [
@@ -97,15 +98,27 @@ describe("normalizeDesignTokens", () => {
   it("bounds each list and text, and drops a value a cut would break", () => {
     const tokens = normalizeDesignTokens({
       colors: Array.from({ length: 500 }, (_, i) => `#${String(i).padStart(6, "0")}`),
-      ctas: Array.from({ length: 500 }, () => ({ text: "x".repeat(10_000) })),
+      ctas: Array.from({ length: 500 }, () => ({
+        text: "x".repeat(10_000),
+        href: `https://example.com/${"x".repeat(8000)}`,
+      })),
       svgs: [{ outerHTML: "x".repeat(1_000_001), width: 1, height: 1 }],
       ogImage: `https://example.com/${"x".repeat(8000)}`,
+      sections: [
+        {
+          heading: "Hello",
+          assetUrls: ["https://example.com/a.png", `https://example.com/${"x".repeat(8000)}`],
+          backgroundImage: `url(data:image/png;base64,${"A".repeat(100_000)})`,
+        },
+      ],
     });
     expect(tokens.colors).toHaveLength(20);
     expect(tokens.ctas).toHaveLength(10);
-    expect(tokens.ctas[0]?.text).toHaveLength(60);
+    expect(tokens.ctas[0]).toEqual({ text: "x".repeat(60), href: undefined });
     expect(tokens.svgs).toEqual([]);
     expect(tokens.ogImage).toBeUndefined();
+    expect(tokens.sections[0]?.assetUrls).toEqual(["https://example.com/a.png"]);
+    expect(tokens.sections[0]?.backgroundImage).toBeUndefined();
   });
 
   it("is what extractTokens returns for the page's result", async () => {
