@@ -189,6 +189,20 @@ describe.each(PARSERS)("sanitizeRichTextChildren (%s)", (_name, parse) => {
     expect(out).toContain("color: red");
   });
 
+  // fails without the fix: the splitter ended declarations where a browser does not, and kept the rest unchecked.
+  it.each([
+    ["a quote inside a comment", "color: red /* ' */; position: fixed"],
+    ["a string broken by a newline", 'color: red; font-family: "a\n; position: fixed'],
+    ["an escaped function name", "color: red; font-family: \\75 rl(https://x/f)"],
+    ["a string-argument image function", 'color: red; font-family: image-set("https://x/i.png")'],
+  ])("keeps nothing a browser reads past %s", (_case, style) => {
+    const host = parse("<span>x</span>");
+    host.firstElementChild?.setAttribute("style", style);
+    sanitizeRichTextChildren(host);
+    const kept = host.firstElementChild?.getAttribute("style") ?? "";
+    expect(kept).not.toMatch(/position|\\|url\(|image-set\(/i);
+  });
+
   it("removes a comment, which is neither text nor formatting", () => {
     expect(clean("a<!-- note -->b", parse)).toBe("ab");
   });
