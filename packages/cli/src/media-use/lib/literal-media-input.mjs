@@ -1,4 +1,5 @@
-// The standalone twin of assertLiteralMediaInput in packages/parsers/src/literalMediaInput.ts, for inputs and outputs; a test keeps them equal.
+// The standalone twin of assertLiteralMediaInput in packages/parsers/src/literalMediaInput.ts, for inputs and outputs,
+// and of the parsers' self-contained reader list; tests keep both equal.
 const PATTERN_IMAGE2_EXPANDS = /%\d*[d%*?[\]{}]/;
 const WILDCARD_MAKES_ANY_PERCENT_A_PATTERN = /[*?[{]/;
 const FORWARDED = /^https?:/i;

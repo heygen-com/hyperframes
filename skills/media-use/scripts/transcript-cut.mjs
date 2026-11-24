@@ -91,6 +91,8 @@ function run() {
   const inputPath = resolve(args.input);
   const outPath = resolve(args.out);
   for (const path of [inputPath, outPath]) assertLiteralMediaPath(path);
+  // Probed before any folder is made, so an input ffmpeg refuses leaves nothing behind.
+  const totalSeconds = probeDuration(inputPath);
   // An --out inside the project (the folder this runs in) is written only into its real folders.
   const rel = relative(process.cwd(), dirname(outPath));
   const outsideProject = rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
@@ -100,7 +102,6 @@ function run() {
   // The encode lands in a new private folder beside --out, so nothing already next to it is written through.
   let outDir = null;
   const keptSeconds = sumDurations(segments);
-  const totalSeconds = probeDuration(inputPath);
 
   try {
     const parts = segments.map((segment, index) => {

@@ -134,68 +134,89 @@ test("the scripts' reader list is the parsers' self-contained list plus ico", ()
   assert.deepEqual(SELF_CONTAINED_FORMATS.split(",").sort(), [...parsers.split(","), "ico"].sort());
 });
 
-// A file named like media that is an ffconcat list naming an HLS playlist, which names a real clip in
-// another folder. Read without a reader list, it decodes that clip, so its frames would land in the output.
-function listNamedAsMedia(dir, name) {
-  const elsewhere = join(dir, "elsewhere");
-  mkdirSync(elsewhere, { recursive: true });
-  const clip = join(elsewhere, "clip.ts");
+const runAsync = (path, args, options = {}) =>
+  promisify(execFile)(process.execPath, [script(path), ...args], options).then(
+    ({ stdout, stderr }) => ({ code: 0, output: stdout + stderr }),
+    (error) => ({ code: error.code, output: `${error.stdout}${error.stderr}` }),
+  );
+
+// A real clip in a folder beside the project, which the project's files must not reach.
+function clipElsewhere(dir) {
+  const clip = join(dir, "elsewhere", "clip.ts");
+  mkdirSync(join(dir, "elsewhere"), { recursive: true });
   execFileSync("ffmpeg", [
     ...["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=64x48:rate=10:duration=2"],
     ...["-f", "lavfi", "-i", "sine=duration=2", "-shortest", "-f", "mpegts", clip],
   ]);
-  const project = join(dir, "project");
-  mkdirSync(project);
-  writeFileSync(
-    join(project, "list.m3u8"),
-    `#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2.0,\n${clip}\n#EXT-X-ENDLIST\n`,
-  );
-  const named = join(project, name);
-  writeFileSync(named, "ffconcat version 1.0\nfile 'list.m3u8'\n");
-  return { project, named };
+  return clip;
 }
 
-test(
-  "dither, transcript-cut, verify-motion and locate refuse a list named as media and write nothing",
-  { skip: !HAS_FFMPEG && "ffmpeg and ffprobe are not installed" },
-  (t) => {
-    const dir = sandbox(t);
-    const { project, named } = listNamedAsMedia(dir, "video_001.mp4");
-    const { named: namedImage } = listNamedAsMedia(join(dir, "image"), "logo.png");
+// A file named like media that is an ffconcat list naming an HLS playlist, whose one entry is that clip.
+// Read with no reader list, ffmpeg follows both and decodes the clip, so its frames reach the output.
+function listNamedAsMedia(dir, name) {
+  const project = join(dir, "project");
+  mkdirSync(project, { recursive: true });
+  writeFileSync(
+    join(project, "list.m3u8"),
+    `#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2.0,\n${clipElsewhere(dir)}\n#EXT-X-ENDLIST\n`,
+  );
+  const named = join(project, name);
+  writeFileSync(named, "ffconcat version 1.0\nfile 'list.m3u8'\nduration 2\n");
+  return named;
+}
 
-    const dithered = join(project, "dithered.mp4");
-    const dither = runNode("skills/media-use/scripts/dither.mjs", [
-      ...["--input", named, "--out", dithered, "--json"],
-    ]);
-    assert.notEqual(dither.status, 0, dither.stdout + dither.stderr);
-    assert.equal(existsSync(dithered), false);
+const NOT_ON_WHITELIST = /not on whitelist/;
+const ffmpegTest = (name, body) =>
+  test(name, { skip: !HAS_FFMPEG && "ffmpeg and ffprobe are not installed" }, body);
 
-    const transcript = join(project, "transcript.json");
-    writeFileSync(transcript, JSON.stringify({ words: [{ text: "tone", start: 0, end: 2 }] }));
-    const cutOut = join(project, "cut.mp4");
-    const cut = runNode("skills/media-use/scripts/transcript-cut.mjs", [
-      ...["--input", named, "--transcript", transcript, "--keep", "0-1", "--out", cutOut],
-    ]);
-    assert.notEqual(cut.status, 0, cut.stdout + cut.stderr);
-    assert.equal(existsSync(cutOut), false);
+ffmpegTest("dither refuses a list named as media and writes nothing", async (t) => {
+  const dir = sandbox(t);
+  const out = join(dir, "dithered.mp4");
+  const run = await runAsync("skills/media-use/scripts/dither.mjs", [
+    ...["--input", listNamedAsMedia(dir, "video_001.mp4"), "--out", out, "--json"],
+  ]);
+  assert.notEqual(run.code, 0, run.output);
+  assert.match(run.output, NOT_ON_WHITELIST);
+  assert.equal(existsSync(out), false);
+});
 
-    const verified = runNode("skills/figma/scripts/verify-motion.mjs", [
-      ...["--reference", named, "--render", named],
-    ]);
-    assert.notEqual(verified.status, 0, verified.stdout + verified.stderr);
+ffmpegTest("transcript-cut refuses a list named as media and writes nothing", async (t) => {
+  const dir = sandbox(t);
+  const transcript = join(dir, "transcript.json");
+  writeFileSync(transcript, JSON.stringify({ words: [{ text: "tone", start: 0, end: 2 }] }));
+  const out = join(dir, "cut", "cut.mp4");
+  const run = await runAsync("skills/media-use/scripts/transcript-cut.mjs", [
+    ...["--input", listNamedAsMedia(dir, "video_001.mp4"), "--transcript", transcript],
+    ...["--keep", "0-1", "--out", out],
+  ]);
+  assert.notEqual(run.code, 0, run.output);
+  assert.match(run.output, NOT_ON_WHITELIST);
+  assert.equal(existsSync(join(dir, "cut")), false);
+});
 
-    const grid = join(project, "grid");
-    const located = runNode("skills/hyperframes/scripts/locate.mjs", [
-      ...["overlay", namedImage, "--out", grid],
-    ]);
-    assert.notEqual(located.status, 0, located.stdout + located.stderr);
-    assert.equal(existsSync(join(grid, "gv.png")), false);
-  },
-);
+ffmpegTest("verify-motion refuses a list named as media", async (t) => {
+  const dir = sandbox(t);
+  const reference = listNamedAsMedia(dir, "ref.mp4");
+  const run = await runAsync("skills/figma/scripts/verify-motion.mjs", [
+    ...["--reference", reference, "--render", join(dir, "elsewhere", "clip.ts")],
+  ]);
+  assert.notEqual(run.code, 0, run.output);
+  assert.match(run.output, NOT_ON_WHITELIST);
+});
 
-test(
-  "locate and verify-motion read a URL argument as a local name and request nothing",
-  { skip: !HAS_FFMPEG && "ffmpeg and ffprobe are not installed" },
+ffmpegTest("locate refuses a list named as an image and writes nothing", async (t) => {
+  const dir = sandbox(t);
+  const out = join(dir, "check.png");
+  const run = await runAsync("skills/hyperframes/scripts/locate.mjs", [
+    ...["mark", listNamedAsMedia(dir, "logo.png"), "--box", "0,0,0.5,0.5", "--out", out],
+  ]);
+  assert.notEqual(run.code, 0, run.output);
+  assert.match(run.output, NOT_ON_WHITELIST);
+  assert.equal(existsSync(out), false);
+});
+
+ffmpegTest(
+  "locate and verify-motion read URL arguments as local names and request nothing",
   async (t) => {
     const dir = sandbox(t);
     const requests = [];
@@ -206,20 +227,34 @@ test(
     await new Promise((done) => server.listen(0, "127.0.0.1", done));
     t.after(() => server.close());
     const base = `http://127.0.0.1:${server.address().port}`;
-    const runAsync = (path, args) =>
-      promisify(execFile)(process.execPath, [script(path), ...args], { cwd: dir }).then(
-        () => 0,
-        (error) => error.code,
-      );
-
-    const located = await runAsync("skills/hyperframes/scripts/locate.mjs", [
-      ...["overlay", `${base}/logo.png`, "--out", join(dir, "grid")],
+    const image = join(dir, "still.png");
+    execFileSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=s=64x48",
+      "-frames:v",
+      "1",
+      image,
     ]);
-    const verified = await runAsync("skills/figma/scripts/verify-motion.mjs", [
-      ...["--reference", `${base}/ref.mp4`, "--render", `${base}/out.mp4`],
-    ]);
-    assert.notEqual(located, 0);
-    assert.notEqual(verified, 0);
+    const runs = [
+      await runAsync("skills/hyperframes/scripts/locate.mjs", [
+        ...["mark", `${base}/logo.png`, "--box", "0,0,0.5,0.5", "--out", join(dir, "check.png")],
+      ]),
+      await runAsync(
+        "skills/hyperframes/scripts/locate.mjs",
+        ["mark", image, "--box", "0,0,0.5,0.5", "--out", `${base}/check.png`],
+        { cwd: dir },
+      ),
+      await runAsync("skills/figma/scripts/verify-motion.mjs", [
+        ...["--reference", `${base}/ref.mp4`, "--render", `${base}/out.mp4`],
+      ]),
+    ];
     assert.deepEqual(requests, []);
+    assert.notEqual(runs[0].code, 0, runs[0].output);
+    assert.notEqual(runs[2].code, 0, runs[2].output);
   },
 );

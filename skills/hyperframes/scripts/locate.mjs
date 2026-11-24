@@ -112,8 +112,10 @@ const pos = rest.filter((a) => !a.startsWith("--"));
 const opt = {};
 for (let i = 0; i < rest.length; i++)
   if (rest[i].startsWith("--")) opt[rest[i].slice(2)] = rest[i + 1];
-// Local files only: a URL-shaped argument becomes a path under the current folder, never a URL ffmpeg opens.
+// Local files only: a URL-shaped image or --out becomes a path under the current folder, never a URL ffmpeg
+// reads from or writes to.
 const img = pos[0] && resolve(pos[0]);
+if (opt.out) opt.out = resolve(opt.out);
 for (const path of [img, opt.out]) if (path) assertLiteralMediaPath(path);
 const readImg = () => [...selfContainedInput(img), "-i", img];
 
