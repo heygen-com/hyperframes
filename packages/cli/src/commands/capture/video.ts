@@ -308,7 +308,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
     if ((e as NodeJS.ErrnoException).code === "EEXIST") {
       const path = (e as NodeJS.ErrnoException).path;
       console.log(
-        `${c.warn("⚠")}  already downloaded: ${relPath(path ? basename(path) : stem)} (skipping)`,
+        `${c.warn("⚠")}  already downloaded: ${terminalText(relPath(path ? basename(path) : stem))} (skipping)`,
       );
       console.log(`     Delete the file and re-run to refetch.`);
       return;
