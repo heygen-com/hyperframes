@@ -12,6 +12,7 @@ import {
   studioGestureDraws,
 } from "./manualEditGesture";
 import { createManualOffsetDragMember, endManualOffsetDragMembers } from "./manualOffsetDrag";
+import { readDragStamp } from "../../hooks/draggedGsapPosition";
 import {
   findPreviewElementForSelection,
   gestureDocumentOf,
@@ -21,8 +22,10 @@ import {
 const MODES = process.env.HF_PARITY_MODE ? [process.env.HF_PARITY_MODE] : ["unsealed", "sealed"];
 const PATH = "index.html";
 const frames: HTMLIFrameElement[] = [];
+const titles: HTMLElement[] = [];
 
 afterEach(() => {
+  titles.splice(0).forEach((element) => endStudioManualEditGesture(element));
   frames.splice(0).forEach(retirePreviewEditingClient);
   document.body.innerHTML = "";
 });
@@ -31,7 +34,10 @@ afterEach(() => {
  * reload asks whether a gesture is live in. */
 async function title(mode: string): Promise<{ element: HTMLElement; doc: Document }> {
   document.body.innerHTML = '<h1 id="title">Title</h1>';
-  if (mode === "unsealed") return { element: document.getElementById("title")!, doc: document };
+  if (mode === "unsealed") {
+    titles.push(document.getElementById("title")!);
+    return { element: titles[0]!, doc: document };
+  }
   const { iframe } = sealedPreviewFrame();
   frames.push(iframe);
   const options = { activeCompositionPath: PATH, isMasterView: false, skipSourceProbe: true };
@@ -41,6 +47,7 @@ async function title(mode: string): Promise<{ element: HTMLElement; doc: Documen
     PATH,
   );
   const selection = (await resolvePreviewSelection(iframe, found!, options))!;
+  titles.push(selection.element);
   return { element: selection.element, doc: gestureDocumentOf(iframe)! };
 }
 
@@ -61,6 +68,26 @@ describe.each(MODES)("%s preview", (mode) => {
     endStudioManualEditGesture(element, edit);
     expect(isStudioManualEditGestureLiveIn(doc)).toBe(false);
     expect(reload).toHaveBeenCalledOnce();
+  });
+
+  // fails without the fix: the resumed gesture kept the newer gesture's moment, so its commit used the wrong time.
+  it("gives a resumed gesture back the moment it started at", async () => {
+    const { element } = await title(mode);
+    const resize = beginStudioManualEditGesture(element, "resize", { time: 2, keyframePct: null });
+    const move = beginStudioManualEditGesture(element, "move", { time: 5, keyframePct: 50 });
+    expect(readDragStamp(element).at).toEqual({ time: 5, keyframePct: 50 });
+    endStudioManualEditGesture(element, move);
+    expect(isStudioManualEditGestureCurrent(element, resize)).toBe(true);
+    expect(readDragStamp(element).at).toEqual({ time: 2, keyframePct: null });
+  });
+
+  it("gives a resumed gesture that started without a moment none", async () => {
+    const { element } = await title(mode);
+    const edit = beginStudioManualEditGesture(element, "edit");
+    const move = beginStudioManualEditGesture(element, "move", { time: 5, keyframePct: null });
+    endStudioManualEditGesture(element, move);
+    expect(isStudioManualEditGestureCurrent(element, edit)).toBe(true);
+    expect(readDragStamp(element).at).toBeUndefined();
   });
 
   it("keeps the newest gesture current while an older one on the element is still live", async () => {
