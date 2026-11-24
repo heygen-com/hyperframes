@@ -220,6 +220,11 @@ try {
   console.log(`[sealed-runtime] redirect within the site: sealed ${JSON.stringify(within)}`);
   assert.ok(open.time > 0.3 && sealed.time > 0.3, "both play the redirected composition");
   assert.deepEqual(sealed.errors, open.errors, "sealed logs what unsealed logs");
+  assert.equal(
+    sealed.read,
+    false,
+    "an off-site redirect is not read, so the frame loads it by address",
+  );
   assert.ok(
     within.read,
     "a same-site redirect is still followed and read, so the runtime is inlined",
