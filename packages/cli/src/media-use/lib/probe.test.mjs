@@ -219,3 +219,19 @@ test(
     }
   },
 );
+
+test("a file whose name reads as an ffmpeg pattern is never probed", (t) => {
+  const calls = t.mock.method(childProcess, "execFileSync", () => "{}");
+  syncBuiltinESMExports();
+  t.after(() => {
+    calls.mock.restore();
+    syncBuiltinESMExports();
+  });
+  assert.deepEqual(probe("/project/still%d.png"), {
+    duration: null,
+    width: null,
+    height: null,
+    codec: null,
+  });
+  assert.equal(calls.mock.callCount(), 0);
+});

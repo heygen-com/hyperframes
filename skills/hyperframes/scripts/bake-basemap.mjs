@@ -25,6 +25,7 @@ import { join } from "node:path";
 import { mkdirSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
+import { assertLiteralMediaPath } from "./lib/literal-media-input.mjs";
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`usage: [NAME=..] [STYLE=satellite|dark|light|<{z}/{x}/{y} url>] [CENTER="lng,lat"]
@@ -132,6 +133,7 @@ const TILES =
 
 const OUT = process.env.OUT || process.cwd(); // artifacts → workspace (cwd), NOT the installed skill dir
 const framesDir = join(OUT, "frames-" + NAME);
+assertLiteralMediaPath(framesDir);
 mkdirSync(framesDir, { recursive: true });
 
 // A seeded star field behind the globe, so every bake of the same move is identical.
