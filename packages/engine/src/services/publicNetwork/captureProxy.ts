@@ -108,6 +108,15 @@ async function httpPeer(url: URL, proxy: UpstreamProxy | undefined, fail: () => 
   return { hostname: proxy.host, port: proxy.port, path: url.href };
 }
 
+function relayedReplyHead(received: IncomingMessage, response: ServerResponse): boolean {
+  try {
+    response.writeHead(received.statusCode ?? 502, forwardHeaders(received));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function forwardHttp(
   incoming: IncomingMessage,
   response: ServerResponse,
@@ -123,6 +132,11 @@ async function forwardHttp(
     const headers = forwardHeaders(incoming);
     headers.host = url.host;
     if (proxy?.authorization) headers["proxy-authorization"] = proxy.authorization;
+    const badGateway = () => {
+      fail();
+      if (!response.headersSent) response.writeHead(502, { Connection: "close" });
+      response.end();
+    };
     const upstream = request(
       {
         ...peer,
@@ -132,7 +146,10 @@ async function forwardHttp(
         signal: AbortSignal.timeout(30_000),
       },
       (received) => {
-        response.writeHead(received.statusCode ?? 502, forwardHeaders(received));
+        if (!relayedReplyHead(received, response)) {
+          received.resume();
+          return badGateway();
+        }
         received.on("error", () => response.destroy());
         received.pipe(response);
       },
@@ -141,11 +158,7 @@ async function forwardHttp(
     upstream.setTimeout(CONNECTION_TIMEOUT_MS, () =>
       upstream.destroy(new Error("Capture request timed out")),
     );
-    upstream.on("error", () => {
-      fail();
-      if (!response.headersSent) response.writeHead(502, { Connection: "close" });
-      response.end();
-    });
+    upstream.on("error", badGateway);
     response.on("close", () => upstream.destroy());
     incoming.on("error", () => upstream.destroy());
     incoming.pipe(upstream);

@@ -17,7 +17,7 @@ export interface PreviewGestureStart {
   /** Pointer px to translate px, as `measureManualOffsetDragScreenToOffsetMatrix`; null when unmeasured. */
   screenToOffset: ManualOffsetDragMatrix | null;
   /** GSAP's x/y when it owns the element's position, and whether a tween with a duration moves it. */
-  gsap: { x: number; y: number; moving: boolean } | null;
+  gsap: { x: number; y: number; moving: boolean; drawsTranslate?: true } | null;
   gsapRotation?: number | null;
   grow?: { a: number; b: number; c: number; d: number };
   cssRotation?: EditingGestureStart["cssRotation"];

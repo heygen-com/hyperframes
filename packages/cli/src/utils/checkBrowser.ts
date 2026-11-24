@@ -45,6 +45,7 @@ import {
 import { resolveAutoProxy } from "./projectConfig.js";
 import { findStageProxyBox } from "./compositionViewport.js";
 import { mediaUsedSeconds } from "./mediaUsedSeconds.js";
+import { encodeUrlPath } from "@hyperframes/parsers";
 import type { PreviewProxyBox } from "@hyperframes/core";
 import { terminalText } from "@hyperframes/core/terminal-text";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
@@ -223,7 +224,8 @@ async function copyWindows(
     [...pathnames].map(async (pathname) => {
       const seconds = used.get(pathname);
       if (seconds === undefined) return;
-      const sourcePath = resolve(projectDir, pathname.replace(/^\/+/, ""));
+      const sourcePath = projectLocalFile(projectDir, encodeUrlPath(pathname));
+      if (!sourcePath) return;
       const window = await proxyWindowSeconds(sourcePath, seconds);
       if (window !== undefined) windows.set(sourcePath, window);
     }),

@@ -371,13 +371,18 @@ function renderTimeline() {
 
 // ── Element list ──────────────────────────────────────────────────────────────
 
+function elSpan(className: string, text: string): HTMLSpanElement {
+  const span = document.createElement("span");
+  span.className = className;
+  span.textContent = text;
+  return span;
+}
+
 function buildElItem(el: { id: string; tag: string; text: string | null }): HTMLDivElement {
   const item = document.createElement("div");
   item.className = "el-item" + (el.id === selectedId ? " selected" : "");
-  item.innerHTML =
-    `<span class="el-tag">&lt;${el.tag}&gt;</span>` +
-    `<span class="el-id">${el.id}</span>` +
-    (el.text ? `<span class="el-text">${el.text}</span>` : "");
+  item.append(elSpan("el-tag", `<${el.tag}>`), elSpan("el-id", el.id));
+  if (el.text) item.append(elSpan("el-text", el.text));
   item.addEventListener("click", () => setSelection(el.id));
   return item;
 }

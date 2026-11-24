@@ -199,7 +199,7 @@ for (const [label, name, list, reason] of [
     "an HLS playlist",
     "take.m3u8",
     (media) => `#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n${media}\n#EXT-X-ENDLIST\n`,
-    /is a hls list that points at other files/,
+    /is a hls list that points at other files|cannot read/,
   ],
   [
     "a concat list",

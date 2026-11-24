@@ -27,6 +27,16 @@ function fragment(html: string): HTMLTemplateElement {
   return template;
 }
 
+function dropComments(root: Element): void {
+  const templates = subtree(root).filter(htmlTemplate);
+  const found: Node[] = [];
+  for (const scope of [root, ...templates.map((t) => t.content)]) {
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_COMMENT);
+    while (walker.nextNode()) found.push(walker.currentNode);
+  }
+  for (const node of found) node.parentNode?.removeChild(node);
+}
+
 /** Fresh data-hf-ids minted in the edit (else the server stamps them behind undo's back); taken ids renamed. */
 export function prepareCopy(
   html: string,
@@ -36,6 +46,7 @@ export function prepareCopy(
 ): PreparedCopy {
   const root = fragment(html).content.firstElementChild;
   if (!root) throw new Error(REFUSED);
+  dropComments(root);
   const originalHfId = root.getAttribute("data-hf-id");
   const elements = [root];
   walkCompositionDescendants(root, (el) => elements.push(el));

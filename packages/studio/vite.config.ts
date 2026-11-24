@@ -212,6 +212,7 @@ export function devProjectApi(): Plugin {
           _api = mod.createStudioApi(adapter, {
             allowedHosts: mod.previewAllowedHostsFromEnv(),
             sandboxThumbnailCaptures: true,
+            sandboxDirectOpens: true,
           });
         }
         return _api;

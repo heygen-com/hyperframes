@@ -220,7 +220,8 @@ function handlersServed(written: string): string[] {
   );
 }
 
-// fails without the fix: a comment in an svg <title> passed the check, and the server's parser serves it as markup.
+// fails without the fix: a comment in an svg <title> passed the check, and the server's parser serves it as markup;
+// then the live copy still wrote the comment.
 it("writes nothing the server serves as running code, from the live copy or a saved one", async () => {
   const svg = "<svg><title><!-- </title><img src=x onerror=f()> --></title></svg>";
   const live = sealedClipboard(
@@ -229,7 +230,9 @@ it("writes nothing the server serves as running code, from the live copy or a sa
   );
   expect(live.clipboard().handleCopy()).toBe(true);
   await live.clipboard().handlePaste();
+  expect(live.writes.length).toBeGreaterThan(0);
   for (const file of live.writes) expect(handlersServed(file)).toEqual([]);
+  for (const file of live.writes) expect(file).not.toContain("<!--");
   act(() => root?.unmount());
   root = null;
 
@@ -245,7 +248,11 @@ it("writes nothing the server serves as running code, from the live copy or a sa
   );
   expect(saved.clipboard().handleCopy()).toBe(true);
   await saved.clipboard().handlePaste();
-  for (const file of saved.writes) expect(handlersServed(file)).toEqual([]);
+  // The saved file is read through linkedom, which ends the title early: its handler shows, so the paste is refused.
+  expect(saved.writes).toEqual([]);
+  expect(saved.toasts).toContain(
+    "Couldn't paste: the copied element holds markup that can't be pasted here.",
+  );
 });
 
 // fails without the fix: markup the copy found in another file was taken as saved and pasted unchecked.

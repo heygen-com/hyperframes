@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import { compileCutList } from "./lib/cutlist.mjs";
+import { assertLiteralMediaPath } from "./lib/literal-media-input.mjs";
 import { ownFolder } from "./lib/manifest.mjs";
 import { fadeFilterFor } from "./lib/transcriptCutFade.mjs";
 import { track } from "./lib/telemetry.mjs";
@@ -89,6 +90,7 @@ function run() {
 
   const inputPath = resolve(args.input);
   const outPath = resolve(args.out);
+  for (const path of [inputPath, outPath]) assertLiteralMediaPath(path);
   // An --out inside the project (the folder this runs in) is written only into its real folders.
   const rel = relative(process.cwd(), dirname(outPath));
   const outsideProject = rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
