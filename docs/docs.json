@@ -97,7 +97,6 @@
               {
                 "group": "Compare",
                 "pages": [
-                  "guides/hyperframes-vs-remotion",
                   "prompting/remotion-migration"
                 ]
               },

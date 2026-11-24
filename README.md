@@ -271,7 +271,7 @@ HyperFrames is inspired by [Remotion](https://www.remotion.dev). Both tools rend
 | Distributed rendering    | Local and AWS Lambda render paths     | Remotion Lambda, mature cloud renderer  |
 | License                  | Apache 2.0                            | Source-available Remotion License       |
 
-Read the full comparison in the [HyperFrames vs Remotion guide](https://hyperframes.heygen.com/guides/hyperframes-vs-remotion?utm_source=github&utm_medium=readme), or the [side-by-side comparison page](https://hyperframes.heygen.com/vs/remotion?utm_source=github&utm_medium=readme).
+Read the full side-by-side comparison in [HyperFrames vs Remotion](https://hyperframes.studio/vs/remotion?utm_source=github&utm_medium=readme).
 
 ## Catalog
 
