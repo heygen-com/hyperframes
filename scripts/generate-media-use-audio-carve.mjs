@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Bundles the carve analysis carve.mjs uses (packages/core/src/audioCarve.ts and audioFx.ts) into a single
+// Bundles the carve analysis carve.mjs uses (packages/core/src/audioCarve.ts and audioFx.ts), and the private-path
+// rule it checks sources with (packages/parsers/src/privatePath.ts), into a single
 // import-free .mjs beside the skill, so the skill never loads @hyperframes/core from the project it edits.
 // Regenerate after editing the source: node scripts/generate-media-use-audio-carve.mjs
 import { writeFileSync } from "node:fs";
@@ -29,11 +30,13 @@ export {
   parseAudioFxChain,
   serializeAudioFxChain,
 } from "./audioFx.ts";
+export { isStudioPrivatePath } from "../../parsers/src/privatePath.ts";
 `;
 
-const HEADER = `// GENERATED: do not hand-edit. Source: packages/core/src/audioCarve.ts and audioFx.ts, bundled by
-// scripts/generate-media-use-audio-carve.mjs so carve.mjs runs the same analysis as Studio without
-// loading @hyperframes/core from the project. Regenerate: node scripts/generate-media-use-audio-carve.mjs
+const HEADER = `// GENERATED: do not hand-edit. Source: packages/core/src/audioCarve.ts and audioFx.ts, and
+// packages/parsers/src/privatePath.ts, bundled by scripts/generate-media-use-audio-carve.mjs so carve.mjs
+// runs the same analysis and private-path rule as Studio without loading @hyperframes/core from the project.
+// Regenerate: node scripts/generate-media-use-audio-carve.mjs
 `;
 
 export async function generate() {
