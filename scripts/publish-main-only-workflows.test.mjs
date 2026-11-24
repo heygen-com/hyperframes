@@ -116,6 +116,31 @@ test("the ClawHub token reaches only the pinned CLI login step", () => {
   assert.ok(sync.steps.indexOf(install) < sync.steps.indexOf(holders[0]));
 });
 
+test("the catalog PR is the app's, its key reaches only the first step, and Actions cannot write PRs", () => {
+  const { source, doc } = workflows.find(({ file }) => file === "catalog-publish.yml");
+  const job = doc.jobs.publish;
+  assert.equal(job.environment, "catalog-publish");
+  assert.notEqual((job.permissions ?? doc.permissions)["pull-requests"], "write");
+  assert.equal(source.match(/secrets\.GENESIS_PRIVATE_KEY/g).length, 1);
+  const [mint] = job.steps;
+  assert.match(mint.uses, /^actions\/create-github-app-token@[a-f0-9]{40}$/);
+  assert.deepEqual(mint.with, {
+    "app-id": "${{ secrets.GENESIS_APP_ID }}",
+    "private-key": "${{ secrets.GENESIS_PRIVATE_KEY }}",
+    "permission-pull-requests": "write",
+  });
+  assert.deepEqual(
+    job.steps.filter((step) => usesPublishSecret(step)),
+    [mint],
+  );
+  const holders = job.steps.filter((step) =>
+    /steps\.pr-token\.outputs\.token/.test(JSON.stringify(step)),
+  );
+  assert.equal(holders.length, 1);
+  assert.equal(holders[0].run, "node scripts/publish-catalog.mjs");
+  assert.equal(holders[0].env.CATALOG_PR_TOKEN, "${{ steps.pr-token.outputs.token }}");
+});
+
 test("unrestricted branch pushes cannot evade the publishing policy", () => {
   for (const on of [
     "push",
