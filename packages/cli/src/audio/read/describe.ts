@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Span } from "@hyperframes/core/audio-analysis";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { findFfBinary, mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { readPlainFile } from "../../utils/projectRecords.js";
 import { isPlainFile, makeRealFolder } from "../cacheFolder.js";
@@ -99,7 +99,10 @@ async function mp3Of(path: string, scratch: string): Promise<Buffer> {
   const out = join(scratch, `${createHash("sha256").update(path).digest("hex").slice(0, 12)}.mp3`);
   await runFile(
     ffmpeg,
-    ["-v", "error", "-y", "-i", path, "-vn", "-ac", "2", "-ar", "44100", "-b:a", "160k", out],
+    [
+      ...["-v", "error", "-y", ...mediaInputFormatArgs(ffmpeg, path), "-i", path],
+      ...["-vn", "-ac", "2", "-ar", "44100", "-b:a", "160k", out],
+    ],
     { windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
   );
   return readFileSync(out);
