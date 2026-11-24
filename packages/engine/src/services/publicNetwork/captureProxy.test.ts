@@ -151,6 +151,51 @@ describe("capture proxy", () => {
     expect(refused).toEqual(["private"]);
   });
 
+  // fails without the fix: writeHead threw on the status below 100 and the uncaught throw ended the host process.
+  it("answers an upstream status below 100 with 502 and keeps serving, direct and through an upstream proxy", async () => {
+    const target = createTcpServer((socket) => {
+      socket.on("error", () => {});
+      socket.once("data", (data) => {
+        const status = /^GET \S*\/status\/(\d{3}) /.exec(String(data))?.[1] ?? "200";
+        socket.end(`HTTP/1.1 ${status} Odd\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok`);
+      });
+    });
+    await new Promise<void>((resolve) => target.listen(0, "127.0.0.1", resolve));
+    const port = (target.address() as { port: number }).port;
+    resolveAddress.mockResolvedValue("127.0.0.1");
+    try {
+      for (const upstream of [null, { host: "127.0.0.1", port }]) {
+        const failures: CaptureFailure[] = [];
+        const proxy = await startCaptureProxy(upstream, undefined, undefined, {
+          onFailed: (failure) => failures.push(failure),
+        });
+        proxies.push(proxy);
+        const get = (path: string) =>
+          new Promise<number>((resolve, reject) => {
+            const req = request(
+              proxy.url,
+              { path: `http://odd.example.com:${port}${path}` },
+              (res) => {
+                res.resume();
+                res.on("end", () => resolve(res.statusCode!));
+              },
+            );
+            req.on("error", reject);
+            req.end();
+          });
+        expect(await get("/status/099")).toBe(502);
+        expect(await get("/status/000")).toBe(502);
+        expect(await get("/fine")).toBe(200);
+        expect(failures.map((failure) => failure.reason)).toEqual([
+          "upstream_failed",
+          "upstream_failed",
+        ]);
+      }
+    } finally {
+      await new Promise<void>((resolve) => target.close(() => resolve()));
+    }
+  });
+
   it("listens on the fixed loopback port it is given", async () => {
     const free = createServer();
     await new Promise<void>((resolve) => free.listen(0, "127.0.0.1", resolve));
