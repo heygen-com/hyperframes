@@ -14,7 +14,7 @@ let studioBundle: string;
 beforeAll(async () => {
   browser = await launchTestChrome();
   studioBundle = await buildStudioBundle([
-    `export { captureDurationRollback, patchIframeDomTiming, syncPreviewContentDuration } from "./hooks/previewTimingPatch";`,
+    `export { captureDurationRollback, patchIframeDomTiming, removeIframeTimelineElements, syncPreviewContentDuration } from "./hooks/previewTimingPatch";`,
   ]);
 });
 
@@ -37,6 +37,7 @@ type Studio = {
   patchIframeDomTiming(...args: unknown[]): void;
   syncPreviewContentDuration(iframe: HTMLIFrameElement): void;
   captureDurationRollback(iframe: HTMLIFrameElement): () => void;
+  removeIframeTimelineElements(iframe: HTMLIFrameElement, elements: unknown[]): void;
 };
 
 const shown = async ({ page, frame }: Preview) => ({
@@ -89,3 +90,42 @@ async function timingEdit(mode: string) {
 it.each(MODES)("a timing edit patches the clip and the duration in a %s preview", async (mode) => {
   await timingEdit(mode);
 });
+
+async function deleteClip(mode: string) {
+  const preview = await openPreview(browser, studioBundle, previewHtml(), mode);
+  try {
+    await preview.page.evaluate(() => {
+      const posted: string[][] = [];
+      window.addEventListener("message", ({ data }) => {
+        if (data?.source === "hf-preview" && data.type === "timeline")
+          posted.push(data.clips.map((clip: { id: string | null }) => clip.id));
+      });
+      const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+      const clip = {
+        id: "b",
+        domId: "b",
+        selector: "#b",
+        sourceFile: "index.html",
+        kind: "element",
+      };
+      studio.removeIframeTimelineElements(document.querySelector("iframe")!, [clip]);
+      (window as unknown as { posted: string[][] }).posted = posted;
+    });
+    const inFrame = () =>
+      preview.frame.evaluate(() => ["root", "a", "b"].filter((id) => document.getElementById(id)));
+    await expect.poll(inFrame).toEqual(["root", "a"]);
+    const lastPosted = () =>
+      preview.page.evaluate(() => (window as unknown as { posted: string[][] }).posted.at(-1));
+    await expect.poll(lastPosted).toEqual(expect.arrayContaining(["a"]));
+    expect(await lastPosted()).not.toContain("b");
+  } finally {
+    await preview.page.close();
+  }
+}
+
+it.each(MODES)(
+  "a deleted clip leaves the frame, and the frame's next clip list leaves it out, in a %s preview",
+  async (mode) => {
+    await deleteClip(mode);
+  },
+);

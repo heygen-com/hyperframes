@@ -209,6 +209,7 @@ export const EDITING_REQUEST_KINDS = [
   "max-z-index",
   "crop-lift",
   "edit-element",
+  "remove-elements",
   "stacking-family",
   "gsap-set",
   "patch-tweens",
@@ -369,6 +370,7 @@ export interface EditingRequests {
     result: { lifted: boolean; clipPath: string | null };
   };
   "edit-element": { params: EditElementParams; result: EditElementResult };
+  "remove-elements": { params: { handles: EditingElementHandle[] }; result: { removed: number } };
   "stacking-family": {
     params: { handle: EditingElementHandle };
     result: { family: EditingStackingSibling[] | null; locked: boolean };
@@ -633,6 +635,7 @@ const PARAM_PARSERS: {
       ? { handle: params.handle, lift: params.lift }
       : null,
   "edit-element": parseEditElement,
+  "remove-elements": handleList,
   "stacking-family": (params) =>
     hasKeys(params, "handle") && isHandle(params.handle) ? { handle: params.handle } : null,
   "gsap-set": parseGsapSet,
