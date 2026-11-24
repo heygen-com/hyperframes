@@ -33,14 +33,24 @@ async function open(page, project) {
   );
 }
 
+// A sealed frame is reached as a frame, never through contentDocument, which Studio's page cannot read.
+async function previewFrame(page) {
+  const iframe = await page.waitForFunction(
+    () => document.querySelector("hyperframes-player")?.shadowRoot?.querySelector("iframe"),
+    { timeout: 60_000 },
+  );
+  return { iframe: iframe.asElement(), frame: await iframe.asElement().contentFrame() };
+}
+
 async function stagePoint(page, id) {
-  return page.evaluate((id) => {
-    const frame = document.querySelector("hyperframes-player").shadowRoot.querySelector("iframe");
-    const el = frame.contentDocument.getElementById(id).getBoundingClientRect();
-    const box = frame.getBoundingClientRect();
-    const scale = box.width / frame.contentWindow.innerWidth;
-    return { x: box.x + (el.x + el.width / 2) * scale, y: box.y + (el.y + el.height / 2) * scale };
+  const { iframe, frame } = await previewFrame(page);
+  const box = await iframe.boundingBox();
+  const el = await frame.evaluate((id) => {
+    const rect = document.getElementById(id).getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, viewport: innerWidth };
   }, id);
+  const scale = box.width / el.viewport;
+  return { x: box.x + (el.x + el.width / 2) * scale, y: box.y + (el.y + el.height / 2) * scale };
 }
 
 // As the player reports a film with no timeline by its load limit; then a real click on its retry button.
@@ -135,14 +145,11 @@ try {
     { timeout: 10_000 },
   );
   await page.keyboard.press("Enter");
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector("hyperframes-player")
-        .shadowRoot.querySelector("iframe")
-        .contentDocument.querySelector("[contenteditable]") !== null,
-    { timeout: 10_000 },
-  );
+  await (
+    await previewFrame(page)
+  ).frame.waitForFunction(() => document.querySelector("[contenteditable]") !== null, {
+    timeout: 10_000,
+  });
   await page.keyboard.press("End");
   await page.keyboard.type(" kept");
   // The toolbar shows only over a selection, never a bare caret.

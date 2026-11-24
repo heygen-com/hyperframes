@@ -106,9 +106,13 @@ function studioSmokeApiPathResponse(method, pathname) {
     : (MUTATION_RESPONSES.get(pathname) ?? null);
 }
 
+// A sealed player loads the runtime from Studio's own dev server, which serves it, as in real use.
+const SERVED_BY_STUDIO = new Set(["/api/runtime.js"]);
+
 export function studioSmokeApiResponse(method, requestUrl) {
   const { pathname } = new URL(requestUrl);
-  return pathname.startsWith("/api/") ? studioSmokeApiPathResponse(method, pathname) : undefined;
+  if (!pathname.startsWith("/api/") || SERVED_BY_STUDIO.has(pathname)) return undefined;
+  return studioSmokeApiPathResponse(method, pathname);
 }
 
 // CI renders Studio's system font stack with Linux's fallback, which sets the default tab labels
