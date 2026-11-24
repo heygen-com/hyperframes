@@ -108,15 +108,42 @@ const NODE_ONLY_SCRIPT = /\.(?:[cm]?ts|tsx|jsx|cjs)$/;
 const BROWSER_OR_NODE_SCRIPT = /\.m?js$/;
 const isExtensionless = (name: string) => name !== "" && !name.includes(".");
 
-/** A Node-only script, or `.js`/`.mjs` or an extensionless file below (at any depth, past the project too) a package.json that is not the scaffold's. */
+/**
+ * A Node-only script, or below (at any depth, past the project too) a package.json that is not the scaffold's: a
+ * `.js`/`.mjs` file, an extensionless file, or a file Node resolves before a module beside it (`db.utils` beside
+ * `db.utils.js`).
+ */
 function nodeMayRun(projectDir: string, relPath: string, kind: EntryKind): boolean {
   const name = foldedPath(relPath).split("/").at(-1) ?? "";
   if (NODE_ONLY_SCRIPT.test(name)) return true;
-  const sharedWithNode =
-    BROWSER_OR_NODE_SCRIPT.test(name) || (kind === "file" && isExtensionless(name));
-  if (!sharedWithNode) return false;
   const folder = dirname(resolve(projectDir, relPath));
+  const sharedWithNode =
+    BROWSER_OR_NODE_SCRIPT.test(name) ||
+    (kind === "file" && (isExtensionless(name) || shadowsModuleIn(folder, name)));
+  if (!sharedWithNode) return false;
   return [folder, realFilePath(folder)].some((from) => foldersUp(from).some(manifestBringsNode));
+}
+
+const MODULE_EXTENSIONS = ["js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "json", "node"];
+
+const shadowsModuleIn = (folder: string, name: string): boolean =>
+  name !== "" &&
+  [folder, realFilePath(folder)].some((at) => {
+    const entries = foldedEntriesOf(at);
+    return MODULE_EXTENSIONS.some((extension) => entries.has(`${name}.${extension}`));
+  });
+
+const folderEntryCache = new Map<string, { stat: string; names: ReadonlySet<string> }>();
+
+function foldedEntriesOf(folder: string): ReadonlySet<string> {
+  const stat = statSync(folder, { throwIfNoEntry: false });
+  if (!stat?.isDirectory()) return new Set();
+  const key = `${stat.ino}:${stat.mtimeMs}`;
+  const cached = folderEntryCache.get(folder);
+  if (cached?.stat === key) return cached.names;
+  const names = new Set((folderEntries(folder) ?? []).map((entry) => foldedPath(entry.name)));
+  folderEntryCache.set(folder, { stat: key, names });
+  return names;
 }
 
 function foldersUp(from: string): string[] {
