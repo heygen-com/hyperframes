@@ -151,7 +151,7 @@ function redactFilePaths(value: string): string {
 }
 
 // The path patterns cost up to the square of a run's length. Before any of them runs, input is cut at whitespace so
-// no path is split, and a long run keeps only its start, which still names a path if it is one.
+// no path is split, and a long run keeps only its two ends: its start still names a path, its end what follows.
 const MAX_REDACTED_INPUT = 16 * 1024;
 const RUN_KEPT = 256;
 const LONG_RUN = new RegExp(String.raw`(?<![^\s/\\'"])[^\s/\\'"]{${RUN_KEPT + 1},}`, "g");
@@ -169,7 +169,7 @@ export function redactTelemetryString(
 ): string {
   const shortRuns = redactUrlQueryStrings(cutAtWhitespace(value)).replace(
     LONG_RUN,
-    (run) => `${run.slice(0, RUN_KEPT)}…`,
+    (run) => `${run.slice(0, RUN_KEPT / 2)}…${run.slice(-RUN_KEPT / 2)}`,
   );
   return truncateTelemetryString(redactFilePaths(shortRuns), maxLength);
 }
