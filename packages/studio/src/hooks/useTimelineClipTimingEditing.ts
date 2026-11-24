@@ -3,7 +3,6 @@ import type { TimelineElement } from "../player";
 import { toAuthoredStart, toCompositionTime } from "../player/store/timelineElement";
 import {
   applyTimelineStackingReorder,
-  patchIframeDomTiming,
   persistTimelineEdit,
   formatTimelineAttributeNumber,
   formatTimelineMediaOffset,
@@ -15,10 +14,13 @@ import {
 import { playbackStartAttributeForElement } from "../player/lib/timelineElementHelpers";
 import {
   captureDurationRollback,
+  patchIframeDomTiming,
+  syncPreviewContentDuration,
+} from "./previewTimingPatch";
+import {
   finishClipTimingFallback,
   sdkTimingGsapSync,
   readFileContent,
-  syncPreviewContentDuration,
   timingGestureStep,
 } from "./timelineTimingSync";
 import { serializeZLaneGesture } from "../components/nle/zLaneGesture";

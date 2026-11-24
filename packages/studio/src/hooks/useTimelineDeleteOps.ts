@@ -14,7 +14,8 @@ import {
   removeIframeTimelineElements,
   syncCompositionDurationWithEnd,
 } from "./timelineEditingHelpers";
-import { captureDurationRollback, timingGestureStep } from "./timelineTimingSync";
+import { timingGestureStep } from "./timelineTimingSync";
+import { captureDurationRollback } from "./previewTimingPatch";
 import { setLinkInSource } from "../components/editor/mediaLinkEdits";
 import {
   resolveMainTrackDeleteRippleShifts,
