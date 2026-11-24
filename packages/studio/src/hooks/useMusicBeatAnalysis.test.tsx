@@ -13,6 +13,11 @@ vi.mock("@hyperframes/core/beats", async (actual) => ({
   analyzeMusicFromSignal: analyze,
 }));
 vi.mock("../utils/projectPcm", () => ({ analysisRateOf: async () => 48_000, readPcm: read }));
+// The timeline is at rest, so a read starts within the settle below and "nothing was read" means it.
+vi.mock("../player/components/timelineMotion", async (actual) => ({
+  ...(await actual<typeof import("../player/components/timelineMotion")>()),
+  whenTimelineIdle: async () => {},
+}));
 
 const { useMusicBeatAnalysis } = await import("./useMusicBeatAnalysis");
 const { serializeBeats } = await import("@hyperframes/core/beats");
