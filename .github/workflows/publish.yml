@@ -502,10 +502,10 @@ jobs:
     # prerelease-only because the trigger pattern requires a hyphenated version.
     if: needs.release-source.outputs.sha != ''
     steps:
-      # Only git reads this checkout, for the release tag.
+      # Only git reads this checkout, for the release tag, which needs the release commit alone.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           ref: ${{ env.EXPECTED_RELEASE_SHA }}
           # Keep the write token out of .git/config. Only "Create release tag"
           # pushes, and it authenticates its own git calls.
@@ -910,8 +910,7 @@ jobs:
               fi
               if [ "$state" -eq 2 ]; then
                 echo "::error::${name}@${VERSION} is already on npm, and this run did not publish it. Find out who did before releasing this version."
-                FAILED=1
-                return 0
+                return 1
               fi
               [ "$try" != last ] || break
 
@@ -924,12 +923,48 @@ jobs:
               sleep "${PUBLISH_RETRY_SECONDS:-20}"
             done
             echo "❌ ${name}@${VERSION} failed to publish"
-            FAILED=1
+            return 1
           }
 
+          # Each package uploads in a wave after the packages of this release it depends on. Packages that depend
+          # on each other, like core and studio-server, share a wave. An unknown dependency stops every upload.
+          SCRATCH="$(mktemp -d)"
           while IFS=$'\t' read -r name tarball; do
-            publish_tarball "$name" "$tarball"
-          done < publish-order.tsv
+            tar -xzOf "$tarball" package/package.json | jq -c --arg name "$name" '{($name): [
+              .dependencies, .optionalDependencies, .peerDependencies | (. // {}) | keys[]
+              | select(startswith("@hyperframes/") or . == "hyperframes")] | unique}'
+          done < publish-order.tsv > "$SCRATCH/deps.json"
+          if ! WAVES="$(jq -sr '
+              def reach: reduce range(length) as $_ (.; . as $r | map_values([.[], (.[] | $r[.][])] | unique));
+              add
+              | ([.[][]] - keys) as $unknown
+              | if $unknown != [] then error("packages depend on \($unknown | join(" ")), which this release does not publish") else . end
+              | {left: ., waves: []}
+              | until(.left == {};
+                  (.left | keys) as $names
+                  | (.left | map_values(map(select(IN($names[])))) | reach) as $r
+                  | [$r | to_entries[] | .key as $p | select(all(.value[]; any($r[.][]; . == $p))) | .key] as $wave
+                  | .left |= with_entries(select(.key | IN($wave[]) | not))
+                  | .waves += [$wave])
+              | .waves[] | join(" ")' "$SCRATCH/deps.json" 2>&1)"; then
+            echo "::error::Cannot order the uploads: $WAVES"
+            exit 1
+          fi
+
+          while read -r wave; do
+            echo "Uploading together: $wave"
+            pids=()
+            for name in $wave; do
+              tarball="$(awk -F'\t' -v name="$name" '$1 == name {print $2}' publish-order.tsv)"
+              publish_tarball "$name" "$tarball" > "$SCRATCH/${#pids[@]}.log" 2>&1 &
+              pids+=("$!")
+            done
+            # The next wave starts once all of this one is done, even when one of them failed.
+            for i in "${!pids[@]}"; do
+              wait "${pids[$i]}" || FAILED=1
+              cat "$SCRATCH/$i.log"
+            done
+          done <<<"$WAVES"
 
           if [ "$FAILED" -ne 0 ]; then
             echo "::error::One or more packages failed to publish"

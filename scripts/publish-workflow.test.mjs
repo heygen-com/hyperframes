@@ -503,6 +503,65 @@ test("stable release tag creation survives retries and rejects a mismatched comm
   }
 });
 
+test("the publish checkout fetches only the release commit, and the release checks and tag still work in it", () => {
+  // fails without the fix: the publish job fetched every branch and tag of the repo.
+  assert.equal(checkout.with["fetch-depth"], 1);
+  const root = mkdtempSync(join(tmpdir(), "hyperframes-shallow-tag-test-"));
+  const origin = join(root, "origin.git");
+  const work = join(root, "work");
+  const shallow = join(root, "shallow");
+
+  try {
+    execFileSync("git", ["init", "--bare", origin], { stdio: "pipe", timeout: 5_000 });
+    execFileSync("git", ["init", work], { stdio: "pipe", timeout: 5_000 });
+    git(work, "config", "user.name", "HyperFrames Test");
+    git(work, "config", "user.email", "test@hyperframes.invalid");
+    for (const message of ["older", "release", "later"]) {
+      git(work, "commit", "--allow-empty", "-m", message);
+    }
+    git(work, "push", origin, "HEAD:refs/heads/main");
+    const releaseSha = git(work, "rev-parse", "HEAD~1");
+    git(work, "push", origin, "HEAD~2:refs/tags/v9.8.6");
+
+    // What the pinned actions/checkout runs for a commit ref.
+    execFileSync("git", ["init", shallow], { stdio: "pipe", timeout: 5_000 });
+    git(shallow, "remote", "add", "origin", `file://${origin}`);
+    git(
+      shallow,
+      "fetch",
+      "--no-tags",
+      `--depth=${checkout.with["fetch-depth"]}`,
+      "origin",
+      releaseSha,
+    );
+    git(shallow, "checkout", "--detach", releaseSha);
+    assert.equal(git(shallow, "rev-parse", "--is-shallow-repository"), "true");
+
+    const guard = spawnSync("bash", ["-eo", "pipefail", "-c", checkoutGuard.run], {
+      cwd: shallow,
+      encoding: "utf8",
+      env: { ...process.env, EXPECTED_RELEASE_SHA: releaseSha },
+      timeout: 5_000,
+    });
+    assert.equal(guard.status, 0, `${guard.stdout}\n${guard.stderr}`);
+
+    const tagged = runCreateReleaseTag(shallow, "9.8.7");
+    assert.equal(tagged.status, 0, `${tagged.stdout}\n${tagged.stderr}`);
+    assert.equal(git(origin, "rev-parse", "refs/tags/v9.8.7"), releaseSha);
+    assert.match(
+      runCreateReleaseTag(shallow, "9.8.7").stdout,
+      /already exists at the expected commit/,
+    );
+
+    // A tag already on a commit outside the fetched history is still fetched and refused.
+    const mismatch = runCreateReleaseTag(shallow, "9.8.6");
+    assert.equal(mismatch.status, 1, `${mismatch.stdout}\n${mismatch.stderr}`);
+    assert.match(mismatch.stdout, /points to .* expected/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("the publish checkout keeps no token and only the tag push gets one for git", () => {
   assert.equal(checkout.with["persist-credentials"], false);
   assert.ok(!JSON.stringify(publish.env ?? {}).includes("secrets."));
@@ -625,17 +684,20 @@ function packTarball(dir, file, manifest) {
   }
 }
 
-test("the workflow publishes exactly the public workspace packages", () => {
-  const root = new URL("../packages/", import.meta.url);
-  const publishable = execFileSync("git", ["ls-files", "packages/*/package.json"], {
+/** The public workspace packages' manifests, the CLI under the name it publishes as. */
+const publicManifests = () =>
+  execFileSync("git", ["ls-files", "packages/*/package.json"], {
     cwd: new URL("..", import.meta.url),
     encoding: "utf8",
   })
     .trim()
     .split("\n")
-    .map((path) => JSON.parse(readFileSync(new URL(path.replace(/^packages\//, ""), root), "utf8")))
+    .map((path) => JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), "utf8")))
     .filter((pkg) => pkg.private !== true)
-    .map((pkg) => (pkg.name === "@hyperframes/cli" ? "hyperframes" : pkg.name));
+    .map((pkg) => (pkg.name === "@hyperframes/cli" ? { ...pkg, name: "hyperframes" } : pkg));
+
+test("the workflow publishes exactly the public workspace packages", () => {
+  const publishable = publicManifests().map((pkg) => pkg.name);
   assert.deepEqual(config.env.NPM_PACKAGES.split(/\s+/).sort(), publishable.sort());
 });
 
@@ -984,6 +1046,164 @@ echo "$INTEGRITY" > "${seen}"
   assert.equal(others.status, 1);
   assert.equal(others.publishes, 1);
   assert.match(others.stdout, /this run did not publish it/);
+});
+
+const deps = (...names) => Object.fromEntries(names.map((name) => [name, "1.2.3-alpha.1"]));
+
+// Runs "Publish packages" on one fixture tarball per package, in the order given, each manifest taking its
+// dependency fields from `packages`. The fake npm logs "start x" and "end x" around each upload of x.tgz, fails
+// every upload of the packages in FAIL, and holds an upload (up to 0.9 s) until OVERLAP uploads have started.
+function runPublishWaves(packages, env = {}) {
+  const temp = mkdtempSync(join(tmpdir(), "hyperframes-publish-waves-"));
+  try {
+    const bin = join(temp, "bin");
+    mkdirSync(bin);
+    const log = join(temp, "npm.log");
+    writeFileSync(log, "");
+    writeFileSync(
+      join(bin, "npm"),
+      `#!/bin/sh
+[ "$1" = publish ] || exit 1
+name=$(basename "$2" .tgz)
+echo "start $name" >> "${log}"
+case " $FAIL " in *" $name "*) echo "end $name" >> "${log}"; exit 1 ;; esac
+n=0
+while [ "$(grep -c '^start' "${log}")" -lt "\${OVERLAP:-0}" ] && [ $n -lt 18 ]; do sleep 0.05; n=$((n + 1)); done
+echo "end $name" >> "${log}"
+`,
+    );
+    chmodSync(join(bin, "npm"), 0o755);
+    const order = Object.entries(packages).map(([name, fields]) => {
+      const file = `${name.replace(/^@hyperframes\//, "")}.tgz`;
+      packTarball(temp, file, { name, version: "1.2.3-alpha.1", ...fields });
+      return `${name}\t${join(temp, file)}\n`;
+    });
+    writeFileSync(join(temp, "publish-order.tsv"), order.join(""));
+    const result = runStep(stepOf(publish, "Publish packages"), {
+      cwd: temp,
+      path: `${bin}:${process.env.PATH}`,
+      env: {
+        VERSION: "1.2.3-alpha.1",
+        DIST_TAG: "alpha",
+        NODE_AUTH_TOKEN: "",
+        PUBLISH_RETRY_SECONDS: "0",
+        ...env,
+      },
+    });
+    const events = readFileSync(log, "utf8").split("\n").filter(Boolean);
+    const at = (event) => {
+      assert.ok(events.includes(event), `no "${event}" in ${events.join(", ")}`);
+      return event.startsWith("end") ? events.lastIndexOf(event) : events.indexOf(event);
+    };
+    const waves = [...result.stdout.matchAll(/^Uploading together: (.*)$/gm)].map((m) => m[1]);
+    return { ...result, events, at, waves };
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+}
+
+test("a package uploads only after the packages it depends on, and the rest upload together", () => {
+  // fails without the fix: packages uploaded one at a time in list order, which can put a dependent first.
+  const run = runPublishWaves(
+    {
+      "@hyperframes/c": { dependencies: deps("@hyperframes/a") },
+      "@hyperframes/a": {},
+      "@hyperframes/b": {},
+    },
+    { OVERLAP: "2" },
+  );
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  const order = run.events.join(", ");
+  assert.ok(run.at("end a") < run.at("start c"), order);
+  assert.ok(run.at("start b") < run.at("end a") && run.at("start a") < run.at("end b"), order);
+});
+
+test("the real packages upload after their dependencies, with mutual dependents in one wave", () => {
+  const manifests = new Map(publicManifests().map((pkg) => [pkg.name, pkg]));
+  const internal = (name) => {
+    const pkg = manifests.get(name);
+    return Object.keys({
+      ...pkg.dependencies,
+      ...pkg.optionalDependencies,
+      ...pkg.peerDependencies,
+    }).filter((dep) => dep.startsWith("@hyperframes/") || dep === "hyperframes");
+  };
+  const reaches = (from, to, seen = new Set()) =>
+    internal(from).some(
+      (dep) => dep === to || (!seen.has(dep) && seen.add(dep) && reaches(dep, to, seen)),
+    );
+  const names = config.env.NPM_PACKAGES.split(/\s+/);
+  const run = runPublishWaves(
+    Object.fromEntries(
+      names.map((name) => {
+        const { dependencies, optionalDependencies, peerDependencies } = manifests.get(name);
+        return [name, { dependencies, optionalDependencies, peerDependencies }];
+      }),
+    ),
+  );
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  const short = (name) => name.replace(/^@hyperframes\//, "");
+  const waveOf = (name) => run.waves.findIndex((wave) => wave.split(" ").includes(name));
+  for (const name of names) {
+    assert.equal(run.events.filter((e) => e === `start ${short(name)}`).length, 1, name);
+    for (const dep of internal(name)) {
+      const after = run.at(`end ${short(dep)}`) < run.at(`start ${short(name)}`);
+      if (reaches(dep, name)) assert.equal(waveOf(dep), waveOf(name), `${name} and ${dep}`);
+      else assert.ok(after, `${name} uploaded before its dependency ${dep}`);
+    }
+  }
+});
+
+test("packages that depend on each other upload together, and an unknown dependency stops every upload", () => {
+  // fails without the fix: packages uploaded one at a time, and a dependency outside the release went unnoticed.
+  const cycle = runPublishWaves(
+    {
+      "@hyperframes/z": { peerDependencies: deps("@hyperframes/x") },
+      "@hyperframes/x": { dependencies: deps("@hyperframes/y") },
+      "@hyperframes/y": { optionalDependencies: deps("@hyperframes/x") },
+    },
+    { OVERLAP: "2" },
+  );
+  assert.equal(cycle.status, 0, cycle.stdout + cycle.stderr);
+  const order = cycle.events.join(", ");
+  assert.ok(
+    cycle.at("start y") < cycle.at("end x") && cycle.at("start x") < cycle.at("end y"),
+    order,
+  );
+  assert.ok(Math.max(cycle.at("end x"), cycle.at("end y")) < cycle.at("start z"), order);
+
+  const unknown = runPublishWaves({
+    "@hyperframes/a": {},
+    "@hyperframes/b": { peerDependencies: deps("@hyperframes/ghost") },
+  });
+  assert.equal(unknown.status, 1);
+  assert.match(
+    unknown.stdout,
+    /depend on @hyperframes\/ghost, which this release does not publish/,
+  );
+  assert.deepEqual(unknown.events, []);
+});
+
+test("a package that fails every try lets the others publish, holds its dependents until its last try, and fails the step", () => {
+  // fails without the fix: its dependent uploaded first.
+  const run = runPublishWaves(
+    {
+      "@hyperframes/c": { dependencies: deps("@hyperframes/a") },
+      "@hyperframes/a": {},
+      "@hyperframes/b": {},
+    },
+    { FAIL: "a" },
+  );
+  assert.equal(run.status, 1, run.stdout + run.stderr);
+  assert.equal(run.events.filter((e) => e === "start a").length, 3);
+  assert.ok(run.at("end a") < run.at("start c"), run.events.join(", "));
+  assert.match(run.stdout, /❌ @hyperframes\/a@1\.2\.3-alpha\.1 failed to publish/);
+  assert.match(run.stdout, /✅ @hyperframes\/b@1\.2\.3-alpha\.1 published/);
+  assert.match(run.stdout, /✅ @hyperframes\/c@1\.2\.3-alpha\.1 published/);
+  // Each package's lines print together, not interleaved with its wave's.
+  const lines = run.stdout.split("\n");
+  const own = lines.flatMap((line, i) => (line.includes("@hyperframes/a@") ? [i] : []));
+  assert.equal(own.at(-1) - own[0], own.length - 1, run.stdout);
 });
 
 test("every publish runs in npm-publish, the environment npm trusted publishing names", () => {
