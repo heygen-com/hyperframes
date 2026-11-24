@@ -14,17 +14,6 @@ const captured: DesignTokens = {
     { family: "Recursive", weights: [], variable: true, weightRange: [300, 1000] },
   ],
   colors: ["#112233", "#FFFFFF"],
-  colorStats: [
-    {
-      hex: "#112233",
-      count: 4,
-      bgCount: 2,
-      interactiveBg: 1,
-      areaBg: 1,
-      textCount: 2,
-      maxArea: 60000,
-    },
-  ],
   headings: [{ level: 1, text: "Hello", fontSize: "48px", fontWeight: "700", color: "#112233" }],
   ctas: [{ text: "Start", href: "https://example.com/start" }, { text: "Docs" }],
   svgs: [
@@ -53,6 +42,17 @@ const captured: DesignTokens = {
       assetUrls: ["https://example.com/a.png"],
     },
   ],
+  colorStats: [
+    {
+      hex: "#112233",
+      count: 4,
+      bgCount: 2,
+      interactiveBg: 1,
+      areaBg: 1,
+      textCount: 2,
+      maxArea: 60000,
+    },
+  ],
   page: { width: 1280, height: 4000, viewport: { width: 1280, height: 720 } },
 };
 
@@ -60,7 +60,7 @@ const asJson = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 describe("normalizeDesignTokens", () => {
   it("keeps a well-formed capture as it was", () => {
-    expect(asJson(normalizeDesignTokens(asJson(captured)))).toEqual(asJson(captured));
+    expect(JSON.stringify(normalizeDesignTokens(asJson(captured)))).toBe(JSON.stringify(captured));
   });
 
   it("gives every field its declared type whatever the page returned", () => {
@@ -94,16 +94,18 @@ describe("normalizeDesignTokens", () => {
     expect(JSON.stringify(tokens)).not.toContain("Setup");
   });
 
-  it("bounds each list and text to what the token script itself keeps", () => {
+  it("bounds each list and text, and drops a value a cut would break", () => {
     const tokens = normalizeDesignTokens({
       colors: Array.from({ length: 500 }, (_, i) => `#${String(i).padStart(6, "0")}`),
       ctas: Array.from({ length: 500 }, () => ({ text: "x".repeat(10_000) })),
       svgs: [{ outerHTML: "x".repeat(1_000_001), width: 1, height: 1 }],
+      ogImage: `https://example.com/${"x".repeat(8000)}`,
     });
     expect(tokens.colors).toHaveLength(20);
     expect(tokens.ctas).toHaveLength(10);
     expect(tokens.ctas[0]?.text).toHaveLength(60);
     expect(tokens.svgs).toEqual([]);
+    expect(tokens.ogImage).toBeUndefined();
   });
 
   it("is what extractTokens returns for the page's result", async () => {

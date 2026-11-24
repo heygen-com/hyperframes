@@ -15,6 +15,9 @@ const text = (value: unknown, max = 2000): string =>
 const optionalText = (value: unknown, max = 2000): string | undefined =>
   typeof value === "string" ? value.slice(0, max) : undefined;
 
+const wholeText = (value: unknown, max: number): string | undefined =>
+  typeof value === "string" && value.length <= max ? value : undefined;
+
 const number = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
 
@@ -65,15 +68,16 @@ function section(entry: unknown): DesignTokens["sections"][number] | undefined {
     height: number(entry.height),
     heading: text(entry.heading, 200),
     backgroundColor: optionalText(entry.backgroundColor, 200),
-    backgroundImage: optionalText(entry.backgroundImage),
+
     callsToAction: Array.isArray(entry.callsToAction)
       ? list(entry.callsToAction, 20, textEntry(200))
       : undefined,
     text: optionalText(entry.text, 1000),
     layout,
     assetUrls: Array.isArray(entry.assetUrls)
-      ? list(entry.assetUrls, 50, textEntry(4000))
+      ? list(entry.assetUrls, 50, (url) => wholeText(url, 8000))
       : undefined,
+    backgroundImage: wholeText(entry.backgroundImage, 100_000),
   };
 }
 
@@ -102,23 +106,10 @@ export function normalizeDesignTokens(raw: unknown): DesignTokens {
   return {
     title: text(value.title, 500),
     description: text(value.description),
-    ogImage: optionalText(value.ogImage, 4000),
+    ogImage: wholeText(value.ogImage, 8000),
     cssVariables: cssVariables(value.cssVariables),
     fonts: list(value.fonts, 20, font),
     colors: list(value.colors, 20, textEntry(100)),
-    colorStats: list(value.colorStats, 48, (entry) =>
-      isFields(entry) && typeof entry.hex === "string"
-        ? {
-            hex: entry.hex.slice(0, 100),
-            count: number(entry.count),
-            bgCount: number(entry.bgCount),
-            interactiveBg: number(entry.interactiveBg),
-            areaBg: number(entry.areaBg),
-            textCount: number(entry.textCount),
-            maxArea: number(entry.maxArea),
-          }
-        : undefined,
-    ),
     headings: list(value.headings, 20, (entry) =>
       isFields(entry)
         ? {
@@ -132,7 +123,7 @@ export function normalizeDesignTokens(raw: unknown): DesignTokens {
     ),
     ctas: list(value.ctas, 10, (entry) =>
       isFields(entry)
-        ? { text: text(entry.text, 60), href: optionalText(entry.href, 4000) }
+        ? { text: text(entry.text, 60), href: wholeText(entry.href, 8000) }
         : undefined,
     ),
     svgs: list(value.svgs, 50, (entry) =>
@@ -149,6 +140,19 @@ export function normalizeDesignTokens(raw: unknown): DesignTokens {
         : undefined,
     ),
     sections: list(value.sections, 200, section),
+    colorStats: list(value.colorStats, 48, (entry) =>
+      isFields(entry) && typeof entry.hex === "string"
+        ? {
+            hex: entry.hex.slice(0, 100),
+            count: number(entry.count),
+            bgCount: number(entry.bgCount),
+            interactiveBg: number(entry.interactiveBg),
+            areaBg: number(entry.areaBg),
+            textCount: number(entry.textCount),
+            maxArea: number(entry.maxArea),
+          }
+        : undefined,
+    ),
     page: page(value.page),
   };
 }

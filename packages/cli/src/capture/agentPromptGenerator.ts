@@ -46,8 +46,7 @@ const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
 const AGENT_FILES = ["AGENTS.md", "CLAUDE.md", ".cursorrules"] as const;
 
-// Only a real list's length is a count; a page-made object can carry any text as its `length`.
-const count = (value: unknown): number => (Array.isArray(value) ? value.length : 0);
+const listLength = (value: unknown): number => (Array.isArray(value) ? value.length : 0);
 
 function isCaptureWritten(path: string): boolean {
   try {
@@ -145,7 +144,7 @@ function buildPrompt(
     );
   }
   tableRows.push(
-    `| \`extracted/tokens.json\` | Design tokens: ${count(tokens.colors)} colors, ${count(tokens.fonts)} fonts, ${count(tokens.headings)} headings, ${count(tokens.ctas)} CTAs |`,
+    `| \`extracted/tokens.json\` | Design tokens: ${listLength(tokens.colors)} colors, ${listLength(tokens.fonts)} fonts, ${listLength(tokens.headings)} headings, ${listLength(tokens.ctas)} CTAs |`,
   );
   // design-styles.json is written from a try/catch in capture/index.ts and
   // gets skipped when the live-DOM style extraction fails. Only list it in the
