@@ -1,6 +1,7 @@
 // The frame's GSAP tweens as plain data, for a parent that cannot reach the frame's window.
 import type { EditingElementHandle } from "../editingElement";
 import { handleFor } from "../editingHandles";
+import { MOVES, rendersTransform } from "../editingGestureStart";
 import { isPlainRecord } from "../editingPort";
 import { isElementNode } from "../domRealm";
 import {
@@ -165,10 +166,14 @@ class SnapshotReader {
     return [...this.channels].map(([element, channels]) => {
       if (channels.size > MAX_SNAPSHOT_CHANNELS) throw new SnapshotBound("channels");
       const values: Record<string, number> = {};
-      for (const channel of channels) {
+      const read = (channel: string) => {
         const value = Number(gsap?.getProperty?.(element, channel));
         if (Number.isFinite(value)) values[channel] = value;
-      }
+      };
+      for (const channel of channels) read(channel);
+      const gsapOwnsPosition =
+        rendersTransform(element) || MOVES.some((channel) => channels.has(channel));
+      if (gsapOwnsPosition) for (const axis of ["x", "y"]) if (!(axis in values)) read(axis);
       const className = element.getAttribute("class") ?? "";
       if (className.length > MAX_SNAPSHOT_TEXT) throw new SnapshotBound("class names");
       return { handle: handleFor(element), id: capped(element.id), className, values };
@@ -181,7 +186,7 @@ class SnapshotReader {
     parsed: GsapSnapshotTween["parsed"],
     parts: GsapSnapshotTween[],
   ) {
-    const channels = this.channels.get(element) ?? new Set(["x", "y"]);
+    const channels = this.channels.get(element) ?? new Set<string>();
     this.channels.set(element, channels);
     const steps = isPlainRecord(vars) ? [vars, ...stepsOf(vars.keyframes)] : [];
     for (const step of steps)
