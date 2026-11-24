@@ -165,21 +165,42 @@ function tweensOn(element: Element): GsapTween[] {
 export const rendersTransform = (element: Element) =>
   !!(element as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
 
+type Fields = Record<string, unknown>;
+const isPlainFields = (value: unknown): value is Fields =>
+  !!value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype;
+
+function keptFields(fields: Fields, depth = 1): () => void {
+  const values = { ...fields };
+  const nested = depth > 0 ? Object.values(fields).filter(isPlainFields) : [];
+  const inner = nested.map((value) => keptFields(value, depth - 1));
+  return () => {
+    for (const key of Object.keys(fields))
+      if (!(key in values)) Reflect.deleteProperty(fields, key);
+    Object.assign(fields, values);
+    for (const restore of inner) restore();
+  };
+}
+
+function keptAttributes(element: Element): () => void {
+  const names = element.getAttributeNames();
+  const attributes = new Map(names.map((name) => [name, element.getAttribute(name) ?? ""]));
+  return () => {
+    for (const name of element.getAttributeNames())
+      if (!attributes.has(name)) element.removeAttribute(name);
+    for (const [name, value] of attributes)
+      if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+  };
+}
+
 export function withoutGsapTakeover<T>(element: Element, read: () => T): T {
   if (rendersTransform(element)) return read();
-  const style = element.getAttribute("style");
-  const cache = (element as { _gsap?: Record<string, unknown> })._gsap;
-  const kept = cache ? { ...cache } : null;
+  const host = element as { _gsap?: Fields };
+  const cache = host._gsap;
+  const restoreCache = cache ? keptFields(cache) : () => Reflect.deleteProperty(host, "_gsap");
+  const restoreAttributes = keptAttributes(element);
   const value = read();
-  if (element.getAttribute("style") !== style) {
-    if (style === null) element.removeAttribute("style");
-    else element.setAttribute("style", style);
-  }
-  if (!cache || !kept) Reflect.deleteProperty(element, "_gsap");
-  else {
-    for (const key of Object.keys(cache)) if (!(key in kept)) Reflect.deleteProperty(cache, key);
-    Object.assign(cache, kept);
-  }
+  restoreAttributes();
+  restoreCache();
   return value;
 }
 
