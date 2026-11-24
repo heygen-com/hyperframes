@@ -43,10 +43,10 @@ describe("a rejection nobody handled during a render", () => {
     const failure = await leaking.catch((err: unknown) => err);
     expect(failure).toBeInstanceOf(EscapedRejectionError);
     expect(failure).toMatchObject({ message: "lost blend" });
-    expect(log.error).toHaveBeenCalledWith("Unhandled promise rejection", {
-      requestId: "req-1",
-      error: "lost blend",
-    });
+    expect(log.error).toHaveBeenCalledWith(
+      "Unhandled promise rejection",
+      expect.objectContaining({ requestId: "req-1", error: "lost blend" }),
+    );
 
     finishOther();
     await expect(other).resolves.toBe("req-2");
@@ -54,9 +54,9 @@ describe("a rejection nobody handled during a render", () => {
 
   it("outside any render is logged and does not throw", () => {
     expect(() => onEscapedRejection("stray", log)).not.toThrow();
-    expect(log.error).toHaveBeenCalledWith("Unhandled promise rejection", {
-      requestId: null,
-      error: "stray",
-    });
+    expect(log.error).toHaveBeenCalledWith(
+      "Unhandled promise rejection",
+      expect.objectContaining({ requestId: null, error: "stray" }),
+    );
   });
 });

@@ -109,6 +109,14 @@ describe("runHybridLayeredFrameLoop failures with 2 workers", () => {
     process.off("unhandledRejection", onUnhandled);
   });
 
+  it("writes every frame and settles every blend when nothing fails", async () => {
+    const input = loopInput({});
+    await runHybridLayeredFrameLoop(input);
+    expect(input.job.framesRendered).toBe(16);
+    expect(blendsInFlightAtTerminate).toBe(0);
+    expect(escaped).toEqual([]);
+  });
+
   let aborts = 0;
   it.each([
     {

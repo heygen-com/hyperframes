@@ -956,6 +956,7 @@ export class RenderCancelledError extends Error {
 export class EscapedRejectionError extends Error {
   constructor(cause: Error) {
     super(cause.message, { cause });
+    Object.assign(this, cause);
     this.name = cause.name;
   }
 }

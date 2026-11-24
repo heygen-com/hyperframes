@@ -1357,6 +1357,7 @@ export function onEscapedRejection(reason: unknown, log: ProducerLogger): void {
   log.error("Unhandled promise rejection", {
     requestId: scope?.requestId ?? null,
     error: err.message,
+    stack: err.stack,
   });
   scope?.fail(err);
 }
