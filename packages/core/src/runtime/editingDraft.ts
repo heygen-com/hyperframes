@@ -243,10 +243,20 @@ function end(element: Styled, ending: EditingDraftEnd): boolean {
   return ending.end === "restore";
 }
 
-/** True when it restored a draft. */
+function liveDraftOf(last: EditingDraft | undefined, draft: EditingDraft): EditingDraft {
+  if (!last || "end" in last || "end" in draft) return draft;
+  const rotate = !("rotate" in draft) && "rotate" in last ? { rotate: last.rotate } : {};
+  const values = last.props && draft.props ? { ...last.props.values, ...draft.props.values } : null;
+  return {
+    ...draft,
+    ...rotate,
+    ...(values && draft.props ? { props: { ...draft.props, values } } : {}),
+  };
+}
+
 function apply(element: Styled, draft: EditingDraft): boolean {
   if ("end" in draft) return end(element, draft);
-  liveDrafts.set(element, draft);
+  liveDrafts.set(element, liveDraftOf(liveDrafts.get(element), draft));
   if ("rotate" in draft) drawRotate(element, draft.rotate ?? null);
   if (draft.translate) drawTranslate(element, draft.translate);
   else restore(element, ["translate"]);
@@ -256,10 +266,17 @@ function apply(element: Styled, draft: EditingDraft): boolean {
   return false;
 }
 
-/** Puts every live draft back over what a redraw of the timelines drew. */
+/** Draws only the parts a live draft carries, so a replay never resets what it leaves out. */
+function redrawOwned(element: Styled, draft: Exclude<EditingDraft, { end: unknown }>): void {
+  if ("rotate" in draft && draft.rotate) drawRotate(element, draft.rotate);
+  if (draft.translate) drawTranslate(element, draft.translate);
+  if (draft.size) drawSize(element, draft.size);
+  if (draft.props) drawProps(element, draft.props);
+}
+
 function putLiveDraftsBack(): void {
   for (const [element, draft] of liveDrafts) {
-    if (element.isConnected) apply(element, draft);
+    if (element.isConnected && !("end" in draft)) redrawOwned(element, draft);
     else liveDrafts.delete(element);
   }
 }
