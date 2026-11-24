@@ -95,21 +95,27 @@ interface PreviewSandboxing {
   directOpens: boolean;
 }
 
+function previewAsker(c: Context, { captures, directOpens }: PreviewSandboxing) {
+  const capture = captures && isThumbnailCapture(c);
+  const openedDirectly = directOpens && !capture && c.req.header("sec-fetch-site") === "none";
+  return { capture, openedDirectly, anotherSite: documentForAnotherSite(c) || openedDirectly };
+}
+
+const loadsAsPage = (c: Context) => {
+  const dest = c.req.header("sec-fetch-dest");
+  return dest === undefined || FRAMED_DESTS.has(dest);
+};
+
 const sandboxPreviewForAnotherSiteOrCapture =
-  ({ captures, directOpens }: PreviewSandboxing) =>
-  async (c: Context, next: Next) => {
-    const capture = captures && isThumbnailCapture(c);
-    // A link opened from the address bar, a chat or a mail client has no page of Studio's behind it.
-    const openedDirectly = directOpens && !capture && c.req.header("sec-fetch-site") === "none";
-    const anotherSite = documentForAnotherSite(c) || openedDirectly;
-    const dest = c.req.header("sec-fetch-dest");
-    if (anotherSite && (dest === undefined || FRAMED_DESTS.has(dest)))
-      c.req.raw = withoutValidators(c.req.raw);
+  (sandboxing: PreviewSandboxing) => async (c: Context, next: Next) => {
+    const asker = previewAsker(c, sandboxing);
+    if (asker.anotherSite && loadsAsPage(c)) c.req.raw = withoutValidators(c.req.raw);
     await next();
     c.header("Vary", "Sec-Fetch-Site, Referer", { append: true });
-    if (anotherSite || capture) c.header("Content-Security-Policy", "sandbox allow-scripts");
-    if (openedDirectly) c.header("X-Content-Type-Options", "nosniff");
-    if (anotherSite) await markPreviewForAnotherSite(c);
+    if (asker.anotherSite || asker.capture)
+      c.header("Content-Security-Policy", "sandbox allow-scripts");
+    if (asker.openedDirectly) c.header("X-Content-Type-Options", "nosniff");
+    if (asker.anotherSite) await markPreviewForAnotherSite(c);
   };
 
 async function refuseProxyWorkForAnotherSite(c: Context, next: Next) {
@@ -177,10 +183,6 @@ const reportRefusals =
 export interface StudioApiOptions extends CaptureSandboxOption {
   allowedHosts?: readonly string[];
   subCompositionDeadlineMs?: number;
-  /**
-   * Answer a preview document or project file opened by direct navigation (`Sec-Fetch-Site: none`) the way one framed
-   * by another site is answered: sandboxed and marked. Off for a host whose own windows open previews top-level.
-   */
   sandboxDirectOpens?: boolean;
 }
 
