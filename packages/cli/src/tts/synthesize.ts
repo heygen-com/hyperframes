@@ -1,7 +1,9 @@
 // fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync, renameSync, rmSync, unlinkSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, readdirSync, rmSync, unlinkSync } from "node:fs";
+import { refuseReadOnly } from "@hyperframes/core/atomic-file";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { join, dirname, basename, extname } from "node:path";
 import {
@@ -154,6 +156,15 @@ function ensureSynthScript(): string {
   return assertPrivateCachePath(SCRIPT_PATH, CODE_ROOT);
 }
 
+function regularFileMode(path: string): number | undefined {
+  try {
+    const stats = lstatSync(path);
+    return stats.isFile() ? stats.mode & 0o777 : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -224,6 +235,7 @@ export async function synthesize(
 
   // 4. Ensure output directory exists
   makeOutputFolder(dirname(outputPath));
+  refuseReadOnly(outputPath);
 
   // 5. Run synthesis into a fresh name renamed over the output: the script writes through a link.
   options?.onProgress?.(`Generating speech with voice ${voice} (${lang})...`);
@@ -244,7 +256,9 @@ export async function synthesize(
     if (!existsSync(staged)) {
       throw new Error("Synthesis completed but no output file was created");
     }
-    renameSync(staged, outputPath);
+    const mode = regularFileMode(outputPath);
+    if (mode !== undefined) chmodSync(staged, mode);
+    renameWithRetry(staged, outputPath);
 
     // Parse the last line of stdout as JSON (in case Python printed warnings before it)
     const lines = stdout.trim().split("\n");
@@ -271,15 +285,12 @@ export async function synthesize(
       );
     }
 
-    let detail = "";
-    if (err && typeof err === "object" && "stderr" in err) {
-      const stderr = String(err.stderr).trim();
-      if (stderr) detail = `\n${stderr.slice(-500)}`;
-    } else if (err instanceof Error) {
-      detail = `\n${err.message}`;
-    }
+    const stderr = err && typeof err === "object" && "stderr" in err ? err.stderr : "";
+    const said = typeof stderr === "string" || Buffer.isBuffer(stderr) ? String(stderr).trim() : "";
+    const reason = said ? said.slice(-500) : err instanceof Error ? err.message : "";
+    const detail = reason ? `\n${reason}` : "";
     throw new Error(`Speech synthesis failed${detail}`);
   } finally {
-    rmSync(staged, { force: true });
+    rmSync(staged, { force: true, maxRetries: 3 });
   }
 }

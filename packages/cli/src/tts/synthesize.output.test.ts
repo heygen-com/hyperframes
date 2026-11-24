@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  chmodSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -23,6 +25,8 @@ vi.mock("node:child_process", async (importOriginal) => {
     if (args[0] === "--version") return "Python 3.11.0";
     if (args[0] === "-c") return "";
     if (cmd === "which" || cmd === "where") return "/usr/bin/python3\n";
+    if (args[3] === "no-start")
+      throw Object.assign(new Error("spawn E2BIG"), { stderr: undefined });
     scriptRuns.push(args[6]!);
     if (args[3] !== "no-file") fs.writeFileSync(args[6]!, AUDIO);
     if (args[3] === "fail") throw Object.assign(new Error("Command failed"), { stderr: "boom" });
@@ -87,6 +91,43 @@ describe("synthesize: the output file", () => {
 
     expect(basename(scriptRuns[0]!)).toHaveLength(45);
     expect(readFileSync(long, "utf8")).toBe(AUDIO);
+  });
+
+  it("keeps the permissions of the file it replaces", async () => {
+    writeFileSync(output, "old audio");
+    chmodSync(output, 0o600);
+
+    await synthesize("hello", output);
+
+    expect(lstatSync(output).mode & 0o777).toBe(0o600);
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "refuses a write-protected output before running the script",
+    async () => {
+      writeFileSync(output, "approved take");
+      chmodSync(output, 0o444);
+
+      await expect(synthesize("hello", output)).rejects.toThrow(/EACCES/);
+
+      expect(scriptRuns).toHaveLength(0);
+      expect(readFileSync(output, "utf8")).toBe("approved take");
+    },
+  );
+
+  it("says why and leaves nothing behind when the output name cannot be replaced", async () => {
+    mkdirSync(join(output, "inside"), { recursive: true });
+
+    await expect(synthesize("hello", output)).rejects.toThrow(/Speech synthesis failed\nE[A-Z]+/);
+
+    expect(readdirSync(dir).sort()).toEqual(["other.txt", "speech.wav"]);
+    expect(lstatSync(output).isDirectory()).toBe(true);
+  });
+
+  it("says why when the script could not be started", async () => {
+    await expect(synthesize("no-start", output)).rejects.toThrow(
+      "Speech synthesis failed\nspawn E2BIG",
+    );
   });
 
   it("says why when the script reports success and leaves no file", async () => {
