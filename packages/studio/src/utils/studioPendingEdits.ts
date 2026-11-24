@@ -269,17 +269,22 @@ export function settleOnDrain(settle: () => unknown): () => void {
   return () => openEdits.delete(settle);
 }
 
+/** Commits a focused field by blurring it, then lets the effects that blur runs add their flush listener. */
+async function blurFocusedField(): Promise<void> {
+  const active = focusedField();
+  if (!active) return;
+  active.blur();
+  // ponytail: keep blur commits, then cross one task so effects the blur runs can add their listener.
+  await Promise.resolve();
+  await waitForPostBlurEffects();
+}
+
 export async function flushStudioPendingEdits({
   onlyCurrent = false,
 } = {}): Promise<StudioPendingEditsDrainResult> {
-  const active = focusedField();
-  if (active) {
-    active.blur();
-    // ponytail: keep blur commits, then cross one task so effects the blur runs can add their listener.
-    await Promise.resolve();
-    await waitForPostBlurEffects();
-  }
-  // An edit opened while the drain waits is settled too, each once: a "clean" covers every edit open when it lands.
+  await blurFocusedField();
+  // An edit opened while the drain waits is settled too, each once, and flush listeners are asked again after each
+  // wait: a "clean" covers every edit open or queued when it lands.
   const settled = new Set<() => unknown>();
   const settleOpened = () => {
     const opened = [...openEdits].filter((settle) => !settled.has(settle));
@@ -291,23 +296,43 @@ export async function flushStudioPendingEdits({
   };
   settleOpened();
   const detail: StudioFlushPendingEditsDetail = { promises: [] };
-  window.dispatchEvent(
-    new CustomEvent<StudioFlushPendingEditsDetail>(STUDIO_FLUSH_PENDING_EDITS_EVENT, { detail }),
-  );
+  // The saves flush listeners answered with, to tell them from the writes a listener could queue an edit behind.
+  const listenerSaves = new Set<unknown>();
+  // Flush listeners commit what they have queued; one with nothing queued answers with no save.
+  const askListeners = () => {
+    window.dispatchEvent(
+      new CustomEvent<StudioFlushPendingEditsDetail>(STUDIO_FLUSH_PENDING_EDITS_EVENT, { detail }),
+    );
+    for (const save of detail.promises) listenerSaves.add(save);
+    return detail.promises.length > 0;
+  };
+  askListeners();
   const current = onlyCurrent ? new Set(pendingEdits.keys()) : null;
   const waiting = () => [...pendingEdits.keys()].filter((edit) => !current || current.has(edit));
   let conflict: StudioFileConflictError | undefined;
   let firstFailure: PromiseRejectedResult | undefined;
-  for (let round = 0; ; round += 1) {
+  /** Waits until nothing is left writing; whether that included a write other than the listeners' own saves. */
+  const waitForWrites = async () => {
+    let waitedOnOtherWrites = false;
     while (detail.promises.length > 0 || waiting().length > 0) {
       const promises = [...detail.promises, ...waiting()];
       detail.promises = [];
+      waitedOnOtherWrites ||= promises.some((promise) => !listenerSaves.has(promise));
       const batchFailures = inspectDrainFailures(await Promise.allSettled(promises));
       conflict ??= batchFailures.conflict;
       firstFailure ??= batchFailures.firstFailure;
     }
+    return waitedOnOtherWrites;
+  };
+  for (let round = 0; ; round += 1) {
+    const waitedOnOtherWrites = await waitForWrites();
     // A drain of only the current edits never takes on newer ones.
-    if (onlyCurrent || !settleOpened()) break;
+    if (onlyCurrent) break;
+    const opened = settleOpened();
+    // Listeners are asked again only after a wait on other writes, during which one may have queued an edit: a
+    // listener that answers every ask with a save must not keep the drain from ending.
+    const queued = waitedOnOtherWrites && askListeners();
+    if (!opened && !queued) break;
     if (round + 1 >= OPEN_EDIT_ROUNDS) {
       firstFailure ??= {
         status: "rejected",

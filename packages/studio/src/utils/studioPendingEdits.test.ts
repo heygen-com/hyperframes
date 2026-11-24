@@ -609,6 +609,31 @@ describe("an edit opened while a drain waits on a write", () => {
     }
   });
 
+  it("commits what a flush listener queued meanwhile before reporting clean", async () => {
+    let release = () => {};
+    const stopFirst = settleOnDrain(() => new Promise<void>((resolve) => (release = resolve)));
+    // A debounced edit, as a nudge or colour grade holds one: it commits on the flush ask, if one is queued.
+    let queued: string | null = null;
+    const saves: string[] = [];
+    const removeListener = addStudioPendingEditFlushListener(() => {
+      if (!queued) return undefined;
+      saves.push(queued);
+      queued = null;
+      return Promise.resolve();
+    });
+    try {
+      const drained = flushStudioPendingEdits();
+      await Promise.resolve();
+      queued = "nudged while the first write was held";
+      release();
+      await expect(drained).resolves.toEqual({ status: "clean" });
+      expect(saves).toEqual(["nudged while the first write was held"]);
+    } finally {
+      removeListener();
+      stopFirst();
+    }
+  });
+
   it("leaves a drain of only the current edits to them", async () => {
     let release = () => {};
     const stopFirst = settleOnDrain(() => new Promise<void>((resolve) => (release = resolve)));
