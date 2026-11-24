@@ -509,6 +509,7 @@ describe("isPublicRegistry", () => {
     `${DEFAULT_REGISTRY_URL}-mirror`,
     `${DEFAULT_REGISTRY_URL}/../../../../someone/else/main/registry`,
     `${DEFAULT_REGISTRY_URL}/%2e%2e/%2e%2e/%2e%2e/%2e%2e/someone/else/main/registry`,
+    `${DEFAULT_REGISTRY_URL}/..%2f..%2fpackages`,
     `${DEFAULT_REGISTRY_URL}?from=elsewhere`,
     DEFAULT_REGISTRY_URL.replace("https://", "https://user@"),
     "not a url",

@@ -30,6 +30,17 @@ describe("describeLateImage", () => {
     });
   });
 
+  // fails without the fix: a host the browser loads but Node's URL parser rejects threw out of the late-image wait
+  it("describes an image whose URL Node cannot parse as another origin, without throwing", () => {
+    const src = "https://xn--ab-m1t.com/assets/logo.png";
+    expect(() => new URL(src)).toThrow();
+    expect(describeLateImage(src, PAGE, QUEUED)).toMatchObject({
+      from: "other-origin",
+      pathDepth: 0,
+      extension: "",
+    });
+  });
+
   it("counts a new connection as connect time, not queue time", () => {
     const fresh = { ...QUEUED, connectStart: 1_600, connectEnd: 1_900, requestStart: 1_900 };
     const record = describeLateImage(`${PAGE}/assets/logo.svg`, PAGE, fresh);

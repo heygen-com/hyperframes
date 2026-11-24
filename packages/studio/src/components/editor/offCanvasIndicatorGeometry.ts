@@ -21,7 +21,7 @@ function offCanvasSignature(rects: OffCanvasRect[]): string {
     .join("|");
 }
 
-function extendsOutside(
+export function extendsOutside(
   rect: Omit<OffCanvasRect, "key">,
   comp: { left: number; top: number; width: number; height: number },
 ): boolean {
@@ -126,9 +126,20 @@ export function recomputeOffCanvasIndicators(
     }
   }
 
+  publishOffCanvasRects(rects, elMap, sigRef, elementsRef, setRects);
+}
+
+/** Shows `rects` unless they are what is already shown. */
+export function publishOffCanvasRects(
+  rects: OffCanvasRect[],
+  elements: Map<string, HTMLElement>,
+  sigRef: React.MutableRefObject<string>,
+  elementsRef: React.MutableRefObject<Map<string, HTMLElement>>,
+  setRects: (rects: OffCanvasRect[]) => void,
+): void {
   const nextSig = offCanvasSignature(rects);
   if (nextSig === sigRef.current) return;
   sigRef.current = nextSig;
-  elementsRef.current = elMap;
+  elementsRef.current = elements;
   setRects(rects);
 }
