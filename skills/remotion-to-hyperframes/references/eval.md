@@ -19,6 +19,9 @@ Run them in this order: **lint → render → diff → (if fail) read the sheet*
 
 This flow is for the fixtures this skill ships. Do not run `npm install` or a project's scripts in a Remotion project someone else wrote; ask the person for its baseline render instead.
 
+`HYPERFRAMES_CLI_ENTRY` is the absolute path of the HyperFrames CLI under test (in a checkout, the built
+`packages/cli/dist/cli.js`); the steps never look one up beside the skill.
+
 ```bash
 # 1. Lint the source — blockers mean stop
 python3 ../../scripts/lint_source.py ./remotion-src/src/
@@ -31,11 +34,11 @@ cd remotion-src && npm install && npm run render
 # -> remotion-src/out/baseline.mp4
 
 # 4. Render HF translation
-cd .. && node ../../../packages/cli/dist/cli.js render hf-src/ --output hf.mp4
+cd .. && node "$HYPERFRAMES_CLI_ENTRY" render hf-src/ --output hf.mp4
 # -> hf.mp4
 
 # 5. SSIM diff, gated on the tier's mean threshold only
-mkdir -p diff && node ../../../packages/cli/dist/cli.js diff ./remotion-src/out/baseline.mp4 ./hf.mp4 \
+mkdir -p diff && node "$HYPERFRAMES_CLI_ENTRY" diff ./remotion-src/out/baseline.mp4 ./hf.mp4 \
   --min-mean 0.95 --min-p05 0 --min-cell 0 --out ./diff --json > diff/summary.json
 # -> diff/summary.json, diff/worst.jpg, diff/ssim.log
 ```

@@ -14,8 +14,8 @@
 #   - ffmpeg, ffprobe, python3 on PATH
 #   - node 22 (for the HF CLI)
 #   - npm (for Remotion installs)
-#   - HF CLI built at packages/cli/dist/cli.js (run `bun run --filter @hyperframes/cli build`
-#     in the repo root if missing)
+#   - HYPERFRAMES_CLI_ENTRY set to the absolute path of the HF CLI to test (a checkout's built
+#     packages/cli/dist/cli.js, or an installed CLI's bin/hyperframes.mjs)
 #
 # Output:
 #   <fixture>/diff/summary.json   per-fixture SSIM summary
@@ -26,10 +26,10 @@ set -euo pipefail
 
 THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(cd "$THIS_DIR/../.." && pwd)"
-REPO_ROOT="$(cd "$SKILL_DIR/../.." && pwd)"
 
 LINT="$SKILL_DIR/scripts/lint_source.py"
-HF_CLI="$REPO_ROOT/packages/cli/dist/cli.js"
+# Only the CLI the person names: the folder above an installed skill is the project's, never a checkout to trust.
+HF_CLI="${HYPERFRAMES_CLI_ENTRY:-}"
 REPORT="$THIS_DIR/run-report.json"
 
 # Per-fixture results land here as one JSON file each, then the aggregator
@@ -42,9 +42,9 @@ trap 'rm -rf "$RESULTS_DIR"' EXIT
 # toolchain checks until run_render_tier() actually runs, so
 # `./run.sh tier-4-escape-hatch` works on a clean checkout.
 require_render_tier_tools() {
-  if [[ ! -f "$HF_CLI" ]]; then
-    echo "error: HF CLI not built at $HF_CLI" >&2
-    echo "       Run 'bun run --filter @hyperframes/cli build' in $REPO_ROOT" >&2
+  if [[ "$HF_CLI" != /* || ! -f "$HF_CLI" ]]; then
+    echo "error: set HYPERFRAMES_CLI_ENTRY to the absolute path of the HF CLI to test" >&2
+    echo "       (in a checkout: packages/cli/dist/cli.js after 'bun run --filter @hyperframes/cli build')" >&2
     return 2
   fi
   if ! command -v ffmpeg >/dev/null 2>&1; then

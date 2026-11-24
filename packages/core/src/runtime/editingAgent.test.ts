@@ -434,6 +434,23 @@ describe("installEditingAgent", () => {
       { drafts: [{ handle: H, translate: { x: 1, y: 0, route: "css" }, size: null }] },
       { drafts: [{ handle: H, translate: { x: 1e6, y: 0, route: "gsap" }, size: null }] },
       { drafts: [{ handle: H, translate: null, size: { width: -1, height: 2 } }] },
+      ...[
+        { seconds: 1, values: {} },
+        { seconds: -1, values: { opacity: 1 } },
+        { seconds: 1, values: { color: 1 } },
+        { seconds: 1, values: { opacity: "1" } },
+        { seconds: 1, values: { opacity: 1 }, extra: 1 },
+      ].map((props) => ({ drafts: [{ handle: H, translate: null, size: null, props }] })),
+      {
+        drafts: [
+          {
+            handle: H,
+            translate: { x: 1, y: 0, route: "gsap" },
+            size: null,
+            props: { seconds: 1, values: { x: 2 } },
+          },
+        ],
+      },
       { drafts: [{ handle: H, translate: null, size: { width: 1, height: 2, depth: 3 } }] },
       { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1 } }] },
       { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1, route: "x" } }] },
@@ -468,8 +485,8 @@ describe("installEditingAgent", () => {
         ],
       })),
     ].map((params, index) => [
-      { v: 1, id: 150 + index, kind: "draft", params },
-      150 + index,
+      { v: 1, id: 600 + index, kind: "draft", params },
+      600 + index,
       "invalid-params",
     ]),
     ...[{}, { handles: [] }, { handles: ["1"] }, { handles: Array(257).fill(H) }].map(
@@ -680,6 +697,45 @@ describe("installEditingAgent", () => {
       ok: true,
     });
     expect(spun.style.transform).toBe(value);
+  });
+
+  it("ends a drawn size and sets GSAP values in one request, the size ended first", async () => {
+    document.body.innerHTML = `<div id="box"></div>`;
+    const box = document.getElementById("box")!;
+    const handle = handleFor(box);
+    const widthAtSet: string[] = [];
+    Object.assign(window, { gsap: { set: () => widthAtSet.push(box.style.width) } });
+    const port = connectedPort();
+    const size = { width: 307, height: 204 };
+    const drawn = await ask(port, {
+      v: 1,
+      id: 1,
+      kind: "draft",
+      params: { drafts: [{ handle, translate: null, size }] },
+    });
+    expect(drawn).toMatchObject({ ok: true, result: { gsapSetTakesDrafts: true } });
+    expect(box.style.width).toBe("307px");
+
+    const ending = [{ handle, translate: null, size: null }];
+    const props = { scaleX: 1.9, scaleY: 1.9 };
+    const set = await ask(port, {
+      v: 1,
+      id: 2,
+      kind: "gsap-set",
+      params: { handle, props, drafts: ending },
+    });
+    const malformed = [{ handle, translate: null, size: "none" }];
+    const refused = await ask(port, {
+      v: 1,
+      id: 3,
+      kind: "gsap-set",
+      params: { handle, props, drafts: malformed },
+    });
+
+    expect(set).toMatchObject({ id: 2, ok: true, result: { applied: true } });
+    expect(widthAtSet).toEqual([""]);
+    expect(refused).toMatchObject({ id: 3, ok: false, error: { code: "invalid-params" } });
+    Reflect.deleteProperty(window, "gsap");
   });
 
   // fails without the fix: the frame refused a move routed through its GSAP, so a sealed drag drew a CSS translate.

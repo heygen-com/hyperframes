@@ -11,7 +11,10 @@ npm install @hyperframes/player
 Or load directly via CDN:
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>
+<script
+  type="module"
+  src="https://cdn.jsdelivr.net/npm/@hyperframes/player/dist/hyperframes-player.js"
+></script>
 ```
 
 If you need a classic `<script>` tag instead of ESM, use the explicit global build:
@@ -207,6 +210,11 @@ composition because browser sandbox changes take effect only on navigation. Opaq
 parent DOM. Direct `contentDocument`, `__player`, and `__timelines` access is intentionally
 unavailable in that mode.
 
+An opaque player adds the HyperFrames runtime itself, the version it was built with, so the embedder adds nothing. A composition from the embedding page's own site that brings the runtime loads by `src` as before. One without it is fetched and shown with the runtime inlined, so the frame loads nothing from another origin; inside it, `location` reads `about:srcdoc` while relative paths resolve against the composition's URL, and the embedding page's `script-src` policy applies to its scripts. A composition from another site loads as before and must include the runtime script.
+Hosting the player's script yourself, serve the runtime file from the package's `dist` folder beside it: an opaque player loads it from next to its own `<script>`. A bundler should use the ES module build, which carries the runtime as a chunk the bundler emits; under the CommonJS build the player cannot tell where it was loaded from, and a sealed player that needs the runtime reports that it failed to load.
+
+An opaque composition loads the videos and audio served from its own host with CORS, so colour grading, canvas reads and audio effects can use them. Serve them with `Access-Control-Allow-Origin` (for example `*`). From a host that sends no CORS headers, each one plays anyway: it is loaded again once without CORS, those effects are off for it, and the console names it.
+
 If you are building a trusted editor integration that needs direct access, use the `iframeElement` getter:
 
 ```js
@@ -348,7 +356,7 @@ The `width` and `height` attributes define the composition's native resolution f
 
 ## How it works
 
-The player renders compositions in a sandboxed `<iframe>` inside a Shadow DOM. It communicates with the HyperFrames runtime via `postMessage`. If the composition has GSAP timelines (`window.__timelines`) but no runtime, the player auto-injects it from CDN.
+The player renders compositions in a sandboxed `<iframe>` inside a Shadow DOM. It communicates with the HyperFrames runtime via `postMessage`. If the composition has GSAP timelines (`window.__timelines`) but no runtime, the player auto-injects it from CDN. An opaque player adds the runtime only to a composition from its own site that sets no security policy of its own; any other composition must load the runtime script itself, or the player fires `error` at the load limit with a message naming both fixes.
 
 ## Distribution
 

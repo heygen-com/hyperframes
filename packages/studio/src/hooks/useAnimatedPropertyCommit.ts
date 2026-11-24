@@ -339,7 +339,7 @@ async function commitKeyframeProps(
     );
   }
   const ct = usePlayerStore.getState().currentTime;
-  const runtimeProps = selector ? readAllAnimatedProperties(iframe, selector, anim) : {};
+  const runtimeProps = selector ? await readAllAnimatedProperties(iframe, selector, anim) : {};
   const properties: Record<string, number | string> = { ...runtimeProps, ...props };
 
   const backfillDefaults: Record<string, number | string> = { ...runtimeProps };
