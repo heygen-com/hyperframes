@@ -1,0 +1,11 @@
+<!doctype html>
+<html><head><meta charset="utf-8"></head><body>
+<div id="root" data-composition-id="main" data-width="640" data-height="360" data-duration="3">
+  <video src="clip.mov" data-start="0" data-duration="2" data-track-index="0" muted></video>
+  <video src="\\host\share\unc.mov" data-start="0" data-duration="2" data-track-index="1" muted></video>
+  <video src="%5C%5Chost%5Cshare%5Cencoded.mov" data-start="0" data-duration="2" data-track-index="2" muted></video>
+  <video src="../outside.mov" data-start="0" data-duration="2" data-track-index="3" muted></video>
+  <video src=".hyperframes/private.mov" data-start="0" data-duration="2" data-track-index="4" muted></video>
+  <div id="overflow" style="position:absolute;left:600px;top:0;width:400px;height:50px;background:red" data-start="0" data-duration="3" data-track-index="5">overflowing text that leaves the frame</div>
+</div>
+</body></html>
