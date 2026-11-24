@@ -28,7 +28,7 @@ import {
   createReadStream,
 } from "node:fs";
 import { resolve, dirname, join } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { parseArgs } from "node:util";
 import { isIP } from "node:net";
 import crypto from "node:crypto";
@@ -92,7 +92,10 @@ export interface HandlerOptions {
   projectsDir?: string;
   /** With `confineRequests`: let requests set `debug: true`, which keeps work dirs on disk. Defaults to PRODUCER_ALLOW_DEBUG=1. */
   allowDebug?: boolean;
-  /** Bearer token `createProducerApp` requires on every route but /health. Defaults to PRODUCER_AUTH_TOKEN. */
+  /**
+   * Bearer token `createProducerApp` requires on every route but /health. Defaults to PRODUCER_AUTH_TOKEN. Without one
+   * the app checks no caller, so serve it only behind your own check; `startServer` makes one instead.
+   */
   authToken?: string;
 }
 
@@ -101,6 +104,8 @@ export interface ServerOptions extends HandlerOptions {
   port?: number;
   /** Address to listen on. Default: PRODUCER_HOST or 127.0.0.1. A non-loopback address requires `authToken`. */
   hostname?: string;
+  /** Where a token made for a run without `authToken` is written. Default: PRODUCER_AUTH_TOKEN_FILE or ~/.hyperframes/producer/<port>.token. */
+  authTokenFile?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -824,7 +829,8 @@ export interface RenderHandlers {
 /**
  * Create route handler functions for the producer server.
  *
- * These can be mounted on any Hono app at any path prefix.
+ * These can be mounted on any Hono app at any path prefix. They check no caller: mount them behind your own
+ * authentication, since anything that reaches them renders and lints with this process's rights.
  */
 export function createRenderHandlers(options: HandlerOptions = {}): RenderHandlers {
   const log = options.logger ?? defaultLogger;
@@ -1247,6 +1253,37 @@ export function createProducerApp(options: HandlerOptions = {}): Hono {
 // Standalone server
 // ---------------------------------------------------------------------------
 
+interface ServerAuth {
+  token: string;
+  /** Set when the token was made for this run: where it was written. */
+  file?: string;
+}
+
+/**
+ * The configured token, or a new one written where only this account can read it. Every local account, container
+ * and sandboxed program can reach a loopback port, so the server never listens without one.
+ */
+function serverAuth(options: ServerOptions, hostname: string, port: number): ServerAuth {
+  const configured = resolveAuthToken(options);
+  if (configured) return { token: configured };
+  if (!isLoopbackHostname(hostname)) {
+    throw new Error(
+      `Refusing to listen on ${hostname} without an auth token. Set authToken or PRODUCER_AUTH_TOKEN, or listen on a loopback address.`,
+    );
+  }
+  const file = resolve(
+    options.authTokenFile?.trim() ||
+      process.env.PRODUCER_AUTH_TOKEN_FILE?.trim() ||
+      join(homedir(), ".hyperframes", "producer", `${port}.token`),
+  );
+  const token = crypto.randomBytes(32).toString("base64url");
+  mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+  // Removed first so the new file is created with its own mode, never through a link or an older file's mode.
+  rmSync(file, { force: true });
+  writeFileSync(file, `${token}\n`, { flag: "wx", mode: 0o600 });
+  return { token, file };
+}
+
 /**
  * Start the producer HTTP server with graceful shutdown.
  */
@@ -1254,16 +1291,17 @@ export function startServer(options: ServerOptions = {}) {
   const port = options.port ?? parseInt(process.env.PRODUCER_PORT ?? "9847", 10);
   const hostname = options.hostname || process.env.PRODUCER_HOST || "127.0.0.1";
   const log = options.logger ?? defaultLogger;
-  if (!isLoopbackHostname(hostname) && !resolveAuthToken(options)) {
-    throw new Error(
-      `Refusing to listen on ${hostname} without an auth token. Set authToken or PRODUCER_AUTH_TOKEN, or listen on a loopback address.`,
-    );
-  }
-  const app = createProducerApp(options);
+  const auth = serverAuth(options, hostname, port);
+  const app = createProducerApp({ ...options, authToken: auth.token });
 
   const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
     const address = info.family === "IPv6" ? `[${info.address}]` : info.address;
     log.info(`Listening on http://${address}:${info.port}`);
+    if (auth.file) {
+      log.info(
+        `No auth token was set, so this run made one: send "Authorization: Bearer <token>" with the token in ${auth.file}`,
+      );
+    }
   });
 
   // Disable timeouts for long renders
@@ -1299,6 +1337,7 @@ export function startServer(options: ServerOptions = {}) {
 
   async function shutdown(signal: string) {
     log.info(`Received ${signal}, shutting down`);
+    if (auth.file) rmSync(auth.file, { force: true });
     const { drainBrowserPool } = await import("@hyperframes/engine");
     await drainBrowserPool().catch(() => {});
     // Bounded await: if the worker hasn't come online within 1.5s of

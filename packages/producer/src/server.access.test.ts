@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -164,6 +173,66 @@ describe("createRenderHandlers: embedded contract", () => {
       renderId: "job-id",
       workers: 1,
     });
+  });
+});
+
+describe("startServer: callers on loopback", () => {
+  async function listening(options: Parameters<typeof startServer>[0]) {
+    process.env.PRODUCER_DISABLE_HEALTH_WORKER = "1";
+    const server = startServer({ port: 0, ...options });
+    if (!server.listening) await new Promise((done) => server.once("listening", done));
+    const { port } = server.address() as AddressInfo;
+    const close = () => new Promise((done) => server.close(done));
+    return { url: (path: string) => `http://127.0.0.1:${port}${path}`, close };
+  }
+
+  it("with no token set, makes one only this account can read, and refuses a caller without it", async () => {
+    const { root, projectsDir, rendersDir } = setup();
+    const authTokenFile = join(root, "private", "producer.token");
+    // A file left at the path, readable by anyone, is replaced rather than reused.
+    mkdirSync(join(root, "private"));
+    writeFileSync(authTokenFile, "old\n", { mode: 0o644 });
+    const server = await listening({ projectsDir, rendersDir, authTokenFile });
+    try {
+      const token = readFileSync(authTokenFile, "utf8").trim();
+      expect(token).toMatch(/^[\w-]{43}$/);
+      if (process.platform !== "win32") expect(statSync(authTokenFile).mode & 0o077).toBe(0);
+      const plain = { "content-type": "application/json" };
+      for (const [method, path] of [
+        ["POST", "/render"],
+        ["POST", "/render/stream"],
+        ["POST", "/lint"],
+        ["GET", "/render/queue"],
+        ["GET", "/outputs/any"],
+      ] as const) {
+        const body = method === "POST" ? JSON.stringify({ projectDir: "demo" }) : undefined;
+        const res = await fetch(server.url(path), { method, headers: plain, body });
+        expect(res.status, `${method} ${path}`).toBe(401);
+      }
+      expect((await fetch(server.url("/health"))).status).toBe(200);
+      const queue = await fetch(server.url("/render/queue"), {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(queue.status).toBe(200);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("uses a configured token as it is and writes no file", async () => {
+    const { root, projectsDir, rendersDir } = setup();
+    const authTokenFile = join(root, "producer.token");
+    const server = await listening({ projectsDir, rendersDir, authTokenFile, authToken: "s3cret" });
+    try {
+      expect(existsSync(authTokenFile)).toBe(false);
+      expect((await fetch(server.url("/render/queue"))).status).toBe(401);
+      const res = await fetch(server.url("/render/queue"), {
+        headers: { authorization: "Bearer s3cret" },
+      });
+      expect(res.status).toBe(200);
+    } finally {
+      await server.close();
+    }
   });
 });
 
