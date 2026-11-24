@@ -70,9 +70,9 @@ describe("tts command", () => {
   it("refuses a .txt path that starts with two separators, and reads it with --text-file", async () => {
     writeFileSync(join(dir, "script.txt"), "From the file\n");
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-    const doubled = `/${join(dir, "script.txt")}`;
+    const file = join(dir, "script.txt");
 
-    for (const input of [doubled, "\\\\host\\share\\script.txt"]) {
+    for (const input of ["//host/share/script.txt", "\\\\host\\share\\script.txt"]) {
       await expect(runCommand(ttsCommand, { rawArgs: [input, "--json"] })).rejects.toThrow(
         CliUsageError,
       );
@@ -80,7 +80,7 @@ describe("tts command", () => {
     expect(synthesizeMock).not.toHaveBeenCalled();
     expect(errors.mock.calls.flat().join(" ")).toContain("--text-file");
 
-    await runCommand(ttsCommand, { rawArgs: ["--text-file", doubled, "--json"] });
+    await runCommand(ttsCommand, { rawArgs: ["--text-file", file, "--json"] });
     expect(synthesizeMock).toHaveBeenCalledWith(
       "From the file",
       expect.any(String),

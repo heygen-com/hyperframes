@@ -70,7 +70,7 @@ test("a .txt path that starts with two separators is refused, and the file it na
     ).stderr;
   try {
     assert.match(speak(join(dir, "script.txt")), /asked: text of the file/);
-    for (const word of [`/${join(dir, "script.txt")}`, "\\\\host\\share\\script.txt"]) {
+    for (const word of ["//host/share/script.txt", "\\\\host\\share\\script.txt"]) {
       const said = speak(word);
       assert.match(said, /not read\. Copy the file to a local folder/);
       assert.doesNotMatch(said, /asked:/);
