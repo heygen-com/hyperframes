@@ -57,5 +57,7 @@ export type TimelineFileDropHandler = (
   placement?: { start: number; track: number },
 ) => Promise<void>;
 
-/** What a timeline move commits: the new start and track. */
-export type TimelineMoveUpdates = Pick<TimelineElement, "start" | "track">;
+export type TimelineMoveUpdates = Pick<TimelineElement, "start" | "track"> & {
+  /** @deprecated Ignored: a lane drag restacks through the timeline's own stacking sync. */
+  stackingReorder?: unknown;
+};
