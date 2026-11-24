@@ -825,7 +825,7 @@ async function mountExternalCompositions(
         if (!/\.html?$/i.test(compositionUrl.pathname)) {
           throw new Error("data-composition-src must name an .html file");
         }
-        const response = await fetch(compositionUrl.href);
+        const response = await fetch(src);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }

@@ -512,7 +512,7 @@ describe("loadCompositions external hosts", () => {
         );
       const onDiagnostic = vi.fn();
       const { injectedScripts } = await loadFixture({ onDiagnostic });
-      expect(String(fetchSpy.mock.calls[0]?.[0])).toBe(
+      expect(new URL(String(fetchSpy.mock.calls[0]?.[0]), document.baseURI).href).toBe(
         "https://example.com/api/projects/p1/preview/compositions/sub.html",
       );
       expect(host.textContent).toContain("in");
