@@ -211,57 +211,11 @@ jobs:
           path: out/hf-media-linux-aarch64.tar.gz
           if-no-files-found: error
 
-  lambda-handler-zip:
-    name: Lambda handler zip
-    needs: [release-source]
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # Runs apart from the publish job: read-only token, no secrets, no stored git credentials.
-    permissions:
-      contents: read
-    env:
-      EXPECTED_RELEASE_SHA: ${{ needs.release-source.outputs.sha }}
-    if: needs.release-source.outputs.sha != ''
-    outputs:
-      sha256: ${{ steps.zip.outputs.sha256 }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ env.EXPECTED_RELEASE_SHA }}
-          persist-credentials: false
-      - name: Verify immutable release checkout
-        run: |
-          ACTUAL_SHA="$(git rev-parse HEAD)"
-          EXPECTED_COMMIT_SHA="$(git rev-parse "${EXPECTED_RELEASE_SHA}^{commit}")"
-          if [ "$ACTUAL_SHA" != "$EXPECTED_COMMIT_SHA" ]; then
-            echo "::error::Expected release commit $EXPECTED_COMMIT_SHA, checked out $ACTUAL_SHA"
-            exit 1
-          fi
-      # The release installs the bun it downloads, never one restored from the shared cache.
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          no-cache: true
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
-      - run: bun install --frozen-lockfile
-      - run: bun run build
-      - name: Build Lambda handler zip
-        id: zip
-        run: |
-          bun run --cwd packages/aws-lambda build:zip
-          echo "sha256=$(sha256sum packages/aws-lambda/dist/handler.zip | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: hyperframes-lambda-handler-zip
-          overwrite: true
-          path: packages/aws-lambda/dist/handler.zip
-          if-no-files-found: error
-
   # The video stage installs Chrome's system libraries with microdnf, so it builds on ARM, not under emulation.
+  # It packs @hyperframes/aws-lambda last, once this image's pin exists; every other package is packed by then.
   lambda-video-image:
     name: Lambda video image
-    needs: [release-source, lambda-arm64-ffmpeg, lambda-handler-zip]
+    needs: [release-source, lambda-arm64-ffmpeg, pack]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     permissions:
@@ -271,6 +225,7 @@ jobs:
     if: needs.release-source.outputs.sha != ''
     outputs:
       sha256: ${{ steps.image.outputs.sha256 }}
+      bundle_id: ${{ steps.bundle.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -287,6 +242,11 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           no-cache: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: corepack prepare pnpm@10.17.1 --activate
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: hyperframes-lambda-handler-zip
@@ -298,7 +258,7 @@ jobs:
       - name: Build Lambda video image
         id: image
         env:
-          EXPECTED_ZIP_SHA256: ${{ needs.lambda-handler-zip.outputs.sha256 }}
+          EXPECTED_ZIP_SHA256: ${{ needs.pack.outputs.zip_sha256 }}
         run: |
           ACTUAL_ZIP_SHA256="$(sha256sum dist/lambda-handler-build/handler.zip | cut -d' ' -f1)"
           if [ -z "$EXPECTED_ZIP_SHA256" ] || [ "$ACTUAL_ZIP_SHA256" != "$EXPECTED_ZIP_SHA256" ]; then
@@ -313,18 +273,67 @@ jobs:
             --provenance=false --sbom=false --build-context task=dist/arm64-image/task \
             --output type=oci,dest=dist/hyperframes-lambda-video-arm64.oci.tar packages/aws-lambda/image
           echo "sha256=$(sha256sum dist/hyperframes-lambda-video-arm64.oci.tar | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+          rm -rf dist/lambda-handler-build dist/hf-media dist/arm64-image
+
+      # pnpm pack writes workspace: ranges as versions only with the workspace installed.
+      - run: bun install --frozen-lockfile
+
+      # pack built and pinned the package with the handler zip; this adds only the image pin.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: hyperframes-lambda-video-arm64
-          overwrite: true
-          path: dist/hyperframes-lambda-video-arm64.oci.tar
+          name: hyperframes-aws-lambda-pack
+          path: ${{ runner.temp }}/aws-lambda-pack
+
+      - name: Pin Lambda video image
+        env:
+          EXPECTED_SHA256: ${{ steps.image.outputs.sha256 }}
+        run: |
+          ACTUAL_SHA256="$(sha256sum dist/hyperframes-lambda-video-arm64.oci.tar | cut -d' ' -f1)"
+          if [ -z "$EXPECTED_SHA256" ] || [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "::error::Lambda video image sha256 $ACTUAL_SHA256 does not match the build job's $EXPECTED_SHA256"
+            exit 1
+          fi
+          rm -rf packages/aws-lambda/dist packages/aws-lambda/prebuilt
+          cp -R "$RUNNER_TEMP/aws-lambda-pack/dist" "$RUNNER_TEMP/aws-lambda-pack/prebuilt" packages/aws-lambda/
+          bun packages/aws-lambda/scripts/pin-handler-zip.ts --video-image
+
+      # The pack that ships must be pack's, file for file, plus the image pin.
+      - name: Pack aws-lambda
+        run: |
+          OUT="$PWD/release-bundle/npm"
+          mkdir -p "$OUT" release-bundle/assets
+          pnpm --filter @hyperframes/aws-lambda pack --pack-destination "$OUT"
+          PACKED="$(ls "$OUT"/*.tgz)"
+          BEFORE="$(ls "$RUNNER_TEMP"/aws-lambda-pack/*.tgz)"
+          list() { tar -tzf "$1" | grep -v '/$' | LC_ALL=C sort; }
+          if [ "$(list "$PACKED")" != "$( (list "$BEFORE"; echo package/prebuilt/video-image.json) | LC_ALL=C sort)" ]; then
+            echo "::error::the aws-lambda pack holds other files than pack's plus prebuilt/video-image.json"
+            exit 1
+          fi
+          while read -r file; do
+            [ "$file" = package/prebuilt/video-image.json ] && continue
+            cmp -s <(tar -xzOf "$PACKED" "$file") <(tar -xzOf "$BEFORE" "$file") ||
+              { echo "::error::$file in the aws-lambda pack differs from pack's"; exit 1; }
+          done < <(list "$PACKED")
+          mv dist/hyperframes-lambda-video-arm64.oci.tar dist/hyperframes-lambda-video-arm64.sha256 release-bundle/assets/
+
+      # Never overwritten, like release-bundle: publish takes both bundles by the ids their jobs report.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        id: bundle
+        with:
+          name: release-bundle-lambda
+          path: release-bundle/
           if-no-files-found: error
+          compression-level: 1
+          overwrite: false
+          retention-days: 7
 
   pack:
     name: Build and pack
     outputs:
       bundle_id: ${{ steps.bundle.outputs.artifact-id }}
-    needs: [release-source, lambda-handler-zip, lambda-video-image]
+      zip_sha256: ${{ steps.zip.outputs.sha256 }}
+    needs: [release-source]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Every build and lifecycle script of the release commit runs here, with a
@@ -390,45 +399,34 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run build
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      # Uploaded first, so the video image can build from it while the checks below run.
+      - name: Build Lambda handler zip
+        id: zip
+        run: |
+          bun run --cwd packages/aws-lambda build:zip
+          echo "sha256=$(sha256sum packages/aws-lambda/dist/handler.zip | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: hyperframes-lambda-handler-zip
-          path: dist/lambda-handler-build
+          overwrite: true
+          path: packages/aws-lambda/dist/handler.zip
+          if-no-files-found: error
+
+      # Before the pins, so it packs with release-size stand-ins of both Lambda assets, as CI does.
+      - run: bun run verify:packed-manifests
 
       # Before packing, so @hyperframes/aws-lambda pins this exact zip.
       - name: Pin Lambda handler zip
         id: lambda_zip
         env:
-          EXPECTED_SHA256: ${{ needs.lambda-handler-zip.outputs.sha256 }}
+          EXPECTED_SHA256: ${{ steps.zip.outputs.sha256 }}
         run: |
-          ACTUAL_SHA256="$(sha256sum dist/lambda-handler-build/handler.zip | cut -d' ' -f1)"
+          ACTUAL_SHA256="$(sha256sum packages/aws-lambda/dist/handler.zip | cut -d' ' -f1)"
           if [ -z "$EXPECTED_SHA256" ] || [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
             echo "::error::Lambda handler zip sha256 $ACTUAL_SHA256 does not match the build job's $EXPECTED_SHA256"
             exit 1
           fi
-          mv dist/lambda-handler-build/handler.zip dist/hyperframes-lambda-handler.zip
-          rm -rf dist/lambda-handler-build
           bun packages/aws-lambda/scripts/pin-handler-zip.ts
-
-      # lambda-video-image built it on ARM from the same zip sha pinned above.
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: hyperframes-lambda-video-arm64
-          path: dist
-
-      - name: Pin Lambda video image
-        id: lambda_video_image
-        env:
-          EXPECTED_SHA256: ${{ needs.lambda-video-image.outputs.sha256 }}
-        run: |
-          ACTUAL_SHA256="$(sha256sum dist/hyperframes-lambda-video-arm64.oci.tar | cut -d' ' -f1)"
-          if [ -z "$EXPECTED_SHA256" ] || [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
-            echo "::error::Lambda video image sha256 $ACTUAL_SHA256 does not match the build job's $EXPECTED_SHA256"
-            exit 1
-          fi
-          bun packages/aws-lambda/scripts/pin-handler-zip.ts --video-image
-
-      - run: bun run verify:packed-manifests
 
       # pnpm pack writes the same tarball pnpm publish uploads: publishConfig
       # applied and workspace: ranges replaced with versions.
@@ -449,6 +447,17 @@ jobs:
             fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
           "
           (cd packages/cli && npm pack --pack-destination "$OUT")
+          # The video image job adds its pin and packs aws-lambda again; this pack is what it is checked against.
+          mkdir -p aws-lambda-pack
+          mv "$OUT"/hyperframes-aws-lambda-*.tgz aws-lambda-pack/
+          cp -R packages/aws-lambda/dist packages/aws-lambda/prebuilt aws-lambda-pack/
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hyperframes-aws-lambda-pack
+          path: aws-lambda-pack/
+          if-no-files-found: error
+          overwrite: false
 
       - name: Build portable agent plugin
         run: node scripts/package-agent-plugin.mjs
@@ -460,7 +469,6 @@ jobs:
         run: |
           mkdir -p release-bundle/assets release-bundle/plugin
           mv dist/hyperframes-lambda-handler.zip dist/hyperframes-lambda-handler.sha256 release-bundle/assets/
-          mv dist/hyperframes-lambda-video-arm64.oci.tar dist/hyperframes-lambda-video-arm64.sha256 release-bundle/assets/
           mv dist/hyperframes-agent-plugin.zip dist/hyperframes-agent-plugin.sha256 dist/hyperframes-agent-plugin.json release-bundle/plugin/
           if [ -f "releases/v${VERSION}.md" ]; then
             cp "releases/v${VERSION}.md" release-bundle/notes.md
@@ -479,7 +487,7 @@ jobs:
 
   publish:
     name: Publish
-    needs: [release-source, pack]
+    needs: [release-source, pack, lambda-video-image]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Per release, not per ref: on main a later push would cancel a release run still waiting to start.
@@ -491,7 +499,7 @@ jobs:
     environment: npm-publish
     # This job holds the release credentials, so it runs no code from the
     # release commit: no install, no build, no repo scripts. It checks the
-    # pack job's tarballs and uploads them.
+    # tarballs pack and lambda-video-image packed and uploads them.
     permissions:
       contents: write
       actions: read
@@ -587,7 +595,7 @@ jobs:
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          artifact-ids: ${{ needs.pack.outputs.bundle_id }}
+          artifact-ids: ${{ needs.pack.outputs.bundle_id }},${{ needs.lambda-video-image.outputs.bundle_id }}
           merge-multiple: true
           path: ${{ runner.temp }}/release-bundle
 
