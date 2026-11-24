@@ -125,7 +125,7 @@ type GsapWindow = {
 
 // The channels Studio's move route and drag commit read as GSAP moving an element.
 const POSITION = ["x", "y", "xPercent", "yPercent", "left", "top", "translateX", "translateY"];
-const MOVES = [...POSITION, "motionPath"];
+export const MOVES = [...POSITION, "motionPath"];
 const TURNS = [
   "rotation",
   "rotationX",
@@ -162,7 +162,7 @@ function tweensOn(element: Element): GsapTween[] {
   );
 }
 
-const rendersTransform = (element: Element) =>
+export const rendersTransform = (element: Element) =>
   !!(element as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
 
 export type EditingGestureBase = {
