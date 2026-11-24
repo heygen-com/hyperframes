@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { applyInlineStyle } from "./inlineTextStyleRange";
 import {
+  applyInlineStyle,
   readFirstPaintedElement,
   readInlineStyle,
   readInlineStyleSpread,
-} from "./inlineTextStyleRead";
+} from "@hyperframes/core/inline-text-style";
 import { resolvePickerColor } from "./colorValue";
 import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 

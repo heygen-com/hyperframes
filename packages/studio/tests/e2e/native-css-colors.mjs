@@ -18,7 +18,9 @@ try {
       "build",
       "packages/studio/src/components/editor/colorValue.ts",
       "packages/studio/src/components/editor/gradientValue.ts",
-      "packages/studio/src/components/editor/inlineTextStyleRead.ts",
+      "packages/core/src/utils/inlineTextStyleRead.ts",
+      "--root",
+      "packages",
       "--target",
       "browser",
       "--outdir",
@@ -26,8 +28,8 @@ try {
     ],
     { cwd: resolve(dirname(fileURLToPath(import.meta.url)), "../../../..") },
   );
-  const moduleUrl = (name) =>
-    `data:text/javascript;base64,${readFileSync(join(output, `${name}.js`)).toString("base64")}`;
+  const moduleUrl = (path) =>
+    `data:text/javascript;base64,${readFileSync(join(output, `${path}.js`)).toString("base64")}`;
   browser = await puppeteer.launch({
     executablePath: resolveChromeExecutable(),
     headless: true,
@@ -102,9 +104,9 @@ try {
         alphaGradient: insertGradientStop(alphaGradient, 50).stops[1].color,
       };
     },
-    moduleUrl("colorValue"),
-    moduleUrl("gradientValue"),
-    moduleUrl("inlineTextStyleRead"),
+    moduleUrl("studio/src/components/editor/colorValue"),
+    moduleUrl("studio/src/components/editor/gradientValue"),
+    moduleUrl("core/src/utils/inlineTextStyleRead"),
   );
   const expected = [
     [255, 255, 255, 1],

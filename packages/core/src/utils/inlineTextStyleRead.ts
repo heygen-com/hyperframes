@@ -54,3 +54,5 @@ export function readFirstPaintedElement(range: Range, property: string): Element
     painted.find(({ style }) => style[property] !== undefined) ?? painted[0] ?? covered[0];
   return owner?.painter ?? null;
 }
+
+export { applyInlineStyle, type InlineStyleDelta } from "./inlineTextStyleRange";
