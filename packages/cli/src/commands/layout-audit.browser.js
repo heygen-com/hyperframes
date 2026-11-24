@@ -452,8 +452,7 @@
     colorProbe = colorProbe || document.createElement("canvas").getContext("2d");
     colorProbe.fillStyle = "#000";
     colorProbe.fillStyle = color;
-    const match = /rgba?\([^)]*,\s*([\d.]+)\)$/.exec(colorProbe.fillStyle);
-    return match ? Number.parseFloat(match[1]) : 1;
+    return colorAlpha(colorProbe.fillStyle);
   }
 
   // Gradient stops as [offset 0-1, alpha]; missing offsets are spread evenly, as the browser does.
@@ -610,11 +609,7 @@
 
   function hasPaint(style) {
     const backgroundColor = style.backgroundColor || "";
-    const hasBackground =
-      backgroundColor !== "" &&
-      backgroundColor !== "transparent" &&
-      !backgroundColor.endsWith(", 0)") &&
-      backgroundColor !== "rgba(0, 0, 0, 0)";
+    const hasBackground = !isTransparentColor(backgroundColor);
     const hasImage = style.backgroundImage && style.backgroundImage !== "none";
     const hasBorder =
       parsePx(style.borderTopWidth) +
@@ -936,26 +931,27 @@
   }
 
   function isTransparentColor(color) {
-    return (
-      !color || color === "transparent" || color === "rgba(0, 0, 0, 0)" || color.endsWith(", 0)")
-    );
+    return !color || colorAlpha(color) === 0;
   }
 
-  function alphaFromParts(parts, index) {
-    if (parts.length <= index) return 1;
-    const raw = parts[index].trim();
-    return raw.endsWith("%") ? parsePx(raw) / 100 : parsePx(raw);
+  function alphaValue(raw) {
+    const value = raw.trim();
+    if (/^none$/i.test(value)) return 0;
+    const alpha = Number.parseFloat(value) / (value.endsWith("%") ? 100 : 1);
+    return Number.isFinite(alpha) ? alpha : 1;
   }
 
-  // Alpha of a CSS colour; 1 when no alpha component is present. Handles both
-  // legacy `rgba(r, g, b, a)` and modern `rgb(r g b / a)` syntaxes.
+  // Alpha of a CSS colour; 1 when it has none. Chromium keeps lab(), lch(), oklab(), oklch() and color() in
+  // computed style, alpha after a slash; rgb() and hsl() also come in the comma form.
   function colorAlpha(color) {
-    const match = (color || "").match(/rgba?\(([^)]+)\)/);
+    const value = (color || "").trim();
+    if (/^transparent$/i.test(value)) return 0;
+    const match = /\b(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(([^()]*)\)/i.exec(value);
     if (!match) return 1;
-    const body = match[1];
-    return body.includes(",")
-      ? alphaFromParts(body.split(","), 3)
-      : alphaFromParts(body.split("/"), 1);
+    const [, name, body] = match;
+    if (body.includes("/")) return alphaValue(body.slice(body.lastIndexOf("/") + 1));
+    const parts = body.split(",");
+    return parts.length === 4 && /^(rgb|hsl)a?$/i.test(name) ? alphaValue(parts[3]) : 1;
   }
 
   // A text block competes for space only when it is solid: watermark-style text

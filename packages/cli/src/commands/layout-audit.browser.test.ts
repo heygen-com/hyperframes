@@ -8,6 +8,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const script = readFileSync(join(__dirname, "layout-audit.browser.js"), "utf-8");
 const contrastScript = readFileSync(join(__dirname, "contrast-audit.browser.js"), "utf-8");
 
+const MODERN_COLORS = [
+  "lab(100 0 0",
+  "lch(100 0 0",
+  "oklab(1 0 0",
+  "oklch(1 0 0",
+  "color(srgb 1 1 1",
+];
+
 interface RectInput {
   left: number;
   top: number;
@@ -932,6 +940,19 @@ describe("layout-audit.browser invisible text", () => {
     // -webkit-text-fill-color unset → resolves to `color`; a transparent color
     // must still be caught via the `|| cs.color` fallback.
     expect(flagged(invisibleTextScene(style({ color: "rgba(0, 0, 0, 0)" })))).toBe(true);
+  });
+
+  // Chromium keeps these colour functions in computed style, with any alpha after a slash.
+  it.each(
+    MODERN_COLORS.flatMap((open) => [
+      { color: `${open} / 0)`, painted: false },
+      { color: `${open} / 0%)`, painted: false },
+      { color: `${open} / none)`, painted: false },
+      { color: `${open} / 0.5)`, painted: true },
+      { color: `${open})`, painted: true },
+    ]),
+  )("reads $color as painted: $painted", ({ color, painted }) => {
+    expect(flagged(invisibleTextScene(style({ color })))).toBe(!painted);
   });
 
   it("does not flag opaque text with a default fill", () => {
@@ -2478,6 +2499,10 @@ describe("layout-audit.browser content overlap", () => {
     expectExemptFromOverlap({ color: "rgba(0, 0, 0, 0.2)" });
   });
 
+  it.each(MODERN_COLORS)("ignores watermark-style text in a low-alpha %s) colour", (open) => {
+    expectExemptFromOverlap({ color: `${open} / 0.2)` });
+  });
+
   it("respects the data-layout-allow-overlap opt-out", () => {
     expectExemptFromOverlap({ attrs: "data-layout-allow-overlap" });
   });
@@ -3187,6 +3212,14 @@ describe("layout-audit.browser occlusion", () => {
       topmostId: "overlay",
     }).find((issue) => issue.code === "text_occluded");
     expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
+  });
+
+  it.each(MODERN_COLORS)("does not count a transparent %s) overlay as text occlusion", (open) => {
+    const issues = auditOcclusionScene({
+      overlayStyle: { backgroundColor: `${open} / 0)` },
+      topmostId: "overlay",
+    });
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
   });
 
   it("reports occlusion only on the covered text, not the text itself when on top", () => {

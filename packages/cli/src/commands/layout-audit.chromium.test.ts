@@ -309,6 +309,17 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     expect(await auditCodes(stage(sharedMask))).toContain("text_occluded");
   });
 
+  it.each([
+    "lab(100 0 0 / 0)",
+    "lch(100 0 0 / 0)",
+    "oklab(1 0 0 / 0)",
+    "oklch(1 0 0 / 0)",
+    "color(srgb 1 1 1 / 0)",
+  ])("reports text in %s as not painted, as Chromium computes it", async (color) => {
+    const codes = await auditCodes(stage(heading(200, "Invisible", `color:${color}`)));
+    expect(codes).toContain("text_not_painted");
+  });
+
   it("reports text positioned outside the ancestor background", async () => {
     const codes = await auditCodes(
       gradientHeading('<span style="position:relative;top:150px">Gradient text</span>'),
