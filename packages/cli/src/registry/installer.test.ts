@@ -217,6 +217,32 @@ describe("installItem", () => {
     expect(readdirSync(join(dir, "tools", "pkg"))).toEqual([]);
   });
 
+  it("refuses a browser script below a mixed-case folder that holds a Node package, directly or through a link", async () => {
+    const options = { force: true, baseUrl: otherRegistry };
+    const direct = project();
+    mkdirSync(join(direct, "compositions", "Widgets"), { recursive: true });
+    writeFileSync(
+      join(direct, "compositions", "Widgets", "package.json"),
+      JSON.stringify(nodeManifest),
+    );
+    await expect(
+      installItem(withTarget("compositions/Widgets/chart.test.js"), {
+        destDir: direct,
+        ...options,
+      }),
+    ).rejects.toThrow(/Unsafe target.*script Node tooling may run/);
+    expect(readdirSync(join(direct, "compositions", "Widgets"))).toEqual(["package.json"]);
+
+    const linked = project();
+    mkdirSync(join(linked, "tools", "Pkg", "src"), { recursive: true });
+    writeFileSync(join(linked, "tools", "Pkg", "package.json"), JSON.stringify(nodeManifest));
+    symlinkSync(join(linked, "tools", "Pkg", "src"), join(linked, "lib"), "junction");
+    await expect(
+      installItem(withTarget("lib/shaders.iife.js"), { destDir: linked, ...options }),
+    ).rejects.toThrow(/Unsafe target.*script Node tooling may run/);
+    expect(readdirSync(join(linked, "tools", "Pkg", "src"))).toEqual([]);
+  });
+
   it("refuses a page whose own file link leads to a Node-only script", async () => {
     const dir = project();
     mkdirSync(join(dir, "tools"));
