@@ -1183,7 +1183,9 @@ class HyperframesPlayer extends HTMLElement {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         if (mayCarryOwnPolicy(response)) return { bySrc: true };
         const html = decodePage(await response.arrayBuffer(), response.headers.get("content-type"));
-        return carriesRuntime(html) ? { bySrc: true } : { bySrc: false, html, url: response.url || href };
+        return carriesRuntime(html)
+          ? { bySrc: true }
+          : { bySrc: false, html, url: response.url || href };
       })
       .then(
         (page) => {
