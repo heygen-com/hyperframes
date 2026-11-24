@@ -152,7 +152,6 @@ export function createPreviewGestureStarts(
     start: ShownStart,
     draw: WaitingPressState["draw"] = null,
     targets: () => DomEditSelection[] = () => [],
-    drawn: () => OverChannel | null = () => null,
   ): boolean => {
     const at = playheadMoment();
     const iframe = opts.iframeRef.current;
@@ -207,16 +206,16 @@ export function createPreviewGestureStarts(
         targets(),
       ).then((answer) => askedOf === frame && (overChannel = answer));
     };
-    const channelStep = (): "wait" | "lost" | "run" | "drawn" => {
+    const channelStep = (): "wait" | "lost" | "run" | "unanswered" => {
       const overdue = performance.now() - since > PRESS_WAIT_MAX_MS;
       if (overdue) giveUpOnPreviewChange();
       if (isPreviewChanging() && !overdue) return "wait";
       askShownFrame();
       if (overChannel === undefined) return "wait";
-      if (overChannel === UNANSWERED) return "drawn";
+      if (overChannel === UNANSWERED) return "unanswered";
       return overChannel ? "run" : "lost";
     };
-    const waitStep = (): "wait" | "lost" | "run" | "drawn" => {
+    const waitStep = (): "wait" | "lost" | "run" | "unanswered" => {
       if (press.after && !press.after.ended) return "wait";
       if (channel) return channelStep();
       const found = countFrame();
@@ -227,9 +226,8 @@ export function createPreviewGestureStarts(
       if (found === 0 || settledFrames > MAX_SETTLED_WAIT_FRAMES) return "lost";
       return overdue || shownFrames >= 2 ? "run" : "wait";
     };
-    const startsFrom = (step: "lost" | "run" | "drawn"): OverChannel | undefined | false => {
-      if (step === "lost") return false;
-      if (step === "drawn") return drawn() ?? false;
+    const startsFrom = (step: "lost" | "run" | "unanswered"): OverChannel | undefined | false => {
+      if (step !== "run") return false;
       return typeof overChannel === "object" && overChannel ? overChannel : undefined;
     };
     const poll = () => {
@@ -251,9 +249,9 @@ export function createPreviewGestureStarts(
       if (press.released) releaseActiveGesture(press.released);
       return true;
     };
-    const sayWhyNotStarted = (step: "lost" | "run" | "drawn") => {
+    const sayWhyNotStarted = (step: "lost" | "run" | "unanswered") => {
       const pressed = opts.selectionRef.current;
-      if (step === "drawn" && channel && pressed)
+      if (step === "unanswered" && channel && pressed)
         opts.onBlockedMoveRef.current(pressed, unansweredMoveReason(channel));
     };
     press.frame = requestAnimationFrame(poll);
@@ -321,7 +319,6 @@ export function createPreviewGestureStarts(
           items.map((item) => ({ ...item, rect: shiftedOverlayRect(item.rect, dx, dy) })),
         ),
       () => items.map((item) => item.selection),
-      () => ({ shown: items.map(({ selection, rect }) => ({ selection, rect })) }),
     );
   };
   const startGesture = (
@@ -365,7 +362,6 @@ export function createPreviewGestureStarts(
       },
       draw,
       () => (target ? [target] : []),
-      () => (target && pressedRect ? { shown: [{ selection: target, rect: pressedRect }] } : null),
     );
   };
 
