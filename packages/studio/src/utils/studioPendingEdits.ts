@@ -269,20 +269,21 @@ export function settleOnDrain(settle: () => unknown): () => void {
   return () => openEdits.delete(settle);
 }
 
-/** Commits a focused field by blurring it, then lets the effects that blur runs add their flush listener. */
-async function blurFocusedField(): Promise<void> {
+/** Commits a focused field by blurring it, then lets the effects that blur runs add their flush listener. With no
+ * field focused it returns null and nothing waits, so the drain reads the writes in flight in this same turn. */
+function blurFocusedField(): Promise<void> | null {
   const active = focusedField();
-  if (!active) return;
+  if (!active) return null;
   active.blur();
   // ponytail: keep blur commits, then cross one task so effects the blur runs can add their listener.
-  await Promise.resolve();
-  await waitForPostBlurEffects();
+  return Promise.resolve().then(waitForPostBlurEffects);
 }
 
 export async function flushStudioPendingEdits({
   onlyCurrent = false,
 } = {}): Promise<StudioPendingEditsDrainResult> {
-  await blurFocusedField();
+  const blurred = blurFocusedField();
+  if (blurred) await blurred;
   // An edit opened while the drain waits is settled too, each once, and flush listeners are asked again after each
   // wait: a "clean" covers every edit open or queued when it lands.
   const settled = new Set<() => unknown>();

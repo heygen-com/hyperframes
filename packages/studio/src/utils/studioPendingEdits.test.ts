@@ -634,6 +634,17 @@ describe("an edit opened while a drain waits on a write", () => {
     }
   });
 
+  it.each([false, true])(
+    "reports a write that just failed, with no field focused (onlyCurrent %s)",
+    async (onlyCurrent) => {
+      const failed = Promise.reject(new Error("The save failed."));
+      trackStudioPendingEdit(failed);
+      failed.catch(() => {});
+      const result = await flushStudioPendingEdits({ onlyCurrent });
+      expect(result.status).toBe("failed");
+    },
+  );
+
   it("leaves a drain of only the current edits to them", async () => {
     let release = () => {};
     const stopFirst = settleOnDrain(() => new Promise<void>((resolve) => (release = resolve)));
