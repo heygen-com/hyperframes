@@ -283,3 +283,14 @@ test("does not force middle-gray exposure onto healthy intentional contrast", ()
     { exposure: 0, blacks: 0, whites: 0, temperature: 0, tint: 0 },
   );
 });
+
+test("grade analysis refuses a file whose name reads as an ffmpeg pattern", () => {
+  assert.throws(
+    () =>
+      analyzeMediaGrade("/project/still%d.png", {
+        ffmpegPath: "/missing",
+        ffprobePath: "/missing",
+      }),
+    /pattern of other files/,
+  );
+});
