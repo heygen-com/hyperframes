@@ -105,6 +105,27 @@ it("runs none of the timeline's callbacks when it restores", () => {
   expect(ran).not.toHaveBeenCalled();
 });
 
+// fails without the fix: restoring A re-rendered the timelines over B's live drag, back to its scene's x 10.
+it("leaves another element's live drag where it is drawn when one draft is restored", () => {
+  const { restored } = dragged();
+  const other = handleFor(document.getElementById("b")!);
+  drawDrafts([{ handle: other, translate: { x: 81, y: 0, route: "gsap" }, size: null }]);
+  restored();
+  expect(gsap.getProperty("#b", "x")).toBe(81);
+});
+
+// fails without the fix: a restore for a draft already ended still re-rendered, putting the next drag's 71 back to 40.
+it("repaints nothing for a restore of a draft that has already ended", () => {
+  const { handle } = dragged();
+  const [first] = Object.values(
+    drawDrafts([{ handle, translate: { x: 30, y: 36, route: "gsap" }, size: null }]).drafts,
+  );
+  drawDrafts([{ handle, end: "keep-size" }]);
+  drawDrafts([{ handle, translate: { x: 71, y: 36, route: "gsap" }, size: null }]);
+  drawDrafts([{ handle, end: "restore", draft: first! }]);
+  expect(gsap.getProperty("#a", "x")).toBe(71);
+});
+
 const recordOnB = (x: number) =>
   drawDrafts([
     { handle: handleFor(document.getElementById("b")!), props: { seconds: 1, values: { x } } },

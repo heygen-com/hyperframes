@@ -52,6 +52,7 @@ function rootTimeline(): RuntimeTimelineLike | null {
 }
 
 const before = new WeakMap<Element, Before>();
+const liveDrafts = new Map<Styled, EditingDraft>();
 let lastDraft = 0;
 
 /** "calc(50% + 2px) 4px" as its top-level parts. */
@@ -222,12 +223,15 @@ function clearProps(element: Styled, saved: Before): void {
   saved.putMarkBack?.();
   if (saved.propsSet?.length) frameGsap()?.set?.(element, { clearProps: saved.propsSet.join(",") });
   const timeline = rootTimeline();
-  if (timeline) redrawGsapTimelineAt(timeline, timeline.time());
+  if (!timeline) return;
+  redrawGsapTimelineAt(timeline, timeline.time());
+  putLiveDraftsBack();
 }
 
-function end(element: Styled, ending: EditingDraftEnd): void {
+function end(element: Styled, ending: EditingDraftEnd): boolean {
   const saved = before.get(element);
-  if (!saved || ("draft" in ending && ending.draft !== saved.draft)) return;
+  if (!saved || ("draft" in ending && ending.draft !== saved.draft)) return false;
+  liveDrafts.delete(element);
   if (ending.end === "clear") clearProps(element, saved);
   if (ending.end === "restore") {
     restore(element, DRAWN);
@@ -236,30 +240,48 @@ function end(element: Styled, ending: EditingDraftEnd): void {
   }
   if (ending.end === "keep-size") restore(element, ["translate"]);
   before.delete(element);
+  return ending.end === "restore";
 }
 
-function apply(element: Styled, draft: EditingDraft): void {
+/** True when it restored a draft. */
+function apply(element: Styled, draft: EditingDraft): boolean {
   if ("end" in draft) return end(element, draft);
+  liveDrafts.set(element, draft);
   if ("rotate" in draft) drawRotate(element, draft.rotate ?? null);
   if (draft.translate) drawTranslate(element, draft.translate);
   else restore(element, ["translate"]);
   if (draft.size) drawSize(element, draft.size);
   else restore(element, SIZE_PROPERTIES);
   if (draft.props) drawProps(element, draft.props);
+  return false;
+}
+
+/** Puts every live draft back over what a redraw of the timelines drew. */
+function putLiveDraftsBack(): void {
+  for (const [element, draft] of liveDrafts) {
+    if (element.isConnected) apply(element, draft);
+    else liveDrafts.delete(element);
+  }
+}
+
+function redrawKeepingLiveDrafts(): void {
+  redrawTimelines();
+  putLiveDraftsBack();
 }
 
 /** Applies each draft in order; one for an element this load no longer has is skipped. */
 export function drawDrafts(drafts: readonly EditingDraft[]): EditingDraftReply {
   let drawn = 0;
+  let restored = false;
   const numbers: Record<string, number> = {};
   for (const draft of drafts) {
     const element = elementForHandle(draft.handle);
     if (!isStylableElement(element)) continue;
-    apply(element, draft);
+    restored = apply(element, draft) || restored;
     drawn++;
     const saved = before.get(element);
     if (saved) numbers[draft.handle] = saved.draft;
   }
-  if (drafts.some((draft) => "end" in draft && draft.end === "restore")) redrawTimelines();
+  if (restored) redrawKeepingLiveDrafts();
   return { drawn, drafts: numbers };
 }
