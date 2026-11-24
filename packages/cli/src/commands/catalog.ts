@@ -26,7 +26,7 @@ import { relative, resolve } from "node:path";
 import { CliUsageError, finishCommand } from "../utils/commandResult.js";
 import { printFailureLine } from "../utils/jsonError.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
-import { runAdd } from "./add.js";
+import { fromReceivedRegistry, runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
 import {
   assumeLocalModelConsent,
@@ -67,6 +67,7 @@ async function prepareOnDeviceTier(opts: {
   /** Only an explicit --on-device installs the runtime; a plain search never waits on it. */
   installRuntime: boolean;
   registry: string;
+  publicOnly: boolean;
   registryNames: ReadonlySet<string>;
   status: LocalModelStatus;
 }): Promise<string[]> {
@@ -154,7 +155,10 @@ async function prepareOnDeviceTier(opts: {
     revisionStale ||
     countUnindexed(opts.registryNames, localVectorNames()) > 0
   ) {
-    await fetchLocalVectors(opts.registry, { expectedRevision: opts.artifactRevision });
+    await fetchLocalVectors(opts.registry, {
+      expectedRevision: opts.artifactRevision,
+      publicOnly: opts.publicOnly,
+    });
   }
   // Deliberately not the fetch's own answer. A refresh that fails still leaves
   // the previous vectors on disk, and those still rank: reporting the tier
@@ -228,6 +232,7 @@ export default defineCommand({
     const interactive = args["human-friendly"] === true;
     const dir = resolve(process.cwd());
     const config = loadProjectConfig(dir) ?? DEFAULT_PROJECT_CONFIG;
+    const publicOnly = fromReceivedRegistry(dir, config.registry);
 
     let typeFilter: ItemType | undefined;
     if (args.type === "block") typeFilter = "hyperframes:block";
@@ -239,10 +244,12 @@ export default defineCommand({
 
     // Asked for the whole manifest on purpose: its item list defines coverage,
     // and its artifact revision is the one owner of vector freshness.
-    const manifest = await readRegistryManifest(config.registry).catch((error: unknown) => {
-      printFailureLine((show) => show(error instanceof Error ? error.message : String(error)));
-      return finishCommand(1);
-    });
+    const manifest = await readRegistryManifest(config.registry, { publicOnly }).catch(
+      (error: unknown) => {
+        printFailureLine((show) => show(error instanceof Error ? error.message : String(error)));
+        return finishCommand(1);
+      },
+    );
     const entries = manifest.items;
     const artifactRevision = manifest.catalogArtifact?.revision;
     const catalog = entries.filter((e) => e.type !== "hyperframes:example");
@@ -255,7 +262,7 @@ export default defineCommand({
       return;
     }
 
-    const items = await loadAllItems(filtered, { baseUrl: config.registry });
+    const items = await loadAllItems(filtered, { baseUrl: config.registry, publicOnly });
 
     const tagFilter = args.tag?.toLowerCase();
     const tagged = tagFilter
@@ -284,6 +291,7 @@ export default defineCommand({
         canPrompt: !isUnattended() && !json,
         installRuntime: args["on-device"] === true,
         registry: config.registry,
+        publicOnly,
         registryNames,
         status: searchContext.status,
       });
@@ -381,7 +389,7 @@ export default defineCommand({
           }
         }
       }
-      if (query) await offerLocalModel(0, json, config.registry, artifactRevision);
+      if (query) await offerLocalModel(0, json, config.registry, publicOnly, artifactRevision);
       // A query with no searchable words is bad input, not an empty shelf, so it
       // exits non-zero like an invalid --type does. An agent that only checks the
       // exit code would otherwise read "searched successfully, catalog has
@@ -457,7 +465,13 @@ export default defineCommand({
         if (warnings.length === 0) {
           const hint = localModelHint(json, effectiveStatus);
           if (hint) console.error(terminalLines(hint));
-          await offerLocalModel(matching.length, json, config.registry, artifactRevision);
+          await offerLocalModel(
+            matching.length,
+            json,
+            config.registry,
+            publicOnly,
+            artifactRevision,
+          );
         }
       }
       if (query) {
@@ -734,6 +748,7 @@ async function offerLocalModel(
   matchCount: number,
   json: boolean,
   registryBaseUrl: string,
+  publicOnly: boolean,
   artifactRevision?: string,
 ): Promise<void> {
   if (json || isUnattended()) return;
@@ -759,7 +774,7 @@ async function offerLocalModel(
   // is an offline tier the user turned on that silently never ranks anything.
   const vectors =
     hasLocalVectors() ||
-    (await fetchLocalVectors(registryBaseUrl, { expectedRevision: artifactRevision }));
+    (await fetchLocalVectors(registryBaseUrl, { expectedRevision: artifactRevision, publicOnly }));
   console.log(
     c.dim(
       vectors

@@ -312,7 +312,7 @@ function assertCompatibleOrThrow(items: RegistryItem[], cliVersion?: string): st
 
 // A registry that a received hyperframes.json names serves files that came from its sender; a config that cannot be
 // read is not proven to be the person's own.
-function fromReceivedRegistry(projectDir: string, registry: string): boolean {
+export function fromReceivedRegistry(projectDir: string, registry: string): boolean {
   if (readProjectConfigWithStatus(projectDir).status === "unreadable") return true;
   return !isPublicRegistry(registry) && receivedFiles(projectDir)(PROJECT_CONFIG_FILENAME);
 }
@@ -368,6 +368,7 @@ async function installAll(
         await prepareItem(planItem, {
           destDir,
           baseUrl,
+          publicOnly: received,
           force,
           // Only the item the user named. A dependency dragged in behind it never
           // declared these variables and must not be rewritten by them.
@@ -448,9 +449,13 @@ export async function addToProject(
   // 2. Resolve the requested item and its transitive registryDependencies.
   //    The list comes back topologically sorted: dependencies first, the
   //    requested item last.
+  const received = fromReceivedRegistry(projectDir, config.registry);
   let resolved: RegistryItem[];
   try {
-    resolved = await resolveItemWithDependencies(opts.name, { baseUrl: config.registry });
+    resolved = await resolveItemWithDependencies(opts.name, {
+      baseUrl: config.registry,
+      publicOnly: received,
+    });
   } catch (err) {
     throw new AddError(err instanceof Error ? err.message : String(err), "unknown-item");
   }
@@ -496,7 +501,7 @@ export async function addToProject(
     item.name,
     variableValues,
     [config.paths.blocks, config.paths.components, config.paths.assets],
-    fromReceivedRegistry(projectDir, config.registry),
+    received,
   );
 
   // Report what landed, not what was asked for: a failed install throws above,
@@ -718,7 +723,11 @@ export default defineCommand({
 
       let items: Awaited<ReturnType<typeof resolveItemsByTag>>;
       try {
-        items = await resolveItemsByTag(args.name, { baseUrl: config.registry, skipCache: true });
+        items = await resolveItemsByTag(args.name, {
+          baseUrl: config.registry,
+          skipCache: true,
+          publicOnly: fromReceivedRegistry(projectDir, config.registry),
+        });
       } catch {
         items = [];
       }

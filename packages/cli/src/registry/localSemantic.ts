@@ -19,6 +19,7 @@ import { namedCacheDir } from "@hyperframes/core/cache-dir";
 import { join } from "node:path";
 
 import { cosine, loadLocalEmbedder } from "./localEmbedder.js";
+import { fetchRegistryHttps } from "./transport.js";
 import { LOCAL_MODEL_DIMENSIONS, isLocalModelReady } from "./localModel.js";
 
 interface LocalVectorSet {
@@ -72,6 +73,7 @@ export interface FetchLocalVectorOptions {
   directory?: string;
   expectedRevision?: string;
   artifactBasename?: "local-vectors" | "media-vectors";
+  publicOnly?: boolean;
 }
 
 const CATALOG_ARTIFACT_TIMEOUT_MS = 30_000;
@@ -165,9 +167,11 @@ export async function fetchLocalVectors(
     // with an old matrix, which loads as an error instead of as stale data.
     const fetched: Array<[string, Buffer]> = [];
     for (const file of [`${artifactBasename}.json`, `${artifactBasename}.bin`] as const) {
-      const response = await fetch(`${base}/catalog-artifact/${file}`, {
-        signal: AbortSignal.timeout(CATALOG_ARTIFACT_TIMEOUT_MS),
-      });
+      const url = `${base}/catalog-artifact/${file}`;
+      const signal = AbortSignal.timeout(CATALOG_ARTIFACT_TIMEOUT_MS);
+      const response = options.publicOnly
+        ? await fetchRegistryHttps(url, signal, true)
+        : await fetch(url, { signal });
       if (!response.ok) return false;
       fetched.push([file, Buffer.from(await response.arrayBuffer())]);
     }

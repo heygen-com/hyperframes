@@ -108,7 +108,8 @@ vi.mock("../registry/resolver.js", () => ({
     })),
 }));
 
-vi.mock("../registry/remote.js", () => ({
+vi.mock("../registry/remote.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../registry/remote.js")>()),
   readRegistryManifest: async () => {
     if (state.registryUnreadable) throw new Error(state.registryUnreadable);
     return { items: state.registry, catalogArtifact: { revision: state.artifactRevision } };
