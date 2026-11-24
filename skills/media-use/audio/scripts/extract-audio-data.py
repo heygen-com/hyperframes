@@ -181,9 +181,9 @@ def extract(path: str, fps: int, n_bands: int) -> dict:
 def replace_file(path, text):
     """Write `text` to a new temp file beside `path`, then rename it over: a link at `path` is replaced, not followed."""
     temp = f"{path}.hf{secrets.token_hex(3)}.tmp"  # core's atomicTempPath shape, which Studio's project history skips
-    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    f = open(temp, "x", encoding="utf-8")  # created exclusively: never a file someone else already put there
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with f:
             f.write(text)
         os.replace(temp, path)
     except BaseException:
