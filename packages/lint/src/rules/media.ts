@@ -926,7 +926,11 @@ function findVolumeTweenOverridesGainFindings(ctx: LintContext): HyperframeLintF
       severity: "warning",
       message: `#${id} has data-volume="${volume}" (${db}) and a GSAP tween on \`volume\`. Tween values are absolute: they REPLACE this gain rather than scale it, so wherever the tween names a value the clip plays at that value, not at ${db}.`,
       elementId: id,
-      fixHint: `Keep the level you set: write the tween's targets in the same absolute gain (\`volume: ${volume}\` holds this clip where data-volume puts it). If the level is in doubt, measure the render with \`hyperframes audio\` before changing it.`,
+      fixHint:
+        (volume === 0
+          ? 'This clip is authored silent (`data-volume="0"`). To keep it silent, drop the volume tween; to let the tween carry the level, set `data-volume="1"` and choose its absolute volume targets deliberately. '
+          : `Keep the level you set: use an absolute gain for each level the tween should reach. Use \`volume: ${volume}\` where it should reach this clip's authored level; keep \`volume: 0\` at endpoints intended to be silent. `) +
+        "If the level is in doubt, measure the rendered file with `hyperframes audio render.mp4` (replace render.mp4 with your output file) before changing it.",
       snippet: truncateSnippet(tag.raw),
     });
   }
