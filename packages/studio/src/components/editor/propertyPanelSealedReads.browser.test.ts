@@ -14,7 +14,7 @@ let studioBundle: string;
 beforeAll(async () => {
   browser = await launchTestChrome();
   studioBundle = await buildStudioBundle([
-    `export { readElementInfoText, readGsapBorderRadiusForPanel } from "./components/editor/propertyPanelHelpers";`,
+    `export { readElementInfoText, readGsapBorderRadiusForPanel } from "./components/editor/propertyPanelSealedReads";`,
   ]);
 });
 

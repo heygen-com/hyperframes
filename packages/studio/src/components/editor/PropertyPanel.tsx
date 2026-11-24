@@ -1,6 +1,6 @@
 import { useGsapSnapshotVersion } from "../../hooks/gsapFrameSnapshot";
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { Move } from "../../icons/SystemIcons";
 import { InspectorHeaderActions } from "./InspectorHeaderActions";
 import { useStudioShellContext } from "../../contexts/StudioContext";
@@ -12,8 +12,6 @@ import {
   parsePxMetricValue,
   RESPONSIVE_GRID,
   readGsapRuntimeValuesForPanel,
-  readElementInfoText,
-  readGsapBorderRadiusForPanel,
   isSelectedElementHidden,
   selectionIdentityKey,
 } from "./propertyPanelHelpers";
@@ -37,6 +35,11 @@ import { TimingSection } from "./propertyPanelTimingSection";
 import { type PropertyPanelProps } from "./propertyPanelHelpers";
 import { GestureRecordPanelButton } from "./GestureRecordControl";
 import { PropertyPanelEmptyState } from "./PropertyPanelEmptyState";
+import {
+  readElementInfoText,
+  readGsapBorderRadiusForPanel,
+  useAnswered,
+} from "./propertyPanelSealedReads";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 import { isAudioDomElement } from "../../utils/timelineInspector";
 import { useManualEditDisabledFlags } from "./previewReadOnlyContext";
@@ -582,20 +585,3 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   );
   return <DesignPanelInputProvider ui="classic">{classicPanel}</DesignPanelInputProvider>;
 });
-
-function useAnswered<T extends object>(
-  read: T | Promise<T | null> | null,
-  owner: unknown,
-): T | null {
-  const [answered, setAnswered] = useState<{ owner: unknown; value: T | null } | null>(null);
-  useEffect(() => {
-    if (!(read instanceof Promise)) return;
-    let current = true;
-    void read.then((value) => current && setAnswered({ owner, value }));
-    return () => {
-      current = false;
-    };
-  }, [read, owner]);
-  if (!(read instanceof Promise)) return read;
-  return answered && answered.owner === owner ? answered.value : null;
-}
