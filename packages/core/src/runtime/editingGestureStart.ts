@@ -165,6 +165,24 @@ function tweensOn(element: Element): GsapTween[] {
 export const rendersTransform = (element: Element) =>
   !!(element as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
 
+export function withoutGsapTakeover<T>(element: Element, read: () => T): T {
+  if (rendersTransform(element)) return read();
+  const style = element.getAttribute("style");
+  const cache = (element as { _gsap?: Record<string, unknown> })._gsap;
+  const kept = cache ? { ...cache } : null;
+  const value = read();
+  if (element.getAttribute("style") !== style) {
+    if (style === null) element.removeAttribute("style");
+    else element.setAttribute("style", style);
+  }
+  if (!cache || !kept) Reflect.deleteProperty(element, "_gsap");
+  else {
+    for (const key of Object.keys(cache)) if (!(key in kept)) Reflect.deleteProperty(cache, key);
+    Object.assign(cache, kept);
+  }
+  return value;
+}
+
 export type EditingGestureBase = {
   x: number;
   y: number;
@@ -197,7 +215,8 @@ function gsapPosition(element: Element): EditingGestureStart["gsap"] {
 
 function gsapRotation(element: Element): number | null {
   const turned = tweensOn(element).some((tween) => tween.vars && carries(tween.vars, TURNS));
-  return rendersTransform(element) || turned ? readGsap(element, "rotation") : null;
+  if (!rendersTransform(element) && !turned) return null;
+  return withoutGsapTakeover(element, () => readGsap(element, "rotation"));
 }
 
 function planarOf(element: StylableElement): EditingGestureStart["planar"] {
