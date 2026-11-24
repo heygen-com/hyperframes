@@ -32,6 +32,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tests/perf/tsconfig.json && tsc --noEmit -p tests/playbench/tsconfig.json",
     "test": "vitest run",
     "test:browser-security": "bun run tests/browser/sandbox-origin.ts",
+    "test:browser-sealed-media": "bun run tests/browser/sealed-media.ts && bun run tests/browser/sealed-media-table.ts",
+    "test:browser-sealed-runtime": "bun run tests/browser/sealed-runtime.ts",
     "test:browser-raster": "bun run tests/browser/preview-raster-size.ts",
     "test:browser-box": "bun run tests/browser/player-box.ts",
     "test:browser-sealed-audio": "bun run tests/browser/sealed-audio.ts",

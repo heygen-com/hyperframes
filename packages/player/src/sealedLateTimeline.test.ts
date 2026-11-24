@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadLimitMs } from "./composition-probe.js";
+import { loadLimitMs, timelineNotFound } from "./composition-probe.js";
 
 const LIMIT = loadLimitMs();
-const TIMED_OUT = `error Composition timeline not found after ${LIMIT / 1000}s`;
+const TIMED_OUT = `error ${timelineNotFound(LIMIT, true)}`;
 
 type Player = HTMLElement & {
   ready: boolean;
