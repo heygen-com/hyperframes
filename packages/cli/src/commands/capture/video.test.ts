@@ -1,4 +1,14 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { publicRequest } from "@hyperframes/engine/public-network";
+vi.mock("@hyperframes/engine/public-network", () => ({ publicRequest: vi.fn() }));
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
@@ -276,4 +286,46 @@ describe("runVideoMode: the project folder in what it prints", () => {
       expect(printed).toContain("site\\x07one");
     },
   );
+});
+
+describe("runVideoMode: the file it writes", () => {
+  const MP4 = Buffer.concat([
+    Buffer.from([0, 0, 0, 0x18]),
+    Buffer.from("ftypisom"),
+    Buffer.alloc(4096),
+  ]);
+  function projectWith(entry: ManifestEntry): string {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-video-name-"));
+    onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
+    mkdirSync(join(projectDir, "extracted"));
+    writeFileSync(join(projectDir, "extracted", "video-manifest.json"), JSON.stringify([entry]));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    onTestFinished(() => vi.restoreAllMocks());
+    return projectDir;
+  }
+  const answer = (body: Buffer) =>
+    vi
+      .mocked(publicRequest)
+      .mockImplementation(
+        vi.fn(async () => new Response(body, { headers: { "content-type": "video/mp4" } })),
+      );
+
+  // fails without the fix: the manifest's name was written as given, so an entry naming CLAUDE.md wrote that file.
+  it("takes the entry name's stem and the extension the video's own bytes are", async () => {
+    const projectDir = projectWith(ENTRY(0, { filename: "CLAUDE.md" }));
+    answer(MP4);
+    await runVideoMode({ project: projectDir, index: "0" });
+    expect(consumeCommandResult().exitCode).not.toBe(1);
+    expect(readdirSync(join(projectDir, "assets", "videos"))).toEqual(["CLAUDE.mp4"]);
+  });
+
+  // fails without the fix: a video Content-Type was enough, so any body was saved.
+  it("writes nothing for a body that is no video container", async () => {
+    const projectDir = projectWith(ENTRY(0, { filename: "x.html" }));
+    answer(Buffer.alloc(4096, "a"));
+    await runVideoMode({ project: projectDir, index: "0" });
+    expect(consumeCommandResult().exitCode).toBe(1);
+    expect(readdirSync(join(projectDir, "assets", "videos"))).toEqual([]);
+  });
 });
