@@ -1640,6 +1640,7 @@ HTML. Without a sidecar, nothing changes.
 | `before(a, b)`                 | Broken stagger order — `a` must first appear strictly before `b` (`motion_out_of_order`)                        |
 | `staysInFrame(selector)`       | Off-frame drift — once visible, the box never leaves the canvas (`motion_off_frame`)                            |
 | `keepsMoving(withinSelector?)` | A frozen shot — no fully static window longer than `maxStaticSec`, default 2s (`motion_frozen`); the film's last 3 s never count |
+| `visibleDuring(selector, fromSec, toSec)` | Disappearing in window — element must remain visible (opacity ≥ 0.5) across `[fromSec, toSec]` (`motion_hidden_in_window`) |
 
 `keepsMoving` uses the same motion classifier as the frozen-sweep guard: box
 geometry, opacity, text and generated content, form-control state, painted CSS

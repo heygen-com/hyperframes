@@ -102,6 +102,45 @@ describe("parseMotionSpec", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors[0]).toContain('"*"');
   });
+
+  it("parses a valid visibleDuring assertion", () => {
+    const spec = expectOk(
+      parseMotionSpec({
+        assertions: [{ kind: "visibleDuring", selector: "#limit", fromSec: 2, toSec: 4.5 }],
+      }),
+    );
+    expect(spec.assertions[0]).toEqual({
+      kind: "visibleDuring",
+      selector: "#limit",
+      fromSec: 2,
+      toSec: 4.5,
+    });
+  });
+
+  it("rejects visibleDuring when toSec <= fromSec", () => {
+    const result = parseMotionSpec({
+      assertions: [{ kind: "visibleDuring", selector: "#limit", fromSec: 3, toSec: 2 }],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]).toContain("greater than");
+  });
+
+  it("rejects visibleDuring when fromSec or toSec is negative or invalid", () => {
+    const result = parseMotionSpec({
+      assertions: [
+        { kind: "visibleDuring", selector: "#limit", fromSec: -1, toSec: 3 },
+        { kind: "visibleDuring", selector: "#limit", fromSec: 1, toSec: -2 },
+        { kind: "visibleDuring", selector: "" },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toHaveLength(3);
+      expect(result.errors[0]).toContain("fromSec");
+      expect(result.errors[1]).toContain("toSec");
+      expect(result.errors[2]).toContain("selector");
+    }
+  });
 });
 
 describe("findMotionSpec", () => {

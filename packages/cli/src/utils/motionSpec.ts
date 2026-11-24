@@ -11,7 +11,8 @@ export type MotionAssertion =
   | { kind: "appearsBy"; selector: string; bySec: number }
   | { kind: "before"; a: string; b: string }
   | { kind: "staysInFrame"; selector: string }
-  | { kind: "keepsMoving"; withinSelector?: string; maxStaticSec?: number };
+  | { kind: "keepsMoving"; withinSelector?: string; maxStaticSec?: number }
+  | { kind: "visibleDuring"; selector: string; fromSec: number; toSec: number };
 
 export interface MotionSpec {
   version?: number;
@@ -64,6 +65,22 @@ const VALIDATORS: Record<string, Validator> = {
     if (isSelector(raw.withinSelector)) assertion.withinSelector = raw.withinSelector;
     if (isPositive(raw.maxStaticSec)) assertion.maxStaticSec = raw.maxStaticSec;
     return assertion;
+  },
+  visibleDuring: (raw, at) => {
+    if (!isSelector(raw.selector))
+      return `${at} (visibleDuring): "selector" must be a non-empty string`;
+    if (typeof raw.fromSec !== "number" || !Number.isFinite(raw.fromSec) || raw.fromSec < 0)
+      return `${at} (visibleDuring): "fromSec" must be a number >= 0`;
+    if (typeof raw.toSec !== "number" || !Number.isFinite(raw.toSec) || raw.toSec < 0)
+      return `${at} (visibleDuring): "toSec" must be a number >= 0`;
+    if (raw.toSec <= raw.fromSec)
+      return `${at} (visibleDuring): "toSec" must be greater than "fromSec"`;
+    return {
+      kind: "visibleDuring",
+      selector: raw.selector,
+      fromSec: raw.fromSec,
+      toSec: raw.toSec,
+    };
   },
 };
 

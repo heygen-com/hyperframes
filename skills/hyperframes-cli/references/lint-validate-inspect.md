@@ -105,12 +105,13 @@ Drop a `*.motion.json` sidecar next to the composition (matching the html basena
 }
 ```
 
-| Assertion                      | Fails (code) when                                                                                                           |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `appearsBy(selector, bySec)`   | not visible (opacity ≥ 0.5) by `bySec` — `motion_appears_late`                                                              |
-| `before(a, b)`                 | `a` does not first appear strictly before `b` — `motion_out_of_order`                                                       |
-| `staysInFrame(selector)`       | once visible, its box leaves the canvas — `motion_off_frame`                                                                |
-| `keepsMoving(withinSelector?)` | a fully-static window exceeds `maxStaticSec` (default 2s); the film's final 3 s (an end card) never count — `motion_frozen` |
+| Assertion                                 | Fails (code) when                                                                                                           |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `appearsBy(selector, bySec)`              | not visible (opacity ≥ 0.5) by `bySec` — `motion_appears_late`                                                              |
+| `before(a, b)`                            | `a` does not first appear strictly before `b` — `motion_out_of_order`                                                       |
+| `staysInFrame(selector)`                  | once visible, its box leaves the canvas — `motion_off_frame`                                                                |
+| `keepsMoving(withinSelector?)`            | a fully-static window exceeds `maxStaticSec` (default 2s); the film's final 3 s (an end card) never count — `motion_frozen` |
+| `visibleDuring(selector, fromSec, toSec)` | element disappears or drops below appear threshold in window — `motion_hidden_in_window`                                    |
 
 `duration`, `withinSelector`, and `maxStaticSec` are optional. Findings are **errors by default** and appear in the same human and `--json` output as layout findings. A selector that matches nothing is reported as `motion_selector_missing` rather than silently passing — a typo'd selector fails loudly. Use this in the feedback loop instead of eyeballing the render: assert what the motion is supposed to do, and let `check` tell you when the seek diverges from intent.
 
