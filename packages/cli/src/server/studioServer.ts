@@ -1209,7 +1209,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Mount the shared studio API at /api.
   // Use fetch() forwarding (not .route()) so the sub-app sees paths without
   // the /api prefix — the shared module's path extraction uses c.req.path.
-  const api = createStudioApi(adapter, { allowedHosts, sandboxThumbnailCaptures: true });
+  const api = createStudioApi(adapter, {
+    allowedHosts,
+    sandboxThumbnailCaptures: true,
+    sandboxDirectOpens: true,
+  });
   app.all("/api/*", async (c) => {
     const url = new URL(c.req.url);
     url.pathname = url.pathname.replace(/^\/[^/]*/, ""); // Strip the "/api" segment however it is spelled

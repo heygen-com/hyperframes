@@ -3,6 +3,7 @@
 // this way instead of drawing or generating them.
 import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { assertLiteralMediaOutput } from "@hyperframes/parsers/literal-media-input";
 import { makeOutputFolder } from "../../utils/outputFolder.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -21,6 +22,7 @@ import {
 } from "../../measure/media.js";
 
 function encodeOnto(out: string, encode: (staged: string) => void): void {
+  assertLiteralMediaOutput(out);
   const staging = createStagingDir(dirname(out), ".hf-extract-");
   try {
     const staged = join(staging, basename(out));

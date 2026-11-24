@@ -556,6 +556,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         groupSelections={groupSelections}
         activeCompositionPathRef={activeCompositionPathRef}
         onSelectionChangeRef={onSelectionChangeRef}
+        iframeRef={iframeRef}
       />
       <MarqueeOverlay candidateRects={marquee.candidateRects} marqueeRect={marquee.marqueeRect} />
       {contextMenu && (

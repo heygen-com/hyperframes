@@ -14,7 +14,7 @@ if (args[0] === "--version") {
   console.log("Python 3.12.0");
   process.exit(0);
 }
-const input = args[2];
+const input = args[2] === "--text-file" ? args[3] : args[2];
 const output = args[0] === "-c" ? args[4] : args[args.indexOf("--output") + 1];
 const text = fs.readFileSync(input, "utf8");
 // Side files go to the case root under the output's name: the output itself is in a private folder.

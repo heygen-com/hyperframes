@@ -1,5 +1,6 @@
 import { sourceLengthOf } from "./sourceLength";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { runtimeLoad } from "./runtimeLoad";
 import { swallow } from "./diagnostics";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
 import { isWebKit, mediaElementTime, startsSoundOnlyInsideATap } from "./mediaClock";
@@ -25,6 +26,7 @@ import {
   MEDIA_SYNC_TOLERANCE_SECONDS,
   steerMedia,
 } from "./mediaSteer.js";
+import { setRuntimePreload } from "./runtimeAttributes";
 export { MEDIA_HARD_SYNC_SECONDS, MEDIA_SYNC_TOLERANCE_SECONDS } from "./mediaSteer.js";
 export type { RuntimeMediaClip } from "./types.js";
 export {
@@ -698,7 +700,7 @@ export function syncRuntimeMedia(params: {
       // past the buffered range. Setting this on every tick is cheap
       // (no-op when already "auto") and catches elements whose preload
       // was overridden after init.ts set it.
-      if (el.preload !== "auto" && !isRenderFrameVideo(el)) el.preload = "auto";
+      if (el.preload !== "auto" && !isRenderFrameVideo(el)) setRuntimePreload(el, "auto");
       if (!params.playing && ownsPausedVideoTime(el)) {
         if (!el.paused) el.pause();
         continue;
@@ -854,7 +856,7 @@ export function syncRuntimeMedia(params: {
           else heldTailSeekedTo.delete(el);
           if (Math.abs(el.currentTime - relTime) > 0.5 && !seekLoadRetried.has(el)) {
             seekLoadRetried.add(el);
-            el.load();
+            runtimeLoad(el);
             try {
               el.currentTime = mediaElementTime(relTime);
             } catch (err) {

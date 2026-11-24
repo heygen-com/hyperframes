@@ -1,6 +1,6 @@
 import { terminalLines, terminalText } from "@hyperframes/core";
 import { failCommand, failUsage } from "../utils/commandResult.js";
-import { isTextFile } from "../utils/textFile.js";
+import { isShareTextFilePath, isTextFile } from "../utils/textFile.js";
 // fallow-ignore-file code-duplication
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -47,12 +47,12 @@ export default defineCommand({
   args: {
     input: {
       type: "positional",
-      description: "Text to speak, or path to a .txt file",
+      description: "Text to speak, or the path of a local .txt file to read",
       required: false,
     },
     "text-file": {
       type: "string",
-      description: "Read text from a .txt file (compatibility alias)",
+      description: "Read the text from this file, whatever its path looks like",
     },
     output: {
       type: "string",
@@ -101,6 +101,11 @@ export default defineCommand({
     const input = args["text-file"] ?? args.input;
     if (!input) {
       console.error(c.error("Provide text to speak, or use --list to see available voices."));
+      failUsage();
+    }
+
+    if (args["text-file"] === undefined && isShareTextFilePath(input)) {
+      console.error(c.error("A .txt path on a network share is read only with --text-file."));
       failUsage();
     }
 

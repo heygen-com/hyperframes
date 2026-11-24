@@ -920,11 +920,17 @@
 
       /* ============================================================== build */
       const screen = document.getElementById("cle-screen");
+      // `html` is this file's own markup (icons, layout), never a variable: editable
+      // strings go through `text`, which sets textContent and so cannot become markup.
       const el = (cls, html, tag) => {
         const n = document.createElement(tag || "div");
         if (cls) n.className = cls;
-        // Editable strings reach innerHTML; the template delivery gate rejects angle brackets.
         if (html != null) n.innerHTML = html;
+        return n;
+      };
+      const text = (cls, value, tag) => {
+        const n = el(cls, null, tag);
+        n.textContent = value;
         return n;
       };
 
@@ -968,12 +974,11 @@
       // tool rows: thinking -> lead sentence -> search -> collapsed "2 steps"
       const toolWrap = el("tools");
       toolWrap.style.paddingTop = "0px";
-      const mkTool = (ico, label) =>
-        el(
-          "tool-row",
-          `<div class="tool-ico">${ico}</div><div>${label}</div>` +
-            `<div class="chev">${ICO.chevR}</div>`,
-        );
+      const mkTool = (ico, label) => {
+        const row = el("tool-row");
+        row.append(el("tool-ico", ico), text(null, label), el("chev", ICO.chevR));
+        return row;
+      };
       // wrap: the shell animates, the child carries the gap
       const wrap = (inner, pad) => {
         const o = el("abox");
@@ -993,7 +998,7 @@
       leadInner.style.paddingTop = "27.1px";
       const leadWords = [];
       CONFIG.lead.split(" ").forEach((w, i, arr) => {
-        const s = el("w", w + (i < arr.length - 1 ? " " : ""), "span");
+        const s = text("w", w + (i < arr.length - 1 ? " " : ""), "span");
         leadInner.appendChild(s);
         leadWords.push(s);
       });
@@ -1041,14 +1046,13 @@
             word = word.replace("**", "");
           }
           if (word.indexOf("{") === 0) {
-            const chip = el("cite w", word.replace(/[{}]/g, ""), "span");
+            const chip = text("cite w", word.replace(/[{}]/g, ""), "span");
             inner.appendChild(chip);
             words.push(chip);
             return;
           }
-          const s = el("w", word, "span");
+          const s = text("w", word, "span");
           if (bold) s.style.fontWeight = "700";
-          s.textContent = word;
           if (close) bold = false;
           inner.appendChild(s);
           words.push(s);
@@ -1135,7 +1139,7 @@
       };
       mkCursor();
       CONFIG.prompt.split("").forEach((c) => {
-        const sp = el("ch", c === " " ? "&nbsp;" : c, "span");
+        const sp = text("ch", c === " " ? "\u00a0" : c, "span");
         typedEl.appendChild(sp);
         chEls.push(sp);
         mkCursor();
