@@ -238,6 +238,43 @@ describe("a sealed player brings its own runtime", () => {
     }
   });
 
+  // fails without the fix: the load limit told a sealed player's host to add a runtime the page it read brought.
+  it.each([
+    [
+      "brings its own runtime",
+      () =>
+        siteResponse(
+          page('<script data-hyperframes-preview-runtime="1" src="/api/runtime.js"></script>'),
+        ),
+      false,
+    ],
+    ["can't be read", () => siteResponse(page(), {}, "cors"), true],
+  ])(
+    "names the runtime in the load limit only when the page loaded by src %s",
+    async (_name, answer, hint) => {
+      vi.useFakeTimers();
+      try {
+        fetchMock.mockResolvedValueOnce(answer());
+        const el = player({ "sandbox-origin": "", src: sameSite() });
+        const errors: string[] = [];
+        el.addEventListener("error", (event: Event) =>
+          errors.push((event as CustomEvent<{ message: string }>).detail.message),
+        );
+        await vi.advanceTimersByTimeAsync(0);
+        expect(el.iframeElement.src).toBe(sameSite());
+        Object.defineProperty(el.iframeElement, "contentDocument", {
+          value: null,
+          configurable: true,
+        });
+        (el as unknown as { _onIframeLoad(): void })._onIframeLoad();
+        await vi.advanceTimersByTimeAsync(LIMIT);
+        expect(errors).toEqual([timelineNotFound(LIMIT, hint)]);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("shows nothing from a fetch that answers after the player moved to another composition", async () => {
     let answer: (response: Response) => void = () => {};
     fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
