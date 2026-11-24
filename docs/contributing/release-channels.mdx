@@ -34,15 +34,15 @@ See [Changelog process](/contributing/changelog-process) for the full workflow. 
 
 Push the release branch without its local tag, open a PR to `main`, and merge it after approval and CI.
 
-Queue it at the front, at the head that was approved:
+Queue it at the front, pinned to the commit its latest approval reviewed:
 
 ```bash
 gh api graphql \
   -f query='mutation($id: ID!, $head: GitObjectID!) { enqueuePullRequest(input: { pullRequestId: $id, jump: true, expectedHeadOid: $head }) { mergeQueueEntry { position } } }' \
-  -f id="$(gh pr view <number> --json id -q .id)" -f head="$(gh pr view <number> --json headRefOid -q .headRefOid)"
+  -f id="$(gh pr view <number> --json id -q .id)" -f head="$(gh pr view <number> --json reviews -q '[.reviews[] | select(.state == "APPROVED")][-1].commit.oid')"
 ```
 
-A release queued behind other PRs fails its notes check when they land first: its notes no longer list every commit on `main`. Queued at the front, it is tested on the same `main` its notes were drafted from.
+A release queued behind other PRs fails its notes check when they land first: its notes no longer list every commit on `main`. Queued at the front, it is tested on the same `main` its notes were drafted from. If the branch moved after that approval, the queue refuses it.
 
 The publish workflow checks out the exact PR merge SHA, verifies it before publishing, creates the stable tag at that commit, publishes npm packages, and creates the GitHub release. Nothing waits for an approval after the merge: the reviewed release PR is the review.
 
