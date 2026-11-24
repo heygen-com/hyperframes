@@ -988,6 +988,10 @@
         "import": "./dist/audioFade.js",
         "types": "./dist/audioFade.d.ts"
       },
+      "./audio-decode": {
+        "import": "./dist/audioDecode.js",
+        "types": "./dist/audioDecode.d.ts"
+      },
       "./speed-ramp": {
         "import": "./dist/speedRamp.js",
         "types": "./dist/speedRamp.d.ts"
