@@ -354,9 +354,31 @@ describe("watchEncoder", () => {
     threads = [...threads, { tid: 9, name: "vf#0:0", state: "S" }];
     await pacer.waitUntilIdle(fast);
     threads = threads.filter((thread) => thread.tid !== 3);
-    await expect(pacer.waitUntilIdle(fast)).rejects.toThrow("one of the encoder's threads is gone");
+    await expect(pacer.waitUntilIdle(fast)).rejects.toThrow(
+      "the encoder's thread 3 (vf#0:0) is gone",
+    );
     threads = threadsOf(["S", "S"], ["ffmpeg", "x"]).map((t) => ({ ...t, tid: t.tid + 20 }));
-    await expect(pacer.waitUntilIdle(fast)).rejects.toThrow("libx265 thread is gone");
+    await expect(pacer.waitUntilIdle(fast)).rejects.toThrow("2 (enc0:0:libx265)");
+  });
+
+  it("reads the threads again before a held one missing from a listing counts as gone", async () => {
+    // A /proc read that fails on a loaded host leaves a live thread out of one listing.
+    const all = threadsOf(["S", "S", "S"], ["ffmpeg", "enc0:0:libx265", "vf#0:0"]);
+    let reads = 0;
+    let dropFrom = Infinity;
+    const pacer = await watchEncoder(
+      7,
+      watchDeps({
+        threads: () => {
+          reads++;
+          return reads === dropFrom ? all.filter((thread) => thread.tid !== 3) : all;
+        },
+      }),
+    );
+    await pacer.waitUntilIdle(fast);
+    dropFrom = reads + 2;
+    await pacer.waitUntilIdle(fast);
+    expect(reads).toBeGreaterThan(dropFrom);
   });
 });
 

@@ -465,19 +465,51 @@ const LIBX265_THREAD_WAIT_MS = 10_000;
 const NO_LIBX265_THREAD =
   "the encoder process runs no thread named for libx265 (ffmpeg 7.0 or later names it)";
 
-/** Throws `EncoderPacingError` unless `threads` still hold the libx265 thread and every `held` one. */
-function assertHeld(
+/** The held threads (and the libx265 thread) `threads` lacks, as "tid (name)"; empty when none. */
+function missingThreads(
   threads: readonly ThreadState[],
-  held: ReadonlySet<number>,
+  held: ReadonlyMap<number, string>,
   encoderThread: number | undefined,
-): void {
+): string[] {
   const present = new Set(threads.map((thread) => thread.tid));
-  if (encoderThread === undefined || !present.has(encoderThread)) {
-    throw new EncoderPacingError("the encoder's libx265 thread is gone");
+  const missing = [...held].filter(([tid]) => !present.has(tid));
+  if (encoderThread !== undefined && !held.has(encoderThread) && !present.has(encoderThread)) {
+    missing.push([encoderThread, "libx265"]);
   }
-  for (const tid of held) {
-    if (!present.has(tid)) throw new EncoderPacingError("one of the encoder's threads is gone");
+  return missing.map(([tid, name]) => `${tid} (${name})`);
+}
+
+/**
+ * A poll that misses a held thread reads the threads again this many times
+ * before the thread counts as gone: a `/proc` read that fails for another
+ * reason than the thread exiting (on a loaded host) leaves it out of one
+ * listing without its being gone.
+ */
+const GONE_REREADS = 3;
+
+/**
+ * `threads`, or a re-read (`read`, up to `GONE_REREADS` times) once it
+ * misses a held thread; throws `EncoderPacingError` naming the threads every
+ * read missed. A re-read with no states is returned as it is, for the idle
+ * wait to judge.
+ */
+function stillHeld(
+  threads: readonly ThreadState[],
+  read: () => readonly ThreadState[] | null,
+  held: ReadonlyMap<number, string>,
+  encoderThread: number | undefined,
+): readonly ThreadState[] | null {
+  let current: readonly ThreadState[] | null = threads;
+  for (let reread = 0; reread <= GONE_REREADS; reread++) {
+    if (reread > 0) current = read();
+    if (!current || current.length === 0) return current;
+    const missing = missingThreads(current, held, encoderThread);
+    if (missing.length === 0) return current;
+    if (reread === GONE_REREADS) {
+      throw new EncoderPacingError(`the encoder's thread ${missing.join(", ")} is gone`);
+    }
   }
+  return current;
 }
 
 /**
@@ -495,14 +527,13 @@ function pacerFor(
   self: { pid: number; pgrp: number; session: number },
   deps: EncoderWatchDeps,
 ): EncoderPacer {
-  let held: ReadonlySet<number> | undefined;
+  let held: ReadonlyMap<number, string> | undefined;
   let encoderThread: number | undefined;
   const holding = (): readonly ThreadState[] | null => {
     const threads = deps.threads(pid);
     if (!threads || threads.length === 0) return threads;
     encoderThread ??= threads.find((thread) => LIBX265_THREAD.test(thread.name))?.tid;
-    if (held) assertHeld(threads, held, encoderThread);
-    return threads;
+    return held ? stillHeld(threads, () => deps.threads(pid), held, encoderThread) : threads;
   };
   return {
     check() {
@@ -531,7 +562,7 @@ function pacerFor(
       if (!threads?.some((thread) => thread.tid === encoderThread)) {
         throw new EncoderPacingError("the encoder's libx265 thread is gone");
       }
-      held = new Set(threads.map((thread) => thread.tid));
+      held = new Map(threads.map((thread) => [thread.tid, thread.name]));
     },
   };
 }
