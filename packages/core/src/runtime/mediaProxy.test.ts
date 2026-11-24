@@ -1374,7 +1374,11 @@ describe("preview quality: lighter copies of heavy files", () => {
       });
       afterEach(() => marks.splice(0).forEach((mark) => mark.remove()));
 
-      const loads: Array<{ url: string; onload: (() => void) | null }> = [];
+      const loads: Array<{
+        url: string;
+        onload: (() => void) | null;
+        onerror: (() => void) | null;
+      }> = [];
       async function capturedAt(seconds: number, facts = HEAVY) {
         loads.length = 0;
         vi.stubGlobal(
@@ -1426,9 +1430,27 @@ describe("preview quality: lighter copies of heavy files", () => {
           ["hf-proxy-still", "5.250"],
         ]);
         expect(loads.map((load) => load.url)).toEqual([poster.href]);
-        expect(el.hasAttribute(CAPTURE_STILL_ATTR)).toBe(true);
-        expect(captured()).toBe(false);
+        expect([captured(), el.hasAttribute(CAPTURE_STILL_ATTR)]).toEqual([false, false]);
         loads[0]!.onload!();
+        await vi.advanceTimersByTimeAsync(0);
+        expect([captured(), el.hasAttribute(CAPTURE_STILL_ATTR)]).toEqual([true, true]);
+      });
+
+      // fails without the fix: a still the server failed to cut released the capture with the clip marked drawn and no
+      // source, so the frame showed nothing where the clip was.
+      it("decodes its own file when the server cannot cut the frame, and the capture waits for that frame", async () => {
+        const { el, captured } = await capturedAt(1.25);
+
+        loads[0]!.onerror!();
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect([
+          el.getAttribute("src"),
+          el.hasAttribute("poster"),
+          el.hasAttribute(CAPTURE_STILL_ATTR),
+        ]).toEqual(["/video.mp4", false, false]);
+        expect(captured()).toBe(false);
+        el.dispatchEvent(new Event("loadeddata"));
         await vi.advanceTimersByTimeAsync(0);
         expect(captured()).toBe(true);
       });

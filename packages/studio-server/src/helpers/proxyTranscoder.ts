@@ -42,6 +42,7 @@ import { isProjectCacheFile, mkdirWithinProject, realpath, realProjectRoot } fro
  */
 
 export const PROXY_PARAMS_VERSION = "v7";
+const STILL_ENCODING = "rgb-matrix";
 
 export const CACHE_DIR_NAME = ".transcode-cache";
 
@@ -1356,8 +1357,13 @@ export function resolveStill(
 ): Promise<string> {
   if (signal?.aborted) return Promise.reject(signal.reason);
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  const at = Math.max(0, Math.round(atSeconds * 10) / 10);
-  const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, `still@${at}`, box);
+  const at = Math.max(0, Math.floor(atSeconds * 10 + 1e-6) / 10);
+  const key = fastCopyKey(
+    source.sourcePath,
+    PROXY_PARAMS_VERSION,
+    `still-${STILL_ENCODING}@${at}`,
+    box,
+  );
   const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
   if (isProjectCacheFile(source.projectDir, cachePath)) {
     markCacheEntryUsed(cachePath);

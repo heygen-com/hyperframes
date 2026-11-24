@@ -670,14 +670,16 @@ function lightenIfHeavy(el: HTMLMediaElement, entry: MediaCodecMapEntry | null):
   if (facts) swapToProxy(el, entry, "light", facts);
 }
 
-const captureStills = new WeakSet<HTMLMediaElement>();
+// Each held clip's own poster, given back with its file.
+const captureStills = new WeakMap<HTMLMediaElement, string | null>();
 
 /** On a one-shot capture, a file with at least twice the pixels it is drawn at (#7723's rule) is never decoded. */
 function holdForCaptureStill(el: HTMLMediaElement): void {
   const facts = captureStillsIn(document) && isVideoElement(el) ? sourceFactsOf(el) : null;
   const box = facts ? shownBox(el, 1) : null;
+  const poster = el.getAttribute("poster");
   if (facts && box && isOversizedForPreview(facts, box) && holdForCopy(el, false))
-    captureStills.add(el);
+    captureStills.set(el, poster);
 }
 
 /** Each media pass: such a clip on screen shows the server's frame at the playhead; a capture waits for it. */
@@ -692,10 +694,37 @@ export function standInCaptureStill(el: HTMLMediaElement, onScreen: boolean): vo
   url.searchParams.set(PREVIEW_PROXY_STILL_PARAM, at.toFixed(3));
   if (el.getAttribute("poster") === url.href) return;
   el.setAttribute("poster", url.href);
-  el.setAttribute(CAPTURE_STILL_ATTR, "");
+  el.removeAttribute(CAPTURE_STILL_ATTR);
   const drawn = new Image();
-  holdFrameCaptures(new Promise((landed) => (drawn.onload = drawn.onerror = landed)));
+  holdFrameCaptures(
+    new Promise<void>((landed) => {
+      drawn.onload = () => {
+        if (el.getAttribute("poster") === url.href) el.setAttribute(CAPTURE_STILL_ATTR, "");
+        landed();
+      };
+      drawn.onerror = () => {
+        if (el.getAttribute("poster") === url.href) decodeItsFile(el, file);
+        landed();
+      };
+    }),
+  );
   drawn.src = url.href;
+}
+
+/** A frame the server could not cut: the clip decodes its own file, as on any capture page, and the capture waits. */
+function decodeItsFile(el: HTMLMediaElement, file: string): void {
+  const poster = captureStills.get(el);
+  captureStills.delete(el);
+  el.removeAttribute(CAPTURE_STILL_ATTR);
+  if (poster) el.setAttribute("poster", poster);
+  else el.removeAttribute("poster");
+  holdFrameCaptures(
+    new Promise((landed) => {
+      el.addEventListener("loadeddata", landed, { once: true });
+      el.addEventListener("error", landed, { once: true });
+    }),
+  );
+  endCopyHold(el, file);
 }
 
 function applyPreviewQuality(el: HTMLMediaElement): void {

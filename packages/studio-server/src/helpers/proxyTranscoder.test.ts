@@ -2466,7 +2466,7 @@ describe("resolveStill", () => {
   });
 
   it.skipIf(!canStill)(
-    "cuts one JPEG at the asked time and reuses it for the same tenth of a second",
+    "cuts one JPEG at the asked time and reuses it within the same tenth of a second",
     async () => {
       vi.resetModules();
       vi.doUnmock("./mediaMetadata.js");
@@ -2478,11 +2478,11 @@ describe("resolveStill", () => {
         ...["-c:v", "libx264", "-pix_fmt", "yuv420p", clip],
       ]);
 
-      const first = await resolveStill(projectDir, clip, 1.26, { width: 160, height: 90 });
+      const first = await resolveStill(projectDir, clip, 1.21, { width: 160, height: 90 });
       expect(first.endsWith(".jpg")).toBe(true);
       const bytes = readFileSync(first);
       expect([bytes[0], bytes[1]]).toEqual([0xff, 0xd8]);
-      expect(await resolveStill(projectDir, clip, 1.34, { width: 160, height: 90 })).toBe(first);
+      expect(await resolveStill(projectDir, clip, 1.29, { width: 160, height: 90 })).toBe(first);
       expect(await resolveStill(projectDir, clip, 2.5, { width: 160, height: 90 })).not.toBe(first);
     },
     60_000,
@@ -2522,6 +2522,55 @@ describe("resolveStill", () => {
 
       const off = [0, 140, 0].map((want, channel) => Math.abs(rgb[channel]! - want));
       expect(Math.max(...off), `rgb ${[...rgb.subarray(0, 3)]}`).toBeLessThanOrEqual(8);
+    },
+    60_000,
+  );
+
+  // fails without the fix: 1.97 s rounded up to the clip's 2.00 s end, where ffmpeg cuts no frame and the still failed.
+  it.skipIf(!canStill)(
+    "cuts the last frames of a clip, never a time past its end",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveStill } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const clip = join(projectDir, "clip.mp4");
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=30:d=2"],
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", clip],
+      ]);
+
+      const still = await resolveStill(projectDir, clip, 1.97);
+
+      expect(readFileSync(still).subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+    },
+    60_000,
+  );
+
+  // fails without the fix: a still cut before the colour fix kept its key, so the cache served its old colours.
+  it.skipIf(!canStill)(
+    "never serves a still cached by an older encoding",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveStill, CACHE_DIR_NAME, PROXY_PARAMS_VERSION } =
+        await import("./proxyTranscoder.js");
+      const { fastCopyKey } = await import("./proxyCacheKey.js");
+      const projectDir = tmpProject();
+      const clip = join(projectDir, "clip.mp4");
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=25:d=2"],
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", clip],
+      ]);
+      mkdirSync(join(projectDir, CACHE_DIR_NAME), { recursive: true });
+      const old = join(
+        projectDir,
+        CACHE_DIR_NAME,
+        `${fastCopyKey(realpathSync(clip), PROXY_PARAMS_VERSION, "still@1", undefined)}.jpg`,
+      );
+      writeFileSync(old, readFileSync(await resolveStill(projectDir, clip, 1)));
+
+      expect(await resolveStill(projectDir, clip, 1)).not.toBe(old);
     },
     60_000,
   );
