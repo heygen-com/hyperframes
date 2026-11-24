@@ -135,7 +135,7 @@ describe("composition probe readiness", () => {
     const { iframe, onError } = mount(
       '<div data-composition-id="main"></div>',
       {},
-      { sealed: () => sealed },
+      { unreadSealedLoad: () => sealed },
     );
     Object.defineProperty(iframe, "contentWindow", {
       get: () => {
