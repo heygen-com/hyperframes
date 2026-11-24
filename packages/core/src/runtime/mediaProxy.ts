@@ -670,15 +670,18 @@ function lightenIfHeavy(el: HTMLMediaElement, entry: MediaCodecMapEntry | null):
   if (facts) swapToProxy(el, entry, "light", facts);
 }
 
-// Each held clip's own poster, given back with its file.
+// Each held clip's own poster, given back with its file; and the one still ask whose answer counts.
 const captureStills = new WeakMap<HTMLMediaElement, string | null>();
+const stillAsks = new WeakMap<HTMLMediaElement, HTMLImageElement>();
 
 /** On a one-shot capture, a file with at least twice the pixels it is drawn at (#7723's rule) is never decoded. */
 function holdForCaptureStill(el: HTMLMediaElement): void {
   const facts = captureStillsIn(document) && isVideoElement(el) ? sourceFactsOf(el) : null;
   const box = facts ? shownBox(el, 1) : null;
   const poster = el.getAttribute("poster");
-  if (facts && box && isOversizedForPreview(facts, box) && holdForCopy(el, false))
+  // A JPEG has no alpha: a see-through clip keeps its own decode.
+  const seeThrough = facts?.hasAlpha || codecEntryOf(el)?.hasAlpha;
+  if (facts && !seeThrough && box && isOversizedForPreview(facts, box) && holdForCopy(el, false))
     captureStills.set(el, poster);
 }
 
@@ -696,14 +699,15 @@ export function standInCaptureStill(el: HTMLMediaElement, onScreen: boolean): vo
   el.setAttribute("poster", url.href);
   el.removeAttribute(CAPTURE_STILL_ATTR);
   const drawn = new Image();
+  stillAsks.set(el, drawn);
   holdFrameCaptures(
     new Promise<void>((landed) => {
       drawn.onload = () => {
-        if (el.getAttribute("poster") === url.href) el.setAttribute(CAPTURE_STILL_ATTR, "");
+        if (stillAsks.get(el) === drawn) el.setAttribute(CAPTURE_STILL_ATTR, "");
         landed();
       };
       drawn.onerror = () => {
-        if (el.getAttribute("poster") === url.href) decodeItsFile(el, file);
+        if (stillAsks.get(el) === drawn) decodeItsFile(el, file);
         landed();
       };
     }),

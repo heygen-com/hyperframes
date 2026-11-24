@@ -1473,6 +1473,48 @@ describe("preview quality: lighter copies of heavy files", () => {
         expect(loads.map((load) => at(load.url))).toEqual(["5.250", "7.000"]);
       });
 
+      // fails without the fix: the first A was told from the latest A by its address alone, so its late error
+      // undid the latest A's loaded frame and gave the clip its 4K file back.
+      it("takes only the latest ask's answer, after a seek away and back", async () => {
+        const { el, standIn } = await capturedAt(1.25);
+        const media = await import("./media");
+        const clip = { el, start: 0, mediaStart: 4, duration: 10, end: 10, volume: null };
+        const seek = (timeSeconds: number) => {
+          media.syncRuntimeMedia({
+            clips: [{ ...clip, playbackRate: 1, loop: false, sourceDuration: null }],
+            timeSeconds,
+            playing: false,
+            playbackRate: 1,
+            getCompositionDuration: () => 0,
+          });
+          standIn(el, true);
+        };
+        seek(3);
+        seek(1.25);
+        expect(loads.length).toBe(3);
+
+        loads[2]!.onload!();
+        loads[0]!.onerror!();
+        loads[1]!.onerror!();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect([el.hasAttribute("src"), el.hasAttribute(CAPTURE_STILL_ATTR)]).toEqual([
+          false,
+          true,
+        ]);
+      });
+
+      // fails without the fix: a JPEG has no alpha, so a see-through clip's still covered whatever was behind it.
+      it("keeps a see-through file on its own decode", async () => {
+        const { el } = await capturedAt(1.25, { ...HEAVY, hasAlpha: true });
+
+        expect([el.getAttribute("src"), el.hasAttribute("poster"), loads.length]).toEqual([
+          "/video.mp4",
+          false,
+          0,
+        ]);
+      });
+
       it("keeps a file under twice its box, and decodes it as before", async () => {
         const { el } = await capturedAt(1.25, LIGHT);
 
