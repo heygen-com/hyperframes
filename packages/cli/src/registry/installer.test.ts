@@ -217,6 +217,18 @@ describe("installItem", () => {
     expect(readdirSync(join(dir, "tools", "pkg"))).toEqual([]);
   });
 
+  it("refuses a page whose own file link leads to a Node-only script", async () => {
+    const dir = project();
+    mkdirSync(join(dir, "tools"));
+    mkdirSync(join(dir, "compositions"));
+    writeFileSync(join(dir, "tools", "run.ts"), "export {};\n");
+    symlinkSync(join(dir, "tools", "run.ts"), join(dir, "compositions", "data-chart.html"));
+    await expect(installItem(item, { destDir: dir, force: true })).rejects.toThrow(
+      /Unsafe target.*script Node tooling may run/,
+    );
+    expect(readFileSync(join(dir, "tools", "run.ts"), "utf8")).toBe("export {};\n");
+  });
+
   it("writes into the standard folders, the configured ones and root notes", async () => {
     const dir = project();
     const targets = [
