@@ -41,25 +41,36 @@ export function headerSeconds(url: string): Promise<number | null> {
   });
 }
 
-/** Throws AudioTooLong unless `url`'s decode is known to fit DECODE_PEAK_BUDGET_BYTES, from `knownSeconds` (the
- * caller's own element) or the file's header. A length that cannot be read counts as too long. */
-export async function assertDecodeFits(url: string, knownSeconds?: number): Promise<void> {
+/** An unread length (a recorded blob reads Infinity): its bytes alone keep the peak in budget even at 8 kbps. */
+export const UNREAD_LENGTH_MAX_BYTES = (DECODE_PEAK_BUDGET_BYTES / PEAK_BYTES_PER_SECOND) * 1_000;
+
+/** Throws AudioTooLong when `url`'s length, from `knownSeconds` (the caller's own element) or the file's header, is
+ * past DECODE_PEAK_BUDGET_BYTES. Resolves "unread" when neither gives a length: unreadFits judges its bytes. */
+export async function assertDecodeFits(
+  url: string,
+  knownSeconds?: number,
+): Promise<"read" | "unread"> {
   const seconds =
     knownSeconds !== undefined && Number.isFinite(knownSeconds) && knownSeconds > 0
       ? knownSeconds
       : await headerSeconds(url);
-  if (seconds === null || decodePeakBytes(seconds) > DECODE_PEAK_BUDGET_BYTES)
-    throw new AudioTooLong(seconds);
+  if (seconds === null) return "unread";
+  if (decodePeakBytes(seconds) > DECODE_PEAK_BUDGET_BYTES) throw new AudioTooLong(seconds);
+  return "read";
 }
 
-/** `url` decoded whole into `context`, after assertDecodeFits: past the budget, nothing is fetched or decoded. */
+export const unreadFits = (byteLength: number): boolean => byteLength <= UNREAD_LENGTH_MAX_BYTES;
+
+/** `url` decoded whole into `context` within the budget: a read length past it is never fetched. */
 export async function decodeAudioWithin(
   context: BaseAudioContext,
   url: string,
   options: { fetch?: (url: string) => Promise<Response>; knownSeconds?: number } = {},
 ): Promise<AudioBuffer> {
-  await assertDecodeFits(url, options.knownSeconds);
+  const length = await assertDecodeFits(url, options.knownSeconds);
   const response = await (options.fetch ?? globalThis.fetch)(url);
   if (!response.ok) throw new Error(`Audio request failed (${response.status})`);
-  return context.decodeAudioData(await response.arrayBuffer());
+  const bytes = await response.arrayBuffer();
+  if (length === "unread" && !unreadFits(bytes.byteLength)) throw new AudioTooLong(null);
+  return context.decodeAudioData(bytes);
 }

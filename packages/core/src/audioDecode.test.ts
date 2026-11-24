@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AudioTooLong, decodeAudioWithin, pcmRateFor } from "./audioDecode";
+import {
+  AudioTooLong,
+  UNREAD_LENGTH_MAX_BYTES,
+  decodeAudioWithin,
+  pcmRateFor,
+} from "./audioDecode";
 
 const decoded = {} as AudioBuffer;
 const context = () => ({ decodeAudioData: vi.fn(async () => decoded) });
@@ -30,14 +35,24 @@ describe("decodeAudioWithin", () => {
     expect(ctx.decodeAudioData).not.toHaveBeenCalled();
   });
 
-  it("refuses a file whose length cannot be read", async () => {
+  // A recorded webm or ogg blob reads its duration as Infinity; main decoded those.
+  it("decodes a short file whose length cannot be read, its bytes alone keeping it in budget", async () => {
     vi.stubGlobal("mediaHeaderSeconds", () => null);
-    const fetch = served();
-    await expect(decodeWith(context(), "/odd.bin", { fetch })).rejects.toMatchObject({
+    const ctx = context();
+    await expect(decodeWith(ctx, "blob:recording", { fetch: served() })).resolves.toBe(decoded);
+    expect(ctx.decodeAudioData).toHaveBeenCalledOnce();
+  });
+
+  it("refuses an unread-length file whose bytes could pass the budget, without decoding it", async () => {
+    vi.stubGlobal("mediaHeaderSeconds", () => null);
+    const ctx = context();
+    const big = new ArrayBuffer(UNREAD_LENGTH_MAX_BYTES + 1);
+    const fetch = vi.fn(async () => ({ ok: true, arrayBuffer: async () => big }) as Response);
+    await expect(decodeWith(ctx, "/odd.bin", { fetch })).rejects.toMatchObject({
       name: "AudioTooLong",
       seconds: null,
     });
-    expect(fetch).not.toHaveBeenCalled();
+    expect(ctx.decodeAudioData).not.toHaveBeenCalled();
   });
 
   it("takes the length the caller's own element read over the header", async () => {
