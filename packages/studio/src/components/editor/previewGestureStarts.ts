@@ -251,8 +251,9 @@ export function createPreviewGestureStarts(
     };
     const sayWhyNotStarted = (step: "lost" | "run" | "unanswered") => {
       const pressed = opts.selectionRef.current;
-      if (step === "unanswered" && channel && pressed)
-        opts.onBlockedMoveRef.current(pressed, unansweredMoveReason(channel));
+      if (step !== "unanswered" || !channel || !pressed) return;
+      press.draw?.(0, 0);
+      opts.onBlockedMoveRef.current(pressed, unansweredMoveReason(channel));
     };
     press.frame = requestAnimationFrame(poll);
     return true;
