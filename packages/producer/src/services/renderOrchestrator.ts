@@ -949,6 +949,17 @@ export class RenderCancelledError extends Error {
   }
 }
 
+/**
+ * Aborts a render because a promise rejection nobody handled came from it. The
+ * render fails with the original error; it is not reported as a cancel.
+ */
+export class EscapedRejectionError extends Error {
+  constructor(cause: Error) {
+    super(cause.message, { cause });
+    this.name = cause.name;
+  }
+}
+
 export function createRenderFileLogger(
   logPath: string,
   base: ProducerLogger = defaultLogger,
@@ -5943,13 +5954,16 @@ async function executeRenderPipeline(input: {
       framesRendered: job.framesRendered ?? 0,
       error: caught,
     });
+    const escapedRejection =
+      executionSignal.reason instanceof EscapedRejectionError ? executionSignal.reason : undefined;
     const error = surfaceScriptFailure(
-      tooSlowError ?? audioFailure ?? pageNeverReady ?? caught,
+      tooSlowError ?? audioFailure ?? escapedRejection ?? pageNeverReady ?? caught,
       job,
     );
     if (
       !tooSlowError &&
       !audioFailure &&
+      !escapedRejection &&
       (error instanceof RenderCancelledError || executionSignal.aborted)
     ) {
       job.error = error instanceof Error ? error.message : "render_cancelled";

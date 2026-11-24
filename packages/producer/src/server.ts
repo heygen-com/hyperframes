@@ -51,6 +51,7 @@ import { isSafePath } from "@hyperframes/core/safe-path";
 import { foreignWritablePath } from "@hyperframes/core/cache-dir";
 import {
   RenderCancelledError,
+  EscapedRejectionError,
   createRenderJob,
   executeRenderJob,
   resolveRenderDebugDir,
@@ -1349,24 +1350,20 @@ const renderScope = new AsyncLocalStorage<{ requestId: string; fail: (err: Error
  * traced back to it: the render is stopped and fails with that error, and
  * other renders on the server carry on.
  */
-export async function runInRenderScope<T>(
+export function runInRenderScope<T>(
   requestId: string,
   abortController: AbortController,
   run: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
-  let escaped: Error | undefined;
-  const fail = (err: Error) => {
-    escaped ??= err;
-    abortController.abort(err);
-  };
-  try {
-    return await renderScope.run({ requestId, fail }, () => run(abortController.signal));
-  } catch (err) {
-    throw escaped ?? err;
-  }
+  const fail = (err: Error) => abortController.abort(new EscapedRejectionError(err));
+  return renderScope.run({ requestId, fail }, () => run(abortController.signal));
 }
 
-/** The server's `unhandledRejection` handler: log it, and fail the render it came from. */
+/**
+ * The server's `unhandledRejection` handler: log it, and fail the render whose
+ * work created the promise. One outside any render is only logged; ending the
+ * process for it would also end every render in flight.
+ */
 export function onEscapedRejection(reason: unknown, log: ProducerLogger): void {
   const err = reason instanceof Error ? reason : new Error(String(reason));
   const scope = renderScope.getStore();

@@ -1,33 +1,58 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EscapedRejectionError } from "./services/renderOrchestrator.js";
 import { onEscapedRejection, runInRenderScope } from "./server.js";
 
 const testLog = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
+type RejectionListener = (reason: unknown, promise: Promise<unknown>) => void;
 
 describe("a rejection nobody handled during a render", () => {
-  it("fails that render with its error and leaves other renders running", async () => {
-    const log = testLog();
-    const other = new AbortController();
-    const lost = new Error("lost blend");
-    const render = runInRenderScope(
-      "req-1",
-      new AbortController(),
-      (signal) =>
-        new Promise<void>((_resolve, reject) => {
-          signal.addEventListener("abort", () => reject(new Error("render_cancelled")));
-          // Surfaces later, from work this render started.
-          setTimeout(() => onEscapedRejection(lost, log), 0);
-        }),
-    );
-    await expect(render).rejects.toBe(lost);
+  const log = testLog();
+  let runnerListeners: RejectionListener[] = [];
+  const handler: RejectionListener = (reason) => onEscapedRejection(reason, log);
+  beforeEach(() => {
+    // Stand in for the server: only its handler hears rejections during the test.
+    runnerListeners = process.listeners("unhandledRejection");
+    process.removeAllListeners("unhandledRejection");
+    process.on("unhandledRejection", handler);
+  });
+  afterEach(() => {
+    process.off("unhandledRejection", handler);
+    for (const listener of runnerListeners) process.on("unhandledRejection", listener);
+  });
+
+  // A render that runs until it is aborted or told to finish, like the pipeline does.
+  const render = (requestId: string, finish: Promise<void>, leak = false) =>
+    runInRenderScope(requestId, new AbortController(), async (signal) => {
+      await new Promise((r) => setTimeout(r, 0));
+      // Work this render started, whose failure nobody handles.
+      if (leak) void Promise.reject(new Error("lost blend"));
+      await Promise.race([
+        finish,
+        new Promise<never>((_resolve, reject) =>
+          signal.addEventListener("abort", () => reject(signal.reason)),
+        ),
+      ]);
+      return requestId;
+    });
+
+  it("fails only the render it came from, with its own error, and logs that render", async () => {
+    let finishOther = () => {};
+    const other = render("req-2", new Promise<void>((r) => (finishOther = r)));
+    const leaking = render("req-1", new Promise<void>(() => {}), true);
+
+    const failure = await leaking.catch((err: unknown) => err);
+    expect(failure).toBeInstanceOf(EscapedRejectionError);
+    expect(failure).toMatchObject({ message: "lost blend" });
     expect(log.error).toHaveBeenCalledWith("Unhandled promise rejection", {
       requestId: "req-1",
       error: "lost blend",
     });
-    expect(other.signal.aborted).toBe(false);
+
+    finishOther();
+    await expect(other).resolves.toBe("req-2");
   });
 
   it("outside any render is logged and does not throw", () => {
-    const log = testLog();
     expect(() => onEscapedRejection("stray", log)).not.toThrow();
     expect(log.error).toHaveBeenCalledWith("Unhandled promise rejection", {
       requestId: null,
