@@ -1,6 +1,7 @@
 import { energyMixSteps, type AudioSignal } from "../audioAnalysis";
 import { rhythmSteps, tempoOf } from "../audioRhythm";
 import { finish, type Steps } from "../audioSteps";
+import { decodeAudioWithin } from "../audioDecode";
 
 export interface MusicBeatAnalysis {
   beatTimes: number[];
@@ -111,9 +112,7 @@ export async function analyzeMusicFromUrl(
   await options.pause?.();
   const audioContext = new AudioContext();
   try {
-    const response = await fetch(url);
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    const audioBuffer = await decodeAudioWithin(audioContext, url);
     return analyzeMusicFromBuffer(audioBuffer, options);
   } finally {
     await audioContext.close();
