@@ -2,11 +2,9 @@ import { WebAudioTransport } from "@hyperframes/core/runtime/web-audio-transport
 import { bytesOfSource, decodesFirst } from "@hyperframes/core/runtime/decodes-first";
 import type { ProxyEntry } from "./parent-media.js";
 
-/**
- * A sealed film's frame never gets the tap's user activation, so its AudioContext cannot start and
- * WebKit plays its audio from elements that start late. The player has the tap: it plays the film's
- * listed audio clips here from decoded buffers, and the film's picture follows this audio clock.
- */
+// A sealed film's frame never gets the tap's user activation, so its AudioContext cannot start and WebKit plays its
+// audio from elements that start late. The player has the tap: it plays the film's listed audio clips here from
+// decoded buffers, and the film's picture follows this audio clock.
 
 /** Decode fetches stay on the host that served the copy: no redirect elsewhere, cookies only to it. */
 const DECODE_FETCH: RequestInit = { method: "GET", credentials: "same-origin", redirect: "error" };
@@ -176,7 +174,7 @@ export class ParentAudio {
   }
 }
 
-/** The same verdict as unsealed's (`decodesFirst`), on a copy from the host's own origin carrying nothing native-only. */
+/** Unsealed's verdict (`decodesFirst`), on a copy from the host's own origin carrying nothing native-only. */
 async function decodesHere(transport: WebAudioTransport, entry: ProxyEntry): Promise<boolean> {
   const { el } = entry;
   if (!entry.listedKey || el.tagName !== "AUDIO" || !fromThisHost(el.src)) return false;

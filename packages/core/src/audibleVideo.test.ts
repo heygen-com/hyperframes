@@ -98,7 +98,7 @@ describe("parentCopyOf", () => {
     });
   });
 
-  // fails without the fix: a parent copy lost the clip's loop, rate, fades and volume, so a decoded copy played it wrong.
+  // fails without the fix: a parent copy lost the clip's loop, rate, fades and volume, so a decoded copy was wrong.
   it("carries the clip's loop and the attributes a decoded copy is played by", () => {
     const copy = parentCopyOf(
       media(
