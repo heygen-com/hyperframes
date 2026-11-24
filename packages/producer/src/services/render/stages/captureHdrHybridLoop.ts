@@ -180,6 +180,17 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
     const workerRanges = distributeLayeredHybridFrameRanges(totalFrames, activeWorkerCount);
     let framesWritten = 0;
     const reorderBuffer = createFrameReorderBuffer(0, totalFrames);
+    // The first failure on any worker stops the loop and wakes every worker
+    // parked on the reorder buffer for a frame that will never be written.
+    let failure: Error | null = null;
+    const fail = (err: unknown): void => {
+      if (failure) return;
+      failure = err instanceof Error ? err : new Error(String(err));
+      reorderBuffer.abort(failure);
+    };
+    const throwIfFailed = (): void => {
+      if (failure) throw failure;
+    };
 
     const writeEncoded = async (frameIdx: number, buf: Buffer): Promise<void> => {
       await reorderBuffer.waitForFrame(frameIdx);
@@ -210,132 +221,133 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
       // promise is non-null; before reusing the slot for a new capture we
       // await it so the buffer triple is free + the encoder has seen the
       // earlier frame (writeEncoded gates ordering via the reorder buffer).
+      // Slot promises never reject; their failure goes to `fail`.
       const ringInFlight: Array<Promise<void> | null> = ring ? ring.map(() => null) : [];
       let nextRingIdx = 0;
-      for (let i = range.start; i < range.end; i++) {
-        assertNotAborted();
-        const time = (i * job.config.fps.den) / job.config.fps.num;
-        const activeTransition = transitionFramesSet.has(i)
-          ? transitionRanges.find((t) => i >= t.startFrame && i <= t.endFrame)
-          : undefined;
-        if (activeTransition && ring) {
-          // Pick the next ring slot. If it's still in flight from an earlier
-          // capture, await it to drain before reusing its buffer triple.
-          const slot = nextRingIdx;
-          nextRingIdx = (nextRingIdx + 1) % TRANSITION_RING_DEPTH;
-          const prev = ringInFlight[slot];
-          if (prev) await prev;
-          const buffers = ring[slot];
-          if (!buffers) continue;
-          // CAPTURE on the DOM worker (this thread). Fills bufferA/bufferB
-          // synchronously w.r.t. this loop — DOM work can't be pipelined
-          // because the per-worker browser session is single-threaded.
-          await captureTransitionFrameOnWorker({
-            session,
-            frameIdx: i,
-            time,
-            transition: activeTransition,
-            buffers,
-            nativeHdrIds,
-            nativeHdrImageIds,
-            sceneElements,
-            hdrCompositeCtx,
-            width,
-            height,
-            compositeTransfer,
-            hdrTargetTransfer,
-            hdrPerf,
-            log,
-          });
-          const progress =
-            activeTransition.endFrame === activeTransition.startFrame
-              ? 1
-              : (i - activeTransition.startFrame) /
-                (activeTransition.endFrame - activeTransition.startFrame);
-          // BLEND + ENCODE without awaiting. The promise drains back into
-          // `ringInFlight[slot]`; the next iteration that picks `slot`
-          // awaits it. The encoder reorder buffer fences ordering so out-
-          // of-order blend completion is fine.
-          const frameIdx = i;
-          // When the @hyperframes/shader-transitions composition omits the
-          // shader on a transition entry, it requests a CSS crossfade. The
-          // engine-side path uses applyFallbackTransition() on the page; the
-          // producer's Node-side layered pipeline runs the equivalent here
-          // by routing the blend through `crossfade`.
-          const shaderName = activeTransition.shader;
-          const dispatch: Promise<void> = (async () => {
-            if (poolRef && shaderName) {
-              const blendStart = Date.now();
-              const result = await poolRef.run({
-                shader: shaderName,
-                bufferA: buffers.bufferA,
-                bufferB: buffers.bufferB,
-                output: buffers.output,
-                width,
-                height,
-                progress,
-              });
-              buffers.bufferA = result.bufferA;
-              buffers.bufferB = result.bufferB;
-              buffers.output = result.output;
-              addHdrTiming(hdrPerf, "transitionCompositeMs", blendStart);
-            } else {
-              const transitionFn: TransitionFn = shaderName
-                ? (TRANSITIONS[shaderName] ?? crossfade)
-                : crossfade;
-              const blendStart = Date.now();
-              transitionFn(
-                buffers.bufferA,
-                buffers.bufferB,
-                buffers.output,
-                width,
-                height,
-                progress,
-              );
-              addHdrTiming(hdrPerf, "transitionCompositeMs", blendStart);
-            }
-            await writeEncoded(frameIdx, buffers.output);
-          })();
-          // Catch on a separate handle so an unhandled-rejection can't fire
-          // if no one awaits this slot before the worker exits. The error
-          // is re-thrown on the next await (slot reuse OR end-of-task drain).
-          ringInFlight[slot] = dispatch.catch((err: unknown) => {
-            throw err instanceof Error ? err : new Error(String(err));
-          });
-        } else {
-          const stackingInfo = await seekInjectAndQueryStacking(
-            session.page,
-            time,
-            session.onBeforeCapture,
-            nativeHdrIds,
-            hdrPerf,
-            "frameSeekMs",
-            "frameInjectMs",
-            "stackingQueryMs",
-          );
-          canvas.fill(0);
-          // Rebind ctx to this worker's session for per-layer captures
-          const wctx: HdrCompositeContext = { ...hdrCompositeCtx, domSession: session };
-          await timeHdrPhaseAsync(hdrPerf, "normalCompositeMs", () =>
-            compositeHdrFrame(wctx, canvas, time, stackingInfo, undefined, i),
-          );
-          if (debugDumpEnabled && debugDumpDir && i % 30 === 0) {
-            writeFileExclusiveSync(
-              join(debugDumpDir, `frame_${String(i).padStart(4, "0")}_final_rgb48le.bin`),
-              canvas,
+      try {
+        for (let i = range.start; i < range.end; i++) {
+          throwIfFailed();
+          assertNotAborted();
+          const time = (i * job.config.fps.den) / job.config.fps.num;
+          const activeTransition = transitionFramesSet.has(i)
+            ? transitionRanges.find((t) => i >= t.startFrame && i <= t.endFrame)
+            : undefined;
+          if (activeTransition && ring) {
+            // Pick the next ring slot. If it's still in flight from an earlier
+            // capture, await it to drain before reusing its buffer triple.
+            const slot = nextRingIdx;
+            nextRingIdx = (nextRingIdx + 1) % TRANSITION_RING_DEPTH;
+            const prev = ringInFlight[slot];
+            if (prev) await prev;
+            throwIfFailed();
+            const buffers = ring[slot];
+            if (!buffers) continue;
+            // CAPTURE on the DOM worker (this thread). Fills bufferA/bufferB
+            // synchronously w.r.t. this loop — DOM work can't be pipelined
+            // because the per-worker browser session is single-threaded.
+            await captureTransitionFrameOnWorker({
+              session,
+              frameIdx: i,
+              time,
+              transition: activeTransition,
+              buffers,
+              nativeHdrIds,
+              nativeHdrImageIds,
+              sceneElements,
+              hdrCompositeCtx,
+              width,
+              height,
+              compositeTransfer,
+              hdrTargetTransfer,
+              hdrPerf,
+              log,
+            });
+            const progress =
+              activeTransition.endFrame === activeTransition.startFrame
+                ? 1
+                : (i - activeTransition.startFrame) /
+                  (activeTransition.endFrame - activeTransition.startFrame);
+            // BLEND + ENCODE without awaiting. The promise drains back into
+            // `ringInFlight[slot]`; the next iteration that picks `slot`
+            // awaits it. The encoder reorder buffer fences ordering so out-
+            // of-order blend completion is fine.
+            const frameIdx = i;
+            // When the @hyperframes/shader-transitions composition omits the
+            // shader on a transition entry, it requests a CSS crossfade. The
+            // engine-side path uses applyFallbackTransition() on the page; the
+            // producer's Node-side layered pipeline runs the equivalent here
+            // by routing the blend through `crossfade`.
+            const shaderName = activeTransition.shader;
+            const dispatch: Promise<void> = (async () => {
+              if (poolRef && shaderName) {
+                const blendStart = Date.now();
+                const result = await poolRef.run({
+                  shader: shaderName,
+                  bufferA: buffers.bufferA,
+                  bufferB: buffers.bufferB,
+                  output: buffers.output,
+                  width,
+                  height,
+                  progress,
+                });
+                buffers.bufferA = result.bufferA;
+                buffers.bufferB = result.bufferB;
+                buffers.output = result.output;
+                addHdrTiming(hdrPerf, "transitionCompositeMs", blendStart);
+              } else {
+                const transitionFn: TransitionFn = shaderName
+                  ? (TRANSITIONS[shaderName] ?? crossfade)
+                  : crossfade;
+                const blendStart = Date.now();
+                transitionFn(
+                  buffers.bufferA,
+                  buffers.bufferB,
+                  buffers.output,
+                  width,
+                  height,
+                  progress,
+                );
+                addHdrTiming(hdrPerf, "transitionCompositeMs", blendStart);
+              }
+              await writeEncoded(frameIdx, buffers.output);
+            })();
+            ringInFlight[slot] = dispatch.then(() => undefined, fail);
+          } else {
+            const stackingInfo = await seekInjectAndQueryStacking(
+              session.page,
+              time,
+              session.onBeforeCapture,
+              nativeHdrIds,
+              hdrPerf,
+              "frameSeekMs",
+              "frameInjectMs",
+              "stackingQueryMs",
             );
+            canvas.fill(0);
+            // Rebind ctx to this worker's session for per-layer captures
+            const wctx: HdrCompositeContext = { ...hdrCompositeCtx, domSession: session };
+            await timeHdrPhaseAsync(hdrPerf, "normalCompositeMs", () =>
+              compositeHdrFrame(wctx, canvas, time, stackingInfo, undefined, i),
+            );
+            if (debugDumpEnabled && debugDumpDir && i % 30 === 0) {
+              writeFileExclusiveSync(
+                join(debugDumpDir, `frame_${String(i).padStart(4, "0")}_final_rgb48le.bin`),
+                canvas,
+              );
+            }
+            await writeEncoded(i, canvas);
           }
-          await writeEncoded(i, canvas);
         }
+      } catch (err) {
+        fail(err);
+      } finally {
+        await Promise.all(ringInFlight);
       }
-      // Drain any pipelined blends still in flight on this worker before
-      // returning. If any rejected, the rejection bubbles here so
-      // `Promise.all` over `workerTaskOf` sees the failure.
-      for (const pending of ringInFlight) {
-        if (pending) await pending;
-      }
+      throwIfFailed();
     };
-    await Promise.all(sessions.map((_, w) => workerTaskOf(w)));
+    // allSettled: every worker's ring settles before the pool is terminated.
+    await Promise.allSettled(sessions.map((_, w) => workerTaskOf(w)));
+    throwIfFailed();
     await reorderBuffer.waitForAllDone();
   } finally {
     for (const s of workerSessions) {

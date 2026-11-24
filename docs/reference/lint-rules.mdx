@@ -590,7 +590,7 @@ Source: `packages/lint/src/rules/media.ts`.
 
 **Warning.** An element has `data-volume` gain and a GSAP tween on `volume`; tween values are absolute and replace the gain rather than scale it.
 
-**Fix:** Write tween targets as absolute gains that already include the gain, or reset `data-volume` to 1 and let the tween carry the level.
+**Fix:** Keep the level you set. Use an absolute gain for each level the tween should reach: for `data-volume="0.3"`, use `volume: 0.3` where it should reach that level, and keep `volume: 0` at endpoints intended to be silent. If `data-volume="0"`, the clip is authored silent: drop the volume tween to keep it silent, or deliberately set `data-volume="1"` and let the tween carry the level. If the level is in doubt, measure the rendered file with `hyperframes audio render.mp4` (replace `render.mp4` with your output file) before changing it.
 
 ### `base64_media_prohibited`
 

@@ -3,3 +3,4 @@ export function receivedFileState(
   path: string,
   options?: { atOrAboveOnly?: boolean },
 ): "received" | "unchecked" | null;
+export function isStudioPrivatePath(relPath: string): boolean;
