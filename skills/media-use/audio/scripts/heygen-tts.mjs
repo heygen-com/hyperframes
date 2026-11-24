@@ -39,10 +39,8 @@ const die = (m) => {
   process.exit(1);
 };
 
-// The word after a lone `--`, else the first arg that isn't a flag or a flag's value, is the
-// text / .txt path.
-const positional = (() => {
-  if (flagsEnd >= 0 && flagsEnd + 1 < given.length) return given[flagsEnd + 1];
+// The first arg before a lone `--` that isn't a flag or a flag's value is the text / .txt path.
+const beforeEnd = (() => {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith("--")) {
@@ -58,6 +56,18 @@ const positional = (() => {
   }
   return null;
 })();
+
+// Flags written after the `--` would be dropped without a word, and so would a second text.
+const afterEnd = flagsEnd < 0 ? [] : given.slice(flagsEnd + 1);
+if (afterEnd.length > 1)
+  die("only the text goes after a lone --. Put every flag, and its value, before the --.");
+if (afterEnd.length === 1 && beforeEnd !== null)
+  die("two texts given, one before the lone -- and one after it. Pass one.");
+const positional = afterEnd.length === 1 ? afterEnd[0] : beforeEnd;
+
+const outputFlag = argv.includes("-o") ? argv.indexOf("-o") : argv.indexOf("--output");
+if (outputFlag >= 0 && outputFlag + 1 >= argv.length)
+  die(`${argv[outputFlag]} needs a path after it.`);
 
 const output = resolve(
   (typeof flag("output") === "string" && flag("output")) ||

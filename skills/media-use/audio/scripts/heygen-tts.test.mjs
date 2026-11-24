@@ -110,6 +110,26 @@ test("text after a lone -- is spoken as written, even when it starts with dashes
     assert.match(bare.stderr, /no text given\..* goes after a lone --\./);
     assert.match(run("--voice", "v", "-o", out, "--").stderr, /no text given\./);
     assert.match(run("Hi", "--voice", "v", "-o", out, "--").stderr, /asked: Hi\n/);
+    // Nothing given is dropped without a word: flags after the text, a second text, a flag
+    // whose value the -- cut off.
+    const refused = [
+      [["--voice", "v", "--", "--and then", "-o", out], /only the text goes after a lone --/],
+      [["Hello", "--voice", "v", "-o", out, "--", "--and then"], /two texts given/],
+      [["--voice", "v", "-o", "--", "Hi"], /-o needs a path after it/],
+      [["--voice", "v", "--output", "--", "Hi"], /--output needs a path after it/],
+    ];
+    for (const [args, message] of refused) {
+      const stopped = run(...args);
+      assert.equal(stopped.status, 1);
+      assert.match(stopped.stderr, message);
+      assert.doesNotMatch(stopped.stderr, /asked:/);
+    }
+    assert.equal(existsSync(join(dir, "narration.wav")), false);
+    writeFileSync(join(dir, "--notes.txt"), "text of the file");
+    assert.match(
+      run("--voice", "v", "-o", out, "--", "--notes.txt").stderr,
+      /asked: text of the file\n/,
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
