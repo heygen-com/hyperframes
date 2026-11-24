@@ -1,4 +1,5 @@
 // How an element is addressed in source: one rule for Studio and the runtime's editing agent.
+import { COMPOSITION_ROOT_ATTRS, SOURCE_HOST_ATTRS } from "../compositionSource";
 import { isHtmlElement } from "./domRealm";
 
 /** Names an element's source file. The parent resolves it: `file`, else its composition map. */
@@ -193,14 +194,13 @@ function closestWithAny(el: Element, names: readonly string[]): Element | null {
 }
 
 export function readElementSource(el: Element): EditingElementSource {
-  const host = closestWithAny(el, ["data-composition-file", "data-composition-src"]);
-  const root = closestWithAny(el, ["data-composition-id"]);
+  const [fileAttr, srcAttr] = SOURCE_HOST_ATTRS;
+  const [idAttr, originalIdAttr] = COMPOSITION_ROOT_ATTRS;
+  const host = closestWithAny(el, SOURCE_HOST_ATTRS);
+  const root = closestWithAny(el, [idAttr]);
   return {
-    file:
-      host?.getAttribute("data-composition-file") ??
-      host?.getAttribute("data-composition-src") ??
-      null,
-    compositionId: root?.getAttribute("data-composition-id") ?? null,
-    originalCompositionId: root?.getAttribute("data-hf-original-composition-id") ?? null,
+    file: host?.getAttribute(fileAttr) ?? host?.getAttribute(srcAttr) ?? null,
+    compositionId: root?.getAttribute(idAttr) ?? null,
+    originalCompositionId: root?.getAttribute(originalIdAttr) ?? null,
   };
 }
