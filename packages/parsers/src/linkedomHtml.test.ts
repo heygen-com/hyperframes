@@ -26,11 +26,16 @@ describe("parseHTML", () => {
     "<title>Page</title><style>a > b { color: red }</style>",
     "<p><!-- </title><img> --></p>",
     '<head><meta name="description" content="x"></head>',
+    "<template></template>",
     "<svg><foreignObject><title>a <b> c</title></foreignObject></svg>",
     '<svg><style><![CDATA[ a::after { content: "<b>" } ]]></style></svg>',
   ])("reads %s as linkedom does", (body) => {
     const { document } = parseHTML(page(body));
     expect(document.querySelectorAll("img")).toHaveLength(0);
+  });
+
+  it("reads a page that is only a comment", () => {
+    expect(() => parseHTML("<!-- <template><div></div></template> -->")).not.toThrow();
   });
 
   it("leaves svg read as XML to linkedom", () => {

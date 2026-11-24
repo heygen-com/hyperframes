@@ -6,7 +6,6 @@ const FOREIGN = new Set(["svg", "math"]);
 const BACK_TO_HTML = new Set(["foreignobject", "desc"]);
 const TAG_OR_COMMENT = /<[A-Za-z!/?]/;
 const CDATA = /<!\[CDATA\[[\s\S]*?\]\]>/g;
-const SHOW_ELEMENT = 1;
 
 export class HtmlReadUnlikeBrowserError extends Error {
   constructor() {
@@ -39,15 +38,19 @@ function readAsTextUnlikeBrowser(element: Element): boolean {
   );
 }
 
-// One pass over the tree: linkedom keeps it as a list, so asking each element for its children is quadratic.
-function readsUnlikeBrowser(root: Node): boolean {
-  const document = (root.ownerDocument ?? root) as Document;
-  const walker = document.createTreeWalker(root, SHOW_ELEMENT);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const content =
-      (node as Element).localName === "template" && (node as HTMLTemplateElement).content;
+function nextInDocumentOrder(element: Element): Element | null {
+  if (element.firstElementChild) return element.firstElementChild;
+  for (let at: Element | null = element; at; at = at.parentElement)
+    if (at.nextElementSibling) return at.nextElementSibling;
+  return null;
+}
+
+// One pass in document order: linkedom keeps the tree as a list, so asking each element for its children is quadratic.
+function readsUnlikeBrowser(root: ParentNode): boolean {
+  for (let element = root.firstElementChild; element; element = nextInDocumentOrder(element)) {
+    const content = element.localName === "template" && (element as HTMLTemplateElement).content;
     if (content && readsUnlikeBrowser(content)) return true;
-    if (readAsTextUnlikeBrowser(node as Element)) return true;
+    if (readAsTextUnlikeBrowser(element)) return true;
   }
   return false;
 }
